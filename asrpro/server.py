@@ -23,7 +23,8 @@ def create_app(model_manager: ModelManager):  # pragma: no cover
         model: Optional[str] = Form(None),
         response_format: str = Form("json"),
     ):
-        suffix = Path(file.filename).suffix or ".wav"
+        filename = file.filename or "audio.wav"
+        suffix = Path(filename).suffix or ".wav"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             data = await file.read()
             tmp.write(data)
@@ -33,11 +34,61 @@ def create_app(model_manager: ModelManager):  # pragma: no cover
             result = model_manager.transcribe(tmp_path, model_id=model, return_srt=srt)
             if srt:
                 return PlainTextResponse(result, media_type="text/plain")
+            # Handle both string and dict results
+            if isinstance(result, str):
+                return JSONResponse({"text": result})
             return JSONResponse(
-                {"text": " ".join(seg["text"] for seg in result), "segments": result}
+                {
+                    "text": " ".join(
+                        seg.get("text", "") for seg in result if isinstance(seg, dict)
+                    ),
+                    "segments": result,
+                }
             )
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+    @app.post("/v1/audio/translations")
+    async def translate(
+        file: UploadFile = File(...),
+        model: Optional[str] = Form(None),
+        response_format: str = Form("json"),
+    ):
+        # For now, just transcribe (translation would need special models)
+        return await transcribe(file, model, response_format)
+
+    @app.post("/v1/srt")
+    async def generate_srt(
+        file: UploadFile = File(...),
+        model: Optional[str] = Form(None),
+    ):
+        filename = file.filename or "audio.wav"
+        suffix = Path(filename).suffix or ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            data = await file.read()
+            tmp.write(data)
+            tmp_path = tmp.name
+        try:
+            result = model_manager.transcribe(tmp_path, model_id=model, return_srt=True)
+            return PlainTextResponse(result, media_type="text/plain")
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    @app.post("/v1/settings/model")
+    def set_model(model_id: str):
+        try:
+            model_manager.load(model_id)
+            return {"status": "success", "model": model_id}
+        except Exception as e:
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+
+    @app.get("/health")
+    def health_check():
+        return {
+            "status": "healthy",
+            "current_model": model_manager.current_id,
+            "device": model_manager.device,
+        }
 
     return app
 

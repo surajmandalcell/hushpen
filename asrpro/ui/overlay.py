@@ -31,19 +31,48 @@ class Overlay(QWidget):  # pragma: no cover - UI only
 
     def _build(self):
         box = QVBoxLayout(self)
-        box.setContentsMargins(18, 10, 18, 10)
-        box.setSpacing(4)
-        self.label = QLabel("Recording…")
-        self.label.setStyleSheet(
-            "QLabel { color: white; font-size:15px; font-weight:600; letter-spacing:0.5px; }"
+        box.setContentsMargins(20, 14, 20, 14)
+        box.setSpacing(6)
+
+        # Icon + text in horizontal layout for linear design
+        hbox = QVBoxLayout()
+
+        # Status indicator
+        self.status_dot = QLabel("●")
+        self.status_dot.setStyleSheet(
+            "QLabel { color: #2ea043; font-size: 18px; font-weight: bold; }"
         )
-        box.addWidget(self.label)
+        self.status_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hbox.addWidget(self.status_dot)
+
+        self.label = QLabel("Recording Audio")
+        self.label.setStyleSheet(
+            "QLabel { "
+            "color: white; "
+            "font-size: 15px; "
+            "font-weight: 500; "
+            "letter-spacing: 0.3px; "
+            "margin: 0px;"
+            "}"
+        )
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hbox.addWidget(self.label)
+
+        box.addLayout(hbox)
+
         self.setStyleSheet(
             """
-			QWidget { background:rgba(60,124,255,180); border-radius:22px; }
-			"""
+            QWidget { 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 rgba(46, 160, 67, 0.95), 
+                    stop:1 rgba(35, 134, 54, 0.95)); 
+                border-radius: 8px; 
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+            }
+            """
         )
-        self.resize(160, 48)
+        self.resize(180, 70)
 
     # Public API ---------------------------------------------------------
     def show_smooth(self):
