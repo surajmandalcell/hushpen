@@ -1,14 +1,15 @@
 """Lazy single-resident model manager for Parakeet + Whisper."""
 
 from __future__ import annotations
-import gc, importlib, threading
+import gc, threading
 from typing import Optional
 import torch
+from .models import MODEL_LOADERS
 
 MODEL_SPECS = {
-    "parakeet-tdt-0.6b": "asrpro.models.parakeet_06b:Parakeet06BLoader",
-    "parakeet-tdt-1.1b": "asrpro.models.parakeet_11b:Parakeet11BLoader",
-    "whisper-medium-onnx": "asrpro.models.whisper_medium_onnx:WhisperMediumOnnxLoader",
+    "parakeet-tdt-0.6b": "parakeet-0.6b",
+    "parakeet-tdt-1.1b": "parakeet-1.1b",
+    "whisper-medium-onnx": "whisper-medium-onnx",
 }
 
 
@@ -70,15 +71,21 @@ class ModelManager:
             if model_id == self.current_id:
                 return self.current_model
             self.unload()
-            spec = MODEL_SPECS.get(model_id)
-            if not spec:
+
+            # Get model key from specs
+            model_key = MODEL_SPECS.get(model_id)
+            if not model_key:
                 raise ValueError(f"Unknown model: {model_id}")
-            module_name, class_name = spec.split(":")
-            mod = importlib.import_module(module_name)
-            cls = getattr(mod, class_name)
-            loader = cls(device=self.device)
+
+            # Get loader class from consolidated models
+            loader_class = MODEL_LOADERS.get(model_key)
+            if not loader_class:
+                raise ValueError(f"Model loader not found: {model_key}")
+
+            loader = loader_class(device=self.device)
             if progress_cb:
                 progress_cb(f"Loading {model_id} on {self.device}...")
+
             self.current_model, self.current_tokenizer = loader.load(
                 progress_cb=progress_cb
             )

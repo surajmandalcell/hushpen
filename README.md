@@ -1,270 +1,114 @@
 # asrpro - AI Speech Recognition Pro
 
-A modern desktop tray application for AI-powered speech recognition and transcription, built with PySide6 and featuring a clean, linear UI design.
+A clean, modern desktop tray application for AI-powered speech recognition and transcription, built with PySide6.
 
-## Features
+## ✨ Features
 
-### 🎯 Core Functionality
-- **Global Hotkey Transcription**: Press once to start recording, press again to stop and paste the transcribed text into the last active window
-- **SRT Generation**: Drag & drop media files to generate subtitle files with matching filenames
-- **Multi-Model Support**: Load-on-demand support for NVIDIA Parakeet TDT (0.6B & 1.1B) and Whisper Medium ONNX models
-- **Single Model Residency**: Only one model stays in memory at a time for optimal resource usage
+- **🎯 Global Hotkey Transcription**: Press once to record, press again to transcribe and paste
+- **🎬 SRT Generation**: Drag & drop media files to create subtitle files
+- **🤖 Multi-Model Support**: Parakeet TDT (0.6B/1.1B) and Whisper Medium ONNX
+- **⚡ Single Instance**: Automatically kills old instances when launching new ones
+- **🎨 Modern UI**: Glassmorphism design with dark mode tray icon support
+- **🖥️ System Integration**: Comprehensive system tray with context menu
 
-### 🎨 Modern Linear UI
-- **Frameless Window**: Fixed 800x600 non-resizable window with custom title bar
-- **Linear Design**: Clean, minimal interface with GitHub-inspired dark theme
-- **Smooth Animations**: Elegant overlay dialog with fade-in/fade-out effects
-- **Two-Tab Layout**: Separate tabs for Models and SRT generation
+## 🚀 Quick Start
 
-### ⚡ Performance & Compatibility
-- **Device Preference**: Automatically uses CUDA → Vulkan → CPU fallback
-- **OpenAI-Compatible API**: Built-in server on port 7341 with familiar endpoints
-- **System Integration**: System tray with comprehensive menu options
-- **Real-time Processing**: Responsive UI that doesn't disrupt target applications
-
-## Installation
-
-### Prerequisites
+### Installation
 ```bash
-# Python 3.11+ required
-python --version
-
-# Install FFmpeg (required for audio processing)
-# Windows (using winget):
-winget install ffmpeg
-
-# Or download from: https://www.gyan.dev/ffmpeg/builds/
+# Clone and setup
+git clone <repo>
+cd jarusasr
+python -m pip install -r requirements.txt
 ```
 
-### Dependencies
+### Launch
 ```bash
-# Core requirements
-pip install -r requirements.txt
+# Method 1: Module
+python -m asrpro
 
-# Optional: NeMo for Parakeet models (heavy dependency)
-pip install -r requirements-nemo.txt
+# Method 2: Simple launcher
+python run.py
 ```
 
-### Key Dependencies
-- **PySide6 6.9.2**: Modern Qt6-based GUI framework
-- **FastAPI + Uvicorn**: High-performance API server
-- **PyTorch 2.8.0**: ML framework with CUDA support
-- **faster-whisper 1.2.0**: Optimized Whisper implementation
-- **sounddevice**: Real-time audio recording
-- **pynput**: Global hotkey and clipboard integration
+### First Use
+1. **System tray**: Look for the asrpro icon in your system tray
+2. **Open window**: Double-click tray icon or right-click → "Show Window"
+3. **Load model**: Go to Models tab, select a model, click "Load Selected Model"
+4. **Set hotkey**: Right-click tray → "Hotkey Settings" (default: Ctrl+Alt+T)
+5. **Test**: Press hotkey twice (start recording → stop & transcribe)
 
-## Usage
+## 📁 Project Structure
 
-### Running the Application
-```bash
-# Method 1: Direct execution
-python asrpro_run.py
-
-# Method 2: Module execution
-python -m asrpro.main
-
-# Method 3: Test script with enhanced output
-python test_asrpro.py
-```
-
-### Global Hotkey Workflow
-1. **Configure Hotkey**: Right-click tray icon → "Hotkey Settings" (default: `Ctrl+Alt+T`)
-2. **Start Recording**: Press the hotkey once - overlay appears
-3. **Stop & Paste**: Press the hotkey again - transcribed text is automatically pasted
-
-### SRT Generation
-1. **Load a Model**: Open the app → Models tab → select and load a model
-2. **Process Media**: 
-   - Drag & drop files onto the SRT tab, OR
-   - Use "Choose Media File" button, OR  
-   - Right-click tray icon → "Process Media File"
-3. **Output**: `.srt` file created next to the original media file
-
-### API Server Usage
-
-The built-in server runs on `http://127.0.0.1:7341` and provides OpenAI-compatible endpoints:
-
-```bash
-# List available models
-curl http://127.0.0.1:7341/v1/models
-
-# Transcribe audio file
-curl -X POST http://127.0.0.1:7341/v1/audio/transcriptions \
-  -F "file=@audio.wav" \
-  -F "model=whisper-medium-onnx"
-
-# Generate SRT file
-curl -X POST http://127.0.0.1:7341/v1/srt \
-  -F "file=@video.mp4" \
-  -F "model=parakeet-tdt-0.6b"
-
-# Health check
-curl http://127.0.0.1:7341/health
-```
-
-## Supported Models
-
-### NVIDIA Parakeet TDT
-- **parakeet-tdt-0.6b**: Lightweight model (600M parameters)
-- **parakeet-tdt-1.1b**: Larger model (1.1B parameters)
-- **Requirements**: NeMo framework (`pip install -r requirements-nemo.txt`)
-
-### Whisper ONNX
-- **whisper-medium-onnx**: Optimized Whisper Medium via faster-whisper
-- **Requirements**: ONNX Runtime with GPU support
-
-## Configuration
-
-### Hotkey Configuration
-- **Format**: `<modifier>+<key>` (e.g., `<ctrl>+<alt>+t`)
-- **Modifiers**: `<ctrl>`, `<alt>`, `<shift>`, `<cmd>`
-- **Keys**: Letters, numbers, function keys (F1-F12)
-- **Storage**: Saved to `~/.asrpro_hotkey.json`
-
-### Device Selection
-Automatic fallback order:
-1. **CUDA**: If NVIDIA GPU available with CUDA support
-2. **Vulkan**: If Vulkan-compatible GPU available  
-3. **CPU**: Universal fallback
-
-## Architecture
-
-### Project Structure
 ```
 asrpro/
-├── main.py              # Application bootstrap
-├── model_manager.py     # Lazy model loading & management
-├── server.py           # FastAPI server with OpenAI endpoints
+├── __init__.py         # Package exports
+├── __main__.py         # Entry point for python -m asrpro
+├── main.py             # App bootstrap with single instance enforcement
+├── models.py           # All model loaders consolidated
+├── model_manager.py    # Model lifecycle management
+├── config.py           # Configuration management
+├── server.py           # FastAPI server (OpenAI-compatible)
+├── audio_recorder.py   # Audio recording utilities
 ├── hotkey.py           # Global hotkey handling
-├── audio_recorder.py   # Real-time audio capture
-├── ui/
-│   ├── main_window.py  # Primary application window
-│   ├── custom_titlebar.py  # Frameless window controls
-│   ├── overlay.py      # Recording status overlay
-│   └── tray.py         # System tray integration
-└── models/
-    ├── base.py         # Model loader interface
-    ├── parakeet_06b.py # NVIDIA Parakeet 0.6B loader
-    ├── parakeet_11b.py # NVIDIA Parakeet 1.1B loader
-    └── whisper_medium_onnx.py  # Whisper ONNX loader
+└── ui/
+    ├── main_window.py  # Main application window
+    ├── custom_titlebar.py # Frameless window title bar
+    ├── overlay.py      # Recording status overlay
+    └── tray.py         # System tray with dark mode icon support
+
+assets/
+└── icon.png           # Application icon (auto-inverts for dark mode)
+
+run.py                 # Simple launcher script
+requirements.txt       # All dependencies in one file
 ```
 
-### Key Design Principles
-- **Single Model Residency**: Automatic unloading when switching models
-- **Lazy Loading**: Models load only when selected
-- **Non-blocking UI**: Long operations don't freeze the interface
-- **Resource Cleanup**: Proper GPU memory management
-- **Focus Preservation**: Recording doesn't steal focus from target apps
+## 🔧 Configuration
 
-## API Reference
+- **Models**: Choose between Parakeet TDT (0.6B/1.1B) or Whisper Medium ONNX
+- **Device**: Auto-detects CUDA → Vulkan → CPU
+- **Hotkey**: Configurable via tray menu (default: Ctrl+Alt+T)
+- **Server**: Optional OpenAI-compatible API on port 7341
+- **Theme**: Automatic dark mode detection with icon inversion
 
-### OpenAI-Compatible Endpoints
+## 🎯 Usage Patterns
 
-#### `GET /v1/models`
-List available models
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "whisper-medium-onnx",
-      "object": "model", 
-      "owned_by": "asrpro",
-      "ready": true
-    }
-  ]
-}
-```
+### Real-time Transcription
+1. Press configured hotkey to start recording
+2. Speak naturally
+3. Press hotkey again to stop and transcribe
+4. Text automatically pastes to active window
 
-#### `POST /v1/audio/transcriptions`
-Transcribe audio file
-- **Parameters**: `file` (audio), `model` (optional), `response_format` (json|srt)
-- **Returns**: Transcription with timestamps
+### SRT Generation
+1. Open main window (double-click tray icon)
+2. Go to SRT tab
+3. Drag & drop media files or click "Browse Files"
+4. Wait for processing to complete
+5. Find generated .srt files next to original media
 
-#### `POST /v1/srt`  
-Generate SRT subtitle file
-- **Parameters**: `file` (media), `model` (optional)
-- **Returns**: SRT-formatted subtitle text
+## 🛠️ Build Standalone
 
-#### `GET /health`
-Health check endpoint
-```json
-{
-  "status": "healthy",
-  "current_model": "whisper-medium-onnx", 
-  "device": "cuda"
-}
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**No audio recording**
-- Check microphone permissions
-- Verify `sounddevice` installation: `python -c "import sounddevice; print(sounddevice.query_devices())"`
-
-**Model loading fails**
-- Ensure sufficient GPU/system memory
-- Check CUDA installation for NVIDIA models
-- Verify internet connection for initial model downloads
-
-**Hotkey not working**
-- Run as administrator (Windows)
-- Check for conflicting global hotkeys
-- Verify `pynput` installation
-
-**API server not accessible**
-- Check Windows Firewall settings
-- Ensure port 7341 is not occupied: `netstat -an | find "7341"`
-
-### Performance Optimization
-
-**For CUDA users**:
 ```bash
-# Install CUDA-optimized PyTorch
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+python build_nuitka.py
 ```
 
-**For CPU-only systems**:
-- Use Whisper ONNX models for better performance
-- Consider quantized model variants
+## 📋 Requirements
 
-## Development
+- **Python**: 3.11+
+- **OS**: Windows (primary), Linux/macOS (community)
+- **Memory**: 4GB+ RAM (model dependent)
+- **GPU**: Optional CUDA/Vulkan acceleration
 
-### Building from Source
-```bash
-git clone <repository>
-cd jarusasr
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-python asrpro_run.py
-```
+## 🎨 Modern Design Features
 
-### Packaging
-```bash
-# Using Nuitka for standalone executable
-pip install nuitka
-nuitka --standalone --enable-plugin=pyside6 --onefile \
-       --nofollow-import-to=tkinter \
-       --include-data-files=assets/*=assets/* \
-       --output-dir=dist asrpro_run.py
-```
-
-## License
-
-Open source project. See LICENSE file for details.
-
-## Contributing
-
-Contributions welcome! Areas for improvement:
-- Additional model support (Whisper variants, language-specific models)
-- Enhanced UI themes and customization
-- Mobile companion app
-- Cloud deployment options
-- Advanced audio preprocessing
+- **Glassmorphism UI**: Semi-transparent elements with blur effects
+- **Dark Mode**: Automatic system theme detection
+- **Responsive**: Smooth animations and transitions
+- **Clean**: Minimal, distraction-free interface
+- **Accessible**: High contrast, readable typography
 
 ---
 
-**Built with ❤️ using PySide6, FastAPI, and modern AI models**
+**Single Instance Enforcement**: Only one asrpro instance runs at a time. New launches automatically terminate previous instances.
+
+**Consolidated Architecture**: All model loaders, dependencies, and configurations are consolidated into minimal files for easy maintenance and deployment.
