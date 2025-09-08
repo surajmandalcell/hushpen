@@ -9,7 +9,7 @@ session without stealing window focus.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QEvent
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout
 
 
 class Overlay(QWidget):  # pragma: no cover - UI only
@@ -31,48 +31,65 @@ class Overlay(QWidget):  # pragma: no cover - UI only
 
     def _build(self):
         box = QVBoxLayout(self)
-        box.setContentsMargins(20, 14, 20, 14)
-        box.setSpacing(6)
+        box.setContentsMargins(24, 16, 24, 16)
+        box.setSpacing(8)
 
-        # Icon + text in horizontal layout for linear design
-        hbox = QVBoxLayout()
+        # Modern recording indicator with pulse effect
+        indicator_layout = QHBoxLayout()
+        indicator_layout.setSpacing(12)
 
-        # Status indicator
-        self.status_dot = QLabel("●")
+        # Animated recording dot
+        self.status_dot = QLabel("🔴")
         self.status_dot.setStyleSheet(
-            "QLabel { color: #2ea043; font-size: 18px; font-weight: bold; }"
+            "QLabel { "
+            "color: rgba(239, 68, 68, 1); "
+            "font-size: 20px; "
+            "font-weight: bold; "
+            "}"
         )
         self.status_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hbox.addWidget(self.status_dot)
+        indicator_layout.addWidget(self.status_dot)
 
-        self.label = QLabel("Recording Audio")
+        self.label = QLabel("Recording in progress...")
         self.label.setStyleSheet(
             "QLabel { "
             "color: white; "
-            "font-size: 15px; "
-            "font-weight: 500; "
+            "font-size: 16px; "
+            "font-weight: 600; "
             "letter-spacing: 0.3px; "
             "margin: 0px;"
             "}"
         )
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hbox.addWidget(self.label)
+        indicator_layout.addWidget(self.label)
 
-        box.addLayout(hbox)
+        box.addLayout(indicator_layout)
+
+        # Subtle instruction text
+        instruction = QLabel("Press hotkey again to stop")
+        instruction.setStyleSheet(
+            "QLabel { "
+            "color: rgba(255, 255, 255, 0.8); "
+            "font-size: 12px; "
+            "font-weight: 400; "
+            "margin-top: 4px; "
+            "}"
+        )
+        instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(instruction)
 
         self.setStyleSheet(
             """
             QWidget { 
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-                    stop:0 rgba(46, 160, 67, 0.95), 
-                    stop:1 rgba(35, 134, 54, 0.95)); 
-                border-radius: 8px; 
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                backdrop-filter: blur(10px);
+                    stop:0 rgba(26, 26, 46, 0.95), 
+                    stop:1 rgba(22, 33, 62, 0.95)); 
+                border-radius: 16px; 
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }
             """
         )
-        self.resize(180, 70)
+        self.resize(280, 90)
 
     # Public API ---------------------------------------------------------
     def show_smooth(self):

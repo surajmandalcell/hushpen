@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QMessageBox,
     QGraphicsDropShadowEffect,
+    QSystemTrayIcon,
 )
 from ..model_manager import ModelManager, MODEL_SPECS
 from ..hotkey import ToggleHotkey
@@ -53,6 +54,7 @@ class MainWindow(QWidget):  # pragma: no cover
         # Initialize UI components that will be created in _build_ui
         self.srt_log: Optional[QTextEdit] = None
         self.btn_choose: Optional[QPushButton] = None
+        self.tray_icon: Optional[QSystemTrayIcon] = None
 
         self._build_ui()
 
@@ -86,113 +88,191 @@ class MainWindow(QWidget):  # pragma: no cover
         root.addWidget(self.tabs)
         self.setStyleSheet(
             """
-        /* Linear Modern Theme */
+        /* Modern Glassmorphism/Neumorphism Theme */
         QWidget { 
-            background: #0d1117; 
-            color: #f0f6fc; 
-            font-family: 'Segoe UI', 'SF Pro Display', system-ui, sans-serif; 
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 #1a1a2e, stop:0.5 #16213e, stop:1 #0f3460);
+            color: #ffffff; 
+            font-family: 'Inter', 'SF Pro Display', -apple-system, system-ui, sans-serif; 
             font-size: 14px;
-        }
-        
-        /* Tabs - Linear horizontal design */
-        QTabWidget::pane { 
-            border: none; 
-            background: #0d1117; 
-        }
-        QTabBar::tab { 
-            padding: 12px 24px; 
-            background: transparent; 
-            border: none; 
-            margin-right: 0px; 
-            border-bottom: 2px solid transparent;
-            font-weight: 500;
-            min-width: 120px;
-        }
-        QTabBar::tab:selected { 
-            background: linear-gradient(90deg, #238636 0%, #2ea043 100%); 
-            border-bottom: 2px solid #2ea043;
-            color: white;
-        }
-        QTabBar::tab:hover:!selected { 
-            background: #161b22; 
-            border-bottom: 2px solid #6e7681;
-        }
-        
-        /* Buttons - Linear style */
-        QPushButton { 
-            background: linear-gradient(90deg, #238636 0%, #2ea043 100%); 
-            color: white; 
-            border: none; 
-            padding: 10px 20px; 
-            border-radius: 6px; 
-            font-weight: 500;
-            min-height: 16px;
-        }
-        QPushButton:hover { 
-            background: linear-gradient(90deg, #2ea043 0%, #238636 100%); 
-            transform: translateY(-1px);
-        }
-        QPushButton:pressed { 
-            background: #1f6f32; 
-        }
-        
-        /* List and Text widgets - Minimal borders */
-        QListWidget { 
-            background: #161b22; 
-            border: 1px solid #30363d; 
-            border-radius: 6px;
-            padding: 8px;
-            selection-background-color: #238636;
-        }
-        QListWidget::item {
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin: 2px 0;
-        }
-        QListWidget::item:hover {
-            background: #21262d;
-        }
-        QListWidget::item:selected {
-            background: linear-gradient(90deg, #238636 0%, #2ea043 100%);
-            color: white;
-        }
-        
-        QTextEdit { 
-            background: #161b22; 
-            border: 1px solid #30363d; 
-            border-radius: 6px;
-            padding: 12px;
-            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-            font-size: 13px;
-            line-height: 1.4;
-        }
-        
-        /* Labels - Better hierarchy */
-        QLabel {
-            color: #f0f6fc;
             font-weight: 400;
         }
         
-        /* Title bar */
-        #TitleBar { 
-            background: linear-gradient(90deg, #0d1117 0%, #161b22 100%); 
-            border-bottom: 1px solid #21262d;
+        /* Main Window */
+        MainWindow {
+            border-radius: 16px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                stop:0 rgba(26, 26, 46, 0.95), 
+                stop:0.5 rgba(22, 33, 62, 0.95), 
+                stop:1 rgba(15, 52, 96, 0.95));
         }
+        
+        /* Tabs - Modern Card Design */
+        QTabWidget::pane { 
+            border: none; 
+            background: transparent;
+            border-radius: 12px;
+        }
+        
+        QTabBar {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            margin: 8px;
+        }
+        
+        QTabBar::tab { 
+            padding: 16px 32px; 
+            background: rgba(255, 255, 255, 0.08); 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 4px 2px;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 15px;
+            min-width: 140px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        QTabBar::tab:selected { 
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 rgba(99, 102, 241, 0.8),
+                stop:1 rgba(139, 92, 246, 0.8));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 600;
+        }
+        
+        QTabBar::tab:hover:!selected { 
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: white;
+        }
+        
+        /* Buttons - Glassmorphism Style */
+        QPushButton { 
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 rgba(99, 102, 241, 0.8),
+                stop:1 rgba(139, 92, 246, 0.8));
+            color: white; 
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 24px; 
+            border-radius: 10px; 
+            font-weight: 500;
+            font-size: 14px;
+            min-height: 20px;
+        }
+        
+        QPushButton:hover { 
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 rgba(109, 112, 251, 0.9),
+                stop:1 rgba(149, 102, 255, 0.9));
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        QPushButton:pressed { 
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 rgba(79, 82, 221, 0.7),
+                stop:1 rgba(119, 72, 226, 0.7));
+        }
+        
+        /* List Widgets - Modern Card Design */
+        QListWidget { 
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px;
+            selection-background-color: rgba(99, 102, 241, 0.3);
+        }
+        
+        QListWidget::item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 3px 0;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        QListWidget::item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        QListWidget::item:selected {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 rgba(99, 102, 241, 0.4),
+                stop:1 rgba(139, 92, 246, 0.4));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 500;
+        }
+        
+        /* Text Areas - Glassmorphism */
+        QTextEdit { 
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        QTextEdit:focus {
+            border: 1px solid rgba(99, 102, 241, 0.5);
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Labels - Modern Typography */
+        QLabel {
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 400;
+        }
+        
+        /* Scrollbars */
+        QScrollBar:vertical {
+            background: rgba(255, 255, 255, 0.05);
+            width: 8px;
+            border-radius: 4px;
+        }
+        
+        QScrollBar::handle:vertical {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            min-height: 20px;
+        }
+        
+        QScrollBar::handle:vertical:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Title Bar */
+        #TitleBar { 
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                stop:0 rgba(26, 26, 46, 0.9), 
+                stop:1 rgba(22, 33, 62, 0.9)); 
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px 16px 0px 0px;
+        }
+        
         #TitleLabel { 
             font-weight: 600; 
             font-size: 16px;
-            color: #f0f6fc;
+            color: white;
+            letter-spacing: 0.5px;
         }
         
-        /* Close button */
+        /* Title Bar Buttons */
         #TitleBar QPushButton {
-            background: transparent;
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
         }
+        
         #TitleBar QPushButton:hover {
-            background: #da3633;
+            background: rgba(255, 255, 255, 0.15);
             color: white;
         }
         """
@@ -204,29 +284,29 @@ class MainWindow(QWidget):  # pragma: no cover
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(20)
 
-        # Header section
+        # Header section with modern styling
         header_layout = QVBoxLayout()
-        header_layout.setSpacing(8)
+        header_layout.setSpacing(12)
 
-        title = QLabel("Model Selection")
+        title = QLabel("AI Models")
         title.setStyleSheet(
             "QLabel { "
-            "font-size: 20px; "
-            "font-weight: 600; "
-            "color: #f0f6fc; "
-            "margin-bottom: 4px; "
+            "font-size: 28px; "
+            "font-weight: 700; "
+            "color: white; "
+            "margin-bottom: 8px; "
+            "letter-spacing: -0.5px; "
             "}"
         )
         header_layout.addWidget(title)
 
-        subtitle = QLabel(
-            "Choose a model to load. Only one model can be active at a time."
-        )
+        subtitle = QLabel("Select and load an AI model for transcription")
         subtitle.setStyleSheet(
             "QLabel { "
-            "font-size: 14px; "
-            "color: #7d8590; "
-            "margin-bottom: 8px; "
+            "font-size: 16px; "
+            "color: rgba(255, 255, 255, 0.7); "
+            "margin-bottom: 16px; "
+            "font-weight: 400; "
             "}"
         )
         header_layout.addWidget(subtitle)
@@ -252,42 +332,62 @@ class MainWindow(QWidget):  # pragma: no cover
         self.btn_unload.setMinimumHeight(36)
         self.btn_unload.setStyleSheet(
             "QPushButton { "
-            "background: #21262d; "
-            "color: #f85149; "
-            "border: 1px solid #f85149; "
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+            "stop:0 rgba(244, 63, 94, 0.8), "
+            "stop:1 rgba(239, 68, 68, 0.8)); "
+            "color: white; "
+            "border: 1px solid rgba(255, 255, 255, 0.2); "
+            "padding: 12px 24px; "
+            "border-radius: 10px; "
+            "font-weight: 500; "
+            "font-size: 14px; "
             "} "
             "QPushButton:hover { "
-            "background: #f85149; "
-            "color: white; "
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+            "stop:0 rgba(254, 73, 104, 0.9), "
+            "stop:1 rgba(249, 78, 78, 0.9)); "
+            "border: 1px solid rgba(255, 255, 255, 0.3); "
+            "} "
+            "QPushButton:pressed { "
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+            "stop:0 rgba(224, 53, 84, 0.7), "
+            "stop:1 rgba(229, 58, 58, 0.7)); "
             "}"
         )
         button_layout.addWidget(self.btn_unload)
 
         layout.addLayout(button_layout)
 
-        # Device info
+        # Device info with modern styling
         info = QLabel(f"Device preference: {self.model_manager.device}")
         info.setStyleSheet(
-            "QLabel { " "color: #7d8590; " "font-size: 13px; " "padding: 8px 0; " "}"
+            "QLabel { "
+            "color: rgba(255, 255, 255, 0.6); "
+            "font-size: 14px; "
+            "padding: 8px 0; "
+            "font-weight: 400; "
+            "}"
         )
         layout.addWidget(info)
 
-        # Output log
+        # Output log with modern styling
         log_label = QLabel("Loading Log")
         log_label.setStyleSheet(
             "QLabel { "
-            "font-size: 16px; "
-            "font-weight: 500; "
-            "color: #f0f6fc; "
-            "margin-top: 8px; "
-            "margin-bottom: 8px; "
+            "font-size: 18px; "
+            "font-weight: 600; "
+            "color: white; "
+            "margin-top: 16px; "
+            "margin-bottom: 12px; "
             "}"
         )
         layout.addWidget(log_label)
 
         self.output = QTextEdit()
         self.output.setReadOnly(True)
-        self.output.setPlaceholderText("Model loading progress will appear here...")
+        self.output.setPlaceholderText(
+            "🤖 Model loading progress will appear here...\n\nSelect a model and click 'Load Selected Model' to begin!"
+        )
         layout.addWidget(self.output)
 
         def log(msg):
@@ -321,17 +421,18 @@ class MainWindow(QWidget):  # pragma: no cover
                 layout.setContentsMargins(24, 24, 24, 24)
                 layout.setSpacing(20)
 
-                # Header section
+                # Header section with modern styling
                 header_layout = QVBoxLayout()
-                header_layout.setSpacing(8)
+                header_layout.setSpacing(12)
 
                 title = QLabel("SRT Generation")
                 title.setStyleSheet(
                     "QLabel { "
-                    "font-size: 20px; "
-                    "font-weight: 600; "
-                    "color: #f0f6fc; "
-                    "margin-bottom: 4px; "
+                    "font-size: 28px; "
+                    "font-weight: 700; "
+                    "color: white; "
+                    "margin-bottom: 8px; "
+                    "letter-spacing: -0.5px; "
                     "}"
                 )
                 header_layout.addWidget(title)
@@ -339,68 +440,109 @@ class MainWindow(QWidget):  # pragma: no cover
                 subtitle = QLabel("Generate subtitle files from audio/video media")
                 subtitle.setStyleSheet(
                     "QLabel { "
-                    "font-size: 14px; "
-                    "color: #7d8590; "
-                    "margin-bottom: 8px; "
+                    "font-size: 16px; "
+                    "color: rgba(255, 255, 255, 0.7); "
+                    "margin-bottom: 16px; "
+                    "font-weight: 400; "
                     "}"
                 )
                 header_layout.addWidget(subtitle)
 
                 layout.addLayout(header_layout)
 
-                # Drop zone or file chooser
+                # Modern drop zone with glassmorphism
                 drop_zone = QWidget()
-                drop_zone.setMinimumHeight(120)
+                drop_zone.setMinimumHeight(160)
                 drop_zone.setStyleSheet(
                     "QWidget { "
-                    "background: #161b22; "
-                    "border: 2px dashed #30363d; "
-                    "border-radius: 8px; "
+                    "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                    "stop:0 rgba(255, 255, 255, 0.05), "
+                    "stop:1 rgba(255, 255, 255, 0.03)); "
+                    "border: 2px dashed rgba(99, 102, 241, 0.4); "
+                    "border-radius: 16px; "
                     "}"
                 )
                 drop_layout = QVBoxLayout(drop_zone)
                 drop_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                drop_layout.setSpacing(16)
 
-                drop_icon = QLabel("📁")
-                drop_icon.setStyleSheet("font-size: 32px;")
+                # Modern upload icon with gradient
+                drop_icon = QLabel("⬆️")
+                drop_icon.setStyleSheet(
+                    "QLabel { "
+                    "font-size: 48px; "
+                    "border-radius: 50%; "
+                    "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                    "stop:0 rgba(99, 102, 241, 0.2), "
+                    "stop:1 rgba(139, 92, 246, 0.2)); "
+                    "padding: 16px; "
+                    "}"
+                )
                 drop_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 drop_layout.addWidget(drop_icon)
 
                 drop_text = QLabel("Drag & drop media files here")
                 drop_text.setStyleSheet(
                     "QLabel { "
-                    "color: #7d8590; "
-                    "font-size: 16px; "
-                    "font-weight: 500; "
+                    "color: white; "
+                    "font-size: 18px; "
+                    "font-weight: 600; "
                     "}"
                 )
                 drop_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 drop_layout.addWidget(drop_text)
 
-                drop_subtext = QLabel("or click below to browse")
+                drop_subtext = QLabel("Support for MP4, WAV, MP3, M4A and more")
                 drop_subtext.setStyleSheet(
-                    "QLabel { " "color: #6e7681; " "font-size: 13px; " "}"
+                    "QLabel { "
+                    "color: rgba(255, 255, 255, 0.6); "
+                    "font-size: 14px; "
+                    "}"
                 )
                 drop_subtext.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 drop_layout.addWidget(drop_subtext)
 
                 layout.addWidget(drop_zone)
 
-                # Choose file button
-                self.outer.btn_choose = QPushButton("Choose Media File")
-                self.outer.btn_choose.setMinimumHeight(36)
+                # Modern choose file button
+                self.outer.btn_choose = QPushButton("📂  Browse Files")
+                self.outer.btn_choose.setMinimumHeight(48)
+                self.outer.btn_choose.setStyleSheet(
+                    "QPushButton { "
+                    "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                    "stop:0 rgba(99, 102, 241, 0.8), "
+                    "stop:1 rgba(139, 92, 246, 0.8)); "
+                    "color: white; "
+                    "border: 1px solid rgba(255, 255, 255, 0.2); "
+                    "padding: 12px 32px; "
+                    "border-radius: 12px; "
+                    "font-weight: 600; "
+                    "font-size: 16px; "
+                    "} "
+                    "QPushButton:hover { "
+                    "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                    "stop:0 rgba(109, 112, 251, 0.9), "
+                    "stop:1 rgba(149, 102, 255, 0.9)); "
+                    "border: 1px solid rgba(255, 255, 255, 0.3); "
+                    "} "
+                    "QPushButton:pressed { "
+                    "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                    "stop:0 rgba(79, 82, 221, 0.7), "
+                    "stop:1 rgba(119, 72, 226, 0.7)); "
+                    "}"
+                )
                 self.outer.btn_choose.clicked.connect(self.outer._choose_file)
                 layout.addWidget(self.outer.btn_choose)
 
-                # Log area
+                # Modern log area with glassmorphism
                 log_label = QLabel("Processing Log")
                 log_label.setStyleSheet(
                     "QLabel { "
-                    "font-size: 16px; "
-                    "font-weight: 500; "
-                    "color: #f0f6fc; "
-                    "margin-top: 8px; "
-                    "margin-bottom: 8px; "
+                    "font-size: 18px; "
+                    "font-weight: 600; "
+                    "color: white; "
+                    "margin-top: 16px; "
+                    "margin-bottom: 12px; "
                     "}"
                 )
                 layout.addWidget(log_label)
@@ -408,7 +550,23 @@ class MainWindow(QWidget):  # pragma: no cover
                 self.outer.srt_log = QTextEdit()
                 self.outer.srt_log.setReadOnly(True)
                 self.outer.srt_log.setPlaceholderText(
-                    "SRT generation progress will appear here..."
+                    "🎵 SRT generation progress will appear here...\n\nSelect a media file to get started!"
+                )
+                self.outer.srt_log.setStyleSheet(
+                    "QTextEdit { "
+                    "background: rgba(0, 0, 0, 0.2); "
+                    "border: 1px solid rgba(255, 255, 255, 0.1); "
+                    "border-radius: 12px; "
+                    "padding: 16px; "
+                    "font-family: 'Segoe UI', system-ui, sans-serif; "
+                    "font-size: 14px; "
+                    "line-height: 1.6; "
+                    "color: rgba(255, 255, 255, 0.9); "
+                    "} "
+                    "QTextEdit:focus { "
+                    "border: 1px solid rgba(99, 102, 241, 0.5); "
+                    "background: rgba(0, 0, 0, 0.3); "
+                    "}"
                 )
                 layout.addWidget(self.outer.srt_log)
 
@@ -489,6 +647,19 @@ class MainWindow(QWidget):  # pragma: no cover
 
     def apply_hotkey_change(self, hk: str):
         self.hotkey.set_hotkey(hk)
+
+    def set_tray_icon(self, tray_icon: QSystemTrayIcon):
+        """Store reference to tray icon for theme updates."""
+        self.tray_icon = tray_icon
+
+    def refresh_tray_icon_theme(self):
+        """Refresh tray icon based on current system theme."""
+        if self.tray_icon:
+            from .tray import build_tray
+
+            # Get the new icon with updated theme
+            new_tray = build_tray(self)
+            self.tray_icon.setIcon(new_tray.icon())
 
     def close_app(self):
         self.model_manager.unload()

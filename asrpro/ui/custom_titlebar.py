@@ -9,17 +9,21 @@ class TitleBar(QWidget):  # pragma: no cover
     def __init__(self, parent=None):
         super().__init__(parent)
         self._mouse_pos = QPoint()
-        self.setFixedHeight(40)
+        self.setFixedHeight(50)
         self.setObjectName("TitleBar")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 0, 12, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(24, 0, 16, 0)
+        layout.setSpacing(16)
 
-        # App icon/logo (optional)
-        self.icon_label = QLabel("⬤")
+        # Modern app icon/logo
+        self.icon_label = QLabel("🎵")
         self.icon_label.setStyleSheet(
-            "QLabel { color: #2ea043; font-size: 12px; font-weight: bold; }"
+            "QLabel { "
+            "color: rgba(99, 102, 241, 1); "
+            "font-size: 20px; "
+            "font-weight: bold; "
+            "}"
         )
         layout.addWidget(self.icon_label)
 
@@ -27,49 +31,63 @@ class TitleBar(QWidget):  # pragma: no cover
         self.title_label.setObjectName("TitleLabel")
         self.title_label.setStyleSheet(
             "#TitleLabel { "
-            "color: #f0f6fc; "
-            "font-size: 16px; "
-            "font-weight: 600; "
+            "color: white; "
+            "font-size: 18px; "
+            "font-weight: 700; "
+            "letter-spacing: 0.5px; "
             "}"
         )
         layout.addWidget(self.title_label)
 
+        # Version/status indicator
+        self.status_label = QLabel("AI Speech Recognition")
+        self.status_label.setStyleSheet(
+            "QLabel { "
+            "color: rgba(255, 255, 255, 0.6); "
+            "font-size: 12px; "
+            "font-weight: 400; "
+            "}"
+        )
+        layout.addWidget(self.status_label)
+
         layout.addStretch(1)
 
-        # Minimize button (hide window)
-        self.btn_minimize = QPushButton("⎼")
-        self.btn_minimize.setFixedSize(32, 28)
+        # Modern minimize button
+        self.btn_minimize = QPushButton("−")
+        self.btn_minimize.setFixedSize(40, 32)
         self.btn_minimize.setStyleSheet(
             "QPushButton { "
-            "background: transparent; "
-            "border: none; "
-            "border-radius: 4px; "
-            "font-size: 16px; "
-            "color: #6e7681; "
-            "font-weight: bold; "
+            "background: rgba(255, 255, 255, 0.1); "
+            "border: 1px solid rgba(255, 255, 255, 0.1); "
+            "border-radius: 8px; "
+            "font-size: 18px; "
+            "color: rgba(255, 255, 255, 0.8); "
+            "font-weight: 300; "
             "} "
             "QPushButton:hover { "
-            "background: #30363d; "
-            "color: #f0f6fc; "
+            "background: rgba(255, 255, 255, 0.15); "
+            "color: white; "
             "}"
         )
         self.btn_minimize.clicked.connect(self._on_minimize)
         layout.addWidget(self.btn_minimize)
 
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setFixedSize(32, 28)
+        # Modern close button
+        self.btn_close = QPushButton("×")
+        self.btn_close.setFixedSize(40, 32)
         self.btn_close.setStyleSheet(
             "QPushButton { "
-            "background: transparent; "
-            "border: none; "
-            "border-radius: 4px; "
-            "font-size: 14px; "
-            "color: #6e7681; "
-            "font-weight: bold; "
+            "background: rgba(255, 255, 255, 0.1); "
+            "border: 1px solid rgba(255, 255, 255, 0.1); "
+            "border-radius: 8px; "
+            "font-size: 18px; "
+            "color: rgba(255, 255, 255, 0.8); "
+            "font-weight: 300; "
             "} "
             "QPushButton:hover { "
-            "background: #da3633; "
+            "background: rgba(239, 68, 68, 0.8); "
             "color: white; "
+            "border: 1px solid rgba(255, 255, 255, 0.2); "
             "}"
         )
         self.btn_close.clicked.connect(self._on_close)
