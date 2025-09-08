@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QClipboard
+from PySide6.QtGui import QClipboard, QPainter, QPainterPath, QBrush, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QApplication,
     QMessageBox,
+    QGraphicsDropShadowEffect,
 )
 from ..model_manager import ModelManager, MODEL_SPECS
 from ..hotkey import ToggleHotkey
@@ -31,6 +32,17 @@ class MainWindow(QWidget):  # pragma: no cover
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setFixedSize(800, 600)
+
+        # Add drop shadow effect
+        self.shadow = QGraphicsDropShadowEffect()
+        self.shadow.setBlurRadius(20)
+        self.shadow.setColor(QColor(0, 0, 0, 80))
+        self.shadow.setOffset(0, 4)
+        self.setGraphicsEffect(self.shadow)
+
+        # Set window attributes for rounded corners
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
         self.model_manager = ModelManager()
         self.recorder = AudioRecorder()
         self.overlay = Overlay()
@@ -43,6 +55,22 @@ class MainWindow(QWidget):  # pragma: no cover
         self.btn_choose: Optional[QPushButton] = None
 
         self._build_ui()
+
+    def paintEvent(self, event):
+        """Custom paint event for rounded corners"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Create rounded rectangle path
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+
+        # Fill with background color
+        painter.fillPath(path, QBrush(QColor(13, 17, 23)))  # #0d1117
+
+        # Draw border
+        painter.setPen(QColor(33, 38, 45))  # #21262d
+        painter.drawPath(path)
 
     def _build_ui(self):
         root = QVBoxLayout(self)

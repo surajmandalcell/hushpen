@@ -1,0 +1,16 @@
+# ONNX Runtime with GPU acceleration support
+# Install the appropriate version based on your system:
+
+# For CUDA support (NVIDIA GPUs):
+# onnxruntime-gpu==1.19.2
+
+# For CPU-only (universal fallback):
+onnxruntime==1.19.2
+
+# For Vulkan support (experimental, if available):
+# Note: Vulkan EP is not yet widely available in standard builds
+# Check: https://onnxruntime.ai/docs/execution-providers/Vulkan-ExecutionProvider.html
+
+# Development/build dependencies
+nuitka==2.4.8
+ordered-set==4.1.0

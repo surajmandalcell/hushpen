@@ -21,13 +21,42 @@ class ModelManager:
         self.device = self._detect_device()
 
     def _detect_device(self) -> str:
+        """Enhanced device detection with better Vulkan support"""
+        # First check CUDA
         if torch.cuda.is_available():
-            return "cuda"
+            try:
+                # Test CUDA by creating a small tensor
+                test_tensor = torch.tensor([1.0], device="cuda")
+                del test_tensor
+                torch.cuda.empty_cache()
+                return "cuda"
+            except Exception:
+                pass
+
+        # Check Vulkan support
         try:
-            if torch.backends.vulkan.is_available():
-                return "vulkan"  # type: ignore[attr-defined]
+            # Check PyTorch Vulkan backend (if available)
+            vulkan_backend = getattr(torch.backends, "vulkan", None)
+            if (
+                vulkan_backend
+                and hasattr(vulkan_backend, "is_available")
+                and vulkan_backend.is_available()
+            ):
+                return "vulkan"
         except Exception:
             pass
+
+        try:
+            # Check ONNX Runtime Vulkan execution provider
+            import onnxruntime as ort
+
+            available_providers = ort.get_available_providers()
+            if "VulkanExecutionProvider" in available_providers:
+                return "vulkan"
+        except Exception:
+            pass
+
+        # Fallback to CPU
         return "cpu"
 
     def list_models(self):

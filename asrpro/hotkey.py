@@ -1,29 +1,25 @@
 """Global toggle hotkey using pynput."""
 
 from __future__ import annotations
-import json, threading
-from pathlib import Path
+import threading
 from typing import Callable, Optional
 
 try:
     from pynput import keyboard  # type: ignore
 except Exception:  # pragma: no cover
     keyboard = None  # type: ignore
-CONFIG_PATH = Path.home() / ".asrpro_hotkey.json"
+
+from .config import config
+
 DEFAULT_HOTKEY = "<ctrl>+<alt>+t"
 
 
 def load_hotkey():
-    if CONFIG_PATH.exists():
-        try:
-            return json.loads(CONFIG_PATH.read_text()).get("hotkey", DEFAULT_HOTKEY)
-        except Exception:
-            return DEFAULT_HOTKEY
-    return DEFAULT_HOTKEY
+    return config.get_hotkey()
 
 
 def save_hotkey(hk: str):
-    CONFIG_PATH.write_text(json.dumps({"hotkey": hk}, indent=2))
+    config.set_hotkey(hk)
 
 
 class ToggleHotkey:
@@ -42,7 +38,8 @@ class ToggleHotkey:
         if keyboard is None:
             return
         self._build_listener()
-        threading.Thread(target=self.listener.run, daemon=True).start()
+        if self.listener:
+            threading.Thread(target=self.listener.run, daemon=True).start()
 
     def set_hotkey(self, hotkey: str):
         self.hotkey = hotkey

@@ -12,6 +12,7 @@ from PySide6.QtCore import QTimer
 from .ui.main_window import MainWindow
 from .ui.tray import build_tray
 from .server import ServerThread
+from .config import config
 
 
 def launch():  # pragma: no cover
@@ -38,8 +39,13 @@ def launch():  # pragma: no cover
     tray = build_tray(window)
     tray.show()
 
-    server_thread = ServerThread(window.model_manager)
-    server_thread.start()
+    # Start server if enabled in config
+    server_thread = None
+    if config.is_server_enabled():
+        server_thread = ServerThread(
+            window.model_manager, port=config.get_server_port()
+        )
+        server_thread.start()
 
     window.hide()
     exit_code = 0
@@ -47,8 +53,11 @@ def launch():  # pragma: no cover
         exit_code = app.exec()
     except KeyboardInterrupt:
         exit_code = 0
+
+    # Cleanup
     try:
-        server_thread.shutdown()
+        if server_thread:
+            server_thread.shutdown()
     except Exception:
         pass
     try:
