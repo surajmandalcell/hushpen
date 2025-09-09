@@ -124,16 +124,17 @@ def build_tray(main_window):  # pragma: no cover
             main_window._generate_srt(Path(file))
 
     def show_hotkey_settings():
+        from .hotkey_dialog import HotkeyDialog
         current = load_hotkey()
-        hk, ok = QInputDialog.getText(
-            main_window,
-            "Hotkey Configuration",
-            "Global hotkey (e.g. <ctrl>+<alt>+t):\n\nSupported keys: <ctrl>, <alt>, <shift>, <cmd>\nCombine with letters, numbers, or F1-F12",
-            text=current,
-        )
-        if ok and hk:
-            save_hotkey(hk)
-            main_window.apply_hotkey_change(hk)
+        
+        dialog = HotkeyDialog(main_window, current)
+        
+        def on_hotkey_captured(hotkey):
+            save_hotkey(hotkey)
+            main_window.apply_hotkey_change(hotkey)
+        
+        dialog.hotkey_captured.connect(on_hotkey_captured)
+        dialog.exec()
 
     def show_about():
         from PySide6.QtWidgets import QMessageBox
@@ -183,36 +184,39 @@ def build_tray(main_window):  # pragma: no cover
     set_icon_for_action("About", "info")
     set_icon_for_action("Exit", "x")
 
-    # Sleek styling matching the main UI design
+    # Mac-like compact styling
     menu.setStyleSheet(
         """
         QMenu { 
-            background-color: #1e1e1e; 
-            color: #d4d4d4; 
-            border: 1px solid #333; 
-            border-radius: 10px; 
-            padding: 8px 0;
+            background-color: rgba(30, 30, 30, 0.95); 
+            color: #ffffff; 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            border-radius: 8px; 
+            padding: 4px 0;
             font-size: 13px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
         }
         QMenu::item { 
-            padding: 10px 16px; 
+            padding: 6px 14px; 
             border: none;
-            margin: 0 4px;
-            border-radius: 6px;
+            margin: 0 2px;
+            border-radius: 4px;
+            min-height: 18px;
         }
         QMenu::item:selected { 
-            background-color: #2f2f2f; 
-            color: #fff;
+            background-color: rgba(0, 122, 255, 0.8);
+            color: #ffffff;
         }
         QMenu::separator { 
             height: 1px; 
-            background: #2a2a2a; 
-            margin: 6px 8px; 
+            background: rgba(255, 255, 255, 0.1); 
+            margin: 4px 6px; 
             border: none;
         }
         QMenu::icon {
-            padding-left: 4px;
+            padding-left: 2px;
+            width: 16px;
+            height: 16px;
         }
         """
     )

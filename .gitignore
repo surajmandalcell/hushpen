@@ -3,3 +3,4 @@ __pycache__
 DEPLOYMENT.md
 temp/
 .claude
+webengine_debug.log
