@@ -72,9 +72,9 @@ class MainWindow(QWidget):
         self.web_view: Optional[QWebEngineView] = None
         self.overlay = Overlay()
         
-        # Window dragging variables
-        self.drag_pos = None
-        self.is_dragging = False
+        # Window dragging variables  
+        self._dragging = False
+        self._drag_position = None
         
         # Window configuration
         self._setup_window()
@@ -86,7 +86,7 @@ class MainWindow(QWidget):
     
     def _setup_window(self) -> None:
         """Configure the main window properties."""
-        self.setWindowTitle("Spokenly")
+        self.setWindowTitle("ASR Pro")
         self.setFixedSize(1080, 720)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         
@@ -127,27 +127,28 @@ class MainWindow(QWidget):
     def mousePressEvent(self, event):
         """Handle mouse press for window dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
-            # Check if click is in draggable area (top part of window)
-            if event.position().y() < 100:  # Top 100px is draggable
-                self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                self.is_dragging = True
-                event.accept()
-        super().mousePressEvent(event)
+            self._dragging = True
+            self._drag_position = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
         """Handle mouse move for window dragging."""
-        if event.buttons() == Qt.MouseButton.LeftButton and self.is_dragging and self.drag_pos:
-            new_pos = event.globalPosition().toPoint() - self.drag_pos
-            self.move(new_pos)
+        if (event.buttons() & Qt.MouseButton.LeftButton) and self._dragging and self._drag_position:
+            self.move(event.globalPos() - self._drag_position)
             event.accept()
-        super().mouseMoveEvent(event)
+        else:
+            super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event):
         """Handle mouse release to stop dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
-            self.is_dragging = False
-            self.drag_pos = None
-        super().mouseReleaseEvent(event)
+            self._dragging = False
+            self._drag_position = None
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
     
     def _setup_ui(self) -> None:
         """Initialize the user interface components."""
@@ -216,6 +217,9 @@ class MainWindow(QWidget):
                 elif message == "MINIMIZE_WINDOW_SIGNAL":
                     print("[Bridge] Minimize window signal received")
                     self.main_window.showMinimized()
+                elif message == "EXIT_APP_SIGNAL":
+                    print("[Bridge] Exit app signal received")
+                    self.main_window.close_app()
                 else:
                     # Pass through other console messages
                     print(f"[WebEngine Console] {message} (line {line})")
@@ -238,6 +242,10 @@ class MainWindow(QWidget):
         
         window.minimizeWindow = function() {
             console.log('MINIMIZE_WINDOW_SIGNAL');
+        };
+        
+        window.exitApp = function() {
+            console.log('EXIT_APP_SIGNAL');
         };
         
         console.log('JavaScript bridge functions installed');
@@ -669,11 +677,11 @@ img.lucide-icon.text-blue-400 {
                 // Insert image logo and app name
                 const img = document.createElement('img');
                 img.src = '../assets/icon.png';
-                img.alt = 'Spokenly logo';
+                img.alt = 'ASR Pro logo';
                 img.width = 20; img.height = 20;
                 img.style.display = 'block';
                 const span = document.createElement('span');
-                span.textContent = 'Spokenly';
+                span.textContent = 'ASR Pro';
                 span.style.fontSize = '15px';
                 span.style.fontWeight = '500';
                 span.style.color = '#fff';

@@ -265,7 +265,20 @@ def build_tray(main_window):  # pragma: no cover
     )
     # Apply dark mode styling if system is using dark theme
     if is_dark_theme():
-        menu.setProperty("darkMode", True)
+        menu.setProperty("darkMode", "true")
+        menu.setStyleSheet(menu.styleSheet() + """
+        QMenu[darkMode="true"] { 
+            background-color: rgba(30, 30, 30, 0.9);
+            color: #f2f2f7;
+            border: 0.5px solid rgba(255, 255, 255, 0.04);
+        }
+        QMenu[darkMode="true"]::item:disabled {
+            color: rgba(242, 242, 247, 0.3);
+        }
+        QMenu[darkMode="true"]::separator {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        """)
         menu.style().polish(menu)  # Force style refresh
     
     # Ensure menu is properly styled before setting

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spokenly</title>
+<title>ASR Pro</title>
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
 * {
@@ -606,7 +606,7 @@ h1 {
             <path d="m12 8-9.04 9.06a2.82 2.82 0 1 0 3.98 3.98L16 12"/>
             <circle cx="17" cy="7" r="5"/>
           </svg>
-          <span>Spokenly</span>
+          <span>ASR Pro</span>
         </div>
         
         <div class="nav-list">
@@ -622,9 +622,17 @@ h1 {
             <i data-lucide="keyboard" aria-label="Keyboard icon"></i>
             <span>Keyboard Controls</span>
           </div>
+          
+          <!-- Spacer to push bottom items down -->
+          <div style="flex: 1;"></div>
+          
           <div class="nav-item" onclick="showSection('about')">
             <i data-lucide="info" aria-label="Info icon"></i>
             <span>About</span>
+          </div>
+          <div class="nav-item" onclick="exitApp()">
+            <i data-lucide="x" aria-label="Exit icon"></i>
+            <span>Exit</span>
           </div>
         </div>
       </div>
@@ -635,7 +643,7 @@ h1 {
         <div class="main-content">
           <div class="content-section active" id="general">
             <h1>General Preferences</h1>
-            <p class="subtitle">Configure Spokenly to match your workflow and preferences.</p>
+            <p class="subtitle">Configure ASR Pro to match your workflow and preferences.</p>
             
             <div class="section-title">Behavior</div>
             <div class="setting-row">
@@ -722,7 +730,7 @@ h1 {
                 <i data-lucide="settings-2" aria-label="Settings icon"></i> Local Whisper Settings
               </button>
               <button class="action-btn">
-                <i data-lucide="folder-open" aria-label="Folder icon"></i> Import Spokenly Project
+                <i data-lucide="folder-open" aria-label="Folder icon"></i> Import ASR Pro Project
               </button>
             </div>
             
@@ -758,7 +766,7 @@ h1 {
           
           <div class="content-section" id="keyboard">
             <h1>Keyboard Controls</h1>
-            <p class="subtitle">Choose your preferred keyboard keys for starting Spokenly. Press only these keys to begin recording.</p>
+            <p class="subtitle">Choose your preferred keyboard keys for starting ASR Pro. Press only these keys to begin recording.</p>
             
             <div class="section-title">Recording Controls</div>
             
@@ -814,7 +822,7 @@ h1 {
               </div>
               
               <div class="app-info">
-                <h3>Spokenly v1.0</h3>
+                <h3>ASR Pro v1.0</h3>
                 <p>AI-powered speech recognition and transcription application built for productivity and accessibility.</p>
                 <p><strong>Technologies:</strong> PySide6, FastAPI, PyTorch, Whisper AI</p>
                 <p><strong>License:</strong> MIT License</p>
@@ -845,6 +853,10 @@ h1 {
         item.classList.remove('active');
       });
       event.target.closest('.nav-item').classList.add('active');
+    }
+    
+    function exitApp() {
+      console.log('EXIT_APP_SIGNAL');
     }
     
     function addKey() {
