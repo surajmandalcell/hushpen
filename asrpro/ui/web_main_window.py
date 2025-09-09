@@ -89,11 +89,34 @@ class MainWindow(QWidget):
         
         # Set window background with rounded corners
         self.setStyleSheet("""
+            MainWindow {
+                background-color: transparent;
+            }
             QWidget {
                 background-color: rgba(30, 30, 30, 0.95);
                 border-radius: 12px;
             }
         """)
+        
+        # Create rounded window mask
+        self._create_rounded_mask()
+    
+    def _create_rounded_mask(self) -> None:
+        """Create a rounded window mask to match the CSS border radius."""
+        from PySide6.QtGui import QRegion, QPainterPath
+        
+        # Create a rounded rectangle path
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)  # 12px radius to match CSS
+        
+        # Create region from the path and set as window mask
+        region = QRegion(path.toFillPolygon().toPolygon())
+        self.setMask(region)
+    
+    def resizeEvent(self, event):
+        """Override resize event to update the window mask."""
+        super().resizeEvent(event)
+        self._create_rounded_mask()
     
     def _setup_ui(self) -> None:
         """Initialize the user interface components."""
@@ -350,17 +373,17 @@ img.lucide-icon.text-blue-400 {
 .window-btn {
     position: relative;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     border: none;
     outline: none;
 }
 
 .window-btn:hover {
-    transform: scale(1.1);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
 }
 
 .window-btn:active {
-    transform: scale(0.95);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 
 .window-btn:hover::after {
@@ -373,18 +396,34 @@ img.lucide-icon.text-blue-400 {
     height: 6px;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.6);
+    opacity: 1;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.window-btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    opacity: 0;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .window-btn.close:hover::after {
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
 }
 
 .window-btn.minimize:hover::after {
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
 }
 
 .window-btn.maximize:hover::after {
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
 }
 
 /* Animations */

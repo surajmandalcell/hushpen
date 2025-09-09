@@ -124,17 +124,25 @@ def build_tray(main_window):  # pragma: no cover
             main_window._generate_srt(Path(file))
 
     def show_hotkey_settings():
-        from .hotkey_dialog import HotkeyDialog
-        current = load_hotkey()
+        # Show the main window and navigate to keyboard settings
+        main_window.show()
+        main_window.raise_()
+        main_window.activateWindow()
         
-        dialog = HotkeyDialog(main_window, current)
-        
-        def on_hotkey_captured(hotkey):
-            save_hotkey(hotkey)
-            main_window.apply_hotkey_change(hotkey)
-        
-        dialog.hotkey_captured.connect(on_hotkey_captured)
-        dialog.exec()
+        # Navigate to keyboard section via JavaScript
+        if main_window.web_view and main_window.web_view.page():
+            main_window.web_view.page().runJavaScript("""
+                // Navigate to keyboard section
+                showSection('keyboard');
+                
+                // Update nav active state
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelector('.nav-item[onclick="showSection(\\'keyboard\\')"]').classList.add('active');
+                
+                console.log('Navigated to keyboard settings');
+            """)
 
     def show_about():
         from PySide6.QtWidgets import QMessageBox
