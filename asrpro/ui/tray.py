@@ -151,17 +151,71 @@ def build_tray(main_window):  # pragma: no cover
             "• Real-time hotkey transcription",
         )
 
-    # Build menu with sections
-    menu.addAction("🖥️  Show Window", main_window.show)
+    # Build menu with sections - sleek and minimal
+    menu.addAction("Show Window", lambda: (main_window.show(), main_window.raise_(), main_window.activateWindow()))
     menu.addSeparator()
 
-    menu.addAction("📁  Process Media File", open_file)
-    menu.addAction("⌨️  Hotkey Settings", show_hotkey_settings)
+    menu.addAction("Process Media File", open_file)
+    menu.addAction("Hotkey Settings", show_hotkey_settings)
     menu.addSeparator()
 
-    menu.addAction("ℹ️  About", show_about)
-    menu.addAction("❌  Exit", lambda: main_window.close_app())
+    menu.addAction("About", show_about)
+    menu.addAction("Exit", lambda: main_window.close_app())
 
+    # Try to apply icons for actions if present in assets/icons
+    def icon_path(name: str) -> str | None:
+        p = Path(__file__).parent / ".." / ".." / "assets" / "icons" / f"{name}.svg"
+        return str(p.resolve()) if p.exists() else None
+
+    def set_icon_for_action(action_text: str, filename: str):
+        path = icon_path(filename)
+        if path:
+            from PySide6.QtGui import QIcon as _QIcon
+
+            for act in menu.actions():
+                if act.text().endswith(action_text):
+                    act.setIcon(_QIcon(path))
+                    break
+
+    set_icon_for_action("Show Window", "monitor")
+    set_icon_for_action("Process Media File", "folder")
+    set_icon_for_action("Hotkey Settings", "keyboard")
+    set_icon_for_action("About", "info")
+    set_icon_for_action("Exit", "x")
+
+    # Sleek styling matching the main UI design
+    menu.setStyleSheet(
+        """
+        QMenu { 
+            background-color: #1e1e1e; 
+            color: #d4d4d4; 
+            border: 1px solid #333; 
+            border-radius: 10px; 
+            padding: 8px 0;
+            font-size: 13px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        }
+        QMenu::item { 
+            padding: 10px 16px; 
+            border: none;
+            margin: 0 4px;
+            border-radius: 6px;
+        }
+        QMenu::item:selected { 
+            background-color: #2f2f2f; 
+            color: #fff;
+        }
+        QMenu::separator { 
+            height: 1px; 
+            background: #2a2a2a; 
+            margin: 6px 8px; 
+            border: none;
+        }
+        QMenu::icon {
+            padding-left: 4px;
+        }
+        """
+    )
     tray.setContextMenu(menu)
     tray.setToolTip("asrpro - AI Speech Recognition")
 

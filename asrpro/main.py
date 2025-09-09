@@ -10,7 +10,8 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QTimer
 
-from .ui.main_window import MainWindow
+# Use the new WebEngine-based UI mirroring temp/index.html
+from .ui.web_main_window import MainWindow
 from .ui.tray import build_tray
 from .server import ServerThread
 from .config import config
@@ -82,6 +83,12 @@ def launch():  # pragma: no cover
     app.setOrganizationName("asrpro")
     app.setApplicationName("asrpro")
     app.setQuitOnLastWindowClosed(False)
+
+    # Initialize WebEngine (if available) early to avoid blank screens
+    try:
+        import PySide6.QtWebEngineCore  # noqa: F401
+    except Exception:
+        pass
 
     # Allow Ctrl+C (SIGINT) to terminate the Qt event loop on all platforms.
     signal.signal(signal.SIGINT, lambda *_: app.quit())

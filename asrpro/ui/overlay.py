@@ -23,6 +23,8 @@ class Overlay(QWidget):  # pragma: no cover - UI only
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        # Ensure the overlay never intercepts clicks/hover — purely visual
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._build()
         self._anim = QPropertyAnimation(self, b"windowOpacity", self)
