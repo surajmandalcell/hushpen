@@ -137,7 +137,7 @@ class Overlay(QWidget):  # pragma: no cover - UI only
     # Helpers ------------------------------------------------------------
     def _finish_close(self):
         try:
-            self._anim.finished.disconnect(self._finish_close)
+            self._hide_anim.finished.disconnect(self._finish_close)
         except Exception:
             pass
         self.hide()

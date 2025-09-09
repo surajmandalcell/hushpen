@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 # Set WebEngine flags for better Windows compatibility
 if os.name == "nt":
@@ -20,16 +20,34 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtGui import QColor, QCloseEvent
 
 # Handle optional WebEngine import
-try:
+if TYPE_CHECKING:
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
     from PySide6.QtWebChannel import QWebChannel
-    WEBENGINE_AVAILABLE = True
-except ImportError:
-    WEBENGINE_AVAILABLE = False
+else:
+    # Create stub classes for runtime
     QWebEngineView = None
     QWebEnginePage = None
     QWebChannel = None
+    QWebEngineSettings = None
+
+try:
+    from PySide6.QtWebEngineWidgets import QWebEngineView as _QWebEngineView
+    from PySide6.QtWebEngineCore import QWebEnginePage as _QWebEnginePage, QWebEngineSettings as _QWebEngineSettings
+    from PySide6.QtWebChannel import QWebChannel as _QWebChannel
+    WEBENGINE_AVAILABLE = True
+    # Only reassign at runtime, not during TYPE_CHECKING
+    if not TYPE_CHECKING:
+        QWebEngineView = _QWebEngineView
+        QWebEnginePage = _QWebEnginePage 
+        QWebChannel = _QWebChannel
+        QWebEngineSettings = _QWebEngineSettings
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+    _QWebEngineView = None
+    _QWebEnginePage = None
+    _QWebChannel = None
+    _QWebEngineSettings = None
 
 from ..model_manager import ModelManager
 from .overlay import Overlay
@@ -165,12 +183,12 @@ class MainWindow(QWidget):
     
     def _setup_webengine(self, layout: QVBoxLayout) -> None:
         """Setup the WebEngine view with proper configuration."""
-        if not QWebEngineView:
+        if not WEBENGINE_AVAILABLE or _QWebEngineView is None:
             print("[WebEngine] QWebEngineView not available")
             self._setup_fallback(layout)
             return
             
-        self.web_view = QWebEngineView()
+        self.web_view = _QWebEngineView()
         
         if not self.web_view:
             print("[WebEngine] Failed to create QWebEngineView")
@@ -178,11 +196,12 @@ class MainWindow(QWidget):
             return
         
         # Configure WebEngine settings
-        settings = self.web_view.settings()
-        if settings:
-            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
+        if hasattr(self.web_view, 'settings') and _QWebEngineSettings:
+            settings = self.web_view.settings()
+            if settings:
+                settings.setAttribute(_QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+                settings.setAttribute(_QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+                settings.setAttribute(_QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
         
         # Set up the custom bridge page immediately
         self._setup_bridge_page()
@@ -202,7 +221,10 @@ class MainWindow(QWidget):
             print("[Bridge] WebView not available for bridge setup")
             return
             
-        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
+        if not WEBENGINE_AVAILABLE:
+            return
+            
+        from PySide6.QtWebEngineCore import QWebEngineScript, QWebEnginePage
         
         class BridgeWebPage(QWebEnginePage):
             def __init__(self, main_window, parent=None):
@@ -289,7 +311,8 @@ class MainWindow(QWidget):
             base_url = QUrl.fromLocalFile(str(html_file.parent.absolute()) + "/")
             
             # Load content
-            self.web_view.setHtml(processed_html, base_url)
+            if hasattr(self.web_view, 'setHtml'):
+                self.web_view.setHtml(processed_html, base_url)
             
             print(f"[WebEngine] HTML content loaded from {html_file}")
             
@@ -593,7 +616,8 @@ img.lucide-icon.text-blue-400 {
         </html>
         """
         
-        self.web_view.setHtml(error_html)
+        if self.web_view and hasattr(self.web_view, 'setHtml'):
+            self.web_view.setHtml(error_html)
     
     def _on_load_finished(self, success: bool) -> None:
         """Handle WebEngine load completion."""
@@ -608,7 +632,7 @@ img.lucide-icon.text-blue-400 {
     
     def _post_load_setup(self) -> None:
         """Perform post-load setup and verification."""
-        if not self.web_view or not self.web_view.page():
+        if not WEBENGINE_AVAILABLE or not self.web_view or not hasattr(self.web_view, 'page') or not self.web_view.page():
             return
         
         # JavaScript bridge is already set up in _setup_bridge_page()
@@ -694,7 +718,8 @@ img.lucide-icon.text-blue-400 {
         })();
         """
         
-        self.web_view.page().runJavaScript(setup_script)
+        if WEBENGINE_AVAILABLE and self.web_view and hasattr(self.web_view, 'page') and self.web_view.page():
+            self.web_view.page().runJavaScript(setup_script)
     
     
     def _on_hotkey_toggle(self, recording: bool) -> None:
@@ -733,7 +758,7 @@ img.lucide-icon.text-blue-400 {
         super().showEvent(event)
         
         # If WebEngine content is not loaded, reload it
-        if self.web_view and self.web_view.page():
+        if WEBENGINE_AVAILABLE and self.web_view and hasattr(self.web_view, 'page') and self.web_view.page() and hasattr(self.web_view, 'url'):
             current_url = self.web_view.url()
             if not current_url.isValid() or current_url.isEmpty():
                 print("[Window] Reloading content on show")
