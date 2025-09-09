@@ -72,6 +72,10 @@ class MainWindow(QWidget):
         self.web_view: Optional[QWebEngineView] = None
         self.overlay = Overlay()
         
+        # Window dragging variables
+        self.drag_pos = None
+        self.is_dragging = False
+        
         # Window configuration
         self._setup_window()
         self._setup_ui()
@@ -120,6 +124,31 @@ class MainWindow(QWidget):
         super().resizeEvent(event)
         self._create_rounded_mask()
     
+    def mousePressEvent(self, event):
+        """Handle mouse press for window dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Check if click is in draggable area (top part of window)
+            if event.position().y() < 100:  # Top 100px is draggable
+                self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                self.is_dragging = True
+                event.accept()
+        super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for window dragging."""
+        if event.buttons() == Qt.MouseButton.LeftButton and self.is_dragging and self.drag_pos:
+            new_pos = event.globalPosition().toPoint() - self.drag_pos
+            self.move(new_pos)
+            event.accept()
+        super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to stop dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_dragging = False
+            self.drag_pos = None
+        super().mouseReleaseEvent(event)
+    
     def _setup_ui(self) -> None:
         """Initialize the user interface components."""
         # Main layout
@@ -135,19 +164,31 @@ class MainWindow(QWidget):
     
     def _setup_webengine(self, layout: QVBoxLayout) -> None:
         """Setup the WebEngine view with proper configuration."""
+        if not QWebEngineView:
+            print("[WebEngine] QWebEngineView not available")
+            self._setup_fallback(layout)
+            return
+            
         self.web_view = QWebEngineView()
+        
+        if not self.web_view:
+            print("[WebEngine] Failed to create QWebEngineView")
+            self._setup_fallback(layout)
+            return
         
         # Configure WebEngine settings
         settings = self.web_view.settings()
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
+        if settings:
+            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
         
         # Set up the custom bridge page immediately
         self._setup_bridge_page()
         
         # Connect signals
-        self.web_view.loadFinished.connect(self._on_load_finished)
+        if self.web_view and hasattr(self.web_view, 'loadFinished'):
+            self.web_view.loadFinished.connect(self._on_load_finished)
         
         # Add to layout
         layout.addWidget(self.web_view)
@@ -156,6 +197,10 @@ class MainWindow(QWidget):
     
     def _setup_bridge_page(self) -> None:
         """Setup the custom bridge page for JavaScript-Python communication."""
+        if not self.web_view:
+            print("[Bridge] WebView not available for bridge setup")
+            return
+            
         from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
         
         class BridgeWebPage(QWebEnginePage):
@@ -179,7 +224,9 @@ class MainWindow(QWidget):
         # Create and set the bridge page
         bridge_page = BridgeWebPage(self, self.web_view)
         bridge_page.setBackgroundColor(QColor("#1e1e1e"))
-        self.web_view.setPage(bridge_page)
+        
+        if self.web_view and hasattr(self.web_view, 'setPage'):
+            self.web_view.setPage(bridge_page)
         
         # Inject JavaScript bridge functions
         bridge_script = QWebEngineScript()
@@ -199,7 +246,8 @@ class MainWindow(QWidget):
         bridge_script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         bridge_script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         
-        bridge_page.scripts().insert(bridge_script)
+        if hasattr(bridge_page, 'scripts'):
+            bridge_page.scripts().insert(bridge_script)
         print("[Bridge] JavaScript bridge page setup completed")
     
     def _setup_fallback(self, layout: QVBoxLayout) -> None:

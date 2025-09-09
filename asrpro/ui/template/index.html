@@ -118,6 +118,7 @@ body {
   border-radius: 6px;
   transition: all 0.2s ease;
   font-size: 13px;
+  pointer-events: auto;
 }
 
 .nav-item:hover {
@@ -572,6 +573,19 @@ h1 {
 
 .main-content::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* Fix pointer events for scrollable content */
+.setting-row, .model-card, .key-binding, .mic-item {
+  pointer-events: none;
+}
+
+.setting-row *, .model-card *, .key-binding *, .mic-item * {
+  pointer-events: auto;
+}
+
+.toggle, .dropdown, .action-btn, .add-key-btn, .remove-btn {
+  pointer-events: auto;
 }
 </style>
 </head>

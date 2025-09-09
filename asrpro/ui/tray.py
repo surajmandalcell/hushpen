@@ -83,20 +83,31 @@ def build_tray(main_window):  # pragma: no cover
         Path(__file__).parent / ".." / ".." / "assets" / "icon.png",
         Path(__file__).parent / ".." / ".." / "assets" / "icon.ico",
     ]:
+        print(f"[Tray] Checking icon path: {candidate}")
         if candidate.exists():
+            print(f"[Tray] Found icon file: {candidate}")
             # Load the original icon
             original_pixmap = QPixmap(str(candidate.resolve()))
+            
+            if original_pixmap.isNull():
+                print(f"[Tray] Failed to load icon from: {candidate}")
+                continue
 
             # Check if we need to invert for dark theme
             if is_dark_theme() and candidate.suffix.lower() == ".png":
+                print("[Tray] Applying dark theme inversion")
                 # Invert colors for dark theme
                 inverted_pixmap = invert_icon(original_pixmap)
                 icon = QIcon(inverted_pixmap)
             else:
+                print("[Tray] Using original icon")
                 icon = QIcon(str(candidate.resolve()))
 
             icon_found = True
+            print(f"[Tray] Icon loaded successfully from: {candidate}")
             break
+        else:
+            print(f"[Tray] Icon file not found: {candidate}")
 
     if not icon_found:
         # Create a simple fallback icon if no icon file found
@@ -255,7 +266,10 @@ def build_tray(main_window):  # pragma: no cover
     # Apply dark mode styling if system is using dark theme
     if is_dark_theme():
         menu.setProperty("darkMode", True)
+        menu.style().polish(menu)  # Force style refresh
     
+    # Ensure menu is properly styled before setting
+    menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     tray.setContextMenu(menu)
     tray.setToolTip("asrpro - AI Speech Recognition")
 
