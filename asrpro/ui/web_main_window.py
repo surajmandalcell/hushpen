@@ -1,347 +1,333 @@
-"""Frameless WebEngine-based main window that loads temp/index.html.
-Replicates the HTML UI exactly, adds subtle animations and translucent sidebar.
-Maintains public methods expected by tray.py (set_tray_icon, close_app, apply_hotkey_change,
-and generate_srt_from_file for processing media files)."""
+"""Modern WebEngine-based main window implementation.
+
+This module provides a clean, modern implementation of the main application window
+using PySide6 WebEngine with proper practices and error handling.
+"""
 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
-# Mitigate potential blank screen on some Windows GPUs
+# Set WebEngine flags for better Windows compatibility
 if os.name == "nt":
-    os.environ.setdefault(
-        "QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-software-rasterizer"
-    )
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
 
-from PySide6.QtCore import Qt, QUrl, QPropertyAnimation, QEasingCurve
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QGraphicsDropShadowEffect,
-    QApplication,
-    QFrame,
-)
+from PySide6.QtCore import Qt, QUrl, QTimer, Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtGui import QColor
+
+# Handle optional WebEngine import
 try:
-    from PySide6.QtWebEngineWidgets import QWebEngineView  # type: ignore
-except Exception:  # pragma: no cover
-    QWebEngineView = None  # type: ignore
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+    WEBENGINE_AVAILABLE = True
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+    QWebEngineView = None
+    QWebEnginePage = None
 
 from ..model_manager import ModelManager
 from ..hotkey import ToggleHotkey
 
 
-class MainWindow(QWidget):  # pragma: no cover
+class MainWindow(QWidget):
+    """Modern main application window with WebEngine UI."""
+    
+    # Signals for tray integration
+    window_ready = Signal()
+    
     def __init__(self):
         super().__init__()
-
-        # Core logic pieces we keep available for tray actions
+        
+        # Core application components
         self.model_manager = ModelManager()
         self.tray_icon = None
-        self.hotkey = ToggleHotkey(self._on_toggle)
-        self.hotkey.start()
-
-        # Window appearance: frameless, fixed size to match HTML
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
-        self.resize(1080, 720)
-        # Layout: add a rounded frame with drop shadow containing the WebEngine view
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(0)
-
-        frame = QFrame(self)
-        frame.setObjectName("WebFrame")
-        frame.setStyleSheet("#WebFrame { background: #1e1e1e; border-radius: 10px; }")
-
-        shadow = QGraphicsDropShadowEffect(frame)
-        shadow.setBlurRadius(30)
-        shadow.setOffset(0, 14)
-        shadow.setColor(QColor(0, 0, 0, 150))
-        frame.setGraphicsEffect(shadow)
-
-        inner = QVBoxLayout(frame)
-        inner.setContentsMargins(0, 0, 0, 0)
-        inner.setSpacing(0)
-
-        if QWebEngineView is not None:
-            self.web = QWebEngineView(frame)
-            self.web.setMinimumSize(1048, 688)  # Set minimum size to ensure proper rendering
-            
-            # Enable console message logging
-            try:
-                from PySide6.QtWebEngineCore import QWebEnginePage
-                
-                class DebugWebPage(QWebEnginePage):
-                    def javaScriptConsoleMessage(self, level, message, line, source):
-                        print(f"[WebEngine Console] {message} (line {line})")
-                        super().javaScriptConsoleMessage(level, message, line, source)
-                
-                debug_page = DebugWebPage(self.web)  # Pass parent to ensure proper lifecycle
-                self.web.setPage(debug_page)
-                print("[WebEngine] Debug page with console logging enabled")
-            except Exception as e:
-                print(f"[WebEngine] Could not enable console logging: {e}")
-            
-            inner.addWidget(self.web)
-        else:
-            # Minimal fallback when QtWebEngine is unavailable
-            from PySide6.QtWidgets import QLabel
-
-            self.web = None
-            lbl = QLabel(
-                "Qt WebEngine is not available.\nInstall PySide6 with WebEngine support."
-            )
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            inner.addWidget(lbl)
-
-        root.addWidget(frame)
-
-        # Load the provided HTML design
-        if QWebEngineView is not None:
-            html_path = Path.cwd() / "temp" / "index.html"
-            self.web.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-            try:
-                # Ensure a non-white background while loading
-                self.web.page().setBackgroundColor(QColor("#1e1e1e"))
-                print(f"[WebEngine] Background color set to #1e1e1e")
-            except Exception as e:
-                print(f"[WebEngine] Failed to set background color: {e}")
-            
-            if html_path.exists():
-                # Write debug info to a log file
-                with open("webengine_debug.log", "w") as f:
-                    f.write(f"[WebEngine] Loading HTML from: {html_path}\n")
-                    f.write(f"[WebEngine] HTML file exists: {html_path.exists()}\n")
-                    f.write(f"[WebEngine] Current working directory: {Path.cwd()}\n")
-                    f.flush()
-                
-                # Load, strip external icon CDN, and replace icon placeholders with local assets
-                try:
-                    raw = html_path.read_text(encoding="utf-8")
-                    
-                    with open("webengine_debug.log", "a") as f:
-                        f.write(f"[WebEngine] HTML file loaded, size: {len(raw)} characters\n")
-                        f.flush()
-                    
-                    import re
-                    # Remove lucide CDN script
-                    original_scripts = len(re.findall(r'<script[^>]+src="https?://[^>]*lucide[^>]*></script>', raw, flags=re.IGNORECASE))
-                    raw = re.sub(r'<script[^>]+src="https?://[^>]*lucide[^>]*></script>', "", raw, flags=re.IGNORECASE)
-                    print(f"[WebEngine] Removed {original_scripts} Lucide CDN scripts")
-                    
-                    # Replace <i data-lucide="name"> with local SVG <img>
-                    def _repl(m):
-                        name = m.group(1)
-                        aria_match = re.search(r'aria-label="([^"]+)"', m.group(0))
-                        aria = aria_match.group(1) if aria_match else f"{name} icon"
-                        style_match = re.search(r'style="([^"]+)"', m.group(0))
-                        style = f' style="{style_match.group(1)}"' if style_match else ''
-                        return f'<img class="icon" src="assets/icons/{name}.svg" alt="{aria}"{style}>'
-                    
-                    icon_count = len(re.findall(r'<i\s+data-lucide="([a-z0-9\-]+)"[^>]*></i>', raw, flags=re.IGNORECASE))
-                    raw = re.sub(r'<i\s+data-lucide="([a-z0-9\-]+)"[^>]*></i>', _repl, raw, flags=re.IGNORECASE)
-                    print(f"[WebEngine] Replaced {icon_count} Lucide icons with SVG images")
-                    
-                    # Stub lucide.createIcons() calls to no-op
-                    raw = raw.replace('lucide.createIcons();', 'console.log("Lucide icons replaced with SVG images");')
-                    
-                    # Add base styles for replaced icons with better filter for dark theme
-                    icon_styles = """
-.icon {
-    width: 16px;
-    height: 16px;
-    vertical-align: middle;
-    filter: brightness(0) saturate(100%) invert(85%) sepia(8%) saturate(359%) hue-rotate(183deg) brightness(90%) contrast(87%);
-    display: inline-block;
-}
-"""
-                    raw = raw.replace('</style>', icon_styles + '\n</style>')
-                    
-                    # Add debug console logging
-                    debug_script = """
-<script>
-console.log('HTML loaded successfully');
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM content loaded');
-    console.log('Body style:', window.getComputedStyle(document.body).background);
-});
-window.addEventListener('load', function() {
-    console.log('Window loaded');
-});
-</script>
-"""
-                    raw = raw.replace('</head>', debug_script + '\n</head>')
-                    
-                    base = QUrl.fromLocalFile(str(html_path.parent.resolve()) + "/")
-                    print(f"[WebEngine] Base URL: {base.toString()}")
-                    
-                    self.web.setHtml(raw, base)
-                    self.web.loadFinished.connect(self._post_load)
-                    
-                    with open("webengine_debug.log", "a") as f:
-                        f.write(f"[WebEngine] HTML set to WebEngine view\n")
-                        f.write(f"[WebEngine] Base URL: {base.toString()}\n")
-                        f.flush()
-                    
-                except Exception as e:
-                    print(f"[WebEngine] Error processing HTML: {e}")
-                    self.web.setHtml(f"<html><body style='background:#1e1e1e;color:#fff;font-family:system-ui;padding:20px'><h1>Error loading UI</h1><p>{str(e)}</p></body></html>")
-            else:
-                print(f"[WebEngine] HTML file not found at: {html_path}")
-                # Fallback content if missing
-                self.web.setHtml(
-                    """
-                    <html><body style='display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-family:system-ui'>
-                    <div style='text-align:center'>
-                        <h1>UI template not found</h1>
-                        <p>Expected at temp/index.html</p>
-                    </div>
-                    </body></html>
-                    """
-                )
-
-        # Simple fade-in animation on show
-        self._fade = QPropertyAnimation(self, b"windowOpacity")
-        self._fade.setDuration(250)
-        self._fade.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-        # Drag support for frameless window
-        self._drag_pos = None
-
-    # ---- Window behavior -------------------------------------------------
-    def showEvent(self, event):
-        self.setWindowOpacity(0.0)
-        super().showEvent(event)
-        self._fade.stop()
-        self._fade.setStartValue(0.0)
-        self._fade.setEndValue(1.0)
-        self._fade.start()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
-
-    # ---- Post-load polish with debugging ---------------------
-    def _post_load(self, ok: bool):
-        with open("webengine_debug.log", "a") as f:
-            f.write(f"[WebEngine] Load finished, success: {ok}\n")
-            f.flush()
+        self.hotkey = ToggleHotkey(self._on_hotkey_toggle)
+        self.web_view: Optional[QWebEngineView] = None
         
-        if not ok:
-            with open("webengine_debug.log", "a") as f:
-                f.write("[WebEngine] Page failed to load!\n")
-                f.flush()
+        # Window configuration
+        self._setup_window()
+        self._setup_ui()
+        self._load_content()
+        
+        # Start hotkey monitoring
+        self.hotkey.start()
+    
+    def _setup_window(self) -> None:
+        """Configure the main window properties."""
+        self.setWindowTitle("Spokenly")
+        self.setFixedSize(1080, 720)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        
+        # Set window background for consistency
+        self.setStyleSheet("QWidget { background-color: #1e1e1e; }")
+    
+    def _setup_ui(self) -> None:
+        """Initialize the user interface components."""
+        # Main layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        # Setup WebEngine view if available
+        if WEBENGINE_AVAILABLE:
+            self._setup_webengine(layout)
+        else:
+            self._setup_fallback(layout)
+    
+    def _setup_webengine(self, layout: QVBoxLayout) -> None:
+        """Setup the WebEngine view with proper configuration."""
+        self.web_view = QWebEngineView()
+        
+        # Configure WebEngine settings
+        settings = self.web_view.settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
+        
+        # Set up the web page
+        page = QWebEnginePage(self.web_view)
+        page.setBackgroundColor(QColor("#1e1e1e"))
+        self.web_view.setPage(page)
+        
+        # Connect signals
+        self.web_view.loadFinished.connect(self._on_load_finished)
+        
+        # Add to layout
+        layout.addWidget(self.web_view)
+        
+        print("[WebEngine] WebEngine view initialized successfully")
+    
+    def _setup_fallback(self, layout: QVBoxLayout) -> None:
+        """Setup fallback UI when WebEngine is not available."""
+        from PySide6.QtWidgets import QLabel
+        
+        label = QLabel("WebEngine not available.\nPlease install PySide6 with WebEngine support.")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("color: white; font-size: 16px;")
+        layout.addWidget(label)
+        
+        print("[WebEngine] Fallback UI initialized (WebEngine not available)")
+    
+    def _load_content(self) -> None:
+        """Load the HTML content into the WebEngine view."""
+        if not self.web_view:
             return
         
-        css = r"""
-        .window { animation: fadeSlideIn 200ms ease-in-out; }
-        @keyframes fadeSlideIn { from { opacity: 0.98; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-        """
-        js = (
-            "console.log('Post-load script running');"
-            "var s=document.createElement('style');s.type='text/css';"
-            f"s.appendChild(document.createTextNode(`{css}`));document.head.appendChild(s);"
-            "console.log('Animation styles added');"
-        )
+        html_file = Path.cwd() / "temp" / "index.html"
+        
+        if not html_file.exists():
+            self._load_error_page("HTML file not found at temp/index.html")
+            return
+        
         try:
-            self.web.page().runJavaScript(js)
-            print("[WebEngine] Post-load JavaScript executed")
+            # Read and process HTML content
+            html_content = html_file.read_text(encoding="utf-8")
+            processed_html = self._process_html(html_content)
+            
+            # Set base URL for relative resources
+            base_url = QUrl.fromLocalFile(str(html_file.parent.absolute()) + "/")
+            
+            # Load content
+            self.web_view.setHtml(processed_html, base_url)
+            
+            print(f"[WebEngine] HTML content loaded from {html_file}")
+            
         except Exception as e:
-            print(f"[WebEngine] Failed to execute post-load JavaScript: {e}")
+            print(f"[WebEngine] Error loading HTML: {e}")
+            self._load_error_page(f"Error loading HTML: {str(e)}")
+    
+    def _process_html(self, html_content: str) -> str:
+        """Process HTML content for proper display in WebEngine."""
         
-        # Check if page is actually visible
-        def check_visibility():
-            visibility_js = """
-            console.log('Checking visibility...');
-            console.log('Document ready state:', document.readyState);
-            console.log('Body exists:', !!document.body);
-            console.log('Window dimensions:', window.innerWidth, 'x', window.innerHeight);
-            var style = window.getComputedStyle(document.body);
-            console.log('Body background:', style.background);
-            console.log('Body visibility:', style.visibility);
-            console.log('Body display:', style.display);
-            """
-            try:
-                self.web.page().runJavaScript(visibility_js)
-            except Exception as e:
-                print(f"[WebEngine] Failed to run visibility check: {e}")
+        # Remove external CDN scripts
+        html_content = re.sub(
+            r'<script[^>]+src="https?://[^"]*lucide[^"]*"[^>]*></script>',
+            '',
+            html_content,
+            flags=re.IGNORECASE
+        )
         
-        # Run visibility check after a short delay
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(500, check_visibility)
+        # Replace Lucide icons with local SVG images
+        def replace_icon(match):
+            icon_name = match.group(1)
+            return f'<img class="lucide-icon" src="assets/icons/{icon_name}.svg" alt="{icon_name} icon">'
+        
+        html_content = re.sub(
+            r'<i[^>]+data-lucide="([^"]+)"[^>]*></i>',
+            replace_icon,
+            html_content,
+            flags=re.IGNORECASE
+        )
+        
+        # Remove lucide.createIcons() calls
+        html_content = html_content.replace('lucide.createIcons();', '')
+        
+        # Add custom styles for proper display
+        custom_styles = """
+/* Ensure full viewport usage */
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
 
-    # ---- Tray integration API -------------------------------------------
-    def set_tray_icon(self, tray_icon):
+/* Icon styling */
+.lucide-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    vertical-align: middle;
+    filter: brightness(0) invert(1);
+}
+
+/* Window adjustments for WebEngine */
+.window {
+    width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+"""
+        
+        # Insert custom styles
+        html_content = html_content.replace('</style>', custom_styles + '\n</style>')
+        
+        return html_content
+    
+    def _load_error_page(self, error_message: str) -> None:
+        """Load an error page when content loading fails."""
+        if not self.web_view:
+            return
+        
+        error_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    margin: 0;
+                    text-align: center;
+                }}
+                .error-container {{
+                    background: rgba(0, 0, 0, 0.3);
+                    padding: 40px;
+                    border-radius: 10px;
+                    max-width: 500px;
+                }}
+                h1 {{ color: #ff6b6b; margin-bottom: 20px; }}
+                p {{ font-size: 16px; line-height: 1.5; }}
+            </style>
+        </head>
+        <body>
+            <div class="error-container">
+                <h1>Unable to Load UI</h1>
+                <p>{error_message}</p>
+                <p>Please check that the temp/index.html file exists and is accessible.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        self.web_view.setHtml(error_html)
+    
+    def _on_load_finished(self, success: bool) -> None:
+        """Handle WebEngine load completion."""
+        if success:
+            print("[WebEngine] Content loaded successfully")
+            self.window_ready.emit()
+            
+            # Add a slight delay before running post-load scripts
+            QTimer.singleShot(100, self._post_load_setup)
+        else:
+            print("[WebEngine] Content failed to load")
+    
+    def _post_load_setup(self) -> None:
+        """Perform post-load setup and verification."""
+        if not self.web_view or not self.web_view.page():
+            return
+        
+        # JavaScript to verify content is properly displayed
+        verify_script = """
+        console.log('=== WebEngine Content Verification ===');
+        console.log('Document ready state:', document.readyState);
+        console.log('Viewport size:', window.innerWidth + 'x' + window.innerHeight);
+        console.log('Body computed style:', getComputedStyle(document.body).background);
+        console.log('Main elements found:', document.querySelectorAll('.window, .sidebar, .nav-item').length);
+        """
+        
+        self.web_view.page().runJavaScript(verify_script)
+    
+    def _on_hotkey_toggle(self, recording: bool) -> None:
+        """Handle hotkey toggle events."""
+        # Placeholder for hotkey functionality
+        print(f"[Hotkey] Recording: {recording}")
+    
+    # Public API methods for tray integration
+    
+    def set_tray_icon(self, tray_icon) -> None:
+        """Set the system tray icon reference."""
         self.tray_icon = tray_icon
-
-    def refresh_tray_icon_theme(self):
-        # no-op hook to keep compatibility; tray handles theme switching
-        pass
-
-    def apply_hotkey_change(self, hk: str):
+    
+    def apply_hotkey_change(self, hotkey: str) -> None:
+        """Apply a new hotkey configuration."""
         try:
-            self.hotkey.set_hotkey(hk)
-        except Exception:
-            pass
-
-    def close_app(self):
+            self.hotkey.set_hotkey(hotkey)
+            print(f"[Hotkey] Updated to: {hotkey}")
+        except Exception as e:
+            print(f"[Hotkey] Failed to update: {e}")
+    
+    def close_app(self) -> None:
+        """Clean shutdown of the application."""
         try:
             self.model_manager.unload()
-        except Exception:
-            pass
-        app = QApplication.instance()
-        if app:
-            app.quit()
+        except Exception as e:
+            print(f"[Cleanup] Model manager error: {e}")
+        
         self.close()
-
-    # Backward/explicit method used by tray to process media files
-    def generate_srt_from_file(self, path: Path) -> Optional[Path]:
+    
+    def generate_srt_from_file(self, file_path: Path) -> Optional[Path]:
+        """Generate SRT file from media file (for tray integration)."""
         try:
-            # Ensure a model is loaded; if not, pick a default
             if not self.model_manager.current_id:
-                # Default to Whisper Medium ONNX if available
-                default_id = "whisper-medium-onnx"
-                try:
-                    self.model_manager.load(default_id)
-                except Exception:
-                    # Fallback to any available model
-                    avail = [m["id"] for m in self.model_manager.list_models()]
-                    if not avail:
-                        return None
-                    self.model_manager.load(avail[0])
-
-            # Run transcription and write .srt next to source
-            srt_text = self.model_manager.transcribe(str(path), return_srt=True)
-            out = Path(str(path))
-            out = out.with_suffix(".srt")
-            out.write_text(srt_text, encoding="utf-8")
-            return out
-        except Exception:
+                # Load default model if none loaded
+                available_models = [m["id"] for m in self.model_manager.list_models()]
+                if available_models:
+                    self.model_manager.load(available_models[0])
+                else:
+                    return None
+            
+            # Transcribe and save SRT
+            srt_content = self.model_manager.transcribe(str(file_path), return_srt=True)
+            srt_path = file_path.with_suffix(".srt")
+            srt_path.write_text(srt_content, encoding="utf-8")
+            return srt_path
+            
+        except Exception as e:
+            print(f"[Transcription] Error: {e}")
             return None
-
-    # Legacy alias used by older tray action
-    def _generate_srt(self, path: Path):
-        return self.generate_srt_from_file(path)
-
-    # Hotkey toggle handler (starts/stops recording in the classic UI). Here it's a stub.
-    def _on_toggle(self, recording: bool):
-        # This web UI version does not implement live recording yet.
+    
+    # Legacy compatibility methods
+    
+    def _generate_srt(self, file_path: Path) -> Optional[Path]:
+        """Legacy method alias for SRT generation."""
+        return self.generate_srt_from_file(file_path)
+    
+    def refresh_tray_icon_theme(self) -> None:
+        """Legacy method for tray icon theme refresh."""
         pass
 
 

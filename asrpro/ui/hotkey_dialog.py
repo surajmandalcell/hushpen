@@ -216,7 +216,7 @@ class HotkeyDialog(QDialog):
             Qt.Key.Key_Comma: ",", Qt.Key.Key_Period: ".", Qt.Key.Key_Semicolon: ";",
             Qt.Key.Key_Apostrophe: "'", Qt.Key.Key_BracketLeft: "[", Qt.Key.Key_BracketRight: "]",
             Qt.Key.Key_Backslash: "\\", Qt.Key.Key_Slash: "/", Qt.Key.Key_Minus: "-", Qt.Key.Key_Equal: "=",
-            Qt.Key.Key_QuoteLeft: "`", Qt.Key.Key_Grave: "`",
+            Qt.Key.Key_QuoteLeft: "`",
         }
         
         if key in key_map:
