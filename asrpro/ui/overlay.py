@@ -8,7 +8,8 @@ session without stealing window focus.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QEvent
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QEvent, QPoint
+from PySide6.QtCore import QParallelAnimationGroup
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout
 
 
@@ -27,9 +28,22 @@ class Overlay(QWidget):  # pragma: no cover - UI only
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._build()
-        self._anim = QPropertyAnimation(self, b"windowOpacity", self)
-        self._anim.setDuration(180)
-        self._anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        # Fade + slide animations composed in parallel
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_anim.setDuration(200)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        self._slide_anim = QPropertyAnimation(self, b"pos", self)
+        self._slide_anim.setDuration(220)
+        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._show_group = QParallelAnimationGroup(self)
+        self._show_group.addAnimation(self._fade_anim)
+        self._show_group.addAnimation(self._slide_anim)
+
+        self._hide_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._hide_anim.setDuration(160)
+        self._hide_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
 
     def _build(self):
         box = QVBoxLayout(self)
@@ -91,27 +105,34 @@ class Overlay(QWidget):  # pragma: no cover - UI only
             }
             """
         )
-        self.resize(280, 90)
+        self.resize(300, 92)
 
     # Public API ---------------------------------------------------------
     def show_smooth(self):
-        self._place()
+        # Compute final and start positions (slide up-left from margin)
+        final_pos = self._compute_bottom_right_pos()
+        start_pos = QPoint(final_pos.x(), final_pos.y() + 18)
+
+        self.move(start_pos)
         self.setWindowOpacity(0.0)
         super().show()
         self.raise_()
-        self._anim.stop()
-        self._anim.setStartValue(0.0)
-        self._anim.setEndValue(1.0)
-        self._anim.start()
+
+        self._show_group.stop()
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._slide_anim.setStartValue(start_pos)
+        self._slide_anim.setEndValue(final_pos)
+        self._show_group.start()
 
     def close_smooth(self):
         if not self.isVisible():
             return
-        self._anim.stop()
-        self._anim.setStartValue(self.windowOpacity())
-        self._anim.setEndValue(0.0)
-        self._anim.finished.connect(self._finish_close)
-        self._anim.start()
+        self._hide_anim.stop()
+        self._hide_anim.setStartValue(self.windowOpacity())
+        self._hide_anim.setEndValue(0.0)
+        self._hide_anim.finished.connect(self._finish_close)
+        self._hide_anim.start()
 
     # Helpers ------------------------------------------------------------
     def _finish_close(self):
@@ -121,16 +142,18 @@ class Overlay(QWidget):  # pragma: no cover - UI only
             pass
         self.hide()
 
-    def _place(self):  # Center top third of primary screen
+    def _compute_bottom_right_pos(self) -> QPoint:
+        """Bottom-right placement with safe margins on the active screen."""
         screen = self.screen() or (
             self.windowHandle().screen() if self.windowHandle() else None
         )
         if not screen:
-            return
+            return self.pos()
         g = screen.availableGeometry()
-        x = g.x() + (g.width() - self.width()) // 2
-        y = g.y() + int(g.height() * 0.18)
-        self.move(x, y)
+        margin = 24
+        x = g.x() + g.width() - self.width() - margin
+        y = g.y() + g.height() - self.height() - margin
+        return QPoint(x, y)
 
     # Overridden so it never steals focus when shown
     def event(self, e):  # type: ignore

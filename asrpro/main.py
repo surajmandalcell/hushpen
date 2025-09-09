@@ -46,38 +46,53 @@ def kill_existing_instance():
 def ensure_single_instance():
     """Ensure only one instance of asrpro is running."""
     lock_path = Path.home() / ".asrpro.lock"
+    current_pid = os.getpid()
 
     # Check if lock file exists and process is still running
     if lock_path.exists():
         try:
             old_pid = int(lock_path.read_text().strip())
-            if psutil.pid_exists(old_pid):
+            if old_pid != current_pid and psutil.pid_exists(old_pid):
                 try:
                     old_proc = psutil.Process(old_pid)
-                    if any("asrpro" in str(arg) for arg in old_proc.cmdline()):
+                    cmdline_str = " ".join(old_proc.cmdline())
+                    if "asrpro" in cmdline_str or "run.py" in cmdline_str:
                         # Ask user what to do with existing instance
                         print(f"\nFound existing asrpro instance (PID: {old_pid})")
                         print("Do you want to kill the existing instance? (Y/n): ", end="", flush=True)
                         
-                        choice = input().strip().lower()
-                        if choice == "" or choice == "y" or choice == "yes":
-                            print(f"Terminating existing asrpro instance (PID: {old_pid})")
-                            old_proc.terminate()
-                            old_proc.wait(timeout=5)
-                        else:
-                            print("Keeping existing instance. Exiting...")
+                        try:
+                            choice = input().strip().lower()
+                            if choice == "" or choice == "y" or choice == "yes":
+                                print(f"Terminating existing asrpro instance (PID: {old_pid})")
+                                old_proc.terminate()
+                                try:
+                                    old_proc.wait(timeout=5)
+                                except psutil.TimeoutExpired:
+                                    print("Force killing existing instance...")
+                                    old_proc.kill()
+                            else:
+                                print("Keeping existing instance. Exiting...")
+                                sys.exit(0)
+                        except (EOFError, KeyboardInterrupt):
+                            print("\nKeeping existing instance. Exiting...")
                             sys.exit(0)
                 except (psutil.NoSuchProcess, psutil.TimeoutExpired):
-                    pass
+                    # Process no longer exists, remove stale lock file
+                    lock_path.unlink(missing_ok=True)
         except (ValueError, OSError):
-            pass
+            # Invalid lock file, remove it
+            lock_path.unlink(missing_ok=True)
 
     # Kill any remaining instances (cleanup)
-    kill_existing_instance()
+    killed = kill_existing_instance()
+    if killed:
+        import time
+        time.sleep(1)  # Give processes time to clean up
 
     # Write our PID to lock file
     try:
-        lock_path.write_text(str(os.getpid()))
+        lock_path.write_text(str(current_pid))
     except Exception as e:
         print(f"Warning: Could not create lock file: {e}")
 

@@ -180,54 +180,82 @@ def build_tray(main_window):  # pragma: no cover
         path = icon_path(filename)
         if path:
             from PySide6.QtGui import QIcon as _QIcon
-
+            
             for act in menu.actions():
                 if act.text().endswith(action_text):
-                    act.setIcon(_QIcon(path))
+                    icon = _QIcon(path)
+                    # Ensure icon is properly sized for menu
+                    act.setIcon(icon)
                     break
 
+    # Set icons for menu items with fallbacks
     set_icon_for_action("Show Window", "monitor")
-    set_icon_for_action("Process Media File", "folder")
+    set_icon_for_action("Process Media File", "folder-open") 
     set_icon_for_action("Hotkey Settings", "keyboard")
     set_icon_for_action("About", "info")
     set_icon_for_action("Exit", "x")
 
-    # Mac-like compact styling
+    # Authentic macOS context menu styling
     menu.setStyleSheet(
         """
         QMenu { 
-            background-color: rgba(30, 30, 30, 0.95); 
-            color: #ffffff; 
-            border: 1px solid rgba(255, 255, 255, 0.1); 
+            background-color: rgba(242, 242, 247, 0.78);
+            color: #1d1d1f; 
+            border: 0.5px solid rgba(0, 0, 0, 0.04);
             border-radius: 8px; 
             padding: 4px 0;
             font-size: 13px;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            font-weight: 400;
+            min-width: 180px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        QMenu[darkMode="true"] { 
+            background-color: rgba(30, 30, 30, 0.9);
+            color: #f2f2f7;
+            border: 0.5px solid rgba(255, 255, 255, 0.04);
         }
         QMenu::item { 
-            padding: 6px 14px; 
+            padding: 6px 14px 6px 32px;
             border: none;
-            margin: 0 2px;
+            margin: 1px 2px;
             border-radius: 4px;
             min-height: 18px;
+            font-weight: 400;
         }
         QMenu::item:selected { 
-            background-color: rgba(0, 122, 255, 0.8);
+            background-color: rgba(0, 122, 255, 1.0);
             color: #ffffff;
         }
+        QMenu::item:disabled {
+            color: rgba(29, 29, 31, 0.3);
+        }
+        QMenu[darkMode="true"]::item:disabled {
+            color: rgba(242, 242, 247, 0.3);
+        }
         QMenu::separator { 
-            height: 1px; 
-            background: rgba(255, 255, 255, 0.1); 
+            height: 0.5px; 
+            background: rgba(0, 0, 0, 0.1); 
             margin: 4px 6px; 
             border: none;
         }
+        QMenu[darkMode="true"]::separator {
+            background: rgba(255, 255, 255, 0.1);
+        }
         QMenu::icon {
-            padding-left: 2px;
+            padding-left: 6px;
             width: 16px;
             height: 16px;
+            left: 8px;
+            position: absolute;
         }
         """
     )
+    # Apply dark mode styling if system is using dark theme
+    if is_dark_theme():
+        menu.setProperty("darkMode", True)
+    
     tray.setContextMenu(menu)
     tray.setToolTip("asrpro - AI Speech Recognition")
 

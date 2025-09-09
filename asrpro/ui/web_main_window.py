@@ -32,6 +32,7 @@ except ImportError:
     QWebChannel = None
 
 from ..model_manager import ModelManager
+from .overlay import Overlay
 from ..hotkey import ToggleHotkey
 
 
@@ -69,6 +70,7 @@ class MainWindow(QWidget):
         self.tray_icon = None
         self.hotkey = ToggleHotkey(self._on_hotkey_toggle)
         self.web_view: Optional[QWebEngineView] = None
+        self.overlay = Overlay()
         
         # Window configuration
         self._setup_window()
@@ -216,10 +218,10 @@ class MainWindow(QWidget):
         if not self.web_view:
             return
         
-        html_file = Path.cwd() / "temp" / "index.html"
+        html_file = Path(__file__).parent / "template" / "index.html"
         
         if not html_file.exists():
-            self._load_error_page("HTML file not found at temp/index.html")
+            self._load_error_page("HTML file not found at asrpro/ui/template/index.html")
             return
         
         try:
@@ -290,7 +292,7 @@ class MainWindow(QWidget):
             except Exception as e:
                 print(f"[Icons] Failed to generate {icon_name} icon: {e}")
                 # Fallback to static SVG file
-                return f'<img class="{classes}" src="assets/icons/{icon_name}.svg" alt="{icon_name} icon"{style}>'
+                return f'<img class="{classes}" src="../assets/icons/{icon_name}.svg" alt="{icon_name} icon"{style}>'
         
         html_content = re.sub(
             r'<i[^>]+data-lucide="([^"]+)"[^>]*></i>',
@@ -529,7 +531,7 @@ img.lucide-icon.text-blue-400 {
             <div class="error-container">
                 <h1>Unable to Load UI</h1>
                 <p>{error_message}</p>
-                <p>Please check that the temp/index.html file exists and is accessible.</p>
+                <p>Please check that the asrpro/ui/template/index.html file exists and is accessible.</p>
             </div>
         </body>
         </html>
@@ -596,6 +598,44 @@ img.lucide-icon.text-blue-400 {
         }
         
         setupWindowControls();
+
+        // Ensure sidebar logo uses local icon.png without touching source HTML
+        (function installSidebarLogo(){
+            try {
+                const sidebar = document.querySelector('.sidebar');
+                if (!sidebar) return;
+                let logo = sidebar.querySelector('.logo');
+                if (!logo) {
+                    // Create a logo container if missing
+                    logo = document.createElement('div');
+                    logo.className = 'logo';
+                    logo.style.display = 'flex';
+                    logo.style.alignItems = 'center';
+                    logo.style.gap = '10px';
+                    logo.style.padding = '20px';
+                    logo.style.borderBottom = '1px solid #333';
+                    sidebar.insertBefore(logo, sidebar.firstChild);
+                }
+                // Clear any existing icon nodes
+                while (logo.firstChild) logo.removeChild(logo.firstChild);
+                // Insert image logo and app name
+                const img = document.createElement('img');
+                img.src = '../assets/icon.png';
+                img.alt = 'Spokenly logo';
+                img.width = 20; img.height = 20;
+                img.style.display = 'block';
+                const span = document.createElement('span');
+                span.textContent = 'Spokenly';
+                span.style.fontSize = '15px';
+                span.style.fontWeight = '500';
+                span.style.color = '#fff';
+                logo.appendChild(img);
+                logo.appendChild(span);
+                console.log('Sidebar logo installed from ../assets/icon.png');
+            } catch (e) {
+                console.log('Sidebar logo install error:', e);
+            }
+        })();
         """
         
         self.web_view.page().runJavaScript(setup_script)
@@ -603,8 +643,14 @@ img.lucide-icon.text-blue-400 {
     
     def _on_hotkey_toggle(self, recording: bool) -> None:
         """Handle hotkey toggle events."""
-        # Placeholder for hotkey functionality
         print(f"[Hotkey] Recording: {recording}")
+        try:
+            if recording:
+                self.overlay.show_smooth()
+            else:
+                self.overlay.close_smooth()
+        except Exception as e:
+            print(f"[Overlay] Error toggling overlay: {e}")
     
     # Public API methods for tray integration
     
@@ -625,6 +671,19 @@ img.lucide-icon.text-blue-400 {
         event.ignore()
         self.hide()
         print("[Window] Window hidden to tray")
+    
+    def showEvent(self, event) -> None:
+        """Override show event to ensure content is properly loaded."""
+        super().showEvent(event)
+        
+        # If WebEngine content is not loaded, reload it
+        if self.web_view and self.web_view.page():
+            current_url = self.web_view.url()
+            if not current_url.isValid() or current_url.isEmpty():
+                print("[Window] Reloading content on show")
+                QTimer.singleShot(100, self._load_content)
+        
+        print("[Window] Window shown")
     
     def close_app(self) -> None:
         """Clean shutdown of the application."""
