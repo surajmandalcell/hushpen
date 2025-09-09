@@ -15,22 +15,44 @@ from typing import Optional
 if os.name == "nt":
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
 
-from PySide6.QtCore import Qt, QUrl, QTimer, Signal
+from PySide6.QtCore import Qt, QUrl, QTimer, Signal, QObject, Slot
 from PySide6.QtWidgets import QWidget, QVBoxLayout
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QCloseEvent
 
 # Handle optional WebEngine import
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+    from PySide6.QtWebChannel import QWebChannel
     WEBENGINE_AVAILABLE = True
 except ImportError:
     WEBENGINE_AVAILABLE = False
     QWebEngineView = None
     QWebEnginePage = None
+    QWebChannel = None
 
 from ..model_manager import ModelManager
 from ..hotkey import ToggleHotkey
+
+
+class WindowBridge(QObject):
+    """Bridge class for JavaScript-Python communication."""
+    
+    def __init__(self, main_window):
+        super().__init__()
+        self.main_window = main_window
+    
+    @Slot()
+    def hideWindow(self):
+        """Hide window to system tray."""
+        print("[Bridge] Hide window called")
+        self.main_window.hide()
+    
+    @Slot() 
+    def minimizeWindow(self):
+        """Minimize window."""
+        print("[Bridge] Minimize window called")
+        self.main_window.showMinimized()
 
 
 class MainWindow(QWidget):
@@ -62,8 +84,16 @@ class MainWindow(QWidget):
         self.setFixedSize(1080, 720)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         
-        # Set window background for consistency
-        self.setStyleSheet("QWidget { background-color: #1e1e1e; }")
+        # Enable translucent background for rounded corners
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # Set window background with rounded corners
+        self.setStyleSheet("""
+            QWidget {
+                background-color: rgba(30, 30, 30, 0.95);
+                border-radius: 12px;
+            }
+        """)
     
     def _setup_ui(self) -> None:
         """Initialize the user interface components."""
@@ -88,10 +118,8 @@ class MainWindow(QWidget):
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
         
-        # Set up the web page
-        page = QWebEnginePage(self.web_view)
-        page.setBackgroundColor(QColor("#1e1e1e"))
-        self.web_view.setPage(page)
+        # Set up the custom bridge page immediately
+        self._setup_bridge_page()
         
         # Connect signals
         self.web_view.loadFinished.connect(self._on_load_finished)
@@ -100,6 +128,54 @@ class MainWindow(QWidget):
         layout.addWidget(self.web_view)
         
         print("[WebEngine] WebEngine view initialized successfully")
+    
+    def _setup_bridge_page(self) -> None:
+        """Setup the custom bridge page for JavaScript-Python communication."""
+        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
+        
+        class BridgeWebPage(QWebEnginePage):
+            def __init__(self, main_window, parent=None):
+                super().__init__(parent)
+                self.main_window = main_window
+            
+            def javaScriptConsoleMessage(self, level, message, line, source):
+                # Intercept JavaScript console messages for window control
+                if message == "HIDE_WINDOW_SIGNAL":
+                    print("[Bridge] Hide window signal received")
+                    self.main_window.hide()
+                elif message == "MINIMIZE_WINDOW_SIGNAL":
+                    print("[Bridge] Minimize window signal received")
+                    self.main_window.showMinimized()
+                else:
+                    # Pass through other console messages
+                    print(f"[WebEngine Console] {message} (line {line})")
+                super().javaScriptConsoleMessage(level, message, line, source)
+        
+        # Create and set the bridge page
+        bridge_page = BridgeWebPage(self, self.web_view)
+        bridge_page.setBackgroundColor(QColor("#1e1e1e"))
+        self.web_view.setPage(bridge_page)
+        
+        # Inject JavaScript bridge functions
+        bridge_script = QWebEngineScript()
+        bridge_script.setSourceCode("""
+        // Window control functions that signal to Python
+        window.hideWindow = function() {
+            console.log('HIDE_WINDOW_SIGNAL');
+        };
+        
+        window.minimizeWindow = function() {
+            console.log('MINIMIZE_WINDOW_SIGNAL');
+        };
+        
+        console.log('JavaScript bridge functions installed');
+        """)
+        bridge_script.setName("JSBridge")
+        bridge_script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        bridge_script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        
+        bridge_page.scripts().insert(bridge_script)
+        print("[Bridge] JavaScript bridge page setup completed")
     
     def _setup_fallback(self, layout: QVBoxLayout) -> None:
         """Setup fallback UI when WebEngine is not available."""
@@ -151,10 +227,47 @@ class MainWindow(QWidget):
             flags=re.IGNORECASE
         )
         
-        # Replace Lucide icons with local SVG images
+        # Replace Lucide icons with dynamically generated SVGs
         def replace_icon(match):
             icon_name = match.group(1)
-            return f'<img class="lucide-icon" src="assets/icons/{icon_name}.svg" alt="{icon_name} icon">'
+            # Extract any existing classes and styles from the original <i> tag
+            class_match = re.search(r'class="([^"]*)"', match.group(0))
+            style_match = re.search(r'style="([^"]*)"', match.group(0))
+            
+            classes = f'lucide-icon {class_match.group(1)}' if class_match else 'lucide-icon'
+            style = f' style="{style_match.group(1)}"' if style_match else ''
+            
+            try:
+                # Generate SVG using python-lucide library
+                from lucide import lucide_icon
+                
+                # Try the original name first
+                try:
+                    svg_content = lucide_icon(icon_name, width="16", height="16", cls=classes.strip())
+                except Exception:
+                    # Try common name mappings for icons that might have different names
+                    icon_mappings = {
+                        'check-circle': 'check',
+                        'globe-2': 'globe',
+                        'settings-2': 'settings',
+                        'file-text': 'file-text',
+                        'file-plus': 'file-plus',
+                        'folder-open': 'folder-open',
+                        'refresh-cw': 'refresh-cw',
+                        # Add more mappings as needed
+                    }
+                    
+                    fallback_name = icon_mappings.get(icon_name, icon_name)
+                    svg_content = lucide_icon(fallback_name, width="16", height="16", cls=classes.strip())
+                
+                # Add style attribute if present
+                if style:
+                    svg_content = svg_content.replace('>', f'{style}>', 1)
+                return svg_content
+            except Exception as e:
+                print(f"[Icons] Failed to generate {icon_name} icon: {e}")
+                # Fallback to static SVG file
+                return f'<img class="{classes}" src="assets/icons/{icon_name}.svg" alt="{icon_name} icon"{style}>'
         
         html_content = re.sub(
             r'<i[^>]+data-lucide="([^"]+)"[^>]*></i>',
@@ -177,22 +290,163 @@ html, body {
     overflow: hidden;
 }
 
-/* Icon styling */
-.lucide-icon {
-    width: 16px;
-    height: 16px;
+/* Icon styling for both img and inline SVG */
+.lucide-icon, svg.lucide-icon {
+    width: 16px !important;
+    height: 16px !important;
     display: inline-block;
     vertical-align: middle;
+    flex-shrink: 0;
+}
+
+/* For inline SVG icons (from lucide-py) */
+svg.lucide-icon {
+    stroke: currentColor;
+    fill: none;
+}
+
+/* For fallback img icons */
+img.lucide-icon {
+    filter: brightness(0) saturate(100%) invert(85%) sepia(8%) saturate(359%) hue-rotate(183deg) brightness(90%) contrast(87%);
+}
+
+/* Context-specific styling */
+.text-gray-400 svg.lucide-icon {
+    color: #9ca3af;
+}
+
+.text-white svg.lucide-icon {
+    color: #ffffff;
+}
+
+.text-blue-400 svg.lucide-icon {
+    color: #60a5fa;
+}
+
+/* Fallback img styling for different contexts */
+img.lucide-icon.text-gray-400 {
+    filter: brightness(0) saturate(100%) invert(65%) sepia(8%) saturate(359%) hue-rotate(183deg) brightness(70%) contrast(87%);
+}
+
+img.lucide-icon.text-white {
     filter: brightness(0) invert(1);
+}
+
+img.lucide-icon.text-blue-400 {
+    filter: brightness(0) saturate(100%) invert(58%) sepia(96%) saturate(2073%) hue-rotate(197deg) brightness(101%) contrast(101%);
 }
 
 /* Window adjustments for WebEngine */
 .window {
     width: 100vw !important;
     height: 100vh !important;
-    border-radius: 0 !important;
+    border-radius: 12px !important;
     box-shadow: none !important;
     margin: 0 !important;
+    overflow: hidden;
+}
+
+/* Mac-style traffic light buttons */
+.window-btn {
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    outline: none;
+}
+
+.window-btn:hover {
+    transform: scale(1.1);
+}
+
+.window-btn:active {
+    transform: scale(0.95);
+}
+
+.window-btn:hover::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.window-btn.close:hover::after {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.window-btn.minimize:hover::after {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.window-btn.maximize:hover::after {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+/* Animations */
+.nav-item {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-item:hover {
+    transform: translateX(2px);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.toggle {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle:hover {
+    transform: scale(1.05);
+}
+
+.model-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.model-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn-primary, .btn-secondary {
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.btn-secondary:hover {
+    transform: translateY(-1px);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Fade-in animation for the entire window */
+@keyframes windowFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.window {
+    animation: windowFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth scrolling */
+* {
+    scroll-behavior: smooth;
 }
 """
         
@@ -260,16 +514,53 @@ html, body {
         if not self.web_view or not self.web_view.page():
             return
         
-        # JavaScript to verify content is properly displayed
-        verify_script = """
+        # JavaScript bridge is already set up in _setup_bridge_page()
+        
+        # JavaScript to handle window controls and verification
+        setup_script = """
         console.log('=== WebEngine Content Verification ===');
         console.log('Document ready state:', document.readyState);
         console.log('Viewport size:', window.innerWidth + 'x' + window.innerHeight);
         console.log('Body computed style:', getComputedStyle(document.body).background);
         console.log('Main elements found:', document.querySelectorAll('.window, .sidebar, .nav-item').length);
+        
+        // Add window control handlers
+        function setupWindowControls() {
+            const closeBtn = document.querySelector('.window-btn.close');
+            const minimizeBtn = document.querySelector('.window-btn.minimize');
+            const maximizeBtn = document.querySelector('.window-btn.maximize');
+            
+            if (closeBtn) {
+                closeBtn.onclick = function(e) {
+                    e.preventDefault();
+                    console.log('Close button clicked - hiding to tray');
+                    window.hideWindow();
+                };
+            }
+            
+            if (minimizeBtn) {
+                minimizeBtn.onclick = function(e) {
+                    e.preventDefault();
+                    console.log('Minimize button clicked');
+                    if (window.windowBridge) {
+                        window.windowBridge.minimizeWindow();
+                    }
+                };
+            }
+            
+            if (maximizeBtn) {
+                maximizeBtn.onclick = function(e) {
+                    e.preventDefault();
+                    console.log('Maximize button clicked');
+                };
+            }
+        }
+        
+        setupWindowControls();
         """
         
-        self.web_view.page().runJavaScript(verify_script)
+        self.web_view.page().runJavaScript(setup_script)
+    
     
     def _on_hotkey_toggle(self, recording: bool) -> None:
         """Handle hotkey toggle events."""
@@ -290,6 +581,12 @@ html, body {
         except Exception as e:
             print(f"[Hotkey] Failed to update: {e}")
     
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Override close event to hide to tray instead of closing."""
+        event.ignore()
+        self.hide()
+        print("[Window] Window hidden to tray")
+    
     def close_app(self) -> None:
         """Clean shutdown of the application."""
         try:
@@ -297,7 +594,11 @@ html, body {
         except Exception as e:
             print(f"[Cleanup] Model manager error: {e}")
         
-        self.close()
+        # Force close the application
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            app.quit()
     
     def generate_srt_from_file(self, file_path: Path) -> Optional[Path]:
         """Generate SRT file from media file (for tray integration)."""

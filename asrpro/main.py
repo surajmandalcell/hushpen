@@ -55,15 +55,24 @@ def ensure_single_instance():
                 try:
                     old_proc = psutil.Process(old_pid)
                     if any("asrpro" in str(arg) for arg in old_proc.cmdline()):
-                        print(f"Terminating existing asrpro instance (PID: {old_pid})")
-                        old_proc.terminate()
-                        old_proc.wait(timeout=5)
+                        # Ask user what to do with existing instance
+                        print(f"\nFound existing asrpro instance (PID: {old_pid})")
+                        print("Do you want to kill the existing instance? (Y/n): ", end="", flush=True)
+                        
+                        choice = input().strip().lower()
+                        if choice == "" or choice == "y" or choice == "yes":
+                            print(f"Terminating existing asrpro instance (PID: {old_pid})")
+                            old_proc.terminate()
+                            old_proc.wait(timeout=5)
+                        else:
+                            print("Keeping existing instance. Exiting...")
+                            sys.exit(0)
                 except (psutil.NoSuchProcess, psutil.TimeoutExpired):
                     pass
         except (ValueError, OSError):
             pass
 
-    # Kill any remaining instances
+    # Kill any remaining instances (cleanup)
     kill_existing_instance()
 
     # Write our PID to lock file

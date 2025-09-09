@@ -25,10 +25,12 @@ class HotkeyDialog(QDialog):
         self.captured_hotkey = ""
         self.current_hotkey = current_hotkey
         
-        self.setWindowTitle("Set Hotkey")
         self.setFixedSize(400, 200)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowCloseButtonHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        
+        # Make it translucent and modern
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         self.setup_ui()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -137,11 +139,13 @@ class HotkeyDialog(QDialog):
         button_layout.addWidget(self.accept_btn)
         layout.addLayout(button_layout)  # Use addLayout for layouts, not addWidget
         
-        # Style the dialog
+        # Style the dialog with Mac-like appearance
         self.setStyleSheet("""
             QDialog {
-                background-color: #1e1e1e;
+                background-color: rgba(30, 30, 30, 0.95);
                 color: #ffffff;
+                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
             }
         """)
         
