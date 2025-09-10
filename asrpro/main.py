@@ -8,6 +8,7 @@ import signal
 import psutil
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
 
 # Use the native PyQt UI
@@ -107,6 +108,13 @@ def launch():  # pragma: no cover
     app.setOrganizationName("asrpro")
     app.setApplicationName("asrpro")
     app.setQuitOnLastWindowClosed(False)
+
+    # Apply a consistent system font baseline
+    try:
+        from .ui.styles.dark_theme import Fonts
+        app.setFont(QFont(Fonts.get_system_font(), Fonts.BASE_SIZE))
+    except Exception:
+        pass
 
     # Native PyQt UI - no WebEngine needed
 

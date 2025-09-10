@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
+from .typography import SectionLabel, BodyLabel
 from .toggle_switch import ToggleSwitch
 
 
@@ -50,19 +51,11 @@ class SettingRow(QWidget):
         info_layout.setSpacing(4)  # 4px margin between title and description
         
         # Title label
-        self.title_label = QLabel(title)
-        font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
-        self.title_label.setFont(font)
+        self.title_label = SectionLabel(title)
         info_layout.addWidget(self.title_label)
         
         # Description label
-        self.desc_label = QLabel(description)
-        font = QFont()
-        font.setPointSize(Fonts.DESCRIPTION_SIZE)
-        font.setWeight(Fonts.NORMAL)
-        self.desc_label.setFont(font)
+        self.desc_label = BodyLabel(description)
         self.desc_label.setWordWrap(True)
         info_layout.addWidget(self.desc_label)
         

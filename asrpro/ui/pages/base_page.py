@@ -2,9 +2,10 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea
 
 from ..styles.dark_theme import DarkTheme, Fonts, Spacing
+from ..components.typography import TitleLabel
 
 
 class BasePage(QWidget):
@@ -47,12 +48,7 @@ class BasePage(QWidget):
     
     def _create_title(self):
         """Create the page title label."""
-        self.title_label = QLabel(self.title)
-        font = QFont()
-        font.setPointSize(Fonts.PAGE_TITLE_SIZE)
-        font.setWeight(Fonts.BOLD)
-        self.title_label.setFont(font)
-        self.title_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")
+        self.title_label = TitleLabel(self.title)
         self.content_layout.addWidget(self.title_label)
     
     def _apply_styles(self):

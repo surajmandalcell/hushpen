@@ -5,18 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QFileDialog,
-    QMessageBox,
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFileDialog, QMessageBox
 
 from .base_page import BasePage
 from ..styles.dark_theme import DarkTheme, Fonts
+from ..components.typography import BodyLabel
+from ..components.button import MacButton
+from ..components.file_picker import FilePicker
+from ..components.panel import Panel
 
 
 class TranscribeFilePage(BasePage):
@@ -29,49 +25,29 @@ class TranscribeFilePage(BasePage):
 
     def _build_body(self):
         # Instructions
-        self.instructions = QLabel(
+        self.instructions = BodyLabel(
             "Choose an audio/video file and transcribe to SRT using the current model."
         )
-        font = QFont()
-        font.setPointSize(max(Fonts.DESCRIPTION_SIZE - 1, 9))
-        self.instructions.setFont(font)
-        self.instructions.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
         self.instructions.setWordWrap(True)
         self.add_content_widget(self.instructions)
 
         # File row
-        row = QWidget()
+        row = Panel()
         row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setContentsMargins(12, 12, 12, 12)
         row_layout.setSpacing(12)
-
-        self.file_label = QLabel("No file selected")
-        font2 = QFont()
-        font2.setPointSize(Fonts.BASE_SIZE)
-        self.file_label.setFont(font2)
-        self.file_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
-
-        pick_btn = QPushButton("Choose File")
-        pick_btn.clicked.connect(self._pick_file)
-
-        row_layout.addWidget(self.file_label, 1)
-        row_layout.addWidget(pick_btn)
+        self.file_picker = FilePicker(self, filter="Media Files (*.wav *.mp3 *.mp4 *.avi *.mkv *.m4a *.flac *.ogg)")
+        row_layout.addWidget(self.file_picker)
         self.add_content_widget(row)
 
         # Action row
-        action_row = QWidget()
+        action_row = Panel()
         action_layout = QHBoxLayout(action_row)
-        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setContentsMargins(12, 12, 12, 12)
         action_layout.setSpacing(12)
-
-        self.transcribe_btn = QPushButton("Transcribe to SRT")
+        self.transcribe_btn = MacButton("Transcribe to SRT", primary=True)
         self.transcribe_btn.clicked.connect(self._transcribe)
-
-        self.status_label = QLabel("")
-        font3 = QFont()
-        font3.setPointSize(max(Fonts.STATUS_SIZE, 9))
-        self.status_label.setFont(font3)
-        self.status_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
+        self.status_label = BodyLabel("")
 
         action_layout.addWidget(self.transcribe_btn)
         action_layout.addWidget(self.status_label, 1)
@@ -88,9 +64,11 @@ class TranscribeFilePage(BasePage):
         )
         if file:
             self._selected_path = Path(file)
-            self.file_label.setText(str(self._selected_path))
 
     def _transcribe(self):
+        sel = self.file_picker.path()
+        if sel is not None:
+            self._selected_path = sel
         if not self._selected_path:
             QMessageBox.warning(self, "Transcribe", "Please choose a media file first.")
             return
@@ -128,4 +106,3 @@ class TranscribeFilePage(BasePage):
             self.status_label.setText("Failed")
         finally:
             self.transcribe_btn.setEnabled(True)
-

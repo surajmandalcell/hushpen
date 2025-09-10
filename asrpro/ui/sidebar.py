@@ -3,6 +3,7 @@
 from typing import List, Dict, Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QPainter, QPen, QIcon, QPixmap, QBrush, QColor
+from PySide6.QtCore import QRect
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 from asrpro.ui.utils.elements import subtle_separator
@@ -73,7 +74,7 @@ class SpokenlyNavigationItem(QWidget):
 
         self.text_label = QLabel(self.text)
         font = QFont()
-        font.setPointSize(12)
+        font.setPointSize(11)
         font.setWeight(Fonts.NORMAL)
         self.text_label.setFont(font)
         layout.addWidget(self.text_label)
@@ -84,7 +85,7 @@ class SpokenlyNavigationItem(QWidget):
 
     def _apply_styles(self):
         """Apply base styles."""
-        self.setFixedHeight(36)
+        self.setFixedHeight(32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def set_active(self, active: bool):
@@ -179,7 +180,7 @@ class SpokenlyLogoSection(QWidget):
 
         self.name_label = QLabel("ASR Pro")
         font = QFont()
-        font.setPointSize(13)
+        font.setPointSize(12)
         font.setWeight(Fonts.SEMIBOLD)
         self.name_label.setFont(font)
         r, g, b = (
@@ -303,8 +304,40 @@ class SpokemlySidebar(QWidget):
         self.about_item.set_active(section_id == "about")
 
     def paintEvent(self, event):
-        """Custom paint event for sidebar background."""
+        """Custom paint event for sidebar background with faux blur."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        painter.fillRect(self.rect(), DarkTheme.SIDEBAR_BG)
+        rect = self.rect()
+        # Backdrop blur: grab the desktop region behind the sidebar
+        try:
+            win = self.window()
+            wh = win.windowHandle() if win else None
+            screen = wh.screen() if wh else None
+            if screen and win:
+                # Map sidebar rect to global coords
+                top_left = self.mapToGlobal(rect.topLeft())
+                x, y = top_left.x(), top_left.y()
+                w, h = rect.width(), rect.height()
+
+                shot = screen.grabWindow(0, x, y, w, h)
+                if not shot.isNull():
+                    # Fast blur approximation: downscale then upscale
+                    down_w = max(1, int(w * 0.2))
+                    down_h = max(1, int(h * 0.2))
+                    small = shot.scaled(down_w, down_h, Qt.KeepAspectRatioByExpanding,
+                                        Qt.SmoothTransformation)
+                    blurred = small.scaled(w, h, Qt.IgnoreAspectRatio,
+                                            Qt.SmoothTransformation)
+                    painter.drawPixmap(rect, blurred, blurred.rect())
+
+                    # Apply a dark translucent tint to match theme
+                    overlay = QColor(DarkTheme.SIDEBAR_BG)
+                    overlay.setAlpha(180)
+                    painter.fillRect(rect, overlay)
+                else:
+                    painter.fillRect(rect, DarkTheme.SIDEBAR_BG)
+            else:
+                painter.fillRect(rect, DarkTheme.SIDEBAR_BG)
+        except Exception:
+            painter.fillRect(rect, DarkTheme.SIDEBAR_BG)

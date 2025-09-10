@@ -88,6 +88,7 @@ class Dimensions:
     WINDOW_WIDTH = 1080
     WINDOW_HEIGHT = 720
     WINDOW_RADIUS = 12
+    WINDOW_SHADOW_MARGIN = 28  # space around content to paint soft shadow
     
     # Sidebar
     SIDEBAR_WIDTH = 240
@@ -138,15 +139,15 @@ class Fonts:
     """Font specifications matching the original design."""
     
     # Base font size
-    BASE_SIZE = 12
+    BASE_SIZE = 10
     
     # Specific sizes
-    H1_SIZE = 24
-    PAGE_TITLE_SIZE = 18
-    SECTION_TITLE_SIZE = 16
-    SETTING_LABEL_SIZE = 13
-    DESCRIPTION_SIZE = 11
-    STATUS_SIZE = 11
+    H1_SIZE = 22
+    PAGE_TITLE_SIZE = 14
+    SECTION_TITLE_SIZE = 12
+    SETTING_LABEL_SIZE = 11
+    DESCRIPTION_SIZE = 9
+    STATUS_SIZE = 9
     
     # Font weights (using QFont.Weight enum)
     from PySide6.QtGui import QFont
@@ -189,10 +190,10 @@ class Spacing:
     SECTION_MARGIN_TOP = 25
     SECTION_MARGIN_BOTTOM = 15
     SECTION_PADDING_BOTTOM = 8
-    SECTION_GAP = 24
+    SECTION_GAP = 16
     
     # Page spacing
-    PAGE_PADDING = 32
+    PAGE_PADDING = 24
     
     # Component spacing
     CARD_GAP = 16
