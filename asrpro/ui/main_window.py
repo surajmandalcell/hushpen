@@ -4,7 +4,7 @@ Implements pixel-snapped, antialiased rounded corners and a custom
 soft shadow painted on a translucent background for a mac-like look.
 """
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QRectF
 from PySide6.QtGui import QPainter, QBrush, QPainterPath, QPixmap, QColor, QPen
 from PySide6.QtWidgets import (
     QWidget,
@@ -60,8 +60,8 @@ class NativeMainWindow(QWidget):
 
     def _setup_ui(self):
         """Set up the main UI layout."""
-        # Main horizontal layout
-        main_layout = QHBoxLayout(self)
+        # Root layout on the window (reserves shadow space)
+        root_layout = QHBoxLayout(self)
         # Reserve room for the painted shadow so content doesn't overlap.
         blur = Dimensions.SHADOW_BLUR
         spread = Dimensions.SHADOW_SPREAD
@@ -71,7 +71,13 @@ class NativeMainWindow(QWidget):
         right = blur + spread + max(0, offx)
         top = blur + spread + max(0, -offy)
         bottom = blur + spread + max(0, offy)
-        main_layout.setContentsMargins(left, top, right, bottom)
+        root_layout.setContentsMargins(left, top, right, bottom)
+        root_layout.setSpacing(0)
+
+        # Frame container that will be rounded-clipped to avoid child overflow
+        self._frame = QWidget(self)
+        main_layout = QHBoxLayout(self._frame)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
         # Sidebar
@@ -83,6 +89,11 @@ class NativeMainWindow(QWidget):
         # Content area
         self.content_area = ContentArea(self)
         main_layout.addWidget(self.content_area, 1)  # Take remaining space
+
+        # Add frame to root
+        root_layout.addWidget(self._frame)
+        # Apply initial rounded clip on frame
+        self._update_frame_mask()
 
     def _apply_theme(self):
         """Apply the dark theme palette and styling."""
@@ -152,7 +163,7 @@ class NativeMainWindow(QWidget):
 
             # Fill inner rounded rectangle (pixel-snapped to reduce jaggies)
             path = QPainterPath()
-            rr = inner_rect.adjusted(0.5, 0.5, -0.5, -0.5)
+            rr = QRectF(inner_rect).adjusted(0.5, 0.5, -0.5, -0.5)
             path.addRoundedRect(rr, r, r)
             painter.fillPath(path, QBrush(DarkTheme.MAIN_BG))
 
@@ -167,6 +178,24 @@ class NativeMainWindow(QWidget):
     def resizeEvent(self, event):
         """No mask — only repaint on resize for smooth edges."""
         super().resizeEvent(event)
+        self._update_frame_mask()
+
+    def _update_frame_mask(self):
+        """Clip the inner frame so children don't overflow rounded corners."""
+        try:
+            from PySide6.QtGui import QRegion
+        except Exception:
+            return
+        if not hasattr(self, "_frame") or self._frame is None:
+            return
+        r = Dimensions.WINDOW_RADIUS
+        rect = self._frame.rect()
+        if rect.isEmpty():
+            return
+        path = QPainterPath()
+        path.addRoundedRect(rect, r, r)
+        region = QRegion(path.toFillPolygon().toPolygon())
+        self._frame.setMask(region)
 
     # Drag support for frameless window (mac-like behavior)
     def mousePressEvent(self, event):

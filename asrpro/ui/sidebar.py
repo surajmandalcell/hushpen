@@ -304,50 +304,10 @@ class SpokemlySidebar(QWidget):
         self.about_item.set_active(section_id == "about")
 
     def paintEvent(self, event):
-        """Custom paint event for sidebar background with faux blur."""
+        """Custom paint event for sidebar background (opaque)."""
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-            rect = self.rect()
-            # Backdrop blur: grab the desktop region behind the sidebar
-            win = self.window()
-            wh = win.windowHandle() if win else None
-            screen = wh.screen() if wh else None
-            if screen and win:
-                # Map sidebar rect to global coords
-                top_left = self.mapToGlobal(rect.topLeft())
-                x, y = top_left.x(), top_left.y()
-                w, h = rect.width(), rect.height()
-
-                shot = screen.grabWindow(0, x, y, w, h)
-                if not shot.isNull():
-                    # Fast blur approximation: downscale then upscale
-                    down_w = max(1, int(w * 0.2))
-                    down_h = max(1, int(h * 0.2))
-                    small = shot.scaled(
-                        down_w,
-                        down_h,
-                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                    blurred = small.scaled(
-                        w,
-                        h,
-                        Qt.AspectRatioMode.IgnoreAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                    painter.drawPixmap(rect, blurred, blurred.rect())
-
-                    # Apply a dark translucent tint to match theme
-                    overlay = QColor(DarkTheme.SIDEBAR_BG)
-                    overlay.setAlpha(180)
-                    painter.fillRect(rect, overlay)
-                else:
-                    painter.fillRect(rect, DarkTheme.SIDEBAR_BG)
-            else:
-                painter.fillRect(rect, DarkTheme.SIDEBAR_BG)
-        except Exception:
             painter.fillRect(self.rect(), DarkTheme.SIDEBAR_BG)
         finally:
             painter.end()

@@ -9,7 +9,7 @@ class DarkTheme:
 
     # Background Colors
     MAIN_BG = QColor("#1e1e1e")
-    SIDEBAR_BG = QColor(26, 26, 26, 200)  # Translucent for Mac-like effect
+    SIDEBAR_BG = QColor(26, 26, 26)  # Opaque sidebar background
     CARD_BG = QColor("#252525")
     CONTROL_BG = QColor("#333333")
     HOVER_BG = QColor("#2a2a2a")
@@ -102,8 +102,8 @@ class Dimensions:
     SHADOW_OFFSET_X = 0
     SHADOW_OFFSET_Y = 0
     SHADOW_BLUR = 24
-    SHADOW_SPREAD = 0
-    SHADOW_ALPHA = 0.1
+    SHADOW_SPREAD = -1
+    SHADOW_ALPHA = 0.04
 
     # Sidebar
     SIDEBAR_WIDTH = 240

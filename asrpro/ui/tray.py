@@ -147,20 +147,14 @@ def build_tray(main_window):  # pragma: no cover
         main_window.raise_()
         main_window.activateWindow()
         
-        # Navigate to keyboard section via JavaScript
-        if main_window.web_view and main_window.web_view.page():
-            main_window.web_view.page().runJavaScript("""
-                // Navigate to keyboard section
-                showSection('keyboard');
-                
-                // Update nav active state
-                document.querySelectorAll('.nav-item').forEach(item => {
-                    item.classList.remove('active');
-                });
-                document.querySelector('.nav-item[onclick="showSection(\\'keyboard\\')"]').classList.add('active');
-                
-                console.log('Navigated to keyboard settings');
-            """)
+        # Navigate to keyboard section (native UI)
+        try:
+            if hasattr(main_window, "sidebar"):
+                main_window.sidebar.set_active_section("keyboard")
+            if hasattr(main_window, "content_area"):
+                main_window.content_area.show_page("keyboard")
+        except Exception as e:
+            print(f"[Tray] Failed to navigate to keyboard page: {e}")
 
     def show_about():
         from PySide6.QtWidgets import QMessageBox
@@ -246,8 +240,6 @@ def build_tray(main_window):  # pragma: no cover
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
             font-weight: 400;
             min-width: 180px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
         }
         QMenu[darkMode="true"] { 
             background-color: rgba(30, 30, 30, 0.9);
