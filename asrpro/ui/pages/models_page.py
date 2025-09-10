@@ -17,7 +17,7 @@ class ModelCard(QWidget):
         
         self.name = name
         self.description = description
-        self.size = size
+        self.model_size = size  # Renamed to avoid conflict with QWidget.size()
         self.status = status
         
         self._setup_ui()
@@ -64,7 +64,7 @@ class ModelCard(QWidget):
         layout.addWidget(self.desc_label)
         
         # Size info
-        self.size_label = QLabel(f"Size: {self.size}")
+        self.size_label = QLabel(f"Size: {self.model_size}")
         size_font = QFont()
         size_font.setPointSize(Fonts.DESCRIPTION_SIZE)
         size_font.setWeight(Fonts.NORMAL)

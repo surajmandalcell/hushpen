@@ -30,16 +30,17 @@ class ToggleSwitch(QWidget):
         # Mouse tracking for hover effects (future enhancement)
         self.setMouseTracking(True)
     
-    @Property(float)
-    def knobPosition(self) -> float:
-        """Animated knob position property."""
+    def _get_knob_position(self) -> float:
+        """Get the current knob position."""
         return self._knob_position
     
-    @knobPosition.setter 
-    def knobPosition(self, position: float):
+    def _set_knob_position(self, position: float):
         """Set knob position and trigger repaint."""
         self._knob_position = position
         self.update()
+    
+    # Property for animation
+    knobPosition = Property(float, _get_knob_position, _set_knob_position)
     
     def isChecked(self) -> bool:
         """Return current checked state."""

@@ -45,9 +45,9 @@ class IconLoader:
     @classmethod 
     def _find_icon_file(cls, name: str) -> Optional[Path]:
         """Find the icon file in the assets directory."""
-        # Get the project root (assuming this is called from asrpro/ui/native/utils/)
+        # Get the project root (now from asrpro/ui/utils/)
         current_dir = Path(__file__).parent
-        project_root = current_dir.parent.parent.parent.parent
+        project_root = current_dir.parent.parent.parent
         
         icon_candidates = [
             project_root / "assets" / "icons" / f"{name}.svg",

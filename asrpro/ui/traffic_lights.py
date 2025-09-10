@@ -65,9 +65,28 @@ class TrafficLightButton(QWidget):
         painter.setBrush(QBrush(self.color))
         painter.drawEllipse(rect)
         
+        # Draw center dot (always visible)
+        self._draw_center_dot(painter, rect)
+        
         # Draw hover symbol if hovered
         if self.is_hovered and self.hover_symbol:
             self._draw_hover_symbol(painter, rect)
+    
+    def _draw_center_dot(self, painter: QPainter, rect: QRect):
+        """Draw a small centered dot on the traffic light."""
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(Qt.GlobalColor.black))
+        
+        # Draw small dot in center
+        center = rect.center()
+        dot_size = 2  # Small dot
+        dot_rect = QRect(
+            center.x() - dot_size // 2,
+            center.y() - dot_size // 2,
+            dot_size,
+            dot_size
+        )
+        painter.drawEllipse(dot_rect)
     
     def _draw_hover_symbol(self, painter: QPainter, rect: QRect):
         """Draw the hover symbol (×, −, or fullscreen symbol)."""

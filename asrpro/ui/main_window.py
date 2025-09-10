@@ -5,7 +5,7 @@ from PySide6.QtGui import QPainter, QBrush, QPainterPath, QPixmap
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QApplication, QGraphicsDropShadowEffect
 
 from .styles.dark_theme import DarkTheme, Dimensions
-from .sidebar import Sidebar
+from .sidebar import CompactSidebar as Sidebar
 from .content_area import ContentArea
 from .utils.icon_loader import IconLoader
 
@@ -149,16 +149,21 @@ class NativeMainWindow(QWidget):
                 self.hotkey = None
             
             # Close application
-            QApplication.instance().quit()
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
             
         except Exception as e:
             print(f"[Native] Error during cleanup: {e}")
-            QApplication.instance().quit()
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
     
     def apply_hotkey_change(self, hk: str):
         """Apply a new hotkey configuration."""
         try:
-            self.hotkey.set_hotkey(hk)
+            if self.hotkey is not None:
+                self.hotkey.set_hotkey(hk)
             print(f"[Native] Updated hotkey to: {hk}")
         except Exception as e:
             print(f"[Native] Failed to update hotkey: {e}")

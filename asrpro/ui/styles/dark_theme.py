@@ -9,7 +9,7 @@ class DarkTheme:
     
     # Background Colors
     MAIN_BG = QColor("#1e1e1e")
-    SIDEBAR_BG = QColor("#1a1a1a") 
+    SIDEBAR_BG = QColor(26, 26, 26, 200)  # Translucent for Mac-like effect
     CARD_BG = QColor("#252525")
     CONTROL_BG = QColor("#333333")
     HOVER_BG = QColor("#2a2a2a")
@@ -91,8 +91,8 @@ class Dimensions:
     
     # Sidebar
     SIDEBAR_WIDTH = 240
-    SIDEBAR_HEADER_HEIGHT = 38
-    SIDEBAR_PADDING_V = 16
+    SIDEBAR_HEADER_HEIGHT = 32
+    SIDEBAR_PADDING_V = 8
     SIDEBAR_PADDING_H = 0
     
     # Traffic Lights
@@ -101,15 +101,15 @@ class Dimensions:
     TRAFFIC_LIGHT_CONTAINER_PADDING = 20
     
     # Logo Section
-    LOGO_PADDING = 20
-    LOGO_ICON_SIZE = 16
-    LOGO_GAP = 10
+    LOGO_PADDING = 16
+    LOGO_ICON_SIZE = 20
+    LOGO_GAP = 8
     
     # Navigation Items
-    NAV_ITEM_PADDING_V = 12
-    NAV_ITEM_PADDING_H = 20
+    NAV_ITEM_PADDING_V = 8
+    NAV_ITEM_PADDING_H = 16
     NAV_ITEM_ICON_SIZE = 16
-    NAV_ITEM_GAP = 10
+    NAV_ITEM_GAP = 8
     
     # Content Area
     CONTENT_PADDING_V = 40
@@ -177,8 +177,8 @@ class Spacing:
     CONTAINER_PADDING_V = 40
     
     # Item spacing
-    ITEM_PADDING_V = 12
-    ITEM_PADDING_H = 20
+    ITEM_PADDING_V = 8
+    ITEM_PADDING_H = 16
     CONTROL_MARGIN = 20
     
     # Icon and text spacing

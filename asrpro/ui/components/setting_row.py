@@ -147,12 +147,12 @@ class SettingRow(QWidget):
         self.desc_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
         
         # Style control widget based on type
-        if self.control_widget:
+        if self.control_widget is not None:
             self._style_control_widget()
     
     def _style_control_widget(self):
         """Apply styles to the control widget."""
-        if self.control_type == "dropdown":
+        if self.control_type == "dropdown" and self.control_widget is not None:
             self.control_widget.setStyleSheet(f"""
                 QComboBox {{
                     background-color: {DarkTheme.CONTROL_BG.name()};
@@ -189,7 +189,7 @@ class SettingRow(QWidget):
                 }}
             """)
         
-        elif self.control_type == "folder":
+        elif self.control_type == "folder" and self.control_widget is not None:
             folder_style = f"""
                 QLineEdit {{
                     background-color: {DarkTheme.CONTROL_BG.name()};
@@ -217,7 +217,7 @@ class SettingRow(QWidget):
             """
             self.control_widget.setStyleSheet(folder_style)
         
-        elif self.control_type == "text":
+        elif self.control_type == "text" and self.control_widget is not None:
             self.control_widget.setStyleSheet(f"""
                 QLineEdit {{
                     background-color: {DarkTheme.CONTROL_BG.name()};
@@ -233,7 +233,7 @@ class SettingRow(QWidget):
                 }}
             """)
         
-        elif self.control_type == "readonly":
+        elif self.control_type == "readonly" and self.control_widget is not None:
             self.control_widget.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
     
     def set_value(self, value: Any):
