@@ -232,19 +232,46 @@ class MainWindow(QWidget):
                 self.main_window = main_window
             
             def javaScriptConsoleMessage(self, level, message, line, source):
-                # Intercept JavaScript console messages for window control
+                # Enhanced JavaScript-Python bridge with organized signal handling
+                
+                # Window control signals
                 if message == "HIDE_WINDOW_SIGNAL":
                     print("[Bridge] Hide window signal received")
                     self.main_window.hide()
                 elif message == "MINIMIZE_WINDOW_SIGNAL":
-                    print("[Bridge] Minimize window signal received")
+                    print("[Bridge] Minimize window signal received") 
                     self.main_window.showMinimized()
                 elif message == "EXIT_APP_SIGNAL":
                     print("[Bridge] Exit app signal received")
                     self.main_window.close_app()
+                
+                # Recording control signals
+                elif message == "START_RECORDING_SIGNAL":
+                    print("[Bridge] Start recording signal received")
+                    self.main_window._handle_start_recording()
+                elif message == "STOP_RECORDING_SIGNAL":
+                    print("[Bridge] Stop recording signal received")
+                    self.main_window._handle_stop_recording()
+                
+                # Settings signals  
+                elif message.startswith("SAVE_SETTINGS_SIGNAL"):
+                    print("[Bridge] Save settings signal received")
+                    settings_data = message.replace("SAVE_SETTINGS_SIGNAL ", "", 1) if " " in message else "{}"
+                    self.main_window._handle_save_settings(settings_data)
+                elif message == "LOAD_SETTINGS_SIGNAL":
+                    print("[Bridge] Load settings signal received")
+                    self.main_window._handle_load_settings()
+                
+                # File operation signals
+                elif message == "OPEN_MEDIA_FILE_SIGNAL":
+                    print("[Bridge] Open media file signal received")
+                    self.main_window._handle_open_media_file()
+                
                 else:
-                    # Pass through other console messages
-                    print(f"[WebEngine Console] {message} (line {line})")
+                    # Pass through other console messages (only log non-bridge messages)
+                    if not message.endswith("_SIGNAL"):
+                        print(f"[WebEngine Console] {message} (line {line})")
+                
                 super().javaScriptConsoleMessage(level, message, line, source)
         
         # Create and set the bridge page
@@ -746,6 +773,58 @@ img.lucide-icon.text-blue-400 {
             print(f"[Hotkey] Updated to: {hotkey}")
         except Exception as e:
             print(f"[Hotkey] Failed to update: {e}")
+    
+    # JavaScript Bridge Handler Methods
+    
+    def _handle_start_recording(self) -> None:
+        """Handle start recording signal from JavaScript."""
+        try:
+            self.overlay.show_smooth()
+            print("[Bridge] Recording started via UI")
+        except Exception as e:
+            print(f"[Bridge] Error starting recording: {e}")
+    
+    def _handle_stop_recording(self) -> None:
+        """Handle stop recording signal from JavaScript."""
+        try:
+            self.overlay.close_smooth()
+            print("[Bridge] Recording stopped via UI")
+        except Exception as e:
+            print(f"[Bridge] Error stopping recording: {e}")
+    
+    def _handle_save_settings(self, settings_json: str) -> None:
+        """Handle save settings signal from JavaScript."""
+        try:
+            import json
+            settings = json.loads(settings_json)
+            print(f"[Bridge] Saving settings: {settings}")
+            # TODO: Implement actual settings save logic
+        except Exception as e:
+            print(f"[Bridge] Error saving settings: {e}")
+    
+    def _handle_load_settings(self) -> None:
+        """Handle load settings signal from JavaScript."""
+        try:
+            print("[Bridge] Loading settings")
+            # TODO: Implement settings loading and inject into UI
+        except Exception as e:
+            print(f"[Bridge] Error loading settings: {e}")
+    
+    def _handle_open_media_file(self) -> None:
+        """Handle open media file signal from JavaScript."""
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            file, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Media File",
+                "",
+                "Media Files (*.wav *.mp3 *.mp4 *.avi *.mkv *.m4a *.flac *.ogg)"
+            )
+            if file:
+                print(f"[Bridge] Processing media file: {file}")
+                self._generate_srt(Path(file))
+        except Exception as e:
+            print(f"[Bridge] Error opening media file: {e}")
     
     def closeEvent(self, event: QCloseEvent) -> None:
         """Override close event to hide to tray instead of closing."""

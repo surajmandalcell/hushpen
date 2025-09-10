@@ -28,11 +28,20 @@ body {
   width: 1080px;
   height: 720px;
   background: #1e1e1e;
-  border-radius: 10px;
-  box-shadow: 0 22px 70px 4px rgba(0,0,0,0.56);
+  border-radius: 12px;
+  /* macOS-style beautiful shadow with multiple layers */
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.25),
+    0 16px 32px rgba(0, 0, 0, 0.3),
+    0 32px 64px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Add subtle backdrop blur effect */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .window-container {
@@ -759,7 +768,7 @@ h1 {
             
             <div class="section-title">Model Status</div>
             <div class="status-indicator">
-              <i data-lucide="check-circle" aria-label="Check icon"></i>
+              <i data-lucide="circle-check" aria-label="Check icon"></i>
               All models are functioning correctly
             </div>
           </div>
@@ -816,7 +825,7 @@ h1 {
                     <i data-lucide="github" aria-label="GitHub icon"></i> GitHub
                   </a>
                   <a href="https://mandalsuraj.com" target="_blank">
-                    <i data-lucide="globe-2" aria-label="Website icon"></i> Website
+                    <i data-lucide="globe" aria-label="Website icon"></i> Website
                   </a>
                 </div>
               </div>
@@ -827,7 +836,7 @@ h1 {
                 <p><strong>Technologies:</strong> PySide6, FastAPI, PyTorch, Whisper AI</p>
                 <p><strong>License:</strong> MIT License</p>
                 <div class="status-indicator">
-                  <i data-lucide="check-circle" aria-label="Status icon"></i>
+                  <i data-lucide="circle-check" aria-label="Status icon"></i>
                   Application running smoothly
                 </div>
               </div>
@@ -839,6 +848,56 @@ h1 {
   </div>
 
   <script>
+    // ===== JavaScript-Python Bridge =====
+    // These functions communicate with the Python backend via console signals
+    
+    /**
+     * Bridge object for Python-JavaScript communication
+     * All functions send console signals that are intercepted by the Python backend
+     */
+    const Bridge = {
+      // Window control functions
+      hideWindow() {
+        console.log('HIDE_WINDOW_SIGNAL');
+      },
+      
+      minimizeWindow() {
+        console.log('MINIMIZE_WINDOW_SIGNAL');
+      },
+      
+      exitApp() {
+        console.log('EXIT_APP_SIGNAL');
+      },
+      
+      // Application control functions
+      startRecording() {
+        console.log('START_RECORDING_SIGNAL');
+      },
+      
+      stopRecording() {
+        console.log('STOP_RECORDING_SIGNAL');
+      },
+      
+      // Settings functions
+      saveSettings(settings) {
+        console.log('SAVE_SETTINGS_SIGNAL', JSON.stringify(settings));
+      },
+      
+      loadSettings() {
+        console.log('LOAD_SETTINGS_SIGNAL');
+      },
+      
+      // File operations
+      openMediaFile() {
+        console.log('OPEN_MEDIA_FILE_SIGNAL');
+      }
+    };
+    
+    // ===== UI Management =====
+    
+    /**
+     * Show a specific content section and update navigation
+     */
     function showSection(sectionId) {
       // Hide all sections
       document.querySelectorAll('.content-section').forEach(section => {
@@ -855,8 +914,9 @@ h1 {
       event.target.closest('.nav-item').classList.add('active');
     }
     
+    // Legacy function for backward compatibility
     function exitApp() {
-      console.log('EXIT_APP_SIGNAL');
+      Bridge.exitApp();
     }
     
     function addKey() {
@@ -890,8 +950,77 @@ h1 {
       });
     });
     
-    // Initialize Lucide icons
-    lucide.createIcons();
+    // ===== Application Initialization =====
+    
+    /**
+     * Initialize window controls with bridge integration
+     */
+    function initializeWindowControls() {
+      const closeBtn = document.querySelector('.window-btn.close');
+      const minimizeBtn = document.querySelector('.window-btn.minimize');
+      
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          console.log('Close button clicked - hiding to tray');
+          Bridge.hideWindow();
+        });
+      }
+      
+      if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          console.log('Minimize button clicked');
+          Bridge.minimizeWindow();
+        });
+      }
+    }
+    
+    /**
+     * Initialize application settings
+     */
+    function initializeSettings() {
+      // Load settings on startup
+      Bridge.loadSettings();
+      
+      // Auto-save settings when changes are made
+      const settingsInputs = document.querySelectorAll('select, input[type="checkbox"], input[type="radio"]');
+      settingsInputs.forEach(input => {
+        input.addEventListener('change', () => {
+          // Collect all settings
+          const settings = {
+            // Add setting collection logic here
+          };
+          Bridge.saveSettings(settings);
+        });
+      });
+    }
+    
+    /**
+     * Main application initialization
+     */
+    function initializeApp() {
+      console.log('=== ASR Pro Application Starting ===');
+      
+      // Initialize all subsystems
+      initializeWindowControls();
+      initializeSettings();
+      
+      // Initialize Lucide icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+        console.log('Lucide icons initialized');
+      }
+      
+      console.log('Application initialization complete');
+    }
+    
+    // Start the application when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeApp);
+    } else {
+      initializeApp();
+    }
   </script>
 </body>
 </html>
