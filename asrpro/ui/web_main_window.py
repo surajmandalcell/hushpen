@@ -15,7 +15,7 @@ from typing import Optional, TYPE_CHECKING
 if os.name == "nt":
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
 
-from PySide6.QtCore import Qt, QUrl, QTimer, Signal, QObject, Slot
+from PySide6.QtCore import Qt, QUrl, QTimer, Signal, QObject, Slot, QPoint
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtGui import QColor, QCloseEvent
 
@@ -117,27 +117,54 @@ class MainWindow(QWidget):
         self.hotkey.start()
     
     def _setup_window(self) -> None:
-        """Configure the main window properties."""
+        """Configure the main window properties with enhanced macOS-like styling."""
         self.setWindowTitle("ASR Pro")
         self.setFixedSize(1080, 720)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         
-        # Enable translucent background for rounded corners
+        # Enable translucent background and depth effects
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         
-        # Set window background with rounded corners
+        # Enhanced window styling with deeper shadows and transparency
         self.setStyleSheet("""
             MainWindow {
                 background-color: transparent;
             }
             QWidget {
-                background-color: rgba(30, 30, 30, 0.95);
+                background-color: transparent;
                 border-radius: 12px;
             }
         """)
         
+        # Add macOS-style drop shadow
+        self._add_window_shadow()
+        
         # Create rounded window mask
         self._create_rounded_mask()
+    
+    def _add_window_shadow(self) -> None:
+        """Add macOS-style drop shadow effect using QGraphicsDropShadowEffect."""
+        try:
+            from PySide6.QtWidgets import QGraphicsDropShadowEffect
+            from PySide6.QtCore import QPointF
+            from PySide6.QtGui import QColor
+            
+            # Create multiple shadow layers for depth
+            shadow_effect = QGraphicsDropShadowEffect()
+            shadow_effect.setBlurRadius(30)  # Large blur for soft shadow
+            shadow_effect.setOffset(QPointF(0, 8))  # Slight downward offset
+            shadow_effect.setColor(QColor(0, 0, 0, 120))  # Semi-transparent black
+            
+            # Apply shadow to the web view if available
+            if hasattr(self, 'web_view') and self.web_view:
+                self.web_view.setGraphicsEffect(shadow_effect)
+            else:
+                # Apply to main window as fallback
+                self.setGraphicsEffect(shadow_effect)
+                
+        except Exception as e:
+            print(f"[Window] Failed to add shadow effect: {e}")
     
     def _create_rounded_mask(self) -> None:
         """Create a rounded window mask to match the CSS border radius."""
@@ -287,6 +314,20 @@ class MainWindow(QWidget):
                 elif message == "EXIT_APP_SIGNAL":
                     print("[Bridge] Exit app signal received")
                     self.main_window.close_app()
+                
+                # Window dragging signals
+                elif message.startswith("DRAG_START_SIGNAL"):
+                    coordinates = message.replace("DRAG_START_SIGNAL ", "").split()
+                    if len(coordinates) == 2:
+                        x, y = int(coordinates[0]), int(coordinates[1])
+                        self.main_window._handle_drag_start(x, y)
+                elif message.startswith("DRAG_MOVE_SIGNAL"):
+                    deltas = message.replace("DRAG_MOVE_SIGNAL ", "").split()
+                    if len(deltas) == 2:
+                        dx, dy = int(deltas[0]), int(deltas[1])
+                        self.main_window._handle_drag_move(dx, dy)
+                elif message == "DRAG_END_SIGNAL":
+                    self.main_window._handle_drag_end()
                 
                 # Enterprise component signal routing
                 elif message.endswith("_SIGNAL"):
@@ -869,6 +910,34 @@ img.lucide-icon.text-blue-400 {
                 QTimer.singleShot(100, self._load_content)
         
         print("[Window] Window shown")
+    
+    def _handle_drag_start(self, x: int, y: int) -> None:
+        """Handle drag start from JavaScript."""
+        try:
+            self._dragging = True
+            current_pos = self.pos()
+            self._drag_position = QPoint(x, y)
+            self._window_start_position = current_pos
+        except Exception as e:
+            print(f"[Window] Drag start error: {e}")
+    
+    def _handle_drag_move(self, dx: int, dy: int) -> None:
+        """Handle drag move from JavaScript."""
+        try:
+            if self._dragging and hasattr(self, '_window_start_position'):
+                new_pos = self._window_start_position + QPoint(dx, dy)
+                self.move(new_pos)
+        except Exception as e:
+            print(f"[Window] Drag move error: {e}")
+    
+    def _handle_drag_end(self) -> None:
+        """Handle drag end from JavaScript."""
+        try:
+            self._dragging = False
+            if hasattr(self, '_window_start_position'):
+                delattr(self, '_window_start_position')
+        except Exception as e:
+            print(f"[Window] Drag end error: {e}")
     
     def _route_component_signal(self, message: str) -> None:
         """Route signals to appropriate enterprise components."""

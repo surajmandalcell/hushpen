@@ -49,7 +49,9 @@ body {
 
 .sidebar {
   width: 240px;
-  background: #252525;
+  background: rgba(37, 37, 37, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
 }
@@ -551,6 +553,39 @@ body {
   font-size: 11px;
   color: #999;
 }
+
+/* Sidebar Footer Styles */
+.sidebar-footer {
+  padding: 12px 10px;
+  border-top: 1px solid #333;
+  margin-top: auto;
+}
+
+.footer-item {
+  margin-bottom: 4px;
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.footer-item:hover {
+  opacity: 1;
+}
+
+.footer-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Window dragging areas */
+.drag-handle {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.sidebar-header,
+.logo {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
 </style>
 </head>
 <body>
@@ -567,7 +602,14 @@ body {
         </div>
         
         <div class="logo">
-          <img src="../assets/icon.png" width="20" height="20" style="filter: brightness(0) invert(1);" alt="ASR Pro">
+          <div class="logo-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <path d="M12 19v4"/>
+              <path d="M8 23h8"/>
+            </svg>
+          </div>
           <span>ASR Pro</span>
         </div>
         
@@ -591,6 +633,18 @@ body {
           <div class="nav-item" data-section="about">
             <i data-lucide="info"></i>
             <span>About</span>
+          </div>
+        </div>
+        
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <div class="nav-item footer-item" data-section="about">
+            <i data-lucide="info"></i>
+            <span>About ASR Pro</span>
+          </div>
+          <div class="nav-item footer-item" onclick="console.log('EXIT_APP_SIGNAL')">
+            <i data-lucide="power"></i>
+            <span>Exit</span>
           </div>
         </div>
       </div>
@@ -868,6 +922,45 @@ body {
       document.getElementById(sectionId).classList.add('active');
     }
 
+    // Window dragging functionality
+    let isDragging = false;
+    let dragOffset = { x: 0, y: 0 };
+
+    function setupWindowDragging() {
+      const dragHandles = document.querySelectorAll('.sidebar-header, .logo');
+      
+      dragHandles.forEach(handle => {
+        handle.addEventListener('mousedown', (e) => {
+          // Avoid dragging when clicking on buttons
+          if (e.target.closest('.window-btn')) return;
+          
+          isDragging = true;
+          dragOffset.x = e.clientX;
+          dragOffset.y = e.clientY;
+          
+          // Send drag start signal to Python
+          console.log(`DRAG_START_SIGNAL ${e.clientX} ${e.clientY}`);
+        });
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const deltaX = e.clientX - dragOffset.x;
+        const deltaY = e.clientY - dragOffset.y;
+        
+        // Send drag move signal to Python
+        console.log(`DRAG_MOVE_SIGNAL ${deltaX} ${deltaY}`);
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          console.log('DRAG_END_SIGNAL');
+        }
+      });
+    }
+
     // Initialize the application
     document.addEventListener('DOMContentLoaded', function() {
       console.log('=== ASR Pro Application Starting ===');
@@ -879,6 +972,9 @@ body {
           switchTab(sectionId);
         });
       });
+      
+      // Setup window dragging
+      setupWindowDragging();
       
       // Initialize Lucide icons
       lucide.createIcons();
