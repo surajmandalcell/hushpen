@@ -6,7 +6,12 @@ soft shadow painted on a translucent background for a mac-like look.
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPainter, QBrush, QPainterPath, QPixmap, QColor, QPen
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QApplication, QGraphicsDropShadowEffect
+from PySide6.QtWidgets import (
+    QWidget,
+    QHBoxLayout,
+    QApplication,
+    QGraphicsDropShadowEffect,
+)
 
 from .styles.dark_theme import DarkTheme, Dimensions
 from .sidebar import SpokemlySidebar as Sidebar
@@ -20,27 +25,27 @@ from ..hotkey import ToggleHotkey
 
 class NativeMainWindow(QWidget):
     """Pixel-perfect native PyQt recreation of the original HTML/CSS interface."""
-    
+
     def __init__(self):
         super().__init__()
-        
+
         # Core application components
         self.model_manager = ModelManager()
         self.hotkey = ToggleHotkey(self._on_hotkey_toggle)
         self.overlay = Overlay()
-        
+
         self._setup_window()
         self._setup_ui()
         self._apply_theme()
-        
+
         # Preload common icons for better performance
         IconLoader.preload_common_icons()
-        
+
         # Start hotkey monitoring
         self.hotkey.start()
-        
+
         print("[Native] Native PyQt main window initialized successfully")
-    
+
     def _setup_window(self):
         """Configure the main window properties."""
         # Set window properties
@@ -52,48 +57,57 @@ class NativeMainWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # Use our own painter-based soft shadow instead of widget effect
-    
+
     def _setup_ui(self):
         """Set up the main UI layout."""
         # Main horizontal layout
         main_layout = QHBoxLayout(self)
-        # Reserve room for the painted shadow so content doesn't overlap
-        m = Dimensions.WINDOW_SHADOW_MARGIN
-        main_layout.setContentsMargins(m, m, m, m)
+        # Reserve room for the painted shadow so content doesn't overlap.
+        blur = Dimensions.SHADOW_BLUR
+        spread = Dimensions.SHADOW_SPREAD
+        offx = Dimensions.SHADOW_OFFSET_X
+        offy = Dimensions.SHADOW_OFFSET_Y
+        left = blur + spread + max(0, -offx)
+        right = blur + spread + max(0, offx)
+        top = blur + spread + max(0, -offy)
+        bottom = blur + spread + max(0, offy)
+        main_layout.setContentsMargins(left, top, right, bottom)
         main_layout.setSpacing(0)
-        
+
         # Sidebar
         self.sidebar = Sidebar(self)
         self.sidebar.page_requested.connect(self._on_page_requested)
         self.sidebar.window_action.connect(self._on_window_action)
         main_layout.addWidget(self.sidebar)
-        
+
         # Content area
         self.content_area = ContentArea(self)
         main_layout.addWidget(self.content_area, 1)  # Take remaining space
-    
+
     def _apply_theme(self):
         """Apply the dark theme palette and styling."""
         # Set application palette
         palette = DarkTheme.get_palette()
         self.setPalette(palette)
-        
+
         # Set window-specific styling
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             NativeMainWindow {{
                 background-color: transparent;
             }}
-        """)
-    
+        """
+        )
+
     def _add_drop_shadow(self):
         """(Deprecated) We now paint a custom soft shadow in paintEvent."""
         return
-    
+
     def _on_page_requested(self, section_id: str):
         """Handle page navigation requests from sidebar."""
         self.content_area.show_page(section_id)
         print(f"[Native] Navigated to section: {section_id}")
-    
+
     def _on_window_action(self, action: str):
         """Handle window control actions."""
         if action == "close":
@@ -102,7 +116,7 @@ class NativeMainWindow(QWidget):
             self.showMinimized()
         elif action == "hide":
             self.hide()
-    
+
     def _on_hotkey_toggle(self, recording: bool):
         """Handle hotkey toggle events."""
         print(f"[Native] Hotkey toggle: recording={recording}")
@@ -113,33 +127,42 @@ class NativeMainWindow(QWidget):
                 self.overlay.close_smooth()
         except Exception as e:
             print(f"[Native] Error toggling overlay: {e}")
-    
+
     def paintEvent(self, event):
         """Paint soft outer shadow and inner rounded background with AA."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.HighQualityAntialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
-        r = Dimensions.WINDOW_RADIUS
-        m = Dimensions.WINDOW_SHADOW_MARGIN
-        outer_rect = self.rect()
-        inner_rect = outer_rect.adjusted(m, m, -m, -m)
+            r = Dimensions.WINDOW_RADIUS
+            blur = Dimensions.SHADOW_BLUR
+            spread = Dimensions.SHADOW_SPREAD
+            offx = Dimensions.SHADOW_OFFSET_X
+            offy = Dimensions.SHADOW_OFFSET_Y
+            outer_rect = self.rect()
+            left = blur + spread + max(0, -offx)
+            right = blur + spread + max(0, offx)
+            top = blur + spread + max(0, -offy)
+            bottom = blur + spread + max(0, offy)
+            inner_rect = outer_rect.adjusted(left, top, -right, -bottom)
 
-        # Soft shadow: layered expanded rounded-rect rings with fading alpha
-        self._paint_soft_shadow(painter, inner_rect, r)
+            # Soft shadow: layered expanded rounded-rect rings with fading alpha
+            self._paint_soft_shadow(painter, inner_rect, r)
 
-        # Fill inner rounded rectangle (pixel-snapped to reduce jaggies)
-        path = QPainterPath()
-        rr = inner_rect.adjusted(0.5, 0.5, -0.5, -0.5)
-        path.addRoundedRect(rr, r, r)
-        painter.fillPath(path, QBrush(DarkTheme.MAIN_BG))
+            # Fill inner rounded rectangle (pixel-snapped to reduce jaggies)
+            path = QPainterPath()
+            rr = inner_rect.adjusted(0.5, 0.5, -0.5, -0.5)
+            path.addRoundedRect(rr, r, r)
+            painter.fillPath(path, QBrush(DarkTheme.MAIN_BG))
 
-        # Subtle inner border to visually reinforce rounded edge
-        pen = QPen(QColor(255, 255, 255, 20))
-        pen.setWidth(1)
-        painter.setPen(pen)
-        painter.drawRoundedRect(rr, r, r)
+            # Subtle inner border to visually reinforce rounded edge
+            pen = QPen(QColor(255, 255, 255, 20))
+            pen.setWidth(1)
+            painter.setPen(pen)
+            painter.drawRoundedRect(rr, r, r)
+        finally:
+            painter.end()
 
     def resizeEvent(self, event):
         """No mask — only repaint on resize for smooth edges."""
@@ -179,69 +202,75 @@ class NativeMainWindow(QWidget):
         super().mouseReleaseEvent(event)
 
     def _paint_soft_shadow(self, painter: QPainter, inner_rect, radius: int):
-        """Paints a soft, mac-like shadow around inner_rect.
+        """Paint a CSS-like shadow: 0 22px 70px 4px rgba(0,0,0,0.56).
 
-        We layer a few expanded rounded-rect rings with decreasing alpha
-        to approximate a blurred shadow without expensive offscreen blur.
+        Approximated with layered rounded-rect rings.
         """
-        # Shadow parameters (tuned for subtle, wide feather)
-        spread = 18   # how far the shadow extends
-        steps = 12    # number of gradient rings
-        base_alpha = 120  # max alpha at the edge
+        offx = Dimensions.SHADOW_OFFSET_X
+        offy = Dimensions.SHADOW_OFFSET_Y
+        blur = Dimensions.SHADOW_BLUR
+        spread = Dimensions.SHADOW_SPREAD
+        target_alpha = int(255 * Dimensions.SHADOW_ALPHA)
+
+        steps = 28
+
+        base_inner = inner_rect.adjusted(-spread, -spread, spread, spread)
+        base_inner = base_inner.translated(offx, offy)
 
         for i in range(steps):
             t = i / (steps - 1)
-            # Ease-out curve for nicer falloff
-            alpha = int(base_alpha * (1.0 - t) ** 2)
+            grow = int(spread + t * blur)
+            # Eased falloff; divide to avoid oversaturation across layers
+            alpha = int(target_alpha * (1.0 - t) ** 2 / 2.0)
             if alpha <= 0:
                 continue
-            grow = int(spread * (t + 0.2))  # small offset to avoid harsh edge
-            outer = inner_rect.adjusted(-grow, -grow, grow, grow)
+
+            outer = inner_rect.adjusted(-grow, -grow, grow, grow).translated(offx, offy)
             outer_r = radius + grow
 
             outer_path = QPainterPath()
             outer_path.addRoundedRect(outer, outer_r, outer_r)
-            inner_path = QPainterPath()
-            inner_path.addRoundedRect(inner_rect, radius, radius)
-            ring = outer_path.subtracted(inner_path)
 
-            color = QColor(0, 0, 0, alpha)
-            painter.fillPath(ring, color)
-    
+            inner_path = QPainterPath()
+            inner_path.addRoundedRect(base_inner, radius + spread, radius + spread)
+
+            ring = outer_path.subtracted(inner_path)
+            painter.fillPath(ring, QColor(0, 0, 0, alpha))
+
     def closeEvent(self, event):
         """Override close event to hide to tray instead of closing."""
         event.ignore()
         self.hide()
         print("[Native] Window hidden to tray")
-    
+
     def showEvent(self, event):
         """Override show event for proper display."""
         super().showEvent(event)
         print("[Native] Window shown")
-    
+
     def close_app(self):
         """Clean shutdown of the application."""
         try:
             print("[Native] Shutting down application...")
-            
+
             # Cleanup model manager
             self.model_manager.unload()
-            
+
             # Cleanup hotkey system
-            if hasattr(self, 'hotkey'):
+            if hasattr(self, "hotkey"):
                 self.hotkey = None
-            
+
             # Close application
             app = QApplication.instance()
             if app is not None:
                 app.quit()
-            
+
         except Exception as e:
             print(f"[Native] Error during cleanup: {e}")
             app = QApplication.instance()
             if app is not None:
                 app.quit()
-    
+
     def apply_hotkey_change(self, hk: str):
         """Apply a new hotkey configuration."""
         try:
@@ -250,7 +279,7 @@ class NativeMainWindow(QWidget):
             print(f"[Native] Updated hotkey to: {hk}")
         except Exception as e:
             print(f"[Native] Failed to update hotkey: {e}")
-    
+
     def set_tray_icon(self, tray_icon):
         """Set the system tray icon reference."""
         self.tray_icon = tray_icon
