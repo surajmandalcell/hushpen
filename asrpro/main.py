@@ -122,6 +122,19 @@ def launch():  # pragma: no cover
     window.set_tray_icon(tray)  # Store tray reference for theme updates
     tray.show()
 
+    # Show settings on startup (open main window to General page)
+    try:
+        # Ensure the General settings page is visible
+        if hasattr(window, "sidebar"):
+            window.sidebar.set_active_section("general")
+        if hasattr(window, "content_area"):
+            window.content_area.show_page("general")
+        window.show()
+        window.raise_()
+        window.activateWindow()
+    except Exception as e:
+        print(f"[Bootstrap] Failed to show settings on startup: {e}")
+
     # Start server if enabled in config
     server_thread = None
     if config.is_server_enabled():
@@ -130,7 +143,7 @@ def launch():  # pragma: no cover
         )
         server_thread.start()
 
-    window.hide()
+    # Window is already shown; continue to event loop
     exit_code = 0
     try:
         exit_code = app.exec()

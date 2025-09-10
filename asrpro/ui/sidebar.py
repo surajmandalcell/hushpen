@@ -101,14 +101,14 @@ class SpokenlyNavigationItem(QWidget):
             bg_color = QColor(10, 132, 255, 60)  # Darker blue background for active items
             has_left_border = True
         elif self.is_hovered:
-            text_color = DarkTheme.PRIMARY_TEXT.name()
-            icon_color = DarkTheme.PRIMARY_TEXT.name()
+            text_color = DarkTheme.SECONDARY_TEXT.name()
+            icon_color = DarkTheme.SECONDARY_TEXT.name()
             bg_color = DarkTheme.HOVER_WHITE_BG
             has_left_border = False
         else:
             # Inactive items have lower opacity like in reference
-            text_color = DarkTheme.SECONDARY_TEXT.darker(130).name()  # More faded
-            icon_color = DarkTheme.SECONDARY_TEXT.darker(130).name()
+            text_color = DarkTheme.SECONDARY_TEXT.darker(160).name()  # More faded
+            icon_color = DarkTheme.SECONDARY_TEXT.darker(160).name()
             bg_color = None
             has_left_border = False
         
@@ -177,64 +177,18 @@ class SpokenlyLogoSection(QWidget):
     def _setup_ui(self):
         """Set up the logo section."""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 24)  # More space like Spokenly
-        layout.setSpacing(8)
-        
-        # App icon (PNG with white filter)
-        self.icon_label = QLabel()
-        self.icon_label.setFixedSize(16, 16)  # Compact size
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Load app icon (PNG) with white color filter
-        from pathlib import Path
-        from PySide6.QtGui import QPixmap, QPainter, QBrush, QColor
-        
-        icon_path = Path(__file__).parent.parent.parent / "assets" / "icon.png"
-        if icon_path.exists():
-            # Load original pixmap
-            original_pixmap = QPixmap(str(icon_path))
-            if not original_pixmap.isNull():
-                # Create white-tinted version
-                white_pixmap = QPixmap(original_pixmap.size())
-                white_pixmap.fill(Qt.GlobalColor.transparent)
-                
-                painter = QPainter(white_pixmap)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                
-                # Draw original pixmap
-                painter.drawPixmap(0, 0, original_pixmap)
-                
-                # Apply white overlay with SourceIn composition mode
-                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-                painter.fillRect(white_pixmap.rect(), QBrush(DarkTheme.PRIMARY_TEXT))  # Brighter white for logo
-                
-                painter.end()
-                
-                # Scale to desired size
-                scaled_pixmap = white_pixmap.scaled(
-                    16, 16,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.icon_label.setPixmap(scaled_pixmap)
-            else:
-                # Fallback if pixmap couldn't be loaded
-                icon = IconLoader.load_icon("mic", 16, DarkTheme.PRIMARY_TEXT.name())
-                self.icon_label.setPixmap(icon.pixmap(16, 16))
-        else:
-            # Fallback to mic icon
-            icon = IconLoader.load_icon("mic", 16, DarkTheme.PRIMARY_TEXT.name())
-            self.icon_label.setPixmap(icon.pixmap(16, 16))
-        
-        layout.addWidget(self.icon_label)
+        layout.setContentsMargins(20, 16, 20, 16)  # Slightly tighter since no icon
+        layout.setSpacing(6)
         
         # App name - brighter like Spokenly
         self.name_label = QLabel("ASR Pro")
         font = QFont()
-        font.setPointSize(14)  # Slightly larger
-        font.setWeight(Fonts.BOLD)
+        font.setPointSize(13)  # Slightly smaller than before
+        font.setWeight(Fonts.SEMIBOLD)
         self.name_label.setFont(font)
-        self.name_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")  # Brighter text
+        # 80% opacity of primary text
+        r, g, b = DarkTheme.PRIMARY_TEXT.red(), DarkTheme.PRIMARY_TEXT.green(), DarkTheme.PRIMARY_TEXT.blue()
+        self.name_label.setStyleSheet(f"color: rgba({r}, {g}, {b}, 204);")
         
         layout.addWidget(self.name_label)
         layout.addStretch()
@@ -275,7 +229,7 @@ class SpokemlySidebar(QWidget):
         header_layout.addWidget(self.traffic_lights)
         layout.addWidget(header_widget)
         
-        # Logo section
+        # Sidebar title (text only; icon removed)
         self.logo_section = SpokenlyLogoSection()
         layout.addWidget(self.logo_section)
         
@@ -303,6 +257,15 @@ class SpokemlySidebar(QWidget):
         
         # Add stretch to push footer to bottom
         layout.addStretch()
+
+        # Subtle separator above footer like the reference UI
+        separator = QWidget()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet(
+            "margin-left: 12px; margin-right: 12px;"
+            "background-color: rgba(255, 255, 255, 0.06);"
+        )
+        layout.addWidget(separator)
         
         # Footer section (no header)
         footer_container = QWidget()
@@ -356,5 +319,5 @@ class SpokemlySidebar(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Fill with main background color (flipped with content)
-        painter.fillRect(self.rect(), DarkTheme.MAIN_BG)
+        # Fill with translucent sidebar background for visual separation
+        painter.fillRect(self.rect(), DarkTheme.SIDEBAR_BG)
