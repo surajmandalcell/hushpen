@@ -82,8 +82,9 @@ def build_tray(main_window):  # pragma: no cover
     for candidate in [
         Path(__file__).parent / ".." / ".." / "assets" / "icon.png",
         Path(__file__).parent / ".." / ".." / "assets" / "icon.ico",
+        Path(__file__).parent / ".." / ".." / "assets" / "icon.svg",
     ]:
-        print(f"[Tray] Checking icon path: {candidate}")
+        print(f"[Tray] Checking icon path: {candidate.resolve()}")
         if candidate.exists():
             print(f"[Tray] Found icon file: {candidate}")
             # Load the original icon
@@ -93,15 +94,19 @@ def build_tray(main_window):  # pragma: no cover
                 print(f"[Tray] Failed to load icon from: {candidate}")
                 continue
 
+            # Ensure proper sizing for tray icon
+            if original_pixmap.width() > 32 or original_pixmap.height() > 32:
+                original_pixmap = original_pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
             # Check if we need to invert for dark theme
-            if is_dark_theme() and candidate.suffix.lower() == ".png":
+            if is_dark_theme() and candidate.suffix.lower() in [".png", ".svg"]:
                 print("[Tray] Applying dark theme inversion")
                 # Invert colors for dark theme
                 inverted_pixmap = invert_icon(original_pixmap)
                 icon = QIcon(inverted_pixmap)
             else:
                 print("[Tray] Using original icon")
-                icon = QIcon(str(candidate.resolve()))
+                icon = QIcon(original_pixmap)
 
             icon_found = True
             print(f"[Tray] Icon loaded successfully from: {candidate}")
@@ -111,15 +116,17 @@ def build_tray(main_window):  # pragma: no cover
 
     if not icon_found:
         # Create a simple fallback icon if no icon file found
-        fallback_pixmap = QPixmap(16, 16)
+        fallback_pixmap = QPixmap(32, 32)
         fallback_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(fallback_pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setBrush(
             Qt.GlobalColor.gray if not is_dark_theme() else Qt.GlobalColor.lightGray
         )
-        painter.drawEllipse(2, 2, 12, 12)
+        painter.drawEllipse(4, 4, 24, 24)
         painter.end()
         icon = QIcon(fallback_pixmap)
+        print("[Tray] Using fallback icon")
 
     tray = QSystemTrayIcon(icon)
     menu = QMenu()
@@ -182,24 +189,44 @@ def build_tray(main_window):  # pragma: no cover
     menu.addAction("About", show_about)
     menu.addAction("Exit", lambda: main_window.close_app())
 
-    # Try to apply icons for actions if present in assets/icons
-    def icon_path(name: str) -> str | None:
-        p = Path(__file__).parent / ".." / ".." / "assets" / "icons" / f"{name}.svg"
-        return str(p.resolve()) if p.exists() else None
+    # Apply icons for menu actions with enhanced handling
+    def load_menu_icon(name: str) -> QIcon:
+        """Load an icon for menu items with proper sizing and theme handling."""
+        icon_candidates = [
+            Path(__file__).parent / ".." / ".." / "assets" / "icons" / f"{name}.svg",
+            Path(__file__).parent / ".." / ".." / "assets" / "icons" / f"{name}.png",
+        ]
+        
+        for icon_path in icon_candidates:
+            if icon_path.exists():
+                pixmap = QPixmap(str(icon_path.resolve()))
+                if not pixmap.isNull():
+                    # Scale to appropriate menu icon size
+                    if pixmap.width() > 16 or pixmap.height() > 16:
+                        pixmap = pixmap.scaled(16, 16, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    
+                    # Apply theme-appropriate coloring for SVG icons
+                    if is_dark_theme() and icon_path.suffix.lower() == ".svg":
+                        # For dark theme, ensure icons are visible
+                        pixmap = invert_icon(pixmap) if name not in ["circle-check"] else pixmap
+                    
+                    return QIcon(pixmap)
+        
+        # Return empty icon if no file found
+        print(f"[Tray] Warning: No icon found for {name}")
+        return QIcon()
 
-    def set_icon_for_action(action_text: str, filename: str):
-        path = icon_path(filename)
-        if path:
-            from PySide6.QtGui import QIcon as _QIcon
-            
+    def set_icon_for_action(action_text: str, icon_name: str):
+        """Set icon for a menu action by matching action text."""
+        icon = load_menu_icon(icon_name)
+        if not icon.isNull():
             for act in menu.actions():
-                if act.text().endswith(action_text):
-                    icon = _QIcon(path)
-                    # Ensure icon is properly sized for menu
+                if action_text in act.text():
                     act.setIcon(icon)
+                    print(f"[Tray] Applied {icon_name} icon to '{act.text()}' action")
                     break
 
-    # Set icons for menu items with fallbacks
+    # Set icons for menu items
     set_icon_for_action("Show Window", "monitor")
     set_icon_for_action("Process Media File", "folder-open") 
     set_icon_for_action("Hotkey Settings", "keyboard")

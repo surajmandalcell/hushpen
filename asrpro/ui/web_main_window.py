@@ -55,8 +55,13 @@ from ..hotkey import ToggleHotkey
 from .components import SettingsManager, RecordingManager, KeyboardManager, AboutManager
 
 
-class WindowBridge(QObject):
-    """Bridge class for JavaScript-Python communication."""
+class WebChannelBridge(QObject):
+    """Enhanced bridge class for JavaScript-Python communication using QWebChannel."""
+    
+    # Signals for frontend communication
+    settingsLoaded = Signal(str)
+    recordingStatusChanged = Signal(bool)
+    modelStatusChanged = Signal(str)
     
     def __init__(self, main_window):
         super().__init__()
@@ -73,6 +78,75 @@ class WindowBridge(QObject):
         """Minimize window."""
         print("[Bridge] Minimize window called")
         self.main_window.showMinimized()
+    
+    @Slot()
+    def exitApp(self):
+        """Exit the application."""
+        print("[Bridge] Exit app called")
+        self.main_window.close_app()
+    
+    @Slot(str)
+    def loadModel(self, model_id):
+        """Load a specific AI model."""
+        try:
+            print(f"[Bridge] Loading model: {model_id}")
+            self.main_window.model_manager.load(model_id)
+            self.modelStatusChanged.emit(f"Model {model_id} loaded successfully")
+        except Exception as e:
+            print(f"[Bridge] Model loading error: {e}")
+            self.modelStatusChanged.emit(f"Error loading model: {str(e)}")
+    
+    @Slot()
+    def startRecording(self):
+        """Start audio recording."""
+        try:
+            print("[Bridge] Starting recording")
+            self.main_window.overlay.show_smooth()
+            self.recordingStatusChanged.emit(True)
+        except Exception as e:
+            print(f"[Bridge] Recording start error: {e}")
+    
+    @Slot()
+    def stopRecording(self):
+        """Stop audio recording."""
+        try:
+            print("[Bridge] Stopping recording")
+            self.main_window.overlay.close_smooth()
+            self.recordingStatusChanged.emit(False)
+        except Exception as e:
+            print(f"[Bridge] Recording stop error: {e}")
+    
+    @Slot(str)
+    def saveSettings(self, settings_json):
+        """Save application settings."""
+        try:
+            import json
+            settings = json.loads(settings_json)
+            print(f"[Bridge] Saving settings: {settings}")
+            # TODO: Implement actual settings persistence
+        except Exception as e:
+            print(f"[Bridge] Settings save error: {e}")
+    
+    @Slot(result=str)
+    def getSystemInfo(self):
+        """Get system information as JSON string."""
+        try:
+            import platform
+            import psutil
+            import json
+            
+            info = {
+                "platform": f"{platform.system()} {platform.release()}",
+                "python_version": platform.python_version(),
+                "memory_usage": {
+                    "percent": psutil.virtual_memory().percent,
+                    "available": psutil.virtual_memory().available
+                }
+            }
+            return json.dumps(info)
+        except Exception as e:
+            print(f"[Bridge] System info error: {e}")
+            return json.dumps({"error": str(e)})
 
 
 class MainWindow(QWidget):
@@ -89,6 +163,8 @@ class MainWindow(QWidget):
         self.tray_icon = None
         self.hotkey = ToggleHotkey(self._on_hotkey_toggle)
         self.web_view: Optional[QWebEngineView] = None
+        self.web_channel: Optional[QWebChannel] = None
+        self.bridge = WebChannelBridge(self)
         self.overlay = Overlay()
         
         # Enterprise component managers
@@ -123,6 +199,14 @@ class MainWindow(QWidget):
         # Enable translucent background and depth effects
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        
+        # Enable macOS-style blur effects if available
+        try:
+            # Windows 11 acrylic effect (Mica-like)
+            if hasattr(Qt.WidgetAttribute, 'WA_MacShowFocusRect'):
+                self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        except:
+            pass
         
         # Enhanced window styling with deeper shadows and transparency
         self.setStyleSheet("""
@@ -247,7 +331,10 @@ class MainWindow(QWidget):
                 settings.setAttribute(_QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
                 settings.setAttribute(_QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True)
         
-        # Set up the custom bridge page immediately
+        # Set up QWebChannel for enhanced communication
+        self._setup_web_channel()
+        
+        # Set up the custom bridge page
         self._setup_bridge_page()
         
         # Connect signals
@@ -258,6 +345,27 @@ class MainWindow(QWidget):
         layout.addWidget(self.web_view)
         
         print("[WebEngine] WebEngine view initialized successfully")
+    
+    def _setup_web_channel(self) -> None:
+        """Setup QWebChannel for enhanced JavaScript-Python communication."""
+        if not WEBENGINE_AVAILABLE or not _QWebChannel or not self.web_view:
+            print("[WebChannel] QWebChannel not available")
+            return
+        
+        try:
+            # Create and configure QWebChannel
+            self.web_channel = _QWebChannel()
+            self.web_channel.registerObject("bridge", self.bridge)
+            
+            # Set the web channel on the page
+            if hasattr(self.web_view, 'page') and self.web_view.page():
+                self.web_view.page().setWebChannel(self.web_channel)
+                print("[WebChannel] QWebChannel setup completed")
+            else:
+                print("[WebChannel] Unable to set web channel - no page available")
+                
+        except Exception as e:
+            print(f"[WebChannel] Setup error: {e}")
     
     def _setup_bridge_page(self) -> None:
         """Setup the custom bridge page for JavaScript-Python communication."""
@@ -448,6 +556,11 @@ html, body {
     width: 100%;
     height: 100%;
     overflow: hidden;
+    /* Enable hardware acceleration for smoother animations and blur effects */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000;
 }
 
 /* Icon styling for both img and inline SVG */
@@ -504,6 +617,21 @@ img.lucide-icon.text-blue-400 {
     box-shadow: none !important;
     margin: 0 !important;
     overflow: hidden;
+    /* Enhanced backdrop effects for better integration */
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+}
+
+/* Optimized sidebar performance */
+.sidebar {
+    /* Optimize rendering with containment */
+    contain: layout style paint;
+    will-change: auto;
+}
+
+/* Remove unnecessary transforms for better performance */
+.nav-item {
+    contain: layout style;
 }
 
 /* Mac-style traffic light buttons */
@@ -563,61 +691,40 @@ img.lucide-icon.text-blue-400 {
     background: rgba(0, 0, 0, 0.8);
 }
 
-/* Animations */
-.nav-item {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.nav-item:hover {
-    transform: translateX(2px);
-    background-color: rgba(255, 255, 255, 0.05);
-}
-
+/* Optimized animations - removed expensive transforms */
 .toggle {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.toggle:hover {
-    transform: scale(1.05);
+    transition: background-color 0.2s ease;
 }
 
 .model-card {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .model-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    background: #2a2a2a;
+    border-color: #444;
 }
 
 .btn-primary, .btn-secondary {
-    transition: all 0.2s ease;
-}
-
-.btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.2s ease;
 }
 
 .btn-secondary:hover {
-    transform: translateY(-1px);
     background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Fade-in animation for the entire window */
+/* Simple fade-in animation */
 @keyframes windowFadeIn {
     from {
         opacity: 0;
-        transform: scale(0.95);
     }
     to {
         opacity: 1;
-        transform: scale(1);
     }
 }
 
 .window {
-    animation: windowFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: windowFadeIn 0.2s ease-out;
 }
 
 /* Smooth scrolling */
@@ -628,6 +735,12 @@ img.lucide-icon.text-blue-400 {
         
         # Insert custom styles
         html_content = html_content.replace('</style>', custom_styles + '\n</style>')
+        
+        # Inject QWebChannel script
+        qwebchannel_script = '''
+        <script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
+        '''
+        html_content = html_content.replace('</head>', qwebchannel_script + '\n</head>')
         
         return html_content
     
@@ -701,6 +814,36 @@ img.lucide-icon.text-blue-400 {
         console.log('Body computed style:', getComputedStyle(document.body).background);
         console.log('Main elements found:', document.querySelectorAll('.window, .sidebar, .nav-item').length);
         
+        // Initialize QWebChannel connection
+        function initializeWebChannel() {
+            if (typeof QWebChannel !== 'undefined') {
+                new QWebChannel(qt.webChannelTransport, function(channel) {
+                    window.bridge = channel.objects.bridge;
+                    console.log('QWebChannel bridge connected');
+                    
+                    // Connect bridge signals
+                    if (window.bridge) {
+                        window.bridge.settingsLoaded.connect(function(settings) {
+                            console.log('Settings loaded:', settings);
+                        });
+                        
+                        window.bridge.recordingStatusChanged.connect(function(recording) {
+                            console.log('Recording status changed:', recording);
+                        });
+                        
+                        window.bridge.modelStatusChanged.connect(function(status) {
+                            console.log('Model status changed:', status);
+                        });
+                    }
+                    
+                    setupWindowControls();
+                });
+            } else {
+                console.log('QWebChannel not available, using fallback communication');
+                setupWindowControls();
+            }
+        }
+        
         // Add window control handlers
         function setupWindowControls() {
             const closeBtn = document.querySelector('.window-btn.close');
@@ -711,7 +854,11 @@ img.lucide-icon.text-blue-400 {
                 closeBtn.onclick = function(e) {
                     e.preventDefault();
                     console.log('Close button clicked - hiding to tray');
-                    window.hideWindow();
+                    if (window.bridge && window.bridge.hideWindow) {
+                        window.bridge.hideWindow();
+                    } else {
+                        console.log('HIDE_WINDOW_SIGNAL');
+                    }
                 };
             }
             
@@ -719,8 +866,10 @@ img.lucide-icon.text-blue-400 {
                 minimizeBtn.onclick = function(e) {
                     e.preventDefault();
                     console.log('Minimize button clicked');
-                    if (window.windowBridge) {
-                        window.windowBridge.minimizeWindow();
+                    if (window.bridge && window.bridge.minimizeWindow) {
+                        window.bridge.minimizeWindow();
+                    } else {
+                        console.log('MINIMIZE_WINDOW_SIGNAL');
                     }
                 };
             }
@@ -728,12 +877,22 @@ img.lucide-icon.text-blue-400 {
             if (maximizeBtn) {
                 maximizeBtn.onclick = function(e) {
                     e.preventDefault();
-                    console.log('Maximize button clicked');
+                    console.log('Maximize button clicked - hiding to tray');
+                    if (window.bridge && window.bridge.hideWindow) {
+                        window.bridge.hideWindow();
+                    } else {
+                        console.log('HIDE_WINDOW_SIGNAL');
+                    }
                 };
             }
         }
         
-        setupWindowControls();
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeWebChannel);
+        } else {
+            initializeWebChannel();
+        }
 
         // Ensure sidebar logo uses local icon.png without touching source HTML
         (function installSidebarLogo(){

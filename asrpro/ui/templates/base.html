@@ -49,7 +49,7 @@ body {
 
 .sidebar {
   width: 240px;
-  background: rgba(37, 37, 37, 0.85);
+  background: #1a1a1a;
   display: flex;
   flex-direction: column;
 }
@@ -59,7 +59,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  background: #252525;
+  background: #1a1a1a;
 }
 
 .window-controls {
@@ -92,7 +92,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 20px;
-  border-bottom: 1px solid #333;
+  background: #1a1a1a;
 }
 
 .logo svg {
@@ -111,30 +111,30 @@ body {
 
 .nav-list {
   flex: 1;
-  padding: 10px;
+  padding: 16px 0;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 12px 20px;
   color: #999;
   cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s ease;
   font-size: 13px;
   pointer-events: auto;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  will-change: color, background-color;
 }
 
 .nav-item:hover {
   color: #fff;
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.08);
 }
 
 .nav-item.active {
   color: #0a84ff;
-  background: rgba(10,132,255,0.1);
+  background: rgba(10,132,255,0.15);
 }
 
 .nav-item svg, .nav-item .icon {
@@ -177,16 +177,10 @@ body {
 
 .content-section {
   display: none;
-  animation: fadeIn 0.3s ease-in-out;
 }
 
 .content-section.active {
   display: block;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .content-section h1 {
@@ -566,25 +560,19 @@ body {
 
 /* Sidebar Footer Styles */
 .sidebar-footer {
-  padding: 12px 10px;
+  padding: 10px 0;
   margin-top: auto;
-  background: rgba(37, 37, 37, 0.85) !important;
+  background: #1a1a1a;
 }
 
 .footer-item {
-  margin-bottom: 4px;
   opacity: 0.8;
   font-size: 12px;
-  border-top: none !important;
   background: transparent !important;
 }
 
 .footer-item:hover {
   opacity: 1;
-}
-
-.footer-item:last-child {
-  margin-bottom: 0;
 }
 
 /* No window dragging */
@@ -644,7 +632,7 @@ body {
             <img src="assets/icons/info.svg" class="icon" alt="Info">
             <span>About ASR Pro</span>
           </div>
-          <div class="nav-item footer-item" onclick="console.log('EXIT_APP_SIGNAL')">
+          <div class="nav-item footer-item" onclick="window.asrBridge.exitApp()">
             <img src="assets/icons/power.svg" class="icon" alt="Power">
             <span>Exit</span>
           </div>
@@ -896,32 +884,114 @@ body {
   </div>
 
   <script>
-    // JavaScript bridge functions
-    function hideWindow() {
-      console.log('HIDE_WINDOW_SIGNAL');
-    }
+    // Enhanced bridge functions with QWebChannel support
+    window.asrBridge = {
+      // Fallback functions for console-based communication
+      hideWindow: function() {
+        if (window.bridge && window.bridge.hideWindow) {
+          window.bridge.hideWindow();
+        } else {
+          console.log('HIDE_WINDOW_SIGNAL');
+        }
+      },
+      
+      minimizeWindow: function() {
+        if (window.bridge && window.bridge.minimizeWindow) {
+          window.bridge.minimizeWindow();
+        } else {
+          console.log('MINIMIZE_WINDOW_SIGNAL');
+        }
+      },
+      
+      exitApp: function() {
+        if (window.bridge && window.bridge.exitApp) {
+          window.bridge.exitApp();
+        } else {
+          console.log('EXIT_APP_SIGNAL');
+        }
+      },
+      
+      // Model management
+      loadModel: function(modelId) {
+        if (window.bridge && window.bridge.loadModel) {
+          window.bridge.loadModel(modelId);
+        } else {
+          console.log('LOAD_MODEL_SIGNAL', modelId);
+        }
+      },
+      
+      // Recording controls
+      startRecording: function() {
+        if (window.bridge && window.bridge.startRecording) {
+          window.bridge.startRecording();
+        } else {
+          console.log('START_RECORDING_SIGNAL');
+        }
+      },
+      
+      stopRecording: function() {
+        if (window.bridge && window.bridge.stopRecording) {
+          window.bridge.stopRecording();
+        } else {
+          console.log('STOP_RECORDING_SIGNAL');
+        }
+      },
+      
+      // Settings management
+      saveSettings: function(settings) {
+        if (window.bridge && window.bridge.saveSettings) {
+          window.bridge.saveSettings(JSON.stringify(settings));
+        } else {
+          console.log('SAVE_SETTINGS_SIGNAL', JSON.stringify(settings));
+        }
+      },
+      
+      // System information
+      getSystemInfo: function() {
+        if (window.bridge && window.bridge.getSystemInfo) {
+          return window.bridge.getSystemInfo();
+        } else {
+          console.log('GET_SYSTEM_INFO_SIGNAL');
+          return '{}';
+        }
+      }
+    };
+    
+    // Backward compatibility aliases
+    window.hideWindow = window.asrBridge.hideWindow;
+    window.minimizeWindow = window.asrBridge.minimizeWindow;
+    window.exitApp = window.asrBridge.exitApp;
 
-    function minimizeWindow() {
-      console.log('MINIMIZE_WINDOW_SIGNAL');
-    }
-
-    function exitApp() {
-      console.log('EXIT_APP_SIGNAL');
-    }
-
-    // Tab switching functionality with optimized performance
+    // High-performance tab switching with requestAnimationFrame
+    let currentActiveSection = 'general';
+    let isTransitioning = false;
+    
     function switchTab(sectionId) {
-      // Use efficient class toggling
-      const navItems = document.querySelectorAll('.nav-item');
-      const sections = document.querySelectorAll('.content-section');
+      if (isTransitioning || currentActiveSection === sectionId) return;
       
-      // Remove active classes in single pass
-      navItems.forEach(item => item.classList.remove('active'));
-      sections.forEach(section => section.classList.remove('active'));
+      isTransitioning = true;
       
-      // Add active classes
-      document.querySelector(`[data-section="${sectionId}"]`).classList.add('active');
-      document.getElementById(sectionId).classList.add('active');
+      requestAnimationFrame(() => {
+        // Cache DOM queries for performance
+        const activeNavItem = document.querySelector('.nav-item.active');
+        const activeSection = document.querySelector('.content-section.active');
+        const newNavItem = document.querySelector(`[data-section="${sectionId}"]`);
+        const newSection = document.getElementById(sectionId);
+        
+        // Batch DOM updates
+        if (activeNavItem) activeNavItem.classList.remove('active');
+        if (activeSection) activeSection.classList.remove('active');
+        
+        if (newNavItem) newNavItem.classList.add('active');
+        if (newSection) newSection.classList.add('active');
+        
+        currentActiveSection = sectionId;
+        
+        // Reset transition flag after animation
+        setTimeout(() => {
+          isTransitioning = false;
+        }, 100);
+      });
     }
 
     // No window dragging functionality
@@ -930,23 +1000,35 @@ body {
     document.addEventListener('DOMContentLoaded', function() {
       // ASR Pro Application Starting
       
-      // Set up navigation with optimized event handling
-      document.querySelectorAll('.nav-item').forEach(item => {
-        item.addEventListener('click', function() {
-          const sectionId = this.getAttribute('data-section');
-          switchTab(sectionId);
+      // Use event delegation for better performance
+      const navContainer = document.querySelector('.nav-list');
+      if (navContainer) {
+        navContainer.addEventListener('click', function(e) {
+          const navItem = e.target.closest('.nav-item');
+          if (navItem && navItem.hasAttribute('data-section')) {
+            const sectionId = navItem.getAttribute('data-section');
+            switchTab(sectionId);
+          }
         });
-      });
+      }
       
-      // No window dragging setup
-      
-      // Initialize Lucide icons
-      // Using local SVG files instead of Lucide createIcons
+      // Handle footer navigation separately if needed
+      const footerContainer = document.querySelector('.sidebar-footer');
+      if (footerContainer) {
+        footerContainer.addEventListener('click', function(e) {
+          const navItem = e.target.closest('.nav-item[data-section]');
+          if (navItem) {
+            const sectionId = navItem.getAttribute('data-section');
+            switchTab(sectionId);
+          }
+        });
+      }
       
       // Load settings
       console.log('LOAD_SETTINGS_SIGNAL');
       
       // Application initialization complete
+      console.log('ASR Pro initialized with optimized navigation');
     });
 
     // Enterprise component event handler
