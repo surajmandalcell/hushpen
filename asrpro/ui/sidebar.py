@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QPainter, QPen, QIcon, QPixmap, QBrush
+from PySide6.QtGui import QFont, QPainter, QPen, QIcon, QPixmap, QBrush, QColor
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 from .styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
@@ -67,6 +67,7 @@ class SpokenlyNavigationItem(QWidget):
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(14, 14)  # Smaller icons
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setContentsMargins(0, 2, 0, 0)  # Move icon down slightly
         layout.addWidget(self.icon_label)
         
         # Text label
@@ -97,7 +98,7 @@ class SpokenlyNavigationItem(QWidget):
         if self.is_active:
             text_color = DarkTheme.ACCENT_BLUE.name()
             icon_color = DarkTheme.ACCENT_BLUE.name()
-            bg_color = DarkTheme.ACCENT_BLUE_BG
+            bg_color = QColor(10, 132, 255, 60)  # Darker blue background for active items
             has_left_border = True
         elif self.is_hovered:
             text_color = DarkTheme.PRIMARY_TEXT.name()
@@ -125,7 +126,7 @@ class SpokenlyNavigationItem(QWidget):
                     background-color: rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()}); 
                     border-radius: 6px; 
                     margin: 2px 8px;
-                    border-left: 3px solid {DarkTheme.ACCENT_BLUE.name()};
+                    border-left: 2px solid {DarkTheme.ACCENT_BLUE.name()};
                     padding-left: 17px;
                 }}
             """)
@@ -181,7 +182,7 @@ class SpokenlyLogoSection(QWidget):
         
         # App icon (PNG with white filter)
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(20, 20)  # Slightly larger
+        self.icon_label.setFixedSize(16, 16)  # Compact size
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Load app icon (PNG) with white color filter
@@ -211,19 +212,19 @@ class SpokenlyLogoSection(QWidget):
                 
                 # Scale to desired size
                 scaled_pixmap = white_pixmap.scaled(
-                    20, 20,
+                    16, 16,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
                 self.icon_label.setPixmap(scaled_pixmap)
             else:
                 # Fallback if pixmap couldn't be loaded
-                icon = IconLoader.load_icon("mic", 20, DarkTheme.PRIMARY_TEXT.name())
-                self.icon_label.setPixmap(icon.pixmap(20, 20))
+                icon = IconLoader.load_icon("mic", 16, DarkTheme.PRIMARY_TEXT.name())
+                self.icon_label.setPixmap(icon.pixmap(16, 16))
         else:
             # Fallback to mic icon
-            icon = IconLoader.load_icon("mic", 20, DarkTheme.PRIMARY_TEXT.name())
-            self.icon_label.setPixmap(icon.pixmap(20, 20))
+            icon = IconLoader.load_icon("mic", 16, DarkTheme.PRIMARY_TEXT.name())
+            self.icon_label.setPixmap(icon.pixmap(16, 16))
         
         layout.addWidget(self.icon_label)
         
@@ -231,7 +232,7 @@ class SpokenlyLogoSection(QWidget):
         self.name_label = QLabel("ASR Pro")
         font = QFont()
         font.setPointSize(14)  # Slightly larger
-        font.setWeight(Fonts.MEDIUM)
+        font.setWeight(Fonts.BOLD)
         self.name_label.setFont(font)
         self.name_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")  # Brighter text
         
@@ -351,10 +352,9 @@ class SpokemlySidebar(QWidget):
         self.about_item.set_active(section_id == "about")
     
     def paintEvent(self, event):
-        """Custom paint event for sidebar background like Spokenly."""
+        """Custom paint event for sidebar background."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Fill with slightly darker background like Spokenly
-        sidebar_color = DarkTheme.SIDEBAR_BG.darker(105)  # Slightly darker
-        painter.fillRect(self.rect(), sidebar_color)
+        # Fill with main background color (flipped with content)
+        painter.fillRect(self.rect(), DarkTheme.MAIN_BG)

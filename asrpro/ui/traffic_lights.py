@@ -97,22 +97,27 @@ class TrafficLightButton(QWidget):
         """Draw macOS-style 50% darker dot with animation."""
         painter.setPen(Qt.PenStyle.NoPen)
         
-        # Create 50% darker version of the button color
-        darker_color = self.color.darker(150)  # 50% darker
+        # Create much darker version of the button color (closer to black)
+        darker_color = self.color.darker(300)  # Much darker for better visibility
         darker_color.setAlphaF(self._dot_opacity)  # Apply animated opacity
         
         painter.setBrush(QBrush(darker_color))
         
-        # Draw small dot in center (macOS style size)
-        center = rect.center()
-        dot_size = 3  # macOS-like dot size
-        dot_rect = QRect(
-            center.x() - dot_size // 2,
-            center.y() - dot_size // 2,
-            dot_size,
-            dot_size
+        # Draw properly sized and centered dot (macOS style)
+        from PySide6.QtCore import QRectF, QPointF
+        
+        # Get precise center as floating point
+        center_f = QPointF(rect.width() / 2.0, rect.height() / 2.0)
+        dot_radius = 2.0  # Proper macOS dot size
+        
+        # Use QRectF for precise floating point centering - ensure perfect center
+        dot_rect_f = QRectF(
+            center_f.x() - dot_radius,
+            center_f.y() - dot_radius,
+            dot_radius * 2,
+            dot_radius * 2
         )
-        painter.drawEllipse(dot_rect)
+        painter.drawEllipse(dot_rect_f)
 
 
 class TrafficLights(QWidget):
