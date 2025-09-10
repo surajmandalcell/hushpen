@@ -101,9 +101,7 @@ class MainWindow(QWidget):
         import time
         self._start_time = time.time()
         
-        # Window dragging variables  
-        self._dragging = False
-        self._drag_position = None
+        # No window dragging
         
         # Window configuration
         self._setup_window()
@@ -183,31 +181,7 @@ class MainWindow(QWidget):
         super().resizeEvent(event)
         self._create_rounded_mask()
     
-    def mousePressEvent(self, event):
-        """Handle mouse press for window dragging."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._dragging = True
-            self._drag_position = event.globalPos() - self.frameGeometry().topLeft()
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-    
-    def mouseMoveEvent(self, event):
-        """Handle mouse move for window dragging."""
-        if (event.buttons() & Qt.MouseButton.LeftButton) and self._dragging and self._drag_position:
-            self.move(event.globalPos() - self._drag_position)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-    
-    def mouseReleaseEvent(self, event):
-        """Handle mouse release to stop dragging."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._dragging = False
-            self._drag_position = None
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
+    # No mouse drag event handlers
     
     def _setup_ui(self) -> None:
         """Initialize the user interface components."""
@@ -315,19 +289,7 @@ class MainWindow(QWidget):
                     print("[Bridge] Exit app signal received")
                     self.main_window.close_app()
                 
-                # Window dragging signals
-                elif message.startswith("DRAG_START_SIGNAL"):
-                    coordinates = message.replace("DRAG_START_SIGNAL ", "").split()
-                    if len(coordinates) == 2:
-                        x, y = int(coordinates[0]), int(coordinates[1])
-                        self.main_window._handle_drag_start(x, y)
-                elif message.startswith("DRAG_MOVE_SIGNAL"):
-                    deltas = message.replace("DRAG_MOVE_SIGNAL ", "").split()
-                    if len(deltas) == 2:
-                        dx, dy = int(deltas[0]), int(deltas[1])
-                        self.main_window._handle_drag_move(dx, dy)
-                elif message == "DRAG_END_SIGNAL":
-                    self.main_window._handle_drag_end()
+                # No window dragging signals
                 
                 # Enterprise component signal routing
                 elif message.endswith("_SIGNAL"):
@@ -416,13 +378,13 @@ class MainWindow(QWidget):
     def _process_html(self, html_content: str) -> str:
         """Process HTML content for proper display in WebEngine."""
         
-        # Remove external CDN scripts
-        html_content = re.sub(
-            r'<script[^>]+src="https?://[^"]*lucide[^"]*"[^>]*></script>',
-            '',
-            html_content,
-            flags=re.IGNORECASE
-        )
+        # Keep external CDN scripts - don't remove Lucide
+        # html_content = re.sub(
+        #     r'<script[^>]+src="https?://[^"]*lucide[^"]*"[^>]*></script>',
+        #     '',
+        #     html_content,
+        #     flags=re.IGNORECASE
+        # )
         
         # Replace Lucide icons with dynamically generated SVGs
         def replace_icon(match):
@@ -466,15 +428,16 @@ class MainWindow(QWidget):
                 # Fallback to a simple placeholder
                 return f'<svg class="{classes}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"{style}><circle cx="12" cy="12" r="1"/></svg>'
         
-        html_content = re.sub(
-            r'<i[^>]+data-lucide="([^"]+)"[^>]*></i>',
-            replace_icon,
-            html_content,
-            flags=re.IGNORECASE
-        )
+        # Use CDN Lucide icons instead of Python generation
+        # html_content = re.sub(
+        #     r'<i[^>]+data-lucide="([^"]+)"[^>]*></i>',
+        #     replace_icon,
+        #     html_content,
+        #     flags=re.IGNORECASE
+        # )
         
-        # Remove lucide.createIcons() calls
-        html_content = html_content.replace('lucide.createIcons();', '')
+        # Keep lucide.createIcons() calls - needed for CDN icons
+        # html_content = html_content.replace('lucide.createIcons();', '')
         
         # Add custom styles for proper display
         custom_styles = """
@@ -911,33 +874,7 @@ img.lucide-icon.text-blue-400 {
         
         print("[Window] Window shown")
     
-    def _handle_drag_start(self, x: int, y: int) -> None:
-        """Handle drag start from JavaScript."""
-        try:
-            self._dragging = True
-            current_pos = self.pos()
-            self._drag_position = QPoint(x, y)
-            self._window_start_position = current_pos
-        except Exception as e:
-            print(f"[Window] Drag start error: {e}")
-    
-    def _handle_drag_move(self, dx: int, dy: int) -> None:
-        """Handle drag move from JavaScript."""
-        try:
-            if self._dragging and hasattr(self, '_window_start_position'):
-                new_pos = self._window_start_position + QPoint(dx, dy)
-                self.move(new_pos)
-        except Exception as e:
-            print(f"[Window] Drag move error: {e}")
-    
-    def _handle_drag_end(self) -> None:
-        """Handle drag end from JavaScript."""
-        try:
-            self._dragging = False
-            if hasattr(self, '_window_start_position'):
-                delattr(self, '_window_start_position')
-        except Exception as e:
-            print(f"[Window] Drag end error: {e}")
+    # No drag handlers
     
     def _route_component_signal(self, message: str) -> None:
         """Route signals to appropriate enterprise components."""
