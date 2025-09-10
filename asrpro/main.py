@@ -10,8 +10,8 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QTimer
 
-# Use the new native PyQt UI
-from .ui.native.main_window import NativeMainWindow as MainWindow
+# Use the native PyQt UI
+from .ui.main_window import NativeMainWindow as MainWindow
 from .ui.tray import build_tray
 from .server import ServerThread
 from .config import config
