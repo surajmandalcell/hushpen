@@ -24,11 +24,10 @@ class MacButton(QPushButton):
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
-                filter: brightness(1.02);
             }}
             QPushButton:pressed {{
-                transform: translateY(1px);
-                filter: brightness(0.96);
+                padding-top: 7px; /* simulate 1px down press */
+                padding-bottom: 5px;
             }}
             """
         )

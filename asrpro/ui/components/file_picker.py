@@ -44,7 +44,7 @@ class FilePicker(QWidget):
                 font-size: {Fonts.BASE_SIZE}px;
             }}
             QPushButton:hover {{ background-color: {DarkTheme.BUTTON_HOVER_BG.name()}; }}
-            QPushButton:pressed {{ transform: translateY(1px); }}
+            QPushButton:pressed {{ padding-top: 9px; padding-bottom: 7px; }}
             """
         )
 

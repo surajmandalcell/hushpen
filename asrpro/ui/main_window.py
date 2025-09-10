@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from .styles.dark_theme import DarkTheme, Dimensions
+from .layout.window import build_root_and_frame, compute_shadow_margins, apply_rounded_clip
 from .sidebar import SpokemlySidebar as Sidebar
 from .content_area import ContentArea
 from .utils.icon_loader import IconLoader
@@ -60,25 +61,8 @@ class NativeMainWindow(QWidget):
 
     def _setup_ui(self):
         """Set up the main UI layout."""
-        # Root layout on the window (reserves shadow space)
-        root_layout = QHBoxLayout(self)
-        # Reserve room for the painted shadow so content doesn't overlap.
-        blur = Dimensions.SHADOW_BLUR
-        spread = Dimensions.SHADOW_SPREAD
-        offx = Dimensions.SHADOW_OFFSET_X
-        offy = Dimensions.SHADOW_OFFSET_Y
-        left = blur + spread + max(0, -offx)
-        right = blur + spread + max(0, offx)
-        top = blur + spread + max(0, -offy)
-        bottom = blur + spread + max(0, offy)
-        root_layout.setContentsMargins(left, top, right, bottom)
-        root_layout.setSpacing(0)
-
-        # Frame container that will be rounded-clipped to avoid child overflow
-        self._frame = QWidget(self)
-        main_layout = QHBoxLayout(self._frame)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        # Build root + inner frame via helpers
+        root_layout, self._frame, main_layout = build_root_and_frame(self)
 
         # Sidebar
         self.sidebar = Sidebar(self)
@@ -90,10 +74,7 @@ class NativeMainWindow(QWidget):
         self.content_area = ContentArea(self)
         main_layout.addWidget(self.content_area, 1)  # Take remaining space
 
-        # Add frame to root
-        root_layout.addWidget(self._frame)
-        # Apply initial rounded clip on frame
-        self._update_frame_mask()
+        # Root already holds frame; clip applied by helper
 
     def _apply_theme(self):
         """Apply the dark theme palette and styling."""
@@ -147,15 +128,8 @@ class NativeMainWindow(QWidget):
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
             r = Dimensions.WINDOW_RADIUS
-            blur = Dimensions.SHADOW_BLUR
-            spread = Dimensions.SHADOW_SPREAD
-            offx = Dimensions.SHADOW_OFFSET_X
-            offy = Dimensions.SHADOW_OFFSET_Y
             outer_rect = self.rect()
-            left = blur + spread + max(0, -offx)
-            right = blur + spread + max(0, offx)
-            top = blur + spread + max(0, -offy)
-            bottom = blur + spread + max(0, offy)
+            left, top, right, bottom = compute_shadow_margins()
             inner_rect = outer_rect.adjusted(left, top, -right, -bottom)
 
             # Soft shadow: layered expanded rounded-rect rings with fading alpha
@@ -178,24 +152,11 @@ class NativeMainWindow(QWidget):
     def resizeEvent(self, event):
         """No mask — only repaint on resize for smooth edges."""
         super().resizeEvent(event)
-        self._update_frame_mask()
+        apply_rounded_clip(self._frame, Dimensions.WINDOW_RADIUS)
 
     def _update_frame_mask(self):
-        """Clip the inner frame so children don't overflow rounded corners."""
-        try:
-            from PySide6.QtGui import QRegion
-        except Exception:
-            return
-        if not hasattr(self, "_frame") or self._frame is None:
-            return
-        r = Dimensions.WINDOW_RADIUS
-        rect = self._frame.rect()
-        if rect.isEmpty():
-            return
-        path = QPainterPath()
-        path.addRoundedRect(rect, r, r)
-        region = QRegion(path.toFillPolygon().toPolygon())
-        self._frame.setMask(region)
+        if hasattr(self, "_frame") and self._frame is not None:
+            apply_rounded_clip(self._frame, Dimensions.WINDOW_RADIUS)
 
     # Drag support for frameless window (mac-like behavior)
     def mousePressEvent(self, event):
