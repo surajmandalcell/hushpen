@@ -1,7 +1,7 @@
 """macOS-style traffic light window controls."""
 
-from PySide6.QtCore import Qt, Signal, QRect, QPoint
-from PySide6.QtGui import QPainter, QPen, QBrush, QPainterPath, QFont
+from PySide6.QtCore import Qt, Signal, QRect, QPoint, QPropertyAnimation, QEasingCurve, Property
+from PySide6.QtGui import QPainter, QPen, QBrush, QPainterPath, QFont, QColor
 from PySide6.QtWidgets import QWidget, QHBoxLayout
 
 from .styles.dark_theme import DarkTheme, Dimensions
@@ -14,9 +14,10 @@ class TrafficLightButton(QWidget):
     
     def __init__(self, color: str, hover_symbol: str = "", parent=None):
         super().__init__(parent)
-        self.color = color
+        self.color = QColor(color)
         self.hover_symbol = hover_symbol
         self.is_hovered = False
+        self._dot_opacity = 0.0  # For animation
         
         # Fixed size matching original design
         size = Dimensions.TRAFFIC_LIGHT_SIZE
@@ -25,6 +26,23 @@ class TrafficLightButton(QWidget):
         
         # Enable mouse tracking for hover effects
         self.setMouseTracking(True)
+        
+        # Animation for dot opacity
+        self._animation = QPropertyAnimation(self, b"dotOpacity")
+        self._animation.setDuration(200)  # Fast animation like macOS
+        self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    
+    def _get_dot_opacity(self) -> float:
+        """Get the current dot opacity."""
+        return self._dot_opacity
+    
+    def _set_dot_opacity(self, opacity: float):
+        """Set dot opacity and trigger repaint."""
+        self._dot_opacity = opacity
+        self.update()
+    
+    # Property for animation
+    dotOpacity = Property(float, _get_dot_opacity, _set_dot_opacity)
     
     def _get_tooltip(self) -> str:
         """Get tooltip text based on button color."""
@@ -45,13 +63,19 @@ class TrafficLightButton(QWidget):
     def enterEvent(self, event):
         """Handle mouse enter events."""
         self.is_hovered = True
-        self.update()
+        # Animate dot appearance
+        self._animation.setStartValue(self._dot_opacity)
+        self._animation.setEndValue(1.0)
+        self._animation.start()
         super().enterEvent(event)
     
     def leaveEvent(self, event):
         """Handle mouse leave events."""
         self.is_hovered = False
-        self.update()
+        # Animate dot disappearance
+        self._animation.setStartValue(self._dot_opacity)
+        self._animation.setEndValue(0.0)
+        self._animation.start()
         super().leaveEvent(event)
     
     def paintEvent(self, event):
@@ -65,21 +89,23 @@ class TrafficLightButton(QWidget):
         painter.setBrush(QBrush(self.color))
         painter.drawEllipse(rect)
         
-        # Draw center dot (always visible)
-        self._draw_center_dot(painter, rect)
-        
-        # Draw hover symbol if hovered
-        if self.is_hovered and self.hover_symbol:
-            self._draw_hover_symbol(painter, rect)
+        # Draw animated center dot on hover (macOS style)
+        if self._dot_opacity > 0.0:
+            self._draw_macos_dot(painter, rect)
     
-    def _draw_center_dot(self, painter: QPainter, rect: QRect):
-        """Draw a small centered dot on the traffic light."""
+    def _draw_macos_dot(self, painter: QPainter, rect: QRect):
+        """Draw macOS-style 50% darker dot with animation."""
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(Qt.GlobalColor.black))
         
-        # Draw small dot in center
+        # Create 50% darker version of the button color
+        darker_color = self.color.darker(150)  # 50% darker
+        darker_color.setAlphaF(self._dot_opacity)  # Apply animated opacity
+        
+        painter.setBrush(QBrush(darker_color))
+        
+        # Draw small dot in center (macOS style size)
         center = rect.center()
-        dot_size = 2  # Small dot
+        dot_size = 3  # macOS-like dot size
         dot_rect = QRect(
             center.x() - dot_size // 2,
             center.y() - dot_size // 2,
@@ -87,35 +113,6 @@ class TrafficLightButton(QWidget):
             dot_size
         )
         painter.drawEllipse(dot_rect)
-    
-    def _draw_hover_symbol(self, painter: QPainter, rect: QRect):
-        """Draw the hover symbol (×, −, or fullscreen symbol)."""
-        painter.setPen(QPen(Qt.GlobalColor.black, 1.2))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        
-        center = rect.center()
-        size = 3  # Symbol size
-        
-        if self.hover_symbol == "×":  # Close
-            # Draw X
-            painter.drawLine(center.x() - size, center.y() - size,
-                           center.x() + size, center.y() + size)
-            painter.drawLine(center.x() + size, center.y() - size,
-                           center.x() - size, center.y() + size)
-        
-        elif self.hover_symbol == "−":  # Minimize
-            # Draw horizontal line
-            painter.drawLine(center.x() - size, center.y(),
-                           center.x() + size, center.y())
-        
-        elif self.hover_symbol == "⛶":  # Hide/Maximize
-            # Draw two small rectangles (stacked windows symbol)
-            rect1 = QRect(center.x() - size + 1, center.y() - size + 1, 
-                         size, size - 1)
-            rect2 = QRect(center.x() - size + 2, center.y() - size + 2,
-                         size, size - 1)
-            painter.drawRect(rect1)
-            painter.drawRect(rect2)
 
 
 class TrafficLights(QWidget):

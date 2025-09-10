@@ -1,4 +1,4 @@
-"""Completely remade sidebar widget with proper compact spacing."""
+"""Sidebar styled like Spokenly app with proper sections and spacing."""
 
 from typing import List, Dict, Any
 from PySide6.QtCore import Qt, Signal
@@ -10,8 +10,35 @@ from .utils.icon_loader import IconLoader
 from .traffic_lights import TrafficLights
 
 
-class CompactNavigationItem(QWidget):
-    """Compact navigation item with proper spacing."""
+class SectionHeader(QWidget):
+    """Section header widget like in Spokenly app."""
+    
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self.title = title
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        """Set up the section header layout."""
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 8)  # More top margin for spacing
+        layout.setSpacing(0)
+        
+        # Section title
+        self.title_label = QLabel(self.title.upper())
+        font = QFont()
+        font.setPointSize(10)  # Smaller font for headers
+        font.setWeight(Fonts.MEDIUM)
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.5)  # Letter spacing
+        self.title_label.setFont(font)
+        self.title_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.darker(150).name()};")  # Darker secondary text
+        
+        layout.addWidget(self.title_label)
+        layout.addStretch()
+
+
+class SpokenlyNavigationItem(QWidget):
+    """Navigation item styled like Spokenly app."""
     
     clicked = Signal(str)  # section_id
     
@@ -33,19 +60,19 @@ class CompactNavigationItem(QWidget):
     def _setup_ui(self):
         """Set up the navigation item layout."""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)  # Compact padding
-        layout.setSpacing(8)  # Small gap between icon and text
+        layout.setContentsMargins(20, 0, 20, 0)  # Same padding as Spokenly
+        layout.setSpacing(12)  # Gap between icon and text
         
-        # Icon label
+        # Icon label - smaller icons like in reference
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(16, 16)
+        self.icon_label.setFixedSize(14, 14)  # Smaller icons
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.icon_label)
         
         # Text label
         self.text_label = QLabel(self.text)
         font = QFont()
-        font.setPointSize(13)
+        font.setPointSize(12)  # Slightly smaller text
         font.setWeight(Fonts.NORMAL)
         self.text_label.setFont(font)
         layout.addWidget(self.text_label)
@@ -56,7 +83,7 @@ class CompactNavigationItem(QWidget):
     
     def _apply_styles(self):
         """Apply base styles."""
-        self.setFixedHeight(28)  # Compact height
+        self.setFixedHeight(36)  # Height like Spokenly
         self.setCursor(Qt.CursorShape.PointingHandCursor)
     
     def set_active(self, active: bool):
@@ -71,27 +98,52 @@ class CompactNavigationItem(QWidget):
             text_color = DarkTheme.ACCENT_BLUE.name()
             icon_color = DarkTheme.ACCENT_BLUE.name()
             bg_color = DarkTheme.ACCENT_BLUE_BG
+            has_left_border = True
         elif self.is_hovered:
             text_color = DarkTheme.PRIMARY_TEXT.name()
             icon_color = DarkTheme.PRIMARY_TEXT.name()
             bg_color = DarkTheme.HOVER_WHITE_BG
+            has_left_border = False
         else:
-            text_color = DarkTheme.SECONDARY_TEXT.name()
-            icon_color = DarkTheme.SECONDARY_TEXT.name()
+            # Inactive items have lower opacity like in reference
+            text_color = DarkTheme.SECONDARY_TEXT.darker(130).name()  # More faded
+            icon_color = DarkTheme.SECONDARY_TEXT.darker(130).name()
             bg_color = None
+            has_left_border = False
         
         # Update text color
         self.text_label.setStyleSheet(f"color: {text_color};")
         
-        # Update icon with color tinting
-        icon = IconLoader.load_icon(self.icon_name, 16, icon_color)
-        self.icon_label.setPixmap(icon.pixmap(16, 16))
+        # Update icon with color tinting - smaller size
+        icon = IconLoader.load_icon(self.icon_name, 14, icon_color)
+        self.icon_label.setPixmap(icon.pixmap(14, 14))
         
-        # Update background
-        if bg_color:
-            self.setStyleSheet(f"CompactNavigationItem {{ background-color: rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()}); border-radius: 4px; }}")
+        # Update background with left border for active items
+        if self.is_active:
+            self.setStyleSheet(f"""
+                SpokenlyNavigationItem {{ 
+                    background-color: rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()}); 
+                    border-radius: 6px; 
+                    margin: 2px 8px;
+                    border-left: 3px solid {DarkTheme.ACCENT_BLUE.name()};
+                    padding-left: 17px;
+                }}
+            """)
+        elif bg_color:
+            self.setStyleSheet(f"""
+                SpokenlyNavigationItem {{ 
+                    background-color: rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()}); 
+                    border-radius: 6px; 
+                    margin: 2px 8px;
+                }}
+            """)
         else:
-            self.setStyleSheet("CompactNavigationItem { background-color: transparent; }")
+            self.setStyleSheet("""
+                SpokenlyNavigationItem { 
+                    background-color: transparent; 
+                    margin: 2px 8px;
+                }
+            """)
         
         self.update()
     
@@ -114,8 +166,8 @@ class CompactNavigationItem(QWidget):
         super().leaveEvent(event)
 
 
-class CompactLogoSection(QWidget):
-    """Compact app logo and branding section."""
+class SpokenlyLogoSection(QWidget):
+    """App logo section styled like Spokenly."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -124,12 +176,12 @@ class CompactLogoSection(QWidget):
     def _setup_ui(self):
         """Set up the logo section."""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 8)  # Compact padding
-        layout.setSpacing(6)  # Small gap
+        layout.setContentsMargins(20, 16, 20, 24)  # More space like Spokenly
+        layout.setSpacing(8)
         
         # App icon (PNG with white filter)
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(18, 18)  # Slightly larger for visibility
+        self.icon_label.setFixedSize(20, 20)  # Slightly larger
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Load app icon (PNG) with white color filter
@@ -153,42 +205,42 @@ class CompactLogoSection(QWidget):
                 
                 # Apply white overlay with SourceIn composition mode
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-                painter.fillRect(white_pixmap.rect(), QBrush(DarkTheme.SECONDARY_TEXT))
+                painter.fillRect(white_pixmap.rect(), QBrush(DarkTheme.PRIMARY_TEXT))  # Brighter white for logo
                 
                 painter.end()
                 
                 # Scale to desired size
                 scaled_pixmap = white_pixmap.scaled(
-                    18, 18,
+                    20, 20,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
                 self.icon_label.setPixmap(scaled_pixmap)
             else:
                 # Fallback if pixmap couldn't be loaded
-                icon = IconLoader.load_icon("mic", 18, DarkTheme.SECONDARY_TEXT.name())
-                self.icon_label.setPixmap(icon.pixmap(18, 18))
+                icon = IconLoader.load_icon("mic", 20, DarkTheme.PRIMARY_TEXT.name())
+                self.icon_label.setPixmap(icon.pixmap(20, 20))
         else:
             # Fallback to mic icon
-            icon = IconLoader.load_icon("mic", 18, DarkTheme.SECONDARY_TEXT.name())
-            self.icon_label.setPixmap(icon.pixmap(18, 18))
+            icon = IconLoader.load_icon("mic", 20, DarkTheme.PRIMARY_TEXT.name())
+            self.icon_label.setPixmap(icon.pixmap(20, 20))
         
         layout.addWidget(self.icon_label)
         
-        # App name
+        # App name - brighter like Spokenly
         self.name_label = QLabel("ASR Pro")
         font = QFont()
-        font.setPointSize(13)
+        font.setPointSize(14)  # Slightly larger
         font.setWeight(Fonts.MEDIUM)
         self.name_label.setFont(font)
-        self.name_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
+        self.name_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")  # Brighter text
         
         layout.addWidget(self.name_label)
         layout.addStretch()
 
 
-class CompactSidebar(QWidget):
-    """Completely remade compact sidebar widget."""
+class SpokemlySidebar(QWidget):
+    """Sidebar styled exactly like Spokenly app."""
     
     page_requested = Signal(str)  # section_id
     window_action = Signal(str)   # "close", "minimize", "hide"
@@ -196,7 +248,7 @@ class CompactSidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.navigation_items: List[CompactNavigationItem] = []
+        self.navigation_items: List[SpokenlyNavigationItem] = []
         self.current_section = "general"  # Default active section
         
         self._setup_ui()
@@ -210,9 +262,9 @@ class CompactSidebar(QWidget):
         
         # Header with traffic lights
         header_widget = QWidget()
-        header_widget.setFixedHeight(28)  # Compact header
+        header_widget.setFixedHeight(32)
         header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setContentsMargins(0, 4, 0, 0)
         
         self.traffic_lights = TrafficLights()
         self.traffic_lights.close_clicked.connect(lambda: self.window_action.emit("close"))
@@ -223,26 +275,25 @@ class CompactSidebar(QWidget):
         layout.addWidget(header_widget)
         
         # Logo section
-        self.logo_section = CompactLogoSection()
+        self.logo_section = SpokenlyLogoSection()
         layout.addWidget(self.logo_section)
         
-        # Main navigation (compact)
+        # Main navigation section (no header)
         nav_container = QWidget()
         nav_layout = QVBoxLayout(nav_container)
-        nav_layout.setContentsMargins(0, 4, 0, 4)  # Minimal padding
-        nav_layout.setSpacing(1)  # Very small gap between items
+        nav_layout.setContentsMargins(0, 8, 0, 0)  # Small top margin
+        nav_layout.setSpacing(2)  # Small gap between items like Spokenly
         
-        # Create navigation items
+        # Create main navigation items
         nav_items_data = [
-            ("general", "settings", "General"),
-            ("models", "cpu", "Dictation Engine"),
-            ("keyboard", "keyboard", "Keyboard"),
+            ("general", "settings", "General Settings"),
+            ("models", "cpu", "Dictation Models"),
             ("microphone", "mic", "Microphone"),
-            ("about", "info", "About"),
+            ("keyboard", "keyboard", "Keyboard Controls"),
         ]
         
         for section_id, icon_name, text in nav_items_data:
-            item = CompactNavigationItem(section_id, icon_name, text)
+            item = SpokenlyNavigationItem(section_id, icon_name, text)
             item.clicked.connect(self._on_navigation_clicked)
             self.navigation_items.append(item)
             nav_layout.addWidget(item)
@@ -252,14 +303,18 @@ class CompactSidebar(QWidget):
         # Add stretch to push footer to bottom
         layout.addStretch()
         
-        # Footer section (compact)
+        # Footer section (no header)
         footer_container = QWidget()
         footer_layout = QVBoxLayout(footer_container)
-        footer_layout.setContentsMargins(0, 4, 0, 8)  # Small padding
-        footer_layout.setSpacing(1)  # Small gap
+        footer_layout.setContentsMargins(0, 8, 0, 16)  # Small top margin, bottom margin
+        footer_layout.setSpacing(2)
         
-        # Exit item
-        self.exit_item = CompactNavigationItem("exit", "power", "Exit")
+        # About and Exit items
+        self.about_item = SpokenlyNavigationItem("about", "info", "About")
+        self.about_item.clicked.connect(self._on_navigation_clicked)
+        footer_layout.addWidget(self.about_item)
+        
+        self.exit_item = SpokenlyNavigationItem("exit", "power", "Exit")
         self.exit_item.clicked.connect(lambda: self.window_action.emit("close"))
         footer_layout.addWidget(self.exit_item)
         
@@ -272,7 +327,7 @@ class CompactSidebar(QWidget):
         """Apply sidebar styling."""
         self.setFixedWidth(240)
         # Use transparent background to allow custom paint event
-        self.setStyleSheet("CompactSidebar { background-color: transparent; }")
+        self.setStyleSheet("SpokemlySidebar { background-color: transparent; }")
     
     def _on_navigation_clicked(self, section_id: str):
         """Handle navigation item clicks."""
@@ -291,11 +346,15 @@ class CompactSidebar(QWidget):
         # Update main navigation items
         for item in self.navigation_items:
             item.set_active(item.section_id == section_id)
+        
+        # Update about item
+        self.about_item.set_active(section_id == "about")
     
     def paintEvent(self, event):
-        """Custom paint event for translucent Mac-like background."""
+        """Custom paint event for sidebar background like Spokenly."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Fill with translucent background
-        painter.fillRect(self.rect(), DarkTheme.SIDEBAR_BG)
+        # Fill with slightly darker background like Spokenly
+        sidebar_color = DarkTheme.SIDEBAR_BG.darker(105)  # Slightly darker
+        painter.fillRect(self.rect(), sidebar_color)

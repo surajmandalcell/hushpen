@@ -5,7 +5,7 @@ from PySide6.QtGui import QPainter, QBrush, QPainterPath, QPixmap
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QApplication, QGraphicsDropShadowEffect
 
 from .styles.dark_theme import DarkTheme, Dimensions
-from .sidebar import CompactSidebar as Sidebar
+from .sidebar import SpokemlySidebar as Sidebar
 from .content_area import ContentArea
 from .utils.icon_loader import IconLoader
 
