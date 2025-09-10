@@ -138,14 +138,14 @@ class Fonts:
     """Font specifications matching the original design."""
     
     # Base font size
-    BASE_SIZE = 13
+    BASE_SIZE = 12
     
     # Specific sizes
     H1_SIZE = 24
-    PAGE_TITLE_SIZE = 20
+    PAGE_TITLE_SIZE = 18
     SECTION_TITLE_SIZE = 16
-    SETTING_LABEL_SIZE = 14
-    DESCRIPTION_SIZE = 12
+    SETTING_LABEL_SIZE = 13
+    DESCRIPTION_SIZE = 11
     STATUS_SIZE = 11
     
     # Font weights (using QFont.Weight enum)

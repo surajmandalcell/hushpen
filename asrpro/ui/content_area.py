@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout
 
 from .styles.dark_theme import DarkTheme
 from .pages.general_page import GeneralPage
+from .pages.transcribe_file_page import TranscribeFilePage
 from .pages.models_page import ModelsPage
 from .pages.keyboard_page import KeyboardPage
 from .pages.microphone_page import MicrophonePage
@@ -38,6 +39,7 @@ class ContentArea(QWidget):
         """Create all page instances and add them to the stack."""
         page_classes = {
             "general": GeneralPage,
+            "transcribe": TranscribeFilePage,
             "models": ModelsPage, 
             "keyboard": KeyboardPage,
             "microphone": MicrophonePage,
