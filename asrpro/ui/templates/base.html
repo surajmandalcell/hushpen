@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASR Pro</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.window {
+  width: 1080px;
+  height: 720px;
+  background: #1e1e1e;
+  border-radius: 12px;
+  /* macOS-style beautiful shadow with multiple layers */
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.25),
+    0 16px 32px rgba(0, 0, 0, 0.3),
+    0 32px 64px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.window-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 240px;
+  background: #252525;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: #252525;
+}
+
+.window-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.window-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+.window-btn.close {
+  background: #ff5f57;
+}
+
+.window-btn.minimize {
+  background: #ffbd2e;
+}
+
+.window-btn.maximize {
+  background: #28ca42;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  border-bottom: 1px solid #333;
+}
+
+.logo svg {
+  width: 20px;
+  height: 20px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2;
+}
+
+.logo span {
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.nav-list {
+  flex: 1;
+  padding: 10px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  color: #999;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.nav-item:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.05);
+}
+
+.nav-item.active {
+  color: #0a84ff;
+  background: rgba(10,132,255,0.1);
+}
+
+.nav-item svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2px;
+  flex-shrink: 0;
+}
+
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+}
+
+.content-header {
+  height: 38px;
+  background: #1e1e1e;
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px 40px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.content-section {
+  display: none;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.content-section.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.content-section h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 30px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin: 25px 0 15px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  pointer-events: auto;
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-info {
+  flex: 1;
+}
+
+.setting-info h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.setting-info p {
+  font-size: 12px;
+  color: #999;
+  line-height: 1.4;
+}
+
+.setting-control {
+  margin-left: 20px;
+  pointer-events: auto;
+}
+
+.toggle {
+  width: 42px;
+  height: 24px;
+  background: #333;
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+.toggle.active {
+  background: #0a84ff;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+  transition: all 0.2s ease;
+}
+
+.toggle.active::after {
+  left: 21px;
+}
+
+.select-wrapper {
+  position: relative;
+  pointer-events: auto;
+}
+
+.select {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 8px 32px 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  min-width: 120px;
+  pointer-events: auto;
+}
+
+.select:focus {
+  outline: 2px solid #0a84ff;
+}
+
+.select-wrapper::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid #999;
+  pointer-events: none;
+}
+
+.folder-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.folder-input input {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  min-width: 200px;
+}
+
+.folder-input input:focus {
+  outline: 2px solid #0a84ff;
+}
+
+.browse-btn {
+  background: #444;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  pointer-events: auto;
+}
+
+.browse-btn:hover {
+  background: #555;
+}
+
+/* Scrollbar styling */
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.main-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Fix pointer events for scrollable content */
+.setting-row, .model-card, .key-binding, .mic-item {
+  pointer-events: auto;
+}
+
+/* Model cards styling */
+.models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.model-card {
+  background: #252525;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #333;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.model-card:hover {
+  background: #2a2a2a;
+  border-color: #444;
+}
+
+.model-card.active {
+  border-color: #0a84ff;
+  background: rgba(10,132,255,0.1);
+}
+
+.model-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.model-header svg {
+  width: 20px;
+  height: 20px;
+  stroke: #0a84ff;
+  flex-shrink: 0;
+}
+
+.model-info h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.model-info p {
+  font-size: 12px;
+  color: #999;
+}
+
+.model-details p {
+  font-size: 12px;
+  color: #ccc;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.model-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.model-status.downloaded {
+  background: rgba(40, 202, 66, 0.1);
+  color: #28ca42;
+}
+
+.model-status.not-downloaded {
+  background: rgba(255, 189, 46, 0.1);
+  color: #ffbd2e;
+}
+
+/* Key binding styles */
+.key-bindings {
+  margin-top: 16px;
+}
+
+.key-binding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  pointer-events: auto;
+}
+
+.key-binding:last-child {
+  border-bottom: none;
+}
+
+.key-combo {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.key {
+  background: #333;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #444;
+}
+
+.plus {
+  color: #999;
+  font-size: 12px;
+}
+
+.change-key-btn {
+  background: transparent;
+  color: #0a84ff;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  pointer-events: auto;
+}
+
+.change-key-btn:hover {
+  background: rgba(10,132,255,0.1);
+}
+
+/* Microphone list styles */
+.mic-list {
+  margin-top: 16px;
+}
+
+.mic-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #252525;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+.mic-item:hover {
+  background: #2a2a2a;
+}
+
+.mic-item.active {
+  background: rgba(10,132,255,0.1);
+  border: 1px solid #0a84ff;
+}
+
+.mic-icon {
+  margin-right: 12px;
+}
+
+.mic-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: #999;
+}
+
+.mic-item.active .mic-icon svg {
+  stroke: #0a84ff;
+}
+
+.mic-info h4 {
+  font-size: 13px;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.mic-info p {
+  font-size: 11px;
+  color: #999;
+}
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="window-container">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="window-controls">
+            <button class="window-btn close" onclick="console.log('EXIT_APP_SIGNAL')"></button>
+            <button class="window-btn minimize" onclick="console.log('MINIMIZE_WINDOW_SIGNAL')"></button>
+            <button class="window-btn maximize" onclick="console.log('HIDE_WINDOW_SIGNAL')"></button>
+          </div>
+        </div>
+        
+        <div class="logo">
+          <img src="../assets/icon.png" width="20" height="20" style="filter: brightness(0) invert(1);" alt="ASR Pro">
+          <span>ASR Pro</span>
+        </div>
+        
+        <div class="nav-list">
+          <div class="nav-item active" data-section="general">
+            <i data-lucide="settings"></i>
+            <span>General</span>
+          </div>
+          <div class="nav-item" data-section="models">
+            <i data-lucide="cpu"></i>
+            <span>Dictation Engine</span>
+          </div>
+          <div class="nav-item" data-section="keyboard">
+            <i data-lucide="keyboard"></i>
+            <span>Keyboard</span>
+          </div>
+          <div class="nav-item" data-section="microphone">
+            <i data-lucide="mic"></i>
+            <span>Microphone</span>
+          </div>
+          <div class="nav-item" data-section="about">
+            <i data-lucide="info"></i>
+            <span>About</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="content-area">
+        <div class="content-header"></div>
+        
+        <div class="main-content">
+          <div class="content-section active" id="general">
+            <h1>General Preferences</h1>
+            <p class="subtitle">Configure ASR Pro to match your workflow and preferences.</p>
+            
+            <div class="section-title">Behavior</div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Auto-save transcriptions</h3>
+                <p>Automatically save transcriptions to your specified folder when recording stops.</p>
+              </div>
+              <div class="setting-control">
+                <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Save location</h3>
+                <p>Choose where transcriptions are automatically saved.</p>
+              </div>
+              <div class="setting-control">
+                <div class="folder-input">
+                  <input type="text" value="~/Documents/ASR Pro" readonly>
+                  <button class="browse-btn">Browse</button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Output format</h3>
+                <p>Choose the default format for transcription files.</p>
+              </div>
+              <div class="setting-control">
+                <div class="select-wrapper">
+                  <select class="select">
+                    <option value="srt">SRT Subtitles</option>
+                    <option value="txt">Plain Text</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-section" id="models">
+            <h1>Dictation Engine</h1>
+            <p class="subtitle">Select and configure your speech recognition model.</p>
+            
+            <div class="section-title">Available Models</div>
+            
+            <div class="models-grid">
+              <div class="model-card active">
+                <div class="model-header">
+                  <i data-lucide="cpu"></i>
+                  <div class="model-info">
+                    <h3>Whisper Base</h3>
+                    <p>Fast, balanced performance</p>
+                  </div>
+                </div>
+                <div class="model-details">
+                  <p>A good balance between speed and accuracy. Suitable for most use cases including meetings, lectures, and general dictation.</p>
+                  <div class="model-status downloaded">
+                    <i data-lucide="circle-check"></i>
+                    <span>Downloaded</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="model-card">
+                <div class="model-header">
+                  <i data-lucide="cpu"></i>
+                  <div class="model-info">
+                    <h3>Whisper Small</h3>
+                    <p>Higher accuracy, slower</p>
+                  </div>
+                </div>
+                <div class="model-details">
+                  <p>More accurate transcriptions with better handling of technical terms and accents. Takes longer to process.</p>
+                  <div class="model-status not-downloaded">
+                    <i data-lucide="download"></i>
+                    <span>Download</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="section-title">Processing Options</div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Processing quality</h3>
+                <p>Higher quality takes longer but provides better results.</p>
+              </div>
+              <div class="setting-control">
+                <div class="select-wrapper">
+                  <select class="select">
+                    <option value="fast">Fast</option>
+                    <option value="balanced" selected>Balanced</option>
+                    <option value="high">High Quality</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-section" id="keyboard">
+            <h1>Keyboard Controls</h1>
+            <p class="subtitle">Configure hotkeys and recording controls.</p>
+            
+            <div class="section-title">Recording Mode</div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Recording mode</h3>
+                <p>Choose how you want to control recording.</p>
+              </div>
+              <div class="setting-control">
+                <div class="select-wrapper">
+                  <select class="select">
+                    <option value="push-to-talk" selected>Push to Talk</option>
+                    <option value="toggle">Toggle Mode</option>
+                    <option value="continuous">Voice Activated</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div class="section-title">Hotkeys</div>
+            
+            <div class="key-bindings">
+              <div class="key-binding">
+                <div>
+                  <h4 style="color: #fff; margin-bottom: 4px;">Start/Stop Recording</h4>
+                  <p style="color: #999; font-size: 12px;">Toggle recording on and off</p>
+                </div>
+                <div class="key-combo">
+                  <span class="key">⌥</span>
+                  <span class="plus">+</span>
+                  <span class="key">`</span>
+                  <button class="change-key-btn">Change</button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Global hotkeys</h3>
+                <p>Allow hotkeys to work when ASR Pro is not the active application.</p>
+              </div>
+              <div class="setting-control">
+                <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-section" id="microphone">
+            <h1>Microphone</h1>
+            <p class="subtitle">Select your preferred audio input device.</p>
+            
+            <div class="section-title">Available Microphones</div>
+            
+            <div class="mic-list">
+              <div class="mic-item active">
+                <div class="mic-icon">
+                  <i data-lucide="mic"></i>
+                </div>
+                <div class="mic-info">
+                  <h4>Built-in Microphone</h4>
+                  <p>Default system microphone</p>
+                </div>
+              </div>
+              
+              <div class="mic-item">
+                <div class="mic-icon">
+                  <i data-lucide="headphones"></i>
+                </div>
+                <div class="mic-info">
+                  <h4>USB Headset</h4>
+                  <p>External USB audio device</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-section" id="about">
+            <h1>About ASR Pro</h1>
+            <p class="subtitle">Version information and system details.</p>
+            
+            <div class="section-title">Application</div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Version</h3>
+                <p>Current application version</p>
+              </div>
+              <div class="setting-control">
+                <span style="color: #999;">2.0.0</span>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Build</h3>
+                <p>Build number and date</p>
+              </div>
+              <div class="setting-control">
+                <span style="color: #999;">20240301</span>
+              </div>
+            </div>
+            
+            <div class="section-title">System Information</div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Platform</h3>
+                <p>Operating system details</p>
+              </div>
+              <div class="setting-control">
+                <span style="color: #999;" id="platform-info">Loading...</span>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-info">
+                <h3>Memory Usage</h3>
+                <p>Current application memory usage</p>
+              </div>
+              <div class="setting-control">
+                <span style="color: #999;" id="memory-info">Loading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // JavaScript bridge functions
+    function hideWindow() {
+      console.log('HIDE_WINDOW_SIGNAL');
+    }
+
+    function minimizeWindow() {
+      console.log('MINIMIZE_WINDOW_SIGNAL');
+    }
+
+    function exitApp() {
+      console.log('EXIT_APP_SIGNAL');
+    }
+
+    // Tab switching functionality with optimized performance
+    function switchTab(sectionId) {
+      // Use efficient class toggling
+      const navItems = document.querySelectorAll('.nav-item');
+      const sections = document.querySelectorAll('.content-section');
+      
+      // Remove active classes in single pass
+      navItems.forEach(item => item.classList.remove('active'));
+      sections.forEach(section => section.classList.remove('active'));
+      
+      // Add active classes
+      document.querySelector(`[data-section="${sectionId}"]`).classList.add('active');
+      document.getElementById(sectionId).classList.add('active');
+    }
+
+    // Initialize the application
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('=== ASR Pro Application Starting ===');
+      
+      // Set up navigation with optimized event handling
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', function() {
+          const sectionId = this.getAttribute('data-section');
+          switchTab(sectionId);
+        });
+      });
+      
+      // Initialize Lucide icons
+      lucide.createIcons();
+      
+      // Load settings
+      console.log('LOAD_SETTINGS_SIGNAL');
+      
+      console.log('Application initialization complete');
+    });
+
+    // Enterprise component event handler
+    function handleComponentEvent(componentId, event, data) {
+      console.log(`[Component Event] ${componentId}: ${event}`, data);
+      
+      if (componentId === 'about' && event === 'system_info_loaded') {
+        // Update system information
+        if (data.platform) {
+          document.getElementById('platform-info').textContent = data.platform;
+        }
+        if (data.memory_usage && data.memory_usage.percent) {
+          document.getElementById('memory-info').textContent = `${data.memory_usage.percent.toFixed(1)}%`;
+        }
+      }
+    }
+
+    // Make it available globally  
+    window.handleComponentEvent = handleComponentEvent;
+  </script>
+</body>
+</html>

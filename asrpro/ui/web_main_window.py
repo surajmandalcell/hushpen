@@ -52,6 +52,7 @@ except ImportError:
 from ..model_manager import ModelManager
 from .overlay import Overlay
 from ..hotkey import ToggleHotkey
+from .components import SettingsManager, RecordingManager, KeyboardManager, AboutManager
 
 
 class WindowBridge(QObject):
@@ -90,6 +91,16 @@ class MainWindow(QWidget):
         self.web_view: Optional[QWebEngineView] = None
         self.overlay = Overlay()
         
+        # Enterprise component managers
+        self.settings_manager = SettingsManager(self)
+        self.recording_manager = RecordingManager(self)
+        self.keyboard_manager = KeyboardManager(self)
+        self.about_manager = AboutManager(self)
+        
+        # Performance tracking
+        import time
+        self._start_time = time.time()
+        
         # Window dragging variables  
         self._dragging = False
         self._drag_position = None
@@ -98,6 +109,9 @@ class MainWindow(QWidget):
         self._setup_window()
         self._setup_ui()
         self._load_content()
+        
+        # Initialize enterprise components
+        self._initialize_components()
         
         # Start hotkey monitoring
         self.hotkey.start()
@@ -181,6 +195,35 @@ class MainWindow(QWidget):
         else:
             self._setup_fallback(layout)
     
+    def _initialize_components(self) -> None:
+        """Initialize all enterprise components with proper error handling."""
+        try:
+            print("[Components] Initializing enterprise component system...")
+            
+            # Initialize components in dependency order
+            components = [
+                self.settings_manager,
+                self.recording_manager, 
+                self.keyboard_manager,
+                self.about_manager
+            ]
+            
+            initialized_count = 0
+            for component in components:
+                try:
+                    if component.initialize():
+                        initialized_count += 1
+                        print(f"[Components] {component.component_id} initialized successfully")
+                    else:
+                        print(f"[Components] {component.component_id} failed to initialize")
+                except Exception as e:
+                    print(f"[Components] {component.component_id} initialization error: {e}")
+            
+            print(f"[Components] Initialized {initialized_count}/{len(components)} components")
+            
+        except Exception as e:
+            print(f"[Components] Component initialization failed: {e}")
+    
     def _setup_webengine(self, layout: QVBoxLayout) -> None:
         """Setup the WebEngine view with proper configuration."""
         if not WEBENGINE_AVAILABLE or _QWebEngineView is None:
@@ -232,7 +275,7 @@ class MainWindow(QWidget):
                 self.main_window = main_window
             
             def javaScriptConsoleMessage(self, level, message, line, source):
-                # Enhanced JavaScript-Python bridge with organized signal handling
+                # Enhanced JavaScript-Python bridge with enterprise component system
                 
                 # Window control signals
                 if message == "HIDE_WINDOW_SIGNAL":
@@ -245,27 +288,9 @@ class MainWindow(QWidget):
                     print("[Bridge] Exit app signal received")
                     self.main_window.close_app()
                 
-                # Recording control signals
-                elif message == "START_RECORDING_SIGNAL":
-                    print("[Bridge] Start recording signal received")
-                    self.main_window._handle_start_recording()
-                elif message == "STOP_RECORDING_SIGNAL":
-                    print("[Bridge] Stop recording signal received")
-                    self.main_window._handle_stop_recording()
-                
-                # Settings signals  
-                elif message.startswith("SAVE_SETTINGS_SIGNAL"):
-                    print("[Bridge] Save settings signal received")
-                    settings_data = message.replace("SAVE_SETTINGS_SIGNAL ", "", 1) if " " in message else "{}"
-                    self.main_window._handle_save_settings(settings_data)
-                elif message == "LOAD_SETTINGS_SIGNAL":
-                    print("[Bridge] Load settings signal received")
-                    self.main_window._handle_load_settings()
-                
-                # File operation signals
-                elif message == "OPEN_MEDIA_FILE_SIGNAL":
-                    print("[Bridge] Open media file signal received")
-                    self.main_window._handle_open_media_file()
+                # Enterprise component signal routing
+                elif message.endswith("_SIGNAL"):
+                    self.main_window._route_component_signal(message)
                 
                 else:
                     # Pass through other console messages (only log non-bridge messages)
@@ -323,10 +348,10 @@ class MainWindow(QWidget):
         if not self.web_view:
             return
         
-        html_file = Path(__file__).parent / "template" / "index.html"
+        html_file = Path(__file__).parent / "templates" / "base.html"
         
         if not html_file.exists():
-            self._load_error_page("HTML file not found at asrpro/ui/template/index.html")
+            self._load_error_page("HTML file not found at asrpro/ui/templates/base.html")
             return
         
         try:
@@ -374,11 +399,11 @@ class MainWindow(QWidget):
                 
                 # Try the original name first
                 try:
-                    svg_content = lucide_icon(icon_name, width="16", height="16", cls=classes.strip())
+                    svg_content = lucide_icon(icon_name, width=16, height=16, cls=classes.strip())
                 except Exception:
                     # Try common name mappings for icons that might have different names
                     icon_mappings = {
-                        'check-circle': 'check',
+                        'check-circle': 'circle-check',
                         'globe-2': 'globe',
                         'settings-2': 'settings',
                         'file-text': 'file-text',
@@ -389,16 +414,16 @@ class MainWindow(QWidget):
                     }
                     
                     fallback_name = icon_mappings.get(icon_name, icon_name)
-                    svg_content = lucide_icon(fallback_name, width="16", height="16", cls=classes.strip())
+                    svg_content = lucide_icon(fallback_name, width=16, height=16, cls=classes.strip())
                 
                 # Add style attribute if present
                 if style:
-                    svg_content = svg_content.replace('>', f'{style}>', 1)
+                    svg_content = svg_content.replace('<svg', f'<svg{style}', 1)
                 return svg_content
             except Exception as e:
                 print(f"[Icons] Failed to generate {icon_name} icon: {e}")
-                # Fallback to static SVG file
-                return f'<img class="{classes}" src="../assets/icons/{icon_name}.svg" alt="{icon_name} icon"{style}>'
+                # Fallback to a simple placeholder
+                return f'<svg class="{classes}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"{style}><circle cx="12" cy="12" r="1"/></svg>'
         
         html_content = re.sub(
             r'<i[^>]+data-lucide="([^"]+)"[^>]*></i>',
@@ -637,7 +662,7 @@ img.lucide-icon.text-blue-400 {
             <div class="error-container">
                 <h1>Unable to Load UI</h1>
                 <p>{error_message}</p>
-                <p>Please check that the asrpro/ui/template/index.html file exists and is accessible.</p>
+                <p>Please check that the asrpro/ui/templates/base.html file exists and is accessible.</p>
             </div>
         </body>
         </html>
@@ -845,12 +870,85 @@ img.lucide-icon.text-blue-400 {
         
         print("[Window] Window shown")
     
+    def _route_component_signal(self, message: str) -> None:
+        """Route signals to appropriate enterprise components."""
+        try:
+            # Parse signal format: COMPONENT_ACTION_SIGNAL [data]
+            signal_parts = message.replace("_SIGNAL", "").split(" ", 1)
+            signal_name = signal_parts[0]
+            signal_data = signal_parts[1] if len(signal_parts) > 1 else None
+            
+            # Map signals to components
+            component_map = {
+                "SAVE_SETTINGS": self.settings_manager,
+                "LOAD_SETTINGS": self.settings_manager,
+                "START_RECORDING": self.recording_manager,
+                "STOP_RECORDING": self.recording_manager,
+                "GET_STATUS": self.recording_manager,
+                "REGISTER_HOTKEY": self.keyboard_manager,
+                "UNREGISTER_HOTKEY": self.keyboard_manager,
+                "GET_HOTKEYS": self.keyboard_manager,
+                "GET_APP_INFO": self.about_manager,
+                "GET_SYSTEM_INFO": self.about_manager,
+                "GET_PERFORMANCE_METRICS": self.about_manager,
+                "GET_COMPLETE_INFO": self.about_manager,
+                "EXPORT_SYSTEM_REPORT": self.about_manager,
+            }
+            
+            # Route to appropriate component
+            component = component_map.get(signal_name)
+            if component and hasattr(component, 'handle_bridge_signal'):
+                print(f"[Bridge] Routing {signal_name} to {component.component_id}")
+                component.handle_bridge_signal(signal_name, signal_data)
+            else:
+                print(f"[Bridge] No handler found for signal: {signal_name}")
+                
+        except Exception as e:
+            print(f"[Bridge] Signal routing error: {e}")
+    
+    def emit_to_frontend(self, component_id: str, event: str, data: dict = None) -> None:
+        """Emit events to the frontend JavaScript."""
+        try:
+            if self.web_view and hasattr(self.web_view, 'page'):
+                # Inject JavaScript to emit event
+                js_code = f"""
+                if (window.ASRProApp) {{
+                    window.ASRProApp.handleComponentEvent('{component_id}', '{event}', {data or '{}'});
+                }} else {{
+                    console.log('[Frontend] ASRProApp not ready, event queued:', '{component_id}', '{event}');
+                }}
+                """
+                self.web_view.page().runJavaScript(js_code)
+                print(f"[Frontend] Emitted {event} to {component_id}")
+            else:
+                print(f"[Frontend] WebView not available for event: {component_id}.{event}")
+                
+        except Exception as e:
+            print(f"[Frontend] Emission error: {e}")
+    
     def close_app(self) -> None:
         """Clean shutdown of the application."""
         try:
             self.model_manager.unload()
         except Exception as e:
             print(f"[Cleanup] Model manager error: {e}")
+        
+        # Cleanup enterprise components
+        try:
+            components = [
+                self.settings_manager,
+                self.recording_manager,
+                self.keyboard_manager,
+                self.about_manager
+            ]
+            
+            for component in components:
+                if hasattr(component, 'cleanup'):
+                    component.cleanup()
+                    
+            print("[Cleanup] Enterprise components cleaned up")
+        except Exception as e:
+            print(f"[Cleanup] Component cleanup error: {e}")
         
         # Force close the application
         from PySide6.QtWidgets import QApplication
