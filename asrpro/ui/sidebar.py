@@ -312,9 +312,9 @@ class SpokemlySidebar(QWidget):
         nav_items_data = [
             ("general", "settings", "General Settings"),
             ("transcribe", "folder-open", "Transcribe File"),
-            ("models", "cpu", "Dictation Models"),
+            ("models", "cpu", "ASR Models"),
             ("microphone", "mic", "Microphone"),
-            ("keyboard", "keyboard", "Keyboard Controls"),
+            ("keyboard", "keyboard", "Keyboard"),
         ]
 
         for section_id, icon_name, text in nav_items_data:

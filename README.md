@@ -1,19 +1,18 @@
-# asrpro - AI Speech Recognition Pro
+# ASR Pro - AI Speech Recognition
 
-A clean, modern desktop tray application for AI-powered speech recognition and transcription, built with PySide6.
+A professional desktop application for AI-powered speech recognition and transcription, built with PySide6.
 
-## ✨ Features
+## Features
 
-- **🎯 Global Hotkey Transcription**: Press once to record, press again to transcribe and paste
-- **🎬 SRT Generation**: Drag & drop media files to create subtitle files
-- **🤖 Multi-Model Support**: Parakeet TDT (0.6B/1.1B) and Whisper Medium ONNX
-- **⚡ Single Instance**: Automatically kills old instances when launching new ones
-- **🎨 Modern UI**: Glassmorphism design with dark mode tray icon support
-- **🖥️ System Integration**: Comprehensive system tray with context menu
+- **Global Hotkey Transcription**: Press once to record, press again to transcribe and paste
+- **SRT Generation**: Drag & drop media files to create subtitle files
+- **Multi-Model Support**: Parakeet TDT (0.6B/1.1B) and Whisper Medium ONNX
+- **Single Instance**: Automatically kills old instances when launching new ones
+- **Modern UI**: Glassmorphism design with dark mode tray icon support
+- **System Integration**: Comprehensive system tray with context menu
 
-## 🚀 Quick Start
+## Installation
 
-### Installation
 ```bash
 # Clone and setup
 git clone <repo>
@@ -21,7 +20,9 @@ cd jarusasr
 python -m pip install -r requirements.txt
 ```
 
-### Launch
+## Usage
+
+### Launch Application
 ```bash
 # Method 1: Module
 python -m asrpro
@@ -30,14 +31,27 @@ python -m asrpro
 python run.py
 ```
 
-### First Use
+### Initial Setup
 1. **System tray**: Look for the asrpro icon in your system tray
 2. **Open window**: Double-click tray icon or right-click → "Show Window"
 3. **Load model**: Go to Models tab, select a model, click "Load Selected Model"
 4. **Set hotkey**: Right-click tray → "Hotkey Settings" (default: Ctrl+Alt+T)
 5. **Test**: Press hotkey twice (start recording → stop & transcribe)
 
-## 📁 Project Structure
+### Real-time Transcription
+1. Press configured hotkey to start recording
+2. Speak naturally
+3. Press hotkey again to stop and transcribe
+4. Text automatically pastes to active window
+
+### SRT Generation
+1. Open main window (double-click tray icon)
+2. Go to SRT tab
+3. Drag & drop media files or click "Browse Files"
+4. Wait for processing to complete
+5. Find generated .srt files next to original media
+
+## Project Structure
 
 ```
 asrpro/
@@ -63,7 +77,7 @@ run.py                 # Simple launcher script
 requirements.txt       # All dependencies in one file
 ```
 
-## 🔧 Configuration
+## Configuration
 
 - **Models**: Choose between Parakeet TDT (0.6B/1.1B) or Whisper Medium ONNX
 - **Device**: Auto-detects CUDA → Vulkan → CPU
@@ -71,44 +85,36 @@ requirements.txt       # All dependencies in one file
 - **Server**: Optional OpenAI-compatible API on port 7341
 - **Theme**: Automatic dark mode detection with icon inversion
 
-## 🎯 Usage Patterns
-
-### Real-time Transcription
-1. Press configured hotkey to start recording
-2. Speak naturally
-3. Press hotkey again to stop and transcribe
-4. Text automatically pastes to active window
-
-### SRT Generation
-1. Open main window (double-click tray icon)
-2. Go to SRT tab
-3. Drag & drop media files or click "Browse Files"
-4. Wait for processing to complete
-5. Find generated .srt files next to original media
-
-## 🛠️ Build Standalone
+## Build Standalone
 
 ```bash
 python build_nuitka.py
 ```
 
-## 📋 Requirements
+## Requirements
 
 - **Python**: 3.11+
 - **OS**: Windows (primary), Linux/macOS (community)
 - **Memory**: 4GB+ RAM (model dependent)
 - **GPU**: Optional CUDA/Vulkan acceleration
 
-## 🎨 Modern Design Features
-
-- **Glassmorphism UI**: Semi-transparent elements with blur effects
-- **Dark Mode**: Automatic system theme detection
-- **Responsive**: Smooth animations and transitions
-- **Clean**: Minimal, distraction-free interface
-- **Accessible**: High contrast, readable typography
-
----
+## Architecture
 
 **Single Instance Enforcement**: Only one asrpro instance runs at a time. New launches automatically terminate previous instances.
 
 **Consolidated Architecture**: All model loaders, dependencies, and configurations are consolidated into minimal files for easy maintenance and deployment.
+
+**Modern Design Features**:
+- Glassmorphism UI with semi-transparent elements and blur effects
+- Automatic dark mode system theme detection
+- Smooth animations and responsive transitions
+- Minimal, distraction-free interface design
+- High contrast, accessible typography
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Author
+
+Developed by [Suraj Mandal](https://github.com/surajmandalcell)
