@@ -12,7 +12,7 @@ from ..styles.dark_theme import DarkTheme, Fonts
 from ..components.typography import BodyLabel
 from ..components.button import MacButton
 from ..components.file_picker import FilePicker
-from ..components.panel import Panel
+from ..layouts.panel import Panel
 
 
 class TranscribeFilePage(BasePage):

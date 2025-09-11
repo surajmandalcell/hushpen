@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 import os
 
-from ..components.setting_row import SettingRow
+from ..layouts.setting_row import SettingRow
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
 from ..utils.icon_loader import IconLoader
 from ..utils.invert import invert_icon

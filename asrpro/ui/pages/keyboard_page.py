@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QKeySequence, QKeyEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit
 
-from ..components.setting_row import SettingRow
+from ..layouts.setting_row import SettingRow
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
 from .base_page import BasePage
 

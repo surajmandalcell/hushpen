@@ -1,6 +1,6 @@
 """General settings page."""
 
-from ..components.setting_row import SettingRow
+from ..layouts.setting_row import SettingRow
 from .base_page import BasePage
 
 

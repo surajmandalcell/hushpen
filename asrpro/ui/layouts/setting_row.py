@@ -5,12 +5,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
-    QComboBox, QLineEdit, QPushButton, QFileDialog
+    QLineEdit, QPushButton, QFileDialog
 )
 
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
-from .typography import SectionLabel, BodyLabel
-from .toggle_switch import ToggleSwitch
+from ..components.typography import SectionLabel, BodyLabel
+from ..components.toggle_switch import ToggleSwitch
+from ..components.select import MacSelect
 
 
 class SettingRow(QWidget):
@@ -77,14 +78,20 @@ class SettingRow(QWidget):
             return control
         
         elif self.control_type == "dropdown":
-            control = QComboBox()
+            # Convert options to simple strings for MacSelect
+            string_options = []
             if options:
                 for option in options:
                     if isinstance(option, dict):
-                        control.addItem(option.get("label", ""), option.get("value", ""))
+                        string_options.append(option.get("label", ""))
                     else:
-                        control.addItem(str(option), option)
-            control.currentTextChanged.connect(lambda text: self._emit_value_changed(control.currentData()))
+                        string_options.append(str(option))
+            
+            control = MacSelect(
+                options=string_options,
+                placeholder="Select an option"
+            )
+            control.selection_changed.connect(lambda idx, text: self._emit_value_changed(text))
             return control
         
         elif self.control_type == "folder":
@@ -145,42 +152,9 @@ class SettingRow(QWidget):
     
     def _style_control_widget(self):
         """Apply styles to the control widget."""
-        if self.control_type == "dropdown" and self.control_widget is not None:
-            self.control_widget.setStyleSheet(f"""
-                QComboBox {{
-                    background-color: {DarkTheme.CONTROL_BG.name()};
-                    color: {DarkTheme.PRIMARY_TEXT.name()};
-                    border: none;
-                    padding: 8px 32px 8px 12px;
-                    border-radius: 6px;
-                    font-size: {Fonts.CONTROL_SIZE}px;
-                    min-width: 120px;
-                }}
-                QComboBox:focus {{
-                    border: 2px solid {DarkTheme.FOCUS_BORDER.name()};
-                }}
-                QComboBox::drop-down {{
-                    subcontrol-origin: padding;
-                    subcontrol-position: top right;
-                    width: 20px;
-                    border: none;
-                }}
-                QComboBox::down-arrow {{
-                    image: none;
-                    border-left: 4px solid transparent;
-                    border-right: 4px solid transparent;
-                    border-top: 4px solid {DarkTheme.SECONDARY_TEXT.name()};
-                    width: 0px;
-                    height: 0px;
-                }}
-                QComboBox QAbstractItemView {{
-                    background-color: {DarkTheme.CONTROL_BG.name()};
-                    color: {DarkTheme.PRIMARY_TEXT.name()};
-                    selection-background-color: {DarkTheme.ACCENT_BLUE.name()};
-                    border: 1px solid {DarkTheme.CARD_BORDER.name()};
-                    border-radius: 6px;
-                }}
-            """)
+        # MacSelect component handles its own styling
+        if self.control_type == "dropdown":
+            pass
         
         elif self.control_type == "folder" and self.control_widget is not None:
             folder_style = f"""
@@ -236,12 +210,8 @@ class SettingRow(QWidget):
         if self.control_type == "toggle" and isinstance(self.control_widget, ToggleSwitch):
             self.control_widget.setChecked(bool(value), animate=False)
         
-        elif self.control_type == "dropdown" and isinstance(self.control_widget, QComboBox):
-            # Find and set the item with matching data
-            for i in range(self.control_widget.count()):
-                if self.control_widget.itemData(i) == value:
-                    self.control_widget.setCurrentIndex(i)
-                    break
+        elif self.control_type == "dropdown" and isinstance(self.control_widget, MacSelect):
+            self.control_widget.set_selected_text(str(value))
         
         elif self.control_type == "folder" and hasattr(self, 'folder_input'):
             self.folder_input.setText(str(value) if value else "")
