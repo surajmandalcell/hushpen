@@ -84,6 +84,10 @@ class MacSelect(QComboBox):
         # Configure behavior
         self.setMaxVisibleItems(8)
         self.setEditable(False)
+        
+        # Force disable native styling
+        self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        self.setFrame(False)
 
     def _setup_signals(self):
         """Set up signal connections."""
@@ -96,96 +100,65 @@ class MacSelect(QComboBox):
             self.selection_changed.emit(index, text)
 
     def _apply_styles(self):
-        """Apply authentic macOS Big Sur/Monterey dropdown styling."""
+        """Apply dark theme macOS-style dropdown styling."""
         self.setStyleSheet(
             f"""
             MacSelect {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #f6f6f6, stop: 1 #e8e8e8);
-                border: 1px solid #c7c7c7;
-                border-radius: 8px;
-                padding: 6px 30px 6px 12px;
+                background-color: {DarkTheme.CONTROL_BG.name()};
+                color: {DarkTheme.PRIMARY_TEXT.name()};
+                border: none;
+                padding: 8px 32px 8px 12px;
+                border-radius: 6px;
                 font-size: {Fonts.CONTROL_SIZE}px;
-                font-weight: 400;
-                color: #1d1d1f;
-                min-height: 22px;
-                selection-background-color: #007AFF;
-            }}
-            
-            MacSelect:hover {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #fafafa, stop: 1 #eeeeee);
-                border-color: #b3b3b3;
+                min-width: 120px;
             }}
             
             MacSelect:focus {{
-                border: 2px solid #007AFF;
-                outline: none;
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #ffffff, stop: 1 #f0f0f0);
-            }}
-            
-            MacSelect:pressed {{
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #e0e0e0, stop: 1 #d4d4d4);
+                border: 2px solid {DarkTheme.FOCUS_BORDER.name()};
             }}
             
             MacSelect::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
-                width: 24px;
+                width: 20px;
                 border: none;
-                background: transparent;
-                margin-right: 4px;
             }}
-            
             MacSelect::down-arrow {{
                 image: none;
-                border: none;
-                width: 0;
-                height: 0;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #8e8e93;
-                margin-top: 3px;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid {DarkTheme.SECONDARY_TEXT.name()};
+                width: 0px;
+                height: 0px;
             }}
-            
-            MacSelect:hover::down-arrow {{
-                border-top-color: #6d6d70;
-            }}
-            
             MacSelect QAbstractItemView {{
-                background-color: #ffffff;
-                border: 1px solid rgba(0, 0, 0, 0.1);
-                border-radius: 8px;
-                padding: 8px 0px;
-                selection-background-color: #007AFF;
-                outline: none;
-                margin-top: 4px;
-                /* macOS-style shadow */
-                qproperty-windowOpacity: 0.98;
+                background-color: {DarkTheme.CONTROL_BG.name()};
+                color: {DarkTheme.PRIMARY_TEXT.name()};
+                selection-background-color: {DarkTheme.ACCENT_BLUE.name()};
+                border: 1px solid {DarkTheme.CARD_BORDER.name()};
+                border-radius: 6px;
             }}
             
             MacSelect QAbstractItemView::item {{
-                min-height: 24px;
-                padding: 8px 16px;
+                min-height: 20px;
+                padding: 4px 12px;
                 border: none;
-                color: #1d1d1f;
+                color: {DarkTheme.PRIMARY_TEXT.name()};
                 font-size: {Fonts.CONTROL_SIZE}px;
                 font-weight: 400;
             }}
             
             MacSelect QAbstractItemView::item:selected {{
-                background-color: #007AFF;
-                color: #ffffff;
+                background-color: {DarkTheme.ACCENT_BLUE.name()};
+                color: {DarkTheme.MAIN_BG.name()};
                 border-radius: 4px;
-                margin: 0px 4px;
+                margin: 0px 6px;
             }}
             
             MacSelect QAbstractItemView::item:hover:!selected {{
-                background-color: #f5f5f7;
+                background-color: {DarkTheme.HOVER_BG.name()};
                 border-radius: 4px;
-                margin: 0px 4px;
+                margin: 0px 6px;
             }}
         """
         )
@@ -198,7 +171,13 @@ class MacSelect(QComboBox):
         # Add placeholder if no current selection
         if current_index == -1 and self.placeholder:
             self.addItem(self.placeholder)
-            self.model().item(0).setEnabled(False)  # Disable placeholder
+            # Disable placeholder - need to cast to QStandardItemModel
+            from PySide6.QtGui import QStandardItemModel
+            model = self.model()
+            if isinstance(model, QStandardItemModel):
+                item = model.item(0)
+                if item:
+                    item.setEnabled(False)
             self.setCurrentIndex(0)
 
         # Add actual options
@@ -262,12 +241,18 @@ class MacSelect(QComboBox):
         self._options.clear()
         if self.placeholder:
             self.addItem(self.placeholder)
-            self.model().item(0).setEnabled(False)
+            # Disable placeholder - need to cast to QStandardItemModel
+            from PySide6.QtGui import QStandardItemModel
+            model = self.model()
+            if isinstance(model, QStandardItemModel):
+                item = model.item(0)
+                if item:
+                    item.setEnabled(False)
             self.setCurrentIndex(0)
 
     def is_placeholder_selected(self) -> bool:
         """Check if the placeholder is currently selected."""
-        return self.placeholder and self.currentIndex() == 0
+        return bool(self.placeholder and self.currentIndex() == 0)
 
     def set_placeholder(self, placeholder: str):
         """Update the placeholder text."""
