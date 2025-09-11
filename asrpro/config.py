@@ -3,6 +3,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
+import shutil
 from typing import Dict, Any, Optional
 
 # Default configuration
@@ -38,10 +39,18 @@ class Config:
     """Configuration manager for asrpro settings."""
 
     def __init__(self):
-        self.config_dir = Path.home() / ".asrpro"
+        # Project root is repo root (asrpro/..)
+        repo_root = Path(__file__).resolve().parents[1]
+        self.config_dir = repo_root / "config"
         self.config_file = self.config_dir / "config.json"
-        self.config_dir.mkdir(exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         self._config = self._load_config()
+
+    def get_config_dir(self) -> Path:
+        return self.config_dir
+
+    def get_lock_path(self) -> Path:
+        return self.config_dir / "asrpro.lock"
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file or create default."""
@@ -54,6 +63,18 @@ class Config:
             except Exception:
                 # If config is corrupted, use defaults
                 pass
+        # Attempt migration from legacy home config (~/.asrpro/config.json)
+        try:
+            legacy_dir = Path.home() / ".asrpro"
+            legacy_file = legacy_dir / "config.json"
+            if legacy_file.exists() and not self.config_file.exists():
+                # Copy legacy config into project config folder
+                shutil.copy2(legacy_file, self.config_file)
+                with open(self.config_file, "r", encoding="utf-8") as f:
+                    loaded_config = json.load(f)
+                return self._merge_configs(DEFAULT_CONFIG, loaded_config)
+        except Exception:
+            pass
 
         # Use defaults and save them
         self._save_config(DEFAULT_CONFIG)

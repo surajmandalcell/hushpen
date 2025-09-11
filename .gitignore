@@ -8,3 +8,9 @@ paste.md
 nul
 NATIVE_MIGRATION_MEMORY.md
 image.png
+
+
+# config/
+config/*
+!config/.gitkeep
+AGENTS.md

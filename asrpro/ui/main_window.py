@@ -4,7 +4,8 @@ Implements pixel-snapped, antialiased rounded corners and a custom
 soft shadow painted on a translucent background for a mac-like look.
 """
 
-from PySide6.QtCore import Qt, QTimer, QRectF
+from PySide6.QtCore import Qt, QTimer, QRectF, QPoint
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtGui import QPainter, QBrush, QPainterPath, QPixmap, QColor, QPen
 from PySide6.QtWidgets import (
     QWidget,
@@ -22,6 +23,7 @@ from .utils.icon_loader import IconLoader
 from .overlay import Overlay
 from ..model_manager import ModelManager
 from ..hotkey import ToggleHotkey
+from ..config import config
 
 
 class NativeMainWindow(QWidget):
@@ -46,6 +48,8 @@ class NativeMainWindow(QWidget):
         self.hotkey.start()
 
         print("[Native] Native PyQt main window initialized successfully")
+        # Restore last window position (if enabled)
+        self._init_position_persistence()
 
     def _setup_window(self):
         """Configure the main window properties."""
@@ -59,6 +63,76 @@ class NativeMainWindow(QWidget):
 
         # Use our own painter-based soft shadow instead of widget effect
 
+    def _init_position_persistence(self):
+        """Set up persistence of window position and restore last location."""
+        try:
+            if not config.get("ui.remember_window_position", True):
+                return
+            # Debounced save timer
+            self._save_pos_timer = QTimer(self)
+            self._save_pos_timer.setSingleShot(True)
+            self._save_pos_timer.setInterval(500)
+            self._save_pos_timer.timeout.connect(self._save_window_position)
+            # Restore position
+            self._restore_window_position()
+        except Exception:
+            pass
+
+    def _current_screen(self):
+        wh = self.windowHandle()
+        if wh and wh.screen():
+            return wh.screen()
+        center = self.frameGeometry().center()
+        return QGuiApplication.screenAt(center)
+
+    def _save_window_position(self):
+        try:
+            if not config.get("ui.remember_window_position", True):
+                return
+            top_left: QPoint = self.frameGeometry().topLeft()
+            screen = self._current_screen()
+            data = {
+                "x": int(top_left.x()),
+                "y": int(top_left.y()),
+                "screen": screen.name() if screen else None,
+                "screen_geometry": {
+                    "x": int(screen.geometry().x()) if screen else None,
+                    "y": int(screen.geometry().y()) if screen else None,
+                    "w": int(screen.geometry().width()) if screen else None,
+                    "h": int(screen.geometry().height()) if screen else None,
+                },
+            }
+            config.set("ui.window_position", data)
+        except Exception:
+            pass
+
+    def _restore_window_position(self):
+        try:
+            saved = config.get("ui.window_position", None)
+            if not saved:
+                return
+            x = int(saved.get("x", 0))
+            y = int(saved.get("y", 0))
+            target = QPoint(x, y)
+            # Try to place on saved screen by name; else clamp to primary
+            screens = QGuiApplication.screens()
+            target_screen = None
+            name = saved.get("screen")
+            for s in screens:
+                if name and s.name() == name:
+                    target_screen = s
+                    break
+            if target_screen is None:
+                target_screen = QGuiApplication.primaryScreen()
+            geom = target_screen.geometry() if target_screen else QGuiApplication.primaryScreen().geometry()
+            # Clamp to keep the window fully visible within the target screen
+            w = self.width()
+            h = self.height()
+            nx = min(max(target.x(), geom.x()), geom.x() + geom.width() - w)
+            ny = min(max(target.y(), geom.y()), geom.y() + geom.height() - h)
+            self.move(nx, ny)
+        except Exception:
+            pass
     def _setup_ui(self):
         """Set up the main UI layout."""
         # Build root + inner frame via helpers
@@ -247,6 +321,8 @@ class NativeMainWindow(QWidget):
         """Clean shutdown of the application."""
         try:
             print("[Native] Shutting down application...")
+            # Persist window position
+            self._save_window_position()
 
             # Cleanup model manager
             self.model_manager.unload()
@@ -278,3 +354,11 @@ class NativeMainWindow(QWidget):
     def set_tray_icon(self, tray_icon):
         """Set the system tray icon reference."""
         self.tray_icon = tray_icon
+
+    def moveEvent(self, event):
+        try:
+            if hasattr(self, "_save_pos_timer") and self._save_pos_timer is not None:
+                self._save_pos_timer.start()
+        except Exception:
+            pass
+        return super().moveEvent(event)

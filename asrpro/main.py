@@ -46,7 +46,7 @@ def kill_existing_instance():
 
 def ensure_single_instance():
     """Ensure only one instance of asrpro is running."""
-    lock_path = Path.home() / ".asrpro.lock"
+    lock_path = config.get_lock_path()
     current_pid = os.getpid()
 
     # Check if lock file exists and process is still running
@@ -95,7 +95,7 @@ def ensure_single_instance():
     try:
         lock_path.write_text(str(current_pid))
     except Exception as e:
-        print(f"Warning: Could not create lock file: {e}")
+        print(f"Warning: Could not create lock file at {lock_path}: {e}")
 
     return lock_path
 
