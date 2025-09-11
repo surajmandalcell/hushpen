@@ -13,6 +13,71 @@ from .utils.icon_loader import IconLoader
 from .traffic_lights import TrafficLights
 
 
+class DragHeader(QWidget):
+    """Header area that supports window dragging while hosting traffic lights."""
+
+    window_action = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._drag_origin = None
+        self._window_origin = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(0)
+        self.setFixedHeight(32)
+
+        self.traffic_lights = TrafficLights(self)
+        self.traffic_lights.close_clicked.connect(lambda: self.window_action.emit("close"))
+        self.traffic_lights.minimize_clicked.connect(lambda: self.window_action.emit("minimize"))
+        self.traffic_lights.hide_clicked.connect(lambda: self.window_action.emit("hide"))
+        layout.addWidget(self.traffic_lights)
+
+        # Expandable spacer to occupy the rest of the header; acts as drag area
+        spacer = QWidget(self)
+        spacer.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        layout.addWidget(spacer, 1)
+
+    def _over_controls(self, pos) -> bool:
+        # Prevent drag when clicking on the traffic light buttons area
+        return self.traffic_lights.geometry().contains(pos)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and not self._over_controls(event.pos()):
+            wh = self.window().windowHandle() if self.window() else None
+            if wh is not None:
+                try:
+                    wh.startSystemMove()
+                    event.accept()
+                    return
+                except Exception:
+                    pass
+            # Fallback manual drag
+            self._drag_origin = event.globalPosition().toPoint()
+            self._window_origin = self.window().frameGeometry().topLeft() if self.window() else None
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            if self._drag_origin is not None and self._window_origin is not None:
+                delta = event.globalPosition().toPoint() - self._drag_origin
+                if self.window():
+                    self.window().move(self._window_origin + delta)
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_origin = None
+        self._window_origin = None
+        super().mouseReleaseEvent(event)
+
+
 class SectionHeader(QWidget):
     """Section header widget like in Spokenly app."""
 
@@ -92,6 +157,15 @@ class SpokenlyNavigationItem(QWidget):
         """Set the active state of this navigation item."""
         if self.is_active != active:
             self.is_active = active
+            if active:
+                # When active, ensure hover visuals don't conflict
+                self.is_hovered = False
+            self._update_appearance()
+
+    def set_hover(self, hovered: bool):
+        """Explicitly set hover state and refresh appearance."""
+        if self.is_hovered != hovered:
+            self.is_hovered = hovered
             self._update_appearance()
 
     def _update_appearance(self):
@@ -154,14 +228,12 @@ class SpokenlyNavigationItem(QWidget):
 
     def enterEvent(self, event):
         """Handle mouse enter events."""
-        self.is_hovered = True
-        self._update_appearance()
+        self.set_hover(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Handle mouse leave events."""
-        self.is_hovered = False
-        self._update_appearance()
+        self.set_hover(False)
         super().leaveEvent(event)
 
 
@@ -215,23 +287,8 @@ class SpokemlySidebar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        header_widget = QWidget()
-        header_widget.setFixedHeight(32)
-        header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(0, 4, 0, 0)
-
-        self.traffic_lights = TrafficLights()
-        self.traffic_lights.close_clicked.connect(
-            lambda: self.window_action.emit("close")
-        )
-        self.traffic_lights.minimize_clicked.connect(
-            lambda: self.window_action.emit("minimize")
-        )
-        self.traffic_lights.hide_clicked.connect(
-            lambda: self.window_action.emit("hide")
-        )
-
-        header_layout.addWidget(self.traffic_lights)
+        header_widget = DragHeader()
+        header_widget.window_action.connect(self.window_action.emit)
         layout.addWidget(header_widget)
 
         self.logo_section = SpokenlyLogoSection()
@@ -287,6 +344,10 @@ class SpokemlySidebar(QWidget):
     def _on_navigation_clicked(self, section_id: str):
         """Handle navigation item clicks."""
         if section_id != "exit":
+            # Reset all hover states to prevent sticky hover after click
+            for item in self.navigation_items:
+                item.set_hover(False)
+            self.about_item.set_hover(False)
             self.set_active_section(section_id)
             self.page_requested.emit(section_id)
 
@@ -298,9 +359,13 @@ class SpokemlySidebar(QWidget):
 
     def _update_active_item(self, section_id: str):
         """Update visual active state of navigation items."""
+        # Clear all hovers to avoid stuck hover state after clicks
         for item in self.navigation_items:
+            item.set_hover(False)
             item.set_active(item.section_id == section_id)
 
+        # Footer items
+        self.about_item.set_hover(False)
         self.about_item.set_active(section_id == "about")
 
     def paintEvent(self, event):

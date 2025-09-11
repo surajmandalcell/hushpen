@@ -161,18 +161,23 @@ class NativeMainWindow(QWidget):
     # Drag support for frameless window (mac-like behavior)
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            wh = self.windowHandle()
-            if wh is not None:
-                try:
-                    # Qt 6 API on supported platforms
-                    wh.startSystemMove()
-                    event.accept()
-                    return
-                except Exception:
-                    pass
-            # Fallback manual drag
-            self._drag_origin = event.globalPosition().toPoint()
-            self._window_origin = self.frameGeometry().topLeft()
+            # Only allow dragging from the window shadow margin area (outside inner frame)
+            left, top, right, bottom = compute_shadow_margins()
+            inner_rect = self.rect().adjusted(left, top, -right, -bottom)
+            if not inner_rect.contains(event.pos()):
+                wh = self.windowHandle()
+                if wh is not None:
+                    try:
+                        wh.startSystemMove()
+                        event.accept()
+                        return
+                    except Exception:
+                        pass
+                # Fallback manual drag
+                self._drag_origin = event.globalPosition().toPoint()
+                self._window_origin = self.frameGeometry().topLeft()
+                event.accept()
+                return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
