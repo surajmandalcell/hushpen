@@ -15,6 +15,7 @@ import os
 from ..components.setting_row import SettingRow
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
 from ..utils.icon_loader import IconLoader
+from ..utils.invert import invert_icon
 from .base_page import BasePage
 
 
@@ -129,32 +130,6 @@ class AboutPage(BasePage):
         super().__init__("About ASR Pro", parent)
         self._create_content()
 
-    def _invert_icon(self, pixmap):
-        """Invert the colors of a QPixmap for dark theme compatibility while preserving transparency."""
-        from PySide6.QtGui import QPainter
-
-        inverted = QPixmap(pixmap.size())
-        inverted.fill(Qt.GlobalColor.transparent)
-
-        painter = QPainter(inverted)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-
-        # Draw the original pixmap
-        painter.drawPixmap(0, 0, pixmap)
-
-        # Apply color inversion while preserving alpha channel
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Difference)
-        painter.fillRect(inverted.rect(), Qt.GlobalColor.white)
-
-        # Restore original alpha channel
-        painter.setCompositionMode(
-            QPainter.CompositionMode.CompositionMode_DestinationIn
-        )
-        painter.drawPixmap(0, 0, pixmap)
-
-        painter.end()
-        return inverted
 
     def _create_content(self):
         """Create about page content."""
@@ -188,7 +163,7 @@ class AboutPage(BasePage):
                         Qt.TransformationMode.SmoothTransformation,
                     )
                     # Invert colors for dark theme
-                    inverted_pixmap = self._invert_icon(scaled_pixmap)
+                    inverted_pixmap = invert_icon(scaled_pixmap)
                     icon_label.setPixmap(inverted_pixmap)
                 else:
                     raise FileNotFoundError()

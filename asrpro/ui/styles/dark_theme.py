@@ -155,11 +155,11 @@ class Fonts:
 
     # Base font size
     BASE_SIZE = 10
+    SECTION_TITLE_SIZE = 12
 
     # Specific sizes
-    H1_SIZE = 22
+    H1_SIZE = 24
     PAGE_TITLE_SIZE = 14
-    SECTION_TITLE_SIZE = 12
     SETTING_LABEL_SIZE = 11
     DESCRIPTION_SIZE = 9
     STATUS_SIZE = 9

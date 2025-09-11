@@ -27,7 +27,7 @@ class BodyLabel(QLabel):
     def __init__(self, text: str = "", parent=None):
         super().__init__(text, parent)
         f = QFont()
-        f.setPointSize(Fonts.BASE_SIZE)
+        f.setPointSize(Fonts.DESCRIPTION_SIZE)
         f.setWeight(Fonts.NORMAL)
         self.setFont(f)
         self.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")

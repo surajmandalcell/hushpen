@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 from ..hotkey import load_hotkey, save_hotkey
+from .utils.invert import invert_icon
 
 
 def is_dark_theme():
@@ -50,28 +51,6 @@ def is_dark_theme():
         return False
 
 
-def invert_icon(pixmap):
-    """Invert the colors of a QPixmap for dark theme compatibility while preserving transparency."""
-    inverted = QPixmap(pixmap.size())
-    inverted.fill(Qt.GlobalColor.transparent)
-
-    painter = QPainter(inverted)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-
-    # Draw the original pixmap
-    painter.drawPixmap(0, 0, pixmap)
-
-    # Apply color inversion while preserving alpha channel
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Difference)
-    painter.fillRect(inverted.rect(), Qt.GlobalColor.white)
-
-    # Restore original alpha channel
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-    painter.drawPixmap(0, 0, pixmap)
-
-    painter.end()
-    return inverted
 
 
 def build_tray(main_window):  # pragma: no cover
