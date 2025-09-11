@@ -31,9 +31,15 @@ class DragHeader(QWidget):
         self.setFixedHeight(32)
 
         self.traffic_lights = TrafficLights(self)
-        self.traffic_lights.close_clicked.connect(lambda: self.window_action.emit("close"))
-        self.traffic_lights.minimize_clicked.connect(lambda: self.window_action.emit("minimize"))
-        self.traffic_lights.hide_clicked.connect(lambda: self.window_action.emit("hide"))
+        self.traffic_lights.close_clicked.connect(
+            lambda: self.window_action.emit("close")
+        )
+        self.traffic_lights.minimize_clicked.connect(
+            lambda: self.window_action.emit("minimize")
+        )
+        self.traffic_lights.hide_clicked.connect(
+            lambda: self.window_action.emit("hide")
+        )
         layout.addWidget(self.traffic_lights)
 
         # Expandable spacer to occupy the rest of the header; acts as drag area
@@ -46,7 +52,9 @@ class DragHeader(QWidget):
         return self.traffic_lights.geometry().contains(pos)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self._over_controls(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and not self._over_controls(
+            event.pos()
+        ):
             wh = self.window().windowHandle() if self.window() else None
             if wh is not None:
                 try:
@@ -57,7 +65,9 @@ class DragHeader(QWidget):
                     pass
             # Fallback manual drag
             self._drag_origin = event.globalPosition().toPoint()
-            self._window_origin = self.window().frameGeometry().topLeft() if self.window() else None
+            self._window_origin = (
+                self.window().frameGeometry().topLeft() if self.window() else None
+            )
             event.accept()
             return
         super().mousePressEvent(event)
@@ -199,7 +209,7 @@ class SpokenlyNavigationItem(QWidget):
             self.setStyleSheet(
                 """
                 SpokenlyNavigationItem {
-                    background-color: rgba(10, 132, 255, 60);
+                    background-color: rgba(255,0,0, 60);
                     border-radius: 6px;
                     margin: 2px 8px;
                     border-left: 20px solid rgba(%d, %d, %d, 153);
