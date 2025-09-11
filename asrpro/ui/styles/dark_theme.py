@@ -151,18 +151,59 @@ class Dimensions:
 
 
 class Fonts:
-    """Font specifications matching the original design."""
+    """Font specifications following web/CSS standard naming conventions."""
 
-    # Base font size
-    BASE_SIZE = 10
-    SECTION_TITLE_SIZE = 12
+    # Standard typography scale (following web standards)
+    # Primary headings (app name, major titles)
+    H1 = 24
+    # Secondary headings
+    H2 = 18
+    # Page titles, tertiary headings
+    H3 = 14
+    # Section headings
+    H4 = 10
+    # Subsection headings
+    H5 = 11
+    # Minor headings
+    H6 = 10
 
-    # Specific sizes
-    H1_SIZE = 24
-    PAGE_TITLE_SIZE = 14
-    SETTING_LABEL_SIZE = 11
-    DESCRIPTION_SIZE = 9
-    STATUS_SIZE = 9
+    # Body text hierarchy
+    # Large body text
+    LG = 12
+    # Default body text, controls, buttons
+    BASE = 10
+    # Small text, captions, descriptions
+    SM = 9
+    # Extra small text, fine print
+    XS = 8
+
+    # Legacy aliases (for backward compatibility - remove after migration)
+    # 24px - App name, major headings
+    H1_SIZE = H1
+    # 14px - Main page titles
+    PAGE_TITLE_SIZE = H3
+    # 10px - Section headings within pages
+    SECTION_TITLE_SIZE = H6
+    # 11px - Setting names, card titles, item labels
+    ITEM_TITLE_SIZE = H5
+    # 10px - Buttons, inputs, form controls
+    CONTROL_SIZE = BASE + 2
+    # 9px - Descriptions, body text, status text
+    BODY_SIZE = SM
+    # 11px - Navigation menu items
+    NAVIGATION_SIZE = H5
+    # 12px - Logo/branding text
+    LOGO_SIZE = H4
+    # 11px - Link buttons and clickable text
+    LINK_SIZE = H5
+    # 10px - for UI controls
+    BASE_SIZE = BASE
+    # 11px - item/setting titles
+    SETTING_LABEL_SIZE = H5
+    # 9px - descriptions and body text
+    DESCRIPTION_SIZE = SM
+    # 9px - status text
+    STATUS_SIZE = SM
 
     # Font weights (using QFont.Weight enum)
     from PySide6.QtGui import QFont

@@ -34,7 +34,7 @@ class HotkeyInput(QLineEdit):
                 border: 2px solid {DarkTheme.CARD_BORDER.name()};
                 padding: 8px 12px;
                 border-radius: 6px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
                 min-width: 200px;
             }}
             HotkeyInput:focus {{
@@ -191,7 +191,7 @@ class HotkeyRow(QWidget):
                 border: none;
                 padding: 8px 12px;
                 border-radius: 6px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
                 min-width: 60px;
             }}
             QPushButton:hover {{

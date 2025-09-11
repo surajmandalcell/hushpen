@@ -117,7 +117,7 @@ class MicrophoneItem(QWidget):
                 border: none;
                 padding: 6px 12px;
                 border-radius: 4px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
                 min-width: 60px;
             }}
             QPushButton:hover {{

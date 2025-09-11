@@ -109,7 +109,7 @@ class ModelCard(QWidget):
                 border: none;
                 padding: 8px 16px;
                 border-radius: 6px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
                 font-weight: {Fonts.MEDIUM};
             }}
             QPushButton:hover {{

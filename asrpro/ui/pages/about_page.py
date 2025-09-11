@@ -104,7 +104,7 @@ class LinkButton(QPushButton):
                 border: 1px solid {DarkTheme.CARD_BORDER.name()};
                 text-align: left;
                 padding: 4px 12px;
-                font-size: {Fonts.BASE_SIZE + 1}px;
+                font-size: {Fonts.CONTROL_SIZE + 1}px;
                 font-weight: 500;
                 border-radius: 6px;
                 min-height: 20px;
@@ -191,7 +191,7 @@ class AboutPage(BasePage):
         # Version
         version_label = QLabel("Version 1.0.0")
         version_font = QFont()
-        version_font.setPointSize(Fonts.BASE_SIZE)
+        version_font.setPointSize(Fonts.CONTROL_SIZE)
         version_font.setWeight(Fonts.NORMAL)
         version_label.setFont(version_font)
         version_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
@@ -200,7 +200,7 @@ class AboutPage(BasePage):
         # Description
         desc_label = QLabel("Professional Speech Recognition and Transcription")
         desc_font = QFont()
-        desc_font.setPointSize(Fonts.BASE_SIZE)
+        desc_font.setPointSize(Fonts.CONTROL_SIZE)
         desc_font.setWeight(Fonts.NORMAL)
         desc_label.setFont(desc_font)
         desc_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")

@@ -29,7 +29,7 @@ class FilePicker(QWidget):
                 border: none;
                 padding: 8px 12px;
                 border-radius: 8px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
             }}
             """
         )
@@ -41,7 +41,7 @@ class FilePicker(QWidget):
                 border: none;
                 padding: 8px 12px;
                 border-radius: 8px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
             }}
             QPushButton:hover {{ background-color: {DarkTheme.BUTTON_HOVER_BG.name()}; }}
             QPushButton:pressed {{ padding-top: 9px; padding-bottom: 7px; }}

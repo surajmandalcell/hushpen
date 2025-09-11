@@ -153,7 +153,7 @@ class SettingRow(QWidget):
                     border: none;
                     padding: 8px 32px 8px 12px;
                     border-radius: 6px;
-                    font-size: {Fonts.BASE_SIZE}px;
+                    font-size: {Fonts.CONTROL_SIZE}px;
                     min-width: 120px;
                 }}
                 QComboBox:focus {{
@@ -190,7 +190,7 @@ class SettingRow(QWidget):
                     border: none;
                     padding: 8px 12px;
                     border-radius: 6px;
-                    font-size: {Fonts.BASE_SIZE}px;
+                    font-size: {Fonts.CONTROL_SIZE}px;
                     min-width: 200px;
                 }}
                 QLineEdit:focus {{
@@ -202,7 +202,7 @@ class SettingRow(QWidget):
                     border: none;
                     padding: 8px 12px;
                     border-radius: 6px;
-                    font-size: {Fonts.BASE_SIZE}px;
+                    font-size: {Fonts.CONTROL_SIZE}px;
                 }}
                 QPushButton:hover {{
                     background-color: {DarkTheme.BUTTON_HOVER_BG.name()};
@@ -218,7 +218,7 @@ class SettingRow(QWidget):
                     border: none;
                     padding: 8px 12px;
                     border-radius: 6px;
-                    font-size: {Fonts.BASE_SIZE}px;
+                    font-size: {Fonts.CONTROL_SIZE}px;
                     min-width: 200px;
                 }}
                 QLineEdit:focus {{

@@ -20,7 +20,7 @@ class MacButton(QPushButton):
                 border: none;
                 padding: 6px 12px;
                 border-radius: 8px;
-                font-size: {Fonts.BASE_SIZE}px;
+                font-size: {Fonts.CONTROL_SIZE}px;
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
