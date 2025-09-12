@@ -1,261 +1,252 @@
-"""macOS-style Select dropdown component."""
+### SIZE REFERENCE TAGS ###
+# Search for :refSize: to find all size-related settings
+# :refSize:MAIN_DIMENSIONS - Main widget width/height
+# :refSize:MAX_VISIBLE - Max visible dropdown items
+# :refSize:SHADOW - Shadow blur and offset
+# :refSize:CHEVRON - Chevron arrow dimensions
+# :refSize:CHEVRON_STROKE - Chevron line width
+# :refSize:BUTTON_PADDING - Main button padding
+# :refSize:BUTTON_RADIUS - Main button border radius
+# :refSize:BUTTON_FONT - Main button font size
+# :refSize:DROPDOWN_RADIUS - Dropdown container radius
+# :refSize:DROPDOWN_FONT - Dropdown font size
+# :refSize:DROPDOWN_CONTAINER_PADDING - Dropdown container padding
+# :refSize:ITEM_PADDING - Individual item padding
+# :refSize:ITEM_HEIGHT - Individual item min height
+### END SIZE REFERENCE ###
 
-from typing import Optional, List, Any, Callable
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect
-from PySide6.QtGui import QFont, QPainter, QPen, QColor, QIcon
-from PySide6.QtWidgets import (
-    QComboBox,
-    QStyledItemDelegate,
-    QStyleOptionComboBox,
-    QStyle,
-)
-
-from ..styles.dark_theme import DarkTheme, Fonts, Dimensions
-from ..utils.icon_loader import IconLoader
+from typing import Optional, List
+from PySide6.QtCore import Qt, Signal, QPointF
+from PySide6.QtGui import QPainter, QPen, QColor, QPolygonF
+from PySide6.QtWidgets import QComboBox, QStyledItemDelegate, QGraphicsDropShadowEffect
 
 
 class MacSelectDelegate(QStyledItemDelegate):
-    """Custom delegate for macOS-style dropdown items."""
-
     def paint(self, painter, option, index):
-        """Custom paint for dropdown items."""
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Background
-        if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, DarkTheme.ACCENT_BLUE)
-            text_color = DarkTheme.MAIN_BG
-        elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, DarkTheme.HOVER_BG)
-            text_color = DarkTheme.PRIMARY_TEXT
-        else:
-            text_color = DarkTheme.PRIMARY_TEXT
-
-        # Text
-        painter.setPen(QPen(text_color))
-        font = QFont()
-        font.setPointSize(Fonts.CONTROL_SIZE)
-        font.setWeight(Fonts.NORMAL)
-        painter.setFont(font)
-
-        text_rect = option.rect.adjusted(12, 0, -12, 0)
-        painter.drawText(
-            text_rect,
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            index.data(Qt.ItemDataRole.DisplayRole),
-        )
+        super().paint(painter, option, index)
 
 
 class MacSelect(QComboBox):
-    """macOS-style select dropdown component."""
-
-    selection_changed = Signal(int, str)  # index, text
+    selection_changed = Signal(int, str)
 
     def __init__(
         self,
         options: Optional[List[str]] = None,
-        placeholder: str = "Select an option",
+        placeholder: str = "Select",
         width: Optional[int] = None,
+        height: Optional[int] = None,
         parent=None,
     ):
         super().__init__(parent)
-
         self.placeholder = placeholder
         self._options = options or []
-
-        self._setup_ui(width)
+        self._setup_ui(width, height)
         self._apply_styles()
-        self._setup_signals()
-
-        # Set initial options
+        self.currentIndexChanged.connect(self._on_selection_changed)
         if self._options:
             self.set_options(self._options)
 
-    def _setup_ui(self, width: Optional[int]):
-        """Set up the select UI."""
-        # Set custom delegate for dropdown items
+    def _setup_ui(self, width: Optional[int], height: Optional[int]):
         self.setItemDelegate(MacSelectDelegate(self))
 
-        # Configure size
-        if width:
-            self.setFixedWidth(width)
-        self.setMinimumHeight(32)
+        ### <:refSize:MAIN_DIMENSIONS> ###
+        self.setFixedWidth(width or 154)
+        self.setFixedHeight(height or 28)
+        ### </:refSize:MAIN_DIMENSIONS> ###
 
-        # Configure behavior
-        self.setMaxVisibleItems(8)
+        ### <:refSize:MAX_VISIBLE> ###
+        self.setMaxVisibleItems(10)
+        ### </:refSize:MAX_VISIBLE> ###
+
         self.setEditable(False)
-        
-        # Force disable native styling
         self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.setFrame(False)
+        self.setProperty("open", False)
 
-    def _setup_signals(self):
-        """Set up signal connections."""
-        self.currentIndexChanged.connect(self._on_selection_changed)
+        ### <:refSize:SHADOW> ###
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(10)
+        shadow.setXOffset(0)
+        shadow.setYOffset(2)
+        shadow.setColor(QColor(0, 0, 0, 40))
+        self.setGraphicsEffect(shadow)
+        ### </:refSize:SHADOW> ###
 
     def _on_selection_changed(self, index: int):
-        """Handle selection change."""
         if index >= 0:
             text = self.itemText(index)
             self.selection_changed.emit(index, text)
+        self.update()
+
+    def showPopup(self):
+        super().showPopup()
+        self.setProperty("open", True)
+        self.update()
+
+    def hidePopup(self):
+        super().hidePopup()
+        self.setProperty("open", False)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        ### <:refSize:CHEVRON_STROKE> ###
+        pen = QPen(QColor(255, 255, 255, 180))
+        pen.setWidthF(1.5)
+        ### </:refSize:CHEVRON_STROKE> ###
+
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+
+        ### <:refSize:CHEVRON> ###
+        w = 6  # chevron width
+        h = 4  # chevron height
+        r = self.rect()
+        x = r.right() - 17 - w  # right margin + chevron width
+        y = r.top() + (r.height() - h) // 2
+        ### </:refSize:CHEVRON> ###
+
+        if self.property("open"):
+            p.drawPolyline(
+                QPolygonF(
+                    [
+                        QPointF(x, y + h),
+                        QPointF(x + w / 2, y),
+                        QPointF(x + w, y + h),
+                    ]
+                )
+            )
+        else:
+            p.drawPolyline(
+                QPolygonF(
+                    [
+                        QPointF(x, y),
+                        QPointF(x + w / 2, y + h),
+                        QPointF(x + w, y),
+                    ]
+                )
+            )
+        p.end()
 
     def _apply_styles(self):
-        """Apply dark theme macOS-style dropdown styling."""
         self.setStyleSheet(
-            f"""
-            MacSelect {{
-                background-color: {DarkTheme.CONTROL_BG.name()};
-                color: {DarkTheme.PRIMARY_TEXT.name()};
-                border: none;
-                padding: 8px 32px 8px 12px;
-                border-radius: 6px;
-                font-size: {Fonts.CONTROL_SIZE}px;
-                min-width: 120px;
-            }}
+            """
+            /* THE MAIN BUTTON (closed dropdown) */
+            MacSelect {
+                /* ### <:refSize:BUTTON_PADDING> ### */
+                padding: 5px 28px 5px 12px;
+                
+                /* BUTTON BACKGROUND */
+                background: rgba(60, 60, 60, 180);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                
+                /* ### <:refSize:BUTTON_RADIUS> ### */
+                border-radius: 7px;
+                
+                color: rgba(255, 255, 255, 0.85);
+                
+                /* ### <:refSize:BUTTON_FONT> ### */
+                font-size: 12px;
+                
+                font-family: -apple-system, "SF Pro Text", "Helvetica Neue";
+            }
             
-            MacSelect:focus {{
-                border: 2px solid {DarkTheme.FOCUS_BORDER.name()};
-            }}
-            
-            MacSelect::drop-down {{
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 20px;
+            /* MAIN BUTTON WHEN MOUSE HOVERS */
+            MacSelect:hover {
+                background: rgba(70, 70, 70, 200);
+            }
+
+            /* THE DROPDOWN ARROW AREA (hidden) */
+            MacSelect::drop-down {
                 border: none;
-            }}
-            MacSelect::down-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid {DarkTheme.SECONDARY_TEXT.name()};
                 width: 0px;
-                height: 0px;
-            }}
-            MacSelect QAbstractItemView {{
-                background-color: {DarkTheme.CONTROL_BG.name()};
-                color: {DarkTheme.PRIMARY_TEXT.name()};
-                selection-background-color: {DarkTheme.ACCENT_BLUE.name()};
-                border: 1px solid {DarkTheme.CARD_BORDER.name()};
+            }
+            
+            /* THE DEFAULT DROPDOWN ARROW ICON (hidden) */
+            MacSelect::down-arrow {
+                image: none;
+            }
+
+            /* THE DROPDOWN CONTAINER/POPUP WINDOW */
+            MacSelect QAbstractItemView {
+                margin-top: 12px;
+                
+                
+                /* DROPDOWN BACKGROUND */
+                background: rgba(40, 40, 40, 250);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                
+                /* ### <:refSize:DROPDOWN_RADIUS> ### */
                 border-radius: 6px;
-            }}
+                
+                /* ### <:refSize:DROPDOWN_FONT> ### */
+                font-size: 12px;
+                font-weight: 600;
+                
+                /* ### <:refSize:DROPDOWN_CONTAINER_PADDING> ### */
+                padding: 4px 0px;
+            }
+
+            /* EACH INDIVIDUAL OPTION IN THE DROPDOWN LIST */
+            MacSelect QAbstractItemView::item {
+                /* ### <:refSize:ITEM_PADDING> ### */
+                padding: 6px 12px;
+                
+                color: rgba(255, 255, 255, 0.85);
+                
+                /* ### <:refSize:ITEM_HEIGHT> ### */
+                min-height: 12px;
+            }
+
+            /* THE CURRENTLY SELECTED/HIGHLIGHTED OPTION IN DROPDOWN */
+            MacSelect QAbstractItemView::item:selected {
+                background: rgba(50, 125, 255, 0.3);
+            }
             
-            MacSelect QAbstractItemView::item {{
-                min-height: 20px;
-                padding: 4px 12px;
-                border: none;
-                color: {DarkTheme.PRIMARY_TEXT.name()};
-                font-size: {Fonts.CONTROL_SIZE}px;
-                font-weight: 400;
-            }}
-            
-            MacSelect QAbstractItemView::item:selected {{
-                background-color: {DarkTheme.ACCENT_BLUE.name()};
-                color: {DarkTheme.MAIN_BG.name()};
-                border-radius: 4px;
-                margin: 0px 6px;
-            }}
-            
-            MacSelect QAbstractItemView::item:hover:!selected {{
-                background-color: {DarkTheme.HOVER_BG.name()};
-                border-radius: 4px;
-                margin: 0px 6px;
-            }}
+            MacSelect QAbstractItemView {
+                outline: none;
+            }
         """
         )
 
-    def set_options(self, options: List[str], current_index: int = -1):
-        """Set the dropdown options."""
+    def set_options(self, options: List[str], current_index: int = 0):
         self.clear()
         self._options = options.copy()
-
-        # Add placeholder if no current selection
-        if current_index == -1 and self.placeholder:
-            self.addItem(self.placeholder)
-            # Disable placeholder - need to cast to QStandardItemModel
-            from PySide6.QtGui import QStandardItemModel
-            model = self.model()
-            if isinstance(model, QStandardItemModel):
-                item = model.item(0)
-                if item:
-                    item.setEnabled(False)
-            self.setCurrentIndex(0)
-
-        # Add actual options
         for option in options:
             self.addItem(option)
-
-        # Set current selection
-        if current_index >= 0 and current_index < len(options):
-            offset = 1 if self.placeholder and current_index == -1 else 0
-            self.setCurrentIndex(current_index + offset)
+        if 0 <= current_index < len(options):
+            self.setCurrentIndex(current_index)
 
     def get_selected_index(self) -> int:
-        """Get the currently selected option index (excluding placeholder)."""
-        current = self.currentIndex()
-        if self.placeholder and self.count() > 0:
-            # Account for placeholder
-            if current == 0:
-                return -1  # Placeholder selected
-            return current - 1
-        return current
+        return self.currentIndex()
 
     def get_selected_text(self) -> str:
-        """Get the currently selected option text."""
-        index = self.get_selected_index()
-        if index >= 0 and index < len(self._options):
-            return self._options[index]
-        return ""
+        return self.currentText()
 
     def set_selected_index(self, index: int):
-        """Set the selected option by index."""
-        if 0 <= index < len(self._options):
-            offset = 1 if self.placeholder else 0
-            self.setCurrentIndex(index + offset)
+        if 0 <= index < self.count():
+            self.setCurrentIndex(index)
 
     def set_selected_text(self, text: str):
-        """Set the selected option by text."""
-        try:
-            index = self._options.index(text)
-            self.set_selected_index(index)
-        except ValueError:
-            pass  # Text not found in options
+        index = self.findText(text)
+        if index >= 0:
+            self.setCurrentIndex(index)
 
     def add_option(self, option: str):
-        """Add a single option to the dropdown."""
         self._options.append(option)
         self.addItem(option)
 
     def remove_option(self, option: str):
-        """Remove an option from the dropdown."""
-        try:
-            index = self._options.index(option)
+        index = self.findText(option)
+        if index >= 0:
             self._options.remove(option)
-            offset = 1 if self.placeholder else 0
-            self.removeItem(index + offset)
-        except ValueError:
-            pass  # Option not found
+            self.removeItem(index)
 
     def clear_options(self):
-        """Clear all options."""
         self.clear()
         self._options.clear()
-        if self.placeholder:
-            self.addItem(self.placeholder)
-            # Disable placeholder - need to cast to QStandardItemModel
-            from PySide6.QtGui import QStandardItemModel
-            model = self.model()
-            if isinstance(model, QStandardItemModel):
-                item = model.item(0)
-                if item:
-                    item.setEnabled(False)
-            self.setCurrentIndex(0)
-
-    def is_placeholder_selected(self) -> bool:
-        """Check if the placeholder is currently selected."""
-        return bool(self.placeholder and self.currentIndex() == 0)
-
-    def set_placeholder(self, placeholder: str):
-        """Update the placeholder text."""
-        old_selection = self.get_selected_index()
-        self.placeholder = placeholder
-        self.set_options(self._options, old_selection)

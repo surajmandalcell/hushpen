@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from .styles.dark_theme import DarkTheme, Dimensions
-from .layout.window import build_root_and_frame, compute_shadow_margins, apply_rounded_clip
+from .window_layout import build_root_and_frame, compute_shadow_margins, apply_rounded_clip
 from .sidebar import SpokemlySidebar as Sidebar
 from .content_area import ContentArea
 from .utils.icon_loader import IconLoader
