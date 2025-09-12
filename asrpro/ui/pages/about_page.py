@@ -130,7 +130,6 @@ class AboutPage(BasePage):
         super().__init__("About ASR Pro", parent)
         self._create_content()
 
-
     def _create_content(self):
         """Create about page content."""
         # App Logo and Name section
@@ -187,15 +186,6 @@ class AboutPage(BasePage):
         app_name.setFont(name_font)
         app_name.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")
         info_layout.addWidget(app_name)
-
-        # Version
-        version_label = QLabel("Version 1.0.0")
-        version_font = QFont()
-        version_font.setPointSize(Fonts.CONTROL_SIZE)
-        version_font.setWeight(Fonts.NORMAL)
-        version_label.setFont(version_font)
-        version_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
-        info_layout.addWidget(version_label)
 
         # Description
         desc_label = QLabel("Professional Speech Recognition and Transcription")

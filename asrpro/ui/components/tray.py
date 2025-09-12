@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QApplication,
 )
-from ..hotkey import load_hotkey, save_hotkey
-from .utils.invert import invert_icon
+from ...hotkey import load_hotkey, save_hotkey
+from ..utils.invert import invert_icon
 
 
 def is_dark_theme():
@@ -53,15 +53,21 @@ def is_dark_theme():
 
 
 
+def _assets_dir() -> Path:
+    # components/tray.py -> project_root/assets
+    return Path(__file__).resolve().parents[3] / "assets"
+
+
 def build_tray(main_window):  # pragma: no cover
     # Try to locate an icon inside a conventional assets folder; fall back to a simple empty icon.
     icon = QIcon()
     icon_found = False
 
+    assets = _assets_dir()
     for candidate in [
-        Path(__file__).parent / ".." / ".." / "assets" / "icon.png",
-        Path(__file__).parent / ".." / ".." / "assets" / "icon.ico",
-        Path(__file__).parent / ".." / ".." / "assets" / "icon.svg",
+        assets / "icon.png",
+        assets / "icon.ico",
+        assets / "icon.svg",
     ]:
         print(f"[Tray] Checking icon path: {candidate.resolve()}")
         if candidate.exists():
@@ -165,9 +171,10 @@ def build_tray(main_window):  # pragma: no cover
     # Apply icons for menu actions with enhanced handling
     def load_menu_icon(name: str) -> QIcon:
         """Load an icon for menu items with proper sizing and theme handling."""
+        assets = _assets_dir()
         icon_candidates = [
-            Path(__file__).parent / ".." / ".." / "assets" / "icons" / f"{name}.svg",
-            Path(__file__).parent / ".." / ".." / "assets" / "icons" / f"{name}.png",
+            assets / "icons" / f"{name}.svg",
+            assets / "icons" / f"{name}.png",
         ]
         
         for icon_path in icon_candidates:
@@ -216,7 +223,7 @@ def build_tray(main_window):  # pragma: no cover
             border-radius: 8px; 
             padding: 4px 0;
             font-size: 13px;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
             font-weight: 400;
             min-width: 180px;
         }

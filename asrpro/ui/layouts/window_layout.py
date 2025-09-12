@@ -4,7 +4,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QPainterPath, QRegion
 from PySide6.QtWidgets import QWidget, QHBoxLayout
 
-from .styles.dark_theme import Dimensions
+from ..styles.dark_theme import Dimensions
 
 
 def compute_shadow_margins() -> tuple[int, int, int, int]:

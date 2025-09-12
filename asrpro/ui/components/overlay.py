@@ -160,3 +160,4 @@ class Overlay(QWidget):  # pragma: no cover - UI only
         if e.type() in (QEvent.Type.Show, QEvent.Type.WindowActivate):
             self.setFocus(Qt.FocusReason.NoFocusReason)
         return super().event(e)
+

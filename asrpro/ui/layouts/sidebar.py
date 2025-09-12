@@ -8,9 +8,9 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBu
 
 from asrpro.ui.utils.elements import subtle_separator
 
-from .styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
-from .utils.icon_loader import IconLoader
-from .traffic_lights import TrafficLights
+from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
+from ..utils.icon_loader import IconLoader
+from ..components.traffic_lights import TrafficLights
 
 
 class DragHeader(QWidget):

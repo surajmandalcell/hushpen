@@ -153,7 +153,7 @@ class MacSelect(QComboBox):
                 /* ### <:refSize:BUTTON_FONT> ### */
                 font-size: 12px;
                 
-                font-family: -apple-system, "SF Pro Text", "Helvetica Neue";
+                font-family: "DM Sans", -apple-system, "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
             }
             
             /* MAIN BUTTON WHEN MOUSE HOVERS */
@@ -179,7 +179,7 @@ class MacSelect(QComboBox):
                 
                 /* DROPDOWN BACKGROUND */
                 background: rgba(40, 40, 40, 250);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.04);
                 
                 /* ### <:refSize:DROPDOWN_RADIUS> ### */
                 border-radius: 6px;
@@ -189,7 +189,7 @@ class MacSelect(QComboBox):
                 font-weight: 600;
                 
                 /* ### <:refSize:DROPDOWN_CONTAINER_PADDING> ### */
-                padding: 4px 0px;
+                padding: 1px 0px;
             }
 
             /* EACH INDIVIDUAL OPTION IN THE DROPDOWN LIST */

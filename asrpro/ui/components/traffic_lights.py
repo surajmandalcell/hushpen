@@ -12,7 +12,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QPainter, QPen, QBrush, QPainterPath, QFont, QColor
 from PySide6.QtWidgets import QWidget, QHBoxLayout
 
-from .styles.dark_theme import DarkTheme, Dimensions
+from ..styles.dark_theme import DarkTheme, Dimensions
 
 
 class TrafficLightButton(QWidget):

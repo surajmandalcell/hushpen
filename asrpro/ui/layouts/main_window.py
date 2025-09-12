@@ -14,16 +14,16 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
 )
 
-from .styles.dark_theme import DarkTheme, Dimensions
+from ..styles.dark_theme import DarkTheme, Dimensions
 from .window_layout import build_root_and_frame, compute_shadow_margins, apply_rounded_clip
 from .sidebar import SpokemlySidebar as Sidebar
 from .content_area import ContentArea
-from .utils.icon_loader import IconLoader
+from ..utils.icon_loader import IconLoader
 
-from .overlay import Overlay
-from ..model_manager import ModelManager
-from ..hotkey import ToggleHotkey
-from ..config import config
+from ..components.overlay import Overlay
+from ...model_manager import ModelManager
+from ...hotkey import ToggleHotkey
+from ...config import config
 
 
 class NativeMainWindow(QWidget):

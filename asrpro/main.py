@@ -8,12 +8,12 @@ import signal
 import psutil
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QFont
 from PySide6.QtCore import QTimer
 
 # Use the native PyQt UI
-from .ui.main_window import NativeMainWindow as MainWindow
-from .ui.tray import build_tray
+from .ui.layouts.main_window import NativeMainWindow as MainWindow
+from .ui.components.tray import build_tray
+from .ui.utils.font_loader import load_default_font
 from .server import ServerThread
 from .config import config
 
@@ -109,12 +109,8 @@ def launch():  # pragma: no cover
     app.setApplicationName("asrpro")
     app.setQuitOnLastWindowClosed(False)
 
-    # Apply a consistent system font baseline
-    try:
-        from .ui.styles.dark_theme import Fonts
-        app.setFont(QFont(Fonts.get_system_font(), Fonts.BASE_SIZE))
-    except Exception:
-        pass
+    # Apply DM Sans as the default application font (fallbacks handled inside)
+    load_default_font(app)
 
     # Native PyQt UI - no WebEngine needed
 
