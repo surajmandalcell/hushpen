@@ -153,7 +153,7 @@ class MacSelect(QComboBox):
                 /* ### <:refSize:BUTTON_FONT> ### */
                 font-size: 12px;
                 
-                font-family: "DM Sans", -apple-system, "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+                font-family: "Roboto", -apple-system, "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
             }
             
             /* MAIN BUTTON WHEN MOUSE HOVERS */
@@ -174,7 +174,7 @@ class MacSelect(QComboBox):
 
             /* THE DROPDOWN CONTAINER/POPUP WINDOW */
             MacSelect QAbstractItemView {
-                margin-top: 12px;
+                margin-top: 6px;
                 
                 
                 /* DROPDOWN BACKGROUND */

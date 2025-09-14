@@ -8,7 +8,8 @@ import signal
 import psutil
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QGuiApplication
 
 # Use the native PyQt UI
 from .ui.layouts.main_window import NativeMainWindow as MainWindow
@@ -104,12 +105,22 @@ def launch():  # pragma: no cover
     # Ensure single instance
     lock_path = ensure_single_instance()
 
+    # High-DPI and font rendering tweaks (set before QApplication)
+    try:
+        os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+        QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.RoundPreferFloor
+        )
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
     app.setOrganizationName("asrpro")
     app.setApplicationName("asrpro")
     app.setQuitOnLastWindowClosed(False)
 
-    # Apply DM Sans as the default application font (fallbacks handled inside)
+    # Apply Roboto as the default application font (fallbacks handled inside)
     load_default_font(app)
 
     # Native PyQt UI - no WebEngine needed

@@ -223,7 +223,7 @@ def build_tray(main_window):  # pragma: no cover
             border-radius: 8px; 
             padding: 4px 0;
             font-size: 13px;
-            font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+            font-family: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
             font-weight: 400;
             min-width: 180px;
         }
