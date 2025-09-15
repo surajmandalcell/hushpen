@@ -42,13 +42,24 @@ def _input_loop(on_key):
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
-                tty.setcbreak(fd)
+                tty.setraw(fd)  # Use setraw instead of setcbreak for immediate input
                 while True:
                     r, _, _ = select.select([sys.stdin], [], [], 0.1)
                     if r:
                         ch = sys.stdin.read(1)
                         if ch:
-                            on_key(ch.lower())
+                            # Handle special characters
+                            if ch == '\x03':  # Ctrl+C
+                                on_key('\u0003')
+                            elif ch == '\x1b':  # ESC sequence - read and discard
+                                # Consume any escape sequence characters
+                                select.select([sys.stdin], [], [], 0.01)
+                                try:
+                                    sys.stdin.read(10)  # Read potential escape sequence
+                                except:
+                                    pass
+                            else:
+                                on_key(ch.lower())
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except Exception:

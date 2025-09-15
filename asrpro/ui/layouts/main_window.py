@@ -214,12 +214,6 @@ class NativeMainWindow(QWidget):
             rr = QRectF(inner_rect).adjusted(0.5, 0.5, -0.5, -0.5)
             path.addRoundedRect(rr, r, r)
             painter.fillPath(path, QBrush(DarkTheme.MAIN_BG))
-
-            # Subtle inner border to visually reinforce rounded edge
-            pen = QPen(QColor(255, 255, 255, 20))
-            pen.setWidth(1)
-            painter.setPen(pen)
-            painter.drawRoundedRect(rr, r, r)
         finally:
             painter.end()
 

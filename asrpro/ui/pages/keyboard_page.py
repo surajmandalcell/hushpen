@@ -142,16 +142,16 @@ class HotkeyRow(QWidget):
         # Title label
         self.title_label = QLabel(title)
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         self.title_label.setFont(font)
         info_layout.addWidget(self.title_label)
         
         # Description label
         self.desc_label = QLabel(description)
         font = QFont()
-        font.setPointSize(Fonts.DESCRIPTION_SIZE)
-        font.setWeight(Fonts.NORMAL)
+        font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         self.desc_label.setFont(font)
         self.desc_label.setWordWrap(True)
         info_layout.addWidget(self.desc_label)
@@ -225,8 +225,8 @@ class KeyboardPage(BasePage):
         # Global Hotkey section
         global_label = QLabel("Global Hotkeys")
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         global_label.setFont(font)
         global_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-bottom: 8px;")
         self.add_content_widget(global_label)
@@ -264,8 +264,8 @@ class KeyboardPage(BasePage):
         # Text Processing section
         processing_label = QLabel("Text Processing")
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         processing_label.setFont(font)
         processing_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-top: 24px; margin-bottom: 8px;")
         self.add_content_widget(processing_label)

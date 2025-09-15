@@ -227,6 +227,49 @@ class Fonts:
         else:  # Linux and others
             return "system-ui"
 
+    @classmethod
+    def get_platform_font_scale(cls) -> float:
+        """Get platform-specific font scaling factor."""
+        import platform
+
+        system = platform.system().lower()
+
+        if system == "darwin":  # macOS - needs larger fonts for Retina displays
+            return 1.4
+        elif system == "windows":
+            return 1.2
+        else:  # Linux and others
+            return 1.0
+
+    @classmethod
+    def scaled(cls, size: int) -> int:
+        """Get platform-scaled font size."""
+        return int(size * cls.get_platform_font_scale())
+
+    @classmethod
+    def adjust_weight(cls, weight) -> "QFont.Weight":
+        """Adjust font weight for platform-specific rendering differences."""
+        import platform
+        from PySide6.QtGui import QFont
+
+        system = platform.system().lower()
+
+        if system == "darwin":  # macOS - reduce weight by ~100 (one step lighter)
+            weight_map = {
+                QFont.Weight.Thin: QFont.Weight.Thin,  # Already lightest
+                QFont.Weight.ExtraLight: QFont.Weight.Thin,
+                QFont.Weight.Light: QFont.Weight.ExtraLight,
+                QFont.Weight.Normal: QFont.Weight.Normal,
+                QFont.Weight.Medium: QFont.Weight.Normal,
+                QFont.Weight.DemiBold: QFont.Weight.Medium,
+                QFont.Weight.Bold: QFont.Weight.DemiBold,
+                QFont.Weight.ExtraBold: QFont.Weight.Bold,
+                QFont.Weight.Black: QFont.Weight.ExtraBold,
+            }
+            return weight_map.get(weight, weight)
+        else:
+            return weight  # No adjustment for Windows/Linux
+
 
 class Spacing:
     """Consistent spacing values from the original design."""

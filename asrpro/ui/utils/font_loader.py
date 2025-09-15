@@ -28,13 +28,15 @@ def load_default_font(app: QApplication, point_size: Optional[int] = None) -> No
                 families = QFontDatabase.applicationFontFamilies(font_id)
                 if families:
                     family = families[0]
-        # Determine size
+        # Determine size with platform scaling
         if point_size is None:
             try:
                 # Use our configured base size if available
                 from ..styles.dark_theme import Fonts
 
-                point_size = int(getattr(Fonts, "BASE_SIZE", 10))
+                base_size = int(getattr(Fonts, "BASE_SIZE", 10))
+                scale_factor = Fonts.get_platform_font_scale()
+                point_size = int(base_size * scale_factor)
             except Exception:
                 point_size = 10
 
@@ -55,11 +57,13 @@ def load_default_font(app: QApplication, point_size: Optional[int] = None) -> No
             except Exception:
                 pass
             f.setKerning(True)
-            # Roboto looks cleanest at Normal on Windows; adjust if desired
+            # Roboto looks cleanest at Normal on Windows; adjust weight for Mac
             try:
-                f.setWeight(QFont.Weight.Normal)
+                from ..styles.dark_theme import Fonts
+                adjusted_weight = Fonts.adjust_weight(QFont.Weight.Normal)
+                f.setWeight(adjusted_weight)
             except Exception:
-                pass
+                f.setWeight(Fonts.adjust_weight(QFont.Weight.Normal))
             app.setFont(f)
             print(f"[Font] Using Roboto ({family}) at {point_size}pt with AA")
         else:

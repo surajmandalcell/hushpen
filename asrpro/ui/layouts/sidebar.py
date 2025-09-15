@@ -104,8 +104,8 @@ class SectionHeader(QWidget):
 
         self.title_label = QLabel(self.title.upper())
         font = QFont()
-        font.setPointSize(10)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.BASE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.5)
         self.title_label.setFont(font)
         self.title_label.setStyleSheet(
@@ -149,8 +149,8 @@ class SpokenlyNavigationItem(QWidget):
 
         self.text_label = QLabel(self.text)
         font = QFont()
-        font.setPointSize(11)
-        font.setWeight(Fonts.NORMAL)
+        font.setPointSize(Fonts.scaled(Fonts.H5))
+        font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         self.text_label.setFont(font)
         layout.addWidget(self.text_label)
 
@@ -262,8 +262,8 @@ class SpokenlyLogoSection(QWidget):
 
         self.name_label = QLabel("ASR Pro")
         font = QFont()
-        font.setPointSize(12)
-        font.setWeight(Fonts.SEMIBOLD)
+        font.setPointSize(Fonts.scaled(Fonts.LG))
+        font.setWeight(Fonts.adjust_weight(Fonts.SEMIBOLD))
         self.name_label.setFont(font)
         r, g, b = (
             DarkTheme.PRIMARY_TEXT.red(),

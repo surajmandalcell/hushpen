@@ -45,16 +45,16 @@ class InfoCard(QWidget):
         # Title
         self.title_label = QLabel(self.title)
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         self.title_label.setFont(font)
         layout.addWidget(self.title_label)
 
         # Content
         self.content_label = QLabel(self.content)
         content_font = QFont()
-        content_font.setPointSize(Fonts.DESCRIPTION_SIZE)
-        content_font.setWeight(Fonts.NORMAL)
+        content_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
+        content_font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         self.content_label.setFont(content_font)
         self.content_label.setWordWrap(True)
         self.content_label.setTextInteractionFlags(
@@ -181,8 +181,8 @@ class AboutPage(BasePage):
         # App name
         app_name = QLabel("ASR Pro")
         name_font = QFont()
-        name_font.setPointSize(24)
-        name_font.setWeight(Fonts.BOLD)
+        name_font.setPointSize(Fonts.scaled(Fonts.H1))
+        name_font.setWeight(Fonts.adjust_weight(Fonts.BOLD))
         app_name.setFont(name_font)
         app_name.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")
         info_layout.addWidget(app_name)
@@ -190,8 +190,8 @@ class AboutPage(BasePage):
         # Description
         desc_label = QLabel("Professional Speech Recognition and Transcription")
         desc_font = QFont()
-        desc_font.setPointSize(Fonts.CONTROL_SIZE)
-        desc_font.setWeight(Fonts.NORMAL)
+        desc_font.setPointSize(Fonts.scaled(Fonts.CONTROL_SIZE))
+        desc_font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         desc_label.setFont(desc_font)
         desc_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
         info_layout.addWidget(desc_label)
@@ -229,7 +229,7 @@ class AboutPage(BasePage):
         links_title = QLabel("Links & Resources")
         links_font = QFont()
         links_font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        links_font.setWeight(Fonts.MEDIUM)
+        links_font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         links_title.setFont(links_font)
         links_title.setStyleSheet(
             f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-bottom: 8px;"

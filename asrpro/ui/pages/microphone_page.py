@@ -40,8 +40,8 @@ class MicrophoneItem(QWidget):
         # Device name
         self.name_label = QLabel(self.name)
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         self.name_label.setFont(font)
         info_layout.addWidget(self.name_label)
         
@@ -52,14 +52,14 @@ class MicrophoneItem(QWidget):
         if self.is_default:
             self.default_label = QLabel("System Default")
             default_font = QFont()
-            default_font.setPointSize(Fonts.DESCRIPTION_SIZE)
+            default_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
             self.default_label.setFont(default_font)
             status_layout.addWidget(self.default_label)
         
         if self.is_selected:
             self.selected_label = QLabel("Currently Selected")
             selected_font = QFont()
-            selected_font.setPointSize(Fonts.DESCRIPTION_SIZE)
+            selected_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
             self.selected_label.setFont(selected_font)
             status_layout.addWidget(self.selected_label)
         
@@ -141,7 +141,7 @@ class MicrophoneItem(QWidget):
             if not hasattr(self, 'selected_label'):
                 self.selected_label = QLabel("Currently Selected")
                 selected_font = QFont()
-                selected_font.setPointSize(Fonts.DESCRIPTION_SIZE)
+                selected_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
                 self.selected_label.setFont(selected_font)
                 self.selected_label.setStyleSheet(f"color: {DarkTheme.SUCCESS_GREEN.name()};")
         else:
@@ -205,8 +205,8 @@ class MicrophonePage(BasePage):
         # Input Device section
         device_label = QLabel("Input Device")
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         device_label.setFont(font)
         device_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-bottom: 8px;")
         self.add_content_widget(device_label)
@@ -226,8 +226,8 @@ class MicrophonePage(BasePage):
         # Audio Level section
         level_label = QLabel("Audio Level Monitor")
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         level_label.setFont(font)
         level_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-top: 24px; margin-bottom: 8px;")
         self.add_content_widget(level_label)
@@ -248,8 +248,8 @@ class MicrophonePage(BasePage):
         # Audio Settings section
         settings_label = QLabel("Audio Settings")
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         settings_label.setFont(font)
         settings_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-top: 24px; margin-bottom: 8px;")
         self.add_content_widget(settings_label)

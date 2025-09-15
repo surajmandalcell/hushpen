@@ -37,8 +37,8 @@ class ModelCard(QWidget):
         # Model name
         self.name_label = QLabel(self.name)
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         self.name_label.setFont(font)
         header_layout.addWidget(self.name_label)
         
@@ -47,8 +47,8 @@ class ModelCard(QWidget):
         # Status badge
         self.status_label = QLabel(self.status)
         status_font = QFont()
-        status_font.setPointSize(Fonts.DESCRIPTION_SIZE)
-        status_font.setWeight(Fonts.NORMAL)
+        status_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
+        status_font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         self.status_label.setFont(status_font)
         header_layout.addWidget(self.status_label)
         
@@ -57,8 +57,8 @@ class ModelCard(QWidget):
         # Description
         self.desc_label = QLabel(self.description)
         desc_font = QFont()
-        desc_font.setPointSize(Fonts.DESCRIPTION_SIZE)
-        desc_font.setWeight(Fonts.NORMAL)
+        desc_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
+        desc_font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         self.desc_label.setFont(desc_font)
         self.desc_label.setWordWrap(True)
         layout.addWidget(self.desc_label)
@@ -66,8 +66,8 @@ class ModelCard(QWidget):
         # Size info
         self.size_label = QLabel(f"Size: {self.model_size}")
         size_font = QFont()
-        size_font.setPointSize(Fonts.DESCRIPTION_SIZE)
-        size_font.setWeight(Fonts.NORMAL)
+        size_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
+        size_font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
         self.size_label.setFont(size_font)
         layout.addWidget(self.size_label)
         
@@ -212,8 +212,8 @@ class ModelsPage(BasePage):
         # Available Models section
         models_label = QLabel("Available Models")
         font = QFont()
-        font.setPointSize(Fonts.SETTING_LABEL_SIZE)
-        font.setWeight(Fonts.MEDIUM)
+        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         models_label.setFont(font)
         models_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-top: 16px;")
         self.add_content_widget(models_label)
