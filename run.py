@@ -34,44 +34,49 @@ def _input_loop(on_key):
                         on_key(ch.lower())
                 time.sleep(0.05)
         else:
-            # POSIX: use select for non-blocking stdin read
-            import select
-            import tty
-            import termios
+            # Mac/Unix: Use cbreak mode instead of raw mode to preserve log formatting
+            import sys, tty, termios, select
 
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
-                tty.setraw(fd)  # Use setraw instead of setcbreak for immediate input
+                # Use cbreak instead of raw - this preserves output formatting
+                # while still allowing single-char input
+                tty.setcbreak(fd)
+
                 while True:
-                    r, _, _ = select.select([sys.stdin], [], [], 0.1)
-                    if r:
+                    # Use select to check for input without blocking
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
                         ch = sys.stdin.read(1)
                         if ch:
-                            # Handle special characters
                             if ch == '\x03':  # Ctrl+C
                                 on_key('\u0003')
-                            elif ch == '\x1b':  # ESC sequence - read and discard
-                                # Consume any escape sequence characters
-                                select.select([sys.stdin], [], [], 0.01)
-                                try:
-                                    sys.stdin.read(10)  # Read potential escape sequence
-                                except:
-                                    pass
+                                break
+                            elif ch in ('\x1b', '\r', '\n'):  # Escape, Enter, newline - ignore
+                                continue
                             else:
                                 on_key(ch.lower())
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    except Exception:
-        # Fall back: blocking line input if low-level approach fails
-        for line in sys.stdin:
-            if line:
-                on_key(line.strip().lower()[:1])
+    except Exception as e:
+        # Final fallback: blocking line input
+        print(f"[launcher] Using line-based input (press 'r' then Enter). Reason: {e}")
+        try:
+            for line in sys.stdin:
+                if line:
+                    on_key(line.strip().lower()[:1])
+        except KeyboardInterrupt:
+            on_key('\u0003')
 
 
 def spawn_child():
     """Spawn the GUI app as a module so imports/env match the current interpreter."""
-    return subprocess.Popen([sys.executable, "-m", "asrpro"])  # inherit stdio
+    # Redirect child's stdin to devnull so it doesn't compete for terminal input
+    return subprocess.Popen(
+        [sys.executable, "-m", "asrpro"],
+        stdin=subprocess.DEVNULL,
+        # Keep stdout/stderr inherited so we see logs
+    )
 
 
 def main():
