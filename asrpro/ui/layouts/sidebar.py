@@ -331,7 +331,7 @@ class SpokemlySidebar(QWidget):
 
         footer_container = QWidget()
         footer_layout = QVBoxLayout(footer_container)
-        footer_layout.setContentsMargins(0, 8, 0, 16)
+        footer_layout.setContentsMargins(0, 10, 0, 10)
         footer_layout.setSpacing(2)
 
         self.about_item = SpokenlyNavigationItem("about", "info", "About")
