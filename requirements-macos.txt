@@ -1,0 +1,29 @@
+# macOS-specific requirements for ASR Pro
+# Install with: pip install -r requirements-macos.txt
+
+# Core macOS framework bindings (optional but recommended)
+pyobjc-framework-Cocoa>=10.0  # For native macOS APIs
+pyobjc-framework-AVFoundation>=10.0  # For audio/video handling
+
+# Build tools for macOS app bundles
+py2app>=0.28.6  # For building .app bundles
+
+# macOS-specific audio handling (if not already in main requirements)
+pyaudio>=0.2.13  # Alternative audio library with macOS support
+
+# Development tools
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# Note: For models to work with Metal Performance Shaders (MPS):
+# - torch should already be installed from requirements.txt
+# - MPS support is built into PyTorch 1.12+ for Apple Silicon
+# - No additional packages needed for MPS acceleration
+
+# FFmpeg installation reminder:
+# brew install ffmpeg
+# or
+# brew install ffmpeg --with-libvorbis --with-libvpx

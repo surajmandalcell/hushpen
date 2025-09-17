@@ -15,7 +15,7 @@ def build_asrpro():
     """Build asrpro with Nuitka for standalone deployment."""
 
     # Ensure we're in the project root
-    project_root = Path(__file__).parent
+    project_root = Path(__file__).parent.parent  # scripts/ -> project root
     os.chdir(project_root)
 
     # Check if assets directory exists
@@ -33,11 +33,14 @@ def build_asrpro():
     output_name = "asrpro.exe" if is_windows else "asrpro"
     
     # Create entry point if it doesn't exist
-    entry_point = project_root / "asrpro_run.py"
+    entry_point = project_root / "scripts" / "asrpro_run.py"
     if not entry_point.exists():
         entry_point.write_text("""
 #!/usr/bin/env python3
 """Entry point for Nuitka build."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from asrpro.__main__ import main
 
 if __name__ == "__main__":
@@ -75,7 +78,7 @@ if __name__ == "__main__":
         assets_include,
         "--follow-imports",
         "--prefer-source-code",
-        "asrpro_run.py",
+        str(entry_point),
     ])
 
     # Remove empty arguments

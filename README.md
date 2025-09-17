@@ -14,21 +14,34 @@ A professional desktop application for AI-powered speech recognition and transcr
 ## Installation
 
 ```bash
-# Clone and setup
-git clone <repo>
-cd jarusasr
-python -m pip install -r requirements.txt
+# Clone repository
+git clone https://github.com/surajmandalcell/asrpro.git
+cd asrpro
+
+# Quick setup (creates venv and installs dependencies)
+make setup
+
+# Or manual installation
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# macOS users: install additional dependencies
+make install-macos
 ```
 
 ## Usage
 
-### Launch Application
+### Quick Start
 ```bash
-# Method 1: Module
-python -m asrpro
+# Run the application
+make run
 
-# Method 2: Simple launcher
-python run.py
+# Or run in development mode with hot-reload
+make dev
+
+# Or use Python directly
+python -m asrpro
 ```
 
 ### Initial Setup
@@ -55,48 +68,84 @@ python run.py
 
 ```
 asrpro/
-├── __init__.py         # Package exports
-├── __main__.py         # Entry point for python -m asrpro
-├── main.py             # App bootstrap with single instance enforcement
-├── models.py           # All model loaders consolidated
-├── model_manager.py    # Model lifecycle management
-├── config.py           # Configuration management
-├── server.py           # FastAPI server (OpenAI-compatible)
-├── audio_recorder.py   # Audio recording utilities
-├── hotkey.py           # Global hotkey handling
-└── ui/
-    ├── main_window.py  # Main application window
-    ├── custom_titlebar.py # Frameless window title bar
-    ├── overlay.py      # Recording status overlay
-    └── tray.py         # System tray with dark mode icon support
-
-assets/
-└── icon.png           # Application icon (auto-inverts for dark mode)
-
-run.py                 # Simple launcher script
-requirements.txt       # All dependencies in one file
+├── asrpro/             # Main application package
+│   ├── __init__.py     # Package exports
+│   ├── __main__.py     # Entry point
+│   ├── main.py         # App bootstrap
+│   ├── models.py       # Model loaders
+│   ├── model_manager.py # Model lifecycle
+│   ├── config.py       # Configuration (uses ~/Library/Application Support/asrpro on macOS)
+│   ├── server.py       # FastAPI server
+│   ├── audio_recorder.py # Audio recording
+│   ├── hotkey.py       # Global hotkeys
+│   └── ui/             # User interface
+│       ├── components/ # UI components
+│       ├── layouts/    # Layout managers
+│       ├── pages/      # Application pages
+│       ├── styles/     # Styling
+│       └── utils/      # UI utilities
+├── assets/             # Icons, fonts, resources
+├── scripts/            # Build and utility scripts
+├── tests/              # Test suite
+├── Makefile            # Development commands
+├── pyproject.toml      # Modern Python packaging
+├── setup.py            # py2app support
+├── requirements.txt    # Core dependencies
+└── requirements-macos.txt # macOS-specific deps
 ```
 
 ## Configuration
 
 - **Models**: Choose between Parakeet TDT (0.6B/1.1B) or Whisper Medium ONNX
-- **Device**: Auto-detects CUDA → Vulkan → CPU
+- **Device**: Auto-detects CUDA → MPS (Apple Silicon) → Vulkan → CPU
 - **Hotkey**: Configurable via tray menu (default: Ctrl+Alt+T)
 - **Server**: Optional OpenAI-compatible API on port 7341
 - **Theme**: Automatic dark mode detection with icon inversion
+- **Config Location**:
+  - macOS: `~/Library/Application Support/asrpro/`
+  - Windows: `%APPDATA%/asrpro/`
+  - Linux: `~/.config/asrpro/`
 
-## Build Standalone
+## Build & Development
 
+### Development Commands
 ```bash
-python build_nuitka.py
+# Run tests
+make test
+
+# Format code
+make format
+
+# Lint code
+make lint
+
+# Clean build artifacts
+make clean
+
+# See all available commands
+make help
+```
+
+### Build Standalone Executable
+```bash
+# Build with Nuitka (cross-platform)
+make build
+
+# Build macOS .app bundle
+make build-py2app
 ```
 
 ## Requirements
 
 - **Python**: 3.11+
-- **OS**: Windows (primary), Linux/macOS (community)
+- **OS**: Windows, macOS, Linux
 - **Memory**: 4GB+ RAM (model dependent)
-- **GPU**: Optional CUDA/Vulkan acceleration
+- **GPU**: Optional - CUDA (NVIDIA), MPS (Apple Silicon), or Vulkan
+- **macOS**: Requires accessibility permissions for global hotkeys
+- **FFmpeg**: Required for audio processing
+  - macOS: `brew install ffmpeg`
+  - Windows: `winget install ffmpeg`
+  - Linux: `sudo apt install ffmpeg`
 
 ## Architecture
 

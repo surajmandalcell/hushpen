@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
 import shutil
 from typing import Dict, Any, Optional
@@ -39,12 +40,37 @@ class Config:
     """Configuration manager for asrpro settings."""
 
     def __init__(self):
-        # Project root is repo root (asrpro/..)
-        repo_root = Path(__file__).resolve().parents[1]
-        self.config_dir = repo_root / "config"
+        # Use proper platform-specific config directory
+        self.config_dir = self._get_config_dir()
         self.config_file = self.config_dir / "config.json"
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self._config = self._load_config()
+    
+    def _get_config_dir(self) -> Path:
+        """Get platform-specific configuration directory."""
+        import platform
+        
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            # Use ~/Library/Application Support/asrpro/
+            config_dir = Path.home() / "Library" / "Application Support" / "asrpro"
+        elif system == "Windows":
+            # Use %APPDATA%/asrpro/
+            import os
+            appdata = os.environ.get("APPDATA")
+            if appdata:
+                config_dir = Path(appdata) / "asrpro"
+            else:
+                config_dir = Path.home() / "AppData" / "Roaming" / "asrpro"
+        else:  # Linux and others
+            # Use ~/.config/asrpro/ following XDG Base Directory spec
+            xdg_config = os.environ.get("XDG_CONFIG_HOME")
+            if xdg_config:
+                config_dir = Path(xdg_config) / "asrpro"
+            else:
+                config_dir = Path.home() / ".config" / "asrpro"
+        
+        return config_dir
 
     def get_config_dir(self) -> Path:
         return self.config_dir
@@ -63,18 +89,24 @@ class Config:
             except Exception:
                 # If config is corrupted, use defaults
                 pass
-        # Attempt migration from legacy home config (~/.asrpro/config.json)
-        try:
-            legacy_dir = Path.home() / ".asrpro"
-            legacy_file = legacy_dir / "config.json"
+        
+        # Attempt migration from legacy locations
+        legacy_locations = [
+            Path.home() / ".asrpro" / "config.json",  # Old home config
+            Path(__file__).resolve().parents[1] / "config" / "config.json",  # Old project config
+        ]
+        
+        for legacy_file in legacy_locations:
             if legacy_file.exists() and not self.config_file.exists():
-                # Copy legacy config into project config folder
-                shutil.copy2(legacy_file, self.config_file)
-                with open(self.config_file, "r", encoding="utf-8") as f:
-                    loaded_config = json.load(f)
-                return self._merge_configs(DEFAULT_CONFIG, loaded_config)
-        except Exception:
-            pass
+                try:
+                    # Copy legacy config to new location
+                    shutil.copy2(legacy_file, self.config_file)
+                    with open(self.config_file, "r", encoding="utf-8") as f:
+                        loaded_config = json.load(f)
+                    print(f"Migrated config from {legacy_file} to {self.config_file}")
+                    return self._merge_configs(DEFAULT_CONFIG, loaded_config)
+                except Exception:
+                    pass
 
         # Use defaults and save them
         self._save_config(DEFAULT_CONFIG)
