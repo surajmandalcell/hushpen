@@ -152,30 +152,34 @@ class Dimensions:
 
 class Fonts:
     """Font specifications following web/CSS standard naming conventions."""
-
-    # Standard typography scale (following web standards)
+    import platform
+    
+    # macOS fonts render larger/bolder, so we adjust sizes
+    is_macos = platform.system() == 'Darwin'
+    
+    # Standard typography scale (adjusted for macOS)
     # Primary headings (app name, major titles)
-    H1 = 24
+    H1 = 22 if is_macos else 24
     # Secondary headings
-    H2 = 18
+    H2 = 17 if is_macos else 18
     # Page titles, tertiary headings
-    H3 = 14
+    H3 = 13 if is_macos else 14
     # Section headings
-    H4 = 10
+    H4 = 11 if is_macos else 10
     # Subsection headings
-    H5 = 11
+    H5 = 12 if is_macos else 11
     # Minor headings
-    H6 = 10
+    H6 = 11 if is_macos else 10
 
     # Body text hierarchy
     # Large body text
-    LG = 12
+    LG = 13 if is_macos else 12
     # Default body text, controls, buttons
-    BASE = 10
+    BASE = 11 if is_macos else 10
     # Small text, captions, descriptions
-    SM = 9
+    SM = 10 if is_macos else 9
     # Extra small text, fine print
-    XS = 8
+    XS = 9 if is_macos else 8
 
     # Legacy aliases (for backward compatibility - remove after migration)
     # 24px - App name, major headings

@@ -2,5 +2,8 @@
 
 from .main import launch
 
-if __name__ == "__main__":
+def main():
     launch()
+
+if __name__ == "__main__":
+    main()

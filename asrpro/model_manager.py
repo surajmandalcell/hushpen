@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import gc, threading
+import platform
 from typing import Optional
 import torch
 from .models import MODEL_LOADERS
@@ -22,42 +23,62 @@ class ModelManager:
         self.device = self._detect_device()
 
     def _detect_device(self) -> str:
-        """Enhanced device detection with better Vulkan support"""
-        # First check CUDA
-        if torch.cuda.is_available():
+        """Enhanced device detection with MPS support for Apple Silicon"""
+        
+        # Check for Apple Silicon (MPS) first on macOS
+        if platform.system() == 'Darwin':
+            try:
+                # Check if MPS is available (Apple Silicon M1/M2/M3)
+                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    # Test MPS by creating a small tensor
+                    test_tensor = torch.tensor([1.0], device="mps")
+                    del test_tensor
+                    print("[ModelManager] Using MPS (Metal Performance Shaders) for Apple Silicon")
+                    return "mps"
+            except Exception as e:
+                print(f"[ModelManager] MPS not available: {e}")
+        
+        # Check CUDA (not available on macOS but kept for cross-platform)
+        if platform.system() != 'Darwin' and torch.cuda.is_available():
             try:
                 # Test CUDA by creating a small tensor
                 test_tensor = torch.tensor([1.0], device="cuda")
                 del test_tensor
                 torch.cuda.empty_cache()
+                print("[ModelManager] Using CUDA GPU")
                 return "cuda"
             except Exception:
                 pass
 
-        # Check Vulkan support
-        try:
-            # Check PyTorch Vulkan backend (if available)
-            vulkan_backend = getattr(torch.backends, "vulkan", None)
-            if (
-                vulkan_backend
-                and hasattr(vulkan_backend, "is_available")
-                and vulkan_backend.is_available()
-            ):
-                return "vulkan"
-        except Exception:
-            pass
+        # Skip Vulkan on macOS (MoltenVK is unreliable)
+        if platform.system() != 'Darwin':
+            # Check Vulkan support
+            try:
+                # Check PyTorch Vulkan backend (if available)
+                vulkan_backend = getattr(torch.backends, "vulkan", None)
+                if (
+                    vulkan_backend
+                    and hasattr(vulkan_backend, "is_available")
+                    and vulkan_backend.is_available()
+                ):
+                    print("[ModelManager] Using Vulkan GPU")
+                    return "vulkan"
+            except Exception:
+                pass
 
-        try:
-            # Check ONNX Runtime Vulkan execution provider
-            import onnxruntime as ort
+            try:
+                # Check ONNX Runtime Vulkan execution provider
+                import onnxruntime as ort
 
-            available_providers = ort.get_available_providers()
-            if "VulkanExecutionProvider" in available_providers:
-                return "vulkan"
-        except Exception:
-            pass
+                available_providers = ort.get_available_providers()
+                if "VulkanExecutionProvider" in available_providers:
+                    print("[ModelManager] Using Vulkan via ONNX Runtime")
+                    return "vulkan"
+            except Exception:
+                pass
 
         # Fallback to CPU
+        print("[ModelManager] Using CPU (no GPU acceleration available)")
         return "cpu"
 
     def list_models(self):

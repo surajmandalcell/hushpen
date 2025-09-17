@@ -17,11 +17,28 @@ from ..utils.invert import invert_icon
 
 def is_dark_theme():
     """Detect if the system is using dark theme."""
-    try:
-        # Check Windows dark mode via registry
-        import winreg
-
+    import platform
+    import subprocess
+    
+    # macOS-specific dark mode detection
+    if platform.system() == 'Darwin':
         try:
+            # Check macOS appearance setting
+            result = subprocess.run(
+                ['defaults', 'read', '-g', 'AppleInterfaceStyle'],
+                capture_output=True,
+                text=True,
+                timeout=1
+            )
+            return 'Dark' in result.stdout
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            # Fall through to Qt detection
+            pass
+    
+    # Windows-specific dark mode detection
+    elif platform.system() == 'Windows':
+        try:
+            import winreg
             key = winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
@@ -29,26 +46,19 @@ def is_dark_theme():
             value, _ = winreg.QueryValueEx(key, "SystemUsesLightTheme")
             winreg.CloseKey(key)
             return value == 0  # 0 = dark mode, 1 = light mode
-        except (FileNotFoundError, OSError):
+        except (ImportError, FileNotFoundError, OSError):
+            # Fall through to Qt detection
             pass
-
-        # Fallback: Check Qt application palette
-        app = QApplication.instance()
-        if app and isinstance(app, QApplication):
-            palette = app.palette()
-            window_color = palette.color(palette.ColorRole.Window)
-            # If window background is dark, assume dark theme
-            return window_color.lightness() < 128
-
-        return False  # Default to light theme if detection fails
-    except ImportError:
-        # If winreg is not available (non-Windows), use Qt palette
-        app = QApplication.instance()
-        if app and isinstance(app, QApplication):
-            palette = app.palette()
-            window_color = palette.color(palette.ColorRole.Window)
-            return window_color.lightness() < 128
-        return False
+    
+    # Fallback: Check Qt application palette
+    app = QApplication.instance()
+    if app and isinstance(app, QApplication):
+        palette = app.palette()
+        window_color = palette.color(palette.ColorRole.Window)
+        # If window background is dark, assume dark theme
+        return window_color.lightness() < 128
+    
+    return False  # Default to light theme if detection fails
 
 
 
@@ -79,9 +89,11 @@ def build_tray(main_window):  # pragma: no cover
                 print(f"[Tray] Failed to load icon from: {candidate}")
                 continue
 
-            # Ensure proper sizing for tray icon
-            if original_pixmap.width() > 32 or original_pixmap.height() > 32:
-                original_pixmap = original_pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            # Ensure proper sizing for tray icon (macOS needs 22x22 for menu bar)
+            import platform
+            icon_size = 22 if platform.system() == 'Darwin' else 32
+            if original_pixmap.width() > icon_size or original_pixmap.height() > icon_size:
+                original_pixmap = original_pixmap.scaled(icon_size, icon_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
             # Check if we need to invert for dark theme
             if is_dark_theme() and candidate.suffix.lower() in [".png", ".svg"]:
@@ -213,61 +225,61 @@ def build_tray(main_window):  # pragma: no cover
     set_icon_for_action("About", "info")
     set_icon_for_action("Exit", "x")
 
-    # Authentic macOS context menu styling
-    menu.setStyleSheet(
-        """
-        QMenu { 
-            background-color: rgba(242, 242, 247, 0.78);
-            color: #1d1d1f; 
-            border: 0.5px solid rgba(0, 0, 0, 0.04);
-            border-radius: 8px; 
-            padding: 4px 0;
-            font-size: 13px;
-            font-family: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
-            font-weight: 400;
-            min-width: 180px;
-        }
-        QMenu[darkMode="true"] { 
-            background-color: rgba(30, 30, 30, 0.9);
-            color: #f2f2f7;
-            border: 0.5px solid rgba(255, 255, 255, 0.04);
-        }
-        QMenu::item { 
-            padding: 6px 14px 6px 32px;
-            border: none;
-            margin: 1px 2px;
-            border-radius: 4px;
-            min-height: 18px;
-            font-weight: 400;
-        }
-        QMenu::item:selected { 
-            background-color: rgba(0, 122, 255, 1.0);
-            color: #ffffff;
-        }
-        QMenu::item:disabled {
-            color: rgba(29, 29, 31, 0.3);
-        }
-        QMenu[darkMode="true"]::item:disabled {
-            color: rgba(242, 242, 247, 0.3);
-        }
-        QMenu::separator { 
-            height: 0.5px; 
-            background: rgba(0, 0, 0, 0.1); 
-            margin: 4px 6px; 
-            border: none;
-        }
-        QMenu[darkMode="true"]::separator {
-            background: rgba(255, 255, 255, 0.1);
-        }
-        QMenu::icon {
-            padding-left: 6px;
-            width: 16px;
-            height: 16px;
-            left: 8px;
-            position: absolute;
-        }
-        """
-    )
+    # Platform-specific menu styling
+    import platform
+    if platform.system() == 'Darwin':
+        # macOS-specific clean menu (minimal styling, let Qt handle native appearance)
+        menu.setStyleSheet(
+            """
+            QMenu { 
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+                font-size: 13px;
+                font-weight: normal;
+            }
+            QMenu::item { 
+                padding: 4px 20px;
+                font-weight: normal;
+            }
+            QMenu::item:selected { 
+                background-color: rgba(0, 122, 255, 0.9);
+                color: white;
+            }
+            """
+        )
+    else:
+        # Windows/Linux styling
+        menu.setStyleSheet(
+            """
+            QMenu { 
+                background-color: rgba(242, 242, 247, 0.78);
+                color: #1d1d1f; 
+                border: 0.5px solid rgba(0, 0, 0, 0.04);
+                border-radius: 8px; 
+                padding: 4px 0;
+                font-size: 13px;
+                font-family: "Roboto", "Segoe UI", sans-serif;
+                font-weight: 400;
+                min-width: 180px;
+            }
+            QMenu[darkMode="true"] { 
+                background-color: rgba(30, 30, 30, 0.9);
+                color: #f2f2f7;
+                border: 0.5px solid rgba(255, 255, 255, 0.04);
+            }
+            QMenu::item { 
+                padding: 6px 14px 6px 32px;
+                border: none;
+                margin: 1px 2px;
+                border-radius: 4px;
+                min-height: 18px;
+                font-weight: 400;
+            }
+            QMenu::item:selected { 
+                background-color: rgba(0, 122, 255, 1.0);
+                color: #ffffff;
+            }
+            """
+        )
     # Apply dark mode styling if system is using dark theme
     if is_dark_theme():
         menu.setProperty("darkMode", "true")

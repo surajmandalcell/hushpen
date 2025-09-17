@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import platform
 from typing import Optional
 
 from PySide6.QtGui import QFontDatabase, QFont
@@ -33,12 +34,11 @@ def load_default_font(app: QApplication, point_size: Optional[int] = None) -> No
             try:
                 # Use our configured base size if available
                 from ..styles.dark_theme import Fonts
-
                 base_size = int(getattr(Fonts, "BASE_SIZE", 10))
-                scale_factor = Fonts.get_platform_font_scale()
-                point_size = int(base_size * scale_factor)
+                point_size = base_size
             except Exception:
-                point_size = 10
+                # Default size based on platform
+                point_size = 11 if platform.system() == 'Darwin' else 10
 
         if family:
             f = QFont(family, point_size)
@@ -57,13 +57,14 @@ def load_default_font(app: QApplication, point_size: Optional[int] = None) -> No
             except Exception:
                 pass
             f.setKerning(True)
-            # Roboto looks cleanest at Normal on Windows; adjust weight for Mac
-            try:
-                from ..styles.dark_theme import Fonts
-                adjusted_weight = Fonts.adjust_weight(QFont.Weight.Normal)
-                f.setWeight(adjusted_weight)
-            except Exception:
-                f.setWeight(Fonts.adjust_weight(QFont.Weight.Normal))
+            
+            # Platform-specific font weight adjustment
+            # macOS renders fonts bolder, so we use a lighter weight
+            if platform.system() == 'Darwin':
+                f.setWeight(QFont.Weight.Light)  # Lighter weight on macOS
+            else:
+                f.setWeight(QFont.Weight.Normal)  # Normal weight on Windows/Linux
+            
             app.setFont(f)
             print(f"[Font] Using Roboto ({family}) at {point_size}pt with AA")
         else:

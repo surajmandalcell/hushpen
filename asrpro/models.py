@@ -31,13 +31,21 @@ class Parakeet06BLoader(BaseLoader):
         import torch
 
         model = ASRModel.from_pretrained(model_name=self.model_name).to(self.device)
-        if self.device == "cuda":  # attempt mixed precision
+        
+        # Optimize for different devices
+        if self.device == "cuda":  # attempt mixed precision for CUDA
             for dt in (torch.bfloat16, torch.float16):
                 try:
                     model = model.to(dt)
                     break
                 except Exception:
                     continue
+        elif self.device == "mps":  # Apple Silicon optimization
+            # MPS works best with float32 currently
+            model = model.to(torch.float32)
+            if progress_cb:
+                progress_cb("Using Metal Performance Shaders (Apple Silicon)")
+                
         return self._wrap_parakeet(model), None
 
     def _wrap_parakeet(self, model):  # pragma: no cover
@@ -68,13 +76,21 @@ class Parakeet11BLoader(BaseLoader):
         import torch
 
         model = ASRModel.from_pretrained(model_name=self.model_name).to(self.device)
-        if self.device == "cuda":  # attempt mixed precision
+        
+        # Optimize for different devices
+        if self.device == "cuda":  # attempt mixed precision for CUDA
             for dt in (torch.bfloat16, torch.float16):
                 try:
                     model = model.to(dt)
                     break
                 except Exception:
                     continue
+        elif self.device == "mps":  # Apple Silicon optimization
+            # MPS works best with float32 currently
+            model = model.to(torch.float32)
+            if progress_cb:
+                progress_cb("Using Metal Performance Shaders (Apple Silicon)")
+                
         return self._wrap_parakeet(model), None
 
     def _wrap_parakeet(self, model):  # pragma: no cover
@@ -107,6 +123,13 @@ class WhisperMediumOnnxLoader(BaseLoader):
         if self.device == "cuda":
             compute_type = "float16"
             device = "cuda"
+        elif self.device == "mps":
+            # MPS support via CoreML in faster-whisper is experimental
+            # Fall back to CPU with optimized settings
+            compute_type = "int8"
+            device = "cpu"
+            if progress_cb:
+                progress_cb("Note: Whisper using CPU (MPS support pending in faster-whisper)")
         elif self.device == "vulkan":
             # For Vulkan, we need to use CPU device but with optimized settings
             compute_type = "int8"

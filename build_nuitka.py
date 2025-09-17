@@ -7,6 +7,7 @@ Builds a single executable with all dependencies bundled.
 import subprocess
 import sys
 import os
+import platform
 from pathlib import Path
 
 
@@ -25,6 +26,24 @@ def build_asrpro():
         else ""
     )
 
+    # Platform-specific output filename
+    is_windows = platform.system() == 'Windows'
+    is_macos = platform.system() == 'Darwin'
+    
+    output_name = "asrpro.exe" if is_windows else "asrpro"
+    
+    # Create entry point if it doesn't exist
+    entry_point = project_root / "asrpro_run.py"
+    if not entry_point.exists():
+        entry_point.write_text("""
+#!/usr/bin/env python3
+"""Entry point for Nuitka build."""
+from asrpro.__main__ import main
+
+if __name__ == "__main__":
+    main()
+""")
+    
     # Nuitka build command
     cmd = [
         sys.executable,
@@ -37,18 +56,27 @@ def build_asrpro():
         "--nofollow-import-to=matplotlib",
         "--nofollow-import-to=scipy.spatial.cKDTree",
         "--output-dir=dist",
-        "--output-filename=asrpro.exe",
-        "--windows-console-mode=disable",  # No console window on Windows
-        (
-            "--windows-icon-from-ico=assets/icon.ico"
-            if (assets_dir / "icon.ico").exists()
-            else ""
-        ),
+        f"--output-filename={output_name}",
+    ]
+    
+    # Windows-specific options
+    if is_windows:
+        cmd.extend([
+            "--windows-console-mode=disable",
+            "--windows-icon-from-ico=assets/icon.ico" if (assets_dir / "icon.ico").exists() else "",
+        ])
+    
+    # macOS-specific options
+    if is_macos:
+        if (assets_dir / "icon.icns").exists():
+            cmd.append(f"--macos-app-icon={assets_dir / 'icon.icns'}")
+    
+    cmd.extend([
         assets_include,
         "--follow-imports",
         "--prefer-source-code",
         "asrpro_run.py",
-    ]
+    ])
 
     # Remove empty arguments
     cmd = [arg for arg in cmd if arg]
