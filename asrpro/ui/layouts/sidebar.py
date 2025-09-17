@@ -310,11 +310,8 @@ class SpokemlySidebar(QWidget):
         nav_layout.setSpacing(2)
 
         nav_items_data = [
-            ("general", "settings", "General Settings"),
-            ("transcribe", "folder-open", "Transcribe File"),
-            ("models", "cpu", "ASR Models"),
-            ("microphone", "mic", "Microphone"),
-            ("keyboard", "keyboard", "Keyboard"),
+            ("general", "settings", "Settings"),
+            ("keyboard", "keyboard", "Hotkey"),
         ]
 
         for section_id, icon_name, text in nav_items_data:

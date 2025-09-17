@@ -20,7 +20,7 @@ from .sidebar import SpokemlySidebar as Sidebar
 from .content_area import ContentArea
 from ..utils.icon_loader import IconLoader
 
-from ..components.overlay import Overlay
+from ..components.recording_overlay import RecordingOverlay
 from ...model_manager import ModelManager
 from ...hotkey import ToggleHotkey
 from ...config import config
@@ -34,8 +34,8 @@ class NativeMainWindow(QWidget):
 
         # Core application components
         self.model_manager = ModelManager()
-        self.hotkey = ToggleHotkey(self._on_hotkey_toggle)
-        self.overlay = Overlay()
+        self.recording_overlay = RecordingOverlay()
+        self.hotkey = ToggleHotkey(self._on_hotkey_toggle, self.model_manager)
 
         self._setup_window()
         self._setup_ui()
@@ -183,14 +183,19 @@ class NativeMainWindow(QWidget):
         elif action == "hide":
             self.hide()
 
-    def _on_hotkey_toggle(self, recording: bool):
+    def _on_hotkey_toggle(self, is_active: bool):
         """Handle hotkey toggle events."""
-        print(f"[Native] Hotkey toggle: recording={recording}")
+        print(f"[Native] Hotkey toggle: is_active={is_active}")
         try:
-            if recording:
-                self.overlay.show_smooth()
+            if is_active:
+                # Show recording overlay
+                self.recording_overlay.show_overlay()
             else:
-                self.overlay.close_smooth()
+                # Check if we're transcribing
+                if self.hotkey.is_recording:
+                    self.recording_overlay.set_transcribing()
+                else:
+                    self.recording_overlay.hide_overlay()
         except Exception as e:
             print(f"[Native] Error toggling overlay: {e}")
 

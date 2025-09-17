@@ -98,12 +98,12 @@ class Dimensions:
     WINDOW_WIDTH = 1080
     WINDOW_HEIGHT = 720
     WINDOW_RADIUS = 12
-    # CSS-like shadow params (0 22px 70px 4px rgba(0,0,0,0.56))
+    # Minimal shadow for macOS
     SHADOW_OFFSET_X = 0
     SHADOW_OFFSET_Y = 0
-    SHADOW_BLUR = 24
-    SHADOW_SPREAD = -1
-    SHADOW_ALPHA = 0.04
+    SHADOW_BLUR = 8  # Reduced from 24
+    SHADOW_SPREAD = 0
+    SHADOW_ALPHA = 0.01  # Very subtle shadow
 
     # Sidebar
     SIDEBAR_WIDTH = 240
@@ -258,17 +258,17 @@ class Fonts:
 
         system = platform.system().lower()
 
-        if system == "darwin":  # macOS - reduce weight by ~100 (one step lighter)
+        if system == "darwin":  # macOS - reduce weight more aggressively
             weight_map = {
                 QFont.Weight.Thin: QFont.Weight.Thin,  # Already lightest
                 QFont.Weight.ExtraLight: QFont.Weight.Thin,
-                QFont.Weight.Light: QFont.Weight.ExtraLight,
-                QFont.Weight.Normal: QFont.Weight.Normal,
-                QFont.Weight.Medium: QFont.Weight.Normal,
-                QFont.Weight.DemiBold: QFont.Weight.Medium,
-                QFont.Weight.Bold: QFont.Weight.DemiBold,
-                QFont.Weight.ExtraBold: QFont.Weight.Bold,
-                QFont.Weight.Black: QFont.Weight.ExtraBold,
+                QFont.Weight.Light: QFont.Weight.Thin,
+                QFont.Weight.Normal: QFont.Weight.Light,  # Normal -> Light
+                QFont.Weight.Medium: QFont.Weight.Light,  # Medium -> Light
+                QFont.Weight.DemiBold: QFont.Weight.Normal,  # DemiBold -> Normal
+                QFont.Weight.Bold: QFont.Weight.Medium,  # Bold -> Medium
+                QFont.Weight.ExtraBold: QFont.Weight.DemiBold,  # ExtraBold -> DemiBold
+                QFont.Weight.Black: QFont.Weight.Bold,  # Black -> Bold
             }
             return weight_map.get(weight, weight)
         else:
