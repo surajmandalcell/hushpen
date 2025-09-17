@@ -1,3 +1,2 @@
-*.psd filter=lfs diff=lfs merge=lfs -text
 new/sidecar/models/onnx/** filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
