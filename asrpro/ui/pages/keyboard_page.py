@@ -1,10 +1,11 @@
 """Keyboard shortcuts and hotkeys settings page."""
 
+import platform
+import subprocess
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QKeySequence, QKeyEvent
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QMessageBox
 
-from ..layouts.setting_row import SettingRow
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
 from .base_page import BasePage
 
@@ -72,17 +73,19 @@ class HotkeyInput(QLineEdit):
         if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
             return
         
-        # Build hotkey string
+        # Build hotkey string (use Command instead of Ctrl on macOS)
         hotkey_parts = []
+        is_macos = platform.system() == 'Darwin'
         
         if modifiers & Qt.KeyboardModifier.ControlModifier:
             hotkey_parts.append("Ctrl")
+        if modifiers & Qt.KeyboardModifier.MetaModifier:
+            # On macOS, Meta is the Command key
+            hotkey_parts.append("Cmd" if is_macos else "Meta")
         if modifiers & Qt.KeyboardModifier.AltModifier:
-            hotkey_parts.append("Alt")
+            hotkey_parts.append("Alt" if not is_macos else "Option")
         if modifiers & Qt.KeyboardModifier.ShiftModifier:
             hotkey_parts.append("Shift")
-        if modifiers & Qt.KeyboardModifier.MetaModifier:
-            hotkey_parts.append("Meta")
         
         # Add the main key
         key_text = QKeySequence(key).toString()
@@ -216,108 +219,131 @@ class HotkeyRow(QWidget):
 class KeyboardPage(BasePage):
     """Keyboard shortcuts and hotkeys settings."""
     
-    def __init__(self, parent=None):
+    def __init__(self, hotkey=None, parent=None):
         super().__init__("Keyboard", parent)
+        self.hotkey = hotkey
         self._create_content()
     
     def _create_content(self):
-        """Create keyboard settings content."""
-        # Global Hotkey section
-        global_label = QLabel("Global Hotkeys")
-        font = QFont()
-        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
-        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
-        global_label.setFont(font)
-        global_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-bottom: 8px;")
-        self.add_content_widget(global_label)
-        
-        # Start/Stop Recording hotkey
-        recording_hotkey = HotkeyRow(
-            title="Start/Stop Recording",
-            description="Global hotkey to toggle recording on and off",
+        """Create simplified keyboard settings content."""
+        # Main recording hotkey
+        self.recording_hotkey = HotkeyRow(
+            title="Show/Hide Overlay",
+            description="Press once to start recording, press again to transcribe",
             setting_name="toggle_recording_hotkey",
-            current_hotkey="Ctrl+Shift+R"
+            current_hotkey="Cmd+Shift+Space" if platform.system() == 'Darwin' else "Ctrl+Alt+T"
         )
-        recording_hotkey.hotkey_changed.connect(self._on_setting_changed)
-        self.add_content_widget(recording_hotkey)
+        self.recording_hotkey.hotkey_changed.connect(self._on_hotkey_changed)
+        self.add_content_widget(self.recording_hotkey)
         
-        # Show/Hide Window hotkey
-        window_hotkey = HotkeyRow(
-            title="Show/Hide Window",
-            description="Global hotkey to show or hide the main application window",
-            setting_name="toggle_window_hotkey",
-            current_hotkey="Ctrl+Shift+A"
-        )
-        window_hotkey.hotkey_changed.connect(self._on_setting_changed)
-        self.add_content_widget(window_hotkey)
-        
-        # Quick Paste hotkey
-        paste_hotkey = HotkeyRow(
-            title="Quick Paste",
-            description="Instantly paste the last transcribed text",
-            setting_name="quick_paste_hotkey",
-            current_hotkey="Ctrl+Shift+V"
-        )
-        paste_hotkey.hotkey_changed.connect(self._on_setting_changed)
-        self.add_content_widget(paste_hotkey)
-        
-        # Text Processing section
-        processing_label = QLabel("Text Processing")
-        font = QFont()
-        font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
-        font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
-        processing_label.setFont(font)
-        processing_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-top: 24px; margin-bottom: 8px;")
-        self.add_content_widget(processing_label)
-        
-        # Auto-capitalize setting
-        capitalize_setting = SettingRow(
-            title="Auto-capitalize",
-            description="Automatically capitalize the first letter of sentences",
-            setting_name="auto_capitalize",
-            control_type="toggle",
-            current_value=True
-        )
-        capitalize_setting.value_changed.connect(self._on_setting_changed)
-        self.add_content_widget(capitalize_setting)
-        
-        # Auto-punctuation setting
-        punctuation_setting = SettingRow(
-            title="Smart Punctuation",
-            description="Automatically add punctuation based on speech patterns",
-            setting_name="smart_punctuation",
-            control_type="toggle",
-            current_value=True
-        )
-        punctuation_setting.value_changed.connect(self._on_setting_changed)
-        self.add_content_widget(punctuation_setting)
-        
-        # Text Replacement setting
-        replacement_setting = SettingRow(
-            title="Text Replacement",
-            description="Enable custom text replacements (e.g., 'u' → 'you')",
-            setting_name="text_replacement",
-            control_type="toggle",
-            current_value=False
-        )
-        replacement_setting.value_changed.connect(self._on_setting_changed)
-        self.add_content_widget(replacement_setting)
-        
-        # Word Spacing setting
-        spacing_setting = SettingRow(
-            title="Word Spacing",
-            description="Add appropriate spacing between words",
-            setting_name="word_spacing",
-            control_type="dropdown",
-            options=[
-                {"label": "Single Space", "value": "single"},
-                {"label": "Smart Spacing", "value": "smart"},
-                {"label": "No Extra Spacing", "value": "none"}
-            ],
-            current_value="smart"
-        )
-        spacing_setting.value_changed.connect(self._on_setting_changed)
-        self.add_content_widget(spacing_setting)
+        # Accessibility permissions section for macOS
+        if platform.system() == 'Darwin':
+            # Accessibility section
+            access_label = QLabel("Accessibility Permissions")
+            font = QFont()
+            font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
+            font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
+            access_label.setFont(font)
+            access_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-top: 24px; margin-bottom: 8px;")
+            self.add_content_widget(access_label)
+            
+            # Permission info widget
+            permission_widget = QWidget()
+            permission_layout = QVBoxLayout(permission_widget)
+            permission_layout.setContentsMargins(0, 0, 0, 0)
+            permission_layout.setSpacing(8)
+            
+            # Description
+            desc_label = QLabel("ASR Pro requires accessibility permissions to use global hotkeys.")
+            desc_font = QFont()
+            desc_font.setPointSize(Fonts.scaled(Fonts.DESCRIPTION_SIZE))
+            desc_font.setWeight(Fonts.adjust_weight(Fonts.NORMAL))
+            desc_label.setFont(desc_font)
+            desc_label.setStyleSheet(f"color: {DarkTheme.SECONDARY_TEXT.name()};")
+            desc_label.setWordWrap(True)
+            permission_layout.addWidget(desc_label)
+            
+            # Button to open settings
+            self.permission_button = QPushButton("Open Accessibility Settings")
+            self.permission_button.clicked.connect(self._open_accessibility_settings)
+            self.permission_button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {DarkTheme.ACCENT_BLUE.name()};
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 6px;
+                    font-size: {Fonts.CONTROL_SIZE}px;
+                    font-weight: 500;
+                }}
+                QPushButton:hover {{
+                    background-color: {DarkTheme.ACCENT_BLUE.darker(110).name()};
+                }}
+            """)
+            self.permission_button.setMaximumWidth(250)
+            permission_layout.addWidget(self.permission_button)
+            
+            self.add_content_widget(permission_widget)
         
         # Add stretch to push content to top
         self.add_stretch()
+    
+    def _open_accessibility_settings(self):
+        """Open macOS accessibility settings."""
+        try:
+            # Open System Settings to Accessibility pane
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Settings" to reveal anchor "Privacy_Accessibility" of pane id "com.apple.preference.security"'
+            ])
+            subprocess.run(['osascript', '-e', 'tell application "System Settings" to activate'])
+            
+            # Show info message
+            QMessageBox.information(
+                self,
+                "Accessibility Settings",
+                "Please add Terminal (or Python) to the allowed apps in Accessibility.\n\n"
+                "After granting permission, restart ASR Pro for the changes to take effect."
+            )
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to open System Settings: {str(e)}"
+            )
+    
+    def _on_hotkey_changed(self, setting_name: str, hotkey: str):
+        """Handle hotkey changes."""
+        print(f"[KeyboardPage] Hotkey changed: {setting_name} = {hotkey}")
+        
+        # Convert display format to pynput format
+        pynput_hotkey = self._convert_to_pynput_format(hotkey)
+        
+        # Update the hotkey in the system
+        if self.hotkey:
+            self.hotkey.set_hotkey(pynput_hotkey)
+    
+    def _convert_to_pynput_format(self, hotkey: str) -> str:
+        """Convert displayed hotkey format to pynput format."""
+        # Replace display names with pynput names
+        conversions = {
+            'Cmd': 'cmd',
+            'Command': 'cmd',
+            'Option': 'alt',
+            'Ctrl': 'ctrl',
+            'Shift': 'shift',
+            'Space': 'space',
+        }
+        
+        parts = hotkey.split('+')
+        pynput_parts = []
+        
+        for part in parts:
+            part = part.strip()
+            # Convert to lowercase and check conversions
+            lower_part = conversions.get(part, part.lower())
+            pynput_parts.append(lower_part)
+        
+        # pynput format uses angle brackets for modifiers
+        result = '+'.join(f'<{p}>' if p in ['cmd', 'ctrl', 'alt', 'shift'] else p for p in pynput_parts)
+        return result

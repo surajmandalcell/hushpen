@@ -144,8 +144,8 @@ class NativeMainWindow(QWidget):
         self.sidebar.window_action.connect(self._on_window_action)
         main_layout.addWidget(self.sidebar)
 
-        # Content area
-        self.content_area = ContentArea(self)
+        # Content area with dependencies
+        self.content_area = ContentArea(self.model_manager, self.hotkey, self)
         main_layout.addWidget(self.content_area, 1)  # Take remaining space
 
         # Root already holds frame; clip applied by helper

@@ -4,20 +4,24 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout
 
 from ..styles.dark_theme import DarkTheme
-from ..pages.general_page import GeneralPage
-from ..pages.transcribe_file_page import TranscribeFilePage
-from ..pages.models_page import ModelsPage
-from ..pages.keyboard_page import KeyboardPage
-from ..pages.microphone_page import MicrophonePage
-from ..pages.about_page import AboutPage
+from ..pages import (
+    GeneralPage,
+    TranscribePage,
+    ModelsPage,
+    KeyboardPage,
+    MicrophonePage,
+    AboutPage
+)
 
 
 class ContentArea(QWidget):
     """Main content area with page switching functionality."""
     
-    def __init__(self, parent=None):
+    def __init__(self, model_manager=None, hotkey=None, parent=None):
         super().__init__(parent)
         
+        self.model_manager = model_manager
+        self.hotkey = hotkey
         self.pages = {}
         self._setup_ui()
         self._apply_styles()
@@ -37,18 +41,17 @@ class ContentArea(QWidget):
     
     def _create_pages(self):
         """Create all page instances and add them to the stack."""
-        page_classes = {
-            "general": GeneralPage,
-            "transcribe": TranscribeFilePage,
-            "models": ModelsPage, 
-            "keyboard": KeyboardPage,
-            "microphone": MicrophonePage,
-            "about": AboutPage,
+        # Create pages with necessary dependencies
+        self.pages = {
+            "general": GeneralPage(self),
+            "transcribe": TranscribePage(self.model_manager, self),
+            "models": ModelsPage(self),
+            "keyboard": KeyboardPage(self.hotkey, self),
+            "microphone": MicrophonePage(self),
+            "about": AboutPage(self),
         }
         
-        for section_id, page_class in page_classes.items():
-            page = page_class(self)
-            self.pages[section_id] = page
+        for section_id, page in self.pages.items():
             self.stacked_widget.addWidget(page)
     
     def _apply_styles(self):
