@@ -1,12 +1,14 @@
 """Microphone and audio settings page."""
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QPainter
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressBar
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QProgressBar, QMessageBox
 
 from ..layouts.setting_row import SettingRow
 from ..styles.dark_theme import DarkTheme, Dimensions, Fonts, Spacing
 from .base_page import BasePage
+from ...audio_recorder import AudioRecorder
+from ...config import config
 
 
 class MicrophoneItem(QWidget):
@@ -198,30 +200,56 @@ class MicrophonePage(BasePage):
     
     def __init__(self, parent=None):
         super().__init__("Microphone", parent)
+        self.mic_items = {}  # Track microphone item widgets
+        self.selected_device_index = None
+        self.test_recorder = None
+        self.level_timer = None
         self._create_content()
+        self._refresh_devices()
     
     def _create_content(self):
         """Create microphone settings content."""
         # Input Device section
+        device_section = QWidget()
+        device_layout = QHBoxLayout(device_section)
+        device_layout.setContentsMargins(0, 0, 0, 0)
+        
         device_label = QLabel("Input Device")
         font = QFont()
         font.setPointSize(Fonts.scaled(Fonts.SETTING_LABEL_SIZE))
         font.setWeight(Fonts.adjust_weight(Fonts.MEDIUM))
         device_label.setFont(font)
-        device_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()}; margin-bottom: 8px;")
-        self.add_content_widget(device_label)
+        device_label.setStyleSheet(f"color: {DarkTheme.PRIMARY_TEXT.name()};")
+        device_layout.addWidget(device_label)
         
-        # Sample microphone devices
-        devices_data = [
-            ("mic_1", "Built-in Microphone", True, False),
-            ("mic_2", "USB Audio Device", False, True),
-            ("mic_3", "Bluetooth Headset", False, False),
-        ]
+        device_layout.addStretch()
         
-        for device_id, name, is_default, is_selected in devices_data:
-            mic_item = MicrophoneItem(device_id, name, is_default, is_selected)
-            mic_item.selected.connect(self._on_microphone_selected)
-            self.add_content_widget(mic_item)
+        # Refresh button
+        self.refresh_btn = QPushButton("Refresh Devices")
+        self.refresh_btn.clicked.connect(self._refresh_devices)
+        self.refresh_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {DarkTheme.BUTTON_BG.name()};
+                color: {DarkTheme.PRIMARY_TEXT.name()};
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: {Fonts.CONTROL_SIZE}px;
+            }}
+            QPushButton:hover {{
+                background-color: {DarkTheme.BUTTON_HOVER_BG.name()};
+            }}
+        """)
+        device_layout.addWidget(self.refresh_btn)
+        
+        self.add_content_widget(device_section)
+        
+        # Container for device items
+        self.devices_container = QWidget()
+        self.devices_layout = QVBoxLayout(self.devices_container)
+        self.devices_layout.setContentsMargins(0, 0, 0, 0)
+        self.devices_layout.setSpacing(8)
+        self.add_content_widget(self.devices_container)
         
         # Audio Level section
         level_label = QLabel("Audio Level Monitor")
@@ -342,6 +370,89 @@ class MicrophonePage(BasePage):
     
     def _on_microphone_selected(self, device_id: str):
         """Handle microphone selection."""
-        print(f"[MicrophonePage] Selected microphone: {device_id}")
-        # Update UI to reflect selection
-        # In real implementation, this would update the backend configuration
+        try:
+            device_index = int(device_id)
+            print(f"[MicrophonePage] Selected microphone index: {device_index}")
+            
+            # Update selected state in UI
+            for dev_id, item in self.mic_items.items():
+                item.set_selected(dev_id == device_id)
+            
+            # Save to config
+            self.selected_device_index = device_index
+            config.set('audio.input_device', device_index)
+            
+        except (ValueError, TypeError) as e:
+            print(f"[MicrophonePage] Invalid device ID: {device_id}, error: {e}")
+    
+    def _refresh_devices(self):
+        """Refresh the list of audio devices."""
+        print("[MicrophonePage] Refreshing audio devices...")
+        
+        # Clear existing items
+        for item in self.mic_items.values():
+            item.deleteLater()
+        self.mic_items.clear()
+        
+        # Clear layout
+        while self.devices_layout.count():
+            child = self.devices_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Get actual audio devices
+        devices = AudioRecorder.list_devices()
+        
+        if not devices:
+            no_devices_label = QLabel("No audio input devices found.\nPlease check microphone permissions.")
+            no_devices_label.setStyleSheet(f"color: {DarkTheme.WARNING_YELLOW.name()}; padding: 20px;")
+            self.devices_layout.addWidget(no_devices_label)
+            return
+        
+        # Get saved device from config
+        saved_device = config.get('audio.input_device', None)
+        
+        # Add device items
+        for device in devices:
+            device_id = str(device['index'])
+            is_selected = (saved_device == device['index']) if saved_device is not None else device['is_default']
+            
+            mic_item = MicrophoneItem(
+                device_id=device_id,
+                name=device['name'],
+                is_default=device['is_default'],
+                is_selected=is_selected
+            )
+            
+            mic_item.selected.connect(self._on_microphone_selected)
+            mic_item.test_button.clicked.connect(lambda checked, idx=device['index']: self._test_device(idx))
+            
+            self.devices_layout.addWidget(mic_item)
+            self.mic_items[device_id] = mic_item
+            
+            if is_selected:
+                self.selected_device_index = device['index']
+        
+        print(f"[MicrophonePage] Found {len(devices)} audio input devices")
+    
+    def _test_device(self, device_index: int):
+        """Test an audio device."""
+        print(f"[MicrophonePage] Testing device {device_index}")
+        
+        try:
+            # Simple test: try to create a recorder with the device
+            test_recorder = AudioRecorder(device=device_index)
+            
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Device Test",
+                "Audio device is working!\n\nIf you didn't hear anything, make sure:\n- Your microphone is not muted\n- Volume is turned up\n- Correct device is selected in System Settings"
+            )
+            
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Device Test Failed",
+                f"Failed to test audio device:\n{str(e)}\n\nPlease check microphone permissions."
+            )

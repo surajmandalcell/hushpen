@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 import queue, threading, wave
+import platform
+import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
 import sounddevice as sd  # type: ignore
 import numpy as np
 
 
 class AudioRecorder:
-    def __init__(self, samplerate: int = 16000, channels: int = 1):
+    def __init__(self, samplerate: int = 16000, channels: int = 1, device: Optional[int] = None):
         self.samplerate = samplerate
         self.channels = channels
+        self.device = device  # Allow specific device selection
         self._q: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._stream = None
         self.file_path: Optional[Path] = None
+        
+        # Check microphone permissions on macOS
+        if platform.system() == 'Darwin':
+            self._check_macos_microphone_permission()
 
     def _callback(self, indata, frames, time, status):  # pragma: no cover
         if status:
@@ -25,11 +32,25 @@ class AudioRecorder:
     def start(self, file_path: Path):  # pragma: no cover
         self.file_path = file_path
         self._stop.clear()
-        self._stream = sd.InputStream(
-            samplerate=self.samplerate, channels=self.channels, callback=self._callback
-        )
-        self._stream.start()
-        threading.Thread(target=self._writer, daemon=True).start()
+        
+        try:
+            self._stream = sd.InputStream(
+                device=self.device,
+                samplerate=self.samplerate, 
+                channels=self.channels, 
+                callback=self._callback
+            )
+            self._stream.start()
+            threading.Thread(target=self._writer, daemon=True).start()
+        except sd.PortAudioError as e:
+            if platform.system() == 'Darwin' and 'Input overflowed' not in str(e):
+                # Likely a permission issue on macOS
+                print(f"[AudioRecorder] Failed to start recording: {e}")
+                print("[AudioRecorder] Please grant microphone access in System Settings > Privacy & Security > Microphone")
+                self._request_macos_microphone_permission()
+                raise RuntimeError("Microphone access denied. Please grant permission and restart.") from e
+            else:
+                raise
 
     def _writer(self):  # pragma: no cover
         if not self.file_path:
@@ -51,3 +72,56 @@ class AudioRecorder:
             self._stream.stop()
             self._stream.close()
         return self.file_path
+    
+    def _check_macos_microphone_permission(self) -> bool:
+        """Check if microphone permission is granted on macOS."""
+        if platform.system() != 'Darwin':
+            return True
+        
+        try:
+            # Try to query audio devices - this will fail if no permission
+            devices = sd.query_devices()
+            # Check if we have any input devices
+            input_devices = [d for d in devices if d['max_input_channels'] > 0]
+            if not input_devices:
+                print("[AudioRecorder] Warning: No input devices found. Microphone permission may be denied.")
+                return False
+            return True
+        except Exception as e:
+            print(f"[AudioRecorder] Failed to query audio devices: {e}")
+            return False
+    
+    def _request_macos_microphone_permission(self):
+        """Request microphone permission on macOS."""
+        if platform.system() != 'Darwin':
+            return
+        
+        try:
+            # Open System Settings to microphone privacy pane
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Settings" to reveal anchor "Privacy_Microphone" of pane id "com.apple.preference.security"'
+            ])
+            subprocess.run(['osascript', '-e', 'tell application "System Settings" to activate'])
+        except Exception as e:
+            print(f"[AudioRecorder] Failed to open System Settings: {e}")
+    
+    @staticmethod
+    def list_devices() -> List[Dict]:
+        """List all available audio input devices."""
+        try:
+            devices = sd.query_devices()
+            input_devices = []
+            for i, device in enumerate(devices):
+                if device['max_input_channels'] > 0:
+                    input_devices.append({
+                        'index': i,
+                        'name': device['name'],
+                        'channels': device['max_input_channels'],
+                        'sample_rate': device['default_samplerate'],
+                        'is_default': i == sd.default.device[0]
+                    })
+            return input_devices
+        except Exception as e:
+            print(f"[AudioRecorder] Failed to list devices: {e}")
+            return []

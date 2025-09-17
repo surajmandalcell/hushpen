@@ -95,6 +95,11 @@ build-py2app: ## Build macOS .app bundle with py2app
 		$(PYTHON) setup.py py2app; \
 	fi
 
+.PHONY: create-icon
+create-icon: ## Create macOS .icns icon file from assets/icon.png
+	@echo "Creating macOS icon..."
+	@$(PYTHON) $(SCRIPTS)/create_macos_icon.py
+
 # Testing
 .PHONY: test
 test: ## Run tests
