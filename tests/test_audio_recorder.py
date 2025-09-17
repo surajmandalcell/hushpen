@@ -6,6 +6,7 @@ import time
 import wave
 import numpy as np
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch, MagicMock
 import sounddevice as sd
 from asrpro.audio_recorder import AudioRecorder
@@ -67,7 +68,7 @@ class TestAudioDeviceDetection:
         mock_query.return_value = mock_devices
 
         with patch('asrpro.audio_recorder.sd.default.device', (0, 1)):
-            devices = AudioRecorder.list_devices()
+            devices: list[dict[str, Any]] = AudioRecorder.list_devices()
 
             assert len(devices) == 2  # Only input devices
             assert devices[0]['name'] == 'Built-in Microphone'

@@ -4,6 +4,7 @@ import pytest
 import platform
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch, MagicMock
 import subprocess
 from asrpro.audio_recorder import AudioRecorder
@@ -305,7 +306,7 @@ class TestPermissionIntegration:
             {'name': 'Built-in Microphone', 'max_input_channels': 1, 'default_samplerate': 44100}
         ]
 
-        devices = AudioRecorder.list_devices()
+        devices: list[dict[str, Any]] = AudioRecorder.list_devices()
 
         assert len(devices) == 1
         assert devices[0]['name'] == 'Built-in Microphone'

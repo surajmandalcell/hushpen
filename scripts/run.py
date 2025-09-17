@@ -35,7 +35,7 @@ def _input_loop(on_key):
                 time.sleep(0.05)
         else:
             # Mac/Unix: Use cbreak mode instead of raw mode to preserve log formatting
-            import sys, tty, termios, select
+            import tty, termios, select
 
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
