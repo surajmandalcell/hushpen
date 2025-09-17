@@ -45,18 +45,17 @@ class Config:
         self.config_file = self.config_dir / "config.json"
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self._config = self._load_config()
-    
+
     def _get_config_dir(self) -> Path:
         """Get platform-specific configuration directory."""
         import platform
-        
+
         system = platform.system()
         if system == "Darwin":  # macOS
             # Use ~/Library/Application Support/asrpro/
             config_dir = Path.home() / "Library" / "Application Support" / "asrpro"
         elif system == "Windows":
             # Use %APPDATA%/asrpro/
-            import os
             appdata = os.environ.get("APPDATA")
             if appdata:
                 config_dir = Path(appdata) / "asrpro"
@@ -69,7 +68,7 @@ class Config:
                 config_dir = Path(xdg_config) / "asrpro"
             else:
                 config_dir = Path.home() / ".config" / "asrpro"
-        
+
         return config_dir
 
     def get_config_dir(self) -> Path:
@@ -89,13 +88,13 @@ class Config:
             except Exception:
                 # If config is corrupted, use defaults
                 pass
-        
+
         # Attempt migration from legacy locations
         legacy_locations = [
             Path.home() / ".asrpro" / "config.json",  # Old home config
             Path(__file__).resolve().parents[1] / "config" / "config.json",  # Old project config
         ]
-        
+
         for legacy_file in legacy_locations:
             if legacy_file.exists() and not self.config_file.exists():
                 try:
