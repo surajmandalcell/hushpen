@@ -1,18 +1,17 @@
 """
-Configuration Manager for ASR Pro Python Sidecar
+Configuration settings for ASR Pro Python Sidecar
 """
 
 import json
 import os
-import platform
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-class ConfigManager:
-    """Manages configuration loading, saving, and validation."""
+class Settings:
+    """Configuration settings for the sidecar."""
     
     def __init__(self):
         self.config_path = self._get_config_path()
@@ -21,16 +20,20 @@ class ConfigManager:
     
     def _get_config_path(self) -> Path:
         """Get platform-specific configuration path."""
-        system = platform.system()
+        system = os.name
         
-        if system == "Darwin":  # macOS
-            base_path = Path.home() / "Library" / "Application Support" / "asrpro"
-        elif system == "Windows":
-            base_path = Path(os.environ.get("APPDATA", "")) / "asrpro"
-        else:  # Linux and others
-            base_path = Path.home() / ".config" / "asrpro"
-        
-        return base_path / "config.json"
+        if system == "posix":  # macOS and Linux
+            if os.path.exists("/Library/Application Support"):
+                # macOS
+                return Path.home() / "Library" / "Application Support" / "asrpro" / "config.json"
+            else:
+                # Linux
+                return Path.home() / ".config" / "asrpro" / "config.json"
+        elif system == "nt":  # Windows
+            return Path(os.environ.get("APPDATA", "")) / "asrpro" / "config.json"
+        else:
+            # Fallback
+            return Path.home() / ".asrpro" / "config.json"
     
     def _ensure_config_directory(self):
         """Ensure configuration directory exists."""
@@ -40,38 +43,16 @@ class ConfigManager:
         """Get default configuration."""
         return {
             "server": {
-                "enabled": True,
                 "host": "127.0.0.1",
-                "port": 8000,
-                "auto_start": True
+                "port": 8000
+            },
+            "models": {
+                "default_model": "whisper-base",
+                "cache_dir": ""
             },
             "device": {
                 "prefer_gpu": True,
-                "cuda_enabled": False,
-                "mps_enabled": False,
-                "vulkan_enabled": False
-            },
-            "ui": {
-                "theme": "dark",
-                "opacity": 1.0,
-                "animations": True
-            },
-            "audio": {
-                "sample_rate": 16000,
-                "channels": 1,
-                "format": "wav",
-                "quality": "high"
-            },
-            "model": {
-                "auto_unload": True,
-                "auto_unload_timeout": 1800,  # 30 minutes
-                "prefer_gpu": True,
-                "cache_directory": ""
-            },
-            "hotkey": {
-                "combination": "",
-                "overlay": True,
-                "auto_paste": True
+                "compute_type": "auto"
             }
         }
     
@@ -82,7 +63,7 @@ class ConfigManager:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     loaded_config = json.load(f)
                 
-                # Merge with default config to ensure all keys exist
+                # Merge with default config
                 self._merge_config(self.config, loaded_config)
                 logger.info(f"Configuration loaded from {self.config_path}")
             else:
@@ -91,7 +72,6 @@ class ConfigManager:
                 
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}")
-            logger.info("Using default configuration")
             self.config = self._get_default_config()
     
     async def save_config(self):
@@ -115,25 +95,13 @@ class ConfigManager:
         """Get server configuration."""
         return self.config.get("server", {})
     
+    def get_models_config(self) -> Dict[str, Any]:
+        """Get models configuration."""
+        return self.config.get("models", {})
+    
     def get_device_config(self) -> Dict[str, Any]:
         """Get device configuration."""
         return self.config.get("device", {})
-    
-    def get_ui_config(self) -> Dict[str, Any]:
-        """Get UI configuration."""
-        return self.config.get("ui", {})
-    
-    def get_audio_config(self) -> Dict[str, Any]:
-        """Get audio configuration."""
-        return self.config.get("audio", {})
-    
-    def get_model_config(self) -> Dict[str, Any]:
-        """Get model configuration."""
-        return self.config.get("model", {})
-    
-    def get_hotkey_config(self) -> Dict[str, Any]:
-        """Get hotkey configuration."""
-        return self.config.get("hotkey", {})
     
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value by dot notation key."""
@@ -166,18 +134,3 @@ class ConfigManager:
         """Update multiple configuration values."""
         self._merge_config(self.config, updates)
         await self.save_config()
-    
-    def get_cache_directory(self) -> Path:
-        """Get model cache directory."""
-        cache_dir = self.get_config("model.cache_directory", "")
-        if cache_dir:
-            return Path(cache_dir)
-        else:
-            # Default cache directory
-            system = platform.system()
-            if system == "Darwin":
-                return Path.home() / "Library" / "Caches" / "asrpro"
-            elif system == "Windows":
-                return Path(os.environ.get("LOCALAPPDATA", "")) / "asrpro" / "cache"
-            else:
-                return Path.home() / ".cache" / "asrpro"

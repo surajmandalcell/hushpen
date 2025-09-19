@@ -3,7 +3,6 @@
 ASR Pro Python Sidecar - Main Entry Point
 """
 
-import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -12,8 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from api.server import create_app
-from config.manager import ConfigManager
-from system.process import ProcessManager
+from config.settings import Settings
 
 # Configure logging
 logging.basicConfig(
@@ -22,26 +20,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-async def main():
+def main():
     """Main entry point for the ASR Pro sidecar."""
     try:
         logger.info("Starting ASR Pro Python Sidecar...")
         
         # Initialize configuration
-        config_manager = ConfigManager()
-        await config_manager.load_config()
-        
-        # Check for existing instances
-        process_manager = ProcessManager()
-        if process_manager.is_instance_running():
-            logger.warning("Another instance is already running")
-            return
+        settings = Settings()
         
         # Create FastAPI app
-        app = create_app(config_manager)
+        app = create_app(settings)
         
         # Get server configuration
-        server_config = config_manager.get_server_config()
+        server_config = settings.get_server_config()
         host = server_config.get('host', '127.0.0.1')
         port = server_config.get('port', 8000)
         
@@ -49,7 +40,7 @@ async def main():
         
         # Start the server
         import uvicorn
-        await uvicorn.run(
+        uvicorn.run(
             app,
             host=host,
             port=port,
@@ -63,4 +54,4 @@ async def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

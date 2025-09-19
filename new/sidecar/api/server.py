@@ -4,37 +4,20 @@ FastAPI server for ASR Pro Python Sidecar
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 import logging
 
 from ..models.manager import ModelManager
 from ..config.manager import ConfigManager
+from .models import (
+    ModelResponse,
+    ModelListResponse,
+    ModelSettingRequest,
+    ModelSettingResponse,
+    HealthResponse
+)
 
 logger = logging.getLogger(__name__)
-
-# Pydantic models for API
-class ModelResponse(BaseModel):
-    id: str
-    object: str = "model"
-    owned_by: str = "asrpro"
-    ready: bool
-
-class ModelListResponse(BaseModel):
-    object: str = "list"
-    data: List[ModelResponse]
-
-class ModelSettingRequest(BaseModel):
-    model_id: str
-
-class ModelSettingResponse(BaseModel):
-    status: str
-    model: str
-
-class HealthResponse(BaseModel):
-    status: str
-    current_model: Optional[str] = None
-    device: Optional[str] = None
 
 def create_app(config_manager: ConfigManager) -> FastAPI:
     """Create FastAPI application with all routes."""
@@ -75,7 +58,7 @@ def create_app(config_manager: ConfigManager) -> FastAPI:
     async def list_models():
         """List available models."""
         try:
-            models = model_manager.list_available_models()
+            models = await model_manager.list_available_models()
             model_responses = [
                 ModelResponse(
                     id=model_id,
@@ -92,7 +75,7 @@ def create_app(config_manager: ConfigManager) -> FastAPI:
     async def set_model(request: ModelSettingRequest):
         """Set the active model."""
         try:
-            success = model_manager.set_model(request.model_id)
+            success = await model_manager.set_model(request.model_id)
             if success:
                 return ModelSettingResponse(
                     status="success",
