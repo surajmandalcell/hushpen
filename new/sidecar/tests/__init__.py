@@ -19,7 +19,7 @@ from typing import Dict, List
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tests.test_framework import ModelTester
-from models.manager import ModelManager
+from models import ModelManager
 from config.settings import Settings
 from api.server import create_app
 
@@ -272,7 +272,7 @@ async def test_core_functionality():
         print("✓ Settings initialized")
 
         # Test model registry
-        from models.registry import ModelRegistry
+        from models import ModelRegistry
 
         registry = ModelRegistry()
         models = registry.list_models()
