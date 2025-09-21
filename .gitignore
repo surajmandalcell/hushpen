@@ -4,3 +4,4 @@ paste.md
 .pytest_cache
 outputs/
 .claude/
+new/sidecar/TEST_SUMMARY.md
