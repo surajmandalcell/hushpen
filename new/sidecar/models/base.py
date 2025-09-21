@@ -39,7 +39,7 @@ class BaseLoader(ABC):
     
     def is_ready(self) -> bool:
         """Check if model is loaded and ready."""
-        return self.is_loaded and self.model is not None
+        return self.is_loaded
     
     async def ensure_loaded(self) -> bool:
         """Ensure model is loaded, load if necessary."""

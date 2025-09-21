@@ -7,8 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import logging
 
-from ..models.manager import ModelManager
-from ..config.manager import ConfigManager
+from models.manager import ModelManager
+from config.settings import Settings
 from .models import (
     ModelResponse,
     ModelListResponse,
@@ -19,7 +19,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-def create_app(config_manager: ConfigManager) -> FastAPI:
+def create_app(settings: Settings) -> FastAPI:
     """Create FastAPI application with all routes."""
     app = FastAPI(
         title="ASR Pro API",
@@ -37,7 +37,7 @@ def create_app(config_manager: ConfigManager) -> FastAPI:
     )
     
     # Initialize model manager
-    model_manager = ModelManager(config_manager)
+    model_manager = ModelManager(settings)
     
     @app.get("/health", response_model=HealthResponse)
     async def health_check():

@@ -82,15 +82,29 @@ class WhisperLoader(BaseLoader):
             # Read audio file
             audio_data = audio_file.read()
             
-            # Transcribe
-            segments, info = self.whisper_model.transcribe(
-                audio_data,
-                beam_size=5,
-                best_of=5,
-                patience=1,
-                length_penalty=1,
-                temperature=0.0
-            )
+            # Transcribe - faster-whisper expects file path or audio array
+            # We need to save to temporary file or use a different approach
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                temp_file.write(audio_data)
+                temp_file_path = temp_file.name
+            
+            try:
+                # Transcribe
+                segments, info = self.whisper_model.transcribe(
+                    temp_file_path,
+                    beam_size=5,
+                    best_of=5,
+                    patience=1,
+                    length_penalty=1,
+                    temperature=0.0
+                )
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
             
             # Collect segments
             segments_list = []

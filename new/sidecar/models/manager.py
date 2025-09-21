@@ -8,7 +8,7 @@ import logging
 from .registry import ModelRegistry
 from .whisper import WhisperLoader
 from .parakeet import ParakeetLoader
-from ..utils.device import DeviceDetector
+from utils.device import DeviceDetector
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class ModelManager:
         self.current_model = None
         self.current_loader = None
         self.loaders = {}
+        self.loader_configs = {}
         
     async def initialize(self):
         """Initialize the model manager."""

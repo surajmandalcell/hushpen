@@ -1,0 +1,6 @@
+__pycache__
+.venv
+paste.md
+.pytest_cache
+outputs/
+.claude/
