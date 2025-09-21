@@ -5,6 +5,8 @@ ASR Pro Python Sidecar - Main Entry Point
 
 import logging
 import sys
+import argparse
+import asyncio
 from pathlib import Path
 
 # Add the current directory to Python path
@@ -20,8 +22,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def run_tests():
+    """Run comprehensive model tests."""
+    try:
+        from tests.test_runner import run_all_tests
+        success = await run_all_tests()
+        return success
+    except Exception as e:
+        logger.error(f"Error running tests: {e}")
+        return False
+
 def main():
     """Main entry point for the ASR Pro sidecar."""
+    parser = argparse.ArgumentParser(description='ASR Pro Python Sidecar')
+    parser.add_argument('--test', action='store_true', help='Run comprehensive model tests')
+    args = parser.parse_args()
+    
+    if args.test:
+        logger.info("Running comprehensive model tests...")
+        success = asyncio.run(run_tests())
+        sys.exit(0 if success else 1)
+    
     try:
         logger.info("Starting ASR Pro Python Sidecar...")
         
