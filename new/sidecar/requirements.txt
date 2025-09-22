@@ -17,10 +17,6 @@ torchaudio>=2.5.0
 nvidia-cudnn-cu11>=9.10.0
 nvidia-cublas-cu11>=11.11.0
 nvidia-cuda-runtime-cu13>=0.0.0a0
-tensorrt>=10.13.0
-tensorrt_cu13>=10.13.0
-tensorrt_cu13_bindings>=10.13.0
-tensorrt_cu13_libs>=10.13.0
 
 # Audio processing
 librosa>=0.10.0

@@ -1,5 +1,5 @@
 """
-ONNX Whisper Base model loader for ASR Pro Python Sidecar
+ONNX Whisper Tiny model loader for ASR Pro Python Sidecar
 """
 
 import tempfile
@@ -33,6 +33,10 @@ class WhisperBaseLoader(BaseLoader):
                 f"Loading ONNX Whisper {self.model_id} model on {device} with {backend} backend"
             )
 
+            # Disable TensorRT to avoid nvinfer_10.dll issues
+            os.environ["ONNXRT_DISABLE_TENSORRT"] = "1"
+            os.environ["ONNXRUNTIME_DISABLE_TENSORRT"] = "1"
+
             # Map model IDs to onnx-asr model names
             model_mapping = {
                 "whisper-tiny": "whisper-tiny",
@@ -44,13 +48,16 @@ class WhisperBaseLoader(BaseLoader):
 
             onnx_model_name = model_mapping.get(self.model_id, "whisper-base")
 
-            # Load ONNX model (device selection is handled internally by onnx-asr)
-            self.whisper_model = onnx_asr.load_model(onnx_model_name)
+            # Load ONNX model with explicit providers to avoid TensorRT
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            self.whisper_model = onnx_asr.load_model(
+                onnx_model_name, providers=providers
+            )
             self.current_backend = backend
 
             self.is_loaded = True
             logger.info(
-                f"ONNX Whisper Base model loaded successfully on {device} ({backend})"
+                f"ONNX Whisper {self.model_id} model loaded successfully on {device} ({backend})"
             )
             return True
 

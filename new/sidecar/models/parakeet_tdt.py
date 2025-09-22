@@ -33,8 +33,15 @@ class ParakeetTDTLoader(BaseLoader):
                 f"Loading ONNX Parakeet TDT model on {device} with {backend} backend"
             )
 
-            # Load ONNX model (device selection is handled internally by onnx-asr)
-            self.parakeet_model = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2")
+            # Disable TensorRT to avoid nvinfer_10.dll issues
+            os.environ["ONNXRT_DISABLE_TENSORRT"] = "1"
+            os.environ["ONNXRUNTIME_DISABLE_TENSORRT"] = "1"
+
+            # Load ONNX model with explicit providers to avoid TensorRT
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            self.parakeet_model = onnx_asr.load_model(
+                "nemo-parakeet-tdt-0.6b-v2", providers=providers
+            )
             self.current_backend = backend
 
             self.is_loaded = True

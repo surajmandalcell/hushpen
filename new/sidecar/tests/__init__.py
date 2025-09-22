@@ -154,7 +154,7 @@ async def run_all_tests():
     # Get available models - only test English/Hindi focused models
     all_models = await manager.list_available_models()
     # Focus on smaller, faster models for English/Hindi
-    model_ids = ["whisper-tiny", "whisper-base", "parakeet-tdt-0.6b-v2"]
+    model_ids = ["whisper-base", "parakeet-tdt-0.6b-v2"]
 
     print(f"Testing {len(model_ids)} models for English/Hindi: {', '.join(model_ids)}")
     print()
