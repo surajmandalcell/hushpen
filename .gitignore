@@ -32,3 +32,4 @@ __pycache__/
 sidecar/tests/__pycache__/*
 sidecar/models/__pycache__/*
 sidecar/utils/__pycache__/*
+MIGRATE_UI.md
