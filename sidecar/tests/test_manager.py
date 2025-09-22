@@ -189,7 +189,7 @@ class TestModelManager:
             with patch.object(
                 manager.registry, "get_model_info", return_value={"id": "whisper-base"}
             ):
-                with patch("models.whisper.WhisperLoader") as mock_whisper_class:
+                with patch("models.manager.ConfigDrivenLoader") as mock_whisper_class:
                     mock_loader = Mock()
                     mock_whisper_class.return_value = mock_loader
 
@@ -209,7 +209,7 @@ class TestModelManager:
             with patch.object(
                 manager.registry, "get_model_info", return_value={"id": "parakeet-ctc"}
             ):
-                with patch("models.parakeet.ParakeetLoader") as mock_parakeet_class:
+                with patch("models.manager.ConfigDrivenLoader") as mock_parakeet_class:
                     mock_loader = Mock()
                     mock_parakeet_class.return_value = mock_loader
 
@@ -260,9 +260,14 @@ class TestModelManager:
         manager = ModelManager(settings)
         manager.current_model = "whisper-base"
 
+        mock_loader = Mock()
+        mock_loader.transcribe = AsyncMock(return_value={"text": "test transcription"})
+        
         with patch.object(manager, "set_model", return_value=True) as mock_set_model:
-            with open(sample_audio_file, "rb") as f:
-                await manager.transcribe_file(f, "whisper-small")
+            with patch.object(manager, "_get_loader", return_value=mock_loader):
+                manager.current_loader = mock_loader  # Ensure loader is set
+                with open(sample_audio_file, "rb") as f:
+                    result = await manager.transcribe_file(f, "whisper-small")
 
             mock_set_model.assert_called_once_with("whisper-small")
 

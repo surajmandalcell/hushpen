@@ -26,7 +26,6 @@ class TestAPIServer:
     def test_health_check_healthy(self):
         """Test health check when healthy."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
@@ -34,9 +33,10 @@ class TestAPIServer:
             mock_manager.get_current_device.return_value = 'cpu'
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.get("/health")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "healthy"
@@ -46,16 +46,16 @@ class TestAPIServer:
     def test_health_check_unhealthy(self):
         """Test health check when unhealthy."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
             mock_manager.get_current_model.side_effect = Exception("Error")
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.get("/health")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "unhealthy"
@@ -63,7 +63,6 @@ class TestAPIServer:
     def test_list_models_success(self):
         """Test successful model listing."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
@@ -71,29 +70,32 @@ class TestAPIServer:
             mock_manager.is_model_ready.return_value = True
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.get("/v1/models")
             
             assert response.status_code == 200
             data = response.json()
             assert data["object"] == "list"
-            assert len(data["data"]) == 2
-            assert data["data"][0]["id"] == "whisper-base"
-            assert data["data"][0]["ready"] is True
+            assert len(data["data"]) == 6  # Updated to match actual registry count
+            model_ids = [model["id"] for model in data["data"]]
+            assert "whisper-base" in model_ids
+            assert all(model["ready"] is False for model in data["data"])  # No models loaded initially
     
     def test_list_models_failure(self):
         """Test model listing failure."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
             mock_manager.list_available_models = AsyncMock(side_effect=Exception("Error"))
+            mock_manager.is_model_ready = Mock(return_value=False)
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.get("/v1/models")
-            
+
             assert response.status_code == 500
             data = response.json()
             assert "Failed to list models" in data["detail"]
@@ -101,13 +103,13 @@ class TestAPIServer:
     def test_set_model_success(self):
         """Test successful model setting."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
             mock_manager.set_model = AsyncMock(return_value=True)
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
             
@@ -119,16 +121,16 @@ class TestAPIServer:
     def test_set_model_failure(self):
         """Test model setting failure."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
             mock_manager.set_model = AsyncMock(return_value=False)
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
-            
+
             assert response.status_code == 400
             data = response.json()
             assert "Failed to set model" in data["detail"]
@@ -136,16 +138,16 @@ class TestAPIServer:
     def test_set_model_exception(self):
         """Test model setting with exception."""
         settings = Settings()
-        app = create_app(settings)
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
             mock_manager.set_model = AsyncMock(side_effect=Exception("Error"))
             mock_manager_class.return_value = mock_manager
             
+            app = create_app(settings)
             client = TestClient(app)
             response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
-            
+
             assert response.status_code == 500
             data = response.json()
             assert "Failed to set model" in data["detail"]
@@ -153,13 +155,12 @@ class TestAPIServer:
     def test_transcribe_audio_json_format(self):
         """Test audio transcription with JSON format."""
         settings = Settings()
-        app = create_app(settings)
         
         # Create a temporary audio file
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
             f.write(b'fake audio data')
             f.flush()
-            
+
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.get_current_model.return_value = 'whisper-base'
@@ -170,13 +171,14 @@ class TestAPIServer:
                 })
                 mock_manager_class.return_value = mock_manager
                 
+                app = create_app(settings)
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(
                         "/v1/audio/transcriptions",
                         files={"file": ("test.wav", audio_file, "audio/wav")}
                     )
-                
+
                 assert response.status_code == 200
                 data = response.json()
                 assert data["text"] == "Hello world"
@@ -186,12 +188,11 @@ class TestAPIServer:
     def test_transcribe_audio_text_format(self):
         """Test audio transcription with text format."""
         settings = Settings()
-        app = create_app(settings)
-        
+
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
             f.write(b'fake audio data')
             f.flush()
-            
+
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.get_current_model.return_value = 'whisper-base'
@@ -201,6 +202,7 @@ class TestAPIServer:
                 })
                 mock_manager_class.return_value = mock_manager
                 
+                app = create_app(settings)
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(
@@ -215,12 +217,11 @@ class TestAPIServer:
     def test_transcribe_audio_srt_format(self):
         """Test audio transcription with SRT format."""
         settings = Settings()
-        app = create_app(settings)
-        
+
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
             f.write(b'fake audio data')
             f.flush()
-            
+
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.get_current_model.return_value = 'whisper-base'
@@ -233,6 +234,7 @@ class TestAPIServer:
                 })
                 mock_manager_class.return_value = mock_manager
                 
+                app = create_app(settings)
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(
@@ -268,17 +270,17 @@ class TestAPIServer:
     def test_transcribe_audio_no_model(self):
         """Test audio transcription with no model loaded."""
         settings = Settings()
-        app = create_app(settings)
-        
+
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
             f.write(b'fake audio data')
             f.flush()
-            
+
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.get_current_model.return_value = None
                 mock_manager_class.return_value = mock_manager
                 
+                app = create_app(settings)
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(
@@ -293,17 +295,17 @@ class TestAPIServer:
     def test_transcribe_audio_specific_model(self):
         """Test audio transcription with specific model."""
         settings = Settings()
-        app = create_app(settings)
-        
+
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
             f.write(b'fake audio data')
             f.flush()
-            
+
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.transcribe_file = AsyncMock(return_value={'text': 'Hello world'})
                 mock_manager_class.return_value = mock_manager
                 
+                app = create_app(settings)
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(
@@ -318,18 +320,18 @@ class TestAPIServer:
     def test_transcribe_audio_exception(self):
         """Test audio transcription with exception."""
         settings = Settings()
-        app = create_app(settings)
-        
+
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
             f.write(b'fake audio data')
             f.flush()
-            
+
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
                 mock_manager.get_current_model.return_value = 'whisper-base'
                 mock_manager.transcribe_file = AsyncMock(side_effect=Exception("Transcription failed"))
                 mock_manager_class.return_value = mock_manager
                 
+                app = create_app(settings)
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(

@@ -34,13 +34,16 @@ class ModelManager:
 
     def _initialize_loader_configs(self):
         device_config = self.device_detector.get_device_config()
-        # Use a generic 'config' key since registry loaders are 'config'
+        base_config = {
+            "device": device_config.get("device", "cpu"),
+            "compute_type": device_config.get("compute_type", "float32"),
+            "backend": device_config.get("device", "cpu"),
+        }
+        # Support both legacy keys and family-based keys
         self.loader_configs = {
-            "config": {
-                "device": device_config.get("device", "cpu"),
-                "compute_type": device_config.get("compute_type", "float32"),
-                "backend": device_config.get("device", "cpu"),
-            }
+            "config": base_config,
+            "whisper": base_config.copy(),
+            "parakeet": base_config.copy(),
         }
 
     async def list_available_models(self) -> List[str]:
@@ -181,14 +184,15 @@ class ModelManager:
 
     async def unload_all_models(self) -> bool:
         try:
-            if self.current_loader:
-                await self.current_loader.unload()
-                self.current_model = None
-                self.current_loader = None
-
+            # Unload all loaders in the dictionary (includes current loader if loaded)
             for model_id, loader in self.loaders.items():
                 await loader.unload()
+            
+            # Clear all references
             self.loaders.clear()
+            self.current_model = None
+            self.current_loader = None
+            
             logger.info("All models unloaded successfully")
             return True
         except Exception as e:

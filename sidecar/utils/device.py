@@ -115,8 +115,12 @@ class DeviceDetector:
 
     def _check_vulkan(self):
         """Check for Vulkan availability."""
-        import subprocess
-        import os
+        try:
+            import subprocess
+            import os
+        except ImportError:
+            logger.warning("Failed to import subprocess for Vulkan check")
+            return
         
         # Try to detect Vulkan via vulkaninfo command
         try:

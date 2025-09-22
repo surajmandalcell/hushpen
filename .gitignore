@@ -27,3 +27,8 @@ dist-ssr
 .claude
 .venv
 new/
+**__pycache__**
+__pycache__/
+sidecar/tests/__pycache__/*
+sidecar/models/__pycache__/*
+sidecar/utils/__pycache__/*

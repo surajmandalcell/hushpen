@@ -126,4 +126,25 @@ class ModelRegistry:
 
     def get_loader_type(self, model_id: str) -> Optional[str]:
         model_info = self._models.get(model_id)
-        return model_info.get("loader") if model_info else None
+        if not model_info:
+            return None
+        family = model_info.get("family")
+        if family == "whisper":
+            return "whisper"
+        elif family == "parakeet":
+            return "parakeet"
+        return model_info.get("loader")
+
+    def get_models_by_type(self, model_type: str) -> List[str]:
+        """Get models by family type."""
+        return [
+            model_id for model_id, info in self._models.items()
+            if info.get("family") == model_type
+        ]
+
+    def get_models_by_language(self, language: str) -> List[str]:
+        """Get models that support a specific language."""
+        return [
+            model_id for model_id, info in self._models.items()
+            if language in info.get("languages", [])
+        ]
