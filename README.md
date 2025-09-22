@@ -143,6 +143,16 @@ npm run test            # Run frontend tests (if configured)
 npm run type-check      # TypeScript type checking
 ```
 
+### Clean Python Cache
+
+```bash
+# Remove all __pycache__ directories and .pyc files
+python scripts/clean_python_cache.py
+
+# Or manually with PowerShell (Windows)
+Get-ChildItem -Path . -Name "__pycache__" -Recurse -Directory | Remove-Item -Recurse -Force
+```
+
 ### Manual Testing
 
 1. Start development servers
@@ -225,9 +235,17 @@ Models are automatically managed through the UI. Manual configuration in `sideca
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature-name`
-3. Run tests: `npm run test && cd sidecar && python -m pytest`
-4. Commit changes: `git commit -m "Description"`
-5. Push and create pull request
+3. Clean Python cache: `python scripts/clean_python_cache.py`
+4. Run tests: `npm run test && cd sidecar && python -m pytest`
+5. Commit changes: `git commit -m "Description"`
+6. Push and create pull request
+
+### Repository Cleanliness
+
+- Python cache files (`__pycache__/`, `*.pyc`) are automatically ignored
+- Run cleanup script before committing: `python scripts/clean_python_cache.py`
+- Virtual environments (`.venv/`, `venv/`) are ignored
+- Node modules and build artifacts are ignored
 
 ## License
 
