@@ -59,6 +59,9 @@ def main():
     if args.test:
         logger.info("Running comprehensive model tests...")
         success = asyncio.run(run_tests())
+        if success is None:
+            logger.error("Test execution failed")
+            sys.exit(1)
         sys.exit(0 if success else 1)
 
     if args.perf:

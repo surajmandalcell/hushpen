@@ -19,6 +19,7 @@ from typing import Dict, List
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tests.test_framework import ModelTester
+from utils.reporting import print_test_summary, print_test_detailed_results
 from models import ModelManager
 from config.settings import Settings
 from api.server import create_app
@@ -153,8 +154,9 @@ async def run_all_tests():
 
     # Get available models - only test English/Hindi focused models
     all_models = await manager.list_available_models()
-    # Focus on smaller, faster models for English/Hindi
-    model_ids = ["whisper-base", "parakeet-tdt-0.6b-v2"]
+    # Focus on smaller, faster models for English/Hindi (ensure whisper-tiny is included if available)
+    preferred = ["whisper-tiny", "whisper-base", "parakeet-tdt-0.6b-v2"]
+    model_ids = [m for m in preferred if m in all_models]
 
     print(f"Testing {len(model_ids)} models for English/Hindi: {', '.join(model_ids)}")
     print()
@@ -185,35 +187,9 @@ async def run_all_tests():
 
     total_duration = time.time() - total_start_time
 
-    # Generate summary
-    print("\n" + "=" * 80)
-    print("TEST RESULTS SUMMARY")
-    print("=" * 80)
-
-    passed_models = sum(1 for r in results.values() if r["success"])
-    total_models = len(results)
-
-    print(f"Total models tested: {total_models}")
-    print(f"Models passed: {passed_models}")
-    print(f"Models failed: {total_models - passed_models}")
-    print(f"Overall success rate: {passed_models / total_models:.1%}")
-    print(f"Total duration: {total_duration:.2f}s")
-    print()
-
-    # Detailed results
-    print("DETAILED RESULTS:")
-    print("-" * 80)
-    print(
-        f"{'Model':<20} {'Status':<10} {'Success Rate':<12} {'Duration':<10} {'Tests'}"
-    )
-    print("-" * 80)
-
-    for model_id, result in results.items():
-        status = "✓ PASSED" if result["success"] else "✗ FAILED"
-        success_rate = f"{result.get('success_rate', 0):.1%}"
-        duration = f"{result['duration']:.2f}s"
-        tests = f"{result.get('passed_tests', 0)}/{result.get('total_tests', 0)}"
-        print(f"{model_id:<20} {status:<10} {success_rate:<12} {duration:<10} {tests}")
+    # Generate summary (shared format)
+    print_test_summary(results, total_duration)
+    print_test_detailed_results(results)
 
     # Save comprehensive report
     report = {
@@ -336,7 +312,7 @@ def test_api_functionality():
             return False
 
         # Test models endpoint
-        response = requests.get("http://127.0.0.1:8001/models", timeout=5)
+        response = requests.get("http://127.0.0.1:8001/v1/models", timeout=5)
         if response.status_code == 200:
             models = response.json()
             print(f"✓ Models endpoint working: {len(models)} models")
@@ -346,9 +322,9 @@ def test_api_functionality():
 
         # Test transcription endpoint with dummy data
         dummy_audio = b"dummy audio data"
-        files = {"audio": ("test.wav", dummy_audio, "audio/wav")}
+        files = {"file": ("test.wav", dummy_audio, "audio/wav")}
         response = requests.post(
-            "http://127.0.0.1:8001/transcribe", files=files, timeout=10
+            "http://127.0.0.1:8001/v1/audio/transcriptions", files=files, timeout=10
         )
 
         if response.status_code == 200:

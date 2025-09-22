@@ -24,6 +24,16 @@ class ModelRegistry:
     def _initialize_models(self) -> Dict[str, Dict[str, Any]]:
         """Initialize available models - onnx-asr supported models only."""
         return {
+            "whisper-tiny": {
+                "id": "whisper-tiny",
+                "name": "Whisper Tiny (ONNX)",
+                "description": "OpenAI Whisper tiny model - fast & lightweight - ONNX",
+                "type": "whisper",
+                "size": "tiny",
+                "loader": "whisper_tiny",
+                "languages": ["en", "hi"],
+                "sample_rate": 16000,
+            },
             "whisper-base": {
                 "id": "whisper-base",
                 "name": "Whisper Base (ONNX)",
@@ -107,12 +117,21 @@ class ModelManager:
         device_config = self.device_detector.get_device_config()
 
         self.loader_configs = {
-            "whisper": {
+            # Use detected best device as default backend; loaders can override
+            "whisper_base": {
                 "device": device_config.get("device", "cpu"),
-                "compute_type": device_config.get("compute_type", "float16"),
+                "compute_type": device_config.get("compute_type", "float32"),
+                "backend": device_config.get("device", "cpu"),
             },
-            "parakeet": {
+            "whisper_tiny": {
                 "device": device_config.get("device", "cpu"),
+                "compute_type": device_config.get("compute_type", "float32"),
+                "backend": device_config.get("device", "cpu"),
+            },
+            "parakeet_tdt": {
+                "device": device_config.get("device", "cpu"),
+                "compute_type": device_config.get("compute_type", "float32"),
+                "backend": device_config.get("device", "cpu"),
             },
         }
 
@@ -203,17 +222,18 @@ class ModelManager:
         config = self.loader_configs.get(loader_type, {}).copy()
         config.update(model_info)
 
-        # Create loader
+        # Create loader using a mapping to avoid if/elif chains (DRY)
         try:
-            if loader_type == "whisper_base":
-                loader = WhisperBaseLoader(model_id, config)
-            elif loader_type == "whisper_tiny":
-                loader = WhisperTinyLoader(model_id, config)
-            elif loader_type == "parakeet_tdt":
-                loader = ParakeetTDTLoader(model_id, config)
-            else:
+            loader_map = {
+                "whisper_base": WhisperBaseLoader,
+                "whisper_tiny": WhisperTinyLoader,
+                "parakeet_tdt": ParakeetTDTLoader,
+            }
+            loader_cls = loader_map.get(loader_type)
+            if not loader_cls:
                 logger.error(f"Unknown loader type: {loader_type}")
                 return None
+            loader = loader_cls(model_id, config)
 
             self.loaders[model_id] = loader
             return loader
@@ -304,12 +324,13 @@ class ModelManager:
 
 
 # Export the main classes
-from .base import BaseLoader
+from .base import BaseLoader, ONNXBaseLoader
 
 __all__ = [
     "ModelManager",
     "ModelRegistry",
     "BaseLoader",
+    "ONNXBaseLoader",
     "WhisperBaseLoader",
     "WhisperTinyLoader",
     "ParakeetTDTLoader",

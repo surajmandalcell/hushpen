@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from models import ModelManager
 from config.settings import Settings
 from tests.test_framework import ModelTester
+from utils.reporting import print_perf_summary
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +306,7 @@ class PerformanceTester:
         total_start_time = time.time()
 
         # Test each model on different backends
-        backends_to_test = ["detected", "cpu", "cuda"]
+        backends_to_test = ["detected", "cpu", "mps", "cuda", "vulkan"]
 
         for model_id in models:
             print(f"Testing {model_id}...")
@@ -316,17 +317,30 @@ class PerformanceTester:
                 await manager.initialize()
 
                 if backend_name == "detected":
-                    # Use detected backend (vulkan in this case)
+                    # Use detected backend from DeviceDetector
                     pass
                 elif backend_name == "cpu":
                     # Force CPU
                     manager.device_detector.device_info["device"] = "cpu"
                     manager.device_detector.device_info["compute_type"] = "float32"
                     manager._initialize_loader_configs()
+                elif backend_name == "mps":
+                    # Force MPS
+                    manager.device_detector.device_info["device"] = "mps"
+                    manager.device_detector.device_info["compute_type"] = "float16"
+                    manager.device_detector.device_info["mps_available"] = True
+                    manager._initialize_loader_configs()
                 elif backend_name == "cuda":
                     # Force CUDA
                     manager.device_detector.device_info["device"] = "cuda"
                     manager.device_detector.device_info["compute_type"] = "float16"
+                    manager.device_detector.device_info["cuda_available"] = True
+                    manager._initialize_loader_configs()
+                elif backend_name == "vulkan":
+                    # Force Vulkan (note: ORT may not have a provider; used for accounting)
+                    manager.device_detector.device_info["device"] = "vulkan"
+                    manager.device_detector.device_info["compute_type"] = "float16"
+                    manager.device_detector.device_info["vulkan_available"] = True
                     manager._initialize_loader_configs()
 
                 start_time = time.time()
@@ -480,7 +494,7 @@ async def run_performance_test():
     with open(report_file, "w") as f:
         f.write(markdown_report)
 
-    print(f"\nPerformance benchmark completed!")
+    print_perf_summary(results)
     print(f"JSON results saved to: {json_file}")
     print(f"Markdown report saved to: {report_file}")
 

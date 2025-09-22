@@ -108,17 +108,17 @@ class DeviceDetector:
 
     def _determine_best_device(self):
         """Determine the best available device."""
-        # Priority: CUDA > MPS > Vulkan > CPU
-        if self.device_info["cuda_available"]:
+        # Priority: MPS (macOS) > CUDA > Vulkan > CPU
+        if self.device_info["mps_available"]:
+            self.device_info["device"] = "mps"
+            self.device_info["device_name"] = "Apple Silicon (MPS)"
+            self.device_info["compute_type"] = "float16"  # Use float16 for MPS
+        elif self.device_info["cuda_available"]:
             self.device_info["device"] = "cuda"
             self.device_info["device_name"] = self.device_info.get(
                 "cuda_device_name", "CUDA"
             )
             self.device_info["compute_type"] = "float16"  # Use float16 for CUDA
-        elif self.device_info["mps_available"]:
-            self.device_info["device"] = "mps"
-            self.device_info["device_name"] = "Apple Silicon (MPS)"
-            self.device_info["compute_type"] = "float16"  # Use float16 for MPS
         elif self.device_info["vulkan_available"]:
             self.device_info["device"] = "vulkan"
             self.device_info["device_name"] = "Vulkan GPU"
