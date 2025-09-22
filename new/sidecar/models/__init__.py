@@ -1,14 +1,13 @@
 # Unified models package exports
 from .base import ONNXBaseLoader, BaseLoader
-from .loaders import WhisperLoader, ParakeetTDTLoader
+from .loaders import ConfigDrivenLoader
 from .registry import ModelRegistry
 from .manager import ModelManager
 
 __all__ = [
     "ONNXBaseLoader",
     "BaseLoader",
-    "WhisperLoader",
-    "ParakeetTDTLoader",
+    "ConfigDrivenLoader",
     "ModelRegistry",
     "ModelManager",
 ]

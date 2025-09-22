@@ -12,36 +12,47 @@ class ModelRegistry:
         self._models = self._initialize_models()
 
     def _initialize_models(self) -> Dict[str, Dict[str, Any]]:
+        # Single source of truth: define all model metadata and candidate names here.
         return {
             "whisper-tiny": {
                 "id": "whisper-tiny",
                 "name": "Whisper Tiny (ONNX)",
                 "description": "OpenAI Whisper tiny model - fast & lightweight - ONNX",
-                "type": "whisper",
+                "type": "onnx",
+                "family": "whisper",
                 "size": "tiny",
-                "loader": "whisper",
+                "loader": "config",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
+                "candidates": ["whisper-tiny_q4", "whisper-tiny_q8", "whisper-tiny"],
             },
             "whisper-base": {
                 "id": "whisper-base",
                 "name": "Whisper Base (ONNX)",
                 "description": "OpenAI Whisper base model (74M parameters) - English/Hindi - ONNX",
-                "type": "whisper",
+                "type": "onnx",
+                "family": "whisper",
                 "size": "base",
-                "loader": "whisper",
+                "loader": "config",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
+                "candidates": ["whisper-base_q4", "whisper-base_q8", "whisper-base"],
             },
             "parakeet-tdt-0.6b-v2": {
                 "id": "parakeet-tdt-0.6b-v2",
                 "name": "Parakeet TDT 0.6B v2 (ONNX)",
                 "description": "NVIDIA Parakeet TDT model (0.6B parameters) - English/Hindi - ONNX",
-                "type": "parakeet",
+                "type": "onnx",
+                "family": "parakeet",
                 "size": "0.6b",
-                "loader": "parakeet_tdt",
+                "loader": "config",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
+                "candidates": [
+                    "nemo-parakeet-tdt-0.6b-v2_q4",
+                    "nemo-parakeet-tdt-0.6b-v2_q8",
+                    "nemo-parakeet-tdt-0.6b-v2",
+                ],
             },
         }
 

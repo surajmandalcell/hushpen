@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List, BinaryIO
 from utils.device import DeviceDetector
 from .registry import ModelRegistry
 from .base import ONNXBaseLoader
-from .loaders import WhisperLoader, ParakeetTDTLoader
+from .loaders import ConfigDrivenLoader
 
 
 logger = logging.getLogger(__name__)
@@ -119,15 +119,12 @@ class ModelManager:
         config.update(model_info)
 
         try:
-            loader_map = {
-                "whisper": WhisperLoader,
-                "parakeet_tdt": ParakeetTDTLoader,
-            }
-            loader_cls = loader_map.get(loader_type)
-            if not loader_cls:
-                logger.error(f"Unknown loader type: {loader_type}")
-                return None
-            loader = loader_cls(model_id, config)
+            # Single configurable loader keeps code DRY; behavior comes from registry config
+            if loader_type != "config":
+                logger.warning(
+                    f"Loader type '{loader_type}' not 'config'; using ConfigDrivenLoader for {model_id}"
+                )
+            loader = ConfigDrivenLoader(model_id, config)
             self.loaders[model_id] = loader
             return loader
         except Exception as e:
