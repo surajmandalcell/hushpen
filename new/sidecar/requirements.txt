@@ -29,4 +29,6 @@ pytest-asyncio>=0.21.0
 httpx>=0.25.0
 
 # Optional: NeMo for advanced Parakeet models
-# nemo-toolkit[asr]>=1.23.0
+
+nemo-toolkit[asr]>=1.23.0
+onnx-asr[gpu,hub]
