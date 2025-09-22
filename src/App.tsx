@@ -5,13 +5,20 @@ import "./App.css";
 import Sidebar from "./components/Sidebar";
 import ContentArea from "./components/ContentArea";
 import SystemTray from "./components/SystemTray";
+import ToastContainer from "./components/ToastContainer";
+
+// Hooks
+import { useWindowState } from "./hooks/useWindowState";
 
 function App() {
   const [activeSection, setActiveSection] = useState("general");
+  // Window state management is handled internally
+  useWindowState();
 
   return (
     <div className="app-container">
       <SystemTray />
+      <ToastContainer />
       <div className="main-window">
         <Sidebar
           activeSection={activeSection}

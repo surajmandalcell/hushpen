@@ -12,6 +12,7 @@ import {
   MacModal,
   MacSegmented,
 } from "../components/macos";
+import { useToast } from "../services/toast";
 
 const ComponentDemo: React.FC = () => {
   const [toggleChecked, setToggleChecked] = useState(false);
@@ -22,6 +23,8 @@ const ComponentDemo: React.FC = () => {
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [modalOpen, setModalOpen] = useState(false);
   const [segmentedValue, setSegmentedValue] = useState("option1");
+
+  const { info, success, warning, error } = useToast();
 
   const dropdownOptions = [
     { value: "option1", label: "First Option" },
@@ -312,6 +315,68 @@ const ComponentDemo: React.FC = () => {
           </div>
         </div>
       </MacModal>
+
+      {/* Toast Notifications Demo */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Toast Notifications
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <MacButton
+            variant="primary"
+            onClick={() => info("Information", "This is an informational message.")}
+          >
+            Info Toast
+          </MacButton>
+
+          <MacButton
+            variant="primary"
+            onClick={() => success("Success!", "Operation completed successfully.")}
+          >
+            Success Toast
+          </MacButton>
+
+          <MacButton
+            variant="secondary"
+            onClick={() => warning("Warning", "Please review the settings before continuing.")}
+          >
+            Warning Toast
+          </MacButton>
+
+          <MacButton
+            variant="destructive"
+            onClick={() => error("Error", "An error occurred while processing your request.")}
+          >
+            Error Toast
+          </MacButton>
+
+          <MacButton
+            variant="secondary"
+            onClick={() => info(
+              "Persistent Toast",
+              "This toast won't auto-dismiss and has actions.",
+              {
+                persistent: true,
+                duration: 0,
+                actions: [
+                  {
+                    label: "Retry",
+                    onClick: () => console.log("Retry clicked"),
+                    variant: "primary"
+                  },
+                  {
+                    label: "Cancel",
+                    onClick: () => console.log("Cancel clicked"),
+                    variant: "secondary"
+                  }
+                ]
+              }
+            )}
+          >
+            Persistent Toast with Actions
+          </MacButton>
+        </div>
+      </section>
     </div>
   );
 };
