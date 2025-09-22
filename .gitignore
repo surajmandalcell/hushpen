@@ -5,6 +5,6 @@ paste.md
 outputs/
 .claude/
 new/sidecar/TEST_SUMMARY.md
-new/sidecar/PERF.md
+new/sidecar/PERFORMANCE_SUMMARY.md
 new/sidecar/input/
 # new/sidecar/models/onnx/

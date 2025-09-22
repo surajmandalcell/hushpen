@@ -490,7 +490,7 @@ async def run_performance_test():
 
     # Generate and save markdown report
     markdown_report = tester.generate_markdown_report(results)
-    report_file = Path("PERF.md")
+    report_file = Path("PERFORMANCE_SUMMARY.md")
     with open(report_file, "w") as f:
         f.write(markdown_report)
 
