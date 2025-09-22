@@ -20,6 +20,7 @@ class DeviceDetector:
             "compute_type": "float32",
             "cuda_available": False,
             "mps_available": False,
+            "directml_available": False,
             "vulkan_available": False,
             "device_name": "CPU",
         }
@@ -33,6 +34,9 @@ class DeviceDetector:
 
         # Check for MPS (Apple Silicon)
         self._check_mps()
+
+        # Check for DirectML (Windows)
+        self._check_directml()
 
         # Check for Vulkan (cross-platform GPU)
         self._check_vulkan()
@@ -72,18 +76,24 @@ class DeviceDetector:
                 logger.warning("PyTorch not available, cannot check MPS")
             except Exception as e:
                 logger.warning(f"Failed to check MPS: {e}")
-        else:
-            # For testing purposes, check if we're in a test environment
-            try:
-                import torch
 
-                if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                    self.device_info["mps_available"] = True
-                    logger.info("MPS is available (Apple Silicon)")
+    def _check_directml(self):
+        """Check for DirectML availability (Windows via ONNX Runtime)."""
+        if self.system == "Windows":
+            try:
+                import onnxruntime as ort
+
+                available = ort.get_available_providers()
+                if (
+                    "DmlExecutionProvider" in available
+                    or "DirectMLExecutionProvider" in available
+                ):
+                    self.device_info["directml_available"] = True
+                    logger.info("DirectML is available (Windows)")
             except ImportError:
-                pass
+                logger.debug("onnxruntime not installed; skipping DirectML check")
             except Exception as e:
-                pass
+                logger.debug(f"Failed to check DirectML: {e}")
 
     def _check_vulkan(self):
         """Check for Vulkan availability."""
@@ -108,8 +118,11 @@ class DeviceDetector:
 
     def _determine_best_device(self):
         """Determine the best available device."""
-        # Priority: MPS (macOS) > CUDA > Vulkan > CPU
-        if self.device_info["mps_available"]:
+        # Priority per OS:
+        # macOS: MPS/CoreML
+        # Windows: CUDA > DirectML > Vulkan > CPU
+        # Linux: CUDA > Vulkan > CPU
+        if self.system == "Darwin" and self.device_info["mps_available"]:
             self.device_info["device"] = "mps"
             self.device_info["device_name"] = "Apple Silicon (MPS)"
             self.device_info["compute_type"] = "float16"  # Use float16 for MPS
@@ -119,6 +132,10 @@ class DeviceDetector:
                 "cuda_device_name", "CUDA"
             )
             self.device_info["compute_type"] = "float16"  # Use float16 for CUDA
+        elif self.system == "Windows" and self.device_info.get("directml_available"):
+            self.device_info["device"] = "directml"
+            self.device_info["device_name"] = "DirectML"
+            self.device_info["compute_type"] = "float16"
         elif self.device_info["vulkan_available"]:
             self.device_info["device"] = "vulkan"
             self.device_info["device_name"] = "Vulkan GPU"
@@ -158,6 +175,10 @@ class DeviceDetector:
     def is_vulkan_available(self) -> bool:
         """Check if Vulkan is available."""
         return self.device_info["vulkan_available"]
+
+    def is_directml_available(self) -> bool:
+        """Check if DirectML is available (Windows)."""
+        return self.device_info["directml_available"]
 
     def get_device_name(self) -> str:
         """Get the device name."""

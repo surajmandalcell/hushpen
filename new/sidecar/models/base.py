@@ -48,22 +48,38 @@ class ONNXBaseLoader(ABC):
                 else [model_name_or_list]
             )
 
-            # Try GPU-first providers, then fall back to CPU
+            # Choose ONNX Runtime providers based on desired backend and OS support
             provider_sets: List[List[str]] = []
-            if preferred in ("cuda", "vulkan", "mps"):
-                if preferred == "cuda":
-                    provider_sets.append(
-                        ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                    )
-                elif preferred == "mps":
-                    provider_sets.append(
-                        ["CoreMLExecutionProvider", "CPUExecutionProvider"]
-                    )
-                else:
-                    # Vulkan not directly supported in onnxruntime; fallback to CPU
-                    provider_sets.append(["CPUExecutionProvider"])  # placeholder
+
+            # CUDA path (Windows/Linux with NVIDIA)
+            if preferred == "cuda":
+                provider_sets.append(["CUDAExecutionProvider", "CPUExecutionProvider"])
+
+            # Apple Silicon path: use CoreML EP as the onnxruntime provider
+            elif preferred == "mps":
+                provider_sets.append(
+                    ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+                )
+
+            # Windows DirectML path
+            elif preferred == "directml":
+                # Some builds expose "DmlExecutionProvider" (ORT Python), others "DirectMLExecutionProvider"
+                provider_sets.append(["DmlExecutionProvider", "CPUExecutionProvider"])
+                provider_sets.append(
+                    ["DirectMLExecutionProvider", "CPUExecutionProvider"]
+                )
+
+            # Vulkan: not supported directly by ORT; fallback to CPU
+            elif preferred == "vulkan":
+                provider_sets.append(["CPUExecutionProvider"])  # placeholder fallback
+
+            # Default: no GPU preference → try CPU
+            else:
+                provider_sets.append(["CPUExecutionProvider"])
+
             # Always ensure CPU-only as last resort
-            provider_sets.append(["CPUExecutionProvider"])
+            if ["CPUExecutionProvider"] not in provider_sets:
+                provider_sets.append(["CPUExecutionProvider"])
 
             last_error: Optional[Exception] = None
             for providers in provider_sets:
@@ -92,6 +108,11 @@ class ONNXBaseLoader(ABC):
                             self.current_backend = "cuda"
                         elif "CoreMLExecutionProvider" in providers:
                             self.current_backend = "mps"
+                        elif (
+                            "DmlExecutionProvider" in providers
+                            or "DirectMLExecutionProvider" in providers
+                        ):
+                            self.current_backend = "directml"
                         else:
                             self.current_backend = "cpu"
                         self.is_loaded = True
@@ -188,12 +209,17 @@ class ONNXBaseLoader(ABC):
     async def transcribe_cpu(self, audio_file: BinaryIO) -> Dict[str, Any]:
         return self._transcribe_common(audio_file, "cpu")
 
+    async def transcribe_directml(self, audio_file: BinaryIO) -> Dict[str, Any]:
+        return self._transcribe_common(audio_file, "directml")
+
     async def transcribe(self, audio_file: BinaryIO) -> Dict[str, Any]:
         backend = self.current_backend or self.config.get("backend", "cpu")
         if backend == "cuda":
             return await self.transcribe_cuda(audio_file)
         if backend == "mps":
             return await self.transcribe_mps(audio_file)
+        if backend == "directml":
+            return await self.transcribe_directml(audio_file)
         return await self.transcribe_cpu(audio_file)
 
     def is_ready(self) -> bool:

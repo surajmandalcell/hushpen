@@ -305,8 +305,18 @@ class PerformanceTester:
         benchmark_results = {}
         total_start_time = time.time()
 
-        # Test each model on different backends
-        backends_to_test = ["detected", "cpu", "mps", "cuda", "vulkan"]
+        # Test each model on different backends, filtered by OS/capabilities
+        backends_to_test = ["detected", "cpu"]
+        info = manager.device_detector.get_device_info()
+        system = info.get("system", "")
+        if system == "Darwin" and info.get("mps_available"):
+            backends_to_test.append("mps")
+        if info.get("cuda_available"):
+            backends_to_test.append("cuda")
+        if system == "Windows" and info.get("directml_available"):
+            backends_to_test.append("directml")
+        if info.get("vulkan_available"):
+            backends_to_test.append("vulkan")
 
         for model_id in models:
             print(f"Testing {model_id}...")
@@ -335,6 +345,12 @@ class PerformanceTester:
                     manager.device_detector.device_info["device"] = "cuda"
                     manager.device_detector.device_info["compute_type"] = "float16"
                     manager.device_detector.device_info["cuda_available"] = True
+                    manager._initialize_loader_configs()
+                elif backend_name == "directml":
+                    # Force DirectML (Windows)
+                    manager.device_detector.device_info["device"] = "directml"
+                    manager.device_detector.device_info["compute_type"] = "float16"
+                    manager.device_detector.device_info["directml_available"] = True
                     manager._initialize_loader_configs()
                 elif backend_name == "vulkan":
                     # Force Vulkan (note: ORT may not have a provider; used for accounting)
