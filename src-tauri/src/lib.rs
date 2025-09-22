@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, CustomMenuItem};
+use tauri::{AppHandle, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, CustomMenuItem, api};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -26,6 +26,35 @@ async fn hide_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn quit_app(app: AppHandle) -> Result<(), String> {
     app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_tray_notification(
+    app: AppHandle,
+    title: String,
+    message: String,
+    notification_type: String,
+) -> Result<(), String> {
+    // Create a notification using Tauri's notification API
+    let notification = tauri::api::notification::Notification::new(&app.config().tauri.bundle.identifier)
+        .title(title)
+        .body(message)
+        .icon("icon");
+
+    // Set different icons based on notification type
+    let icon_path = match notification_type.as_str() {
+        "error" => "icons/error.png",
+        "warning" => "icons/warning.png",
+        "success" => "icons/success.png",
+        _ => "icons/icon.png",
+    };
+
+    let notification_with_icon = notification.icon(icon_path);
+
+    // Show the notification
+    notification_with_icon.show().map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -84,7 +113,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .system_tray(SystemTray::new().with_menu(tray_menu))
         .on_system_tray_event(handle_tray_event)
-        .invoke_handler(tauri::generate_handler![greet, show_window, hide_window, quit_app])
+        .invoke_handler(tauri::generate_handler![greet, show_window, hide_window, quit_app, show_tray_notification])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -15,6 +15,7 @@ import {
 import { useToast } from "../services/toast";
 import { useRecording } from "../services/recordingManager";
 import { useFileQueue } from "../services/fileQueue";
+import { useTrayNotifications } from "../services/trayNotifications";
 
 const ComponentDemo: React.FC = () => {
   const [toggleChecked, setToggleChecked] = useState(false);
@@ -29,6 +30,7 @@ const ComponentDemo: React.FC = () => {
   const { info, success, warning, error } = useToast();
   const { state: recordingState, start, stop, cancel, updateProgress, completeTranscription } = useRecording();
   const { files, stats, addFiles, removeFile, clearQueue, processNext, cancelProcessing } = useFileQueue();
+  const { notifications, handleEvent } = useTrayNotifications();
 
   const dropdownOptions = [
     { value: "option1", label: "First Option" },
@@ -631,6 +633,61 @@ const ComponentDemo: React.FC = () => {
               </MacScrollbar>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Tray Notifications Demo */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Tray Notifications
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <MacButton
+              variant="primary"
+              onClick={() => handleEvent('recording-started')}
+            >
+              Recording Started
+            </MacButton>
+
+            <MacButton
+              variant="primary"
+              onClick={() => handleEvent('transcription-completed', { fileName: 'demo.mp3' })}
+            >
+              Transcription Completed
+            </MacButton>
+
+            <MacButton
+              variant="secondary"
+              onClick={() => handleEvent('model-loaded', { modelName: 'Whisper Base' })}
+            >
+              Model Loaded
+            </MacButton>
+
+            <MacButton
+              variant="destructive"
+              onClick={() => handleEvent('error', { message: 'Test error notification' })}
+            >
+              Error Notification
+            </MacButton>
+          </div>
+
+          <div style={{
+            padding: "16px",
+            background: "var(--card-background)",
+            borderRadius: "8px",
+            border: "1px solid var(--border-color)"
+          }}>
+            <h4 style={{ color: "var(--primary-text)", margin: "0 0 8px 0" }}>
+              Notification Status
+            </h4>
+            <p style={{ color: "var(--secondary-text)", margin: "0 0 8px 0" }}>
+              Active Notifications: {notifications.length}
+            </p>
+            <p style={{ color: "var(--secondary-text)", margin: "0" }}>
+              Types: Info({notifications.filter(n => n.type === 'info').length}), Success({notifications.filter(n => n.type === 'success').length}), Error({notifications.filter(n => n.type === 'error').length})
+            </p>
+          </div>
         </div>
       </section>
     </div>

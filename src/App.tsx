@@ -7,10 +7,12 @@ import ContentArea from "./components/ContentArea";
 import SystemTray from "./components/SystemTray";
 import ToastContainer from "./components/ToastContainer";
 import RecordingOverlay from "./components/RecordingOverlay";
+import TrayNotificationList from "./components/TrayNotificationList";
 
 // Hooks
 import { useWindowState } from "./hooks/useWindowState";
 import { useRecording } from "./services/recordingManager";
+import { useTrayNotifications } from "./services/trayNotifications";
 
 function App() {
   const [activeSection, setActiveSection] = useState("general");
@@ -19,6 +21,9 @@ function App() {
 
   // Recording state management
   const { state: recordingState, cancel } = useRecording();
+
+  // Tray notification state
+  const { notifications, handleEvent } = useTrayNotifications();
 
   return (
     <div className="app-container">
@@ -33,6 +38,7 @@ function App() {
         statusText={recordingState.statusText}
         duration={recordingState.duration}
       />
+      {notifications.length > 0 && <TrayNotificationList />}
       <div className="main-window">
         <Sidebar
           activeSection={activeSection}
