@@ -15,35 +15,25 @@ class ModelRegistry:
         self._models = self._initialize_models()
 
     def _initialize_models(self) -> Dict[str, Dict[str, Any]]:
-        """Initialize available models - focused on English and Hindi."""
+        """Initialize available models - focused on English and Hindi using ONNX."""
         return {
-            "whisper-tiny": {
-                "id": "whisper-tiny",
-                "name": "Whisper Tiny",
-                "description": "OpenAI Whisper tiny model (39M parameters) - English/Hindi",
-                "type": "whisper",
-                "size": "tiny",
-                "loader": "whisper",
-                "languages": ["en", "hi"],
-                "sample_rate": 16000,
-            },
             "whisper-base": {
                 "id": "whisper-base",
-                "name": "Whisper Base",
-                "description": "OpenAI Whisper base model (74M parameters) - English/Hindi",
+                "name": "Whisper Base (ONNX)",
+                "description": "OpenAI Whisper base model (74M parameters) - English/Hindi - ONNX",
                 "type": "whisper",
                 "size": "base",
-                "loader": "whisper",
+                "loader": "whisper_onnx",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
             },
-            "whisper-small": {
-                "id": "whisper-small",
-                "name": "Whisper Small",
-                "description": "OpenAI Whisper small model (244M parameters) - English/Hindi",
-                "type": "whisper",
-                "size": "small",
-                "loader": "whisper",
+            "parakeet-tdt-0.6b-v2": {
+                "id": "parakeet-tdt-0.6b-v2",
+                "name": "Parakeet TDT 0.6B v2 (ONNX)",
+                "description": "NVIDIA Parakeet TDT model (0.6B parameters) - English/Hindi - ONNX",
+                "type": "parakeet",
+                "size": "0.6b",
+                "loader": "parakeet",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
             },

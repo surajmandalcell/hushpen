@@ -8,6 +8,7 @@ import logging
 
 from .registry import ModelRegistry
 from .whisper import WhisperLoader
+from .whisper_onnx import WhisperONNXLoader
 from .parakeet import ParakeetLoader
 from utils.device import DeviceDetector
 
@@ -137,6 +138,8 @@ class ModelManager:
         try:
             if loader_type == "whisper":
                 loader = WhisperLoader(model_id, config)
+            elif loader_type == "whisper_onnx":
+                loader = WhisperONNXLoader(model_id, config)
             elif loader_type == "parakeet":
                 loader = ParakeetLoader(model_id, config)
             else:
@@ -239,5 +242,6 @@ __all__ = [
     "ModelRegistry",
     "BaseLoader",
     "WhisperLoader",
+    "WhisperONNXLoader",
     "ParakeetLoader",
 ]

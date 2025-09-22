@@ -87,6 +87,34 @@ class AudioGenerator:
 
         return filename
 
+    @staticmethod
+    def create_temp_file(audio_data: bytes, sample_rate: int = 16000):
+        """Create a temporary WAV file context manager."""
+
+        class TempFileContext:
+            def __init__(self, audio_data, sample_rate):
+                self.audio_data = audio_data
+                self.sample_rate = sample_rate
+                self.filename = None
+
+            def __enter__(self):
+                fd, self.filename = tempfile.mkstemp(suffix=".wav")
+                os.close(fd)
+
+                with wave.open(self.filename, "wb") as wav_file:
+                    wav_file.setnchannels(1)  # Mono
+                    wav_file.setsampwidth(2)  # 16-bit
+                    wav_file.setframerate(self.sample_rate)
+                    wav_file.writeframes(self.audio_data)
+
+                return self.filename
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if self.filename and os.path.exists(self.filename):
+                    os.unlink(self.filename)
+
+        return TempFileContext(audio_data, sample_rate)
+
 
 class ModelTester:
     """Base class for model testing."""

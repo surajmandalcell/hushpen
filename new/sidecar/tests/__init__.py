@@ -402,3 +402,14 @@ async def run_integration_tests():
     else:
         print("\n❌ SOME TESTS FAILED! Please check the errors above.")
         return False
+
+
+async def run_performance_test():
+    """Run comprehensive performance benchmark."""
+    try:
+        from tests.perf_test import run_performance_test as run_perf_test
+
+        return await run_perf_test()
+    except Exception as e:
+        logger.error(f"Error running performance test: {e}")
+        return None

@@ -34,11 +34,25 @@ async def run_tests():
         return False
 
 
+async def run_performance_tests():
+    """Run performance benchmark tests."""
+    try:
+        from tests import run_performance_test
+
+        await run_performance_test()
+    except Exception as e:
+        logger.error(f"Error running performance tests: {e}")
+        return False
+
+
 def main():
     """Main entry point for the ASR Pro sidecar."""
     parser = argparse.ArgumentParser(description="ASR Pro Python Sidecar")
     parser.add_argument(
         "--test", action="store_true", help="Run comprehensive model tests"
+    )
+    parser.add_argument(
+        "--perf", action="store_true", help="Run performance benchmark tests"
     )
     args = parser.parse_args()
 
@@ -46,6 +60,11 @@ def main():
         logger.info("Running comprehensive model tests...")
         success = asyncio.run(run_tests())
         sys.exit(0 if success else 1)
+
+    if args.perf:
+        logger.info("Running performance benchmark tests...")
+        asyncio.run(run_performance_tests())
+        sys.exit(0)
 
     try:
         logger.info("Starting ASR Pro Python Sidecar...")
