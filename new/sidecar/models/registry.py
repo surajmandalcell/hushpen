@@ -15,15 +15,25 @@ class ModelRegistry:
         self._models = self._initialize_models()
 
     def _initialize_models(self) -> Dict[str, Dict[str, Any]]:
-        """Initialize available models - focused on English and Hindi using ONNX."""
+        """Initialize available models - onnx-asr supported models only."""
         return {
+            "whisper-tiny": {
+                "id": "whisper-tiny",
+                "name": "Whisper Tiny (ONNX)",
+                "description": "OpenAI Whisper tiny model (39M parameters) - English/Hindi - ONNX",
+                "type": "whisper",
+                "size": "tiny",
+                "loader": "whisper_base",
+                "languages": ["en", "hi"],
+                "sample_rate": 16000,
+            },
             "whisper-base": {
                 "id": "whisper-base",
                 "name": "Whisper Base (ONNX)",
                 "description": "OpenAI Whisper base model (74M parameters) - English/Hindi - ONNX",
                 "type": "whisper",
                 "size": "base",
-                "loader": "whisper_onnx",
+                "loader": "whisper_base",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
             },
@@ -33,7 +43,7 @@ class ModelRegistry:
                 "description": "NVIDIA Parakeet TDT model (0.6B parameters) - English/Hindi - ONNX",
                 "type": "parakeet",
                 "size": "0.6b",
-                "loader": "parakeet",
+                "loader": "parakeet_tdt",
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
             },

@@ -154,7 +154,7 @@ async def run_all_tests():
     # Get available models - only test English/Hindi focused models
     all_models = await manager.list_available_models()
     # Focus on smaller, faster models for English/Hindi
-    model_ids = ["whisper-tiny", "whisper-base", "whisper-small"]
+    model_ids = ["whisper-tiny", "whisper-base", "parakeet-tdt-0.6b-v2"]
 
     print(f"Testing {len(model_ids)} models for English/Hindi: {', '.join(model_ids)}")
     print()
@@ -291,7 +291,7 @@ async def test_core_functionality():
         print("✓ Model manager initialized")
 
         # Test model loading
-        model_id = "whisper-tiny"
+        model_id = "whisper-base"
         success = await manager.set_model(model_id)
         if success:
             print(f"✓ Model {model_id} loaded successfully")

@@ -7,9 +7,8 @@ from typing import Dict, Any, Optional, List, BinaryIO
 import logging
 
 from .registry import ModelRegistry
-from .whisper import WhisperLoader
-from .whisper_onnx import WhisperONNXLoader
-from .parakeet import ParakeetLoader
+from .whisper_base import WhisperBaseLoader
+from .parakeet_tdt import ParakeetTDTLoader
 from utils.device import DeviceDetector
 
 logger = logging.getLogger(__name__)
@@ -64,6 +63,12 @@ class ModelManager:
     def get_current_device(self) -> str:
         """Get the current device being used."""
         return self.device_detector.get_current_device()
+
+    def get_current_loader(self):
+        """Get the current active loader."""
+        if self.current_model and self.current_model in self.loaders:
+            return self.loaders[self.current_model]
+        return None
 
     def is_model_ready(self, model_id: str) -> bool:
         """Check if a model is ready."""
@@ -136,12 +141,10 @@ class ModelManager:
 
         # Create loader
         try:
-            if loader_type == "whisper":
-                loader = WhisperLoader(model_id, config)
-            elif loader_type == "whisper_onnx":
-                loader = WhisperONNXLoader(model_id, config)
-            elif loader_type == "parakeet":
-                loader = ParakeetLoader(model_id, config)
+            if loader_type == "whisper_base":
+                loader = WhisperBaseLoader(model_id, config)
+            elif loader_type == "parakeet_tdt":
+                loader = ParakeetTDTLoader(model_id, config)
             else:
                 logger.error(f"Unknown loader type: {loader_type}")
                 return None
@@ -241,7 +244,6 @@ __all__ = [
     "ModelManager",
     "ModelRegistry",
     "BaseLoader",
-    "WhisperLoader",
-    "WhisperONNXLoader",
-    "ParakeetLoader",
+    "WhisperBaseLoader",
+    "ParakeetTDTLoader",
 ]

@@ -31,7 +31,11 @@ class PerformanceTester:
         self.results = {}
 
     async def benchmark_model(
-        self, model_id: str, manager: ModelManager, test_cases: List[Dict[str, Any]]
+        self,
+        model_id: str,
+        manager: ModelManager,
+        test_cases: List[Dict[str, Any]],
+        backend: str = "auto",
     ) -> Dict[str, Any]:
         """Benchmark a single model with various test cases."""
         print(f"Benchmarking {model_id}...")
@@ -74,11 +78,20 @@ class PerformanceTester:
                 if audio_type == "real_audio" and "file_path" in test_case:
                     # Use real audio file
                     temp_file = test_case["file_path"]
-                    # Benchmark transcription
+                    # Benchmark transcription using specific backend
                     transcribe_start = time.time()
                     try:
                         with open(temp_file, "rb") as audio_file:
-                            result = await manager.transcribe_file(audio_file, model_id)
+                            # Get the current loader and use specific backend method
+                            loader = manager.get_current_loader()
+                            if hasattr(loader, f"transcribe_{backend}"):
+                                result = await getattr(loader, f"transcribe_{backend}")(
+                                    audio_file
+                                )
+                            else:
+                                result = await manager.transcribe_file(
+                                    audio_file, model_id
+                                )
                         transcribe_time = time.time() - transcribe_start
 
                         # Calculate metrics
@@ -125,13 +138,20 @@ class PerformanceTester:
 
                     # Create temporary file
                     with self.audio_gen.create_temp_file(audio_data) as temp_file:
-                        # Benchmark transcription
+                        # Benchmark transcription using specific backend
                         transcribe_start = time.time()
                         try:
                             with open(temp_file, "rb") as audio_file:
-                                result = await manager.transcribe_file(
-                                    audio_file, model_id
-                                )
+                                # Get the current loader and use specific backend method
+                                loader = manager.get_current_loader()
+                                if hasattr(loader, f"transcribe_{backend}"):
+                                    result = await getattr(
+                                        loader, f"transcribe_{backend}"
+                                    )(audio_file)
+                                else:
+                                    result = await manager.transcribe_file(
+                                        audio_file, model_id
+                                    )
                             transcribe_time = time.time() - transcribe_start
 
                             # Calculate metrics
@@ -219,7 +239,7 @@ class PerformanceTester:
             try:
                 import librosa
 
-                duration = librosa.get_duration(filename=str(audio_file))
+                duration = librosa.get_duration(path=str(audio_file))
                 test_cases.append(
                     {
                         "name": "real_audio",
