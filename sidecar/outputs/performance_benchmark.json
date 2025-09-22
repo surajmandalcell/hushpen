@@ -1,0 +1,561 @@
+{
+  "timestamp": "2025-09-22T06:27:46.406093",
+  "audio_duration": 158.35195011337868,
+  "total_models": 6,
+  "total_test_cases": 1,
+  "total_duration": 69.29735016822815,
+  "models": {
+    "whisper-tiny_detected": {
+      "model_id": "whisper-tiny",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.010001897811889648,
+      "backend_type": "detected"
+    },
+    "whisper-tiny_cpu": {
+      "model_id": "whisper-tiny",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0009999275207519531,
+      "backend_type": "cpu"
+    },
+    "whisper-tiny_cuda": {
+      "model_id": "whisper-tiny",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0010020732879638672,
+      "backend_type": "cuda"
+    },
+    "whisper-tiny_vulkan": {
+      "model_id": "whisper-tiny",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0,
+      "backend_type": "vulkan"
+    },
+    "whisper-tiny-local_detected": {
+      "model_id": "whisper-tiny-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0010006427764892578,
+      "backend_type": "detected"
+    },
+    "whisper-tiny-local_cpu": {
+      "model_id": "whisper-tiny-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0010004043579101562,
+      "backend_type": "cpu"
+    },
+    "whisper-tiny-local_cuda": {
+      "model_id": "whisper-tiny-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0009996891021728516,
+      "backend_type": "cuda"
+    },
+    "whisper-tiny-local_vulkan": {
+      "model_id": "whisper-tiny-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.001001119613647461,
+      "backend_type": "vulkan"
+    },
+    "whisper-base_detected": {
+      "model_id": "whisper-base",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 1.8974711894989014,
+          "text_length": 336,
+          "words_per_second": 177.07778745706986,
+          "real_time_factor": 83.45420525473035,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have"
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cuda"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 1.8974711894989014,
+        "min_transcribe_time": 1.8974711894989014,
+        "max_transcribe_time": 1.8974711894989014,
+        "avg_real_time_factor": 83.45420525473035,
+        "min_real_time_factor": 83.45420525473035,
+        "max_real_time_factor": 83.45420525473035,
+        "avg_words_per_second": 177.07778745706986,
+        "min_words_per_second": 177.07778745706986,
+        "max_words_per_second": 177.07778745706986
+      },
+      "load_time": 2.3724117279052734,
+      "backend": {
+        "device": "cuda",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float16"
+      },
+      "total_benchmark_time": 4.272882699966431,
+      "backend_type": "detected"
+    },
+    "whisper-base_cpu": {
+      "model_id": "whisper-base",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 1.5104999542236328,
+          "text_length": 336,
+          "words_per_second": 222.44290644331556,
+          "real_time_factor": 104.83413102436567,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have"
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cpu"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 1.5104999542236328,
+        "min_transcribe_time": 1.5104999542236328,
+        "max_transcribe_time": 1.5104999542236328,
+        "avg_real_time_factor": 104.83413102436567,
+        "min_real_time_factor": 104.83413102436567,
+        "max_real_time_factor": 104.83413102436567,
+        "avg_words_per_second": 222.44290644331556,
+        "min_words_per_second": 222.44290644331556,
+        "max_words_per_second": 222.44290644331556
+      },
+      "load_time": 0.743563175201416,
+      "backend": {
+        "device": "cpu",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float32"
+      },
+      "total_benchmark_time": 2.256063222885132,
+      "backend_type": "cpu"
+    },
+    "whisper-base_cuda": {
+      "model_id": "whisper-base",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 1.4831955432891846,
+          "text_length": 336,
+          "words_per_second": 226.5378975282484,
+          "real_time_factor": 106.76404121483,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have"
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cuda"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 1.4831955432891846,
+        "min_transcribe_time": 1.4831955432891846,
+        "max_transcribe_time": 1.4831955432891846,
+        "avg_real_time_factor": 106.76404121483,
+        "min_real_time_factor": 106.76404121483,
+        "max_real_time_factor": 106.76404121483,
+        "avg_words_per_second": 226.5378975282484,
+        "min_words_per_second": 226.5378975282484,
+        "max_words_per_second": 226.5378975282484
+      },
+      "load_time": 0.9851970672607422,
+      "backend": {
+        "device": "cuda",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float16"
+      },
+      "total_benchmark_time": 2.4703924655914307,
+      "backend_type": "cuda"
+    },
+    "whisper-base_vulkan": {
+      "model_id": "whisper-base",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 1.5219626426696777,
+          "text_length": 336,
+          "words_per_second": 220.76757377606964,
+          "real_time_factor": 104.04457092035663,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream, any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time, or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have"
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cpu"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 1.5219626426696777,
+        "min_transcribe_time": 1.5219626426696777,
+        "max_transcribe_time": 1.5219626426696777,
+        "avg_real_time_factor": 104.04457092035663,
+        "min_real_time_factor": 104.04457092035663,
+        "max_real_time_factor": 104.04457092035663,
+        "avg_words_per_second": 220.76757377606964,
+        "min_words_per_second": 220.76757377606964,
+        "max_words_per_second": 220.76757377606964
+      },
+      "load_time": 0.7202084064483643,
+      "backend": {
+        "device": "cpu",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float16"
+      },
+      "total_benchmark_time": 2.2461748123168945,
+      "backend_type": "vulkan"
+    },
+    "whisper-large_detected": {
+      "model_id": "whisper-large",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0,
+      "backend_type": "detected"
+    },
+    "whisper-large_cpu": {
+      "model_id": "whisper-large",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0,
+      "backend_type": "cpu"
+    },
+    "whisper-large_cuda": {
+      "model_id": "whisper-large",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0,
+      "backend_type": "cuda"
+    },
+    "whisper-large_vulkan": {
+      "model_id": "whisper-large",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0010006427764892578,
+      "backend_type": "vulkan"
+    },
+    "whisper-base-local_detected": {
+      "model_id": "whisper-base-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0010006427764892578,
+      "backend_type": "detected"
+    },
+    "whisper-base-local_cpu": {
+      "model_id": "whisper-base-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0,
+      "backend_type": "cpu"
+    },
+    "whisper-base-local_cuda": {
+      "model_id": "whisper-base-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0010018348693847656,
+      "backend_type": "cuda"
+    },
+    "whisper-base-local_vulkan": {
+      "model_id": "whisper-base-local",
+      "test_cases": {},
+      "summary": {},
+      "error": "Failed to load model",
+      "total_benchmark_time": 0.0009989738464355469,
+      "backend_type": "vulkan"
+    },
+    "parakeet-tdt-0.6b-v2_detected": {
+      "model_id": "parakeet-tdt-0.6b-v2",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 9.82590651512146,
+          "text_length": 1832,
+          "words_per_second": 186.4459016764169,
+          "real_time_factor": 16.11575989143443,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com.",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com."
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cuda"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 9.82590651512146,
+        "min_transcribe_time": 9.82590651512146,
+        "max_transcribe_time": 9.82590651512146,
+        "avg_real_time_factor": 16.11575989143443,
+        "min_real_time_factor": 16.11575989143443,
+        "max_real_time_factor": 16.11575989143443,
+        "avg_words_per_second": 186.4459016764169,
+        "min_words_per_second": 186.4459016764169,
+        "max_words_per_second": 186.4459016764169
+      },
+      "load_time": 3.479780912399292,
+      "backend": {
+        "device": "cuda",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float16"
+      },
+      "total_benchmark_time": 13.31019401550293,
+      "backend_type": "detected"
+    },
+    "parakeet-tdt-0.6b-v2_cpu": {
+      "model_id": "parakeet-tdt-0.6b-v2",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 9.665850639343262,
+          "text_length": 1832,
+          "words_per_second": 189.53324113484064,
+          "real_time_factor": 16.38261918395811,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com.",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com."
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cpu"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 9.665850639343262,
+        "min_transcribe_time": 9.665850639343262,
+        "max_transcribe_time": 9.665850639343262,
+        "avg_real_time_factor": 16.38261918395811,
+        "min_real_time_factor": 16.38261918395811,
+        "max_real_time_factor": 16.38261918395811,
+        "avg_words_per_second": 189.53324113484064,
+        "min_words_per_second": 189.53324113484064,
+        "max_words_per_second": 189.53324113484064
+      },
+      "load_time": 2.9926486015319824,
+      "backend": {
+        "device": "cpu",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float32"
+      },
+      "total_benchmark_time": 12.658499240875244,
+      "backend_type": "cpu"
+    },
+    "parakeet-tdt-0.6b-v2_cuda": {
+      "model_id": "parakeet-tdt-0.6b-v2",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 9.862360000610352,
+          "text_length": 1832,
+          "words_per_second": 185.7567559779427,
+          "real_time_factor": 16.056192443145328,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com.",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com."
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cuda"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 9.862360000610352,
+        "min_transcribe_time": 9.862360000610352,
+        "max_transcribe_time": 9.862360000610352,
+        "avg_real_time_factor": 16.056192443145328,
+        "min_real_time_factor": 16.056192443145328,
+        "max_real_time_factor": 16.056192443145328,
+        "avg_words_per_second": 185.7567559779427,
+        "min_words_per_second": 185.7567559779427,
+        "max_words_per_second": 185.7567559779427
+      },
+      "load_time": 3.508265733718872,
+      "backend": {
+        "device": "cuda",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float16"
+      },
+      "total_benchmark_time": 13.376628875732422,
+      "backend_type": "cuda"
+    },
+    "parakeet-tdt-0.6b-v2_vulkan": {
+      "model_id": "parakeet-tdt-0.6b-v2",
+      "test_cases": {
+        "real_audio": {
+          "duration": 158.35195011337868,
+          "type": "real_audio",
+          "transcribe_time": 9.553013801574707,
+          "text_length": 1832,
+          "words_per_second": 191.77194109130411,
+          "real_time_factor": 16.57612491748689,
+          "success": true,
+          "result": {
+            "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com.",
+            "segments": [
+              {
+                "start": 0.0,
+                "end": 0.0,
+                "text": "Let's suppose that you were able every night to dream any dream you wanted to dream. And that you could, for example, have the power within one night to dream 75 years of time or any length of time you wanted to have. And you would naturally, as you began on this adventure of dreams, you would fulfill all your wishes. You would have every kind of pleasure you could conceive. And after several nights of 75 years of total pleasure each, you would say, well, that was pretty great. But now let's have a surprise. Let's have a dream which isn't under control. Well, something is going to happen to me that I don't know what it's going to be. And you would dig that and come out of that and say, wow, that was a close shave, wasn't it? And then you would get more and more adventurous, and you would make further and further out gambles as to what you would dream. And finally, you would dream where you are now. You would dream the dream of living the life that you are actually living today. That would be within the infinite multiplicity of choices you would have of playing that you weren't God. Because the whole nature of the Godhead, according to this idea, is to play that he's not. The first thing he says to himself is, man, get lost because he gives himself away. The nature of love is self-abandonment, not clinging to oneself, throwing yourself out, as in, for example, in basketball, you're always getting rid of the ball. You say to the other fellow, have a ball. See? And that keeps things moving. That's the nature of life. So, in this idea, then, everybody is fundamentally the ultimate reality. Not God in a politically kingly sense, but God in the sense of being the self, the deep, down, basic whatever there is. And you're all that, only you're pretending you're not. Free audio post-production by alphonic.com."
+              }
+            ],
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": 0.0,
+            "backend": "cpu"
+          }
+        }
+      },
+      "summary": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "success_rate": 1.0,
+        "avg_transcribe_time": 9.553013801574707,
+        "min_transcribe_time": 9.553013801574707,
+        "max_transcribe_time": 9.553013801574707,
+        "avg_real_time_factor": 16.57612491748689,
+        "min_real_time_factor": 16.57612491748689,
+        "max_real_time_factor": 16.57612491748689,
+        "avg_words_per_second": 191.77194109130411,
+        "min_words_per_second": 191.77194109130411,
+        "max_words_per_second": 191.77194109130411
+      },
+      "load_time": 2.9875006675720215,
+      "backend": {
+        "device": "cpu",
+        "device_name": "CUDA (ONNX Runtime)",
+        "cuda_available": true,
+        "mps_available": false,
+        "vulkan_available": true,
+        "compute_type": "float16"
+      },
+      "total_benchmark_time": 12.543514251708984,
+      "backend_type": "vulkan"
+    }
+  }
+}
