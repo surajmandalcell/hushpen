@@ -1,0 +1,161 @@
+/* macOS-style segmented control */
+.mac-segmented {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+}
+
+.mac-segmented--full-width {
+  width: 100%;
+}
+
+.mac-segmented--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Segmented option */
+.mac-segmented__option {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  position: relative;
+  transition: all 0.2s ease;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.mac-segmented__option--first {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.mac-segmented__option--last {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.mac-segmented__option--selected {
+  background: rgba(0, 122, 204, 0.8);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.mac-segmented__option--hovered:not(.mac-segmented__option--selected) {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.mac-segmented__option--disabled {
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+}
+
+.mac-segmented__option--disabled:hover {
+  background: none;
+}
+
+.mac-segmented__option-label {
+  display: block;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* Size variants */
+.mac-segmented--small .mac-segmented__option-label {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.mac-segmented--medium .mac-segmented__option-label {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.mac-segmented--large .mac-segmented__option-label {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+/* Focus styles for accessibility */
+.mac-segmented__option:focus {
+  outline: 2px solid rgba(0, 122, 204, 0.8);
+  outline-offset: 2px;
+}
+
+.mac-segmented__option--selected:focus {
+  outline-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Dark theme adjustments */
+@media (prefers-color-scheme: dark) {
+  .mac-segmented {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .mac-segmented {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .mac-segmented__option--selected {
+    background: rgba(0, 122, 204, 1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .mac-segmented--small .mac-segmented__option-label {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+
+  .mac-segmented--medium .mac-segmented__option-label {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .mac-segmented--large .mac-segmented__option-label {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .mac-segmented__option {
+    transition: none;
+  }
+}
+
+/* Animation for selection */
+.mac-segmented__option--selected {
+  animation: macSegmentedSelect 0.15s ease-out;
+}
+
+@keyframes macSegmentedSelect {
+  from {
+    transform: scale(0.98);
+  }
+  to {
+    transform: scale(1);
+  }
+}

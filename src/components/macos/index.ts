@@ -15,3 +15,15 @@ export { default as MacDropdown } from "./MacDropdown";
 export type { MacDropdownProps, MacDropdownOption } from "./MacDropdown";
 
 export { default as MacTrafficLights } from "./MacTrafficLights";
+
+export { default as MacScrollbar } from "./MacScrollbar";
+export type { MacScrollbarProps } from "./MacScrollbar";
+
+export { default as MacContextMenu } from "./MacContextMenu";
+export type { MacContextMenuProps, MacContextMenuItem } from "./MacContextMenu";
+
+export { default as MacModal } from "./MacModal";
+export type { MacModalProps } from "./MacModal";
+
+export { default as MacSegmented } from "./MacSegmented";
+export type { MacSegmentedProps, MacSegmentedOption } from "./MacSegmented";

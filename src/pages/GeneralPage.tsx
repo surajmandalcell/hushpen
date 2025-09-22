@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { MacToggle } from '../components/macos';
+import { useSettings } from '../services/settings';
 
 const GeneralPage: React.FC = () => {
-  const [launchAtLogin, setLaunchAtLogin] = useState(false);
-  const [startMinimized, setStartMinimized] = useState(false);
-  const [autoUnloadModel, setAutoUnloadModel] = useState(true);
+  const { settings, updateSetting } = useSettings();
 
   return (
     <div>
@@ -25,9 +25,10 @@ const GeneralPage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <div 
-              className={`toggle-switch ${launchAtLogin ? 'active' : ''}`}
-              onClick={() => setLaunchAtLogin(!launchAtLogin)}
+            <MacToggle
+              checked={settings.launchAtLogin}
+              onChange={(checked) => updateSetting('launchAtLogin', checked)}
+              size="medium"
             />
           </div>
         </div>
@@ -40,9 +41,10 @@ const GeneralPage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <div 
-              className={`toggle-switch ${startMinimized ? 'active' : ''}`}
-              onClick={() => setStartMinimized(!startMinimized)}
+            <MacToggle
+              checked={settings.startMinimized}
+              onChange={(checked) => updateSetting('startMinimized', checked)}
+              size="medium"
             />
           </div>
         </div>
@@ -55,9 +57,10 @@ const GeneralPage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <div 
-              className={`toggle-switch ${autoUnloadModel ? 'active' : ''}`}
-              onClick={() => setAutoUnloadModel(!autoUnloadModel)}
+            <MacToggle
+              checked={settings.autoUnloadModel}
+              onChange={(checked) => updateSetting('autoUnloadModel', checked)}
+              size="medium"
             />
           </div>
         </div>

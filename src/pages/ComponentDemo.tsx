@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, User, Settings } from "lucide-react";
+import { Search, User, Settings, Trash2, Edit, Copy } from "lucide-react";
 import {
   MacButton,
   MacToggle,
@@ -7,6 +7,10 @@ import {
   MacProgress,
   MacDropdown,
   MacTrafficLights,
+  MacScrollbar,
+  MacContextMenu,
+  MacModal,
+  MacSegmented,
 } from "../components/macos";
 
 const ComponentDemo: React.FC = () => {
@@ -14,6 +18,10 @@ const ComponentDemo: React.FC = () => {
   const [inputValue, setInputValue] = useState("");
   const [dropdownValue, setDropdownValue] = useState("");
   const [progress, setProgress] = useState(65);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [segmentedValue, setSegmentedValue] = useState("option1");
 
   const dropdownOptions = [
     { value: "option1", label: "First Option" },
@@ -21,6 +29,27 @@ const ComponentDemo: React.FC = () => {
     { value: "option3", label: "Third Option" },
     { value: "disabled", label: "Disabled Option", disabled: true },
   ];
+
+  const contextMenuItems = [
+    { id: "edit", label: "Edit", icon: <Edit size={14} />, onClick: () => console.log("Edit") },
+    { id: "copy", label: "Copy", icon: <Copy size={14} />, onClick: () => console.log("Copy") },
+    { id: "separator1", label: "", separator: true },
+    { id: "settings", label: "Settings", icon: <Settings size={14} />, onClick: () => console.log("Settings") },
+    { id: "separator2", label: "", separator: true },
+    { id: "delete", label: "Delete", icon: <Trash2 size={14} />, onClick: () => console.log("Delete") },
+  ];
+
+  const segmentedOptions = [
+    { value: "option1", label: "Option 1" },
+    { value: "option2", label: "Option 2" },
+    { value: "option3", label: "Option 3" },
+  ];
+
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+    setContextMenuOpen(true);
+  };
 
   return (
     <div style={{ padding: "20px", maxWidth: "600px" }}>
@@ -175,6 +204,114 @@ const ComponentDemo: React.FC = () => {
           </MacButton>
         </div>
       </section>
+
+      {/* Segmented Control */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Segmented Control
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <MacSegmented
+            options={segmentedOptions}
+            value={segmentedValue}
+            onChange={setSegmentedValue}
+            size="medium"
+          />
+          <MacSegmented
+            options={segmentedOptions}
+            value="option2"
+            onChange={() => {}}
+            size="small"
+          />
+          <MacSegmented
+            options={segmentedOptions}
+            value="option3"
+            onChange={() => {}}
+            size="large"
+          />
+        </div>
+      </section>
+
+      {/* Scrollable Area */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Scrollable Area
+        </h3>
+        <div style={{ height: "200px", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
+          <MacScrollbar
+            autoHide
+            thin
+          >
+          <div style={{ padding: "16px" }}>
+            {Array.from({ length: 20 }, (_, i) => (
+              <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color)" }}>
+                Item {i + 1} - This is a scrollable content area with macOS-style scrollbars
+              </div>
+            ))}
+          </div>
+          </MacScrollbar>
+        </div>
+      </section>
+
+      {/* Context Menu Demo */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Context Menu
+        </h3>
+        <div
+          style={{
+            padding: "20px",
+            border: "1px solid var(--border-color)",
+            borderRadius: "8px",
+            background: "var(--card-background)",
+            cursor: "context-menu",
+          }}
+          onContextMenu={handleContextMenu}
+        >
+          Right-click here to see the macOS-style context menu
+        </div>
+      </section>
+
+      {/* Modal Demo */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Modal Dialog
+        </h3>
+        <MacButton onClick={() => setModalOpen(true)}>
+          Open Modal
+        </MacButton>
+      </section>
+
+      {/* Context Menu Component */}
+      <MacContextMenu
+        items={contextMenuItems}
+        isOpen={contextMenuOpen}
+        onClose={() => setContextMenuOpen(false)}
+        x={contextMenuPosition.x}
+        y={contextMenuPosition.y}
+      />
+
+      {/* Modal Component */}
+      <MacModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="macOS Modal Dialog"
+        size="medium"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <p style={{ color: "var(--secondary-text)", margin: 0 }}>
+            This is a macOS-style modal dialog with blur effects and native styling.
+          </p>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+            <MacButton variant="secondary" onClick={() => setModalOpen(false)}>
+              Cancel
+            </MacButton>
+            <MacButton variant="primary" onClick={() => setModalOpen(false)}>
+              OK
+            </MacButton>
+          </div>
+        </div>
+      </MacModal>
     </div>
   );
 };
