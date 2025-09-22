@@ -6,6 +6,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any, BinaryIO, Optional, List
+from pathlib import Path
 
 from utils.audio_converter import convert_to_wav
 
@@ -68,9 +69,25 @@ class ONNXBaseLoader(ABC):
             for providers in provider_sets:
                 for candidate_name in model_candidates:
                     try:
-                        self.model = onnx_asr.load_model(
-                            candidate_name, providers=providers
-                        )
+                        # Resolve local path if configured for file source or path-like candidate
+                        is_file_source = self.config.get("source") == "file"
+                        candidate_path = Path(str(candidate_name))
+                        resolved = None
+                        if (
+                            is_file_source
+                            or "/" in str(candidate_name)
+                            or candidate_path.suffix == ".onnx"
+                        ):
+                            if candidate_path.is_absolute() and candidate_path.exists():
+                                resolved = str(candidate_path)
+                            else:
+                                base_dir = Path(__file__).parent / "onnx"
+                                guess = base_dir / candidate_path
+                                if guess.exists():
+                                    resolved = str(guess)
+                        to_load = resolved or candidate_name
+
+                        self.model = onnx_asr.load_model(to_load, providers=providers)
                         if "CUDAExecutionProvider" in providers:
                             self.current_backend = "cuda"
                         elif "CoreMLExecutionProvider" in providers:

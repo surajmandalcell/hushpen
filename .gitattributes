@@ -1,2 +1,4 @@
+# Track large model assets with Git LFS
 new/sidecar/models/onnx/** filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
+

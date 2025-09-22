@@ -26,6 +26,15 @@ This minimizes steps to add/remove a model.
 
 - Whisper and Parakeet loaders prefer quantized variants (q4/q8) if available. If a quantized model is not present, the loader falls back to the default fp16 model.
 - When downloading quantized assets manually, name them with suffixes `_q4` or `_q8` to be picked up automatically.
+
+## Using Hub vs Local ONNX Models
+
+- Hub (default): Models like `whisper-tiny` and `whisper-base` resolve via the `onnx_asr` hub using their IDs.
+- Local files: Use `*-local` variants registered in `models/registry.py`:
+  - `whisper-tiny-local` → loads from `models/onnx/whisper-tiny/`
+  - `whisper-base-local` → loads from `models/onnx/whisper-base/`
+
+The loader resolves candidates as on-disk paths when `source: "file"`.
 # ASR Pro Python Sidecar
 
 This is the Python sidecar for the ASR Pro Tauri+React application.

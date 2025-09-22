@@ -13,6 +13,7 @@ class ModelRegistry:
 
     def _initialize_models(self) -> Dict[str, Dict[str, Any]]:
         # Single source of truth: define all model metadata and candidate names here.
+        # Each model supports either hub-loaded identifiers (candidates) or local file paths by setting source="file".
         return {
             "whisper-tiny": {
                 "id": "whisper-tiny",
@@ -25,6 +26,21 @@ class ModelRegistry:
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
                 "candidates": ["whisper-tiny_q4", "whisper-tiny_q8", "whisper-tiny"],
+                "source": "hub",
+            },
+            # Local file-based variant using models/onnx/whisper-tiny directory
+            "whisper-tiny-local": {
+                "id": "whisper-tiny-local",
+                "name": "Whisper Tiny (Local ONNX)",
+                "description": "Local ONNX files for Whisper tiny",
+                "type": "onnx",
+                "family": "whisper",
+                "size": "tiny",
+                "loader": "config",
+                "languages": ["en", "hi"],
+                "sample_rate": 16000,
+                "candidates": ["whisper-tiny"],
+                "source": "file",
             },
             "whisper-base": {
                 "id": "whisper-base",
@@ -37,6 +53,21 @@ class ModelRegistry:
                 "languages": ["en", "hi"],
                 "sample_rate": 16000,
                 "candidates": ["whisper-base_q4", "whisper-base_q8", "whisper-base"],
+                "source": "hub",
+            },
+            # Local file-based variant using models/onnx/whisper-base directory
+            "whisper-base-local": {
+                "id": "whisper-base-local",
+                "name": "Whisper Base (Local ONNX)",
+                "description": "Local ONNX files for Whisper base",
+                "type": "onnx",
+                "family": "whisper",
+                "size": "base",
+                "loader": "config",
+                "languages": ["en", "hi"],
+                "sample_rate": 16000,
+                "candidates": ["whisper-base"],
+                "source": "file",
             },
             "parakeet-tdt-0.6b-v2": {
                 "id": "parakeet-tdt-0.6b-v2",
@@ -53,7 +84,22 @@ class ModelRegistry:
                     "nemo-parakeet-tdt-0.6b-v2_q8",
                     "nemo-parakeet-tdt-0.6b-v2",
                 ],
+                "source": "hub",
             },
+            # Example of local ONNX models (place files under models/onnx/<name>)
+            # "whisper-base-local": {
+            #     "id": "whisper-base-local",
+            #     "name": "Whisper Base (Local ONNX)",
+            #     "description": "Local ONNX files for Whisper base",
+            #     "type": "onnx",
+            #     "family": "whisper",
+            #     "size": "base",
+            #     "loader": "config",
+            #     "languages": ["en"],
+            #     "sample_rate": 16000,
+            #     "candidates": ["whisper-base/encoder_model.onnx", "whisper-base/decoder_model_merged.onnx"],
+            #     "source": "file",
+            # },
         }
 
     def list_models(self) -> List[str]:
