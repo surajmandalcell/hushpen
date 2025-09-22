@@ -13,6 +13,8 @@ import {
   MacSegmented,
 } from "../components/macos";
 import { useToast } from "../services/toast";
+import { useRecording } from "../services/recordingManager";
+import { useFileQueue } from "../services/fileQueue";
 
 const ComponentDemo: React.FC = () => {
   const [toggleChecked, setToggleChecked] = useState(false);
@@ -25,6 +27,8 @@ const ComponentDemo: React.FC = () => {
   const [segmentedValue, setSegmentedValue] = useState("option1");
 
   const { info, success, warning, error } = useToast();
+  const { state: recordingState, start, stop, cancel, updateProgress, completeTranscription } = useRecording();
+  const { files, stats, addFiles, removeFile, clearQueue, processNext, cancelProcessing } = useFileQueue();
 
   const dropdownOptions = [
     { value: "option1", label: "First Option" },
@@ -375,6 +379,258 @@ const ComponentDemo: React.FC = () => {
           >
             Persistent Toast with Actions
           </MacButton>
+        </div>
+      </section>
+
+      {/* Recording Demo */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          Recording System
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {!recordingState.isActive && !recordingState.isTranscribing && (
+            <MacButton
+              variant="primary"
+              onClick={start}
+            >
+              Start Recording
+            </MacButton>
+          )}
+
+          {recordingState.isActive && (
+            <MacButton
+              variant="secondary"
+              onClick={stop}
+            >
+              Stop Recording & Transcribe
+            </MacButton>
+          )}
+
+          {(recordingState.isActive || recordingState.isTranscribing) && (
+            <MacButton
+              variant="destructive"
+              onClick={cancel}
+            >
+              Cancel
+            </MacButton>
+          )}
+
+          {recordingState.isTranscribing && (
+            <>
+              <MacButton
+                variant="secondary"
+                onClick={() => updateProgress(recordingState.transcriptionProgress + 10, "Processing chunk...")}
+              >
+                Update Progress +10%
+              </MacButton>
+
+              <MacButton
+                variant="primary"
+                onClick={completeTranscription}
+              >
+                Complete Transcription
+              </MacButton>
+            </>
+          )}
+
+          <div style={{
+            padding: "16px",
+            background: "var(--card-background)",
+            borderRadius: "8px",
+            border: "1px solid var(--border-color)"
+          }}>
+            <h4 style={{ color: "var(--primary-text)", margin: "0 0 8px 0" }}>
+              Recording Status
+            </h4>
+            <p style={{ color: "var(--secondary-text)", margin: "0 0 8px 0" }}>
+              Active: {recordingState.isActive ? 'Yes' : 'No'}
+            </p>
+            <p style={{ color: "var(--secondary-text)", margin: "0 0 8px 0" }}>
+              Transcribing: {recordingState.isTranscribing ? 'Yes' : 'No'}
+            </p>
+            <p style={{ color: "var(--secondary-text)", margin: "0 0 8px 0" }}>
+              Progress: {recordingState.transcriptionProgress}%
+            </p>
+            <p style={{ color: "var(--secondary-text)", margin: "0" }}>
+              Status: {recordingState.statusText}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* File Queue Demo */}
+      <section style={{ marginBottom: "32px" }}>
+        <h3 style={{ color: "var(--primary-text)", marginBottom: "16px" }}>
+          File Queue System
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <MacButton
+              variant="primary"
+              onClick={() => {
+                // Create mock files for demo
+                const mockFiles = [
+                  new File(['mock audio content'], 'demo1.wav', { type: 'audio/wav' }),
+                  new File(['mock audio content 2'], 'demo2.mp3', { type: 'audio/mp3' }),
+                  new File(['mock audio content 3'], 'demo3.m4a', { type: 'audio/m4a' }),
+                ];
+                addFiles(mockFiles);
+                success('Files Added', '3 demo files added to queue');
+              }}
+            >
+              Add Demo Files
+            </MacButton>
+
+            <MacButton
+              variant="secondary"
+              onClick={processNext}
+              disabled={stats.processing > 0 || stats.pending === 0}
+            >
+              Process Next
+            </MacButton>
+
+            <MacButton
+              variant="destructive"
+              onClick={clearQueue}
+              disabled={stats.total === 0}
+            >
+              Clear Queue
+            </MacButton>
+          </div>
+
+          {stats.processing > 0 && (
+            <MacButton
+              variant="destructive"
+              onClick={cancelProcessing}
+            >
+              Cancel Processing
+            </MacButton>
+          )}
+
+          {/* Queue Stats */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
+            gap: "12px",
+            padding: "16px",
+            background: "var(--card-background)",
+            borderRadius: "8px",
+            border: "1px solid var(--border-color)"
+          }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: "bold", color: "var(--accent-blue)" }}>
+                {stats.total}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--secondary-text)" }}>Total</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: "bold", color: "var(--warning-yellow)" }}>
+                {stats.pending}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--secondary-text)" }}>Pending</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: "bold", color: "var(--accent-blue)" }}>
+                {stats.processing}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--secondary-text)" }}>Processing</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: "bold", color: "var(--success-green)" }}>
+                {stats.completed}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--secondary-text)" }}>Completed</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: "bold", color: "var(--error-red)" }}>
+                {stats.errors}
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--secondary-text)" }}>Errors</div>
+            </div>
+          </div>
+
+          {/* File List */}
+          {files.length > 0 && (
+            <div style={{
+              maxHeight: "300px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "8px",
+              overflow: "hidden"
+            }}>
+              <MacScrollbar>
+                <div style={{ padding: "16px" }}>
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "12px",
+                        marginBottom: "8px",
+                        background: file.status === 'processing' ? 'rgba(0, 122, 204, 0.1)' :
+                                   file.status === 'completed' ? 'rgba(76, 175, 80, 0.1)' :
+                                   file.status === 'error' ? 'rgba(244, 67, 54, 0.1)' :
+                                   'var(--card-background)',
+                        borderRadius: "6px",
+                        border: `1px solid ${file.status === 'processing' ? 'rgba(0, 122, 204, 0.3)' :
+                                            file.status === 'completed' ? 'rgba(76, 175, 80, 0.3)' :
+                                            file.status === 'error' ? 'rgba(244, 67, 54, 0.3)' :
+                                            'var(--border-color)'}`
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontWeight: "500",
+                          color: "var(--primary-text)",
+                          marginBottom: "4px"
+                        }}>
+                          {file.name}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--secondary-text)" }}>
+                          {(file.size / 1024).toFixed(1)} KB • Added {new Date(file.addedAt).toLocaleTimeString()}
+                        </div>
+                        {file.status === 'processing' && (
+                          <div style={{ marginTop: "8px" }}>
+                            <MacProgress value={file.progress} size="small" color="blue" showLabel />
+                          </div>
+                        )}
+                        {file.result && (
+                          <div style={{
+                            marginTop: "8px",
+                            fontSize: "12px",
+                            color: "var(--success-green)",
+                            fontStyle: "italic"
+                          }}>
+                            {file.result}
+                          </div>
+                        )}
+                        {file.error && (
+                          <div style={{
+                            marginTop: "8px",
+                            fontSize: "12px",
+                            color: "var(--error-red)",
+                            fontStyle: "italic"
+                          }}>
+                            Error: {file.error}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ marginLeft: "12px" }}>
+                        <MacButton
+                          size="small"
+                          variant="destructive"
+                          onClick={() => removeFile(file.id)}
+                          disabled={file.status === 'processing'}
+                        >
+                          Remove
+                        </MacButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </MacScrollbar>
+            </div>
+          )}
         </div>
       </section>
     </div>
