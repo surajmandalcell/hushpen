@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Mic, MicOff, Square, Loader2 } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { useAudioRecording } from "../hooks/useAudioRecording";
 import { useRecording } from "../services/recordingManager";
 import "./RecordingOverlay.css";
@@ -38,6 +39,38 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Use actual recording state
+  const isRecording = audioState.isRecording || recordingState.isActive;
+
+  useEffect(() => {
+    // Listen for global shortcut events
+    const unlistenStart = listen("recording-start", () => {
+      if (!isActive) {
+        handleStart();
+      }
+    });
+
+    const unlistenStop = listen("recording-stop", () => {
+      if (isActive) {
+        handleStop();
+      }
+    });
+
+    const unlistenToggle = listen("toggle-recording", () => {
+      if (isRecording) {
+        handleStop();
+      } else {
+        handleStart();
+      }
+    });
+
+    return () => {
+      unlistenStart.then((fn: () => void) => fn());
+      unlistenStop.then((fn: () => void) => fn());
+      unlistenToggle.then((fn: () => void) => fn());
+    };
+  }, [isActive, isRecording]);
 
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -130,8 +163,6 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
       .padStart(2, "0")}`;
   };
 
-  // Use actual recording state
-  const isRecording = audioState.isRecording || recordingState.isActive;
   const isTranscribingFinal =
     isTranscribing || isTranscribingLocal || recordingState.isTranscribing;
   const currentDuration = audioState.duration || recordingState.duration;

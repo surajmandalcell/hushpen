@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Upload, FileAudio, FolderOpen } from "lucide-react";
+import { fileSystemService } from "../services/fileSystem";
+import { apiClient } from "../services/api";
 
 const TranscribePage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
@@ -34,25 +36,75 @@ const TranscribePage: React.FC = () => {
     }
   };
 
-  const processFiles = (files: File[]) => {
+  const handleNativeFileDialog = async () => {
+    try {
+      const files = await fileSystemService.openFileDialog({
+        multiple: true,
+        filters: [
+          {
+            name: "Audio Files",
+            extensions: ["mp3", "wav", "m4a", "flac", "ogg"],
+          },
+        ],
+      });
+
+      if (files && files.length > 0) {
+        // Convert file paths to File objects
+        const fileObjects = await Promise.all(
+          files.map(async (path) => {
+            const binaryData = await fileSystemService.readBinaryFile(path);
+            const fileName = path.split("/").pop() || "unknown";
+            return new File([binaryData], fileName, { type: "audio/wav" });
+          })
+        );
+
+        processFiles(fileObjects);
+      }
+    } catch (error) {
+      console.error("Failed to open native file dialog:", error);
+    }
+  };
+
+  const processFiles = async (files: File[]) => {
     setIsProcessing(true);
     setCurrentFile(files[0].name);
 
-    // Simulate file processing
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      currentProgress += 10;
-      setProgress(currentProgress);
+    try {
+      // Process each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setCurrentFile(file.name);
+        setProgress(0);
 
-      if (currentProgress >= 100) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setIsProcessing(false);
-          setProgress(0);
-          setCurrentFile("");
-        }, 1000);
+        try {
+          // Use the API client to transcribe the file
+          const result = await apiClient.transcribeFile(file);
+          console.log(`Transcription completed for ${file.name}:`, result);
+
+          // Save the transcription result
+          if (result.text) {
+            await fileSystemService.saveFileDialog(
+              result.text,
+              undefined,
+              `${file.name.replace(/\.[^/.]+$/, "")}-transcription.txt`
+            );
+          }
+        } catch (error) {
+          console.error(`Failed to transcribe ${file.name}:`, error);
+        }
+
+        setProgress(100);
       }
-    }, 200);
+
+      setIsProcessing(false);
+      setProgress(0);
+      setCurrentFile("");
+    } catch (error) {
+      console.error("Error processing files:", error);
+      setIsProcessing(false);
+      setProgress(0);
+      setCurrentFile("");
+    }
   };
 
   return (
@@ -105,9 +157,17 @@ const TranscribePage: React.FC = () => {
                 className="button"
                 style={{ marginTop: "16px" }}
               >
-                <FolderOpen size={16} style={{ marginRight: "8px" }} />
+                <Upload size={16} style={{ marginRight: "8px" }} />
                 Browse Files
               </label>
+              <button
+                className="button"
+                style={{ marginTop: "16px" }}
+                onClick={handleNativeFileDialog}
+              >
+                <FolderOpen size={16} style={{ marginRight: "8px" }} />
+                Open Native Dialog
+              </button>
               <p
                 style={{
                   fontSize: "12px",
@@ -157,8 +217,9 @@ const TranscribePage: React.FC = () => {
         </div>
       </div>
 
-      <style dangerouslySetInnerHTML={{
-        __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         .drop-zone {
           border: 2px dashed var(--border-color);
           border-radius: var(--border-radius);
@@ -245,8 +306,9 @@ const TranscribePage: React.FC = () => {
           );
           transition: width 0.3s ease;
         }
-        `
-      }} />
+        `,
+        }}
+      />
     </div>
   );
 };
