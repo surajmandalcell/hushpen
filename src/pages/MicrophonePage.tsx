@@ -1,26 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { platformAudioService } from "../services/platformAudio";
 
 const MicrophonePage: React.FC = () => {
-  const [selectedDevice, setSelectedDevice] = useState('default');
-  const [sampleRate, setSampleRate] = useState('16000');
-  const [channels, setChannels] = useState('1');
+  const [selectedDevice, setSelectedDevice] = useState("default");
+  const [sampleRate, setSampleRate] = useState("16000");
+  const [channels, setChannels] = useState("1");
+
+  // Platform-specific data
+  const audioHints = platformAudioService.getPlatformAudioHints();
+  const sampleRateOptions = platformAudioService.getAudioQualityOptions();
 
   const audioDevices = [
-    { id: 'default', name: 'Default Microphone' },
-    { id: 'device1', name: 'Built-in Microphone' },
-    { id: 'device2', name: 'USB Microphone' },
-  ];
-
-  const sampleRates = [
-    { id: '16000', name: '16 kHz (Recommended)' },
-    { id: '22050', name: '22.05 kHz' },
-    { id: '44100', name: '44.1 kHz' },
-    { id: '48000', name: '48 kHz' },
+    { id: "default", name: "Default Microphone" },
+    { id: "device1", name: "Built-in Microphone" },
+    { id: "device2", name: "USB Microphone" },
   ];
 
   const channelOptions = [
-    { id: '1', name: 'Mono (1 channel)' },
-    { id: '2', name: 'Stereo (2 channels)' },
+    { id: "1", name: "Mono (1 channel)" },
+    { id: "2", name: "Stereo (2 channels)" },
   ];
 
   return (
@@ -34,7 +32,7 @@ const MicrophonePage: React.FC = () => {
 
       <div className="settings-section">
         <h2 className="section-title">Audio Input Device</h2>
-        
+
         <div className="setting-row">
           <div className="setting-info">
             <h3 className="setting-label">Microphone</h3>
@@ -43,12 +41,12 @@ const MicrophonePage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <select 
+            <select
               className="dropdown"
               value={selectedDevice}
               onChange={(e) => setSelectedDevice(e.target.value)}
             >
-              {audioDevices.map(device => (
+              {audioDevices.map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.name}
                 </option>
@@ -65,7 +63,7 @@ const MicrophonePage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <span style={{ color: 'var(--success-green)' }}>✓ Granted</span>
+            <span style={{ color: "var(--success-green)" }}>✓ Granted</span>
           </div>
         </div>
 
@@ -83,8 +81,23 @@ const MicrophonePage: React.FC = () => {
       </div>
 
       <div className="settings-section">
+        <h2 className="section-title">{audioHints.title}</h2>
+
+        <div className="setting-row">
+          <div className="setting-info">
+            <h3 className="setting-label">Platform Tips</h3>
+            <ul className="platform-tips">
+              {audioHints.hints.map((hint, index) => (
+                <li key={index}>{hint}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section">
         <h2 className="section-title">Audio Quality</h2>
-        
+
         <div className="setting-row">
           <div className="setting-info">
             <h3 className="setting-label">Sample Rate</h3>
@@ -93,12 +106,12 @@ const MicrophonePage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <select 
+            <select
               className="dropdown"
               value={sampleRate}
               onChange={(e) => setSampleRate(e.target.value)}
             >
-              {sampleRates.map(rate => (
+              {sampleRateOptions.map((rate) => (
                 <option key={rate.id} value={rate.id}>
                   {rate.name}
                 </option>
@@ -115,12 +128,12 @@ const MicrophonePage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <select 
+            <select
               className="dropdown"
               value={channels}
               onChange={(e) => setChannels(e.target.value)}
             >
-              {channelOptions.map(channel => (
+              {channelOptions.map((channel) => (
                 <option key={channel.id} value={channel.id}>
                   {channel.name}
                 </option>
@@ -129,6 +142,36 @@ const MicrophonePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        .platform-tips {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+
+        .platform-tips li {
+          padding: 8px 0;
+          border-bottom: 1px solid var(--border-color);
+          position: relative;
+          padding-left: 20px;
+        }
+
+        .platform-tips li:before {
+          content: "💡";
+          position: absolute;
+          left: 0;
+          top: 8px;
+        }
+
+        .platform-tips li:last-child {
+          border-bottom: none;
+        }
+      `,
+        }}
+      />
     </div>
   );
 };

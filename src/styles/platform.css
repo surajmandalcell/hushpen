@@ -1,0 +1,128 @@
+/* Platform-specific styles for ASR Pro */
+
+/* macOS-specific styles */
+.platform-macos {
+  --platform-titlebar-height: 28px;
+  --platform-border-radius: 12px;
+  --platform-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.platform-macos .main-window {
+  border-radius: var(--platform-border-radius);
+  box-shadow: var(--platform-shadow);
+}
+
+/* Windows-specific styles */
+.platform-windows {
+  --platform-titlebar-height: 32px;
+  --platform-border-radius: 8px;
+  --platform-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+}
+
+.platform-windows .main-window {
+  border-radius: var(--platform-border-radius);
+  box-shadow: var(--platform-shadow);
+}
+
+/* Linux-specific styles */
+.platform-linux {
+  --platform-titlebar-height: 32px;
+  --platform-border-radius: 8px;
+  --platform-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.platform-linux .main-window {
+  border-radius: var(--platform-border-radius);
+  box-shadow: var(--platform-shadow);
+}
+
+/* Platform-specific button styles */
+.platform-macos .button {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.platform-windows .button {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.platform-linux .button {
+  font-family: "Ubuntu", "Cantarell", "DejaVu Sans", sans-serif;
+}
+
+/* Platform-specific scrollbar styles */
+.platform-macos ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.platform-macos ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.platform-macos ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.platform-macos ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Platform-specific focus styles */
+.platform-macos *:focus {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+}
+
+.platform-windows *:focus {
+  outline: 2px solid #0078d4;
+  outline-offset: 1px;
+}
+
+.platform-linux *:focus {
+  outline: 2px solid #4a90e2;
+  outline-offset: 1px;
+}
+
+/* Platform-specific drag zones */
+.platform-macos .drag-zone {
+  -webkit-app-region: drag;
+  cursor: move;
+}
+
+.platform-windows .drag-zone {
+  /* Windows handles dragging differently */
+}
+
+.platform-linux .drag-zone {
+  /* Linux handles dragging differently */
+}
+
+/* Platform-specific modal behaviors */
+.platform-macos .modal {
+  border-radius: 12px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+}
+
+.platform-windows .modal {
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+}
+
+.platform-linux .modal {
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Platform-specific animations */
+.platform-macos {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.platform-windows {
+  transition: all 0.2s ease-out;
+}
+
+.platform-linux {
+  transition: all 0.25s ease-in-out;
+}

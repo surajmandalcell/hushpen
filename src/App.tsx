@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { usePlatform } from "./services/platform";
 import "./App.css";
+import "./styles/platform.css";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -21,6 +23,7 @@ function App() {
   const [activeSection, setActiveSection] = useState("general");
   const [isRecordingOverlayActive, setIsRecordingOverlayActive] =
     useState(false);
+  const platformInfo = usePlatform();
   // Window state management is handled internally
   useWindowState();
 
@@ -73,7 +76,7 @@ function App() {
   }, []);
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${platformInfo.getPlatformCSSClass()}`}>
       <SystemTray />
       <ToastContainer />
       <RecordingOverlay
