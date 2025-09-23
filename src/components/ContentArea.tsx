@@ -9,6 +9,7 @@ import KeyboardPage from "../pages/KeyboardPage";
 import TranscribePage from "../pages/TranscribePage";
 import AboutPage from "../pages/AboutPage";
 import ComponentDemo from "../pages/ComponentDemo";
+import AccessibilityPage from "../pages/AccessibilityPage";
 
 interface ContentAreaProps {
   activeSection: string;
@@ -31,6 +32,8 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         return <KeyboardPage />;
       case "transcribe":
         return <TranscribePage />;
+      case "accessibility":
+        return <AccessibilityPage />;
       case "about":
         return <AboutPage />;
       case "demo":

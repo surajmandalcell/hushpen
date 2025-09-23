@@ -7,6 +7,7 @@ import {
   FileText,
   Info,
   Palette,
+  Accessibility,
 } from "lucide-react";
 import MacTrafficLights from "./macos/MacTrafficLights";
 import "./Sidebar.css";
@@ -22,6 +23,7 @@ const sidebarSections = [
   { id: "microphone", label: "Microphone", icon: Mic },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "transcribe", label: "Transcribe Files", icon: FileText },
+  { id: "accessibility", label: "Accessibility", icon: Accessibility },
   { id: "demo", label: "macOS Components", icon: Palette },
   { id: "about", label: "About", icon: Info },
 ];

@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { usePlatform } from "./services/platform";
+import { useAccessibility } from "./services/accessibility";
 import "./App.css";
 import "./styles/platform.css";
+import "./styles/accessibility.css";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -24,6 +26,7 @@ function App() {
   const [isRecordingOverlayActive, setIsRecordingOverlayActive] =
     useState(false);
   const platformInfo = usePlatform();
+  useAccessibility(); // Initialize accessibility features
   // Window state management is handled internally
   useWindowState();
 
@@ -77,6 +80,11 @@ function App() {
 
   return (
     <div className={`app-container ${platformInfo.getPlatformCSSClass()}`}>
+      {/* Skip to content link for screen readers */}
+      <a href="#main-content" className="skip-to-content">
+        Skip to main content
+      </a>
+
       <SystemTray />
       <ToastContainer />
       <RecordingOverlay
@@ -85,7 +93,7 @@ function App() {
         statusText={recordingState.statusText}
       />
       {notifications.length > 0 && <TrayNotificationList />}
-      <div className="main-window">
+      <div className="main-window" id="main-content">
         <Sidebar
           activeSection={activeSection}
           onSectionChange={setActiveSection}

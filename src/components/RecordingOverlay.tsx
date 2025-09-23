@@ -170,7 +170,13 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   if (!isRecording || !mounted) return null;
 
   return (
-    <div className="recording-overlay">
+    <div
+      className="recording-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recording-status"
+      aria-describedby="recording-instructions"
+    >
       <div className="recording-overlay__backdrop" />
 
       <div className="recording-overlay__content">
@@ -189,11 +195,13 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           </div>
 
           <div className="recording-overlay__text">
-            <h2 className="recording-overlay__title">
+            <h2 id="recording-status" className="recording-overlay__title">
               {isTranscribingFinal ? "Transcribing..." : "Recording..."}
             </h2>
-            <p className="recording-overlay__subtitle">{statusText}</p>
-            <p className="recording-overlay__duration">
+            <p className="recording-overlay__subtitle" aria-live="polite">
+              {statusText}
+            </p>
+            <p className="recording-overlay__duration" aria-live="polite">
               {formatDuration(currentDuration)}
             </p>
           </div>
@@ -201,7 +209,14 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
         {/* Transcription progress */}
         {isTranscribingFinal && (
-          <div className="recording-overlay__progress">
+          <div
+            className="recording-overlay__progress"
+            role="progressbar"
+            aria-valuenow={recordingState.transcriptionProgress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Transcription progress"
+          >
             <div className="recording-overlay__progress-bar">
               <div
                 className="recording-overlay__progress-fill"
@@ -226,6 +241,7 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
                 className="recording-overlay__control-button stop"
                 onClick={handleStop}
                 aria-label="Stop transcription"
+                aria-describedby="stop-instructions"
               >
                 <Square size={24} />
                 <span>Stop (Space)</span>
@@ -235,6 +251,7 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
                 className="recording-overlay__control-button cancel"
                 onClick={handleCancel}
                 aria-label="Cancel recording"
+                aria-describedby="cancel-instructions"
               >
                 <MicOff size={24} />
                 <span>Cancel (Esc)</span>
@@ -250,6 +267,21 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
               <kbd>Esc</kbd> Cancel
             </span>
           </div>
+        </div>
+
+        {/* Hidden instructions for screen readers */}
+        <div id="recording-instructions" className="sr-only">
+          Use Space to{" "}
+          {isTranscribingFinal ? "stop transcription" : "start recording"}. Use
+          Escape to cancel. This overlay shows recording status and controls.
+        </div>
+
+        <div id="stop-instructions" className="sr-only">
+          Stop the current transcription process
+        </div>
+
+        <div id="cancel-instructions" className="sr-only">
+          Cancel recording and close overlay
         </div>
 
         {/* Pulse animation */}
