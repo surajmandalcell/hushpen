@@ -59,3 +59,4 @@ venv.bak/
 .claude
 new/
 MIGRATE_UI.md
+!.vscode/settings.json

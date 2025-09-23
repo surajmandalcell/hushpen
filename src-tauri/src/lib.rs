@@ -1,8 +1,8 @@
-use tauri::{
-    api, AppHandle, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu,
-    SystemTrayMenuItem,
-};
-use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
+use tauri::tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tauri_plugin_global_shortcut::{Shortcut, ShortcutEvent, ShortcutState};
+use serde_json;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -12,7 +12,7 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 async fn show_window(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_window("main") {
+    if let Some(window) = app.get_webview_window("main") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -21,7 +21,7 @@ async fn show_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn hide_window(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_window("main") {
+    if let Some(window) = app.get_webview_window("main") {
         window.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -40,25 +40,13 @@ async fn show_tray_notification(
     message: String,
     notification_type: String,
 ) -> Result<(), String> {
-    // Create a notification using Tauri's notification API
-    let notification =
-        tauri::api::notification::Notification::new(&app.config().tauri.bundle.identifier)
-            .title(title)
-            .body(message)
-            .icon("icon");
-
-    // Set different icons based on notification type
-    let icon_path = match notification_type.as_str() {
-        "error" => "icons/error.png",
-        "warning" => "icons/warning.png",
-        "success" => "icons/success.png",
-        _ => "icons/icon.png",
-    };
-
-    let notification_with_icon = notification.icon(icon_path);
-
-    // Show the notification
-    notification_with_icon.show().map_err(|e| e.to_string())?;
+    // For Tauri v2, we'll emit an event to the frontend to handle notifications
+    // since the notification API has changed significantly
+    app.emit("show-notification", serde_json::json!({
+        "title": title,
+        "message": message,
+        "type": notification_type
+    })).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -77,11 +65,11 @@ async fn stop_recording(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn handle_global_shortcut(app: &AppHandle, shortcut: ShortcutState) {
-    match shortcut {
+fn handle_global_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
+    match event.state {
         ShortcutState::Pressed => {
             // Check if the main window is visible and focused
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
                 if window.is_visible().unwrap_or(false) {
                     // If window is visible, toggle recording
                     let _ = app.emit("toggle-recording", {});
@@ -101,55 +89,60 @@ fn handle_global_shortcut(app: &AppHandle, shortcut: ShortcutState) {
     }
 }
 
-fn create_tray_menu() -> SystemTrayMenu {
-    let show = CustomMenuItem::new("show".to_string(), "Show ASR Pro");
-    let hide = CustomMenuItem::new("hide".to_string(), "Hide");
-    let quit = CustomMenuItem::new("quit".to_string(), "Quit");
+fn create_tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let show = MenuItemBuilder::with_id("show", "Show ASR Pro").build(app)?;
+    let hide = MenuItemBuilder::with_id("hide", "Hide").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
-    SystemTrayMenu::new()
-        .add_item(show)
-        .add_item(hide)
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(quit)
+    let menu = Menu::new(app)?;
+    menu.append(&show)?;
+    menu.append(&hide)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&quit)?;
+    Ok(menu)
 }
 
-fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
+fn handle_tray_event(tray: &TrayIcon, event: TrayIconEvent) {
+    let app = tray.app_handle();
     match event {
-        SystemTrayEvent::LeftClick {
-            position: _,
-            size: _,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
             ..
         } => {
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
         }
-        SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
-            "show" => {
-                if let Some(window) = app.get_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+        TrayIconEvent::Enter { .. } => {}
+        TrayIconEvent::Leave { .. } => {}
+        TrayIconEvent::DoubleClick { .. } => {}
+        _ => {}
+    }
+}
+
+fn handle_tray_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    match event.id.as_ref() {
+        "show" => {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
-            "hide" => {
-                if let Some(window) = app.get_window("main") {
-                    let _ = window.hide();
-                }
+        }
+        "hide" => {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.hide();
             }
-            "quit" => {
-                app.exit(0);
-            }
-            _ => {}
-        },
+        }
+        "quit" => {
+            app.exit(0);
+        }
         _ => {}
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let tray_menu = create_tray_menu();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -160,8 +153,15 @@ pub fn run() {
                 .with_handler(handle_global_shortcut)
                 .build(),
         )
-        .system_tray(SystemTray::new().with_menu(tray_menu))
-        .on_system_tray_event(handle_tray_event)
+        .setup(|app| {
+            let tray_menu = create_tray_menu(app.handle())?;
+            let tray_icon = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .on_menu_event(handle_tray_menu_event)
+                .on_tray_icon_event(handle_tray_event)
+                .build(app)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             show_window,
