@@ -12,9 +12,13 @@ import ComponentDemo from "../pages/ComponentDemo";
 
 interface ContentAreaProps {
   activeSection: string;
+  onStartRecording?: () => void;
 }
 
-const ContentArea: React.FC<ContentAreaProps> = ({ activeSection }) => {
+const ContentArea: React.FC<ContentAreaProps> = ({
+  activeSection,
+  onStartRecording,
+}) => {
   const renderPage = () => {
     switch (activeSection) {
       case "general":
@@ -38,7 +42,32 @@ const ContentArea: React.FC<ContentAreaProps> = ({ activeSection }) => {
 
   return (
     <div className="content-area">
-      <div className="content-container">{renderPage()}</div>
+      <div className="content-container">
+        {onStartRecording && (
+          <div
+            style={{
+              padding: "20px",
+              borderBottom: "1px solid #3e3e42",
+              marginBottom: "20px",
+            }}
+          >
+            <button
+              onClick={onStartRecording}
+              style={{
+                padding: "10px 20px",
+                background: "#007acc",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              🎤 Test Recording (Space to start/stop, Esc to cancel)
+            </button>
+          </div>
+        )}
+        {renderPage()}
+      </div>
     </div>
   );
 };

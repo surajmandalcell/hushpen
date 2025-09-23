@@ -1,5 +1,4 @@
-import React, { useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import React from "react";
 
 const SystemTray: React.FC = () => {
   // The system tray is set up in the Rust code (lib.rs)

@@ -1,28 +1,39 @@
-import React, { useEffect, useState } from 'react';
-import { Mic, MicOff, Square, Loader2 } from 'lucide-react';
-import './RecordingOverlay.css';
+import React, { useEffect, useState } from "react";
+import { Mic, MicOff, Square, Loader2 } from "lucide-react";
+import { useAudioRecording } from "../hooks/useAudioRecording";
+import { useRecording } from "../services/recordingManager";
+import "./RecordingOverlay.css";
 
 export interface RecordingOverlayProps {
   isActive: boolean;
   isTranscribing?: boolean;
-  transcriptionProgress?: number; // 0-100
-  onCancel: () => void;
-  onStop: () => void;
   statusText?: string;
-  duration?: number; // in seconds
 }
 
 const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   isActive,
   isTranscribing = false,
-  transcriptionProgress = 0,
-  onCancel,
-  onStop,
   statusText = "Listening...",
-  duration = 0,
 }) => {
   const [showControls, setShowControls] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isTranscribingLocal, setIsTranscribingLocal] = useState(false);
+
+  // Audio recording hook
+  const {
+    state: audioState,
+    startRecording,
+    stopRecording,
+  } = useAudioRecording();
+
+  // Recording management hook
+  const {
+    state: recordingState,
+    start,
+    stop,
+    cancel,
+    transcribeFile,
+  } = useRecording();
 
   useEffect(() => {
     setMounted(true);
@@ -33,14 +44,16 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
       if (!isActive) return;
 
       switch (event.key) {
-        case 'Escape':
+        case "Escape":
           event.preventDefault();
-          onCancel();
+          handleCancel();
           break;
-        case ' ':
+        case " ":
           event.preventDefault();
-          if (isTranscribing) {
-            onStop();
+          if (isTranscribing || isTranscribingLocal) {
+            handleStop();
+          } else {
+            handleStart();
           }
           break;
       }
@@ -54,26 +67,76 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
     };
 
     if (isActive) {
-      document.addEventListener('keydown', handleKeyPress);
-      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener("keydown", handleKeyPress);
+      document.addEventListener("mousemove", handleMouseMove);
       // Prevent body scroll when overlay is active
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     }
 
     return () => {
-      document.removeEventListener('keydown', handleKeyPress);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.body.style.overflow = 'unset';
+      document.removeEventListener("keydown", handleKeyPress);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.body.style.overflow = "unset";
     };
-  }, [isActive, isTranscribing, onCancel, onStop]);
+  }, [isActive, isTranscribing, isTranscribingLocal]);
+
+  const handleStart = async () => {
+    try {
+      await startRecording({
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+      });
+      start();
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+    }
+  };
+
+  const handleStop = async () => {
+    try {
+      const audioBlob = stopRecording();
+      if (audioBlob) {
+        stop();
+
+        // Start transcription
+        setIsTranscribingLocal(true);
+        try {
+          const transcription = await transcribeFile(audioBlob);
+          console.log("Transcription result:", transcription);
+        } catch (error) {
+          console.error("Transcription failed:", error);
+        } finally {
+          setIsTranscribingLocal(false);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+    }
+  };
+
+  const handleCancel = () => {
+    stopRecording();
+    cancel();
+    setIsTranscribingLocal(false);
+  };
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
   };
 
-  if (!isActive || !mounted) return null;
+  // Use actual recording state
+  const isRecording = audioState.isRecording || recordingState.isActive;
+  const isTranscribingFinal =
+    isTranscribing || isTranscribingLocal || recordingState.isTranscribing;
+  const currentDuration = audioState.duration || recordingState.duration;
+
+  if (!isRecording || !mounted) return null;
 
   return (
     <div className="recording-overlay">
@@ -82,7 +145,11 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
       <div className="recording-overlay__content">
         {/* Status indicator */}
         <div className="recording-overlay__status">
-          <div className={`recording-overlay__indicator ${isTranscribing ? 'transcribing' : 'recording'}`}>
+          <div
+            className={`recording-overlay__indicator ${
+              isTranscribing ? "transcribing" : "recording"
+            }`}
+          >
             {isTranscribing ? (
               <Loader2 size={32} className="recording-overlay__spinner" />
             ) : (
@@ -92,37 +159,41 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
           <div className="recording-overlay__text">
             <h2 className="recording-overlay__title">
-              {isTranscribing ? 'Transcribing...' : 'Recording...'}
+              {isTranscribingFinal ? "Transcribing..." : "Recording..."}
             </h2>
             <p className="recording-overlay__subtitle">{statusText}</p>
             <p className="recording-overlay__duration">
-              {formatDuration(duration)}
+              {formatDuration(currentDuration)}
             </p>
           </div>
         </div>
 
         {/* Transcription progress */}
-        {isTranscribing && (
+        {isTranscribingFinal && (
           <div className="recording-overlay__progress">
             <div className="recording-overlay__progress-bar">
               <div
                 className="recording-overlay__progress-fill"
-                style={{ width: `${transcriptionProgress}%` }}
+                style={{ width: `${recordingState.transcriptionProgress}%` }}
               />
             </div>
             <span className="recording-overlay__progress-text">
-              {Math.round(transcriptionProgress)}% Complete
+              {Math.round(recordingState.transcriptionProgress)}% Complete
             </span>
           </div>
         )}
 
         {/* Controls */}
-        <div className={`recording-overlay__controls ${showControls ? 'visible' : ''}`}>
+        <div
+          className={`recording-overlay__controls ${
+            showControls ? "visible" : ""
+          }`}
+        >
           <div className="recording-overlay__control-group">
-            {isTranscribing ? (
+            {isTranscribingFinal ? (
               <button
                 className="recording-overlay__control-button stop"
-                onClick={onStop}
+                onClick={handleStop}
                 aria-label="Stop transcription"
               >
                 <Square size={24} />
@@ -131,7 +202,7 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
             ) : (
               <button
                 className="recording-overlay__control-button cancel"
-                onClick={onCancel}
+                onClick={handleCancel}
                 aria-label="Cancel recording"
               >
                 <MicOff size={24} />
@@ -142,7 +213,7 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
           <div className="recording-overlay__keyboard-hints">
             <span className="recording-overlay__hint">
-              <kbd>Space</kbd> {isTranscribing ? 'Stop' : 'Record'}
+              <kbd>Space</kbd> {isTranscribingFinal ? "Stop" : "Record"}
             </span>
             <span className="recording-overlay__hint">
               <kbd>Esc</kbd> Cancel

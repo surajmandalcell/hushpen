@@ -13,30 +13,37 @@ import TrayNotificationList from "./components/TrayNotificationList";
 import { useWindowState } from "./hooks/useWindowState";
 import { useRecording } from "./services/recordingManager";
 import { useTrayNotifications } from "./services/trayNotifications";
+import { useWebSocket } from "./hooks/useWebSocket";
 
 function App() {
   const [activeSection, setActiveSection] = useState("general");
+  const [isRecordingOverlayActive, setIsRecordingOverlayActive] =
+    useState(false);
   // Window state management is handled internally
   useWindowState();
 
   // Recording state management
-  const { state: recordingState, cancel, stop } = useRecording();
+  const { state: recordingState } = useRecording();
 
   // Tray notification state
   const { notifications } = useTrayNotifications();
+
+  // WebSocket connection (for future use)
+  useWebSocket();
+
+  // Handler to start recording
+  const startRecording = () => {
+    setIsRecordingOverlayActive(true);
+  };
 
   return (
     <div className="app-container">
       <SystemTray />
       <ToastContainer />
       <RecordingOverlay
-        isActive={recordingState.isActive || recordingState.isTranscribing}
+        isActive={isRecordingOverlayActive}
         isTranscribing={recordingState.isTranscribing}
-        transcriptionProgress={recordingState.transcriptionProgress}
-        onCancel={cancel}
-        onStop={stop}
         statusText={recordingState.statusText}
-        duration={recordingState.duration}
       />
       {notifications.length > 0 && <TrayNotificationList />}
       <div className="main-window">
@@ -44,7 +51,10 @@ function App() {
           activeSection={activeSection}
           onSectionChange={setActiveSection}
         />
-        <ContentArea activeSection={activeSection} />
+        <ContentArea
+          activeSection={activeSection}
+          onStartRecording={startRecording}
+        />
       </div>
     </div>
   );

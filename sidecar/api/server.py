@@ -2,10 +2,19 @@
 FastAPI server for ASR Pro Python Sidecar
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    UploadFile,
+    File,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import logging
+import asyncio
+import json
 
 from models import ModelManager
 from config.settings import Settings
@@ -18,6 +27,41 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ConnectionManager:
+    """WebSocket connection manager."""
+
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: dict, websocket: WebSocket):
+        try:
+            await websocket.send_text(json.dumps(message))
+        except:
+            self.disconnect(websocket)
+
+    async def broadcast(self, message: dict):
+        disconnected_connections = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message))
+            except:
+                disconnected_connections.append(connection)
+
+        # Remove disconnected connections
+        for connection in disconnected_connections:
+            self.disconnect(connection)
+
+
+connection_manager = ConnectionManager()
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -105,8 +149,31 @@ def create_app(settings: Settings) -> FastAPI:
                     status_code=400, detail="No model specified or loaded"
                 )
 
-            # Transcribe the file
-            result = await model_manager.transcribe_file(file.file, model_id)
+            # Define progress callback
+            async def progress_callback(progress: int, status: str):
+                await send_websocket_message(
+                    "transcription_progress",
+                    {"filename": file.filename, "progress": progress, "status": status},
+                )
+
+            # Send transcription start notification
+            await send_websocket_message(
+                "transcription_started", {"filename": file.filename, "model": model_id}
+            )
+
+            # Transcribe the file with progress updates
+            result = await model_manager.transcribe_file(
+                file.file, model_id, progress_callback
+            )
+
+            # Send transcription complete notification
+            await send_websocket_message(
+                "transcription_completed",
+                {
+                    "filename": file.filename,
+                    "result_length": len(result.get("text", "")),
+                },
+            )
 
             # Format response based on requested format
             if response_format == "text":
@@ -156,5 +223,24 @@ def create_app(settings: Settings) -> FastAPI:
             logger.info("Model manager cleaned up successfully")
         except Exception as e:
             logger.error(f"Failed to cleanup model manager: {e}")
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        """WebSocket endpoint for real-time updates."""
+        await connection_manager.connect(websocket)
+        try:
+            while True:
+                data = await websocket.receive_text()
+                # Handle incoming messages if needed
+                logger.debug(f"Received WebSocket message: {data}")
+        except WebSocketDisconnect:
+            connection_manager.disconnect(websocket)
+            logger.info("WebSocket client disconnected")
+
+    # Helper function to send WebSocket messages
+    async def send_websocket_message(message_type: str, data: any):
+        """Send message to all connected WebSocket clients."""
+        message = {"type": message_type, "data": data}
+        await connection_manager.broadcast(message)
 
     return app

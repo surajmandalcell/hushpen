@@ -144,12 +144,19 @@ class ModelManager:
             return None
 
     async def transcribe_file(
-        self, audio_file: BinaryIO, model_id: Optional[str] = None
+        self,
+        audio_file: BinaryIO,
+        model_id: Optional[str] = None,
+        progress_callback=None,
     ) -> Dict[str, Any]:
         try:
             target_model = model_id or self.current_model
             if not target_model:
                 raise Exception("No model specified or loaded")
+
+            # Send initial progress notification
+            if progress_callback:
+                await progress_callback(10, "Preparing model...")
 
             if target_model != self.current_model:
                 if not await self.set_model(target_model):
@@ -158,7 +165,17 @@ class ModelManager:
             if not self.current_loader:
                 raise Exception("No loader available")
 
-            return await self.current_loader.transcribe(audio_file)
+            # Send progress notification for audio conversion
+            if progress_callback:
+                await progress_callback(30, "Converting audio...")
+
+            result = await self.current_loader.transcribe(audio_file)
+
+            # Send final progress notification
+            if progress_callback:
+                await progress_callback(100, "Transcription completed")
+
+            return result
 
         except Exception as e:
             logger.error(f"Failed to transcribe file: {e}")
@@ -187,12 +204,12 @@ class ModelManager:
             # Unload all loaders in the dictionary (includes current loader if loaded)
             for model_id, loader in self.loaders.items():
                 await loader.unload()
-            
+
             # Clear all references
             self.loaders.clear()
             self.current_model = None
             self.current_loader = None
-            
+
             logger.info("All models unloaded successfully")
             return True
         except Exception as e:

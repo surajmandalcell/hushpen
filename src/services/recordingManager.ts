@@ -1,4 +1,6 @@
 // Recording state management for ASR Pro
+import { apiClient } from './api';
+
 export interface RecordingState {
   isActive: boolean;
   isTranscribing: boolean;
@@ -195,6 +197,28 @@ class RecordingManager {
   }
 
   /**
+   * Transcribe a recorded audio file
+   */
+  async transcribeFile(audioBlob: Blob): Promise<string> {
+    try {
+      this.startTranscribing();
+
+      // Convert blob to file
+      const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+
+      // Use the API client to transcribe
+      const result = await apiClient.transcribeFile(audioFile);
+
+      this.completeTranscription();
+
+      return result.text || 'No transcription result';
+    } catch (error) {
+      this.error(`Transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
+  }
+
+  /**
    * Get current recording state
    */
   getState(): RecordingState {
@@ -231,6 +255,7 @@ export const useRecording = () => {
     completeTranscription: recordingManager.completeTranscription.bind(recordingManager),
     error: recordingManager.error.bind(recordingManager),
     isActive: recordingManager.isActive.bind(recordingManager),
+    transcribeFile: recordingManager.transcribeFile.bind(recordingManager),
   };
 };
 
