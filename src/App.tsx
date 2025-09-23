@@ -20,10 +20,10 @@ function App() {
   useWindowState();
 
   // Recording state management
-  const { state: recordingState, cancel } = useRecording();
+  const { state: recordingState, cancel, stop } = useRecording();
 
   // Tray notification state
-  const { notifications, handleEvent } = useTrayNotifications();
+  const { notifications } = useTrayNotifications();
 
   return (
     <div className="app-container">
