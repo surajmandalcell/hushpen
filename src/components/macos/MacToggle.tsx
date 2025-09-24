@@ -1,5 +1,5 @@
 import React from "react";
-import "./MacToggle.css";
+
 
 export interface MacToggleProps {
   checked: boolean;

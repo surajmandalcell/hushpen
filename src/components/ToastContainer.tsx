@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { useToast } from '../services/toast';
-import './ToastContainer.css';
 
 const ToastContainer: React.FC = () => {
   const { toasts, dismiss } = useToast();
@@ -26,57 +25,64 @@ const ToastContainer: React.FC = () => {
     }
   };
 
-  const getToastStyles = (type: string) => {
+  const getToastClasses = (type: string) => {
     switch (type) {
       case 'success':
-        return { background: 'rgba(76, 175, 80, 0.9)', border: 'rgba(76, 175, 80, 0.3)' };
+        return 'toast-success';
       case 'warning':
-        return { background: 'rgba(255, 152, 0, 0.9)', border: 'rgba(255, 152, 0, 0.3)' };
+        return 'toast-warning';
       case 'error':
-        return { background: 'rgba(244, 67, 54, 0.9)', border: 'rgba(244, 67, 54, 0.3)' };
+        return 'toast-error';
       default:
-        return { background: 'rgba(33, 150, 243, 0.9)', border: 'rgba(33, 150, 243, 0.3)' };
+        return 'toast-info';
     }
   };
 
   return (
-    <div className="toast-container">
+    <div className="fixed top-4 right-4 z-50 space-y-3 pointer-events-none">
       {toasts.map((toast, index) => (
         <div
           key={toast.id}
-          className={`toast ${toast.type}`}
+          className={`${getToastClasses(toast.type)} pointer-events-auto`}
           style={{
-            transform: `translateY(${index * 10}px)`,
-            ...getToastStyles(toast.type),
+            transform: `translateY(${index * 4}px)`,
           }}
         >
-          <div className="toast__content">
-            <div className="toast__icon">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0 mt-0.5 text-current">
               {getToastIcon(toast.type)}
             </div>
 
-            <div className="toast__text">
-              <div className="toast__title">{toast.title}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-macos-text dark:text-macos-text-dark">
+                {toast.title}
+              </div>
               {toast.message && (
-                <div className="toast__message">{toast.message}</div>
+                <div className="text-sm text-macos-text-secondary mt-1">
+                  {toast.message}
+                </div>
               )}
             </div>
 
             <button
-              className="toast__close"
+              className="flex-shrink-0 p-1 -m-1 rounded-macos hover:bg-black hover:bg-opacity-10 transition-colors duration-150"
               onClick={() => dismiss(toast.id)}
               aria-label="Close notification"
             >
-              <X size={16} />
+              <X size={16} className="text-macos-text-secondary" />
             </button>
           </div>
 
           {toast.actions && toast.actions.length > 0 && (
-            <div className="toast__actions">
+            <div className="flex space-x-2 mt-3 pt-3 border-t border-current border-opacity-20">
               {toast.actions.map((action, actionIndex) => (
                 <button
                   key={actionIndex}
-                  className={`toast__action toast__action--${action.variant || 'primary'}`}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-macos transition-all duration-150 ${
+                    action.variant === 'secondary'
+                      ? 'bg-black bg-opacity-10 hover:bg-opacity-20'
+                      : 'bg-current text-white hover:opacity-90'
+                  }`}
                   onClick={action.onClick}
                 >
                   {action.label}

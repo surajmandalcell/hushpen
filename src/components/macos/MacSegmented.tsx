@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "./MacSegmented.css";
+
 
 export interface MacSegmentedOption {
   value: string;

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import "./MacModal.css";
+
 
 export interface MacModalProps {
   isOpen: boolean;

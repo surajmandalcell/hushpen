@@ -2,9 +2,7 @@ import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { usePlatform } from "./services/platform";
 import { useAccessibility } from "./services/accessibility";
-import "./App.css";
-import "./styles/platform.css";
-import "./styles/accessibility.css";
+// Removed CSS imports - now using Tailwind CSS
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -79,9 +77,12 @@ function App() {
   }, []);
 
   return (
-    <div className={`app-container ${platformInfo.getPlatformCSSClass()}`}>
+    <div className={`h-screen w-screen overflow-hidden bg-macos-bg dark:bg-macos-bg-dark transition-colors duration-200 ${platformInfo.getPlatformCSSClass()}`}>
       {/* Skip to content link for screen readers */}
-      <a href="#main-content" className="skip-to-content">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 px-4 py-2 bg-macos-blue text-white rounded-macos"
+      >
         Skip to main content
       </a>
 
@@ -93,7 +94,7 @@ function App() {
         statusText={recordingState.statusText}
       />
       {notifications.length > 0 && <TrayNotificationList />}
-      <div className="main-window" id="main-content">
+      <div className="flex h-full" id="main-content">
         <Sidebar
           activeSection={activeSection}
           onSectionChange={setActiveSection}

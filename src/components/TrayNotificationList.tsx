@@ -1,7 +1,6 @@
 import React from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info, Clock } from 'lucide-react';
 import { useTrayNotifications } from '../services/trayNotifications';
-import './TrayNotificationList.css';
 
 const TrayNotificationList: React.FC = () => {
   const { notifications, removeNotification, markAsRead } = useTrayNotifications();

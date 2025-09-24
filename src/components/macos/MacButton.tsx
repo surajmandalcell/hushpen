@@ -1,5 +1,4 @@
 import React from "react";
-import "./MacButton.css";
 
 export interface MacButtonProps {
   children: React.ReactNode;
@@ -22,11 +21,27 @@ const MacButton: React.FC<MacButtonProps> = ({
   type = "button",
   fullWidth = false,
 }) => {
+  const baseClasses = "font-medium transition-all duration-150 focus:outline-none active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+
+  const variantClasses = {
+    primary: "btn-macos",
+    secondary: "btn-macos-secondary",
+    destructive: "btn-macos-danger"
+  };
+
+  const sizeClasses = {
+    small: "px-3 py-1.5 text-sm rounded",
+    medium: "px-4 py-2 text-sm rounded-macos",
+    large: "px-6 py-3 text-base rounded-macos"
+  };
+
+  const widthClasses = fullWidth ? "w-full" : "";
+
   const buttonClasses = [
-    "mac-button",
-    `mac-button--${variant}`,
-    `mac-button--${size}`,
-    fullWidth ? "mac-button--full-width" : "",
+    baseClasses,
+    variantClasses[variant],
+    sizeClasses[size],
+    widthClasses,
     className,
   ]
     .filter(Boolean)
@@ -39,7 +54,7 @@ const MacButton: React.FC<MacButtonProps> = ({
       onClick={onClick}
       disabled={disabled}
     >
-      <span className="mac-button__content">{children}</span>
+      <span className="flex items-center justify-center">{children}</span>
     </button>
   );
 };

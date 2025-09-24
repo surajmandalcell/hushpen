@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { X, Minus, Square } from "lucide-react";
-import "./MacTrafficLights.css";
 
 interface MacTrafficLightsProps {
   onClose?: () => void;
@@ -63,40 +62,40 @@ const MacTrafficLights: React.FC<MacTrafficLightsProps> = ({
   };
 
   return (
-    <div className="mac-traffic-lights">
+    <div className="traffic-lights">
       <button
-        className="mac-traffic-light close"
+        className="traffic-light close"
         onClick={handleClose}
         onMouseEnter={() => setHoveredButton("close")}
         onMouseLeave={() => setHoveredButton(null)}
         aria-label="Close"
       >
         {(hoveredButton === "close" || showLabels) && (
-          <X size={8} className="traffic-light-icon" />
+          <X size={8} className="text-white" />
         )}
       </button>
 
       <button
-        className="mac-traffic-light minimize"
+        className="traffic-light minimize"
         onClick={handleMinimize}
         onMouseEnter={() => setHoveredButton("minimize")}
         onMouseLeave={() => setHoveredButton(null)}
         aria-label="Minimize"
       >
         {(hoveredButton === "minimize" || showLabels) && (
-          <Minus size={8} className="traffic-light-icon" />
+          <Minus size={8} className="text-white" />
         )}
       </button>
 
       <button
-        className="mac-traffic-light maximize"
+        className="traffic-light maximize"
         onClick={handleMaximize}
         onMouseEnter={() => setHoveredButton("maximize")}
         onMouseLeave={() => setHoveredButton(null)}
         aria-label="Maximize"
       >
         {(hoveredButton === "maximize" || showLabels) && (
-          <Square size={6} className="traffic-light-icon" />
+          <Square size={6} className="text-white" />
         )}
       </button>
     </div>

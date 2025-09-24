@@ -1,5 +1,4 @@
 import React from "react";
-import "./ContentArea.css";
 
 // Pages
 import GeneralPage from "../pages/GeneralPage";
@@ -44,32 +43,22 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   };
 
   return (
-    <div className="content-area">
-      <div className="content-container">
+    <div className="flex-1 bg-macos-bg dark:bg-macos-bg-dark overflow-hidden">
+      <div className="h-full p-6 scrollbar-macos overflow-y-auto">
         {onStartRecording && (
-          <div
-            style={{
-              padding: "20px",
-              borderBottom: "1px solid #3e3e42",
-              marginBottom: "20px",
-            }}
-          >
+          <div className="p-5 border-b border-macos-border dark:border-macos-border-dark mb-5">
             <button
               onClick={onStartRecording}
-              style={{
-                padding: "10px 20px",
-                background: "#007acc",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
+              className="btn-macos flex items-center space-x-2"
             >
-              🎤 Test Recording (Space to start/stop, Esc to cancel)
+              <span>🎤</span>
+              <span>Test Recording (Space to start/stop, Esc to cancel)</span>
             </button>
           </div>
         )}
-        {renderPage()}
+        <div className="animate-fade-in">
+          {renderPage()}
+        </div>
       </div>
     </div>
   );

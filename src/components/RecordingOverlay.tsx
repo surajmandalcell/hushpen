@@ -3,7 +3,6 @@ import { Mic, MicOff, Square, Loader2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useAudioRecording } from "../hooks/useAudioRecording";
 import { useRecording } from "../services/recordingManager";
-import "./RecordingOverlay.css";
 
 export interface RecordingOverlayProps {
   isActive: boolean;
@@ -179,29 +178,29 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
     >
       <div className="recording-overlay__backdrop" />
 
-      <div className="recording-overlay__content">
+      <div className="recording-content">
         {/* Status indicator */}
-        <div className="recording-overlay__status">
+        <div className="flex flex-col items-center space-y-4">
           <div
-            className={`recording-overlay__indicator ${
-              isTranscribing ? "transcribing" : "recording"
-            }`}
+            className={`flex items-center justify-center w-20 h-20 rounded-full ${
+              isTranscribing ? "bg-macos-orange" : "bg-macos-red"
+            } animate-pulse-soft`}
           >
             {isTranscribing ? (
-              <Loader2 size={32} className="recording-overlay__spinner" />
+              <Loader2 size={32} className="text-white animate-spin" />
             ) : (
-              <Mic size={32} className="recording-overlay__mic" />
+              <Mic size={32} className="text-white" />
             )}
           </div>
 
-          <div className="recording-overlay__text">
-            <h2 id="recording-status" className="recording-overlay__title">
+          <div className="text-center space-y-2">
+            <h2 id="recording-status" className="text-2xl font-semibold text-macos-text dark:text-macos-text-dark">
               {isTranscribingFinal ? "Transcribing..." : "Recording..."}
             </h2>
-            <p className="recording-overlay__subtitle" aria-live="polite">
+            <p className="text-macos-text-secondary text-lg" aria-live="polite">
               {statusText}
             </p>
-            <p className="recording-overlay__duration" aria-live="polite">
+            <p className="text-3xl font-mono font-bold text-macos-blue" aria-live="polite">
               {formatDuration(currentDuration)}
             </p>
           </div>
@@ -210,20 +209,20 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
         {/* Transcription progress */}
         {isTranscribingFinal && (
           <div
-            className="recording-overlay__progress"
+            className="w-full max-w-md space-y-2"
             role="progressbar"
             aria-valuenow={recordingState.transcriptionProgress}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label="Transcription progress"
           >
-            <div className="recording-overlay__progress-bar">
+            <div className="progress-macos">
               <div
-                className="recording-overlay__progress-fill"
+                className="progress-macos-bar"
                 style={{ width: `${recordingState.transcriptionProgress}%` }}
               />
             </div>
-            <span className="recording-overlay__progress-text">
+            <span className="text-sm text-center block text-macos-text-secondary">
               {Math.round(recordingState.transcriptionProgress)}% Complete
             </span>
           </div>
@@ -231,40 +230,42 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
         {/* Controls */}
         <div
-          className={`recording-overlay__controls ${
-            showControls ? "visible" : ""
+          className={`flex flex-col items-center space-y-4 transition-all duration-300 ${
+            showControls ? "opacity-100" : "opacity-30"
           }`}
         >
-          <div className="recording-overlay__control-group">
+          <div className="flex space-x-4">
             {isTranscribingFinal ? (
               <button
-                className="recording-overlay__control-button stop"
+                className="btn-macos-danger flex items-center space-x-2"
                 onClick={handleStop}
                 aria-label="Stop transcription"
                 aria-describedby="stop-instructions"
               >
-                <Square size={24} />
+                <Square size={20} />
                 <span>Stop (Space)</span>
               </button>
             ) : (
               <button
-                className="recording-overlay__control-button cancel"
+                className="btn-macos-secondary flex items-center space-x-2"
                 onClick={handleCancel}
                 aria-label="Cancel recording"
                 aria-describedby="cancel-instructions"
               >
-                <MicOff size={24} />
+                <MicOff size={20} />
                 <span>Cancel (Esc)</span>
               </button>
             )}
           </div>
 
-          <div className="recording-overlay__keyboard-hints">
-            <span className="recording-overlay__hint">
-              <kbd>Space</kbd> {isTranscribingFinal ? "Stop" : "Record"}
+          <div className="flex space-x-6 text-sm text-macos-text-secondary">
+            <span className="flex items-center space-x-1">
+              <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-xs">Space</kbd>
+              <span>{isTranscribingFinal ? "Stop" : "Record"}</span>
             </span>
-            <span className="recording-overlay__hint">
-              <kbd>Esc</kbd> Cancel
+            <span className="flex items-center space-x-1">
+              <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-xs">Esc</kbd>
+              <span>Cancel</span>
             </span>
           </div>
         </div>
@@ -283,9 +284,6 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
         <div id="cancel-instructions" className="sr-only">
           Cancel recording and close overlay
         </div>
-
-        {/* Pulse animation */}
-        <div className="recording-overlay__pulse" />
       </div>
     </div>
   );

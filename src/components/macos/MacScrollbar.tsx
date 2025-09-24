@@ -1,5 +1,5 @@
 import React from "react";
-import "./MacScrollbar.css";
+
 
 export interface MacScrollbarProps {
   children: React.ReactNode;

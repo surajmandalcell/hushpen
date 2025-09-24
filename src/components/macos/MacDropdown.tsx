@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
-import "./MacDropdown.css";
+
 
 export interface MacDropdownOption {
   value: string;

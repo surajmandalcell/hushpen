@@ -54,7 +54,9 @@ const TranscribePage: React.FC = () => {
           files.map(async (path) => {
             const binaryData = await fileSystemService.readBinaryFile(path);
             const fileName = path.split("/").pop() || "unknown";
-            return new File([binaryData], fileName, { type: "audio/wav" });
+            // Convert Uint8Array to ArrayBuffer for File constructor compatibility
+            const arrayBuffer = binaryData.buffer.slice(binaryData.byteOffset, binaryData.byteOffset + binaryData.byteLength);
+            return new File([arrayBuffer], fileName, { type: "audio/wav" });
           })
         );
 

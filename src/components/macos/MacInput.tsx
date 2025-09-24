@@ -1,5 +1,4 @@
 import React, { forwardRef } from "react";
-import "./MacInput.css";
 
 export interface MacInputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
@@ -29,20 +28,34 @@ const MacInput = forwardRef<HTMLInputElement, MacInputProps>(
     ref
   ) => {
     const containerClasses = [
-      "mac-input-container",
-      fullWidth ? "mac-input-container--full-width" : "",
-      disabled ? "mac-input-container--disabled" : "",
+      "space-y-2",
+      fullWidth ? "w-full" : "",
+      disabled ? "opacity-50" : "",
     ]
       .filter(Boolean)
       .join(" ");
 
+    const sizeClasses = {
+      small: "px-2 py-1 text-sm",
+      medium: "px-3 py-2 text-sm",
+      large: "px-4 py-3 text-base"
+    };
+
+    const variantClasses = {
+      default: "rounded-macos",
+      search: "rounded-full",
+      rounded: "rounded-macos-lg"
+    };
+
     const inputWrapperClasses = [
-      "mac-input-wrapper",
-      `mac-input-wrapper--${size}`,
-      `mac-input-wrapper--${variant}`,
-      error ? "mac-input-wrapper--error" : "",
-      leftIcon ? "mac-input-wrapper--has-left-icon" : "",
-      rightIcon ? "mac-input-wrapper--has-right-icon" : "",
+      "relative flex items-center",
+      sizeClasses[size],
+      variantClasses[variant],
+      "bg-white border border-macos-border",
+      "dark:bg-gray-800 dark:border-macos-border-dark",
+      "focus-within:ring-2 focus-within:ring-macos-blue focus-within:border-transparent",
+      "transition-all duration-150",
+      error ? "border-macos-red focus-within:ring-macos-red" : "",
       className,
     ]
       .filter(Boolean)
@@ -50,26 +63,34 @@ const MacInput = forwardRef<HTMLInputElement, MacInputProps>(
 
     return (
       <div className={containerClasses}>
-        {label && <label className="mac-input-label">{label}</label>}
+        {label && (
+          <label className="block text-sm font-medium text-macos-text dark:text-macos-text-dark">
+            {label}
+          </label>
+        )}
         <div className={inputWrapperClasses}>
           {leftIcon && (
-            <div className="mac-input-icon mac-input-icon--left">
+            <div className="absolute left-3 text-macos-text-secondary">
               {leftIcon}
             </div>
           )}
           <input
             ref={ref}
-            className="mac-input"
+            className={`flex-1 bg-transparent outline-none text-macos-text dark:text-macos-text-dark placeholder-macos-text-secondary ${
+              leftIcon ? "pl-8" : ""
+            } ${rightIcon ? "pr-8" : ""}`}
             disabled={disabled}
             {...props}
           />
           {rightIcon && (
-            <div className="mac-input-icon mac-input-icon--right">
+            <div className="absolute right-3 text-macos-text-secondary">
               {rightIcon}
             </div>
           )}
         </div>
-        {error && <div className="mac-input-error">{error}</div>}
+        {error && (
+          <div className="text-sm text-macos-red">{error}</div>
+        )}
       </div>
     );
   }

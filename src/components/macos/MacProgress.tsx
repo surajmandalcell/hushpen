@@ -1,5 +1,5 @@
 import React from "react";
-import "./MacProgress.css";
+
 
 export interface MacProgressProps {
   value: number; // 0-100
