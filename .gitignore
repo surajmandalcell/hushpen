@@ -60,3 +60,4 @@ venv.bak/
 new/
 MIGRATE_UI.md
 !.vscode/settings.json
+paste.md
