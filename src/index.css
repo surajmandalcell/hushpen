@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 /* Custom base styles for macOS-like appearance */
 @layer base {
   * {

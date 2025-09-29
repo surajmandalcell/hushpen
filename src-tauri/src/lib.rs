@@ -4,7 +4,6 @@ use tauri::tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutEvent, ShortcutState};
 use serde_json;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -40,8 +39,6 @@ async fn show_tray_notification(
     message: String,
     notification_type: String,
 ) -> Result<(), String> {
-    // For Tauri v2, we'll emit an event to the frontend to handle notifications
-    // since the notification API has changed significantly
     app.emit("show-notification", serde_json::json!({
         "title": title,
         "message": message,
@@ -53,31 +50,26 @@ async fn show_tray_notification(
 
 #[tauri::command]
 async fn start_recording(app: AppHandle) -> Result<(), String> {
-    // Send a message to the frontend to start recording
     app.emit("recording-start", {}).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 async fn stop_recording(app: AppHandle) -> Result<(), String> {
-    // Send a message to the frontend to stop recording
     app.emit("recording-stop", {}).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-fn handle_global_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
+fn handle_global_shortcut(app: &AppHandle, _shortcut: &Shortcut, event: ShortcutEvent) {
     match event.state {
         ShortcutState::Pressed => {
-            // Check if the main window is visible and focused
             if let Some(window) = app.get_webview_window("main") {
                 if window.is_visible().unwrap_or(false) {
-                    // If window is visible, toggle recording
                     let _ = app.emit("toggle-recording", {});
                 } else {
-                    // If window is hidden, show it first, then start recording
                     let _ = window.show();
                     let _ = window.set_focus();
-                    // Start recording after a short delay to allow window to appear
+                    let app = app.clone();
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         let _ = app.emit("recording-start", {});
@@ -155,7 +147,7 @@ pub fn run() {
         )
         .setup(|app| {
             let tray_menu = create_tray_menu(app.handle())?;
-            let tray_icon = TrayIconBuilder::new()
+            let _tray_icon = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .on_menu_event(handle_tray_menu_event)
                 .on_tray_icon_event(handle_tray_event)
