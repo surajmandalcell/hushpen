@@ -188,11 +188,6 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/v1/audio/transcriptions", tags=["Transcription"])
     async def transcribe_audio(
         request: Request,
-        file: UploadFile = File(
-            ...,
-            description="Audio or video file to transcribe (supports all FFmpeg formats: MP3, WAV, MP4, AVI, MKV, MOV, FLV, WebM, etc.)",
-            example="sample1.mp3"
-        ),
         model: Optional[str] = "whisper-base",
         response_format: str = "json",
     ):
@@ -218,37 +213,103 @@ def create_app(settings: Settings) -> FastAPI:
         - Automatic model loading if not active
         """
         try:
-            # Debug logging
+            # Get raw request data and parse multipart manually
             content_type_header = request.headers.get("content-type", "")
             logger.info(f"Request content-type header: {content_type_header}")
 
-            file_content = await file.read()
-            await file.seek(0)  # Reset file pointer
-            logger.info(f"Transcription request - filename: {file.filename}, content_type: {file.content_type}, size: {len(file_content)} bytes")
+            if "multipart/form-data" not in content_type_header:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Content-Type must be multipart/form-data for file uploads"
+                )
 
-            # Log first 100 bytes for debugging multipart issues
+            # Extract boundary from content-type
+            import re
+            boundary_match = re.search(r'boundary=([^;]+)', content_type_header)
+            if not boundary_match:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No boundary found in multipart/form-data"
+                )
+
+            boundary = boundary_match.group(1).strip()
+            logger.info(f"Multipart boundary: {boundary}")
+
+            # Get raw body
+            raw_body = await request.body()
+            logger.info(f"Raw request body size: {len(raw_body)} bytes")
+
+            if len(raw_body) < 100:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Request body too small - no file data received"
+                )
+
+            # Parse multipart data manually
+            boundary_bytes = f'--{boundary}'.encode()
+            parts = raw_body.split(boundary_bytes)
+
+            logger.info(f"Found {len(parts)} multipart parts")
+
+            file_content = None
+            filename = None
+            content_type = None
+
+            for i, part in enumerate(parts):
+                logger.info(f"Part {i}: {len(part)} bytes, preview: {part[:200]}")
+
+                if b'Content-Disposition' in part:
+                    logger.info(f"Found Content-Disposition in part {i}")
+
+                    # Extract filename - try both quoted and unquoted
+                    filename_match = re.search(rb'filename="([^"]*)"', part)
+                    if not filename_match:
+                        filename_match = re.search(rb'filename=([^;\r\n]+)', part)
+
+                    if filename_match:
+                        filename = filename_match.group(1).decode('utf-8', errors='ignore').strip()
+                        logger.info(f"Extracted filename: '{filename}'")
+
+                    # Extract content-type
+                    content_type_match = re.search(rb'Content-Type:\s*([^\r\n]+)', part, re.IGNORECASE)
+                    if content_type_match:
+                        content_type = content_type_match.group(1).decode('utf-8', errors='ignore').strip()
+                        logger.info(f"Extracted content-type: '{content_type}'")
+
+                    # Find start of file data (after headers)
+                    header_end = part.find(b'\r\n\r\n')
+                    if header_end == -1:
+                        header_end = part.find(b'\n\n')
+
+                    if header_end > -1:
+                        file_content = part[header_end + 4:]  # Skip \r\n\r\n or \n\n
+                        # Remove trailing \r\n if present
+                        if file_content.endswith(b'\r\n'):
+                            file_content = file_content[:-2]
+
+                        logger.info(f"Extracted file content: {len(file_content)} bytes")
+                        if len(file_content) > 0:
+                            break
+
+            if not file_content:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No file data found in multipart upload"
+                )
+
+            logger.info(f"Parsed multipart: filename='{filename}', content_type='{content_type}', size={len(file_content)} bytes")
+
+            # Log first 100 bytes for debugging
             if len(file_content) > 0:
                 preview = file_content[:100]
                 logger.info(f"File content preview (first 100 bytes): {preview}")
-            else:
-                logger.warning("File content is empty (0 bytes)")
 
-                # Check if we have a test file we can use as fallback for demo purposes
-                if file.filename == "sample1.mp3" or (file.filename == "filename" and "multipart/form-data" in content_type_header):
-                    logger.info("Using sample test file for demonstration")
-                    test_file_path = "sidecar/tests/test_data/sample1.mp3"
-                    try:
-                        with open(test_file_path, "rb") as test_file:
-                            file_content = test_file.read()
-                            logger.info(f"Loaded test file: {len(file_content)} bytes")
-                    except FileNotFoundError:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"No file data received and test file not found at {test_file_path}. Please upload a valid audio file."
-                        )
+            # Set default filename if not provided
+            if not filename or filename in ['', 'filename']:
+                filename = 'uploaded_file'
 
             # Validate file type - check both filename and content type
-            if not file.filename:
+            if not filename:
                 logger.error("No filename provided in upload")
                 raise HTTPException(
                     status_code=400,
@@ -256,7 +317,7 @@ def create_app(settings: Settings) -> FastAPI:
                 )
 
             # Handle cases where API docs interface sends generic filename
-            filename_lower = file.filename.lower()
+            filename_lower = filename.lower()
             # All supported audio and video extensions
             valid_audio_extensions = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac", ".wma", ".aiff", ".opus")
             valid_video_extensions = (".mp4", ".avi", ".mkv", ".mov", ".flv", ".webm", ".3gp", ".wmv", ".mpg", ".mpeg", ".m4v", ".ts", ".f4v")
@@ -284,14 +345,14 @@ def create_app(settings: Settings) -> FastAPI:
 
             # Check filename extension or content type
             is_valid_extension = filename_lower.endswith(valid_extensions)
-            is_valid_content_type = file.content_type and any(ct in file.content_type.lower() for ct in valid_content_types)
+            is_valid_content_type = content_type and any(ct in content_type.lower() for ct in valid_content_types)
 
-            # Special case: if filename is generic "filename", rely on content type
-            if file.filename == "filename" and file.content_type == "application/octet-stream":
+            # Special case: if filename is generic "filename", rely on content type or allow through
+            if filename in ["filename", "uploaded_file"] and content_type == "application/octet-stream":
                 # Allow it through - this is likely from API docs interface
                 logger.info("Generic filename detected, allowing upload from API docs interface")
             elif not is_valid_extension and not is_valid_content_type:
-                logger.error(f"Unsupported file type: {file.filename} (content-type: {file.content_type})")
+                logger.error(f"Unsupported file type: {filename} (content-type: {content_type})")
                 raise HTTPException(
                     status_code=400,
                     detail="Unsupported file type. Please upload audio files (WAV, MP3, M4A, FLAC, OGG, etc.) or video files (MP4, AVI, MKV, MOV, WebM, etc.) supported by FFmpeg.",
@@ -308,32 +369,25 @@ def create_app(settings: Settings) -> FastAPI:
             async def progress_callback(progress: int, status: str):
                 await send_websocket_message(
                     "transcription_progress",
-                    {"filename": file.filename, "progress": progress, "status": status},
+                    {"filename": filename, "progress": progress, "status": status},
                 )
 
             # Send transcription start notification
             await send_websocket_message(
-                "transcription_started", {"filename": file.filename, "model": model_id}
+                "transcription_started", {"filename": filename, "model": model_id}
             )
 
             # Create file-like object from content and transcribe
-            if len(file_content) > 0:
-                # Use the loaded content (either from upload or test file)
-                audio_file = io.BytesIO(file_content)
-                result = await model_manager.transcribe_file(
-                    audio_file, model_id, progress_callback, filename=file.filename
-                )
-            else:
-                # Use the original file object if we have content
-                result = await model_manager.transcribe_file(
-                    file.file, model_id, progress_callback, filename=file.filename
-                )
+            audio_file = io.BytesIO(file_content)
+            result = await model_manager.transcribe_file(
+                audio_file, model_id, progress_callback, filename=filename
+            )
 
             # Send transcription complete notification
             await send_websocket_message(
                 "transcription_completed",
                 {
-                    "filename": file.filename,
+                    "filename": filename,
                     "result_length": len(result.get("text", "")),
                 },
             )
