@@ -9,6 +9,7 @@ from typing import Dict, Any, BinaryIO, Optional, List
 from pathlib import Path
 
 from utils.audio_converter import convert_to_wav
+from .processors import WhisperProcessor, ParakeetProcessor
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,21 @@ class ONNXBaseLoader(ABC):
         self.model = None
         self.current_backend = None
         self.is_loaded = False
+
+        # Initialize appropriate processor based on model family
+        self.processor = self._create_processor()
+
+    def _create_processor(self):
+        """Create appropriate processor based on model family."""
+        model_family = self.config.get("family", "")
+
+        if "whisper" in model_family.lower() or "whisper" in self.model_id.lower():
+            return WhisperProcessor(self.model_id)
+        elif "parakeet" in model_family.lower() or "parakeet" in self.model_id.lower():
+            return ParakeetProcessor(self.model_id)
+        else:
+            # Default to whisper processor for unknown models
+            return WhisperProcessor(self.model_id)
 
     async def load(self) -> bool:
         """Load the ONNX model attempting GPU-first with CPU fallback."""
@@ -220,7 +236,9 @@ class ONNXBaseLoader(ABC):
                                 "real_time_factor": round(duration_seconds / total_time, 2)
                             }
                         })
-                        return result
+
+                        # Process result through model-specific processor
+                        return self.processor.process_result(result, duration_seconds, start_time)
 
                 # Standard transcription for non-Parakeet models or short audio
                 transcription_start = time.time()
@@ -244,7 +262,7 @@ class ONNXBaseLoader(ABC):
 
                 total_time = time.time() - start_time
 
-                return {
+                raw_result = {
                     "text": text,
                     "segments": segments,
                     "language": "en",
@@ -260,6 +278,9 @@ class ONNXBaseLoader(ABC):
                         "real_time_factor": round(duration_seconds / total_time, 2)
                     }
                 }
+
+                # Process result through model-specific processor
+                return self.processor.process_result(raw_result, duration_seconds, start_time)
 
             finally:
                 # Clean up temporary WAV file
@@ -372,6 +393,7 @@ class ONNXBaseLoader(ABC):
         total_chunk_time = time.time() - chunk_start_time
         total_transcription_time = sum(timing["ai_processing_time"] for timing in chunk_timings)
 
+        # Return raw result that will be processed by the processor
         return {
             "text": full_text,
             "segments": segments,

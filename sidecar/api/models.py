@@ -33,3 +33,5 @@ class TranscriptionResponse(BaseModel):
     language_probability: Optional[float] = None
     duration: Optional[float] = None
     segments: Optional[List[dict]] = None
+    metadata: Optional[dict] = None
+    specials: Optional[List[dict]] = None
