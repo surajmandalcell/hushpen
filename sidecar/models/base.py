@@ -184,7 +184,23 @@ class ONNXBaseLoader(ABC):
             wav_path = convert_to_wav(audio_file, target_sample_rate=16000, original_filename=filename)
 
             try:
-                # Transcribe using ONNX model
+                # Check if this is a Parakeet model and audio is long
+                is_parakeet = "parakeet" in self.model_id.lower()
+
+                if is_parakeet:
+                    # Get audio duration to check if chunking is needed
+                    import librosa
+                    audio_data, sample_rate = librosa.load(wav_path, sr=16000)
+                    duration_seconds = len(audio_data) / sample_rate
+
+                    logger.info(f"Audio duration: {duration_seconds:.1f}s, Parakeet model: {is_parakeet}")
+
+                    # If audio is longer than 5 minutes, chunk it for Parakeet
+                    if duration_seconds > 300:  # 5 minutes
+                        logger.info("Audio too long for Parakeet, chunking into smaller segments")
+                        return self._transcribe_chunked_parakeet(wav_path, backend, duration_seconds)
+
+                # Standard transcription for non-Parakeet models or short audio
                 transcription = self.model.recognize(wav_path)
 
                 # Extract text
@@ -216,6 +232,96 @@ class ONNXBaseLoader(ABC):
                 f"Failed to transcribe with ONNX {self.model_id} ({backend}): {e}"
             )
             raise
+
+    def _transcribe_chunked_parakeet(self, wav_path: str, backend: str, total_duration: float) -> Dict[str, Any]:
+        """Transcribe long audio by chunking it for Parakeet models."""
+        import librosa
+        import soundfile as sf
+        import tempfile
+
+        # Load full audio
+        audio_data, sample_rate = librosa.load(wav_path, sr=16000)
+
+        # Chunk into 4-minute segments with 30-second overlap
+        chunk_duration = 4 * 60  # 4 minutes in seconds
+        overlap = 30  # 30 seconds overlap
+        chunk_samples = chunk_duration * sample_rate
+        overlap_samples = overlap * sample_rate
+
+        transcribed_chunks = []
+        segments = []
+
+        start_sample = 0
+        chunk_index = 0
+
+        while start_sample < len(audio_data):
+            end_sample = min(start_sample + chunk_samples, len(audio_data))
+            chunk_audio = audio_data[start_sample:end_sample]
+
+            # Skip chunks that are too small (less than 1 second)
+            if len(chunk_audio) < sample_rate:
+                logger.info(f"Skipping chunk {chunk_index + 1} - too small ({len(chunk_audio)} samples)")
+                break
+
+            # Save chunk to temporary file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_chunk:
+                sf.write(temp_chunk.name, chunk_audio, sample_rate)
+                chunk_path = temp_chunk.name
+
+            try:
+                # Transcribe chunk
+                logger.info(f"Transcribing chunk {chunk_index + 1} ({start_sample/sample_rate:.1f}s - {end_sample/sample_rate:.1f}s)")
+                chunk_transcription = self.model.recognize(chunk_path)
+
+                chunk_text = (
+                    chunk_transcription
+                    if isinstance(chunk_transcription, str)
+                    else str(chunk_transcription)
+                )
+
+                if chunk_text.strip():  # Only add non-empty transcriptions
+                    transcribed_chunks.append(chunk_text)
+                    segments.append({
+                        "start": start_sample / sample_rate,
+                        "end": end_sample / sample_rate,
+                        "text": chunk_text
+                    })
+
+            except Exception as e:
+                logger.warning(f"Failed to transcribe chunk {chunk_index + 1}: {e}")
+                # Continue with next chunk
+            finally:
+                # Clean up chunk file
+                if os.path.exists(chunk_path):
+                    os.unlink(chunk_path)
+
+            # FIXED: Move to next chunk properly - if we're at the end, stop
+            if end_sample >= len(audio_data):
+                logger.info(f"Reached end of audio at chunk {chunk_index + 1}")
+                break
+
+            # Move to next chunk with overlap
+            next_start = end_sample - overlap_samples
+
+            # Prevent infinite loop - if next start isn't moving forward, break
+            if next_start <= start_sample:
+                logger.info(f"Next chunk would not advance (next={next_start}, current={start_sample}), stopping")
+                break
+
+            start_sample = next_start
+            chunk_index += 1
+
+        # Combine all transcriptions
+        full_text = " ".join(transcribed_chunks)
+
+        return {
+            "text": full_text,
+            "segments": segments,
+            "language": "en",
+            "language_probability": 1.0,
+            "duration": total_duration,
+            "backend": backend,
+        }
 
     async def transcribe_cuda(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
         return self._transcribe_common(audio_file, "cuda", filename=filename)
