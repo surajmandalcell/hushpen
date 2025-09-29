@@ -176,12 +176,18 @@ class ONNXBaseLoader(ABC):
 
     def _transcribe_common(self, audio_file: BinaryIO, backend: str, filename: Optional[str] = None) -> Dict[str, Any]:
         """Common transcription logic for all backends."""
+        import time
+
         if not self.is_ready():
             raise Exception("Model not loaded")
 
+        start_time = time.time()
+
         try:
             # Convert audio to WAV format
+            conversion_start = time.time()
             wav_path = convert_to_wav(audio_file, target_sample_rate=16000, original_filename=filename)
+            conversion_time = time.time() - conversion_start
 
             try:
                 # Check if this is a Parakeet model and audio is long
@@ -198,10 +204,33 @@ class ONNXBaseLoader(ABC):
                     # If audio is longer than 5 minutes, chunk it for Parakeet
                     if duration_seconds > 300:  # 5 minutes
                         logger.info("Audio too long for Parakeet, chunking into smaller segments")
-                        return self._transcribe_chunked_parakeet(wav_path, backend, duration_seconds)
+                        transcription_start = time.time()
+                        result = self._transcribe_chunked_parakeet(wav_path, backend, duration_seconds)
+                        transcription_time = time.time() - transcription_start
+
+                        # Add timing metadata
+                        total_time = time.time() - start_time
+                        result.update({
+                            "timing": {
+                                "total_processing_time": round(total_time, 2),
+                                "audio_conversion_time": round(conversion_time, 2),
+                                "ai_transcription_time": round(transcription_time, 2),
+                                "chunks_processed": len(result.get("segments", [])),
+                                "audio_duration_seconds": duration_seconds,
+                                "real_time_factor": round(duration_seconds / total_time, 2)
+                            }
+                        })
+                        return result
 
                 # Standard transcription for non-Parakeet models or short audio
+                transcription_start = time.time()
                 transcription = self.model.recognize(wav_path)
+                transcription_time = time.time() - transcription_start
+
+                # Get audio duration for metadata
+                import librosa
+                audio_data, sample_rate = librosa.load(wav_path, sr=16000)
+                duration_seconds = len(audio_data) / sample_rate
 
                 # Extract text
                 text = (
@@ -211,15 +240,25 @@ class ONNXBaseLoader(ABC):
                 )
 
                 # Create segments (ONNX models don't provide timestamps by default)
-                segments = [{"start": 0.0, "end": 0.0, "text": text}]
+                segments = [{"start": 0.0, "end": duration_seconds, "text": text}]
+
+                total_time = time.time() - start_time
 
                 return {
                     "text": text,
                     "segments": segments,
                     "language": "en",
                     "language_probability": 1.0,
-                    "duration": 0.0,
+                    "duration": duration_seconds,
                     "backend": backend,
+                    "timing": {
+                        "total_processing_time": round(total_time, 2),
+                        "audio_conversion_time": round(conversion_time, 2),
+                        "ai_transcription_time": round(transcription_time, 2),
+                        "chunks_processed": 1,
+                        "audio_duration_seconds": duration_seconds,
+                        "real_time_factor": round(duration_seconds / total_time, 2)
+                    }
                 }
 
             finally:
@@ -238,6 +277,9 @@ class ONNXBaseLoader(ABC):
         import librosa
         import soundfile as sf
         import tempfile
+        import time
+
+        chunk_start_time = time.time()
 
         # Load full audio
         audio_data, sample_rate = librosa.load(wav_path, sr=16000)
@@ -250,6 +292,7 @@ class ONNXBaseLoader(ABC):
 
         transcribed_chunks = []
         segments = []
+        chunk_timings = []
 
         start_sample = 0
         chunk_index = 0
@@ -269,15 +312,27 @@ class ONNXBaseLoader(ABC):
                 chunk_path = temp_chunk.name
 
             try:
-                # Transcribe chunk
+                # Transcribe chunk with timing
+                chunk_transcription_start = time.time()
                 logger.info(f"Transcribing chunk {chunk_index + 1} ({start_sample/sample_rate:.1f}s - {end_sample/sample_rate:.1f}s)")
                 chunk_transcription = self.model.recognize(chunk_path)
+                chunk_transcription_time = time.time() - chunk_transcription_start
 
                 chunk_text = (
                     chunk_transcription
                     if isinstance(chunk_transcription, str)
                     else str(chunk_transcription)
                 )
+
+                # Record chunk timing info
+                chunk_timings.append({
+                    "chunk_index": chunk_index + 1,
+                    "start_time_seconds": start_sample / sample_rate,
+                    "end_time_seconds": end_sample / sample_rate,
+                    "chunk_duration_seconds": (end_sample - start_sample) / sample_rate,
+                    "ai_processing_time": round(chunk_transcription_time, 2),
+                    "word_count": len(chunk_text.split()) if chunk_text.strip() else 0
+                })
 
                 if chunk_text.strip():  # Only add non-empty transcriptions
                     transcribed_chunks.append(chunk_text)
@@ -314,6 +369,9 @@ class ONNXBaseLoader(ABC):
         # Combine all transcriptions
         full_text = " ".join(transcribed_chunks)
 
+        total_chunk_time = time.time() - chunk_start_time
+        total_transcription_time = sum(timing["ai_processing_time"] for timing in chunk_timings)
+
         return {
             "text": full_text,
             "segments": segments,
@@ -321,6 +379,17 @@ class ONNXBaseLoader(ABC):
             "language_probability": 1.0,
             "duration": total_duration,
             "backend": backend,
+            "chunking_stats": {
+                "total_chunks": len(chunk_timings),
+                "successful_chunks": len(transcribed_chunks),
+                "chunk_duration_seconds": chunk_duration,
+                "overlap_seconds": overlap,
+                "chunk_details": chunk_timings,
+                "total_word_count": sum(timing["word_count"] for timing in chunk_timings),
+                "avg_ai_time_per_chunk": round(total_transcription_time / len(chunk_timings), 2) if chunk_timings else 0,
+                "fastest_chunk_ai_time": min(timing["ai_processing_time"] for timing in chunk_timings) if chunk_timings else 0,
+                "slowest_chunk_ai_time": max(timing["ai_processing_time"] for timing in chunk_timings) if chunk_timings else 0,
+            }
         }
 
     async def transcribe_cuda(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
