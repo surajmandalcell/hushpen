@@ -91,13 +91,28 @@ def main():
 
         logger.info(f"Starting server on {host}:{port}")
 
-        # Start the server
+        # Start the server with graceful shutdown
         import uvicorn
+        import signal
 
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        def signal_handler(signum, frame):
+            logger.info("Received shutdown signal, gracefully shutting down...")
+            sys.exit(0)
+
+        # Register signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            access_log=False  # Reduce log noise
+        )
 
     except KeyboardInterrupt:
-        logger.info("Shutting down...")
+        logger.info("Gracefully shutting down...")
     except Exception as e:
         logger.error(f"Error starting sidecar: {e}")
         sys.exit(1)

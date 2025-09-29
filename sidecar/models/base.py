@@ -174,14 +174,14 @@ class ONNXBaseLoader(ABC):
             logger.error(f"Failed to unload ONNX {self.model_id} model: {e}")
             return False
 
-    def _transcribe_common(self, audio_file: BinaryIO, backend: str) -> Dict[str, Any]:
+    def _transcribe_common(self, audio_file: BinaryIO, backend: str, filename: Optional[str] = None) -> Dict[str, Any]:
         """Common transcription logic for all backends."""
         if not self.is_ready():
             raise Exception("Model not loaded")
 
         try:
             # Convert audio to WAV format
-            wav_path = convert_to_wav(audio_file, target_sample_rate=16000)
+            wav_path = convert_to_wav(audio_file, target_sample_rate=16000, original_filename=filename)
 
             try:
                 # Transcribe using ONNX model
@@ -217,30 +217,30 @@ class ONNXBaseLoader(ABC):
             )
             raise
 
-    async def transcribe_cuda(self, audio_file: BinaryIO) -> Dict[str, Any]:
-        return self._transcribe_common(audio_file, "cuda")
+    async def transcribe_cuda(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
+        return self._transcribe_common(audio_file, "cuda", filename=filename)
 
-    async def transcribe_mps(self, audio_file: BinaryIO) -> Dict[str, Any]:
-        return self._transcribe_common(audio_file, "mps")
+    async def transcribe_mps(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
+        return self._transcribe_common(audio_file, "mps", filename=filename)
 
-    async def transcribe_vulkan(self, audio_file: BinaryIO) -> Dict[str, Any]:
-        return self._transcribe_common(audio_file, "vulkan")
+    async def transcribe_vulkan(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
+        return self._transcribe_common(audio_file, "vulkan", filename=filename)
 
-    async def transcribe_cpu(self, audio_file: BinaryIO) -> Dict[str, Any]:
-        return self._transcribe_common(audio_file, "cpu")
+    async def transcribe_cpu(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
+        return self._transcribe_common(audio_file, "cpu", filename=filename)
 
-    async def transcribe_directml(self, audio_file: BinaryIO) -> Dict[str, Any]:
-        return self._transcribe_common(audio_file, "directml")
+    async def transcribe_directml(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
+        return self._transcribe_common(audio_file, "directml", filename=filename)
 
-    async def transcribe(self, audio_file: BinaryIO) -> Dict[str, Any]:
+    async def transcribe(self, audio_file: BinaryIO, filename: Optional[str] = None) -> Dict[str, Any]:
         backend = self.current_backend or self.config.get("backend", "cpu")
         if backend == "cuda":
-            return await self.transcribe_cuda(audio_file)
+            return await self.transcribe_cuda(audio_file, filename=filename)
         if backend == "mps":
-            return await self.transcribe_mps(audio_file)
+            return await self.transcribe_mps(audio_file, filename=filename)
         if backend == "directml":
-            return await self.transcribe_directml(audio_file)
-        return await self.transcribe_cpu(audio_file)
+            return await self.transcribe_directml(audio_file, filename=filename)
+        return await self.transcribe_cpu(audio_file, filename=filename)
 
     def is_ready(self) -> bool:
         return self.is_loaded

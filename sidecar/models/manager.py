@@ -148,6 +148,7 @@ class ModelManager:
         audio_file: BinaryIO,
         model_id: Optional[str] = None,
         progress_callback=None,
+        filename: Optional[str] = None,
     ) -> Dict[str, Any]:
         try:
             target_model = model_id or self.current_model
@@ -169,7 +170,7 @@ class ModelManager:
             if progress_callback:
                 await progress_callback(30, "Converting audio...")
 
-            result = await self.current_loader.transcribe(audio_file)
+            result = await self.current_loader.transcribe(audio_file, filename=filename)
 
             # Send final progress notification
             if progress_callback:
