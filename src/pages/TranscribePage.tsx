@@ -1,13 +1,17 @@
-import React, { useState } from "react";
-import { Upload, FileAudio, FolderOpen } from "lucide-react";
+import React, { useState, useId } from "react";
+import { Upload, FileAudio, FolderOpen, Container, Clock } from "lucide-react";
 import { fileSystemService } from "../services/fileSystem";
-import { apiClient } from "../services/api";
+import { apiClient, TranscriptionResponse } from "../services/api";
+import { webSocketService } from "../services/websocket";
 
 const TranscribePage: React.FC = () => {
+  const fileInputId = useId();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState("");
+  const [transcriptionResults, setTranscriptionResults] = useState<TranscriptionResponse[]>([]);
+  const [currentModel, setCurrentModel] = useState("");
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -84,6 +88,14 @@ const TranscribePage: React.FC = () => {
           const result = await apiClient.transcribeFile(file);
           console.log(`Transcription completed for ${file.name}:`, result);
 
+          // Update the current model if available
+          if (result.model_id) {
+            setCurrentModel(result.model_id);
+          }
+
+          // Store the transcription result
+          setTranscriptionResults(prev => [...prev, result]);
+
           // Save the transcription result
           if (result.text) {
             await fileSystemService.saveFileDialog(
@@ -122,13 +134,32 @@ const TranscribePage: React.FC = () => {
       <div className="settings-section">
         <h2 className="section-title">File Upload</h2>
 
-        <div
+        <button
+          type="button"
           className={`drop-zone ${isDragging ? "dragging" : ""} ${
             isProcessing ? "processing" : ""
           }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onClick={() => document.getElementById(fileInputId)?.click()}
+          disabled={isProcessing}
+          aria-label="Drop zone for audio files"
+          style={{
+            border: '2px dashed var(--border-color)',
+            borderRadius: 'var(--border-radius)',
+            padding: '48px 24px',
+            textAlign: 'center',
+            background: isProcessing 
+              ? 'linear-gradient(135deg, var(--card-bg) 0%, var(--secondary-bg) 100%)'
+              : isDragging 
+                ? 'linear-gradient(135deg, rgba(0, 122, 204, 0.2) 0%, var(--card-bg) 100%)'
+                : 'linear-gradient(135deg, var(--card-bg) 0%, var(--secondary-bg) 100%)',
+            transition: 'all 0.3s ease',
+            cursor: isProcessing ? 'default' : 'pointer',
+            width: '100%',
+            display: 'block'
+          }}
         >
           {isProcessing ? (
             <div className="processing-content">
@@ -153,10 +184,10 @@ const TranscribePage: React.FC = () => {
                 accept="audio/*,.wav,.mp3,.m4a,.flac"
                 onChange={handleFileSelect}
                 style={{ display: "none" }}
-                id="file-input"
+                id={fileInputId}
               />
               <label
-                htmlFor="file-input"
+                htmlFor={fileInputId}
                 className="button"
                 style={{ marginTop: "16px" }}
               >
@@ -164,6 +195,7 @@ const TranscribePage: React.FC = () => {
                 Browse Files
               </label>
               <button
+                type="button"
                 className="button"
                 style={{ marginTop: "16px" }}
                 onClick={handleNativeFileDialog}
@@ -182,7 +214,92 @@ const TranscribePage: React.FC = () => {
               </p>
             </div>
           )}
-        </div>
+        </button>
+      </div>
+
+      <div className="settings-section">
+        <h2 className="section-title">Transcription Results</h2>
+        
+        {transcriptionResults.length > 0 && (
+          <div style={{ marginTop: '16px' }}>
+            {transcriptionResults.map((result, index) => (
+              <div key={`transcription-${index}-${result.text?.substring(0, 10)}`} className="setting-row" style={{
+                padding: '12px', 
+                backgroundColor: 'var(--secondary-bg)', 
+                borderRadius: 'var(--border-radius)',
+                marginBottom: '12px'
+              }}>
+                <div className="setting-info">
+                  <h3 className="setting-label" style={{ marginBottom: '8px' }}>
+                    Transcription Result
+                  </h3>
+                  <p className="setting-description" style={{ 
+                    fontSize: '14px', 
+                    lineHeight: '1.5',
+                    marginBottom: '8px'
+                  }}>
+                    {result.text}
+                  </p>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '12px' }}>
+                    {result.model_id && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Container size={14} color="var(--secondary-text)" />
+                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
+                          Model: {result.model_id}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {result.backend && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Container size={14} color="var(--secondary-text)" />
+                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
+                          Backend: {result.backend}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {result.processing_time && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={14} color="var(--secondary-text)" />
+                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
+                          Processing time: {result.processing_time.toFixed(2)}s
+                        </span>
+                      </div>
+                    )}
+                    
+                    {result.container_info?.status && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Container size={14} color="var(--secondary-text)" />
+                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
+                          Container status: {result.container_info.status}
+                          {result.container_info.gpu_allocated && " (GPU)"}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {result.language && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
+                          Language: {result.language}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {result.duration && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
+                          Duration: {result.duration.toFixed(2)}s
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="settings-section">
@@ -212,106 +329,13 @@ const TranscribePage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <button className="button">
+            <button type="button" className="button">
               <FolderOpen size={16} style={{ marginRight: "6px" }} />
               Choose Folder
             </button>
           </div>
         </div>
       </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        .drop-zone {
-          border: 2px dashed var(--border-color);
-          border-radius: var(--border-radius);
-          padding: 48px 24px;
-          text-align: center;
-          background: linear-gradient(
-            135deg,
-            var(--card-bg) 0%,
-            var(--secondary-bg) 100%
-          );
-          transition: all 0.3s ease;
-          cursor: pointer;
-        }
-
-        .drop-zone:hover,
-        .drop-zone.dragging {
-          border-color: var(--accent-blue);
-          background: linear-gradient(
-            135deg,
-            rgba(0, 122, 204, 0.2) 0%,
-            var(--card-bg) 100%
-          );
-        }
-
-        .drop-zone.processing {
-          border-color: var(--success-green);
-          cursor: default;
-        }
-
-        .drop-content,
-        .processing-content {
-          color: var(--primary-text);
-        }
-
-        .drop-icon,
-        .processing-icon {
-          margin-bottom: 16px;
-          color: var(--secondary-text);
-        }
-
-        .processing-icon {
-          animation: pulse 2s infinite;
-          color: var(--accent-blue);
-        }
-
-        @keyframes pulse {
-          0%,
-          100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-
-        .drop-content h3,
-        .processing-content h3 {
-          font-size: 18px;
-          font-weight: 600;
-          margin: 0 0 8px 0;
-        }
-
-        .drop-content p,
-        .processing-content p {
-          color: var(--secondary-text);
-          margin: 0;
-        }
-
-        .progress-bar {
-          width: 100%;
-          height: 8px;
-          background-color: var(--border-color);
-          border-radius: 4px;
-          margin: 16px 0 8px 0;
-          overflow: hidden;
-        }
-
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(
-            90deg,
-            var(--accent-blue),
-            var(--success-green)
-          );
-          transition: width 0.3s ease;
-        }
-        `,
-        }}
-      />
     </div>
   );
 };

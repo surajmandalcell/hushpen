@@ -36,6 +36,15 @@ export interface TranscriptionResponse {
         end: number;
         text: string;
     }>;
+    // Docker-specific fields
+    model_id?: string;
+    processing_time?: number;
+    backend?: string;
+    container_info?: {
+        status?: string;
+        gpu_allocated?: boolean;
+        image?: string;
+    };
 }
 
 export interface ApiError {

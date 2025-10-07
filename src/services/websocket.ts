@@ -1,7 +1,22 @@
 // WebSocket service for real-time communication with Python sidecar
 export interface WebSocketMessage {
-    type: 'transcription_progress' | 'transcription_started' | 'transcription_completed' | 'model_status' | 'error' | 'info';
+    type: 'transcription_progress' | 'transcription_started' | 'transcription_completed' | 'transcription_error' |
+          'model_status' | 'container_status' | 'system_status' | 'error' | 'info' | 'ping' | 'pong';
     data: any;
+}
+
+export interface ContainerStatusData {
+    model_id?: string;
+    status?: string;
+    gpu_allocated?: boolean;
+    image?: string;
+}
+
+export interface SystemStatusData {
+    docker_available?: boolean;
+    gpu_available?: boolean;
+    current_model?: string;
+    models?: string[];
 }
 
 class WebSocketService {
@@ -113,6 +128,8 @@ import React from 'react';
 
 export const useWebSocket = () => {
     const [isConnected, setIsConnected] = React.useState(false);
+    const [containerStatuses, setContainerStatuses] = React.useState<Record<string, ContainerStatusData>>({});
+    const [systemStatus, setSystemStatus] = React.useState<SystemStatusData>({});
 
     React.useEffect(() => {
         const checkConnection = () => {
@@ -122,6 +139,43 @@ export const useWebSocket = () => {
         const unsubscribe = webSocketService.subscribe((message) => {
             // Handle WebSocket messages
             console.log('WebSocket message:', message);
+            
+            switch (message.type) {
+                case 'container_status': {
+                    const containerData = message.data as ContainerStatusData;
+                    if (containerData.model_id) {
+                        setContainerStatuses(prev => ({
+                            ...prev,
+                            [containerData.model_id]: containerData
+                        }));
+                    }
+                    break;
+                }
+                    
+                case 'system_status':
+                    setSystemStatus(message.data as SystemStatusData);
+                    break;
+                    
+                case 'transcription_started':
+                    console.log('Transcription started:', message.data);
+                    break;
+                    
+                case 'transcription_progress':
+                    console.log('Transcription progress:', message.data);
+                    break;
+                    
+                case 'transcription_completed':
+                    console.log('Transcription completed:', message.data);
+                    break;
+                    
+                case 'transcription_error':
+                    console.error('Transcription error:', message.data);
+                    break;
+                    
+                default:
+                    // Handle other message types
+                    break;
+            }
         });
 
         const interval = setInterval(checkConnection, 1000);
@@ -134,6 +188,8 @@ export const useWebSocket = () => {
 
     return {
         isConnected,
+        containerStatuses,
+        systemStatus,
         send: webSocketService.send.bind(webSocketService),
     };
 };

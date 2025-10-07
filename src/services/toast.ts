@@ -38,7 +38,9 @@ class ToastService {
    * Notify all listeners of changes
    */
   private notifyListeners(): void {
-    this.listeners.forEach(listener => listener([...this.toasts]));
+      this.listeners.forEach(listener => {
+          listener([...this.toasts]);
+      });
   }
 
   /**
@@ -125,6 +127,58 @@ class ToastService {
 
 // Export singleton instance
 export const toastService = new ToastService();
+
+// Helper functions for Docker-specific notifications
+export const dockerNotifications = {
+  containerStarted: (modelName: string) =>
+    toastService.success(
+      "Container Started",
+      `Docker container for ${modelName} is now running.`,
+      { duration: 3000 }
+    ),
+    
+  containerStopped: (modelName: string) =>
+    toastService.info(
+      "Container Stopped",
+      `Docker container for ${modelName} has been stopped.`,
+      { duration: 3000 }
+    ),
+    
+  containerError: (modelName: string, error: string) =>
+    toastService.error(
+      "Container Error",
+      `Error with ${modelName} container: ${error}`,
+      { duration: 5000 }
+    ),
+    
+  dockerUnavailable: () =>
+    toastService.error(
+      "Docker Unavailable",
+      "Docker is not available. Model functionality may be limited.",
+      { persistent: true }
+    ),
+    
+  gpuAllocated: (modelName: string) =>
+    toastService.success(
+      "GPU Allocated",
+      `GPU resources have been allocated for ${modelName}.`,
+      { duration: 3000 }
+    ),
+    
+  transcriptionCompleted: (filename: string, processingTime: number) =>
+    toastService.success(
+      "Transcription Completed",
+      `Successfully transcribed ${filename} in ${processingTime.toFixed(2)}s.`,
+      { duration: 4000 }
+    ),
+    
+  transcriptionError: (filename: string, error: string) =>
+    toastService.error(
+      "Transcription Failed",
+      `Failed to transcribe ${filename}: ${error}`,
+      { duration: 5000 }
+    )
+};
 
 // Export hook for React components
 export const useToast = () => {

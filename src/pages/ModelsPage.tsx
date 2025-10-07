@@ -1,22 +1,83 @@
-import React, { useState } from "react";
-import { Download, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Download, CheckCircle, Clock, AlertCircle, Container } from "lucide-react";
+import { apiClient, Model } from "../services/api";
+import { webSocketService, ContainerStatusData } from "../services/websocket";
 
 const ModelsPage: React.FC = () => {
   const [currentModel, setCurrentModel] = useState("whisper-base");
   const [language, setLanguage] = useState("auto");
-  const [processingDevice, setProcessingDevice] = useState("cpu");
+  const [processingDevice, setProcessingDevice] = useState("Docker container");
   const [realTimeProcessing, setRealTimeProcessing] = useState(true);
+  const [availableModels, setAvailableModels] = useState<Model[]>([]);
+  const [containerStatuses, setContainerStatuses] = useState<Record<string, ContainerStatusData>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [dockerAvailable, setDockerAvailable] = useState(true);
+  const [gpuAvailable, setGpuAvailable] = useState(false);
 
-  const availableModels = [
-    { id: "whisper-tiny", name: "Whisper Tiny", size: "39M", status: "ready" },
-    { id: "whisper-base", name: "Whisper Base", size: "74M", status: "ready" },
-    {
-      id: "whisper-large",
-      name: "Whisper Large",
-      size: "1550M",
-      status: "downloading",
-    },
-  ];
+  // Fetch models from API on component mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const response = await apiClient.listModels();
+        setAvailableModels(response.data);
+      } catch (error) {
+        console.error("Failed to fetch models:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const fetchHealth = async () => {
+      try {
+        const health = await apiClient.healthCheck();
+        setProcessingDevice(health.device || "Docker container");
+        if (health.status === "unhealthy") {
+          setDockerAvailable(false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch health status:", error);
+        setDockerAvailable(false);
+      }
+    };
+
+    fetchModels();
+    fetchHealth();
+
+    // Subscribe to WebSocket for container status updates
+    const unsubscribe = webSocketService.subscribe((message) => {
+      if (message.type === "container_status") {
+        const data = message.data as ContainerStatusData;
+        if (data.model_id) {
+          setContainerStatuses(prev => ({
+            ...prev,
+            [data.model_id]: data
+          }));
+        }
+      } else if (message.type === "system_status") {
+        const data = message.data;
+        setGpuAvailable(data.gpu_available || false);
+        setDockerAvailable(data.docker_available !== false);
+        setProcessingDevice(data.gpu_available ? "Docker container (GPU)" : "Docker container (CPU)");
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Handle model selection
+  const handleModelSelect = async (modelId: string) => {
+    try {
+      setIsLoading(true);
+      await apiClient.setModel(modelId);
+      setCurrentModel(modelId);
+    } catch (error) {
+      console.error(`Failed to set model to ${modelId}:`, error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const languages = [
     { id: "auto", name: "Auto-detect" },
@@ -31,20 +92,30 @@ const ModelsPage: React.FC = () => {
     { id: "zh", name: "Chinese" },
   ];
 
-  const devices = [
-    { id: "cpu", name: "CPU" },
-    { id: "cuda", name: "GPU (CUDA)" },
-    { id: "metal", name: "GPU (Metal)" },
-  ];
-
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Models & Dictation Engine</h1>
         <p className="page-description">
           Configure AI models, language settings, and processing options for
-          speech recognition.
+          speech recognition. Models are running in Docker containers.
         </p>
+        {!dockerAvailable && (
+          <div className="warning-banner" style={{ 
+            backgroundColor: 'var(--warning-bg)', 
+            padding: '12px', 
+            borderRadius: 'var(--border-radius)', 
+            marginTop: '16px',
+            border: '1px solid var(--warning-border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={16} color="var(--warning-yellow)" />
+              <span style={{ color: 'var(--warning-text)' }}>
+                Docker is not available. Model functionality may be limited.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="settings-section">
@@ -65,7 +136,7 @@ const ModelsPage: React.FC = () => {
             >
               {availableModels.map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.name} ({model.size})
+                  {model.id}
                 </option>
               ))}
             </select>
@@ -102,17 +173,29 @@ const ModelsPage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <select
-              className="dropdown"
-              value={processingDevice}
-              onChange={(e) => setProcessingDevice(e.target.value)}
-            >
-              {devices.map((device) => (
-                <option key={device.id} value={device.id}>
-                  {device.name}
-                </option>
-              ))}
-            </select>
+            <output className="device-info" style={{
+              padding: '8px 12px',
+              backgroundColor: 'var(--secondary-bg)',
+              borderRadius: 'var(--border-radius)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <Container size={16} color="var(--secondary-text)" />
+              <span>{processingDevice}</span>
+              {gpuAvailable && (
+                <span style={{ 
+                  marginLeft: '8px', 
+                  padding: '2px 6px', 
+                  backgroundColor: 'var(--success-bg)', 
+                  color: 'var(--success-green)', 
+                  borderRadius: '4px',
+                  fontSize: '12px'
+                }}>
+                  GPU
+                </span>
+              )}
+            </output>
           </div>
         </div>
 
@@ -124,9 +207,18 @@ const ModelsPage: React.FC = () => {
             </p>
           </div>
           <div className="setting-control">
-            <div
+            <button
+              type="button"
               className={`toggle-switch ${realTimeProcessing ? "active" : ""}`}
               onClick={() => setRealTimeProcessing(!realTimeProcessing)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setRealTimeProcessing(!realTimeProcessing);
+                }
+              }}
+              aria-pressed={realTimeProcessing}
+              aria-label="Toggle real-time processing"
             />
           </div>
         </div>
@@ -135,59 +227,98 @@ const ModelsPage: React.FC = () => {
       <div className="settings-section">
         <h2 className="section-title">Available Models</h2>
 
-        {availableModels.map((model) => {
-          const getStatusIcon = () => {
-            switch (model.status) {
-              case "ready":
-                return <CheckCircle size={16} color="var(--success-green)" />;
-              case "downloading":
-                return <Clock size={16} color="var(--warning-yellow)" />;
-              default:
-                return <AlertCircle size={16} color="var(--secondary-text)" />;
-            }
-          };
-
-          return (
-            <div key={model.id} className="setting-row">
-              <div className="setting-info">
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  {getStatusIcon()}
-                  <h3 className="setting-label">{model.name}</h3>
-                </div>
-                <p className="setting-description">
-                  Size: {model.size} | Status: {model.status}
-                </p>
-              </div>
-              <div className="setting-control">
-                {model.status === "ready" ? (
-                  <button
-                    className="button"
-                    onClick={() => setCurrentModel(model.id)}
-                    disabled={currentModel === model.id}
-                  >
-                    {currentModel === model.id ? "Selected" : "Select"}
-                  </button>
-                ) : (
-                  <button className="button" disabled>
-                    {model.status === "downloading" ? (
-                      <>
-                        <Clock size={16} style={{ marginRight: "6px" }} />
-                        Downloading...
-                      </>
-                    ) : (
-                      <>
-                        <Download size={16} style={{ marginRight: "6px" }} />
-                        Download
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+        {isLoading ? (
+          <div className="setting-row">
+            <div className="setting-info">
+              <h3 className="setting-label">Loading models...</h3>
             </div>
-          );
-        })}
+          </div>
+        ) : (
+          availableModels.map((model) => {
+            const containerStatus = containerStatuses[model.id];
+            const getStatusIcon = () => {
+              if (containerStatus?.status === "running") {
+                return <CheckCircle size={16} color="var(--success-green)" />;
+              } else if (containerStatus?.status === "starting") {
+                return <Clock size={16} color="var(--warning-yellow)" />;
+              } else if (model.ready) {
+                return <CheckCircle size={16} color="var(--success-green)" />;
+              } else {
+                return <AlertCircle size={16} color="var(--secondary-text)" />;
+              }
+            };
+
+            const getStatusText = () => {
+              if (containerStatus?.status === "running") {
+                return `Container running${containerStatus.gpu_allocated ? " (GPU)" : " (CPU)"}`;
+              } else if (containerStatus?.status === "starting") {
+                return "Container starting...";
+              } else if (model.ready) {
+                return "Ready to use";
+              } else {
+                return "Not ready";
+              }
+            };
+
+            return (
+              <div key={model.id} className="setting-row">
+                <div className="setting-info">
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                  >
+                    {getStatusIcon()}
+                    <h3 className="setting-label">{model.id}</h3>
+                    {containerStatus?.gpu_allocated && (
+                      <span style={{ 
+                        padding: '2px 6px', 
+                        backgroundColor: 'var(--success-bg)', 
+                        color: 'var(--success-green)', 
+                        borderRadius: '4px',
+                        fontSize: '12px'
+                      }}>
+                        GPU
+                      </span>
+                    )}
+                  </div>
+                  <p className="setting-description">
+                    Status: {getStatusText()}
+                    {containerStatus?.image && (
+                      <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--secondary-text)' }}>
+                        Image: {containerStatus.image}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="setting-control">
+                  {model.ready || containerStatus?.status === "running" ? (
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => handleModelSelect(model.id)}
+                      disabled={currentModel === model.id || isLoading}
+                    >
+                      {currentModel === model.id ? "Selected" : "Select"}
+                    </button>
+                  ) : (
+                    <button type="button" className="button" disabled>
+                      {containerStatus?.status === "starting" ? (
+                        <>
+                          <Clock size={16} style={{ marginRight: "6px" }} />
+                          Starting...
+                        </>
+                      ) : (
+                        <>
+                          <Download size={16} style={{ marginRight: "6px" }} />
+                          Not Available
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

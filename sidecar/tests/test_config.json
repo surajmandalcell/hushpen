@@ -1,0 +1,142 @@
+{
+  "server_host": "127.0.0.1",
+  "server_port": 8000,
+  "test_models": ["whisper-tiny", "whisper-base", "whisper-small"],
+  "test_audio_files": {
+    "short": {
+      "filename": "sample1.mp3",
+      "duration": 2,
+      "expected_text": "Test transcription sample 1",
+      "max_processing_time": 30
+    },
+    "medium": {
+      "filename": "sample2.mp3",
+      "duration": 5,
+      "expected_text": "Test transcription sample 2",
+      "max_processing_time": 60
+    },
+    "long": {
+      "filename": "sample3.mp3",
+      "duration": 10,
+      "expected_text": "Test transcription sample 3",
+      "max_processing_time": 120
+    }
+  },
+  "model_configs": {
+    "whisper-tiny": {
+      "image": "asrpro/whisper-tiny:latest",
+      "port": 8001,
+      "gpu_memory_mb": 2048,
+      "expected_accuracy": 0.8,
+      "max_startup_time": 60
+    },
+    "whisper-base": {
+      "image": "asrpro/whisper-base:latest",
+      "port": 8002,
+      "gpu_memory_mb": 3072,
+      "expected_accuracy": 0.85,
+      "max_startup_time": 60
+    },
+    "whisper-small": {
+      "image": "asrpro/whisper-small:latest",
+      "port": 8003,
+      "gpu_memory_mb": 4096,
+      "expected_accuracy": 0.9,
+      "max_startup_time": 90
+    }
+  },
+  "gpu_tests": {
+    "enabled": true,
+    "min_memory_mb": 2048,
+    "max_memory_mb": 8192,
+    "test_allocation": true,
+    "test_utilization": true,
+    "test_concurrent_allocation": true
+  },
+  "concurrent_tests": {
+    "enabled": true,
+    "max_concurrent": 3,
+    "test_scenarios": [
+      {
+        "name": "same_model_different_files",
+        "model": "whisper-base",
+        "files": ["sample1.mp3", "sample2.mp3", "sample3.mp3"]
+      },
+      {
+        "name": "different_models_same_file",
+        "files": ["sample1.mp3"],
+        "models": ["whisper-tiny", "whisper-base", "whisper-small"]
+      },
+      {
+        "name": "mixed_models_and_files",
+        "model_file_pairs": [
+          {"model": "whisper-tiny", "file": "sample1.mp3"},
+          {"model": "whisper-base", "file": "sample2.mp3"},
+          {"model": "whisper-small", "file": "sample3.mp3"}
+        ]
+      }
+    ]
+  },
+  "error_scenarios": {
+    "invalid_model": {
+      "model_id": "non-existent-model",
+      "expected_error": "Model not found"
+    },
+    "invalid_audio_format": {
+      "filename": "test.txt",
+      "expected_error": "Unsupported file type"
+    },
+    "corrupted_audio": {
+      "filename": "corrupted.mp3",
+      "expected_error": "Failed to process audio"
+    },
+    "container_failure": {
+      "simulate_failure": true,
+      "expected_error": "Container initialization failed"
+    },
+    "gpu_exhaustion": {
+      "request_excessive_memory": true,
+      "expected_error": "Insufficient GPU memory"
+    }
+  },
+  "websocket_tests": {
+    "enabled": true,
+    "test_connection": true,
+    "test_progress_updates": true,
+    "test_error_notifications": true,
+    "test_multiple_clients": true,
+    "max_clients": 5
+  },
+  "container_lifecycle_tests": {
+    "enabled": true,
+    "test_startup": true,
+    "test_shutdown": true,
+    "test_restart": true,
+    "test_inactivity_timeout": true,
+    "test_health_checks": true,
+    "inactivity_timeout_seconds": 300
+  },
+  "timeouts": {
+    "container_startup": 60,
+    "transcription": 120,
+    "websocket_connect": 10,
+    "health_check": 30,
+    "model_switch": 30
+  },
+  "performance_thresholds": {
+    "max_transcription_time_per_second": 10,
+    "min_transcription_accuracy": 0.8,
+    "max_memory_usage_mb": 8192,
+    "max_cpu_usage_percent": 80
+  },
+  "cleanup": {
+    "remove_containers_after_test": true,
+    "remove_temp_files_after_test": true,
+    "cleanup_docker_volumes": false
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "test_e2e.log"
+  }
+}
