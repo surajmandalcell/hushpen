@@ -95,29 +95,44 @@ export const PalWindowControl = forwardRef<HTMLButtonElement, PalWindowControlPr
     };
     
     const handleClick = async () => {
+      console.log(`Window control clicked: ${variant}`);
       try {
+        console.log(`Importing Tauri window API...`);
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        console.log(`Getting current window...`);
         const window = getCurrentWindow();
+        console.log(`Current window obtained:`, window);
         
         switch (variant) {
           case 'close':
+            console.log(`Attempting to close window...`);
             await window.close();
+            console.log(`Window close command sent`);
             break;
           case 'minimize':
+            console.log(`Attempting to minimize window...`);
             await window.minimize();
+            console.log(`Window minimize command sent`);
             break;
           case 'maximize': {
+            console.log(`Checking if window is maximized...`);
             const isMaximized = await window.isMaximized();
+            console.log(`Window maximized state:`, isMaximized);
             if (isMaximized) {
+              console.log(`Attempting to unmaximize window...`);
               await window.unmaximize();
+              console.log(`Window unmaximize command sent`);
             } else {
+              console.log(`Attempting to maximize window...`);
               await window.maximize();
+              console.log(`Window maximize command sent`);
             }
             break;
           }
         }
       } catch (error) {
         console.error(`Failed to ${variant} window:`, error);
+        console.error(`Error details:`, JSON.stringify(error, null, 2));
       }
     };
     

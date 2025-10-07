@@ -28,6 +28,7 @@ async fn hide_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn quit_app(app: AppHandle) -> Result<(), String> {
+    println!("quit_app command received");
     app.exit(0);
     Ok(())
 }

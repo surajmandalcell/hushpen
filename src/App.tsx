@@ -12,6 +12,9 @@ import ToastContainer from "./components/ToastContainer";
 import RecordingOverlay from "./components/RecordingOverlay";
 import TrayNotificationList from "./components/TrayNotificationList";
 
+// PalantirUI Components
+import { PalPanel, PalHeader, PalWindowControls } from "./components/palantirui";
+
 // Hooks
 import { useWindowState } from "./hooks/useWindowState";
 import { useRecording } from "./services/recordingManager";
@@ -85,11 +88,11 @@ function App() {
   }, []);
 
   return (
-    <div className={`h-screen w-screen overflow-hidden bg-macos-bg dark:bg-macos-bg-dark transition-colors duration-200 ${platformInfo.getPlatformCSSClass()}`}>
+    <div className={`h-screen w-screen overflow-hidden bg-palantir-zinc-50 dark:bg-palantir-zinc-900 transition-colors duration-200 ${platformInfo.getPlatformCSSClass()}`}>
       {/* Skip to content link for screen readers */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 px-4 py-2 bg-macos-blue text-white rounded-macos"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 px-4 py-2 bg-palantir-accent-blue text-white rounded-pal"
       >
         Skip to main content
       </a>
@@ -102,6 +105,7 @@ function App() {
         statusText={recordingState.statusText}
       />
       {notifications.length > 0 && <TrayNotificationList />}
+      
       <div className="flex h-full" id={mainContentId}>
         <Sidebar
           activeSection={activeSection}

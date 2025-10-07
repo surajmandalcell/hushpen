@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { useToast } from '../services/toast';
+import { PalCard, PalButton, PalText } from './palantirui';
 
 const ToastContainer: React.FC = () => {
   const { toasts, dismiss } = useToast();
@@ -41,9 +42,18 @@ const ToastContainer: React.FC = () => {
   return (
     <div className="fixed top-4 right-4 z-50 space-y-3 pointer-events-none">
       {toasts.map((toast, index) => (
-        <div
+        <PalCard
           key={toast.id}
-          className={`${getToastClasses(toast.type)} pointer-events-auto`}
+          variant="elevated"
+          padding="md"
+          withGlow={true}
+          withCornerMarkers={true}
+          className={`pointer-events-auto max-w-sm ${
+            toast.type === 'success' ? 'border-palantir-accent-green' :
+            toast.type === 'warning' ? 'border-palantir-accent-orange' :
+            toast.type === 'error' ? 'border-palantir-accent-red' :
+            'border-palantir-accent-blue'
+          }`}
           style={{
             transform: `translateY(${index * 4}px)`,
           }}
@@ -54,43 +64,42 @@ const ToastContainer: React.FC = () => {
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-macos-text dark:text-macos-text-dark">
+              <PalText weight="medium" className="text-palantir-zinc-900 dark:text-palantir-zinc-100">
                 {toast.title}
-              </div>
+              </PalText>
               {toast.message && (
-                <div className="text-sm text-macos-text-secondary mt-1">
+                <PalText size="sm" variant="muted" className="mt-1">
                   {toast.message}
-                </div>
+                </PalText>
               )}
             </div>
 
-            <button
-              className="flex-shrink-0 p-1 -m-1 rounded-macos hover:bg-black hover:bg-opacity-10 transition-colors duration-150"
+            <PalButton
+              variant="ghost"
+              size="sm"
               onClick={() => dismiss(toast.id)}
               aria-label="Close notification"
+              className="flex-shrink-0 p-1 -m-1"
             >
-              <X size={16} className="text-macos-text-secondary" />
-            </button>
+              <X size={16} />
+            </PalButton>
           </div>
 
           {toast.actions && toast.actions.length > 0 && (
-            <div className="flex space-x-2 mt-3 pt-3 border-t border-current border-opacity-20">
+            <div className="flex space-x-2 mt-3 pt-3 border-t border-palantir-zinc-200 dark:border-palantir-zinc-700">
               {toast.actions.map((action, actionIndex) => (
-                <button
-                  key={actionIndex}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-macos transition-all duration-150 ${
-                    action.variant === 'secondary'
-                      ? 'bg-black bg-opacity-10 hover:bg-opacity-20'
-                      : 'bg-current text-white hover:opacity-90'
-                  }`}
+                <PalButton
+                  key={`${action.label}-${actionIndex}`}
+                  variant={action.variant === 'secondary' ? 'secondary' : 'primary'}
+                  size="sm"
                   onClick={action.onClick}
                 >
                   {action.label}
-                </button>
+                </PalButton>
               ))}
             </div>
           )}
-        </div>
+        </PalCard>
       ))}
     </div>
   );

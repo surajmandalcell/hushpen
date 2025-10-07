@@ -10,6 +10,7 @@ import {
   Accessibility,
 } from "lucide-react";
 import MacTrafficLights from "./macos/MacTrafficLights";
+import { PalSidebar, PalSidebarItem, PalSidebarSection, PalHeader, PalHeaderTitle } from "./palantirui";
 
 interface SidebarProps {
   activeSection: string;
@@ -33,36 +34,39 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSectionChange,
 }) => {
   return (
-    <div className="sidebar-macos w-64 h-full flex flex-col">
-      <div className="flex flex-col items-center py-4 border-b border-macos-border dark:border-macos-border-dark">
-        <MacTrafficLights />
-        <h2 className="text-lg font-semibold text-macos-text dark:text-macos-text-dark mt-2">
-          ASR Pro
-        </h2>
-      </div>
-
-      <nav className="flex-1 px-3 py-4 space-y-1 scrollbar-macos overflow-y-auto">
+    <PalSidebar
+      width="md"
+      withGlow={true}
+      withCornerMarkers={true}
+      className="border-r border-palantir-zinc-200 dark:border-palantir-zinc-700"
+    >
+      <PalHeader
+        height="md"
+        withWindowControls={true}
+        className="px-4 py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700"
+      >
+        <PalHeaderTitle title="ASR Pro" />
+      </PalHeader>
+      
+      <PalSidebarSection>
         {sidebarSections.map((section) => {
           const IconComponent = section.icon;
           return (
-            <button
-              type="button"
+            <PalSidebarItem
               key={section.id}
-              className={`sidebar-item w-full ${
-                activeSection === section.id ? "active" : ""
-              }`}
+              active={activeSection === section.id}
+              icon={<IconComponent size={18} />}
+              label={section.label}
               onClick={() => {
                 console.log(`Sidebar navigation: clicked on ${section.id}`);
                 onSectionChange(section.id);
               }}
-            >
-              <IconComponent size={18} className="mr-3 flex-shrink-0" />
-              <span className="truncate">{section.label}</span>
-            </button>
+              className="mx-2"
+            />
           );
         })}
-      </nav>
-    </div>
+      </PalSidebarSection>
+    </PalSidebar>
   );
 };
 

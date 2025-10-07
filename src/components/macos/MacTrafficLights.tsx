@@ -77,10 +77,10 @@ const MacTrafficLights: React.FC<MacTrafficLightsProps> = ({
   };
 
   return (
-    <div className="traffic-lights">
+    <div className="pal-traffic-lights">
       <button
         type="button"
-        className="traffic-light close"
+        className="pal-traffic-light pal-traffic-light-close"
         onClick={handleClose}
         onMouseEnter={() => setHoveredButton("close")}
         onMouseLeave={() => setHoveredButton(null)}
@@ -93,7 +93,7 @@ const MacTrafficLights: React.FC<MacTrafficLightsProps> = ({
 
       <button
         type="button"
-        className="traffic-light minimize"
+        className="pal-traffic-light pal-traffic-light-minimize"
         onClick={handleMinimize}
         onMouseEnter={() => setHoveredButton("minimize")}
         onMouseLeave={() => setHoveredButton(null)}
@@ -106,7 +106,7 @@ const MacTrafficLights: React.FC<MacTrafficLightsProps> = ({
 
       <button
         type="button"
-        className="traffic-light maximize"
+        className="pal-traffic-light pal-traffic-light-maximize"
         onClick={handleMaximize}
         onMouseEnter={() => setHoveredButton("maximize")}
         onMouseLeave={() => setHoveredButton(null)}

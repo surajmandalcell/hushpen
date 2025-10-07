@@ -32,17 +32,17 @@ const MacToggle: React.FC<MacToggleProps> = ({
   };
 
   const toggleClasses = [
-    "mac-toggle",
-    `mac-toggle--${size}`,
-    checked ? "mac-toggle--checked" : "mac-toggle--unchecked",
-    disabled ? "mac-toggle--disabled" : "",
+    "pal-toggle",
+    `pal-toggle--${size}`,
+    checked ? "pal-toggle--checked" : "pal-toggle--unchecked",
+    disabled ? "pal-toggle--disabled" : "",
     className,
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div className="mac-toggle-container">
+    <div className="pal-toggle-container">
       <div
         className={toggleClasses}
         onClick={handleToggle}
@@ -52,16 +52,22 @@ const MacToggle: React.FC<MacToggleProps> = ({
         aria-label={label}
         tabIndex={disabled ? -1 : 0}
       >
-        <div className="mac-toggle__track">
-          <div className="mac-toggle__thumb">
-            <div className="mac-toggle__thumb-inner" />
+        <div className="pal-toggle__track">
+          <div className="pal-toggle__thumb">
+            <div className="pal-toggle__thumb-inner" />
           </div>
         </div>
       </div>
       {label && (
-        <label className="mac-toggle-label" onClick={handleToggle}>
+        <button
+          type="button"
+          className="pal-toggle-label"
+          onClick={handleToggle}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+        >
           {label}
-        </label>
+        </button>
       )}
     </div>
   );

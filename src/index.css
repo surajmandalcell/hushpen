@@ -10,8 +10,8 @@
   }
 
   html, body {
-    @apply font-sf text-macos-text bg-macos-bg;
-    @apply dark:text-macos-text-dark dark:bg-macos-bg-dark;
+    @apply font-inter bg-palantir-zinc-50 text-palantir-zinc-900;
+    @apply dark:bg-palantir-zinc-950 dark:text-palantir-zinc-50;
     @apply transition-colors duration-200;
   }
 
@@ -23,7 +23,7 @@
   }
 
   input, button, select, textarea {
-    @apply font-sf;
+    @apply font-inter;
   }
 }
 
@@ -593,6 +593,110 @@
 
   .pal-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-palantir-zinc-500;
+  }
+
+  /* PalantirUI Toggle */
+  .pal-toggle-container {
+    @apply flex items-center;
+  }
+
+  .pal-toggle {
+    @apply relative inline-block cursor-pointer transition-all duration-200;
+  }
+
+  .pal-toggle--small {
+    @apply w-8 h-4;
+  }
+
+  .pal-toggle--medium {
+    @apply w-11 h-6;
+  }
+
+  .pal-toggle--large {
+    @apply w-14 h-8;
+  }
+
+  .pal-toggle__track {
+    @apply absolute inset-0 rounded-full bg-palantir-zinc-300 transition-colors duration-200;
+    @apply dark:bg-palantir-zinc-600;
+  }
+
+  .pal-toggle--checked .pal-toggle__track {
+    @apply bg-palantir-accent-blue;
+  }
+
+  .pal-toggle__thumb {
+    @apply absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow-md transition-all duration-200;
+  }
+
+  .pal-toggle--small .pal-toggle__thumb {
+    @apply w-2 h-2 top-0.5 left-0.5;
+  }
+
+  .pal-toggle--medium .pal-toggle__thumb {
+    @apply w-2 h-2 top-1 left-1;
+  }
+
+  .pal-toggle--large .pal-toggle__thumb {
+    @apply w-3 h-3 top-1 left-1;
+  }
+
+  .pal-toggle--checked .pal-toggle__thumb {
+    @apply transform translate-x-5;
+  }
+
+  .pal-toggle--small.pal-toggle--checked .pal-toggle__thumb {
+    @apply translate-x-3;
+  }
+
+  .pal-toggle--medium.pal-toggle--checked .pal-toggle__thumb {
+    @apply translate-x-5;
+  }
+
+  .pal-toggle--large.pal-toggle--checked .pal-toggle__thumb {
+    @apply translate-x-7;
+  }
+
+  .pal-toggle__thumb-inner {
+    @apply w-full h-full rounded-full bg-white;
+  }
+
+  .pal-toggle--disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .pal-toggle-label {
+    @apply ml-2 text-sm font-medium text-palantir-zinc-700 cursor-pointer;
+    @apply dark:text-palantir-zinc-300;
+  }
+
+  .pal-toggle-label:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* PalantirUI Traffic Lights */
+  .pal-traffic-lights {
+    @apply flex space-x-2 p-3;
+  }
+
+  .pal-traffic-light {
+    @apply w-3 h-3 rounded-full transition-all duration-150 cursor-pointer;
+  }
+
+  .pal-traffic-light:hover {
+    @apply scale-110;
+  }
+
+  .pal-traffic-light-close {
+    @apply bg-palantir-accent-red hover:bg-red-600;
+  }
+
+  .pal-traffic-light-minimize {
+    @apply bg-palantir-accent-orange hover:bg-orange-600;
+  }
+
+  .pal-traffic-light-maximize {
+    @apply bg-palantir-accent-green hover:bg-green-600;
   }
 }
 

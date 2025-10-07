@@ -3,6 +3,7 @@ import { Mic, MicOff, Square, Loader2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useAudioRecording } from "../hooks/useAudioRecording";
 import { useRecording } from "../services/recordingManager";
+import { PalModal, PalModalHeader, PalModalContent, PalModalFooter, PalButton, PalPanel } from "./palantirui";
 
 export interface RecordingOverlayProps {
   isActive: boolean;
@@ -169,21 +170,27 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   if (!isRecording || !mounted) return null;
 
   return (
-    <div
-      className="recording-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="recording-status"
-      aria-describedby="recording-instructions"
+    <PalModal
+      isOpen={isRecording}
+      onClose={handleCancel}
+      size="md"
+      withGlow={true}
+      withCornerMarkers={true}
+      closeOnBackdropClick={false}
+      preventBodyScroll={true}
     >
-      <div className="recording-overlay__backdrop" />
-
-      <div className="recording-content">
-        {/* Status indicator */}
-        <div className="flex flex-col items-center space-y-4">
+      <PalModalHeader
+        title={isTranscribingFinal ? "Transcribing..." : "Recording..."}
+        subtitle={statusText}
+        showCloseButton={false}
+      />
+      
+      <PalModalContent>
+        <div className="flex flex-col items-center space-y-6">
+          {/* Status indicator */}
           <div
             className={`flex items-center justify-center w-20 h-20 rounded-full ${
-              isTranscribing ? "bg-macos-orange" : "bg-macos-red"
+              isTranscribing ? "bg-palantir-accent-orange" : "bg-palantir-accent-red"
             } animate-pulse-soft`}
           >
             {isTranscribing ? (
@@ -194,98 +201,76 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           </div>
 
           <div className="text-center space-y-2">
-            <h2 id="recording-status" className="text-2xl font-semibold text-macos-text dark:text-macos-text-dark">
-              {isTranscribingFinal ? "Transcribing..." : "Recording..."}
-            </h2>
-            <p className="text-macos-text-secondary text-lg" aria-live="polite">
-              {statusText}
-            </p>
-            <p className="text-3xl font-mono font-bold text-macos-blue" aria-live="polite">
+            <p className="text-3xl font-mono font-bold text-palantir-accent-blue" aria-live="polite">
               {formatDuration(currentDuration)}
             </p>
           </div>
-        </div>
 
-        {/* Transcription progress */}
-        {isTranscribingFinal && (
-          <div
-            className="w-full max-w-md space-y-2"
-            role="progressbar"
-            aria-valuenow={recordingState.transcriptionProgress}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Transcription progress"
-          >
-            <div className="progress-macos">
-              <div
-                className="progress-macos-bar"
-                style={{ width: `${recordingState.transcriptionProgress}%` }}
-              />
+          {/* Transcription progress */}
+          {isTranscribingFinal && (
+            <div
+              className="w-full max-w-md space-y-2"
+              role="progressbar"
+              aria-valuenow={recordingState.transcriptionProgress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Transcription progress"
+            >
+              <div className="w-full bg-palantir-zinc-200 dark:bg-palantir-zinc-700 rounded-full h-2">
+                <div
+                  className="bg-palantir-accent-blue h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${recordingState.transcriptionProgress}%` }}
+                />
+              </div>
+              <span className="text-sm text-center block text-palantir-zinc-600 dark:text-palantir-zinc-400">
+                {Math.round(recordingState.transcriptionProgress)}% Complete
+              </span>
             </div>
-            <span className="text-sm text-center block text-macos-text-secondary">
-              {Math.round(recordingState.transcriptionProgress)}% Complete
-            </span>
-          </div>
-        )}
+          )}
+        </div>
+      </PalModalContent>
 
-        {/* Controls */}
-        <div
-          className={`flex flex-col items-center space-y-4 transition-all duration-300 ${
-            showControls ? "opacity-100" : "opacity-30"
-          }`}
-        >
+      <PalModalFooter>
+        <div className="flex flex-col items-center space-y-4 w-full">
           <div className="flex space-x-4">
             {isTranscribingFinal ? (
-              <button
-                className="btn-macos-danger flex items-center space-x-2"
+              <PalButton
+                variant="primary"
                 onClick={handleStop}
-                aria-label="Stop transcription"
-                aria-describedby="stop-instructions"
+                withGlow={true}
+                withCornerMarkers={true}
+                className="flex items-center gap-2"
               >
                 <Square size={20} />
                 <span>Stop (Space)</span>
-              </button>
+              </PalButton>
             ) : (
-              <button
-                className="btn-macos-secondary flex items-center space-x-2"
+              <PalButton
+                variant="secondary"
                 onClick={handleCancel}
-                aria-label="Cancel recording"
-                aria-describedby="cancel-instructions"
+                withGlow={true}
+                withCornerMarkers={true}
+                className="flex items-center gap-2"
               >
                 <MicOff size={20} />
                 <span>Cancel (Esc)</span>
-              </button>
+              </PalButton>
             )}
           </div>
 
-          <div className="flex space-x-6 text-sm text-macos-text-secondary">
+          <div className="flex space-x-6 text-sm text-palantir-zinc-600 dark:text-palantir-zinc-400">
             <span className="flex items-center space-x-1">
-              <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-xs">Space</kbd>
+              <kbd className="px-2 py-1 bg-palantir-zinc-200 dark:bg-palantir-zinc-700 rounded text-xs">Space</kbd>
               <span>{isTranscribingFinal ? "Stop" : "Record"}</span>
             </span>
             <span className="flex items-center space-x-1">
-              <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-xs">Esc</kbd>
+              <kbd className="px-2 py-1 bg-palantir-zinc-200 dark:bg-palantir-zinc-700 rounded text-xs">Esc</kbd>
               <span>Cancel</span>
             </span>
           </div>
         </div>
-
-        {/* Hidden instructions for screen readers */}
-        <div id="recording-instructions" className="sr-only">
-          Use Space to{" "}
-          {isTranscribingFinal ? "stop transcription" : "start recording"}. Use
-          Escape to cancel. This overlay shows recording status and controls.
-        </div>
-
-        <div id="stop-instructions" className="sr-only">
-          Stop the current transcription process
-        </div>
-
-        <div id="cancel-instructions" className="sr-only">
-          Cancel recording and close overlay
-        </div>
-      </div>
-    </div>
+      </PalModalFooter>
+    </PalModal>
   );
 };
 

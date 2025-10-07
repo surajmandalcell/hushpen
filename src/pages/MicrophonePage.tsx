@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { platformAudioService } from "../services/platformAudio";
+import { PalPanel, PalPanelHeader, PalText, PalCard, PalButton, PalInput } from "../components/palantirui";
 
 const MicrophonePage: React.FC = () => {
   const [selectedDevice, setSelectedDevice] = useState("default");
@@ -22,27 +23,32 @@ const MicrophonePage: React.FC = () => {
   ];
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title">Microphone Settings</h1>
-        <p className="page-description">
-          Configure audio input settings and test microphone functionality.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PalPanelHeader
+        title="Microphone Settings"
+        subtitle="Configure audio input settings and test microphone functionality."
+        withBorder={false}
+      />
 
-      <div className="settings-section">
-        <h2 className="section-title">Audio Input Device</h2>
+      <PalCard
+        variant="default"
+        padding="lg"
+        withGlow={true}
+        withCornerMarkers={true}
+        className="space-y-6"
+      >
+        <div className="space-y-4">
+          <PalText size="lg" weight="semibold">Audio Input Device</PalText>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Microphone</h3>
-            <p className="setting-description">
-              Select the audio input device to use for recording
-            </p>
-          </div>
-          <div className="setting-control">
+          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+            <div>
+              <PalText weight="medium">Microphone</PalText>
+              <PalText size="sm" variant="muted">
+                Select the audio input device to use for recording
+              </PalText>
+            </div>
             <select
-              className="dropdown"
+              className="px-3 py-2 border border-palantir-zinc-300 dark:border-palantir-zinc-600 rounded-md bg-palantir-zinc-50 dark:bg-palantir-zinc-800 text-palantir-zinc-900 dark:text-palantir-zinc-100"
               value={selectedDevice}
               onChange={(e) => setSelectedDevice(e.target.value)}
             >
@@ -53,61 +59,72 @@ const MicrophonePage: React.FC = () => {
               ))}
             </select>
           </div>
-        </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Permission Status</h3>
-            <p className="setting-description">
-              Microphone access permission status
-            </p>
+          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+            <div>
+              <PalText weight="medium">Permission Status</PalText>
+              <PalText size="sm" variant="muted">
+                Microphone access permission status
+              </PalText>
+            </div>
+            <span className="text-palantir-accent-green">✓ Granted</span>
           </div>
-          <div className="setting-control">
-            <span style={{ color: "var(--success-green)" }}>✓ Granted</span>
-          </div>
-        </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Test Microphone</h3>
-            <p className="setting-description">
-              Test your microphone to ensure it's working properly
-            </p>
-          </div>
-          <div className="setting-control">
-            <button className="button">Test</button>
+          <div className="flex items-center justify-between py-3">
+            <div>
+              <PalText weight="medium">Test Microphone</PalText>
+              <PalText size="sm" variant="muted">
+                Test your microphone to ensure it's working properly
+              </PalText>
+            </div>
+            <PalButton variant="primary" size="sm" withGlow={true} withCornerMarkers={true}>
+              Test
+            </PalButton>
           </div>
         </div>
-      </div>
+      </PalCard>
 
-      <div className="settings-section">
-        <h2 className="section-title">{audioHints.title}</h2>
+      <PalCard
+        variant="default"
+        padding="lg"
+        withGlow={true}
+        withCornerMarkers={true}
+        className="space-y-4"
+      >
+        <PalText size="lg" weight="semibold">{audioHints.title}</PalText>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Platform Tips</h3>
-            <ul className="platform-tips">
-              {audioHints.hints.map((hint, index) => (
-                <li key={index}>{hint}</li>
-              ))}
-            </ul>
+        <div>
+          <PalText weight="medium" className="mb-3">Platform Tips</PalText>
+          <div className="space-y-2">
+            {audioHints.hints.map((hint, index) => (
+              <div key={`hint-${index}`} className="flex items-start gap-2 p-2 bg-palantir-zinc-50 dark:bg-palantir-zinc-800 rounded">
+                <span className="text-palantir-accent-orange">💡</span>
+                <PalText size="sm">{hint}</PalText>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      </PalCard>
 
-      <div className="settings-section">
-        <h2 className="section-title">Audio Quality</h2>
+      <PalCard
+        variant="default"
+        padding="lg"
+        withGlow={true}
+        withCornerMarkers={true}
+        className="space-y-4"
+      >
+        <PalText size="lg" weight="semibold">Audio Quality</PalText>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Sample Rate</h3>
-            <p className="setting-description">
-              Audio sampling rate (higher = better quality, larger files)
-            </p>
-          </div>
-          <div className="setting-control">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+            <div>
+              <PalText weight="medium">Sample Rate</PalText>
+              <PalText size="sm" variant="muted">
+                Audio sampling rate (higher = better quality, larger files)
+              </PalText>
+            </div>
             <select
-              className="dropdown"
+              className="px-3 py-2 border border-palantir-zinc-300 dark:border-palantir-zinc-600 rounded-md bg-palantir-zinc-50 dark:bg-palantir-zinc-800 text-palantir-zinc-900 dark:text-palantir-zinc-100"
               value={sampleRate}
               onChange={(e) => setSampleRate(e.target.value)}
             >
@@ -118,18 +135,16 @@ const MicrophonePage: React.FC = () => {
               ))}
             </select>
           </div>
-        </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Channels</h3>
-            <p className="setting-description">
-              Number of audio channels to record
-            </p>
-          </div>
-          <div className="setting-control">
+          <div className="flex items-center justify-between py-3">
+            <div>
+              <PalText weight="medium">Channels</PalText>
+              <PalText size="sm" variant="muted">
+                Number of audio channels to record
+              </PalText>
+            </div>
             <select
-              className="dropdown"
+              className="px-3 py-2 border border-palantir-zinc-300 dark:border-palantir-zinc-600 rounded-md bg-palantir-zinc-50 dark:bg-palantir-zinc-800 text-palantir-zinc-900 dark:text-palantir-zinc-100"
               value={channels}
               onChange={(e) => setChannels(e.target.value)}
             >
@@ -141,37 +156,7 @@ const MicrophonePage: React.FC = () => {
             </select>
           </div>
         </div>
-      </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        .platform-tips {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-        }
-
-        .platform-tips li {
-          padding: 8px 0;
-          border-bottom: 1px solid var(--border-color);
-          position: relative;
-          padding-left: 20px;
-        }
-
-        .platform-tips li:before {
-          content: "💡";
-          position: absolute;
-          left: 0;
-          top: 8px;
-        }
-
-        .platform-tips li:last-child {
-          border-bottom: none;
-        }
-      `,
-        }}
-      />
+      </PalCard>
     </div>
   );
 };

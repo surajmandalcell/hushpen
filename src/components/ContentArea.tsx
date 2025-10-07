@@ -11,6 +11,9 @@ import ComponentDemo from "../pages/ComponentDemo";
 import AccessibilityPage from "../pages/AccessibilityPage";
 import PalantirUIDemo from "../pages/PalantirUIDemo";
 
+// PalantirUI Components
+import { PalPanel, PalPanelHeader, PalPanelContent, PalButton } from "./palantirui";
+
 interface ContentAreaProps {
   activeSection: string;
   onStartRecording?: () => void;
@@ -46,28 +49,36 @@ const ContentArea: React.FC<ContentAreaProps> = ({
   };
 
   return (
-    <div className="flex-1 bg-macos-bg dark:bg-macos-bg-dark overflow-hidden">
-      <div className="h-full p-6 scrollbar-macos overflow-y-auto">
+    <PalPanel
+      className="flex-1 h-full"
+      variant="default"
+      padding="md"
+      withGlow={false}
+      withCornerMarkers={false}
+    >
+      <PalPanelContent className="overflow-y-auto">
         {onStartRecording && (
-          <div className="p-5 border-b border-macos-border dark:border-macos-border-dark mb-5">
-            <button
-              type="button"
+          <div className="pb-4 mb-4 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+            <PalButton
+              variant="primary"
               onClick={() => {
                 console.log("Recording button clicked in ContentArea");
                 onStartRecording();
               }}
-              className="btn-macos flex items-center space-x-2"
+              withGlow={true}
+              withCornerMarkers={true}
+              className="flex items-center gap-2"
             >
               <span>🎤</span>
               <span>Test Recording (Space to start/stop, Esc to cancel)</span>
-            </button>
+            </PalButton>
           </div>
         )}
         <div className="animate-fade-in">
           {renderPage()}
         </div>
-      </div>
-    </div>
+      </PalPanelContent>
+    </PalPanel>
   );
 };
 
