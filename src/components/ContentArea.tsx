@@ -7,7 +7,7 @@ import MicrophonePage from "../pages/MicrophonePage";
 import KeyboardPage from "../pages/KeyboardPage";
 import TranscribePage from "../pages/TranscribePage";
 import AboutPage from "../pages/AboutPage";
-import ComponentDemo from "../pages/ComponentDemo";
+import TacticalDemo from "../pages/TacticalDemo";
 import AccessibilityPage from "../pages/AccessibilityPage";
 import PalantirUIDemo from "../pages/PalantirUIDemo";
 
@@ -40,7 +40,7 @@ const ContentArea: React.FC<ContentAreaProps> = ({
       case "about":
         return <AboutPage />;
       case "demo":
-        return <ComponentDemo />;
+        return <TacticalDemo />;
       case "palantirui":
         return <PalantirUIDemo />;
       default:

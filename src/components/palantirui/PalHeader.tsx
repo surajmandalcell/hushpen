@@ -44,7 +44,6 @@ const PalHeader = forwardRef<HTMLDivElement, PalHeaderProps>(
         ref={ref}
         {...props}
       >
-        {withWindowControls && <PalWindowControls />}
         {children}
       </div>
     );

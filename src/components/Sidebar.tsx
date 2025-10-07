@@ -9,8 +9,8 @@ import {
   Palette,
   Accessibility,
 } from "lucide-react";
-import MacTrafficLights from "./macos/MacTrafficLights";
 import { PalSidebar, PalSidebarItem, PalSidebarSection, PalHeader, PalHeaderTitle } from "./palantirui";
+import { TacticalWindowControls } from "./TacticalWindowControls";
 
 interface SidebarProps {
   activeSection: string;
@@ -24,7 +24,7 @@ const sidebarSections = [
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "transcribe", label: "Transcribe Files", icon: FileText },
   { id: "accessibility", label: "Accessibility", icon: Accessibility },
-  { id: "demo", label: "macOS Components", icon: Palette },
+  { id: "demo", label: "Tactical UI Demo", icon: Palette },
   { id: "palantirui", label: "PalantirUI Demo", icon: Palette },
   { id: "about", label: "About", icon: Info },
 ];
@@ -42,10 +42,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     >
       <PalHeader
         height="md"
-        withWindowControls={true}
         className="px-4 py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700"
       >
-        <PalHeaderTitle title="ASR Pro" />
+        <div className="flex items-center justify-between w-full">
+          <TacticalWindowControls />
+          <PalHeaderTitle title="ASR Pro" />
+        </div>
       </PalHeader>
       
       <PalSidebarSection>

@@ -136,6 +136,8 @@ fn handle_tray_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    println!("Starting ASR Pro application...");
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -147,12 +149,14 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            println!("Setting up tray menu...");
             let tray_menu = create_tray_menu(app.handle())?;
             let _tray_icon = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .on_menu_event(handle_tray_menu_event)
                 .on_tray_icon_event(handle_tray_event)
                 .build(app)?;
+            println!("Application setup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

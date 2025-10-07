@@ -1,7 +1,8 @@
 import React from 'react';
-import { MacToggle } from '../components/macos';
 import { useSettings } from '../services/settings';
 import { PalPanel, PalPanelHeader, PalPanelContent, PalText, PalCard, PalButton } from '../components/palantirui';
+import { TacticalWindowControls } from '../components/TacticalWindowControls';
+import { TacticalToggle } from '../components/TacticalToggle';
 
 const GeneralPage: React.FC = () => {
   const { settings, updateSetting } = useSettings();
@@ -31,10 +32,10 @@ const GeneralPage: React.FC = () => {
                 Automatically start ASR Pro when you log into your system
               </PalText>
             </div>
-            <MacToggle
+            <TacticalToggle
               checked={settings.launchAtLogin}
               onChange={(checked) => updateSetting('launchAtLogin', checked)}
-              size="medium"
+              size="md"
             />
           </div>
 
@@ -45,10 +46,10 @@ const GeneralPage: React.FC = () => {
                 Start the application minimized to the system tray
               </PalText>
             </div>
-            <MacToggle
+            <TacticalToggle
               checked={settings.startMinimized}
               onChange={(checked) => updateSetting('startMinimized', checked)}
-              size="medium"
+              size="md"
             />
           </div>
 
@@ -59,10 +60,10 @@ const GeneralPage: React.FC = () => {
                 Automatically unload AI models after 30 minutes of inactivity to save memory
               </PalText>
             </div>
-            <MacToggle
+            <TacticalToggle
               checked={settings.autoUnloadModel}
               onChange={(checked) => updateSetting('autoUnloadModel', checked)}
-              size="medium"
+              size="md"
             />
           </div>
         </div>
@@ -99,22 +100,37 @@ const GeneralPage: React.FC = () => {
         withCornerMarkers={true}
         className="space-y-4"
       >
-        <PalText size="lg" weight="semibold">Debug Controls</PalText>
+        <PalText size="lg" weight="semibold">Tactical Window Controls</PalText>
         
         <div className="space-y-3">
-          <PalText weight="medium">Test Tauri Window Controls</PalText>
+          <PalText weight="medium">Integrated Window Controls</PalText>
+          <div className="flex items-center gap-4 p-3 bg-palantir-zinc-100 dark:bg-palantir-zinc-800 rounded-pal">
+            <TacticalWindowControls />
+            <PalText size="sm" variant="muted">
+              Use these controls to manage the application window
+            </PalText>
+          </div>
+          
+          <PalText weight="medium">Alternative Test Controls</PalText>
           <div className="flex gap-2 flex-wrap">
             <PalButton
               variant="primary"
               onClick={async () => {
                 console.log("Test close button clicked");
                 try {
-                  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                  const window = getCurrentWindow();
-                  console.log("Closing window via Tauri API");
-                  await window.close();
+                  const { invoke } = await import('@tauri-apps/api/core');
+                  console.log("Closing window via Tauri invoke");
+                  await invoke('quit_app');
                 } catch (error) {
                   console.error("Failed to close window:", error);
+                  // Fallback to direct API
+                  try {
+                    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                    const window = getCurrentWindow();
+                    await window.close();
+                  } catch (fallbackError) {
+                    console.error("Fallback also failed:", fallbackError);
+                  }
                 }
               }}
             >
