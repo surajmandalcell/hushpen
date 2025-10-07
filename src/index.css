@@ -27,6 +27,55 @@
   }
 }
 
+/* PalantirUI Base Styles */
+@layer base {
+  /* CSS Custom Properties for PalantirUI */
+  :root {
+    --pal-zinc-50: #fafafa;
+    --pal-zinc-100: #f4f4f5;
+    --pal-zinc-200: #e4e4e7;
+    --pal-zinc-300: #d4d4d8;
+    --pal-zinc-400: #a1a1aa;
+    --pal-zinc-500: #71717a;
+    --pal-zinc-600: #52525b;
+    --pal-zinc-700: #3f3f46;
+    --pal-zinc-800: #27272a;
+    --pal-zinc-900: #18181b;
+    --pal-zinc-950: #09090b;
+    
+    --pal-layer-1: rgba(250, 250, 250, 0.05);
+    --pal-layer-2: rgba(250, 250, 250, 0.1);
+    --pal-layer-3: rgba(250, 250, 250, 0.15);
+    --pal-layer-4: rgba(250, 250, 250, 0.2);
+    --pal-layer-5: rgba(250, 250, 250, 0.25);
+    
+    --pal-accent-blue: #3b82f6;
+    --pal-accent-cyan: #06b6d4;
+    --pal-accent-green: #10b981;
+    --pal-accent-orange: #f97316;
+    --pal-accent-red: #ef4444;
+    
+    --pal-glow-subtle: 0 0 20px rgba(59, 130, 246, 0.15);
+    --pal-glow-medium: 0 0 40px rgba(59, 130, 246, 0.25);
+    --pal-glow-strong: 0 0 60px rgba(59, 130, 246, 0.35);
+  }
+
+  .dark {
+    --pal-dark-layer-1: rgba(9, 9, 11, 0.05);
+    --pal-dark-layer-2: rgba(9, 9, 11, 0.1);
+    --pal-dark-layer-3: rgba(9, 9, 11, 0.15);
+    --pal-dark-layer-4: rgba(9, 9, 11, 0.2);
+    --pal-dark-layer-5: rgba(9, 9, 11, 0.25);
+  }
+
+  /* PalantirUI base body styles */
+  .palantir-body {
+    @apply font-inter bg-palantir-zinc-50 text-palantir-zinc-900;
+    @apply dark:bg-palantir-zinc-950 dark:text-palantir-zinc-50;
+    @apply transition-colors duration-300;
+  }
+}
+
 /* Custom component styles */
 @layer components {
   /* macOS Buttons */
@@ -256,6 +305,297 @@
   }
 }
 
+/* PalantirUI Component Styles */
+@layer components {
+  /* PalantirUI Layer System */
+  .pal-layer-1 { 
+    background: var(--pal-layer-1); 
+    backdrop-filter: blur(4px);
+    @apply dark:bg-palantir-dark-layer-1;
+  }
+  
+  .pal-layer-2 { 
+    background: var(--pal-layer-2); 
+    backdrop-filter: blur(8px);
+    @apply dark:bg-palantir-dark-layer-2;
+  }
+  
+  .pal-layer-3 { 
+    background: var(--pal-layer-3); 
+    backdrop-filter: blur(12px);
+    @apply dark:bg-palantir-dark-layer-3;
+  }
+  
+  .pal-layer-4 { 
+    background: var(--pal-layer-4); 
+    backdrop-filter: blur(16px);
+    @apply dark:bg-palantir-dark-layer-4;
+  }
+  
+  .pal-layer-5 { 
+    background: var(--pal-layer-5); 
+    backdrop-filter: blur(20px);
+    @apply dark:bg-palantir-dark-layer-5;
+  }
+
+  /* PalantirUI Corner Markers */
+  .pal-corner-marker {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--pal-accent-blue);
+    opacity: 0.7;
+    @apply animate-pal-corner-appear;
+  }
+
+  .pal-corner-marker-tl {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+
+  .pal-corner-marker-tr {
+    top: -1px;
+    right: -1px;
+    border-left: none;
+    border-bottom: none;
+  }
+
+  .pal-corner-marker-bl {
+    bottom: -1px;
+    left: -1px;
+    border-right: none;
+    border-top: none;
+  }
+
+  .pal-corner-marker-br {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+
+  /* PalantirUI Glow Effects */
+  .pal-glow-subtle { 
+    box-shadow: var(--pal-glow-subtle);
+  }
+  
+  .pal-glow-medium { 
+    box-shadow: var(--pal-glow-medium);
+  }
+  
+  .pal-glow-strong { 
+    box-shadow: var(--pal-glow-strong);
+  }
+
+  /* PalantirUI Geometric Borders */
+  .pal-geometric-border {
+    @apply border border-palantir-zinc-700 relative;
+    @apply dark:border-palantir-zinc-600;
+  }
+
+  .pal-geometric-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    @apply border border-palantir-zinc-600 opacity-50;
+    @apply dark:border-palantir-zinc-500;
+    pointer-events: none;
+  }
+
+  .pal-geometric-border-glow {
+    @apply pal-geometric-border;
+    animation: pal-border-glow 3s ease-in-out infinite;
+  }
+
+  /* PalantirUI Button Styles */
+  .pal-btn {
+    @apply px-4 py-2 rounded-pal font-inter font-medium transition-all duration-200;
+    @apply bg-palantir-zinc-100 text-palantir-zinc-900 border border-palantir-zinc-300;
+    @apply hover:bg-palantir-zinc-200 hover:border-palantir-zinc-400;
+    @apply focus:outline-none focus:ring-2 focus:ring-palantir-accent-blue focus:ring-opacity-50;
+    @apply active:scale-95;
+    @apply dark:bg-palantir-zinc-800 dark:text-palantir-zinc-100 dark:border-palantir-zinc-600;
+    @apply dark:hover:bg-palantir-zinc-700 dark:hover:border-palantir-zinc-500;
+  }
+
+  .pal-btn-primary {
+    @apply pal-btn bg-palantir-accent-blue text-white border-transparent;
+    @apply hover:bg-blue-600;
+    @apply focus:ring-palantir-accent-blue;
+  }
+
+  .pal-btn-secondary {
+    @apply pal-btn bg-palantir-zinc-200 text-palantir-zinc-800 border-palantir-zinc-400;
+    @apply hover:bg-palantir-zinc-300;
+    @apply dark:bg-palantir-zinc-700 dark:text-palantir-zinc-200 dark:border-palantir-zinc-500;
+    @apply dark:hover:bg-palantir-zinc-600;
+  }
+
+  .pal-btn-ghost {
+    @apply pal-btn bg-transparent text-palantir-zinc-700 border-transparent;
+    @apply hover:bg-palantir-zinc-100;
+    @apply dark:text-palantir-zinc-300 dark:hover:bg-palantir-zinc-800;
+  }
+
+  /* PalantirUI Input Styles */
+  .pal-input {
+    @apply w-full px-3 py-2 rounded-pal border border-palantir-zinc-300;
+    @apply bg-palantir-zinc-50 text-palantir-zinc-900 placeholder-palantir-zinc-500;
+    @apply focus:outline-none focus:ring-2 focus:ring-palantir-accent-blue focus:border-transparent;
+    @apply transition-all duration-200;
+    @apply dark:bg-palantir-zinc-800 dark:border-palantir-zinc-600 dark:text-palantir-zinc-100 dark:placeholder-palantir-zinc-400;
+  }
+
+  /* PalantirUI Card Styles */
+  .pal-card {
+    @apply bg-palantir-zinc-50 rounded-pal-lg border border-palantir-zinc-200 shadow-pal-subtle;
+    @apply dark:bg-palantir-zinc-800 dark:border-palantir-zinc-700;
+    @apply transition-all duration-300;
+    @apply animate-pal-card-fade-in;
+  }
+
+  .pal-card-hover {
+    @apply pal-card hover:shadow-pal-medium hover:scale-[1.01];
+    @apply hover:border-palantir-zinc-300;
+    @apply dark:hover:border-palantir-zinc-600;
+    @apply cursor-pointer;
+  }
+
+  .pal-card-glow {
+    @apply pal-card pal-glow-subtle;
+    @apply hover:pal-glow-medium;
+  }
+
+  /* PalantirUI Sidebar Styles */
+  .pal-sidebar {
+    @apply bg-palantir-layer-2 border-r border-palantir-zinc-200;
+    @apply dark:bg-palantir-dark-layer-2 dark:border-palantir-zinc-700;
+    @apply backdrop-blur-pal;
+  }
+
+  .pal-sidebar-item {
+    @apply flex items-center px-3 py-2 rounded-pal text-sm font-inter font-medium;
+    @apply text-palantir-zinc-700 hover:bg-palantir-layer-3 transition-all duration-200;
+    @apply dark:text-palantir-zinc-300 dark:hover:bg-palantir-dark-layer-3;
+  }
+
+  .pal-sidebar-item.active {
+    @apply bg-palantir-accent-blue text-white;
+    @apply dark:bg-palantir-accent-blue;
+  }
+
+  /* PalantirUI Header Styles */
+  .pal-header {
+    @apply bg-palantir-layer-1 border-b border-palantir-zinc-200;
+    @apply dark:bg-palantir-dark-layer-1 dark:border-palantir-zinc-700;
+    @apply backdrop-blur-pal;
+  }
+
+  /* PalantirUI Panel Styles */
+  .pal-panel {
+    @apply bg-palantir-zinc-50 rounded-pal-lg border border-palantir-zinc-200;
+    @apply dark:bg-palantir-zinc-800 dark:border-palantir-zinc-700;
+    @apply shadow-pal-subtle;
+  }
+
+  /* PalantirUI Modal Styles */
+  .pal-modal {
+    @apply fixed inset-0 z-50 overflow-y-auto flex items-center justify-center;
+  }
+
+  .pal-modal-backdrop {
+    @apply fixed inset-0 bg-black bg-opacity-50 backdrop-blur-pal;
+  }
+
+  .pal-modal-content {
+    @apply relative bg-palantir-zinc-50 rounded-pal-xl shadow-pal-strong border border-palantir-zinc-200;
+    @apply dark:bg-palantir-zinc-800 dark:border-palantir-zinc-700;
+    @apply max-w-md mx-auto p-6;
+    @apply animate-pal-scale-in;
+  }
+
+  /* PalantirUI Text Styles */
+  .pal-text-xs {
+    @apply text-xs font-inter;
+  }
+
+  .pal-text-sm {
+    @apply text-sm font-inter;
+  }
+
+  .pal-text-base {
+    @apply text-base font-inter;
+  }
+
+  .pal-text-lg {
+    @apply text-lg font-inter;
+  }
+
+  .pal-text-xl {
+    @apply text-xl font-inter;
+  }
+
+  .pal-text-2xl {
+    @apply text-2xl font-inter;
+  }
+
+  .pal-text-muted {
+    @apply text-palantir-zinc-500;
+    @apply dark:text-palantir-zinc-400;
+  }
+
+  /* PalantirUI Depth System */
+  .pal-depth-1 { 
+    z-index: 10;
+    @apply pal-layer-1;
+  }
+
+  .pal-depth-2 { 
+    z-index: 20;
+    @apply pal-layer-2;
+  }
+
+  .pal-depth-3 { 
+    z-index: 30;
+    @apply pal-layer-3;
+  }
+
+  .pal-depth-4 { 
+    z-index: 40;
+    @apply pal-layer-4;
+  }
+
+  .pal-depth-5 { 
+    z-index: 50;
+    @apply pal-layer-5;
+  }
+
+  /* PalantirUI Scrollbar */
+  .pal-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(161, 161, 170, 0.5) transparent;
+  }
+
+  .pal-scrollbar::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  .pal-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .pal-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-palantir-zinc-400 bg-opacity-50 rounded-full;
+    @apply hover:bg-opacity-70 transition-all duration-200;
+  }
+
+  .pal-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-palantir-zinc-500;
+  }
+}
+
 /* Utility classes */
 @layer utilities {
   .glass-effect {
@@ -267,6 +607,43 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+
+  /* PalantirUI Utilities */
+  .pal-glow-on-hover {
+    @apply transition-all duration-300;
+  }
+
+  .pal-glow-on-hover:hover {
+    @apply pal-glow-medium;
+  }
+
+  .pal-corner-markers {
+    @apply relative;
+  }
+
+  .pal-corner-markers::before,
+  .pal-corner-markers::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--pal-accent-blue);
+    opacity: 0.7;
+  }
+
+  .pal-corner-markers::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+
+  .pal-corner-markers::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
   }
 }
 

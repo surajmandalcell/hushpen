@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { usePlatform } from "./services/platform";
 import { useAccessibility } from "./services/accessibility";
@@ -20,6 +20,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { globalShortcutService } from "./services/globalShortcut";
 
 function App() {
+  const mainContentId = useId();
   const [activeSection, setActiveSection] = useState("general");
   const [isRecordingOverlayActive, setIsRecordingOverlayActive] =
     useState(false);
@@ -39,7 +40,14 @@ function App() {
 
   // Handler to start recording
   const startRecording = () => {
+    console.log("App: startRecording called, setting overlay active");
     setIsRecordingOverlayActive(true);
+  };
+
+  // Handler for section changes with logging
+  const handleSectionChange = (section: string) => {
+    console.log(`App: Section changing from ${activeSection} to ${section}`);
+    setActiveSection(section);
   };
 
   // Initialize global shortcuts and handle recording overlay activation
@@ -94,10 +102,10 @@ function App() {
         statusText={recordingState.statusText}
       />
       {notifications.length > 0 && <TrayNotificationList />}
-      <div className="flex h-full" id="main-content">
+      <div className="flex h-full" id={mainContentId}>
         <Sidebar
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onSectionChange={handleSectionChange}
         />
         <ContentArea
           activeSection={activeSection}

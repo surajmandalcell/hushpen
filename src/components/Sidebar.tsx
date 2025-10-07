@@ -24,6 +24,7 @@ const sidebarSections = [
   { id: "transcribe", label: "Transcribe Files", icon: FileText },
   { id: "accessibility", label: "Accessibility", icon: Accessibility },
   { id: "demo", label: "macOS Components", icon: Palette },
+  { id: "palantirui", label: "PalantirUI Demo", icon: Palette },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -45,11 +46,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           const IconComponent = section.icon;
           return (
             <button
+              type="button"
               key={section.id}
               className={`sidebar-item w-full ${
                 activeSection === section.id ? "active" : ""
               }`}
-              onClick={() => onSectionChange(section.id)}
+              onClick={() => {
+                console.log(`Sidebar navigation: clicked on ${section.id}`);
+                onSectionChange(section.id);
+              }}
             >
               <IconComponent size={18} className="mr-3 flex-shrink-0" />
               <span className="truncate">{section.label}</span>

@@ -9,6 +9,7 @@ import TranscribePage from "../pages/TranscribePage";
 import AboutPage from "../pages/AboutPage";
 import ComponentDemo from "../pages/ComponentDemo";
 import AccessibilityPage from "../pages/AccessibilityPage";
+import PalantirUIDemo from "../pages/PalantirUIDemo";
 
 interface ContentAreaProps {
   activeSection: string;
@@ -37,6 +38,8 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         return <AboutPage />;
       case "demo":
         return <ComponentDemo />;
+      case "palantirui":
+        return <PalantirUIDemo />;
       default:
         return <GeneralPage />;
     }
@@ -48,7 +51,11 @@ const ContentArea: React.FC<ContentAreaProps> = ({
         {onStartRecording && (
           <div className="p-5 border-b border-macos-border dark:border-macos-border-dark mb-5">
             <button
-              onClick={onStartRecording}
+              type="button"
+              onClick={() => {
+                console.log("Recording button clicked in ContentArea");
+                onStartRecording();
+              }}
               className="btn-macos flex items-center space-x-2"
             >
               <span>🎤</span>
