@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { platformAudioService } from "../services/platformAudio";
-import { PalPanel, PalPanelHeader, PalText, PalCard, PalButton, PalInput } from "../components/palantirui";
+import { PalPanelHeader, PalText, PalCard, PalButton } from "../components/palantirui";
 
 const MicrophonePage: React.FC = () => {
   const [selectedDevice, setSelectedDevice] = useState("default");

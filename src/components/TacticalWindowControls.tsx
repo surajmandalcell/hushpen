@@ -34,12 +34,12 @@ export interface TacticalWindowControlProps extends HTMLAttributes<HTMLButtonEle
 
 export const TacticalWindowControl = forwardRef<HTMLButtonElement, TacticalWindowControlProps>(
   ({ className, variant, ...props }, ref) => {
-    const baseClasses = 'w-6 h-6 flex items-center justify-center transition-all duration-150 border border-palantir-zinc-600 hover:border-palantir-accent-blue focus:outline-none focus:ring-1 focus:ring-palantir-accent-blue';
-    
+    const baseClasses = 'w-6 h-6 flex items-center justify-center transition-all duration-150 border focus:outline-none focus:ring-1 focus:ring-palantir-accent-blue';
+
     const variantClasses = {
-      close: 'bg-palantir-zinc-800 hover:bg-palantir-zinc-700 text-palantir-zinc-400 hover:text-palantir-accent-red',
-      minimize: 'bg-palantir-zinc-800 hover:bg-palantir-zinc-700 text-palantir-zinc-400 hover:text-palantir-accent-orange',
-      maximize: 'bg-palantir-zinc-800 hover:bg-palantir-zinc-700 text-palantir-zinc-400 hover:text-palantir-accent-green',
+      close: 'bg-palantir-zinc-200 hover:bg-palantir-zinc-300 text-palantir-zinc-600 hover:text-palantir-accent-red border-palantir-zinc-300 hover:border-palantir-accent-red dark:bg-palantir-zinc-800 dark:hover:bg-palantir-zinc-700 dark:text-palantir-zinc-400 dark:border-palantir-zinc-600 dark:hover:border-palantir-accent-red',
+      minimize: 'bg-palantir-zinc-200 hover:bg-palantir-zinc-300 text-palantir-zinc-600 hover:text-palantir-accent-orange border-palantir-zinc-300 hover:border-palantir-accent-orange dark:bg-palantir-zinc-800 dark:hover:bg-palantir-zinc-700 dark:text-palantir-zinc-400 dark:border-palantir-zinc-600 dark:hover:border-palantir-accent-orange',
+      maximize: 'bg-palantir-zinc-200 hover:bg-palantir-zinc-300 text-palantir-zinc-600 hover:text-palantir-accent-green border-palantir-zinc-300 hover:border-palantir-accent-green dark:bg-palantir-zinc-800 dark:hover:bg-palantir-zinc-700 dark:text-palantir-zinc-400 dark:border-palantir-zinc-600 dark:hover:border-palantir-accent-green',
     };
     
     const handleClick = async () => {

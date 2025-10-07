@@ -6,7 +6,6 @@ import {
   Keyboard,
   FileText,
   Info,
-  Palette,
   Accessibility,
 } from "lucide-react";
 import { PalSidebar, PalSidebarItem, PalSidebarSection, PalHeader, PalHeaderTitle } from "./palantirui";
@@ -24,8 +23,6 @@ const sidebarSections = [
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "transcribe", label: "Transcribe Files", icon: FileText },
   { id: "accessibility", label: "Accessibility", icon: Accessibility },
-  { id: "demo", label: "Tactical UI Demo", icon: Palette },
-  { id: "palantirui", label: "PalantirUI Demo", icon: Palette },
   { id: "about", label: "About", icon: Info },
 ];
 

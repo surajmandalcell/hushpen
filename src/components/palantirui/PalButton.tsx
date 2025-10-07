@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '../../utils/cn';
 
 export interface PalButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'accent';
   size?: 'sm' | 'md' | 'lg';
   withGlow?: boolean;
   withCornerMarkers?: boolean;
@@ -27,6 +27,7 @@ const PalButton = forwardRef<HTMLButtonElement, PalButtonProps>(
       primary: 'pal-btn-primary',
       secondary: 'pal-btn-secondary',
       ghost: 'pal-btn-ghost',
+      accent: 'pal-btn-primary',
     };
     
     const sizeClasses = {

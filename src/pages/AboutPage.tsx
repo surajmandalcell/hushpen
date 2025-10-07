@@ -1,5 +1,5 @@
 import React from 'react';
-import { PalPanel, PalPanelHeader, PalText, PalCard, PalButton } from '../components/palantirui';
+import { PalPanelHeader, PalText, PalCard, PalButton } from '../components/palantirui';
 
 const AboutPage: React.FC = () => {
   return (

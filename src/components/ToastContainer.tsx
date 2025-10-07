@@ -26,19 +26,6 @@ const ToastContainer: React.FC = () => {
     }
   };
 
-  const getToastClasses = (type: string) => {
-    switch (type) {
-      case 'success':
-        return 'toast-success';
-      case 'warning':
-        return 'toast-warning';
-      case 'error':
-        return 'toast-error';
-      default:
-        return 'toast-info';
-    }
-  };
-
   return (
     <div className="fixed top-4 right-4 z-50 space-y-3 pointer-events-none">
       {toasts.map((toast, index) => (

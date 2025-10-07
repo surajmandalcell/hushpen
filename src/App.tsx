@@ -12,8 +12,7 @@ import ToastContainer from "./components/ToastContainer";
 import RecordingOverlay from "./components/RecordingOverlay";
 import TrayNotificationList from "./components/TrayNotificationList";
 
-// PalantirUI Components
-import { PalPanel, PalHeader, PalWindowControls } from "./components/palantirui";
+// PalantirUI Components - removed unused imports
 
 // Hooks
 import { useWindowState } from "./hooks/useWindowState";

@@ -3,7 +3,7 @@ import { Mic, MicOff, Square, Loader2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useAudioRecording } from "../hooks/useAudioRecording";
 import { useRecording } from "../services/recordingManager";
-import { PalModal, PalModalHeader, PalModalContent, PalModalFooter, PalButton, PalPanel } from "./palantirui";
+import { PalModal, PalModalHeader, PalModalContent, PalModalFooter, PalButton } from "./palantirui";
 
 export interface RecordingOverlayProps {
   isActive: boolean;
@@ -16,7 +16,6 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   isTranscribing = false,
   statusText = "Listening...",
 }) => {
-  const [showControls, setShowControls] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isTranscribingLocal, setIsTranscribingLocal] = useState(false);
 
@@ -92,23 +91,14 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
       }
     };
 
-    const handleMouseMove = () => {
-      setShowControls(true);
-      // Hide controls after 3 seconds of inactivity
-      const timeout = setTimeout(() => setShowControls(false), 3000);
-      return () => clearTimeout(timeout);
-    };
-
     if (isActive) {
       document.addEventListener("keydown", handleKeyPress);
-      document.addEventListener("mousemove", handleMouseMove);
       // Prevent body scroll when overlay is active
       document.body.style.overflow = "hidden";
     }
 
     return () => {
       document.removeEventListener("keydown", handleKeyPress);
-      document.removeEventListener("mousemove", handleMouseMove);
       document.body.style.overflow = "unset";
     };
   }, [isActive, isTranscribing, isTranscribingLocal]);

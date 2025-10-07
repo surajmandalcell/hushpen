@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSettings } from '../services/settings';
-import { PalPanel, PalPanelHeader, PalPanelContent, PalText, PalCard, PalButton } from '../components/palantirui';
-import { TacticalWindowControls } from '../components/TacticalWindowControls';
+import { PalPanelHeader, PalText, PalCard } from '../components/palantirui';
 import { TacticalToggle } from '../components/TacticalToggle';
 
 const GeneralPage: React.FC = () => {
@@ -93,91 +92,6 @@ const GeneralPage: React.FC = () => {
         </div>
       </PalCard>
 
-      <PalCard
-        variant="default"
-        padding="lg"
-        withGlow={true}
-        withCornerMarkers={true}
-        className="space-y-4"
-      >
-        <PalText size="lg" weight="semibold">Tactical Window Controls</PalText>
-        
-        <div className="space-y-3">
-          <PalText weight="medium">Integrated Window Controls</PalText>
-          <div className="flex items-center gap-4 p-3 bg-palantir-zinc-100 dark:bg-palantir-zinc-800 rounded-pal">
-            <TacticalWindowControls />
-            <PalText size="sm" variant="muted">
-              Use these controls to manage the application window
-            </PalText>
-          </div>
-          
-          <PalText weight="medium">Alternative Test Controls</PalText>
-          <div className="flex gap-2 flex-wrap">
-            <PalButton
-              variant="primary"
-              onClick={async () => {
-                console.log("Test close button clicked");
-                try {
-                  const { invoke } = await import('@tauri-apps/api/core');
-                  console.log("Closing window via Tauri invoke");
-                  await invoke('quit_app');
-                } catch (error) {
-                  console.error("Failed to close window:", error);
-                  // Fallback to direct API
-                  try {
-                    const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                    const window = getCurrentWindow();
-                    await window.close();
-                  } catch (fallbackError) {
-                    console.error("Fallback also failed:", fallbackError);
-                  }
-                }
-              }}
-            >
-              Close Window
-            </PalButton>
-            
-            <PalButton
-              variant="secondary"
-              onClick={async () => {
-                console.log("Test minimize button clicked");
-                try {
-                  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                  const window = getCurrentWindow();
-                  console.log("Minimizing window via Tauri API");
-                  await window.minimize();
-                } catch (error) {
-                  console.error("Failed to minimize window:", error);
-                }
-              }}
-            >
-              Minimize Window
-            </PalButton>
-            
-            <PalButton
-              variant="accent"
-              onClick={async () => {
-                console.log("Test maximize button clicked");
-                try {
-                  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                  const window = getCurrentWindow();
-                  const isMaximized = await window.isMaximized();
-                  console.log("Window maximized state:", isMaximized);
-                  if (isMaximized) {
-                    await window.unmaximize();
-                  } else {
-                    await window.maximize();
-                  }
-                } catch (error) {
-                  console.error("Failed to toggle maximize:", error);
-                }
-              }}
-            >
-              Toggle Maximize
-            </PalButton>
-          </div>
-        </div>
-      </PalCard>
     </div>
   );
 };
