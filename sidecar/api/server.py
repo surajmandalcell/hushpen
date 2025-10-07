@@ -23,7 +23,6 @@ import io
 import email.parser
 from email.message import EmailMessage
 
-from models import ModelManager
 from config.settings import Settings
 from .models import (
     ModelResponse,
@@ -31,9 +30,20 @@ from .models import (
     ModelSettingRequest,
     ModelSettingResponse,
     HealthResponse,
+    TranscriptionResponse,
+)
+from ..utils.errors import (
+    SidecarError,
+    ModelError,
+    DeviceError,
+    ConfigurationError,
+    APIError,
 )
 
 logger = logging.getLogger(__name__)
+
+# Global model manager instance
+model_manager = None
 
 
 class ConnectionManager:
@@ -100,8 +110,8 @@ def create_app(settings: Settings) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Initialize model manager
-    model_manager = ModelManager(settings)
+    # Model manager will be replaced with Docker integration
+    # For now, we'll use placeholder responses
 
     @app.get("/", include_in_schema=False)
     async def root():
@@ -118,15 +128,40 @@ def create_app(settings: Settings) -> FastAPI:
         - Currently active AI model
         - Processing device (CUDA/CPU)
         - Model readiness status
+        - Docker integration status
         """
         try:
-            current_model = model_manager.get_current_model()
-            device = model_manager.get_current_device()
+            global model_manager
+            
+            if model_manager is None:
+                logger.warning("Model manager not initialized in health check")
+                return HealthResponse(
+                    status="initializing",
+                    current_model=None,
+                    device="Docker container"
+                )
+            
+            # Get system status from Docker model manager
+            system_status = await model_manager.get_system_status()
+            
+            # Determine overall health status
+            status = "healthy"
+            if not system_status.get("docker_available", False):
+                status = "degraded"  # Docker not available
+            elif not system_status.get("current_model"):
+                status = "ready"  # Docker available but no model loaded
+            
+            device = "Docker container (GPU)" if system_status.get("gpu_available") else "Docker container (CPU)"
+            
+            logger.debug(f"Health check result: status={status}, model={system_status.get('current_model')}, device={device}")
+            
             return HealthResponse(
-                status="healthy", current_model=current_model, device=device
+                status=status,
+                current_model=system_status.get("current_model"),
+                device=device
             )
         except Exception as e:
-            logger.error(f"Health check failed: {e}")
+            logger.error(f"Health check failed: {e}", exc_info=True)
             return HealthResponse(status="unhealthy")
 
     @app.get("/docs", include_in_schema=False)
@@ -150,14 +185,41 @@ def create_app(settings: Settings) -> FastAPI:
         Each model includes its ID and readiness status.
         """
         try:
-            models = await model_manager.list_available_models()
-            model_responses = [
-                ModelResponse(id=model_id, ready=model_manager.is_model_ready(model_id))
-                for model_id in models
-            ]
+            global model_manager
+            
+            if model_manager is None:
+                logger.warning("Model manager not initialized when listing models")
+                raise HTTPException(status_code=503, detail="Model manager not initialized")
+            
+            # Get available models from Docker model manager
+            available_models = await model_manager.list_available_models()
+            logger.info(f"Found {len(available_models)} available models")
+            
+            # Get model info for each available model
+            model_responses = []
+            for model_id in available_models:
+                try:
+                    model_info = await model_manager.get_model_info(model_id)
+                    if model_info:
+                        model_responses.append(
+                            ModelResponse(
+                                id=model_id,
+                                ready=model_info.get("is_running", False)
+                            )
+                        )
+                        logger.debug(f"Model {model_id}: ready={model_info.get('is_running', False)}")
+                    else:
+                        logger.warning(f"Could not get info for model {model_id}")
+                except Exception as e:
+                    logger.error(f"Error getting info for model {model_id}: {e}")
+                    # Continue with other models even if one fails
+            
+            logger.info(f"Returning {len(model_responses)} models in response")
             return ModelListResponse(data=model_responses)
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"Failed to list models: {e}")
+            logger.error(f"Failed to list models: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to list models")
 
     @app.post("/v1/settings/model", response_model=ModelSettingResponse, tags=["Models"])
@@ -176,13 +238,39 @@ def create_app(settings: Settings) -> FastAPI:
         - `whisper-large`: Best accuracy, slowest
         """
         try:
+            global model_manager
+            
+            if model_manager is None:
+                logger.error("Model manager not initialized when setting model")
+                raise HTTPException(status_code=503, detail="Model manager not initialized")
+            
+            logger.info(f"Setting model to: {request.model_id}")
+            
+            # Validate model exists
+            available_models = await model_manager.list_available_models()
+            if request.model_id not in available_models:
+                logger.warning(f"Model {request.model_id} not found in available models: {available_models}")
+                raise HTTPException(status_code=404, detail=f"Model {request.model_id} not found")
+            
+            # Set the model using Docker model manager
             success = await model_manager.set_model(request.model_id)
+            
             if success:
-                return ModelSettingResponse(status="success", model=request.model_id)
+                logger.info(f"Successfully set model to {request.model_id}")
+                return ModelSettingResponse(
+                    status="success",
+                    model=request.model_id
+                )
             else:
-                raise HTTPException(status_code=400, detail="Failed to set model")
+                logger.error(f"Failed to set model to {request.model_id}")
+                return ModelSettingResponse(
+                    status="error",
+                    model=request.model_id
+                )
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"Failed to set model: {e}")
+            logger.error(f"Failed to set model: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to set model")
 
     @app.post("/v1/audio/transcriptions", tags=["Transcription"])
@@ -358,62 +446,91 @@ def create_app(settings: Settings) -> FastAPI:
                     detail="Unsupported file type. Please upload audio files (WAV, MP3, M4A, FLAC, OGG, etc.) or video files (MP4, AVI, MKV, MOV, WebM, etc.) supported by FFmpeg.",
                 )
 
-            # Use specified model or current model
-            model_id = model or model_manager.get_current_model()
-            if not model_id:
-                raise HTTPException(
-                    status_code=400, detail="No model specified or loaded"
-                )
-
-            # Define progress callback
-            async def progress_callback(progress: int, status: str):
-                await send_websocket_message(
-                    "transcription_progress",
-                    {"filename": filename, "progress": progress, "status": status},
-                )
-
+            # Transcribe using Docker model manager
+            logger.info(f"Transcription requested for file: {filename} with model: {model}")
+            
+            global model_manager
+            
+            if model_manager is None:
+                logger.error("Model manager not initialized during transcription request")
+                raise HTTPException(status_code=503, detail="Model manager not initialized")
+            
+            # Check if model is available
+            available_models = await model_manager.list_available_models()
+            if model not in available_models:
+                logger.error(f"Model {model} not available. Available models: {available_models}")
+                raise HTTPException(status_code=404, detail=f"Model {model} not available")
+            
             # Send transcription start notification
             await send_websocket_message(
-                "transcription_started", {"filename": filename, "model": model_id}
+                "transcription_started", {"filename": filename, "model": model}
             )
 
-            # Create file-like object from content and transcribe
-            audio_file = io.BytesIO(file_content)
-            result = await model_manager.transcribe_file(
-                audio_file, model_id, progress_callback, filename=filename
-            )
+            # Progress callback for WebSocket updates
+            async def progress_callback(progress: float, status: str):
+                await send_websocket_message(
+                    "transcription_progress",
+                    {"filename": filename, "progress": int(progress * 100), "status": status},
+                )
 
-            # Send transcription complete notification
-            await send_websocket_message(
-                "transcription_completed",
-                {
-                    "filename": filename,
-                    "result_length": len(result.get("text", "")),
-                },
-            )
+            try:
+                # Transcribe the audio file
+                logger.info(f"Starting transcription of {filename} with model {model}")
+                result = await model_manager.transcribe_data(
+                    audio_data=file_content,
+                    model_id=model,
+                    progress_callback=progress_callback,
+                    response_format=response_format
+                )
 
-            # Format response based on requested format
-            if response_format == "text":
-                return {"text": result.get("text", "")}
-            elif response_format == "srt":
-                # Convert segments to SRT format
-                srt_content = ""
-                for i, segment in enumerate(result.get("segments", []), 1):
-                    start_time = segment.get("start", 0)
-                    end_time = segment.get("end", 0)
-                    text = segment.get("text", "")
+                # Ensure result has Docker-specific fields
+                if "model_id" not in result:
+                    result["model_id"] = model
+                if "backend" not in result:
+                    result["backend"] = "docker"
+                
+                # Get container information if available
+                try:
+                    container_info = await model_manager.get_model_info(model)
+                    if container_info:
+                        result["container_info"] = {
+                            "status": container_info.get("status"),
+                            "gpu_allocated": container_info.get("gpu_allocated"),
+                            "image": container_info.get("image"),
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to get container info for {model}: {e}")
 
-                    # Format timestamps as HH:MM:SS,mmm
-                    start_formatted = f"{int(start_time//3600):02d}:{int((start_time%3600)//60):02d}:{int(start_time%60):02d},{int((start_time%1)*1000):03d}"
-                    end_formatted = f"{int(end_time//3600):02d}:{int((end_time%3600)//60):02d}:{int(end_time%60):02d},{int((end_time%1)*1000):03d}"
+                # Send transcription complete notification
+                await send_websocket_message(
+                    "transcription_completed",
+                    {
+                        "filename": filename,
+                        "result_length": len(result.get("text", "")),
+                        "model": model,
+                        "processing_time": result.get("processing_time", 0),
+                    },
+                )
 
-                    srt_content += (
-                        f"{i}\n{start_formatted} --> {end_formatted}\n{text}\n\n"
-                    )
-
-                return srt_content
-            else:  # json (default)
+                logger.info(f"Transcription completed for {filename} with {len(result.get('text', ''))} characters")
+                
+                # Return the transcription result
                 return result
+                
+            except Exception as e:
+                # Send transcription error notification
+                error_msg = str(e)
+                logger.error(f"Transcription failed for {filename}: {error_msg}", exc_info=True)
+                
+                await send_websocket_message(
+                    "transcription_error",
+                    {
+                        "filename": filename,
+                        "error": error_msg,
+                        "model": model,
+                    },
+                )
+                raise
 
         except HTTPException:
             raise
@@ -422,8 +539,22 @@ def create_app(settings: Settings) -> FastAPI:
             error_msg = str(ve)
             logger.error(f"File validation error: {error_msg}")
             raise HTTPException(status_code=400, detail=error_msg)
+        except RuntimeError as re:
+            # Handle Docker-specific runtime errors
+            error_msg = str(re)
+            logger.error(f"Docker runtime error during transcription: {error_msg}")
+            
+            # Check for specific Docker errors
+            if "not initialized" in error_msg:
+                raise HTTPException(status_code=503, detail="Docker model manager not initialized")
+            elif "No model specified" in error_msg:
+                raise HTTPException(status_code=400, detail="No model specified for transcription")
+            elif "Failed to set model" in error_msg:
+                raise HTTPException(status_code=503, detail="Failed to initialize model container")
+            else:
+                raise HTTPException(status_code=500, detail="Docker runtime error")
         except Exception as e:
-            logger.error(f"Failed to transcribe audio: {e}")
+            logger.error(f"Failed to transcribe audio: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to transcribe audio")
 
     @app.get("/v1/options", tags=["Configuration"])
@@ -442,8 +573,12 @@ def create_app(settings: Settings) -> FastAPI:
         their interface based on backend capabilities.
         """
         try:
-            # Get available models from model manager
-            available_models = await model_manager.list_available_models()
+            # Get available models from Docker model manager
+            global model_manager
+            if model_manager:
+                available_models = await model_manager.list_available_models()
+            else:
+                available_models = []
 
             # Define supported formats
             supported_formats = {
@@ -582,12 +717,27 @@ def create_app(settings: Settings) -> FastAPI:
             }
 
             # System capabilities
+            global model_manager
+            gpu_acceleration = False
+            current_device = "Unknown"
+            
+            if model_manager:
+                try:
+                    system_status = await model_manager.get_system_status()
+                    gpu_acceleration = system_status.get("gpu_available", False)
+                    current_device = "Docker container (GPU)" if gpu_acceleration else "Docker container (CPU)"
+                except Exception as e:
+                    logger.warning(f"Failed to get system status: {e}")
+                    current_device = "Docker container"
+            else:
+                current_device = "Docker container"
+            
             capabilities = {
                 "ffmpeg_support": True,
                 "video_processing": True,
                 "audio_extraction": True,
-                "gpu_acceleration": model_manager.get_current_device() != "cpu",
-                "current_device": model_manager.get_current_device(),
+                "gpu_acceleration": gpu_acceleration,
+                "current_device": current_device,
                 "websocket_support": True,
                 "real_time_progress": True
             }
@@ -613,22 +763,61 @@ def create_app(settings: Settings) -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         """Initialize services on startup."""
+        global model_manager
         logger.info("Starting ASR Pro API server")
+        
         try:
-            await model_manager.initialize()
-            logger.info("Model manager initialized successfully")
+            # Check Docker availability first
+            from config.docker_config import DockerConfig
+            docker_config = DockerConfig()
+            
+            if not docker_config.is_docker_available():
+                logger.error("Docker is not available on this system")
+                return
+            
+            logger.info("Docker is available, initializing model manager")
+            
+            # Initialize Docker model manager
+            from docker.model_manager import DockerModelManager
+            model_manager = DockerModelManager(settings.get_docker_config())
+            
+            # Initialize the model manager
+            success = await model_manager.initialize()
+            if success:
+                logger.info("Docker model manager initialized successfully")
+                
+                # Get system status for logging
+                try:
+                    system_status = await model_manager.get_system_status()
+                    gpu_available = system_status.get("gpu_available", False)
+                    logger.info(f"GPU acceleration available: {gpu_available}")
+                    
+                    # List available models
+                    available_models = await model_manager.list_available_models()
+                    logger.info(f"Available models: {available_models}")
+                except Exception as e:
+                    logger.warning(f"Failed to get system status after initialization: {e}")
+            else:
+                logger.error("Failed to initialize Docker model manager")
         except Exception as e:
-            logger.error(f"Failed to initialize model manager: {e}")
+            logger.error(f"Error initializing Docker model manager: {e}", exc_info=True)
 
     @app.on_event("shutdown")
     async def shutdown_event():
         """Cleanup on shutdown."""
+        global model_manager
         logger.info("Shutting down ASR Pro API server")
+        
         try:
-            await model_manager.cleanup()
-            logger.info("Model manager cleaned up successfully")
+            # Cleanup Docker model manager
+            if model_manager:
+                logger.info("Cleaning up Docker model manager...")
+                await model_manager.cleanup()
+                logger.info("Docker model manager cleanup completed")
+            else:
+                logger.warning("No model manager to cleanup")
         except Exception as e:
-            logger.error(f"Failed to cleanup model manager: {e}")
+            logger.error(f"Error during Docker model manager cleanup: {e}", exc_info=True)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
@@ -639,6 +828,8 @@ def create_app(settings: Settings) -> FastAPI:
         - `transcription_started`: When transcription begins
         - `transcription_progress`: Progress percentage and status
         - `transcription_completed`: When transcription finishes
+        - `container_status`: When Docker container status changes
+        - `system_status`: System status updates
 
         **Message Format:**
         ```json
@@ -647,25 +838,60 @@ def create_app(settings: Settings) -> FastAPI:
             "data": {
                 "filename": "audio.wav",
                 "progress": 75,
-                "status": "Processing..."
+                "status": "Processing...",
+                "model": "whisper-base"
             }
         }
         ```
         """
         await connection_manager.connect(websocket)
+        logger.info(f"WebSocket client connected (total clients: {len(connection_manager.active_connections)})")
+        
         try:
+            # Send initial system status to new client
+            await send_system_status_to_client(websocket)
+            
             while True:
                 data = await websocket.receive_text()
                 # Handle incoming messages if needed
                 logger.debug(f"Received WebSocket message: {data}")
+                
+                # Parse message and handle if needed
+                try:
+                    message = json.loads(data)
+                    message_type = message.get("type")
+                    
+                    if message_type == "ping":
+                        # Respond to ping with pong
+                        await websocket.send_text(json.dumps({"type": "pong"}))
+                    elif message_type == "get_status":
+                        # Send current system status
+                        await send_system_status_to_client(websocket)
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON received from WebSocket: {data}")
+                    
         except WebSocketDisconnect:
             connection_manager.disconnect(websocket)
-            logger.info("WebSocket client disconnected")
+            logger.info(f"WebSocket client disconnected (total clients: {len(connection_manager.active_connections)})")
 
     # Helper function to send WebSocket messages
     async def send_websocket_message(message_type: str, data: any):
         """Send message to all connected WebSocket clients."""
         message = {"type": message_type, "data": data}
         await connection_manager.broadcast(message)
+        logger.debug(f"Broadcasted WebSocket message: {message_type} to {len(connection_manager.active_connections)} clients")
+
+    async def send_system_status_to_client(websocket: WebSocket):
+        """Send system status to a specific WebSocket client."""
+        try:
+            global model_manager
+            if model_manager:
+                system_status = await model_manager.get_system_status()
+                await websocket.send_text(json.dumps({
+                    "type": "system_status",
+                    "data": system_status
+                }))
+        except Exception as e:
+            logger.error(f"Failed to send system status to WebSocket client: {e}")
 
     return app

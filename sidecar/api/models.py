@@ -35,3 +35,8 @@ class TranscriptionResponse(BaseModel):
     segments: Optional[List[dict]] = None
     metadata: Optional[dict] = None
     specials: Optional[List[dict]] = None
+    # Docker-specific fields
+    model_id: Optional[str] = None
+    processing_time: Optional[float] = None
+    backend: Optional[str] = "docker"
+    container_info: Optional[dict] = None

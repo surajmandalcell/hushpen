@@ -46,13 +46,8 @@ class Settings:
                 "host": "127.0.0.1",
                 "port": 8000
             },
-            "models": {
-                "default_model": "whisper-base",
-                "cache_dir": ""
-            },
-            "device": {
-                "prefer_gpu": True,
-                "compute_type": "auto"
+            "docker": {
+                "integration_pending": True
             }
         }
     
@@ -95,13 +90,9 @@ class Settings:
         """Get server configuration."""
         return self.config.get("server", {})
     
-    def get_models_config(self) -> Dict[str, Any]:
-        """Get models configuration."""
-        return self.config.get("models", {})
-    
-    def get_device_config(self) -> Dict[str, Any]:
-        """Get device configuration."""
-        return self.config.get("device", {})
+    def get_docker_config(self) -> Dict[str, Any]:
+        """Get Docker configuration."""
+        return self.config.get("docker", {})
     
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value by dot notation key."""

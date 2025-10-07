@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from api.server import create_app
 from config.settings import Settings
-from utils.cuda_env import ensure_cuda_dlls_on_path
 
 # Configure logging
 logging.basicConfig(
@@ -48,11 +47,6 @@ async def run_performance_tests():
 
 def main():
     """Main entry point for the ASR Pro sidecar."""
-    # Ensure CUDA DLLs are discoverable early on Windows
-    try:
-        ensure_cuda_dlls_on_path()
-    except Exception:
-        pass
     parser = argparse.ArgumentParser(description="ASR Pro Python Sidecar")
     parser.add_argument(
         "--test", action="store_true", help="Run comprehensive model tests"
@@ -80,7 +74,19 @@ def main():
 
         # Initialize configuration
         settings = Settings()
+        await settings.load_config()
 
+        # Check Docker environment
+        logger.info("Checking Docker environment...")
+        from config.docker_config import DockerConfig
+        docker_config = DockerConfig(settings.get_docker_config())
+        
+        if not docker_config.is_docker_available():
+            logger.error("Docker is not available on this system. Please install Docker and ensure it's running.")
+            sys.exit(1)
+        
+        logger.info("Docker environment check passed")
+        
         # Create FastAPI app
         app = create_app(settings)
 

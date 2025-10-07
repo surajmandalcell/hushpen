@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  whisper-gpu:
+    build:
+      context: .
+      dockerfile: docker/whisper-gpu/Dockerfile
+    image: asrpro/whisper-gpu:test
+    container_name: whisper-gpu-test
+    ports:
+      - "8001:8000"
+    environment:
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./test-data:/app/test-data:ro
+      - whisper-models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "./health_check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - whisper-network
+
+  # Optional: Add a simple web interface for testing
+  whisper-test-ui:
+    image: nginx:alpine
+    container_name: whisper-test-ui
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/test-ui:/usr/share/nginx/html:ro
+    depends_on:
+      whisper-gpu:
+        condition: service_healthy
+    networks:
+      - whisper-network
+    profiles:
+      - ui
+
+volumes:
+  whisper-models:
+    driver: local
+
+networks:
+  whisper-network:
+    driver: bridge

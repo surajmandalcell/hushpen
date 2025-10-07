@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper GPU Test Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .file-input {
+            margin-bottom: 20px;
+        }
+        .result {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Whisper GPU Test Interface</h1>
+        
+        <div id="status" class="status info">
+            Checking container status...
+        </div>
+        
+        <div class="section">
+            <h2>Container Information</h2>
+            <button onclick="checkHealth()">Check Health</button>
+            <button onclick="getGPUInfo()">Get GPU Info</button>
+            <button onclick="getSystemInfo()">Get System Info</button>
+            <div id="container-info" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Model Management</h2>
+            <button onclick="listModels()">List Models</button>
+            <button onclick="loadModel('tiny')">Load Tiny Model</button>
+            <button onclick="loadModel('base')">Load Base Model</button>
+            <button onclick="loadModel('small')">Load Small Model</button>
+            <button onclick="loadModel('medium')">Load Medium Model</button>
+            <div id="model-info" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Transcription Test</h2>
+            <div class="file-input">
+                <input type="file" id="audio-file" accept="audio/*">
+            </div>
+            <button onclick="transcribeAudio()" id="transcribe-btn" disabled>Transcribe Audio</button>
+            <div id="transcription-result" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h2>GPU Monitoring</h2>
+            <button onclick="getGPUMemory()">Get GPU Memory</button>
+            <button onclick="getGPUUtilization()">Get GPU Utilization</button>
+            <button onclick="startMonitoring()">Start Monitoring</button>
+            <button onclick="stopMonitoring()">Stop Monitoring</button>
+            <div id="gpu-monitor" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8001';
+        let monitoringInterval = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkHealth();
+            
+            // Enable transcribe button when file is selected
+            document.getElementById('audio-file').addEventListener('change', function() {
+                document.getElementById('transcribe-btn').disabled = !this.files[0];
+            });
+        });
+        
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+                
+                if (data) {
+                    if (data instanceof FormData) {
+                        options.body = data;
+                        delete options.headers['Content-Type'];
+                    } else {
+                        options.body = JSON.stringify(data);
+                    }
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+        
+        function showStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        function showResult(elementId, data) {
+            document.getElementById(elementId).textContent = JSON.stringify(data, null, 2);
+        }
+        
+        async function checkHealth() {
+            try {
+                showStatus('Checking health...', 'info');
+                const result = await apiCall('/health');
+                showStatus('Container is healthy', 'success');
+                showResult('container-info', result);
+            } catch (error) {
+                showStatus(`Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function getGPUInfo() {
+            try {
+                showStatus('Getting GPU info...', 'info');
+                const result = await apiCall('/gpu/info');
+                showStatus('GPU info retrieved', 'success');
+                showResult('container-info', result);
+            } catch (error) {
+                showStatus(`Failed to get GPU info: ${error.message}`, 'error');
+            }
+        }
+        
+        async function getSystemInfo() {
+            try {
+                showStatus('Getting system info...', 'info');
+                const result = await apiCall('/system/info');
+                showStatus('System info retrieved', 'success');
+                showResult('container-info', result);
+            } catch (error) {
+                showStatus(`Failed to get system info: ${error.message}`, 'error');
+            }
+        }
+        
+        async function listModels() {
+            try {
+                showStatus('Listing models...', 'info');
+                const result = await apiCall('/models');
+                showStatus('Models listed', 'success');
+                showResult('model-info', result);
+            } catch (error) {
+                showStatus(`Failed to list models: ${error.message}`, 'error');
+            }
+        }
+        
+        async function loadModel(modelName) {
+            try {
+                showStatus(`Loading ${modelName} model...`, 'info');
+                const result = await apiCall(`/models/${modelName}`, 'POST');
+                showStatus(`Model ${modelName} loaded successfully`, 'success');
+                showResult('model-info', result);
+            } catch (error) {
+                showStatus(`Failed to load model: ${error.message}`, 'error');
+            }
+        }
+        
+        async function transcribeAudio() {
+            const fileInput = document.getElementById('audio-file');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showStatus('Please select an audio file', 'error');
+                return;
+            }
+            
+            try {
+                showStatus('Transcribing audio...', 'info');
+                document.getElementById('transcribe-btn').disabled = true;
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(`${API_BASE}/transcribe`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                showStatus('Transcription completed', 'success');
+                showResult('transcription-result', result);
+            } catch (error) {
+                showStatus(`Transcription failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('transcribe-btn').disabled = false;
+            }
+        }
+        
+        async function getGPUMemory() {
+            try {
+                showStatus('Getting GPU memory...', 'info');
+                const result = await apiCall('/gpu/memory');
+                showStatus('GPU memory retrieved', 'success');
+                showResult('gpu-monitor', result);
+            } catch (error) {
+                showStatus(`Failed to get GPU memory: ${error.message}`, 'error');
+            }
+        }
+        
+        async function getGPUUtilization() {
+            try {
+                showStatus('Getting GPU utilization...', 'info');
+                const result = await apiCall('/gpu/utilization');
+                showStatus('GPU utilization retrieved', 'success');
+                showResult('gpu-monitor', result);
+            } catch (error) {
+                showStatus(`Failed to get GPU utilization: ${error.message}`, 'error');
+            }
+        }
+        
+        async function startMonitoring() {
+            if (monitoringInterval) {
+                showStatus('Monitoring already started', 'info');
+                return;
+            }
+            
+            showStatus('Starting GPU monitoring...', 'info');
+            
+            // Update immediately
+            await updateMonitoring();
+            
+            // Then update every 2 seconds
+            monitoringInterval = setInterval(updateMonitoring, 2000);
+            showStatus('GPU monitoring started', 'success');
+        }
+        
+        async function updateMonitoring() {
+            try {
+                const [memory, utilization] = await Promise.all([
+                    apiCall('/gpu/memory'),
+                    apiCall('/gpu/utilization')
+                ]);
+                
+                const monitorData = {
+                    timestamp: new Date().toISOString(),
+                    memory: memory,
+                    utilization: utilization
+                };
+                
+                showResult('gpu-monitor', monitorData);
+            } catch (error) {
+                console.error('Monitoring update failed:', error);
+            }
+        }
+        
+        function stopMonitoring() {
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+                monitoringInterval = null;
+                showStatus('GPU monitoring stopped', 'info');
+            } else {
+                showStatus('Monitoring not started', 'info');
+            }
+        }
+    </script>
+</body>
+</html>
