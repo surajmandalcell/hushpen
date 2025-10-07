@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 // Base Components
 export { default as PalButton } from './PalButton';
 export type { PalButtonProps } from './PalButton';
@@ -62,7 +64,7 @@ export type {
 // Utility Types
 export interface PalantirUIComponentProps {
   className?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 export interface PalantirUIVariantProps {

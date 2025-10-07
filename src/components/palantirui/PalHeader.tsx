@@ -1,4 +1,4 @@
-import React, { forwardRef, HTMLAttributes } from 'react';
+import { forwardRef, type HTMLAttributes } from 'react';
 import { cn } from '../../utils/cn';
 import PalText from './PalText';
 
@@ -55,7 +55,7 @@ PalHeader.displayName = 'PalHeader';
 
 export interface PalWindowControlsProps extends HTMLAttributes<HTMLDivElement> {}
 
-const PalWindowControls = forwardRef<HTMLDivElement, PalWindowControlsProps>(
+export const PalWindowControls = forwardRef<HTMLDivElement, PalWindowControlsProps>(
   ({ className, ...props }, ref) => {
     const baseClasses = 'flex items-center gap-2 ml-4';
     
@@ -84,7 +84,7 @@ export interface PalWindowControlProps extends HTMLAttributes<HTMLButtonElement>
   variant: 'close' | 'minimize' | 'maximize';
 }
 
-const PalWindowControl = forwardRef<HTMLButtonElement, PalWindowControlProps>(
+export const PalWindowControl = forwardRef<HTMLButtonElement, PalWindowControlProps>(
   ({ className, variant, ...props }, ref) => {
     const baseClasses = 'w-3 h-3 rounded-full transition-all duration-200 hover:scale-110';
     
@@ -92,6 +92,33 @@ const PalWindowControl = forwardRef<HTMLButtonElement, PalWindowControlProps>(
       close: 'bg-palantir-accent-red hover:bg-red-600',
       minimize: 'bg-palantir-accent-orange hover:bg-orange-600',
       maximize: 'bg-palantir-accent-green hover:bg-green-600',
+    };
+    
+    const handleClick = async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const window = getCurrentWindow();
+        
+        switch (variant) {
+          case 'close':
+            await window.close();
+            break;
+          case 'minimize':
+            await window.minimize();
+            break;
+          case 'maximize': {
+            const isMaximized = await window.isMaximized();
+            if (isMaximized) {
+              await window.unmaximize();
+            } else {
+              await window.maximize();
+            }
+            break;
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to ${variant} window:`, error);
+      }
     };
     
     const classes = cn(
@@ -103,7 +130,9 @@ const PalWindowControl = forwardRef<HTMLButtonElement, PalWindowControlProps>(
     return (
       <button
         className={classes}
+        onClick={handleClick}
         ref={ref}
+        aria-label={variant}
         {...props}
       />
     );

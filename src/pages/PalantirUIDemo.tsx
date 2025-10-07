@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FC } from 'react';
 import {
   PalButton,
   PalInput,
@@ -14,14 +14,13 @@ import {
   PalPanel,
   PalPanelHeader,
   PalPanelContent,
-  PalPanelFooter,
   PalModal,
   PalModalHeader,
   PalModalContent,
   PalModalFooter,
 } from '../components/palantirui';
 
-const PalantirUIDemo: React.FC = () => {
+const PalantirUIDemo: FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');

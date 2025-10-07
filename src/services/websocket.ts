@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 // WebSocket service for real-time communication with Python sidecar
 export interface WebSocketMessage {
     type: 'transcription_progress' | 'transcription_started' | 'transcription_completed' | 'transcription_error' |
@@ -123,15 +125,12 @@ class WebSocketService {
 // Export singleton instance
 export const webSocketService = new WebSocketService();
 
-// React hook for WebSocket
-import React from 'react';
-
 export const useWebSocket = () => {
-    const [isConnected, setIsConnected] = React.useState(false);
-    const [containerStatuses, setContainerStatuses] = React.useState<Record<string, ContainerStatusData>>({});
-    const [systemStatus, setSystemStatus] = React.useState<SystemStatusData>({});
+    const [isConnected, setIsConnected] = useState(false);
+    const [containerStatuses, setContainerStatuses] = useState<Record<string, ContainerStatusData>>({});
+    const [systemStatus, setSystemStatus] = useState<SystemStatusData>({});
 
-    React.useEffect(() => {
+    useEffect(() => {
         const checkConnection = () => {
             setIsConnected(webSocketService.isConnected());
         };
@@ -143,12 +142,15 @@ export const useWebSocket = () => {
             switch (message.type) {
                 case 'container_status': {
                     const containerData = message.data as ContainerStatusData;
-                    if (containerData.model_id) {
-                        setContainerStatuses(prev => ({
-                            ...prev,
-                            [containerData.model_id]: containerData
-                        }));
+                    const { model_id } = containerData;
+                    if (!model_id) {
+                        return;
                     }
+
+                    setContainerStatuses(prev => ({
+                        ...prev,
+                        [model_id]: containerData
+                    }));
                     break;
                 }
                     

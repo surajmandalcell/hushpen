@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, type FC } from "react";
 import { Download, CheckCircle, Clock, AlertCircle, Container } from "lucide-react";
 import { apiClient, Model } from "../services/api";
 import { webSocketService, ContainerStatusData } from "../services/websocket";
 
-const ModelsPage: React.FC = () => {
+const ModelsPage: FC = () => {
   const [currentModel, setCurrentModel] = useState("whisper-base");
   const [language, setLanguage] = useState("auto");
   const [processingDevice, setProcessingDevice] = useState("Docker container");
@@ -47,12 +47,15 @@ const ModelsPage: React.FC = () => {
     const unsubscribe = webSocketService.subscribe((message) => {
       if (message.type === "container_status") {
         const data = message.data as ContainerStatusData;
-        if (data.model_id) {
-          setContainerStatuses(prev => ({
-            ...prev,
-            [data.model_id]: data
-          }));
+        const { model_id } = data;
+        if (!model_id) {
+          return;
         }
+
+        setContainerStatuses(prev => ({
+          ...prev,
+          [model_id]: data
+        }));
       } else if (message.type === "system_status") {
         const data = message.data;
         setGpuAvailable(data.gpu_available || false);

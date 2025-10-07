@@ -1,17 +1,15 @@
-import React, { useState, useId } from "react";
+import { useState, useId, type FC } from "react";
 import { Upload, FileAudio, FolderOpen, Container, Clock } from "lucide-react";
 import { fileSystemService } from "../services/fileSystem";
 import { apiClient, TranscriptionResponse } from "../services/api";
-import { webSocketService } from "../services/websocket";
 
-const TranscribePage: React.FC = () => {
+const TranscribePage: FC = () => {
   const fileInputId = useId();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState("");
   const [transcriptionResults, setTranscriptionResults] = useState<TranscriptionResponse[]>([]);
-  const [currentModel, setCurrentModel] = useState("");
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -87,11 +85,6 @@ const TranscribePage: React.FC = () => {
           // Use the API client to transcribe the file
           const result = await apiClient.transcribeFile(file);
           console.log(`Transcription completed for ${file.name}:`, result);
-
-          // Update the current model if available
-          if (result.model_id) {
-            setCurrentModel(result.model_id);
-          }
 
           // Store the transcription result
           setTranscriptionResults(prev => [...prev, result]);

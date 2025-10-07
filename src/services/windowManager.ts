@@ -13,7 +13,7 @@ const DEBOUNCE_DELAY = 500; // milliseconds
 
 class WindowManager {
   private currentState: WindowState | null = null;
-  private saveTimeout: number | null = null;
+  private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.loadWindowState();
@@ -39,7 +39,7 @@ class WindowManager {
    */
   private saveWindowState(state: WindowState): void {
     // Clear existing timeout
-    if (this.saveTimeout) {
+    if (this.saveTimeout !== null) {
       clearTimeout(this.saveTimeout);
     }
 

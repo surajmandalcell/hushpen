@@ -99,6 +99,7 @@ const config: Config = {
         ],
         // New PalantirUI typography
         inter: ['Inter', 'system-ui', 'sans-serif'],
+        "font-inter": ['Inter', 'system-ui', 'sans-serif'],
         ibm: ['IBM Plex Mono', 'Consolas', 'monospace'],
         kaisei: ['Kaisei Tokumin', 'serif'],
       },
@@ -113,6 +114,8 @@ const config: Config = {
         "pal": "4px",
         "pal-lg": "6px",
         "pal-xl": "8px",
+        // Additional PalantirUI variants
+        "pal-2xl": "12px",
       },
       boxShadow: {
         // Keep existing macOS shadows for backward compatibility

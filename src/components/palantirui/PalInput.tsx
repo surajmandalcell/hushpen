@@ -1,7 +1,7 @@
-import React, { forwardRef, InputHTMLAttributes } from 'react';
+import { forwardRef, type InputHTMLAttributes } from 'react';
 import { cn } from '../../utils/cn';
 
-export interface PalInputProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface PalInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   variant?: 'default' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   withGlow?: boolean;
