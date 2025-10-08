@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWinUI>false</UseWinUI>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyTitle>ASRPro</AssemblyTitle>
+    <AssemblyDescription>Automatic Speech Recognition for Windows</AssemblyDescription>
+    <AssemblyCompany>ASRPro</AssemblyCompany>
+    <AssemblyProduct>ASRPro</AssemblyProduct>
+    <AssemblyCopyright>Copyright © 2023 ASRPro. All rights reserved.</AssemblyCopyright>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- Additional packages for WinUI3 will be added when implementing full functionality -->
+    <!-- <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.2.221109.1" /> -->
+    <!-- <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.755" /> -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

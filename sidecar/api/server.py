@@ -32,13 +32,23 @@ from .models import (
     HealthResponse,
     TranscriptionResponse,
 )
-from ..utils.errors import (
-    SidecarError,
-    ModelError,
-    DeviceError,
-    ConfigurationError,
-    APIError,
-)
+try:
+    from ..utils.errors import (
+        SidecarError,
+        ModelError,
+        DeviceError,
+        ConfigurationError,
+        APIError,
+    )
+except ImportError:
+    # Fallback for when running as a module
+    from utils.errors import (
+        SidecarError,
+        ModelError,
+        DeviceError,
+        ConfigurationError,
+        APIError,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -740,9 +750,9 @@ def create_app(settings: Settings) -> FastAPI:
                 }
             }
 
-           # System capabilities
-           gpu_acceleration = False
-           current_device = "Unknown"
+            # System capabilities
+            gpu_acceleration = False
+            current_device = "Unknown"
             
             if model_manager:
                 try:
