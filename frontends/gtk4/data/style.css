@@ -1,0 +1,44 @@
+/* ASRPro GTK4 Frontend Styles */
+
+window {
+    background-color: #f5f5f5;
+}
+
+button {
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+button:hover {
+    background-color: #357abD;
+}
+
+button:active {
+    background-color: #2968a3;
+}
+
+button:disabled {
+    background-color: #cccccc;
+    color: #666666;
+}
+
+textview {
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+scrolledwindow {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+box {
+    background-color: #f5f5f5;
+}

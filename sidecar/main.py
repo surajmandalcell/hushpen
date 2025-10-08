@@ -7,6 +7,7 @@ import logging
 import sys
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
 # Add the current directory to Python path
@@ -74,6 +75,15 @@ def main():
 
         # Initialize configuration
         settings = Settings()
+        
+        # Check for config.json in root directory
+        root_config_path = Path(__file__).parent.parent / "config.json"
+        if root_config_path.exists():
+            logger.info(f"Loading configuration from {root_config_path}")
+            with open(root_config_path, 'r', encoding='utf-8') as f:
+                root_config = json.load(f)
+                await settings.update_config(root_config)
+        
         await settings.load_config()
 
         # Check Docker environment

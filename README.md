@@ -1,6 +1,6 @@
 # ASR Pro
 
-A professional desktop application for AI-powered speech recognition and transcription, built with Tauri + React + Python Sidecar architecture.
+A professional application suite for AI-powered speech recognition and transcription, built with native frontends and Python backend sidecar architecture.
 
 ## Features
 
@@ -9,18 +9,20 @@ A professional desktop application for AI-powered speech recognition and transcr
 - Multi-model AI support (Whisper, Parakeet)
 - SRT subtitle file generation
 - Drag-and-drop file transcription
-- Native macOS-style UI components
+- Native platform-specific UI components
 - Dark theme interface
 - System tray integration
-- Cross-platform desktop application
+- Cross-platform support
 
 ## Architecture
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **Desktop**: Tauri v2 (Rust-based)
-- **Backend**: Python FastAPI sidecar
-- **AI Models**: ONNX Runtime with Whisper/Parakeet models
-- **UI Components**: Custom macOS-native component library
+- **Backend**: Python FastAPI sidecar server
+- **Frontends**:
+  - GTK4 for Linux
+  - SwiftUI for macOS
+  - Windows UI for Windows
+- **AI Models**: Docker-based Whisper/Parakeet models
+- **Communication**: REST API + WebSocket
 
 ## Prerequisites
 
@@ -41,6 +43,12 @@ A professional desktop application for AI-powered speech recognition and transcr
 
 ## Installation
 
+### Prerequisites
+
+- **Python**: Version 3.8+ with pip
+- **Docker**: For AI model containers (optional but recommended)
+- **Git**: For cloning and version control
+
 ### 1. Clone Repository
 
 ```bash
@@ -48,81 +56,108 @@ git clone <repository-url>
 cd asrpro
 ```
 
-### 2. Install Node.js Dependencies
+### 2. Start the Backend Sidecar
 
 ```bash
-npm install
-```
+# Using the provided startup script (recommended)
+./start_backend.sh
 
-### 3. Install Python Dependencies
-
-```bash
+# Or manually:
 cd sidecar
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cd ..
+python main.py
 ```
 
-### 4. Install Rust Toolchain
+The backend will start on `http://0.0.0.0:8000` by default.
 
+### 3. Configure Your Native Frontend
+
+Each frontend platform (GTK4, SwiftUI, Windows) should connect to the backend API:
+- API Base URL: `http://localhost:8000`
+- API Documentation: `http://localhost:8000/docs`
+- Health Check: `http://localhost:8000/health`
+
+## Frontend Platforms
+
+### Linux (GTK4)
 ```bash
-# Windows/macOS/Linux
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-
-# Or use the installer directly
-# Windows: Download from https://win.rustup.rs/
+cd frontends/gtk4
+meson setup builddir
+meson compile -C builddir
+./builddir/src/asrpro
 ```
 
-### 5. Download AI Models
+### macOS (SwiftUI)
+```bash
+cd frontends/swiftui
+open ASRPro.xcodeproj
+# Build and run in Xcode
+```
 
-The application will automatically download required ONNX models on first run:
-- Whisper-tiny (39MB)
-- Whisper-base (74MB)
-- Additional models available through UI
+### Windows (Windows UI)
+```bash
+cd frontends/windows
+# Open ASRPro.sln in Visual Studio
+# Build and run the solution
+```
+
+## Backend Configuration
+
+The backend can be configured by editing `config.json` in the root directory:
+
+```json
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "docker": {
+    "container_timeout": 30,
+    "max_concurrent_containers": 3
+  },
+  "models": {
+    "default": "whisper-base",
+    "auto_download": true
+  }
+}
+```
 
 ## Development
 
-### Start Development Server
+### Start Backend Only
 
 ```bash
-# Terminal 1: Start Python sidecar
-cd sidecar
-python main.py
-
-# Terminal 2: Start Tauri development
-npm run tauri dev
+./start_backend.sh
 ```
 
-### Available Scripts
+### Backend API Endpoints
 
-```bash
-# Frontend development
-npm run dev          # Start Vite dev server
-npm run build        # Build frontend for production
-npm run preview      # Preview production build
-
-# Tauri desktop
-npm run tauri dev    # Start Tauri development mode
-npm run tauri build  # Build desktop application
-```
+- `GET /health` - Health check endpoint
+- `GET /v1/models` - List available AI models
+- `POST /v1/settings/model` - Set active model
+- `POST /v1/audio/transcriptions` - Transcribe audio files
+- `GET /v1/options` - Get API configuration options
+- `WS /ws` - WebSocket for real-time updates
 
 ### Project Structure
 
 ```
 asrpro/
-├── src/                    # React frontend source
-│   ├── components/         # React components
-│   │   ├── macos/         # macOS-native UI components
-│   │   └── ...
-│   ├── pages/             # Application pages
-│   └── ...
-├── src-tauri/             # Tauri configuration and Rust code
+├── frontends/              # Native frontend applications
+│   ├── gtk4/              # Linux GTK4 frontend
+│   ├── swiftui/           # macOS SwiftUI frontend
+│   └── windows/           # Windows UI frontend
 ├── sidecar/               # Python backend
 │   ├── api/              # FastAPI server
-│   ├── models/           # AI model management
+│   ├── config/           # Configuration management
+│   ├── docker/           # Docker integration
 │   ├── utils/            # Utilities
 │   └── tests/            # Backend tests
-└── dist/                 # Built frontend assets
+├── config.json           # Backend configuration file
+├── start_backend.sh      # Backend startup script
+└── README.md
 ```
 
 ## Testing
@@ -134,13 +169,6 @@ cd sidecar
 python -m pytest
 python -m pytest -v                    # Verbose output
 python -m pytest tests/test_api.py     # Specific test file
-```
-
-### Frontend Tests
-
-```bash
-npm run test            # Run frontend tests (if configured)
-npm run type-check      # TypeScript type checking
 ```
 
 ### Clean Python Cache
@@ -155,81 +183,82 @@ Get-ChildItem -Path . -Name "__pycache__" -Recurse -Directory | Remove-Item -Rec
 
 ### Manual Testing
 
-1. Start development servers
-2. Test global hotkey functionality
-3. Upload audio files for transcription
-4. Verify model switching
-5. Test system tray integration
-
-## Building for Production
-
-### Desktop Application
-
-```bash
-# Build complete desktop application
-npm run tauri build
-```
-
-**Output files:**
-- Windows: `src-tauri/target/release/bundle/nsis/asrpro_0.1.0_x64-setup.exe`
-- Windows: `src-tauri/target/release/bundle/msi/asrpro_0.1.0_x64_en-US.msi`
-- macOS: `src-tauri/target/release/bundle/macos/asrpro.app`
-- Linux: `src-tauri/target/release/bundle/appimage/asrpro_0.1.0_amd64.AppImage`
-
-### Frontend Only
-
-```bash
-npm run build
-# Output: dist/ directory
-```
+1. Start the backend server: `./start_backend.sh`
+2. Verify health check: `curl http://localhost:8000/health`
+3. Test API endpoints: `curl http://localhost:8000/v1/models`
+4. Connect your native frontend application
+5. Test transcription with audio files
 
 ## Configuration
 
-### Environment Variables
+### Backend Configuration
 
-Create `.env` files as needed:
+Edit `config.json` in the root directory to customize backend settings:
 
-```bash
-# .env.local (frontend)
-VITE_API_URL=http://localhost:8000
-
-# sidecar/.env (backend)
-MODEL_CACHE_DIR=./models
-LOG_LEVEL=INFO
+```json
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "docker": {
+    "container_timeout": 30,
+    "max_concurrent_containers": 3,
+    "pull_policy": "if_missing"
+  },
+  "models": {
+    "default": "whisper-base",
+    "auto_download": true,
+    "cache_dir": "./models"
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
 ```
 
-### Model Configuration
+### Frontend Configuration
 
-Models are automatically managed through the UI. Manual configuration in `sidecar/models/registry.py`.
+Each native frontend should be configured to connect to:
+- API Base URL: `http://localhost:8000`
+- WebSocket URL: `ws://localhost:8000/ws`
 
 ## Troubleshooting
 
 ### Common Issues
 
-**Node.js Version Warning**
-- Current version 20.17.0 works but upgrade to 20.19+ recommended
-- Use nvm/volta for Node.js version management
+**Backend won't start**
+- Check Python version: `python3 --version` (requires 3.8+)
+- Verify Docker is installed and running: `docker --version`
+- Check port availability: `netstat -an | grep 8000`
 
-**Rust Installation**
-- Ensure `~/.cargo/bin` is in PATH
-- Restart terminal after installation
-- Run `rustc --version` to verify
+**Docker-related errors**
+- Install Docker Desktop for your platform
+- Verify Docker daemon is running
+- Check Docker logs for container issues
 
-**Python Dependencies**
-- Use virtual environment: `python -m venv venv && source venv/bin/activate`
-- Install Microsoft Visual C++ Build Tools (Windows)
-- Install system dependencies for audio processing
+**Connection refused from frontend**
+- Ensure backend is running: `./start_backend.sh`
+- Check firewall settings
+- Verify host configuration in config.json
 
-**Build Failures**
-- Clear node_modules: `rm -rf node_modules && npm install`
-- Clear Rust cache: `cargo clean` in src-tauri/
-- Verify all prerequisites are installed
+**Performance issues**
+- Models download automatically on first use
+- Ensure sufficient RAM (8GB+ recommended)
+- GPU acceleration requires NVIDIA Docker runtime
 
-### Performance
+### API Debugging
 
-- Models download automatically but can be pre-cached
-- First transcription may be slower due to model loading
-- GPU acceleration available with compatible hardware
+```bash
+# Check backend health
+curl http://localhost:8000/health
+
+# List available models
+curl http://localhost:8000/v1/models
+
+# View API documentation
+open http://localhost:8000/docs
+```
 
 ## Contributing
 

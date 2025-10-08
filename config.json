@@ -1,0 +1,40 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "cors_origins": [
+      "http://localhost:3000",
+      "http://localhost:1420",
+      "app://localhost",
+      "tauri://localhost",
+      "file://",
+      "*"
+    ]
+  },
+  "docker": {
+    "host": "unix:///var/run/docker.sock",
+    "registry_url": "https://registry.hub.docker.com",
+    "container_network": "asrpro-network",
+    "gpu_driver": "nvidia",
+    "container_timeout": 30,
+    "health_check_interval": 30,
+    "max_concurrent_containers": 3,
+    "inactivity_timeout": 300,
+    "pull_policy": "if_missing"
+  },
+  "models": {
+    "default": "whisper-base",
+    "auto_download": true,
+    "cache_dir": "./models"
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "features": {
+    "gpu_acceleration": true,
+    "websocket_support": true,
+    "real_time_progress": true,
+    "video_processing": true
+  }
+}

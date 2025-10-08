@@ -104,7 +104,11 @@ def create_app(settings: Settings) -> FastAPI:
         allow_origins=[
             "http://localhost:3000",
             "http://localhost:1420",
-        ],  # React dev server and Tauri dev server
+            "app://localhost",
+            "tauri://localhost",
+            "file://",
+            "*"
+        ],  # React dev server, Tauri dev server, and native apps
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -112,6 +116,26 @@ def create_app(settings: Settings) -> FastAPI:
 
     # Model manager will be replaced with Docker integration
     # For now, we'll use placeholder responses
+
+    # Helper function to send WebSocket messages
+    async def send_websocket_message(message_type: str, data: any):
+        """Send message to all connected WebSocket clients."""
+        message = {"type": message_type, "data": data}
+        await connection_manager.broadcast(message)
+        logger.debug(f"Broadcasted WebSocket message: {message_type} to {len(connection_manager.active_connections)} clients")
+
+    async def send_system_status_to_client(websocket: WebSocket):
+        """Send system status to a specific WebSocket client."""
+        try:
+            global model_manager
+            if model_manager:
+                system_status = await model_manager.get_system_status()
+                await websocket.send_text(json.dumps({
+                    "type": "system_status",
+                    "data": system_status
+                }))
+        except Exception as e:
+            logger.error(f"Failed to send system status to WebSocket client: {e}")
 
     @app.get("/", include_in_schema=False)
     async def root():
@@ -572,9 +596,9 @@ def create_app(settings: Settings) -> FastAPI:
         This endpoint is designed to help frontends dynamically configure
         their interface based on backend capabilities.
         """
+        global model_manager
         try:
             # Get available models from Docker model manager
-            global model_manager
             if model_manager:
                 available_models = await model_manager.list_available_models()
             else:
@@ -716,10 +740,9 @@ def create_app(settings: Settings) -> FastAPI:
                 }
             }
 
-            # System capabilities
-            global model_manager
-            gpu_acceleration = False
-            current_device = "Unknown"
+           # System capabilities
+           gpu_acceleration = False
+           current_device = "Unknown"
             
             if model_manager:
                 try:
@@ -873,25 +896,5 @@ def create_app(settings: Settings) -> FastAPI:
         except WebSocketDisconnect:
             connection_manager.disconnect(websocket)
             logger.info(f"WebSocket client disconnected (total clients: {len(connection_manager.active_connections)})")
-
-    # Helper function to send WebSocket messages
-    async def send_websocket_message(message_type: str, data: any):
-        """Send message to all connected WebSocket clients."""
-        message = {"type": message_type, "data": data}
-        await connection_manager.broadcast(message)
-        logger.debug(f"Broadcasted WebSocket message: {message_type} to {len(connection_manager.active_connections)} clients")
-
-    async def send_system_status_to_client(websocket: WebSocket):
-        """Send system status to a specific WebSocket client."""
-        try:
-            global model_manager
-            if model_manager:
-                system_status = await model_manager.get_system_status()
-                await websocket.send_text(json.dumps({
-                    "type": "system_status",
-                    "data": system_status
-                }))
-        except Exception as e:
-            logger.error(f"Failed to send system status to WebSocket client: {e}")
 
     return app
