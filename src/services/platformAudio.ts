@@ -1,6 +1,9 @@
 // Platform-specific audio settings and behaviors for ASR Pro
 import { platformService } from './platform';
 
+// Check if we're in Electron environment
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
 export interface AudioSettings {
     defaultSampleRate: number;
     defaultChannels: number;
@@ -177,6 +180,27 @@ class PlatformAudioService {
                 noiseSuppression: false,
                 autoGainControl: true,
             };
+        }
+    }
+
+    async getAudioDevices(): Promise<MediaDeviceInfo[]> {
+        if (isElectron) {
+            // Use Electron API to get audio devices
+            try {
+                return await (window as any).electronAPI.getRecordingDevices();
+            } catch (error) {
+                console.error('Failed to get audio devices via Electron:', error);
+                return [];
+            }
+        } else {
+            // Use Web Audio API for Tauri/web
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                return devices.filter(device => device.kind === 'audioinput');
+            } catch (error) {
+                console.error('Failed to get audio devices via Web API:', error);
+                return [];
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 
-// WebSocket service for real-time communication with Python sidecar
+// WebSocket service for real-time communication with Electron backend
 export interface WebSocketMessage {
     type: 'transcription_progress' | 'transcription_started' | 'transcription_completed' | 'transcription_error' |
           'model_status' | 'container_status' | 'system_status' | 'error' | 'info' | 'ping' | 'pong';
@@ -22,7 +23,7 @@ export interface SystemStatusData {
 }
 
 class WebSocketService {
-    private ws: WebSocket | null = null;
+    private socket: Socket | null = null;
     private listeners: ((message: WebSocketMessage) => void)[] = [];
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 5;
@@ -34,34 +35,82 @@ class WebSocketService {
 
     private connect(): void {
         try {
-            this.ws = new WebSocket('ws://localhost:8000/ws');
+            this.socket = io('http://localhost:3001', {
+                transports: ['websocket'],
+                reconnection: true,
+                reconnectionAttempts: this.maxReconnectAttempts,
+                reconnectionDelay: this.reconnectDelay,
+            });
 
-            this.ws.onopen = () => {
-                console.log('WebSocket connected to Python sidecar');
+            this.socket.on('connect', () => {
+                console.log('Socket.IO connected to Electron backend');
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
-            };
+            });
 
-            this.ws.onmessage = (event) => {
-                try {
-                    const message: WebSocketMessage = JSON.parse(event.data);
-                    this.notifyListeners(message);
-                } catch (error) {
-                    console.error('Failed to parse WebSocket message:', error);
-                }
-            };
+            this.socket.on('system_status', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'system_status',
+                    data
+                };
+                this.notifyListeners(message);
+            });
 
-            this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
+            this.socket.on('container_status', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'container_status',
+                    data
+                };
+                this.notifyListeners(message);
+            });
 
-            this.ws.onclose = (event) => {
-                console.log('WebSocket connection closed:', event.code, event.reason);
+            this.socket.on('transcription_progress', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'transcription_progress',
+                    data
+                };
+                this.notifyListeners(message);
+            });
+
+            this.socket.on('transcription_started', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'transcription_started',
+                    data
+                };
+                this.notifyListeners(message);
+            });
+
+            this.socket.on('transcription_completed', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'transcription_completed',
+                    data
+                };
+                this.notifyListeners(message);
+            });
+
+            this.socket.on('transcription_error', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'transcription_error',
+                    data
+                };
+                this.notifyListeners(message);
+            });
+
+            this.socket.on('error', (data) => {
+                const message: WebSocketMessage = {
+                    type: 'error',
+                    data
+                };
+                this.notifyListeners(message);
+            });
+
+            this.socket.on('disconnect', (reason) => {
+                console.log('Socket.IO connection closed:', reason);
                 this.attemptReconnect();
-            };
+            });
 
         } catch (error) {
-            console.error('Failed to connect to WebSocket:', error);
+            console.error('Failed to connect to Socket.IO:', error);
             this.attemptReconnect();
         }
     }
@@ -103,22 +152,22 @@ class WebSocketService {
     }
 
     send(message: any): void {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify(message));
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('message', message);
         } else {
-            console.warn('WebSocket not connected, message not sent:', message);
+            console.warn('Socket.IO not connected, message not sent:', message);
         }
     }
 
     disconnect(): void {
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
+        if (this.socket) {
+            this.socket.disconnect();
+            this.socket = null;
         }
     }
 
     isConnected(): boolean {
-        return this.ws?.readyState === WebSocket.OPEN;
+        return this.socket?.connected || false;
     }
 }
 

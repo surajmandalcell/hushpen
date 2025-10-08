@@ -25,7 +25,11 @@ class PlatformService {
     }
 
     private detectPlatform(): PlatformInfo {
-        // Check if running in Tauri environment
+        // Check if running in Electron environment
+        const isElectron = typeof window !== 'undefined' &&
+            (window as any).electronAPI;
+        
+        // Check if running in Tauri environment (for backward compatibility)
         const isTauri = typeof window !== 'undefined' &&
             (window as any).__TAURI__ &&
             (window as any).__TAURI_INTERNALS__;
@@ -54,8 +58,8 @@ class PlatformService {
             isMacOS: () => isMacOS,
             isWindows: () => isWindows,
             isLinux: () => isLinux,
-            isWeb: !isTauri,
-            isDesktop: isTauri,
+            isWeb: !(isElectron || isTauri),
+            isDesktop: isElectron || isTauri,
             arch: navigator.userAgent.includes('x64') || navigator.userAgent.includes('x86_64') ? 'x64' : 'x86',
             version: navigator.platform,
             getPlatformCSSClass: () => `platform-${currentPlatform}`,

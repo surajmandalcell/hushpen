@@ -1,4 +1,6 @@
 // Audio recording service for ASR Pro
+// Check if we're in Electron environment
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 export interface AudioRecordingState {
     isRecording: boolean;
     duration: number;
@@ -44,7 +46,9 @@ class AudioRecordingService {
     }
 
     private notifyListeners(): void {
-        this.listeners.forEach(listener => listener({ ...this.state }));
+        this.listeners.forEach(listener => {
+            listener({ ...this.state });
+        });
     }
 
     private updateAudioLevel(): void {
@@ -69,7 +73,17 @@ class AudioRecordingService {
 
     async startRecording(options: AudioRecordingOptions = {}): Promise<void> {
         try {
-            // Request microphone access
+            if (isElectron) {
+                // Use Electron API for audio recording
+                await (window as any).electronAPI.startRecording();
+                this.state.isRecording = true;
+                this.state.duration = 0;
+                this.state.error = undefined;
+                this.notifyListeners();
+                return;
+            }
+
+            // Request microphone access for web/Tauri
             const constraints: MediaStreamConstraints = {
                 audio: {
                     sampleRate: options.sampleRate || 16000,
@@ -126,6 +140,17 @@ class AudioRecordingService {
     }
 
     stopRecording(): Blob | null {
+        if (isElectron) {
+            // Use Electron API for audio recording
+            this.state.isRecording = false;
+            this.notifyListeners();
+            
+            // In a real implementation, we would get the recorded file path
+            // and convert it to a Blob. For now, return null.
+            (window as any).electronAPI.stopRecording();
+            return null;
+        }
+
         if (!this.mediaRecorder || !this.state.isRecording) {
             return null;
         }
@@ -134,7 +159,9 @@ class AudioRecordingService {
 
         // Stop all tracks
         if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
+            this.stream.getTracks().forEach(track => {
+                track.stop();
+            });
         }
 
         // Clean up audio context

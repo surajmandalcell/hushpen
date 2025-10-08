@@ -1,4 +1,4 @@
-// API client for ASR Pro Python sidecar
+// API client for ASR Pro Electron backend
 export interface HealthResponse {
     status: string;
     current_model?: string;
@@ -55,8 +55,8 @@ class ApiClient {
     private baseUrl: string;
 
     constructor() {
-        // Default to localhost:8000 for the Python sidecar
-        this.baseUrl = 'http://localhost:8000';
+        // Default to localhost:3001 for the Electron backend
+        this.baseUrl = 'http://localhost:3001';
     }
 
     private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {

@@ -1,18 +1,20 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "include": [
-    "backend/**/*.ts"
+    "backend/**/*.ts",
+    "main.ts",
+    "preload.ts",
+    "types.ts"
   ],
   "exclude": [
     "dist",
-    "node_modules",
-    "main.ts",
-    "preload.ts"
+    "node_modules"
   ],
   "compilerOptions": {
     "composite": true,
     "baseUrl": ".",
     "outDir": "dist",
+    "module": "CommonJS",
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { ElectronAPI } from '../types';
+import { ElectronAPI } from './types';
 
 // Define the API that will be exposed to the renderer process
 const electronAPI: ElectronAPI = {
@@ -16,17 +16,17 @@ const electronAPI: ElectronAPI = {
   showTrayNotification: (title: string, body: string) => 
     ipcRenderer.invoke('tray:showNotification', title, body),
   
-  // File system operations (will be implemented when migrating backend)
+  // File system operations
   openFile: () => ipcRenderer.invoke('file:open'),
-  saveFile: (content: string, filename: string) => 
+  saveFile: (content: string, filename: string) =>
     ipcRenderer.invoke('file:save', content, filename),
   
-  // Audio recording (will be implemented when migrating backend)
+  // Audio recording
   startRecording: () => ipcRenderer.invoke('audio:startRecording'),
   stopRecording: () => ipcRenderer.invoke('audio:stopRecording'),
   getRecordingDevices: () => ipcRenderer.invoke('audio:getDevices'),
   
-  // Settings (will be implemented when migrating backend)
+  // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: any) => ipcRenderer.invoke('settings:save', settings),
   

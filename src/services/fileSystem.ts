@@ -1,7 +1,21 @@
 // File system service for native dialogs and file operations
-import { open } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
-import { readFile } from '@tauri-apps/plugin-fs';
+// Check if we're in Electron environment
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
+// Conditional imports based on environment
+let tauriOpen: any, tauriReadTextFile: any, tauriWriteTextFile: any, tauriReadFile: any;
+
+if (!isElectron) {
+    // Import Tauri APIs only if not in Electron
+    import('@tauri-apps/plugin-dialog').then(module => {
+        tauriOpen = module.open;
+    });
+    import('@tauri-apps/plugin-fs').then(module => {
+        tauriReadTextFile = module.readTextFile;
+        tauriWriteTextFile = module.writeTextFile;
+        tauriReadFile = module.readFile;
+    });
+}
 
 export interface FileSystemService {
     openFileDialog: (options?: {
@@ -30,29 +44,36 @@ class FileSystemServiceImpl implements FileSystemService {
         filters?: { name: string; extensions: string[] }[];
     }): Promise<string[] | null> {
         try {
-            const defaultFilters = [
-                {
-                    name: 'Audio Files',
-                    extensions: ['mp3', 'wav', 'm4a', 'flac', 'ogg'],
-                },
-                {
-                    name: 'All Files',
-                    extensions: ['*'],
-                },
-            ];
+            if (isElectron) {
+                // Use Electron API
+                const filePath = await (window as any).electronAPI.openFile();
+                return filePath ? [filePath] : null;
+            } else {
+                // Use Tauri API
+                const defaultFilters = [
+                    {
+                        name: 'Audio Files',
+                        extensions: ['mp3', 'wav', 'm4a', 'flac', 'ogg'],
+                    },
+                    {
+                        name: 'All Files',
+                        extensions: ['*'],
+                    },
+                ];
 
-            const selected = await open({
-                multiple: options?.multiple || false,
-                directory: options?.directory || false,
-                defaultPath: options?.defaultPath,
-                filters: options?.filters || defaultFilters,
-            });
+                const selected = await tauriOpen({
+                    multiple: options?.multiple || false,
+                    directory: options?.directory || false,
+                    defaultPath: options?.defaultPath,
+                    filters: options?.filters || defaultFilters,
+                });
 
-            if (selected) {
-                return Array.isArray(selected) ? selected : [selected];
+                if (selected) {
+                    return Array.isArray(selected) ? selected : [selected];
+                }
+
+                return null;
             }
-
-            return null;
         } catch (error) {
             console.error('Failed to open file dialog:', error);
             throw error;
@@ -61,12 +82,19 @@ class FileSystemServiceImpl implements FileSystemService {
 
     async openDirectoryDialog(defaultPath?: string): Promise<string | null> {
         try {
-            const selected = await open({
-                directory: true,
-                defaultPath,
-            });
+            if (isElectron) {
+                // For Electron, we would need to implement a directory dialog
+                // For now, return null or use the regular file dialog
+                return null;
+            } else {
+                // Use Tauri API
+                const selected = await tauriOpen({
+                    directory: true,
+                    defaultPath,
+                });
 
-            return selected as string | null;
+                return selected as string | null;
+            }
         } catch (error) {
             console.error('Failed to open directory dialog:', error);
             throw error;
@@ -75,7 +103,15 @@ class FileSystemServiceImpl implements FileSystemService {
 
     async readTextFile(path: string): Promise<string> {
         try {
-            return await readTextFile(path);
+            if (isElectron) {
+                // For Electron, we would need to implement file reading
+                // For now, use fetch as a fallback
+                const response = await fetch(`file://${path}`);
+                return await response.text();
+            } else {
+                // Use Tauri API
+                return await tauriReadTextFile(path);
+            }
         } catch (error) {
             console.error('Failed to read text file:', error);
             throw error;
@@ -84,7 +120,16 @@ class FileSystemServiceImpl implements FileSystemService {
 
     async readBinaryFile(path: string): Promise<Uint8Array> {
         try {
-            return await readFile(path);
+            if (isElectron) {
+                // For Electron, we would need to implement binary file reading
+                // For now, use fetch as a fallback
+                const response = await fetch(`file://${path}`);
+                const buffer = await response.arrayBuffer();
+                return new Uint8Array(buffer);
+            } else {
+                // Use Tauri API
+                return await tauriReadFile(path);
+            }
         } catch (error) {
             console.error('Failed to read binary file:', error);
             throw error;
@@ -93,7 +138,14 @@ class FileSystemServiceImpl implements FileSystemService {
 
     async writeTextFile(path: string, content: string): Promise<void> {
         try {
-            await writeTextFile(path, content);
+            if (isElectron) {
+                // For Electron, we would need to implement file writing
+                // For now, just log the content
+                console.log('Write to file:', path, content);
+            } else {
+                // Use Tauri API
+                await tauriWriteTextFile(path, content);
+            }
         } catch (error) {
             console.error('Failed to write text file:', error);
             throw error;
@@ -102,14 +154,21 @@ class FileSystemServiceImpl implements FileSystemService {
 
     async saveFileDialog(content: string, defaultPath?: string, defaultName?: string): Promise<string | null> {
         try {
-            // For now, we'll use a simple save dialog approach
-            // In a more complete implementation, we'd show a save dialog first
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = defaultName || `transcription-${timestamp}.txt`;
-            const path = defaultPath ? `${defaultPath}/${filename}` : filename;
+            if (isElectron) {
+                // Use Electron API
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = defaultName || `transcription-${timestamp}.txt`;
+                const success = await (window as any).electronAPI.saveFile(content, filename);
+                return success ? filename : null;
+            } else {
+                // For Tauri, we'll use a simple save dialog approach
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = defaultName || `transcription-${timestamp}.txt`;
+                const path = defaultPath ? `${defaultPath}/${filename}` : filename;
 
-            await this.writeTextFile(path, content);
-            return path;
+                await this.writeTextFile(path, content);
+                return path;
+            }
         } catch (error) {
             console.error('Failed to save file:', error);
             throw error;
