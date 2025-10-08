@@ -34,11 +34,11 @@ const PalCard = forwardRef<HTMLDivElement, PalCardProps>(
     const baseStyles = "relative transition-all duration-300 font-inter";
 
     const variantStyles = {
-      default: "bg-zinc-900/50 border border-zinc-800/50",
-      bordered: "bg-transparent border-dashed border-zinc-700/50",
-      glass: "bg-zinc-900/30 backdrop-blur-sm border border-zinc-800/30",
-      elevated: "bg-zinc-900/50 border border-zinc-800/50 shadow-lg shadow-zinc-900/50",
-      hover: "bg-zinc-900/50 border border-zinc-800/50 hover:shadow-lg hover:shadow-zinc-900/50 hover:-translate-y-0.5",
+      default: "bg-pal-surface border border-pal-border-primary",
+      bordered: "bg-transparent border-dashed border-pal-border-tertiary",
+      glass: "bg-pal-layer-1 backdrop-blur-sm border border-pal-layer-2",
+      elevated: "bg-pal-surface-elevated border border-pal-border-primary shadow-lg",
+      hover: "bg-pal-surface border border-pal-border-primary hover:shadow-lg hover:-translate-y-0.5",
     };
 
     const paddingClasses = {
@@ -49,7 +49,7 @@ const PalCard = forwardRef<HTMLDivElement, PalCardProps>(
     };
 
     const hoverStyles = hover
-      ? "hover:shadow-lg hover:shadow-zinc-900/50 hover:-translate-y-0.5"
+      ? "hover:shadow-lg hover:-translate-y-0.5"
       : "";
 
     const glowStyles = glow ? "hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : "";

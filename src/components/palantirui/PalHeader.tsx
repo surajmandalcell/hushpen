@@ -19,7 +19,7 @@ const PalHeader = forwardRef<HTMLDivElement, PalHeaderProps>(
     children,
     ...props
   }, ref) => {
-    const baseClasses = 'flex items-center transition-all duration-200 bg-zinc-900/50 border-b border-zinc-800/60 relative';
+    const baseClasses = 'flex items-center transition-all duration-200 bg-pal-layer-1 border-b border-pal-border-primary relative';
     
     const heightClasses = {
       sm: 'h-12',
@@ -46,10 +46,10 @@ const PalHeader = forwardRef<HTMLDivElement, PalHeaderProps>(
       >
         {withCornerMarkers && (
           <>
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-pal-accent-blue" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-pal-accent-blue" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-pal-accent-blue" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-pal-accent-blue" />
           </>
         )}
         {children}

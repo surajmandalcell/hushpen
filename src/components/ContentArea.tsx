@@ -42,14 +42,14 @@ const ContentArea: React.FC<ContentAreaProps> = ({
 
   return (
     <PalPanel
-      className="flex-1 h-full"
+      className="flex-1 h-full pal-p-lg"
       variant="default"
-      padding="md"
+      padding="none"
       withGlow={false}
       withCornerMarkers={false}
     >
-      <PalPanelContent className="overflow-y-auto">
-        <div className="animate-fade-in">
+      <PalPanelContent className="overflow-y-auto pal-container">
+        <div className="pal-section animate-fade-in">
           {renderPage()}
         </div>
       </PalPanelContent>

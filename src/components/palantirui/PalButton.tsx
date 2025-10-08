@@ -30,12 +30,12 @@ const TONE_STYLES: Record<PalButtonTone, string> = {
 };
 
 const VARIANT_STYLES = {
-	default: "bg-zinc-950/60 border-zinc-800/60 text-zinc-100 hover:border-zinc-600/60 hover:bg-zinc-950/80",
-	primary: "bg-zinc-950/80 border-zinc-700/60 text-zinc-100 hover:border-zinc-600/80 hover:bg-zinc-950/90",
-	secondary: "bg-zinc-900/40 border-zinc-800/50 text-zinc-100 hover:border-zinc-600/60 hover:bg-zinc-900/60",
-	ghost: "bg-transparent border-transparent text-zinc-100 hover:bg-zinc-800/30",
-	accent: "bg-zinc-950/60 border-zinc-800/60 text-zinc-100 hover:border-zinc-600/60 hover:bg-zinc-950/80",
-	outline: "bg-transparent border-zinc-700/60 text-zinc-100 hover:bg-zinc-800/40",
+	default: "bg-pal-layer-2 border-pal-border-primary text-pal-text-primary hover:border-pal-border-secondary hover:bg-pal-layer-3",
+	primary: "bg-pal-accent-blue border-pal-accent-blue text-pal-text-inverse hover:border-pal-accent-blue hover:bg-blue-600",
+	secondary: "bg-pal-bg-quaternary border-pal-border-tertiary text-pal-text-secondary hover:border-pal-border-secondary hover:bg-pal-bg-tertiary",
+	ghost: "bg-transparent border-transparent text-pal-text-tertiary hover:bg-pal-layer-2",
+	accent: "bg-pal-accent-cyan border-pal-accent-cyan text-pal-text-inverse hover:border-pal-accent-cyan hover:bg-cyan-600",
+	outline: "bg-transparent border-pal-border-secondary text-pal-text-primary hover:bg-pal-layer-2",
 } as const satisfies Record<string, string>;
 
 export interface PalButtonProps

@@ -19,7 +19,7 @@ const PalSidebar = forwardRef<HTMLDivElement, PalSidebarProps>(
     children,
     ...props
   }, ref) => {
-    const baseClasses = 'h-full flex flex-col transition-all duration-300 bg-zinc-900/50 border-r border-zinc-800/60 relative';
+    const baseClasses = 'h-full flex flex-col transition-all duration-300 bg-pal-layer-2 border-r border-pal-border-primary relative';
     
     const widthClasses = {
       sm: collapsed ? 'w-16' : 'w-48',
@@ -46,10 +46,10 @@ const PalSidebar = forwardRef<HTMLDivElement, PalSidebarProps>(
       >
         {withCornerMarkers && (
           <>
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-pal-accent-blue" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-pal-accent-blue" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-pal-accent-blue" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-pal-accent-blue" />
           </>
         )}
         {children}

@@ -7,11 +7,12 @@ const GeneralPage: React.FC = () => {
   const { settings, updateSetting } = useSettings();
 
   return (
-    <div className="space-y-6">
+    <div className="pal-section pal-container pal-card-spacing">
       <PalPanelHeader
         title="General Settings"
         subtitle="Configure general application behavior and startup options."
         withBorder={false}
+        className="pal-mb-xl"
       />
 
       <PalCard
@@ -19,12 +20,12 @@ const GeneralPage: React.FC = () => {
         padding="lg"
         withGlow={true}
         withCornerMarkers={true}
-        className="space-y-6"
+        className="pal-p-lg"
       >
-        <div className="space-y-4">
-          <PalText size="lg" weight="semibold">Startup & Behavior</PalText>
+        <div className="pal-card-spacing">
+          <PalText size="lg" weight="semibold" className="pal-mb-lg">Startup & Behavior</PalText>
           
-          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div className="pal-form-row pal-p-md border-b">
             <div>
               <PalText weight="medium">Launch at Login</PalText>
               <PalText size="sm" variant="muted">
@@ -38,7 +39,7 @@ const GeneralPage: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div className="pal-form-row pal-p-md border-b">
             <div>
               <PalText weight="medium">Start Minimized</PalText>
               <PalText size="sm" variant="muted">
@@ -52,7 +53,7 @@ const GeneralPage: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center justify-between py-3">
+          <div className="pal-form-row pal-p-md">
             <div>
               <PalText weight="medium">Auto-unload Model</PalText>
               <PalText size="sm" variant="muted">
@@ -73,17 +74,17 @@ const GeneralPage: React.FC = () => {
         padding="lg"
         withGlow={true}
         withCornerMarkers={true}
-        className="space-y-4"
+        className="pal-p-lg"
       >
-        <PalText size="lg" weight="semibold">Application Info</PalText>
+        <PalText size="lg" weight="semibold" className="pal-mb-lg">Application Info</PalText>
         
-        <div className="space-y-3">
-          <div className="flex justify-between py-2">
+        <div className="pal-list-spacing">
+          <div className="pal-form-row pal-p-sm">
             <PalText weight="medium">Version</PalText>
             <PalText variant="muted">ASR Pro v1.0.0</PalText>
           </div>
 
-          <div className="flex justify-between py-2">
+          <div className="pal-form-row pal-p-sm">
             <PalText weight="medium">Storage Location</PalText>
             <PalText size="sm" variant="muted" className="max-w-xs text-right">
               Models and configuration are stored in your user data directory
@@ -91,7 +92,6 @@ const GeneralPage: React.FC = () => {
           </div>
         </div>
       </PalCard>
-
     </div>
   );
 };

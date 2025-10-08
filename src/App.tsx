@@ -81,7 +81,7 @@ function App() {
   }, []);
 
   return (
-    <div className={`h-screen w-screen overflow-hidden bg-palantir-zinc-50 dark:bg-palantir-zinc-900 transition-colors duration-200 ${platformInfo.getPlatformCSSClass()}`}>
+    <div className={`h-screen w-screen overflow-hidden transition-colors duration-200 ${platformInfo.getPlatformCSSClass()}`}>
       {/* Skip to content link for screen readers */}
       <a
         href="#main-content"

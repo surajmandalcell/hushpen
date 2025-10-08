@@ -35,11 +35,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       width="md"
       withGlow={true}
       withCornerMarkers={true}
-      className="border-r border-palantir-zinc-200 dark:border-palantir-zinc-700"
+      className="border-r"
     >
       <PalHeader
         height="md"
-        className="px-4 py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700"
+        className="pal-p-lg border-b"
       >
         <div className="flex items-center justify-between w-full">
           <TacticalWindowControls />
@@ -47,7 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </PalHeader>
       
-      <PalSidebarSection>
+      <PalSidebarSection className="pal-p-md">
         {sidebarSections.map((section) => {
           const IconComponent = section.icon;
           return (
@@ -60,7 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 console.log(`Sidebar navigation: clicked on ${section.id}`);
                 onSectionChange(section.id);
               }}
-              className="mx-2"
+              className="pal-m-sm"
             />
           );
         })}

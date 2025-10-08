@@ -24,10 +24,10 @@ const PalPanel = forwardRef<HTMLDivElement, PalPanelProps>(
     const baseClasses = 'transition-all duration-200 relative';
     
     const variantClasses = {
-      default: 'bg-zinc-900/50 border border-zinc-800/50',
-      elevated: 'bg-zinc-900/50 border border-zinc-800/50 shadow-lg shadow-zinc-900/50',
-      bordered: 'bg-zinc-900/30 border-2 border-dashed border-zinc-700/60',
-      glass: 'bg-zinc-900/20 backdrop-blur-sm border border-zinc-800/30',
+      default: 'bg-pal-surface border border-pal-border-primary',
+      elevated: 'bg-pal-surface-elevated border border-pal-border-primary shadow-lg',
+      bordered: 'bg-pal-bg-secondary border-2 border-dashed border-pal-border-tertiary',
+      glass: 'bg-pal-layer-1 backdrop-blur-sm border border-pal-layer-2',
     };
     
     const paddingClasses = {
@@ -59,10 +59,10 @@ const PalPanel = forwardRef<HTMLDivElement, PalPanelProps>(
       >
         {withCornerMarkers && (
           <>
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-pal-accent-blue" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-pal-accent-blue" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-pal-accent-blue" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-pal-accent-blue" />
           </>
         )}
         {withGeometricBorder && (

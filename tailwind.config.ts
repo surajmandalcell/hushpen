@@ -86,6 +86,43 @@ const config: Config = {
             5: 'rgba(9, 9, 11, 0.25)',
           },
         },
+        // New theme system colors
+        "pal-bg": {
+          primary: "var(--pal-bg-primary)",
+          secondary: "var(--pal-bg-secondary)",
+          tertiary: "var(--pal-bg-tertiary)",
+          quaternary: "var(--pal-bg-quaternary)",
+        },
+        "pal-surface": {
+          DEFAULT: "var(--pal-surface)",
+          elevated: "var(--pal-surface-elevated)",
+        },
+        "pal-text": {
+          primary: "var(--pal-text-primary)",
+          secondary: "var(--pal-text-secondary)",
+          tertiary: "var(--pal-text-tertiary)",
+          quaternary: "var(--pal-text-quaternary)",
+          inverse: "var(--pal-text-inverse)",
+        },
+        "pal-border": {
+          primary: "var(--pal-border-primary)",
+          secondary: "var(--pal-border-secondary)",
+          tertiary: "var(--pal-border-tertiary)",
+        },
+        "pal-accent": {
+          blue: "var(--pal-accent-blue)",
+          cyan: "var(--pal-accent-cyan)",
+          green: "var(--pal-accent-green)",
+          orange: "var(--pal-accent-orange)",
+          red: "var(--pal-accent-red)",
+        },
+        "pal-layer": {
+          1: "var(--pal-layer-1)",
+          2: "var(--pal-layer-2)",
+          3: "var(--pal-layer-3)",
+          4: "var(--pal-layer-4)",
+          5: "var(--pal-layer-5)",
+        },
       },
       fontFamily: {
         // Keep existing SF font for backward compatibility

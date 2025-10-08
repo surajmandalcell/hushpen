@@ -37,10 +37,10 @@ const PalText = forwardRef<HTMLParagraphElement, PalTextProps>(
     };
     
     const variantClasses = {
-      default: 'text-zinc-100',
-      muted: 'text-zinc-400',
-      accent: 'text-cyan-400',
-      gradient: 'bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent',
+      default: 'text-pal-text-primary',
+      muted: 'text-pal-text-tertiary',
+      accent: 'text-pal-accent-cyan',
+      gradient: 'bg-gradient-to-r from-pal-accent-cyan to-pal-accent-blue bg-clip-text text-transparent',
     };
     
     const classes = cn(

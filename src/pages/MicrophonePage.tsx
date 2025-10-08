@@ -23,11 +23,12 @@ const MicrophonePage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="pal-section pal-container pal-card-spacing">
       <PalPanelHeader
         title="Microphone Settings"
         subtitle="Configure audio input settings and test microphone functionality."
         withBorder={false}
+        className="pal-mb-xl"
       />
 
       <PalCard
@@ -35,12 +36,12 @@ const MicrophonePage: React.FC = () => {
         padding="lg"
         withGlow={true}
         withCornerMarkers={true}
-        className="space-y-6"
+        className="pal-p-lg"
       >
-        <div className="space-y-4">
-          <PalText size="lg" weight="semibold">Audio Input Device</PalText>
+        <div className="pal-card-spacing">
+          <PalText size="lg" weight="semibold" className="pal-mb-lg">Audio Input Device</PalText>
 
-          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div className="pal-form-row pal-p-md border-b">
             <div>
               <PalText weight="medium">Microphone</PalText>
               <PalText size="sm" variant="muted">
@@ -59,17 +60,17 @@ const MicrophonePage: React.FC = () => {
             </PalSelect>
           </div>
 
-          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div className="pal-form-row pal-p-md border-b">
             <div>
               <PalText weight="medium">Permission Status</PalText>
               <PalText size="sm" variant="muted">
                 Microphone access permission status
               </PalText>
             </div>
-            <span className="text-palantir-accent-green">✓ Granted</span>
+            <span className="text-pal-accent-green">✓ Granted</span>
           </div>
 
-          <div className="flex items-center justify-between py-3">
+          <div className="pal-form-row pal-p-md">
             <div>
               <PalText weight="medium">Test Microphone</PalText>
               <PalText size="sm" variant="muted">
@@ -88,19 +89,21 @@ const MicrophonePage: React.FC = () => {
         padding="lg"
         withGlow={true}
         withCornerMarkers={true}
-        className="space-y-4"
+        className="pal-p-lg"
       >
-        <PalText size="lg" weight="semibold">{audioHints.title}</PalText>
+        <div className="pal-card-spacing">
+          <PalText size="lg" weight="semibold" className="pal-mb-lg">{audioHints.title}</PalText>
 
-        <div>
-          <PalText weight="medium" className="mb-3">Platform Tips</PalText>
-          <div className="space-y-2">
-            {audioHints.hints.map((hint, index) => (
-              <div key={`hint-${index}`} className="flex items-start gap-2 p-2 bg-palantir-zinc-50 dark:bg-palantir-zinc-800 rounded">
-                <span className="text-palantir-accent-orange">💡</span>
-                <PalText size="sm">{hint}</PalText>
-              </div>
-            ))}
+          <div>
+            <PalText weight="medium" className="pal-mb-md">Platform Tips</PalText>
+            <div className="pal-list-spacing">
+              {audioHints.hints.map((hint) => (
+                <div key={`hint-${hint.substring(0, 20)}`} className="flex items-start pal-gap-sm pal-p-sm bg-pal-bg-secondary rounded">
+                  <span className="text-pal-accent-orange">💡</span>
+                  <PalText size="sm">{hint}</PalText>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </PalCard>
@@ -110,47 +113,49 @@ const MicrophonePage: React.FC = () => {
         padding="lg"
         withGlow={true}
         withCornerMarkers={true}
-        className="space-y-4"
+        className="pal-p-lg"
       >
-        <PalText size="lg" weight="semibold">Audio Quality</PalText>
+        <div className="pal-card-spacing">
+          <PalText size="lg" weight="semibold" className="pal-mb-lg">Audio Quality</PalText>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
-            <div>
-              <PalText weight="medium">Sample Rate</PalText>
-              <PalText size="sm" variant="muted">
-                Audio sampling rate (higher = better quality, larger files)
-              </PalText>
+          <div className="pal-form-col">
+            <div className="pal-form-row pal-p-md border-b">
+              <div>
+                <PalText weight="medium">Sample Rate</PalText>
+                <PalText size="sm" variant="muted">
+                  Audio sampling rate (higher = better quality, larger files)
+                </PalText>
+              </div>
+              <PalSelect
+                value={sampleRate}
+                onChange={(e) => setSampleRate(e.target.value)}
+              >
+                {sampleRateOptions.map((rate) => (
+                  <option key={rate.id} value={rate.id}>
+                    {rate.name}
+                  </option>
+                ))}
+              </PalSelect>
             </div>
-            <PalSelect
-              value={sampleRate}
-              onChange={(e) => setSampleRate(e.target.value)}
-            >
-              {sampleRateOptions.map((rate) => (
-                <option key={rate.id} value={rate.id}>
-                  {rate.name}
-                </option>
-              ))}
-            </PalSelect>
-          </div>
 
-          <div className="flex items-center justify-between py-3">
-            <div>
-              <PalText weight="medium">Channels</PalText>
-              <PalText size="sm" variant="muted">
-                Number of audio channels to record
-              </PalText>
+            <div className="pal-form-row pal-p-md">
+              <div>
+                <PalText weight="medium">Channels</PalText>
+                <PalText size="sm" variant="muted">
+                  Number of audio channels to record
+                </PalText>
+              </div>
+              <PalSelect
+                value={channels}
+                onChange={(e) => setChannels(e.target.value)}
+              >
+                {channelOptions.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name}
+                  </option>
+                ))}
+              </PalSelect>
             </div>
-            <PalSelect
-              value={channels}
-              onChange={(e) => setChannels(e.target.value)}
-            >
-              {channelOptions.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name}
-                </option>
-              ))}
-            </PalSelect>
           </div>
         </div>
       </PalCard>

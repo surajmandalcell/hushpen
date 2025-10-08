@@ -36,9 +36,9 @@ const TONE_STYLES: Record<PalSelectTone, string> = {
 };
 
 const VARIANT_STYLES = {
-	default: "bg-zinc-950/60 border-zinc-800/60 text-zinc-100 hover:border-zinc-600/60",
-	muted: "bg-zinc-900/40 border-zinc-800/50 text-zinc-100 hover:border-zinc-600/60",
-	ghost: "bg-transparent border-zinc-800/40 text-zinc-100 hover:border-zinc-600/50",
+	default: "bg-pal-surface border-pal-border-primary text-pal-text-primary hover:border-pal-border-secondary",
+	muted: "bg-pal-bg-secondary border-pal-border-primary text-pal-text-primary hover:border-pal-border-secondary",
+	ghost: "bg-transparent border-pal-border-primary text-pal-text-primary hover:border-pal-border-secondary",
 } as const satisfies Record<string, string>;
 
 // SVG arrow icon as data URL (chevron down)
