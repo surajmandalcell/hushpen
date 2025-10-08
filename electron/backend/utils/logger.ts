@@ -145,6 +145,10 @@ class Logger {
     this.writeLog(LogLevel.WARN, 'WARN', message, ...args);
   }
 
+  public warning(message: string, ...args: any[]): void {
+    this.writeLog(LogLevel.WARN, 'WARN', message, ...args);
+  }
+
   public error(message: string, ...args: any[]): void {
     this.writeLog(LogLevel.ERROR, 'ERROR', message, ...args);
   }

@@ -45,7 +45,7 @@ class ConfigService {
       configDir = path.join(os.homedir(), 'Library', 'Application Support', 'asrpro');
     } else if (system === 'Windows_NT') {
       // Windows
-      configDir = path.join(os.environ['APPDATA'] || '', 'asrpro');
+      configDir = path.join(process.env.APPDATA || '', 'asrpro');
     } else {
       // Linux and others
       configDir = path.join(os.homedir(), '.config', 'asrpro');
