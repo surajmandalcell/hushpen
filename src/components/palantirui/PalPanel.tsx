@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 import PalText from './PalText';
 
 export interface PalPanelProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'elevated' | 'bordered';
+  variant?: 'default' | 'elevated' | 'bordered' | 'glass';
   padding?: 'none' | 'sm' | 'md' | 'lg';
   withGlow?: boolean;
   withCornerMarkers?: boolean;
@@ -11,22 +11,23 @@ export interface PalPanelProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const PalPanel = forwardRef<HTMLDivElement, PalPanelProps>(
-  ({ 
-    className, 
+  ({
+    className,
     variant = 'default',
     padding = 'md',
     withGlow = false,
     withCornerMarkers = false,
     withGeometricBorder = false,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
-    const baseClasses = 'pal-panel transition-all duration-200';
+    const baseClasses = 'transition-all duration-200 relative';
     
     const variantClasses = {
-      default: '',
-      elevated: 'shadow-pal-medium',
-      bordered: 'border-2 border-palantir-zinc-300 dark:border-palantir-zinc-600',
+      default: 'bg-zinc-900/50 border border-zinc-800/50',
+      elevated: 'bg-zinc-900/50 border border-zinc-800/50 shadow-lg shadow-zinc-900/50',
+      bordered: 'bg-zinc-900/30 border-2 border-dashed border-zinc-700/60',
+      glass: 'bg-zinc-900/20 backdrop-blur-sm border border-zinc-800/30',
     };
     
     const paddingClasses = {
@@ -36,9 +37,9 @@ const PalPanel = forwardRef<HTMLDivElement, PalPanelProps>(
       lg: 'p-6',
     };
     
-    const glowClasses = withGlow ? 'pal-glow-subtle' : '';
-    const cornerMarkerClasses = withCornerMarkers ? 'pal-corner-markers' : '';
-    const geometricBorderClasses = withGeometricBorder ? 'pal-geometric-border' : '';
+    const glowClasses = withGlow ? 'hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]' : '';
+    const cornerMarkerClasses = withCornerMarkers ? 'relative overflow-visible' : '';
+    const geometricBorderClasses = withGeometricBorder ? 'relative' : '';
     
     const classes = cn(
       baseClasses,
@@ -56,6 +57,17 @@ const PalPanel = forwardRef<HTMLDivElement, PalPanelProps>(
         ref={ref}
         {...props}
       >
+        {withCornerMarkers && (
+          <>
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+          </>
+        )}
+        {withGeometricBorder && (
+          <div className="absolute inset-0 border border-zinc-700/30 pointer-events-none" />
+        )}
         {children}
       </div>
     );
@@ -71,16 +83,16 @@ export interface PalPanelHeaderProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const PalPanelHeader = forwardRef<HTMLDivElement, PalPanelHeaderProps>(
-  ({ 
-    className, 
+  ({
+    className,
     title,
     subtitle,
     withBorder = true,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
     const baseClasses = 'flex items-center justify-between';
-    const borderClasses = withBorder ? 'border-b border-palantir-zinc-200 dark:border-palantir-zinc-700 pb-4 mb-4' : 'pb-2 mb-2';
+    const borderClasses = withBorder ? 'border-b border-zinc-800/60 pb-4 mb-4' : 'pb-2 mb-2';
     
     const classes = cn(
       baseClasses,
@@ -144,14 +156,14 @@ export interface PalPanelFooterProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const PalPanelFooter = forwardRef<HTMLDivElement, PalPanelFooterProps>(
-  ({ 
-    className, 
+  ({
+    className,
     withBorder = true,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
     const baseClasses = 'flex items-center justify-between';
-    const borderClasses = withBorder ? 'border-t border-palantir-zinc-200 dark:border-palantir-zinc-700 pt-4 mt-4' : 'pt-2 mt-2';
+    const borderClasses = withBorder ? 'border-t border-zinc-800/60 pt-4 mt-4' : 'pt-2 mt-2';
     
     const classes = cn(
       baseClasses,

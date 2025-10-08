@@ -14,8 +14,8 @@ export interface PalModalProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const PalModal = forwardRef<HTMLDivElement, PalModalProps>(
-  ({ 
-    className, 
+  ({
+    className,
     isOpen,
     onClose,
     size = 'md',
@@ -23,8 +23,8 @@ const PalModal = forwardRef<HTMLDivElement, PalModalProps>(
     withCornerMarkers = false,
     closeOnBackdropClick = true,
     preventBodyScroll = true,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
     // Handle body scroll lock
     useEffect(() => {
@@ -68,33 +68,43 @@ const PalModal = forwardRef<HTMLDivElement, PalModalProps>(
     };
     
     const modalContent = (
-      <div className="pal-modal">
-        <button 
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        {/* Backdrop */}
+        <button
           type="button"
-          className="pal-modal-backdrop" 
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-default"
           onClick={handleBackdropClick}
           onKeyDown={handleBackdropKeyDown}
           aria-label="Close modal"
         />
-        <div className="flex items-center justify-center min-h-screen p-4">
-          <div
-            ref={ref}
-            className={cn(
-              'pal-modal-content relative w-full',
-              {
-                'max-w-sm': size === 'sm',
-                'max-w-md': size === 'md',
-                'max-w-lg': size === 'lg',
-                'max-w-2xl': size === 'xl',
-              },
-              withGlow && 'pal-glow-medium',
-              withCornerMarkers && 'pal-corner-markers',
-              className
-            )}
-            {...props}
-          >
-            {children}
-          </div>
+        
+        {/* Modal Content */}
+        <div
+          ref={ref}
+          className={cn(
+            'relative w-full max-h-[90vh] overflow-auto bg-zinc-900/95 border border-zinc-800/60 shadow-2xl animate-fade-in',
+            {
+              'max-w-sm': size === 'sm',
+              'max-w-md': size === 'md',
+              'max-w-lg': size === 'lg',
+              'max-w-2xl': size === 'xl',
+            },
+            withGlow && 'shadow-[0_0_30px_rgba(59,130,246,0.3)]',
+            className
+          )}
+          role="dialog"
+          aria-modal="true"
+          {...props}
+        >
+          {withCornerMarkers && (
+            <>
+              <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-zinc-600" />
+              <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-zinc-600" />
+              <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-zinc-600" />
+              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-zinc-600" />
+            </>
+          )}
+          {children}
         </div>
       </div>
     );
@@ -113,16 +123,16 @@ export interface PalModalHeaderProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const PalModalHeader = forwardRef<HTMLDivElement, PalModalHeaderProps>(
-  ({ 
-    className, 
+  ({
+    className,
     title,
     subtitle,
     showCloseButton = true,
     onClose,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
-    const baseClasses = 'flex items-center justify-between pb-4 mb-4 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700';
+    const baseClasses = 'flex items-center justify-between px-6 py-4 border-b border-zinc-800/60';
     
     const classes = cn(
       baseClasses,
@@ -153,7 +163,7 @@ export const PalModalHeader = forwardRef<HTMLDivElement, PalModalHeaderProps>(
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded-pal text-palantir-zinc-500 hover:text-palantir-zinc-700 hover:bg-palantir-zinc-100 dark:text-palantir-zinc-400 dark:hover:text-palantir-zinc-200 dark:hover:bg-palantir-zinc-800 transition-colors duration-200"
+              className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50 transition-colors duration-200"
               aria-label="Close modal"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -174,7 +184,7 @@ export interface PalModalContentProps extends HTMLAttributes<HTMLDivElement> {}
 
 export const PalModalContent = forwardRef<HTMLDivElement, PalModalContentProps>(
   ({ className, children, ...props }, ref) => {
-    const baseClasses = 'py-4';
+    const baseClasses = 'px-6 py-4';
     
     const classes = cn(
       baseClasses,
@@ -199,7 +209,7 @@ export interface PalModalFooterProps extends HTMLAttributes<HTMLDivElement> {}
 
 export const PalModalFooter = forwardRef<HTMLDivElement, PalModalFooterProps>(
   ({ className, children, ...props }, ref) => {
-    const baseClasses = 'flex items-center justify-end gap-3 pt-4 mt-4 border-t border-palantir-zinc-200 dark:border-palantir-zinc-700';
+    const baseClasses = 'flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800/60';
     
     const classes = cn(
       baseClasses,

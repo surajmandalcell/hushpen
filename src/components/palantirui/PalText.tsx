@@ -9,24 +9,24 @@ export interface PalTextProps extends HTMLAttributes<HTMLParagraphElement> {
 }
 
 const PalText = forwardRef<HTMLParagraphElement, PalTextProps>(
-  ({ 
-    className, 
-    size = 'base', 
+  ({
+    className,
+    size = 'base',
     weight = 'normal',
     variant = 'default',
     as: Component = 'p',
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
     const baseClasses = 'font-inter transition-colors duration-200';
     
     const sizeClasses = {
-      xs: 'pal-text-xs',
-      sm: 'pal-text-sm',
-      base: 'pal-text-base',
-      lg: 'pal-text-lg',
-      xl: 'pal-text-xl',
-      '2xl': 'pal-text-2xl',
+      xs: 'text-xs',
+      sm: 'text-sm',
+      base: 'text-base',
+      lg: 'text-lg',
+      xl: 'text-xl',
+      '2xl': 'text-2xl',
     };
     
     const weightClasses = {
@@ -37,10 +37,10 @@ const PalText = forwardRef<HTMLParagraphElement, PalTextProps>(
     };
     
     const variantClasses = {
-      default: 'text-palantir-zinc-900 dark:text-palantir-zinc-50',
-      muted: 'pal-text-muted',
-      accent: 'text-palantir-accent-blue',
-      gradient: 'text-gradient',
+      default: 'text-zinc-100',
+      muted: 'text-zinc-400',
+      accent: 'text-cyan-400',
+      gradient: 'bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent',
     };
     
     const classes = cn(

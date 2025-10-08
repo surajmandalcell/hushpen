@@ -1,12 +1,18 @@
-import { forwardRef, type HTMLAttributes } from 'react';
+import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../../utils/cn';
 
 export interface PalCardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'hover' | 'glow' | 'elevated';
+  variant?: 'default' | 'bordered' | 'glass' | 'elevated' | 'hover';
   withCornerMarkers?: boolean;
   withGeometricBorder?: boolean;
   withGlow?: boolean;
   padding?: 'none' | 'sm' | 'md' | 'lg';
+  hover?: boolean;
+  glow?: boolean;
+  corners?: boolean;
+  animate?: boolean;
+  animationDelay?: number;
+  children?: ReactNode;
 }
 
 const PalCard = forwardRef<HTMLDivElement, PalCardProps>(
@@ -17,16 +23,22 @@ const PalCard = forwardRef<HTMLDivElement, PalCardProps>(
     withGeometricBorder = false,
     withGlow = false,
     padding = 'md',
+    hover = false,
+    glow = false,
+    corners = false,
+    animate = false,
+    animationDelay = 0,
     children,
     ...props
   }, ref) => {
-    const baseClasses = 'pal-card font-inter';
+    const baseStyles = "relative transition-all duration-300 font-inter";
 
-    const variantClasses = {
-      default: '',
-      hover: 'pal-card-hover',
-      glow: 'pal-card-glow',
-      elevated: 'shadow-pal-medium',
+    const variantStyles = {
+      default: "bg-zinc-900/50 border border-zinc-800/50",
+      bordered: "bg-transparent border-dashed border-zinc-700/50",
+      glass: "bg-zinc-900/30 backdrop-blur-sm border border-zinc-800/30",
+      elevated: "bg-zinc-900/50 border border-zinc-800/50 shadow-lg shadow-zinc-900/50",
+      hover: "bg-zinc-900/50 border border-zinc-800/50 hover:shadow-lg hover:shadow-zinc-900/50 hover:-translate-y-0.5",
     };
 
     const paddingClasses = {
@@ -36,17 +48,28 @@ const PalCard = forwardRef<HTMLDivElement, PalCardProps>(
       lg: 'p-6',
     };
 
-    const glowClasses = withGlow ? 'pal-glow-subtle' : '';
-    const cornerMarkerClasses = withCornerMarkers ? 'pal-corner-markers' : '';
-    const geometricBorderClasses = withGeometricBorder ? 'pal-geometric-border' : '';
+    const hoverStyles = hover
+      ? "hover:shadow-lg hover:shadow-zinc-900/50 hover:-translate-y-0.5"
+      : "";
+
+    const glowStyles = glow ? "hover:shadow-[0_0_20px_rgba(59,130,246,0.3)]" : "";
+    const cornerMarkerStyles = withCornerMarkers || corners ? "relative overflow-visible" : "";
+    const geometricBorderStyles = withGeometricBorder ? "relative" : "";
+    
+    const animationStyles = animate ? "animate-fade-in" : "";
+    const delayClass =
+      animate && animationDelay > 0 ? `animation-delay-${animationDelay}` : "";
     
     const classes = cn(
-      baseClasses,
-      variantClasses[variant],
+      baseStyles,
+      variantStyles[variant],
       paddingClasses[padding],
-      glowClasses,
-      cornerMarkerClasses,
-      geometricBorderClasses,
+      hoverStyles,
+      glowStyles,
+      cornerMarkerStyles,
+      geometricBorderStyles,
+      animationStyles,
+      delayClass,
       className
     );
     
@@ -56,6 +79,23 @@ const PalCard = forwardRef<HTMLDivElement, PalCardProps>(
         ref={ref}
         {...props}
       >
+        {(withCornerMarkers || corners) && (
+          <>
+            {/* Soft white border */}
+            <div className="absolute inset-0 border border-white/10 pointer-events-none z-5" />
+
+            {/* Corner Plus Markers - positioned outside padding */}
+            <div className="absolute inset-0 pointer-events-none !mt-0">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
+              <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
+              <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
+              <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+            </div>
+          </>
+        )}
+        {withGeometricBorder && (
+          <div className="absolute inset-0 border border-zinc-700/30 pointer-events-none" />
+        )}
         {children}
       </div>
     );

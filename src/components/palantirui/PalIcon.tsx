@@ -9,13 +9,13 @@ export interface PalIconProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const PalIcon = forwardRef<HTMLSpanElement, PalIconProps>(
-  ({ 
-    className, 
-    size = 'md', 
+  ({
+    className,
+    size = 'md',
     variant = 'default',
     withGlow = false,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
     const baseClasses = 'inline-flex items-center justify-center transition-all duration-200';
     
@@ -28,12 +28,12 @@ const PalIcon = forwardRef<HTMLSpanElement, PalIconProps>(
     };
     
     const variantClasses = {
-      default: 'text-palantir-zinc-700 dark:text-palantir-zinc-300',
-      muted: 'text-palantir-zinc-500 dark:text-palantir-zinc-400',
-      accent: 'text-palantir-accent-blue',
+      default: 'text-zinc-300',
+      muted: 'text-zinc-500',
+      accent: 'text-cyan-400',
     };
     
-    const glowClasses = withGlow ? 'pal-glow-on-hover' : '';
+    const glowClasses = withGlow ? 'hover:shadow-[0_0_10px_rgba(var(--glow-color),0.5)]' : '';
     
     const classes = cn(
       baseClasses,
@@ -47,6 +47,7 @@ const PalIcon = forwardRef<HTMLSpanElement, PalIconProps>(
       <span
         className={classes}
         ref={ref}
+        style={withGlow ? { "--glow-color": "59, 130, 246" } as React.CSSProperties : undefined}
         {...props}
       >
         {children}

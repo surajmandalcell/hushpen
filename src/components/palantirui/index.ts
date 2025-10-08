@@ -4,10 +4,10 @@ import type { ReactNode } from 'react';
 export { default as PalButton } from './PalButton';
 export type { PalButtonProps } from './PalButton';
 
-export { default as PalInput } from './PalInput';
+export { default as PalInput, PalInputMuted, PalInputGhost, PalInputInline } from './PalInput';
 export type { PalInputProps } from './PalInput';
 
-export { default as PalSelect } from './PalSelect';
+export { default as PalSelect, PalSelectMuted, PalSelectGhost } from './PalSelect';
 export type { PalSelectProps } from './PalSelect';
 
 export { default as PalCard } from './PalCard';
@@ -23,45 +23,45 @@ export type { PalTextProps } from './PalText';
 export { default as PalSidebar, PalSidebarItem, PalSidebarSection } from './PalSidebar';
 export type { PalSidebarProps, PalSidebarItemProps, PalSidebarSectionProps } from './PalSidebar';
 
-export { 
-  default as PalHeader, 
-  PalWindowControls, 
-  PalWindowControl, 
-  PalHeaderTitle, 
-  PalHeaderActions 
+export {
+  default as PalHeader,
+  PalWindowControls,
+  PalWindowControl,
+  PalHeaderTitle,
+  PalHeaderActions
 } from './PalHeader';
-export type { 
-  PalHeaderProps, 
-  PalWindowControlsProps, 
-  PalWindowControlProps, 
-  PalHeaderTitleProps, 
-  PalHeaderActionsProps 
+export type {
+  PalHeaderProps,
+  PalWindowControlsProps,
+  PalWindowControlProps,
+  PalHeaderTitleProps,
+  PalHeaderActionsProps
 } from './PalHeader';
 
-export { 
-  default as PalPanel, 
-  PalPanelHeader, 
-  PalPanelContent, 
-  PalPanelFooter 
+export {
+  default as PalPanel,
+  PalPanelHeader,
+  PalPanelContent,
+  PalPanelFooter
 } from './PalPanel';
-export type { 
-  PalPanelProps, 
-  PalPanelHeaderProps, 
-  PalPanelContentProps, 
-  PalPanelFooterProps 
+export type {
+  PalPanelProps,
+  PalPanelHeaderProps,
+  PalPanelContentProps,
+  PalPanelFooterProps
 } from './PalPanel';
 
-export { 
-  default as PalModal, 
-  PalModalHeader, 
-  PalModalContent, 
-  PalModalFooter 
+export {
+  default as PalModal,
+  PalModalHeader,
+  PalModalContent,
+  PalModalFooter
 } from './PalModal';
-export type { 
-  PalModalProps, 
-  PalModalHeaderProps, 
-  PalModalContentProps, 
-  PalModalFooterProps 
+export type {
+  PalModalProps,
+  PalModalHeaderProps,
+  PalModalContentProps,
+  PalModalFooterProps
 } from './PalModal';
 
 // Utility Types

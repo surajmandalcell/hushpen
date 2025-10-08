@@ -10,16 +10,16 @@ export interface PalSidebarProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const PalSidebar = forwardRef<HTMLDivElement, PalSidebarProps>(
-  ({ 
-    className, 
+  ({
+    className,
     collapsed = false,
     width = 'md',
     withGlow = false,
     withCornerMarkers = false,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
-    const baseClasses = 'pal-sidebar h-full flex flex-col transition-all duration-300';
+    const baseClasses = 'h-full flex flex-col transition-all duration-300 bg-zinc-900/50 border-r border-zinc-800/60 relative';
     
     const widthClasses = {
       sm: collapsed ? 'w-16' : 'w-48',
@@ -27,8 +27,8 @@ const PalSidebar = forwardRef<HTMLDivElement, PalSidebarProps>(
       lg: collapsed ? 'w-16' : 'w-80',
     };
     
-    const glowClasses = withGlow ? 'pal-glow-subtle' : '';
-    const cornerMarkerClasses = withCornerMarkers ? 'pal-corner-markers' : '';
+    const glowClasses = withGlow ? 'shadow-[0_0_20px_rgba(59,130,246,0.3)]' : '';
+    const cornerMarkerClasses = withCornerMarkers ? 'relative overflow-visible' : '';
     
     const classes = cn(
       baseClasses,
@@ -44,6 +44,14 @@ const PalSidebar = forwardRef<HTMLDivElement, PalSidebarProps>(
         ref={ref}
         {...props}
       >
+        {withCornerMarkers && (
+          <>
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+          </>
+        )}
         {children}
       </div>
     );
@@ -60,18 +68,20 @@ export interface PalSidebarItemProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const PalSidebarItem = forwardRef<HTMLDivElement, PalSidebarItemProps>(
-  ({ 
-    className, 
+  ({
+    className,
     active = false,
     icon,
     label,
     collapsed = false,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
-    const baseClasses = 'pal-sidebar-item cursor-pointer transition-all duration-200';
+    const baseClasses = 'cursor-pointer transition-all duration-200 px-3 py-2 rounded-md mx-2 my-1';
     
-    const activeClasses = active ? 'pal-sidebar-item.active' : '';
+    const activeClasses = active
+      ? 'bg-zinc-800/60 text-zinc-100 border-l-2 border-cyan-500'
+      : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/40';
     
     const classes = cn(
       baseClasses,
@@ -111,12 +121,12 @@ export interface PalSidebarSectionProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export const PalSidebarSection = forwardRef<HTMLDivElement, PalSidebarSectionProps>(
-  ({ 
-    className, 
+  ({
+    className,
     title,
     collapsed = false,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
     const baseClasses = 'py-2';
     
@@ -132,7 +142,7 @@ export const PalSidebarSection = forwardRef<HTMLDivElement, PalSidebarSectionPro
         {...props}
       >
         {!collapsed && title && (
-          <div className="px-3 py-1">
+          <div className="px-5 py-1">
             <PalText size="xs" variant="muted" weight="medium" className="uppercase tracking-wider">
               {title}
             </PalText>

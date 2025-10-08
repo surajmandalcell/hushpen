@@ -10,16 +10,16 @@ export interface PalHeaderProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const PalHeader = forwardRef<HTMLDivElement, PalHeaderProps>(
-  ({ 
-    className, 
+  ({
+    className,
     height = 'md',
     withWindowControls = false,
     withGlow = false,
     withCornerMarkers = false,
-    children, 
-    ...props 
+    children,
+    ...props
   }, ref) => {
-    const baseClasses = 'pal-header flex items-center transition-all duration-200';
+    const baseClasses = 'flex items-center transition-all duration-200 bg-zinc-900/50 border-b border-zinc-800/60 relative';
     
     const heightClasses = {
       sm: 'h-12',
@@ -27,8 +27,8 @@ const PalHeader = forwardRef<HTMLDivElement, PalHeaderProps>(
       lg: 'h-20',
     };
     
-    const glowClasses = withGlow ? 'pal-glow-subtle' : '';
-    const cornerMarkerClasses = withCornerMarkers ? 'pal-corner-markers' : '';
+    const glowClasses = withGlow ? 'shadow-[0_0_20px_rgba(59,130,246,0.3)]' : '';
+    const cornerMarkerClasses = withCornerMarkers ? 'relative overflow-visible' : '';
     
     const classes = cn(
       baseClasses,
@@ -44,6 +44,14 @@ const PalHeader = forwardRef<HTMLDivElement, PalHeaderProps>(
         ref={ref}
         {...props}
       >
+        {withCornerMarkers && (
+          <>
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-600" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-zinc-600" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-zinc-600" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-zinc-600" />
+          </>
+        )}
         {children}
       </div>
     );
@@ -88,9 +96,9 @@ export const PalWindowControl = forwardRef<HTMLButtonElement, PalWindowControlPr
     const baseClasses = 'w-3 h-3 rounded-full transition-all duration-200 hover:scale-110';
     
     const variantClasses = {
-      close: 'bg-palantir-accent-red hover:bg-red-600',
-      minimize: 'bg-palantir-accent-orange hover:bg-orange-600',
-      maximize: 'bg-palantir-accent-green hover:bg-green-600',
+      close: 'bg-red-500 hover:bg-red-600',
+      minimize: 'bg-orange-500 hover:bg-orange-600',
+      maximize: 'bg-green-500 hover:bg-green-600',
     };
     
     const handleClick = async () => {
