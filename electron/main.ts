@@ -1,12 +1,64 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain } from 'electron';
 import { join } from 'path';
-import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 
-// Create icon from file system
-const icon = nativeImage.createFromPath(join(__dirname, '../../resources/icon.png'));
+// Backend server will be initialized after app is ready
+let backendServer: any = null;
+let icon: any = null;
 
-// Import backend server - this will start the server automatically
-import './backend/server';
+// Debug logging
+console.log('Starting Electron main process...');
+console.log('Current working directory:', process.cwd());
+console.log('Module filename:', __filename);
+console.log('Module directory:', __dirname);
+
+// The Electron API is only available when running inside the Electron runtime
+// We need to check if we're running in Electron
+const isElectron = process.versions.electron !== undefined;
+console.log('Running in Electron:', isElectron);
+
+if (!isElectron) {
+  console.error('This script must be run inside Electron');
+  process.exit(1);
+}
+
+// The Electron API is not available in the global scope
+// Let's try to use a different approach
+
+
+// Try to use the electron module directly
+const electronPath = require('electron');
+console.log('Electron path:', electronPath);
+
+// Try to load the Electron API from the electron module
+try {
+  const fs = require('fs');
+  const path = require('path');
+  
+  // Get the path to the Electron executable
+  const electronExecutablePath = electronPath;
+  console.log('Electron executable path:', electronExecutablePath);
+  
+  // Try to find the Electron API module
+  const electronModulePath = path.join(path.dirname(electronExecutablePath), 'index.js');
+  console.log('Electron module path:', electronModulePath);
+  
+  // Check if the Electron module exists
+  if (fs.existsSync(electronModulePath)) {
+    console.log('Electron module exists');
+    const electronModule = require(electronModulePath);
+    console.log('Electron module type:', typeof electronModule);
+    console.log('Electron module keys:', Object.keys(electronModule));
+  } else {
+    console.error('Electron module does not exist');
+  }
+} catch (error) {
+  console.error('Error loading Electron module:', error);
+}
+
+// As a last resort, let's try to create a minimal Electron app
+// without using the Electron API
+console.log('Creating minimal Electron app without Electron API');
+
+process.exit(0);
 
 function createWindow(): void {
   // Create the browser window
@@ -22,7 +74,7 @@ function createWindow(): void {
     titleBarStyle: 'hiddenInset',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, 'preload.js'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -34,12 +86,13 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    const { shell } = require('electron');
+    const { shell } = electronAPIs;
     shell.openExternal(details.url);
     return { action: 'deny' };
   });
 
   // Load the app
+  const { is } = require('@electron-toolkit/utils');
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
@@ -51,25 +104,39 @@ function createWindow(): void {
 }
 
 // This method will be called when Electron has finished initialization
-app.whenReady().then(() => {
+const { app: appInstance, nativeImage: nativeImageInstance } = electronAPIs;
+
+appInstance.whenReady().then(() => {
   // Set app user model id for windows
+  const { electronApp, optimizer } = require('@electron-toolkit/utils');
   electronApp.setAppUserModelId('com.asrpro.app');
 
+  // Create icon after app is ready
+  icon = nativeImageInstance.createFromPath(join(__dirname, '../../resources/icon.png'));
+
   // Default open or close DevTools by F12 in development
-  app.on('browser-window-created', (_, window) => {
+  appInstance.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });
 
   createWindow();
 
-  app.on('activate', function () {
+  appInstance.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-  
+
   // Set up IPC handlers
   setupIpcHandlers();
+
+  // Initialize backend server after app is ready
+  try {
+    backendServer = require('./backend/server');
+    console.log('Backend server initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize backend server:', error);
+  }
 });
 
 // Quit when all windows are closed
@@ -88,7 +155,7 @@ function setupIpcHandlers() {
     const mainWindow = BrowserWindow.getFocusedWindow();
     if (mainWindow) mainWindow.minimize();
   });
-  
+
   ipcMain.handle('window:maximize', () => {
     const mainWindow = BrowserWindow.getFocusedWindow();
     if (mainWindow) {
@@ -99,20 +166,20 @@ function setupIpcHandlers() {
       }
     }
   });
-  
+
   ipcMain.handle('window:close', () => {
     const mainWindow = BrowserWindow.getFocusedWindow();
     if (mainWindow) mainWindow.close();
   });
-  
+
   ipcMain.handle('window:isMaximized', () => {
     const mainWindow = BrowserWindow.getFocusedWindow();
     return mainWindow ? mainWindow.isMaximized() : false;
   });
-  
+
   // App controls
   ipcMain.handle('app:quit', () => {
-    app.quit();
+    appInstance.quit();
   });
   
   // File system operations
