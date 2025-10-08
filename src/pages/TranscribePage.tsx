@@ -2,6 +2,7 @@ import { useState, useId, type FC } from "react";
 import { Upload, FileAudio, FolderOpen, Container, Clock } from "lucide-react";
 import { fileSystemService } from "../services/fileSystem";
 import { apiClient, TranscriptionResponse } from "../services/api";
+import { PalPanelHeader, PalText, PalCard, PalButton, PalSelect } from "../components/palantirui";
 
 const TranscribePage: FC = () => {
   const fileInputId = useId();
@@ -10,6 +11,7 @@ const TranscribePage: FC = () => {
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState("");
   const [transcriptionResults, setTranscriptionResults] = useState<TranscriptionResponse[]>([]);
+  const [outputFormat, setOutputFormat] = useState("txt");
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -51,12 +53,10 @@ const TranscribePage: FC = () => {
       });
 
       if (files && files.length > 0) {
-        // Convert file paths to File objects
         const fileObjects = await Promise.all(
           files.map(async (path) => {
             const binaryData = await fileSystemService.readBinaryFile(path);
             const fileName = path.split("/").pop() || "unknown";
-            // Convert Uint8Array to ArrayBuffer for File constructor compatibility
             const arrayBuffer = new ArrayBuffer(binaryData.length);
             new Uint8Array(arrayBuffer).set(binaryData);
             return new File([arrayBuffer], fileName, { type: "audio/wav" });
@@ -75,21 +75,17 @@ const TranscribePage: FC = () => {
     setCurrentFile(files[0].name);
 
     try {
-      // Process each file
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         setCurrentFile(file.name);
         setProgress(0);
 
         try {
-          // Use the API client to transcribe the file
           const result = await apiClient.transcribeFile(file);
           console.log(`Transcription completed for ${file.name}:`, result);
 
-          // Store the transcription result
           setTranscriptionResults(prev => [...prev, result]);
 
-          // Save the transcription result
           if (result.text) {
             await fileSystemService.saveFileDialog(
               result.text,
@@ -116,61 +112,48 @@ const TranscribePage: FC = () => {
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title">Transcribe Files</h1>
-        <p className="page-description">
-          Upload audio files to transcribe them using AI speech recognition.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PalPanelHeader
+        title="Transcribe Files"
+        subtitle="Upload audio files to transcribe them using AI speech recognition."
+        withBorder={false}
+      />
 
-      <div className="settings-section">
-        <h2 className="section-title">File Upload</h2>
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-4">
+        <PalText size="lg" weight="semibold">File Upload</PalText>
 
-        <button
-          type="button"
-          className={`drop-zone ${isDragging ? "dragging" : ""} ${
-            isProcessing ? "processing" : ""
-          }`}
+        <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => document.getElementById(fileInputId)?.click()}
-          disabled={isProcessing}
-          aria-label="Drop zone for audio files"
-          style={{
-            border: '2px dashed var(--border-color)',
-            borderRadius: 'var(--border-radius)',
-            padding: '48px 24px',
-            textAlign: 'center',
-            background: isProcessing 
-              ? 'linear-gradient(135deg, var(--card-bg) 0%, var(--secondary-bg) 100%)'
-              : isDragging 
-                ? 'linear-gradient(135deg, rgba(0, 122, 204, 0.2) 0%, var(--card-bg) 100%)'
-                : 'linear-gradient(135deg, var(--card-bg) 0%, var(--secondary-bg) 100%)',
-            transition: 'all 0.3s ease',
-            cursor: isProcessing ? 'default' : 'pointer',
-            width: '100%',
-            display: 'block'
-          }}
+          onClick={() => !isProcessing && document.getElementById(fileInputId)?.click()}
+          className={`
+            border-2 border-dashed rounded-pal-lg p-12 text-center transition-all duration-300 cursor-pointer
+            ${isDragging ? 'border-palantir-accent-blue bg-palantir-accent-blue bg-opacity-10' : 'border-palantir-zinc-300 dark:border-palantir-zinc-600'}
+            ${isProcessing ? 'cursor-default opacity-75' : 'hover:border-palantir-accent-blue hover:bg-palantir-zinc-50 dark:hover:bg-palantir-zinc-800'}
+          `}
         >
           {isProcessing ? (
-            <div className="processing-content">
-              <FileAudio size={48} className="processing-icon" />
-              <h3>Processing {currentFile}</h3>
-              <div className="progress-bar">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${progress}%` }}
-                />
+            <div className="space-y-4">
+              <FileAudio size={48} className="mx-auto text-palantir-accent-blue animate-pulse" />
+              <div>
+                <PalText size="lg" weight="semibold">Processing {currentFile}</PalText>
+                <div className="mt-3 w-full bg-palantir-zinc-200 dark:bg-palantir-zinc-700 rounded-full h-2">
+                  <div
+                    className="bg-palantir-accent-blue h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <PalText size="sm" variant="muted" className="mt-2">{progress}% complete</PalText>
               </div>
-              <p>{progress}% complete</p>
             </div>
           ) : (
-            <div className="drop-content">
-              <Upload size={48} className="drop-icon" />
-              <h3>Drop audio files here</h3>
-              <p>or click to browse</p>
+            <div className="space-y-4">
+              <Upload size={48} className="mx-auto text-palantir-zinc-400" />
+              <div>
+                <PalText size="lg" weight="semibold">Drop audio files here</PalText>
+                <PalText size="sm" variant="muted">or click to browse</PalText>
+              </div>
               <input
                 type="file"
                 multiple
@@ -179,156 +162,120 @@ const TranscribePage: FC = () => {
                 style={{ display: "none" }}
                 id={fileInputId}
               />
-              <label
-                htmlFor={fileInputId}
-                className="button"
-                style={{ marginTop: "16px" }}
-              >
-                <Upload size={16} style={{ marginRight: "8px" }} />
-                Browse Files
-              </label>
-              <button
-                type="button"
-                className="button"
-                style={{ marginTop: "16px" }}
-                onClick={handleNativeFileDialog}
-              >
-                <FolderOpen size={16} style={{ marginRight: "8px" }} />
-                Open Native Dialog
-              </button>
-              <p
-                style={{
-                  fontSize: "12px",
-                  color: "var(--secondary-text)",
-                  marginTop: "12px",
-                }}
-              >
+              <div className="flex gap-3 justify-center">
+                <PalButton variant="primary" size="md">
+                  <Upload size={16} className="mr-2" />
+                  Browse Files
+                </PalButton>
+                <PalButton variant="secondary" size="md" onClick={(e) => { e.stopPropagation(); handleNativeFileDialog(); }}>
+                  <FolderOpen size={16} className="mr-2" />
+                  Open Native Dialog
+                </PalButton>
+              </div>
+              <PalText size="xs" variant="muted">
                 Supported formats: WAV, MP3, M4A, FLAC
-              </p>
+              </PalText>
             </div>
           )}
-        </button>
-      </div>
+        </div>
+      </PalCard>
 
-      <div className="settings-section">
-        <h2 className="section-title">Transcription Results</h2>
-        
-        {transcriptionResults.length > 0 && (
-          <div style={{ marginTop: '16px' }}>
+      {transcriptionResults.length > 0 && (
+        <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-4">
+          <PalText size="lg" weight="semibold">Transcription Results</PalText>
+
+          <div className="space-y-3">
             {transcriptionResults.map((result, index) => (
-              <div key={`transcription-${index}-${result.text?.substring(0, 10)}`} className="setting-row" style={{
-                padding: '12px', 
-                backgroundColor: 'var(--secondary-bg)', 
-                borderRadius: 'var(--border-radius)',
-                marginBottom: '12px'
-              }}>
-                <div className="setting-info">
-                  <h3 className="setting-label" style={{ marginBottom: '8px' }}>
-                    Transcription Result
-                  </h3>
-                  <p className="setting-description" style={{ 
-                    fontSize: '14px', 
-                    lineHeight: '1.5',
-                    marginBottom: '8px'
-                  }}>
+              <PalCard
+                key={`transcription-${index}-${result.text?.substring(0, 10)}`}
+                variant="default"
+                padding="md"
+                className="bg-palantir-zinc-50 dark:bg-palantir-zinc-800"
+              >
+                <div className="space-y-3">
+                  <PalText weight="semibold">Transcription Result</PalText>
+
+                  <PalText size="sm" className="leading-relaxed">
                     {result.text}
-                  </p>
-                  
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '12px' }}>
+                  </PalText>
+
+                  <div className="flex flex-wrap gap-4 text-palantir-zinc-500 dark:text-palantir-zinc-400">
                     {result.model_id && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Container size={14} color="var(--secondary-text)" />
-                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
-                          Model: {result.model_id}
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <Container size={14} />
+                        <PalText size="xs">Model: {result.model_id}</PalText>
                       </div>
                     )}
-                    
+
                     {result.backend && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Container size={14} color="var(--secondary-text)" />
-                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
-                          Backend: {result.backend}
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <Container size={14} />
+                        <PalText size="xs">Backend: {result.backend}</PalText>
                       </div>
                     )}
-                    
+
                     {result.processing_time && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock size={14} color="var(--secondary-text)" />
-                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
-                          Processing time: {result.processing_time.toFixed(2)}s
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <Clock size={14} />
+                        <PalText size="xs">Processing time: {result.processing_time.toFixed(2)}s</PalText>
                       </div>
                     )}
-                    
+
                     {result.container_info?.status && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Container size={14} color="var(--secondary-text)" />
-                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
-                          Container status: {result.container_info.status}
+                      <div className="flex items-center gap-2">
+                        <Container size={14} />
+                        <PalText size="xs">
+                          Container: {result.container_info.status}
                           {result.container_info.gpu_allocated && " (GPU)"}
-                        </span>
+                        </PalText>
                       </div>
                     )}
-                    
+
                     {result.language && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
-                          Language: {result.language}
-                        </span>
-                      </div>
+                      <PalText size="xs">Language: {result.language}</PalText>
                     )}
-                    
+
                     {result.duration && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--secondary-text)' }}>
-                          Duration: {result.duration.toFixed(2)}s
-                        </span>
-                      </div>
+                      <PalText size="xs">Duration: {result.duration.toFixed(2)}s</PalText>
                     )}
                   </div>
                 </div>
-              </div>
+              </PalCard>
             ))}
           </div>
-        )}
-      </div>
+        </PalCard>
+      )}
 
-      <div className="settings-section">
-        <h2 className="section-title">Output Settings</h2>
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-4">
+        <PalText size="lg" weight="semibold">Output Settings</PalText>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Output Format</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Output Format</PalText>
+            <PalText size="sm" variant="muted">
               Choose the format for transcription output
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <select className="dropdown">
-              <option value="txt">Text (.txt)</option>
-              <option value="srt">Subtitles (.srt)</option>
-              <option value="json">JSON (.json)</option>
-            </select>
-          </div>
+          <PalSelect value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
+            <option value="txt">Text (.txt)</option>
+            <option value="srt">Subtitles (.srt)</option>
+            <option value="json">JSON (.json)</option>
+          </PalSelect>
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Output Directory</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3">
+          <div>
+            <PalText weight="medium">Output Directory</PalText>
+            <PalText size="sm" variant="muted">
               Where to save transcribed files
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <button type="button" className="button">
-              <FolderOpen size={16} style={{ marginRight: "6px" }} />
-              Choose Folder
-            </button>
-          </div>
+          <PalButton variant="primary" size="sm">
+            <FolderOpen size={16} className="mr-2" />
+            Choose Folder
+          </PalButton>
         </div>
-      </div>
+      </PalCard>
     </div>
   );
 };

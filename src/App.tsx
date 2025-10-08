@@ -40,12 +40,6 @@ function App() {
   // WebSocket connection (for future use)
   useWebSocket();
 
-  // Handler to start recording
-  const startRecording = () => {
-    console.log("App: startRecording called, setting overlay active");
-    setIsRecordingOverlayActive(true);
-  };
-
   // Handler for section changes with logging
   const handleSectionChange = (section: string) => {
     console.log(`App: Section changing from ${activeSection} to ${section}`);
@@ -112,7 +106,6 @@ function App() {
         />
         <ContentArea
           activeSection={activeSection}
-          onStartRecording={startRecording}
         />
       </div>
     </div>

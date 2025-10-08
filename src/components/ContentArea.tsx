@@ -10,16 +10,14 @@ import AboutPage from "../pages/AboutPage";
 import AccessibilityPage from "../pages/AccessibilityPage";
 
 // PalantirUI Components
-import { PalPanel, PalPanelContent, PalButton } from "./palantirui";
+import { PalPanel, PalPanelContent } from "./palantirui";
 
 interface ContentAreaProps {
   activeSection: string;
-  onStartRecording?: () => void;
 }
 
 const ContentArea: React.FC<ContentAreaProps> = ({
   activeSection,
-  onStartRecording,
 }) => {
   const renderPage = () => {
     switch (activeSection) {

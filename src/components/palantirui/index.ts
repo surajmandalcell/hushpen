@@ -7,6 +7,9 @@ export type { PalButtonProps } from './PalButton';
 export { default as PalInput } from './PalInput';
 export type { PalInputProps } from './PalInput';
 
+export { default as PalSelect } from './PalSelect';
+export type { PalSelectProps } from './PalSelect';
+
 export { default as PalCard } from './PalCard';
 export type { PalCardProps } from './PalCard';
 

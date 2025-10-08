@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { PalPanelHeader, PalText, PalCard, PalButton, PalInput } from '../components/palantirui';
+import { TacticalToggle } from '../components/TacticalToggle';
 
 const KeyboardPage: React.FC = () => {
   const [hotkey, setHotkey] = useState('Ctrl+Shift+R');
@@ -6,109 +8,99 @@ const KeyboardPage: React.FC = () => {
   const [autoPaste, setAutoPaste] = useState(true);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title">Keyboard & Hotkeys</h1>
-        <p className="page-description">
-          Configure global hotkeys and keyboard shortcuts for quick access.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PalPanelHeader
+        title="Keyboard & Hotkeys"
+        subtitle="Configure global hotkeys and keyboard shortcuts for quick access."
+        withBorder={false}
+      />
 
-      <div className="settings-section">
-        <h2 className="section-title">Global Hotkey</h2>
-        
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Record Hotkey</h3>
-            <p className="setting-description">
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-6">
+        <PalText size="lg" weight="semibold">Global Hotkey</PalText>
+
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Record Hotkey</PalText>
+            <PalText size="sm" variant="muted">
               Global keyboard shortcut to start/stop recording
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <input 
-              type="text" 
-              className="input"
-              value={hotkey}
-              onChange={(e) => setHotkey(e.target.value)}
-              style={{ minWidth: '150px' }}
-            />
-          </div>
+          <PalInput
+            value={hotkey}
+            onChange={(e) => setHotkey(e.target.value)}
+            className="w-40"
+          />
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Test Hotkey</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3">
+          <div>
+            <PalText weight="medium">Test Hotkey</PalText>
+            <PalText size="sm" variant="muted">
               Test if the hotkey is working properly
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <button className="button">Test</button>
-          </div>
+          <PalButton variant="primary" size="sm">Test</PalButton>
         </div>
-      </div>
+      </PalCard>
 
-      <div className="settings-section">
-        <h2 className="section-title">Recording Options</h2>
-        
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Enable Overlay</h3>
-            <p className="setting-description">
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-4">
+        <PalText size="lg" weight="semibold">Recording Options</PalText>
+
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Enable Overlay</PalText>
+            <PalText size="sm" variant="muted">
               Show visual overlay during recording to indicate recording status
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <div 
-              className={`toggle-switch ${enableOverlay ? 'active' : ''}`}
-              onClick={() => setEnableOverlay(!enableOverlay)}
-            />
-          </div>
+          <TacticalToggle
+            checked={enableOverlay}
+            onChange={(checked) => setEnableOverlay(checked)}
+            size="md"
+          />
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Auto-paste</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3">
+          <div>
+            <PalText weight="medium">Auto-paste</PalText>
+            <PalText size="sm" variant="muted">
               Automatically paste transcribed text after recording
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <div 
-              className={`toggle-switch ${autoPaste ? 'active' : ''}`}
-              onClick={() => setAutoPaste(!autoPaste)}
-            />
-          </div>
+          <TacticalToggle
+            checked={autoPaste}
+            onChange={(checked) => setAutoPaste(checked)}
+            size="md"
+          />
         </div>
-      </div>
+      </PalCard>
 
-      <div className="settings-section">
-        <h2 className="section-title">Hotkey Status</h2>
-        
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Registration Status</h3>
-            <p className="setting-description">
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-4">
+        <PalText size="lg" weight="semibold">Hotkey Status</PalText>
+
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Registration Status</PalText>
+            <PalText size="sm" variant="muted">
               Current status of global hotkey registration
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <span style={{ color: 'var(--success-green)' }}>✓ Active</span>
-          </div>
+          <span className="text-palantir-accent-green flex items-center gap-1">
+            <span>✓</span>
+            <span>Active</span>
+          </span>
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Conflicts</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3">
+          <div>
+            <PalText weight="medium">Conflicts</PalText>
+            <PalText size="sm" variant="muted">
               Check for conflicts with other applications
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <span style={{ color: 'var(--success-green)' }}>None detected</span>
-          </div>
+          <PalText className="text-palantir-accent-green">None detected</PalText>
         </div>
-      </div>
+      </PalCard>
     </div>
   );
 };

@@ -2,6 +2,8 @@ import { useState, useEffect, type FC } from "react";
 import { Download, CheckCircle, Clock, AlertCircle, Container } from "lucide-react";
 import { apiClient, Model } from "../services/api";
 import { webSocketService, ContainerStatusData } from "../services/websocket";
+import { PalPanelHeader, PalText, PalCard, PalButton, PalSelect } from "../components/palantirui";
+import { TacticalToggle } from "../components/TacticalToggle";
 
 const ModelsPage: FC = () => {
   const [currentModel, setCurrentModel] = useState("whisper-base");
@@ -14,7 +16,6 @@ const ModelsPage: FC = () => {
   const [dockerAvailable, setDockerAvailable] = useState(true);
   const [gpuAvailable, setGpuAvailable] = useState(false);
 
-  // Fetch models from API on component mount
   useEffect(() => {
     const fetchModels = async () => {
       try {
@@ -43,7 +44,6 @@ const ModelsPage: FC = () => {
     fetchModels();
     fetchHealth();
 
-    // Subscribe to WebSocket for container status updates
     const unsubscribe = webSocketService.subscribe((message) => {
       if (message.type === "container_status") {
         const data = message.data as ContainerStatusData;
@@ -69,7 +69,6 @@ const ModelsPage: FC = () => {
     };
   }, []);
 
-  // Handle model selection
   const handleModelSelect = async (modelId: string) => {
     try {
       setIsLoading(true);
@@ -96,233 +95,184 @@ const ModelsPage: FC = () => {
   ];
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title">Models & Dictation Engine</h1>
-        <p className="page-description">
-          Configure AI models, language settings, and processing options for
-          speech recognition. Models are running in Docker containers.
-        </p>
-        {!dockerAvailable && (
-          <div className="warning-banner" style={{ 
-            backgroundColor: 'var(--warning-bg)', 
-            padding: '12px', 
-            borderRadius: 'var(--border-radius)', 
-            marginTop: '16px',
-            border: '1px solid var(--warning-border)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertCircle size={16} color="var(--warning-yellow)" />
-              <span style={{ color: 'var(--warning-text)' }}>
-                Docker is not available. Model functionality may be limited.
-              </span>
-            </div>
+    <div className="space-y-6">
+      <PalPanelHeader
+        title="Models & Dictation Engine"
+        subtitle="Configure AI models, language settings, and processing options for speech recognition. Models are running in Docker containers."
+        withBorder={false}
+      />
+
+      {!dockerAvailable && (
+        <PalCard variant="default" padding="md" className="border-l-4 border-l-palantir-accent-orange">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-palantir-accent-orange" />
+            <PalText size="sm" className="text-palantir-accent-orange">
+              Docker is not available. Model functionality may be limited.
+            </PalText>
           </div>
-        )}
-      </div>
+        </PalCard>
+      )}
 
-      <div className="settings-section">
-        <h2 className="section-title">Model Configuration</h2>
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-6">
+        <PalText size="lg" weight="semibold">Model Configuration</PalText>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Current Model</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Current Model</PalText>
+            <PalText size="sm" variant="muted">
               Select the AI model to use for speech recognition
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <select
-              className="dropdown"
-              value={currentModel}
-              onChange={(e) => setCurrentModel(e.target.value)}
-            >
-              {availableModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.id}
-                </option>
-              ))}
-            </select>
-          </div>
+          <PalSelect
+            value={currentModel}
+            onChange={(e) => setCurrentModel(e.target.value)}
+          >
+            {availableModels.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.id}
+              </option>
+            ))}
+          </PalSelect>
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Language</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Language</PalText>
+            <PalText size="sm" variant="muted">
               Primary language for speech recognition
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <select
-              className="dropdown"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              {languages.map((lang) => (
-                <option key={lang.id} value={lang.id}>
-                  {lang.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <PalSelect
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          >
+            {languages.map((lang) => (
+              <option key={lang.id} value={lang.id}>
+                {lang.name}
+              </option>
+            ))}
+          </PalSelect>
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Processing Device</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
+          <div>
+            <PalText weight="medium">Processing Device</PalText>
+            <PalText size="sm" variant="muted">
               Hardware to use for AI model processing
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <output className="device-info" style={{
-              padding: '8px 12px',
-              backgroundColor: 'var(--secondary-bg)',
-              borderRadius: 'var(--border-radius)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <Container size={16} color="var(--secondary-text)" />
-              <span>{processingDevice}</span>
-              {gpuAvailable && (
-                <span style={{ 
-                  marginLeft: '8px', 
-                  padding: '2px 6px', 
-                  backgroundColor: 'var(--success-bg)', 
-                  color: 'var(--success-green)', 
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  GPU
-                </span>
-              )}
-            </output>
+          <div className="flex items-center gap-2 px-3 py-2 bg-palantir-zinc-100 dark:bg-palantir-zinc-800 rounded-pal">
+            <Container size={16} className="text-palantir-zinc-500 dark:text-palantir-zinc-400" />
+            <PalText size="sm">{processingDevice}</PalText>
+            {gpuAvailable && (
+              <span className="px-2 py-1 bg-palantir-accent-green bg-opacity-20 text-palantir-accent-green rounded text-xs">
+                GPU
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="setting-row">
-          <div className="setting-info">
-            <h3 className="setting-label">Real-time Processing</h3>
-            <p className="setting-description">
+        <div className="flex items-center justify-between py-3">
+          <div>
+            <PalText weight="medium">Real-time Processing</PalText>
+            <PalText size="sm" variant="muted">
               Enable real-time speech recognition for live transcription
-            </p>
+            </PalText>
           </div>
-          <div className="setting-control">
-            <button
-              type="button"
-              className={`toggle-switch ${realTimeProcessing ? "active" : ""}`}
-              onClick={() => setRealTimeProcessing(!realTimeProcessing)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setRealTimeProcessing(!realTimeProcessing);
-                }
-              }}
-              aria-pressed={realTimeProcessing}
-              aria-label="Toggle real-time processing"
-            />
-          </div>
+          <TacticalToggle
+            checked={realTimeProcessing}
+            onChange={(checked) => setRealTimeProcessing(checked)}
+            size="md"
+          />
         </div>
-      </div>
+      </PalCard>
 
-      <div className="settings-section">
-        <h2 className="section-title">Available Models</h2>
+      <PalCard variant="default" padding="lg" withGlow={true} withCornerMarkers={true} className="space-y-4">
+        <PalText size="lg" weight="semibold">Available Models</PalText>
 
         {isLoading ? (
-          <div className="setting-row">
-            <div className="setting-info">
-              <h3 className="setting-label">Loading models...</h3>
-            </div>
+          <div className="py-4">
+            <PalText variant="muted">Loading models...</PalText>
           </div>
         ) : (
-          availableModels.map((model) => {
-            const containerStatus = containerStatuses[model.id];
-            const getStatusIcon = () => {
-              if (containerStatus?.status === "running") {
-                return <CheckCircle size={16} color="var(--success-green)" />;
-              } else if (containerStatus?.status === "starting") {
-                return <Clock size={16} color="var(--warning-yellow)" />;
-              } else if (model.ready) {
-                return <CheckCircle size={16} color="var(--success-green)" />;
-              } else {
-                return <AlertCircle size={16} color="var(--secondary-text)" />;
-              }
-            };
+          <div className="space-y-3">
+            {availableModels.map((model) => {
+              const containerStatus = containerStatuses[model.id];
+              const getStatusIcon = () => {
+                if (containerStatus?.status === "running") {
+                  return <CheckCircle size={16} className="text-palantir-accent-green" />;
+                } else if (containerStatus?.status === "starting") {
+                  return <Clock size={16} className="text-palantir-accent-orange" />;
+                } else if (model.ready) {
+                  return <CheckCircle size={16} className="text-palantir-accent-green" />;
+                } else {
+                  return <AlertCircle size={16} className="text-palantir-zinc-400" />;
+                }
+              };
 
-            const getStatusText = () => {
-              if (containerStatus?.status === "running") {
-                return `Container running${containerStatus.gpu_allocated ? " (GPU)" : " (CPU)"}`;
-              } else if (containerStatus?.status === "starting") {
-                return "Container starting...";
-              } else if (model.ready) {
-                return "Ready to use";
-              } else {
-                return "Not ready";
-              }
-            };
+              const getStatusText = () => {
+                if (containerStatus?.status === "running") {
+                  return `Container running${containerStatus.gpu_allocated ? " (GPU)" : " (CPU)"}`;
+                } else if (containerStatus?.status === "starting") {
+                  return "Container starting...";
+                } else if (model.ready) {
+                  return "Ready to use";
+                } else {
+                  return "Not ready";
+                }
+              };
 
-            return (
-              <div key={model.id} className="setting-row">
-                <div className="setting-info">
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                  >
-                    {getStatusIcon()}
-                    <h3 className="setting-label">{model.id}</h3>
-                    {containerStatus?.gpu_allocated && (
-                      <span style={{ 
-                        padding: '2px 6px', 
-                        backgroundColor: 'var(--success-bg)', 
-                        color: 'var(--success-green)', 
-                        borderRadius: '4px',
-                        fontSize: '12px'
-                      }}>
-                        GPU
-                      </span>
+              return (
+                <div key={model.id} className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700 last:border-0">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      {getStatusIcon()}
+                      <PalText weight="medium">{model.id}</PalText>
+                      {containerStatus?.gpu_allocated && (
+                        <span className="px-2 py-1 bg-palantir-accent-green bg-opacity-20 text-palantir-accent-green rounded text-xs">
+                          GPU
+                        </span>
+                      )}
+                    </div>
+                    <PalText size="sm" variant="muted">
+                      Status: {getStatusText()}
+                      {containerStatus?.image && (
+                        <span className="ml-2">• Image: {containerStatus.image}</span>
+                      )}
+                    </PalText>
+                  </div>
+                  <div>
+                    {model.ready || containerStatus?.status === "running" ? (
+                      <PalButton
+                        variant={currentModel === model.id ? "secondary" : "primary"}
+                        size="sm"
+                        onClick={() => handleModelSelect(model.id)}
+                        disabled={currentModel === model.id || isLoading}
+                      >
+                        {currentModel === model.id ? "Selected" : "Select"}
+                      </PalButton>
+                    ) : (
+                      <PalButton variant="ghost" size="sm" disabled>
+                        {containerStatus?.status === "starting" ? (
+                          <div className="flex items-center gap-2">
+                            <Clock size={14} />
+                            <span>Starting...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Download size={14} />
+                            <span>Not Available</span>
+                          </div>
+                        )}
+                      </PalButton>
                     )}
                   </div>
-                  <p className="setting-description">
-                    Status: {getStatusText()}
-                    {containerStatus?.image && (
-                      <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--secondary-text)' }}>
-                        Image: {containerStatus.image}
-                      </span>
-                    )}
-                  </p>
                 </div>
-                <div className="setting-control">
-                  {model.ready || containerStatus?.status === "running" ? (
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => handleModelSelect(model.id)}
-                      disabled={currentModel === model.id || isLoading}
-                    >
-                      {currentModel === model.id ? "Selected" : "Select"}
-                    </button>
-                  ) : (
-                    <button type="button" className="button" disabled>
-                      {containerStatus?.status === "starting" ? (
-                        <>
-                          <Clock size={16} style={{ marginRight: "6px" }} />
-                          Starting...
-                        </>
-                      ) : (
-                        <>
-                          <Download size={16} style={{ marginRight: "6px" }} />
-                          Not Available
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
-      </div>
+      </PalCard>
     </div>
   );
 };

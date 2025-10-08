@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { platformAudioService } from "../services/platformAudio";
-import { PalPanelHeader, PalText, PalCard, PalButton } from "../components/palantirui";
+import { PalPanelHeader, PalText, PalCard, PalButton, PalSelect } from "../components/palantirui";
 
 const MicrophonePage: React.FC = () => {
   const [selectedDevice, setSelectedDevice] = useState("default");
@@ -47,8 +47,7 @@ const MicrophonePage: React.FC = () => {
                 Select the audio input device to use for recording
               </PalText>
             </div>
-            <select
-              className="px-3 py-2 border border-palantir-zinc-300 dark:border-palantir-zinc-600 rounded-md bg-palantir-zinc-50 dark:bg-palantir-zinc-800 text-palantir-zinc-900 dark:text-palantir-zinc-100"
+            <PalSelect
               value={selectedDevice}
               onChange={(e) => setSelectedDevice(e.target.value)}
             >
@@ -57,7 +56,7 @@ const MicrophonePage: React.FC = () => {
                   {device.name}
                 </option>
               ))}
-            </select>
+            </PalSelect>
           </div>
 
           <div className="flex items-center justify-between py-3 border-b border-palantir-zinc-200 dark:border-palantir-zinc-700">
@@ -123,8 +122,7 @@ const MicrophonePage: React.FC = () => {
                 Audio sampling rate (higher = better quality, larger files)
               </PalText>
             </div>
-            <select
-              className="px-3 py-2 border border-palantir-zinc-300 dark:border-palantir-zinc-600 rounded-md bg-palantir-zinc-50 dark:bg-palantir-zinc-800 text-palantir-zinc-900 dark:text-palantir-zinc-100"
+            <PalSelect
               value={sampleRate}
               onChange={(e) => setSampleRate(e.target.value)}
             >
@@ -133,7 +131,7 @@ const MicrophonePage: React.FC = () => {
                   {rate.name}
                 </option>
               ))}
-            </select>
+            </PalSelect>
           </div>
 
           <div className="flex items-center justify-between py-3">
@@ -143,8 +141,7 @@ const MicrophonePage: React.FC = () => {
                 Number of audio channels to record
               </PalText>
             </div>
-            <select
-              className="px-3 py-2 border border-palantir-zinc-300 dark:border-palantir-zinc-600 rounded-md bg-palantir-zinc-50 dark:bg-palantir-zinc-800 text-palantir-zinc-900 dark:text-palantir-zinc-100"
+            <PalSelect
               value={channels}
               onChange={(e) => setChannels(e.target.value)}
             >
@@ -153,7 +150,7 @@ const MicrophonePage: React.FC = () => {
                   {channel.name}
                 </option>
               ))}
-            </select>
+            </PalSelect>
           </div>
         </div>
       </PalCard>
