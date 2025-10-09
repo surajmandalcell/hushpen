@@ -15,6 +15,7 @@ pub mod menu_bar;
 pub mod style;
 pub mod file_panel;
 pub mod model_panel;
+pub mod transcription_panel;
 
 // Import widget modules
 pub mod widgets {
@@ -22,16 +23,20 @@ pub mod widgets {
     pub mod file_list;
     pub mod model_selector;
     pub mod model_details;
+    pub mod transcription_text;
+    pub mod transcription_controls;
 }
 
 // Re-export the main components
 pub use main_window::MainWindow;
-pub use menu_bar::MenuBar;
 pub use style::{Theme, initialize_styling};
 pub use file_panel::FilePanel;
 pub use model_panel::ModelPanel;
+pub use transcription_panel::TranscriptionPanel;
 pub use widgets::model_selector::ModelSelectorWidget;
 pub use widgets::model_details::ModelDetailsWidget;
+pub use widgets::transcription_text::TranscriptionTextWidget;
+pub use widgets::transcription_controls::TranscriptionControlsWidget;
 
 /// Main UI container
 pub struct MainUI {
@@ -77,9 +82,4 @@ impl MainUI {
     pub fn get_window(&self) -> &ApplicationWindow {
         self.main_window.get_window()
     }
-}
-
-/// Create a module for widgets
-pub mod widgets {
-    // Widget modules will be added here
 }

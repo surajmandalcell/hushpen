@@ -9,14 +9,13 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::models::{Model, ModelConfig, ModelStatus, ModelType, ModelStats, presets};
-use crate::models::api::{BackendClient, ModelListResponse, ModelResponse};
 use crate::utils::{AppError, AppResult};
 
 /// Model Manager service for handling model operations
 #[derive(Debug, Clone)]
 pub struct ModelManager {
     /// Backend client for API communication
-    backend_client: Arc<BackendClient>,
+    backend_client: Arc<super::BackendClient>,
     /// Available models cache
     models: Arc<RwLock<HashMap<String, Model>>>,
     /// Currently selected model
@@ -29,7 +28,7 @@ pub struct ModelManager {
 
 impl ModelManager {
     /// Create a new ModelManager instance
-    pub fn new(backend_client: Arc<BackendClient>) -> Self {
+    pub fn new(backend_client: Arc<super::BackendClient>) -> Self {
         Self {
             backend_client,
             models: Arc::new(RwLock::new(HashMap::new())),
@@ -331,7 +330,7 @@ pub type ModelDownloadProgressCallback = Box<dyn Fn(f32) + Send + Sync>;
 
 /// Model manager builder
 pub struct ModelManagerBuilder {
-    backend_client: Option<Arc<BackendClient>>,
+    backend_client: Option<Arc<super::BackendClient>>,
     config: Option<ModelConfig>,
 }
 
@@ -345,7 +344,7 @@ impl ModelManagerBuilder {
     }
 
     /// Set the backend client
-    pub fn with_backend_client(mut self, backend_client: Arc<BackendClient>) -> Self {
+    pub fn with_backend_client(mut self, backend_client: Arc<super::BackendClient>) -> Self {
         self.backend_client = Some(backend_client);
         self
     }
@@ -388,7 +387,7 @@ mod tests {
     #[tokio::test]
     async fn test_model_manager_creation() {
         let config = BackendConfig::default();
-        let backend_client = BackendClient::new(config).unwrap();
+        let backend_client = super::BackendClient::new(config).unwrap();
         let backend_client = Arc::new(backend_client);
         
         let model_manager = ModelManager::new(backend_client);

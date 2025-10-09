@@ -820,3 +820,331 @@ aboutdialog {
 .model-use-button {
     /* No additional margin needed as it's the last button */
 }
+
+/* Transcription Panel Styles */
+.transcription-panel {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.transcription-text-container {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.transcription-text-view {
+    font-family: Monospace;
+    font-size: 12pt;
+    line-height: 1.5;
+    background-color: #ffffff;
+    color: #333333;
+}
+
+.transcription-text-view text {
+    background-color: transparent;
+}
+
+.transcription-controls {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+    padding: 8px;
+}
+
+.transcription-playback-controls {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 4px;
+}
+
+.transcription-edit-controls {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 4px;
+}
+
+.transcription-export-controls {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 4px;
+}
+
+.transcription-view-controls {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 4px;
+}
+
+.transcription-sidebar {
+    background-color: #f8f9fa;
+    border-left: 1px solid #e0e0e0;
+    border-radius: 0 6px 6px 0;
+}
+
+.transcription-info-frame {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin: 4px;
+}
+
+.transcription-info-frame > label {
+    font-weight: 600;
+    color: #333333;
+    padding: 8px;
+}
+
+.transcription-info-grid {
+    background-color: #ffffff;
+    padding: 8px;
+}
+
+.transcription-info-label {
+    font-weight: 500;
+    color: #666666;
+    font-size: 0.9em;
+}
+
+.transcription-info-value {
+    color: #333333;
+    font-size: 0.9em;
+}
+
+.transcription-confidence-bar {
+    background-color: #e0e0e0;
+    border-radius: 3px;
+    min-height: 8px;
+}
+
+.transcription-confidence-bar progress {
+    background-color: #4caf50;
+    border-radius: 3px;
+    min-height: 8px;
+}
+
+.transcription-confidence-bar.low progress {
+    background-color: #ff9800;
+}
+
+.transcription-confidence-bar.medium progress {
+    background-color: #2196f3;
+}
+
+.transcription-confidence-bar.high progress {
+    background-color: #4caf50;
+}
+
+.transcription-actions-frame {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin: 4px;
+}
+
+.transcription-actions-frame > label {
+    font-weight: 600;
+    color: #333333;
+    padding: 8px;
+}
+
+.transcription-actions-box {
+    background-color: #ffffff;
+    padding: 8px;
+}
+
+.transcription-notes-frame {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin: 4px;
+}
+
+.transcription-notes-frame > label {
+    font-weight: 600;
+    color: #333333;
+    padding: 8px;
+}
+
+.transcription-notes-text {
+    font-family: Monospace;
+    font-size: 10pt;
+    background-color: #ffffff;
+    color: #333333;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+/* Transcription Text Syntax Highlighting */
+.transcription-timestamp {
+    color: #1976d2;
+    font-weight: 600;
+}
+
+.transcription-speaker {
+    color: #d32f2f;
+    font-weight: 600;
+}
+
+.transcription-low-confidence {
+    color: #ff9800;
+    font-style: italic;
+}
+
+.transcription-search-highlight {
+    background-color: #ffeb3b;
+    color: #000000;
+}
+
+/* Transcription Search Bar */
+.transcription-search-bar {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 8px;
+}
+
+.transcription-search-entry {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: #333333;
+    transition: all 0.2s ease;
+}
+
+.transcription-search-entry:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+/* Export Format Popover */
+.export-format-popover {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.export-format-button {
+    padding: 8px 16px;
+    margin: 2px;
+    border-radius: 4px;
+    background-color: transparent;
+    color: #333333;
+    text-align: left;
+    transition: background-color 0.2s ease;
+}
+
+.export-format-button:hover {
+    background-color: #f0f0f0;
+}
+
+.export-format-button:active {
+    background-color: #e0e0e0;
+}
+
+/* View Mode Popover */
+.view-mode-popover {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.view-mode-radio {
+    padding: 8px;
+    margin: 2px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.view-mode-radio:hover {
+    background-color: #f0f0f0;
+}
+
+.view-mode-radio:checked {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.view-zoom-scale {
+    margin: 8px 0;
+}
+
+.view-zoom-label {
+    font-weight: 500;
+    color: #666666;
+    font-size: 0.9em;
+    margin-bottom: 4px;
+}
+
+/* Find/Replace Dialog */
+.find-replace-dialog {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.find-replace-entry {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: #333333;
+    transition: all 0.2s ease;
+}
+
+.find-replace-entry:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.find-replace-options {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+}
+
+.find-replace-check {
+    margin: 4px 8px;
+}
+
+/* Responsive Design for Transcription Panel */
+@media (max-width: 768px) {
+    .transcription-panel {
+        margin: 4px;
+    }
+    
+    .transcription-sidebar {
+        width: 250px;
+    }
+    
+    .transcription-controls {
+        padding: 4px;
+    }
+    
+    .transcription-playback-controls,
+    .transcription-edit-controls,
+    .transcription-export-controls,
+    .transcription-view-controls {
+        padding: 4px;
+        margin: 2px;
+    }
+    
+    .transcription-text-view {
+        font-size: 11pt;
+    }
+    
+    .transcription-notes-text {
+        font-size: 9pt;
+    }
+}

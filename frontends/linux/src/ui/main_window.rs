@@ -8,15 +8,17 @@ use gtk4::prelude::*;
 use gtk4::{
     Application, ApplicationWindow, HeaderBar, Label, Box, Paned,
     ProgressBar, Statusbar, Button, Orientation, Align, PolicyType,
-    EventControllerKey, ShortcutTrigger, Shortcut, ShortcutAction, Widget
+    EventControllerKey, ShortcutTrigger, Shortcut, ShortcutAction, Widget,
+    Image, Revealer, IconTheme
 };
 use gtk4::glib::{Propagation, ControlFlow};
 use std::sync::Arc;
 
 use crate::models::AppState;
-use crate::services::{FileManager, BackendClient, ModelManager};
+use crate::models::websocket::ConnectionState;
+use crate::services::{FileManager, BackendClient, ModelManager, TranscriptionService};
 use crate::ui::menu_bar::MenuBar;
-use crate::ui::{FilePanel, ModelPanel};
+use crate::ui::{FilePanel, ModelPanel, TranscriptionPanel};
 use crate::utils::AppError;
 
 /// Main application window
@@ -31,7 +33,13 @@ pub struct MainWindow {
     status_context_id: gtk4::glib::GString,
     file_panel: FilePanel,
     model_panel: Option<ModelPanel>,
+    transcription_panel: Option<TranscriptionPanel>,
     model_manager: Option<Arc<ModelManager>>,
+    transcription_service: Option<Arc<TranscriptionService>>,
+    // WebSocket status indicators
+    ws_status_image: Image,
+    ws_status_label: Label,
+    ws_status_revealer: Revealer,
 }
 
 impl MainWindow {
@@ -60,12 +68,15 @@ impl MainWindow {
         // Create the file panel
         let file_panel = FilePanel::new(window.clone(), app_state.clone(), file_manager.clone())?;
 
+        // Create the transcription panel
+        let transcription_panel = TranscriptionPanel::new(app_state.clone())?;
+
         // Create the model manager and panel if backend client is available
-        let (model_manager, model_panel) = if let Ok(backend_config) = crate::models::api::BackendConfig::default() {
+        let (model_manager, model_panel, backend_client) = if let Ok(backend_config) = crate::models::api::BackendConfig::default() {
             match BackendClient::new(backend_config) {
                 Ok(backend_client) => {
                     let backend_client = Arc::new(backend_client);
-                    let model_manager = Arc::new(ModelManager::new(backend_client));
+                    let model_manager = Arc::new(ModelManager::new(backend_client.clone()));
                     
                     // Initialize the model manager
                     let model_manager_clone = model_manager.clone();
@@ -76,21 +87,28 @@ impl MainWindow {
                     });
                     
                     match ModelPanel::new(window.clone(), app_state.clone(), model_manager.clone()) {
-                        Ok(model_panel) => (Some(model_manager), Some(model_panel)),
+                        Ok(model_panel) => (Some(model_manager), Some(model_panel), Some(backend_client)),
                         Err(e) => {
                             eprintln!("Failed to create model panel: {}", e);
-                            (None, None)
+                            (None, None, Some(backend_client))
                         }
                     }
                 },
                 Err(e) => {
                     eprintln!("Failed to create backend client: {}", e);
-                    (None, None)
+                    (None, None, None)
                 }
             }
         } else {
-            (None, None)
+            (None, None, None)
         };
+
+        // Create the transcription service
+        let transcription_service = Arc::new(TranscriptionService::new(
+            app_state.clone(),
+            backend_client,
+            Some(file_manager.clone()),
+        ));
 
         // Create the header bar
         let header_bar = HeaderBar::builder()
@@ -132,6 +150,30 @@ impl MainWindow {
             .margin_end(10)
             .build();
 
+        // Create WebSocket status indicators
+        let ws_status_image = Image::builder()
+            .icon_name("network-offline-symbolic")
+            .pixel_size(16)
+            .margin_end(5)
+            .build();
+        
+        let ws_status_label = Label::builder()
+            .label("Disconnected")
+            .margin_end(10)
+            .build();
+        
+        let ws_status_container = Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(5)
+            .build();
+        ws_status_container.append(&ws_status_image);
+        ws_status_container.append(&ws_status_label);
+        
+        let ws_status_revealer = Revealer::builder()
+            .child(&ws_status_container)
+            .reveal_child(false)
+            .build();
+
         // Create the main window instance
         let main_window = Self {
             window,
@@ -144,7 +186,12 @@ impl MainWindow {
             status_context_id: status_context_id.into(),
             file_panel,
             model_panel,
+            transcription_panel: Some(transcription_panel),
             model_manager,
+            transcription_service: Some(transcription_service),
+            ws_status_image,
+            ws_status_label,
+            ws_status_revealer,
         };
 
         // Set up the window
@@ -152,6 +199,13 @@ impl MainWindow {
         main_window.setup_keyboard_shortcuts()?;
         main_window.setup_content_areas()?;
         main_window.setup_status_updates()?;
+        main_window.setup_websocket_status_updates()?;
+        
+        // Set the application window for the transcription panel
+        if let Some(ref mut transcription_panel) = main_window.transcription_panel {
+            transcription_panel.set_application_window(main_window.window.clone());
+            transcription_panel.set_transcription_service(transcription_service.clone());
+        }
 
         Ok(main_window)
     }
@@ -179,6 +233,12 @@ impl MainWindow {
 
         status_container.append(&self.status_bar);
         status_container.append(&self.progress_bar);
+        status_container.append(&gtk4::Separator::builder()
+            .orientation(Orientation::Vertical)
+            .margin_start(10)
+            .margin_end(10)
+            .build());
+        status_container.append(&self.ws_status_revealer);
 
         // Add components to the main container
         main_container.append(&self.content_area.clone().upcast::<Widget>());
@@ -274,6 +334,12 @@ impl MainWindow {
             .build();
         left_panel.append(&button2);
 
+        let transcription_button = Button::builder()
+            .label("Transcription")
+            .margin_bottom(5)
+            .build();
+        left_panel.append(&transcription_button);
+
         let button3 = Button::builder()
             .label("History")
             .margin_bottom(5)
@@ -305,6 +371,11 @@ impl MainWindow {
         // Add model panel to the stack if available
         if let Some(ref model_panel) = self.model_panel {
             content_stack.add_typed(model_panel.get_widget(), Some("models"), "Models");
+        }
+
+        // Add transcription panel to the stack
+        if let Some(ref transcription_panel) = self.transcription_panel {
+            content_stack.add_typed(transcription_panel.get_widget(), Some("transcription"), "Transcription");
         }
 
         // Set the default visible child
@@ -352,6 +423,16 @@ impl MainWindow {
             let app_state_clone = app_state.clone();
             gtk4::glib::spawn_future_local(async move {
                 app_state_clone.set_status_message("Opening file dialog...".to_string()).await;
+            });
+        });
+
+        let app_state = self.app_state.clone();
+        let content_stack_clone = content_stack.clone();
+        transcription_button.connect_clicked(move |_| {
+            content_stack_clone.set_visible_child_name("transcription");
+            let app_state_clone = app_state.clone();
+            gtk4::glib::spawn_future_local(async move {
+                app_state_clone.set_status_message("Switched to Transcription panel".to_string()).await;
             });
         });
 
@@ -434,6 +515,16 @@ impl MainWindow {
     /// Get the menu bar
     pub fn get_menu_bar(&self) -> &MenuBar {
         &self.menu_bar
+    }
+
+    /// Get the transcription service
+    pub fn get_transcription_service(&self) -> Option<Arc<TranscriptionService>> {
+        self.transcription_service.clone()
+    }
+
+    /// Get the transcription panel
+    pub fn get_transcription_panel(&self) -> Option<&TranscriptionPanel> {
+        self.transcription_panel.as_ref()
     }
 
     /// Create the welcome page

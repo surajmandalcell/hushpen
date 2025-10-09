@@ -310,12 +310,18 @@ impl FilePanel {
                 let can_process = file.is_ready_for_transcription();
                 process_files_button.set_sensitive(can_process);
                 
-                app_state.set_status_message(
-                    format!("Selected: {} ({})", file.file_name, file.status_message())
-                ).await;
+                let app_state_clone = app_state.clone();
+                gtk4::glib::spawn_future_local(async move {
+                    app_state_clone.set_status_message(
+                        format!("Selected: {} ({})", file.file_name, file.status_message())
+                    ).await;
+                });
             } else {
                 process_files_button.set_sensitive(false);
-                app_state.set_status_message("No file selected".to_string()).await;
+                let app_state_clone = app_state.clone();
+                gtk4::glib::spawn_future_local(async move {
+                    app_state_clone.set_status_message("No file selected".to_string()).await;
+                });
             }
         });
 

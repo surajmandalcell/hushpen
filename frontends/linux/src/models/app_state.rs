@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::models::{
     AudioFile, Model, TranscriptionTask, TranscriptionConfig, FileConfig, ModelConfig,
     TranscriptionStats, FileStats, ModelStats, BackendConfig, FileStatus,
+    websocket::{WsMessage, SubscriptionChannel, ConnectionState},
 };
 use crate::services::{BackendClient, FileManager, ConfigManager};
 use crate::utils::{AppError, AppResult};
@@ -29,6 +30,10 @@ pub struct AppState {
     pub file_manager: Arc<FileManager>,
     /// Configuration manager for handling application settings
     pub config_manager: Arc<ConfigManager>,
+    /// WebSocket client for real-time updates
+    pub websocket_client: Arc<RwLock<Option<Arc<crate::services::WebSocketClient>>>>,
+    /// WebSocket connection state
+    pub websocket_state: Arc<RwLock<ConnectionState>>,
 }
 
 /// Transcription-related state
@@ -116,6 +121,10 @@ pub struct UiState {
     pub show_about: bool,
     /// Window state
     pub window_state: WindowState,
+    /// WebSocket connection status for UI display
+    pub websocket_status: String,
+    /// Whether to show WebSocket connection status
+    pub show_websocket_status: bool,
 }
 
 /// Window state information
@@ -151,6 +160,8 @@ impl AppState {
             backend_client: Arc::new(RwLock::new(None)),
             file_manager,
             config_manager,
+            websocket_client: Arc::new(RwLock::new(None)),
+            websocket_state: Arc::new(RwLock::new(ConnectionState::Disconnected)),
         })
     }
     
@@ -170,6 +181,9 @@ impl AppState {
         
         // Initialize the file manager with loaded config
         self.init_file_manager().await?;
+        
+        // Initialize WebSocket if enabled
+        self.init_websocket().await?;
         
         Ok(())
     }
@@ -618,6 +632,293 @@ impl AppState {
         self.with_backend_client(|client| async move {
             client.transcribe_audio(request).await
         }).await
+    }
+    
+    /// Initialize WebSocket connection
+    async fn init_websocket(&self) -> Result<(), AppError> {
+        // Get the backend client
+        let backend_client_guard = self.backend_client.read().await;
+        if let Some(ref backend_client) = *backend_client_guard {
+            // Get the WebSocket client from the backend client
+            if let Some(ws_client) = backend_client.get_websocket_client() {
+                // Store the WebSocket client
+                let mut ws_client_guard = self.websocket_client.write().await;
+                *ws_client_guard = Some(ws_client.clone());
+                
+                // Register event handlers
+                self.register_websocket_handlers(&ws_client).await;
+                
+                // Connect to WebSocket
+                if let Err(e) = ws_client.connect().await {
+                    eprintln!("Failed to connect to WebSocket: {}", e);
+                    // Don't fail initialization, just note the error
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Register WebSocket event handlers
+    async fn register_websocket_handlers(&self, ws_client: &Arc<crate::services::WebSocketClient>) {
+        // Register handler for transcription started
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("TranscriptionStarted", move |message| {
+            // Handle transcription started
+            if let WsMessage::TranscriptionStarted(event) = message {
+                // Update UI state
+                // Note: This is a simplified example
+                println!("Transcription started: {}", event.base.id);
+            }
+        }).await;
+        
+        // Register handler for transcription progress
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("TranscriptionProgress", move |message| {
+            // Handle transcription progress
+            if let WsMessage::TranscriptionProgress(event) = message {
+                // Update UI state
+                println!("Transcription progress: {}%", event.progress);
+            }
+        }).await;
+        
+        // Register handler for transcription completed
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("TranscriptionCompleted", move |message| {
+            // Handle transcription completed
+            if let WsMessage::TranscriptionCompleted(event) = message {
+                // Update UI state
+                println!("Transcription completed: {}", event.base.id);
+            }
+        }).await;
+        
+        // Register handler for file upload progress
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("FileUploadProgress", move |message| {
+            // Handle file upload progress
+            if let WsMessage::FileUploadProgress(event) = message {
+                // Update UI state
+                println!("File upload progress: {}%", event.progress);
+            }
+        }).await;
+        
+        // Register handler for model download progress
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("ModelDownloadProgress", move |message| {
+            // Handle model download progress
+            if let WsMessage::ModelDownloadProgress(event) = message {
+                // Update UI state
+                println!("Model download progress: {}%", event.progress);
+            }
+        }).await;
+        
+        // Register handler for connection events
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("Connected", move |message| {
+            // Handle connection established
+            if let WsMessage::Connected { session_id } = message {
+                // Update UI state
+                println!("WebSocket connected: {}", session_id);
+            }
+        }).await;
+        
+        // Register handler for disconnection events
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("Disconnected", move |message| {
+            // Handle disconnection
+            if let WsMessage::Disconnected { reason } = message {
+                // Update UI state
+                println!("WebSocket disconnected: {}", reason);
+            }
+        }).await;
+        
+        // Register handler for error events
+        let ws_client = ws_client.clone();
+        
+        ws_client.register_handler("Error", move |message| {
+            // Handle errors
+            if let WsMessage::Error { error } = message {
+                // Update UI state
+                eprintln!("WebSocket error: {}", error);
+            }
+        }).await;
+    }
+    
+    /// Get the WebSocket client
+    pub async fn get_websocket_client(&self) -> Option<Arc<crate::services::WebSocketClient>> {
+        let ws_client_guard = self.websocket_client.read().await;
+        ws_client_guard.clone()
+    }
+    
+    /// Get the WebSocket connection state
+    pub async fn get_websocket_state(&self) -> ConnectionState {
+        let state = self.websocket_state.read().await;
+        state.clone()
+    }
+    
+    /// Update the WebSocket connection state
+    pub async fn update_websocket_state(&self, state: ConnectionState) {
+        let mut ws_state = self.websocket_state.write().await;
+        *ws_state = state.clone();
+        
+        // Update UI state
+        let status = match state {
+            ConnectionState::Connected => "Connected".to_string(),
+            ConnectionState::Connecting => "Connecting...".to_string(),
+            ConnectionState::Reconnecting => "Reconnecting...".to_string(),
+            ConnectionState::Disconnected => "Disconnected".to_string(),
+            ConnectionState::Failed => "Connection Failed".to_string(),
+        };
+        
+        self.update_ui_state(|ui| {
+            ui.websocket_status = status;
+            ui.show_websocket_status = state != ConnectionState::Connected;
+        }).await;
+    }
+    
+    /// Subscribe to a WebSocket channel
+    pub async fn websocket_subscribe(&self, channel: SubscriptionChannel) -> AppResult<()> {
+        if let Some(ws_client) = self.get_websocket_client().await {
+            ws_client.subscribe(channel).await?;
+        }
+        Ok(())
+    }
+    
+    /// Unsubscribe from a WebSocket channel
+    pub async fn websocket_unsubscribe(&self, channel: SubscriptionChannel) -> AppResult<()> {
+        if let Some(ws_client) = self.get_websocket_client().await {
+            ws_client.unsubscribe(channel).await?;
+        }
+        Ok(())
+    }
+    
+    /// Handle a WebSocket message
+    pub async fn handle_websocket_message(&self, message: WsMessage) {
+        match message {
+            WsMessage::TranscriptionStarted(event) => {
+                // Update transcription task
+                self.update_transcription_task(event.task_id, |task| {
+                    task.start();
+                }).await.ok();
+                
+                // Update UI
+                self.set_status_message(format!("Transcription started: {}", event.filename)).await;
+            },
+            WsMessage::TranscriptionProgress(event) => {
+                // Update transcription task
+                self.update_transcription_task(event.task_id, |task| {
+                    task.update_progress(event.progress);
+                }).await.ok();
+                
+                // Update UI
+                self.set_progress(event.progress / 100.0).await;
+                self.set_status_message(event.status).await;
+            },
+            WsMessage::TranscriptionCompleted(event) => {
+                // Update transcription task
+                self.update_transcription_task(event.task_id, |task| {
+                    task.complete(crate::models::TranscriptionResult {
+                        id: event.task_id,
+                        text: event.text,
+                        confidence: 1.0, // Default confidence
+                        language: event.language,
+                        audio_duration: std::time::Duration::from_secs_f64(event.duration),
+                        segments: event.segments.into_iter().map(|s| crate::models::TranscriptionSegment {
+                            text: s.text,
+                            start: std::time::Duration::from_secs_f64(s.start),
+                            end: std::time::Duration::from_secs_f64(s.end),
+                            confidence: s.confidence,
+                        }).collect(),
+                        completed_at: chrono::Utc::now(),
+                    });
+                }).await.ok();
+                
+                // Update UI
+                self.set_status_message("Transcription completed".to_string()).await;
+                self.set_progress(1.0).await;
+            },
+            WsMessage::TranscriptionFailed(event) => {
+                // Update transcription task
+                self.update_transcription_task(event.task_id, |task| {
+                    task.fail(event.error);
+                }).await.ok();
+                
+                // Update UI
+                self.set_status_message(format!("Transcription failed: {}", event.error)).await;
+            },
+            WsMessage::FileUploadProgress(event) => {
+                // Update file
+                self.update_audio_file(event.file_id, |file| {
+                    file.upload_progress = Some(event.progress);
+                }).await.ok();
+                
+                // Update UI
+                self.set_status_message(format!("Uploading {}: {}%", event.filename, event.progress)).await;
+            },
+            WsMessage::FileUploadCompleted(event) => {
+                // Update file
+                self.update_audio_file(event.file_id, |file| {
+                    file.upload_progress = Some(100.0);
+                    file.status = crate::models::FileStatus::Ready;
+                }).await.ok();
+                
+                // Update UI
+                self.set_status_message(format!("Upload completed: {}", event.filename)).await;
+            },
+            WsMessage::FileUploadFailed(event) => {
+                // Update file
+                self.update_audio_file(event.file_id, |file| {
+                    file.status = crate::models::FileStatus::Error;
+                }).await.ok();
+                
+                // Update UI
+                self.set_status_message(format!("Upload failed: {}", event.error)).await;
+            },
+            WsMessage::ModelDownloadProgress(event) => {
+                // Update model
+                let models = self.models.read().await;
+                for model in models.models.values() {
+                    if model.name == event.model_name {
+                        // Update model download progress
+                        // This would require adding download_progress to Model
+                        break;
+                    }
+                }
+                
+                // Update UI
+                self.set_status_message(format!("Downloading {}: {}%", event.model_name, event.progress)).await;
+            },
+            WsMessage::ModelDownloadCompleted(event) => {
+                // Update UI
+                self.set_status_message(format!("Model download completed: {}", event.model_name)).await;
+            },
+            WsMessage::ModelDownloadFailed(event) => {
+                // Update UI
+                self.set_status_message(format!("Model download failed: {}", event.error)).await;
+            },
+            WsMessage::Connected { session_id } => {
+                self.update_websocket_state(ConnectionState::Connected).await;
+                self.set_status_message(format!("Connected: {}", session_id)).await;
+            },
+            WsMessage::Disconnected { reason } => {
+                self.update_websocket_state(ConnectionState::Disconnected).await;
+                self.set_status_message(format!("Disconnected: {}", reason)).await;
+            },
+            WsMessage::Error { error } => {
+                self.update_websocket_state(ConnectionState::Failed).await;
+                self.set_status_message(format!("WebSocket error: {}", error)).await;
+            },
+            _ => {
+                // Handle other message types as needed
+            }
+        }
     }
 }
 

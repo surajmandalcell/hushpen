@@ -3,6 +3,7 @@
 //! This module provides a comprehensive HTTP client for all API operations,
 //! including file uploads, model management, and transcription requests.
 
+use std::sync::Arc;
 use std::time::Duration;
 use std::path::Path;
 use tokio::time::timeout;
@@ -11,6 +12,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use url::Url;
 
 use crate::models::api::*;
+use crate::models::websocket::{WebSocketConfig, SubscriptionChannel};
 use crate::utils::{AppError, AppResult};
 
 /// Backend client for communicating with the ASR Pro API
@@ -20,6 +22,8 @@ pub struct BackendClient {
     http_client: reqwest::Client,
     /// Backend configuration
     config: BackendConfig,
+    /// WebSocket client for real-time updates
+    websocket_client: Option<Arc<super::WebSocketClient>>,
 }
 
 impl BackendClient {
@@ -41,9 +45,29 @@ impl BackendClient {
             .build()
             .map_err(|e| AppError::api_with_source("Failed to create HTTP client", e))?;
 
+        let websocket_client = if config.enable_websocket {
+            // Create WebSocket configuration from backend config
+            let ws_config = WebSocketConfig {
+                url: config.base_url
+                    .replace("http://", "ws://")
+                    .replace("https://", "wss://") + "/ws",
+                auth_token: config.api_key.clone(),
+                connection_timeout: 10,
+                heartbeat_interval: 30,
+                max_reconnect_attempts: config.max_retries,
+                reconnect_delay: (config.retry_delay / 1000).max(1), // Convert ms to seconds
+                exponential_backoff: true,
+                max_reconnect_delay: 60,
+            };
+            Some(Arc::new(super::WebSocketClient::new(ws_config)))
+        } else {
+            None
+        };
+
         Ok(Self {
             http_client,
             config,
+            websocket_client,
         })
     }
 
@@ -479,7 +503,82 @@ impl BackendClient {
             .build()
             .map_err(|e| AppError::api_with_source("Failed to recreate HTTP client", e))?;
         
+        // Recreate WebSocket client if needed
+        if self.config.enable_websocket {
+            let ws_config = WebSocketConfig {
+                url: self.config.base_url
+                    .replace("http://", "ws://")
+                    .replace("https://", "wss://") + "/ws",
+                auth_token: self.config.api_key.clone(),
+                connection_timeout: 10,
+                heartbeat_interval: 30,
+                max_reconnect_attempts: self.config.max_retries,
+                reconnect_delay: (self.config.retry_delay / 1000).max(1),
+                exponential_backoff: true,
+                max_reconnect_delay: 60,
+            };
+            self.websocket_client = Some(Arc::new(super::WebSocketClient::new(ws_config)));
+        } else {
+            self.websocket_client = None;
+        }
+        
         Ok(())
+    }
+
+    /// Get the WebSocket client
+    pub fn get_websocket_client(&self) -> Option<Arc<super::WebSocketClient>> {
+        self.websocket_client.clone()
+    }
+
+    /// Connect to the WebSocket
+    pub async fn connect_websocket(&self) -> AppResult<()> {
+        if let Some(ws_client) = &self.websocket_client {
+            ws_client.connect().await?;
+        }
+        Ok(())
+    }
+
+    /// Disconnect from the WebSocket
+    pub async fn disconnect_websocket(&self) -> AppResult<()> {
+        if let Some(ws_client) = &self.websocket_client {
+            ws_client.disconnect().await?;
+        }
+        Ok(())
+    }
+
+    /// Subscribe to a WebSocket channel
+    pub async fn subscribe(&self, channel: SubscriptionChannel) -> AppResult<()> {
+        if let Some(ws_client) = &self.websocket_client {
+            ws_client.subscribe(channel).await?;
+        }
+        Ok(())
+    }
+
+    /// Unsubscribe from a WebSocket channel
+    pub async fn unsubscribe(&self, channel: SubscriptionChannel) -> AppResult<()> {
+        if let Some(ws_client) = &self.websocket_client {
+            ws_client.unsubscribe(channel).await?;
+        }
+        Ok(())
+    }
+
+    /// Register a WebSocket event handler
+    pub async fn register_websocket_handler<F>(&self, message_type: &str, handler: F)
+    where
+        F: Fn(crate::models::websocket::WsMessage) + Send + Sync + 'static,
+    {
+        if let Some(ws_client) = &self.websocket_client {
+            ws_client.register_handler(message_type, handler).await;
+        }
+    }
+
+    /// Check if WebSocket is connected
+    pub async fn is_websocket_connected(&self) -> bool {
+        if let Some(ws_client) = &self.websocket_client {
+            ws_client.is_connected().await
+        } else {
+            false
+        }
     }
 }
 

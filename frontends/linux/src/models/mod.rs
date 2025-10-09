@@ -8,6 +8,7 @@ pub mod file;
 pub mod model;
 pub mod app_state;
 pub mod api;
+pub mod websocket;
 
 // Re-export commonly used types
 pub use transcription::{
@@ -27,4 +28,13 @@ pub use api::{
     TranscriptionResponse, TranscriptionSegment as ApiTranscriptionSegment, ContainerInfo, ApiOptionsResponse,
     EndpointInfo, ParameterInfo, SupportedFormats, SystemCapabilities, WebSocketMessage,
     BackendConfig, TranscriptionRequest, ErrorResponse,
+};
+pub use websocket::{
+    WsMessage, BaseEvent, TranscriptionStartedEvent, TranscriptionProgressEvent, TranscriptionSegmentEvent,
+    TranscriptionCompletedEvent, TranscriptionFailedEvent, FileUploadStartedEvent, FileUploadProgressEvent,
+    FileUploadCompletedEvent, FileUploadFailedEvent, ModelDownloadStartedEvent, ModelDownloadProgressEvent,
+    ModelDownloadCompletedEvent, ModelDownloadFailedEvent, ModelLoadedEvent, ModelUnloadedEvent,
+    SystemStatusEvent, ContainerStatusEvent, TranscriptionStage, SystemStatus, ContainerStatus,
+    SystemResources, ContainerResources, NetworkIo, TranscriptionSegmentData, WordTimestamp,
+    SubscriptionChannel, ConnectionState, WebSocketConfig,
 };
