@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{FileConfig, ModelConfig, TranscriptionConfig, BackendConfig};
+use crate::models::{FileConfig, ModelConfig, TranscriptionConfig, BackendConfig, Settings, SettingsValidator, SettingsMigration};
 use crate::utils::{AppError, AppResult};
 
 /// Application configuration
@@ -154,14 +154,24 @@ pub struct ConfigManager {
     config_path: PathBuf,
     /// Current configuration
     config: Arc<RwLock<AppConfig>>,
+    /// Settings file path
+    settings_path: PathBuf,
+    /// Current settings
+    settings: Arc<RwLock<Settings>>,
+    /// Settings version
+    settings_version: u32,
 }
 
 impl ConfigManager {
     /// Create a new configuration manager
     pub fn new(config_path: PathBuf) -> Self {
+        let settings_path = config_path.with_file_name("settings.json");
         Self {
             config_path,
             config: Arc::new(RwLock::new(AppConfig::default())),
+            settings_path,
+            settings: Arc::new(RwLock::new(Settings::default())),
+            settings_version: SettingsMigration::current_version(),
         }
     }
 
@@ -179,7 +189,19 @@ impl ConfigManager {
             ))?;
         
         let config_path = config_dir.join("config.json");
-        Ok(Self::new(config_path))
+        let settings_path = config_dir.join("settings.json");
+        
+        // Ensure config directory exists
+        std::fs::create_dir_all(&config_dir)
+            .map_err(|e| AppError::config_with_source(
+                format!("Failed to create config directory: {}", config_dir.display()),
+                e
+            ))?;
+        
+        let mut manager = Self::new(config_path);
+        manager.settings_path = settings_path;
+        
+        Ok(manager)
     }
 
     /// Load configuration from file
@@ -203,6 +225,9 @@ impl ConfigManager {
             // Create default config file
             self.save_config().await?;
         }
+        
+        // Load settings
+        self.load_settings().await?;
         
         Ok(())
     }
@@ -443,6 +468,307 @@ impl ConfigManager {
     /// Get the configuration file path
     pub fn config_path(&self) -> &Path {
         &self.config_path
+    }
+
+    /// Load settings from file
+    pub async fn load_settings(&self) -> AppResult<()> {
+        if self.settings_path.exists() {
+            let settings_content = std::fs::read_to_string(&self.settings_path)
+                .map_err(|e| AppError::config_with_source(
+                    format!("Failed to read settings file: {}", self.settings_path.display()),
+                    e
+                ))?;
+            
+            // Parse the settings JSON
+            let settings_json: serde_json::Value = serde_json::from_str(&settings_content)
+                .map_err(|e| AppError::config_with_source(
+                    format!("Failed to parse settings file: {}", self.settings_path.display()),
+                    e
+                ))?;
+            
+            // Check for version information
+            let loaded_version = settings_json
+                .get("version")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as u32;
+            
+            // Convert to Settings struct
+            let mut settings: Settings = serde_json::from_value(settings_json)
+                .map_err(|e| AppError::config_with_source(
+                    format!("Failed to deserialize settings: {}", self.settings_path.display()),
+                    e
+                ))?;
+            
+            // Migrate settings if needed
+            if loaded_version < self.settings_version {
+                SettingsMigration::migrate_settings(&mut settings, loaded_version, self.settings_version)?;
+                // Save the migrated settings
+                self.save_settings().await?;
+            }
+            
+            // Validate the settings
+            SettingsValidator::validate_settings(&settings)?;
+            
+            let mut current_settings = self.settings.write().await;
+            *current_settings = settings;
+        } else {
+            // Create default settings file
+            self.save_settings().await?;
+        }
+        
+        Ok(())
+    }
+
+    /// Save settings to file
+    pub async fn save_settings(&self) -> AppResult<()> {
+        let settings = self.settings.read().await;
+        
+        // Validate settings before saving
+        SettingsValidator::validate_settings(&*settings)?;
+        
+        // Create a JSON object with version information
+        let mut settings_json = serde_json::to_value(&*settings)
+            .map_err(|e| AppError::config_with_source("Failed to serialize settings", e))?;
+        
+        // Add version information
+        if let Some(obj) = settings_json.as_object_mut() {
+            obj.insert("version".to_string(), serde_json::Value::Number(
+                serde_json::Number::from(self.settings_version)
+            ));
+        }
+        
+        let settings_content = serde_json::to_string_pretty(&settings_json)
+            .map_err(|e| AppError::config_with_source("Failed to serialize settings", e))?;
+        
+        // Write to a temporary file first, then rename to avoid corruption
+        let temp_path = self.settings_path.with_extension("tmp");
+        
+        std::fs::write(&temp_path, settings_content)
+            .map_err(|e| AppError::config_with_source(
+                format!("Failed to write temp settings file: {}", temp_path.display()),
+                e
+            ))?;
+        
+        std::fs::rename(&temp_path, &self.settings_path)
+            .map_err(|e| AppError::config_with_source(
+                format!("Failed to rename temp settings file to: {}", self.settings_path.display()),
+                e
+            ))?;
+        
+        Ok(())
+    }
+
+    /// Get the current settings
+    pub async fn get_settings(&self) -> Settings {
+        self.settings.read().await.clone()
+    }
+
+    /// Update the entire settings
+    pub async fn update_settings(&self, new_settings: Settings) -> AppResult<()> {
+        // Validate the new settings
+        SettingsValidator::validate_settings(&new_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        *settings = new_settings;
+        Ok(())
+    }
+
+    /// Get general settings
+    pub async fn get_general_settings(&self) -> crate::models::GeneralSettings {
+        let settings = self.settings.read().await;
+        settings.general.clone()
+    }
+
+    /// Update general settings
+    pub async fn update_general_settings(&self, general_settings: crate::models::GeneralSettings) -> AppResult<()> {
+        // Validate the general settings
+        SettingsValidator::validate_general(&general_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.general = general_settings;
+        Ok(())
+    }
+
+    /// Get audio settings
+    pub async fn get_audio_settings(&self) -> crate::models::AudioSettings {
+        let settings = self.settings.read().await;
+        settings.audio.clone()
+    }
+
+    /// Update audio settings
+    pub async fn update_audio_settings(&self, audio_settings: crate::models::AudioSettings) -> AppResult<()> {
+        // Validate the audio settings
+        SettingsValidator::validate_audio(&audio_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.audio = audio_settings;
+        Ok(())
+    }
+
+    /// Get transcription settings
+    pub async fn get_transcription_settings(&self) -> crate::models::TranscriptionSettings {
+        let settings = self.settings.read().await;
+        settings.transcription.clone()
+    }
+
+    /// Update transcription settings
+    pub async fn update_transcription_settings(&self, transcription_settings: crate::models::TranscriptionSettings) -> AppResult<()> {
+        // Validate the transcription settings
+        SettingsValidator::validate_transcription(&transcription_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.transcription = transcription_settings;
+        Ok(())
+    }
+
+    /// Get advanced settings
+    pub async fn get_advanced_settings(&self) -> crate::models::AdvancedSettings {
+        let settings = self.settings.read().await;
+        settings.advanced.clone()
+    }
+
+    /// Update advanced settings
+    pub async fn update_advanced_settings(&self, advanced_settings: crate::models::AdvancedSettings) -> AppResult<()> {
+        // Validate the advanced settings
+        SettingsValidator::validate_advanced(&advanced_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.advanced = advanced_settings;
+        Ok(())
+    }
+
+    /// Get UI settings
+    pub async fn get_ui_settings(&self) -> crate::models::UiSettings {
+        let settings = self.settings.read().await;
+        settings.ui.clone()
+    }
+
+    /// Update UI settings
+    pub async fn update_ui_settings(&self, ui_settings: crate::models::UiSettings) -> AppResult<()> {
+        // Validate the UI settings
+        SettingsValidator::validate_ui(&ui_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.ui = ui_settings;
+        Ok(())
+    }
+
+    /// Get file path settings
+    pub async fn get_file_path_settings(&self) -> crate::models::FilePathSettings {
+        let settings = self.settings.read().await;
+        settings.file_paths.clone()
+    }
+
+    /// Update file path settings
+    pub async fn update_file_path_settings(&self, file_path_settings: crate::models::FilePathSettings) -> AppResult<()> {
+        // Validate the file path settings
+        SettingsValidator::validate_file_paths(&file_path_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.file_paths = file_path_settings;
+        Ok(())
+    }
+
+    /// Get notification settings
+    pub async fn get_notification_settings(&self) -> crate::models::NotificationSettings {
+        let settings = self.settings.read().await;
+        settings.notifications.clone()
+    }
+
+    /// Update notification settings
+    pub async fn update_notification_settings(&self, notification_settings: crate::models::NotificationSettings) -> AppResult<()> {
+        // Validate the notification settings
+        SettingsValidator::validate_notifications(&notification_settings)?;
+        
+        let mut settings = self.settings.write().await;
+        settings.notifications = notification_settings;
+        Ok(())
+    }
+
+    /// Get a specific setting by path
+    pub async fn get_setting(&self, path: &str) -> AppResult<serde_json::Value> {
+        let settings = self.settings.read().await;
+        settings.get_setting(path)
+    }
+
+    /// Set a specific setting by path
+    pub async fn set_setting(&self, path: &str, value: serde_json::Value) -> AppResult<()> {
+        let mut settings = self.settings.write().await;
+        settings.set_setting(path, value)?;
+        Ok(())
+    }
+
+    /// Reset settings to defaults
+    pub async fn reset_settings_to_defaults(&self) -> AppResult<()> {
+        let mut settings = self.settings.write().await;
+        *settings = Settings::default();
+        Ok(())
+    }
+
+    /// Export settings to a specific file
+    pub async fn export_settings(&self, export_path: &Path) -> AppResult<()> {
+        let settings = self.settings.read().await;
+        
+        let settings_content = serde_json::to_string_pretty(&*settings)
+            .map_err(|e| AppError::config_with_source("Failed to serialize settings for export", e))?;
+        
+        std::fs::write(export_path, settings_content)
+            .map_err(|e| AppError::config_with_source(
+                format!("Failed to write exported settings to: {}", export_path.display()),
+                e
+            ))?;
+        
+        Ok(())
+    }
+
+    /// Import settings from a specific file
+    pub async fn import_settings(&self, import_path: &Path) -> AppResult<()> {
+        let settings_content = std::fs::read_to_string(import_path)
+            .map_err(|e| AppError::config_with_source(
+                format!("Failed to read imported settings from: {}", import_path.display()),
+                e
+            ))?;
+        
+        let settings: Settings = serde_json::from_str(&settings_content)
+            .map_err(|e| AppError::config_with_source(
+                format!("Failed to parse imported settings from: {}", import_path.display()),
+                e
+            ))?;
+        
+        // Validate the imported settings
+        SettingsValidator::validate_settings(&settings)?;
+        
+        let mut current_settings = self.settings.write().await;
+        *current_settings = settings;
+        
+        Ok(())
+    }
+
+    /// Create a backup of current settings
+    pub async fn create_settings_backup(&self) -> AppResult<String> {
+        let settings = self.settings.read().await;
+        settings.create_backup()
+    }
+
+    /// Get the settings file path
+    pub fn settings_path(&self) -> &Path {
+        &self.settings_path
+    }
+
+    /// Get the current settings version
+    pub fn settings_version(&self) -> u32 {
+        self.settings_version
+    }
+
+    /// Auto-save settings if enabled
+    pub async fn auto_save_settings_if_needed(&self) -> AppResult<()> {
+        let general_settings = self.get_general_settings().await;
+        if general_settings.auto_save_enabled {
+            // In a real implementation, you would check if settings have changed
+            // and only save if needed
+            self.save_settings().await?;
+        }
+        Ok(())
     }
 }
 

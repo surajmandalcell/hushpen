@@ -7,7 +7,7 @@ use glib::clone;
 use gtk4::prelude::*;
 use gtk4::{
     ApplicationWindow, Box, Button, InfoBar, Label, Orientation, Paned, Revealer,
-    ScrolledWindow, Separator, Stack, StackSwitcher, Widget,
+    ScrolledWindow, Separator, Stack, StackSwitcher, Widget, Frame, Expander,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::models::{AppState, AudioFile, FileStatus};
 use crate::services::FileManager;
-use crate::ui::widgets::{file_drop::FileDropWidget, file_list::FileListWidget};
+use crate::ui::widgets::{file_drop::FileDropWidget, file_list::FileListWidget, audio_preview::AudioPreviewWidget, waveform::WaveformWidget};
 use crate::utils::{AppError, AppResult};
 
 /// File panel component that manages audio files
@@ -51,6 +51,18 @@ pub struct FilePanel {
     clear_all_button: Button,
     /// Revealer for file list
     file_list_revealer: Revealer,
+    /// Audio preview widget
+    audio_preview: AudioPreviewWidget,
+    /// Waveform widget
+    waveform: WaveformWidget,
+    /// Audio preview frame
+    audio_preview_frame: Frame,
+    /// Waveform frame
+    waveform_frame: Frame,
+    /// Audio preview expander
+    audio_preview_expander: Expander,
+    /// Waveform expander
+    waveform_expander: Expander,
 }
 
 impl FilePanel {
@@ -82,6 +94,38 @@ impl FilePanel {
 
         // Create the file list widget
         let file_list = FileListWidget::new();
+        
+        // Create the audio preview widget
+        let audio_preview = AudioPreviewWidget::new()?;
+        
+        // Create the waveform widget
+        let waveform = WaveformWidget::new()?;
+        
+        // Create frames for audio components
+        let audio_preview_frame = Frame::builder()
+            .label("Audio Preview")
+            .build();
+        
+        let waveform_frame = Frame::builder()
+            .label("Waveform")
+            .build();
+        
+        // Create expanders for audio components
+        let audio_preview_expander = Expander::builder()
+            .label("Audio Preview")
+            .expanded(false)
+            .build();
+        
+        let waveform_expander = Expander::builder()
+            .label("Waveform")
+            .expanded(false)
+            .build();
+        
+        // Set up audio components
+        audio_preview_frame.set_child(Some(&audio_preview.get_widget()));
+        waveform_frame.set_child(Some(&waveform.get_widget()));
+        audio_preview_expander.set_child(Some(&audio_preview_frame));
+        waveform_expander.set_child(Some(&waveform_frame));
 
         // Add pages to the stack
         stack.add_titled(&file_drop.get_widget(), Some("drop"), "Add Files");
@@ -169,6 +213,11 @@ impl FilePanel {
         container.append(&stack_switcher);
         container.append(&paned);
         container.append(&separator);
+        
+        // Add audio components
+        container.append(&audio_preview_expander);
+        container.append(&waveform_expander);
+        
         container.append(&button_container);
         container.append(&info_bar);
 
@@ -189,6 +238,12 @@ impl FilePanel {
             process_files_button,
             clear_all_button,
             file_list_revealer,
+            audio_preview,
+            waveform,
+            audio_preview_frame,
+            waveform_frame,
+            audio_preview_expander,
+            waveform_expander,
         };
 
         // Set up event handlers
@@ -304,23 +359,73 @@ impl FilePanel {
         // Handle file selection changes
         let process_files_button = self.process_files_button.clone();
         let app_state = self.app_state.clone();
+        let audio_preview = self.audio_preview.clone();
+        let waveform = self.waveform.clone();
+        let audio_preview_expander = self.audio_preview_expander.clone();
+        let waveform_expander = self.waveform_expander.clone();
         
         self.file_list.set_selection_changed_callback(move |file| {
             if let Some(file) = file {
                 let can_process = file.is_ready_for_transcription();
                 process_files_button.set_sensitive(can_process);
                 
-                let app_state_clone = app_state.clone();
+                let file_clone = file.clone();
+                let audio_preview_clone = audio_preview.clone();
+                let waveform_clone = waveform.clone();
+                
                 gtk4::glib::spawn_future_local(async move {
-                    app_state_clone.set_status_message(
+                    // Update status message
+                    app_state.set_status_message(
                         format!("Selected: {} ({})", file.file_name, file.status_message())
                     ).await;
+                    
+                    // Update audio preview
+                    if let Err(e) = audio_preview_clone.load_file(file_clone.clone()) {
+                        eprintln!("Failed to load audio file in preview: {}", e);
+                        return;
+                    }
+                    
+                    // Update waveform
+                    if let Err(e) = waveform_clone.load_waveform(&file_clone.file_path) {
+                        eprintln!("Failed to load waveform: {}", e);
+                        return;
+                    }
+                    
+                    // Set up position synchronization between waveform and audio preview
+                    let waveform_for_sync = waveform_clone.clone();
+                    let audio_preview_for_sync = audio_preview_clone.clone();
+                    
+                    // When waveform position changes, update audio preview
+                    waveform_clone.set_position_changed_callback(move |position| {
+                        audio_preview_for_sync.seek(position);
+                    });
+                    
+                    // When audio preview position changes, update waveform
+                    let waveform_for_sync2 = waveform_for_sync.clone();
+                    audio_preview_clone.set_position_changed_callback(move |position| {
+                        waveform_for_sync2.set_playback_position(position);
+                    });
+                    
+                    // Expand the audio preview sections
+                    audio_preview_expander.set_expanded(true);
+                    waveform_expander.set_expanded(true);
                 });
             } else {
                 process_files_button.set_sensitive(false);
-                let app_state_clone = app_state.clone();
+                
+                let audio_preview_clone = audio_preview.clone();
+                let waveform_clone = waveform.clone();
+                
                 gtk4::glib::spawn_future_local(async move {
-                    app_state_clone.set_status_message("No file selected".to_string()).await;
+                    app_state.set_status_message("No file selected".to_string()).await;
+                    
+                    // Clear audio preview
+                    audio_preview_clone.clear();
+                    waveform_clone.clear();
+                    
+                    // Collapse the audio preview sections
+                    audio_preview_expander.set_expanded(false);
+                    waveform_expander.set_expanded(false);
                 });
             }
         });
@@ -460,6 +565,66 @@ impl FilePanel {
         // Check if any files are ready for processing
         let has_ready_files = has_files; // Simplified - in a real implementation, check file statuses
         self.process_files_button.set_sensitive(has_ready_files);
+    }
+    
+    /// Update the audio preview for a selected file
+    pub fn update_audio_preview(&self, audio_file: &AudioFile) {
+        // Load the file in the audio preview widget
+        if let Err(e) = self.audio_preview.load_file(audio_file.clone()) {
+            eprintln!("Failed to load audio file in preview: {}", e);
+            return;
+        }
+        
+        // Load the waveform
+        if let Err(e) = self.waveform.load_waveform(&audio_file.file_path) {
+            eprintln!("Failed to load waveform: {}", e);
+            return;
+        }
+        
+        // Set up position synchronization between waveform and audio preview
+        let waveform = self.waveform.clone();
+        let audio_preview = self.audio_preview.clone();
+        
+        // When waveform position changes, update audio preview
+        self.waveform.set_position_changed_callback(move |position| {
+            audio_preview.seek(position);
+        });
+        
+        // When audio preview position changes, update waveform
+        let waveform_clone = self.waveform.clone();
+        self.audio_preview.set_position_changed_callback(move |position| {
+            waveform_clone.set_playback_position(position);
+        });
+        
+        // Expand the audio preview sections
+        self.audio_preview_expander.set_expanded(true);
+        self.waveform_expander.set_expanded(true);
+    }
+    
+    /// Clear the audio preview
+    pub fn clear_audio_preview(&self) {
+        self.audio_preview.clear();
+        self.waveform.clear();
+        
+        // Collapse the audio preview sections
+        self.audio_preview_expander.set_expanded(false);
+        self.waveform_expander.set_expanded(false);
+    }
+    
+    /// Get the audio preview widget
+    pub fn get_audio_preview(&self) -> &AudioPreviewWidget {
+        &self.audio_preview
+    }
+    
+    /// Get the waveform widget
+    pub fn get_waveform(&self) -> &WaveformWidget {
+        &self.waveform
+    }
+    
+    /// Set the application window for dialogs
+    pub fn set_application_window(&mut self, window: ApplicationWindow) {
+        self.audio_preview.set_application_window(window);
+        self.waveform.set_application_window(window);
     }
 }
 

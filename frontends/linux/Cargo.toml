@@ -26,6 +26,9 @@ anyhow = "1.0"
 # Audio processing
 gstreamer = "0.21"
 gstreamer-app = "0.21"
+gstreamer-audio = "0.21"
+rodio = "0.17"
+symphonia = { version = "0.5", features = ["all"] }
 
 # Configuration
 config = "0.14"

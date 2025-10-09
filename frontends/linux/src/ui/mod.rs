@@ -25,6 +25,8 @@ pub mod widgets {
     pub mod model_details;
     pub mod transcription_text;
     pub mod transcription_controls;
+    pub mod audio_preview;
+    pub mod waveform;
 }
 
 // Re-export the main components
@@ -37,6 +39,8 @@ pub use widgets::model_selector::ModelSelectorWidget;
 pub use widgets::model_details::ModelDetailsWidget;
 pub use widgets::transcription_text::TranscriptionTextWidget;
 pub use widgets::transcription_controls::TranscriptionControlsWidget;
+pub use widgets::audio_preview::AudioPreviewWidget;
+pub use widgets::waveform::WaveformWidget;
 
 /// Main UI container
 pub struct MainUI {

@@ -4,6 +4,7 @@
 
 pub mod error;
 pub mod file_utils;
+pub mod audio_processor;
 
 // Re-export commonly used types
 pub use error::{AppError, AppResult, ErrorType, IntoAppError};

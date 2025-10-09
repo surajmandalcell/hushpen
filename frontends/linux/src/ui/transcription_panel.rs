@@ -12,11 +12,12 @@ use gtk4::{
 };
 use std::sync::{Arc, Mutex};
 
-use crate::models::AppState;
+use crate::models::{AppState, AudioFile};
 use crate::models::transcription::{TranscriptionResult, TranscriptionTask, TranscriptionStatus};
 use crate::services::TranscriptionService;
 use crate::ui::widgets::transcription_text::{TranscriptionTextWidget, TranscriptionViewMode};
 use crate::ui::widgets::transcription_controls::TranscriptionControlsWidget;
+use crate::ui::widgets::{audio_preview::AudioPreviewWidget, waveform::WaveformWidget};
 use crate::utils::AppError;
 
 /// Transcription panel for displaying and managing transcriptions
@@ -51,6 +52,16 @@ pub struct TranscriptionPanel {
     current_task: Arc<Mutex<Option<TranscriptionTask>>>,
     /// Current transcription result
     current_result: Arc<Mutex<Option<TranscriptionResult>>>,
+    /// Audio preview widget
+    audio_preview: AudioPreviewWidget,
+    /// Waveform widget
+    waveform: WaveformWidget,
+    /// Audio preview expander
+    audio_preview_expander: Expander,
+    /// Waveform expander
+    waveform_expander: Expander,
+    /// Current audio file
+    current_audio_file: Arc<Mutex<Option<AudioFile>>>,
 }
 
 impl TranscriptionPanel {
@@ -73,6 +84,27 @@ impl TranscriptionPanel {
 
         // Create the controls widget
         let controls_widget = TranscriptionControlsWidget::new()?;
+        
+        // Create the audio preview widget
+        let audio_preview = AudioPreviewWidget::new()?;
+        
+        // Create the waveform widget
+        let waveform = WaveformWidget::new()?;
+        
+        // Create expanders for audio components
+        let audio_preview_expander = Expander::builder()
+            .label("Audio Preview")
+            .expanded(false)
+            .build();
+        
+        let waveform_expander = Expander::builder()
+            .label("Waveform")
+            .expanded(false)
+            .build();
+        
+        // Set up audio components
+        audio_preview_expander.set_child(Some(&audio_preview.get_widget()));
+        waveform_expander.set_child(Some(&waveform.get_widget()));
 
         // Create the sidebar
         let sidebar = Box::builder()
@@ -228,6 +260,17 @@ impl TranscriptionPanel {
 
         // Add the controls widget to the content area
         content_box.append(controls_widget.get_widget());
+        
+        // Add a separator before audio components
+        content_box.append(&gtk4::Separator::builder()
+            .orientation(Orientation::Horizontal)
+            .margin_top(5)
+            .margin_bottom(5)
+            .build());
+
+        // Add audio components to the content area
+        content_box.append(&audio_preview_expander);
+        content_box.append(&waveform_expander);
 
         // Add the content area and sidebar to the paned container
         paned.set_start_child(Some(&content_box));
@@ -254,6 +297,11 @@ impl TranscriptionPanel {
             model_label: model_value,
             current_task: Arc::new(Mutex::new(None)),
             current_result: Arc::new(Mutex::new(None)),
+            audio_preview,
+            waveform,
+            audio_preview_expander,
+            waveform_expander,
+            current_audio_file: Arc::new(Mutex::new(None)),
         };
 
         // Set up event handlers
@@ -282,6 +330,8 @@ impl TranscriptionPanel {
     /// Set the application window for dialogs
     pub fn set_application_window(&mut self, window: ApplicationWindow) {
         self.controls_widget.set_application_window(window);
+        self.audio_preview.set_application_window(window);
+        self.waveform.set_application_window(window);
     }
 
     /// Set the transcription service
@@ -450,5 +500,99 @@ impl TranscriptionPanel {
         self.controls_widget.show_export_dialog(
             crate::ui::widgets::transcription_controls::ExportFormat::PlainText
         );
+    }
+    
+    /// Load an audio file for preview in the transcription panel
+    pub fn load_audio_file(&self, audio_file: AudioFile) -> AppResult<()> {
+        // Store the current audio file
+        if let Ok(mut current_file_guard) = self.current_audio_file.lock() {
+            *current_file_guard = Some(audio_file.clone());
+        }
+        
+        // Load the file in the audio preview widget
+        self.audio_preview.load_file(audio_file.clone())?;
+        
+        // Load the waveform
+        self.waveform.load_waveform(&audio_file.file_path)?;
+        
+        // Set up position synchronization between waveform and audio preview
+        let waveform = self.waveform.clone();
+        let audio_preview = self.audio_preview.clone();
+        
+        // When waveform position changes, update audio preview
+        self.waveform.set_position_changed_callback(move |position| {
+            audio_preview.seek(position);
+        });
+        
+        // When audio preview position changes, update waveform
+        let waveform_clone = waveform.clone();
+        self.audio_preview.set_position_changed_callback(move |position| {
+            waveform_clone.set_playback_position(position);
+        });
+        
+        // Expand the audio preview sections
+        self.audio_preview_expander.set_expanded(true);
+        self.waveform_expander.set_expanded(true);
+        
+        Ok(())
+    }
+    
+    /// Clear the audio preview
+    pub fn clear_audio_preview(&self) {
+        // Clear the current audio file
+        if let Ok(mut current_file_guard) = self.current_audio_file.lock() {
+            *current_file_guard = None;
+        }
+        
+        // Clear the widgets
+        self.audio_preview.clear();
+        self.waveform.clear();
+        
+        // Collapse the audio preview sections
+        self.audio_preview_expander.set_expanded(false);
+        self.waveform_expander.set_expanded(false);
+    }
+    
+    /// Get the current audio file
+    pub fn get_current_audio_file(&self) -> Option<AudioFile> {
+        if let Ok(current_file_guard) = self.current_audio_file.lock() {
+            current_file_guard.clone()
+        } else {
+            None
+        }
+    }
+    
+    /// Get the audio preview widget
+    pub fn get_audio_preview(&self) -> &AudioPreviewWidget {
+        &self.audio_preview
+    }
+    
+    /// Get the waveform widget
+    pub fn get_waveform(&self) -> &WaveformWidget {
+        &self.waveform
+    }
+    
+    /// Set the audio preview to sync with transcription segments
+    pub fn sync_with_transcription(&self) {
+        // In a real implementation, you would synchronize the audio playback
+        // with the transcription segments, highlighting the current segment
+        // as the audio plays
+        
+        // Get the current transcription result
+        if let Some(ref result) = self.current_result.lock().unwrap().as_ref() {
+            // Set up position synchronization
+            let segments = result.segments.clone();
+            let waveform = self.waveform.clone();
+            let text_widget = self.text_widget.clone();
+            
+            // When audio position changes, highlight the current segment
+            self.audio_preview.set_position_changed_callback(move |position| {
+                // Find the segment that corresponds to the current position
+                for segment in &segments {
+                    // In a real implementation, you would check the segment timestamps
+                    // and highlight the appropriate text
+                }
+            });
+        }
     }
 }

@@ -9,6 +9,7 @@ pub mod model;
 pub mod app_state;
 pub mod api;
 pub mod websocket;
+pub mod settings;
 
 // Re-export commonly used types
 pub use transcription::{
@@ -37,4 +38,8 @@ pub use websocket::{
     SystemStatusEvent, ContainerStatusEvent, TranscriptionStage, SystemStatus, ContainerStatus,
     SystemResources, ContainerResources, NetworkIo, TranscriptionSegmentData, WordTimestamp,
     SubscriptionChannel, ConnectionState, WebSocketConfig,
+};
+pub use settings::{
+    Settings, GeneralSettings, AudioSettings, TranscriptionSettings, AdvancedSettings,
+    UiSettings, FilePathSettings, NotificationSettings, SettingsValidator, SettingsMigration,
 };

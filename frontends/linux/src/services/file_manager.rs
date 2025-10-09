@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::models::{AudioFile, AudioMetadata, FileConfig, FileStatus};
 use crate::services::BackendClient;
-use crate::utils::{file_utils, AppError, AppResult};
+use crate::utils::{file_utils, audio_processor::AudioProcessor, AppError, AppResult};
 
 /// File upload progress callback type
 pub type UploadProgressCallback = Arc<dyn Fn(f32) + Send + Sync>;
@@ -109,7 +109,7 @@ impl FileManager {
         
         // Extract metadata if enabled
         if config.extract_metadata {
-            match file_utils::extract_audio_metadata(&file_path) {
+            match AudioProcessor::extract_metadata(&file_path) {
                 Ok(metadata) => {
                     audio_file.mark_ready(metadata);
                 }
@@ -368,6 +368,55 @@ impl FileManager {
     /// Get the audio quality category for a file
     pub async fn get_audio_quality_category(&self, bitrate: Option<u32>) -> &'static str {
         file_utils::get_audio_quality_category(bitrate)
+    }
+    
+    /// Generate waveform data for an audio file
+    pub async fn generate_waveform(&self, file_path: &Path, target_samples: usize) -> AppResult<crate::utils::audio_processor::WaveformData> {
+        AudioProcessor::generate_waveform(file_path, target_samples)
+    }
+    
+    /// Get audio format information for a file
+    pub async fn get_audio_format(&self, file_path: &Path) -> AppResult<crate::utils::audio_processor::AudioFormat> {
+        AudioProcessor::get_audio_format(file_path)
+    }
+    
+    /// Convert an audio file to a different format
+    pub async fn convert_audio_format(
+        &self,
+        input_path: &Path,
+        output_path: &Path,
+        target_format: &str,
+    ) -> AppResult<()> {
+        AudioProcessor::convert_format(input_path, output_path, target_format)
+    }
+    
+    /// Resample audio to a different sample rate
+    pub async fn resample_audio(
+        &self,
+        samples: &[f32],
+        from_sample_rate: u32,
+        to_sample_rate: u32,
+    ) -> Vec<f32> {
+        AudioProcessor::resample(samples, from_sample_rate, to_sample_rate)
+    }
+    
+    /// Apply a low-pass filter to audio samples
+    pub async fn apply_low_pass_filter(
+        &self,
+        samples: &[f32],
+        cutoff_frequency: f32,
+        sample_rate: u32,
+    ) -> Vec<f32> {
+        AudioProcessor::apply_low_pass_filter(samples, cutoff_frequency, sample_rate)
+    }
+    
+    /// Normalize audio samples
+    pub async fn normalize_audio(
+        &self,
+        samples: &[f32],
+        target_peak: f32,
+    ) -> Vec<f32> {
+        AudioProcessor::normalize(samples, target_peak)
     }
 }
 
