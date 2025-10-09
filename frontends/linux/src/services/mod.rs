@@ -12,10 +12,12 @@ use crate::utils::{AppError, AppResult};
 pub mod backend_client;
 pub mod file_manager;
 pub mod config_manager;
+pub mod model_manager;
 
 pub use backend_client::BackendClient;
 pub use file_manager::FileManager;
 pub use config_manager::ConfigManager;
+pub use model_manager::ModelManager;
 
 /// API service for communicating with the backend
 pub struct ApiClient {

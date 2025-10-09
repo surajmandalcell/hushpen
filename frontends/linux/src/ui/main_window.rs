@@ -14,7 +14,9 @@ use gtk4::glib::{Propagation, ControlFlow};
 use std::sync::Arc;
 
 use crate::models::AppState;
+use crate::services::{FileManager, BackendClient, ModelManager};
 use crate::ui::menu_bar::MenuBar;
+use crate::ui::{FilePanel, ModelPanel};
 use crate::utils::AppError;
 
 /// Main application window
@@ -27,6 +29,9 @@ pub struct MainWindow {
     progress_bar: ProgressBar,
     menu_bar: MenuBar,
     status_context_id: gtk4::glib::GString,
+    file_panel: FilePanel,
+    model_panel: Option<ModelPanel>,
+    model_manager: Option<Arc<ModelManager>>,
 }
 
 impl MainWindow {
@@ -42,6 +47,50 @@ impl MainWindow {
 
         // Create the menu bar
         let menu_bar = MenuBar::new(&window, app_state.clone())?;
+        
+        // Create the file manager
+        let mut file_manager = FileManager::with_default_config();
+        
+        // Set up the backend client for the file manager if available
+        // In a real implementation, you would get this from the app state
+        // For now, we'll leave it as None since the backend client setup
+        // would require more complex initialization
+        let file_manager = Arc::new(file_manager);
+        
+        // Create the file panel
+        let file_panel = FilePanel::new(window.clone(), app_state.clone(), file_manager.clone())?;
+
+        // Create the model manager and panel if backend client is available
+        let (model_manager, model_panel) = if let Ok(backend_config) = crate::models::api::BackendConfig::default() {
+            match BackendClient::new(backend_config) {
+                Ok(backend_client) => {
+                    let backend_client = Arc::new(backend_client);
+                    let model_manager = Arc::new(ModelManager::new(backend_client));
+                    
+                    // Initialize the model manager
+                    let model_manager_clone = model_manager.clone();
+                    gtk4::glib::spawn_future_local(async move {
+                        if let Err(e) = model_manager_clone.initialize().await {
+                            eprintln!("Failed to initialize model manager: {}", e);
+                        }
+                    });
+                    
+                    match ModelPanel::new(window.clone(), app_state.clone(), model_manager.clone()) {
+                        Ok(model_panel) => (Some(model_manager), Some(model_panel)),
+                        Err(e) => {
+                            eprintln!("Failed to create model panel: {}", e);
+                            (None, None)
+                        }
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Failed to create backend client: {}", e);
+                    (None, None)
+                }
+            }
+        } else {
+            (None, None)
+        };
 
         // Create the header bar
         let header_bar = HeaderBar::builder()
@@ -93,6 +142,9 @@ impl MainWindow {
             progress_bar,
             menu_bar,
             status_context_id: status_context_id.into(),
+            file_panel,
+            model_panel,
+            model_manager,
         };
 
         // Set up the window
@@ -197,7 +249,19 @@ impl MainWindow {
             .build();
         left_panel.append(&sidebar_label);
 
-        // Add some example buttons to the sidebar
+        // Add navigation buttons
+        let file_panel_button = Button::builder()
+            .label("Files")
+            .margin_bottom(5)
+            .build();
+        left_panel.append(&file_panel_button);
+
+        let model_panel_button = Button::builder()
+            .label("Models")
+            .margin_bottom(5)
+            .build();
+        left_panel.append(&model_panel_button);
+
         let button1 = Button::builder()
             .label("Record Audio")
             .margin_bottom(5)
@@ -226,20 +290,27 @@ impl MainWindow {
             .margin_end(10)
             .build();
 
-        // Add main content
-        let content_label = Label::builder()
-            .label("<b>Main Content Area</b>")
-            .use_markup(true)
-            .margin_bottom(10)
+        // Create a stack for switching between panels
+        let content_stack = gtk4::Stack::builder()
+            .transition_type(gtk4::StackTransitionType::SlideLeftRight)
             .build();
-        right_panel.append(&content_label);
 
-        let welcome_label = Label::builder()
-            .label("Welcome to ASRPro\n\nThis is the main content area where transcription results will be displayed.\n\nUse the sidebar to start recording or upload audio files for transcription.")
-            .justify(gtk4::Justification::Center)
-            .margin_bottom(20)
-            .build();
-        right_panel.append(&welcome_label);
+        // Add welcome page to the stack
+        let welcome_page = Self::create_welcome_page();
+        content_stack.add_titled(&welcome_page, Some("welcome"), "Welcome");
+
+        // Add file panel to the stack
+        content_stack.add_titled(&self.file_panel.get_widget(), Some("files"), "Files");
+
+        // Add model panel to the stack if available
+        if let Some(ref model_panel) = self.model_panel {
+            content_stack.add_typed(model_panel.get_widget(), Some("models"), "Models");
+        }
+
+        // Set the default visible child
+        content_stack.set_visible_child_name("welcome");
+
+        right_panel.append(&content_stack);
 
         // Add panels to the paned container
         self.content_area.set_start_child(Some(&left_panel));
@@ -247,6 +318,26 @@ impl MainWindow {
         self.content_area.set_position(300); // Set initial divider position
 
         // Set up button handlers
+        let app_state = self.app_state.clone();
+        let content_stack = content_stack.clone();
+        file_panel_button.connect_clicked(move |_| {
+            content_stack.set_visible_child_name("files");
+            let app_state_clone = app_state.clone();
+            gtk4::glib::spawn_future_local(async move {
+                app_state_clone.set_status_message("Switched to Files panel".to_string()).await;
+            });
+        });
+
+        let app_state = self.app_state.clone();
+        let content_stack = content_stack.clone();
+        model_panel_button.connect_clicked(move |_| {
+            content_stack.set_visible_child_name("models");
+            let app_state_clone = app_state.clone();
+            gtk4::glib::spawn_future_local(async move {
+                app_state_clone.set_status_message("Switched to Models panel".to_string()).await;
+            });
+        });
+
         let app_state = self.app_state.clone();
         button1.connect_clicked(move |_| {
             let app_state_clone = app_state.clone();
@@ -343,5 +434,64 @@ impl MainWindow {
     /// Get the menu bar
     pub fn get_menu_bar(&self) -> &MenuBar {
         &self.menu_bar
+    }
+
+    /// Create the welcome page
+    fn create_welcome_page() -> gtk4::Box {
+        let container = gtk4::Box::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(20)
+            .margin_top(40)
+            .margin_bottom(40)
+            .margin_start(40)
+            .margin_end(40)
+            .build();
+
+        // Add welcome title
+        let title_label = Label::builder()
+            .label("<b>Welcome to ASRPro</b>")
+            .use_markup(true)
+            .justify(gtk4::Justification::Center)
+            .margin_bottom(20)
+            .build();
+        container.append(&title_label);
+
+        // Add welcome message
+        let welcome_label = Label::builder()
+            .label("This is the main content area where transcription results will be displayed.\n\nUse the sidebar to start recording, upload audio files, or manage models.")
+            .justify(gtk4::Justification::Center)
+            .wrap(true)
+            .margin_bottom(20)
+            .build();
+        container.append(&welcome_label);
+
+        // Add action buttons
+        let button_container = gtk4::Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(15)
+            .halign(Align::Center)
+            .build();
+
+        let record_button = Button::builder()
+            .label("Record Audio")
+            .icon_name("audio-input-microphone")
+            .build();
+        button_container.append(&record_button);
+
+        let upload_button = Button::builder()
+            .label("Upload File")
+            .icon_name("document-open")
+            .build();
+        button_container.append(&upload_button);
+
+        let models_button = Button::builder()
+            .label("Manage Models")
+            .icon_name("system-run")
+            .build();
+        button_container.append(&models_button);
+
+        container.append(&button_container);
+
+        container
     }
 }

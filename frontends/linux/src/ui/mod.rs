@@ -13,11 +13,25 @@ use crate::utils::AppError;
 pub mod main_window;
 pub mod menu_bar;
 pub mod style;
+pub mod file_panel;
+pub mod model_panel;
+
+// Import widget modules
+pub mod widgets {
+    pub mod file_drop;
+    pub mod file_list;
+    pub mod model_selector;
+    pub mod model_details;
+}
 
 // Re-export the main components
 pub use main_window::MainWindow;
 pub use menu_bar::MenuBar;
 pub use style::{Theme, initialize_styling};
+pub use file_panel::FilePanel;
+pub use model_panel::ModelPanel;
+pub use widgets::model_selector::ModelSelectorWidget;
+pub use widgets::model_details::ModelDetailsWidget;
 
 /// Main UI container
 pub struct MainUI {

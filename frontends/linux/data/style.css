@@ -438,3 +438,385 @@ aboutdialog {
     50% { opacity: 0.5; }
     100% { opacity: 1; }
 }
+
+/* File Panel Styles */
+.file-panel {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.file-panel-stack {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+/* File Drop Area Styles */
+.file-drop-area {
+    background-color: #f8f9fa;
+    border: 2px dashed #d0d0d0;
+    border-radius: 12px;
+    min-height: 200px;
+    transition: all 0.3s ease;
+}
+
+.file-drop-area:hover {
+    background-color: #f0f1f3;
+    border-color: #4a90e2;
+}
+
+.file-drop-area.drag-over {
+    background-color: #e3f2fd;
+    border-color: #4a90e2;
+    border-style: solid;
+}
+
+.file-drop-area.loading {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+}
+
+.file-drop-area.error {
+    background-color: #f8d7da;
+    border-color: #f44336;
+}
+
+.file-drop-icon {
+    opacity: 0.6;
+    margin-bottom: 12px;
+}
+
+.file-drop-area:hover .file-drop-icon {
+    opacity: 0.8;
+}
+
+.file-drop-area.drag-over .file-drop-icon {
+    opacity: 1.0;
+}
+
+.file-drop-label {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: #333333;
+    margin-bottom: 6px;
+}
+
+.file-drop-subtitle {
+    font-size: 0.95em;
+    color: #666666;
+}
+
+/* File List Styles */
+.file-list-container {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin: 8px;
+}
+
+.file-list-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #333333;
+}
+
+.file-list-scrolled {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin: 0 8px;
+}
+
+.file-list {
+    background-color: #ffffff;
+}
+
+.file-list-item {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+    padding: 12px;
+}
+
+.file-list-item:hover {
+    background-color: #f8f9fa;
+}
+
+.file-list-item:last-child {
+    border-bottom: none;
+}
+
+.file-name {
+    font-weight: 500;
+    color: #333333;
+    font-size: 1.0em;
+}
+
+.file-size {
+    color: #666666;
+    font-size: 0.9em;
+}
+
+.file-duration {
+    color: #666666;
+    font-size: 0.9em;
+}
+
+.file-status {
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.file-status.status-ready {
+    color: #4caf50;
+}
+
+.file-status.status-processing {
+    color: #ff9800;
+}
+
+.file-status.status-failed {
+    color: #f44336;
+}
+
+.file-status.status-uploading {
+    color: #2196f3;
+}
+
+.file-status.status-downloading {
+    color: #9c27b0;
+}
+
+.file-progress {
+    margin-top: 4px;
+    min-height: 4px;
+}
+
+.file-remove-button {
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.file-remove-button:hover {
+    opacity: 1.0;
+}
+
+.clear-all-button {
+    margin-left: auto;
+}
+
+/* File Panel Info Bar */
+.file-panel-info-bar {
+    margin: 8px;
+    border-radius: 6px;
+}
+
+/* Sidebar Styles */
+.sidebar-title {
+    color: #333333;
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+.sidebar-button {
+    padding: 12px 16px;
+    margin: 4px;
+    border-radius: 6px;
+    background-color: transparent;
+    color: #333333;
+    font-weight: 500;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+.sidebar-button:hover {
+    background-color: #f0f0f0;
+}
+
+.sidebar-button:active {
+    background-color: #e0e0e0;
+}
+
+.sidebar-button.active {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+/* Button Container Styles */
+.file-panel .button-container {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+    padding: 12px;
+}
+
+/* Stack Switcher Styles */
+.stack-switcher button {
+    padding: 8px 16px;
+    margin: 0 4px;
+    border-radius: 20px;
+    background-color: transparent;
+    color: #666666;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.stack-switcher button:hover {
+    background-color: #f0f0f0;
+    color: #333333;
+}
+
+.stack-switcher button:checked {
+    background-color: #4a90e2;
+    color: white;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .file-drop-area {
+        min-height: 150px;
+        margin: 4px;
+    }
+    
+    .file-list-item {
+        padding: 8px;
+    }
+    
+    .file-name {
+        font-size: 0.9em;
+    }
+    
+    .file-size,
+    .file-duration,
+    .file-status {
+        font-size: 0.8em;
+    }
+}
+
+/* Model Panel Styles */
+.model-panel {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.model-panel-stack {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+/* Model Selector Styles */
+.model-selector {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin: 8px;
+}
+
+.model-search-panel {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.model-list-item {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+    padding: 12px;
+}
+
+.model-list-item:hover {
+    background-color: #f8f9fa;
+}
+
+.model-list-item:last-child {
+    border-bottom: none;
+}
+
+.model-name {
+    font-weight: 500;
+    color: #333333;
+    font-size: 1.0em;
+}
+
+.model-details {
+    color: #666666;
+    font-size: 0.9em;
+}
+
+.model-status {
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.model-status.status-available {
+    color: #4caf50;
+}
+
+.model-status.status-downloading {
+    color: #ff9800;
+}
+
+.model-status.status-loading {
+    color: #2196f3;
+}
+
+.model-status.status-unavailable {
+    color: #f44336;
+}
+
+.model-details-panel {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.model-details-grid {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.model-details-label {
+    color: #666666;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.model-details-value {
+    color: #333333;
+    font-size: 0.9em;
+}
+
+.model-performance-grid {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.model-requirements-grid {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.model-configuration-grid {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.model-action-buttons {
+    margin: 8px;
+}
+
+.model-update-button {
+    margin-right: 8px;
+}
+
+.model-delete-button {
+    margin-right: 8px;
+}
+
+.model-use-button {
+    /* No additional margin needed as it's the last button */
+}

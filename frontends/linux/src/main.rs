@@ -11,6 +11,8 @@ use std::sync::Arc;
 
 // Import our modules
 use models::AppState;
+use services::{BackendClient, ModelManager};
+use models::api::BackendConfig;
 
 // Application constants
 const APP_ID: &str = "com.asrpro.gtk4";
@@ -58,6 +60,40 @@ fn initialize_application(app: &Application) {
         }
     };
     
+    // Create the backend client
+    let backend_config = BackendConfig::default();
+    let backend_client = match BackendClient::new(backend_config) {
+        Ok(client) => Arc::new(client),
+        Err(e) => {
+            eprintln!("Failed to create backend client: {}", e);
+            // Show warning dialog but continue
+            glib::idle_add_once(move || {
+                show_error_dialog(None, "Backend Warning", &format!("Failed to connect to backend: {}. Some features may not be available.", e));
+            });
+            // Continue without backend client
+            None
+        }
+    };
+    
+    // Create the model manager if backend client is available
+    let model_manager = if let Some(ref backend_client) = backend_client {
+        let manager = Arc::new(ModelManager::new(Arc::clone(backend_client)));
+        
+        // Initialize the model manager
+        let manager_clone = manager.clone();
+        let app_state_clone = app_state.clone();
+        runtime.spawn(async move {
+            if let Err(e) = manager_clone.initialize().await {
+                eprintln!("Failed to initialize model manager: {}", e);
+                app_state_clone.set_status_message(format!("Failed to initialize models: {}", e)).await;
+            }
+        });
+        
+        Some(manager)
+    } else {
+        None
+    };
+    
     // Initialize the application state
     let app_state_clone = app_state.clone();
     runtime.block_on(async move {
@@ -70,10 +106,16 @@ fn initialize_application(app: &Application) {
         }
     });
     
-    // Store the app state and runtime in the application
+    // Store the app state, runtime, backend client, and model manager in the application
     unsafe {
         app.set_data("app_state", app_state);
         app.set_data("runtime", runtime);
+        if let Some(backend_client) = backend_client {
+            app.set_data("backend_client", backend_client);
+        }
+        if let Some(model_manager) = model_manager {
+            app.set_data("model_manager", model_manager);
+        }
     }
 }
 
@@ -110,37 +152,16 @@ fn build_ui(app: &Application) {
     }));
     
     // Create the main UI with the new components
-    let main_ui = match ui::MainUI::new(window.clone(), app_state.clone()) {
-        Ok(ui) => ui,
+    let main_window = match ui::MainWindow::new(app, app_state.clone()) {
+        Ok(window) => window,
         Err(e) => {
             show_error_dialog(Some(&window), "UI Error", &format!("Failed to create UI: {}", e));
             return;
         }
     };
     
-    // Initialize the UI
-    let window_clone = window.clone();
-    let error_msg = runtime.block_on(async move {
-        if let Err(e) = main_ui.initialize().await {
-            Some(format!("Failed to initialize UI: {}", e))
-        } else {
-            None
-        }
-    });
-    
-    if let Some(msg) = error_msg {
-        show_error_dialog(Some(&window_clone), "UI Error", &msg);
-    }
-    
-    // Show welcome message
-    let app_state_clone = app_state.clone();
-    runtime.spawn(async move {
-        app_state_clone.set_status_message("Application started successfully".to_string()).await;
-        app_state_clone.show_notification(
-            "Welcome to ASRPro".to_string(),
-            "The application is ready to use".to_string(),
-        ).await;
-    });
+    // Show the window
+    main_window.show();
 }
 
 /// Handle application shutdown
