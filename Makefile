@@ -80,20 +80,12 @@ dev.linux: ## Set up and run Linux GTK4 frontend in development mode
 		echo "Error: Rust/Cargo is not installed. Please install Rust first."; \
 		exit 1; \
 	fi
-	@if ! command -v meson &> /dev/null; then \
-		echo "Error: Meson is not installed. Please install Meson first."; \
-		exit 1; \
-	fi
 	@echo "Navigating to frontends/linux/..."
 	cd frontends/linux && \
-	if [ ! -d "builddir" ]; then \
-		echo "Setting up Meson build directory..."; \
-		meson setup builddir || { echo "Error: Meson setup failed"; exit 1; }; \
-	fi && \
-	echo "Compiling with Meson..." && \
-	meson compile -C builddir || { echo "Error: Compilation failed"; exit 1; } && \
+	echo "Building with Cargo for development..." && \
+	cargo build || { echo "Error: Cargo build failed"; exit 1; } && \
 	echo "Starting Linux application in development mode..." && \
-	./builddir/src/asrpro || { echo "Error: Failed to start application"; exit 1; }
+	./target/debug/asrpro-gtk4 || { echo "Error: Failed to start application"; exit 1; }
 
 dev.mac: ## Set up and run macOS SwiftUI frontend in development mode
 	@echo "Setting up macOS SwiftUI development environment..."
@@ -127,19 +119,13 @@ run.linux: ## Run the compiled Linux GTK4 application
 	@echo "Running Linux GTK4 application..."
 	@echo "Navigating to frontends/linux/..."
 	cd frontends/linux && \
-	if [ ! -d "builddir" ]; then \
+	if [ ! -f "target/debug/asrpro-gtk4" ]; then \
 		echo "Application not built yet. Building first..."; \
-		meson setup builddir || { echo "Error: Meson setup failed"; exit 1; }; \
-		meson compile -C builddir || { echo "Error: Compilation failed"; exit 1; }; \
-		echo "Build complete."; \
-	fi && \
-	if [ ! -f "builddir/src/asrpro" ]; then \
-		echo "Application not built. Building now..."; \
-		meson compile -C builddir || { echo "Error: Compilation failed"; exit 1; }; \
+		cargo build || { echo "Error: Cargo build failed"; exit 1; }; \
 		echo "Build complete."; \
 	fi && \
 	echo "Starting Linux application..." && \
-	./builddir/src/asrpro || { echo "Error: Failed to start application"; exit 1; }
+	./target/debug/asrpro-gtk4 || { echo "Error: Failed to start application"; exit 1; }
 
 run.mac: ## Run the compiled macOS SwiftUI application
 	@echo "Running macOS SwiftUI application..."
