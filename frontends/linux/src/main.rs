@@ -46,7 +46,17 @@ fn initialize_application(app: &Application) {
         .expect("Failed to create async runtime");
     
     // Create the application state
-    let app_state = Arc::new(AppState::new());
+    let app_state = match AppState::new() {
+        Ok(state) => Arc::new(state),
+        Err(e) => {
+            eprintln!("Failed to create application state: {}", e);
+            // Show error dialog
+            glib::idle_add_once(move || {
+                show_error_dialog(None, "Initialization Error", &format!("Failed to create application: {}", e));
+            });
+            return;
+        }
+    };
     
     // Initialize the application state
     let app_state_clone = app_state.clone();
@@ -99,8 +109,14 @@ fn build_ui(app: &Application) {
         Propagation::Proceed
     }));
     
-    // Create the main UI
-    let main_ui = ui::MainUI::new(window.clone(), app_state.clone());
+    // Create the main UI with the new components
+    let main_ui = match ui::MainUI::new(window.clone(), app_state.clone()) {
+        Ok(ui) => ui,
+        Err(e) => {
+            show_error_dialog(Some(&window), "UI Error", &format!("Failed to create UI: {}", e));
+            return;
+        }
+    };
     
     // Initialize the UI
     let window_clone = window.clone();
@@ -115,9 +131,6 @@ fn build_ui(app: &Application) {
     if let Some(msg) = error_msg {
         show_error_dialog(Some(&window_clone), "UI Error", &msg);
     }
-    
-    // Show the window
-    window.present();
     
     // Show welcome message
     let app_state_clone = app_state.clone();

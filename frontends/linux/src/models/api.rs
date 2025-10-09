@@ -311,7 +311,7 @@ pub struct SystemStatusData {
 }
 
 /// Configuration for the backend client
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendConfig {
     /// Base URL for the API
     pub base_url: String,

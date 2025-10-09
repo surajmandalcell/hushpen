@@ -71,6 +71,7 @@ dependencies = [
  "gstreamer-app",
  "gtk4",
  "mime",
+ "mime_guess",
  "reqwest",
  "serde",
  "serde_json",

@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 use crate::models::{
     AudioFile, Model, TranscriptionTask, TranscriptionConfig, FileConfig, ModelConfig,
-    TranscriptionStats, FileStats, ModelStats, BackendConfig,
+    TranscriptionStats, FileStats, ModelStats, BackendConfig, FileStatus,
 };
-use crate::services::BackendClient;
+use crate::services::{BackendClient, FileManager, ConfigManager};
 use crate::utils::{AppError, AppResult};
 
 /// Centralized application state using Arc<Mutex<T>> pattern for thread safety
@@ -25,6 +25,10 @@ pub struct AppState {
     pub ui: Arc<RwLock<UiState>>,
     /// Backend client for API communication
     pub backend_client: Arc<RwLock<Option<BackendClient>>>,
+    /// File manager for handling file operations
+    pub file_manager: Arc<FileManager>,
+    /// Configuration manager for handling application settings
+    pub config_manager: Arc<ConfigManager>,
 }
 
 /// Transcription-related state
@@ -131,19 +135,30 @@ pub struct WindowState {
 
 impl AppState {
     /// Create a new application state
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> AppResult<Self> {
+        // Create the configuration manager
+        let config_manager = Arc::new(ConfigManager::with_default_path()?);
+        
+        // Create the file manager with default config
+        let file_manager = Arc::new(FileManager::with_default_config());
+        
+        Ok(Self {
             transcription: Arc::new(RwLock::new(TranscriptionState::default())),
             files: Arc::new(RwLock::new(FileState::default())),
             models: Arc::new(RwLock::new(ModelState::default())),
             config: Arc::new(RwLock::new(ConfigState::default())),
             ui: Arc::new(RwLock::new(UiState::default())),
             backend_client: Arc::new(RwLock::new(None)),
-        }
+            file_manager,
+            config_manager,
+        })
     }
     
     /// Initialize the application state with default values
     pub async fn initialize(&self) -> Result<(), AppError> {
+        // Load configuration from file
+        self.config_manager.load_config().await?;
+        
         // Initialize configuration
         self.init_config().await?;
         
@@ -153,25 +168,45 @@ impl AppState {
         // Initialize file directories
         self.init_file_directories().await?;
         
+        // Initialize the file manager with loaded config
+        self.init_file_manager().await?;
+        
         Ok(())
     }
     
     /// Initialize configuration
     async fn init_config(&self) -> Result<(), AppError> {
+        let app_config = self.config_manager.get_config().await;
         let mut config = self.config.write().await;
         
-        // Set default values
-        config.backend_url = "http://localhost:8000".to_string();
-        config.dark_mode = true;
-        config.theme = "default".to_string();
-        config.language = "en".to_string();
-        config.auto_save = true;
-        config.auto_save_interval = 30; // 30 seconds
-        config.show_notifications = true;
-        config.log_level = "info".to_string();
+        // Load values from the configuration manager
+        config.backend_url = app_config.backend_config.base_url.clone();
+        config.api_key = app_config.backend_config.api_key.clone();
+        config.dark_mode = app_config.user_preferences.ui_preferences.theme == "dark";
+        config.theme = app_config.user_preferences.ui_preferences.theme.clone();
+        config.language = app_config.user_preferences.ui_preferences.language.clone();
+        config.auto_save = true; // This could be added to AppConfig
+        config.auto_save_interval = 30; // This could be added to AppConfig
+        config.show_notifications = app_config.user_preferences.notification_preferences.enabled;
+        config.log_level = "info".to_string(); // This could be added to AppConfig
         
-        // Try to load configuration from file
-        self.load_config_from_file(&mut *config).await?;
+        Ok(())
+    }
+    
+    /// Initialize the file manager with configuration
+    async fn init_file_manager(&self) -> Result<(), AppError> {
+        let file_config = self.config_manager.get_file_config().await;
+        self.file_manager.update_config(file_config).await?;
+        
+        // Set the backend client if available
+        {
+            let backend_client_guard = self.backend_client.read().await;
+            if let Some(ref client) = *backend_client_guard {
+                // We need to update the file manager with the backend client
+                // but FileManager doesn't have a method to update the client after creation
+                // For now, we'll just note this limitation
+            }
+        }
         
         Ok(())
     }
@@ -195,14 +230,18 @@ impl AppState {
     
     /// Initialize file directories
     async fn init_file_directories(&self) -> Result<(), AppError> {
-        let files = self.files.read().await;
+        let file_config = self.config_manager.get_file_config().await;
         
         // Create directories if they don't exist
-        std::fs::create_dir_all(&files.config.temp_dir)
+        std::fs::create_dir_all(&file_config.temp_dir)
             .map_err(|e| AppError::file_with_source("Failed to create temp directory", e))?;
         
-        std::fs::create_dir_all(&files.config.upload_dir)
+        std::fs::create_dir_all(&file_config.upload_dir)
             .map_err(|e| AppError::file_with_source("Failed to create upload directory", e))?;
+        
+        // Update the file state with the config
+        let mut files = self.files.write().await;
+        files.config = file_config;
         
         Ok(())
     }
@@ -216,10 +255,27 @@ impl AppState {
     
     /// Save configuration to file
     pub async fn save_config(&self) -> Result<(), AppError> {
-        let _config = self.config.read().await;
+        // Get the current configuration state
+        let config_state = self.config.read().await;
         
-        // This would typically save to a config file
-        // For now, we'll just return Ok
+        // Create an AppConfig from the current state
+        let mut app_config = self.config_manager.get_config().await;
+        
+        // Update backend config
+        app_config.backend_config.base_url = config_state.backend_url.clone();
+        app_config.backend_config.api_key = config_state.api_key.clone();
+        
+        // Update UI preferences
+        app_config.user_preferences.ui_preferences.theme = config_state.theme.clone();
+        app_config.user_preferences.ui_preferences.language = config_state.language.clone();
+        
+        // Update notification preferences
+        app_config.user_preferences.notification_preferences.enabled = config_state.show_notifications;
+        
+        // Save the configuration
+        self.config_manager.update_config(app_config).await?;
+        self.config_manager.save_config().await?;
+        
         Ok(())
     }
     
@@ -331,6 +387,56 @@ impl AppState {
         
         // Update statistics
         files.stats.update(&file);
+    }
+    
+    /// Add a file using the file manager
+    pub async fn add_file_from_path(&self, file_path: std::path::PathBuf) -> AppResult<uuid::Uuid> {
+        let audio_file = self.file_manager.add_file(file_path.clone()).await?;
+        let file_id = audio_file.id;
+        self.add_audio_file(audio_file).await;
+        
+        // Update the last opened directory
+        if let Some(parent) = file_path.parent() {
+            self.config_manager.set_last_opened_directory(parent.to_path_buf()).await?;
+        }
+        
+        Ok(file_id)
+    }
+    
+    /// Upload a file to the backend
+    pub async fn upload_file(
+        &self,
+        file_id: uuid::Uuid,
+        progress_callback: Option<std::sync::Arc<dyn Fn(f32) + Send + Sync>>,
+    ) -> AppResult<()> {
+        // Get the file
+        let file = self.get_audio_file(file_id).await
+            .ok_or_else(|| AppError::generic(format!("File with ID {} not found", file_id)))?;
+        
+        // Mark the file as uploading
+        self.update_audio_file(file_id, |file| {
+            file.mark_uploading();
+        }).await?;
+        
+        // Upload the file
+        self.file_manager.upload_file(file_id, &file.file_path, progress_callback).await?;
+        
+        // Mark the file as ready
+        self.update_audio_file(file_id, |file| {
+            file.status = FileStatus::Ready;
+        }).await?;
+        
+        Ok(())
+    }
+    
+    /// Get the file manager
+    pub fn get_file_manager(&self) -> Arc<FileManager> {
+        Arc::clone(&self.file_manager)
+    }
+    
+    /// Get the configuration manager
+    pub fn get_config_manager(&self) -> Arc<ConfigManager> {
+        Arc::clone(&self.config_manager)
     }
     
     /// Get an audio file by ID
@@ -517,7 +623,7 @@ impl AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default AppState")
     }
 }
 

@@ -28,7 +28,6 @@ pub struct FileManager {
 }
 
 /// Information about an active upload
-#[derive(Debug, Clone)]
 struct UploadInfo {
     /// File ID
     file_id: Uuid,
@@ -38,6 +37,28 @@ struct UploadInfo {
     callback: Option<UploadProgressCallback>,
     /// Upload start time
     start_time: std::time::Instant,
+}
+
+impl std::fmt::Debug for UploadInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UploadInfo")
+            .field("file_id", &self.file_id)
+            .field("progress", &self.progress)
+            .field("callback", &self.callback.is_some())
+            .field("start_time", &self.start_time)
+            .finish()
+    }
+}
+
+impl Clone for UploadInfo {
+    fn clone(&self) -> Self {
+        Self {
+            file_id: self.file_id,
+            progress: self.progress,
+            callback: None, // Can't clone the callback
+            start_time: self.start_time,
+        }
+    }
 }
 
 impl FileManager {

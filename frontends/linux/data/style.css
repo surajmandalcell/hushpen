@@ -1,44 +1,440 @@
 /* ASRPro GTK4 Frontend Styles */
 
+/* Window and main containers */
 window {
-    background-color: #f5f5f5;
+    background-color: #fafafa;
+    color: #333333;
 }
 
+headerbar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    min-height: 48px;
+    padding: 0 12px;
+}
+
+headerbar > box > * {
+    margin: 0 6px;
+}
+
+/* Menu styling */
+menubar {
+    background-color: #ffffff;
+    color: #333333;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+menu {
+    background-color: #ffffff;
+    color: #333333;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+menuitem {
+    padding: 8px 12px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+menuitem:hover {
+    background-color: #f0f0f0;
+}
+
+menuitem:active {
+    background-color: #e0e0e0;
+}
+
+menu separator {
+    margin: 4px 0;
+    background-color: #e0e0e0;
+    min-height: 1px;
+}
+
+/* Button styling */
 button {
     background-color: #4a90e2;
     color: white;
     border: none;
     border-radius: 6px;
-    padding: 10px 20px;
-    font-weight: bold;
+    padding: 8px 16px;
+    font-weight: 500;
     transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 button:hover {
-    background-color: #357abD;
+    background-color: #357abd;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 button:active {
     background-color: #2968a3;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 button:disabled {
-    background-color: #cccccc;
+    background-color: #e0e0e0;
+    color: #999999;
+    box-shadow: none;
+}
+
+button.suggested-action {
+    background-color: #4caf50;
+}
+
+button.suggested-action:hover {
+    background-color: #45a049;
+}
+
+button.destructive-action {
+    background-color: #f44336;
+}
+
+button.destructive-action:hover {
+    background-color: #d32f2f;
+}
+
+/* Entry (text input) styling */
+entry {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: #333333;
+    transition: all 0.2s ease;
+}
+
+entry:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+entry:disabled {
+    background-color: #f5f5f5;
+    color: #999999;
+}
+
+/* Label styling */
+label {
+    color: #333333;
+}
+
+label.title {
+    font-size: 1.2em;
+    font-weight: 600;
+}
+
+label.subtitle {
+    font-size: 1.0em;
+    font-weight: 500;
     color: #666666;
 }
 
+label.status {
+    font-size: 0.9em;
+    color: #666666;
+}
+
+/* Progress bar styling */
+progressbar {
+    font-size: 0.9em;
+}
+
+progressbar trough {
+    background-color: #e0e0e0;
+    border-radius: 3px;
+    min-height: 6px;
+}
+
+progressbar progress {
+    background-color: #4a90e2;
+    border-radius: 3px;
+    min-height: 6px;
+    transition: width 0.3s ease;
+}
+
+/* Status bar styling */
+statusbar {
+    background-color: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+    color: #666666;
+    font-size: 0.9em;
+    padding: 4px 8px;
+}
+
+/* Paned (split view) styling */
+paned > separator {
+    background-color: #d0d0d0;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+paned.horizontal > separator {
+    background-image: linear-gradient(to right, #d0d0d0, #e0e0e0, #d0d0d0);
+}
+
+paned.vertical > separator {
+    background-image: linear-gradient(to bottom, #d0d0d0, #e0e0e0, #d0d0d0);
+}
+
+/* Box and container styling */
+box.sidebar {
+    background-color: #f8f8f8;
+    border-right: 1px solid #e0e0e0;
+}
+
+box.content {
+    background-color: #ffffff;
+}
+
+/* List box styling */
+list {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+}
+
+list row {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+}
+
+list row:hover {
+    background-color: #f8f8f8;
+}
+
+list row:selected {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+list row:last-child {
+    border-bottom: none;
+}
+
+/* Scrolled window styling */
+scrolledwindow {
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+}
+
+/* Text view styling */
 textview {
-    background-color: white;
-    border: 1px solid #ddd;
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
     border-radius: 4px;
     padding: 8px;
 }
 
-scrolledwindow {
-    border: 1px solid #ddd;
+textview text {
+    background-color: transparent;
+}
+
+/* Switch styling */
+switch {
+    background-color: #d0d0d0;
+    border: 1px solid #b0b0b0;
+    border-radius: 12px;
+}
+
+switch:checked {
+    background-color: #4a90e2;
+    border-color: #357abd;
+}
+
+switch slider {
+    background-color: #ffffff;
+    border: 1px solid #b0b0b0;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+    margin: 2px;
+}
+
+switch:checked slider {
+    border-color: #357abd;
+}
+
+/* Check button styling */
+checkbutton check {
+    background-color: #ffffff;
+    border: 2px solid #d0d0d0;
+    border-radius: 3px;
+    min-width: 16px;
+    min-height: 16px;
+    color: transparent;
+    transition: all 0.2s ease;
+}
+
+checkbutton:checked check {
+    background-color: #4a90e2;
+    border-color: #357abd;
+    color: white;
+}
+
+/* Radio button styling */
+radiobutton radio {
+    background-color: #ffffff;
+    border: 2px solid #d0d0d0;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+    color: transparent;
+    transition: all 0.2s ease;
+}
+
+radiobutton:checked radio {
+    background-color: #4a90e2;
+    border-color: #357abd;
+    color: white;
+}
+
+/* Scale (slider) styling */
+scale trough {
+    background-color: #e0e0e0;
+    border-radius: 3px;
+    min-height: 6px;
+}
+
+scale trough highlight {
+    background-color: #4a90e2;
+    border-radius: 3px;
+    min-height: 6px;
+}
+
+scale slider {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+scale slider:hover {
+    border-color: #4a90e2;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Spinner styling */
+spinner {
+    color: #4a90e2;
+}
+
+/* Info bar styling */
+infobar {
+    border: 1px solid #d0d0d0;
     border-radius: 4px;
 }
 
-box {
-    background-color: #f5f5f5;
+infobar.info {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+infobar.warning {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+infobar.error {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+infobar.question {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+/* Dialog styling */
+dialog {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+messagedialog {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* About dialog styling */
+aboutdialog {
+    background-color: #ffffff;
+}
+
+/* Custom application-specific styles */
+.sidebar-button {
+    padding: 12px 16px;
+    margin: 4px;
+    border-radius: 6px;
+    background-color: transparent;
+    color: #333333;
+    font-weight: 500;
+    text-align: left;
+}
+
+.sidebar-button:hover {
+    background-color: #f0f0f0;
+}
+
+.sidebar-button:active {
+    background-color: #e0e0e0;
+}
+
+.sidebar-button.active {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.content-card {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.content-card-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #333333;
+    margin-bottom: 8px;
+}
+
+.content-card-content {
+    color: #666666;
+    font-size: 0.95em;
+}
+
+.transcription-result {
+    background-color: #f8f8f8;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 16px;
+    margin: 8px 0;
+    font-family: monospace;
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
+.recording-indicator {
+    color: #f44336;
+    font-weight: 600;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
 }
