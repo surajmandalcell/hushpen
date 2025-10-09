@@ -64,3 +64,5 @@ paste.md
 fake_audio.txt
 fake_corrupted.txt
 output/
+frontends/linux/target/
+frontends/linux/builddir/

@@ -1,8 +1,8 @@
 use gio::prelude::*;
 use glib::clone;
-use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, Button, TextView, TextBuffer, ScrolledWindow, Box as GtkBox, Orientation};
-use gtk4 as gtk;
+use gtk4::prelude::*;
+use gtk4::{Application, ApplicationWindow, Button, TextView, TextBuffer, ScrolledWindow, Box as GtkBox, Orientation, MessageDialog, MessageType, ButtonsType};
+use gtk4::prelude::{ApplicationExt, ApplicationExtManual};
 use glib::MainContext;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -19,9 +19,8 @@ struct AppState {
     result_buffer: TextBuffer,
 }
 
-#[tokio::main]
-async fn main() {
-    // Create GTK application
+fn main() {
+    // Initialize GTK
     let app = Application::builder()
         .application_id(APP_ID)
         .build();
@@ -34,9 +33,6 @@ async fn main() {
 }
 
 fn build_ui(app: &Application) {
-    // Create HTTP client
-    let http_client = reqwest::Client::new();
-    
     // Create main window
     let window = ApplicationWindow::builder()
         .application(app)
@@ -55,18 +51,30 @@ fn build_ui(app: &Application) {
         .margin_end(10)
         .build();
 
+    // Create welcome label
+    let welcome_label = gtk4::Label::builder()
+        .label("<b>Welcome to ASRPro</b>\n\nThis is the GTK4 frontend for the ASRPro application.")
+        .use_markup(true)
+        .justify(gtk4::Justification::Center)
+        .margin_bottom(20)
+        .build();
+
     // Create transcribe button
     let transcribe_button = Button::builder()
-        .label("Transcribe")
+        .label("Test Backend Connection")
         .margin_top(10)
+        .halign(gtk4::Align::Center)
         .build();
 
     // Create text view for results
     let result_buffer = TextBuffer::new(None);
+    // Set initial welcome message
+    result_buffer.set_text("Welcome to ASRPro!\n\nClick the button above to test the backend connection.\n\nIf the backend is not running, you'll see an error message, but the application will continue to work.");
+    
     let text_view = TextView::builder()
         .buffer(&result_buffer)
         .editable(false)
-        .wrap_mode(gtk::WrapMode::Word)
+        .wrap_mode(gtk4::WrapMode::Word)
         .build();
 
     // Create scrolled window for text view
@@ -76,9 +84,13 @@ fn build_ui(app: &Application) {
         .build();
 
     // Add widgets to main container
+    main_box.append(&welcome_label);
     main_box.append(&transcribe_button);
     main_box.append(&scrolled_window);
 
+    // Create HTTP client
+    let http_client = reqwest::Client::new();
+    
     // Set up application state
     let app_state = Arc::new(Mutex::new(AppState {
         http_client,
@@ -86,28 +98,31 @@ fn build_ui(app: &Application) {
     }));
 
     // Connect button click signal
-    transcribe_button.connect_clicked(clone!(@strong window => move |button| {
-        button.set_sensitive(false);
-        button.set_label("Transcribing...");
+    transcribe_button.connect_clicked(clone!(@strong window, @strong transcribe_button => move |_| {
+        transcribe_button.set_sensitive(false);
+        transcribe_button.set_label("Testing...");
         
         let app_state_clone = Arc::clone(&app_state);
         let window_clone = window.clone();
+        let button_clone = transcribe_button.clone();
         
         // Execute async operation
         let context = MainContext::default();
         context.spawn_local(async move {
             match check_backend_health(&app_state_clone).await {
                 Ok(health_status) => {
-                    update_result_text(&app_state_clone, &format!("Backend health check: {}\n\nReady to transcribe audio files.", health_status)).await;
+                    update_result_text(&app_state_clone, &format!("✓ Backend health check: {}\n\nReady to transcribe audio files.\n\nThe backend is running and accessible.", health_status)).await;
+                    show_info_dialog(&window_clone, "Backend Connected", "Successfully connected to the ASRPro backend!");
                 }
                 Err(error) => {
-                    update_result_text(&app_state_clone, &format!("Error connecting to backend: {}\n\nPlease ensure the backend server is running at {}.", error, BACKEND_URL)).await;
+                    update_result_text(&app_state_clone, &format!("⚠ Backend connection failed: {}\n\nPlease ensure the backend server is running at {}.\n\nYou can still use this application to test the GUI, but transcription features require the backend.", error, BACKEND_URL)).await;
+                    show_info_dialog(&window_clone, "Backend Not Available", "The backend is not running, but the GUI is working correctly!");
                 }
             }
             
             // Reset button
-            button.set_sensitive(true);
-            button.set_label("Transcribe");
+            button_clone.set_sensitive(true);
+            button_clone.set_label("Test Backend Connection");
         });
     }));
 
@@ -116,6 +131,9 @@ fn build_ui(app: &Application) {
     
     // Show window
     window.present();
+    
+    // Show a welcome dialog
+    show_info_dialog(&window, "Welcome to ASRPro", "The GTK4 frontend is running successfully!\n\nThis application provides a graphical interface for the ASRPro speech recognition system.");
 }
 
 async fn check_backend_health(app_state: &Arc<Mutex<AppState>>) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -139,4 +157,36 @@ async fn check_backend_health(app_state: &Arc<Mutex<AppState>>) -> Result<String
 async fn update_result_text(app_state: &Arc<Mutex<AppState>>, text: &str) {
     let state = app_state.lock().await;
     state.result_buffer.set_text(text);
+}
+
+fn show_info_dialog(parent: &ApplicationWindow, title: &str, message: &str) {
+    let dialog = MessageDialog::builder()
+        .transient_for(parent)
+        .modal(true)
+        .title(title)
+        .text(message)
+        .buttons(ButtonsType::Ok)
+        .message_type(MessageType::Info)
+        .build();
+    
+    dialog.connect_response(|dialog, _| {
+        dialog.close();
+    });
+    
+    dialog.show();
+}
+
+fn show_error_dialog(app: &Application, title: &str, message: &str) {
+    let dialog = MessageDialog::builder()
+        .title(title)
+        .text(message)
+        .buttons(ButtonsType::Ok)
+        .message_type(MessageType::Error)
+        .build();
+    
+    dialog.connect_response(|dialog, _| {
+        dialog.close();
+    });
+    
+    dialog.show();
 }
