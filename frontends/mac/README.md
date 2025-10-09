@@ -26,7 +26,7 @@ This SwiftUI frontend provides a native macOS interface for the ASRPro applicati
 
 1. Open the project in Xcode:
    ```bash
-   open frontends/swiftui/ASRPro.xcodeproj
+   open frontends/mac/ASRPro.xcodeproj
    ```
 
 2. Select your desired target or device in the scheme toolbar
@@ -36,7 +36,7 @@ This SwiftUI frontend provides a native macOS interface for the ASRPro applicati
 
 1. Navigate to the SwiftUI frontend directory:
    ```bash
-   cd frontends/swiftui
+   cd frontends/mac
    ```
 
 2. Build the package:
@@ -66,7 +66,7 @@ The frontend is designed to connect to the ASRPro backend API running at `http:/
 ## Project Structure
 
 ```
-frontends/swiftui/
+frontends/mac/
 ├── Package.swift                 # Swift package configuration
 ├── README.md                    # This file
 ├── ASRPro/                      # Main application source

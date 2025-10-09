@@ -48,7 +48,7 @@ source ~/.cargo/env
 
 1. Navigate to the GTK4 frontend directory:
 ```bash
-cd frontends/gtk4
+cd frontends/linux
 ```
 
 2. Create a build directory:

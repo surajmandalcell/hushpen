@@ -86,7 +86,7 @@ Each frontend platform (GTK4, SwiftUI, Windows) should connect to the backend AP
 
 ### Linux (GTK4)
 ```bash
-cd frontends/gtk4
+cd frontends/linux
 meson setup builddir
 meson compile -C builddir
 ./builddir/src/asrpro
@@ -94,7 +94,7 @@ meson compile -C builddir
 
 ### macOS (SwiftUI)
 ```bash
-cd frontends/swiftui
+cd frontends/mac
 open ASRPro.xcodeproj
 # Build and run in Xcode
 ```
@@ -153,8 +153,8 @@ make dev.api
 ```
 asrpro/
 ├── frontends/              # Native frontend applications
-│   ├── gtk4/              # Linux GTK4 frontend
-│   ├── swiftui/           # macOS SwiftUI frontend
+│   ├── linux/             # Linux GTK4 frontend
+│   ├── mac/               # macOS SwiftUI frontend
 │   └── windows/           # Windows UI frontend
 ├── sidecar/               # Python backend
 │   ├── api/              # FastAPI server
