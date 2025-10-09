@@ -59,8 +59,11 @@ cd asrpro
 ### 2. Start the Backend Sidecar
 
 ```bash
-# Using the provided startup script (recommended)
-./start_backend.sh
+# Using the Makefile (recommended)
+make run.api
+
+# Or for development with hot reload:
+make dev.api
 
 # Or manually:
 cd sidecar
@@ -129,7 +132,11 @@ The backend can be configured by editing `config.json` in the root directory:
 ### Start Backend Only
 
 ```bash
-./start_backend.sh
+# Production mode
+make run.api
+
+# Development mode with hot reload
+make dev.api
 ```
 
 ### Backend API Endpoints
@@ -155,8 +162,10 @@ asrpro/
 │   ├── docker/           # Docker integration
 │   ├── utils/            # Utilities
 │   └── tests/            # Backend tests
+├── scripts/              # Utility scripts
 ├── config.json           # Backend configuration file
-├── start_backend.sh      # Backend startup script
+├── Makefile              # Build and run targets
+├── docker-compose.yml    # Docker service configuration
 └── README.md
 ```
 
@@ -165,6 +174,10 @@ asrpro/
 ### Backend Tests
 
 ```bash
+# Using the Makefile (recommended)
+make test.backend
+
+# Or manually:
 cd sidecar
 python -m pytest
 python -m pytest -v                    # Verbose output
@@ -183,7 +196,7 @@ Get-ChildItem -Path . -Name "__pycache__" -Recurse -Directory | Remove-Item -Rec
 
 ### Manual Testing
 
-1. Start the backend server: `./start_backend.sh`
+1. Start the backend server: `make run.api`
 2. Verify health check: `curl http://localhost:8000/health`
 3. Test API endpoints: `curl http://localhost:8000/v1/models`
 4. Connect your native frontend application
@@ -238,7 +251,7 @@ Each native frontend should be configured to connect to:
 - Check Docker logs for container issues
 
 **Connection refused from frontend**
-- Ensure backend is running: `./start_backend.sh`
+- Ensure backend is running: `make run.api`
 - Check firewall settings
 - Verify host configuration in config.json
 
@@ -264,15 +277,15 @@ open http://localhost:8000/docs
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature-name`
-3. Clean Python cache: `python scripts/clean_python_cache.py`
-4. Run tests: `npm run test && cd sidecar && python -m pytest`
+3. Clean Python cache: `make clean`
+4. Run tests: `make test.backend`
 5. Commit changes: `git commit -m "Description"`
 6. Push and create pull request
 
 ### Repository Cleanliness
 
 - Python cache files (`__pycache__/`, `*.pyc`) are automatically ignored
-- Run cleanup script before committing: `python scripts/clean_python_cache.py`
+- Run cleanup script before committing: `make clean`
 - Virtual environments (`.venv/`, `venv/`) are ignored
 - Node modules and build artifacts are ignored
 

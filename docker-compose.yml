@@ -4,7 +4,7 @@ services:
   whisper-gpu:
     build:
       context: .
-      dockerfile: docker/whisper-gpu/Dockerfile
+      dockerfile: sidecar/docker/whisper-gpu/Dockerfile
     image: asrpro/whisper-gpu:test
     container_name: whisper-gpu-test
     ports:
@@ -40,7 +40,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./docker/test-ui:/usr/share/nginx/html:ro
+      - ./sidecar/docker/test-ui:/usr/share/nginx/html:ro
     depends_on:
       whisper-gpu:
         condition: service_healthy
