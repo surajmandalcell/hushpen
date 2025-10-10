@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use glib::{self, ControlFlow};
+use gtk4::pango;
 use gtk4::prelude::*;
 use gtk4::Settings;
 use gtk4::{
@@ -24,7 +25,51 @@ use crate::backend::{
 };
 use crate::state::{FileRecord, FileStatus};
 
+const GENERAL_PAGE_ID: &str = "general";
+const MODELS_PAGE_ID: &str = "models";
 const TRANSCRIBE_PAGE_ID: &str = "transcribe";
+const HISTORY_PAGE_ID: &str = "history";
+const KEYBOARD_PAGE_ID: &str = "keyboard";
+const ABOUT_PAGE_ID: &str = "about";
+
+struct NavItem {
+    id: &'static str,
+    label: &'static str,
+    icon: Option<&'static str>,
+}
+
+const NAV_ITEMS: &[NavItem] = &[
+    NavItem {
+        id: GENERAL_PAGE_ID,
+        label: "General Settings",
+        icon: Some("preferences-system-symbolic"),
+    },
+    NavItem {
+        id: MODELS_PAGE_ID,
+        label: "Dictation Models",
+        icon: Some("system-search-symbolic"),
+    },
+    NavItem {
+        id: TRANSCRIBE_PAGE_ID,
+        label: "Transcribe File",
+        icon: Some("media-record-symbolic"),
+    },
+    NavItem {
+        id: HISTORY_PAGE_ID,
+        label: "History",
+        icon: Some("document-open-recent-symbolic"),
+    },
+    NavItem {
+        id: KEYBOARD_PAGE_ID,
+        label: "Keyboard Controls",
+        icon: Some("input-keyboard-symbolic"),
+    },
+    NavItem {
+        id: ABOUT_PAGE_ID,
+        label: "About",
+        icon: Some("dialog-information-symbolic"),
+    },
+];
 
 const APP_CSS: &str = r#"
 window.app-window {
@@ -63,8 +108,20 @@ window.app-window {
     transition: background 120ms ease;
 }
 
+.sidebar-nav row box {
+    padding: 4px 12px;
+    border-radius: 12px;
+    background: transparent;
+    color: rgba(245,247,250,0.72);
+}
+
 .sidebar-nav row:selected,
 .sidebar-nav row:focus {
+    background: rgba(80,147,255,0.18);
+}
+
+.sidebar-nav row:selected box,
+.sidebar-nav row:focus box {
     background: rgba(80,147,255,0.18);
 }
 
@@ -91,6 +148,15 @@ window.app-window {
     font-size: 12px;
     color: rgba(245,247,250,0.6);
     margin-top: 16px;
+}
+
+.sidebar-footer {
+    padding-top: 18px;
+}
+
+.sidebar-version {
+    font-size: 11px;
+    color: rgba(245,247,250,0.3);
 }
 
 .content {
@@ -186,6 +252,22 @@ window.app-window {
     font-size: 13px;
     color: rgba(245,247,250,0.72);
 }
+
+.placeholder-page {
+    padding: 48px 60px;
+}
+
+.placeholder-title {
+    font-size: 26px;
+    font-weight: 600;
+    color: #f5f7fa;
+}
+
+.placeholder-subtitle {
+    font-size: 14px;
+    color: rgba(245,247,250,0.62);
+    max-width: 420px;
+}
 "#;
 
 pub enum UiEvent {
@@ -275,7 +357,7 @@ impl AppUi {
         sidebar.set_width_request(260);
 
         let brand_box = GtkBox::new(Orientation::Vertical, 6);
-        let brand_label = Label::new(Some("ASR Pro"));
+        let brand_label = Label::new(Some("ASRPro"));
         brand_label.add_css_class("sidebar-title");
         brand_label.set_halign(Align::Start);
         let subtitle_label = Label::new(Some("Speech Studio"));
@@ -291,21 +373,36 @@ impl AppUi {
         nav_list.set_vexpand(true);
         nav_list.add_css_class("sidebar-nav");
 
-        let transcribe_nav =
-            Self::create_nav_row("Transcribe", Some("audio-input-microphone-symbolic"));
-        transcribe_nav.set_widget_name("nav-transcribe");
-        transcribe_nav.set_selectable(true);
-        transcribe_nav.set_activatable(true);
-        nav_list.append(&transcribe_nav);
-        nav_list.select_row(Some(&transcribe_nav));
+        for item in NAV_ITEMS {
+            let row = Self::create_nav_row(item.id, item.label, item.icon);
+            nav_list.append(&row);
+        }
+        if let Some(index) = NAV_ITEMS
+            .iter()
+            .position(|item| item.id == TRANSCRIBE_PAGE_ID)
+        {
+            if let Some(row) = nav_list.row_at_index(index as i32) {
+                nav_list.select_row(Some(&row));
+            }
+        }
 
         let sidebar_status_label = Label::new(Some("Backend: checking…"));
         sidebar_status_label.add_css_class("sidebar-status");
         sidebar_status_label.set_halign(Align::Start);
 
+        let sidebar_footer = GtkBox::new(Orientation::Vertical, 4);
+        sidebar_footer.set_valign(Align::End);
+        sidebar_footer.set_halign(Align::Start);
+        sidebar_footer.add_css_class("sidebar-footer");
+        let version_label = Label::new(Some(&format!("v{} (dev)", env!("CARGO_PKG_VERSION"))));
+        version_label.add_css_class("sidebar-version");
+        version_label.set_halign(Align::Start);
+        sidebar_footer.append(&sidebar_status_label);
+        sidebar_footer.append(&version_label);
+
         sidebar.append(&brand_box);
         sidebar.append(&nav_list);
-        sidebar.append(&sidebar_status_label);
+        sidebar.append(&sidebar_footer);
 
         let content_stack = Stack::new();
         content_stack.add_css_class("content");
@@ -316,6 +413,36 @@ impl AppUi {
         let transcribe_page = Self::build_transcribe_page();
         content_stack.add_named(&transcribe_page.container, Some(TRANSCRIBE_PAGE_ID));
         content_stack.set_visible_child_name(TRANSCRIBE_PAGE_ID);
+
+        let general_page = Self::build_placeholder_page(
+            "General Settings",
+            "Adjust application-wide preferences, theme choices, and connectivity defaults.",
+        );
+        content_stack.add_named(&general_page, Some(GENERAL_PAGE_ID));
+
+        let models_page = Self::build_placeholder_page(
+            "Dictation Models",
+            "Browse cloud and on-device models, compare accuracy, and set your preferred engine.",
+        );
+        content_stack.add_named(&models_page, Some(MODELS_PAGE_ID));
+
+        let history_page = Self::build_placeholder_page(
+            "History",
+            "Review previous transcription runs, reopen transcripts, and manage exports.",
+        );
+        content_stack.add_named(&history_page, Some(HISTORY_PAGE_ID));
+
+        let keyboard_page = Self::build_placeholder_page(
+            "Keyboard Controls",
+            "Discover shortcuts for managing recordings, launching transcriptions, and navigating.",
+        );
+        content_stack.add_named(&keyboard_page, Some(KEYBOARD_PAGE_ID));
+
+        let about_page = Self::build_placeholder_page(
+            "About ASRPro",
+            "ASRPro provides professional-grade speech-to-text with seamless cloud integration.",
+        );
+        content_stack.add_named(&about_page, Some(ABOUT_PAGE_ID));
 
         root.append(&sidebar);
         root.append(&content_stack);
@@ -483,6 +610,27 @@ impl AppUi {
         }
     }
 
+    fn build_placeholder_page(title: &str, description: &str) -> GtkBox {
+        let container = GtkBox::new(Orientation::Vertical, 18);
+        container.add_css_class("placeholder-page");
+        container.set_valign(Align::Start);
+        container.set_halign(Align::Start);
+
+        let title_label = Label::new(Some(title));
+        title_label.add_css_class("placeholder-title");
+        title_label.set_halign(Align::Start);
+
+        let description_label = Label::new(Some(description));
+        description_label.add_css_class("placeholder-subtitle");
+        description_label.set_wrap(true);
+        description_label.set_wrap_mode(pango::WrapMode::WordChar);
+        description_label.set_halign(Align::Start);
+
+        container.append(&title_label);
+        container.append(&description_label);
+        container
+    }
+
     fn apply_theme() -> Result<()> {
         if let Some(settings) = Settings::default() {
             settings.set_gtk_application_prefer_dark_theme(true);
@@ -502,8 +650,9 @@ impl AppUi {
         Ok(())
     }
 
-    fn create_nav_row(label: &str, icon_name: Option<&str>) -> ListBoxRow {
+    fn create_nav_row(id: &str, label: &str, icon_name: Option<&str>) -> ListBoxRow {
         let row = ListBoxRow::new();
+        row.set_widget_name(id);
 
         let container = GtkBox::new(Orientation::Horizontal, 12);
         container.set_margin_start(18);
@@ -529,18 +678,46 @@ impl AppUi {
     }
 
     fn on_nav_selected(&self, row: Option<&ListBoxRow>) {
-        match row {
-            Some(row) => {
-                let name = row.widget_name();
-                if name.as_str() == "nav-transcribe" || row.index() == 0 {
-                    self.content_stack
-                        .set_visible_child_name(TRANSCRIBE_PAGE_ID);
-                }
+        let Some(row) = row else {
+            if let Some(first) = self.nav_list.row_at_index(0) {
+                self.nav_list.select_row(Some(&first));
             }
-            None => {
-                if let Some(first) = self.nav_list.row_at_index(0) {
-                    self.nav_list.select_row(Some(&first));
-                }
+            return;
+        };
+
+        let page_id = row.widget_name();
+        match page_id.as_str() {
+            GENERAL_PAGE_ID => {
+                self.content_stack.set_visible_child_name(GENERAL_PAGE_ID);
+                self.sidebar_status_label
+                    .set_text("General settings coming soon.");
+            }
+            MODELS_PAGE_ID => {
+                self.content_stack.set_visible_child_name(MODELS_PAGE_ID);
+                self.sidebar_status_label
+                    .set_text("Browse dictation models (coming soon).");
+            }
+            TRANSCRIBE_PAGE_ID => {
+                self.content_stack
+                    .set_visible_child_name(TRANSCRIBE_PAGE_ID);
+            }
+            HISTORY_PAGE_ID => {
+                self.content_stack.set_visible_child_name(HISTORY_PAGE_ID);
+                self.sidebar_status_label
+                    .set_text("View transcripts history (coming soon).");
+            }
+            KEYBOARD_PAGE_ID => {
+                self.content_stack.set_visible_child_name(KEYBOARD_PAGE_ID);
+                self.sidebar_status_label
+                    .set_text("Keyboard shortcuts (coming soon).");
+            }
+            ABOUT_PAGE_ID => {
+                self.content_stack.set_visible_child_name(ABOUT_PAGE_ID);
+                self.sidebar_status_label.set_text("About ASRPro.");
+            }
+            _ => {
+                self.content_stack
+                    .set_visible_child_name(TRANSCRIBE_PAGE_ID);
             }
         }
     }
