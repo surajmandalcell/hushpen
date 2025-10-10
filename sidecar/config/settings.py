@@ -22,13 +22,8 @@ class Settings:
         """Get platform-specific configuration path."""
         system = os.name
         
-        if system == "posix":  # macOS and Linux
-            if os.path.exists("/Library/Application Support"):
-                # macOS
-                return Path.home() / "Library" / "Application Support" / "asrpro" / "config.json"
-            else:
-                # Linux
-                return Path.home() / ".config" / "asrpro" / "config.json"
+        if system == "posix":  # Linux
+            return Path.home() / ".config" / "asrpro" / "config.json"
         elif system == "nt":  # Windows
             return Path(os.environ.get("APPDATA", "")) / "asrpro" / "config.json"
         else:

@@ -1,4 +1,4 @@
-.PHONY: help test.backend run.api dev.api clean docker.build docker.up docker.down build.linux build.mac build.win dev.linux dev.mac dev.win run run.linux run.mac run.win
+.PHONY: help test.backend run.api dev.api clean docker.build docker.up docker.down build.linux build.win dev.linux dev.win run run.linux run.win
 
 FRONTENDS_MAKE := $(MAKE) -C frontends
 
@@ -11,18 +11,15 @@ help:
 	@echo ""
 	@echo "Build targets:"
 	@echo "  build.linux   - Build the Linux GTK4 application"
-	@echo "  build.mac     - Build the macOS SwiftUI application"
 	@echo "  build.win     - Build the Windows WPF application"
 	@echo ""
 	@echo "Development targets:"
 	@echo "  dev.linux     - Set up and run Linux GTK4 frontend in development mode"
-	@echo "  dev.mac       - Set up and run macOS SwiftUI frontend in development mode"
 	@echo "  dev.win       - Set up and run Windows WPF frontend in development mode"
 	@echo ""
 	@echo "Run targets:"
 	@echo "  run           - Alias for run.linux"
 	@echo "  run.linux     - Run the compiled Linux GTK4 application"
-	@echo "  run.mac       - Run the compiled macOS SwiftUI application"
 	@echo "  run.win       - Run the compiled Windows WPF application"
 	@echo ""
 	@echo "Docker targets:"
@@ -84,17 +81,11 @@ docker.down:
 build.linux:
 	$(FRONTENDS_MAKE) build.linux
 
-build.mac:
-	$(FRONTENDS_MAKE) build.mac
-
 build.win:
 	$(FRONTENDS_MAKE) build.win
 
 dev.linux:
 	$(FRONTENDS_MAKE) dev.linux
-
-dev.mac:
-	$(FRONTENDS_MAKE) dev.mac
 
 dev.win:
 	$(FRONTENDS_MAKE) dev.win
@@ -104,9 +95,6 @@ run:
 
 run.linux:
 	$(FRONTENDS_MAKE) run.linux
-
-run.mac:
-	$(FRONTENDS_MAKE) run.mac
 
 run.win:
 	$(FRONTENDS_MAKE) run.win

@@ -957,7 +957,7 @@ window.app-window {
     border-radius: 12px;
     overflow: hidden;
     color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
 }
 
 .window, .window * {
