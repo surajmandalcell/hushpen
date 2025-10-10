@@ -1043,6 +1043,89 @@ impl AppState {
             }
         }
     }
+    
+    /// Open a file from a path
+    pub async fn open_file(&self, file_path: &str) -> Result<(), AppError> {
+        let path = std::path::PathBuf::from(file_path);
+        
+        // Check if file exists
+        if !path.exists() {
+            return Err(AppError::file(format!("File not found: {}", file_path)));
+        }
+        
+        // Check if file is a supported audio format
+        if let Some(extension) = path.extension() {
+            if let Some(ext_str) = extension.to_str() {
+                if !crate::utils::platform::is_extension_supported(ext_str) {
+                    return Err(AppError::file(format!("Unsupported file format: {}", ext_str)));
+                }
+            }
+        } else {
+            return Err(AppError::file("Cannot determine file format".to_string()));
+        }
+        
+        // Add the file
+        let file_id = self.add_file_from_path(path).await?;
+        
+        // Set as selected file
+        {
+            let mut files = self.files.write().await;
+            files.selected_file_id = Some(file_id);
+        }
+        
+        // Update status
+        self.set_status_message(format!("Opened file: {}", file_path)).await;
+        
+        Ok(())
+    }
+    
+    /// Open a project file
+    pub async fn open_project(&self, project_path: &str) -> Result<(), AppError> {
+        let path = std::path::PathBuf::from(project_path);
+        
+        // Check if file exists
+        if !path.exists() {
+            return Err(AppError::file(format!("Project file not found: {}", project_path)));
+        }
+        
+        // For now, we'll just set a status message
+        // In a real implementation, this would load the project file
+        self.set_status_message(format!("Opened project: {}", project_path)).await;
+        
+        Ok(())
+    }
+    
+    /// Start a new transcription
+    pub async fn start_new_transcription(&self) -> Result<(), AppError> {
+        // Clear current selection
+        {
+            let mut files = self.files.write().await;
+            files.selected_file_id = None;
+        }
+        
+        // Update UI to show file selector
+        self.update_ui_state(|ui| {
+            ui.current_view = "file_selector".to_string();
+        }).await;
+        
+        // Update status
+        self.set_status_message("Ready for new transcription".to_string()).await;
+        
+        Ok(())
+    }
+    
+    /// Show file selector
+    pub async fn show_file_selector(&self) -> Result<(), AppError> {
+        // Update UI to show file selector
+        self.update_ui_state(|ui| {
+            ui.current_view = "file_selector".to_string();
+        }).await;
+        
+        // Update status
+        self.set_status_message("Select a file to transcribe".to_string()).await;
+        
+        Ok(())
+    }
 }
 
 impl Default for AppState {

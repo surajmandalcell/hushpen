@@ -258,6 +258,14 @@ fn build_ui(app: &Application) {
             .as_ref()
     };
     
+    // Get command line arguments
+    let args: AppArgs = unsafe {
+        app.data::<AppArgs>("app_args")
+            .expect("App args not set")
+            .as_ref()
+            .clone()
+    };
+    
     // Create the main window
     let window = ApplicationWindow::builder()
         .application(app)
@@ -282,8 +290,105 @@ fn build_ui(app: &Application) {
         }
     };
     
+    // Handle command line arguments
+    if !args.files.is_empty() {
+        // Open files passed as arguments
+        let app_state_clone = app_state.clone();
+        let files = args.files.clone();
+        runtime.spawn(async move {
+            for file_path in files {
+                if let Err(e) = handle_file_open(&app_state_clone, &file_path).await {
+                    eprintln!("Failed to open file {}: {}", file_path, e);
+                    // Show error dialog on main thread
+                    glib::idle_add_once(move || {
+                        show_error_dialog(None, "File Error", &format!("Failed to open file {}: {}", file_path, e));
+                    });
+                }
+            }
+        });
+    }
+    
+    if args.new_transcription {
+        // Start with new transcription
+        let app_state_clone = app_state.clone();
+        runtime.spawn(async move {
+            if let Err(e) = app_state_clone.start_new_transcription().await {
+                eprintln!("Failed to start new transcription: {}", e);
+            }
+        });
+    }
+    
+    if args.file_selector {
+        // Open file selector
+        let app_state_clone = app_state.clone();
+        runtime.spawn(async move {
+            if let Err(e) = app_state_clone.show_file_selector().await {
+                eprintln!("Failed to show file selector: {}", e);
+            }
+        });
+    }
+    
     // Show the window
     main_window.show();
+}
+
+/// Handle opening a file from command line or external source
+async fn handle_file_open(app_state: &AppState, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Check if it's a protocol URL
+    if file_path.starts_with("asrpro://") {
+        handle_protocol_url(app_state, file_path).await
+    } else {
+        // Handle as regular file
+        app_state.open_file(file_path).await
+    }
+}
+
+/// Handle ASRPro protocol URLs
+async fn handle_protocol_url(app_state: &AppState, url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Parse the URL: asrpro://action?param=value
+    let url_parts: Vec<&str> = url.splitn(2, "://").collect();
+    if url_parts.len() != 2 {
+        return Err("Invalid protocol URL format".into());
+    }
+    
+    let protocol_part = url_parts[1];
+    let parts: Vec<&str> = protocol_part.splitn(2, '?').collect();
+    let action = parts[0];
+    
+    match action {
+        "transcribe" => {
+            if parts.len() > 1 {
+                // Parse query parameters for file path
+                let query = parts[1];
+                for param in query.split('&') {
+                    let kv: Vec<&str> = param.splitn(2, '=').collect();
+                    if kv.len() == 2 && kv[0] == "file" {
+                        let file_path = urlencoding::decode(kv[1])
+                            .map_err(|_| "Failed to decode file path")?;
+                        return app_state.open_file(&file_path).await;
+                    }
+                }
+            }
+            // No file specified, start new transcription
+            app_state.start_new_transcription().await
+        }
+        "open" => {
+            if parts.len() > 1 {
+                // Parse query parameters for project file
+                let query = parts[1];
+                for param in query.split('&') {
+                    let kv: Vec<&str> = param.splitn(2, '=').collect();
+                    if kv.len() == 2 && kv[0] == "project" {
+                        let project_path = urlencoding::decode(kv[1])
+                            .map_err(|_| "Failed to decode project path")?;
+                        return app_state.open_project(&project_path).await;
+                    }
+                }
+            }
+            Err("No project specified in open URL".into())
+        }
+        _ => Err(format!("Unknown protocol action: {}", action).into())
+    }
 }
 
 /// Handle application shutdown

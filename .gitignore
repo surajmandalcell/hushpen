@@ -66,3 +66,4 @@ fake_corrupted.txt
 output/
 frontends/linux/target/
 frontends/linux/builddir/
+frontends/linux/PLATFORM_INTEGRATION.md

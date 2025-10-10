@@ -45,3 +45,47 @@ chrono = { version = "0.4", features = ["serde"] }
 # WebSocket support
 tokio-tungstenite = "0.20"
 futures-util = "0.3"
+
+# URL encoding for protocol handlers
+urlencoding = "2.1"
+
+[dev-dependencies]
+# Testing framework
+tokio-test = "0.4"
+mockall = "0.12"
+wiremock = "0.6"
+tempfile = "3.8"
+serial_test = "3.0"
+pretty_assertions = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+
+# GTK testing (requires X11 display for UI tests)
+gtk4-test = "0.1"
+
+# Async testing utilities
+futures = "0.3"
+async-trait = "0.1"
+
+# Test data generation
+fake = { version = "2.9", features = ["derive", "chrono", "uuid"] }
+rand = "0.8"
+
+# Coverage and profiling
+tarpaulin = "0.27"
+
+# HTTP mocking
+httpmock = "0.7"
+
+# WebSocket testing for async integration
+tokio-tungstenite = { version = "0.20", features = ["connect"] }
+
+# Test utilities
+rstest = "0.18"
+
+[[bench]]
+name = "benches"
+harness = false
+
+[profile.release]
+debug = true
