@@ -1,17 +1,18 @@
 use gtk4::cairo;
 use gtk4::gdk;
+use gtk4::pango;
 use gtk4::prelude::*;
 use gtk4::{
     style_context_add_provider_for_display, Align, Application, ApplicationWindow, Box as GtkBox,
-    Button, CssProvider, DrawingArea, Label, Orientation, Overlay, PolicyType, ScrolledWindow,
-    STYLE_PROVIDER_PRIORITY_APPLICATION,
+    Button, CssProvider, DrawingArea, GestureClick, Label, Orientation, Overlay, PolicyType,
+    ScrolledWindow, STYLE_PROVIDER_PRIORITY_APPLICATION,
 };
-use gtk4::pango;
 use std::f64::consts::PI;
 
-const OUTER_MARGIN: i32 = 20;
+const OUTER_MARGIN: i32 = 0;
 const VIEW_WIDTH: i32 = 1300;
 const VIEW_HEIGHT: i32 = 850;
+const FALLBACK_COMMIT: &str = "56d00bf";
 
 pub fn build_ui(app: &Application) {
     load_css();
@@ -25,23 +26,21 @@ pub fn build_ui(app: &Application) {
         .build();
     window.add_css_class("app-window");
 
-    let wrapper = GtkBox::new(Orientation::Vertical, 0);
-    wrapper.set_margin_top(OUTER_MARGIN);
-    wrapper.set_margin_bottom(OUTER_MARGIN);
-    wrapper.set_margin_start(OUTER_MARGIN);
-    wrapper.set_margin_end(OUTER_MARGIN);
-    wrapper.set_halign(Align::Center);
-    wrapper.set_valign(Align::Center);
-
     let root = GtkBox::new(Orientation::Vertical, 0);
     root.add_css_class("window");
     root.set_width_request(VIEW_WIDTH);
     root.set_height_request(VIEW_HEIGHT);
 
-    wrapper.append(&root);
-    window.set_child(Some(&wrapper));
+    if OUTER_MARGIN > 0 {
+        root.set_margin_top(OUTER_MARGIN);
+        root.set_margin_bottom(OUTER_MARGIN);
+        root.set_margin_start(OUTER_MARGIN);
+        root.set_margin_end(OUTER_MARGIN);
+    }
 
-    let header = build_window_header();
+    window.set_child(Some(&root));
+
+    let header = build_window_header(&window);
     root.append(&header);
 
     let body = GtkBox::new(Orientation::Horizontal, 0);
@@ -71,7 +70,7 @@ fn load_css() {
     }
 }
 
-fn build_window_header() -> GtkBox {
+fn build_window_header(window: &ApplicationWindow) -> GtkBox {
     let header = GtkBox::new(Orientation::Horizontal, 0);
     header.add_css_class("window-header");
 
@@ -80,18 +79,14 @@ fn build_window_header() -> GtkBox {
     left.set_width_request(260);
     left.set_hexpand(false);
     left.set_valign(Align::Center);
-    left.set_margin_start(16);
 
     let buttons = GtkBox::new(Orientation::Horizontal, 8);
     buttons.add_css_class("window-buttons");
+    buttons.set_margin_start(16);
 
-    for class in ["close", "minimize", "maximize"] {
-        let circle = GtkBox::new(Orientation::Horizontal, 0);
-        circle.add_css_class("window-btn");
-        circle.add_css_class(class);
-        circle.set_size_request(12, 12);
-        buttons.append(&circle);
-    }
+    buttons.append(&make_window_button(window, WindowButton::Close));
+    buttons.append(&make_window_button(window, WindowButton::Minimize));
+    buttons.append(&make_window_button(window, WindowButton::Maximize));
 
     left.append(&buttons);
 
@@ -109,18 +104,78 @@ fn build_sidebar() -> GtkBox {
     let sidebar = GtkBox::new(Orientation::Vertical, 6);
     sidebar.add_css_class("sidebar");
     sidebar.set_width_request(260);
+    sidebar.set_vexpand(true);
 
     for item in NAV_ITEMS {
         sidebar.append(&build_nav_item(item));
     }
 
-    let version = Label::new(Some("v2.11.5 (192)"));
+    let spacer = GtkBox::new(Orientation::Vertical, 0);
+    spacer.set_vexpand(true);
+    sidebar.append(&spacer);
+
+    let version_text = option_env!("GIT_COMMIT_HASH").unwrap_or(FALLBACK_COMMIT);
+    let version = Label::new(None);
     version.add_css_class("version");
-    version.set_margin_top(16);
+    version.set_margin_top(8);
+    version.set_margin_bottom(8);
     version.set_halign(Align::Start);
+    version.set_text(&format!("#{version_text}"));
     sidebar.append(&version);
 
     sidebar
+}
+
+fn make_window_button(window: &ApplicationWindow, kind: WindowButton) -> GtkBox {
+    let button = GtkBox::new(Orientation::Horizontal, 0);
+    button.add_css_class("window-btn");
+    button.add_css_class(kind.css_class());
+    button.set_size_request(12, 12);
+    button.set_halign(Align::Center);
+    button.set_valign(Align::Center);
+
+    match kind {
+        WindowButton::Close => {
+            button.set_cursor_from_name(Some("pointer"));
+            let win = window.clone();
+            let gesture = GestureClick::new();
+            gesture.connect_released(move |_, _, _, _| {
+                win.close();
+            });
+            button.add_controller(gesture);
+        }
+        WindowButton::Minimize => {
+            button.set_cursor_from_name(Some("pointer"));
+            let win = window.clone();
+            let gesture = GestureClick::new();
+            gesture.connect_released(move |_, _, _, _| {
+                win.minimize();
+            });
+            button.add_controller(gesture);
+        }
+        WindowButton::Maximize => {
+            button.add_css_class("disabled");
+            button.set_sensitive(false);
+        }
+    }
+
+    button
+}
+
+enum WindowButton {
+    Close,
+    Minimize,
+    Maximize,
+}
+
+impl WindowButton {
+    fn css_class(&self) -> &'static str {
+        match self {
+            WindowButton::Close => "close",
+            WindowButton::Minimize => "minimize",
+            WindowButton::Maximize => "maximize",
+        }
+    }
 }
 
 fn build_nav_item(spec: &NavItemSpec) -> GtkBox {
@@ -146,11 +201,13 @@ fn build_nav_item(spec: &NavItemSpec) -> GtkBox {
 fn build_filter_button(spec: &FilterSpec) -> Button {
     let button = Button::new();
     button.add_css_class("filter-button");
+    button.add_css_class("flat");
     if spec.active {
         button.add_css_class("active");
     }
     button.set_can_focus(false);
     button.set_focus_on_click(false);
+    button.set_has_frame(false);
 
     let content = GtkBox::new(Orientation::Horizontal, 6);
     content.set_valign(Align::Center);
@@ -174,7 +231,7 @@ fn build_dictation_models_page() -> GtkBox {
     container.set_vexpand(true);
     container.set_margin_start(48);
     container.set_margin_end(48);
-    container.set_margin_top(32);
+    container.set_margin_top(16);
     container.set_margin_bottom(32);
 
     let content_header = GtkBox::new(Orientation::Vertical, 0);
@@ -335,6 +392,7 @@ fn build_model_icon(text: &str, variant: IconVariant) -> GtkBox {
 fn build_badge(kind: BadgeKind) -> GtkBox {
     let badge = GtkBox::new(Orientation::Horizontal, 6);
     badge.add_css_class("badge");
+    badge.set_valign(Align::Center);
     match kind {
         BadgeKind::Fastest => badge.add_css_class("badge-fastest"),
         BadgeKind::Accurate => badge.add_css_class("badge-accurate"),
@@ -344,13 +402,15 @@ fn build_badge(kind: BadgeKind) -> GtkBox {
     if kind == BadgeKind::Using {
         let dot = GtkBox::new(Orientation::Horizontal, 0);
         dot.add_css_class("badge-dot");
-        dot.set_size_request(8, 8);
+        dot.set_valign(Align::Center);
+        dot.set_halign(Align::Center);
         badge.append(&dot);
     }
 
     let label = Label::new(Some(kind.label()));
     label.add_css_class("badge-label");
     label.set_xalign(0.0);
+    label.set_valign(Align::Center);
     badge.append(&label);
 
     badge
@@ -359,6 +419,7 @@ fn build_badge(kind: BadgeKind) -> GtkBox {
 fn build_stat(spec: &StatSpec) -> GtkBox {
     let stat = GtkBox::new(Orientation::Horizontal, 6);
     stat.add_css_class("stat");
+    stat.set_valign(Align::Center);
 
     let icon = create_icon(spec.icon, 14);
     stat.append(&icon);
@@ -366,17 +427,21 @@ fn build_stat(spec: &StatSpec) -> GtkBox {
     let label = Label::new(Some(spec.label));
     label.add_css_class("stat-label");
     label.set_xalign(0.0);
+    label.set_valign(Align::Center);
     stat.append(&label);
 
     if let Some(dots) = spec.dots {
         let dots_box = GtkBox::new(Orientation::Horizontal, 3);
         dots_box.add_css_class("dots");
+        dots_box.set_valign(Align::Center);
         for idx in 0..5 {
             let dot = GtkBox::new(Orientation::Horizontal, 0);
             dot.add_css_class("dot");
             if idx < dots.filled as usize {
                 dot.add_css_class("filled");
             }
+            dot.set_valign(Align::Center);
+            dot.set_halign(Align::Center);
             dot.set_size_request(5, 5);
             dots_box.append(&dot);
         }
@@ -434,14 +499,8 @@ fn draw_icon(ctx: &cairo::Context, kind: IconKind) {
                 let angle = i as f64 * PI / 3.0 + PI / 6.0;
                 let inner = 8.5;
                 let outer = 11.0;
-                ctx.move_to(
-                    12.0 + inner * angle.cos(),
-                    12.0 + inner * angle.sin(),
-                );
-                ctx.line_to(
-                    12.0 + outer * angle.cos(),
-                    12.0 + outer * angle.sin(),
-                );
+                ctx.move_to(12.0 + inner * angle.cos(), 12.0 + inner * angle.sin());
+                ctx.line_to(12.0 + outer * angle.cos(), 12.0 + outer * angle.sin());
             }
             let _ = ctx.stroke();
 
@@ -890,31 +949,46 @@ const MODEL_CARDS: &[ModelCardSpec] = &[
 
 const APP_CSS: &str = r#"
 window.app-window {
-    background-color: #555555;
+    background: transparent;
 }
 
 .window {
     background-color: #1e1e1e;
     border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
     color: #e0e0e0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.window, .window * {
+    -gtk-hint-font-metrics: 0;
+    text-rendering: optimizeLegibility;
+}
+
 .window-header {
     min-height: 44px;
+    background-image: linear-gradient(
+        90deg,
+        #2a2a2a 0px,
+        #2a2a2a 260px,
+        #1e1e1e 260px,
+        #1e1e1e 100%
+    );
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
 }
 
 .window-header-left {
-    background-color: #2a2a2a;
-    padding: 0 16px;
+    background-color: transparent;
     display: inline-flex;
     align-items: center;
     border-top-left-radius: 12px;
+    min-width: 260px;
+    padding: 0 16px;
 }
 
 .window-header-right {
-    background-color: #1e1e1e;
+    background-color: transparent;
     border-top-right-radius: 12px;
 }
 
@@ -935,8 +1009,9 @@ window.app-window {
     background-color: #ffbd2e;
 }
 
-.window-btn.maximize {
-    background-color: #28ca42;
+.window-btn.maximize,
+.window-btn.maximize.disabled {
+    background-color: #3c3c3c;
 }
 
 .window-body {
@@ -946,8 +1021,8 @@ window.app-window {
 
 .sidebar {
     background-color: #2a2a2a;
-    padding: 16px;
-    padding-top: 8px;
+    padding: 20px;
+    padding-top: 18px;
     border-bottom-left-radius: 12px;
 }
 
@@ -979,7 +1054,8 @@ window.app-window {
 
 .version {
     font-size: 11px;
-    color: #555555;
+    color: #6a6a6a;
+    letter-spacing: 0.35px;
 }
 
 .main-content {
@@ -987,6 +1063,8 @@ window.app-window {
     border-bottom-right-radius: 12px;
     display: flex;
     flex-direction: column;
+    padding-top: 0;
+    padding-bottom: 16px;
 }
 
 .page-title {
@@ -1002,18 +1080,22 @@ window.app-window {
 }
 
 .filters {
-    margin-top: 24px;
+    margin-top: 20px;
     gap: 10px;
+    padding-bottom: 4px;
 }
 
 .filter-button {
     border-radius: 6px;
     border: 1px solid #3a3a3a;
     background: transparent;
+    background-image: none;
+    box-shadow: none;
     color: #888888;
     padding: 6px 14px;
     font-size: 12px;
     transition: all 120ms ease;
+    min-height: 32px;
 }
 
 .filter-button:hover {
@@ -1033,7 +1115,7 @@ window.app-window {
 .section-desc {
     font-size: 12px;
     color: #888888;
-    margin-top: 16px;
+    margin-top: 14px;
     line-height: 1.5;
 }
 
@@ -1075,6 +1157,7 @@ window.app-window {
     border-radius: 10px;
     min-width: 52px;
     min-height: 52px;
+    display: flex;
     align-items: center;
     justify-content: center;
 }
@@ -1092,6 +1175,7 @@ window.app-window {
 .model-icon-text {
     font-size: 26px;
     font-weight: 700;
+    line-height: 1;
 }
 
 .model-title {
@@ -1108,12 +1192,14 @@ window.app-window {
 
 .model-stats {
     align-items: center;
+    gap: 18px;
 }
 
 .stat {
     font-size: 11px;
     color: #aaaaaa;
     align-items: center;
+    gap: 6px;
 }
 
 .stat-label {
@@ -1133,6 +1219,7 @@ window.app-window {
     font-size: 10px;
     font-weight: 600;
     padding: 3px 9px;
+    display: inline-flex;
     align-items: center;
 }
 
@@ -1151,6 +1238,8 @@ window.app-window {
 .badge-dot {
     background-color: #666666;
     border-radius: 999px;
+    width: 8px;
+    height: 8px;
 }
 
 .checkmark {
@@ -1171,6 +1260,8 @@ window.app-window {
 .dot {
     background-color: #3a3a3a;
     border-radius: 999px;
+    width: 5px;
+    height: 5px;
 }
 
 .dot.filled {
