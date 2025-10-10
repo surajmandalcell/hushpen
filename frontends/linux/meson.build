@@ -76,3 +76,66 @@ if update_icons.found()
     'gtk-update-icon-cache -f -t @0@'.format(join_paths(datadir, 'icons/hicolor'))
   )
 endif
+# Testing configuration
+if get_option('buildtype').startswith('debug')
+  # Enable testing in debug builds
+  test('cargo-test', 
+    find_program('cargo'),
+    args: ['test', '--all', '--no-fail-fast'],
+    env: ['RUST_BACKTRACE=1'],
+    timeout: 300,  # 5 minutes timeout
+    suite: 'unit'
+  )
+
+  # Unit tests
+  test('cargo-test-unit', 
+    find_program('cargo'),
+    args: ['test', '--lib', 'tests/unit'],
+    env: ['RUST_BACKTRACE=1'],
+    timeout: 300,
+    suite: 'unit'
+  )
+
+  # Integration tests
+  test('cargo-test-integration', 
+    find_program('cargo'),
+    args: ['test', '--test', 'integration'],
+    env: ['RUST_BACKTRACE=1'],
+    timeout: 600,  # 10 minutes timeout
+    suite: 'integration'
+  )
+
+  # Performance tests (only in release mode)
+  test('cargo-test-performance', 
+    find_program('cargo'),
+    args: ['test', '--release', '--benches'],
+    env: ['RUST_BACKTRACE=1'],
+    timeout: 600,
+    suite: 'performance'
+  )
+
+  # Coverage report generation (requires cargo-tarpaulin)
+  tarpaulin = find_program('cargo-tarpaulin', required: false)
+  if tarpaulin.found()
+    test('cargo-coverage', 
+      tarpaulin,
+      args: ['--out', 'Html', '--output-dir', 'coverage/'],
+      env: ['RUST_BACKTRACE=1'],
+      timeout: 600,
+      suite: 'coverage'
+    )
+  endif
+endif
+
+# Test data installation
+install_subdir(
+  'tests',
+  install_dir: join_paths(datadir, 'asrpro-gtk4', 'tests'),
+  strip_directory: true
+)
+
+# Test scripts
+install_data(
+  'tests/Makefile',
+  install_dir: join_paths(datadir, 'asrpro-gtk4', 'tests')
+)

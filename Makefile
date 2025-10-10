@@ -1,7 +1,34 @@
 # ASR Pro Makefile
 # Provides convenient targets for building, testing, and running the project
 
-.PHONY: help test.backend run.api dev.api clean dev.linux dev.mac dev.win run.linux run.mac run.win
+.PHONY: help test.backend run.api dev.api clean build.linux build.mac build.win dev.linux dev.mac dev.win run run.linux run.mac run.win
+
+CARGO ?= cargo
+LINUX_PROFILE ?= dev
+LINUX_TARGET ?=
+MAC_CONFIGURATION ?= debug
+WIN_CONFIGURATION ?= Debug
+
+ifeq ($(LINUX_PROFILE),release)
+  LINUX_PROFILE_DIR := release
+  LINUX_CARGO_FLAGS := --release
+else ifeq ($(LINUX_PROFILE),dev)
+  LINUX_PROFILE_DIR := debug
+  LINUX_CARGO_FLAGS :=
+else
+  LINUX_PROFILE_DIR := $(LINUX_PROFILE)
+  LINUX_CARGO_FLAGS := --profile $(LINUX_PROFILE)
+endif
+
+ifeq ($(strip $(LINUX_TARGET)),)
+  LINUX_TARGET_FLAG :=
+  LINUX_OUTPUT_DIR := target/$(LINUX_PROFILE_DIR)
+else
+  LINUX_TARGET_FLAG := --target $(LINUX_TARGET)
+  LINUX_OUTPUT_DIR := target/$(LINUX_TARGET)/$(LINUX_PROFILE_DIR)
+endif
+
+LINUX_BINARY := $(LINUX_OUTPUT_DIR)/asrpro-gtk4
 
 help: ## Display available targets
 	@echo "ASR Pro - Available targets:"
@@ -10,12 +37,18 @@ help: ## Display available targets
 	@echo "  dev.api       - Run the API with hot reload capability"
 	@echo "  clean         - Clean up build artifacts and temporary files"
 	@echo ""
+	@echo "Build targets:"
+	@echo "  build.linux   - Build the Linux GTK4 application"
+	@echo "  build.mac     - Build the macOS SwiftUI application"
+	@echo "  build.win     - Build the Windows WPF application"
+	@echo ""
 	@echo "Development targets:"
 	@echo "  dev.linux     - Set up and run Linux GTK4 frontend in development mode"
 	@echo "  dev.mac       - Set up and run macOS SwiftUI frontend in development mode"
 	@echo "  dev.win       - Set up and run Windows WPF frontend in development mode"
 	@echo ""
 	@echo "Run targets:"
+	@echo "  run           - Alias for run.linux"
 	@echo "  run.linux     - Run the compiled Linux GTK4 application"
 	@echo "  run.mac       - Run the compiled macOS SwiftUI application"
 	@echo "  run.win       - Run the compiled Windows WPF application"
@@ -74,18 +107,41 @@ docker.down: ## Stop Docker services
 	@echo "Stopping Docker services..."
 	docker-compose down
 
-dev.linux: ## Set up and run Linux GTK4 frontend in development mode
-	@echo "Setting up Linux GTK4 development environment..."
-	@if ! command -v cargo &> /dev/null; then \
+build.linux: ## Build the Linux GTK4 application
+	@echo "Building Linux GTK4 application..."
+	@if ! command -v $(CARGO) >/dev/null 2>&1; then \
 		echo "Error: Rust/Cargo is not installed. Please install Rust first."; \
 		exit 1; \
 	fi
-	@echo "Navigating to frontends/linux/..."
 	cd frontends/linux && \
-	echo "Building with Cargo for development..." && \
-	cargo build || { echo "Error: Cargo build failed"; exit 1; } && \
-	echo "Starting Linux application in development mode..." && \
-	./target/debug/asrpro-gtk4 || { echo "Error: Failed to start application"; exit 1; }
+	$(CARGO) build $(LINUX_CARGO_FLAGS) $(LINUX_TARGET_FLAG) || { echo "Error: Cargo build failed"; exit 1; }
+
+build.mac: ## Build the macOS SwiftUI application
+	@echo "Building macOS SwiftUI application..."
+	@if ! command -v swift >/dev/null 2>&1; then \
+		echo "Error: Swift is not installed. Please install Xcode or the Swift toolchain first."; \
+		exit 1; \
+	fi
+	cd frontends/mac && \
+	swift build -c $(MAC_CONFIGURATION) || { echo "Error: Swift build failed"; exit 1; }
+
+build.win: ## Build the Windows WPF application
+	@echo "Building Windows WPF application..."
+	@if ! command -v dotnet >/dev/null 2>&1; then \
+		echo "Error: .NET SDK is not installed. Please install the .NET SDK first."; \
+		exit 1; \
+	fi
+	cd frontends/windows && \
+	dotnet build -c $(WIN_CONFIGURATION) || { echo "Error: Build failed"; exit 1; }
+
+dev.linux: ## Set up and run Linux GTK4 frontend in development mode
+	@echo "Setting up Linux GTK4 development environment..."
+	@if ! command -v $(CARGO) >/dev/null 2>&1; then \
+		echo "Error: Rust/Cargo is not installed. Please install Rust first."; \
+		exit 1; \
+	fi
+	@echo "Running Linux application in development mode..."
+	$(MAKE) run.linux
 
 dev.mac: ## Set up and run macOS SwiftUI frontend in development mode
 	@echo "Setting up macOS SwiftUI development environment..."
@@ -93,50 +149,35 @@ dev.mac: ## Set up and run macOS SwiftUI frontend in development mode
 		echo "Error: Swift is not installed. Please install Xcode or Swift toolchain first."; \
 		exit 1; \
 	fi
-	@echo "Navigating to frontends/mac/..."
-	cd frontends/mac && \
-	echo "Building with Swift..." && \
-	swift build || { echo "Error: Swift build failed"; exit 1; } && \
-	echo "Starting macOS application in development mode..." && \
-	swift run || { echo "Error: Failed to start application"; exit 1; }
+	@echo "Running macOS application in development mode..."
+	$(MAKE) run.mac
 
 dev.win: ## Set up and run Windows WPF frontend in development mode
 	@echo "Setting up Windows WPF development environment..."
-	@if ! command -v dotnet &> /dev/null; then \
+	@if ! command -v dotnet >/dev/null 2>&1; then \
 		echo "Error: .NET SDK is not installed. Please install .NET SDK first."; \
 		exit 1; \
 	fi
-	@echo "Navigating to frontends/windows/..."
+	@echo "Restoring NuGet packages..."
 	cd frontends/windows && \
-	echo "Restoring NuGet packages..." && \
-	dotnet restore || { echo "Error: Package restore failed"; exit 1; } && \
-	echo "Building with .NET..." && \
-	dotnet build || { echo "Error: Build failed"; exit 1; } && \
-	echo "Starting Windows application in development mode..." && \
-	dotnet run --project ASRPro || { echo "Error: Failed to start application"; exit 1; }
+	dotnet restore || { echo "Error: Package restore failed"; exit 1; }
+	@echo "Running Windows application in development mode..."
+	$(MAKE) run.win
 
-run.linux: ## Run the compiled Linux GTK4 application
+run: run.linux
+
+run.linux: build.linux ## Run the compiled Linux GTK4 application
 	@echo "Running Linux GTK4 application..."
-	@echo "Navigating to frontends/linux/..."
 	cd frontends/linux && \
-	if [ ! -f "target/debug/asrpro-gtk4" ]; then \
-		echo "Application not built yet. Building first..."; \
-		cargo build || { echo "Error: Cargo build failed"; exit 1; }; \
-		echo "Build complete."; \
-	fi && \
 	echo "Starting Linux application..." && \
-	./target/debug/asrpro-gtk4 || { echo "Error: Failed to start application"; exit 1; }
+	./$(LINUX_BINARY) || { echo "Error: Failed to start application"; exit 1; }
 
-run.mac: ## Run the compiled macOS SwiftUI application
+run.mac: build.mac ## Run the compiled macOS SwiftUI application
 	@echo "Running macOS SwiftUI application..."
-	@echo "Navigating to frontends/mac/..."
 	cd frontends/mac && \
-	echo "Starting macOS application..." && \
-	swift run || { echo "Error: Failed to start application"; exit 1; }
+	swift run -c $(MAC_CONFIGURATION) --skip-build || { echo "Error: Failed to start application"; exit 1; }
 
-run.win: ## Run the compiled Windows WPF application
+run.win: build.win ## Run the compiled Windows WPF application
 	@echo "Running Windows WPF application..."
-	@echo "Navigating to frontends/windows/..."
 	cd frontends/windows && \
-	echo "Starting Windows application..." && \
-	dotnet run --project ASRPro || { echo "Error: Failed to start application"; exit 1; }
+	dotnet run --project ASRPro -c $(WIN_CONFIGURATION) --no-build || { echo "Error: Failed to start application"; exit 1; }
