@@ -8,8 +8,8 @@ use gtk4::prelude::*;
 use gtk4::{
     Box, Button, Label, Scale, Adjustment, Switch, Orientation, Align,
     ApplicationWindow, Image, Separator, Grid, SpinButton, ToggleButton,
-    EventControllerKey, KeyEvent, EventControllerMotion, EventControllerScroll,
-    ScrollEvent, EventSequenceState
+    EventControllerKey, EventControllerMotion, EventControllerScroll,
+    EventSequenceState
 };
 use gstreamer as gst;
 use gstreamer_app as gst_app;

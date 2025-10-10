@@ -42,4 +42,5 @@ pub use websocket::{
 pub use settings::{
     Settings, GeneralSettings, AudioSettings, TranscriptionSettings, AdvancedSettings,
     UiSettings, FilePathSettings, NotificationSettings, SettingsValidator, SettingsMigration,
+    WindowState,
 };

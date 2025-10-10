@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <!-- Custom ASRPro protocol handler -->
+  <mime-type type="x-scheme-handler/asrpro">
+    <comment>ASRPro Protocol</comment>
+    <comment xml:lang="en">ASRPro Protocol</comment>
+    <icon name="com.asrpro.ASRPro"/>
+    <glob pattern="asrpro:*"/>
+  </mime-type>
+  
+  <!-- Enhanced support for common audio formats -->
+  <mime-type type="audio/x-asrpro-transcription">
+    <comment>ASRPro Transcription</comment>
+    <comment xml:lang="en">ASRPro Transcription</comment>
+    <icon name="com.asrpro.ASRPro"/>
+    <glob pattern="*.asrpt"/>
+    <glob pattern="*.asrtrans"/>
+  </mime-type>
+  
+  <mime-type type="audio/x-asrpro-project">
+    <comment>ASRPro Project</comment>
+    <comment xml:lang="en">ASRPro Project</comment>
+    <icon name="com.asrpro.ASRPro"/>
+    <glob pattern="*.asrproj"/>
+    <glob pattern="*.asrproject"/>
+  </mime-type>
+</mime-info>

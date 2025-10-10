@@ -17,7 +17,8 @@ use uuid::Uuid;
 
 use crate::models::{AppState, Model, ModelStatus, ModelType};
 use crate::services::ModelManager;
-use crate::ui::widgets::{ModelSelectorWidget, ModelDetailsWidget};
+use crate::ui::ModelSelectorWidget;
+use crate::ui::ModelDetailsWidget;
 use crate::utils::AppError;
 
 /// Model Panel component

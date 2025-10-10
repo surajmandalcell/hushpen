@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::models::{
     AudioFile, Model, TranscriptionTask, TranscriptionConfig, FileConfig, ModelConfig,
-    TranscriptionStats, FileStats, ModelStats, BackendConfig, FileStatus,
+    TranscriptionStats, FileStats, ModelStats, BackendConfig, FileStatus, Settings,
     websocket::{WsMessage, SubscriptionChannel, ConnectionState},
 };
 use crate::services::{BackendClient, FileManager, ConfigManager};
@@ -34,6 +34,8 @@ pub struct AppState {
     pub websocket_client: Arc<RwLock<Option<Arc<crate::services::WebSocketClient>>>>,
     /// WebSocket connection state
     pub websocket_state: Arc<RwLock<ConnectionState>>,
+    /// Application settings
+    pub settings: Arc<RwLock<Settings>>,
 }
 
 /// Transcription-related state
@@ -162,6 +164,7 @@ impl AppState {
             config_manager,
             websocket_client: Arc::new(RwLock::new(None)),
             websocket_state: Arc::new(RwLock::new(ConnectionState::Disconnected)),
+            settings: Arc::new(RwLock::new(Settings::default())),
         })
     }
     
@@ -185,6 +188,9 @@ impl AppState {
         // Initialize WebSocket if enabled
         self.init_websocket().await?;
         
+        // Initialize settings
+        self.init_settings().await?;
+        
         Ok(())
     }
     
@@ -203,6 +209,18 @@ impl AppState {
         config.auto_save_interval = 30; // This could be added to AppConfig
         config.show_notifications = app_config.user_preferences.notification_preferences.enabled;
         config.log_level = "info".to_string(); // This could be added to AppConfig
+        
+        Ok(())
+    }
+    
+    /// Initialize settings from the config manager
+    async fn init_settings(&self) -> AppResult<()> {
+        // Load settings from the config manager
+        let settings = self.config_manager.get_settings().await;
+        
+        // Update the settings state
+        let mut current_settings = self.settings.write().await;
+        *current_settings = settings;
         
         Ok(())
     }
@@ -781,6 +799,111 @@ impl AppState {
             ui.websocket_status = status;
             ui.show_websocket_status = state != ConnectionState::Connected;
         }).await;
+    }
+    
+    /// Get the current settings
+    pub async fn get_settings(&self) -> tokio::sync::RwLockReadGuard<'_, Settings> {
+        self.settings.read().await
+    }
+    
+    /// Update the settings
+    pub async fn update_settings<F, R>(&self, updater: F) -> R
+    where
+        F: FnOnce(&mut Settings) -> R,
+    {
+        let mut settings = self.settings.write().await;
+        updater(&mut *settings)
+    }
+    
+    /// Apply settings to the application
+    pub async fn apply_settings(&self) -> AppResult<()> {
+        let settings = self.settings.read().await.clone();
+        
+        // Apply UI settings
+        self.apply_ui_settings(&settings.ui).await?;
+        
+        // Apply audio settings
+        self.apply_audio_settings(&settings.audio).await?;
+        
+        // Apply other settings as needed
+        
+        // Save the settings
+        self.config_manager.update_settings(settings).await?;
+        self.config_manager.save_settings().await?;
+        
+        Ok(())
+    }
+    
+    /// Apply UI settings to the application
+    async fn apply_ui_settings(&self, ui_settings: &crate::models::UiSettings) -> AppResult<()> {
+        // Update the theme
+        self.update_ui_state(|ui| {
+            match ui_settings.theme.as_str() {
+                "light" => {
+                    // Apply light theme
+                },
+                "dark" => {
+                    // Apply dark theme
+                },
+                "system" => {
+                    // Apply system theme
+                },
+                _ => {}
+            }
+        }).await;
+        
+        // Apply other UI settings
+        
+        Ok(())
+    }
+    
+    /// Apply audio settings to the application
+    async fn apply_audio_settings(&self, audio_settings: &crate::models::AudioSettings) -> AppResult<()> {
+        // Apply audio settings
+        
+        Ok(())
+    }
+    
+    /// Reset settings to defaults
+    pub async fn reset_settings_to_defaults(&self) -> AppResult<()> {
+        // Reset settings to defaults
+        let settings = Settings::default();
+        
+        // Update the settings state
+        let mut current_settings = self.settings.write().await;
+        *current_settings = settings.clone();
+        
+        // Save the settings
+        self.config_manager.update_settings(settings).await?;
+        self.config_manager.save_settings().await?;
+        
+        Ok(())
+    }
+    
+    /// Import settings from a file
+    pub async fn import_settings(&self, path: &std::path::Path) -> AppResult<()> {
+        // Import settings
+        self.config_manager.import_settings(path).await?;
+        
+        // Reload settings
+        let settings = self.config_manager.get_settings().await;
+        
+        // Update the settings state
+        let mut current_settings = self.settings.write().await;
+        *current_settings = settings;
+        
+        // Apply the settings
+        self.apply_settings().await?;
+        
+        Ok(())
+    }
+    
+    /// Export settings to a file
+    pub async fn export_settings(&self, path: &std::path::Path) -> AppResult<()> {
+        // Export settings
+        self.config_manager.export_settings(path).await?;
+        
+        Ok(())
     }
     
     /// Subscribe to a WebSocket channel

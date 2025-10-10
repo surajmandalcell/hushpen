@@ -153,6 +153,23 @@ pub struct UiSettings {
     pub show_line_numbers: bool,
     /// Whether to show confidence scores in UI
     pub show_confidence_scores: bool,
+    /// Window state
+    pub window_state: Option<WindowState>,
+}
+
+/// Window state for remember window position
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowState {
+    /// Window width
+    pub width: i32,
+    /// Window height
+    pub height: i32,
+    /// Whether window is maximized
+    pub maximized: bool,
+    /// Window x position
+    pub x: Option<i32>,
+    /// Window y position
+    pub y: Option<i32>,
 }
 
 /// File path settings
@@ -284,6 +301,13 @@ impl SettingsValidator {
 
         if !["compact", "normal", "spacious"].contains(&settings.ui_density.as_str()) {
             return Err(AppError::config("Invalid UI density value"));
+        }
+        
+        // Validate window state if present
+        if let Some(ref window_state) = settings.window_state {
+            if window_state.width <= 0 || window_state.height <= 0 {
+                return Err(AppError::config("Window dimensions must be positive"));
+            }
         }
 
         Ok(())

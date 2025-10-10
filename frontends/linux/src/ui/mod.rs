@@ -16,6 +16,7 @@ pub mod style;
 pub mod file_panel;
 pub mod model_panel;
 pub mod transcription_panel;
+pub mod settings_dialog;
 
 // Import widget modules
 pub mod widgets {
@@ -35,6 +36,7 @@ pub use style::{Theme, initialize_styling};
 pub use file_panel::FilePanel;
 pub use model_panel::ModelPanel;
 pub use transcription_panel::TranscriptionPanel;
+pub use settings_dialog::SettingsDialog;
 pub use widgets::model_selector::ModelSelectorWidget;
 pub use widgets::model_details::ModelDetailsWidget;
 pub use widgets::transcription_text::TranscriptionTextWidget;

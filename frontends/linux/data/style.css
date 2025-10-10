@@ -1,5 +1,68 @@
 /* ASRPro GTK4 Frontend Styles */
 
+/* Settings Dialog Styles */
+.settings-dialog {
+    background-color: #ffffff;
+    border-radius: 8px;
+}
+
+.settings-stack {
+    background-color: #ffffff;
+}
+
+.settings-stack-switcher {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 8px;
+}
+
+.settings-tab {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin: 8px;
+}
+
+.settings-grid {
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin: 8px;
+}
+
+.settings-label {
+    font-weight: 600;
+    color: #333333;
+    margin-right: 8px;
+}
+
+.settings-value {
+    color: #666666;
+}
+
+.settings-section {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    margin: 8px;
+    padding: 12px;
+}
+
+.settings-section-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #333333;
+    margin-bottom: 8px;
+}
+
+.settings-section-content {
+    background-color: #ffffff;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.settings-info-bar {
+    margin: 8px;
+    border-radius: 6px;
+}
+
 /* Window and main containers */
 window {
     background-color: #fafafa;

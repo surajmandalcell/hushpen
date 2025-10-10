@@ -171,11 +171,68 @@ impl MenuBar {
         
         // Preferences action
         let preferences_action = SimpleAction::new("preferences", None);
+        let window = self.window.clone();
         let app_state = self.app_state.clone();
         preferences_action.connect_activate(move |_, _| {
+            let window = window.clone();
             let app_state_clone = app_state.clone();
             gtk4::glib::spawn_future_local(async move {
-                app_state_clone.set_status_message("Opening preferences...".to_string()).await;
+                // Create and show the settings dialog
+                match crate::ui::SettingsDialog::new(&window, app_state_clone) {
+                    Ok(mut dialog) => {
+                        let response = dialog.show().await;
+                        match response {
+                            gtk4::ResponseType::Ok => {
+                                // Apply and save settings
+                                if let Err(e) = dialog.apply_settings().await {
+                                    eprintln!("Failed to apply settings: {}", e);
+                                }
+                            },
+                            gtk4::ResponseType::Apply => {
+                                // Apply settings without closing
+                                if let Err(e) = dialog.apply_settings().await {
+                                    eprintln!("Failed to apply settings: {}", e);
+                                }
+                            },
+                            gtk4::ResponseType::Other(0) => {
+                                // Reset to defaults
+                                if let Err(e) = dialog.reset_to_defaults().await {
+                                    eprintln!("Failed to reset settings: {}", e);
+                                }
+                            },
+                            gtk4::ResponseType::Other(1) => {
+                                // Import settings
+                                if let Err(e) = dialog.import_settings().await {
+                                    eprintln!("Failed to import settings: {}", e);
+                                }
+                            },
+                            gtk4::ResponseType::Other(2) => {
+                                // Export settings
+                                if let Err(e) = dialog.export_settings().await {
+                                    eprintln!("Failed to export settings: {}", e);
+                                }
+                            },
+                            _ => {
+                                // Close or cancel
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Failed to create settings dialog: {}", e);
+                        // Show an error message
+                        let dialog = gtk4::MessageDialog::builder()
+                            .text("Failed to open settings")
+                            .secondary_text(&format!("Error: {}", e))
+                            .buttons_type(gtk4::ButtonsType::Ok)
+                            .message_type(gtk4::MessageType::Error)
+                            .modal(true)
+                            .transient_for(&window)
+                            .build();
+                        
+                        dialog.run_future().await;
+                        dialog.close();
+                    }
+                }
             });
         });
         self.action_group.add_action(&preferences_action);

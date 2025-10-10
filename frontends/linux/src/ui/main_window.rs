@@ -14,11 +14,10 @@ use gtk4::{
 use gtk4::glib::{Propagation, ControlFlow};
 use std::sync::Arc;
 
-use crate::models::AppState;
-use crate::models::websocket::ConnectionState;
+use crate::models::{AppState, websocket::ConnectionState, Settings, UiSettings};
 use crate::services::{FileManager, BackendClient, ModelManager, TranscriptionService};
 use crate::ui::menu_bar::MenuBar;
-use crate::ui::{FilePanel, ModelPanel, TranscriptionPanel};
+use crate::ui::{FilePanel, ModelPanel, TranscriptionPanel, initialize_styling, Theme};
 use crate::utils::AppError;
 
 /// Main application window
@@ -45,6 +44,18 @@ pub struct MainWindow {
 impl MainWindow {
     /// Create a new MainWindow instance
     pub fn new(app: &Application, app_state: Arc<AppState>) -> Result<Self, AppError> {
+        // Use default settings for now
+        // In a real implementation, you would load this asynchronously
+        let ui_settings = UiSettings::default();
+        
+        // Initialize styling with theme
+        let theme = match ui_settings.theme.as_str() {
+            "light" => Theme::Light,
+            "dark" => Theme::Dark,
+            _ => Theme::System,
+        };
+        initialize_styling(theme)?;
+        
         // Create the main window
         let window = ApplicationWindow::builder()
             .application(app)
@@ -52,6 +63,16 @@ impl MainWindow {
             .default_width(1200)
             .default_height(800)
             .build();
+        
+        // Apply window state if remembered
+        if ui_settings.remember_window_state {
+            if let Some(window_state) = &ui_settings.window_state {
+                window.set_default_size(window_state.width, window_state.height);
+                if window_state.maximized {
+                    window.maximize();
+                }
+            }
+        }
 
         // Create the menu bar
         let menu_bar = MenuBar::new(&window, app_state.clone())?;
@@ -207,7 +228,68 @@ impl MainWindow {
             transcription_panel.set_transcription_service(transcription_service.clone());
         }
 
+        // Apply UI settings
+        Self::apply_ui_settings(&main_window, &ui_settings);
+        
         Ok(main_window)
+    }
+    
+    /// Apply UI settings to the window
+    fn apply_ui_settings(main_window: &Self, ui_settings: &UiSettings) {
+        // Apply font settings
+        let css_provider = gtk4::CssProvider::new();
+        let css = format!(
+            "* {{
+                font-family: {};
+                font-size: {}pt;
+            }}",
+            ui_settings.font_family,
+            ui_settings.font_size
+        );
+        
+        css_provider.load_from_data(css.as_bytes());
+        
+        // Apply the CSS provider to the style context
+        let style_context = main_window.window.style_context();
+        style_context.add_provider(&css_provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        
+        // Apply animation settings
+        if ui_settings.animate_transitions {
+            main_window.window.add_css_class("animate-transitions");
+        } else {
+            main_window.window.add_css_class("no-animations");
+        }
+    }
+    
+    /// Update UI based on settings changes
+    pub async fn update_from_settings(&mut self) -> Result<(), AppError> {
+        let settings = self.app_state.get_settings().await;
+        let ui_settings = settings.ui.clone();
+        
+        // Apply theme
+        let theme = match ui_settings.theme.as_str() {
+            "light" => Theme::Light,
+            "dark" => Theme::Dark,
+            _ => Theme::System,
+        };
+        initialize_styling(theme)?;
+        
+        // Apply UI settings
+        Self::apply_ui_settings(self, &ui_settings);
+        
+        // Apply window state
+        if ui_settings.remember_window_state {
+            if let Some(window_state) = &ui_settings.window_state {
+                self.window.set_default_size(window_state.width, window_state.height);
+                if window_state.maximized {
+                    self.window.maximize();
+                } else {
+                    self.window.unmaximize();
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     /// Set up the main window properties and event handlers

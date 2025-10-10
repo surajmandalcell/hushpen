@@ -8,7 +8,7 @@ use gtk4::prelude::*;
 use gtk4::{
     Box, Paned, Label, ScrolledWindow, Frame, Expander, Button, Orientation,
     Align, PositionType, Grid, ProgressBar, Adjustment, Scale, Switch,
-    ApplicationWindow, InfoBar, InfoBarType, Widget
+    ApplicationWindow, InfoBar, Widget
 };
 use std::sync::{Arc, Mutex};
 
@@ -503,7 +503,7 @@ impl TranscriptionPanel {
     }
     
     /// Load an audio file for preview in the transcription panel
-    pub fn load_audio_file(&self, audio_file: AudioFile) -> AppResult<()> {
+    pub fn load_audio_file(&self, audio_file: AudioFile) -> Result<(), AppError> {
         // Store the current audio file
         if let Ok(mut current_file_guard) = self.current_audio_file.lock() {
             *current_file_guard = Some(audio_file.clone());

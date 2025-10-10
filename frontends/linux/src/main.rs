@@ -8,6 +8,7 @@ use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow};
 use gtk4::glib::Propagation;
 use std::sync::Arc;
+use std::env;
 
 // Import our modules
 use models::AppState;
@@ -19,17 +20,138 @@ const APP_ID: &str = "com.asrpro.gtk4";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const APP_NAME: &str = "ASRPro";
 
+// Command line arguments
+#[derive(Debug, Default)]
+struct AppArgs {
+    files: Vec<String>,
+    new_transcription: bool,
+    file_selector: bool,
+    help: bool,
+    version: bool,
+}
+
+fn parse_args() -> AppArgs {
+    let args: Vec<String> = env::args().collect();
+    let mut app_args = AppArgs::default();
+    
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--help" | "-h" => {
+                app_args.help = true;
+            }
+            "--version" | "-v" => {
+                app_args.version = true;
+            }
+            "--new" | "-n" => {
+                app_args.new_transcription = true;
+            }
+            "--file-selector" | "-f" => {
+                app_args.file_selector = true;
+            }
+            arg => {
+                if arg.starts_with("--") {
+                    eprintln!("Unknown option: {}", arg);
+                } else if arg.starts_with("asrpro://") {
+                    // Handle protocol handler
+                    app_args.files.push(arg.clone());
+                } else {
+                    // Assume it's a file path
+                    app_args.files.push(arg.clone());
+                }
+            }
+        }
+        i += 1;
+    }
+    
+    app_args
+}
+
+fn print_help() {
+    println!("{} - GTK4 Frontend v{}", APP_NAME, APP_VERSION);
+    println!("Automatic Speech Recognition Application");
+    println!();
+    println!("Usage: {} [OPTIONS] [FILES...]", env::args().next().unwrap_or_else(|| "asrpro-gtk4".to_string()));
+    println!();
+    println!("Options:");
+    println!("  -h, --help              Show this help message");
+    println!("  -v, --version           Show version information");
+    println!("  -n, --new               Start with a new transcription");
+    println!("  -f, --file-selector     Open file selector on startup");
+    println!();
+    println!("Files:");
+    println!("  FILES                   Audio files to open on startup");
+    println!("  asrpro://URL            ASRPro protocol URLs");
+    println!();
+    println!("Supported formats:");
+    println!("  MP3, WAV, FLAC, OGG, M4A, AAC");
+}
+
+fn print_version() {
+    println!("{} v{}", APP_NAME, APP_VERSION);
+    println!("GTK4 Frontend for ASRPro");
+}
+
 fn main() {
+    // Parse command line arguments
+    let args = parse_args();
+    
+    // Handle help and version flags
+    if args.help {
+        print_help();
+        return;
+    }
+    
+    if args.version {
+        print_version();
+        return;
+    }
+    
     // Initialize GTK
     gtk4::init().expect("Failed to initialize GTK");
     
     // Create the application
     let app = Application::builder()
         .application_id(APP_ID)
+        .flags(gtk4::ApplicationFlags::HANDLES_OPEN)
         .build();
+    
+    // Store command line arguments in application data
+    unsafe {
+        app.set_data("app_args", args);
+    }
     
     // Connect to activate signal
     app.connect_activate(build_ui);
+    
+    // Connect to open signal for file handling
+    app.connect_open(|app, files, _| {
+        let args: AppArgs = unsafe {
+            app.data::<AppArgs>("app_args")
+                .expect("App args not set")
+                .as_ref()
+                .clone()
+        };
+        
+        // Convert GFile paths to strings
+        let file_paths: Vec<String> = files
+            .iter()
+            .filter_map(|file| file.path())
+            .filter_map(|path| path.to_str())
+            .map(|s| s.to_string())
+            .collect();
+        
+        // Store files to open
+        let mut args_with_files = args;
+        args_with_files.files.extend(file_paths);
+        
+        unsafe {
+            app.set_data("app_args", args_with_files);
+        }
+        
+        // Build UI if not already built
+        build_ui(app);
+    });
     
     // Connect to startup signal for initialization
     app.connect_startup(|app| {

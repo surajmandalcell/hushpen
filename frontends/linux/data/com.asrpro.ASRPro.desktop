@@ -1,0 +1,29 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ASRPro
+Name[en]=ASRPro
+Comment=Automatic Speech Recognition application
+Comment[en]=Automatic Speech Recognition application
+GenericName=Speech Recognition
+GenericName[en]=Speech Recognition
+Exec=asrpro-gtk4 %U
+TryExec=asrpro-gtk4
+Icon=com.asrpro.ASRPro
+Terminal=false
+StartupNotify=true
+StartupWMClass=asrpro-gtk4
+MimeType=audio/mpeg;audio/mp4;audio/ogg;audio/wav;audio/flac;audio/x-wav;audio/x-flac;audio/x-m4a;audio/aac;audio/x-aac;x-scheme-handler/asrpro;
+Categories=AudioVideo;Audio;Recorder;GTK;
+Keywords=Speech;Recognition;Transcription;Audio;ASR;Whisper;AI;
+Actions=NewTranscription;OpenFile;
+
+[Desktop Action NewTranscription]
+Name=New Transcription
+Name[en]=New Transcription
+Exec=asrpro-gtk4 --new
+
+[Desktop Action OpenFile]
+Name=Open Audio File
+Name[en]=Open Audio File
+Exec=asrpro-gtk4 --file-selector

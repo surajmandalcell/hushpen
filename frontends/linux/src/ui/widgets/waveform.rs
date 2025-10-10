@@ -8,8 +8,8 @@ use gtk4::prelude::*;
 use gtk4::{
     Box, DrawingArea, Adjustment, Scale, Orientation, Align, Button,
     ApplicationWindow, ScrolledWindow, Label, Separator,
-    EventControllerMotion, EventControllerScroll, ScrollEvent,
-    EventControllerButton, EventSequenceState, GestureClick,
+    EventControllerMotion, EventControllerScroll,
+    EventSequenceState, GestureClick,
     Popover, MenuButton, PositionType
 };
 use std::path::Path;
