@@ -66,6 +66,8 @@ fake_corrupted.txt
 output/
 frontends/linux/target/
 frontends/linux/builddir/
+
+# Fk all docs
 *.md
 !docs/** */.md
 !README.md
