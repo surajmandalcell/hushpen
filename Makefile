@@ -1,34 +1,9 @@
 # ASR Pro Makefile
 # Provides convenient targets for building, testing, and running the project
 
-.PHONY: help test.backend run.api dev.api clean build.linux build.mac build.win dev.linux dev.mac dev.win run run.linux run.mac run.win
+.PHONY: help test.backend run.api dev.api clean docker.build docker.up docker.down build.linux build.mac build.win dev.linux dev.mac dev.win run run.linux run.mac run.win
 
-CARGO ?= cargo
-LINUX_PROFILE ?= dev
-LINUX_TARGET ?=
-MAC_CONFIGURATION ?= debug
-WIN_CONFIGURATION ?= Debug
-
-ifeq ($(LINUX_PROFILE),release)
-  LINUX_PROFILE_DIR := release
-  LINUX_CARGO_FLAGS := --release
-else ifeq ($(LINUX_PROFILE),dev)
-  LINUX_PROFILE_DIR := debug
-  LINUX_CARGO_FLAGS :=
-else
-  LINUX_PROFILE_DIR := $(LINUX_PROFILE)
-  LINUX_CARGO_FLAGS := --profile $(LINUX_PROFILE)
-endif
-
-ifeq ($(strip $(LINUX_TARGET)),)
-  LINUX_TARGET_FLAG :=
-  LINUX_OUTPUT_DIR := target/$(LINUX_PROFILE_DIR)
-else
-  LINUX_TARGET_FLAG := --target $(LINUX_TARGET)
-  LINUX_OUTPUT_DIR := target/$(LINUX_TARGET)/$(LINUX_PROFILE_DIR)
-endif
-
-LINUX_BINARY := $(LINUX_OUTPUT_DIR)/asrpro-gtk4
+FRONTENDS_MAKE := $(MAKE) -C frontends
 
 help: ## Display available targets
 	@echo "ASR Pro - Available targets:"
@@ -57,6 +32,8 @@ help: ## Display available targets
 	@echo "  docker.build  - Build Docker containers"
 	@echo "  docker.up     - Start Docker services"
 	@echo "  docker.down   - Stop Docker services"
+	@echo ""
+	@$(FRONTENDS_MAKE) help
 
 test.backend: ## Run backend tests
 	@echo "Running backend tests..."
@@ -108,76 +85,31 @@ docker.down: ## Stop Docker services
 	docker-compose down
 
 build.linux: ## Build the Linux GTK4 application
-	@echo "Building Linux GTK4 application..."
-	@if ! command -v $(CARGO) >/dev/null 2>&1; then \
-		echo "Error: Rust/Cargo is not installed. Please install Rust first."; \
-		exit 1; \
-	fi
-	cd frontends/linux && \
-	$(CARGO) build $(LINUX_CARGO_FLAGS) $(LINUX_TARGET_FLAG) || { echo "Error: Cargo build failed"; exit 1; }
+	$(FRONTENDS_MAKE) build.linux
 
 build.mac: ## Build the macOS SwiftUI application
-	@echo "Building macOS SwiftUI application..."
-	@if ! command -v swift >/dev/null 2>&1; then \
-		echo "Error: Swift is not installed. Please install Xcode or the Swift toolchain first."; \
-		exit 1; \
-	fi
-	cd frontends/mac && \
-	swift build -c $(MAC_CONFIGURATION) || { echo "Error: Swift build failed"; exit 1; }
+	$(FRONTENDS_MAKE) build.mac
 
 build.win: ## Build the Windows WPF application
-	@echo "Building Windows WPF application..."
-	@if ! command -v dotnet >/dev/null 2>&1; then \
-		echo "Error: .NET SDK is not installed. Please install the .NET SDK first."; \
-		exit 1; \
-	fi
-	cd frontends/windows && \
-	dotnet build -c $(WIN_CONFIGURATION) || { echo "Error: Build failed"; exit 1; }
+	$(FRONTENDS_MAKE) build.win
 
 dev.linux: ## Set up and run Linux GTK4 frontend in development mode
-	@echo "Setting up Linux GTK4 development environment..."
-	@if ! command -v $(CARGO) >/dev/null 2>&1; then \
-		echo "Error: Rust/Cargo is not installed. Please install Rust first."; \
-		exit 1; \
-	fi
-	@echo "Running Linux application in development mode..."
-	$(MAKE) run.linux
+	$(FRONTENDS_MAKE) dev.linux
 
 dev.mac: ## Set up and run macOS SwiftUI frontend in development mode
-	@echo "Setting up macOS SwiftUI development environment..."
-	@if ! command -v swift &> /dev/null; then \
-		echo "Error: Swift is not installed. Please install Xcode or Swift toolchain first."; \
-		exit 1; \
-	fi
-	@echo "Running macOS application in development mode..."
-	$(MAKE) run.mac
+	$(FRONTENDS_MAKE) dev.mac
 
 dev.win: ## Set up and run Windows WPF frontend in development mode
-	@echo "Setting up Windows WPF development environment..."
-	@if ! command -v dotnet >/dev/null 2>&1; then \
-		echo "Error: .NET SDK is not installed. Please install .NET SDK first."; \
-		exit 1; \
-	fi
-	@echo "Restoring NuGet packages..."
-	cd frontends/windows && \
-	dotnet restore || { echo "Error: Package restore failed"; exit 1; }
-	@echo "Running Windows application in development mode..."
-	$(MAKE) run.win
+	$(FRONTENDS_MAKE) dev.win
 
-run: run.linux
+run: ## Run the compiled Linux GTK4 application
+	$(FRONTENDS_MAKE) run
 
-run.linux: build.linux ## Run the compiled Linux GTK4 application
-	@echo "Running Linux GTK4 application..."
-	cd frontends/linux && \
-	echo "Starting Linux application..." && \
-	./$(LINUX_BINARY) || { echo "Error: Failed to start application"; exit 1; }
+run.linux: ## Run the compiled Linux GTK4 application
+	$(FRONTENDS_MAKE) run.linux
 
-run.mac: build.mac ## Run the compiled macOS SwiftUI application
-	@echo "Running macOS SwiftUI application..."
-	cd frontends/mac && \
-	swift run -c $(MAC_CONFIGURATION) --skip-build || { echo "Error: Failed to start application"; exit 1; }
+run.mac: ## Run the compiled macOS SwiftUI application
+	$(FRONTENDS_MAKE) run.mac
 
-run.win: build.win ## Run the compiled Windows WPF application
-	@echo "Running Windows WPF application..."
-	cd frontends/windows && \
-	dotnet run --project ASRPro -c $(WIN_CONFIGURATION) --no-build || { echo "Error: Failed to start application"; exit 1; }
+run.win: ## Run the compiled Windows WPF application
+	$(FRONTENDS_MAKE) run.win
