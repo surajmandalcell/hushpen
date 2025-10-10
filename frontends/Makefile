@@ -1,5 +1,3 @@
-# Frontend build helpers for ASR Pro.
-
 .PHONY: help build.linux build.mac build.win dev.linux dev.mac dev.win run run.linux run.mac run.win
 
 CARGO ?= cargo

@@ -1,11 +1,8 @@
-# ASR Pro Makefile
-# Provides convenient targets for building, testing, and running the project
-
 .PHONY: help test.backend run.api dev.api clean docker.build docker.up docker.down build.linux build.mac build.win dev.linux dev.mac dev.win run run.linux run.mac run.win
 
 FRONTENDS_MAKE := $(MAKE) -C frontends
 
-help: ## Display available targets
+help:
 	@echo "ASR Pro - Available targets:"
 	@echo "  test.backend  - Run backend tests"
 	@echo "  run.api       - Build/compile and run the API in production mode"
@@ -35,11 +32,11 @@ help: ## Display available targets
 	@echo ""
 	@$(FRONTENDS_MAKE) help
 
-test.backend: ## Run backend tests
+test.backend:
 	@echo "Running backend tests..."
 	cd sidecar && python -m pytest tests/ -v
 
-run.api: ## Build/compile and run the API in production mode
+run.api:
 	@echo "Starting ASR Pro Backend in production mode..."
 	cd sidecar && \
 	if [ ! -d "venv" ]; then \
@@ -49,7 +46,7 @@ run.api: ## Build/compile and run the API in production mode
 	pip install -q -r requirements.txt && \
 	python main.py
 
-dev.api: ## Run the API with hot reload capability
+dev.api:
 	@echo "Starting ASR Pro Backend in development mode with hot reload..."
 	cd sidecar && \
 	if [ ! -d "venv" ]; then \
@@ -60,7 +57,7 @@ dev.api: ## Run the API with hot reload capability
 	pip install -q watchfiles && \
 	watchfiles --patterns "*.py" --recursive --command "python main.py" .
 
-clean: ## Clean up build artifacts and temporary files
+clean:
 	@echo "Cleaning up build artifacts and temporary files..."
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
@@ -72,44 +69,44 @@ clean: ## Clean up build artifacts and temporary files
 	rm -rf sidecar/venv 2>/dev/null || true
 	@echo "Cleanup complete."
 
-docker.build: ## Build Docker containers
+docker.build:
 	@echo "Building Docker containers..."
 	docker-compose build
 
-docker.up: ## Start Docker services
+docker.up:
 	@echo "Starting Docker services..."
 	docker-compose up -d
 
-docker.down: ## Stop Docker services
+docker.down:
 	@echo "Stopping Docker services..."
 	docker-compose down
 
-build.linux: ## Build the Linux GTK4 application
+build.linux:
 	$(FRONTENDS_MAKE) build.linux
 
-build.mac: ## Build the macOS SwiftUI application
+build.mac:
 	$(FRONTENDS_MAKE) build.mac
 
-build.win: ## Build the Windows WPF application
+build.win:
 	$(FRONTENDS_MAKE) build.win
 
-dev.linux: ## Set up and run Linux GTK4 frontend in development mode
+dev.linux:
 	$(FRONTENDS_MAKE) dev.linux
 
-dev.mac: ## Set up and run macOS SwiftUI frontend in development mode
+dev.mac:
 	$(FRONTENDS_MAKE) dev.mac
 
-dev.win: ## Set up and run Windows WPF frontend in development mode
+dev.win:
 	$(FRONTENDS_MAKE) dev.win
 
-run: ## Run the compiled Linux GTK4 application
+run:
 	$(FRONTENDS_MAKE) run
 
-run.linux: ## Run the compiled Linux GTK4 application
+run.linux:
 	$(FRONTENDS_MAKE) run.linux
 
-run.mac: ## Run the compiled macOS SwiftUI application
+run.mac:
 	$(FRONTENDS_MAKE) run.mac
 
-run.win: ## Run the compiled Windows WPF application
+run.win:
 	$(FRONTENDS_MAKE) run.win
