@@ -60,9 +60,6 @@ pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.4"
 
-# GTK testing (requires X11 display for UI tests)
-gtk4-test = "0.1"
-
 # Async testing utilities
 futures = "0.3"
 async-trait = "0.1"
@@ -70,9 +67,6 @@ async-trait = "0.1"
 # Test data generation
 fake = { version = "2.9", features = ["derive", "chrono", "uuid"] }
 rand = "0.8"
-
-# Coverage and profiling
-tarpaulin = "0.27"
 
 # HTTP mocking
 httpmock = "0.7"
