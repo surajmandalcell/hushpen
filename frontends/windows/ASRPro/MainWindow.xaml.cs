@@ -20,7 +20,7 @@ using Color = System.Windows.Media.Color;
 
 namespace ASRPro
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         private readonly HttpClient _httpClient;
         private const string BackendBaseUrl = "http://localhost:8000";
@@ -186,7 +186,7 @@ namespace ASRPro
             if (string.IsNullOrEmpty(_selectedFilePath))
             {
                 MessageBox.Show("Please select a file first.", "No File Selected",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                    System.Windows.MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -235,7 +235,7 @@ namespace ASRPro
             catch (Exception ex)
             {
                 MessageBox.Show($"Error during transcription: {ex.Message}", "Transcription Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBoxButton.OK, MessageBoxImage.Error);
 
                 StatusText.Text = "Transcription failed";
                 StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
@@ -328,7 +328,7 @@ namespace ASRPro
             {
                 Clipboard.SetText(ResultsTextBlock.Text);
                 MessageBox.Show("Text copied to clipboard!", "Copy Successful",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                    System.Windows.MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -351,12 +351,12 @@ namespace ASRPro
                 {
                     File.WriteAllText(saveFileDialog.FileName, ResultsTextBlock.Text, Encoding.UTF8);
                     MessageBox.Show("Transcription saved successfully!", "Save Successful",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                        System.Windows.MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Error saving file: {ex.Message}", "Save Error",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                        System.Windows.MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -371,16 +371,16 @@ namespace ASRPro
             catch (Exception ex)
             {
                 MessageBox.Show($"Error opening documentation: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void NavButton_Click(object sender, RoutedEventArgs e)
         {
             // Placeholder for navigation functionality
-            var button = sender as Button;
+            var button = sender as System.Windows.Controls.Button;
             MessageBox.Show($"Navigation to '{button?.Content}' not implemented yet.", "Info",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         // Drag and Drop Handlers

@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Threading;
 using System.Runtime.InteropServices;
+using Wpf.Ui.Appearance;
 
 namespace ASRPro
 {
@@ -45,6 +46,9 @@ namespace ASRPro
             SetConsoleCtrlHandler(ConsoleCtrlHandler, true);
 
             base.OnStartup(e);
+
+            // Apply WPF UI theme (Dark)
+            try { ApplicationThemeManager.Apply(ApplicationTheme.Dark); } catch { }
 
             // Create main window directly without DI to avoid multiple instances
             _mainWindow = new MainWindow();
