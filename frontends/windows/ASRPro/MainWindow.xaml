@@ -61,6 +61,39 @@
             <Setter Property="Padding" Value="20"/>
             <Setter Property="Margin" Value="0,0,0,14"/>
         </Style>
+
+        <Style x:Key="WindowControlButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="14"/>
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="7"
+                                x:Name="border">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            TextElement.Foreground="{TemplateBinding Foreground}"
+                                            TextElement.FontFamily="Segoe MDL2 Assets"
+                                            TextElement.FontSize="8"
+                                            Opacity="0"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                                <Setter Property="ContentPresenter.Opacity" Value="1" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -79,36 +112,29 @@
                 <Border Grid.Column="0" Background="Transparent" MouseLeftButtonDown="HeaderBorder_MouseLeftButtonDown">
                     <StackPanel Orientation="Horizontal"
                                VerticalAlignment="Center"
-                               Margin="16,0">
+                               Margin="20,0">
                         <!-- Window Controls -->
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="CloseButton" Width="12" Height="12" Margin="0,0,8,0"
-                                    Background="#ff5f57" BorderThickness="0" Click="CloseButton_Click"
-                                    Style="{x:Null}" Cursor="Hand">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Ellipse Fill="{TemplateBinding Background}"/>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                            <Button x:Name="MinimizeButton" Width="12" Height="12" Margin="0,0,8,0"
-                                    Background="#ffbd2e" BorderThickness="0" Click="MinimizeButton_Click"
-                                    Style="{x:Null}" Cursor="Hand">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Ellipse Fill="{TemplateBinding Background}"/>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                            <Button x:Name="MaximizeButton" Width="12" Height="12"
-                                    Background="#3c3c3c" BorderThickness="0" Click="MaximizeButton_Click"
-                                    Style="{x:Null}" Cursor="Hand" IsEnabled="False">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Ellipse Fill="{TemplateBinding Background}"/>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
+                            <Button x:Name="CloseButton"
+                                    Background="#ff5f57"
+                                    Foreground="#8b0000"
+                                    Content="&#xE8BB;"
+                                    Click="CloseButton_Click"
+                                    Style="{StaticResource WindowControlButtonStyle}"/>
+                            <Button x:Name="MinimizeButton"
+                                    Background="#ffbd2e"
+                                    Foreground="#8b4513"
+                                    Content="&#xE949;"
+                                    Click="MinimizeButton_Click"
+                                    Style="{StaticResource WindowControlButtonStyle}"/>
+                            <Button x:Name="MaximizeButton"
+                                    Background="#28ca42"
+                                    Foreground="#006400"
+                                    Content="&#xE922;"
+                                    IsEnabled="False"
+                                    Opacity="0.5"
+                                    Style="{StaticResource WindowControlButtonStyle}"
+                                    Margin="0"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>

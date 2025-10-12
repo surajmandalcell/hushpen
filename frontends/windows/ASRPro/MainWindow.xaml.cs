@@ -26,6 +26,7 @@ namespace ASRPro
         private string? _selectedFilePath;
         private WinForms.NotifyIcon? _notifyIcon;
         private bool _isExiting = false;
+        private Process? _backendProcess;
 
         public MainWindow()
         {
@@ -45,7 +46,72 @@ namespace ASRPro
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // Start backend automatically
+            await StartBackendAsync();
+
+            // Wait a moment for backend to start, then check health
+            await Task.Delay(3000);
             await CheckBackendHealthAsync();
+        }
+
+        private Task StartBackendAsync()
+        {
+            return Task.Run(() =>
+            {
+                try
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        StatusText.Text = "Starting backend server...";
+                        StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(255, 189, 46)); // Yellow
+                    });
+
+                    // Find the sidecar directory (go up from current directory)
+                    var currentDir = AppDomain.CurrentDomain.BaseDirectory;
+                    var projectRoot = Directory.GetParent(currentDir)?.Parent?.Parent?.Parent?.Parent?.FullName;
+                    var sidecarPath = Path.Combine(projectRoot ?? "", "sidecar");
+
+                    if (Directory.Exists(sidecarPath))
+                    {
+                        var mainPyPath = Path.Combine(sidecarPath, "main.py");
+                        if (File.Exists(mainPyPath))
+                        {
+                            _backendProcess = new Process
+                            {
+                                StartInfo = new ProcessStartInfo
+                                {
+                                    FileName = "python",
+                                    Arguments = "main.py",
+                                    WorkingDirectory = sidecarPath,
+                                    UseShellExecute = false,
+                                    CreateNoWindow = true,
+                                    RedirectStandardOutput = true,
+                                    RedirectStandardError = true
+                                }
+                            };
+
+                            _backendProcess.Start();
+                            Dispatcher.Invoke(() => StatusText.Text = "Backend starting...");
+                        }
+                        else
+                        {
+                            Dispatcher.Invoke(() => StatusText.Text = "Backend main.py not found");
+                        }
+                    }
+                    else
+                    {
+                        Dispatcher.Invoke(() => StatusText.Text = "Sidecar directory not found");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        StatusText.Text = $"Failed to start backend: {ex.Message}";
+                        StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
+                    });
+                }
+            });
         }
 
         private async Task CheckBackendHealthAsync()
@@ -354,21 +420,52 @@ namespace ASRPro
 
         private void InitializeTrayIcon()
         {
-            _notifyIcon = new WinForms.NotifyIcon
+            if (_notifyIcon != null) return; // Prevent duplicate icons
+
+            try
             {
-                Icon = System.Drawing.SystemIcons.Application, // You can replace with custom icon
-                Visible = true,
-                Text = "Spokenly - ASR Pro"
-            };
+                // Load custom icon - convert PNG to Icon
+                var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
+                System.Drawing.Icon icon;
 
-            // Create context menu
-            var contextMenu = new WinForms.ContextMenuStrip();
-            contextMenu.Items.Add("Open", null, (s, e) => ShowWindow());
-            contextMenu.Items.Add("Exit", null, (s, e) => ExitApplication());
-            _notifyIcon.ContextMenuStrip = contextMenu;
+                if (File.Exists(iconPath))
+                {
+                    using var bitmap = new System.Drawing.Bitmap(iconPath);
+                    var handle = bitmap.GetHicon();
+                    icon = System.Drawing.Icon.FromHandle(handle);
+                }
+                else
+                {
+                    icon = System.Drawing.SystemIcons.Application;
+                }
 
-            // Double-click to show window
-            _notifyIcon.DoubleClick += (s, e) => ShowWindow();
+                _notifyIcon = new WinForms.NotifyIcon
+                {
+                    Icon = icon,
+                    Visible = true,
+                    Text = "Spokenly - ASR Pro"
+                };
+
+                // Create context menu
+                var contextMenu = new WinForms.ContextMenuStrip();
+                contextMenu.Items.Add("Open Spokenly", null, (s, e) => ShowWindow());
+                contextMenu.Items.Add("-"); // Separator
+                contextMenu.Items.Add("Exit", null, (s, e) => ExitApplication());
+                _notifyIcon.ContextMenuStrip = contextMenu;
+
+                // Double-click to show window
+                _notifyIcon.DoubleClick += (s, e) => ShowWindow();
+            }
+            catch (Exception)
+            {
+                // Fallback to system icon if custom icon fails
+                _notifyIcon = new WinForms.NotifyIcon
+                {
+                    Icon = System.Drawing.SystemIcons.Application,
+                    Visible = true,
+                    Text = "Spokenly - ASR Pro"
+                };
+            }
         }
 
         private void ShowWindow()
@@ -381,6 +478,15 @@ namespace ASRPro
         private void ExitApplication()
         {
             _isExiting = true;
+
+            // Close backend process
+            try
+            {
+                _backendProcess?.Kill();
+                _backendProcess?.Dispose();
+            }
+            catch { /* Ignore errors when closing backend */ }
+
             _notifyIcon?.Dispose();
             Application.Current.Shutdown();
         }
@@ -436,6 +542,13 @@ namespace ASRPro
 
         protected override void OnClosed(EventArgs e)
         {
+            try
+            {
+                _backendProcess?.Kill();
+                _backendProcess?.Dispose();
+            }
+            catch { /* Ignore errors when closing backend */ }
+
             _notifyIcon?.Dispose();
             _httpClient?.Dispose();
             base.OnClosed(e);
