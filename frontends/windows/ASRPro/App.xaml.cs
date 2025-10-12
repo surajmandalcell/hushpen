@@ -32,7 +32,7 @@ namespace ASRPro
         protected override void OnStartup(StartupEventArgs e)
         {
             // Single instance check
-            const string mutexName = "SpokenlyASRPro_SingleInstance";
+            const string mutexName = "ASRPro_SingleInstance";
             _mutex = new Mutex(true, mutexName, out bool isNewInstance);
 
             if (!isNewInstance)
