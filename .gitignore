@@ -71,3 +71,6 @@ frontends/linux/builddir/
 *.md
 !docs/** */.md
 !README.md
+frontends/windows/ASRPro/bin/
+frontends/windows/ASRPro/obj/
+nul

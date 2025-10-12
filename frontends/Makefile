@@ -47,12 +47,8 @@ build.linux:
 
 build.win:
 	@echo "Building Windows WPF application..."
-	@if ! command -v dotnet >/dev/null 2>&1; then \
-		echo "Error: .NET SDK is not installed. Please install the .NET SDK first."; \
-		exit 1; \
-	fi
-	cd windows && \
-	dotnet build -c $(WIN_CONFIGURATION) || { echo "Error: Build failed"; exit 1; }
+	@where dotnet >nul 2>&1 || (echo "Error: .NET SDK is not installed. Please install the .NET SDK first." && exit /b 1)
+	cd windows/ASRPro && dotnet build -c $(WIN_CONFIGURATION)
 
 dev.linux:
 	@echo "Running Linux GTK4 application in development mode..."
@@ -60,10 +56,9 @@ dev.linux:
 
 dev.win:
 	@echo "Restoring Windows dependencies..."
-	cd windows && \
-	dotnet restore || { echo "Error: Package restore failed"; exit 1; }
+	cd windows/ASRPro && dotnet restore
 	@echo "Running Windows WPF application in development mode..."
-	$(MAKE) run.win
+	cd windows/ASRPro && dotnet run -c $(WIN_CONFIGURATION)
 
 run: run.linux
 
@@ -75,5 +70,5 @@ run.linux: build.linux
 
 run.win: build.win
 	@echo "Running Windows WPF application..."
-	cd windows && \
-	dotnet run --project ASRPro -c $(WIN_CONFIGURATION) --no-build || { echo "Error: Failed to start application"; exit 1; }
+	cd windows/ASRPro && \
+	dotnet run -c $(WIN_CONFIGURATION) --no-build

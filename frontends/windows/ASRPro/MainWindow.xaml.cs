@@ -1,29 +1,50 @@
 using System;
+using System.IO;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using Microsoft.Win32;
-using System.IO;
+using Newtonsoft.Json;
+using System.Text;
+using FFMpegCore;
+using FFMpegCore.Enums;
+using System.Diagnostics;
+using System.Windows.Input;
+using WinForms = System.Windows.Forms;
+using Application = System.Windows.Application;
+using MessageBox = System.Windows.MessageBox;
+using Color = System.Windows.Media.Color;
 
 namespace ASRPro
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
-        // Backend API integration will be implemented here
-        // private readonly HttpClient _httpClient;
-        // private const string BackendBaseUrl = "http://localhost:8000";
-        
+        private readonly HttpClient _httpClient;
+        private const string BackendBaseUrl = "http://localhost:8000";
+        private string? _selectedFilePath;
+        private WinForms.NotifyIcon? _notifyIcon;
+        private bool _isExiting = false;
+
         public MainWindow()
         {
             InitializeComponent();
+            _httpClient = new HttpClient();
+            _httpClient.Timeout = TimeSpan.FromMinutes(10); // Allow longer for transcription
             Loaded += MainWindow_Loaded;
+            StateChanged += MainWindow_StateChanged;
+            Closing += MainWindow_Closing;
+
+            // Make drop zone clickable
+            DropZone.MouseLeftButtonUp += (s, e) => BrowseButton_Click(s, e);
+
+            // Initialize tray icon
+            InitializeTrayIcon();
         }
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // Check backend health on startup
             await CheckBackendHealthAsync();
         }
 
@@ -31,66 +52,25 @@ namespace ASRPro
         {
             try
             {
-                // Backend health check will be implemented here
-                // var response = await _httpClient.GetAsync($"{BackendBaseUrl}/health");
-                // if (response.IsSuccessStatusCode)
-                // {
-                //     StatusTextBlock.Text = "Connected";
-                //     StatusTextBlock.Foreground = System.Windows.Media.Brushes.Green;
-                // }
-                // else
-                // {
-                //     StatusTextBlock.Text = "Error";
-                //     StatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
-                // }
-                
-                // Placeholder implementation
-                await Task.Delay(1000);
-                StatusTextBlock.Text = "Not Connected";
-                StatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
-                
-                ResultsTextBox.Text = "Backend health check will be implemented here.\n\n" +
-                    "The app will check if the backend server is running at http://localhost:8000 " +
-                    "before attempting transcription.\n\n" +
-                    "Make sure the backend server is running before using this feature.";
-            }
-            catch (Exception ex)
-            {
-                StatusTextBlock.Text = "Error";
-                StatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
-                ResultsTextBox.Text = $"Error connecting to backend: {ex.Message}";
-            }
-        }
+                StatusText.Text = "Connecting to backend...";
+                StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(255, 189, 46)); // Yellow
 
-        private async void TranscribeButton_Click(object sender, RoutedEventArgs e)
-        {
-            // Show progress overlay
-            ProgressOverlay.Visibility = Visibility.Visible;
-            ProgressText.Text = "Preparing to transcribe...";
-            
-            try
-            {
-                // Backend API integration will be implemented here
-                // This will connect to the backend API to transcribe audio files
-                
-                await Task.Delay(2000); // Simulate processing time
-                
-                ResultsTextBox.Text = "Audio transcription functionality will be implemented here.\n\n" +
-                    "This will:\n" +
-                    "1. Connect to the backend API at http://localhost:8000\n" +
-                    "2. Send audio files for transcription\n" +
-                    "3. Display the transcribed text\n\n" +
-                    "Make sure the backend server is running before using this feature.";
+                var response = await _httpClient.GetAsync($"{BackendBaseUrl}/health");
+                if (response.IsSuccessStatusCode)
+                {
+                    StatusText.Text = "Backend connected";
+                    StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(34, 197, 94)); // Green
+                }
+                else
+                {
+                    StatusText.Text = "Backend error";
+                    StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
+                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show($"Error during transcription: {ex.Message}", "Error", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                // Hide progress overlay
-                ProgressOverlay.Visibility = Visibility.Collapsed;
+                StatusText.Text = "Backend not available";
+                StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
             }
         }
 
@@ -98,37 +78,367 @@ namespace ASRPro
         {
             var openFileDialog = new OpenFileDialog
             {
-                Title = "Select Audio File",
-                Filter = "Audio Files (*.mp3;*.wav;*.m4a;*.flac)|*.mp3;*.wav;*.m4a;*.flac|All Files (*.*)|*.*",
+                Title = "Select Audio or Video File",
+                Filter = "Media Files|*.mp4;*.avi;*.mkv;*.mov;*.mp3;*.wav;*.m4a;*.flac;*.ogg;*.aac;*.wma;*.opus;*.webm;*.3gp;*.wmv;*.mpg;*.mpeg;*.m4v;*.ts|" +
+                        "Video Files|*.mp4;*.avi;*.mkv;*.mov;*.webm;*.3gp;*.wmv;*.mpg;*.mpeg;*.m4v;*.ts|" +
+                        "Audio Files|*.mp3;*.wav;*.m4a;*.flac;*.ogg;*.aac;*.wma;*.opus|" +
+                        "All Files|*.*",
                 FilterIndex = 1
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
-                string fileName = openFileDialog.FileName;
-                
-                // Audio file selection will be implemented here
-                // This will validate the file and prepare it for transcription
-                
-                ResultsTextBox.Text = $"Selected file: {fileName}\n\n" +
-                    "Audio file selection functionality will be implemented here.\n\n" +
-                    "This will:\n" +
-                    "1. Validate the selected audio file\n" +
-                    "2. Prepare the file for upload to the backend\n" +
-                    "3. Enable the transcribe button if valid";
+                SelectFile(openFileDialog.FileName);
             }
         }
 
-        private void SettingsButton_Click(object sender, RoutedEventArgs e)
+        private void SelectFile(string filePath)
         {
-            // Settings window will be implemented here
-            MessageBox.Show("Settings functionality will be implemented here.\n\n" +
-                "This will include:\n" +
-                "- Backend URL configuration\n" +
-                "- Audio format preferences\n" +
-                "- Transcription language settings\n" +
-                "- Output format options", 
-                "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            _selectedFilePath = filePath;
+
+            // Update UI
+            FileInfoPanel.Visibility = Visibility.Visible;
+            FileNameText.Text = Path.GetFileName(filePath);
+
+            var fileInfo = new FileInfo(filePath);
+            FileSizeText.Text = $"{fileInfo.Length / (1024 * 1024):F1} MB";
+
+            // Enable transcribe button
+            TranscribeButton.IsEnabled = true;
+            StatusText.Text = "File selected - ready to transcribe";
+            StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(59, 91, 219)); // Blue
+
+            // Update drop zone appearance
+            DropText.Text = "✓";
+            DropLabel.Text = "File selected";
+            DropZone.BorderBrush = new SolidColorBrush(Color.FromRgb(59, 91, 219));
+        }
+
+        private async void TranscribeButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_selectedFilePath))
+            {
+                MessageBox.Show("Please select a file first.", "No File Selected",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                // Show progress
+                TranscriptionProgress.Visibility = Visibility.Visible;
+                ProgressText.Visibility = Visibility.Visible;
+                TranscribeButton.IsEnabled = false;
+                StatusText.Text = "Processing file...";
+                StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(255, 189, 46)); // Yellow
+
+                // Convert to optimal audio format if needed
+                string audioFilePath = await ConvertToOptimalFormat(_selectedFilePath);
+
+                // Update progress
+                ProgressText.Text = "Uploading to backend...";
+                TranscriptionProgress.Value = 30;
+
+                // Get selected model
+                var selectedModel = ((ComboBoxItem)ModelComboBox.SelectedItem)?.Content?.ToString() ?? "whisper-base";
+
+                // Transcribe
+                var result = await TranscribeAudioAsync(audioFilePath, selectedModel);
+
+                // Update progress
+                TranscriptionProgress.Value = 100;
+                ProgressText.Text = "Transcription complete!";
+
+                // Display results
+                ResultsTextBlock.Text = result;
+
+                // Enable export buttons
+                CopyButton.IsEnabled = true;
+                SaveButton.IsEnabled = true;
+
+                StatusText.Text = "Transcription completed";
+                StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(34, 197, 94)); // Green
+
+                // Clean up temporary file if created
+                if (audioFilePath != _selectedFilePath && File.Exists(audioFilePath))
+                {
+                    File.Delete(audioFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error during transcription: {ex.Message}", "Transcription Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+
+                StatusText.Text = "Transcription failed";
+                StatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(239, 68, 68)); // Red
+            }
+            finally
+            {
+                TranscribeButton.IsEnabled = true;
+                TranscriptionProgress.Visibility = Visibility.Collapsed;
+                ProgressText.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private async Task<string> ConvertToOptimalFormat(string inputPath)
+        {
+            string extension = Path.GetExtension(inputPath).ToLower();
+
+            // If already in a good audio format, return as-is
+            if (extension == ".wav" || extension == ".mp3" || extension == ".m4a" || extension == ".flac")
+            {
+                return inputPath;
+            }
+
+            // Convert to WAV for optimal quality
+            string outputPath = Path.Combine(Path.GetTempPath(),
+                Path.GetFileNameWithoutExtension(inputPath) + "_converted.wav");
+
+            try
+            {
+                ProgressText.Text = "Converting to optimal audio format...";
+                TranscriptionProgress.Value = 10;
+
+                await FFMpegArguments
+                    .FromFileInput(inputPath)
+                    .OutputToFile(outputPath, true, options => options
+                        .WithAudioCodec("pcm_s16le")
+                        .WithAudioSamplingRate(16000)
+                        .WithAudioBitrate(256))
+                    .ProcessAsynchronously();
+
+                return outputPath;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to convert media file: {ex.Message}");
+            }
+        }
+
+        private async Task<string> TranscribeAudioAsync(string audioFilePath, string model)
+        {
+            try
+            {
+                ProgressText.Text = "Sending to AI model...";
+                TranscriptionProgress.Value = 50;
+
+                using var form = new MultipartFormDataContent();
+
+                // Add file
+                var fileBytes = await File.ReadAllBytesAsync(audioFilePath);
+                var fileContent = new ByteArrayContent(fileBytes);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
+                form.Add(fileContent, "file", Path.GetFileName(audioFilePath));
+
+                // Make request
+                var url = $"{BackendBaseUrl}/v1/audio/transcriptions?model={model}&response_format=json";
+                var response = await _httpClient.PostAsync(url, form);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"Backend error ({response.StatusCode}): {errorContent}");
+                }
+
+                ProgressText.Text = "Processing response...";
+                TranscriptionProgress.Value = 90;
+
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+                var transcriptionResult = JsonConvert.DeserializeObject<dynamic>(jsonResponse);
+
+                return transcriptionResult?.text ?? "No transcription text received.";
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Transcription request failed: {ex.Message}");
+            }
+        }
+
+        private void CopyButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(ResultsTextBlock.Text))
+            {
+                Clipboard.SetText(ResultsTextBlock.Text);
+                MessageBox.Show("Text copied to clipboard!", "Copy Successful",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(ResultsTextBlock.Text))
+                return;
+
+            var saveFileDialog = new SaveFileDialog
+            {
+                Title = "Save Transcription",
+                Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
+                DefaultExt = ".txt",
+                FileName = $"transcription_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+            };
+
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    File.WriteAllText(saveFileDialog.FileName, ResultsTextBlock.Text, Encoding.UTF8);
+                    MessageBox.Show("Transcription saved successfully!", "Save Successful",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error saving file: {ex.Message}", "Save Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void DocsButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var url = $"{BackendBaseUrl}/docs";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening documentation: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void NavButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Placeholder for navigation functionality
+            var button = sender as Button;
+            MessageBox.Show($"Navigation to '{button?.Content}' not implemented yet.", "Info",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        // Drag and Drop Handlers
+        private void DropZone_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effects = DragDropEffects.Copy;
+                DropZone.BorderBrush = new SolidColorBrush(Color.FromRgb(59, 91, 219));
+                DropLabel.Text = "Drop file here";
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+        }
+
+        private void DropZone_DragLeave(object sender, DragEventArgs e)
+        {
+            DropZone.BorderBrush = new SolidColorBrush(Color.FromRgb(58, 58, 58));
+            if (string.IsNullOrEmpty(_selectedFilePath))
+            {
+                DropLabel.Text = "Drop files here or click to browse";
+            }
+        }
+
+        private void DropZone_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                if (files.Length > 0)
+                {
+                    SelectFile(files[0]);
+                }
+            }
+        }
+
+        private void InitializeTrayIcon()
+        {
+            _notifyIcon = new WinForms.NotifyIcon
+            {
+                Icon = System.Drawing.SystemIcons.Application, // You can replace with custom icon
+                Visible = true,
+                Text = "Spokenly - ASR Pro"
+            };
+
+            // Create context menu
+            var contextMenu = new WinForms.ContextMenuStrip();
+            contextMenu.Items.Add("Open", null, (s, e) => ShowWindow());
+            contextMenu.Items.Add("Exit", null, (s, e) => ExitApplication());
+            _notifyIcon.ContextMenuStrip = contextMenu;
+
+            // Double-click to show window
+            _notifyIcon.DoubleClick += (s, e) => ShowWindow();
+        }
+
+        private void ShowWindow()
+        {
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        }
+
+        private void ExitApplication()
+        {
+            _isExiting = true;
+            _notifyIcon?.Dispose();
+            Application.Current.Shutdown();
+        }
+
+        private void MainWindow_StateChanged(object? sender, EventArgs e)
+        {
+            if (WindowState == WindowState.Minimized)
+            {
+                Hide();
+                _notifyIcon?.ShowBalloonTip(2000, "Spokenly", "Application minimized to tray", WinForms.ToolTipIcon.Info);
+            }
+        }
+
+        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (!_isExiting)
+            {
+                e.Cancel = true;
+                WindowState = WindowState.Minimized;
+            }
+        }
+
+        // Window Control Handlers
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized; // Minimize to tray instead of closing
+        }
+
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Maximize functionality is disabled for this app
+            // WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        private void HeaderBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2)
+            {
+                // Double-click to maximize/restore (optional)
+                // MaximizeButton_Click(sender, new RoutedEventArgs());
+            }
+            else
+            {
+                // Single click to drag window
+                DragMove();
+            }
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _notifyIcon?.Dispose();
+            _httpClient?.Dispose();
+            base.OnClosed(e);
         }
     }
 }

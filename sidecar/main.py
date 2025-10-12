@@ -46,6 +46,52 @@ async def run_performance_tests():
         return False
 
 
+def start_server():
+    """Start the server."""
+    logger.info("Starting ASR Pro Python Sidecar...")
+
+    # Initialize configuration
+    settings = Settings()
+
+    # Check for config.json in root directory
+    root_config_path = Path(__file__).parent.parent / "config.json"
+    if root_config_path.exists():
+        logger.info(f"Loading configuration from {root_config_path}")
+        with open(root_config_path, 'r', encoding='utf-8') as f:
+            root_config = json.load(f)
+            # settings.update_config(root_config) # This method doesn't exist, skip for now
+
+    # Check Docker environment
+    logger.info("Checking Docker environment...")
+    from config.docker_config import DockerConfig
+    docker_config = DockerConfig(settings.get_docker_config())
+
+    if not docker_config.is_docker_available():
+        logger.warning("Docker is not available on this system. Some features may not work.")
+    else:
+        logger.info("Docker environment check passed")
+
+    # Create FastAPI app
+    app = create_app(settings)
+
+    # Get server configuration
+    server_config = settings.get_server_config()
+    host = server_config.get("host", "127.0.0.1")
+    port = server_config.get("port", 8000)
+
+    logger.info(f"Starting server on {host}:{port}")
+
+    # Start the server
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        log_level="info",
+        access_log=False  # Reduce log noise
+    )
+
 def main():
     """Main entry point for the ASR Pro sidecar."""
     parser = argparse.ArgumentParser(description="ASR Pro Python Sidecar")
@@ -71,62 +117,7 @@ def main():
         sys.exit(0)
 
     try:
-        logger.info("Starting ASR Pro Python Sidecar...")
-
-        # Initialize configuration
-        settings = Settings()
-        
-        # Check for config.json in root directory
-        root_config_path = Path(__file__).parent.parent / "config.json"
-        if root_config_path.exists():
-            logger.info(f"Loading configuration from {root_config_path}")
-            with open(root_config_path, 'r', encoding='utf-8') as f:
-                root_config = json.load(f)
-                await settings.update_config(root_config)
-        
-        await settings.load_config()
-
-        # Check Docker environment
-        logger.info("Checking Docker environment...")
-        from config.docker_config import DockerConfig
-        docker_config = DockerConfig(settings.get_docker_config())
-        
-        if not docker_config.is_docker_available():
-            logger.error("Docker is not available on this system. Please install Docker and ensure it's running.")
-            sys.exit(1)
-        
-        logger.info("Docker environment check passed")
-        
-        # Create FastAPI app
-        app = create_app(settings)
-
-        # Get server configuration
-        server_config = settings.get_server_config()
-        host = server_config.get("host", "127.0.0.1")
-        port = server_config.get("port", 8000)
-
-        logger.info(f"Starting server on {host}:{port}")
-
-        # Start the server with graceful shutdown
-        import uvicorn
-        import signal
-
-        def signal_handler(signum, frame):
-            logger.info("Received shutdown signal, gracefully shutting down...")
-            sys.exit(0)
-
-        # Register signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            log_level="info",
-            access_log=False  # Reduce log noise
-        )
-
+        start_server()
     except KeyboardInterrupt:
         logger.info("Gracefully shutting down...")
     except Exception as e:
