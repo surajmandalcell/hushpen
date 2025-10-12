@@ -479,18 +479,42 @@ namespace ASRPro
 
         private void ExitApplication()
         {
+            ForceExit();
+            Application.Current.Shutdown();
+        }
+
+        public void ForceExit()
+        {
+            if (_isExiting) return; // Prevent multiple calls
             _isExiting = true;
+
+            // Hide and dispose tray icon first
+            if (_notifyIcon != null)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+                _notifyIcon = null;
+            }
 
             // Close backend process
             try
             {
-                _backendProcess?.Kill();
-                _backendProcess?.Dispose();
+                if (_backendProcess != null && !_backendProcess.HasExited)
+                {
+                    _backendProcess.Kill();
+                    _backendProcess.WaitForExit(2000); // Wait up to 2 seconds
+                    _backendProcess.Dispose();
+                    _backendProcess = null;
+                }
             }
             catch { /* Ignore errors when closing backend */ }
 
-            _notifyIcon?.Dispose();
-            Application.Current.Shutdown();
+            // Dispose HTTP client
+            try
+            {
+                _httpClient?.Dispose();
+            }
+            catch { /* Ignore errors */ }
         }
 
         private void MainWindow_StateChanged(object? sender, EventArgs e)
@@ -549,15 +573,7 @@ namespace ASRPro
 
         protected override void OnClosed(EventArgs e)
         {
-            try
-            {
-                _backendProcess?.Kill();
-                _backendProcess?.Dispose();
-            }
-            catch { /* Ignore errors when closing backend */ }
-
-            _notifyIcon?.Dispose();
-            _httpClient?.Dispose();
+            ForceExit();
             base.OnClosed(e);
         }
     }

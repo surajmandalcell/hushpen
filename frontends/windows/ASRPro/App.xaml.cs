@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Threading;
+using System.Runtime.InteropServices;
 
 namespace ASRPro
 {
@@ -10,6 +11,22 @@ namespace ASRPro
     public partial class App : Application
     {
         private static Mutex? _mutex;
+        private static MainWindow? _mainWindow;
+
+        // Import SetConsoleCtrlHandler from kernel32.dll
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleCtrlHandler(ConsoleCtrlDelegate? handlerRoutine, bool add);
+
+        private delegate bool ConsoleCtrlDelegate(CtrlTypes ctrlType);
+
+        private enum CtrlTypes
+        {
+            CTRL_C_EVENT = 0,
+            CTRL_BREAK_EVENT = 1,
+            CTRL_CLOSE_EVENT = 2,
+            CTRL_LOGOFF_EVENT = 5,
+            CTRL_SHUTDOWN_EVENT = 6
+        }
 
         protected override void OnStartup(StartupEventArgs e)
         {
@@ -24,19 +41,43 @@ namespace ASRPro
                 return;
             }
 
+            // Set up console Ctrl+C handler
+            SetConsoleCtrlHandler(ConsoleCtrlHandler, true);
+
             base.OnStartup(e);
 
             // Create main window directly without DI to avoid multiple instances
-            var mainWindow = new MainWindow();
+            _mainWindow = new MainWindow();
 
             // Start minimized to tray
-            mainWindow.WindowState = WindowState.Minimized;
-            mainWindow.Show();
+            _mainWindow.WindowState = WindowState.Minimized;
+            _mainWindow.Show();
         }
 
+        private static bool ConsoleCtrlHandler(CtrlTypes ctrlType)
+        {
+            // Handle Ctrl+C, Ctrl+Break, or console close events
+            if (ctrlType == CtrlTypes.CTRL_C_EVENT ||
+                ctrlType == CtrlTypes.CTRL_BREAK_EVENT ||
+                ctrlType == CtrlTypes.CTRL_CLOSE_EVENT)
+            {
+                // Signal the main window to exit properly
+                Current?.Dispatcher.Invoke(() =>
+                {
+                    _mainWindow?.ForceExit();
+                    Current?.Shutdown();
+                });
+
+                // Wait a bit for cleanup
+                Thread.Sleep(1000);
+                return true;
+            }
+            return false;
+        }
 
         protected override void OnExit(ExitEventArgs e)
         {
+            _mainWindow?.ForceExit();
             _mutex?.Dispose();
             base.OnExit(e);
         }
