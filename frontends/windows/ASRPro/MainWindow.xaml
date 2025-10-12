@@ -6,7 +6,7 @@
         Title="Spokenly" Height="850" Width="1300"
         MinHeight="600" MinWidth="1000"
         WindowStartupLocation="CenterScreen"
-        Background="#1e1e1e"
+        Background="Transparent"
         WindowStyle="None"
         AllowsTransparency="True"
         ResizeMode="CanResize">
@@ -73,21 +73,25 @@
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
                                 CornerRadius="7"
-                                x:Name="border">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            TextElement.Foreground="{TemplateBinding Foreground}"
-                                            TextElement.FontFamily="Segoe MDL2 Assets"
-                                            TextElement.FontSize="8"
-                                            Opacity="0"/>
+                                x:Name="border"
+                                Opacity="1">
+                            <Ellipse Width="7" Height="7"
+                                    Fill="#333333"
+                                    x:Name="dot"
+                                    Opacity="0"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.8"/>
-                                <Setter Property="ContentPresenter.Opacity" Value="1" />
+                                <Setter TargetName="border" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="dot" Property="Opacity" Value="0.5"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.6"/>
+                                <Setter TargetName="border" Property="Opacity" Value="0.7"/>
+                                <Setter TargetName="dot" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.3"/>
+                                <Setter TargetName="dot" Property="Opacity" Value="0"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -96,9 +100,10 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
-        <!-- Window Header -->
-        <Border Background="#2a2a2a"
+    <Border Background="#1e1e1e" CornerRadius="12">
+        <Grid>
+            <!-- Window Header -->
+            <Border Background="#2a2a2a"
                 Height="44"
                 VerticalAlignment="Top"
                 CornerRadius="12,12,0,0">
@@ -109,7 +114,10 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Left Header -->
-                <Border Grid.Column="0" Background="Transparent" MouseLeftButtonDown="HeaderBorder_MouseLeftButtonDown">
+                <Border Grid.Column="0"
+                        Background="#2a2a2a"
+                        CornerRadius="12,0,0,0"
+                        MouseLeftButtonDown="HeaderBorder_MouseLeftButtonDown">
                     <StackPanel Orientation="Horizontal"
                                VerticalAlignment="Center"
                                Margin="20,0">
@@ -117,20 +125,14 @@
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="CloseButton"
                                     Background="#ff5f57"
-                                    Foreground="#8b0000"
-                                    Content="&#xE8BB;"
                                     Click="CloseButton_Click"
                                     Style="{StaticResource WindowControlButtonStyle}"/>
                             <Button x:Name="MinimizeButton"
                                     Background="#ffbd2e"
-                                    Foreground="#8b4513"
-                                    Content="&#xE949;"
                                     Click="MinimizeButton_Click"
                                     Style="{StaticResource WindowControlButtonStyle}"/>
                             <Button x:Name="MaximizeButton"
                                     Background="#28ca42"
-                                    Foreground="#006400"
-                                    Content="&#xE922;"
                                     IsEnabled="False"
                                     Opacity="0.5"
                                     Style="{StaticResource WindowControlButtonStyle}"
@@ -140,106 +142,109 @@
                 </Border>
 
                 <!-- Right Header -->
-                <Border Grid.Column="1" Background="#1e1e1e" MouseLeftButtonDown="HeaderBorder_MouseLeftButtonDown"/>
+                <Border Grid.Column="1"
+                        Background="#1e1e1e"
+                        CornerRadius="0,12,0,0"
+                        MouseLeftButtonDown="HeaderBorder_MouseLeftButtonDown"/>
             </Grid>
-        </Border>
-
-        <!-- Main Content -->
-        <Grid Margin="0,44,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Sidebar -->
-            <Border Grid.Column="0"
-                    Background="#2a2a2a"
-                    CornerRadius="0,0,0,12">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- Navigation -->
-                    <StackPanel Grid.Row="0" Margin="20,18,20,0">
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE713;"
-                                Content="General Settings"
-                                Click="NavButton_Click"/>
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE7AC;"
-                                Content="Dictation Models"
-                                Click="NavButton_Click"/>
-                        <Button Style="{StaticResource ActiveSidebarButtonStyle}"
-                                Tag="&#xE7C3;"
-                                Content="Transcribe File"
-                                Click="NavButton_Click"/>
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE81C;"
-                                Content="History"
-                                Click="NavButton_Click"/>
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE765;"
-                                Content="Keyboard Controls"
-                                Click="NavButton_Click"/>
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE8BD;"
-                                Content="AI Prompts"
-                                Click="NavButton_Click"/>
-                        <Button x:Name="DocsButton"
-                                Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE736;"
-                                Content="API Documentation"
-                                Click="DocsButton_Click"/>
-                        <Button Style="{StaticResource SidebarButtonStyle}"
-                                Tag="&#xE946;"
-                                Content="About"
-                                Click="NavButton_Click"/>
-                    </StackPanel>
-
-                    <!-- Version -->
-                    <TextBlock Grid.Row="1"
-                              Text="#56d00bf"
-                              Foreground="#6a6a6a"
-                              FontSize="11"
-                              Margin="20,8,20,20"
-                              HorizontalAlignment="Left"/>
-                </Grid>
             </Border>
 
-            <!-- Main Content Area -->
-            <Border Grid.Column="1"
-                    Background="#1e1e1e"
-                    CornerRadius="0,0,12,0">
-                <Grid Margin="48,16,48,32">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+            <!-- Main Content -->
+            <Grid Margin="0,44,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-                    <!-- Page Header -->
-                    <StackPanel Grid.Row="0">
-                        <TextBlock Text="Transcribe File"
-                                  FontSize="24"
-                                  FontWeight="SemiBold"
-                                  Foreground="#e0e0e0"
-                                  Margin="0,0,0,6"/>
-                        <TextBlock Text="Upload any audio or video file and get high-quality transcriptions using advanced AI models. Supports all major formats with automatic conversion for optimal processing."
-                                  FontSize="13"
-                                  Foreground="#888888"
-                                  TextWrapping="Wrap"
-                                  LineHeight="22"/>
-                    </StackPanel>
+                <!-- Sidebar -->
+                <Border Grid.Column="0"
+                        Background="#2a2a2a"
+                        CornerRadius="0,0,0,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
 
-                    <!-- Content Body -->
-                    <ScrollViewer Grid.Row="1"
-                                 Margin="0,24,0,0"
-                                 VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <!-- File Upload Section -->
-                            <Border Style="{StaticResource ModelCardStyle}">
-                                <StackPanel>
+                        <!-- Navigation -->
+                        <StackPanel Grid.Row="0" Margin="20,18,20,0">
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE713;"
+                                    Content="General Settings"
+                                    Click="NavButton_Click"/>
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE7AC;"
+                                    Content="Dictation Models"
+                                    Click="NavButton_Click"/>
+                            <Button Style="{StaticResource ActiveSidebarButtonStyle}"
+                                    Tag="&#xE7C3;"
+                                    Content="Transcribe File"
+                                    Click="NavButton_Click"/>
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE81C;"
+                                    Content="History"
+                                    Click="NavButton_Click"/>
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE765;"
+                                    Content="Keyboard Controls"
+                                    Click="NavButton_Click"/>
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE8BD;"
+                                    Content="AI Prompts"
+                                    Click="NavButton_Click"/>
+                            <Button x:Name="DocsButton"
+                                    Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE736;"
+                                    Content="API Documentation"
+                                    Click="DocsButton_Click"/>
+                            <Button Style="{StaticResource SidebarButtonStyle}"
+                                    Tag="&#xE946;"
+                                    Content="About"
+                                    Click="NavButton_Click"/>
+                        </StackPanel>
+
+                        <!-- Version -->
+                        <TextBlock Grid.Row="1"
+                                  Text="#56d00bf"
+                                  Foreground="#6a6a6a"
+                                  FontSize="11"
+                                  Margin="20,8,20,20"
+                                  HorizontalAlignment="Left"/>
+                    </Grid>
+                </Border>
+
+                <!-- Main Content Area -->
+                <Border Grid.Column="1"
+                        Background="#1e1e1e"
+                        CornerRadius="0,0,12,0">
+                    <Grid Margin="48,16,48,32">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Page Header -->
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="Transcribe File"
+                                      FontSize="24"
+                                      FontWeight="SemiBold"
+                                      Foreground="#e0e0e0"
+                                      Margin="0,0,0,6"/>
+                            <TextBlock Text="Upload any audio or video file and get high-quality transcriptions using advanced AI models. Supports all major formats with automatic conversion for optimal processing."
+                                      FontSize="13"
+                                      Foreground="#888888"
+                                      TextWrapping="Wrap"
+                                      LineHeight="22"/>
+                        </StackPanel>
+
+                        <!-- Content Body -->
+                        <ScrollViewer Grid.Row="1"
+                                     Margin="0,24,0,0"
+                                     VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- File Upload Section -->
+                                <Border Style="{StaticResource ModelCardStyle}">
+                                    <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                         <TextBlock Text="&#xE8B7;"
                                                   FontFamily="Segoe MDL2 Assets"
@@ -313,12 +318,12 @@
                                            FontSize="13"
                                            HorizontalAlignment="Left"
                                            Click="BrowseButton_Click"/>
-                                </StackPanel>
-                            </Border>
+                                    </StackPanel>
+                                </Border>
 
-                            <!-- Model Selection -->
-                            <Border Style="{StaticResource ModelCardStyle}">
-                                <StackPanel>
+                                <!-- Model Selection -->
+                                <Border Style="{StaticResource ModelCardStyle}">
+                                    <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                         <TextBlock Text="&#xE7AC;"
                                                   FontFamily="Segoe MDL2 Assets"
@@ -349,12 +354,12 @@
                                               FontSize="11"
                                               Foreground="#888888"
                                               TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </Border>
+                                    </StackPanel>
+                                </Border>
 
-                            <!-- Transcription Controls -->
-                            <Border Style="{StaticResource ModelCardStyle}">
-                                <StackPanel>
+                                <!-- Transcription Controls -->
+                                <Border Style="{StaticResource ModelCardStyle}">
+                                    <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                         <Button x:Name="TranscribeButton"
                                                Content="Start Transcription"
@@ -391,12 +396,12 @@
                                               FontSize="11"
                                               Foreground="#888888"
                                               Visibility="Collapsed"/>
-                                </StackPanel>
-                            </Border>
+                                    </StackPanel>
+                                </Border>
 
-                            <!-- Results Section -->
-                            <Border Style="{StaticResource ModelCardStyle}">
-                                <StackPanel>
+                                <!-- Results Section -->
+                                <Border Style="{StaticResource ModelCardStyle}">
+                                    <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                         <TextBlock Text="&#xE8C8;"
                                                   FontFamily="Segoe MDL2 Assets"
@@ -447,12 +452,13 @@
                                                IsEnabled="False"
                                                Click="SaveButton_Click"/>
                                     </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
-    </Grid>
+    </Border>
 </Window>

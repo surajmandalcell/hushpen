@@ -1,6 +1,6 @@
 using System;
 using System.Windows;
-using Microsoft.Extensions.DependencyInjection;
+using System.Threading;
 
 namespace ASRPro
 {
@@ -9,37 +9,35 @@ namespace ASRPro
     /// </summary>
     public partial class App : Application
     {
-        private ServiceProvider? _serviceProvider;
+        private static Mutex? _mutex;
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Single instance check
+            const string mutexName = "SpokenlyASRPro_SingleInstance";
+            _mutex = new Mutex(true, mutexName, out bool isNewInstance);
+
+            if (!isNewInstance)
+            {
+                // Another instance is already running, exit silently
+                Shutdown();
+                return;
+            }
+
             base.OnStartup(e);
 
-            // Service collection for dependency injection
-            // Backend API services will be registered here
-            var services = new ServiceCollection();
-            ConfigureServices(services);
-            _serviceProvider = services.BuildServiceProvider();
+            // Create main window directly without DI to avoid multiple instances
+            var mainWindow = new MainWindow();
 
-            // Create and show the main window
-            var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+            // Start minimized to tray
+            mainWindow.WindowState = WindowState.Minimized;
             mainWindow.Show();
         }
 
-        private void ConfigureServices(IServiceCollection services)
-        {
-            // Backend API services will be configured here
-            // services.AddHttpClient("BackendAPI", client =>
-            // {
-            //     client.BaseAddress = new Uri("http://localhost:8000");
-            // });
-            
-            services.AddSingleton<MainWindow>();
-        }
 
         protected override void OnExit(ExitEventArgs e)
         {
-            _serviceProvider?.Dispose();
+            _mutex?.Dispose();
             base.OnExit(e);
         }
     }

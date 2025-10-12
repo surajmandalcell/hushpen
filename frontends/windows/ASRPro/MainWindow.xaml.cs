@@ -12,6 +12,7 @@ using FFMpegCore;
 using FFMpegCore.Enums;
 using System.Diagnostics;
 using System.Windows.Input;
+using System.Threading;
 using WinForms = System.Windows.Forms;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
@@ -472,6 +473,7 @@ namespace ASRPro
         {
             Show();
             WindowState = WindowState.Normal;
+            ShowInTaskbar = true;
             Activate();
         }
 
@@ -496,7 +498,12 @@ namespace ASRPro
             if (WindowState == WindowState.Minimized)
             {
                 Hide();
-                _notifyIcon?.ShowBalloonTip(2000, "Spokenly", "Application minimized to tray", WinForms.ToolTipIcon.Info);
+                ShowInTaskbar = false;
+                // Removed annoying notification
+            }
+            else if (WindowState == WindowState.Normal)
+            {
+                ShowInTaskbar = true;
             }
         }
 

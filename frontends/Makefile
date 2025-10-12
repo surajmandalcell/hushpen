@@ -55,6 +55,9 @@ dev.linux:
 	$(MAKE) run.linux
 
 dev.win:
+	@echo "Killing any existing ASRPro instances..."
+	@taskkill /F /IM ASRPro.exe 2>nul || echo No existing instances found
+	@timeout /t 1 /nobreak >nul
 	@echo "Restoring Windows dependencies..."
 	cd windows/ASRPro && dotnet restore
 	@echo "Running Windows WPF application in development mode..."
