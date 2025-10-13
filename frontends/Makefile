@@ -57,7 +57,6 @@ dev.linux:
 dev.win:
 	@echo "Killing any existing ASRPro instances..."
 	@taskkill /F /IM ASRPro.exe 2>nul || echo No existing instances found
-	@ping -n 2 127.0.0.1 >nul
 	@echo "Restoring Windows dependencies..."
 	cd windows/ASRPro && dotnet restore
 	@echo "Running Windows WPF application in development mode..."

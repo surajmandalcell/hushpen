@@ -19,6 +19,7 @@ namespace ASRPro
         {
             InitializeComponent();
             Loaded += MainWindow_Loaded;
+            SizeChanged += MainWindow_SizeChanged;
             StateChanged += MainWindow_StateChanged;
             Closing += MainWindow_Closing;
             InitializeTrayIcon();
@@ -31,20 +32,46 @@ namespace ASRPro
             ContentFrame.Content = _transcribePage;
         }
 
-        private void BtnTranscribe_Click(object sender, RoutedEventArgs e)
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            _transcribePage ??= new TranscribePage();
-            ContentFrame.Content = _transcribePage;
+            // Adaptive pane behavior: content always gets space; pane compacts on narrow widths
+            if (ActualWidth < 900)
+            {
+                Nav.CompactPaneLength = 56;
+                Nav.IsPaneOpen = false; // compact (icons only)
+            }
+            else
+            {
+                Nav.OpenPaneLength = 260;
+                Nav.CompactPaneLength = 56;
+                Nav.IsPaneOpen = true;
+            }
         }
 
-        private void BtnSettings_Click(object sender, RoutedEventArgs e)
+        private void Nav_SelectionChanged(object sender, RoutedEventArgs e)
         {
-            ContentFrame.Content = new System.Windows.Controls.Page { Content = new System.Windows.Controls.TextBlock { Text = "Settings (coming soon)", Margin = new Thickness(24) } };
-        }
-
-        private void BtnDocs_Click(object sender, RoutedEventArgs e)
-        {
-            try { Process.Start(new ProcessStartInfo("http://localhost:8000/docs") { UseShellExecute = true }); } catch { }
+            if (Nav.SelectedItem is Wpf.Ui.Controls.NavigationViewItem item && item.Tag is string tag)
+            {
+                switch (tag)
+                {
+                    case "toggle-pane":
+                        Nav.IsPaneOpen = !Nav.IsPaneOpen;
+                        break;
+                    case "transcribe":
+                        _transcribePage ??= new TranscribePage();
+                        ContentFrame.Content = _transcribePage;
+                        break;
+                    case "docs":
+                        try { Process.Start(new ProcessStartInfo("http://localhost:8000/docs") { UseShellExecute = true }); } catch { }
+                        break;
+                    case "exit":
+                        ExitApplication();
+                        break;
+                    default:
+                        ContentFrame.Content = new System.Windows.Controls.Page { Content = new System.Windows.Controls.TextBlock { Text = "Coming soon", Margin = new Thickness(24) } };
+                        break;
+                }
+            }
         }
 
         private void InitializeTrayIcon()

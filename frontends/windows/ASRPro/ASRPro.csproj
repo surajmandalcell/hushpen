@@ -21,6 +21,7 @@
     <PackageReference Include="FFMpegCore" Version="5.1.0" />
     <!-- WPF UI by lepoco for modern Fluent styles -->
     <PackageReference Include="WPF-UI" Version="4.0.1" />
+    <PackageReference Include="MahApps.Metro.IconPacks" Version="5.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
   </ItemGroup>
 

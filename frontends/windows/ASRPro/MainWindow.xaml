@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:ip="http://metro.mahapps.com/winfx/xaml/iconpacks"
         Title="ASRPro"
         Height="850" Width="1300"
         MinHeight="600" MinWidth="1000"
@@ -18,20 +19,57 @@
             <!-- Title bar -->
             <ui:TitleBar Grid.Row="0" Title="ASRPro" Icon="Audio" />
 
-            <!-- Minimal Sidebar + Content -->
+            <!-- Fluent Sidebar (prebuilt) + Content -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="{DynamicResource UiBrushControlBackground}">
-                    <StackPanel Margin="12">
-                        <ui:Button x:Name="BtnTranscribe" Content="Transcribe" Click="BtnTranscribe_Click" Appearance="Secondary" Margin="0,0,0,6" />
-                        <ui:Button x:Name="BtnSettings" Content="Settings" Click="BtnSettings_Click" Appearance="Secondary" Margin="0,0,0,6" />
-                        <ui:Button x:Name="BtnDocs" Content="API Docs" Click="BtnDocs_Click" Appearance="Secondary" />
-                    </StackPanel>
-                </Border>
+                <ui:NavigationView x:Name="Nav"
+                                   Grid.Column="0"
+                                   PaneDisplayMode="Left"
+                                   IsBackButtonVisible="Collapsed"
+                                   IsPaneOpen="True"
+                                   OpenPaneLength="260"
+                                   CompactPaneLength="56"
+                                   AlwaysShowHeader="False"
+                                   SelectionChanged="Nav_SelectionChanged">
+                    <ui:NavigationView.MenuItems>
+                        <ui:NavigationViewItem Tag="toggle-pane">
+                            <StackPanel Orientation="Horizontal">
+                                <ip:PackIconLucide Kind="Menu" Width="20" Height="20" />
+                                <TextBlock Text="Menu" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </ui:NavigationViewItem>
+                        <ui:NavigationViewItem Tag="transcribe">
+                            <StackPanel Orientation="Horizontal">
+                                <ip:PackIconLucide Kind="Mic" Width="20" Height="20" />
+                                <TextBlock Text="Transcribe" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </ui:NavigationViewItem>
+                        <ui:NavigationViewItem Tag="settings">
+                            <StackPanel Orientation="Horizontal">
+                                <ip:PackIconLucide Kind="Settings" Width="20" Height="20" />
+                                <TextBlock Text="Settings" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </ui:NavigationViewItem>
+                        <ui:NavigationViewItem Tag="docs">
+                            <StackPanel Orientation="Horizontal">
+                                <ip:PackIconLucide Kind="Link" Width="20" Height="20" />
+                                <TextBlock Text="API Docs" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </ui:NavigationViewItem>
+                    </ui:NavigationView.MenuItems>
+                    <ui:NavigationView.FooterMenuItems>
+                        <ui:NavigationViewItem Tag="exit">
+                            <StackPanel Orientation="Horizontal">
+                                <ip:PackIconLucide Kind="Power" Width="20" Height="20" />
+                                <TextBlock Text="Exit" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </ui:NavigationViewItem>
+                    </ui:NavigationView.FooterMenuItems>
+                </ui:NavigationView>
 
                 <Frame x:Name="ContentFrame" Grid.Column="1" NavigationUIVisibility="Hidden" />
             </Grid>
