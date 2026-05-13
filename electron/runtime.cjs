@@ -197,7 +197,7 @@ function createRecordingOverlayHtml() {
         border-radius: 999px;
         background: rgba(80, 80, 86, var(--bar-opacity));
         transform-origin: center;
-        transition: height 90ms linear, background 120ms linear;
+        will-change: height, background;
       }
     </style>
   </head>
@@ -210,21 +210,71 @@ function createRecordingOverlayHtml() {
         const bars = Array.from(document.querySelectorAll(".waveform span"));
         const bases = bars.map((bar) => Number(bar.dataset.base) || 8);
         const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const current = bases.map(() => 0);
+        const target = bases.map(() => 0);
+        let animationFrame = 0;
+        let lastInputAt = 0;
 
-        window.asrproSetWaveformFrame = (samples) => {
-          const values = Array.isArray(samples) ? samples : [];
-          const hasVoice = values.length > 0;
+        const renderWaveform = () => {
+          const now = performance.now();
+          const shouldDecay = lastInputAt === 0 || now - lastInputAt > 180;
+          let shouldContinue = false;
 
           bars.forEach((bar, index) => {
-            const level = clamp(Number(values[index] || 0), 0, 1);
+            const desired = shouldDecay ? 0 : target[index];
+            const response = desired > current[index] ? 0.48 : 0.3;
+            current[index] += (desired - current[index]) * response;
+
+            if (Math.abs(current[index] - desired) < 0.002) {
+              current[index] = desired;
+            }
+
             const base = bases[index];
-            const height = hasVoice ? clamp(base + level * 13, 4, 20) : base;
-            const opacity = hasVoice ? clamp(0.42 + level * 0.52, 0.34, 0.94) : Number(bar.style.getPropertyValue("--bar-opacity")) || 0.72;
+            const energy = clamp(current[index], 0, 1);
+            const ripple = energy * 0.045 * Math.sin(now * 0.026 + index * 0.72);
+            const level = clamp(energy + ripple, 0, 1);
+            const floor = clamp(base * 0.72, 4, 14);
+            const height = energy > 0.002 || desired > 0.002 ? clamp(floor + level * (20 - floor), 4, 20) : base;
+            const opacity = energy > 0.002 ? clamp(0.42 + level * 0.54, 0.34, 0.96) : Number(bar.dataset.opacity) || 0.72;
+
+            if (energy > 0.002 || desired > 0.002) {
+              shouldContinue = true;
+            }
 
             bar.style.setProperty("--bar-height", height.toFixed(2) + "px");
             bar.style.setProperty("--bar-opacity", opacity.toFixed(3));
           });
+
+          if (shouldContinue) {
+            animationFrame = requestAnimationFrame(renderWaveform);
+          } else {
+            animationFrame = 0;
+          }
         };
+
+        const startWaveform = () => {
+          if (!animationFrame) {
+            animationFrame = requestAnimationFrame(renderWaveform);
+          }
+        };
+
+        const setWaveformFrame = (samples) => {
+          const values = Array.isArray(samples) ? samples : [];
+          lastInputAt = values.length > 0 ? performance.now() : 0;
+
+          bars.forEach((bar, index) => {
+            target[index] = clamp(Number(values[index] || 0), 0, 1);
+          });
+
+          startWaveform();
+        };
+
+        bars.forEach((bar) => {
+          bar.dataset.opacity = bar.style.getPropertyValue("--bar-opacity") || "0.72";
+        });
+
+        window.asrproSetWaveformFrame = setWaveformFrame;
+        window.asrproOverlay?.onWaveformFrame?.(setWaveformFrame);
       })();
     </script>
   </body>

@@ -414,9 +414,11 @@ function showRecordingOverlay() {
     hasShadow: false,
     backgroundColor: "#00000000",
     webPreferences: {
+      preload: path.join(__dirname, "overlay-preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
 
@@ -453,10 +455,7 @@ function updateOverlayWaveformFrame(frame) {
 
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
 
-  overlayWindow.webContents.executeJavaScript(
-    `window.asrproSetWaveformFrame?.(${JSON.stringify(normalizedFrame)});`,
-    true,
-  ).catch(() => {});
+  overlayWindow.webContents.send("overlay:waveform-frame", normalizedFrame);
 }
 
 function getOverlaySettingsPath() {

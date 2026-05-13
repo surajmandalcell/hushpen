@@ -165,7 +165,7 @@ function toOverlayWaveformSamples(frame: number[]) {
     const sourceIndex = Math.round((index / Math.max(1, overlayCount - 1)) * (waveformBaseBars.length - 1));
     const baseHeight = waveformBaseBars[sourceIndex]?.baseHeight ?? 8;
     const height = frame[sourceIndex] ?? baseHeight;
-    return clampNumber((height - baseHeight) / (64 - baseHeight), 0, 1);
+    return clampNumber(((height - baseHeight) / (64 - baseHeight)) * 1.45, 0, 1);
   });
 }
 
@@ -250,7 +250,7 @@ function useMicrophoneWaveform(active: boolean) {
             frameRef.current = nextFrame;
             setFrame(nextFrame);
 
-            if (timestamp - lastOverlayFrameAtRef.current > 32) {
+            if (timestamp - lastOverlayFrameAtRef.current > 16) {
               sendOverlayWaveformFrame(nextFrame, true);
               lastOverlayFrameAtRef.current = timestamp;
             }
