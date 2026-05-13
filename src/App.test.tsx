@@ -3,12 +3,75 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
+import { audioRecordingService } from "./services/audioRecording";
 
-afterEach(() => {
+afterEach(async () => {
+  if (audioRecordingService.isRecording()) {
+    await audioRecordingService.stopRecording().catch(() => null);
+  }
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   window.asrpro = undefined;
+  window.localStorage.clear();
   cleanup();
 });
+
+function mockAudioCapture() {
+  const stopTrack = vi.fn();
+  const stream = {
+    getTracks: () => [{ stop: stopTrack }],
+  } as unknown as MediaStream;
+
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn().mockResolvedValue(stream),
+    },
+  });
+
+  vi.stubGlobal("AudioContext", class {
+    createMediaStreamSource() {
+      return { connect: vi.fn() };
+    }
+
+    createAnalyser() {
+      return {
+        fftSize: 256,
+        frequencyBinCount: 8,
+        getByteFrequencyData: (samples: Uint8Array) => samples.fill(72),
+      };
+    }
+
+    close = vi.fn();
+  });
+
+  vi.stubGlobal("MediaRecorder", class {
+    static isTypeSupported() {
+      return true;
+    }
+
+    ondataavailable?: (event: { data: Blob }) => void;
+    onstop?: () => void;
+    state = "inactive";
+    mimeType: string;
+
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      this.mimeType = options?.mimeType || "audio/webm";
+    }
+
+    start() {
+      this.state = "recording";
+    }
+
+    stop() {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: new Blob(["recorded audio"], { type: this.mimeType }) });
+      this.onstop?.();
+    }
+  });
+
+  return { stopTrack };
+}
 
 describe("ASR Pro Electron shell", () => {
   it("renders the ASR Pro dashboard as the primary desktop surface", () => {
@@ -84,6 +147,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("toggles recording state from the dashboard", async () => {
     const user = userEvent.setup();
+    mockAudioCapture();
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
@@ -93,7 +157,57 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByLabelText("Recording active")).toBeTruthy();
   });
 
+  it("shows real local history instead of static demo transcripts", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(screen.getByText("No transcription history yet")).toBeTruthy();
+    expect(screen.queryByText("Design review notes")).toBeNull();
+    expect(screen.queryByText("Product demo call")).toBeNull();
+  });
+
+  it("records audio, transcribes it, and stores the result in history", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        text: "Buy milk and schedule the product demo.",
+        duration: 1.7,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+    await screen.findByRole("button", { name: "Stop Recording" });
+    await user.click(screen.getByRole("button", { name: "Stop Recording" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8000/v1/audio/transcriptions",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.any(FormData),
+        }),
+      );
+    });
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
+    expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
+
+    const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].text).toBe("Buy milk and schedule the product demo.");
+    expect(stored[0].kind).toBe("Dictation");
+  });
+
   it("syncs recording state from the global shortcut and tray bridge", async () => {
+    mockAudioCapture();
     let recordingListener: ((state: { isRecording: boolean; source: string }) => void) | undefined;
     window.asrpro = {
       getPlatform: vi.fn(),

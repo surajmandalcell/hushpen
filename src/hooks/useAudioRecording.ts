@@ -18,7 +18,7 @@ export const useAudioRecording = () => {
         }
     };
 
-    const stopRecording = (): Blob | null => {
+    const stopRecording = (): Promise<Blob | null> => {
         return audioRecordingService.stopRecording();
     };
 

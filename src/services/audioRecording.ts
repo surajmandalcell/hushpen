@@ -13,6 +13,23 @@ export interface AudioRecordingOptions {
     noiseSuppression?: boolean;
 }
 
+function scheduleAudioFrame(callback: FrameRequestCallback): number {
+    if (typeof window.requestAnimationFrame === 'function') {
+        return window.requestAnimationFrame(callback);
+    }
+
+    return window.setTimeout(() => callback(Date.now()), 16);
+}
+
+function cancelAudioFrame(id: number): void {
+    if (typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(id);
+        return;
+    }
+
+    window.clearTimeout(id);
+}
+
 class AudioRecordingService {
     private mediaRecorder: MediaRecorder | null = null;
     private audioContext: AudioContext | null = null;
@@ -21,6 +38,7 @@ class AudioRecordingService {
     private stream: MediaStream | null = null;
     private chunks: Blob[] = [];
     private animationFrame: number | null = null;
+    private startTime: number | null = null;
 
     private state: AudioRecordingState = {
         isRecording: false,
@@ -60,15 +78,22 @@ class AudioRecordingService {
             sum += dataArray[i];
         }
         this.state.audioLevel = sum / bufferLength / 255; // Normalize to 0-1
+        if (this.startTime) {
+            this.state.duration = Math.max(0, Math.floor((Date.now() - this.startTime) / 1000));
+        }
 
         this.notifyListeners();
 
         // Continue monitoring
-        this.animationFrame = requestAnimationFrame(() => this.updateAudioLevel());
+        this.animationFrame = scheduleAudioFrame(() => this.updateAudioLevel());
     }
 
     async startRecording(options: AudioRecordingOptions = {}): Promise<void> {
         try {
+            if (this.state.isRecording) {
+                return;
+            }
+
             // Request microphone access
             const constraints: MediaStreamConstraints = {
                 audio: {
@@ -111,6 +136,7 @@ class AudioRecordingService {
             this.mediaRecorder.start(100); // Collect data every 100ms
             this.state.isRecording = true;
             this.state.duration = 0;
+            this.startTime = Date.now();
             this.state.error = undefined;
 
             // Start audio level monitoring
@@ -125,34 +151,64 @@ class AudioRecordingService {
         }
     }
 
-    stopRecording(): Blob | null {
+    stopRecording(): Promise<Blob | null> {
         if (!this.mediaRecorder || !this.state.isRecording) {
-            return null;
+            return Promise.resolve(null);
         }
 
-        this.mediaRecorder.stop();
+        const recorder = this.mediaRecorder;
+        const mimeType = recorder.mimeType || this.getSupportedMimeType();
 
-        // Stop all tracks
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-        }
+        return new Promise((resolve, reject) => {
+            const finish = () => {
+                // Stop all tracks
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                }
 
-        // Clean up audio context
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-        }
-        if (this.audioContext) {
-            this.audioContext.close();
-        }
+                // Clean up audio context
+                if (this.animationFrame) {
+                    cancelAudioFrame(this.animationFrame);
+                    this.animationFrame = null;
+                }
+                if (this.audioContext) {
+                    this.audioContext.close();
+                }
 
-        // Create audio blob
-        const mimeType = this.getSupportedMimeType();
-        const audioBlob = new Blob(this.chunks, { type: mimeType });
+                const audioBlob = new Blob(this.chunks, { type: mimeType });
 
-        this.state.isRecording = false;
-        this.notifyListeners();
+                this.mediaRecorder = null;
+                this.audioContext = null;
+                this.analyser = null;
+                this.microphone = null;
+                this.stream = null;
+                this.chunks = [];
+                this.startTime = null;
+                this.state.isRecording = false;
+                this.state.audioLevel = 0;
+                this.notifyListeners();
 
-        return audioBlob;
+                resolve(audioBlob);
+            };
+
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.chunks.push(event.data);
+                }
+            };
+            recorder.onstop = finish;
+            recorder.onerror = () => {
+                this.state.isRecording = false;
+                this.notifyListeners();
+                reject(new Error('Failed to stop recording'));
+            };
+
+            if (recorder.state === 'inactive') {
+                finish();
+            } else {
+                recorder.stop();
+            }
+        });
     }
 
     private getSupportedMimeType(): string {

@@ -128,7 +128,7 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
   const handleStop = async () => {
     try {
-      const audioBlob = stopRecording();
+      const audioBlob = await stopRecording();
       if (audioBlob) {
         stop();
 
