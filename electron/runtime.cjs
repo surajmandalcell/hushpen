@@ -132,10 +132,9 @@ function clamp(value, min, max) {
 }
 
 function createRecordingOverlayHtml() {
-  const waveformPattern = [8, 12, 16, 10, 18, 14, 17, 11, 15, 9, 13, 16, 12, 18, 14, 10, 15, 8, 12, 16, 11, 17];
-  const waveformBars = Array.from({ length: 55 }, (_, index) => waveformPattern[index % waveformPattern.length]);
+  const waveformBars = buildOverlayWaveformBars(55);
   const barsHtml = waveformBars.map((height, index) => (
-    `<span style="--bar-height:${height}px;--bar-opacity:${index < 4 || index > waveformBars.length - 5 ? 0.36 : 0.78}"></span>`
+    `<span data-base="${height}" style="--bar-height:${height}px;--bar-opacity:${edgeOpacity(index, waveformBars.length)}"></span>`
   )).join("");
 
   return `<!doctype html>
@@ -198,6 +197,7 @@ function createRecordingOverlayHtml() {
         border-radius: 999px;
         background: rgba(80, 80, 86, var(--bar-opacity));
         transform-origin: center;
+        transition: height 90ms linear, background 120ms linear;
       }
     </style>
   </head>
@@ -205,8 +205,53 @@ function createRecordingOverlayHtml() {
     <div class="surface" role="status" aria-label="ASR Pro recording overlay">
       <span class="waveform" aria-hidden="true">${barsHtml}</span>
     </div>
+    <script>
+      (() => {
+        const bars = Array.from(document.querySelectorAll(".waveform span"));
+        const bases = bars.map((bar) => Number(bar.dataset.base) || 8);
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+        window.asrproSetWaveformFrame = (samples) => {
+          const values = Array.isArray(samples) ? samples : [];
+          const hasVoice = values.length > 0;
+
+          bars.forEach((bar, index) => {
+            const level = clamp(Number(values[index] || 0), 0, 1);
+            const base = bases[index];
+            const height = hasVoice ? clamp(base + level * 13, 4, 20) : base;
+            const opacity = hasVoice ? clamp(0.42 + level * 0.52, 0.34, 0.94) : Number(bar.style.getPropertyValue("--bar-opacity")) || 0.72;
+
+            bar.style.setProperty("--bar-height", height.toFixed(2) + "px");
+            bar.style.setProperty("--bar-opacity", opacity.toFixed(3));
+          });
+        };
+      })();
+    </script>
   </body>
 </html>`;
+}
+
+function buildOverlayWaveformBars(count) {
+  return Array.from({ length: count }, (_, index) => {
+    const position = index / Math.max(1, count - 1);
+    const envelope = 0.42 + 0.58 * (1 - Math.abs(position - 0.5) * 1.35);
+    const speechShape = 0.36
+      + 0.28 * Math.sin(index * 1.73)
+      + 0.18 * Math.sin(index * 0.59 + 1.8)
+      + 0.11 * Math.sin(index * 2.47 + 0.3);
+
+    return Math.round(clampNumber(6 + 12 * envelope * speechShape, 5, 18));
+  });
+}
+
+function edgeOpacity(index, count) {
+  const distance = Math.min(index, count - 1 - index);
+  if (distance < 3) return 0.28 + distance * 0.12;
+  return 0.76;
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 module.exports = {

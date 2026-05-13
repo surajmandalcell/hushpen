@@ -278,16 +278,15 @@
 
   .in-app-waveform__bars span {
     width: 2px;
-    height: max(10px, calc(var(--wave-height) * 0.7));
+    height: var(--wave-height);
     border-radius: 999px;
     background: rgba(80, 80, 86, var(--wave-opacity));
     opacity: 1;
     transform-origin: center;
-    transition: background 220ms ease, height 260ms ease;
+    transition: background 160ms ease, height 90ms linear;
   }
 
   .in-app-waveform.is-active .in-app-waveform__bars span {
-    height: var(--wave-height);
     background: rgba(0, 102, 204, var(--wave-opacity));
   }
 

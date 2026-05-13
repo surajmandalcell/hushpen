@@ -53,6 +53,7 @@ declare global {
       onAddFiles: (callback: () => void) => () => void;
       setRecording: (active: boolean) => Promise<{ isRecording: boolean }>;
       toggleRecording: () => Promise<{ isRecording: boolean }>;
+      setWaveformFrame?: (frame: number[]) => void;
       onRecordingState: (callback: (state: { isRecording: boolean; source: string }) => void) => () => void;
       windowControl: (action: "minimize" | "maximize" | "close") => Promise<void>;
     };

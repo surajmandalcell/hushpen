@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld("asrpro", {
   },
   setRecording: (active) => ipcRenderer.invoke("recording:set", Boolean(active)),
   toggleRecording: () => ipcRenderer.invoke("recording:toggle"),
+  setWaveformFrame: (frame) => {
+    ipcRenderer.send("recording:waveform-frame", Array.isArray(frame) ? frame : []);
+  },
   onRecordingState: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on("recording:state", listener);

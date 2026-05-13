@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, dialog, globalShortcut, ipcMain, Menu, shell, screen } = require("electron");
+const { app, BrowserWindow, Tray, dialog, globalShortcut, ipcMain, Menu, shell, screen, session } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
@@ -25,6 +25,7 @@ let isRecording = false;
 let shortcutRegistered = false;
 let overlaySettings = DEFAULT_OVERLAY_SETTINGS;
 let positioningOverlay = false;
+let lastWaveformFrame = [];
 
 app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
 
@@ -105,6 +106,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -178,6 +180,10 @@ function registerIpc() {
     return getRecordingState();
   });
 
+  ipcMain.on("recording:waveform-frame", (_event, frame) => {
+    updateOverlayWaveformFrame(frame);
+  });
+
   ipcMain.handle("dialog:select-audio", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Choose audio or video to transcribe",
@@ -215,6 +221,47 @@ function registerIpc() {
     }
     if (action === "close") senderWindow.close();
   });
+}
+
+function configureMediaPermissions() {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
+    callback(isTrustedMediaPermission(webContents, permission, details));
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details = {}) => (
+    isTrustedMediaPermission(webContents, permission, {
+      ...details,
+      requestingOrigin,
+    })
+  ));
+}
+
+function isTrustedMediaPermission(webContents, permission, details = {}) {
+  if (permission !== "media") return false;
+
+  const mediaType = details.mediaType || (Array.isArray(details.mediaTypes) ? details.mediaTypes[0] : undefined);
+  if (mediaType && mediaType !== "audio" && mediaType !== "unknown") {
+    return false;
+  }
+
+  return [
+    details.requestingUrl,
+    details.requestingOrigin,
+    details.securityOrigin,
+    webContents?.getURL?.(),
+  ].some(isTrustedAppUrl);
+}
+
+function isTrustedAppUrl(value = "") {
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    const devUrl = new URL(DEV_SERVER_URL);
+    return url.protocol === "file:" || url.origin === devUrl.origin;
+  } catch {
+    return value.startsWith("file://") || value.startsWith(DEV_SERVER_URL);
+  }
 }
 
 function createMenu() {
@@ -376,7 +423,10 @@ function showRecordingOverlay() {
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWindow.setIgnoreMouseEvents(false);
-  overlayWindow.once("ready-to-show", () => overlayWindow?.showInactive());
+  overlayWindow.once("ready-to-show", () => {
+    overlayWindow?.showInactive();
+    updateOverlayWaveformFrame(lastWaveformFrame);
+  });
   overlayWindow.on("move", persistDraggedOverlayPosition);
   overlayWindow.on("closed", () => {
     overlayWindow = undefined;
@@ -392,6 +442,21 @@ function hideRecordingOverlay() {
     overlayWindow.close();
   }
   overlayWindow = undefined;
+}
+
+function updateOverlayWaveformFrame(frame) {
+  const normalizedFrame = Array.isArray(frame)
+    ? frame.slice(0, 80).map((value) => Math.min(Math.max(Number(value) || 0, 0), 1))
+    : [];
+
+  lastWaveformFrame = normalizedFrame;
+
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+
+  overlayWindow.webContents.executeJavaScript(
+    `window.asrproSetWaveformFrame?.(${JSON.stringify(normalizedFrame)});`,
+    true,
+  ).catch(() => {});
 }
 
 function getOverlaySettingsPath() {
@@ -485,6 +550,7 @@ if (hasSingleInstanceLock) {
 
   app.whenReady().then(() => {
     registerIpc();
+    configureMediaPermissions();
     Menu.setApplicationMenu(createMenu());
     createWindow();
     registerGlobalShortcut();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Activity,
   BrainCircuit,
@@ -104,12 +104,184 @@ const transcriptRows = [
   },
 ];
 
-const waveformPattern = [18, 30, 46, 24, 54, 38, 50, 28, 44, 20, 34, 48, 26, 56, 40, 30, 52, 22, 36, 46, 28, 54, 34, 42] as const;
-const waveformBars = Array.from({ length: 76 }, (_, index) => ({
-  id: `wave-${index}`,
-  height: waveformPattern[index % waveformPattern.length],
-  opacity: index < 5 || index > 70 ? 0.38 : 0.78,
-}));
+const waveformBarCount = 76;
+const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
+  const position = index / Math.max(1, waveformBarCount - 1);
+  const envelope = 0.36 + 0.64 * Math.sin(Math.PI * position);
+  const voiceShape = 0.48
+    + 0.26 * Math.sin(index * 1.39 + 0.4)
+    + 0.18 * Math.sin(index * 0.47 + 1.7)
+    + 0.12 * Math.sin(index * 2.13 + 0.9);
+  const edgeDistance = Math.min(index, waveformBarCount - 1 - index);
+
+  return {
+    id: `wave-${index}`,
+    baseHeight: Math.round(clampNumber(10 + 42 * envelope * voiceShape, 8, 46)),
+    opacity: edgeDistance < 5 ? 0.34 + edgeDistance * 0.08 : 0.78,
+  };
+});
+const idleWaveformFrame = waveformBaseBars.map((bar) => bar.baseHeight);
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function calculateVoiceLevel(samples: Uint8Array) {
+  let sum = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const centered = (samples[index] - 128) / 128;
+    sum += centered * centered;
+  }
+
+  const rms = Math.sqrt(sum / samples.length);
+  return clampNumber((rms - 0.016) / 0.13, 0, 1);
+}
+
+function buildReactiveWaveformFrame(frequencies: Uint8Array, voiceLevel: number, timestamp: number, previousFrame: number[]) {
+  return waveformBaseBars.map((bar, index) => {
+    const position = index / Math.max(1, waveformBaseBars.length - 1);
+    const bin = Math.min(frequencies.length - 1, Math.floor(Math.pow(position, 1.34) * frequencies.length * 0.86));
+    const spectralLevel = Math.max(
+      frequencies[bin] / 255,
+      (frequencies[Math.min(frequencies.length - 1, bin + 2)] || 0) / 255 * 0.82,
+    );
+    const unevenLift = clampNumber(
+      0.64
+        + 0.24 * Math.sin(index * 0.83 + timestamp * 0.009)
+        + 0.18 * Math.sin(index * 1.71 + timestamp * 0.006),
+      0.42,
+      1.14,
+    );
+    const target = clampNumber(bar.baseHeight + voiceLevel * (9 + spectralLevel * 48) * unevenLift, 6, 64);
+    const previous = previousFrame[index] ?? bar.baseHeight;
+
+    return Math.round((previous * 0.5 + target * 0.5) * 10) / 10;
+  });
+}
+
+function toOverlayWaveformSamples(frame: number[]) {
+  const overlayCount = 55;
+  return Array.from({ length: overlayCount }, (_, index) => {
+    const sourceIndex = Math.round((index / Math.max(1, overlayCount - 1)) * (waveformBaseBars.length - 1));
+    const baseHeight = waveformBaseBars[sourceIndex]?.baseHeight ?? 8;
+    const height = frame[sourceIndex] ?? baseHeight;
+    return clampNumber((height - baseHeight) / (64 - baseHeight), 0, 1);
+  });
+}
+
+function sendOverlayWaveformFrame(frame: number[], hasVoice: boolean) {
+  window.asrpro?.setWaveformFrame?.(hasVoice ? toOverlayWaveformSamples(frame) : []);
+}
+
+function useMicrophoneWaveform(active: boolean) {
+  const [frame, setFrame] = useState<number[]>(idleWaveformFrame);
+  const frameRef = useRef<number[]>(idleWaveformFrame);
+  const lastOverlayFrameAtRef = useRef(0);
+
+  useEffect(() => {
+    if (!active) {
+      frameRef.current = idleWaveformFrame;
+      setFrame(idleWaveformFrame);
+      sendOverlayWaveformFrame(idleWaveformFrame, false);
+      return undefined;
+    }
+
+    let stopped = false;
+    let animationFrame = 0;
+    let stream: MediaStream | null = null;
+    let audioContext: AudioContext | null = null;
+
+    const startAnalyser = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
+          frameRef.current = idleWaveformFrame;
+          setFrame(idleWaveformFrame);
+          sendOverlayWaveformFrame(idleWaveformFrame, false);
+          return;
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+
+        if (stopped) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        audioContext = new AudioContext();
+        await audioContext.resume().catch(() => {});
+        if (stopped) return;
+
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.72;
+
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        const timeDomainSamples = new Uint8Array(analyser.fftSize);
+        const frequencySamples = new Uint8Array(analyser.frequencyBinCount);
+
+        const tick = (timestamp: number) => {
+          if (stopped) return;
+
+          analyser.getByteTimeDomainData(timeDomainSamples);
+          const voiceLevel = calculateVoiceLevel(timeDomainSamples);
+
+          if (voiceLevel <= 0.025) {
+            if (frameRef.current !== idleWaveformFrame) {
+              frameRef.current = idleWaveformFrame;
+              setFrame(idleWaveformFrame);
+            }
+
+            if (timestamp - lastOverlayFrameAtRef.current > 120) {
+              sendOverlayWaveformFrame(idleWaveformFrame, false);
+              lastOverlayFrameAtRef.current = timestamp;
+            }
+          } else {
+            analyser.getByteFrequencyData(frequencySamples);
+            const nextFrame = buildReactiveWaveformFrame(frequencySamples, voiceLevel, timestamp, frameRef.current);
+
+            frameRef.current = nextFrame;
+            setFrame(nextFrame);
+
+            if (timestamp - lastOverlayFrameAtRef.current > 32) {
+              sendOverlayWaveformFrame(nextFrame, true);
+              lastOverlayFrameAtRef.current = timestamp;
+            }
+          }
+
+          animationFrame = requestAnimationFrame(tick);
+        };
+
+        animationFrame = requestAnimationFrame(tick);
+      } catch {
+        if (stopped) return;
+        frameRef.current = idleWaveformFrame;
+        setFrame(idleWaveformFrame);
+        sendOverlayWaveformFrame(idleWaveformFrame, false);
+      }
+    };
+
+    void startAnalyser();
+
+    return () => {
+      stopped = true;
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      stream?.getTracks().forEach((track) => track.stop());
+      void audioContext?.close();
+      frameRef.current = idleWaveformFrame;
+      sendOverlayWaveformFrame(idleWaveformFrame, false);
+    };
+  }, [active]);
+
+  return frame;
+}
 
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
@@ -122,6 +294,7 @@ function App() {
     { fileName: "voice-note.m4a", path: "demo://voice-note.m4a" },
   ]);
   const [historyFilter, setHistoryFilter] = useState("All");
+  const waveformFrame = useMicrophoneWaveform(isRecording);
 
   useEffect(() => {
     const api = window.asrpro;
@@ -206,6 +379,7 @@ function App() {
             {activeView === "dashboard" && (
               <DashboardView
                 isRecording={isRecording}
+                waveformFrame={waveformFrame}
                 selectedModel={selectedModel}
                 onToggleRecording={() => handleSetRecording(!isRecording)}
                 onSelectFiles={handleSelectFiles}
@@ -337,12 +511,13 @@ function Toolbar({ activeTitle, isRecording, onToggleRecording }: ToolbarProps) 
 
 interface DashboardViewProps {
   isRecording: boolean;
+  waveformFrame: number[];
   selectedModel: string;
   onToggleRecording: () => void;
   onSelectFiles: () => void;
 }
 
-function DashboardView({ isRecording, selectedModel, onToggleRecording, onSelectFiles }: DashboardViewProps) {
+function DashboardView({ isRecording, waveformFrame, selectedModel, onToggleRecording, onSelectFiles }: DashboardViewProps) {
   return (
     <section className="mx-auto flex w-full max-w-[760px] flex-col gap-4 pt-1">
       <div className="flex min-w-0 items-center justify-between gap-4 px-1">
@@ -366,7 +541,7 @@ function DashboardView({ isRecording, selectedModel, onToggleRecording, onSelect
         />
       </div>
 
-      <Waveform active={isRecording} />
+      <Waveform active={isRecording} frame={waveformFrame} />
 
       <div className="flex flex-col items-start gap-2 sm:flex-row">
         <PrimaryButton onClick={onToggleRecording}>
@@ -606,17 +781,18 @@ function PanelRow({ icon, title, detail, trailing }: PanelRowProps) {
 
 interface WaveformProps {
   active: boolean;
+  frame: number[];
 }
 
-function Waveform({ active }: WaveformProps) {
+function Waveform({ active, frame }: WaveformProps) {
   return (
     <div className={`in-app-waveform ${active ? "is-active" : ""}`} role="img" aria-label="Live recording waveform">
       <div className="in-app-waveform__bars" aria-hidden="true">
-        {waveformBars.map((bar) => (
+        {waveformBaseBars.map((bar, index) => (
           <span
             key={bar.id}
             style={{
-              "--wave-height": `${bar.height}px`,
+              "--wave-height": `${frame[index] ?? bar.baseHeight}px`,
               "--wave-opacity": bar.opacity,
             } as CSSProperties}
           />

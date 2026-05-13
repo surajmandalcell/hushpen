@@ -22,6 +22,7 @@ describe("Electron runtime helpers", () => {
     expect(html).toContain('class="surface"');
     expect(html).toContain('class="waveform"');
     expect(html).toContain("width: 164px");
+    expect(html).toContain("asrproSetWaveformFrame");
     expect(html).not.toContain("animation:");
     expect(html).not.toContain("Recording now");
     expect(html).not.toContain("Parakeet-TDT");
