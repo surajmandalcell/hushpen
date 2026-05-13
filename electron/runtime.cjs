@@ -12,9 +12,9 @@ const DEFAULT_OVERLAY_SETTINGS = Object.freeze({
 });
 
 const DEFAULT_MODEL = {
-  id: "parakeet-tdt-0.6b-v3",
-  displayName: "Parakeet-TDT-0.6B-v3",
-  repo: "nvidia/parakeet-tdt-0.6b-v3",
+  id: "whisper-base",
+  displayName: "Local Whisper",
+  repo: "onnx-asr/whisper-base",
 };
 
 function platformPath(platform) {

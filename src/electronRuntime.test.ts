@@ -9,10 +9,10 @@ describe("Electron runtime helpers", () => {
     expect(runtime.RECORDING_SHORTCUT).toBe("CommandOrControl+`");
   });
 
-  it("uses Parakeet-TDT-0.6B-v3 as the default model", () => {
-    expect(runtime.DEFAULT_MODEL.id).toBe("parakeet-tdt-0.6b-v3");
-    expect(runtime.DEFAULT_MODEL.displayName).toBe("Parakeet-TDT-0.6B-v3");
-    expect(runtime.DEFAULT_MODEL.repo).toBe("nvidia/parakeet-tdt-0.6b-v3");
+  it("uses the working local Whisper model as the default model", () => {
+    expect(runtime.DEFAULT_MODEL.id).toBe("whisper-base");
+    expect(runtime.DEFAULT_MODEL.displayName).toBe("Local Whisper");
+    expect(runtime.DEFAULT_MODEL.repo).toBe("onnx-asr/whisper-base");
   });
 
   it("renders the recording overlay as a text-free waveform pill", () => {

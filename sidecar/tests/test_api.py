@@ -77,10 +77,10 @@ class TestAPIServer:
             assert response.status_code == 200
             data = response.json()
             assert data["object"] == "list"
-            assert len(data["data"]) == 6  # Updated to match actual registry count
+            assert len(data["data"]) == 2
             model_ids = [model["id"] for model in data["data"]]
             assert "whisper-base" in model_ids
-            assert all(model["ready"] is False for model in data["data"])  # No models loaded initially
+            assert all(model["ready"] is True for model in data["data"])
     
     def test_list_models_failure(self):
         """Test model listing failure."""
@@ -184,6 +184,36 @@ class TestAPIServer:
                 assert data["text"] == "Hello world"
                 assert data["language"] == "en"
                 assert len(data["segments"]) == 1
+
+    def test_transcribe_audio_accepts_browser_webm(self):
+        """Test audio transcription accepts browser MediaRecorder WebM files."""
+        settings = Settings()
+
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as f:
+            f.write(b'fake browser audio data')
+            f.flush()
+
+            with patch('api.server.ModelManager') as mock_manager_class:
+                mock_manager = Mock()
+                mock_manager.get_current_model.return_value = 'whisper-base'
+                mock_manager.transcribe_file = AsyncMock(return_value={
+                    'text': 'Browser recording',
+                    'language': 'en',
+                    'segments': []
+                })
+                mock_manager_class.return_value = mock_manager
+
+                app = create_app(settings)
+                client = TestClient(app)
+                with open(f.name, 'rb') as audio_file:
+                    response = client.post(
+                        "/v1/audio/transcriptions",
+                        files={"file": ("dictation.webm", audio_file, "audio/webm")}
+                    )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["text"] == "Browser recording"
     
     def test_transcribe_audio_text_format(self):
         """Test audio transcription with text format."""
@@ -349,7 +379,14 @@ class TestAPIServer:
         app = create_app(settings)
         
         client = TestClient(app)
-        response = client.options("/health", headers={"Origin": "http://localhost:3000"})
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://127.0.0.1:4270",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
         
         # CORS headers should be present
         assert "access-control-allow-origin" in response.headers
+        assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:4270"

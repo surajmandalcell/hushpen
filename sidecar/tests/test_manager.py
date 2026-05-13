@@ -35,7 +35,7 @@ class TestModelManager:
                 await manager.initialize()
 
             mock_detect.assert_called_once()
-            mock_set_model.assert_called_once_with("parakeet-tdt-0.6b-v3")
+            mock_set_model.assert_called_once_with("whisper-base")
             assert hasattr(manager, "loader_configs")
             assert "whisper" in manager.loader_configs
             assert "parakeet" in manager.loader_configs

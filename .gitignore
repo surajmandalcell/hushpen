@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 tmp/
+data/
 release/
 *.tsbuildinfo
 vite.config.js

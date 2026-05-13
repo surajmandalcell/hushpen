@@ -81,7 +81,7 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("Dictation")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
-    expect(screen.getAllByText(/Parakeet-TDT-0\.6B-v3/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Local Whisper").length).toBeGreaterThan(0);
   });
 
   it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", () => {
@@ -152,7 +152,7 @@ describe("ASR Pro Electron shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
 
-    expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy());
     expect(screen.queryByText("Recording now")).toBeNull();
     expect(screen.getByLabelText("Recording active")).toBeTruthy();
   });
@@ -189,13 +189,15 @@ describe("ASR Pro Electron shell", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://localhost:8000/v1/audio/transcriptions",
+        "http://127.0.0.1:8000/v1/audio/transcriptions",
         expect.objectContaining({
           method: "POST",
           body: expect.any(FormData),
         }),
       );
     });
+    const formData = fetchMock.mock.calls[0][1].body as FormData;
+    expect(formData.get("model")).toBe("whisper-base");
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
     expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
@@ -210,6 +212,33 @@ describe("ASR Pro Electron shell", () => {
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
+  it("keeps a playable recording in history when transcription fetch fails", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+    await screen.findByRole("button", { name: "Stop Recording" });
+    await user.click(screen.getByRole("button", { name: "Stop Recording" }));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
+    expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
+    expect(screen.getByText(/Failed to fetch/)).toBeTruthy();
+
+    const audio = screen.getByLabelText("Play recording: Recording failed to transcribe");
+    expect(audio.tagName).toBe("AUDIO");
+    expect(audio.getAttribute("src")).toMatch(/^data:audio\/webm/);
+
+    const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].status).toBe("failed");
+    expect(stored[0].error).toBe("Failed to fetch");
+    expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
+  });
+
   it("syncs recording state from the global shortcut and tray bridge", async () => {
     mockAudioCapture();
     let recordingListener: ((state: { isRecording: boolean; source: string }) => void) | undefined;
@@ -220,7 +249,7 @@ describe("ASR Pro Electron shell", () => {
       onAddFiles: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Parakeet-TDT-0.6B-v3",
+        defaultModel: "Local Whisper",
         shortcut: "CommandOrControl+`",
       }),
       setRecording: vi.fn(),
@@ -239,7 +268,7 @@ describe("ASR Pro Electron shell", () => {
       recordingListener?.({ isRecording: true, source: "shortcut" });
     });
 
-    expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy());
     expect(screen.queryByText("Global overlay active")).toBeNull();
     expect(screen.queryByText(/CommandOrControl/)).toBeNull();
   });

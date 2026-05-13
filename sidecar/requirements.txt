@@ -4,18 +4,11 @@ uvicorn[standard]>=0.30.0
 pydantic>=2.8.0
 python-multipart
 
-# ONNX Runtime with prebuilt CUDA (no system CUDA needed)
-onnxruntime-gpu>=1.17.0
-onnx-asr[gpu,hub]>=0.7.0
-
-# PyTorch with CUDA (prebuilt) - matches CUDA 12.x wheels
-torch>=2.5.0
-torchvision>=0.20.0
-torchaudio>=2.5.0
-
-# CUDA libraries (prebuilt) - match ORT/Torch CUDA 12.x
-nvidia-cudnn-cu12>=9.1.0
-nvidia-cublas-cu12>=12.4.5.8
+# ONNX Runtime
+onnxruntime>=1.17.0; platform_system == "Darwin"
+onnxruntime-gpu>=1.17.0; platform_system != "Darwin"
+onnx-asr[hub]>=0.7.0; platform_system == "Darwin"
+onnx-asr[gpu,hub]>=0.7.0; platform_system != "Darwin"
 
 # Audio processing
 librosa>=0.10.0
@@ -29,5 +22,5 @@ pytest-asyncio>=0.21.0
 httpx>=0.25.0
 requests>=2.31.0
 
-# Optional: NeMo for advanced Parakeet models
-nemo-toolkit[asr]>=1.23.0
+# Optional for Parakeet/NeMo models:
+# pip install "nemo-toolkit[asr]>=1.23.0" torch torchaudio

@@ -57,7 +57,7 @@ class Settings:
                 "port": 8000
             },
             "models": {
-                "default_model": "parakeet-tdt-0.6b-v3",
+                "default_model": "whisper-base",
                 "cache_dir": str(self.data_dir / "models")
             },
             "device": {

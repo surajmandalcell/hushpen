@@ -35,7 +35,7 @@ class TestSettings:
         
         assert config["server"]["host"] == "127.0.0.1"
         assert config["server"]["port"] == 8000
-        assert config["models"]["default_model"] == "parakeet-tdt-0.6b-v3"
+        assert config["models"]["default_model"] == "whisper-base"
         assert config["models"]["cache_dir"].endswith("models")
         assert config["device"]["prefer_gpu"] is True
         assert config["device"]["compute_type"] == "auto"
@@ -83,7 +83,7 @@ class TestSettings:
     def test_get_models_config(self, settings):
         """Test getting models configuration."""
         config = settings.get_models_config()
-        assert config["default_model"] == "parakeet-tdt-0.6b-v3"
+        assert config["default_model"] == "whisper-base"
     
     def test_get_device_config(self, settings):
         """Test getting device configuration."""

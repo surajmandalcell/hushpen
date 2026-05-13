@@ -11,6 +11,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from typing import Optional
 import logging
 import asyncio
@@ -78,7 +79,9 @@ def create_app(settings: Settings) -> FastAPI:
         allow_origins=[
             "http://localhost:3000",
             "http://localhost:1420",
-        ],  # React dev server and Tauri dev server
+            "http://127.0.0.1:4270",
+            "http://localhost:4270",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -123,6 +126,8 @@ def create_app(settings: Settings) -> FastAPI:
                 return ModelSettingResponse(status="success", model=request.model_id)
             else:
                 raise HTTPException(status_code=400, detail="Failed to set model")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to set model: {e}")
             raise HTTPException(status_code=500, detail="Failed to set model")
@@ -136,10 +141,10 @@ def create_app(settings: Settings) -> FastAPI:
         """Transcribe audio file."""
         try:
             # Validate file type
-            if not file.filename.endswith((".wav", ".mp3", ".m4a", ".flac")):
+            if not file.filename.endswith((".wav", ".mp3", ".m4a", ".flac", ".webm")):
                 raise HTTPException(
                     status_code=400,
-                    detail="Unsupported file type. Please upload WAV, MP3, M4A, or FLAC files.",
+                    detail="Unsupported file type. Please upload WAV, MP3, M4A, FLAC, or WebM files.",
                 )
 
             # Use specified model or current model
@@ -194,7 +199,7 @@ def create_app(settings: Settings) -> FastAPI:
                         f"{i}\n{start_formatted} --> {end_formatted}\n{text}\n\n"
                     )
 
-                return srt_content
+                return PlainTextResponse(srt_content)
             else:  # json (default)
                 return result
 

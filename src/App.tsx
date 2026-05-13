@@ -73,7 +73,13 @@ const navItems: NavItem[] = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-const defaultModelName = "Parakeet-TDT-0.6B-v3";
+const defaultModelName = "Local Whisper";
+const parakeetModelName = "Parakeet-TDT-0.6B-v3";
+const modelIdsByName: Record<string, string> = {
+  [defaultModelName]: "whisper-base",
+  [parakeetModelName]: "parakeet-tdt-0.6b-v3",
+  "Whisper Large V3 Turbo": "whisper-large",
+};
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
 const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -82,16 +88,16 @@ const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
 
 const modelCards = [
   {
-    name: defaultModelName,
-    detail: "NVIDIA NeMo, multilingual, punctuation and timestamps",
+    name: "Local Whisper",
+    detail: "Whisper Base, offline, private",
     speed: "Default",
     status: "Active",
   },
   {
-    name: "Local Whisper",
-    detail: "Whisper Base, offline, private",
-    speed: "Ready",
-    status: "Installed",
+    name: parakeetModelName,
+    detail: "NVIDIA NeMo, multilingual, punctuation and timestamps",
+    speed: "Optional",
+    status: "Requires NeMo",
   },
   {
     name: "Whisper Large V3 Turbo",
@@ -481,6 +487,8 @@ function App() {
     setRecordingStatus(wasRecording ? "transcribing" : "idle");
     setRuntimeInfo((current) => (current ? { ...current, isRecording: false } : current));
 
+    let recordingUrl: string | undefined;
+
     try {
       if (syncBridge) {
         await syncRecordingBridge(false);
@@ -495,8 +503,8 @@ function App() {
         throw new Error("No audio was captured");
       }
 
-      const recordingUrl = await readBlobAsDataUrl(audioBlob);
-      const result = await apiClient.transcribeFile(createRecordingFile(audioBlob));
+      recordingUrl = await readBlobAsDataUrl(audioBlob);
+      const result = await apiClient.transcribeFile(createRecordingFile(audioBlob), modelIdsByName[selectedModel] ?? selectedModel);
       const text = typeof result === "string" ? result : result?.text;
       if (!text || !text.trim()) {
         throw new Error("No transcription text returned");
@@ -526,6 +534,7 @@ function App() {
         createdAt: Date.now(),
         status: "failed",
         error: message,
+        recordingUrl,
       });
       setActiveView("history");
     } finally {

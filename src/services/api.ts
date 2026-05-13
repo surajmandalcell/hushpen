@@ -46,8 +46,8 @@ class ApiClient {
     private baseUrl: string;
 
     constructor() {
-        // Default to localhost:8000 for the Python sidecar
-        this.baseUrl = 'http://localhost:8000';
+        const configuredUrl = import.meta.env.VITE_ASRPRO_API_URL?.trim();
+        this.baseUrl = (configuredUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
     }
 
     private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {

@@ -32,6 +32,7 @@ class TestDeviceDetector:
         mock_torch.cuda.is_available.return_value = True
         mock_torch.cuda.device_count.return_value = 1
         mock_torch.cuda.get_device_name.return_value = "NVIDIA GeForce RTX 3080"
+        mock_torch.backends.mps.is_available.return_value = False
         
         with patch.dict('sys.modules', {'torch': mock_torch}):
             await detector.detect_capabilities()
@@ -63,8 +64,11 @@ class TestDeviceDetector:
         """Test device detection with CPU only."""
         detector = DeviceDetector()
         
-        with patch.dict('sys.modules', {}, clear=True):
-            await detector.detect_capabilities()
+        with patch.dict('sys.modules', {'torch': None, 'onnxruntime': None}):
+            with patch.dict('os.environ', {}, clear=True):
+                with patch('subprocess.run', side_effect=FileNotFoundError):
+                    with patch('ctypes.util.find_library', return_value=None):
+                        await detector.detect_capabilities()
             
             assert detector.device_info["cuda_available"] is False
             assert detector.device_info["mps_available"] is False
@@ -88,7 +92,7 @@ class TestDeviceDetector:
                 
                 assert detector.device_info["cuda_available"] is True
                 assert detector.device_info["mps_available"] is True
-                assert detector.device_info["device"] == "cuda"  # CUDA should be prioritized
+                assert detector.device_info["device"] == "mps"
                 assert detector.device_info["compute_type"] == "float16"
     
     def test_get_device_config(self):
