@@ -265,10 +265,11 @@ function Sidebar({ activeView, onChange, onWindowAction }: SidebarProps) {
               key={item.id}
               type="button"
               aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
               className={`mb-1 flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-left text-[13px] font-medium transition md:w-full ${
                 isActive
-                  ? "bg-white/58 text-[#1d1d1f] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] backdrop-blur-xl"
-                  : "text-[#55555c] hover:bg-white/36"
+                  ? "bg-[#d9d9e1] text-[#1d1d1f] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]"
+                  : "text-[#55555c] hover:bg-[#e8e8ee]"
               }`}
               onClick={() => onChange(item.id)}
             >

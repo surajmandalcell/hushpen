@@ -55,6 +55,22 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("Queued transcription jobs")).toBeTruthy();
   });
 
+  it("shows a visible selected state on the active sidebar item", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const dashboardButton = screen.getByRole("button", { name: "Dashboard" });
+    expect(dashboardButton.getAttribute("aria-current")).toBe("page");
+    expect(dashboardButton.className).toContain("bg-[#d9d9e1]");
+
+    const filesButton = screen.getByRole("button", { name: "Files" });
+    await user.click(filesButton);
+
+    expect(filesButton.getAttribute("aria-current")).toBe("page");
+    expect(filesButton.className).toContain("bg-[#d9d9e1]");
+    expect(dashboardButton.getAttribute("aria-current")).toBeNull();
+  });
+
   it("toggles recording state from the dashboard", async () => {
     const user = userEvent.setup();
     render(<App />);
