@@ -18,9 +18,11 @@ describe("Electron runtime helpers", () => {
   it("renders the recording overlay as a text-free waveform pill", () => {
     const html = runtime.createRecordingOverlayHtml();
 
-    expect(runtime.OVERLAY_WINDOW_SIZE).toEqual({ width: 172, height: 42 });
+    expect(runtime.OVERLAY_WINDOW_SIZE).toEqual({ width: 188, height: 40 });
     expect(html).toContain('class="surface"');
     expect(html).toContain('class="waveform"');
+    expect(html).toContain("width: 164px");
+    expect(html).not.toContain("animation:");
     expect(html).not.toContain("Recording now");
     expect(html).not.toContain("Parakeet-TDT");
     expect(html).not.toContain("CommandOrControl");

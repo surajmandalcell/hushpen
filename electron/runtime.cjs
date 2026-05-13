@@ -2,8 +2,8 @@ const path = require("node:path");
 
 const RECORDING_SHORTCUT = "CommandOrControl+`";
 const OVERLAY_WINDOW_SIZE = {
-  width: 172,
-  height: 42,
+  width: 188,
+  height: 40,
 };
 const OVERLAY_EDGE_MARGIN = 16;
 const DEFAULT_OVERLAY_SETTINGS = Object.freeze({
@@ -132,9 +132,10 @@ function clamp(value, min, max) {
 }
 
 function createRecordingOverlayHtml() {
-  const waveformBars = [8, 16, 24, 12, 28, 18, 30, 14, 22, 10, 26, 20, 30, 12, 24, 16, 28, 14, 22, 10, 18, 8];
+  const waveformPattern = [8, 12, 16, 10, 18, 14, 17, 11, 15, 9, 13, 16, 12, 18, 14, 10, 15, 8, 12, 16, 11, 17];
+  const waveformBars = Array.from({ length: 55 }, (_, index) => waveformPattern[index % waveformPattern.length]);
   const barsHtml = waveformBars.map((height, index) => (
-    `<span style="--bar-height:${height}px;--bar-delay:${index * 36}ms"></span>`
+    `<span style="--bar-height:${height}px;--bar-opacity:${index < 4 || index > waveformBars.length - 5 ? 0.36 : 0.78}"></span>`
   )).join("");
 
   return `<!doctype html>
@@ -162,22 +163,21 @@ function createRecordingOverlayHtml() {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 164px;
-        height: 34px;
+        width: 180px;
+        height: 32px;
         box-sizing: border-box;
-        padding: 7px 11px;
+        padding: 6px 8px;
         border-radius: 999px;
         color: #1d1d1f;
         background:
-          linear-gradient(180deg, rgba(248, 248, 250, 0.94), rgba(232, 232, 236, 0.9)),
-          rgba(238, 238, 242, 0.92);
-        border: 1px solid rgba(128, 128, 136, 0.28);
+          linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(245, 245, 247, 0.5)),
+          rgba(245, 245, 247, 0.72);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         box-shadow:
-          0 10px 28px rgba(0, 0, 0, 0.18),
-          0 2px 8px rgba(0, 0, 0, 0.1),
-          inset 0 1px 0 rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(24px) saturate(1.25);
-        -webkit-backdrop-filter: blur(24px) saturate(1.25);
+          inset 0 1px 0 rgba(255, 255, 255, 0.72),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.04);
+        backdrop-filter: saturate(180%) blur(20px);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
         -webkit-app-region: drag;
       }
       .waveform {
@@ -185,30 +185,19 @@ function createRecordingOverlayHtml() {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 2px;
-        width: 140px;
-        height: 24px;
+        gap: 1px;
+        width: 164px;
+        height: 20px;
         overflow: hidden;
-        mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
-        -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+        mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+        -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
       }
       .waveform span {
         width: 2px;
         height: var(--bar-height);
         border-radius: 999px;
-        background: linear-gradient(180deg, #9a9aa1, #5f6067);
+        background: rgba(80, 80, 86, var(--bar-opacity));
         transform-origin: center;
-        animation: wave 700ms cubic-bezier(0.22, 1, 0.36, 1) infinite alternate;
-        animation-delay: var(--bar-delay);
-      }
-      @keyframes wave {
-        from { transform: scaleY(0.36); opacity: 0.48; }
-        to { transform: scaleY(1); opacity: 1; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .waveform span {
-          animation: none;
-        }
       }
     </style>
   </head>

@@ -104,32 +104,12 @@ const transcriptRows = [
   },
 ];
 
-const waveformBars = [
-  { id: "lead-low", height: 30, delay: 0 },
-  { id: "lead-mid", height: 58, delay: 38 },
-  { id: "lead-high", height: 84, delay: 76 },
-  { id: "soft-dip", height: 42, delay: 114 },
-  { id: "peak-one", height: 96, delay: 152 },
-  { id: "mid-one", height: 64, delay: 190 },
-  { id: "lift-one", height: 78, delay: 228 },
-  { id: "quiet-one", height: 36, delay: 266 },
-  { id: "peak-two", height: 88, delay: 304 },
-  { id: "mid-two", height: 54, delay: 342 },
-  { id: "lift-two", height: 72, delay: 380 },
-  { id: "quiet-two", height: 46, delay: 418 },
-  { id: "peak-three", height: 92, delay: 456 },
-  { id: "mid-three", height: 62, delay: 494 },
-  { id: "quiet-three", height: 38, delay: 532 },
-  { id: "lift-three", height: 70, delay: 570 },
-  { id: "peak-four", height: 98, delay: 608 },
-  { id: "mid-four", height: 52, delay: 646 },
-  { id: "lift-four", height: 82, delay: 684 },
-  { id: "soft-four", height: 44, delay: 722 },
-  { id: "mid-five", height: 66, delay: 760 },
-  { id: "tail-low", height: 34, delay: 798 },
-  { id: "tail-high", height: 76, delay: 836 },
-  { id: "tail-mid", height: 56, delay: 874 },
-] as const;
+const waveformPattern = [18, 30, 46, 24, 54, 38, 50, 28, 44, 20, 34, 48, 26, 56, 40, 30, 52, 22, 36, 46, 28, 54, 34, 42] as const;
+const waveformBars = Array.from({ length: 76 }, (_, index) => ({
+  id: `wave-${index}`,
+  height: waveformPattern[index % waveformPattern.length],
+  opacity: index < 5 || index > 70 ? 0.38 : 0.78,
+}));
 
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
@@ -217,7 +197,7 @@ function App() {
   }), [handleSelectFiles]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#f5f5f7] font-[Inter,-apple-system,BlinkMacSystemFont,'Segoe_UI',sans-serif] text-[#1d1d1f] antialiased">
+    <div className="h-screen w-screen overflow-hidden bg-[#f5f5f7] font-[Inter,-apple-system,BlinkMacSystemFont,'SF_Pro_Text','Segoe_UI',sans-serif] text-[#1d1d1f] antialiased">
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)] md:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
         <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] bg-[#f5f5f7] md:border-l md:border-[#d8d8de]">
@@ -269,7 +249,7 @@ interface SidebarProps {
 
 function Sidebar({ activeView, onChange, onWindowAction }: SidebarProps) {
   return (
-    <aside className="flex min-h-0 flex-col border-b border-[#d4d4da] bg-[#ececf0]/88 backdrop-blur-2xl md:border-b-0">
+    <aside className="flex min-h-0 flex-col border-b border-[rgba(0,0,0,0.08)] bg-[#f5f5f7]/72 backdrop-blur-2xl md:border-b-0">
       <div className="flex h-12 items-center gap-3 px-4 [-webkit-app-region:drag]">
         <WindowDots onWindowAction={onWindowAction} />
         <p className="truncate text-[13px] font-semibold leading-tight text-[#242429]">ASR Pro</p>
@@ -287,8 +267,8 @@ function Sidebar({ activeView, onChange, onWindowAction }: SidebarProps) {
               aria-label={item.label}
               className={`mb-1 flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-left text-[13px] font-medium transition md:w-full ${
                 isActive
-                  ? "bg-[#d6d6dc] text-[#1d1d1f] shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]"
-                  : "text-[#55555c] hover:bg-[#f7f7f9]/72"
+                  ? "bg-white/58 text-[#1d1d1f] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] backdrop-blur-xl"
+                  : "text-[#55555c] hover:bg-white/36"
               }`}
               onClick={() => onChange(item.id)}
             >
@@ -339,17 +319,13 @@ interface ToolbarProps {
 
 function Toolbar({ activeTitle, isRecording, onToggleRecording }: ToolbarProps) {
   return (
-    <header className="flex min-w-0 items-center justify-between bg-[#f5f5f7]/84 px-4 backdrop-blur-xl [-webkit-app-region:drag] sm:px-6 lg:px-8">
+    <header className="flex min-w-0 items-center justify-between bg-[#f5f5f7]/62 px-4 backdrop-blur-2xl [-webkit-app-region:drag] sm:px-6 lg:px-8">
       <h1 className="truncate text-[14px] font-semibold leading-none text-[#2c2c31]">{activeTitle}</h1>
       <button
         type="button"
         aria-label={isRecording ? "Stop Recording from toolbar" : "Start Recording from toolbar"}
         onClick={onToggleRecording}
-        className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-[13px] font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_2px_rgba(0,0,0,0.08)] transition [-webkit-app-region:no-drag] ${
-          isRecording
-            ? "border-[#d73930] bg-[#ff453a] text-white hover:bg-[#e93a31]"
-            : "border-[#0071d6] bg-[#0a84ff] text-white hover:bg-[#007aff]"
-        }`}
+        className="inline-flex h-8 items-center gap-2 rounded-full border border-[rgba(0,0,0,0.08)] bg-white/58 px-3.5 text-[13px] font-normal tracking-[-0.12px] text-[#0066cc] backdrop-blur-2xl transition active:scale-[0.95] [-webkit-app-region:no-drag]"
       >
         {isRecording ? <CircleStop className="size-4" /> : <Mic2 className="size-4" />}
         <span className="hidden sm:inline">{isRecording ? "Stop Recording" : "Start Recording"}</span>
@@ -372,7 +348,7 @@ function DashboardView({ isRecording, selectedModel, onToggleRecording, onSelect
         <div className="flex min-w-0 items-center gap-3">
           <span
             className={`grid size-9 shrink-0 place-items-center rounded-full border ${
-              isRecording ? "border-[#ffc1bd] bg-[#fff0ef] text-[#ff453a]" : "border-[#d8d8de] bg-[#eeeeef] text-[#5f6067]"
+              isRecording ? "border-[rgba(255,69,58,0.18)] bg-white/58 text-[#ff453a]" : "border-[rgba(0,0,0,0.08)] bg-white/58 text-[#5f6067]"
             }`}
             aria-label={isRecording ? "Recording active" : "Recording inactive"}
           >
@@ -391,8 +367,8 @@ function DashboardView({ isRecording, selectedModel, onToggleRecording, onSelect
 
       <Waveform active={isRecording} />
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <PrimaryButton onClick={onToggleRecording} tone={isRecording ? "red" : "blue"}>
+      <div className="flex flex-col items-start gap-2 sm:flex-row">
+        <PrimaryButton onClick={onToggleRecording}>
           {isRecording ? <CircleStop className="size-4" /> : <Mic2 className="size-4" />}
           {isRecording ? "Stop Recording" : "Start Recording"}
         </PrimaryButton>
@@ -414,7 +390,7 @@ function FilesView({ queuedFiles, onSelectFiles }: FilesViewProps) {
   return (
     <ViewFrame title="Drop audio or video">
       <div className="rounded-[12px] border border-dashed border-[#bfc0c7] bg-[#fbfbfd]/76 p-6 text-center">
-        <div className="mx-auto grid size-12 place-items-center rounded-[10px] bg-[#eeeeef] text-[#5f6067]">
+        <div className="mx-auto grid size-12 place-items-center rounded-full bg-white/58 text-[#5f6067] backdrop-blur-xl">
           <UploadCloud className="size-6" />
         </div>
         <p className="mt-3 text-[18px] font-semibold text-[#202024]">Drop files here</p>
@@ -469,7 +445,7 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
               <p>{model.speed}</p>
               <p>{model.status}</p>
             </div>
-            {selectedModel === model.name ? <CheckCircle2 className="size-4 text-[#0a84ff]" /> : null}
+            {selectedModel === model.name ? <CheckCircle2 className="size-4 text-[#0066cc]" /> : null}
           </button>
         ))}
       </GroupedPanel>
@@ -640,7 +616,7 @@ function Waveform({ active }: WaveformProps) {
             key={bar.id}
             style={{
               "--wave-height": `${bar.height}px`,
-              "--wave-delay": `${bar.delay}ms`,
+              "--wave-opacity": bar.opacity,
             } as CSSProperties}
           />
         ))}
@@ -656,7 +632,7 @@ interface StatusPillProps {
 
 function StatusPill({ children, tone = "gray" }: StatusPillProps) {
   const tones = {
-    blue: "bg-[#e7f0ff] text-[#0759b8] border-[#bfd7ff]",
+    blue: "bg-white/58 text-[#0066cc] border-[rgba(0,102,204,0.24)]",
     green: "bg-[#e8f6ee] text-[#247a48] border-[#c8ead5]",
     gray: "bg-[#f1f1f4] text-[#65656d] border-[#dadbe2]",
     red: "bg-[#fff0ef] text-[#b3261e] border-[#ffd1ce]",
@@ -667,17 +643,14 @@ function StatusPill({ children, tone = "gray" }: StatusPillProps) {
 
 interface PrimaryButtonProps {
   children: ReactNode;
-  tone?: "blue" | "red";
   onClick: () => void;
 }
 
-function PrimaryButton({ children, tone = "blue", onClick }: PrimaryButtonProps) {
+function PrimaryButton({ children, onClick }: PrimaryButtonProps) {
   return (
     <button
       type="button"
-      className={`inline-flex h-8 items-center justify-center gap-2 rounded-md border px-3.5 text-[13px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_2px_rgba(0,0,0,0.08)] transition ${
-        tone === "red" ? "border-[#d73930] bg-[#ff453a] hover:bg-[#e93a31]" : "border-[#0071d6] bg-[#0a84ff] hover:bg-[#007aff]"
-      }`}
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-[#0066cc] bg-[#0066cc] px-[22px] text-[15px] font-normal tracking-[-0.224px] text-white shadow-none transition active:scale-[0.95] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3]"
       onClick={onClick}
     >
       {children}
@@ -694,7 +667,7 @@ function SecondaryButton({ children, onClick }: SecondaryButtonProps) {
   return (
     <button
       type="button"
-      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-[#cfcfd5] bg-[#fbfbfd]/86 px-3.5 text-[13px] font-semibold text-[#34343a] shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_1px_1px_rgba(0,0,0,0.04)] transition hover:bg-white"
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-[#0066cc] bg-transparent px-[22px] text-[15px] font-normal tracking-[-0.224px] text-[#0066cc] shadow-none transition active:scale-[0.95] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071e3]"
       onClick={onClick}
     >
       {children}

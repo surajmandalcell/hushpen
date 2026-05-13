@@ -235,17 +235,19 @@
     position: relative;
     isolation: isolate;
     display: flex;
-    min-height: 116px;
+    min-height: 112px;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 16px;
-    border: 1px solid rgba(140, 144, 154, 0.24);
+    border-radius: 18px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     background:
-      linear-gradient(180deg, rgba(248, 248, 250, 0.94), rgba(238, 238, 242, 0.88)),
-      rgba(245, 245, 247, 0.86);
-    padding: 16px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+      linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(250, 250, 252, 0.38)),
+      rgba(245, 245, 247, 0.52);
+    padding: 18px 20px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
   }
 
   .in-app-waveform::before {
@@ -253,45 +255,40 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
-    opacity: 0;
-    transform: translateX(-55%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.54), transparent);
+    opacity: 0.7;
   }
 
   .in-app-waveform.is-active::before {
-    animation: asrpro-waveform-scan 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
     opacity: 1;
   }
 
   .in-app-waveform__bars {
     display: flex;
+    width: 100%;
     min-width: 0;
-    height: 78px;
+    height: 64px;
     align-items: center;
-    justify-content: center;
-    gap: 3px;
+    justify-content: space-between;
+    gap: 2px;
     overflow: hidden;
-    mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
   }
 
   .in-app-waveform__bars span {
-    width: 3px;
-    height: max(10px, calc(var(--wave-height) * 0.38));
+    width: 2px;
+    height: max(10px, calc(var(--wave-height) * 0.7));
     border-radius: 999px;
-    background: linear-gradient(180deg, #c9c9cf, #9d9da5);
-    opacity: 0.84;
+    background: rgba(80, 80, 86, var(--wave-opacity));
+    opacity: 1;
     transform-origin: center;
-    transition: background 220ms ease, height 260ms ease, opacity 220ms ease;
+    transition: background 220ms ease, height 260ms ease;
   }
 
   .in-app-waveform.is-active .in-app-waveform__bars span {
     height: var(--wave-height);
-    background: linear-gradient(180deg, #d8ecff 0%, #69b2ff 48%, #0a84ff 100%);
-    opacity: 1;
-    animation: asrpro-waveform-bar 760ms cubic-bezier(0.22, 1, 0.36, 1) infinite alternate;
-    animation-delay: var(--wave-delay);
-    box-shadow: 0 0 10px rgba(10, 132, 255, 0.22);
+    background: rgba(0, 102, 204, var(--wave-opacity));
   }
 
   /* Scrollbar styles */
@@ -355,35 +352,4 @@
 
 .traffic-light.maximize {
   @apply bg-macos-green hover:bg-green-600;
-}
-
-@keyframes asrpro-waveform-bar {
-  from {
-    transform: scaleY(0.46);
-  }
-
-  to {
-    transform: scaleY(1);
-  }
-}
-
-@keyframes asrpro-waveform-scan {
-  0% {
-    transform: translateX(-55%);
-  }
-
-  50% {
-    transform: translateX(20%);
-  }
-
-  100% {
-    transform: translateX(65%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .in-app-waveform.is-active::before,
-  .in-app-waveform.is-active .in-app-waveform__bars span {
-    animation: none;
-  }
 }
