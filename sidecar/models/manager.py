@@ -7,8 +7,8 @@ from typing import Dict, Any, Optional, List, BinaryIO
 
 from utils.device import DeviceDetector
 from .registry import ModelRegistry
-from .base import ONNXBaseLoader
-from .loaders import ConfigDrivenLoader
+from .base import BaseLoader
+from .loaders import ConfigDrivenLoader, NemoParakeetLoader
 
 
 logger = logging.getLogger(__name__)
@@ -23,13 +23,19 @@ class ModelManager:
         self.device_detector = DeviceDetector()
         self.current_model = None
         self.current_loader = None
-        self.loaders: Dict[str, ONNXBaseLoader] = {}
+        self.loaders: Dict[str, BaseLoader] = {}
         self.loader_configs: Dict[str, Dict[str, Any]] = {}
 
     async def initialize(self):
         logger.info("Initializing model manager")
         await self.device_detector.detect_capabilities()
         self._initialize_loader_configs()
+        default_model = self.settings.get_config("models.default_model")
+        if default_model:
+            if await self.set_model(default_model):
+                logger.info(f"Default model {default_model} loaded")
+            else:
+                logger.warning(f"Default model {default_model} could not be loaded")
         logger.info("Model manager initialized")
 
     def _initialize_loader_configs(self):
@@ -38,12 +44,14 @@ class ModelManager:
             "device": device_config.get("device", "cpu"),
             "compute_type": device_config.get("compute_type", "float32"),
             "backend": device_config.get("device", "cpu"),
+            "cache_dir": self.settings.get_config("models.cache_dir"),
         }
         # Support both legacy keys and family-based keys
         self.loader_configs = {
             "config": base_config,
             "whisper": base_config.copy(),
             "parakeet": base_config.copy(),
+            "nemo": base_config.copy(),
         }
 
     async def list_available_models(self) -> List[str]:
@@ -118,6 +126,9 @@ class ModelManager:
         if not loader_type:
             logger.error(f"No loader type found for model {model_id}")
             return None
+        if loader_type not in self.loader_configs:
+            logger.error(f"Unknown loader type {loader_type} for model {model_id}")
+            return None
 
         model_info = self.registry.get_model_info(model_id)
         if not model_info:
@@ -128,15 +139,19 @@ class ModelManager:
         config.update(model_info)
 
         try:
-            # Single configurable loader keeps code DRY; behavior comes from registry config
-            if loader_type != "config":
-                logger.warning(
-                    f"Loader type '{loader_type}' not 'config'; using ConfigDrivenLoader for {model_id}"
-                )
+            if loader_type == "nemo":
+                loader = NemoParakeetLoader(model_id, config)
+            else:
+                # Single configurable loader keeps ONNX behavior DRY; registry supplies candidates.
+                if loader_type != "config":
+                    logger.warning(
+                        f"Loader type '{loader_type}' not 'config'; using ConfigDrivenLoader for {model_id}"
+                    )
+                loader = ConfigDrivenLoader(model_id, config)
+
             logger.info(
                 f"Creating loader for {model_id} with backend '{config.get('backend', config.get('device', 'cpu'))}'"
             )
-            loader = ConfigDrivenLoader(model_id, config)
             self.loaders[model_id] = loader
             return loader
         except Exception as e:

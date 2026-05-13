@@ -8,7 +8,6 @@ import time
 import sys
 import tempfile
 import os
-import requests
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -18,11 +17,21 @@ from typing import Dict, List
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tests.test_framework import ModelTester
-from utils.reporting import print_test_summary, print_test_detailed_results
-from models import ModelManager
-from config.settings import Settings
-from api.server import create_app
+try:
+    import requests
+    from tests.test_framework import ModelTester
+    from utils.reporting import print_test_summary, print_test_detailed_results
+    from models import ModelManager
+    from config.settings import Settings
+    from api.server import create_app
+except ModuleNotFoundError:
+    requests = None
+    ModelTester = None
+    print_test_summary = None
+    print_test_detailed_results = None
+    ModelManager = None
+    Settings = None
+    create_app = None
 
 logger = logging.getLogger(__name__)
 

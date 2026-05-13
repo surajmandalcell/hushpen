@@ -21,34 +21,13 @@ class TestSettings:
         assert "models" in settings.config
         assert "device" in settings.config
     
-    def test_get_config_path_windows(self):
-        """Test config path on Windows."""
-        with patch('os.name', 'nt'):
-            with patch.dict('os.environ', {'APPDATA': 'C:\\Users\\Test\\AppData\\Roaming'}):
-                with patch('pathlib.Path.mkdir'):
-                    settings = Settings()
-                    expected_path = Path('C:\\Users\\Test\\AppData\\Roaming') / 'asrpro' / 'config.json'
-                    assert settings.config_path == expected_path
-    
-    def test_get_config_path_macos(self):
-        """Test config path on macOS."""
-        with patch('os.name', 'posix'):
-            with patch('os.path.exists', return_value=True):
-                with patch('pathlib.Path.mkdir'):
-                    with patch('pathlib.Path.home', return_value=Path('/home/test')):
-                        settings = Settings()
-                        expected_path = Path('/home/test') / "Library" / "Application Support" / "asrpro" / "config.json"
-                        assert settings.config_path == expected_path
-    
-    def test_get_config_path_linux(self):
-        """Test config path on Linux."""
-        with patch('os.name', 'posix'):
-            with patch('os.path.exists', return_value=False):
-                with patch('pathlib.Path.mkdir'):
-                    with patch('pathlib.Path.home', return_value=Path('/home/test')):
-                        settings = Settings()
-                        expected_path = Path('/home/test') / ".config" / "asrpro" / "config.json"
-                        assert settings.config_path == expected_path
+    def test_get_config_path_uses_contained_data_dir_env(self):
+        """Test config path stays under the app-owned data directory."""
+        with patch.dict('os.environ', {'ASRPRO_DATA_DIR': '/tmp/asrpro-contained'}, clear=False):
+            with patch('pathlib.Path.mkdir'):
+                settings = Settings()
+                expected_path = Path('/tmp/asrpro-contained') / 'config' / 'config.json'
+                assert settings.config_path == expected_path
     
     def test_get_default_config(self, settings):
         """Test default configuration."""
@@ -56,7 +35,8 @@ class TestSettings:
         
         assert config["server"]["host"] == "127.0.0.1"
         assert config["server"]["port"] == 8000
-        assert config["models"]["default_model"] == "whisper-base"
+        assert config["models"]["default_model"] == "parakeet-tdt-0.6b-v3"
+        assert config["models"]["cache_dir"].endswith("models")
         assert config["device"]["prefer_gpu"] is True
         assert config["device"]["compute_type"] == "auto"
     
@@ -103,7 +83,7 @@ class TestSettings:
     def test_get_models_config(self, settings):
         """Test getting models configuration."""
         config = settings.get_models_config()
-        assert config["default_model"] == "whisper-base"
+        assert config["default_model"] == "parakeet-tdt-0.6b-v3"
     
     def test_get_device_config(self, settings):
         """Test getting device configuration."""

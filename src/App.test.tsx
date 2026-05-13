@@ -1,3 +1,4 @@
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,29 +17,31 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getAllByText("ASR Pro").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Ready to Dictate" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
-    expect(screen.getAllByText("Local Whisper").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Parakeet-TDT-0\.6B-v3/).length).toBeGreaterThan(0);
   });
 
-  it("keeps the sidebar title to one app-name row without the platform label", async () => {
-    const getPlatform = vi.fn().mockResolvedValue({
-      platform: "darwin",
-      arch: "arm64",
-      versions: {},
-    });
+  it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", () => {
     window.asrpro = {
-      getPlatform,
+      getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       selectAudioFiles: vi.fn(),
       onAddFiles: vi.fn(),
+      getRuntimeState: vi.fn(),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
       windowControl: vi.fn(),
     };
 
     render(<App />);
-    await waitFor(() => expect(getPlatform).toHaveBeenCalledOnce());
 
     const sidebarTitle = screen.getAllByText("ASR Pro")[0].closest("div");
-    await waitFor(() => expect(sidebarTitle?.textContent).toBe("ASR Pro"));
-    expect(screen.queryByText("macOS")).toBeNull();
+    expect(sidebarTitle?.textContent).toBe("ASR Pro");
+    expect(screen.queryByText("Local first")).toBeNull();
+    expect(screen.queryByText("Global overlay active")).toBeNull();
+    expect(screen.queryByText(/CommandOrControl/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dictate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   });
 
   it("navigates to the file transcription workspace", async () => {
@@ -59,5 +62,38 @@ describe("ASR Pro Electron shell", () => {
 
     expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy();
     expect(screen.getAllByText("Recording now").length).toBeGreaterThan(0);
+  });
+
+  it("syncs recording state from the global shortcut and tray bridge", async () => {
+    let recordingListener: ((state: { isRecording: boolean; source: string }) => void) | undefined;
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      selectAudioFiles: vi.fn(),
+      onAddFiles: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Parakeet-TDT-0.6B-v3",
+        shortcut: "CommandOrControl+`",
+      }),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn((callback) => {
+        recordingListener = callback;
+        return vi.fn();
+      }),
+      windowControl: vi.fn(),
+    };
+
+    render(<App />);
+    await waitFor(() => expect(recordingListener).toBeTruthy());
+
+    await act(async () => {
+      recordingListener?.({ isRecording: true, source: "shortcut" });
+    });
+
+    expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy();
+    expect(screen.queryByText("Global overlay active")).toBeNull();
+    expect(screen.queryByText(/CommandOrControl/)).toBeNull();
   });
 });

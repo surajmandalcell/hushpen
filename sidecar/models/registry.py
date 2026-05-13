@@ -99,6 +99,24 @@ class ModelRegistry:
                 ],
                 "source": "hub",
             },
+            "parakeet-tdt-0.6b-v3": {
+                "id": "parakeet-tdt-0.6b-v3",
+                "name": "Parakeet-TDT-0.6B-v3",
+                "description": "NVIDIA Parakeet TDT 0.6B v3 multilingual ASR model via NeMo",
+                "type": "nemo",
+                "family": "parakeet",
+                "size": "0.6b",
+                "loader": "nemo",
+                "languages": [
+                    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de",
+                    "el", "hu", "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk",
+                    "sl", "es", "sv", "ru", "uk",
+                ],
+                "sample_rate": 16000,
+                "repo": "nvidia/parakeet-tdt-0.6b-v3",
+                "candidates": ["nvidia/parakeet-tdt-0.6b-v3"],
+                "source": "huggingface",
+            },
             # Example of local ONNX models (place files under models/onnx/<name>)
             # "whisper-base-local": {
             #     "id": "whisper-base-local",
@@ -128,6 +146,9 @@ class ModelRegistry:
         model_info = self._models.get(model_id)
         if not model_info:
             return None
+        configured_loader = model_info.get("loader")
+        if configured_loader and configured_loader != "config":
+            return configured_loader
         family = model_info.get("family")
         if family == "whisper":
             return "whisper"

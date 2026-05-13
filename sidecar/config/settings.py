@@ -14,30 +14,40 @@ class Settings:
     """Configuration settings for the sidecar."""
     
     def __init__(self):
+        self.data_dir = self._get_data_dir()
         self.config_path = self._get_config_path()
         self.config = self._get_default_config()
         self._ensure_config_directory()
+        self._configure_model_cache_environment()
+
+    def _get_data_dir(self) -> Path:
+        """Get the app-owned data directory instead of platform user config folders."""
+        env_dir = os.environ.get("ASRPRO_DATA_DIR")
+        if env_dir:
+            return Path(env_dir)
+
+        return Path(__file__).resolve().parents[2] / "data"
     
     def _get_config_path(self) -> Path:
-        """Get platform-specific configuration path."""
-        system = os.name
-        
-        if system == "posix":  # macOS and Linux
-            if os.path.exists("/Library/Application Support"):
-                # macOS
-                return Path.home() / "Library" / "Application Support" / "asrpro" / "config.json"
-            else:
-                # Linux
-                return Path.home() / ".config" / "asrpro" / "config.json"
-        elif system == "nt":  # Windows
-            return Path(os.environ.get("APPDATA", "")) / "asrpro" / "config.json"
-        else:
-            # Fallback
-            return Path.home() / ".asrpro" / "config.json"
+        """Get app-contained configuration path."""
+        return self.data_dir / "config" / "config.json"
     
     def _ensure_config_directory(self):
-        """Ensure configuration directory exists."""
+        """Ensure app-owned data directories exist."""
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "models").mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "logs").mkdir(parents=True, exist_ok=True)
+        (self.data_dir / "transcripts").mkdir(parents=True, exist_ok=True)
+
+    def _configure_model_cache_environment(self):
+        """Force model frameworks to keep downloads under the contained data dir."""
+        models_dir = self.data_dir / "models"
+        os.environ["HF_HOME"] = str(models_dir / "huggingface")
+        os.environ["HUGGINGFACE_HUB_CACHE"] = str(models_dir / "huggingface" / "hub")
+        os.environ["NEMO_HOME"] = str(models_dir / "nemo")
+        os.environ["TORCH_HOME"] = str(models_dir / "torch")
+        os.environ["XDG_CACHE_HOME"] = str(self.data_dir / "cache")
     
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration."""
@@ -47,8 +57,8 @@ class Settings:
                 "port": 8000
             },
             "models": {
-                "default_model": "whisper-base",
-                "cache_dir": ""
+                "default_model": "parakeet-tdt-0.6b-v3",
+                "cache_dir": str(self.data_dir / "models")
             },
             "device": {
                 "prefer_gpu": True,

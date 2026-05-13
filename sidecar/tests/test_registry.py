@@ -29,6 +29,7 @@ class TestModelRegistry:
         assert "whisper-tiny-local" in models
         assert "whisper-base-local" in models
         assert "parakeet-tdt-0.6b-v2" in models
+        assert "parakeet-tdt-0.6b-v3" in models
 
     def test_get_model_info_existing(self):
         """Test getting model info for existing model."""
@@ -67,18 +68,18 @@ class TestModelRegistry:
         registry = ModelRegistry()
         parakeet_models = registry.get_models_by_type("parakeet")
 
-        assert len(parakeet_models) == 1  # 1 Parakeet model
+        assert len(parakeet_models) == 2  # ONNX v2 and NeMo v3
         for model_id in parakeet_models:
             model_info = registry.get_model_info(model_id)
             assert model_info["family"] == "parakeet"
-            assert model_info["loader"] == "config"
+            assert model_info["loader"] in {"config", "nemo"}
 
     def test_get_models_by_language_english(self):
         """Test getting models by language (English)."""
         registry = ModelRegistry()
         en_models = registry.get_models_by_language("en")
 
-        assert len(en_models) == 6  # All 6 models support English
+        assert len(en_models) == 7  # All 7 models support English
         for model_id in en_models:
             model_info = registry.get_model_info(model_id)
             assert "en" in model_info["languages"]
@@ -88,10 +89,7 @@ class TestModelRegistry:
         registry = ModelRegistry()
         es_models = registry.get_models_by_language("es")
 
-        assert len(es_models) == 0  # No models support Spanish in current registry
-        for model in es_models:
-            assert "es" in model["languages"]
-            assert model["type"] == "whisper"
+        assert es_models == ["parakeet-tdt-0.6b-v3"]
 
     def test_get_models_by_language_nonexistent(self):
         """Test getting models by non-existent language."""
@@ -106,6 +104,7 @@ class TestModelRegistry:
 
         assert registry.is_model_available("whisper-base") is True
         assert registry.is_model_available("parakeet-tdt-0.6b-v2") is True
+        assert registry.is_model_available("parakeet-tdt-0.6b-v3") is True
 
     def test_is_model_available_nonexistent(self):
         """Test checking availability of non-existent model."""
@@ -126,6 +125,9 @@ class TestModelRegistry:
 
         loader_type = registry.get_loader_type("parakeet-tdt-0.6b-v2")
         assert loader_type == "parakeet"
+
+        loader_type = registry.get_loader_type("parakeet-tdt-0.6b-v3")
+        assert loader_type == "nemo"
 
     def test_get_loader_type_nonexistent(self):
         """Test getting loader type for non-existent model."""
@@ -157,3 +159,10 @@ class TestModelRegistry:
         assert tdt_info is not None
         assert tdt_info["family"] == "parakeet"
         assert tdt_info["description"] == "NVIDIA Parakeet TDT model (0.6B parameters) - English/Hindi - ONNX"
+
+        v3_info = registry.get_model_info("parakeet-tdt-0.6b-v3")
+        assert v3_info is not None
+        assert v3_info["name"] == "Parakeet-TDT-0.6B-v3"
+        assert v3_info["loader"] == "nemo"
+        assert v3_info["source"] == "huggingface"
+        assert v3_info["repo"] == "nvidia/parakeet-tdt-0.6b-v3"

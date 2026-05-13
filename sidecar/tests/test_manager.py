@@ -31,12 +31,15 @@ class TestModelManager:
         with patch.object(
             manager.device_detector, "detect_capabilities", new_callable=AsyncMock
         ) as mock_detect:
-            await manager.initialize()
+            with patch.object(manager, "set_model", new_callable=AsyncMock, return_value=True) as mock_set_model:
+                await manager.initialize()
 
             mock_detect.assert_called_once()
+            mock_set_model.assert_called_once_with("parakeet-tdt-0.6b-v3")
             assert hasattr(manager, "loader_configs")
             assert "whisper" in manager.loader_configs
             assert "parakeet" in manager.loader_configs
+            assert "nemo" in manager.loader_configs
 
     @pytest.mark.asyncio
     async def test_list_available_models(self, settings):
@@ -218,6 +221,32 @@ class TestModelManager:
                     assert loader == mock_loader
                     assert "parakeet-ctc" in manager.loaders
                     mock_parakeet_class.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_loader_new_nemo_parakeet_v3(self, settings):
+        """Test creating new NeMo loader for Parakeet v3."""
+        manager = ModelManager(settings)
+        manager.loader_configs = {"nemo": {"device": "cpu", "cache_dir": "/tmp/models"}}
+
+        with patch.object(manager.registry, "get_loader_type", return_value="nemo"):
+            with patch.object(
+                manager.registry,
+                "get_model_info",
+                return_value={
+                    "id": "parakeet-tdt-0.6b-v3",
+                    "repo": "nvidia/parakeet-tdt-0.6b-v3",
+                    "loader": "nemo",
+                },
+            ):
+                with patch("models.manager.NemoParakeetLoader") as mock_nemo_class:
+                    mock_loader = Mock()
+                    mock_nemo_class.return_value = mock_loader
+
+                    loader = await manager._get_loader("parakeet-tdt-0.6b-v3")
+
+                    assert loader == mock_loader
+                    assert "parakeet-tdt-0.6b-v3" in manager.loaders
+                    mock_nemo_class.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_loader_unknown_type(self, settings):

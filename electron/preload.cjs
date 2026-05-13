@@ -5,11 +5,19 @@ const allowedWindowActions = new Set(["minimize", "maximize", "close"]);
 contextBridge.exposeInMainWorld("asrpro", {
   getPlatform: () => ipcRenderer.invoke("app:platform"),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
+  getRuntimeState: () => ipcRenderer.invoke("runtime:state"),
   selectAudioFiles: () => ipcRenderer.invoke("dialog:select-audio"),
   onAddFiles: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("menu:add-files", listener);
     return () => ipcRenderer.removeListener("menu:add-files", listener);
+  },
+  setRecording: (active) => ipcRenderer.invoke("recording:set", Boolean(active)),
+  toggleRecording: () => ipcRenderer.invoke("recording:toggle"),
+  onRecordingState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("recording:state", listener);
+    return () => ipcRenderer.removeListener("recording:state", listener);
   },
   windowControl: (action) => {
     if (!allowedWindowActions.has(action)) {
