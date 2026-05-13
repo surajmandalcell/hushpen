@@ -234,18 +234,18 @@
   .in-app-waveform {
     position: relative;
     isolation: isolate;
-    display: grid;
-    min-height: 132px;
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 12px;
+    display: flex;
+    min-height: 116px;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
-    border-radius: 12px;
-    border: 1px solid rgba(140, 144, 154, 0.32);
+    border-radius: 16px;
+    border: 1px solid rgba(140, 144, 154, 0.24);
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 247, 251, 0.86)),
-      radial-gradient(circle at 50% 100%, rgba(10, 132, 255, 0.12), transparent 54%);
-    padding: 14px 16px 16px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 24px rgba(35, 42, 55, 0.06);
+      linear-gradient(180deg, rgba(248, 248, 250, 0.94), rgba(238, 238, 242, 0.88)),
+      rgba(245, 245, 247, 0.86);
+    padding: 16px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
   }
 
   .in-app-waveform::before {
@@ -253,78 +253,33 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: linear-gradient(90deg, transparent, rgba(10, 132, 255, 0.12), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
     opacity: 0;
-    transform: translateX(-45%);
+    transform: translateX(-55%);
   }
 
   .in-app-waveform.is-active::before {
-    animation: asrpro-waveform-scan 2.7s ease-in-out infinite;
+    animation: asrpro-waveform-scan 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
     opacity: 1;
-  }
-
-  .in-app-waveform__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .in-app-waveform__state {
-    max-width: 60%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 13px;
-    line-height: 1;
-    font-weight: 750;
-    color: #253041;
-  }
-
-  .in-app-waveform.is-active .in-app-waveform__state {
-    color: transparent;
-    background: linear-gradient(100deg, #1f2937 0%, #0a84ff 42%, #1f2937 74%);
-    background-size: 220% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    animation: asrpro-text-shimmer 2.2s linear infinite;
-  }
-
-  .in-app-waveform__meter {
-    flex-shrink: 0;
-    border-radius: 999px;
-    border: 1px solid rgba(120, 124, 134, 0.24);
-    background: rgba(255, 255, 255, 0.72);
-    padding: 4px 8px;
-    font-size: 11px;
-    line-height: 1;
-    font-weight: 700;
-    color: #6b7280;
-  }
-
-  .in-app-waveform.is-active .in-app-waveform__meter {
-    border-color: rgba(255, 69, 58, 0.24);
-    background: rgba(255, 240, 239, 0.82);
-    color: #b3261e;
   }
 
   .in-app-waveform__bars {
     display: flex;
     min-width: 0;
-    height: 82px;
+    height: 78px;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 3px;
     overflow: hidden;
     mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
   }
 
   .in-app-waveform__bars span {
-    width: 5px;
-    height: max(14px, calc(var(--wave-height) * 0.42));
+    width: 3px;
+    height: max(10px, calc(var(--wave-height) * 0.38));
     border-radius: 999px;
-    background: linear-gradient(180deg, #d7dbe4, #aeb6c5);
+    background: linear-gradient(180deg, #c9c9cf, #9d9da5);
     opacity: 0.84;
     transform-origin: center;
     transition: background 220ms ease, height 260ms ease, opacity 220ms ease;
@@ -332,11 +287,11 @@
 
   .in-app-waveform.is-active .in-app-waveform__bars span {
     height: var(--wave-height);
-    background: linear-gradient(180deg, #dbeafe 0%, #60a5fa 46%, #0a64c9 100%);
+    background: linear-gradient(180deg, #d8ecff 0%, #69b2ff 48%, #0a84ff 100%);
     opacity: 1;
-    animation: asrpro-waveform-bar 820ms ease-in-out infinite alternate;
+    animation: asrpro-waveform-bar 760ms cubic-bezier(0.22, 1, 0.36, 1) infinite alternate;
     animation-delay: var(--wave-delay);
-    box-shadow: 0 0 12px rgba(96, 165, 250, 0.28);
+    box-shadow: 0 0 10px rgba(10, 132, 255, 0.22);
   }
 
   /* Scrollbar styles */
@@ -412,16 +367,6 @@
   }
 }
 
-@keyframes asrpro-text-shimmer {
-  from {
-    background-position: 200% 50%;
-  }
-
-  to {
-    background-position: -20% 50%;
-  }
-}
-
 @keyframes asrpro-waveform-scan {
   0% {
     transform: translateX(-55%);
@@ -438,7 +383,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .in-app-waveform.is-active::before,
-  .in-app-waveform.is-active .in-app-waveform__state,
   .in-app-waveform.is-active .in-app-waveform__bars span {
     animation: none;
   }

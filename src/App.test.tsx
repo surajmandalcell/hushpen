@@ -15,7 +15,8 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
 
     expect(screen.getAllByText("ASR Pro").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "Ready to Dictate" })).toBeTruthy();
+    expect(screen.getByText("Dictation")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
     expect(screen.getAllByText(/Parakeet-TDT-0\.6B-v3/).length).toBeGreaterThan(0);
   });
@@ -61,7 +62,8 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
 
     expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy();
-    expect(screen.getAllByText("Recording now").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Recording now")).toBeNull();
+    expect(screen.getByLabelText("Recording active")).toBeTruthy();
   });
 
   it("syncs recording state from the global shortcut and tray bridge", async () => {

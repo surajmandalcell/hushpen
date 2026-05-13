@@ -2,8 +2,8 @@ const path = require("node:path");
 
 const RECORDING_SHORTCUT = "CommandOrControl+`";
 const OVERLAY_WINDOW_SIZE = {
-  width: 420,
-  height: 84,
+  width: 172,
+  height: 42,
 };
 const OVERLAY_EDGE_MARGIN = 16;
 const DEFAULT_OVERLAY_SETTINGS = Object.freeze({
@@ -131,12 +131,11 @@ function clamp(value, min, max) {
   return Math.round(Math.min(Math.max(value, min), max));
 }
 
-function createRecordingOverlayHtml({ modelName = DEFAULT_MODEL.displayName, shortcut = RECORDING_SHORTCUT } = {}) {
-  const waveformBars = [18, 36, 54, 28, 68, 44, 72, 38, 58, 32, 76, 48, 64, 26, 52, 34, 70, 42, 60, 30, 50, 24];
+function createRecordingOverlayHtml() {
+  const waveformBars = [8, 16, 24, 12, 28, 18, 30, 14, 22, 10, 26, 20, 30, 12, 24, 16, 28, 14, 22, 10, 18, 8];
   const barsHtml = waveformBars.map((height, index) => (
-    `<span style="--bar-height:${height}px;--bar-delay:${index * 42}ms"></span>`
+    `<span style="--bar-height:${height}px;--bar-delay:${index * 36}ms"></span>`
   )).join("");
-  const shortcutLabel = formatShortcutForOverlay(shortcut);
 
   return `<!doctype html>
 <html>
@@ -160,116 +159,54 @@ function createRecordingOverlayHtml({ modelName = DEFAULT_MODEL.displayName, sho
       }
       .surface {
         position: relative;
-        display: grid;
-        grid-template-columns: auto 1fr auto;
+        display: flex;
         align-items: center;
-        gap: 8px;
-        width: 398px;
-        height: 62px;
+        justify-content: center;
+        width: 164px;
+        height: 34px;
         box-sizing: border-box;
-        padding: 10px 12px;
-        border-radius: 18px;
-        color: #f8fafc;
+        padding: 7px 11px;
+        border-radius: 999px;
+        color: #1d1d1f;
         background:
-          linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(24, 31, 48, 0.9)),
-          rgba(15, 23, 42, 0.88);
-        border: 1px solid rgba(255, 255, 255, 0.18);
+          linear-gradient(180deg, rgba(248, 248, 250, 0.94), rgba(232, 232, 236, 0.9)),
+          rgba(238, 238, 242, 0.92);
+        border: 1px solid rgba(128, 128, 136, 0.28);
         box-shadow:
-          0 20px 46px rgba(15, 23, 42, 0.34),
-          0 8px 18px rgba(15, 23, 42, 0.24),
-          inset 0 1px 0 rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(22px) saturate(1.35);
-        -webkit-backdrop-filter: blur(22px) saturate(1.35);
+          0 10px 28px rgba(0, 0, 0, 0.18),
+          0 2px 8px rgba(0, 0, 0, 0.1),
+          inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(24px) saturate(1.25);
+        -webkit-backdrop-filter: blur(24px) saturate(1.25);
         -webkit-app-region: drag;
-      }
-      .live {
-        display: grid;
-        place-items: center;
-        width: 38px;
-        height: 38px;
-        border-radius: 999px;
-        background:
-          radial-gradient(circle at 50% 50%, rgba(255, 99, 87, 0.95), rgba(255, 69, 58, 0.7) 42%, rgba(255, 69, 58, 0.12) 43%),
-          rgba(255, 69, 58, 0.12);
-        box-shadow: 0 0 0 1px rgba(255, 134, 125, 0.2), 0 0 28px rgba(255, 69, 58, 0.4);
-      }
-      .live::before {
-        content: "";
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        background: #fff7f6;
-        animation: pulse 1.45s ease-in-out infinite;
-      }
-      .copy {
-        min-width: 0;
-        display: grid;
-        gap: 4px;
-      }
-      .main {
-        width: max-content;
-        max-width: 214px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 14px;
-        line-height: 1;
-        font-weight: 750;
-        letter-spacing: 0;
-        color: transparent;
-        background: linear-gradient(100deg, #dbeafe 0%, #ffffff 28%, #93c5fd 46%, #ffffff 64%, #dbeafe 100%);
-        background-size: 220% 100%;
-        -webkit-background-clip: text;
-        background-clip: text;
-        animation: shimmer 2.15s linear infinite;
-      }
-      .meta {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 11px;
-        line-height: 1;
-        color: rgba(226, 232, 240, 0.72);
-        font-weight: 600;
       }
       .waveform {
         position: relative;
         display: flex;
         align-items: center;
-        justify-content: flex-end;
-        gap: 3px;
-        width: 116px;
-        height: 42px;
+        justify-content: center;
+        gap: 2px;
+        width: 140px;
+        height: 24px;
         overflow: hidden;
-        mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
-        -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+        mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+        -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
       }
       .waveform span {
-        width: 3px;
+        width: 2px;
         height: var(--bar-height);
         border-radius: 999px;
-        background: linear-gradient(180deg, #bfdbfe 0%, #60a5fa 46%, #2563eb 100%);
-        box-shadow: 0 0 10px rgba(96, 165, 250, 0.4);
+        background: linear-gradient(180deg, #9a9aa1, #5f6067);
         transform-origin: center;
-        animation: wave 760ms ease-in-out infinite alternate;
+        animation: wave 700ms cubic-bezier(0.22, 1, 0.36, 1) infinite alternate;
         animation-delay: var(--bar-delay);
       }
-      @keyframes shimmer {
-        from { background-position: 200% 50%; }
-        to { background-position: -20% 50%; }
-      }
       @keyframes wave {
-        from { transform: scaleY(0.42); opacity: 0.64; }
+        from { transform: scaleY(0.36); opacity: 0.48; }
         to { transform: scaleY(1); opacity: 1; }
       }
-      @keyframes pulse {
-        0%, 100% { transform: scale(0.78); opacity: 0.82; }
-        50% { transform: scale(1); opacity: 1; }
-      }
       @media (prefers-reduced-motion: reduce) {
-        .main,
-        .waveform span,
-        .live::before {
+        .waveform span {
           animation: none;
         }
       }
@@ -277,27 +214,10 @@ function createRecordingOverlayHtml({ modelName = DEFAULT_MODEL.displayName, sho
   </head>
   <body>
     <div class="surface" role="status" aria-label="ASR Pro recording overlay">
-      <span class="live"></span>
-      <span class="copy">
-        <span class="main">Recording now</span>
-        <span class="meta">${escapeHtml(modelName)} | ${escapeHtml(shortcutLabel)}</span>
-      </span>
       <span class="waveform" aria-hidden="true">${barsHtml}</span>
     </div>
   </body>
 </html>`;
-}
-
-function formatShortcutForOverlay(value) {
-  return String(value).replace("CommandOrControl+", "Cmd/Ctrl ");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 module.exports = {

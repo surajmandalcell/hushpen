@@ -15,6 +15,17 @@ describe("Electron runtime helpers", () => {
     expect(runtime.DEFAULT_MODEL.repo).toBe("nvidia/parakeet-tdt-0.6b-v3");
   });
 
+  it("renders the recording overlay as a text-free waveform pill", () => {
+    const html = runtime.createRecordingOverlayHtml();
+
+    expect(runtime.OVERLAY_WINDOW_SIZE).toEqual({ width: 172, height: 42 });
+    expect(html).toContain('class="surface"');
+    expect(html).toContain('class="waveform"');
+    expect(html).not.toContain("Recording now");
+    expect(html).not.toContain("Parakeet-TDT");
+    expect(html).not.toContain("CommandOrControl");
+  });
+
   it("resolves contained data inside the macOS app bundle when packaged", () => {
     const dataDir = runtime.resolveContainedDataDir({
       isPackaged: true,
