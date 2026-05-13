@@ -199,11 +199,15 @@ describe("ASR Pro Electron shell", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
     expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
+    const audio = screen.getByLabelText("Play recording: Buy milk and schedule the product demo.");
+    expect(audio.tagName).toBe("AUDIO");
+    expect(audio.getAttribute("src")).toMatch(/^data:audio\/webm/);
 
     const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
     expect(stored).toHaveLength(1);
     expect(stored[0].text).toBe("Buy milk and schedule the product demo.");
     expect(stored[0].kind).toBe("Dictation");
+    expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
   it("syncs recording state from the global shortcut and tray bridge", async () => {

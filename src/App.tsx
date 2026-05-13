@@ -61,6 +61,7 @@ interface TranscriptHistoryRow {
   durationSeconds: number;
   createdAt: number;
   status: "completed" | "failed";
+  recordingUrl?: string;
   error?: string;
 }
 
@@ -74,6 +75,10 @@ const navItems: NavItem[] = [
 
 const defaultModelName = "Parakeet-TDT-0.6B-v3";
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
+const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
 
 const modelCards = [
   {
@@ -178,7 +183,13 @@ function loadTranscriptHistory() {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.map(normalizeTranscriptHistoryRow).filter((row): row is TranscriptHistoryRow => Boolean(row));
+    const rows: TranscriptHistoryRow[] = [];
+    for (const item of parsed) {
+      const row = normalizeTranscriptHistoryRow(item);
+      if (row) rows.push(row);
+    }
+
+    return rows;
   } catch {
     return [];
   }
@@ -202,6 +213,7 @@ function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | n
     durationSeconds: Number.isFinite(row.durationSeconds) ? Math.max(0, Math.round(Number(row.durationSeconds))) : 0,
     createdAt: Number.isFinite(row.createdAt) ? Number(row.createdAt) : Date.now(),
     status,
+    recordingUrl: typeof row.recordingUrl === "string" && row.recordingUrl ? row.recordingUrl : undefined,
     error: typeof row.error === "string" ? row.error : undefined,
   };
 }
@@ -239,10 +251,7 @@ function formatRelativeTime(createdAt: number, now = Date.now()) {
   if (elapsedHours < 24) return `${elapsedHours} hr ago`;
   if (elapsedHours < 48) return "Yesterday";
 
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(createdAt));
+  return historyDateFormatter.format(new Date(createdAt));
 }
 
 function getErrorMessage(error: unknown) {
@@ -261,11 +270,13 @@ function createTranscriptHistoryRow({
   model,
   durationSeconds,
   startedAt,
+  recordingUrl,
 }: {
   text: string;
   model: string;
   durationSeconds: number;
   startedAt: number;
+  recordingUrl: string;
 }): TranscriptHistoryRow {
   const normalizedText = text.replace(/\s+/g, " ").trim();
 
@@ -278,7 +289,24 @@ function createTranscriptHistoryRow({
     durationSeconds,
     createdAt: Date.now(),
     status: "completed",
+    recordingUrl,
   };
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to save recording audio"));
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Failed to save recording audio"));
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function useMicrophoneWaveform(active: boolean, barsRef: MutableRefObject<Array<HTMLSpanElement | null>>) {
@@ -467,6 +495,7 @@ function App() {
         throw new Error("No audio was captured");
       }
 
+      const recordingUrl = await readBlobAsDataUrl(audioBlob);
       const result = await apiClient.transcribeFile(createRecordingFile(audioBlob));
       const text = typeof result === "string" ? result : result?.text;
       if (!text || !text.trim()) {
@@ -478,6 +507,7 @@ function App() {
         model: selectedModel,
         durationSeconds,
         startedAt,
+        recordingUrl,
       }));
       setRecordingStatus("idle");
       setRecordingError(null);
@@ -927,6 +957,15 @@ function HistoryView({ rows, activeFilter, onFilterChange }: HistoryViewProps) {
               title={row.title}
               detail={row.status === "failed" ? `${row.kind} - ${formatDuration(row.durationSeconds)} - ${row.error ?? "Failed"}` : `${row.kind} - ${formatDuration(row.durationSeconds)} - ${row.model}`}
               trailing={<span className="text-[12px] font-medium text-[#77777f]">{formatRelativeTime(row.createdAt)}</span>}
+              extra={row.recordingUrl ? (
+                <audio
+                  aria-label={`Play recording: ${row.title}`}
+                  className="h-8 w-full max-w-[420px]"
+                  controls
+                  preload="metadata"
+                  src={row.recordingUrl}
+                />
+              ) : null}
             />
           ))}
         </GroupedPanel>
@@ -1035,17 +1074,21 @@ interface PanelRowProps {
   title: string;
   detail: string;
   trailing?: ReactNode;
+  extra?: ReactNode;
 }
 
-function PanelRow({ icon, title, detail, trailing }: PanelRowProps) {
+function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
   return (
-    <div className="flex min-w-0 items-center gap-3 border-t border-[#e3e3e8] p-3 first:border-t-0">
-      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-[#eeeeef] text-[#5f6067]">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-semibold text-[#25252a]">{title}</p>
-        <p className="truncate text-[12px] text-[#74747b]">{detail}</p>
+    <div className="border-t border-[#e3e3e8] p-3 first:border-t-0">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-[#eeeeef] text-[#5f6067]">{icon}</div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-[#25252a]">{title}</p>
+          <p className="truncate text-[12px] text-[#74747b]">{detail}</p>
+        </div>
+        {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
-      {trailing ? <div className="shrink-0">{trailing}</div> : null}
+      {extra ? <div className="mt-2 pl-11">{extra}</div> : null}
     </div>
   );
 }
