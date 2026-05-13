@@ -44,4 +44,50 @@ describe("Electron runtime helpers", () => {
       appPath: "/repo",
     })).toBe("/opt/asrpro/data");
   });
+
+  it("places the recording overlay at the bottom of the selected work area", () => {
+    const bounds = runtime.resolveOverlayBounds({
+      settings: { placement: "bottom" },
+      primaryDisplay: {
+        id: 1,
+        workArea: { x: 10, y: 30, width: 1400, height: 820 },
+      },
+      displays: [],
+      width: 420,
+      height: 84,
+    });
+
+    expect(bounds).toEqual({
+      x: 500,
+      y: 750,
+    });
+  });
+
+  it("remembers a dragged overlay position on the matching monitor", () => {
+    const bounds = runtime.resolveOverlayBounds({
+      settings: {
+        placement: "top",
+        customBounds: {
+          displayId: 7,
+          x: 2030,
+          y: 620,
+        },
+      },
+      primaryDisplay: {
+        id: 1,
+        workArea: { x: 0, y: 25, width: 1440, height: 850 },
+      },
+      displays: [
+        { id: 1, workArea: { x: 0, y: 25, width: 1440, height: 850 } },
+        { id: 7, workArea: { x: 1440, y: 0, width: 1728, height: 1117 } },
+      ],
+      width: 420,
+      height: 84,
+    });
+
+    expect(bounds).toEqual({
+      x: 2030,
+      y: 620,
+    });
+  });
 });

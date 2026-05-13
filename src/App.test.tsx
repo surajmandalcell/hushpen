@@ -96,4 +96,35 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("Global overlay active")).toBeNull();
     expect(screen.queryByText(/CommandOrControl/)).toBeNull();
   });
+
+  it("updates the recording overlay placement from settings", async () => {
+    const user = userEvent.setup();
+    const setOverlaySettings = vi.fn().mockResolvedValue({ placement: "bottom", customBounds: null });
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      selectAudioFiles: vi.fn(),
+      onAddFiles: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Parakeet-TDT-0.6B-v3",
+        shortcut: "CommandOrControl+`",
+        overlaySettings: { placement: "top", customBounds: null },
+      }),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      setOverlaySettings,
+      windowControl: vi.fn(),
+    };
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Top overlay position" }).getAttribute("aria-pressed")).toBe("true"));
+
+    await user.click(screen.getByRole("button", { name: "Bottom overlay position" }));
+
+    expect(setOverlaySettings).toHaveBeenCalledWith({ placement: "bottom" });
+    expect(screen.getByRole("button", { name: "Bottom overlay position" }).getAttribute("aria-pressed")).toBe("true");
+  });
 });

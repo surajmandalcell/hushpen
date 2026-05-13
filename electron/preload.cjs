@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("asrpro", {
   getPlatform: () => ipcRenderer.invoke("app:platform"),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   getRuntimeState: () => ipcRenderer.invoke("runtime:state"),
+  getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:get"),
+  setOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   selectAudioFiles: () => ipcRenderer.invoke("dialog:select-audio"),
   onAddFiles: (callback) => {
     const listener = () => callback();

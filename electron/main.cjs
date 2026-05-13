@@ -3,10 +3,14 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   DEFAULT_MODEL,
+  DEFAULT_OVERLAY_SETTINGS,
+  OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
   buildModelPaths,
   createRecordingOverlayHtml,
+  normalizeOverlaySettings,
   resolveContainedDataDir,
+  resolveOverlayBounds,
   resolveTrayIconPath,
 } = require("./runtime.cjs");
 
@@ -19,6 +23,8 @@ let containedDataDir;
 let isQuitting = false;
 let isRecording = false;
 let shortcutRegistered = false;
+let overlaySettings = DEFAULT_OVERLAY_SETTINGS;
+let positioningOverlay = false;
 
 app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
 
@@ -76,6 +82,8 @@ function configureContainedData() {
       }, null, 2)
     );
   }
+
+  overlaySettings = loadOverlaySettings();
 }
 
 function createWindow() {
@@ -155,6 +163,10 @@ function registerIpc() {
   }));
 
   ipcMain.handle("runtime:state", () => getRuntimeState());
+
+  ipcMain.handle("overlay-settings:get", () => overlaySettings);
+
+  ipcMain.handle("overlay-settings:update", (_event, settings) => updateOverlaySettings(settings));
 
   ipcMain.handle("recording:set", (_event, active) => {
     setRecording(Boolean(active), "renderer");
@@ -290,6 +302,7 @@ function getRuntimeState() {
     defaultModel: DEFAULT_MODEL.displayName,
     defaultModelId: DEFAULT_MODEL.id,
     defaultModelRepo: DEFAULT_MODEL.repo,
+    overlaySettings,
     shortcut: RECORDING_SHORTCUT,
     shortcutRegistered,
   };
@@ -320,23 +333,30 @@ function emitRecordingState(source) {
 
 function showRecordingOverlay() {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
+    positionRecordingOverlay();
     overlayWindow.showInactive();
     return;
   }
 
-  const { workArea } = screen.getPrimaryDisplay();
-  const width = 360;
-  const height = 52;
+  const width = OVERLAY_WINDOW_SIZE.width;
+  const height = OVERLAY_WINDOW_SIZE.height;
+  const bounds = resolveOverlayBounds({
+    settings: overlaySettings,
+    primaryDisplay: screen.getPrimaryDisplay(),
+    displays: screen.getAllDisplays(),
+    width,
+    height,
+  });
 
   overlayWindow = new BrowserWindow({
     width,
     height,
-    x: Math.round(workArea.x + (workArea.width - width) / 2),
-    y: Math.round(workArea.y + 14),
+    x: bounds.x,
+    y: bounds.y,
     frame: false,
     transparent: true,
     resizable: false,
-    movable: false,
+    movable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -355,12 +375,16 @@ function showRecordingOverlay() {
 
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  overlayWindow.setIgnoreMouseEvents(false);
   overlayWindow.once("ready-to-show", () => overlayWindow?.showInactive());
+  overlayWindow.on("move", persistDraggedOverlayPosition);
   overlayWindow.on("closed", () => {
     overlayWindow = undefined;
   });
-  overlayWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(createRecordingOverlayHtml())}`);
+  overlayWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(createRecordingOverlayHtml({
+    modelName: DEFAULT_MODEL.displayName,
+    shortcut: RECORDING_SHORTCUT,
+  }))}`);
 }
 
 function hideRecordingOverlay() {
@@ -368,6 +392,80 @@ function hideRecordingOverlay() {
     overlayWindow.close();
   }
   overlayWindow = undefined;
+}
+
+function getOverlaySettingsPath() {
+  return path.join(containedDataDir, "config", "overlay-settings.json");
+}
+
+function loadOverlaySettings() {
+  try {
+    const settingsPath = getOverlaySettingsPath();
+    if (!fs.existsSync(settingsPath)) {
+      return DEFAULT_OVERLAY_SETTINGS;
+    }
+
+    return normalizeOverlaySettings(JSON.parse(fs.readFileSync(settingsPath, "utf8")));
+  } catch {
+    return DEFAULT_OVERLAY_SETTINGS;
+  }
+}
+
+function saveOverlaySettings() {
+  fs.writeFileSync(getOverlaySettingsPath(), JSON.stringify(overlaySettings, null, 2));
+}
+
+function updateOverlaySettings(settings) {
+  const nextSettings = {
+    ...overlaySettings,
+    ...(settings || {}),
+  };
+
+  if (settings && Object.prototype.hasOwnProperty.call(settings, "placement")) {
+    nextSettings.customBounds = null;
+  }
+
+  overlaySettings = normalizeOverlaySettings(nextSettings);
+  saveOverlaySettings();
+  positionRecordingOverlay();
+  return overlaySettings;
+}
+
+function positionRecordingOverlay() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+
+  const bounds = resolveOverlayBounds({
+    settings: overlaySettings,
+    primaryDisplay: screen.getPrimaryDisplay(),
+    displays: screen.getAllDisplays(),
+    width: OVERLAY_WINDOW_SIZE.width,
+    height: OVERLAY_WINDOW_SIZE.height,
+  });
+
+  positioningOverlay = true;
+  overlayWindow.setBounds({
+    ...bounds,
+    ...OVERLAY_WINDOW_SIZE,
+  });
+  setTimeout(() => {
+    positioningOverlay = false;
+  }, 80);
+}
+
+function persistDraggedOverlayPosition() {
+  if (positioningOverlay || !overlayWindow || overlayWindow.isDestroyed()) return;
+
+  const bounds = overlayWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  overlaySettings = normalizeOverlaySettings({
+    ...overlaySettings,
+    customBounds: {
+      displayId: display.id,
+      x: bounds.x,
+      y: bounds.y,
+    },
+  });
+  saveOverlaySettings();
 }
 
 function quitApp() {

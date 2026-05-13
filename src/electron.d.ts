@@ -1,5 +1,7 @@
 export {};
 
+type OverlayPlacement = "top" | "bottom";
+
 declare global {
   interface Window {
     asrpro?: {
@@ -20,8 +22,32 @@ declare global {
         isRecording: boolean;
         dataDir: string;
         defaultModel: string;
+        overlaySettings?: {
+          placement: OverlayPlacement;
+          customBounds: {
+            displayId: number;
+            x: number;
+            y: number;
+          } | null;
+        };
         shortcut: string;
         shortcutRegistered: boolean;
+      }>;
+      getOverlaySettings?: () => Promise<{
+        placement: OverlayPlacement;
+        customBounds: {
+          displayId: number;
+          x: number;
+          y: number;
+        } | null;
+      }>;
+      setOverlaySettings?: (settings: { placement: OverlayPlacement }) => Promise<{
+        placement: OverlayPlacement;
+        customBounds: {
+          displayId: number;
+          x: number;
+          y: number;
+        } | null;
       }>;
       selectAudioFiles: () => Promise<Array<{ fileName: string; path: string }>>;
       onAddFiles: (callback: () => void) => () => void;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Activity,
   BrainCircuit,
@@ -17,10 +17,20 @@ import {
 
 type ViewId = "dashboard" | "files" | "models" | "history" | "settings";
 type WindowAction = "minimize" | "maximize" | "close";
+type OverlayPlacement = "top" | "bottom";
 
 interface AudioFile {
   fileName: string;
   path: string;
+}
+
+interface OverlaySettings {
+  placement: OverlayPlacement;
+  customBounds: {
+    displayId: number;
+    x: number;
+    y: number;
+  } | null;
 }
 
 interface RuntimeInfo {
@@ -29,6 +39,7 @@ interface RuntimeInfo {
   defaultModelId?: string;
   defaultModelRepo?: string;
   dataDir?: string;
+  overlaySettings?: OverlaySettings;
   shortcutRegistered?: boolean;
 }
 
@@ -93,11 +104,39 @@ const transcriptRows = [
   },
 ];
 
+const waveformBars = [
+  { id: "lead-low", height: 30, delay: 0 },
+  { id: "lead-mid", height: 58, delay: 38 },
+  { id: "lead-high", height: 84, delay: 76 },
+  { id: "soft-dip", height: 42, delay: 114 },
+  { id: "peak-one", height: 96, delay: 152 },
+  { id: "mid-one", height: 64, delay: 190 },
+  { id: "lift-one", height: 78, delay: 228 },
+  { id: "quiet-one", height: 36, delay: 266 },
+  { id: "peak-two", height: 88, delay: 304 },
+  { id: "mid-two", height: 54, delay: 342 },
+  { id: "lift-two", height: 72, delay: 380 },
+  { id: "quiet-two", height: 46, delay: 418 },
+  { id: "peak-three", height: 92, delay: 456 },
+  { id: "mid-three", height: 62, delay: 494 },
+  { id: "quiet-three", height: 38, delay: 532 },
+  { id: "lift-three", height: 70, delay: 570 },
+  { id: "peak-four", height: 98, delay: 608 },
+  { id: "mid-four", height: 52, delay: 646 },
+  { id: "lift-four", height: 82, delay: 684 },
+  { id: "soft-four", height: 44, delay: 722 },
+  { id: "mid-five", height: 66, delay: 760 },
+  { id: "tail-low", height: 34, delay: 798 },
+  { id: "tail-high", height: 76, delay: 836 },
+  { id: "tail-mid", height: 56, delay: 874 },
+] as const;
+
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
   const [isRecording, setIsRecording] = useState(false);
   const [selectedModel, setSelectedModel] = useState(defaultModelName);
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
+  const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
   const [queuedFiles, setQueuedFiles] = useState<AudioFile[]>([
     { fileName: "board-meeting.wav", path: "demo://board-meeting.wav" },
     { fileName: "voice-note.m4a", path: "demo://voice-note.m4a" },
@@ -114,6 +153,7 @@ function App() {
         setRuntimeInfo(state);
         setIsRecording(state.isRecording);
         setSelectedModel(state.defaultModel || defaultModelName);
+        setOverlayPlacement(normalizeOverlayPlacement(state.overlaySettings?.placement));
       }).catch(() => {});
     }
 
@@ -161,6 +201,17 @@ function App() {
     setActiveView("files");
   }, []);
 
+  const handleOverlayPlacementChange = useCallback((placement: OverlayPlacement) => {
+    setOverlayPlacement(placement);
+    setRuntimeInfo((current) => mergeOverlaySettings(current, { placement, customBounds: null }));
+
+    window.asrpro?.setOverlaySettings?.({ placement }).then((settings) => {
+      const nextPlacement = normalizeOverlayPlacement(settings.placement);
+      setOverlayPlacement(nextPlacement);
+      setRuntimeInfo((current) => mergeOverlaySettings(current, { ...settings, placement: nextPlacement }));
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => window.asrpro?.onAddFiles?.(() => {
     void handleSelectFiles();
   }), [handleSelectFiles]);
@@ -183,12 +234,31 @@ function App() {
             {activeView === "files" && <FilesView queuedFiles={queuedFiles} onSelectFiles={handleSelectFiles} />}
             {activeView === "models" && <ModelsView selectedModel={selectedModel} onSelectModel={setSelectedModel} />}
             {activeView === "history" && <HistoryView activeFilter={historyFilter} onFilterChange={setHistoryFilter} />}
-            {activeView === "settings" && <SettingsView runtimeInfo={runtimeInfo} selectedModel={selectedModel} />}
+            {activeView === "settings" && (
+              <SettingsView
+                runtimeInfo={runtimeInfo}
+                selectedModel={selectedModel}
+                overlayPlacement={overlayPlacement}
+                onOverlayPlacementChange={handleOverlayPlacementChange}
+              />
+            )}
           </main>
         </section>
       </div>
     </div>
   );
+}
+
+function normalizeOverlayPlacement(value: unknown): OverlayPlacement {
+  return value === "bottom" ? "bottom" : "top";
+}
+
+function mergeOverlaySettings(runtimeInfo: RuntimeInfo | null, overlaySettings: OverlaySettings): RuntimeInfo | null {
+  if (!runtimeInfo) return runtimeInfo;
+  return {
+    ...runtimeInfo,
+    overlaySettings,
+  };
 }
 
 interface SidebarProps {
@@ -436,9 +506,11 @@ function HistoryView({ activeFilter, onFilterChange }: HistoryViewProps) {
 interface SettingsViewProps {
   runtimeInfo: RuntimeInfo | null;
   selectedModel: string;
+  overlayPlacement: OverlayPlacement;
+  onOverlayPlacementChange: (placement: OverlayPlacement) => void;
 }
 
-function SettingsView({ runtimeInfo, selectedModel }: SettingsViewProps) {
+function SettingsView({ runtimeInfo, selectedModel, overlayPlacement, onOverlayPlacementChange }: SettingsViewProps) {
   return (
     <ViewFrame eyebrow="Settings" title="Desktop behavior" description="Actual app behavior, storage, and integration state.">
       <GroupedPanel title="Storage">
@@ -448,9 +520,46 @@ function SettingsView({ runtimeInfo, selectedModel }: SettingsViewProps) {
 
       <GroupedPanel title="Desktop integration">
         <PanelRow icon={<Layers2 className="h-4 w-4" />} title="Single instance" detail="Launching again focuses the running app" trailing={<StatusPill tone="green">On</StatusPill>} />
-        <PanelRow icon={<Activity className="h-4 w-4" />} title="Tray and overlay" detail="Close hides to tray; recording shows a floating pill" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow icon={<Activity className="h-4 w-4" />} title="Tray and overlay" detail="Close hides to tray; recording shows a draggable floating pill" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow
+          icon={<Settings className="h-4 w-4" />}
+          title="Recording overlay position"
+          detail={runtimeInfo?.overlaySettings?.customBounds ? "Drag position remembered for that monitor" : "Choose the default edge for the hotkey overlay"}
+          trailing={<OverlayPlacementControl placement={overlayPlacement} onChange={onOverlayPlacementChange} />}
+        />
       </GroupedPanel>
     </ViewFrame>
+  );
+}
+
+interface OverlayPlacementControlProps {
+  placement: OverlayPlacement;
+  onChange: (placement: OverlayPlacement) => void;
+}
+
+function OverlayPlacementControl({ placement, onChange }: OverlayPlacementControlProps) {
+  return (
+    <div className="inline-flex rounded-lg border border-[#d4d4da] bg-[#f2f2f5] p-0.5">
+      {(["top", "bottom"] as const).map((option) => {
+        const active = placement === option;
+        const label = option === "top" ? "Top" : "Bottom";
+
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-label={`${label} overlay position`}
+            aria-pressed={active}
+            className={`h-7 rounded-md px-2.5 text-[12px] font-semibold transition ${
+              active ? "bg-[#0a64c9] text-white shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-[#67676f] hover:text-[#1d1d1f]"
+            }`}
+            onClick={() => onChange(option)}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -513,17 +622,23 @@ interface WaveformProps {
 }
 
 function Waveform({ active }: WaveformProps) {
-  const bars = [28, 42, 64, 36, 76, 48, 54, 32, 70, 44, 60, 38, 66, 50, 30, 56, 72, 40];
-
   return (
-    <div className="flex h-28 items-center gap-1 rounded-lg border border-[#d9d9df] bg-[#f7f7f9] px-4">
-      {bars.map((height, index) => (
-        <div
-          key={`${height}-${index}`}
-          className={`flex-1 rounded-full transition-all duration-300 ${active ? "bg-[#0a84ff]" : "bg-[#c9cbd3]"}`}
-          style={{ height: `${active ? height : Math.max(14, height * 0.42)}%` }}
-        />
-      ))}
+    <div className={`in-app-waveform ${active ? "is-active" : ""}`} role="img" aria-label="Live recording waveform">
+      <div className="in-app-waveform__header">
+        <span className="in-app-waveform__state">{active ? "Listening" : "Ready"}</span>
+        <span className="in-app-waveform__meter">{active ? "Live input" : "Input idle"}</span>
+      </div>
+      <div className="in-app-waveform__bars" aria-hidden="true">
+        {waveformBars.map((bar) => (
+          <span
+            key={bar.id}
+            style={{
+              "--wave-height": `${bar.height}px`,
+              "--wave-delay": `${bar.delay}ms`,
+            } as CSSProperties}
+          />
+        ))}
+      </div>
     </div>
   );
 }
