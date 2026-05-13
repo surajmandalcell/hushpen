@@ -304,6 +304,10 @@ function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function shouldShowRecordingOverlay(source) {
+  return source !== "renderer";
+}
+
 module.exports = {
   DEFAULT_MODEL,
   DEFAULT_OVERLAY_SETTINGS,
@@ -316,4 +320,5 @@ module.exports = {
   resolveContainedDataDir,
   resolveOverlayBounds,
   resolveTrayIconPath,
+  shouldShowRecordingOverlay,
 };

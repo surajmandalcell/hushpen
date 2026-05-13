@@ -283,7 +283,8 @@
     background: rgba(80, 80, 86, var(--wave-opacity));
     opacity: 1;
     transform-origin: center;
-    transition: background 160ms ease, height 90ms linear;
+    transition: background 120ms ease;
+    will-change: height, background;
   }
 
   .in-app-waveform.is-active .in-app-waveform__bars span {

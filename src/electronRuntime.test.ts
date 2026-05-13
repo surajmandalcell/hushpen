@@ -33,6 +33,13 @@ describe("Electron runtime helpers", () => {
     expect(html).not.toContain("CommandOrControl");
   });
 
+  it("shows the global recording overlay only for non-renderer starts", () => {
+    expect(runtime.shouldShowRecordingOverlay("renderer")).toBe(false);
+    expect(runtime.shouldShowRecordingOverlay("shortcut")).toBe(true);
+    expect(runtime.shouldShowRecordingOverlay("tray")).toBe(true);
+    expect(runtime.shouldShowRecordingOverlay("menu")).toBe(true);
+  });
+
   it("resolves contained data inside the macOS app bundle when packaged", () => {
     const dataDir = runtime.resolveContainedDataDir({
       isPackaged: true,

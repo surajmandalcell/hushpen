@@ -68,16 +68,28 @@ class AudioRecordingService {
     private updateAudioLevel(): void {
         if (!this.analyser || !this.state.isRecording) return;
 
-        const bufferLength = this.analyser.frequencyBinCount;
+        const bufferLength = this.analyser.fftSize;
         const dataArray = new Uint8Array(bufferLength);
-        this.analyser.getByteFrequencyData(dataArray);
 
-        // Calculate average audio level
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-            sum += dataArray[i];
+        if (typeof this.analyser.getByteTimeDomainData === 'function') {
+            this.analyser.getByteTimeDomainData(dataArray);
+
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const centered = (dataArray[i] - 128) / 128;
+                sum += centered * centered;
+            }
+
+            const rms = Math.sqrt(sum / bufferLength);
+            this.state.audioLevel = Math.min(Math.max((rms - 0.016) / 0.13, 0), 1);
+        } else {
+            this.analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            this.state.audioLevel = sum / bufferLength / 255;
         }
-        this.state.audioLevel = sum / bufferLength / 255; // Normalize to 0-1
         if (this.startTime) {
             this.state.duration = Math.max(0, Math.floor((Date.now() - this.startTime) / 1000));
         }
@@ -108,9 +120,13 @@ class AudioRecordingService {
 
             // Set up audio context for monitoring
             this.audioContext = new AudioContext({ sampleRate: options.sampleRate || 16000 });
+            if (typeof this.audioContext.resume === 'function') {
+                await this.audioContext.resume().catch(() => {});
+            }
             this.microphone = this.audioContext.createMediaStreamSource(this.stream);
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 256;
+            this.analyser.fftSize = 1024;
+            this.analyser.smoothingTimeConstant = 0.72;
             this.microphone.connect(this.analyser);
 
             // Set up MediaRecorder

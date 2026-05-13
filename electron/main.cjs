@@ -12,6 +12,7 @@ const {
   resolveContainedDataDir,
   resolveOverlayBounds,
   resolveTrayIconPath,
+  shouldShowRecordingOverlay,
 } = require("./runtime.cjs");
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:4270";
@@ -357,13 +358,23 @@ function getRuntimeState() {
 
 function setRecording(active, source = "app") {
   if (isRecording === active) {
+    if (active && shouldShowRecordingOverlay(source)) {
+      showRecordingOverlay();
+    }
+    if (active && !shouldShowRecordingOverlay(source)) {
+      hideRecordingOverlay();
+    }
     emitRecordingState(source);
     return;
   }
 
   isRecording = active;
   if (isRecording) {
-    showRecordingOverlay();
+    if (shouldShowRecordingOverlay(source)) {
+      showRecordingOverlay();
+    } else {
+      hideRecordingOverlay();
+    }
   } else {
     hideRecordingOverlay();
   }
