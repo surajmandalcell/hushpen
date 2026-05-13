@@ -1,6 +1,6 @@
 # ASR Pro
 
-A professional desktop application for AI-powered speech recognition and transcription, built with Tauri + React + Python Sidecar architecture.
+A professional desktop application for AI-powered speech recognition and transcription, built with Electron + React + Vite and a Python sidecar.
 
 ## Features
 
@@ -9,18 +9,18 @@ A professional desktop application for AI-powered speech recognition and transcr
 - Multi-model AI support (Whisper, Parakeet)
 - SRT subtitle file generation
 - Drag-and-drop file transcription
-- Native macOS-style UI components
-- Dark theme interface
-- System tray integration
-- Cross-platform desktop application
+- Cross-platform Electron shell for macOS, Windows, and Linux
+- Seamless macOS-style titlebar and sidebar shared across platforms
+- Native-feeling grouped desktop UI with local-first transcription workflows
+- Secure preload bridge for file selection, platform info, and window actions
 
 ## Architecture
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **Desktop**: Tauri v2 (Rust-based)
+- **Frontend**: React 19 + TypeScript + Vite
+- **Desktop**: Electron with context-isolated preload APIs
 - **Backend**: Python FastAPI sidecar
 - **AI Models**: ONNX Runtime with Whisper/Parakeet models
-- **UI Components**: Custom macOS-native component library
+- **UI Components**: Custom cross-platform desktop UI using Tailwind and lucide icons
 
 ## Prerequisites
 
@@ -28,7 +28,6 @@ A professional desktop application for AI-powered speech recognition and transcr
 
 - **Node.js**: Version 20.19+ or 22.12+ (current: 20.17.0 with warnings)
 - **Python**: Version 3.8+ with pip
-- **Rust**: Latest stable toolchain via rustup
 - **Git**: For cloning and version control
 
 ### System Requirements
@@ -62,18 +61,7 @@ pip install -r requirements.txt
 cd ..
 ```
 
-### 4. Install Rust Toolchain
-
-```bash
-# Windows/macOS/Linux
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-
-# Or use the installer directly
-# Windows: Download from https://win.rustup.rs/
-```
-
-### 5. Download AI Models
+### 4. Download AI Models
 
 The application will automatically download required ONNX models on first run:
 - Whisper-tiny (39MB)
@@ -89,21 +77,23 @@ The application will automatically download required ONNX models on first run:
 cd sidecar
 python main.py
 
-# Terminal 2: Start Tauri development
-npm run tauri dev
+# Terminal 2: Start Electron development
+npm run electron:dev
 ```
 
 ### Available Scripts
 
 ```bash
 # Frontend development
-npm run dev          # Start Vite dev server
-npm run build        # Build frontend for production
-npm run preview      # Preview production build
+npm run dev          # Start Vite dev server on 127.0.0.1:4270
+npm run build        # Typecheck and build renderer assets
+npm run preview      # Preview production renderer on 127.0.0.1:4271
+npm test             # Run renderer interaction tests
 
-# Tauri desktop
-npm run tauri dev    # Start Tauri development mode
-npm run tauri build  # Build desktop application
+# Electron desktop
+npm run electron:dev   # Run the desktop app with the Vite dev server
+npm run electron:pack  # Build unpacked desktop app for the current OS
+npm run electron:dist  # Build configured installers/packages
 ```
 
 ### Project Structure
@@ -116,7 +106,7 @@ asrpro/
 │   │   └── ...
 │   ├── pages/             # Application pages
 │   └── ...
-├── src-tauri/             # Tauri configuration and Rust code
+├── electron/              # Electron main and preload processes
 ├── sidecar/               # Python backend
 │   ├── api/              # FastAPI server
 │   ├── models/           # AI model management
@@ -139,8 +129,8 @@ python -m pytest tests/test_api.py     # Specific test file
 ### Frontend Tests
 
 ```bash
-npm run test            # Run frontend tests (if configured)
-npm run type-check      # TypeScript type checking
+npm test                # Run renderer interaction tests
+npm run build           # TypeScript build verification
 ```
 
 ### Clean Python Cache
@@ -166,15 +156,15 @@ Get-ChildItem -Path . -Name "__pycache__" -Recurse -Directory | Remove-Item -Rec
 ### Desktop Application
 
 ```bash
-# Build complete desktop application
-npm run tauri build
+# Build renderer and an unpacked Electron app for the current OS
+npm run electron:pack
 ```
 
 **Output files:**
-- Windows: `src-tauri/target/release/bundle/nsis/asrpro_0.1.0_x64-setup.exe`
-- Windows: `src-tauri/target/release/bundle/msi/asrpro_0.1.0_x64_en-US.msi`
-- macOS: `src-tauri/target/release/bundle/macos/asrpro.app`
-- Linux: `src-tauri/target/release/bundle/appimage/asrpro_0.1.0_amd64.AppImage`
+- Current OS unpacked app: `release/<platform>-<arch>/`
+- macOS configured targets: DMG and ZIP
+- Windows configured targets: NSIS installer and portable executable
+- Linux configured targets: AppImage and DEB
 
 ### Frontend Only
 
@@ -210,11 +200,6 @@ Models are automatically managed through the UI. Manual configuration in `sideca
 - Current version 20.17.0 works but upgrade to 20.19+ recommended
 - Use nvm/volta for Node.js version management
 
-**Rust Installation**
-- Ensure `~/.cargo/bin` is in PATH
-- Restart terminal after installation
-- Run `rustc --version` to verify
-
 **Python Dependencies**
 - Use virtual environment: `python -m venv venv && source venv/bin/activate`
 - Install Microsoft Visual C++ Build Tools (Windows)
@@ -222,7 +207,6 @@ Models are automatically managed through the UI. Manual configuration in `sideca
 
 **Build Failures**
 - Clear node_modules: `rm -rf node_modules && npm install`
-- Clear Rust cache: `cargo clean` in src-tauri/
 - Verify all prerequisites are installed
 
 ### Performance
