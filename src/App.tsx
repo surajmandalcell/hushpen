@@ -148,7 +148,7 @@ const sidebarIconTone: Record<ViewId, string> = {
   sound: "bg-[#737373] text-white",
   models: "bg-[#8f8f8f] text-white",
   history: "bg-[#7167ff] text-white",
-  about: "border border-[#92c2c6]/25 bg-[#92c2c6]/15 text-[#b9dfe2]",
+  about: "bg-[#727272] text-white",
 };
 
 const defaultModelName = "Local Whisper";

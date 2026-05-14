@@ -316,6 +316,19 @@ describe("ASR Pro Electron shell", () => {
     expect(homeButton.getAttribute("aria-current")).toBeNull();
   });
 
+  it("keeps the About sidebar icon neutral", () => {
+    render(<App />);
+
+    const aboutButton = screen.getByRole("button", { name: "About" });
+    const aboutIconTile = aboutButton.querySelector("span");
+
+    expect(aboutIconTile?.className).toContain("bg-[#727272]");
+    expect(aboutIconTile?.className).toContain("text-white");
+    expect(aboutIconTile?.className).not.toContain("#92c2c6");
+    expect(aboutIconTile?.className).not.toContain("#b9dfe2");
+    expect(aboutIconTile?.className).not.toContain("border");
+  });
+
   it("does not render a local waveform inside the home page", () => {
     render(<App />);
 
