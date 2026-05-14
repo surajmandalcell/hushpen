@@ -94,14 +94,14 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 920,
+    width: 780,
     height: 580,
-    minWidth: 820,
+    minWidth: 680,
     minHeight: 500,
     show: false,
     frame: false,
     title: "ASR Pro",
-    backgroundColor: "#e8e8ed",
+    backgroundColor: "#2f2f2f",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
