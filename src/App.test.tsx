@@ -271,7 +271,8 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("Runtime")).toBeNull();
     expect(screen.queryByText("Highlights")).toBeNull();
     expect(screen.queryByRole("list", { name: "Highlights" })).toBeNull();
-    expect(screen.getByText("/Users/surajmandal/Library/Application Support/ASR Pro/data")).toBeTruthy();
+    expect(screen.getByText("~/Library/Application Support/ASR Pro/data")).toBeTruthy();
+    expect(screen.queryByText("/Users/surajmandal/Library/Application Support/ASR Pro/data")).toBeNull();
   });
 
   it("renders GitHub project and issue links on About", async () => {

@@ -422,11 +422,16 @@ function countWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function formatHomeRelativePath(filePath?: string) {
+  if (!filePath) return undefined;
+  return filePath.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
+}
+
 function buildAboutFactRows(appVersion: string, storagePath?: string): Array<{ label: string; value: string }> {
   return [
     { label: "Version", value: appVersion },
     { label: "Recognition", value: "Private dictation and file transcription" },
-    { label: "Data folder", value: storagePath || "Waiting for local data folder" },
+    { label: "Data folder", value: formatHomeRelativePath(storagePath) || "Waiting for local data folder" },
   ];
 }
 
