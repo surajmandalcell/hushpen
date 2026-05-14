@@ -921,7 +921,8 @@ function App() {
             onSelectAudioInput={handleAudioInputChange}
           />
           <main
-            className={`scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-3 pb-5 pt-3 outline-none focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#9bcfff]/25 sm:px-4 ${isScrollbarVisible ? "is-scrollbar-visible" : ""}`}
+            tabIndex={-1}
+            className={`scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-3 pb-5 pt-3 outline-none focus:outline-none focus-visible:outline-none sm:px-4 ${isScrollbarVisible ? "is-scrollbar-visible" : ""}`}
             onScroll={handleScrollActivity}
             onTouchMove={handleScrollActivity}
             onWheel={handleScrollActivity}
