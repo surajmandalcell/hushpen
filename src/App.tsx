@@ -1441,8 +1441,11 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
         onClick={onToggle}
       >
         <p className={`${expanded ? "line-clamp-3" : "truncate"} text-[13px] font-semibold leading-5 text-[#f1f1f1]`}>
-          {expanded ? row.text || row.title : row.title}
+          {row.title}
         </p>
+        {expanded && row.status !== "failed" && row.text && row.text !== row.title ? (
+          <p className="mt-2 text-[12px] font-medium leading-5 text-[#c7c7c7]">{row.text}</p>
+        ) : null}
       </button>
 
       {expanded ? (

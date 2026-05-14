@@ -89,15 +89,17 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
 
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByText("Average speed")).toBeTruthy();
-    expect(screen.getByText("Words this week")).toBeTruthy();
-    expect(screen.getByText("Recordings")).toBeTruthy();
+    expect(screen.queryByText("Average speed")).toBeNull();
+    expect(screen.queryByText("Words this week")).toBeNull();
+    expect(screen.queryByText("Recordings")).toBeNull();
     expect(screen.queryByText("Apps used")).toBeNull();
     expect(screen.getByText("Get started")).toBeTruthy();
-    expect(screen.getByText("What's new?")).toBeTruthy();
+    expect(screen.queryByText("What's new?")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
-    expect(screen.getAllByText("Local Whisper").length).toBeGreaterThan(0);
+    expect(screen.getByText("Review history")).toBeTruthy();
+    expect(screen.getByText("Choose speech model")).toBeTruthy();
+    expect(screen.queryByText("Customize shortcuts")).toBeNull();
     expect(screen.queryByText(/Superwhisper/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Modes" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Vocabulary" })).toBeNull();
@@ -138,7 +140,7 @@ describe("ASR Pro Electron shell", () => {
 
     await user.click(screen.getByRole("button", { name: "History" }));
 
-    expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "History" })).toBeTruthy();
     expect(screen.getByText("No transcription history yet")).toBeTruthy();
   });
 
@@ -332,12 +334,11 @@ describe("ASR Pro Electron shell", () => {
     });
 
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("heading", { name: "Transcript library" })).toBeNull();
-    expect(screen.getByText("Recordings")).toBeTruthy();
-    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
+    expect(screen.getByText("Get started")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "History" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "History" })).toBeTruthy());
     expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
     const audio = screen.getByLabelText("Recording audio: Buy milk and schedule the product demo.");
     expect(audio.tagName).toBe("AUDIO");
@@ -378,10 +379,10 @@ describe("ASR Pro Electron shell", () => {
     });
 
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("heading", { name: "Transcript library" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "History" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "History" })).toBeTruthy());
     expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
     expect(screen.getByText(/Failed to fetch/, { selector: "p" })).toBeTruthy();
 
@@ -449,7 +450,7 @@ describe("ASR Pro Electron shell", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("heading", { name: "Transcript library" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
   });
 
   it("uses neutral page status labels instead of colored status pills", async () => {
