@@ -15,12 +15,22 @@ describe("Electron runtime helpers", () => {
     const mainSource = readFileSync("electron/main.cjs", "utf8");
     const preloadSource = readFileSync("electron/preload.cjs", "utf8");
 
+    expect(mainSource).toContain("const MAIN_WINDOW_SIZE = { width: 780, height: 520 };");
     expect(mainSource).toMatch(
-      /mainWindow = new BrowserWindow\(\{[\s\S]*?width: 780,[\s\S]*?resizable: false,[\s\S]*?maximizable: false,[\s\S]*?fullscreenable: false,/
+      /mainWindow = new BrowserWindow\(\{[\s\S]*?width: MAIN_WINDOW_SIZE\.width,[\s\S]*?height: MAIN_WINDOW_SIZE\.height,[\s\S]*?minWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?minHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?maxWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?maxHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?resizable: false,[\s\S]*?maximizable: false,[\s\S]*?fullscreenable: false,/
     );
     expect(mainSource).not.toContain('role: "zoom"');
     expect(mainSource).not.toContain('action === "maximize"');
     expect(mainSource).not.toContain("senderWindow.maximize()");
+    expect(mainSource).toContain("lockMainWindowSize(mainWindow)");
+    expect(mainSource).toContain("setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
+    expect(mainSource).toContain("setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
+    expect(mainSource).toContain('win.on("will-resize"');
+    expect(mainSource).toContain("event.preventDefault()");
+    expect(mainSource).toContain('win.on("maximize"');
+    expect(mainSource).toContain("win.unmaximize()");
+    expect(mainSource).toContain('win.on("enter-full-screen"');
+    expect(mainSource).toContain("win.setFullScreen(false)");
     expect(preloadSource).toContain('new Set(["minimize", "close"])');
     expect(preloadSource).not.toContain('"maximize"');
   });

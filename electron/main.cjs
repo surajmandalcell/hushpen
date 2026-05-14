@@ -27,6 +27,7 @@ const {
 } = require("./runtime.cjs");
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:4270";
+const MAIN_WINDOW_SIZE = { width: 780, height: 520 };
 
 let mainWindow;
 let overlayWindow;
@@ -113,10 +114,12 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 780,
-    height: 520,
-    minWidth: 680,
-    minHeight: 440,
+    width: MAIN_WINDOW_SIZE.width,
+    height: MAIN_WINDOW_SIZE.height,
+    minWidth: MAIN_WINDOW_SIZE.width,
+    minHeight: MAIN_WINDOW_SIZE.height,
+    maxWidth: MAIN_WINDOW_SIZE.width,
+    maxHeight: MAIN_WINDOW_SIZE.height,
     show: false,
     frame: false,
     resizable: false,
@@ -133,6 +136,7 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  lockMainWindowSize(mainWindow);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
@@ -163,6 +167,36 @@ function createWindow() {
   }
 
   return mainWindow;
+}
+
+function lockMainWindowSize(win) {
+  win.setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height);
+  win.setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height);
+  win.setResizable(false);
+  win.setMaximizable(false);
+  win.setFullScreenable(false);
+
+  win.on("will-resize", (event) => {
+    event.preventDefault();
+    win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+  });
+
+  win.on("resize", () => {
+    const [width, height] = win.getSize();
+    if (width !== MAIN_WINDOW_SIZE.width || height !== MAIN_WINDOW_SIZE.height) {
+      win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+    }
+  });
+
+  win.on("maximize", () => {
+    win.unmaximize();
+    win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+  });
+
+  win.on("enter-full-screen", () => {
+    win.setFullScreen(false);
+    win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+  });
 }
 
 function showMainWindow() {
