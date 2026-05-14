@@ -1,285 +1,215 @@
 # ASR Pro
 
-<p>
-  <img src="./src/assets/asrpro-logo.svg" alt="ASR Pro logo" width="96" height="96" />
+<p align="center">
+  <img src="./src/assets/asrpro-logo.svg" alt="ASR Pro logo" width="112" height="112" />
 </p>
 
-A professional desktop application for AI-powered speech recognition and transcription, built with Electron + React + Vite and a Python sidecar.
+<p align="center">
+  <strong>Local-first desktop transcription for private dictation, file transcription, and speech model testing.</strong>
+</p>
 
-## Features
+<p align="center">
+  <img alt="Electron" src="https://img.shields.io/badge/runtime-Electron-47848F" />
+  <img alt="React" src="https://img.shields.io/badge/ui-React_19-61DAFB" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/sidecar-FastAPI-009688" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178C6" />
+</p>
 
-- Global hotkey transcription with customizable key combinations
-- Real-time audio processing and transcription
-- Multi-model AI support (Whisper, Parakeet)
-- SRT subtitle file generation
-- Drag-and-drop file transcription
-- Cross-platform Electron shell for macOS, Windows, and Linux
-- Seamless macOS-style titlebar and sidebar shared across platforms
-- Native-feeling grouped desktop UI with local-first transcription workflows
-- Secure preload bridge for file selection, platform info, and window actions
+ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a Python FastAPI sidecar. It keeps the desktop shell, microphone capture, transcription history, model cache, and runtime data under app-controlled paths so the release build can run without asking end users to manage a Python environment.
+
+## Screenshots
+
+| Home | History |
+|---|---|
+| ![ASR Pro home screen](docs/screenshots/asrpro-home.png) | ![ASR Pro transcript history](docs/screenshots/asrpro-history.png) |
+
+| Models | About |
+|---|---|
+| ![ASR Pro model library](docs/screenshots/asrpro-models.png) | ![ASR Pro about screen](docs/screenshots/asrpro-about.png) |
+
+## Highlights
+
+| Area | Capability |
+|---|---|
+| Desktop shell | Fixed-size Electron window, custom macOS-style traffic lights, tray integration, and context-isolated preload APIs. |
+| Recording workflow | Microphone picker, global recording shortcut, floating waveform overlay, and saved local transcript history. |
+| Transcription | Browser-side capture posts audio to the local Python sidecar through OpenAI-compatible transcription endpoints. |
+| Models | Default local Whisper path with optional Parakeet and higher-accuracy model slots. |
+| Local data | App-owned data directory for config, logs, model cache, session data, and transcripts. |
+| Packaging | Electron Builder packages renderer assets, Electron main/preload files, app icons, tray assets, and the platform sidecar binary. |
 
 ## Architecture
 
-- **Frontend**: React 19 + TypeScript + Vite
-- **Desktop**: Electron with context-isolated preload APIs
-- **Backend**: Python FastAPI sidecar
-- **AI Models**: ONNX Runtime with Whisper/Parakeet models
-- **UI Components**: Custom cross-platform desktop UI using Tailwind and lucide icons
-
-## Brand Assets
-
-| Asset | Path | Use |
+| Layer | Stack | Responsibility |
 |---|---|---|
-| App logo SVG | `src/assets/asrpro-logo.svg` | README, about page, docs, reusable square logo |
-| App logo PNG | `src/assets/asrpro-logo.png` | Raster previews and external surfaces |
-| Logo mark SVG | `src/assets/asrpro-logo-mark.svg` | Transparent D07 infinity mark |
-| Dark tray SVG/PNG | `src/assets/asrpro-tray-dark.svg`, `src/assets/asrpro-tray-dark.png` | Dark glyph for light tray/menu backgrounds |
-| Light tray SVG/PNG | `src/assets/asrpro-tray-light.svg`, `src/assets/asrpro-tray-light.png` | Light glyph for dark tray/menu backgrounds |
-| Packaged icons | `src/assets/asrpro-app-icon.icns`, `src/assets/asrpro-app-icon.ico`, `src/assets/asrpro-app-icon.png` | macOS, Windows, and Linux Electron packaging |
+| Renderer | React 19, TypeScript, Vite, Tailwind, lucide-react | App shell, recording controls, history, model selection, settings, and visual state. |
+| Desktop runtime | Electron main/preload, secure IPC | Window lifecycle, tray, global shortcut, overlay window, sidecar process management, and app paths. |
+| Sidecar | Python, FastAPI, ONNX Runtime, onnx-asr | Health checks, model registry, model selection, and `/v1/audio/transcriptions`. |
+| Release | electron-builder, PyInstaller | Produces the desktop app and bundles the sidecar executable under Electron resources. |
 
-## Supported Desktop Runtime
+### Runtime Flow
 
-| Runtime | Status | Notes |
-|---|---|---|
-| Electron | Supported | Canonical desktop shell for macOS, Windows, and Linux. Packaged installs start the Python sidecar automatically. |
+```mermaid
+flowchart LR
+  User["User microphone or audio file"] --> Renderer["React renderer"]
+  Renderer --> IPC["Electron preload IPC"]
+  IPC --> Main["Electron main process"]
+  Main --> Sidecar["Python FastAPI sidecar"]
+  Sidecar --> Models["Whisper / Parakeet model cache"]
+  Sidecar --> Renderer
+  Main --> Data["App data directory"]
+```
 
-## Prerequisites
+## Requirements
 
-### Required Software
+| Dependency | Development | Production user |
+|---|---:|---:|
+| Node.js | 20.19+ or 22.12+ | Not required |
+| npm | Required | Not required |
+| Python | 3.10+ recommended | Not required when sidecar is bundled |
+| Git | Required | Not required |
+| OS | macOS, Windows, or Linux | macOS, Windows, or Linux |
 
-- **Node.js**: Version 20.19+ or 22.12+ (current: 20.17.0 with warnings)
-- **Python**: Version 3.8+ with pip for development and sidecar packaging
-- **Git**: For cloning and version control
+Production installers should include a platform-specific `sidecar/bin/asrpro-sidecar` executable before packaging. End users should not need to install Python manually.
 
-### System Requirements
-
-- **Windows**: Windows 10/11 (x64)
-- **macOS**: macOS 10.15+ (Intel/Apple Silicon)
-- **Linux**: Ubuntu 18.04+ or equivalent
-- **Memory**: 4GB RAM minimum, 8GB recommended
-- **Storage**: 2GB free space for models and dependencies
-
-## Installation
-
-### 1. Clone Repository
+## Quick Start
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/surajmandalcell/asrpro.git
 cd asrpro
-```
-
-### 2. Install Node.js Dependencies
-
-```bash
 npm install
-```
-
-### 3. Install Python Dependencies For Development
-
-```bash
 npm run sidecar:setup
-```
-
-The setup script creates `sidecar/.venv`, installs `sidecar/requirements.txt`, and refreshes the environment when requirements change. `npm run sidecar:dev` and `make dev` run this check automatically before the sidecar starts.
-
-Production installers do not require end users to install Python manually. The release build bundles a platform-specific sidecar executable under Electron `extraResources`.
-
-### 4. Download AI Models
-
-The application will automatically download required ONNX models on first run:
-- Whisper-base (default local model)
-- Whisper-tiny
-- Additional models available through UI
-
-Parakeet/NeMo models are optional and require the extra NeMo dependencies listed in `sidecar/requirements.txt`.
-
-## Development
-
-### Start Development Server
-
-```bash
-# Starts the Python sidecar, Vite, and Electron together
 npm run electron:dev
 ```
 
-### Available Scripts
+The development command starts the Python sidecar on `127.0.0.1:8000`, Vite on `127.0.0.1:4270`, and the Electron app once both services are healthy.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `make dev` | Start the Electron desktop app through `npm run electron:dev`. |
+| `npm run dev` | Start the Vite renderer on `127.0.0.1:4270`. |
+| `npm run preview` | Preview the production renderer on `127.0.0.1:4271`. |
+| `npm run sidecar:setup` | Create or refresh `sidecar/.venv` from `sidecar/requirements.txt`. |
+| `npm run sidecar:dev` | Ensure the sidecar environment, then start `sidecar/main.py`. |
+| `npm run sidecar:build` | Build the current-platform sidecar executable with PyInstaller. |
+| `npm run sidecar:check` | Verify the packaged sidecar executable exists. |
+| `npm run build` | Type-check and build renderer assets. |
+| `npm test -- --run` | Run the Vitest suite once. |
+| `npm run electron:pack` | Build renderer assets and create an unpacked Electron app for the current OS. |
+| `npm run electron:dist` | Build configured installers/packages for the current OS. |
+
+## Production Build
+
+Build releases on the target operating system so the sidecar executable matches the platform being packaged.
 
 ```bash
-# Frontend development
-npm run dev          # Start Vite dev server on 127.0.0.1:4270
-npm run sidecar:setup # Create or refresh sidecar/.venv
-npm run sidecar:dev  # Start Python sidecar on 127.0.0.1:8000
-npm run sidecar:build # Build the platform-specific sidecar executable
-npm run sidecar:check # Verify the sidecar executable exists for packaging
-npm run build        # Typecheck and build renderer assets
-npm run preview      # Preview production renderer on 127.0.0.1:4271
-npm test             # Run renderer interaction tests
-
-# Electron desktop
-npm run electron:dev   # Run the desktop app with the Vite dev server
-npm run electron:pack  # Build unpacked desktop app for the current OS
-npm run electron:dist  # Build configured installers/packages
-```
-
-### Project Structure
-
-```
-asrpro/
-├── src/                    # React frontend source
-│   ├── components/         # React components
-│   ├── services/           # Renderer API and recording services
-│   ├── App.tsx             # Main renderer shell
-│   └── ...
-├── electron/              # Electron main and preload processes
-├── sidecar/               # Python backend
-│   ├── api/              # FastAPI server
-│   ├── models/           # AI model management
-│   ├── utils/            # Utilities
-│   └── tests/            # Backend tests
-└── dist/                 # Built frontend assets
-```
-
-## Testing
-
-### Backend Tests
-
-```bash
-cd sidecar
-python -m pytest
-python -m pytest -v                    # Verbose output
-python -m pytest tests/test_api.py     # Specific test file
-```
-
-### Frontend Tests
-
-```bash
-npm test                # Run renderer interaction tests
-npm run build           # TypeScript build verification
-```
-
-### Clean Python Cache
-
-```bash
-# Remove all __pycache__ directories and .pyc files
-python scripts/clean_python_cache.py
-
-# Or manually with PowerShell (Windows)
-Get-ChildItem -Path . -Name "__pycache__" -Recurse -Directory | Remove-Item -Recurse -Force
-```
-
-### Manual Testing
-
-1. Start development servers
-2. Test global hotkey functionality
-3. Upload audio files for transcription
-4. Verify model switching
-5. Test system tray integration
-
-## Building for Production
-
-### Desktop Application
-
-Build the sidecar executable on the target OS before creating production installers. Windows packages need `sidecar/bin/asrpro-sidecar.exe`; macOS and Linux packages need `sidecar/bin/asrpro-sidecar`.
-
-```bash
-# Build the Python sidecar executable for the current OS
+npm install
+npm run sidecar:setup
 npm run sidecar:build
-
-# Verify the production sidecar executable is present
 npm run sidecar:check
-
-# Build renderer and an unpacked Electron app for the current OS
 npm run electron:pack
-
-# Build configured installers/packages for the current OS
-npm run electron:dist
 ```
 
-**Output files:**
-- Current OS unpacked app: `release/<platform>-<arch>/`
-- macOS configured targets: DMG and ZIP
-- Windows configured targets: NSIS installer and portable executable
-- Linux configured targets: AppImage and DEB
-
-### Packaged Runtime Behavior
-
-| Platform | Sidecar startup | Data directory |
+| Platform | Required sidecar binary | Electron Builder targets |
 |---|---|---|
-| macOS | Electron starts the bundled sidecar from app resources when no healthy sidecar is already running. | App resource `data/` directory, matching the existing macOS release behavior. |
-| Windows | Electron starts `resources/sidecar/bin/asrpro-sidecar.exe` and waits for `/health`. | Electron user-writable app data under the current user's profile. |
-| Linux | Electron starts `resources/sidecar/bin/asrpro-sidecar` and waits for `/health`. | Electron user-writable app data under the current user's profile. |
+| macOS | `sidecar/bin/asrpro-sidecar` | DMG, ZIP, unpacked app |
+| Windows | `sidecar/bin/asrpro-sidecar.exe` | NSIS, portable executable |
+| Linux | `sidecar/bin/asrpro-sidecar` | AppImage, DEB |
 
-Development keeps local state in `tmp/app-data` and can use either `npm run electron:dev` or the Electron main process fallback that starts `sidecar/main.py`.
+Release output is written to `release/`. Code signing, notarization, and store submission credentials are intentionally outside the repository and should be supplied by the release environment.
 
-### Frontend Only
+## Data And Runtime Paths
 
-```bash
-npm run build
-# Output: dist/ directory
-```
+| Mode | Data path behavior |
+|---|---|
+| Development | Electron keeps local state under `tmp/app-data`. The sidecar falls back to `data/` when launched directly. |
+| Packaged app | Electron resolves the user-writable app data path, then stores ASR Pro data under its `data/` child directory. |
+| Models | Hugging Face, NeMo, Torch, and ONNX model caches are redirected under the app data model cache. |
+| Logs and session data | Logs, Chromium session data, config, and overlay settings are kept under the app-owned data directory. |
 
 ## Configuration
 
-### Environment Variables
+| Variable | Default | Use |
+|---|---|---|
+| `VITE_ASRPRO_API_URL` | `http://127.0.0.1:8000` | Renderer API base URL for the Python sidecar. |
+| `ASRPRO_DATA_DIR` | Electron-provided app data path, or `data/` for direct sidecar runs | Overrides sidecar config, logs, model cache, and transcript storage. |
+| `ASRPRO_DEFAULT_MODEL` | `whisper-base` | Default model identifier passed from Electron to the sidecar. |
+| `ASRPRO_DEFAULT_MODEL_REPO` | `onnx-asr/whisper-base` | Default model repository metadata. |
+| `PYTHON` | `python3` on macOS/Linux, `python` on Windows | Python executable used by sidecar setup and build scripts. |
 
-Create `.env` files as needed:
+## API Surface
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/health` | `GET`, `HEAD` | Sidecar readiness and health checks. |
+| `/v1/models` | `GET` | List available transcription models. |
+| `/v1/settings/model` | `POST` | Select the active model. |
+| `/v1/audio/transcriptions` | `POST` | Transcribe uploaded audio and return JSON, text, or SRT output. |
+| `/ws` | WebSocket | Sidecar real-time channel reserved for runtime updates. |
+
+## Quality Gates
+
+Run these before shipping a release candidate:
 
 ```bash
-# .env.local (frontend)
-VITE_ASRPRO_API_URL=http://localhost:8000
-
-# sidecar/.env (backend)
-MODEL_CACHE_DIR=./models
-LOG_LEVEL=INFO
+npm run build
+npm test -- --run
+npm run sidecar:setup
+sidecar/.venv/bin/python -m pytest sidecar/tests
+npm run sidecar:build
+npm run sidecar:check
+npm run electron:pack
 ```
 
-### Model Configuration
+| Gate | What it proves |
+|---|---|
+| `npm run build` | TypeScript and production renderer compile successfully. |
+| `npm test -- --run` | Renderer, Electron runtime helpers, and UI interaction tests pass. |
+| `pytest sidecar/tests` | Sidecar API, model registry, settings, and device tests pass. |
+| `npm run electron:pack` | Electron Builder can assemble the current OS app with bundled runtime resources. |
+| Manual runtime smoke | The packaged or previewed app loads, has no console errors, and can navigate Home, History, Models, and About. |
 
-Models are automatically managed through the UI. Manual configuration in `sidecar/models/registry.py`.
+## Repository Layout
+
+```text
+asrpro/
+├── docs/screenshots/       # README screenshots captured from the current app UI
+├── electron/               # Electron main, preload, overlay, identity, and runtime helpers
+├── scripts/                # Sidecar setup, bundle check, and PyInstaller build helpers
+├── sidecar/                # Python FastAPI sidecar, model registry, utilities, and tests
+├── src/                    # React renderer, app shell, assets, services, and Vitest tests
+├── Makefile                # Small operator entrypoints
+├── package.json            # App metadata, scripts, dependencies, and Electron Builder config
+└── vite.config.ts          # Renderer build and local dev server configuration
+```
+
+## Brand And Asset Inventory
+
+| Asset | Path | Use |
+|---|---|---|
+| Logo SVG | `src/assets/asrpro-logo.svg` | README, About view, and scalable app branding. |
+| Logo PNG | `src/assets/asrpro-logo.png` | Raster previews and external surfaces. |
+| Logo mark SVG | `src/assets/asrpro-logo-mark.svg` | Compact D07 mark used inside the app shell. |
+| Tray icons | `src/assets/asrpro-tray-dark.png`, `src/assets/asrpro-tray-light.png` | Native tray/menu glyphs. |
+| App icons | `src/assets/asrpro-app-icon.icns`, `src/assets/asrpro-app-icon.ico`, `src/assets/asrpro-app-icon.png` | Electron Builder macOS, Windows, and Linux icons. |
+| Screenshots | `docs/screenshots/*.png` | Production README gallery. |
 
 ## Troubleshooting
 
-### Common Issues
-
-**Node.js Version Warning**
-- Current version 20.17.0 works but upgrade to 20.19+ recommended
-- Use nvm/volta for Node.js version management
-
-**Python Dependencies**
-- Use virtual environment: `python -m venv venv && source venv/bin/activate`
-- Install Microsoft Visual C++ Build Tools (Windows)
-- Install system dependencies for audio processing
-
-**Build Failures**
-- Clear node_modules: `rm -rf node_modules && npm install`
-- Verify all prerequisites are installed
-
-### Performance
-
-- Models download automatically but can be pre-cached
-- First transcription may be slower due to model loading
-- GPU acceleration available with compatible hardware
-
-## Contributing
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature-name`
-3. Clean Python cache: `python scripts/clean_python_cache.py`
-4. Run tests: `npm run test && cd sidecar && python -m pytest`
-5. Commit changes: `git commit -m "Description"`
-6. Push and create pull request
-
-### Repository Cleanliness
-
-- Python cache files (`__pycache__/`, `*.pyc`) are automatically ignored
-- Run cleanup script before committing: `python scripts/clean_python_cache.py`
-- Virtual environments (`.venv/`, `venv/`) are ignored
-- Node modules and build artifacts are ignored
+| Symptom | Fix |
+|---|---|
+| Vite refuses to start | Port `4270` is already in use. Stop the existing process or run `npm run preview` on `4271` for renderer-only checks. |
+| Sidecar dependencies are missing | Run `npm run sidecar:setup`. The script recreates or refreshes `sidecar/.venv` when requirements change. |
+| Release packaging fails with missing sidecar | Run `npm run sidecar:build`, then `npm run sidecar:check`, before `npm run electron:pack`. |
+| First transcription is slow | The model may be downloading or initializing. Pre-cache models on release machines when needed. |
+| GPU acceleration is unavailable | The sidecar falls back to CPU when MPS, CUDA, or other supported acceleration paths are unavailable. |
 
 ## License
 
-See LICENSE file for details.
+No public license file is currently tracked. All rights are reserved unless a license is added to the repository.
 
-## Author
+## Maintainer
 
-Made by Suraj Mandal
+Suraj Mandal
