@@ -194,6 +194,21 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   });
 
+  it("renders About metadata as a flat definition list instead of nested fact cards", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "About" }));
+
+    const facts = document.querySelector('dl[aria-label="Product facts"]');
+
+    expect(facts).toBeTruthy();
+    expect(facts?.querySelectorAll("dt")).toHaveLength(4);
+    expect(facts?.querySelectorAll("dd")).toHaveLength(4);
+    expect(screen.getByText("Version").tagName).toBe("DT");
+    expect(screen.getByText("0.1.0").tagName).toBe("DD");
+  });
+
   it("navigates to the transcript history", async () => {
     const user = userEvent.setup();
     render(<App />);

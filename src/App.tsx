@@ -1729,44 +1729,48 @@ function formatSidecarStatus(status?: string) {
 function AboutView() {
   return (
     <ViewFrame title="About ASR Pro">
-      <GroupedPanel>
-        <div className="px-5 py-6">
-          <div className="flex flex-col items-center text-center">
-            <div className="grid size-24 place-items-center rounded-[22px] bg-[#f6f4ef] text-[#26343b] shadow-[0_18px_42px_rgba(0,0,0,0.22)] ring-1 ring-white/50">
-              <AppLogoMark className="size-20" title="ASR Pro" />
-            </div>
-            <h3 className="mt-5 text-[22px] font-semibold tracking-normal text-[#f4f4f4]">ASR Pro</h3>
+      <section className="pt-2">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <div className="grid size-[72px] shrink-0 place-items-center rounded-[16px] bg-[#f6f4ef] text-[#26343b] ring-1 ring-white/50">
+            <AppLogoMark className="size-16" title="ASR Pro" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-[24px] font-semibold leading-7 tracking-normal text-[#f4f4f4]">ASR Pro</h3>
             <p className="selectable-text mt-1 text-[12px] font-semibold text-[#a8a8a8]">Version 0.1.0</p>
-            <p className="selectable-text mt-4 max-w-[390px] text-[13px] leading-5 text-[#cfcfcf]">
+            <p className="selectable-text mt-4 max-w-[420px] text-[13px] leading-5 text-[#cfcfcf]">
               A quiet desktop workspace for private dictation, file transcription, and local speech model testing.
             </p>
           </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-2">
-            {aboutFactRows.map((fact) => (
-              <div key={fact.label} className={`${sharedRadiusClass} border border-white/[0.075] bg-white/[0.045] px-3 py-3`}>
-                <p className="text-[11px] font-semibold uppercase text-[#888]">{fact.label}</p>
-                <p className="selectable-text mt-1 text-[12px] font-semibold leading-4 text-[#e4e4e4]">{fact.value}</p>
-              </div>
-            ))}
-          </div>
         </div>
-      </GroupedPanel>
 
-      <GroupedPanel title="Highlights">
-        {aboutFeatureRows.map((feature) => {
-          const Icon = feature.icon;
+        <dl aria-label="Product facts" className={`mt-7 divide-y ${panelDividerClass} border-y ${panelDividerClass}`}>
+          {aboutFactRows.map((fact) => (
+            <div key={fact.label} className="grid gap-1 py-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-4">
+              <dt className="text-[11px] font-semibold uppercase leading-5 text-[#8e8e8e]">{fact.label}</dt>
+              <dd className="selectable-text text-[13px] font-semibold leading-5 text-[#e4e4e4]">{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
-          return (
-            <PanelRow
-              key={feature.title}
-              icon={<Icon className="size-3.5" />}
-              title={feature.title}
-              detail={feature.detail}
-            />
-          );
-        })}
-      </GroupedPanel>
+      <section className="pt-1">
+        <h3 className="px-1 text-[13px] font-semibold text-[#a8a8a8]">Highlights</h3>
+        <ul aria-label="Highlights" className={`mt-2 divide-y ${panelDividerClass} border-y ${panelDividerClass}`}>
+          {aboutFeatureRows.map((feature) => {
+            const Icon = feature.icon;
+
+            return (
+              <li key={feature.title} className="flex min-w-0 gap-3 py-3.5">
+                <Icon className="mt-0.5 size-4 shrink-0 text-[#b9dfe2]" />
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold leading-5 text-[#eeeeee]">{feature.title}</p>
+                  <p className="selectable-text mt-0.5 text-[12px] font-medium leading-5 text-[#aaa]">{feature.detail}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </ViewFrame>
   );
 }
