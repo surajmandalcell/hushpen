@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +9,20 @@ const runtime = require("../electron/runtime.cjs");
 describe("Electron runtime helpers", () => {
   it("uses CommandOrControl+` as the global recording shortcut", () => {
     expect(runtime.RECORDING_SHORTCUT).toBe("CommandOrControl+`");
+  });
+
+  it("keeps the main window fixed-size and removes maximize entry points", () => {
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+
+    expect(mainSource).toMatch(
+      /mainWindow = new BrowserWindow\(\{[\s\S]*?width: 780,[\s\S]*?resizable: false,[\s\S]*?maximizable: false,[\s\S]*?fullscreenable: false,/
+    );
+    expect(mainSource).not.toContain('role: "zoom"');
+    expect(mainSource).not.toContain('action === "maximize"');
+    expect(mainSource).not.toContain("senderWindow.maximize()");
+    expect(preloadSource).toContain('new Set(["minimize", "close"])');
+    expect(preloadSource).not.toContain('"maximize"');
   });
 
   it("uses the working local Whisper model as the default model", () => {

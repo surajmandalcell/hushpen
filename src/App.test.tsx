@@ -194,6 +194,25 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   });
 
+  it("renders only fixed close and minimize traffic lights with hover glyphs", () => {
+    render(<App />);
+
+    const closeButton = screen.getByRole("button", { name: "Close window" });
+    const minimizeButton = screen.getByRole("button", { name: "Minimize window" });
+
+    expect(screen.queryByRole("button", { name: "Maximize window" })).toBeNull();
+    expect(closeButton.classList).toContain("size-[13px]");
+    expect(closeButton.classList).toContain("border-0");
+    expect(closeButton.classList).toContain("outline-none");
+    expect(closeButton.classList).not.toContain("border");
+    expect(minimizeButton.classList).toContain("size-[13px]");
+    expect(minimizeButton.classList).toContain("border-0");
+    expect(minimizeButton.classList).toContain("outline-none");
+    expect(minimizeButton.classList).not.toContain("border");
+    expect(closeButton.querySelector('[data-window-dot-icon="close"]')).toBeTruthy();
+    expect(minimizeButton.querySelector('[data-window-dot-icon="minimize"]')).toBeTruthy();
+  });
+
   it("renders About metadata as a flat definition list instead of nested fact cards", async () => {
     const user = userEvent.setup();
     render(<App />);

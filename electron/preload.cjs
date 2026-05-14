@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-const allowedWindowActions = new Set(["minimize", "maximize", "close"]);
+const allowedWindowActions = new Set(["minimize", "close"]);
 
 contextBridge.exposeInMainWorld("asrpro", {
   getPlatform: () => ipcRenderer.invoke("app:platform"),

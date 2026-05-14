@@ -66,7 +66,7 @@ declare global {
       setWaveformFrame?: (frame: number[]) => void;
       onRecordingState: (callback: (state: { isRecording: boolean; source: string }) => void) => () => void;
       onSidecarState?: (callback: (state: SidecarState) => void) => () => void;
-      windowControl: (action: "minimize" | "maximize" | "close") => Promise<void>;
+      windowControl: (action: "minimize" | "close") => Promise<void>;
     };
   }
 }

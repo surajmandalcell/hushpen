@@ -14,6 +14,7 @@ import {
   Library,
   Laptop,
   Mic2,
+  Minus,
   Pause,
   Play,
   RefreshCw,
@@ -23,6 +24,7 @@ import {
   Trash2,
   Usb,
   Volume2,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { AppLogoMark } from "./components/icons";
@@ -30,7 +32,7 @@ import { apiClient } from "./services/api";
 import { audioRecordingService } from "./services/audioRecording";
 
 type ViewId = "home" | "configuration" | "sound" | "models" | "history" | "about";
-type WindowAction = "minimize" | "maximize" | "close";
+type WindowAction = "minimize" | "close";
 type OverlayPlacement = "top" | "bottom";
 type RecordingStatus = "idle" | "starting" | "recording" | "transcribing" | "error";
 
@@ -1042,26 +1044,39 @@ interface WindowDotsProps {
 }
 
 function WindowDots({ onWindowAction }: WindowDotsProps) {
+  const dotButtonClass =
+    "grid size-[13px] place-items-center rounded-full border-0 p-0 shadow-none outline-none transition-transform duration-150 [appearance:none] hover:scale-105 focus:outline-none focus-visible:outline-none focus-visible:ring-0 active:outline-none";
+  const dotIconClass =
+    "size-[9px] opacity-0 transition-opacity duration-100 group-hover/window-dots:opacity-75";
+
   return (
-    <div className="flex shrink-0 items-center gap-2 [-webkit-app-region:no-drag]">
+    <div className="group/window-dots flex shrink-0 items-center gap-[7px] [-webkit-app-region:no-drag]">
       <button
         aria-label="Close window"
-        className="size-3 rounded-full border border-[#e14640] bg-[#ff5f57]"
+        className={`${dotButtonClass} bg-[#ff5f57]`}
         type="button"
         onClick={() => onWindowAction("close")}
-      />
+      >
+        <X
+          aria-hidden="true"
+          data-window-dot-icon="close"
+          strokeWidth={2.6}
+          className={`${dotIconClass} text-[#6e140f]`}
+        />
+      </button>
       <button
         aria-label="Minimize window"
-        className="size-3 rounded-full border border-[#dfa023] bg-[#febc2e]"
+        className={`${dotButtonClass} bg-[#febc2e]`}
         type="button"
         onClick={() => onWindowAction("minimize")}
-      />
-      <button
-        aria-label="Maximize window"
-        className="size-3 rounded-full border border-[#18a433] bg-[#28c840]"
-        type="button"
-        onClick={() => onWindowAction("maximize")}
-      />
+      >
+        <Minus
+          aria-hidden="true"
+          data-window-dot-icon="minimize"
+          strokeWidth={3}
+          className={`${dotIconClass} text-[#8f5b00]`}
+        />
+      </button>
     </div>
   );
 }

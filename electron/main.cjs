@@ -118,6 +118,9 @@ function createWindow() {
     minHeight: 440,
     show: false,
     frame: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     title: APP_NAME,
     icon: resolveAppIconPath(process.platform, path.join(__dirname, "..")),
     backgroundColor: "#2f2f2f",
@@ -211,13 +214,6 @@ function registerIpc() {
     if (!senderWindow) return;
 
     if (action === "minimize") senderWindow.minimize();
-    if (action === "maximize") {
-      if (senderWindow.isMaximized()) {
-        senderWindow.unmaximize();
-      } else {
-        senderWindow.maximize();
-      }
-    }
     if (action === "close") senderWindow.close();
   });
 }
@@ -293,7 +289,7 @@ function createMenu() {
     },
     {
       label: "Window",
-      submenu: [{ label: `Show ${APP_NAME}`, click: showMainWindow }, { role: "minimize" }, { role: "zoom" }, { role: "close" }],
+      submenu: [{ label: `Show ${APP_NAME}`, click: showMainWindow }, { role: "minimize" }, { role: "close" }],
     },
   ]);
 }
