@@ -15,6 +15,7 @@ data/
 release/
 sidecar/bin/*
 !sidecar/bin/README.md
+sidecar/build/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
@@ -67,7 +68,4 @@ venv.bak/
 
 # Claude directories
 .claude
-new/
-MIGRATE_UI.md
 !.vscode/settings.json
-paste.md

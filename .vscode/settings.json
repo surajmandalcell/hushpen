@@ -1,11 +1,3 @@
 {
-    "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
-    "rust-analyzer.cargo.features": [
-        "tray-icon"
-    ],
-    "rust-analyzer.cargo.buildScripts.enable": true,
-    "rust-analyzer.procMacro.enable": true,
-    "rust-analyzer.linkedProjects": [
-        "./src-tauri/Cargo.toml"
-    ]
+  "python.defaultInterpreterPath": "sidecar/.venv/bin/python"
 }

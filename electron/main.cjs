@@ -21,6 +21,7 @@ const {
   resolveContainedDataDir,
   resolveAppIconPath,
   resolveOverlayBounds,
+  resolveRuntimeAssetRoot,
   resolveTrayIconPath,
   shouldShowRecordingOverlay,
 } = require("./runtime.cjs");
@@ -122,7 +123,7 @@ function createWindow() {
     maximizable: false,
     fullscreenable: false,
     title: APP_NAME,
-    icon: resolveAppIconPath(process.platform, path.join(__dirname, "..")),
+    icon: resolveAppIconPath(process.platform, getRuntimeAssetRoot()),
     backgroundColor: "#2f2f2f",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -310,12 +311,20 @@ function createTray() {
 }
 
 function createTrayIcon() {
-  const iconPath = resolveTrayIconPath(process.platform, path.join(__dirname, ".."), nativeTheme.shouldUseDarkColors);
+  const iconPath = resolveTrayIconPath(process.platform, getRuntimeAssetRoot(), nativeTheme.shouldUseDarkColors);
   const icon = nativeImage.createFromPath(iconPath);
   if (process.platform === "darwin") {
     icon.setTemplateImage(true);
   }
   return icon;
+}
+
+function getRuntimeAssetRoot() {
+  return resolveRuntimeAssetRoot({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+  });
 }
 
 function updateTrayIcon() {

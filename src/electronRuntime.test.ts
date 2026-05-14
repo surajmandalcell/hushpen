@@ -65,16 +65,17 @@ describe("Electron runtime helpers", () => {
     expect(runtime.shouldShowRecordingOverlay("menu")).toBe(true);
   });
 
-  it("resolves contained data inside the macOS app bundle when packaged", () => {
+  it("resolves packaged data under writable app data when available", () => {
     const dataDir = runtime.resolveContainedDataDir({
       isPackaged: true,
       platform: "darwin",
       resourcesPath: "/Applications/ASR Pro.app/Contents/Resources",
       exePath: "/Applications/ASR Pro.app/Contents/MacOS/ASR Pro",
       appPath: "/project",
+      userDataPath: "/Users/suraj/Library/Application Support/ASR Pro",
     });
 
-    expect(dataDir).toBe("/Applications/ASR Pro.app/Contents/Resources/data");
+    expect(dataDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data");
   });
 
   it("resolves packaged Windows and Linux data under user-writable app data", () => {
@@ -162,16 +163,30 @@ describe("Electron runtime helpers", () => {
   });
 
   it("resolves platform app and tray icon assets", () => {
-    const projectRoot = "/repo";
+    const assetRoot = "/repo/src/assets";
 
-    expect(runtime.resolveTrayIconPath("darwin", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "trayTemplate.png"));
-    expect(runtime.resolveTrayIconPath("win32", projectRoot, false)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-dark.png"));
-    expect(runtime.resolveTrayIconPath("win32", projectRoot, true)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-light.png"));
-    expect(runtime.resolveTrayIconPath("linux", projectRoot, false)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-dark.png"));
-    expect(runtime.resolveTrayIconPath("linux", projectRoot, true)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-light.png"));
-    expect(runtime.resolveAppIconPath("darwin", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "icon.png"));
-    expect(runtime.resolveAppIconPath("win32", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "icon.ico"));
-    expect(runtime.resolveAppIconPath("linux", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "icon.png"));
+    expect(runtime.resolveTrayIconPath("darwin", assetRoot)).toBe(path.join(assetRoot, "asrpro-tray-dark.png"));
+    expect(runtime.resolveTrayIconPath("win32", assetRoot, false)).toBe(path.join(assetRoot, "asrpro-tray-dark.png"));
+    expect(runtime.resolveTrayIconPath("win32", assetRoot, true)).toBe(path.join(assetRoot, "asrpro-tray-light.png"));
+    expect(runtime.resolveTrayIconPath("linux", assetRoot, false)).toBe(path.join(assetRoot, "asrpro-tray-dark.png"));
+    expect(runtime.resolveTrayIconPath("linux", assetRoot, true)).toBe(path.join(assetRoot, "asrpro-tray-light.png"));
+    expect(runtime.resolveAppIconPath("darwin", assetRoot)).toBe(path.join(assetRoot, "asrpro-app-icon.png"));
+    expect(runtime.resolveAppIconPath("win32", assetRoot)).toBe(path.join(assetRoot, "asrpro-app-icon.ico"));
+    expect(runtime.resolveAppIconPath("linux", assetRoot)).toBe(path.join(assetRoot, "asrpro-app-icon.png"));
+  });
+
+  it("resolves runtime asset roots for development and packaged apps", () => {
+    expect(runtime.resolveRuntimeAssetRoot({
+      isPackaged: false,
+      resourcesPath: "/repo/resources",
+      appPath: "/repo",
+    })).toBe(path.join("/repo", "src", "assets"));
+
+    expect(runtime.resolveRuntimeAssetRoot({
+      isPackaged: true,
+      resourcesPath: "/Applications/ASR Pro.app/Contents/Resources",
+      appPath: "/repo",
+    })).toBe(path.join("/Applications/ASR Pro.app/Contents/Resources", "assets"));
   });
 
   it("places the recording overlay at the bottom of the selected work area", () => {

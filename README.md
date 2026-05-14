@@ -35,14 +35,13 @@ A professional desktop application for AI-powered speech recognition and transcr
 | Logo mark SVG | `src/assets/asrpro-logo-mark.svg` | Transparent D07 infinity mark |
 | Dark tray SVG/PNG | `src/assets/asrpro-tray-dark.svg`, `src/assets/asrpro-tray-dark.png` | Dark glyph for light tray/menu backgrounds |
 | Light tray SVG/PNG | `src/assets/asrpro-tray-light.svg`, `src/assets/asrpro-tray-light.png` | Light glyph for dark tray/menu backgrounds |
-| Packaged icons | `src-tauri/icons/` | macOS, Windows, and Linux Electron packaging; retained from the legacy Tauri tree |
+| Packaged icons | `src/assets/asrpro-app-icon.icns`, `src/assets/asrpro-app-icon.ico`, `src/assets/asrpro-app-icon.png` | macOS, Windows, and Linux Electron packaging |
 
 ## Supported Desktop Runtime
 
 | Runtime | Status | Notes |
 |---|---|---|
 | Electron | Supported | Canonical desktop shell for macOS, Windows, and Linux. Packaged installs start the Python sidecar automatically. |
-| Tauri | Unsupported | Legacy files may remain for icons or historical context, but Tauri is not a maintained release path until it is explicitly revived and `cargo check` passes. |
 
 ## Prerequisites
 
@@ -129,9 +128,8 @@ npm run electron:dist  # Build configured installers/packages
 asrpro/
 ├── src/                    # React frontend source
 │   ├── components/         # React components
-│   │   ├── macos/         # macOS-native UI components
-│   │   └── ...
-│   ├── pages/             # Application pages
+│   ├── services/           # Renderer API and recording services
+│   ├── App.tsx             # Main renderer shell
 │   └── ...
 ├── electron/              # Electron main and preload processes
 ├── sidecar/               # Python backend

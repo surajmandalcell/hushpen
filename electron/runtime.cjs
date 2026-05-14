@@ -32,25 +32,31 @@ function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath,
     return pathModule.join(appPath, "tmp", "app-data");
   }
 
-  if (platform === "darwin") {
-    return pathModule.join(resourcesPath, "data");
-  }
-
   if (userDataPath) {
     return pathModule.join(userDataPath, "data");
+  }
+
+  if (platform === "darwin") {
+    return pathModule.join(resourcesPath, "data");
   }
 
   return pathModule.join(pathModule.dirname(exePath), "data");
 }
 
-function resolveTrayIconPath(platform, projectRoot, useLightGlyph = false) {
-  if (platform === "darwin") return path.join(projectRoot, "src-tauri", "icons", "trayTemplate.png");
-  return path.join(projectRoot, "src-tauri", "icons", useLightGlyph ? "tray-light.png" : "tray-dark.png");
+function resolveRuntimeAssetRoot({ isPackaged, resourcesPath, appPath }) {
+  return isPackaged
+    ? path.join(resourcesPath, "assets")
+    : path.join(appPath, "src", "assets");
 }
 
-function resolveAppIconPath(platform, projectRoot) {
-  if (platform === "win32") return path.join(projectRoot, "src-tauri", "icons", "icon.ico");
-  return path.join(projectRoot, "src-tauri", "icons", "icon.png");
+function resolveTrayIconPath(platform, assetRoot, useLightGlyph = false) {
+  if (platform === "darwin") return path.join(assetRoot, "asrpro-tray-dark.png");
+  return path.join(assetRoot, useLightGlyph ? "asrpro-tray-light.png" : "asrpro-tray-dark.png");
+}
+
+function resolveAppIconPath(platform, assetRoot) {
+  if (platform === "win32") return path.join(assetRoot, "asrpro-app-icon.ico");
+  return path.join(assetRoot, "asrpro-app-icon.png");
 }
 
 function buildModelPaths(dataDir) {
@@ -435,6 +441,7 @@ module.exports = {
   resolveAppIconPath,
   resolveContainedDataDir,
   resolveOverlayBounds,
+  resolveRuntimeAssetRoot,
   resolveSidecarExecutablePath,
   resolveSidecarSourcePath,
   resolveTrayIconPath,

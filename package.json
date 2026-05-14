@@ -62,34 +62,26 @@
     ],
     "extraResources": [
       {
+        "from": "src/assets",
+        "to": "assets",
+        "filter": [
+          "asrpro-app-icon.icns",
+          "asrpro-app-icon.ico",
+          "asrpro-app-icon.png",
+          "asrpro-tray-dark.png",
+          "asrpro-tray-light.png"
+        ]
+      },
+      {
         "from": "sidecar/bin",
         "to": "sidecar/bin",
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "sidecar",
-        "to": "sidecar/source",
-        "filter": [
-          "main.py",
-          "requirements.txt",
-          "README.md",
-          "api/**/*",
-          "config/**/*",
-          "models/**/*",
-          "utils/**/*",
-          "!**/__pycache__/**",
-          "!**/*.pyc",
-          "!bin/**",
-          "!build/**",
-          "!outputs/**",
-          "!tests/**"
-        ]
       }
     ],
     "mac": {
-      "icon": "src-tauri/icons/icon.icns",
+      "icon": "src/assets/asrpro-app-icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -97,14 +89,14 @@
       "category": "public.app-category.productivity"
     },
     "win": {
-      "icon": "src-tauri/icons/icon.ico",
+      "icon": "src/assets/asrpro-app-icon.ico",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "linux": {
-      "icon": "src-tauri/icons/icon.png",
+      "icon": "src/assets/asrpro-app-icon.png",
       "target": [
         "AppImage",
         "deb"

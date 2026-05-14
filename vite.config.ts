@@ -10,7 +10,7 @@ export default defineConfig(async () => ({
     port: 4270,
     strictPort: true,
     watch: {
-      ignored: ["**/src-tauri/**", "**/release/**", "**/tmp/**"],
+      ignored: ["**/release/**", "**/sidecar/build/**", "**/tmp/**"],
     },
   },
 }));
