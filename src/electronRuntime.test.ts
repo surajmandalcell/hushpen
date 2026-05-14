@@ -49,6 +49,7 @@ describe("Electron runtime helpers", () => {
     const preloadSource = readFileSync("electron/preload.cjs", "utf8");
 
     expect(mainSource).toContain('ipcMain.handle("engine:ensure-ready"');
+    expect(mainSource).toContain("lazyEngineStartup: true");
     expect(preloadSource).toContain("ensureEngineReady");
     expect(mainSource).not.toContain("await startSidecar();");
     expect(mainSource.indexOf("createWindow();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut();"));

@@ -59,6 +59,9 @@ interface RuntimeInfo {
   sidecar?: EngineRuntimeState;
   shortcut?: string;
   shortcutRegistered?: boolean;
+  capabilities?: {
+    lazyEngineStartup?: boolean;
+  };
 }
 
 interface AppInfo {
@@ -500,11 +503,25 @@ function formatShortcutParts(shortcut?: string) {
 function getErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Recording failed";
 
+  if (/engine:ensure-ready|No handler registered|Error invoking remote method/i.test(message)) {
+    return "Engine bridge needs restart. Restart ASR Pro, then try again.";
+  }
+
+  if (/ASR engine is not ready|did not become healthy/i.test(message)) {
+    return "ASR engine is still starting. Try again in a moment.";
+  }
+
   if (/failed to fetch|load failed|networkerror|network request failed/i.test(message)) {
     return "Failed to load.";
   }
 
   return message;
+}
+
+function getRecordingErrorTitle(message: string) {
+  if (/Engine bridge needs restart/i.test(message)) return "Engine needs restart";
+  if (/Engine unavailable|Failed to load|still starting/i.test(message)) return "Engine unavailable";
+  return "Recording failed";
 }
 
 function createRecordingFile(blob: Blob) {
@@ -642,6 +659,7 @@ function App() {
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
   const scrollbarTimerRef = useRef<number | null>(null);
+  const overlayPlacementTouchedRef = useRef(false);
   useMicrophoneWaveform(isRecording);
 
   const addHistoryRow = useCallback((row: TranscriptHistoryRow) => {
@@ -689,16 +707,44 @@ function App() {
   }, []);
 
   const ensureEngineReadyForTranscription = useCallback(async () => {
-    const ensureEngineReady = window.asrpro?.ensureEngineReady;
-    if (!ensureEngineReady) return;
+    const desktopApi = window.asrpro;
+    if (!desktopApi) return;
 
-    const engineState = await ensureEngineReady();
-    setRuntimeInfo((current) => (current ? { ...current, sidecar: engineState } : { isRecording: false, sidecar: engineState }));
+    let currentRuntime = runtimeInfo;
 
-    if (engineState.status !== "ready") {
-      throw new Error(engineState.error || "ASR engine is not ready.");
+    if (desktopApi.getRuntimeState && currentRuntime?.capabilities?.lazyEngineStartup !== true) {
+      const refreshedRuntime = await desktopApi.getRuntimeState().catch(() => null);
+      if (refreshedRuntime) {
+        currentRuntime = refreshedRuntime;
+        setRuntimeInfo(refreshedRuntime);
+      }
     }
-  }, []);
+
+    const ensureEngineReady = desktopApi.ensureEngineReady;
+    if (typeof ensureEngineReady !== "function") {
+      return;
+    }
+
+    const canUseLazyEngineBridge =
+      currentRuntime?.capabilities?.lazyEngineStartup === true;
+
+    if (canUseLazyEngineBridge) {
+      const engineState = await ensureEngineReady();
+      setRuntimeInfo((current) => (current ? { ...current, sidecar: engineState } : { isRecording: false, sidecar: engineState }));
+
+      if (engineState.status !== "ready") {
+        throw new Error(engineState.error || "ASR engine is not ready.");
+      }
+
+      return;
+    }
+
+    try {
+      await apiClient.healthCheck();
+    } catch {
+      throw new Error("Engine bridge needs restart. Restart ASR Pro, then try again.");
+    }
+  }, [runtimeInfo]);
 
   const refreshAudioInputDevices = useCallback(async () => {
     const mediaDevices = navigator.mediaDevices;
@@ -876,10 +922,12 @@ function App() {
         if (!state) return;
         setRuntimeInfo(state);
         setSelectedModel(state.defaultModel || defaultModelName);
-        setOverlayPlacement(normalizeOverlayPlacement(state.overlaySettings?.placement));
+        if (!overlayPlacementTouchedRef.current) {
+          setOverlayPlacement(normalizeOverlayPlacement(state.overlaySettings?.placement));
+        }
         if (state.isRecording) {
           void startRecordingFlow(false);
-        } else {
+        } else if (!recordingTransitionRef.current && !audioRecordingService.isRecording()) {
           setIsRecording(false);
         }
       }).catch(() => {});
@@ -976,6 +1024,7 @@ function App() {
   }, [showScrollbarTemporarily]);
 
   const handleOverlayPlacementChange = useCallback((placement: OverlayPlacement) => {
+    overlayPlacementTouchedRef.current = true;
     setOverlayPlacement(placement);
     setRuntimeInfo((current) => mergeOverlaySettings(current, { placement, customBounds: null }));
 
@@ -1267,9 +1316,22 @@ function HomeView({
       </section>
 
       {recordingError ? (
-        <p role="alert" className="selectable-text px-1 text-[12px] font-medium text-[#ff9c8f]">
-          {recordingError}
-        </p>
+        <div
+          role="alert"
+          className="selectable-text flex items-start gap-2 rounded-[12px] border border-[#ff7a66]/25 bg-[#ff6b4a]/10 px-3 py-2 text-left"
+        >
+          <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-[#ff7a66]/15 text-[#ffad9f]">
+            <Info className="size-3" aria-hidden="true" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[12px] font-semibold leading-4 text-[#ffd2ca]">
+              {getRecordingErrorTitle(recordingError)}
+            </span>
+            <span className="block break-words text-[12px] font-medium leading-5 text-[#ffad9f]">
+              {recordingError}
+            </span>
+          </span>
+        </div>
       ) : null}
 
       <section>

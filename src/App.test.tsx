@@ -713,6 +713,7 @@ describe("ASR Pro Electron shell", () => {
         defaultModel: "Parakeet-TDT-0.6B-v3",
         shortcut: "CommandOrControl+`",
         sidecar: { status: "idle", mode: "lazy" },
+        capabilities: { lazyEngineStartup: true },
       }),
       ensureEngineReady,
       setRecording: vi.fn().mockResolvedValue({ isRecording: false }),
@@ -742,6 +743,46 @@ describe("ASR Pro Electron shell", () => {
       const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
       expect(stored[0]?.text).toBe("Queued transcription completed after the engine became ready.");
     });
+  });
+
+  it("avoids stale engine IPC calls and shows a clean restart message", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture();
+    const ensureEngineReady = vi.fn().mockRejectedValue(
+      new Error("Error invoking remote method 'engine:ensure-ready': Error: No handler registered for 'engine:ensure-ready'"),
+    );
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Parakeet-TDT-0.6B-v3",
+        shortcut: "CommandOrControl+`",
+        sidecar: { status: "idle", mode: "lazy" },
+      }),
+      ensureEngineReady,
+      setRecording: vi.fn().mockResolvedValue({ isRecording: false }),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      onSidecarState: vi.fn(),
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+    await screen.findByRole("button", { name: "Stop Recording" });
+    await user.click(screen.getByRole("button", { name: "Stop Recording" }));
+
+    await screen.findByText("Engine bridge needs restart. Restart ASR Pro, then try again.");
+    expect(screen.getByText("Engine needs restart")).toBeTruthy();
+    expect(ensureEngineReady).not.toHaveBeenCalled();
+    expect(screen.queryByText(/engine:ensure-ready/i)).toBeNull();
+    expect(screen.queryByText(/No handler registered/i)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8000/health", expect.any(Object));
   });
 
   it("syncs recording state from the global shortcut and tray bridge without changing pages", async () => {

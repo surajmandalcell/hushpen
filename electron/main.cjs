@@ -407,6 +407,9 @@ function getRuntimeState() {
     sidecar: sidecarState,
     shortcut: RECORDING_SHORTCUT,
     shortcutRegistered,
+    capabilities: {
+      lazyEngineStartup: true,
+    },
   };
 }
 

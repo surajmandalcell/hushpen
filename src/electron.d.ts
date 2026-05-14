@@ -44,6 +44,9 @@ declare global {
         shortcut: string;
         shortcutRegistered: boolean;
         sidecar?: SidecarState;
+        capabilities?: {
+          lazyEngineStartup?: boolean;
+        };
       }>;
       getSidecarState?: () => Promise<SidecarState>;
       ensureEngineReady?: () => Promise<SidecarState>;
