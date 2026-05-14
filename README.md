@@ -1,5 +1,9 @@
 # ASR Pro
 
+<p>
+  <img src="./src/assets/asrpro-logo.svg" alt="ASR Pro logo" width="96" height="96" />
+</p>
+
 A professional desktop application for AI-powered speech recognition and transcription, built with Electron + React + Vite and a Python sidecar.
 
 ## Features
@@ -21,6 +25,17 @@ A professional desktop application for AI-powered speech recognition and transcr
 - **Backend**: Python FastAPI sidecar
 - **AI Models**: ONNX Runtime with Whisper/Parakeet models
 - **UI Components**: Custom cross-platform desktop UI using Tailwind and lucide icons
+
+## Brand Assets
+
+| Asset | Path | Use |
+|---|---|---|
+| App logo SVG | `src/assets/asrpro-logo.svg` | README, about page, docs, reusable square logo |
+| App logo PNG | `src/assets/asrpro-logo.png` | Raster previews and external surfaces |
+| Logo mark SVG | `src/assets/asrpro-logo-mark.svg` | Transparent D07 infinity mark |
+| Dark tray SVG/PNG | `src/assets/asrpro-tray-dark.svg`, `src/assets/asrpro-tray-dark.png` | Dark glyph for light tray/menu backgrounds |
+| Light tray SVG/PNG | `src/assets/asrpro-tray-light.svg`, `src/assets/asrpro-tray-light.png` | Light glyph for dark tray/menu backgrounds |
+| Packaged icons | `src-tauri/icons/` | macOS, Windows, Linux, Tauri, and Electron packaging |
 
 ## Prerequisites
 

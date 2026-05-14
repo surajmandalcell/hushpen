@@ -2,6 +2,11 @@ const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, nativeImage, na
 const fs = require("node:fs");
 const path = require("node:path");
 const {
+  APP_ID,
+  APP_NAME,
+  buildAboutPanelOptions,
+} = require("./identity.cjs");
+const {
   DEFAULT_MODEL,
   DEFAULT_OVERLAY_SETTINGS,
   OVERLAY_WINDOW_SIZE,
@@ -101,7 +106,7 @@ function createWindow() {
     minHeight: 440,
     show: false,
     frame: false,
-    title: "ASR Pro",
+    title: APP_NAME,
     icon: resolveAppIconPath(process.platform, path.join(__dirname, "..")),
     backgroundColor: "#2f2f2f",
     webPreferences: {
@@ -247,15 +252,15 @@ function isTrustedAppUrl(value = "") {
 function createMenu() {
   return Menu.buildFromTemplate([
     {
-      label: "ASR Pro",
+      label: APP_NAME,
       submenu: [
-        { role: "about" },
+        { label: `About ${APP_NAME}`, click: () => app.showAboutPanel() },
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },
         { role: "unhide" },
         { type: "separator" },
-        { label: "Quit ASR Pro", accelerator: "CmdOrCtrl+Q", click: quitApp },
+        { label: `Quit ${APP_NAME}`, accelerator: "CmdOrCtrl+Q", click: quitApp },
       ],
     },
     {
@@ -274,7 +279,7 @@ function createMenu() {
     },
     {
       label: "Window",
-      submenu: [{ label: "Show ASR Pro", click: showMainWindow }, { role: "minimize" }, { role: "zoom" }, { role: "close" }],
+      submenu: [{ label: `Show ${APP_NAME}`, click: showMainWindow }, { role: "minimize" }, { role: "zoom" }, { role: "close" }],
     },
   ]);
 }
@@ -289,7 +294,7 @@ function createTray() {
   if (tray) return;
 
   tray = new Tray(createTrayIcon());
-  tray.setToolTip("ASR Pro");
+  tray.setToolTip(APP_NAME);
   tray.on("click", showMainWindow);
   updateTrayMenu();
 }
@@ -312,7 +317,7 @@ function updateTrayMenu() {
   if (!tray) return;
 
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Show ASR Pro", click: showMainWindow },
+    { label: `Show ${APP_NAME}`, click: showMainWindow },
     { type: "separator" },
     {
       label: isRecording ? "Stop Recording" : "Start Recording",
@@ -320,7 +325,7 @@ function updateTrayMenu() {
       click: () => setRecording(!isRecording, "tray"),
     },
     { type: "separator" },
-    { label: "Quit ASR Pro", click: quitApp },
+    { label: `Quit ${APP_NAME}`, click: quitApp },
   ]));
 }
 
@@ -543,7 +548,9 @@ function quitApp() {
   app.quit();
 }
 
-app.setAppUserModelId("com.surajmandal.asrpro");
+app.setName(APP_NAME);
+app.setAppUserModelId(APP_ID);
+app.setAboutPanelOptions(buildAboutPanelOptions(app.getVersion()));
 
 if (hasSingleInstanceLock) {
   app.on("second-instance", showMainWindow);
