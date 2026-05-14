@@ -235,19 +235,15 @@
     position: relative;
     isolation: isolate;
     display: flex;
-    min-height: 112px;
+    min-height: 82px;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 18px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(250, 250, 252, 0.38)),
-      rgba(245, 245, 247, 0.52);
-    padding: 18px 20px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-radius: 14px;
+    border: 1px solid rgba(92, 92, 92, 0.95);
+    background: #303030;
+    padding: 10px 14px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .in-app-waveform::before {
@@ -255,8 +251,8 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.54), transparent);
-    opacity: 0.7;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+    opacity: 0.5;
   }
 
   .in-app-waveform.is-active::before {
@@ -267,7 +263,7 @@
     display: flex;
     width: 100%;
     min-width: 0;
-    height: 64px;
+    height: 56px;
     align-items: center;
     justify-content: space-between;
     gap: 2px;
@@ -280,7 +276,7 @@
     width: 2px;
     height: var(--wave-height);
     border-radius: 999px;
-    background: rgba(80, 80, 86, var(--wave-opacity));
+    background: rgba(178, 178, 178, var(--wave-opacity));
     opacity: 1;
     transform-origin: center;
     transition: background 120ms ease;
@@ -288,7 +284,7 @@
   }
 
   .in-app-waveform.is-active .in-app-waveform__bars span {
-    background: rgba(0, 102, 204, var(--wave-opacity));
+    background: rgba(255, 122, 101, var(--wave-opacity));
   }
 
   /* Scrollbar styles */

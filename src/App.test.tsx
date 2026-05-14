@@ -74,14 +74,18 @@ function mockAudioCapture() {
 }
 
 describe("ASR Pro Electron shell", () => {
-  it("renders the ASR Pro dashboard as the primary desktop surface", () => {
+  it("renders a Superwhisper-style home surface without the bottom-left Pro pill", () => {
     render(<App />);
 
-    expect(screen.getAllByText("ASR Pro").length).toBeGreaterThan(0);
-    expect(screen.getByText("Dictation")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByText("Average speed")).toBeTruthy();
+    expect(screen.getByText("Words this week")).toBeTruthy();
+    expect(screen.getByText("Get started")).toBeTruthy();
+    expect(screen.getByText("What's new?")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
     expect(screen.getAllByText("Local Whisper").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Superwhisper/i)).toBeNull();
   });
 
   it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", () => {
@@ -99,8 +103,13 @@ describe("ASR Pro Electron shell", () => {
 
     render(<App />);
 
-    const sidebarTitle = screen.getAllByText("ASR Pro")[0].closest("div");
-    expect(sidebarTitle?.textContent).toBe("ASR Pro");
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Modes" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Vocabulary" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Configuration" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sound" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Models library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "History" })).toBeTruthy();
     expect(screen.queryByText("Local first")).toBeNull();
     expect(screen.queryByText("Global overlay active")).toBeNull();
     expect(screen.queryByText(/CommandOrControl/)).toBeNull();
@@ -112,7 +121,7 @@ describe("ASR Pro Electron shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Files" }));
+    await user.click(screen.getByRole("button", { name: "Modes" }));
 
     expect(screen.getByRole("heading", { name: "Drop audio or video" })).toBeTruthy();
     expect(screen.getByText("Queued transcription jobs")).toBeTruthy();
@@ -122,16 +131,16 @@ describe("ASR Pro Electron shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const dashboardButton = screen.getByRole("button", { name: "Dashboard" });
-    expect(dashboardButton.getAttribute("aria-current")).toBe("page");
-    expect(dashboardButton.className).toContain("bg-[#d9d9e1]");
+    const homeButton = screen.getByRole("button", { name: "Home" });
+    expect(homeButton.getAttribute("aria-current")).toBe("page");
+    expect(homeButton.className).toContain("bg-[#686868]");
 
-    const filesButton = screen.getByRole("button", { name: "Files" });
-    await user.click(filesButton);
+    const modesButton = screen.getByRole("button", { name: "Modes" });
+    await user.click(modesButton);
 
-    expect(filesButton.getAttribute("aria-current")).toBe("page");
-    expect(filesButton.className).toContain("bg-[#d9d9e1]");
-    expect(dashboardButton.getAttribute("aria-current")).toBeNull();
+    expect(modesButton.getAttribute("aria-current")).toBe("page");
+    expect(modesButton.className).toContain("bg-[#686868]");
+    expect(homeButton.getAttribute("aria-current")).toBeNull();
   });
 
   it("renders a non-uniform full-width waveform baseline", () => {
@@ -295,7 +304,7 @@ describe("ASR Pro Electron shell", () => {
     };
 
     render(<App />);
-    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Top overlay position" }).getAttribute("aria-pressed")).toBe("true"));
 
     await user.click(screen.getByRole("button", { name: "Bottom overlay position" }));
