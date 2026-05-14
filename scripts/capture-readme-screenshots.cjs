@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { _electron } = require("playwright-core");
@@ -190,6 +191,7 @@ async function main() {
   const repoRoot = path.resolve(__dirname, "..");
   const screenshotDir = path.join(repoRoot, "docs", "screenshots");
   const evidenceDir = path.join(repoRoot, "_evidence");
+  const captureDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "asrpro-readme-capture-"));
   fs.mkdirSync(screenshotDir, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
 
@@ -219,6 +221,7 @@ async function main() {
       cwd: repoRoot,
       env: {
         ...process.env,
+        ASRPRO_DATA_DIR: captureDataDir,
         ASRPRO_SCREENSHOT_MODE: "1",
         VITE_DEV_SERVER_URL: devUrl,
       },
@@ -282,6 +285,7 @@ async function main() {
       await electronApp.close().catch(() => {});
     }
     vite.kill();
+    fs.rmSync(captureDataDir, { recursive: true, force: true });
   }
 }
 

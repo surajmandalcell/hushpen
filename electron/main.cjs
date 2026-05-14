@@ -66,6 +66,7 @@ function configureContainedData() {
     exePath: app.getPath("exe"),
     appPath: app.getAppPath(),
     userDataPath: app.getPath("userData"),
+    dataDirOverride: process.env.ASRPRO_DATA_DIR,
   });
 
   const paths = buildModelPaths(containedDataDir);

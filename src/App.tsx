@@ -26,6 +26,7 @@ import {
   Trash2,
   Usb,
   Volume2,
+  VolumeX,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -1728,7 +1729,11 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
 
       {expanded ? (
         <div className="history-card-details mt-3 space-y-3">
-          {row.recordingUrl ? <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} durationSeconds={row.durationSeconds} /> : null}
+          {row.recordingUrl ? (
+            <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} durationSeconds={row.durationSeconds} />
+          ) : (
+            <MissingHistoryAudioNotice />
+          )}
           {row.status === "failed" ? (
             <p className={`selectable-text ${sharedRadiusClass} border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-[12px] font-medium text-[#ffb3aa]`}>
               {row.error ?? "Transcription failed"}
@@ -1751,6 +1756,15 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
         </div>
       ) : null}
     </article>
+  );
+}
+
+function MissingHistoryAudioNotice() {
+  return (
+    <div className={`flex items-center gap-2 ${sharedRadiusClass} border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-[#bdbdbd]`}>
+      <VolumeX className="size-3 shrink-0" aria-hidden="true" />
+      <span className="text-[12px] font-semibold">No source audio saved</span>
+    </div>
   );
 }
 

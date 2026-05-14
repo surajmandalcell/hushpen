@@ -497,6 +497,29 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("Product demo call")).toBeNull();
   });
 
+  it("shows when a history transcript has no saved source audio", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "history-missing-audio",
+        title: "Product demo follow-up",
+        text: "Summarize the product demo and send the follow-up notes.",
+        kind: "Dictation",
+        model: "Parakeet-TDT-0.6B-v3",
+        durationSeconds: 58,
+        createdAt: Date.now(),
+        status: "completed",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(screen.getByText("Product demo follow-up")).toBeTruthy();
+    expect(screen.getByText("No source audio saved")).toBeTruthy();
+    expect(screen.queryByLabelText("Recording audio: Product demo follow-up")).toBeNull();
+  });
+
   it("records audio, transcribes it, stores the result, and stays on the current page", async () => {
     const user = userEvent.setup();
     mockAudioCapture();

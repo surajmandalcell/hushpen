@@ -91,6 +91,20 @@ describe("Electron runtime helpers", () => {
     expect(dataDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data");
   });
 
+  it("uses an explicit data directory override for isolated automation runs", () => {
+    const dataDir = runtime.resolveContainedDataDir({
+      isPackaged: false,
+      platform: "darwin",
+      resourcesPath: "/repo/resources",
+      exePath: "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+      appPath: "/repo",
+      userDataPath: "/Users/suraj/Library/Application Support/ASR Pro",
+      dataDirOverride: "/private/tmp/asrpro-readme-capture-1234",
+    });
+
+    expect(dataDir).toBe("/private/tmp/asrpro-readme-capture-1234");
+  });
+
   it("resolves packaged Windows and Linux data under user-writable app data", () => {
     expect(runtime.resolveContainedDataDir({
       isPackaged: true,

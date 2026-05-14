@@ -25,8 +25,15 @@ function platformPath(platform) {
   return platform === "win32" ? path.win32 : path.posix;
 }
 
-function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath, appPath, userDataPath }) {
+function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath, appPath, userDataPath, dataDirOverride }) {
   const pathModule = platformPath(platform);
+  const explicitDataDir = typeof dataDirOverride === "string" ? dataDirOverride.trim() : "";
+
+  if (explicitDataDir) {
+    return pathModule.isAbsolute(explicitDataDir)
+      ? explicitDataDir
+      : pathModule.join(appPath, explicitDataDir);
+  }
 
   if (!isPackaged) {
     return pathModule.join(appPath, "tmp", "app-data");
