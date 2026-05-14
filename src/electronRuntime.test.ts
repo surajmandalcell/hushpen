@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -77,6 +78,19 @@ describe("Electron runtime helpers", () => {
       exePath: "/opt/asrpro/asrpro",
       appPath: "/repo",
     })).toBe("/opt/asrpro/data");
+  });
+
+  it("resolves platform app and tray icon assets", () => {
+    const projectRoot = "/repo";
+
+    expect(runtime.resolveTrayIconPath("darwin", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "trayTemplate.png"));
+    expect(runtime.resolveTrayIconPath("win32", projectRoot, false)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-dark.png"));
+    expect(runtime.resolveTrayIconPath("win32", projectRoot, true)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-light.png"));
+    expect(runtime.resolveTrayIconPath("linux", projectRoot, false)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-dark.png"));
+    expect(runtime.resolveTrayIconPath("linux", projectRoot, true)).toBe(path.join(projectRoot, "src-tauri", "icons", "tray-light.png"));
+    expect(runtime.resolveAppIconPath("darwin", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "icon.png"));
+    expect(runtime.resolveAppIconPath("win32", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "icon.ico"));
+    expect(runtime.resolveAppIconPath("linux", projectRoot)).toBe(path.join(projectRoot, "src-tauri", "icons", "icon.png"));
   });
 
   it("places the recording overlay at the bottom of the selected work area", () => {

@@ -28,7 +28,7 @@
       }
     ],
     "trayIcon": {
-      "iconPath": "icons/icon.png",
+      "iconPath": "icons/trayTemplate.png",
       "iconAsTemplate": true,
       "menuOnLeftClick": false
     },

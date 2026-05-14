@@ -1,9 +1,13 @@
 import React from 'react';
+import { AppLogoMark } from '../components/icons';
 
 const AboutPage: React.FC = () => {
   return (
     <div>
       <div className="page-header">
+        <div className="about-logo" aria-hidden="true">
+          <AppLogoMark />
+        </div>
         <h1 className="page-title">About ASR Pro</h1>
         <p className="page-description">
           Information about ASR Pro and its capabilities.
@@ -129,6 +133,23 @@ const AboutPage: React.FC = () => {
           font-size: 14px;
           margin: 0;
           line-height: 1.4;
+        }
+
+        .about-logo {
+          width: 96px;
+          height: 96px;
+          display: grid;
+          place-items: center;
+          color: #26343b;
+          background: #f6f4ef;
+          border-radius: 22px;
+          margin-bottom: 18px;
+          box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+        }
+
+        .about-logo svg {
+          width: 84px;
+          height: 84px;
         }
         `
       }} />

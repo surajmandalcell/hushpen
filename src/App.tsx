@@ -10,6 +10,7 @@ import {
   Headphones,
   History,
   Home,
+  Info,
   Library,
   Laptop,
   Mic2,
@@ -24,10 +25,11 @@ import {
   Volume2,
   type LucideIcon,
 } from "lucide-react";
+import { AppLogoMark } from "./components/icons";
 import { apiClient } from "./services/api";
 import { audioRecordingService } from "./services/audioRecording";
 
-type ViewId = "home" | "configuration" | "sound" | "models" | "history";
+type ViewId = "home" | "configuration" | "sound" | "models" | "history" | "about";
 type WindowAction = "minimize" | "maximize" | "close";
 type OverlayPlacement = "top" | "bottom";
 type RecordingStatus = "idle" | "starting" | "recording" | "transcribing" | "error";
@@ -115,6 +117,7 @@ const navItems: NavItem[] = [
   { id: "sound", label: "Sound", icon: Volume2 },
   { id: "models", label: "Models library", icon: Library },
   { id: "history", label: "History", icon: History },
+  { id: "about", label: "About", icon: Info },
 ];
 
 const sidebarIconTone: Record<ViewId, string> = {
@@ -123,6 +126,7 @@ const sidebarIconTone: Record<ViewId, string> = {
   sound: "bg-[#737373] text-white",
   models: "bg-[#8f8f8f] text-white",
   history: "bg-[#7167ff] text-white",
+  about: "bg-[#4d6b73] text-white",
 };
 
 const defaultModelName = "Local Whisper";
@@ -912,6 +916,7 @@ function App() {
                 onDeleteRow={deleteHistoryRow}
               />
             )}
+            {activeView === "about" && <AboutView />}
             {activeView === "configuration" && (
               <SettingsView
                 runtimeInfo={runtimeInfo}
@@ -1657,6 +1662,25 @@ function SettingsView({
         <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
         <PanelRow title="Microphone input" detail={selectedAudioInputLabel} trailing={<NavigateButton label="Change" onClick={onOpenSound} />} />
         <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} trailing={<StatusLabel>Read only</StatusLabel>} />
+      </GroupedPanel>
+    </ViewFrame>
+  );
+}
+
+function AboutView() {
+  return (
+    <ViewFrame title="About ASR Pro">
+      <GroupedPanel>
+        <div className="flex flex-col items-center px-6 py-7 text-center">
+          <div className="grid size-24 place-items-center rounded-[22px] bg-[#f6f4ef] text-[#26343b] shadow-[0_18px_42px_rgba(0,0,0,0.22)]">
+            <AppLogoMark className="size-20" title="ASR Pro" />
+          </div>
+          <h3 className="mt-5 text-[20px] font-semibold text-[#f2f2f2]">ASR Pro</h3>
+          <p className="mt-1 text-[12px] font-medium text-[#a8a8a8]">Version 0.1.0</p>
+          <p className="mt-4 max-w-[360px] text-[13px] leading-5 text-[#c7c7c7]">
+            Desktop speech recognition and transcription workspace for local dictation, file transcription, and model testing.
+          </p>
+        </div>
       </GroupedPanel>
     </ViewFrame>
   );

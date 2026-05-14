@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, shell, screen, session } = require("electron");
+const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, shell, screen, session } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
@@ -10,6 +10,7 @@ const {
   createRecordingOverlayHtml,
   normalizeOverlaySettings,
   resolveContainedDataDir,
+  resolveAppIconPath,
   resolveOverlayBounds,
   resolveTrayIconPath,
   shouldShowRecordingOverlay,
@@ -101,6 +102,7 @@ function createWindow() {
     show: false,
     frame: false,
     title: "ASR Pro",
+    icon: resolveAppIconPath(process.platform, path.join(__dirname, "..")),
     backgroundColor: "#2f2f2f",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -286,11 +288,24 @@ function registerGlobalShortcut() {
 function createTray() {
   if (tray) return;
 
-  const iconPath = resolveTrayIconPath(process.platform, path.join(__dirname, ".."));
-  tray = new Tray(iconPath);
+  tray = new Tray(createTrayIcon());
   tray.setToolTip("ASR Pro");
   tray.on("click", showMainWindow);
   updateTrayMenu();
+}
+
+function createTrayIcon() {
+  const iconPath = resolveTrayIconPath(process.platform, path.join(__dirname, ".."), nativeTheme.shouldUseDarkColors);
+  const icon = nativeImage.createFromPath(iconPath);
+  if (process.platform === "darwin") {
+    icon.setTemplateImage(true);
+  }
+  return icon;
+}
+
+function updateTrayIcon() {
+  if (!tray) return;
+  tray.setImage(createTrayIcon());
 }
 
 function updateTrayMenu() {
@@ -540,6 +555,7 @@ if (hasSingleInstanceLock) {
     createWindow();
     registerGlobalShortcut();
     createTray();
+    nativeTheme.on("updated", updateTrayIcon);
 
     app.on("activate", showMainWindow);
   });

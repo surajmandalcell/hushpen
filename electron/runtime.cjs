@@ -35,10 +35,14 @@ function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath,
   return pathModule.join(pathModule.dirname(exePath), "data");
 }
 
-function resolveTrayIconPath(platform, projectRoot) {
-  if (platform === "darwin") return path.join(projectRoot, "src-tauri", "icons", "32x32.png");
+function resolveTrayIconPath(platform, projectRoot, useLightGlyph = false) {
+  if (platform === "darwin") return path.join(projectRoot, "src-tauri", "icons", "trayTemplate.png");
+  return path.join(projectRoot, "src-tauri", "icons", useLightGlyph ? "tray-light.png" : "tray-dark.png");
+}
+
+function resolveAppIconPath(platform, projectRoot) {
   if (platform === "win32") return path.join(projectRoot, "src-tauri", "icons", "icon.ico");
-  return path.join(projectRoot, "src-tauri", "icons", "32x32.png");
+  return path.join(projectRoot, "src-tauri", "icons", "icon.png");
 }
 
 function buildModelPaths(dataDir) {
@@ -318,6 +322,7 @@ module.exports = {
   buildModelPaths,
   createRecordingOverlayHtml,
   normalizeOverlaySettings,
+  resolveAppIconPath,
   resolveContainedDataDir,
   resolveOverlayBounds,
   resolveTrayIconPath,
