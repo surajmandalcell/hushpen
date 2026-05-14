@@ -28,6 +28,7 @@ const {
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:4270";
 const MAIN_WINDOW_SIZE = { width: 780, height: 520 };
+const SCREENSHOT_MODE = process.env.ASRPRO_SCREENSHOT_MODE === "1";
 
 let mainWindow;
 let overlayWindow;
@@ -791,12 +792,26 @@ if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     registerIpc();
     configureMediaPermissions();
-    await startSidecar();
-    Menu.setApplicationMenu(createMenu());
+    if (SCREENSHOT_MODE) {
+      setSidecarState({
+        status: "ready",
+        mode: "screenshot",
+        command: null,
+        args: [],
+        pid: null,
+        error: null,
+      });
+      Menu.setApplicationMenu(null);
+    } else {
+      await startSidecar();
+      Menu.setApplicationMenu(createMenu());
+    }
     createWindow();
-    registerGlobalShortcut();
-    createTray();
-    nativeTheme.on("updated", updateTrayIcon);
+    if (!SCREENSHOT_MODE) {
+      registerGlobalShortcut();
+      createTray();
+      nativeTheme.on("updated", updateTrayIcon);
+    }
 
     app.on("activate", showMainWindow);
   });

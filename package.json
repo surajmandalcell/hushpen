@@ -19,6 +19,8 @@
     "electron:dev": "concurrently -k \"npm:sidecar:dev\" \"npm:dev\" \"wait-on http://127.0.0.1:4270 http://127.0.0.1:8000/health && electron .\"",
     "electron:pack": "npm run build && npm run sidecar:check && electron-builder --dir",
     "electron:dist": "npm run build && npm run sidecar:check && electron-builder",
+    "screenshots:readme": "node scripts/capture-readme-screenshots.cjs && npm run screenshots:check",
+    "screenshots:check": "node scripts/check-readme-screenshots.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

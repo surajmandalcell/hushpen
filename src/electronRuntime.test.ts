@@ -16,6 +16,7 @@ describe("Electron runtime helpers", () => {
     const preloadSource = readFileSync("electron/preload.cjs", "utf8");
 
     expect(mainSource).toContain("const MAIN_WINDOW_SIZE = { width: 780, height: 520 };");
+    expect(mainSource).toContain('const SCREENSHOT_MODE = process.env.ASRPRO_SCREENSHOT_MODE === "1";');
     expect(mainSource).toMatch(
       /mainWindow = new BrowserWindow\(\{[\s\S]*?width: MAIN_WINDOW_SIZE\.width,[\s\S]*?height: MAIN_WINDOW_SIZE\.height,[\s\S]*?minWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?minHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?maxWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?maxHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?resizable: false,[\s\S]*?maximizable: false,[\s\S]*?fullscreenable: false,/
     );
@@ -31,14 +32,16 @@ describe("Electron runtime helpers", () => {
     expect(mainSource).toContain("win.unmaximize()");
     expect(mainSource).toContain('win.on("enter-full-screen"');
     expect(mainSource).toContain("win.setFullScreen(false)");
+    expect(mainSource).toContain('mode: "screenshot"');
+    expect(mainSource).toContain("if (!SCREENSHOT_MODE)");
     expect(preloadSource).toContain('new Set(["minimize", "close"])');
     expect(preloadSource).not.toContain('"maximize"');
   });
 
-  it("uses the working local Whisper model as the default model", () => {
-    expect(runtime.DEFAULT_MODEL.id).toBe("whisper-base");
-    expect(runtime.DEFAULT_MODEL.displayName).toBe("Local Whisper");
-    expect(runtime.DEFAULT_MODEL.repo).toBe("onnx-asr/whisper-base");
+  it("uses Parakeet-TDT-0.6B-v3 as the default model", () => {
+    expect(runtime.DEFAULT_MODEL.id).toBe("parakeet-tdt-0.6b-v3");
+    expect(runtime.DEFAULT_MODEL.displayName).toBe("Parakeet-TDT-0.6B-v3");
+    expect(runtime.DEFAULT_MODEL.repo).toBe("nvidia/parakeet-tdt-0.6b-v3");
   });
 
   it("renders the recording overlay as a text-free waveform pill", () => {
