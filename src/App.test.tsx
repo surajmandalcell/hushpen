@@ -1,4 +1,5 @@
 import { act } from "react";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -84,7 +85,66 @@ function renderedClassNames() {
     .join("\n");
 }
 
+function appStylesheet() {
+  return readFileSync("src/index.css", "utf8");
+}
+
 describe("ASR Pro Electron shell", () => {
+  it("scopes the app shell to non-selectable chrome while keeping text exceptions selectable", () => {
+    render(<App />);
+
+    const shell = document.body.firstElementChild?.firstElementChild;
+    const homeButton = screen.getByRole("button", { name: "Home" });
+    const statusDescription = screen.getByText("Turn your voice to text with a single click.");
+    const updateDescription = screen.getByText("Saved dictations keep playable source audio with their transcripts.");
+
+    expect(shell?.className).toContain("app-chrome");
+    expect(homeButton.className).not.toContain("selectable-text");
+    expect(statusDescription.className).toContain("selectable-text");
+    expect(updateDescription.className).toContain("selectable-text");
+  });
+
+  it("keeps transcript content and history search selectable inside the non-selectable shell", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "history-selection-row",
+        title: "Meeting follow-up",
+        text: "Send the launch notes and review the transcript.",
+        kind: "Dictation",
+        model: "Local Whisper",
+        durationSeconds: 12,
+        createdAt: Date.now(),
+        status: "completed",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    const search = screen.getByRole("searchbox", { name: "Search history" }) as HTMLInputElement;
+    const title = screen.getByText("Meeting follow-up");
+    const transcript = screen.getByText("Send the launch notes and review the transcript.");
+
+    expect(search.className).not.toContain("selectable-text");
+    await user.type(search, "launch");
+    expect(search.value).toBe("launch");
+    expect(title.className).toContain("selectable-text");
+    expect(transcript.className).toContain("selectable-text");
+  });
+
+  it("defines scoped CSS that prevents drag selection except for readable text and fields", () => {
+    const css = appStylesheet();
+
+    expect(css).toContain(".app-chrome");
+    expect(css).toContain("user-select: none");
+    expect(css).toContain("-webkit-user-select: none");
+    expect(css).toContain("-webkit-user-drag: none");
+    expect(css).toContain(".app-chrome .selectable-text");
+    expect(css).toContain("user-select: text");
+    expect(css).toContain(".app-chrome :is(input, textarea, select, [contenteditable=\"true\"])");
+  });
+
   it("renders a Superwhisper-style home surface without the bottom-left Pro pill", () => {
     render(<App />);
 
