@@ -167,7 +167,11 @@ const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
   const position = index / 71;
   const envelope = 0.42 + 0.58 * Math.sin(Math.PI * position);
   const shape = 0.42 + 0.2 * Math.sin(index * 1.7) + 0.16 * Math.sin(index * 0.53 + 1.1);
-  return Math.round(clampNumber(6 + 18 * envelope * shape, 5, 24));
+  return {
+    id: `history-wave-${index}`,
+    index,
+    height: Math.round(clampNumber(6 + 18 * envelope * shape, 5, 24)),
+  };
 });
 
 const sharedRadiusClass = "rounded-[9px]";
@@ -364,7 +368,11 @@ function startOfDay(timestamp: number) {
 }
 
 function formatShortcutParts(shortcut?: string) {
-  const normalized = (shortcut || "CommandOrControl+`").split("+").map((part) => part.trim()).filter(Boolean);
+  const normalized = (shortcut || "CommandOrControl+`").split("+").flatMap((part) => {
+    const trimmed = part.trim();
+    return trimmed ? [trimmed] : [];
+  });
+
   return normalized.map((part) => {
     if (part === "CommandOrControl" || part === "Command" || part === "Meta") return "⌘";
     if (part === "Control" || part === "Ctrl") return "⌃";
@@ -1386,7 +1394,7 @@ function HistoryView({ rows, onCopyRow, onDeleteRow }: HistoryViewProps) {
         <input
           type="search"
           aria-label="Search history"
-          className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-[#e8e8e8] outline-none placeholder:text-[#777]"
+          className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] font-semibold text-[#e8e8e8] outline-none placeholder:text-[#777] focus:border-0 focus:outline-none focus:ring-0 focus:ring-offset-0"
           placeholder="Find..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -1515,11 +1523,11 @@ function HistoryRecordingPlayer({ title, src, durationSeconds }: HistoryRecordin
         {isPlaying ? <Pause className="size-3" /> : <Play className="size-3" />}
       </button>
       <div className="flex min-w-0 flex-1 items-center gap-px overflow-hidden" aria-hidden="true">
-        {historyWaveformBars.map((height, index) => (
+        {historyWaveformBars.map((bar) => (
           <span
-            key={`history-wave-${index}`}
+            key={bar.id}
             className="w-px shrink-0 rounded-full bg-[#a9a9a9]"
-            style={{ height: `${height}px`, opacity: index % 4 === 0 ? 0.35 : 0.62 }}
+            style={{ height: `${bar.height}px`, opacity: bar.index % 4 === 0 ? 0.35 : 0.62 }}
           />
         ))}
       </div>
@@ -1605,11 +1613,11 @@ function RecordingWindowPreview({ label, selected = false, variant }: RecordingW
           <span className="text-[15px] text-[#6f6f6f]">⊘</span>
         ) : (
           <span className={`flex items-center gap-px ${variant === "mini" ? "w-10" : "w-16"}`} aria-hidden="true">
-            {historyWaveformBars.slice(0, variant === "mini" ? 18 : 30).map((height, index) => (
+            {historyWaveformBars.slice(0, variant === "mini" ? 18 : 30).map((bar) => (
               <span
-                key={`${label}-${index}`}
+                key={`${label}-${bar.id}`}
                 className="w-px rounded-full bg-[#d7d7d7]"
-                style={{ height: `${Math.max(4, Math.round(height * 0.45))}px`, opacity: index % 3 === 0 ? 0.55 : 0.9 }}
+                style={{ height: `${Math.max(4, Math.round(bar.height * 0.45))}px`, opacity: bar.index % 3 === 0 ? 0.55 : 0.9 }}
               />
             ))}
           </span>
@@ -1719,8 +1727,8 @@ interface ShortcutClusterProps {
 function ShortcutCluster({ parts, muted = false }: ShortcutClusterProps) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1">
-      {parts.map((part, index) => (
-        <ShortcutBadge key={`${part}-${index}`} muted={muted}>{part}</ShortcutBadge>
+      {parts.map((part) => (
+        <ShortcutBadge key={part} muted={muted}>{part}</ShortcutBadge>
       ))}
     </span>
   );
