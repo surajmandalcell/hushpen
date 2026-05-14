@@ -1,5 +1,5 @@
 """
-Utilities for ASR Pro Python Sidecar
+Utilities for the ASR Pro Python ASR engine
 """
 
 from .device import DeviceDetector

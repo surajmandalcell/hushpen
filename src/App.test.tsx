@@ -113,7 +113,7 @@ describe("ASR Pro Electron shell", () => {
         title: "Meeting follow-up",
         text: "Send the launch notes and review the transcript.",
         kind: "Dictation",
-        model: "Local Whisper",
+        model: "Parakeet-TDT-0.6B-v3",
         durationSeconds: 12,
         createdAt: Date.now(),
         status: "completed",
@@ -253,7 +253,7 @@ describe("ASR Pro Electron shell", () => {
       getAppInfo: vi.fn().mockResolvedValue({ name: "ASR Pro", version: "2.4.6" }),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Local Whisper",
+        defaultModel: "Parakeet-TDT-0.6B-v3",
         dataDir: "/Users/surajmandal/Library/Application Support/ASR Pro/data",
         shortcut: "CommandOrControl+`",
       }),
@@ -549,7 +549,7 @@ describe("ASR Pro Electron shell", () => {
       );
     });
     const formData = fetchMock.mock.calls[0][1].body as FormData;
-    expect(formData.get("model")).toBe("whisper-base");
+    expect(formData.get("model")).toBe("parakeet-tdt-0.6b-v3");
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
@@ -642,7 +642,7 @@ describe("ASR Pro Electron shell", () => {
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Local Whisper",
+        defaultModel: "Parakeet-TDT-0.6B-v3",
         shortcut: "CommandOrControl+`",
       }),
       setRecording: vi.fn(),
@@ -696,6 +696,21 @@ describe("ASR Pro Electron shell", () => {
     expect(classNames).not.toContain("text-[#ffb3aa]");
   });
 
+  it("shows Parakeet as the only selectable model and keeps Whisper disabled", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Models library" }));
+
+    const parakeetButton = screen.getByRole("button", { name: /Parakeet-TDT-0\.6B-v3/i });
+    const whisperButton = screen.getByRole("button", { name: /Local Whisper/i }) as HTMLButtonElement;
+
+    expect(parakeetButton.getAttribute("aria-pressed")).toBe("true");
+    expect(whisperButton.disabled).toBe(true);
+    expect(screen.getByText("Future placeholder")).toBeTruthy();
+    expect(screen.queryByText("Use model")).toBeNull();
+  });
+
   it("updates the recording overlay placement from settings", async () => {
     const user = userEvent.setup();
     const setOverlaySettings = vi.fn().mockResolvedValue({ placement: "bottom", customBounds: null });
@@ -718,6 +733,8 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Configuration" }));
     expect(screen.getByText("Recording overlay")).toBeTruthy();
+    expect(screen.getByText("Engine")).toBeTruthy();
+    expect(screen.queryByText("Sidecar")).toBeNull();
     expect(screen.queryByText("Recording window")).toBeNull();
     expect(screen.queryByText("Classic")).toBeNull();
     expect(screen.queryByText("Hidden")).toBeNull();

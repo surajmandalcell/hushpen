@@ -88,10 +88,20 @@ class ModelManager:
             return self.current_loader.is_ready()
         return False
 
+    def is_model_enabled(self, model_id: str) -> bool:
+        return self.registry.is_model_enabled(model_id)
+
+    def get_disabled_reason(self, model_id: str) -> Optional[str]:
+        return self.registry.get_disabled_reason(model_id)
+
     async def set_model(self, model_id: str) -> bool:
         try:
             if not self.registry.is_model_available(model_id):
-                logger.error(f"Model {model_id} is not available")
+                disabled_reason = self.registry.get_disabled_reason(model_id)
+                if disabled_reason:
+                    logger.error(f"Model {model_id} is disabled: {disabled_reason}")
+                else:
+                    logger.error(f"Model {model_id} is not available")
                 return False
 
             if model_id == self.current_model and self.is_model_ready(model_id):

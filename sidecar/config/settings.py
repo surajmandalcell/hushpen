@@ -1,5 +1,5 @@
 """
-Configuration settings for ASR Pro Python Sidecar
+Configuration settings for the ASR Pro Python ASR engine
 """
 
 import json
@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Settings:
-    """Configuration settings for the sidecar."""
+    """Configuration settings for the ASR engine."""
     
     def __init__(self):
         self.data_dir = self._get_data_dir()
@@ -57,7 +57,7 @@ class Settings:
                 "port": 8000
             },
             "models": {
-                "default_model": "whisper-base",
+                "default_model": "parakeet-tdt-0.6b-v3",
                 "cache_dir": str(self.data_dir / "models")
             },
             "device": {

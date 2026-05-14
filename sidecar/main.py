@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ASR Pro Python Sidecar - Main Entry Point
+ASR Pro Python ASR Engine - Main Entry Point
 """
 
 import logging
@@ -47,13 +47,13 @@ async def run_performance_tests():
 
 
 def main():
-    """Main entry point for the ASR Pro sidecar."""
+    """Main entry point for the ASR Pro engine."""
     # Ensure CUDA DLLs are discoverable early on Windows
     try:
         ensure_cuda_dlls_on_path()
     except Exception:
         pass
-    parser = argparse.ArgumentParser(description="ASR Pro Python Sidecar")
+    parser = argparse.ArgumentParser(description="ASR Pro Python ASR Engine")
     parser.add_argument(
         "--test", action="store_true", help="Run comprehensive model tests"
     )
@@ -76,7 +76,7 @@ def main():
         sys.exit(0)
 
     try:
-        logger.info("Starting ASR Pro Python Sidecar...")
+        logger.info("Starting ASR Pro Python ASR Engine...")
 
         # Initialize configuration
         settings = Settings()
@@ -99,7 +99,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     except Exception as e:
-        logger.error(f"Error starting sidecar: {e}")
+        logger.error(f"Error starting ASR engine: {e}")
         sys.exit(1)
 
 

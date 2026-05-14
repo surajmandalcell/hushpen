@@ -35,7 +35,7 @@ class TestModelManager:
                 await manager.initialize()
 
             mock_detect.assert_called_once()
-            mock_set_model.assert_called_once_with("whisper-base")
+            mock_set_model.assert_called_once_with("parakeet-tdt-0.6b-v3")
             assert hasattr(manager, "loader_configs")
             assert "whisper" in manager.loader_configs
             assert "parakeet" in manager.loader_configs
@@ -65,11 +65,11 @@ class TestModelManager:
         with patch.object(
             manager.registry,
             "list_models",
-            return_value=["whisper-base", "parakeet-ctc"],
+            return_value=["parakeet-tdt-0.6b-v3"],
         ):
             models = await manager.list_available_models()
 
-            assert models == ["whisper-base", "parakeet-ctc"]
+            assert models == ["parakeet-tdt-0.6b-v3"]
 
     def test_get_current_model(self, settings):
         """Test getting current model."""
@@ -79,8 +79,8 @@ class TestModelManager:
         assert manager.get_current_model() is None
 
         # Set current model
-        manager.current_model = "whisper-base"
-        assert manager.get_current_model() == "whisper-base"
+        manager.current_model = "parakeet-tdt-0.6b-v3"
+        assert manager.get_current_model() == "parakeet-tdt-0.6b-v3"
 
     def test_get_current_device(self, settings):
         """Test getting current device."""
@@ -95,18 +95,18 @@ class TestModelManager:
     def test_is_model_ready_current_model(self, settings):
         """Test checking if current model is ready."""
         manager = ModelManager(settings)
-        manager.current_model = "whisper-base"
+        manager.current_model = "parakeet-tdt-0.6b-v3"
         manager.current_loader = Mock()
         manager.current_loader.is_ready.return_value = True
 
-        assert manager.is_model_ready("whisper-base") is True
-        assert manager.is_model_ready("whisper-small") is False
+        assert manager.is_model_ready("parakeet-tdt-0.6b-v3") is True
+        assert manager.is_model_ready("inactive-model") is False
 
     def test_is_model_ready_no_current_model(self, settings):
         """Test checking model readiness when no current model."""
         manager = ModelManager(settings)
 
-        assert manager.is_model_ready("whisper-base") is False
+        assert manager.is_model_ready("parakeet-tdt-0.6b-v3") is False
 
     @pytest.mark.asyncio
     async def test_set_model_success(self, settings):
@@ -116,12 +116,12 @@ class TestModelManager:
         # Mock registry
         with patch.object(manager.registry, "is_model_available", return_value=True):
             with patch.object(
-                manager.registry, "get_loader_type", return_value="whisper"
+                manager.registry, "get_loader_type", return_value="nemo"
             ):
                 with patch.object(
                     manager.registry,
                     "get_model_info",
-                    return_value={"id": "whisper-base"},
+                    return_value={"id": "parakeet-tdt-0.6b-v3"},
                 ):
                     with patch.object(
                         manager, "_get_loader", return_value=Mock()
@@ -130,10 +130,10 @@ class TestModelManager:
                         mock_loader.load = AsyncMock(return_value=True)
                         mock_get_loader.return_value = mock_loader
 
-                        result = await manager.set_model("whisper-base")
+                        result = await manager.set_model("parakeet-tdt-0.6b-v3")
 
                         assert result is True
-                        assert manager.current_model == "whisper-base"
+                        assert manager.current_model == "parakeet-tdt-0.6b-v3"
                         assert manager.current_loader == mock_loader
                         mock_loader.load.assert_called_once()
 
@@ -148,15 +148,26 @@ class TestModelManager:
             assert result is False
 
     @pytest.mark.asyncio
+    async def test_set_model_rejects_disabled_whisper_placeholder(self, settings):
+        """Test disabled placeholder models cannot be loaded."""
+        manager = ModelManager(settings)
+
+        with patch.object(manager, "_get_loader", new_callable=AsyncMock) as mock_get_loader:
+            result = await manager.set_model("whisper-base")
+
+        assert result is False
+        mock_get_loader.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_set_model_already_loaded(self, settings):
         """Test setting model that's already loaded."""
         manager = ModelManager(settings)
-        manager.current_model = "whisper-base"
+        manager.current_model = "parakeet-tdt-0.6b-v3"
         manager.current_loader = Mock()
         manager.current_loader.is_ready.return_value = True
 
         with patch.object(manager.registry, "is_model_available", return_value=True):
-            result = await manager.set_model("whisper-base")
+            result = await manager.set_model("parakeet-tdt-0.6b-v3")
 
             assert result is True
 
@@ -167,12 +178,12 @@ class TestModelManager:
 
         with patch.object(manager.registry, "is_model_available", return_value=True):
             with patch.object(
-                manager.registry, "get_loader_type", return_value="whisper"
+                manager.registry, "get_loader_type", return_value="nemo"
             ):
                 with patch.object(
                     manager.registry,
                     "get_model_info",
-                    return_value={"id": "whisper-base"},
+                    return_value={"id": "parakeet-tdt-0.6b-v3"},
                 ):
                     with patch.object(
                         manager, "_get_loader", return_value=Mock()
@@ -181,7 +192,7 @@ class TestModelManager:
                         mock_loader.load = AsyncMock(return_value=False)
                         mock_get_loader.return_value = mock_loader
 
-                        result = await manager.set_model("whisper-base")
+                        result = await manager.set_model("parakeet-tdt-0.6b-v3")
 
                         assert result is False
 
@@ -190,33 +201,23 @@ class TestModelManager:
         """Test getting existing loader."""
         manager = ModelManager(settings)
         mock_loader = Mock()
-        manager.loaders["whisper-base"] = mock_loader
+        manager.loaders["parakeet-tdt-0.6b-v3"] = mock_loader
 
-        loader = await manager._get_loader("whisper-base")
+        loader = await manager._get_loader("parakeet-tdt-0.6b-v3")
 
         assert loader == mock_loader
 
     @pytest.mark.asyncio
-    async def test_get_loader_new_whisper(self, settings):
-        """Test creating new Whisper loader."""
+    async def test_get_loader_rejects_disabled_whisper_placeholder(self, settings):
+        """Test disabled Whisper placeholders do not create loaders."""
         manager = ModelManager(settings)
-        manager.loader_configs = {
-            "whisper": {"device": "cpu", "compute_type": "float32"}
-        }
 
-        with patch.object(manager.registry, "get_loader_type", return_value="whisper"):
-            with patch.object(
-                manager.registry, "get_model_info", return_value={"id": "whisper-base"}
-            ):
-                with patch("models.manager.ConfigDrivenLoader") as mock_whisper_class:
-                    mock_loader = Mock()
-                    mock_whisper_class.return_value = mock_loader
+        with patch("models.manager.ConfigDrivenLoader") as mock_loader_class:
+            loader = await manager._get_loader("whisper-base")
 
-                    loader = await manager._get_loader("whisper-base")
-
-                    assert loader == mock_loader
-                    assert "whisper-base" in manager.loaders
-                    mock_whisper_class.assert_called_once()
+        assert loader is None
+        assert "whisper-base" not in manager.loaders
+        mock_loader_class.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_get_loader_new_parakeet(self, settings):
@@ -226,16 +227,16 @@ class TestModelManager:
 
         with patch.object(manager.registry, "get_loader_type", return_value="parakeet"):
             with patch.object(
-                manager.registry, "get_model_info", return_value={"id": "parakeet-ctc"}
+                manager.registry, "get_model_info", return_value={"id": "parakeet-tdt-0.6b-v3"}
             ):
                 with patch("models.manager.ConfigDrivenLoader") as mock_parakeet_class:
                     mock_loader = Mock()
                     mock_parakeet_class.return_value = mock_loader
 
-                    loader = await manager._get_loader("parakeet-ctc")
+                    loader = await manager._get_loader("parakeet-tdt-0.6b-v3")
 
                     assert loader == mock_loader
-                    assert "parakeet-ctc" in manager.loaders
+                    assert "parakeet-tdt-0.6b-v3" in manager.loaders
                     mock_parakeet_class.assert_called_once()
 
     @pytest.mark.asyncio
@@ -278,7 +279,7 @@ class TestModelManager:
     async def test_transcribe_file_success(self, settings, sample_audio_file):
         """Test successful file transcription."""
         manager = ModelManager(settings)
-        manager.current_model = "whisper-base"
+        manager.current_model = "parakeet-tdt-0.6b-v3"
         manager.current_loader = Mock()
         manager.current_loader.transcribe = AsyncMock(
             return_value={"text": "Hello world"}
@@ -303,7 +304,7 @@ class TestModelManager:
     async def test_transcribe_file_different_model(self, settings, sample_audio_file):
         """Test transcription with different model than current."""
         manager = ModelManager(settings)
-        manager.current_model = "whisper-base"
+        manager.current_model = "parakeet-tdt-0.6b-v3"
 
         mock_loader = Mock()
         mock_loader.transcribe = AsyncMock(return_value={"text": "test transcription"})
@@ -312,9 +313,9 @@ class TestModelManager:
             with patch.object(manager, "_get_loader", return_value=mock_loader):
                 manager.current_loader = mock_loader  # Ensure loader is set
                 with open(sample_audio_file, "rb") as f:
-                    result = await manager.transcribe_file(f, "whisper-small")
+                    result = await manager.transcribe_file(f, "inactive-model")
 
-            mock_set_model.assert_called_once_with("whisper-small")
+            mock_set_model.assert_called_once_with("inactive-model")
 
     @pytest.mark.asyncio
     async def test_unload_model_success(self, settings):
@@ -322,14 +323,14 @@ class TestModelManager:
         manager = ModelManager(settings)
         mock_loader = Mock()
         mock_loader.unload = AsyncMock(return_value=True)
-        manager.loaders["whisper-base"] = mock_loader
-        manager.current_model = "whisper-base"
+        manager.loaders["parakeet-tdt-0.6b-v3"] = mock_loader
+        manager.current_model = "parakeet-tdt-0.6b-v3"
         manager.current_loader = mock_loader
 
-        result = await manager.unload_model("whisper-base")
+        result = await manager.unload_model("parakeet-tdt-0.6b-v3")
 
         assert result is True
-        assert "whisper-base" not in manager.loaders
+        assert "parakeet-tdt-0.6b-v3" not in manager.loaders
         assert manager.current_model is None
         assert manager.current_loader is None
         mock_loader.unload.assert_called_once()
@@ -339,7 +340,7 @@ class TestModelManager:
         """Test unloading model that's not loaded."""
         manager = ModelManager(settings)
 
-        result = await manager.unload_model("whisper-base")
+        result = await manager.unload_model("parakeet-tdt-0.6b-v3")
 
         assert result is False
 
@@ -352,8 +353,8 @@ class TestModelManager:
         mock_loader2 = Mock()
         mock_loader2.unload = AsyncMock(return_value=True)
 
-        manager.loaders = {"whisper-base": mock_loader1, "parakeet-ctc": mock_loader2}
-        manager.current_model = "whisper-base"
+        manager.loaders = {"parakeet-tdt-0.6b-v3": mock_loader1, "cached-secondary": mock_loader2}
+        manager.current_model = "parakeet-tdt-0.6b-v3"
         manager.current_loader = mock_loader1
 
         result = await manager.unload_all_models()
@@ -370,12 +371,12 @@ class TestModelManager:
         """Test getting info for loaded model."""
         manager = ModelManager(settings)
         mock_loader = Mock()
-        mock_loader.get_model_info.return_value = {"id": "whisper-base", "loaded": True}
-        manager.loaders["whisper-base"] = mock_loader
+        mock_loader.get_model_info.return_value = {"id": "parakeet-tdt-0.6b-v3", "loaded": True}
+        manager.loaders["parakeet-tdt-0.6b-v3"] = mock_loader
 
-        info = await manager.get_model_info("whisper-base")
+        info = await manager.get_model_info("parakeet-tdt-0.6b-v3")
 
-        assert info["id"] == "whisper-base"
+        assert info["id"] == "parakeet-tdt-0.6b-v3"
         assert info["loaded"] is True
         mock_loader.get_model_info.assert_called_once()
 
@@ -387,11 +388,11 @@ class TestModelManager:
         with patch.object(
             manager.registry,
             "get_model_info",
-            return_value={"id": "whisper-base", "loaded": False},
+            return_value={"id": "parakeet-tdt-0.6b-v3", "loaded": False},
         ):
-            info = await manager.get_model_info("whisper-base")
+            info = await manager.get_model_info("parakeet-tdt-0.6b-v3")
 
-            assert info["id"] == "whisper-base"
+            assert info["id"] == "parakeet-tdt-0.6b-v3"
             assert info["loaded"] is False
 
     @pytest.mark.asyncio

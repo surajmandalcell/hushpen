@@ -1,4 +1,4 @@
-// API client for ASR Pro Python sidecar
+// API client for the local ASR engine
 export interface HealthResponse {
     status: string;
     current_model?: string;

@@ -16,9 +16,9 @@ const DEFAULT_OVERLAY_SETTINGS = Object.freeze({
 });
 
 const DEFAULT_MODEL = {
-  id: "whisper-base",
-  displayName: "Local Whisper",
-  repo: "onnx-asr/whisper-base",
+  id: "parakeet-tdt-0.6b-v3",
+  displayName: "Parakeet-TDT-0.6B-v3",
+  repo: "nvidia/parakeet-tdt-0.6b-v3",
 };
 
 function platformPath(platform) {
@@ -169,8 +169,8 @@ function buildSidecarLaunchConfig({
     healthUrl: SIDECAR_HEALTH_URL,
     sourcePath,
     error: isPackaged
-      ? "Packaged ASR Pro is missing its bundled Python sidecar executable."
-      : "ASR Pro could not find the development Python sidecar source.",
+      ? "Packaged ASR Pro is missing its bundled Python ASR engine executable."
+      : "ASR Pro could not find the development Python ASR engine source.",
   };
 }
 

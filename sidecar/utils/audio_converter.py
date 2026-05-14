@@ -1,5 +1,5 @@
 """
-Audio conversion utilities for ASR Pro Python Sidecar
+Audio conversion utilities for the ASR Pro Python ASR engine
 """
 
 import tempfile

@@ -1,9 +1,9 @@
 """
-Error classes for ASR Pro Python Sidecar
+Error classes for the ASR Pro Python ASR engine
 """
 
 class SidecarError(Exception):
-    """Base error class for ASR Pro sidecar."""
+    """Base error class for the ASR Pro engine."""
     pass
 
 class ModelError(SidecarError):

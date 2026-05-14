@@ -1,5 +1,5 @@
 """
-API module for ASR Pro Python Sidecar
+API module for the ASR Pro Python ASR engine
 """
 
 from .server import create_app

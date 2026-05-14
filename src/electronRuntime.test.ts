@@ -185,7 +185,7 @@ describe("Electron runtime helpers", () => {
     })).toMatchObject({
       mode: "missing",
       command: null,
-      error: "Packaged ASR Pro is missing its bundled Python sidecar executable.",
+      error: "Packaged ASR Pro is missing its bundled Python ASR engine executable.",
     });
   });
 

@@ -44,8 +44,15 @@ function getRequirementsHash() {
 function canImportCoreSidecarDeps() {
   if (!fs.existsSync(venvPython)) return false;
 
-  const result = spawnSync(venvPython, ["-c", "import fastapi, uvicorn"], {
+  const cacheDir = path.join(venvDir, ".cache");
+  fs.mkdirSync(path.join(cacheDir, "matplotlib"), { recursive: true });
+  const result = spawnSync(venvPython, ["-c", "import fastapi, uvicorn, nemo.collections.asr, torch, torchaudio"], {
     cwd: sidecarDir,
+    env: {
+      ...process.env,
+      MPLCONFIGDIR: path.join(cacheDir, "matplotlib"),
+      XDG_CACHE_HOME: cacheDir,
+    },
     stdio: "ignore",
   });
 
@@ -61,12 +68,12 @@ function hasCurrentRequirements(requirementsHash) {
 function createVirtualEnvIfMissing() {
   if (fs.existsSync(venvPython)) return;
 
-  console.log("Creating sidecar Python environment in sidecar/.venv...");
+  console.log("Creating ASR engine Python environment in sidecar/.venv...");
   run(bootstrapPython, ["-m", "venv", venvDir]);
 }
 
 function installRequirements(requirementsHash) {
-  console.log("Installing sidecar Python dependencies from sidecar/requirements.txt...");
+  console.log("Installing ASR engine Python dependencies from sidecar/requirements.txt...");
   run(venvPython, [
     "-m",
     "pip",

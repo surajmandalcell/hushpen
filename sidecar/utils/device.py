@@ -1,5 +1,5 @@
 """
-Device detection utilities for ASR Pro Python Sidecar
+Device detection utilities for the ASR Pro Python ASR engine
 """
 
 import platform

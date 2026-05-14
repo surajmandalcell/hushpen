@@ -11,11 +11,11 @@
 <p align="center">
   <img alt="Electron" src="https://img.shields.io/badge/runtime-Electron-47848F" />
   <img alt="React" src="https://img.shields.io/badge/ui-React_19-61DAFB" />
-  <img alt="FastAPI" src="https://img.shields.io/badge/sidecar-FastAPI-009688" />
+  <img alt="ASR engine" src="https://img.shields.io/badge/engine-NeMo_Parakeet-76B900" />
   <img alt="TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178C6" />
 </p>
 
-ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a Python FastAPI sidecar. It keeps the desktop shell, microphone capture, transcription history, model cache, and runtime data under app-controlled paths so the release build can run without asking end users to manage a Python environment.
+ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a local Python ASR engine. Parakeet-TDT-0.6B-v3 is the current default and only enabled recognition model. Whisper remains only as disabled future placeholder metadata.
 
 ## Screenshots
 
@@ -33,19 +33,19 @@ ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a 
 |---|---|
 | Desktop shell | Fixed-size Electron window, custom macOS-style traffic lights, tray integration, and context-isolated preload APIs. |
 | Recording workflow | Microphone picker, global recording shortcut, floating waveform overlay, and saved local transcript history. |
-| Transcription | Browser-side capture posts audio to the local Python sidecar through OpenAI-compatible transcription endpoints. |
-| Models | Default local Whisper path with optional Parakeet and higher-accuracy model slots. |
+| Transcription | Browser-side capture posts audio to the local Parakeet engine through OpenAI-compatible transcription endpoints. |
+| Models | Parakeet-TDT-0.6B-v3 is the only enabled model for now. Whisper is kept as a disabled future placeholder. |
 | Local data | App-owned data directory for config, logs, model cache, session data, and transcripts. |
-| Packaging | Electron Builder packages renderer assets, Electron main/preload files, app icons, tray assets, and the platform sidecar binary. |
+| Packaging | Electron Builder packages renderer assets, Electron main/preload files, app icons, tray assets, and the platform ASR engine binary. |
 
 ## Architecture
 
 | Layer | Stack | Responsibility |
 |---|---|---|
 | Renderer | React 19, TypeScript, Vite, Tailwind, lucide-react | App shell, recording controls, history, model selection, settings, and visual state. |
-| Desktop runtime | Electron main/preload, secure IPC | Window lifecycle, tray, global shortcut, overlay window, sidecar process management, and app paths. |
-| Sidecar | Python, FastAPI, ONNX Runtime, onnx-asr | Health checks, model registry, model selection, and `/v1/audio/transcriptions`. |
-| Release | electron-builder, PyInstaller | Produces the desktop app and bundles the sidecar executable under Electron resources. |
+| Desktop runtime | Electron main/preload, secure IPC | Window lifecycle, tray, global shortcut, overlay window, engine process management, and app paths. |
+| ASR engine | Python, FastAPI, NeMo, Torch | Health checks, Parakeet model loading, model guardrails, and `/v1/audio/transcriptions`. |
+| Release | electron-builder, PyInstaller | Produces the desktop app and bundles the ASR engine executable under Electron resources. |
 
 ### Runtime Flow
 
@@ -54,9 +54,9 @@ flowchart LR
   User["User microphone or audio file"] --> Renderer["React renderer"]
   Renderer --> IPC["Electron preload IPC"]
   IPC --> Main["Electron main process"]
-  Main --> Sidecar["Python FastAPI sidecar"]
-  Sidecar --> Models["Whisper / Parakeet model cache"]
-  Sidecar --> Renderer
+  Main --> Engine["Python ASR engine"]
+  Engine --> Models["Parakeet model cache"]
+  Engine --> Renderer
   Main --> Data["App data directory"]
 ```
 
@@ -66,11 +66,11 @@ flowchart LR
 |---|---:|---:|
 | Node.js | 20.19+ or 22.12+ | Not required |
 | npm | Required | Not required |
-| Python | 3.10+ recommended | Not required when sidecar is bundled |
+| Python | 3.10-3.12 recommended for NeMo/Torch | Not required when the engine is bundled |
 | Git | Required | Not required |
 | OS | macOS, Windows, or Linux | macOS, Windows, or Linux |
 
-Production installers should include a platform-specific `sidecar/bin/asrpro-sidecar` executable before packaging. End users should not need to install Python manually.
+Production installers should include a platform-specific ASR engine executable before packaging. End users should not need to install Python manually.
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ npm run sidecar:setup
 npm run electron:dev
 ```
 
-The development command starts the Python sidecar on `127.0.0.1:8000`, Vite on `127.0.0.1:4270`, and the Electron app once both services are healthy.
+The development command starts the local ASR engine on `127.0.0.1:8000`, Vite on `127.0.0.1:4270`, and the Electron app once both services are healthy.
 
 ## Commands
 
@@ -91,10 +91,10 @@ The development command starts the Python sidecar on `127.0.0.1:8000`, Vite on `
 | `make dev` | Start the Electron desktop app through `npm run electron:dev`. |
 | `npm run dev` | Start the Vite renderer on `127.0.0.1:4270`. |
 | `npm run preview` | Preview the production renderer on `127.0.0.1:4271`. |
-| `npm run sidecar:setup` | Create or refresh `sidecar/.venv` from `sidecar/requirements.txt`. |
-| `npm run sidecar:dev` | Ensure the sidecar environment, then start `sidecar/main.py`. |
-| `npm run sidecar:build` | Build the current-platform sidecar executable with PyInstaller. |
-| `npm run sidecar:check` | Verify the packaged sidecar executable exists. |
+| `npm run sidecar:setup` | Create or refresh the Python ASR engine environment from `sidecar/requirements.txt`. |
+| `npm run sidecar:dev` | Ensure the engine environment, then start `sidecar/main.py`. |
+| `npm run sidecar:build` | Build the current-platform engine executable with PyInstaller. |
+| `npm run sidecar:check` | Verify the packaged engine executable exists. |
 | `npm run build` | Type-check and build renderer assets. |
 | `npm test -- --run` | Run the Vitest suite once. |
 | `npm run electron:pack` | Build renderer assets and create an unpacked Electron app for the current OS. |
@@ -102,7 +102,7 @@ The development command starts the Python sidecar on `127.0.0.1:8000`, Vite on `
 
 ## Production Build
 
-Build releases on the target operating system so the sidecar executable matches the platform being packaged.
+Build releases on the target operating system so the engine executable matches the platform being packaged.
 
 ```bash
 npm install
@@ -112,7 +112,7 @@ npm run sidecar:check
 npm run electron:pack
 ```
 
-| Platform | Required sidecar binary | Electron Builder targets |
+| Platform | Required engine binary | Electron Builder targets |
 |---|---|---|
 | macOS | `sidecar/bin/asrpro-sidecar` | DMG, ZIP, unpacked app |
 | Windows | `sidecar/bin/asrpro-sidecar.exe` | NSIS, portable executable |
@@ -124,7 +124,7 @@ Release output is written to `release/`. Code signing, notarization, and store s
 
 | Mode | Data path behavior |
 |---|---|
-| Development | Electron keeps local state under `tmp/app-data`. The sidecar falls back to `data/` when launched directly. |
+| Development | Electron keeps local state under `tmp/app-data`. The engine falls back to `data/` when launched directly. |
 | Packaged app | Electron resolves the user-writable app data path, then stores ASR Pro data under its `data/` child directory. |
 | Models | Hugging Face, NeMo, Torch, and ONNX model caches are redirected under the app data model cache. |
 | Logs and session data | Logs, Chromium session data, config, and overlay settings are kept under the app-owned data directory. |
@@ -133,21 +133,21 @@ Release output is written to `release/`. Code signing, notarization, and store s
 
 | Variable | Default | Use |
 |---|---|---|
-| `VITE_ASRPRO_API_URL` | `http://127.0.0.1:8000` | Renderer API base URL for the Python sidecar. |
-| `ASRPRO_DATA_DIR` | Electron-provided app data path, or `data/` for direct sidecar runs | Overrides sidecar config, logs, model cache, and transcript storage. |
-| `ASRPRO_DEFAULT_MODEL` | `whisper-base` | Default model identifier passed from Electron to the sidecar. |
-| `ASRPRO_DEFAULT_MODEL_REPO` | `onnx-asr/whisper-base` | Default model repository metadata. |
-| `PYTHON` | `python3` on macOS/Linux, `python` on Windows | Python executable used by sidecar setup and build scripts. |
+| `VITE_ASRPRO_API_URL` | `http://127.0.0.1:8000` | Renderer API base URL for the local ASR engine. |
+| `ASRPRO_DATA_DIR` | Electron-provided app data path, or `data/` for direct engine runs | Overrides engine config, logs, model cache, and transcript storage. |
+| `ASRPRO_DEFAULT_MODEL` | `parakeet-tdt-0.6b-v3` | Default model identifier passed from Electron to the engine. |
+| `ASRPRO_DEFAULT_MODEL_REPO` | `nvidia/parakeet-tdt-0.6b-v3` | Default model repository metadata. |
+| `PYTHON` | `python3` on macOS/Linux, `python` on Windows | Python executable used by engine setup and build scripts. |
 
 ## API Surface
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/health` | `GET`, `HEAD` | Sidecar readiness and health checks. |
+| `/health` | `GET`, `HEAD` | Engine readiness and health checks. |
 | `/v1/models` | `GET` | List available transcription models. |
 | `/v1/settings/model` | `POST` | Select the active model. |
 | `/v1/audio/transcriptions` | `POST` | Transcribe uploaded audio and return JSON, text, or SRT output. |
-| `/ws` | WebSocket | Sidecar real-time channel reserved for runtime updates. |
+| `/ws` | WebSocket | Engine real-time channel reserved for runtime updates. |
 
 ## Quality Gates
 
@@ -167,7 +167,7 @@ npm run electron:pack
 |---|---|
 | `npm run build` | TypeScript and production renderer compile successfully. |
 | `npm test -- --run` | Renderer, Electron runtime helpers, and UI interaction tests pass. |
-| `pytest sidecar/tests` | Sidecar API, model registry, settings, and device tests pass. |
+| `pytest sidecar/tests` | Engine API, model registry, settings, and device tests pass. |
 | `npm run electron:pack` | Electron Builder can assemble the current OS app with bundled runtime resources. |
 | Manual runtime smoke | The packaged or previewed app loads, has no console errors, and can navigate Home, History, Models, and About. |
 
@@ -177,8 +177,8 @@ npm run electron:pack
 asrpro/
 ├── docs/screenshots/       # README screenshots captured from the current app UI
 ├── electron/               # Electron main, preload, overlay, identity, and runtime helpers
-├── scripts/                # Sidecar setup, bundle check, and PyInstaller build helpers
-├── sidecar/                # Python FastAPI sidecar, model registry, utilities, and tests
+├── scripts/                # Engine setup, bundle check, and PyInstaller build helpers
+├── sidecar/                # Python ASR engine, model registry, utilities, and tests
 ├── src/                    # React renderer, app shell, assets, services, and Vitest tests
 ├── Makefile                # Small operator entrypoints
 ├── package.json            # App metadata, scripts, dependencies, and Electron Builder config
@@ -201,10 +201,10 @@ asrpro/
 | Symptom | Fix |
 |---|---|
 | Vite refuses to start | Port `4270` is already in use. Stop the existing process or run `npm run preview` on `4271` for renderer-only checks. |
-| Sidecar dependencies are missing | Run `npm run sidecar:setup`. The script recreates or refreshes `sidecar/.venv` when requirements change. |
-| Release packaging fails with missing sidecar | Run `npm run sidecar:build`, then `npm run sidecar:check`, before `npm run electron:pack`. |
+| Engine dependencies are missing | Run `npm run sidecar:setup`. The script recreates or refreshes `sidecar/.venv` when requirements change. |
+| Release packaging fails with missing engine | Run `npm run sidecar:build`, then `npm run sidecar:check`, before `npm run electron:pack`. |
 | First transcription is slow | The model may be downloading or initializing. Pre-cache models on release machines when needed. |
-| GPU acceleration is unavailable | The sidecar falls back to CPU when MPS, CUDA, or other supported acceleration paths are unavailable. |
+| GPU acceleration is unavailable | The engine falls back to CPU when MPS, CUDA, or other supported acceleration paths are unavailable. |
 
 ## License
 

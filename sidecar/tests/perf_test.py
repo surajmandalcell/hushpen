@@ -1,5 +1,5 @@
 """
-Performance testing module for ASR Pro Python Sidecar
+Performance testing module for the ASR Pro Python ASR engine
 """
 
 import asyncio

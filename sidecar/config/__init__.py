@@ -1,5 +1,5 @@
 """
-Configuration module for ASR Pro Python Sidecar
+Configuration module for the ASR Pro Python ASR engine
 """
 
 from .settings import Settings

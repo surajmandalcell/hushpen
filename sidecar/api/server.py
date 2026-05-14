@@ -1,5 +1,5 @@
 """
-FastAPI server for ASR Pro Python Sidecar
+FastAPI server for the ASR Pro Python ASR engine
 """
 
 from fastapi import (
@@ -70,7 +70,7 @@ def create_app(settings: Settings) -> FastAPI:
     """Create FastAPI application with all routes."""
     app = FastAPI(
         title="ASR Pro API",
-        description="Python sidecar API for ASR Pro",
+        description="Python ASR engine API for ASR Pro",
         version="1.0.0",
     )
 
@@ -116,7 +116,11 @@ def create_app(settings: Settings) -> FastAPI:
         try:
             models = await model_manager.list_available_models()
             model_responses = [
-                ModelResponse(id=model_id, ready=model_manager.is_model_ready(model_id))
+                ModelResponse(
+                    id=model_id,
+                    ready=model_manager.is_model_ready(model_id),
+                    enabled=True,
+                )
                 for model_id in models
             ]
             return ModelListResponse(data=model_responses)
@@ -128,6 +132,15 @@ def create_app(settings: Settings) -> FastAPI:
     async def set_model(request: ModelSettingRequest):
         """Set the active model."""
         try:
+            is_enabled = getattr(model_manager, "is_model_enabled", None)
+            get_disabled_reason = getattr(model_manager, "get_disabled_reason", None)
+            if callable(is_enabled) and is_enabled(request.model_id) is False:
+                reason = get_disabled_reason(request.model_id) if callable(get_disabled_reason) else None
+                detail = f"Model {request.model_id} is disabled"
+                if reason:
+                    detail = f"{detail}: {reason}"
+                raise HTTPException(status_code=400, detail=detail)
+
             success = await model_manager.set_model(request.model_id)
             if success:
                 return ModelSettingResponse(status="success", model=request.model_id)
@@ -160,6 +173,14 @@ def create_app(settings: Settings) -> FastAPI:
                 raise HTTPException(
                     status_code=400, detail="No model specified or loaded"
                 )
+            is_enabled = getattr(model_manager, "is_model_enabled", None)
+            if model and callable(is_enabled) and is_enabled(model) is False:
+                get_disabled_reason = getattr(model_manager, "get_disabled_reason", None)
+                reason = get_disabled_reason(model) if callable(get_disabled_reason) else None
+                detail = f"Model {model} is disabled"
+                if reason:
+                    detail = f"{detail}: {reason}"
+                raise HTTPException(status_code=400, detail=detail)
 
             # Define progress callback
             async def progress_callback(progress: int, status: str):

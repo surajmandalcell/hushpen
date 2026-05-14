@@ -22,5 +22,12 @@ pytest-asyncio>=0.21.0
 httpx>=0.25.0
 requests>=2.31.0
 
-# Optional for Parakeet/NeMo models:
-# pip install "nemo-toolkit[asr]>=1.23.0" torch torchaudio
+# Parakeet-TDT-0.6B-v3 default engine
+nemo-toolkit[asr]>=2.4.0
+onnx<1.19
+protobuf~=5.29.5
+torch
+torchaudio
+
+# Packaging
+pyinstaller>=6.0.0

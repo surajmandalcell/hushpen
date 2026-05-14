@@ -39,8 +39,9 @@ class NemoParakeetLoader(BaseLoader):
         os.environ["NEMO_HOME"] = str(cache_dir / "nemo")
         os.environ["TORCH_HOME"] = str(cache_dir / "torch")
         os.environ["XDG_CACHE_HOME"] = str(cache_dir.parent / "cache")
+        os.environ["MPLCONFIGDIR"] = str(cache_dir.parent / "cache" / "matplotlib")
 
-        for key in ["HF_HOME", "HUGGINGFACE_HUB_CACHE", "NEMO_HOME", "TORCH_HOME", "XDG_CACHE_HOME"]:
+        for key in ["HF_HOME", "HUGGINGFACE_HUB_CACHE", "NEMO_HOME", "TORCH_HOME", "XDG_CACHE_HOME", "MPLCONFIGDIR"]:
             Path(os.environ[key]).mkdir(parents=True, exist_ok=True)
 
     async def load(self) -> bool:

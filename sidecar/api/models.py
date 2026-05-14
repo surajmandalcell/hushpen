@@ -10,6 +10,8 @@ class ModelResponse(BaseModel):
     object: str = "model"
     owned_by: str = "asrpro"
     ready: bool
+    enabled: bool = True
+    disabled_reason: Optional[str] = None
 
 class ModelListResponse(BaseModel):
     object: str = "list"

@@ -544,7 +544,7 @@ async function startSidecar() {
           status: "failed",
           mode: launchConfig.mode,
           pid: null,
-          error: `Sidecar exited with code ${code ?? "null"} and signal ${signal ?? "null"}.`,
+          error: `ASR engine exited with code ${code ?? "null"} and signal ${signal ?? "null"}.`,
         });
       }
     });
@@ -571,7 +571,7 @@ async function startSidecar() {
       command: launchConfig.command,
       args: launchConfig.args,
       pid: null,
-      error: spawnError?.message || "Sidecar did not become healthy before the startup timeout.",
+      error: spawnError?.message || "ASR engine did not become healthy before the startup timeout.",
     });
   })();
 

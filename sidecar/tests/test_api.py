@@ -29,7 +29,7 @@ class TestAPIServer:
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
-            mock_manager.get_current_model.return_value = 'whisper-base'
+            mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
             mock_manager.get_current_device.return_value = 'cpu'
             mock_manager_class.return_value = mock_manager
             
@@ -40,7 +40,7 @@ class TestAPIServer:
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "healthy"
-            assert data["current_model"] == "whisper-base"
+            assert data["current_model"] == "parakeet-tdt-0.6b-v3"
             assert data["device"] == "cpu"
 
     def test_health_check_allows_head_for_dev_wait_on(self):
@@ -49,7 +49,7 @@ class TestAPIServer:
 
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
-            mock_manager.get_current_model.return_value = 'whisper-base'
+            mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
             mock_manager.get_current_device.return_value = 'cpu'
             mock_manager_class.return_value = mock_manager
 
@@ -83,7 +83,7 @@ class TestAPIServer:
         
         with patch('api.server.ModelManager') as mock_manager_class:
             mock_manager = Mock()
-            mock_manager.list_available_models = AsyncMock(return_value=['whisper-base', 'whisper-small'])
+            mock_manager.list_available_models = AsyncMock(return_value=['parakeet-tdt-0.6b-v3'])
             mock_manager.is_model_ready.return_value = True
             mock_manager_class.return_value = mock_manager
             
@@ -94,9 +94,9 @@ class TestAPIServer:
             assert response.status_code == 200
             data = response.json()
             assert data["object"] == "list"
-            assert len(data["data"]) == 2
+            assert len(data["data"]) == 1
             model_ids = [model["id"] for model in data["data"]]
-            assert "whisper-base" in model_ids
+            assert model_ids == ["parakeet-tdt-0.6b-v3"]
             assert all(model["ready"] is True for model in data["data"])
     
     def test_list_models_failure(self):
@@ -128,12 +128,12 @@ class TestAPIServer:
             
             app = create_app(settings)
             client = TestClient(app)
-            response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
+            response = client.post("/v1/settings/model", json={"model_id": "parakeet-tdt-0.6b-v3"})
             
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "success"
-            assert data["model"] == "whisper-base"
+            assert data["model"] == "parakeet-tdt-0.6b-v3"
     
     def test_set_model_failure(self):
         """Test model setting failure."""
@@ -146,11 +146,29 @@ class TestAPIServer:
             
             app = create_app(settings)
             client = TestClient(app)
-            response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
+            response = client.post("/v1/settings/model", json={"model_id": "disabled-model"})
 
             assert response.status_code == 400
             data = response.json()
             assert "Failed to set model" in data["detail"]
+
+    def test_set_model_rejects_disabled_whisper_model(self):
+        """Test disabled Whisper placeholders return a clear API error."""
+        settings = Settings()
+
+        with patch('api.server.ModelManager') as mock_manager_class:
+            mock_manager = Mock()
+            mock_manager.is_model_enabled.return_value = False
+            mock_manager.get_disabled_reason.return_value = "Future placeholder"
+            mock_manager.set_model = AsyncMock(return_value=False)
+            mock_manager_class.return_value = mock_manager
+
+            app = create_app(settings)
+            client = TestClient(app)
+            response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
+
+            assert response.status_code == 400
+            assert "Model whisper-base is disabled: Future placeholder" in response.json()["detail"]
     
     def test_set_model_exception(self):
         """Test model setting with exception."""
@@ -163,7 +181,7 @@ class TestAPIServer:
             
             app = create_app(settings)
             client = TestClient(app)
-            response = client.post("/v1/settings/model", json={"model_id": "whisper-base"})
+            response = client.post("/v1/settings/model", json={"model_id": "parakeet-tdt-0.6b-v3"})
 
             assert response.status_code == 500
             data = response.json()
@@ -180,7 +198,7 @@ class TestAPIServer:
 
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
-                mock_manager.get_current_model.return_value = 'whisper-base'
+                mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
                 mock_manager.transcribe_file = AsyncMock(return_value={
                     'text': 'Hello world',
                     'language': 'en',
@@ -212,7 +230,7 @@ class TestAPIServer:
 
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
-                mock_manager.get_current_model.return_value = 'whisper-base'
+                mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
                 mock_manager.transcribe_file = AsyncMock(return_value={
                     'text': 'Browser recording',
                     'language': 'en',
@@ -242,7 +260,7 @@ class TestAPIServer:
 
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
-                mock_manager.get_current_model.return_value = 'whisper-base'
+                mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
                 mock_manager.transcribe_file = AsyncMock(return_value={
                     'text': 'Hello world',
                     'language': 'en'
@@ -271,7 +289,7 @@ class TestAPIServer:
 
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
-                mock_manager.get_current_model.return_value = 'whisper-base'
+                mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
                 mock_manager.transcribe_file = AsyncMock(return_value={
                     'text': 'Hello world',
                     'segments': [
@@ -339,8 +357,8 @@ class TestAPIServer:
                 data = response.json()
                 assert "No model specified or loaded" in data["detail"]
     
-    def test_transcribe_audio_specific_model(self):
-        """Test audio transcription with specific model."""
+    def test_transcribe_audio_specific_enabled_model(self):
+        """Test audio transcription with the enabled Parakeet model."""
         settings = Settings()
 
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -349,6 +367,7 @@ class TestAPIServer:
 
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
+                mock_manager.is_model_enabled.return_value = True
                 mock_manager.transcribe_file = AsyncMock(return_value={'text': 'Hello world'})
                 mock_manager_class.return_value = mock_manager
                 
@@ -356,13 +375,39 @@ class TestAPIServer:
                 client = TestClient(app)
                 with open(f.name, 'rb') as audio_file:
                     response = client.post(
-                        "/v1/audio/transcriptions?model=whisper-small",
+                        "/v1/audio/transcriptions?model=parakeet-tdt-0.6b-v3",
                         files={"file": ("test.wav", audio_file, "audio/wav")}
                     )
                 
                 assert response.status_code == 200
                 # Verify the model parameter was passed correctly
                 mock_manager.transcribe_file.assert_called_once()
+
+    def test_transcribe_audio_rejects_disabled_whisper_model(self):
+        """Test direct transcription calls cannot load disabled Whisper placeholders."""
+        settings = Settings()
+
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+            f.write(b'fake audio data')
+            f.flush()
+
+            with patch('api.server.ModelManager') as mock_manager_class:
+                mock_manager = Mock()
+                mock_manager.is_model_enabled.return_value = False
+                mock_manager.transcribe_file = AsyncMock(return_value={'text': 'Should not run'})
+                mock_manager_class.return_value = mock_manager
+
+                app = create_app(settings)
+                client = TestClient(app)
+                with open(f.name, 'rb') as audio_file:
+                    response = client.post(
+                        "/v1/audio/transcriptions?model=whisper-base",
+                        files={"file": ("test.wav", audio_file, "audio/wav")}
+                    )
+
+                assert response.status_code == 400
+                assert "Model whisper-base is disabled" in response.json()["detail"]
+                mock_manager.transcribe_file.assert_not_called()
     
     def test_transcribe_audio_exception(self):
         """Test audio transcription with exception."""
@@ -374,7 +419,7 @@ class TestAPIServer:
 
             with patch('api.server.ModelManager') as mock_manager_class:
                 mock_manager = Mock()
-                mock_manager.get_current_model.return_value = 'whisper-base'
+                mock_manager.get_current_model.return_value = 'parakeet-tdt-0.6b-v3'
                 mock_manager.transcribe_file = AsyncMock(side_effect=Exception("Transcription failed"))
                 mock_manager_class.return_value = mock_manager
                 

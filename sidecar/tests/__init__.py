@@ -1,5 +1,5 @@
 """
-Test package for ASR Pro Python Sidecar
+Test package for the ASR Pro Python ASR engine
 """
 
 import asyncio
@@ -161,10 +161,9 @@ async def run_all_tests():
     manager = ModelManager(settings)
     await manager.initialize()
 
-    # Get available models - only test English/Hindi focused models
+    # Get available models - Parakeet-TDT-0.6B-v3 is the only enabled model for now
     all_models = await manager.list_available_models()
-    # Focus on smaller, faster models for English/Hindi (ensure whisper-tiny is included if available)
-    preferred = ["whisper-tiny", "whisper-base", "parakeet-tdt-0.6b-v2"]
+    preferred = ["parakeet-tdt-0.6b-v3"]
     model_ids = [m for m in preferred if m in all_models]
 
     print(f"Testing {len(model_ids)} models for English/Hindi: {', '.join(model_ids)}")
@@ -280,7 +279,7 @@ async def test_core_functionality():
         print("✓ Model manager initialized")
 
         # Test model loading
-        model_id = "whisper-base"
+        model_id = "parakeet-tdt-0.6b-v3"
         success = await manager.set_model(model_id)
         if success:
             print(f"✓ Model {model_id} loaded successfully")
@@ -355,7 +354,7 @@ def test_api_functionality():
 
 async def run_integration_tests():
     """Run integration tests."""
-    print("ASR Pro Python Sidecar - Integration Test")
+    print("ASR Pro Python ASR Engine - Integration Test")
     print("=" * 50)
 
     # Test core functionality
@@ -379,7 +378,7 @@ async def run_integration_tests():
     print(f"API Functionality: {'✓ PASSED' if api_success else '✗ FAILED'}")
 
     if core_success and api_success:
-        print("\n🎉 ALL TESTS PASSED! The ASR Pro sidecar is working correctly.")
+        print("\nALL TESTS PASSED. The ASR Pro engine is working correctly.")
         print("\nFeatures verified:")
         print("• Model registry and management")
         print("• Device detection and configuration")

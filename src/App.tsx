@@ -56,7 +56,7 @@ interface RuntimeInfo {
   defaultModelRepo?: string;
   dataDir?: string;
   overlaySettings?: OverlaySettings;
-  sidecar?: SidecarRuntimeState;
+  sidecar?: EngineRuntimeState;
   shortcut?: string;
   shortcutRegistered?: boolean;
 }
@@ -66,7 +66,7 @@ interface AppInfo {
   version: string;
 }
 
-interface SidecarRuntimeState {
+interface EngineRuntimeState {
   status: string;
   mode?: string;
   healthUrl?: string;
@@ -152,15 +152,13 @@ const sidebarIconTone: Record<ViewId, string> = {
   about: "bg-[#727272] text-white",
 };
 
-const defaultModelName = "Local Whisper";
 const parakeetModelName = "Parakeet-TDT-0.6B-v3";
+const defaultModelName = parakeetModelName;
 const defaultAudioInputId = "default";
 const defaultAudioInputLabel = "System default";
 const defaultAudioInputOptions: AudioInputDeviceOption[] = [{ id: defaultAudioInputId, label: defaultAudioInputLabel }];
 const modelIdsByName: Record<string, string> = {
-  [defaultModelName]: "whisper-base",
   [parakeetModelName]: "parakeet-tdt-0.6b-v3",
-  "Whisper Large V3 Turbo": "whisper-large",
 };
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
 const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
@@ -171,22 +169,18 @@ const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
 
 const modelCards = [
   {
-    name: "Local Whisper",
-    detail: "Whisper Base, offline, private",
-    speed: "Default",
-    status: "Active",
-  },
-  {
     name: parakeetModelName,
     detail: "NVIDIA NeMo, multilingual, punctuation and timestamps",
-    speed: "Optional",
-    status: "Requires NeMo",
+    speed: "Default",
+    status: "Active",
+    disabled: false,
   },
   {
-    name: "Whisper Large V3 Turbo",
-    detail: "Higher accuracy for noisy media",
-    speed: "Optional",
-    status: "Not installed",
+    name: "Local Whisper",
+    detail: "Whisper remains reserved for a future engine option",
+    speed: "Disabled",
+    status: "Future placeholder",
+    disabled: true,
   },
 ];
 
@@ -860,13 +854,13 @@ function App() {
       }
     });
 
-    const unsubscribeSidecar = api.onSidecarState?.((sidecar) => {
-      setRuntimeInfo((current) => (current ? { ...current, sidecar } : { isRecording: false, sidecar }));
+    const unsubscribeEngine = api.onSidecarState?.((engineState) => {
+      setRuntimeInfo((current) => (current ? { ...current, sidecar: engineState } : { isRecording: false, sidecar: engineState }));
     });
 
     return () => {
       unsubscribeRecording?.();
-      unsubscribeSidecar?.();
+      unsubscribeEngine?.();
     };
   }, [startRecordingFlow, stopRecordingFlow]);
 
@@ -1241,7 +1235,7 @@ function HomeView({
         <div className={panelSurfaceClass}>
           <UpdateRow date="May 14" title="Recording history playback" detail="Saved dictations keep playable source audio with their transcripts." />
           <UpdateRow date="May 14" title="Microphone picker" detail="Choose the input device from the toolbar or Sound settings." />
-          <UpdateRow date="May 13" title="Local Whisper sidecar" detail="Desktop development starts the local sidecar and uses the working Whisper Base model." />
+          <UpdateRow date="May 13" title="Parakeet engine" detail="Desktop transcription now defaults to Parakeet-TDT-0.6B-v3 through the local NeMo engine." />
         </div>
       </section>
     </section>
@@ -1595,11 +1589,18 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
           <button
             key={model.name}
             type="button"
+            disabled={model.disabled}
             aria-pressed={selectedModel === model.name}
-            className={`flex min-h-14 w-full items-center gap-3 border-t ${panelDividerClass} px-3 py-2 text-left transition first:border-t-0 hover:bg-white/[0.065] ${
+            className={`flex min-h-14 w-full items-center gap-3 border-t ${panelDividerClass} px-3 py-2 text-left transition first:border-t-0 ${
+              model.disabled ? "cursor-not-allowed opacity-55" : "hover:bg-white/[0.065]"
+            } ${
               selectedModel === model.name ? "bg-white/[0.075]" : ""
             }`}
-            onClick={() => onSelectModel(model.name)}
+            onClick={() => {
+              if (!model.disabled) {
+                onSelectModel(model.name);
+              }
+            }}
           >
             <div className={iconTileClass}>
               <BrainCircuit className="size-3" />
@@ -1608,7 +1609,9 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
               <p className="truncate text-[13px] font-semibold text-[#f2f2f2]">{model.name}</p>
               <p className="selectable-text mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{model.detail}</p>
             </div>
-            {selectedModel === model.name ? (
+            {model.disabled ? (
+              <span className="shrink-0 text-[12px] font-semibold text-[#a8a8a8]">{model.status}</span>
+            ) : selectedModel === model.name ? (
               <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
                 <CheckCircle2 className="size-3.5 text-[#0a84ff]" />
                 Selected
@@ -1849,9 +1852,9 @@ function SettingsView({
   onOpenSound,
 }: SettingsViewProps) {
   const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
-  const sidecar = runtimeInfo?.sidecar;
-  const sidecarStatus = formatSidecarStatus(sidecar?.status);
-  const sidecarDetail = sidecar?.error || sidecar?.mode || sidecar?.healthUrl || "Waiting for desktop runtime";
+  const engine = runtimeInfo?.sidecar;
+  const engineStatus = formatEngineStatus(engine?.status);
+  const engineDetail = engine?.error || engine?.mode || engine?.healthUrl || "Waiting for desktop runtime";
 
   return (
     <ViewFrame title="Configuration">
@@ -1870,14 +1873,14 @@ function SettingsView({
       <GroupedPanel title="Application">
         <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
         <PanelRow title="Microphone input" detail={selectedAudioInputLabel} trailing={<NavigateButton label="Change" onClick={onOpenSound} />} />
-        <PanelRow title="Sidecar" detail={sidecarDetail} trailing={<StatusLabel>{sidecarStatus}</StatusLabel>} />
+        <PanelRow title="Engine" detail={engineDetail} trailing={<StatusLabel>{engineStatus}</StatusLabel>} />
         <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} trailing={<StatusLabel>Read only</StatusLabel>} />
       </GroupedPanel>
     </ViewFrame>
   );
 }
 
-function formatSidecarStatus(status?: string) {
+function formatEngineStatus(status?: string) {
   if (status === "ready") return "Ready";
   if (status === "starting") return "Starting";
   if (status === "failed") return "Failed";
