@@ -42,6 +42,7 @@ export default {
       },
       fontFamily: {
         'sf': ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'system-ui', 'sans-serif'],
+        'sans': ['"Inter"', 'sans-serif'],
       },
       borderRadius: {
         'macos': '6px',
