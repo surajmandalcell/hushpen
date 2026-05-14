@@ -175,7 +175,8 @@ const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
 });
 
 const sharedRadiusClass = "rounded-[12px]";
-const panelSurfaceClass = "overflow-hidden rounded-[22px] border border-white/[0.095] bg-white/[0.055] backdrop-blur-2xl";
+const panelGlassClass = "rounded-[22px] border border-white/[0.095] bg-white/[0.055] backdrop-blur-2xl";
+const panelSurfaceClass = `overflow-hidden ${panelGlassClass}`;
 const panelDividerClass = "border-white/[0.08]";
 const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusClass} bg-white/[0.07] text-[#d7d7d7]`;
 
@@ -403,7 +404,13 @@ function formatShortcutParts(shortcut?: string) {
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Recording failed";
+  const message = error instanceof Error ? error.message : "Recording failed";
+
+  if (/failed to fetch|load failed|networkerror|network request failed/i.test(message)) {
+    return "Failed to load.";
+  }
+
+  return message;
 }
 
 function createRecordingFile(blob: Blob) {
@@ -1272,7 +1279,7 @@ function MicrophoneSelector({
         aria-label={ariaLabel}
         disabled={disabled}
         className={isToolbar
-          ? "inline-flex h-7 max-w-[260px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#bdbdbd] transition hover:bg-[#434343] hover:text-[#eeeeee] disabled:cursor-not-allowed disabled:text-[#7d7d7d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
+          ? "toolbar-mic-trigger inline-flex h-7 max-w-[260px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#bdbdbd] disabled:cursor-not-allowed disabled:text-[#7d7d7d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
           : "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#5c5c5c] bg-[#303030] px-2 py-1.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:text-[#8a8a8a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"}
         onClick={() => setIsOpen((current) => !current)}
       >
@@ -1329,7 +1336,7 @@ function SoundView({
 }: SoundViewProps) {
   return (
     <ViewFrame title="Sound">
-      <GroupedPanel title="Input">
+      <GroupedPanel title="Input" allowOverflow>
         <PanelRow
           icon={<Mic2 className="size-3.5" />}
           title="Microphone"
@@ -1702,14 +1709,15 @@ function ViewFrame({ title, children }: ViewFrameProps) {
 
 interface GroupedPanelProps {
   title?: string;
+  allowOverflow?: boolean;
   children: ReactNode;
 }
 
-function GroupedPanel({ title, children }: GroupedPanelProps) {
+function GroupedPanel({ title, allowOverflow = false, children }: GroupedPanelProps) {
   return (
     <section className="space-y-2">
       {title ? <h3 className="px-1 text-[13px] font-semibold text-[#a8a8a8]">{title}</h3> : null}
-      <div className={panelSurfaceClass}>{children}</div>
+      <div className={allowOverflow ? panelGlassClass : panelSurfaceClass}>{children}</div>
     </section>
   );
 }

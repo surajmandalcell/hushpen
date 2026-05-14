@@ -386,7 +386,7 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "History" })).toBeTruthy());
     expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
-    expect(screen.getByText(/Failed to fetch/, { selector: "p" })).toBeTruthy();
+    expect(screen.getByText("Failed to load.")).toBeTruthy();
 
     const audio = screen.getByLabelText("Recording audio: Recording failed to transcribe");
     expect(audio.tagName).toBe("AUDIO");
@@ -399,7 +399,7 @@ describe("ASR Pro Electron shell", () => {
     const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
     expect(stored).toHaveLength(1);
     expect(stored[0].status).toBe("failed");
-    expect(stored[0].error).toBe("Failed to fetch");
+    expect(stored[0].error).toBe("Failed to load.");
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
