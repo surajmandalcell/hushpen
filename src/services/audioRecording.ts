@@ -9,6 +9,7 @@ export interface AudioRecordingState {
 export interface AudioRecordingOptions {
     sampleRate?: number;
     channelCount?: number;
+    deviceId?: string;
     echoCancellation?: boolean;
     noiseSuppression?: boolean;
 }
@@ -107,13 +108,19 @@ class AudioRecordingService {
             }
 
             // Request microphone access
+            const audioConstraints: MediaTrackConstraints = {
+                sampleRate: options.sampleRate || 16000,
+                channelCount: options.channelCount || 1,
+                echoCancellation: options.echoCancellation ?? true,
+                noiseSuppression: options.noiseSuppression ?? true,
+            };
+
+            if (options.deviceId) {
+                audioConstraints.deviceId = { exact: options.deviceId };
+            }
+
             const constraints: MediaStreamConstraints = {
-                audio: {
-                    sampleRate: options.sampleRate || 16000,
-                    channelCount: options.channelCount || 1,
-                    echoCancellation: options.echoCancellation ?? true,
-                    noiseSuppression: options.noiseSuppression ?? true,
-                },
+                audio: audioConstraints,
             };
 
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);

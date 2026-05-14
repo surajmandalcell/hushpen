@@ -13,6 +13,7 @@ import {
   Mic2,
   Pause,
   Play,
+  RefreshCw,
   Settings,
   Volume2,
   type LucideIcon,
@@ -63,6 +64,11 @@ interface TranscriptHistoryRow {
   error?: string;
 }
 
+interface AudioInputDeviceOption {
+  id: string;
+  label: string;
+}
+
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "configuration", label: "Configuration", icon: Settings },
@@ -81,12 +87,16 @@ const sidebarIconTone: Record<ViewId, string> = {
 
 const defaultModelName = "Local Whisper";
 const parakeetModelName = "Parakeet-TDT-0.6B-v3";
+const defaultAudioInputId = "default";
+const defaultAudioInputLabel = "System default";
+const defaultAudioInputOptions: AudioInputDeviceOption[] = [{ id: defaultAudioInputId, label: defaultAudioInputLabel }];
 const modelIdsByName: Record<string, string> = {
   [defaultModelName]: "whisper-base",
   [parakeetModelName]: "parakeet-tdt-0.6b-v3",
   "Whisper Large V3 Turbo": "whisper-large",
 };
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
+const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
 const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -188,6 +198,42 @@ function cancelWaveformFrame(id: number) {
   window.clearTimeout(id);
 }
 
+function loadSelectedAudioInputId() {
+  try {
+    const stored = window.localStorage.getItem(audioInputDeviceStorageKey);
+    return stored && stored.trim() ? stored : defaultAudioInputId;
+  } catch {
+    return defaultAudioInputId;
+  }
+}
+
+function saveSelectedAudioInputId(deviceId: string) {
+  try {
+    window.localStorage.setItem(audioInputDeviceStorageKey, deviceId);
+  } catch {
+    // Local storage failures should not block recording.
+  }
+}
+
+function buildAudioInputDeviceOptions(devices: MediaDeviceInfo[]): AudioInputDeviceOption[] {
+  const options: AudioInputDeviceOption[] = [...defaultAudioInputOptions];
+  const seenDeviceIds = new Set([defaultAudioInputId]);
+  let unnamedAudioInputCount = 0;
+
+  for (const device of devices) {
+    if (device.kind !== "audioinput" || !device.deviceId || seenDeviceIds.has(device.deviceId)) {
+      continue;
+    }
+
+    seenDeviceIds.add(device.deviceId);
+    unnamedAudioInputCount += 1;
+    const label = device.label.trim() || `Microphone ${unnamedAudioInputCount}`;
+    options.push({ id: device.deviceId, label });
+  }
+
+  return options;
+}
+
 function loadTranscriptHistory() {
   try {
     const raw = window.localStorage.getItem(transcriptHistoryStorageKey);
@@ -280,7 +326,7 @@ function buildHomeStats(rows: TranscriptHistoryRow[]) {
   return [
     { value: `${avgWpm} WPM`, label: "Average speed" },
     { value: String(wordsThisWeek), label: "Words this week" },
-    { value: "1", label: "Apps used" },
+    { value: String(rows.length), label: "Recordings" },
     { value: savedMinutes ? `${savedMinutes} minute${savedMinutes === 1 ? "" : "s"}` : "0 minutes", label: "Saved this week" },
   ];
 }
@@ -412,6 +458,10 @@ function App() {
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
   const [selectedModel, setSelectedModel] = useState(defaultModelName);
+  const [audioInputDevices, setAudioInputDevices] = useState<AudioInputDeviceOption[]>(defaultAudioInputOptions);
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState(loadSelectedAudioInputId);
+  const [audioInputDevicesLoading, setAudioInputDevicesLoading] = useState(false);
+  const [audioInputDevicesError, setAudioInputDevicesError] = useState<string | null>(null);
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
   const [historyFilter, setHistoryFilter] = useState("All");
@@ -440,6 +490,51 @@ function App() {
     }
   }, []);
 
+  const refreshAudioInputDevices = useCallback(async () => {
+    const mediaDevices = navigator.mediaDevices;
+
+    if (!mediaDevices?.enumerateDevices) {
+      setAudioInputDevices(defaultAudioInputOptions);
+      setAudioInputDevicesError("Microphone list is not available.");
+      setSelectedAudioInputId(defaultAudioInputId);
+      saveSelectedAudioInputId(defaultAudioInputId);
+      return;
+    }
+
+    setAudioInputDevicesLoading(true);
+    setAudioInputDevicesError(null);
+
+    try {
+      const devices = await mediaDevices.enumerateDevices();
+      const nextOptions = buildAudioInputDeviceOptions(devices);
+
+      setAudioInputDevices(nextOptions);
+      setSelectedAudioInputId((current) => {
+        const nextDeviceId = nextOptions.some((device) => device.id === current) ? current : defaultAudioInputId;
+        if (nextDeviceId !== current) {
+          saveSelectedAudioInputId(nextDeviceId);
+        }
+        return nextDeviceId;
+      });
+    } catch {
+      setAudioInputDevices(defaultAudioInputOptions);
+      setAudioInputDevicesError("Microphone list could not be loaded.");
+      setSelectedAudioInputId(defaultAudioInputId);
+      saveSelectedAudioInputId(defaultAudioInputId);
+    } finally {
+      setAudioInputDevicesLoading(false);
+    }
+  }, []);
+
+  const handleAudioInputChange = useCallback((deviceId: string) => {
+    setSelectedAudioInputId(deviceId);
+    saveSelectedAudioInputId(deviceId);
+  }, []);
+
+  const selectedAudioInputLabel = useMemo(() => (
+    audioInputDevices.find((device) => device.id === selectedAudioInputId)?.label ?? defaultAudioInputLabel
+  ), [audioInputDevices, selectedAudioInputId]);
+
   const startRecordingFlow = useCallback(async (syncBridge = true) => {
     if (recordingTransitionRef.current || audioRecordingService.isRecording()) {
       return;
@@ -453,6 +548,7 @@ function App() {
       await audioRecordingService.startRecording({
         sampleRate: 16000,
         channelCount: 1,
+        deviceId: selectedAudioInputId === defaultAudioInputId ? undefined : selectedAudioInputId,
         echoCancellation: true,
         noiseSuppression: true,
       });
@@ -477,7 +573,7 @@ function App() {
     } finally {
       recordingTransitionRef.current = null;
     }
-  }, [syncRecordingBridge]);
+  }, [selectedAudioInputId, syncRecordingBridge]);
 
   const stopRecordingFlow = useCallback(async (syncBridge = true) => {
     if (recordingTransitionRef.current === "stopping") {
@@ -526,7 +622,6 @@ function App() {
       }));
       setRecordingStatus("idle");
       setRecordingError(null);
-      setActiveView("history");
     } catch (error) {
       const message = getErrorMessage(error);
       setRecordingStatus("error");
@@ -543,7 +638,6 @@ function App() {
         error: message,
         recordingUrl,
       });
-      setActiveView("history");
     } finally {
       recordingStartedAtRef.current = null;
       recordingTransitionRef.current = null;
@@ -582,6 +676,22 @@ function App() {
       }
     });
   }, [startRecordingFlow, stopRecordingFlow]);
+
+  useEffect(() => {
+    void refreshAudioInputDevices();
+
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) {
+      return undefined;
+    }
+
+    const handleDeviceChange = () => {
+      void refreshAudioInputDevices();
+    };
+
+    mediaDevices.addEventListener("devicechange", handleDeviceChange);
+    return () => mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+  }, [refreshAudioInputDevices]);
 
   useEffect(() => {
     if (!isRecording || recordingStatus !== "recording") {
@@ -635,7 +745,7 @@ function App() {
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)] sm:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
         <section className="grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#444444]">
-          <Toolbar activeTitle={activeTitle} />
+          <Toolbar activeTitle={activeTitle} audioInputLabel={selectedAudioInputLabel} />
           <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-4 sm:px-4 lg:px-4">
             {activeView === "home" && (
               <HomeView
@@ -649,7 +759,19 @@ function App() {
                 onOpenHistory={() => setActiveView("history")}
               />
             )}
-            {activeView === "sound" && <SoundView selectedModel={selectedModel} isRecording={isRecording} />}
+            {activeView === "sound" && (
+              <SoundView
+                selectedModel={selectedModel}
+                isRecording={isRecording}
+                audioInputDevices={audioInputDevices}
+                selectedAudioInputId={selectedAudioInputId}
+                selectedAudioInputLabel={selectedAudioInputLabel}
+                audioInputDevicesLoading={audioInputDevicesLoading}
+                audioInputDevicesError={audioInputDevicesError}
+                onSelectAudioInput={handleAudioInputChange}
+                onRefreshAudioInputs={refreshAudioInputDevices}
+              />
+            )}
             {activeView === "models" && <ModelsView selectedModel={selectedModel} onSelectModel={setSelectedModel} />}
             {activeView === "history" && <HistoryView rows={historyRows} activeFilter={historyFilter} onFilterChange={setHistoryFilter} />}
             {activeView === "configuration" && (
@@ -753,16 +875,17 @@ function WindowDots({ onWindowAction }: WindowDotsProps) {
 
 interface ToolbarProps {
   activeTitle: string;
+  audioInputLabel: string;
 }
 
-function Toolbar({ activeTitle }: ToolbarProps) {
+function Toolbar({ activeTitle, audioInputLabel }: ToolbarProps) {
   return (
     <header className="flex min-w-0 items-center justify-between border-b border-[#3f3f3f] bg-[#363636] px-4 [-webkit-app-region:drag]">
       <div className="flex min-w-0 items-center">
         <span className="truncate text-[12px] font-semibold text-[#cfcfcf]">{activeTitle}</span>
       </div>
       <div className="inline-flex min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-[#bdbdbd]">
-        <span className="hidden truncate sm:inline">MacBook Pro Microphone</span>
+        <span className="hidden truncate sm:inline">{audioInputLabel}</span>
         <Mic2 className="size-3 shrink-0 text-[#bdbdbd]" />
       </div>
     </header>
@@ -805,7 +928,7 @@ function HomeView({
     <section className="mx-auto flex w-full max-w-[520px] flex-col gap-5">
       <div className="grid grid-cols-2 overflow-hidden rounded-[14px] bg-[#303030] sm:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="px-4 py-4">
+          <div key={stat.label} className="p-4">
             <p className="text-[15px] font-bold leading-none text-[#f3f3f3]">{stat.value}</p>
             <p className="mt-2 text-[11px] font-semibold leading-none text-[#a4a4a4]">{stat.label}</p>
           </div>
@@ -818,7 +941,7 @@ function HomeView({
       />
 
       <section>
-        <h2 className="mb-3 text-[13px] font-bold text-[#a9a9a9]">Get started</h2>
+        <h2 className="mb-3 text-[13px] font-semibold text-[#a9a9a9]">Get started</h2>
         <div className="space-y-1">
           <HomeActionRow
             icon={<Mic2 className="size-3.5" />}
@@ -843,7 +966,7 @@ function HomeView({
 
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[13px] font-bold text-[#a9a9a9]">What's new?</h2>
+          <h2 className="text-[13px] font-semibold text-[#a9a9a9]">What's new?</h2>
           <button type="button" className="text-[12px] font-semibold text-[#ececec] hover:text-white" onClick={onOpenHistory}>
             View history
           </button>
@@ -910,14 +1033,68 @@ function UpdateRow({ date, title, detail }: UpdateRowProps) {
 interface SoundViewProps {
   selectedModel: string;
   isRecording: boolean;
+  audioInputDevices: AudioInputDeviceOption[];
+  selectedAudioInputId: string;
+  selectedAudioInputLabel: string;
+  audioInputDevicesLoading: boolean;
+  audioInputDevicesError: string | null;
+  onSelectAudioInput: (deviceId: string) => void;
+  onRefreshAudioInputs: () => void;
 }
 
-function SoundView({ selectedModel, isRecording }: SoundViewProps) {
+function SoundView({
+  selectedModel,
+  isRecording,
+  audioInputDevices,
+  selectedAudioInputId,
+  selectedAudioInputLabel,
+  audioInputDevicesLoading,
+  audioInputDevicesError,
+  onSelectAudioInput,
+  onRefreshAudioInputs,
+}: SoundViewProps) {
   return (
     <ViewFrame title="Sound">
       <GroupedPanel title="Input">
-        <PanelRow icon={<Mic2 className="size-3.5" />} title="MacBook Pro Microphone" detail={isRecording ? "Recording is active" : "Default input device"} trailing={<StatusPill tone={isRecording ? "red" : "green"}>{isRecording ? "Live" : "Default"}</StatusPill>} />
-        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Recognition model" detail={selectedModel} trailing={<StatusPill tone="blue">Local</StatusPill>} />
+        <PanelRow
+          icon={<Mic2 className="size-3.5" />}
+          title="Microphone"
+          detail={isRecording ? `Recording with ${selectedAudioInputLabel}` : selectedAudioInputLabel}
+          trailing={<StatusLabel>{isRecording ? "Live" : selectedAudioInputId === defaultAudioInputId ? "Default" : "Ready"}</StatusLabel>}
+          extra={(
+            <div className="space-y-2">
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  aria-label="Microphone"
+                  className="h-8 min-w-0 flex-1 rounded-md border border-[#5c5c5c] bg-[#303030] px-2 text-[12px] font-semibold text-[#eeeeee] outline-none transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff] disabled:cursor-not-allowed disabled:text-[#8a8a8a]"
+                  disabled={isRecording || audioInputDevicesLoading}
+                  value={selectedAudioInputId}
+                  onChange={(event) => onSelectAudioInput(event.target.value)}
+                >
+                  {audioInputDevices.map((device) => (
+                    <option key={device.id} value={device.id}>{device.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  aria-label="Refresh microphones"
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#5c5c5c] bg-[#303030] px-2.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#4a4a4a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
+                  disabled={audioInputDevicesLoading}
+                  onClick={onRefreshAudioInputs}
+                >
+                  <RefreshCw className={`size-3 ${audioInputDevicesLoading ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+              {audioInputDevicesError ? (
+                <p role="status" className="text-[12px] font-medium text-[#ffb3aa]">
+                  {audioInputDevicesError}
+                </p>
+              ) : null}
+            </div>
+          )}
+        />
+        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Recognition model" detail={selectedModel} trailing={<StatusLabel>Local</StatusLabel>} />
       </GroupedPanel>
     </ViewFrame>
   );
@@ -1039,7 +1216,7 @@ function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerProps) {
   };
 
   return (
-    <div className="flex max-w-[420px] items-center gap-2 rounded-[8px] border border-[#5c5c5c] bg-[#3a3a3a] px-2 py-2">
+    <div className="flex max-w-[420px] items-center gap-2 rounded-[8px] border border-[#5c5c5c] bg-[#3a3a3a] p-2">
       <button
         type="button"
         aria-label={`${isPlaying ? "Pause" : "Play"} recording: ${title}`}
@@ -1074,12 +1251,12 @@ function SettingsView({ runtimeInfo, selectedModel, overlayPlacement, onOverlayP
     <ViewFrame title="Desktop behavior">
       <GroupedPanel title="Storage">
         <PanelRow icon={<Database className="size-3.5" />} title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} />
-        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusPill tone="green">Active</StatusPill>} />
+        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusLabel>Active</StatusLabel>} />
       </GroupedPanel>
 
       <GroupedPanel title="Desktop integration">
-        <PanelRow icon={<Layers2 className="size-3.5" />} title="Single instance" trailing={<StatusPill tone="green">On</StatusPill>} />
-        <PanelRow icon={<Activity className="size-3.5" />} title="Tray and overlay" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow icon={<Layers2 className="size-3.5" />} title="Single instance" trailing={<StatusLabel>On</StatusLabel>} />
+        <PanelRow icon={<Activity className="size-3.5" />} title="Tray and overlay" trailing={<StatusLabel>On</StatusLabel>} />
         <PanelRow
           icon={<Settings className="size-3.5" />}
           title="Recording overlay position"
@@ -1176,20 +1353,12 @@ function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
   );
 }
 
-interface StatusPillProps {
+interface StatusLabelProps {
   children: ReactNode;
-  tone?: "blue" | "green" | "gray" | "red";
 }
 
-function StatusPill({ children, tone = "gray" }: StatusPillProps) {
-  const tones = {
-    blue: "bg-[#284862] text-[#9fd2ff] border-[#3b6e94]",
-    green: "bg-[#244735] text-[#9ee0b6] border-[#3b7654]",
-    gray: "bg-[#303030] text-[#d0d0d0] border-[#5c5c5c]",
-    red: "bg-[#5a2c29] text-[#ffb3aa] border-[#8c4942]",
-  };
-
-  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
+function StatusLabel({ children }: StatusLabelProps) {
+  return <span className="text-[12px] font-semibold text-[#cfcfcf]">{children}</span>;
 }
 
 interface PrimaryButtonProps {

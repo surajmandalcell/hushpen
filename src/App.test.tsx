@@ -16,16 +16,21 @@ afterEach(async () => {
   cleanup();
 });
 
-function mockAudioCapture() {
+function mockAudioCapture(devices: Partial<MediaDeviceInfo>[] = []) {
   const stopTrack = vi.fn();
   const stream = {
     getTracks: () => [{ stop: stopTrack }],
   } as unknown as MediaStream;
+  const getUserMedia = vi.fn().mockResolvedValue(stream);
+  const enumerateDevices = vi.fn().mockResolvedValue(devices);
 
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     value: {
-      getUserMedia: vi.fn().mockResolvedValue(stream),
+      getUserMedia,
+      enumerateDevices,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
     },
   });
 
@@ -70,7 +75,13 @@ function mockAudioCapture() {
     }
   });
 
-  return { stopTrack };
+  return { stopTrack, getUserMedia, enumerateDevices };
+}
+
+function renderedClassNames() {
+  return Array.from(document.querySelectorAll("[class]"))
+    .map((element) => element.getAttribute("class") || "")
+    .join("\n");
 }
 
 describe("ASR Pro Electron shell", () => {
@@ -80,6 +91,8 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("Average speed")).toBeTruthy();
     expect(screen.getByText("Words this week")).toBeTruthy();
+    expect(screen.getByText("Recordings")).toBeTruthy();
+    expect(screen.queryByText("Apps used")).toBeNull();
     expect(screen.getByText("Get started")).toBeTruthy();
     expect(screen.getByText("What's new?")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
@@ -163,6 +176,74 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByLabelText("Recording active")).toBeTruthy();
   });
 
+  it("uses the selected microphone device when recording starts", async () => {
+    const user = userEvent.setup();
+    const { getUserMedia } = mockAudioCapture([
+      { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
+      { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
+    ]);
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Sound" }));
+
+    const selector = await screen.findByRole("combobox", { name: "Microphone" });
+    await waitFor(() => expect(screen.getByRole("option", { name: "USB Microphone" })).toBeTruthy());
+    await user.selectOptions(selector, "usb-mic");
+
+    await user.click(screen.getByRole("button", { name: "Home" }));
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalled());
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints;
+
+    expect(constraints.audio).toMatchObject({
+      deviceId: { exact: "usb-mic" },
+      sampleRate: 16000,
+      channelCount: 1,
+    });
+  });
+
+  it("restores the saved microphone selection", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("asrpro.audioInputDevice.v1", "usb-mic");
+    mockAudioCapture([
+      { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
+      { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
+    ]);
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Sound" }));
+
+    const selector = await screen.findByRole("combobox", { name: "Microphone" });
+
+    await waitFor(() => expect((selector as HTMLSelectElement).value).toBe("usb-mic"));
+    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("usb-mic");
+  });
+
+  it("resets a missing saved microphone to the system default", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("asrpro.audioInputDevice.v1", "missing-mic");
+    const { getUserMedia } = mockAudioCapture([
+      { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
+    ]);
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Sound" }));
+
+    const selector = await screen.findByRole("combobox", { name: "Microphone" });
+
+    await waitFor(() => expect((selector as HTMLSelectElement).value).toBe("default"));
+    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("default");
+
+    await user.click(screen.getByRole("button", { name: "Home" }));
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalled());
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints;
+
+    expect(constraints.audio).not.toHaveProperty("deviceId");
+  });
+
   it("shows real local history instead of static demo transcripts", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -174,7 +255,7 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("Product demo call")).toBeNull();
   });
 
-  it("records audio, transcribes it, and stores the result in history", async () => {
+  it("records audio, transcribes it, stores the result, and stays on the current page", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
     const fetchMock = vi.fn().mockResolvedValue({
@@ -205,6 +286,17 @@ describe("ASR Pro Electron shell", () => {
     const formData = fetchMock.mock.calls[0][1].body as FormData;
     expect(formData.get("model")).toBe("whisper-base");
 
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+      expect(stored).toHaveLength(1);
+    });
+
+    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("heading", { name: "Transcript library" })).toBeNull();
+    expect(screen.getByText("Recordings")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
     expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
     const audio = screen.getByLabelText("Recording audio: Buy milk and schedule the product demo.");
@@ -228,7 +320,7 @@ describe("ASR Pro Electron shell", () => {
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
-  it("keeps a playable recording in history when transcription fetch fails", async () => {
+  it("keeps a playable recording in history when transcription fetch fails without changing pages", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
@@ -240,6 +332,15 @@ describe("ASR Pro Electron shell", () => {
     await screen.findByRole("button", { name: "Stop Recording" });
     await user.click(screen.getByRole("button", { name: "Stop Recording" }));
 
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+      expect(stored).toHaveLength(1);
+    });
+
+    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("heading", { name: "Transcript library" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
     expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
     expect(screen.getByText(/Failed to fetch/)).toBeTruthy();
@@ -259,8 +360,16 @@ describe("ASR Pro Electron shell", () => {
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
-  it("syncs recording state from the global shortcut and tray bridge", async () => {
+  it("syncs recording state from the global shortcut and tray bridge without changing pages", async () => {
     mockAudioCapture();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        text: "Shortcut dictation stayed on home.",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
     let recordingListener: ((state: { isRecording: boolean; source: string }) => void) | undefined;
     window.asrpro = {
       getPlatform: vi.fn(),
@@ -289,6 +398,36 @@ describe("ASR Pro Electron shell", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Stop Recording" })).toBeTruthy());
     expect(screen.queryByText("Global overlay active")).toBeNull();
     expect(screen.queryByText(/CommandOrControl/)).toBeNull();
+
+    await act(async () => {
+      recordingListener?.({ isRecording: false, source: "shortcut" });
+    });
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+      expect(stored).toHaveLength(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("heading", { name: "Transcript library" })).toBeNull();
+  });
+
+  it("uses neutral page status labels instead of colored status pills", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Sound" }));
+    expect(screen.getByText(/^(Default|Ready)$/)).toBeTruthy();
+    expect(screen.getByText("Local")).toBeTruthy();
+
+    const classNames = renderedClassNames();
+    expect(classNames).not.toContain("bg-[#244735]");
+    expect(classNames).not.toContain("bg-[#284862]");
+    expect(classNames).not.toContain("bg-[#5a2c29]");
+    expect(classNames).not.toContain("text-[#9ee0b6]");
+    expect(classNames).not.toContain("text-[#9fd2ff]");
+    expect(classNames).not.toContain("text-[#ffb3aa]");
   });
 
   it("updates the recording overlay placement from settings", async () => {
