@@ -3,10 +3,12 @@ import {
   ArrowUpRight,
   BrainCircuit,
   Bluetooth,
+  Bug,
   Camera,
   Check,
   CheckCircle2,
   Copy,
+  Github,
   Headphones,
   History,
   Home,
@@ -193,6 +195,22 @@ const defaultAppInfo: AppInfo = {
   name: "ASR Pro",
   version: appBuildVersion,
 };
+const githubRepositoryUrl = "https://github.com/surajmandalcell/asrpro";
+const githubIssueUrl = `${githubRepositoryUrl}/issues/new`;
+const aboutActionLinks: Array<{ icon: LucideIcon; label: string; detail: string; href: string }> = [
+  {
+    icon: Github,
+    label: "GitHub",
+    detail: "View the project",
+    href: githubRepositoryUrl,
+  },
+  {
+    icon: Bug,
+    label: "Report issue",
+    detail: "Open a new issue",
+    href: githubIssueUrl,
+  },
+];
 
 const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
   const position = index / 71;
@@ -1780,6 +1798,32 @@ function AboutView({ appInfo, storagePath }: AboutViewProps) {
             </div>
           ))}
         </dl>
+
+        <div aria-label="GitHub links" className={`grid border-t ${panelDividerClass} sm:grid-cols-2`}>
+          {aboutActionLinks.map((link) => {
+            const Icon = link.icon;
+
+            return (
+              <a
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+                className={`group/link flex min-w-0 items-center gap-3 border-t ${panelDividerClass} px-5 py-3 text-left no-underline transition-colors first:border-t-0 hover:bg-white/[0.045] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9bcfff]/70 sm:border-l sm:border-t-0 sm:first:border-l-0`}
+                aria-label={`${link.label}: ${link.detail}`}
+              >
+                <span className={iconTileClass}>
+                  <Icon className="size-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold leading-5 text-[#eeeeee]">{link.label}</span>
+                  <span className="block truncate text-[12px] font-medium leading-5 text-[#aaa]">{link.detail}</span>
+                </span>
+                <ArrowUpRight className="size-3.5 shrink-0 text-[#9f9f9f] transition-colors group-hover/link:text-[#eeeeee]" />
+              </a>
+            );
+          })}
+        </div>
       </section>
     </ViewFrame>
   );

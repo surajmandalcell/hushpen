@@ -274,6 +274,21 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("/Users/surajmandal/Library/Application Support/ASR Pro/data")).toBeTruthy();
   });
 
+  it("renders GitHub project and issue links on About", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "About" }));
+
+    const githubLink = screen.getByRole("link", { name: /GitHub/i });
+    const issueLink = screen.getByRole("link", { name: /Report issue/i });
+
+    expect(githubLink.getAttribute("href")).toBe("https://github.com/surajmandalcell/asrpro");
+    expect(githubLink.getAttribute("target")).toBe("_blank");
+    expect(issueLink.getAttribute("href")).toBe("https://github.com/surajmandalcell/asrpro/issues/new");
+    expect(issueLink.getAttribute("target")).toBe("_blank");
+  });
+
   it("navigates to the transcript history", async () => {
     const user = userEvent.setup();
     render(<App />);
