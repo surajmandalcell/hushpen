@@ -77,12 +77,10 @@ npm install
 ### 3. Install Python Dependencies For Development
 
 ```bash
-cd sidecar
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-cd ..
+npm run sidecar:setup
 ```
+
+The setup script creates `sidecar/.venv`, installs `sidecar/requirements.txt`, and refreshes the environment when requirements change. `npm run sidecar:dev` and `make dev` run this check automatically before the sidecar starts.
 
 Production installers do not require end users to install Python manually. The release build bundles a platform-specific sidecar executable under Electron `extraResources`.
 
@@ -109,6 +107,7 @@ npm run electron:dev
 ```bash
 # Frontend development
 npm run dev          # Start Vite dev server on 127.0.0.1:4270
+npm run sidecar:setup # Create or refresh sidecar/.venv
 npm run sidecar:dev  # Start Python sidecar on 127.0.0.1:8000
 npm run sidecar:build # Build the platform-specific sidecar executable
 npm run sidecar:check # Verify the sidecar executable exists for packaging
