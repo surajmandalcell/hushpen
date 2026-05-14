@@ -5,6 +5,7 @@ FastAPI server for ASR Pro Python Sidecar
 from fastapi import (
     FastAPI,
     HTTPException,
+    Response,
     UploadFile,
     File,
     WebSocket,
@@ -102,6 +103,12 @@ def create_app(settings: Settings) -> FastAPI:
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return HealthResponse(status="unhealthy")
+
+    @app.head("/health")
+    async def health_check_head():
+        """Health check endpoint for wait-on HEAD probes."""
+        await health_check()
+        return Response(status_code=200)
 
     @app.get("/v1/models", response_model=ModelListResponse)
     async def list_models():

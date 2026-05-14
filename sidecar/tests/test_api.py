@@ -42,6 +42,23 @@ class TestAPIServer:
             assert data["status"] == "healthy"
             assert data["current_model"] == "whisper-base"
             assert data["device"] == "cpu"
+
+    def test_health_check_allows_head_for_dev_wait_on(self):
+        """Test health check supports wait-on's HEAD probe."""
+        settings = Settings()
+
+        with patch('api.server.ModelManager') as mock_manager_class:
+            mock_manager = Mock()
+            mock_manager.get_current_model.return_value = 'whisper-base'
+            mock_manager.get_current_device.return_value = 'cpu'
+            mock_manager_class.return_value = mock_manager
+
+            app = create_app(settings)
+            client = TestClient(app)
+            response = client.head("/health")
+
+            assert response.status_code == 200
+            assert response.content == b""
     
     def test_health_check_unhealthy(self):
         """Test health check when unhealthy."""
