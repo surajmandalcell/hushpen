@@ -186,9 +186,11 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
-    const selector = await screen.findByRole("combobox", { name: "Microphone" });
+    const selector = await screen.findByRole("button", { name: "Microphone selector" });
+    expect(document.querySelector('select[aria-label="Microphone"]')).toBeNull();
+    await user.click(selector);
     await waitFor(() => expect(screen.getByRole("option", { name: "USB Microphone" })).toBeTruthy());
-    await user.selectOptions(selector, "usb-mic");
+    await user.click(screen.getByRole("option", { name: "USB Microphone" }));
 
     await user.click(screen.getByRole("button", { name: "Home" }));
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
@@ -214,9 +216,9 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
-    const selector = await screen.findByRole("combobox", { name: "Microphone" });
+    const selector = await screen.findByRole("button", { name: "Microphone selector" });
 
-    await waitFor(() => expect((selector as HTMLSelectElement).value).toBe("usb-mic"));
+    await waitFor(() => expect(selector.textContent).toContain("USB Microphone"));
     expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("usb-mic");
   });
 
@@ -230,9 +232,9 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
-    const selector = await screen.findByRole("combobox", { name: "Microphone" });
+    const selector = await screen.findByRole("button", { name: "Microphone selector" });
 
-    await waitFor(() => expect((selector as HTMLSelectElement).value).toBe("default"));
+    await waitFor(() => expect(selector.textContent).toContain("System default"));
     expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("default");
 
     await user.click(screen.getByRole("button", { name: "Home" }));
@@ -242,6 +244,23 @@ describe("ASR Pro Electron shell", () => {
     const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints;
 
     expect(constraints.audio).not.toHaveProperty("deviceId");
+  });
+
+  it("opens the toolbar microphone selector and applies the selected device", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture([
+      { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
+      { kind: "audioinput", deviceId: "studio-mic", label: "Studio Microphone With A Long Name" },
+    ]);
+
+    render(<App />);
+
+    const toolbarSelector = await screen.findByRole("button", { name: "Toolbar microphone selector" });
+    await user.click(toolbarSelector);
+    await user.click(screen.getByRole("option", { name: "Studio Microphone With A Long Name" }));
+
+    await waitFor(() => expect(toolbarSelector.textContent).toContain("Studio Microphone With A Long Name"));
+    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("studio-mic");
   });
 
   it("shows real local history instead of static demo transcripts", async () => {

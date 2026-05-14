@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   Activity,
   BrainCircuit,
+  Check,
   CheckCircle2,
+  ChevronDown,
   CircleStop,
   Database,
   History,
@@ -745,7 +747,14 @@ function App() {
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)] sm:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
         <section className="grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#444444]">
-          <Toolbar activeTitle={activeTitle} audioInputLabel={selectedAudioInputLabel} />
+          <Toolbar
+            activeTitle={activeTitle}
+            audioInputDevices={audioInputDevices}
+            selectedAudioInputId={selectedAudioInputId}
+            selectedAudioInputLabel={selectedAudioInputLabel}
+            audioInputDevicesLoading={audioInputDevicesLoading}
+            onSelectAudioInput={handleAudioInputChange}
+          />
           <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-4 sm:px-4 lg:px-4">
             {activeView === "home" && (
               <HomeView
@@ -875,19 +884,35 @@ function WindowDots({ onWindowAction }: WindowDotsProps) {
 
 interface ToolbarProps {
   activeTitle: string;
-  audioInputLabel: string;
+  audioInputDevices: AudioInputDeviceOption[];
+  selectedAudioInputId: string;
+  selectedAudioInputLabel: string;
+  audioInputDevicesLoading: boolean;
+  onSelectAudioInput: (deviceId: string) => void;
 }
 
-function Toolbar({ activeTitle, audioInputLabel }: ToolbarProps) {
+function Toolbar({
+  activeTitle,
+  audioInputDevices,
+  selectedAudioInputId,
+  selectedAudioInputLabel,
+  audioInputDevicesLoading,
+  onSelectAudioInput,
+}: ToolbarProps) {
   return (
     <header className="flex min-w-0 items-center justify-between border-b border-[#3f3f3f] bg-[#363636] px-4 [-webkit-app-region:drag]">
       <div className="flex min-w-0 items-center">
         <span className="truncate text-[12px] font-semibold text-[#cfcfcf]">{activeTitle}</span>
       </div>
-      <div className="inline-flex min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-[#bdbdbd]">
-        <span className="hidden truncate sm:inline">{audioInputLabel}</span>
-        <Mic2 className="size-3 shrink-0 text-[#bdbdbd]" />
-      </div>
+      <MicrophoneSelector
+        ariaLabel="Toolbar microphone selector"
+        devices={audioInputDevices}
+        disabled={audioInputDevicesLoading}
+        selectedDeviceId={selectedAudioInputId}
+        selectedLabel={selectedAudioInputLabel}
+        variant="toolbar"
+        onSelect={onSelectAudioInput}
+      />
     </header>
   );
 }
@@ -1042,6 +1067,112 @@ interface SoundViewProps {
   onRefreshAudioInputs: () => void;
 }
 
+interface MicrophoneSelectorProps {
+  ariaLabel: string;
+  devices: AudioInputDeviceOption[];
+  disabled?: boolean;
+  selectedDeviceId: string;
+  selectedLabel: string;
+  variant: "toolbar" | "panel";
+  onSelect: (deviceId: string) => void;
+}
+
+function MicrophoneSelector({
+  ariaLabel,
+  devices,
+  disabled = false,
+  selectedDeviceId,
+  selectedLabel,
+  variant,
+  onSelect,
+}: MicrophoneSelectorProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const listboxId = useRef(`mic-options-${Math.random().toString(36).slice(2)}`);
+  const isToolbar = variant === "toolbar";
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setIsOpen(false);
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (deviceId: string) => {
+    onSelect(deviceId);
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className={`relative min-w-0 ${isToolbar ? "[-webkit-app-region:no-drag]" : "w-full"}`}>
+      <button
+        type="button"
+        aria-controls={isOpen ? listboxId.current : undefined}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-label={ariaLabel}
+        disabled={disabled}
+        className={isToolbar
+          ? "inline-flex h-7 max-w-[260px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#bdbdbd] transition hover:bg-[#434343] hover:text-[#eeeeee] disabled:cursor-not-allowed disabled:text-[#7d7d7d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
+          : "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#5c5c5c] bg-[#303030] px-2 py-1.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:text-[#8a8a8a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        {isToolbar ? null : <Mic2 className="size-3.5 shrink-0 text-[#bdbdbd]" />}
+        <span className={isToolbar ? "hidden min-w-0 truncate sm:inline" : "min-w-0 flex-1 whitespace-normal break-words text-left leading-4"}>
+          {selectedLabel}
+        </span>
+        {isToolbar ? <Mic2 className="size-3 shrink-0 text-current" /> : null}
+        <ChevronDown className={`size-3 shrink-0 text-current transition ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen ? (
+        <div
+          id={listboxId.current}
+          role="listbox"
+          aria-label="Microphone options"
+          className={`${isToolbar ? "right-0 top-full mt-1 w-[320px] max-w-[calc(100vw-1rem)]" : "left-0 top-full mt-1 w-full min-w-[260px]"} absolute z-50 max-h-64 overflow-y-auto rounded-[9px] border border-[#5c5c5c] bg-[#303030] p-1 shadow-2xl shadow-black/40`}
+        >
+          {devices.map((device) => {
+            const selected = device.id === selectedDeviceId;
+
+            return (
+              <button
+                key={device.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={`flex w-full min-w-0 items-start gap-2 rounded-[7px] px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition ${
+                  selected ? "bg-[#5a5a5a] text-white" : "text-[#dddddd] hover:bg-[#454545]"
+                }`}
+                onClick={() => handleSelect(device.id)}
+              >
+                <span className="min-w-0 flex-1 whitespace-normal break-words">{device.label}</span>
+                {selected ? <Check className="mt-0.5 size-3 shrink-0 text-[#9bcfff]" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SoundView({
   selectedModel,
   isRecording,
@@ -1064,17 +1195,15 @@ function SoundView({
           extra={(
             <div className="space-y-2">
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                <select
-                  aria-label="Microphone"
-                  className="h-8 min-w-0 flex-1 rounded-md border border-[#5c5c5c] bg-[#303030] px-2 text-[12px] font-semibold text-[#eeeeee] outline-none transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff] disabled:cursor-not-allowed disabled:text-[#8a8a8a]"
+                <MicrophoneSelector
+                  ariaLabel="Microphone selector"
+                  devices={audioInputDevices}
                   disabled={isRecording || audioInputDevicesLoading}
-                  value={selectedAudioInputId}
-                  onChange={(event) => onSelectAudioInput(event.target.value)}
-                >
-                  {audioInputDevices.map((device) => (
-                    <option key={device.id} value={device.id}>{device.label}</option>
-                  ))}
-                </select>
+                  selectedDeviceId={selectedAudioInputId}
+                  selectedLabel={selectedAudioInputLabel}
+                  variant="panel"
+                  onSelect={onSelectAudioInput}
+                />
                 <button
                   type="button"
                   aria-label="Refresh microphones"
@@ -1324,7 +1453,7 @@ function GroupedPanel({ title, children }: GroupedPanelProps) {
   return (
     <section>
       {title ? <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-[#a9a9a9]">{title}</h3> : null}
-      <div className="overflow-hidden rounded-[10px] border border-[#5c5c5c] bg-[#404040]">{children}</div>
+      <div className="rounded-[10px] border border-[#5c5c5c] bg-[#404040]">{children}</div>
     </section>
   );
 }
