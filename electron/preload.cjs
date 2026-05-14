@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const allowedWindowActions = new Set(["minimize", "close"]);
 
 contextBridge.exposeInMainWorld("asrpro", {
+  isScreenshotMode: process.env.ASRPRO_SCREENSHOT_MODE === "1",
   getPlatform: () => ipcRenderer.invoke("app:platform"),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   getRuntimeState: () => ipcRenderer.invoke("runtime:state"),

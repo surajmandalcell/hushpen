@@ -15,6 +15,7 @@ type SidecarState = {
 declare global {
   interface Window {
     asrpro?: {
+      isScreenshotMode?: boolean;
       getPlatform: () => Promise<{
         platform: string;
         arch: string;

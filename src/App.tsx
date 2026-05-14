@@ -162,6 +162,12 @@ const modelIdsByName: Record<string, string> = {
 };
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
 const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
+const seededScreenshotHistoryIdPrefix = "readme-history-";
+const seededScreenshotHistoryRows = new Map([
+  ["Product demo follow-up", "Summarize the product demo, send the follow-up notes, and schedule the model comparison review."],
+  ["Roadmap voice note", "Keep the desktop release private first, tighten screenshot checks, and verify the packaged runtime before sharing."],
+  ["Audio file transcript", "The imported audio sample should stay in history with model details and a replayable local recording."],
+]);
 const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -355,10 +361,34 @@ function loadTranscriptHistory() {
       if (row) rows.push(row);
     }
 
-    return rows;
+    const sanitized = sanitizeTranscriptHistoryRows(rows);
+    if (sanitized.removedSeededRows) {
+      saveTranscriptHistory(sanitized.rows);
+    }
+
+    return sanitized.rows;
   } catch {
     return [];
   }
+}
+
+function sanitizeTranscriptHistoryRows(rows: TranscriptHistoryRow[]) {
+  if (window.asrpro?.isScreenshotMode) {
+    return { rows, removedSeededRows: false };
+  }
+
+  const sanitizedRows = rows.filter((row) => !isSeededScreenshotHistoryRow(row));
+  return {
+    rows: sanitizedRows,
+    removedSeededRows: sanitizedRows.length !== rows.length,
+  };
+}
+
+function isSeededScreenshotHistoryRow(row: TranscriptHistoryRow) {
+  if (row.recordingUrl) return false;
+  if (row.id.startsWith(seededScreenshotHistoryIdPrefix)) return true;
+
+  return seededScreenshotHistoryRows.get(row.title) === row.text;
 }
 
 function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | null {

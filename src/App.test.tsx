@@ -497,13 +497,53 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("Product demo call")).toBeNull();
   });
 
-  it("shows when a history transcript has no saved source audio", async () => {
+  it("purges seeded screenshot fixture rows from normal local history", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
       {
-        id: "history-missing-audio",
+        id: "readme-history-1",
         title: "Product demo follow-up",
-        text: "Summarize the product demo and send the follow-up notes.",
+        text: "Summarize the product demo, send the follow-up notes, and schedule the model comparison review.",
+        kind: "Dictation",
+        model: "Parakeet-TDT-0.6B-v3",
+        durationSeconds: 58,
+        createdAt: Date.now(),
+        status: "completed",
+      },
+      {
+        id: "real-history-row",
+        title: "Original planning note",
+        text: "Keep the real user transcript and saved source audio.",
+        kind: "Dictation",
+        model: "Parakeet-TDT-0.6B-v3",
+        durationSeconds: 12,
+        createdAt: Date.now(),
+        status: "completed",
+        recordingUrl: "data:audio/webm;base64,cmVhbA==",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(screen.queryByText("Product demo follow-up")).toBeNull();
+    expect(screen.getByText("Original planning note")).toBeTruthy();
+    const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      id: "real-history-row",
+      recordingUrl: "data:audio/webm;base64,cmVhbA==",
+    });
+  });
+
+  it("keeps seeded screenshot fixture rows only in screenshot mode", async () => {
+    const user = userEvent.setup();
+    window.asrpro = { isScreenshotMode: true } as any;
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "readme-history-1",
+        title: "Product demo follow-up",
+        text: "Summarize the product demo, send the follow-up notes, and schedule the model comparison review.",
         kind: "Dictation",
         model: "Parakeet-TDT-0.6B-v3",
         durationSeconds: 58,
@@ -516,8 +556,32 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "History" }));
 
     expect(screen.getByText("Product demo follow-up")).toBeTruthy();
+    const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].id).toBe("readme-history-1");
+  });
+
+  it("shows when a history transcript has no saved source audio", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "history-missing-audio",
+        title: "Team retro notes",
+        text: "Summarize the retro themes and send the follow-up notes.",
+        kind: "Dictation",
+        model: "Parakeet-TDT-0.6B-v3",
+        durationSeconds: 58,
+        createdAt: Date.now(),
+        status: "completed",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(screen.getByText("Team retro notes")).toBeTruthy();
     expect(screen.getByText("No source audio saved")).toBeTruthy();
-    expect(screen.queryByLabelText("Recording audio: Product demo follow-up")).toBeNull();
+    expect(screen.queryByLabelText("Recording audio: Team retro notes")).toBeNull();
   });
 
   it("records audio, transcribes it, stores the result, and stays on the current page", async () => {

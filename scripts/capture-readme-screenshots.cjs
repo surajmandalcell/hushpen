@@ -14,39 +14,8 @@ const screenshotViews = [
   { name: "Models", file: "asrpro-models.png", evidenceFile: "concept3.jpg", button: "Models library" },
   { name: "About", file: "asrpro-about.png", evidenceFile: "concept4.jpg", button: "About" },
 ];
-
-const seededHistoryRows = [
-  {
-    id: "readme-history-1",
-    title: "Product demo follow-up",
-    text: "Summarize the product demo, send the follow-up notes, and schedule the model comparison review.",
-    kind: "Dictation",
-    model: "Parakeet-TDT-0.6B-v3",
-    durationSeconds: 58,
-    createdAt: Date.parse("2026-05-15T09:30:00+05:30"),
-    status: "completed",
-  },
-  {
-    id: "readme-history-2",
-    title: "Roadmap voice note",
-    text: "Keep the desktop release private first, tighten screenshot checks, and verify the packaged runtime before sharing.",
-    kind: "Dictation",
-    model: "Parakeet-TDT-0.6B-v3",
-    durationSeconds: 72,
-    createdAt: Date.parse("2026-05-15T08:45:00+05:30"),
-    status: "completed",
-  },
-  {
-    id: "readme-history-3",
-    title: "Audio file transcript",
-    text: "The imported audio sample should stay in history with model details and a replayable local recording.",
-    kind: "File",
-    model: "Parakeet-TDT-0.6B-v3",
-    durationSeconds: 94,
-    createdAt: Date.parse("2026-05-14T16:20:00+05:30"),
-    status: "completed",
-  },
-];
+const screenshotWindowRadius = 12;
+const screenshotMatteColor = "#1f1f1f";
 
 function readImageSize(filePath) {
   const buffer = fs.readFileSync(filePath);
@@ -174,17 +143,71 @@ async function captureView(page, view, screenshotDir, evidenceDir) {
 
   const outputPath = path.join(screenshotDir, view.file);
   const evidencePath = path.join(evidenceDir, view.evidenceFile);
-  await page.screenshot({ path: outputPath, fullPage: false, animations: "disabled" });
-  await page.screenshot({
+  await captureRoundedScreenshot(page, {
+    path: outputPath,
+    type: "png",
+    matte: "transparent",
+    omitBackground: true,
+  });
+  await captureRoundedScreenshot(page, {
     path: evidencePath,
     type: "jpeg",
     quality: 92,
-    fullPage: false,
-    animations: "disabled",
+    matte: screenshotMatteColor,
   });
 
   assertImageSize(outputPath, view.file);
   assertImageSize(evidencePath, view.evidenceFile);
+}
+
+async function captureRoundedScreenshot(page, options) {
+  await prepareRoundedScreenshotClip(page, options.matte);
+  await page.screenshot({
+    path: options.path,
+    type: options.type,
+    quality: options.quality,
+    omitBackground: options.omitBackground,
+    fullPage: false,
+    animations: "disabled",
+  });
+}
+
+async function prepareRoundedScreenshotClip(page, matte) {
+  await page.evaluate(({ matteColor, radius }) => {
+    let style = document.getElementById("asrpro-rounded-screenshot-style");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "asrpro-rounded-screenshot-style";
+      style.textContent = `
+        html,
+        body {
+          margin: 0 !important;
+          background: var(--asrpro-screenshot-matte, transparent) !important;
+        }
+
+        body {
+          overflow: hidden !important;
+        }
+
+        #root {
+          width: 100vw !important;
+          height: 100vh !important;
+          overflow: hidden !important;
+          border-radius: var(--asrpro-screenshot-radius, 12px) !important;
+          background: transparent !important;
+        }
+
+        #root > .app-chrome {
+          overflow: hidden !important;
+          border-radius: inherit !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    document.documentElement.style.setProperty("--asrpro-screenshot-matte", matteColor);
+    document.documentElement.style.setProperty("--asrpro-screenshot-radius", `${radius}px`);
+  }, { matteColor: matte, radius: screenshotWindowRadius });
 }
 
 async function main() {
@@ -240,10 +263,9 @@ async function main() {
 
     await page.waitForLoadState("domcontentloaded");
     await page.getByRole("button", { name: "Home", exact: true }).waitFor({ state: "visible" });
-    await page.evaluate((rows) => {
-      window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify(rows));
+    await page.evaluate(() => {
       window.localStorage.setItem("asrpro.audioInputDevice.v1", "default");
-    }, seededHistoryRows);
+    });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Home", exact: true }).waitFor({ state: "visible" });
 
