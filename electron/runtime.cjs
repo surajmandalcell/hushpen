@@ -167,14 +167,15 @@ function createRecordingOverlayHtml() {
         box-sizing: border-box;
         padding: 6px 8px;
         border-radius: 999px;
-        color: #1d1d1f;
+        color: #f1f1f1;
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(245, 245, 247, 0.5)),
-          rgba(245, 245, 247, 0.72);
-        border: 1px solid rgba(0, 0, 0, 0.08);
+          linear-gradient(180deg, rgba(40, 40, 42, 0.96), rgba(20, 20, 22, 0.92)),
+          rgba(18, 18, 20, 0.94);
+        border: 1px solid rgba(105, 105, 112, 0.22);
         box-shadow:
-          inset 0 1px 0 rgba(255, 255, 255, 0.72),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.04);
+          0 12px 26px rgba(0, 0, 0, 0.32),
+          inset 0 1px 0 rgba(90, 90, 96, 0.14),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.42);
         backdrop-filter: saturate(180%) blur(20px);
         -webkit-backdrop-filter: saturate(180%) blur(20px);
         -webkit-app-region: drag;
@@ -195,7 +196,7 @@ function createRecordingOverlayHtml() {
         width: 2px;
         height: var(--bar-height);
         border-radius: 999px;
-        background: rgba(80, 80, 86, var(--bar-opacity));
+        background: rgba(230, 230, 234, var(--bar-opacity));
         transform-origin: center;
         will-change: height, background;
       }
@@ -305,7 +306,7 @@ function clampNumber(value, min, max) {
 }
 
 function shouldShowRecordingOverlay(source) {
-  return source !== "renderer";
+  return true;
 }
 
 module.exports = {

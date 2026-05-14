@@ -5,7 +5,6 @@ export const AiPrompts: React.FC = () => (
   <div>
     <ContentHeader
       title="AI Prompts"
-      subtitle="Easily improve your spoken text using AI-powered prompts."
     />
     <div className="mt-8 max-w-md mx-auto">
       <h3 className="text-lg font-semibold text-center text-white">How it works:</h3>

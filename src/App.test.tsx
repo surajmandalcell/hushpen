@@ -145,15 +145,10 @@ describe("ASR Pro Electron shell", () => {
     expect(homeButton.getAttribute("aria-current")).toBeNull();
   });
 
-  it("renders a non-uniform full-width waveform baseline", () => {
+  it("does not render a local waveform inside the home page", () => {
     render(<App />);
 
-    const bars = Array.from(document.querySelectorAll<HTMLElement>(".in-app-waveform__bars span"));
-    const heights = bars.map((bar) => bar.style.getPropertyValue("--wave-height"));
-
-    expect(bars).toHaveLength(76);
-    expect(new Set(heights).size).toBeGreaterThan(24);
-    expect(heights.slice(0, 12)).not.toEqual(heights.slice(12, 24));
+    expect(document.querySelector(".in-app-waveform")).toBeNull();
   });
 
   it("toggles recording state from the dashboard", async () => {

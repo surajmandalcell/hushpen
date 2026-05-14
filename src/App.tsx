@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   BrainCircuit,
@@ -340,7 +340,7 @@ function readBlobAsDataUrl(blob: Blob) {
   });
 }
 
-function useMicrophoneWaveform(active: boolean, barsRef: MutableRefObject<Array<HTMLSpanElement | null>>) {
+function useMicrophoneWaveform(active: boolean) {
   const frameRef = useRef<number[]>(idleWaveformFrame);
   const lastOverlayFrameAtRef = useRef(0);
   const audioLevelRef = useRef(0);
@@ -352,20 +352,8 @@ function useMicrophoneWaveform(active: boolean, barsRef: MutableRefObject<Array<
   }, []);
 
   useEffect(() => {
-    const writeFrame = (frame: number[]) => {
-      for (let index = 0; index < waveformBaseBars.length; index += 1) {
-        const bar = barsRef.current[index];
-        if (!bar) continue;
-
-        const baseBar = waveformBaseBars[index];
-        bar.style.setProperty("--wave-height", `${frame[index] ?? baseBar.baseHeight}px`);
-        bar.style.setProperty("--wave-opacity", String(baseBar.opacity));
-      }
-    };
-
     if (!active) {
       frameRef.current = idleWaveformFrame;
-      writeFrame(idleWaveformFrame);
       sendOverlayWaveformFrame(idleWaveformFrame, false);
       return undefined;
     }
@@ -382,7 +370,6 @@ function useMicrophoneWaveform(active: boolean, barsRef: MutableRefObject<Array<
       if (voiceLevel <= 0.012) {
         if (frameRef.current !== idleWaveformFrame) {
           frameRef.current = idleWaveformFrame;
-          writeFrame(idleWaveformFrame);
         }
 
         if (timestamp - lastOverlayFrameAtRef.current > 120) {
@@ -397,7 +384,6 @@ function useMicrophoneWaveform(active: boolean, barsRef: MutableRefObject<Array<
         const nextFrame = buildReactiveWaveformFrame(frequencySamples, voiceLevel, timestamp, frameRef.current);
 
         frameRef.current = nextFrame;
-        writeFrame(nextFrame);
 
         if (timestamp - lastOverlayFrameAtRef.current > 16) {
           sendOverlayWaveformFrame(nextFrame, true);
@@ -414,10 +400,9 @@ function useMicrophoneWaveform(active: boolean, barsRef: MutableRefObject<Array<
       stopped = true;
       if (animationFrame) cancelWaveformFrame(animationFrame);
       frameRef.current = idleWaveformFrame;
-      writeFrame(idleWaveformFrame);
       sendOverlayWaveformFrame(idleWaveformFrame, false);
     };
-  }, [active, barsRef]);
+  }, [active]);
 }
 
 function App() {
@@ -433,6 +418,7 @@ function App() {
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
+  useMicrophoneWaveform(isRecording);
 
   const addHistoryRow = useCallback((row: TranscriptHistoryRow) => {
     setHistoryRows((current) => {
@@ -845,7 +831,7 @@ function HomeView({
               </PrimaryButton>
             )}
           />
-          <HomeActionRow icon={<Keyboard className="size-3.5" />} title="Customize shortcuts" detail="Global recording is wired through the desktop bridge." />
+          <HomeActionRow icon={<Keyboard className="size-3.5" />} title="Customize shortcuts" />
         </div>
       </section>
 
@@ -868,8 +854,6 @@ function HomeView({
           <UpdateRow date="May 13" title="Local Whisper sidecar" detail="Desktop development now starts the local sidecar and uses the working Whisper Base model." />
         </div>
       </section>
-
-      <Waveform active={isRecording} />
     </section>
   );
 }
@@ -877,7 +861,7 @@ function HomeView({
 interface HomeActionRowProps {
   icon: ReactNode;
   title: string;
-  detail: string;
+  detail?: string;
   trailing?: ReactNode;
   onClick?: () => void;
 }
@@ -888,7 +872,7 @@ function HomeActionRow({ icon, title, detail, trailing, onClick }: HomeActionRow
       <div className="grid size-7 shrink-0 place-items-center text-[#a8a8a8]">{icon}</div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[14px] font-bold leading-5 text-[#eeeeee]">{title}</p>
-        <p className="truncate text-[13px] font-semibold leading-5 text-[#a8a8a8]">{detail}</p>
+        {detail ? <p className="truncate text-[13px] font-semibold leading-5 text-[#a8a8a8]">{detail}</p> : null}
       </div>
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
     </>
@@ -1094,8 +1078,8 @@ function SettingsView({ runtimeInfo, selectedModel, overlayPlacement, onOverlayP
       </GroupedPanel>
 
       <GroupedPanel title="Desktop integration">
-        <PanelRow icon={<Layers2 className="size-3.5" />} title="Single instance" detail="Launching again focuses the running app" trailing={<StatusPill tone="green">On</StatusPill>} />
-        <PanelRow icon={<Activity className="size-3.5" />} title="Tray and overlay" detail="Close hides to tray; hotkey recording shows a draggable floating pill" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow icon={<Layers2 className="size-3.5" />} title="Single instance" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow icon={<Activity className="size-3.5" />} title="Tray and overlay" trailing={<StatusPill tone="green">On</StatusPill>} />
         <PanelRow
           icon={<Settings className="size-3.5" />}
           title="Recording overlay position"
@@ -1171,7 +1155,7 @@ function GroupedPanel({ title, children }: GroupedPanelProps) {
 interface PanelRowProps {
   icon: ReactNode;
   title: string;
-  detail: string;
+  detail?: string;
   trailing?: ReactNode;
   extra?: ReactNode;
 }
@@ -1183,39 +1167,11 @@ function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
         <div className="grid size-7 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">{icon}</div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
-          <p className="truncate text-[12px] text-[#b4b4b4]">{detail}</p>
+          {detail ? <p className="truncate text-[12px] text-[#b4b4b4]">{detail}</p> : null}
         </div>
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
       {extra ? <div className="mt-2 pl-10">{extra}</div> : null}
-    </div>
-  );
-}
-
-interface WaveformProps {
-  active: boolean;
-}
-
-function Waveform({ active }: WaveformProps) {
-  const barsRef = useRef<Array<HTMLSpanElement | null>>([]);
-  useMicrophoneWaveform(active, barsRef);
-
-  return (
-    <div className={`in-app-waveform ${active ? "is-active" : ""}`} role="img" aria-label="Live recording waveform">
-      <div className="in-app-waveform__bars" aria-hidden="true">
-        {waveformBaseBars.map((bar, index) => (
-          <span
-            key={bar.id}
-            ref={(element) => {
-              barsRef.current[index] = element;
-            }}
-            style={{
-              "--wave-height": `${bar.baseHeight}px`,
-              "--wave-opacity": bar.opacity,
-            } as CSSProperties}
-          />
-        ))}
-      </div>
     </div>
   );
 }

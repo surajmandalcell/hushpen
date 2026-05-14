@@ -9,7 +9,6 @@ export const KeyboardControls: React.FC = () => {
     <div>
       <ContentHeader
         title="Keyboard Controls"
-        subtitle="Choose your preferred keyboard keys for starting Spokenly. Press only these keys to begin recording."
       />
       <div className="divide-y divide-gray-700">
         <SettingsSection title="Recording Keys">

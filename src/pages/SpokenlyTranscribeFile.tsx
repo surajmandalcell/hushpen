@@ -6,7 +6,6 @@ export const TranscribeFile: React.FC = () => (
   <div>
     <ContentHeader
       title="Transcribe File"
-      subtitle="Convert your audio or video files into text. Spokenly will transcribe the content for you."
     />
     <div className="h-full flex flex-col">
       <div className="flex-grow flex items-center justify-center p-4">

@@ -30,7 +30,6 @@ export const History: React.FC = () => {
       <div className="flex items-center justify-between mb-4">
         <ContentHeader
           title="History"
-          subtitle="View your transcription history just stored locally on your computer"
         />
         <div className="flex items-center gap-4">
           <div className="flex items-center bg-[#232425] border border-gray-600 rounded-lg p-0.5">

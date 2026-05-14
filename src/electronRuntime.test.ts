@@ -22,9 +22,13 @@ describe("Electron runtime helpers", () => {
     expect(html).toContain('class="surface"');
     expect(html).toContain('class="waveform"');
     expect(html).toContain("width: 164px");
+    expect(html).toContain("rgba(18, 18, 20, 0.94)");
+    expect(html).toContain("rgba(230, 230, 234, var(--bar-opacity))");
     expect(html).toContain("asrproSetWaveformFrame");
     expect(html).toContain("asrproOverlay?.onWaveformFrame");
     expect(html).toContain("requestAnimationFrame(renderWaveform)");
+    expect(html).not.toContain("rgba(245, 245, 247");
+    expect(html).not.toContain("rgba(255, 255, 255");
     expect(html).not.toContain("executeJavaScript");
     expect(html).not.toContain("transition: height");
     expect(html).not.toContain("animation:");
@@ -33,8 +37,8 @@ describe("Electron runtime helpers", () => {
     expect(html).not.toContain("CommandOrControl");
   });
 
-  it("shows the global recording overlay only for non-renderer starts", () => {
-    expect(runtime.shouldShowRecordingOverlay("renderer")).toBe(false);
+  it("shows the global recording overlay for every recording start source", () => {
+    expect(runtime.shouldShowRecordingOverlay("renderer")).toBe(true);
     expect(runtime.shouldShowRecordingOverlay("shortcut")).toBe(true);
     expect(runtime.shouldShowRecordingOverlay("tray")).toBe(true);
     expect(runtime.shouldShowRecordingOverlay("menu")).toBe(true);

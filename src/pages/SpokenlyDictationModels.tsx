@@ -75,7 +75,6 @@ export const DictationModels: React.FC = () => {
     <div>
       <ContentHeader
         title="Dictation Models"
-        subtitle="Choose from various dictation models - from cloud-based options to local models that work offline."
       />
 
       <div className="my-4 flex items-center gap-2 flex-wrap">

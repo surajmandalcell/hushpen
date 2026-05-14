@@ -231,62 +231,6 @@
     @apply w-4 h-4 bg-macos-red rounded-full animate-pulse-soft;
   }
 
-  .in-app-waveform {
-    position: relative;
-    isolation: isolate;
-    display: flex;
-    min-height: 82px;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    border-radius: 14px;
-    border: 1px solid rgba(92, 92, 92, 0.95);
-    background: #303030;
-    padding: 10px 14px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
-
-  .in-app-waveform::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-    opacity: 0.5;
-  }
-
-  .in-app-waveform.is-active::before {
-    opacity: 1;
-  }
-
-  .in-app-waveform__bars {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    height: 56px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 2px;
-    overflow: hidden;
-    mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
-  }
-
-  .in-app-waveform__bars span {
-    width: 2px;
-    height: var(--wave-height);
-    border-radius: 999px;
-    background: rgba(178, 178, 178, var(--wave-opacity));
-    opacity: 1;
-    transform-origin: center;
-    transition: background 120ms ease;
-    will-change: height, background;
-  }
-
-  .in-app-waveform.is-active .in-app-waveform__bars span {
-    background: rgba(255, 122, 101, var(--wave-opacity));
-  }
-
   /* Scrollbar styles */
   .scrollbar-macos {
     scrollbar-width: thin;

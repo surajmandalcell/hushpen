@@ -33,7 +33,6 @@ export const GeneralPreferences: React.FC = () => {
     <div>
       <ContentHeader
         title="General Preferences"
-        subtitle="Configure Spokenly to match your workflow and preferences."
       />
       <div className="divide-y divide-gray-700">
         <SettingsSection title="Behavior">
