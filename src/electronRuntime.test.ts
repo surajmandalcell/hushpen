@@ -18,10 +18,15 @@ describe("Electron runtime helpers", () => {
   it("renders the recording overlay as a text-free waveform pill", () => {
     const html = runtime.createRecordingOverlayHtml();
 
-    expect(runtime.OVERLAY_WINDOW_SIZE).toEqual({ width: 188, height: 40 });
+    expect(runtime.OVERLAY_WINDOW_SIZE).toEqual({ width: 156, height: 40 });
     expect(html).toContain('class="surface"');
     expect(html).toContain('class="waveform"');
-    expect(html).toContain("width: 164px");
+    expect(html).toContain("width: 148px");
+    expect(html).toContain("width: 132px");
+    expect(html.match(/data-base=/g)?.length).toBe(44);
+    expect(html).toContain("now - lastInputAt > 260");
+    expect(html).toContain("desired > current[index] ? 0.34 : 0.2");
+    expect(html).toContain("Math.sin(now * 0.018");
     expect(html).toContain("rgba(18, 18, 20, 0.94)");
     expect(html).toContain("rgba(230, 230, 234, var(--bar-opacity))");
     expect(html).toContain("asrproSetWaveformFrame");

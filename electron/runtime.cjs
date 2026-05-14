@@ -2,7 +2,7 @@ const path = require("node:path");
 
 const RECORDING_SHORTCUT = "CommandOrControl+`";
 const OVERLAY_WINDOW_SIZE = {
-  width: 188,
+  width: 156,
   height: 40,
 };
 const OVERLAY_EDGE_MARGIN = 16;
@@ -132,7 +132,7 @@ function clamp(value, min, max) {
 }
 
 function createRecordingOverlayHtml() {
-  const waveformBars = buildOverlayWaveformBars(55);
+  const waveformBars = buildOverlayWaveformBars(44);
   const barsHtml = waveformBars.map((height, index) => (
     `<span data-base="${height}" style="--bar-height:${height}px;--bar-opacity:${edgeOpacity(index, waveformBars.length)}"></span>`
   )).join("");
@@ -162,7 +162,7 @@ function createRecordingOverlayHtml() {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 180px;
+        width: 148px;
         height: 32px;
         box-sizing: border-box;
         padding: 6px 8px;
@@ -186,7 +186,7 @@ function createRecordingOverlayHtml() {
         align-items: center;
         justify-content: center;
         gap: 1px;
-        width: 164px;
+        width: 132px;
         height: 20px;
         overflow: hidden;
         mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
@@ -218,12 +218,12 @@ function createRecordingOverlayHtml() {
 
         const renderWaveform = () => {
           const now = performance.now();
-          const shouldDecay = lastInputAt === 0 || now - lastInputAt > 180;
+          const shouldDecay = lastInputAt === 0 || now - lastInputAt > 260;
           let shouldContinue = false;
 
           bars.forEach((bar, index) => {
             const desired = shouldDecay ? 0 : target[index];
-            const response = desired > current[index] ? 0.48 : 0.3;
+            const response = desired > current[index] ? 0.34 : 0.2;
             current[index] += (desired - current[index]) * response;
 
             if (Math.abs(current[index] - desired) < 0.002) {
@@ -232,7 +232,7 @@ function createRecordingOverlayHtml() {
 
             const base = bases[index];
             const energy = clamp(current[index], 0, 1);
-            const ripple = energy * 0.045 * Math.sin(now * 0.026 + index * 0.72);
+            const ripple = energy * 0.045 * Math.sin(now * 0.018 + index * 0.72);
             const level = clamp(energy + ripple, 0, 1);
             const floor = clamp(base * 0.72, 4, 14);
             const height = energy > 0.002 || desired > 0.002 ? clamp(floor + level * (20 - floor), 4, 20) : base;
