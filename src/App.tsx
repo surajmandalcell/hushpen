@@ -1744,9 +1744,9 @@ function formatSidecarStatus(status?: string) {
 function AboutView() {
   return (
     <ViewFrame title="About ASR Pro">
-      <section className="pt-2">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <div className="grid size-[72px] shrink-0 place-items-center rounded-[16px] bg-[#f6f4ef] text-[#26343b] ring-1 ring-white/50">
+      <section aria-label="About product summary" className={panelSurfaceClass}>
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start">
+          <div className="grid size-[72px] shrink-0 place-items-center rounded-[16px] bg-[#f6f4ef] text-[#26343b]">
             <AppLogoMark className="size-16" title="ASR Pro" />
           </div>
           <div className="min-w-0">
@@ -1758,9 +1758,9 @@ function AboutView() {
           </div>
         </div>
 
-        <dl aria-label="Product facts" className={`mt-7 divide-y ${panelDividerClass} border-y ${panelDividerClass}`}>
+        <dl aria-label="Product facts" className={`border-t ${panelDividerClass}`}>
           {aboutFactRows.map((fact) => (
-            <div key={fact.label} className="grid gap-1 py-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-4">
+            <div key={fact.label} className={`grid gap-1 border-t ${panelDividerClass} px-5 py-3 first:border-t-0 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-4`}>
               <dt className="text-[11px] font-semibold uppercase leading-5 text-[#8e8e8e]">{fact.label}</dt>
               <dd className="selectable-text text-[13px] font-semibold leading-5 text-[#e4e4e4]">{fact.value}</dd>
             </div>
@@ -1768,15 +1768,17 @@ function AboutView() {
         </dl>
       </section>
 
-      <section className="pt-1">
+      <section>
         <h3 className="px-1 text-[13px] font-semibold text-[#a8a8a8]">Highlights</h3>
-        <ul aria-label="Highlights" className={`mt-2 divide-y ${panelDividerClass} border-y ${panelDividerClass}`}>
+        <ul aria-label="Highlights" className={`mt-2 ${panelSurfaceClass}`}>
           {aboutFeatureRows.map((feature) => {
             const Icon = feature.icon;
 
             return (
-              <li key={feature.title} className="flex min-w-0 gap-3 py-3.5">
-                <Icon className="mt-0.5 size-4 shrink-0 text-[#b9dfe2]" />
+              <li key={feature.title} className={`flex min-w-0 gap-3 border-t ${panelDividerClass} p-4 first:border-t-0`}>
+                <span className={iconTileClass}>
+                  <Icon className="size-3.5" />
+                </span>
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold leading-5 text-[#eeeeee]">{feature.title}</p>
                   <p className="selectable-text mt-0.5 text-[12px] font-medium leading-5 text-[#aaa]">{feature.detail}</p>

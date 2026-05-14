@@ -228,6 +228,27 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("0.1.0").tagName).toBe("DD");
   });
 
+  it("renders About content on grouped app surfaces without standalone white rules", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "About" }));
+
+    const summaryPanel = document.querySelector('section[aria-label="About product summary"]');
+    const facts = document.querySelector('dl[aria-label="Product facts"]');
+    const highlights = screen.getByRole("list", { name: "Highlights" });
+
+    expect(summaryPanel).toBeTruthy();
+    expect(summaryPanel?.className).toContain("rounded-[22px]");
+    expect(summaryPanel?.className).toContain("bg-white/[0.055]");
+    expect(facts?.className).not.toContain("border-y");
+    expect(facts?.className).not.toContain("divide-y");
+    expect(highlights.className).toContain("rounded-[22px]");
+    expect(highlights.className).toContain("bg-white/[0.055]");
+    expect(highlights.className).not.toContain("border-y");
+    expect(highlights.className).not.toContain("divide-y");
+  });
+
   it("navigates to the transcript history", async () => {
     const user = userEvent.setup();
     render(<App />);
