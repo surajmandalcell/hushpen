@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { audioRecordingService } from "./services/audioRecording";
+import packageMetadata from "../package.json";
 
 afterEach(async () => {
   if (audioRecordingService.isRecording()) {
@@ -222,10 +223,10 @@ describe("ASR Pro Electron shell", () => {
     const facts = document.querySelector('dl[aria-label="Product facts"]');
 
     expect(facts).toBeTruthy();
-    expect(facts?.querySelectorAll("dt")).toHaveLength(4);
-    expect(facts?.querySelectorAll("dd")).toHaveLength(4);
+    expect(facts?.querySelectorAll("dt")).toHaveLength(3);
+    expect(facts?.querySelectorAll("dd")).toHaveLength(3);
     expect(screen.getByText("Version").tagName).toBe("DT");
-    expect(screen.getByText("0.1.0").tagName).toBe("DD");
+    expect(screen.getByText(packageMetadata.version).tagName).toBe("DD");
   });
 
   it("renders About content on grouped app surfaces without standalone white rules", async () => {
@@ -236,17 +237,41 @@ describe("ASR Pro Electron shell", () => {
 
     const summaryPanel = document.querySelector('section[aria-label="About product summary"]');
     const facts = document.querySelector('dl[aria-label="Product facts"]');
-    const highlights = screen.getByRole("list", { name: "Highlights" });
 
     expect(summaryPanel).toBeTruthy();
     expect(summaryPanel?.className).toContain("rounded-[22px]");
     expect(summaryPanel?.className).toContain("bg-white/[0.055]");
     expect(facts?.className).not.toContain("border-y");
     expect(facts?.className).not.toContain("divide-y");
-    expect(highlights.className).toContain("rounded-[22px]");
-    expect(highlights.className).toContain("bg-white/[0.055]");
-    expect(highlights.className).not.toContain("border-y");
-    expect(highlights.className).not.toContain("divide-y");
+    expect(screen.queryByRole("list", { name: "Highlights" })).toBeNull();
+  });
+
+  it("shows real About metadata without implementation stack or highlights", async () => {
+    const user = userEvent.setup();
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn().mockResolvedValue({ name: "ASR Pro", version: "2.4.6" }),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Local Whisper",
+        dataDir: "/Users/surajmandal/Library/Application Support/ASR Pro/data",
+        shortcut: "CommandOrControl+`",
+      }),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      windowControl: vi.fn(),
+    };
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "About" }));
+
+    await waitFor(() => expect(screen.getAllByText("2.4.6").length).toBeGreaterThan(0));
+    expect(screen.queryByText("Electron + React")).toBeNull();
+    expect(screen.queryByText("Runtime")).toBeNull();
+    expect(screen.queryByText("Highlights")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Highlights" })).toBeNull();
+    expect(screen.getByText("/Users/surajmandal/Library/Application Support/ASR Pro/data")).toBeTruthy();
   });
 
   it("navigates to the transcript history", async () => {

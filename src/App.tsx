@@ -27,6 +27,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import packageMetadata from "../package.json";
 import { AppLogoMark } from "./components/icons";
 import { apiClient } from "./services/api";
 import { audioRecordingService } from "./services/audioRecording";
@@ -55,6 +56,11 @@ interface RuntimeInfo {
   sidecar?: SidecarRuntimeState;
   shortcut?: string;
   shortcutRegistered?: boolean;
+}
+
+interface AppInfo {
+  name: string;
+  version: string;
 }
 
 interface SidecarRuntimeState {
@@ -181,30 +187,12 @@ const modelCards = [
   },
 ];
 
-const aboutFeatureRows: Array<{ icon: LucideIcon; title: string; detail: string }> = [
-  {
-    icon: Mic2,
-    title: "Fast dictation",
-    detail: "Record from your preferred microphone and keep the flow inside the desktop app.",
-  },
-  {
-    icon: Library,
-    title: "Local model workspace",
-    detail: "Use the built-in Whisper path today, with optional model slots ready for deeper testing.",
-  },
-  {
-    icon: History,
-    title: "Searchable history",
-    detail: "Review recent transcripts, copy text, and replay saved recordings from one place.",
-  },
-];
+const appBuildVersion = typeof packageMetadata.version === "string" ? packageMetadata.version : "1.0.0";
 
-const aboutFactRows: Array<{ label: string; value: string }> = [
-  { label: "Version", value: "0.1.0" },
-  { label: "Runtime", value: "Electron + React" },
-  { label: "Recognition", value: "Local Whisper with optional Parakeet models" },
-  { label: "Storage", value: "Local desktop workspace" },
-];
+const defaultAppInfo: AppInfo = {
+  name: "ASR Pro",
+  version: appBuildVersion,
+};
 
 const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
   const position = index / 71;
@@ -409,6 +397,14 @@ function countWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function buildAboutFactRows(appVersion: string, storagePath?: string): Array<{ label: string; value: string }> {
+  return [
+    { label: "Version", value: appVersion },
+    { label: "Recognition", value: "Private dictation and file transcription" },
+    { label: "Data folder", value: storagePath || "Waiting for local data folder" },
+  ];
+}
+
 function buildHomeStats(rows: TranscriptHistoryRow[]) {
   const completedRows = rows.filter((row) => row.status === "completed");
   const wordsThisWeek = completedRows.reduce((total, row) => total + countWords(row.text), 0);
@@ -584,6 +580,7 @@ function App() {
   const [audioInputDevicesLoading, setAudioInputDevicesLoading] = useState(false);
   const [audioInputDevicesError, setAudioInputDevicesError] = useState<string | null>(null);
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
+  const [appInfo, setAppInfo] = useState<AppInfo>(defaultAppInfo);
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
@@ -794,6 +791,16 @@ function App() {
     const api = window.asrpro;
     if (!api) return undefined;
 
+    if (api.getAppInfo) {
+      Promise.resolve(api.getAppInfo()).then((info) => {
+        if (!info) return;
+        setAppInfo((current) => ({
+          name: info.name || current.name,
+          version: info.version || current.version,
+        }));
+      }).catch(() => {});
+    }
+
     if (api.getRuntimeState) {
       Promise.resolve(api.getRuntimeState()).then((state) => {
         if (!state) return;
@@ -965,7 +972,7 @@ function App() {
                 onDeleteRow={deleteHistoryRow}
               />
             )}
-            {activeView === "about" && <AboutView />}
+            {activeView === "about" && <AboutView appInfo={appInfo} storagePath={runtimeInfo?.dataDir} />}
             {activeView === "configuration" && (
               <SettingsView
                 runtimeInfo={runtimeInfo}
@@ -1741,7 +1748,14 @@ function formatSidecarStatus(status?: string) {
   return "Unknown";
 }
 
-function AboutView() {
+interface AboutViewProps {
+  appInfo: AppInfo;
+  storagePath?: string;
+}
+
+function AboutView({ appInfo, storagePath }: AboutViewProps) {
+  const facts = buildAboutFactRows(appInfo.version, storagePath);
+
   return (
     <ViewFrame title="About ASR Pro">
       <section aria-label="About product summary" className={panelSurfaceClass}>
@@ -1750,8 +1764,8 @@ function AboutView() {
             <AppLogoMark className="size-16" title="ASR Pro" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-[24px] font-semibold leading-7 tracking-normal text-[#f4f4f4]">ASR Pro</h3>
-            <p className="selectable-text mt-1 text-[12px] font-semibold text-[#a8a8a8]">Version 0.1.0</p>
+            <h3 className="text-[24px] font-semibold leading-7 tracking-normal text-[#f4f4f4]">{appInfo.name}</h3>
+            <p className="selectable-text mt-1 text-[12px] font-semibold text-[#a8a8a8]">Version {appInfo.version}</p>
             <p className="selectable-text mt-4 max-w-[420px] text-[13px] leading-5 text-[#cfcfcf]">
               A quiet desktop workspace for private dictation, file transcription, and local speech model testing.
             </p>
@@ -1759,34 +1773,13 @@ function AboutView() {
         </div>
 
         <dl aria-label="Product facts" className={`border-t ${panelDividerClass}`}>
-          {aboutFactRows.map((fact) => (
+          {facts.map((fact) => (
             <div key={fact.label} className={`grid gap-1 border-t ${panelDividerClass} px-5 py-3 first:border-t-0 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-4`}>
               <dt className="text-[11px] font-semibold uppercase leading-5 text-[#8e8e8e]">{fact.label}</dt>
               <dd className="selectable-text text-[13px] font-semibold leading-5 text-[#e4e4e4]">{fact.value}</dd>
             </div>
           ))}
         </dl>
-      </section>
-
-      <section>
-        <h3 className="px-1 text-[13px] font-semibold text-[#a8a8a8]">Highlights</h3>
-        <ul aria-label="Highlights" className={`mt-2 ${panelSurfaceClass}`}>
-          {aboutFeatureRows.map((feature) => {
-            const Icon = feature.icon;
-
-            return (
-              <li key={feature.title} className={`flex min-w-0 gap-3 border-t ${panelDividerClass} p-4 first:border-t-0`}>
-                <span className={iconTileClass}>
-                  <Icon className="size-3.5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold leading-5 text-[#eeeeee]">{feature.title}</p>
-                  <p className="selectable-text mt-0.5 text-[12px] font-medium leading-5 text-[#aaa]">{feature.detail}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
       </section>
     </ViewFrame>
   );
