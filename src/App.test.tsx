@@ -146,6 +146,45 @@ describe("ASR Pro Electron shell", () => {
     expect(css).toContain(".app-chrome :is(input, textarea, select, [contenteditable=\"true\"])");
   });
 
+  it("defines one thin scrollbar style with autohide scoped to the main content pane", () => {
+    const css = appStylesheet();
+
+    expect(css).toContain(".scrollbar-macos");
+    expect(css).toContain(".scrollbar-autohide");
+    expect(css).toContain("width: 6px;");
+    expect(css).toContain("height: 6px;");
+    expect(css).toContain(".scrollbar-autohide:not(.is-scrollbar-visible)");
+    expect(css).not.toContain("width: 10px;");
+    expect(css).not.toContain("border: 3px solid transparent;");
+  });
+
+  it("keeps scrollbar autohide behavior off dropdowns and sidebar scroll areas", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture([
+      { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
+      { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
+    ]);
+
+    render(<App />);
+    const mainPane = document.querySelector("main");
+    const sidebarNav = screen.getByRole("navigation", { name: "Primary" });
+
+    expect(mainPane?.className).toContain("scrollbar-macos");
+    expect(mainPane?.className).toContain("scrollbar-autohide");
+    expect(sidebarNav.className).toContain("scrollbar-macos");
+    expect(sidebarNav.className).not.toContain("scrollbar-autohide");
+    expect(sidebarNav.className).not.toContain("is-scrollbar-visible");
+
+    await user.click(screen.getByRole("button", { name: "Sound" }));
+    const selector = await screen.findByRole("button", { name: "Microphone selector" });
+    await user.click(selector);
+
+    const listbox = screen.getByRole("listbox", { name: "Microphone options" });
+    expect(listbox.className).toContain("scrollbar-macos");
+    expect(listbox.className).not.toContain("scrollbar-autohide");
+    expect(listbox.className).not.toContain("is-scrollbar-visible");
+  });
+
   it("renders a Superwhisper-style home surface without the bottom-left Pro pill", () => {
     render(<App />);
 

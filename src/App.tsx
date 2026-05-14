@@ -235,7 +235,7 @@ const panelDividerClass = "border-white/[0.08]";
 const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusClass} bg-white/[0.07] text-[#d7d7d7]`;
 const focusRingClass = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]";
 const panelControlButtonClass = `inline-flex min-h-8 items-center justify-center gap-1.5 ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] ${focusRingClass}`;
-const dropdownSurfaceClass = `absolute z-50 max-h-64 overflow-y-auto ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] p-1 shadow-2xl shadow-black/40`;
+const dropdownSurfaceClass = `scrollbar-macos absolute z-50 max-h-64 overflow-y-auto ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] p-1 shadow-2xl shadow-black/40`;
 const dropdownOptionButtonClass = `flex w-full min-w-0 items-start gap-2 ${insetControlRadiusClass} px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition`;
 const segmentedControlClass = `inline-flex ${sharedRadiusClass} border border-white/[0.08] bg-[#2b2b2b] p-0.5`;
 const segmentedItemClass = `h-7 ${insetControlRadiusClass} px-2.5 text-[12px] font-semibold transition ${focusRingClass}`;
@@ -1050,7 +1050,7 @@ function App() {
           />
           <main
             tabIndex={-1}
-            className={`scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-3 pb-5 pt-3 outline-none focus:outline-none focus-visible:outline-none sm:px-4 ${isScrollbarVisible ? "is-scrollbar-visible" : ""}`}
+            className={`scrollbar-macos scrollbar-autohide min-h-0 min-w-0 overflow-y-auto px-3 pb-5 pt-3 outline-none focus:outline-none focus-visible:outline-none sm:px-4 ${isScrollbarVisible ? "is-scrollbar-visible" : ""}`}
             onScroll={handleScrollActivity}
             onTouchMove={handleScrollActivity}
             onWheel={handleScrollActivity}
@@ -1135,7 +1135,7 @@ function Sidebar({ activeView, onChange, onWindowAction }: SidebarProps) {
         <WindowDots onWindowAction={onWindowAction} />
       </div>
 
-      <nav className="flex gap-1 overflow-x-auto px-2.5 pb-3 pt-1 sm:block sm:min-h-0 sm:overflow-y-auto" aria-label="Primary">
+      <nav className="scrollbar-macos flex gap-1 overflow-x-auto px-2.5 pb-3 pt-1 sm:block sm:min-h-0 sm:overflow-y-auto" aria-label="Primary">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
