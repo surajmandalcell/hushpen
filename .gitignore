@@ -16,6 +16,11 @@ release/
 sidecar/bin/*
 !sidecar/bin/README.md
 sidecar/build/
+sidecar/.pytest_cache/
+sidecar/outputs/
+sidecar/PERF.md
+sidecar/PERFORMANCE_SUMMARY.md
+sidecar/TEST_SUMMARY.md
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

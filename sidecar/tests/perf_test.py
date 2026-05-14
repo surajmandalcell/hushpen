@@ -489,13 +489,13 @@ async def run_performance_test():
     results = await tester.run_comprehensive_benchmark()
 
     # Save JSON results
-    json_file = outputs_dir / "performance_benchmark.json"
+    json_file = outputs_dir / "benchmark-results.json"
     with open(json_file, "w") as f:
         json.dump(results, f, indent=2)
 
     # Generate and save markdown report
     markdown_report = tester.generate_markdown_report(results)
-    report_file = Path("PERFORMANCE_SUMMARY.md")
+    report_file = outputs_dir / "performance-report.md"
     with open(report_file, "w") as f:
         f.write(markdown_report)
 
