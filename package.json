@@ -16,7 +16,7 @@
     "sidecar:dev": "node scripts/ensure-sidecar-env.cjs --run",
     "sidecar:build": "node scripts/build-sidecar.cjs",
     "sidecar:check": "node scripts/check-sidecar-bundle.cjs",
-    "electron:dev": "concurrently -k \"npm:sidecar:dev\" \"npm:dev\" \"wait-on http://127.0.0.1:4270 http://127.0.0.1:8000/health && electron .\"",
+    "electron:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:4270 && electron .\"",
     "electron:pack": "npm run build && npm run sidecar:check && electron-builder --dir",
     "electron:dist": "npm run build && npm run sidecar:check && electron-builder",
     "screenshots:readme": "node scripts/capture-readme-screenshots.cjs && npm run screenshots:check",

@@ -82,7 +82,7 @@ npm run sidecar:setup
 npm run electron:dev
 ```
 
-The development command starts the local ASR engine on `127.0.0.1:8000`, Vite on `127.0.0.1:4270`, and the Electron app once both services are healthy.
+The development command starts Vite on `127.0.0.1:4270` and opens the Electron app as soon as the renderer is ready. The local ASR engine starts lazily on the first transcription request, then the UI shows a preparation state while the request waits for engine readiness.
 
 ## Commands
 

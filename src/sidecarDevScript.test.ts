@@ -10,6 +10,14 @@ describe("ASR engine development scripts", () => {
     expect(sidecarDevScript).not.toContain("else python3 sidecar/main.py");
   });
 
+  it("launches the Electron shell without waiting for the lazy engine", () => {
+    const electronDevScript = packageMetadata.scripts["electron:dev"];
+
+    expect(electronDevScript).toContain("wait-on http://127.0.0.1:4270");
+    expect(electronDevScript).not.toContain("npm:sidecar:dev");
+    expect(electronDevScript).not.toContain("8000/health");
+  });
+
   it("keeps the engine dependency preflight tied to requirements.txt", () => {
     const scriptPath = "scripts/ensure-sidecar-env.cjs";
 

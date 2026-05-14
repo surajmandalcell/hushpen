@@ -45,6 +45,7 @@ declare global {
         sidecar?: SidecarState;
       }>;
       getSidecarState?: () => Promise<SidecarState>;
+      ensureEngineReady?: () => Promise<SidecarState>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;
         customBounds: {

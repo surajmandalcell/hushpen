@@ -626,6 +626,60 @@ describe("ASR Pro Electron shell", () => {
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
+  it("queues transcription behind lazy engine startup and shows preparation status", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture();
+    let resolveEngineReady: ((state: { status: string; mode: string }) => void) | undefined;
+    const ensureEngineReady = vi.fn(() => new Promise<{ status: string; mode: string }>((resolve) => {
+      resolveEngineReady = resolve;
+    }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        text: "Queued transcription completed after the engine became ready.",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Parakeet-TDT-0.6B-v3",
+        shortcut: "CommandOrControl+`",
+        sidecar: { status: "idle", mode: "lazy" },
+      }),
+      ensureEngineReady,
+      setRecording: vi.fn().mockResolvedValue({ isRecording: false }),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      onSidecarState: vi.fn(),
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+    await screen.findByRole("button", { name: "Stop Recording" });
+    await user.click(screen.getByRole("button", { name: "Stop Recording" }));
+
+    await screen.findByText("Preparing Parakeet engine...");
+    expect(screen.getByText("Preparing engine")).toBeTruthy();
+    expect(ensureEngineReady).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveEngineReady?.({ status: "ready", mode: "python" });
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+      expect(stored[0]?.text).toBe("Queued transcription completed after the engine became ready.");
+    });
+  });
+
   it("syncs recording state from the global shortcut and tray bridge without changing pages", async () => {
     mockAudioCapture();
     const fetchMock = vi.fn().mockResolvedValue({

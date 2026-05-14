@@ -44,6 +44,16 @@ describe("Electron runtime helpers", () => {
     expect(runtime.DEFAULT_MODEL.repo).toBe("nvidia/parakeet-tdt-0.6b-v3");
   });
 
+  it("does not block the main window on Python engine startup", () => {
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+
+    expect(mainSource).toContain('ipcMain.handle("engine:ensure-ready"');
+    expect(preloadSource).toContain("ensureEngineReady");
+    expect(mainSource).not.toContain("await startSidecar();");
+    expect(mainSource.indexOf("createWindow();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut();"));
+  });
+
   it("renders the recording overlay as a text-free waveform pill", () => {
     const html = runtime.createRecordingOverlayHtml();
 

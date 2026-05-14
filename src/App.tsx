@@ -38,7 +38,7 @@ import { audioRecordingService } from "./services/audioRecording";
 type ViewId = "home" | "configuration" | "sound" | "models" | "history" | "about";
 type WindowAction = "minimize" | "close";
 type OverlayPlacement = "top" | "bottom";
-type RecordingStatus = "idle" | "starting" | "recording" | "transcribing" | "error";
+type RecordingStatus = "idle" | "starting" | "recording" | "preparing-engine" | "transcribing" | "error";
 
 interface OverlaySettings {
   placement: OverlayPlacement;
@@ -658,6 +658,18 @@ function App() {
     }
   }, []);
 
+  const ensureEngineReadyForTranscription = useCallback(async () => {
+    const ensureEngineReady = window.asrpro?.ensureEngineReady;
+    if (!ensureEngineReady) return;
+
+    const engineState = await ensureEngineReady();
+    setRuntimeInfo((current) => (current ? { ...current, sidecar: engineState } : { isRecording: false, sidecar: engineState }));
+
+    if (engineState.status !== "ready") {
+      throw new Error(engineState.error || "ASR engine is not ready.");
+    }
+  }, []);
+
   const refreshAudioInputDevices = useCallback(async () => {
     const mediaDevices = navigator.mediaDevices;
 
@@ -755,7 +767,7 @@ function App() {
     recordingTransitionRef.current = "stopping";
     setIsRecording(false);
     setRecordingDurationSeconds(durationSeconds);
-    setRecordingStatus(wasRecording ? "transcribing" : "idle");
+    setRecordingStatus(wasRecording ? "preparing-engine" : "idle");
     setRuntimeInfo((current) => (current ? { ...current, isRecording: false } : current));
 
     let recordingUrl: string | undefined;
@@ -775,6 +787,9 @@ function App() {
       }
 
       recordingUrl = await readBlobAsDataUrl(audioBlob);
+      setRecordingStatus("preparing-engine");
+      await ensureEngineReadyForTranscription();
+      setRecordingStatus("transcribing");
       const result = await apiClient.transcribeFile(createRecordingFile(audioBlob), modelIdsByName[selectedModel] ?? selectedModel);
       const text = typeof result === "string" ? result : result?.text;
       if (!text || !text.trim()) {
@@ -810,7 +825,7 @@ function App() {
       recordingStartedAtRef.current = null;
       recordingTransitionRef.current = null;
     }
-  }, [addHistoryRow, selectedModel, syncRecordingBridge]);
+  }, [addHistoryRow, ensureEngineReadyForTranscription, selectedModel, syncRecordingBridge]);
 
   useEffect(() => {
     const api = window.asrpro;
@@ -1173,16 +1188,19 @@ function HomeView({
   onOpenHistory,
   onOpenModels,
 }: HomeViewProps) {
-  const isBusy = recordingStatus === "starting" || recordingStatus === "transcribing";
+  const isBusy = recordingStatus === "starting" || recordingStatus === "preparing-engine" || recordingStatus === "transcribing";
   const statusDetail = recordingStatus === "starting"
     ? "Opening microphone..."
+    : recordingStatus === "preparing-engine"
+      ? "Preparing Parakeet engine..."
     : recordingStatus === "transcribing"
-      ? "Transcribing captured audio..."
+      ? "Loading Parakeet model and transcribing..."
       : isRecording
         ? `Recording ${formatDuration(durationSeconds)}`
         : "Turn your voice to text with a single click.";
   const shortcutParts = formatShortcutParts(shortcut);
-  const recordingActionLabel = isRecording ? "Stop Recording" : recordingStatus === "transcribing" ? "Transcribing" : "Start Recording";
+  const recordingTitle = isRecording ? "Stop recording" : recordingStatus === "preparing-engine" ? "Preparing engine" : recordingStatus === "transcribing" ? "Transcribing" : "Start recording";
+  const recordingActionLabel = isRecording ? "Stop Recording" : recordingStatus === "preparing-engine" ? "Preparing Engine" : recordingStatus === "transcribing" ? "Transcribing" : "Start Recording";
   const stats = buildHomeStats(historyRows);
 
   return (
@@ -1206,7 +1224,7 @@ function HomeView({
         <div className="space-y-2">
           <HomeActionRow
             icon={<Mic2 className="size-3.5" />}
-            title={isRecording ? "Stop recording" : "Start recording"}
+            title={recordingTitle}
             detail={statusDetail}
             disabled={isBusy}
             trailing={<ShortcutCluster parts={shortcutParts} />}
@@ -1854,7 +1872,7 @@ function SettingsView({
   const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
   const engine = runtimeInfo?.sidecar;
   const engineStatus = formatEngineStatus(engine?.status);
-  const engineDetail = engine?.error || engine?.mode || engine?.healthUrl || "Waiting for desktop runtime";
+  const engineDetail = engine?.error || (engine?.status === "idle" ? "Starts when transcription is needed" : engine?.mode || engine?.healthUrl || "Waiting for desktop runtime");
 
   return (
     <ViewFrame title="Configuration">
@@ -1883,6 +1901,7 @@ function SettingsView({
 function formatEngineStatus(status?: string) {
   if (status === "ready") return "Ready";
   if (status === "starting") return "Starting";
+  if (status === "idle") return "Idle";
   if (status === "failed") return "Failed";
   if (status === "stopped") return "Stopped";
   return "Unknown";

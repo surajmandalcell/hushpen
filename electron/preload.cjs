@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("asrpro", {
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   getRuntimeState: () => ipcRenderer.invoke("runtime:state"),
   getSidecarState: () => ipcRenderer.invoke("sidecar:state"),
+  ensureEngineReady: () => ipcRenderer.invoke("engine:ensure-ready"),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:get"),
   setOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   setRecording: (active) => ipcRenderer.invoke("recording:set", Boolean(active)),

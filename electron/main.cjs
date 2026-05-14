@@ -43,9 +43,10 @@ let overlaySettings = DEFAULT_OVERLAY_SETTINGS;
 let positioningOverlay = false;
 let lastWaveformFrame = [];
 let sidecarState = {
-  status: "stopped",
-  mode: "unknown",
+  status: "idle",
+  mode: "lazy",
   healthUrl: SIDECAR_HEALTH_URL,
+  error: null,
 };
 
 app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
@@ -227,6 +228,8 @@ function registerIpc() {
   ipcMain.handle("runtime:state", () => getRuntimeState());
 
   ipcMain.handle("sidecar:state", () => sidecarState);
+
+  ipcMain.handle("engine:ensure-ready", () => ensureSidecarReady());
 
   ipcMain.handle("overlay-settings:get", () => overlaySettings);
 
@@ -478,6 +481,21 @@ async function waitForSidecarHealth(timeoutMs = 15000, shouldAbort = () => false
   return false;
 }
 
+async function ensureSidecarReady() {
+  if (sidecarState.status === "ready") {
+    if (await checkSidecarHealth(500)) return sidecarState;
+    sidecarStartPromise = undefined;
+    setSidecarState({
+      status: "idle",
+      mode: "lazy",
+      pid: null,
+      error: null,
+    });
+  }
+
+  return startSidecar();
+}
+
 async function startSidecar() {
   if (sidecarStartPromise) return sidecarStartPromise;
 
@@ -539,6 +557,7 @@ async function startSidecar() {
     sidecarProcess.once("exit", (code, signal) => {
       const wasManagedProcess = sidecarProcess;
       sidecarProcess = undefined;
+      sidecarStartPromise = undefined;
       if (!isQuitting && wasManagedProcess) {
         setSidecarState({
           status: "failed",
@@ -575,7 +594,11 @@ async function startSidecar() {
     });
   })();
 
-  return sidecarStartPromise;
+  const state = await sidecarStartPromise;
+  if (state.status !== "ready") {
+    sidecarStartPromise = undefined;
+  }
+  return state;
 }
 
 function stopSidecar() {
@@ -583,6 +606,7 @@ function stopSidecar() {
     sidecarProcess.kill();
   }
   sidecarProcess = undefined;
+  sidecarStartPromise = undefined;
 }
 
 function setRecording(active, source = "app") {
@@ -790,7 +814,7 @@ app.setAboutPanelOptions(buildAboutPanelOptions(app.getVersion()));
 if (hasSingleInstanceLock) {
   app.on("second-instance", showMainWindow);
 
-  app.whenReady().then(async () => {
+  app.whenReady().then(() => {
     registerIpc();
     configureMediaPermissions();
     if (SCREENSHOT_MODE) {
@@ -804,7 +828,6 @@ if (hasSingleInstanceLock) {
       });
       Menu.setApplicationMenu(null);
     } else {
-      await startSidecar();
       Menu.setApplicationMenu(createMenu());
     }
     createWindow();
