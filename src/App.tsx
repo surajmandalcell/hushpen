@@ -684,9 +684,9 @@ function App() {
     <div className="h-screen w-screen overflow-hidden bg-[#2f2f2f] font-[Inter,-apple-system,BlinkMacSystemFont,'SF_Pro_Text','Segoe_UI',sans-serif] text-[#ededed] antialiased">
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)] sm:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
-        <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#5b5b5b]">
+        <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-white/[0.08]">
           <Toolbar activeTitle={activeTitle} />
-          <main className="min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-5 sm:px-4 lg:px-4">
+          <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-5 sm:px-4 lg:px-4">
             {activeView === "home" && (
               <HomeView
                 isRecording={isRecording}
@@ -741,12 +741,12 @@ interface SidebarProps {
 
 function Sidebar({ activeView, onChange, onWindowAction }: SidebarProps) {
   return (
-    <aside className="flex min-h-0 flex-col border-b border-[#545454] bg-[#3c3c3c] text-[#d8d8d8] sm:border-b-0">
+    <aside className="flex min-h-0 flex-col border-b border-white/[0.08] bg-[#3c3c3c] text-[#d8d8d8] sm:border-b-0">
       <div className="flex h-12 items-center gap-3 px-4 [-webkit-app-region:drag]">
         <WindowDots onWindowAction={onWindowAction} />
       </div>
 
-      <nav className="flex gap-1 overflow-x-auto px-2.5 pb-3 pt-1 sm:block sm:min-h-0 sm:overflow-y-auto" aria-label="Primary">
+      <nav className="scrollbar-macos flex gap-1 overflow-x-auto px-2.5 pb-3 pt-1 sm:block sm:min-h-0 sm:overflow-y-auto" aria-label="Primary">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeView === item.id;
@@ -811,7 +811,7 @@ interface ToolbarProps {
 
 function Toolbar({ activeTitle }: ToolbarProps) {
   return (
-    <header className="flex min-w-0 items-center justify-between border-b border-[#545454] bg-[#3f3f3f] px-4 [-webkit-app-region:drag]">
+    <header className="flex min-w-0 items-center justify-between border-b border-white/[0.08] bg-[#3f3f3f] px-4 [-webkit-app-region:drag]">
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
