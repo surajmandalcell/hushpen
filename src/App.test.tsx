@@ -89,12 +89,12 @@ describe("ASR Pro Electron shell", () => {
     render(<App />);
 
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByText("Average speed")).toBeNull();
-    expect(screen.queryByText("Words this week")).toBeNull();
-    expect(screen.queryByText("Recordings")).toBeNull();
+    expect(screen.getByText("Average speed")).toBeTruthy();
+    expect(screen.getByText("Words this week")).toBeTruthy();
+    expect(screen.getByText("Recordings")).toBeTruthy();
     expect(screen.queryByText("Apps used")).toBeNull();
     expect(screen.getByText("Get started")).toBeTruthy();
-    expect(screen.queryByText("What's new?")).toBeNull();
+    expect(screen.getByText("What's new?")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
     expect(screen.getByText("Review history")).toBeTruthy();
@@ -336,6 +336,8 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
     expect(screen.getByText("Get started")).toBeTruthy();
+    expect(screen.getByText("Recordings")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "History" })).toBeTruthy());
@@ -460,7 +462,7 @@ describe("ASR Pro Electron shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Sound" }));
     expect(screen.getByText(/^(Default|Ready)$/)).toBeTruthy();
-    expect(screen.getByText("Local")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change" })).toBeTruthy();
 
     const classNames = renderedClassNames();
     expect(classNames).not.toContain("bg-[#244735]");
@@ -492,11 +494,30 @@ describe("ASR Pro Electron shell", () => {
 
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Configuration" }));
+    expect(screen.getByText("Recording overlay")).toBeTruthy();
+    expect(screen.queryByText("Recording window")).toBeNull();
+    expect(screen.queryByText("Classic")).toBeNull();
+    expect(screen.queryByText("Hidden")).toBeNull();
     await waitFor(() => expect(screen.getByRole("button", { name: "Top overlay position" }).getAttribute("aria-pressed")).toBe("true"));
 
     await user.click(screen.getByRole("button", { name: "Bottom overlay position" }));
 
     expect(setOverlaySettings).toHaveBeenCalledWith({ placement: "bottom" });
     expect(screen.getByRole("button", { name: "Bottom overlay position" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("routes configuration references to their real settings pages", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+    await user.click(screen.getAllByRole("button", { name: "Change" })[0]);
+
+    expect(screen.getByRole("button", { name: "Models library" }).getAttribute("aria-current")).toBe("page");
+
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+    await user.click(screen.getAllByRole("button", { name: "Change" })[1]);
+
+    expect(screen.getByRole("button", { name: "Sound" }).getAttribute("aria-current")).toBe("page");
   });
 });

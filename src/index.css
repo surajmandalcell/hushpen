@@ -233,13 +233,14 @@
 
   /* Scrollbar styles */
   .scrollbar-macos {
-    scrollbar-width: none;
+    scrollbar-width: thin;
     scrollbar-color: transparent transparent;
+    scrollbar-gutter: stable;
   }
 
   .scrollbar-macos::-webkit-scrollbar {
-    width: 0;
-    height: 0;
+    width: 10px;
+    height: 10px;
   }
 
   .scrollbar-macos::-webkit-scrollbar-track {
@@ -261,13 +262,7 @@
   }
 
   .scrollbar-macos.is-scrollbar-visible {
-    scrollbar-width: thin;
     scrollbar-color: rgba(214, 214, 214, 0.24) transparent;
-  }
-
-  .scrollbar-macos.is-scrollbar-visible::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
   }
 
   .scrollbar-macos.is-scrollbar-visible::-webkit-scrollbar-thumb {
@@ -282,6 +277,39 @@
 
   .scrollbar-macos::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  .liquid-search-input,
+  .liquid-search-input:focus,
+  .liquid-search-input:focus-visible {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    --tw-ring-color: transparent !important;
+    --tw-ring-offset-width: 0 !important;
+  }
+
+  .history-card-details {
+    animation: history-card-expand 180ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: top;
+  }
+
+  @keyframes history-card-expand {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scaleY(0.98);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scaleY(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .history-card-details {
+      animation: none;
+    }
   }
 }
 

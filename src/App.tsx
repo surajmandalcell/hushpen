@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowUpRight,
   BrainCircuit,
   Bluetooth,
   Camera,
   Check,
   CheckCircle2,
-  ChevronDown,
   Copy,
   Headphones,
   History,
@@ -174,10 +174,10 @@ const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
   };
 });
 
-const sharedRadiusClass = "rounded-[9px]";
-const panelSurfaceClass = "overflow-hidden rounded-[18px] border border-[#505050] bg-[linear-gradient(135deg,rgba(70,70,70,0.86),rgba(54,54,54,0.9))] shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]";
-const panelDividerClass = "border-[#505050]";
-const iconTileClass = `grid size-8 shrink-0 place-items-center ${sharedRadiusClass} bg-[#303030] text-[#d7d7d7]`;
+const sharedRadiusClass = "rounded-[12px]";
+const panelSurfaceClass = "overflow-hidden rounded-[22px] border border-white/[0.095] bg-white/[0.055] backdrop-blur-2xl";
+const panelDividerClass = "border-white/[0.08]";
+const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusClass} bg-white/[0.07] text-[#d7d7d7]`;
 
 const waveformBarCount = 76;
 const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
@@ -359,6 +359,25 @@ function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
   if (elapsedDays === 1) return "Yesterday";
   if (elapsedDays < 30) return `${elapsedDays} days ago`;
   return historyDateFormatter.format(new Date(createdAt));
+}
+
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function buildHomeStats(rows: TranscriptHistoryRow[]) {
+  const completedRows = rows.filter((row) => row.status === "completed");
+  const wordsThisWeek = completedRows.reduce((total, row) => total + countWords(row.text), 0);
+  const spokenSeconds = completedRows.reduce((total, row) => total + row.durationSeconds, 0);
+  const avgWpm = spokenSeconds > 0 ? Math.round(wordsThisWeek / (spokenSeconds / 60)) : 0;
+  const savedMinutes = Math.max(0, Math.round(wordsThisWeek / 42));
+
+  return [
+    { value: `${avgWpm} WPM`, label: "Average speed" },
+    { value: String(wordsThisWeek), label: "Words this week" },
+    { value: String(rows.length), label: "Recordings" },
+    { value: savedMinutes ? `${savedMinutes} minute${savedMinutes === 1 ? "" : "s"}` : "0 minutes", label: "Saved this week" },
+  ];
 }
 
 function startOfDay(timestamp: number) {
@@ -856,6 +875,8 @@ function App() {
                 recordingStatus={recordingStatus}
                 recordingError={recordingError}
                 durationSeconds={recordingDurationSeconds}
+                selectedModel={selectedModel}
+                historyRows={historyRows}
                 shortcut={runtimeInfo?.shortcut}
                 onToggleRecording={() => handleSetRecording(!isRecording)}
                 onOpenHistory={() => setActiveView("history")}
@@ -873,6 +894,7 @@ function App() {
                 audioInputDevicesError={audioInputDevicesError}
                 onSelectAudioInput={handleAudioInputChange}
                 onRefreshAudioInputs={refreshAudioInputDevices}
+                onOpenModels={() => setActiveView("models")}
               />
             )}
             {activeView === "models" && <ModelsView selectedModel={selectedModel} onSelectModel={setSelectedModel} />}
@@ -887,8 +909,11 @@ function App() {
               <SettingsView
                 runtimeInfo={runtimeInfo}
                 selectedModel={selectedModel}
+                selectedAudioInputLabel={selectedAudioInputLabel}
                 overlayPlacement={overlayPlacement}
                 onOverlayPlacementChange={handleOverlayPlacementChange}
+                onOpenModels={() => setActiveView("models")}
+                onOpenSound={() => setActiveView("sound")}
               />
             )}
           </main>
@@ -1022,6 +1047,8 @@ interface HomeViewProps {
   recordingStatus: RecordingStatus;
   recordingError: string | null;
   durationSeconds: number;
+  selectedModel: string;
+  historyRows: TranscriptHistoryRow[];
   shortcut?: string;
   onToggleRecording: () => void;
   onOpenHistory: () => void;
@@ -1033,6 +1060,8 @@ function HomeView({
   recordingStatus,
   recordingError,
   durationSeconds,
+  selectedModel,
+  historyRows,
   shortcut,
   onToggleRecording,
   onOpenHistory,
@@ -1048,9 +1077,19 @@ function HomeView({
         : "Turn your voice to text with a single click.";
   const shortcutParts = formatShortcutParts(shortcut);
   const recordingActionLabel = isRecording ? "Stop Recording" : recordingStatus === "transcribing" ? "Transcribing" : "Start Recording";
+  const stats = buildHomeStats(historyRows);
 
   return (
-    <section className="mx-auto flex w-full max-w-[520px] flex-col gap-4 pt-1">
+    <section className="mx-auto flex w-full max-w-[520px] flex-col gap-5 pt-1">
+      <div className={`${panelSurfaceClass} grid grid-cols-2 sm:grid-cols-4`}>
+        {stats.map((stat) => (
+          <div key={stat.label} className={`border-t ${panelDividerClass} p-4 first:border-t-0 sm:border-l sm:border-t-0 sm:first:border-l-0`}>
+            <p className="text-[15px] font-semibold leading-none text-[#f3f3f3]">{stat.value}</p>
+            <p className="mt-2 text-[11px] font-semibold leading-none text-[#a4a4a4]">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
       <span
         aria-label={isRecording ? "Recording active" : "Recording inactive"}
         className="sr-only"
@@ -1069,7 +1108,7 @@ function HomeView({
             onClick={onToggleRecording}
           />
           <HomeActionRow icon={<History className="size-3.5" />} title="Review history" detail="Replay saved recordings and transcripts." onClick={onOpenHistory} />
-          <HomeActionRow icon={<Library className="size-3.5" />} title="Choose speech model" detail="Pick the recognizer for new dictations." onClick={onOpenModels} />
+          <HomeActionRow icon={<Library className="size-3.5" />} title="Choose speech model" detail={selectedModel} onClick={onOpenModels} />
         </div>
       </section>
 
@@ -1079,6 +1118,20 @@ function HomeView({
         </p>
       ) : null}
 
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-[13px] font-semibold text-[#a9a9a9]">What's new?</h2>
+          <button type="button" className={`inline-flex items-center gap-1.5 ${sharedRadiusClass} px-2 py-1 text-[12px] font-semibold text-[#ececec] transition hover:bg-white/[0.07] hover:text-white`} onClick={onOpenHistory}>
+            <span>View history</span>
+            <ArrowUpRight className="size-3" />
+          </button>
+        </div>
+        <div className={panelSurfaceClass}>
+          <UpdateRow date="May 14" title="Recording history playback" detail="Saved dictations keep playable source audio with their transcripts." />
+          <UpdateRow date="May 14" title="Microphone picker" detail="Choose the input device from the toolbar or Sound settings." />
+          <UpdateRow date="May 13" title="Local Whisper sidecar" detail="Desktop development starts the local sidecar and uses the working Whisper Base model." />
+        </div>
+      </section>
     </section>
   );
 }
@@ -1122,6 +1175,24 @@ function HomeActionRow({ icon, title, detail, trailing, ariaLabel, disabled = fa
   return <div className={`flex w-full items-center gap-3 ${sharedRadiusClass} px-2.5 py-2`}>{content}</div>;
 }
 
+interface UpdateRowProps {
+  date: string;
+  title: string;
+  detail: string;
+}
+
+function UpdateRow({ date, title, detail }: UpdateRowProps) {
+  return (
+    <div className={`grid grid-cols-[56px_minmax(0,1fr)] gap-3 border-t ${panelDividerClass} px-4 py-3 first:border-t-0`}>
+      <p className="text-[12px] font-semibold text-[#8d8d8d]">{date}</p>
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
+        <p className="mt-1 text-[12px] font-medium leading-5 text-[#b6b6b6]">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 interface SoundViewProps {
   selectedModel: string;
   isRecording: boolean;
@@ -1132,6 +1203,7 @@ interface SoundViewProps {
   audioInputDevicesError: string | null;
   onSelectAudioInput: (deviceId: string) => void;
   onRefreshAudioInputs: () => void;
+  onOpenModels: () => void;
 }
 
 interface MicrophoneSelectorProps {
@@ -1253,6 +1325,7 @@ function SoundView({
   audioInputDevicesError,
   onSelectAudioInput,
   onRefreshAudioInputs,
+  onOpenModels,
 }: SoundViewProps) {
   return (
     <ViewFrame title="Sound">
@@ -1293,7 +1366,12 @@ function SoundView({
             </div>
           )}
         />
-        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Recognition model" detail={selectedModel} trailing={<StatusLabel>Local</StatusLabel>} />
+        <PanelRow
+          icon={<BrainCircuit className="size-3.5" />}
+          title="Recognition model"
+          detail={selectedModel}
+          trailing={<NavigateButton label="Change" onClick={onOpenModels} />}
+        />
       </GroupedPanel>
     </ViewFrame>
   );
@@ -1313,21 +1391,17 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
             key={model.name}
             type="button"
             aria-pressed={selectedModel === model.name}
-            className={`flex w-full items-center gap-3 border-t ${panelDividerClass} p-4 text-left transition first:border-t-0 hover:bg-[#4b4b4b]/70 ${
-              selectedModel === model.name ? "bg-[#4b4b4b]/70" : ""
+            className={`flex min-h-14 w-full items-center gap-3 border-t ${panelDividerClass} px-3 py-2 text-left transition first:border-t-0 hover:bg-white/[0.065] ${
+              selectedModel === model.name ? "bg-white/[0.075]" : ""
             }`}
             onClick={() => onSelectModel(model.name)}
           >
             <div className={iconTileClass}>
-              <BrainCircuit className="size-3.5" />
+              <BrainCircuit className="size-3" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-semibold text-[#f2f2f2]">{model.name}</p>
+              <p className="truncate text-[13px] font-semibold text-[#f2f2f2]">{model.name}</p>
               <p className="mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{model.detail}</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <ModelTag>{model.speed}</ModelTag>
-                <ModelTag>{model.status}</ModelTag>
-              </div>
             </div>
             {selectedModel === model.name ? (
               <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
@@ -1342,14 +1416,6 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
       </GroupedPanel>
     </ViewFrame>
   );
-}
-
-interface ModelTagProps {
-  children: ReactNode;
-}
-
-function ModelTag({ children }: ModelTagProps) {
-  return <span className="rounded-[7px] bg-[#303030] px-2 py-1 text-[11px] font-semibold text-[#c8c8c8]">{children}</span>;
 }
 
 interface HistoryViewProps {
@@ -1389,12 +1455,12 @@ function HistoryView({ rows, onCopyRow, onDeleteRow }: HistoryViewProps) {
   return (
     <section className="mx-auto w-full max-w-[520px] space-y-4">
       <h2 className="sr-only">History</h2>
-      <div className="flex h-10 items-center gap-2 rounded-full border border-[#464646] bg-[#282828]/85 px-3 text-[#8e8e8e] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+      <div className="flex h-10 items-center gap-2 rounded-full border border-white/[0.09] bg-white/[0.035] px-3 text-[#8e8e8e] backdrop-blur-2xl">
         <Search className="size-3.5 shrink-0" />
         <input
           type="search"
           aria-label="Search history"
-          className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] font-semibold text-[#e8e8e8] outline-none placeholder:text-[#777] focus:border-0 focus:outline-none focus:ring-0 focus:ring-offset-0"
+          className="liquid-search-input min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-[13px] font-semibold text-[#e8e8e8] outline-none placeholder:text-[#777]"
           placeholder="Find..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -1442,10 +1508,10 @@ interface HistoryCardProps {
 
 function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardProps) {
   return (
-    <article className={`${panelSurfaceClass} transition ${expanded ? "p-4" : "p-0"}`}>
+    <article className={`${panelSurfaceClass} p-4 transition-colors duration-200 ${expanded ? "bg-white/[0.07]" : ""}`}>
       <button
         type="button"
-        className={`block w-full text-left ${expanded ? "" : "px-4 py-4"}`}
+        className="block w-full text-left"
         onClick={onToggle}
       >
         <p className={`${expanded ? "line-clamp-3" : "truncate"} text-[13px] font-semibold leading-5 text-[#f1f1f1]`}>
@@ -1457,15 +1523,15 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
       </button>
 
       {expanded ? (
-        <div className="mt-3 space-y-3">
+        <div className="history-card-details mt-3 space-y-3">
           {row.recordingUrl ? <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} durationSeconds={row.durationSeconds} /> : null}
           {row.status === "failed" ? (
-            <p className="rounded-[8px] border border-[#5c5c5c] bg-[#303030] px-3 py-2 text-[12px] font-medium text-[#ffb3aa]">
+            <p className={`${sharedRadiusClass} border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-[12px] font-medium text-[#ffb3aa]`}>
               {row.error ?? "Transcription failed"}
             </p>
           ) : null}
           <div className="flex items-center justify-between">
-            <div className="inline-flex rounded-[8px] bg-[#5a5a5a]/45 p-0.5">
+            <div className={`inline-flex ${sharedRadiusClass} bg-white/[0.07] p-0.5`}>
               <span className="rounded-[7px] bg-[#777] px-2 py-1 text-[12px] font-semibold text-white">Original</span>
               <span className="px-2 py-1 text-[12px] font-semibold text-[#9d9d9d]">Segmented</span>
             </div>
@@ -1513,11 +1579,11 @@ function HistoryRecordingPlayer({ title, src, durationSeconds }: HistoryRecordin
   };
 
   return (
-    <div className={`flex items-center gap-3 ${sharedRadiusClass} border border-[#626262]/70 bg-[#606060]/45 px-3 py-2`}>
+    <div className={`flex items-center gap-3 ${sharedRadiusClass} border border-white/[0.08] bg-white/[0.085] px-3 py-2`}>
       <button
         type="button"
         aria-label={`${isPlaying ? "Pause" : "Play"} recording: ${title}`}
-        className={`grid size-7 shrink-0 place-items-center ${sharedRadiusClass} text-white transition active:scale-[0.97] ${isPlaying ? "bg-[#0a84ff]" : "bg-[#6e6e6e] hover:bg-[#777]"}`}
+        className={`grid size-7 shrink-0 place-items-center ${sharedRadiusClass} text-white transition active:scale-[0.97] ${isPlaying ? "bg-[#0a84ff]" : "bg-white/[0.12] hover:bg-white/[0.18]"}`}
         onClick={togglePlayback}
       >
         {isPlaying ? <Pause className="size-3" /> : <Play className="size-3" />}
@@ -1548,83 +1614,44 @@ function HistoryRecordingPlayer({ title, src, durationSeconds }: HistoryRecordin
 interface SettingsViewProps {
   runtimeInfo: RuntimeInfo | null;
   selectedModel: string;
+  selectedAudioInputLabel: string;
   overlayPlacement: OverlayPlacement;
   onOverlayPlacementChange: (placement: OverlayPlacement) => void;
+  onOpenModels: () => void;
+  onOpenSound: () => void;
 }
 
-function SettingsView({ runtimeInfo, selectedModel, overlayPlacement, onOverlayPlacementChange }: SettingsViewProps) {
+function SettingsView({
+  runtimeInfo,
+  selectedModel,
+  selectedAudioInputLabel,
+  overlayPlacement,
+  onOverlayPlacementChange,
+  onOpenModels,
+  onOpenSound,
+}: SettingsViewProps) {
   const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
 
   return (
     <ViewFrame title="Configuration">
-      <GroupedPanel title="Recording window">
-        <div className="p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-[#f0f0f0]">Style</span>
-            <StatusLabel>Mini</StatusLabel>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <RecordingWindowPreview label="Classic" variant="classic" />
-            <RecordingWindowPreview label="Mini" variant="mini" selected />
-            <RecordingWindowPreview label="Hidden" variant="hidden" />
-          </div>
-          <div className={`mt-4 flex min-w-0 items-center justify-between border-t ${panelDividerClass} pt-3`}>
-            <div>
-              <p className="text-[13px] font-semibold text-[#eeeeee]">Position</p>
-            </div>
-            <OverlayPlacementControl placement={overlayPlacement} onChange={onOverlayPlacementChange} />
-          </div>
-        </div>
+      <GroupedPanel title="Recording overlay">
+        <PanelRow
+          title="Position"
+          detail="Floating waveform location"
+          trailing={<OverlayPlacementControl placement={overlayPlacement} onChange={onOverlayPlacementChange} />}
+        />
       </GroupedPanel>
 
       <GroupedPanel title="Keyboard shortcuts">
-        <PanelRow title="Toggle recording" detail="Start or stop recording" trailing={<ShortcutCluster parts={shortcutParts} />} />
-        <PanelRow title="Cancel recording" detail="Discard active recording" trailing={<ShortcutBadge>esc</ShortcutBadge>} />
+        <PanelRow title="Toggle recording" detail="Registered by the desktop app" trailing={<ShortcutCluster parts={shortcutParts} />} />
       </GroupedPanel>
 
       <GroupedPanel title="Application">
-        <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusLabel>Active</StatusLabel>} />
-        <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} />
-        <PanelRow title="Single instance" trailing={<StatusLabel>On</StatusLabel>} />
-        <PanelRow title="Tray and overlay" trailing={<StatusLabel>On</StatusLabel>} />
+        <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
+        <PanelRow title="Microphone input" detail={selectedAudioInputLabel} trailing={<NavigateButton label="Change" onClick={onOpenSound} />} />
+        <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} trailing={<StatusLabel>Read only</StatusLabel>} />
       </GroupedPanel>
-
-      <div className={panelSurfaceClass}>
-        <button type="button" className="flex h-11 w-full items-center justify-between px-4 text-left text-[13px] font-semibold text-[#eeeeee] transition hover:bg-[#484848]/70">
-          <span>Advanced settings</span>
-          <ChevronDown className="-rotate-90 size-4 text-[#d2d2d2]" />
-        </button>
-      </div>
     </ViewFrame>
-  );
-}
-
-interface RecordingWindowPreviewProps {
-  label: string;
-  selected?: boolean;
-  variant: "classic" | "mini" | "hidden";
-}
-
-function RecordingWindowPreview({ label, selected = false, variant }: RecordingWindowPreviewProps) {
-  return (
-    <div className={`${sharedRadiusClass} border p-1.5 text-center ${selected ? "border-[#0a84ff] bg-[#28343a]" : "border-[#5b5b5b] bg-[#262626]/70"}`}>
-      <div className="grid h-12 place-items-center rounded-[7px] bg-[#111] text-[#d8d8d8]">
-        {variant === "hidden" ? (
-          <span className="text-[15px] text-[#6f6f6f]">⊘</span>
-        ) : (
-          <span className={`flex items-center gap-px ${variant === "mini" ? "w-10" : "w-16"}`} aria-hidden="true">
-            {historyWaveformBars.slice(0, variant === "mini" ? 18 : 30).map((bar) => (
-              <span
-                key={`${label}-${bar.id}`}
-                className="w-px rounded-full bg-[#d7d7d7]"
-                style={{ height: `${Math.max(4, Math.round(bar.height * 0.45))}px`, opacity: bar.index % 3 === 0 ? 0.55 : 0.9 }}
-              />
-            ))}
-          </span>
-        )}
-      </div>
-      <p className={`mt-1 text-[11px] font-semibold ${selected ? "text-white" : "text-[#b6b6b6]"}`}>{label}</p>
-    </div>
   );
 }
 
@@ -1713,6 +1740,24 @@ function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
 
 interface StatusLabelProps {
   children: ReactNode;
+}
+
+interface NavigateButtonProps {
+  label: string;
+  onClick: () => void;
+}
+
+function NavigateButton({ label, onClick }: NavigateButtonProps) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex h-7 items-center gap-1.5 ${sharedRadiusClass} bg-white/[0.08] px-2.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-white/[0.12] active:scale-[0.97]`}
+      onClick={onClick}
+    >
+      <span>{label}</span>
+      <ArrowUpRight className="size-3" />
+    </button>
+  );
 }
 
 function StatusLabel({ children }: StatusLabelProps) {
