@@ -263,6 +263,27 @@ describe("ASR Pro Electron shell", () => {
     expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("studio-mic");
   });
 
+  it("uses microphone device icons instead of dropdown arrows", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture([
+      { kind: "audioinput", deviceId: "macbook-mic", label: "MacBook Pro Microphone" },
+      { kind: "audioinput", deviceId: "iphone-mic", label: "Suraj's iPhone Microphone" },
+      { kind: "audioinput", deviceId: "webcam-mic", label: "Logitech Webcam Microphone" },
+    ]);
+
+    render(<App />);
+
+    const toolbarSelector = await screen.findByRole("button", { name: "Toolbar microphone selector" });
+    expect(toolbarSelector.querySelector(".lucide-chevron-down")).toBeNull();
+    expect(toolbarSelector.querySelector('[data-device-icon="mic"]')).toBeTruthy();
+
+    await user.click(toolbarSelector);
+
+    expect(screen.getByRole("option", { name: "MacBook Pro Microphone" }).querySelector("[data-device-icon]")?.getAttribute("data-device-icon")).toBe("laptop");
+    expect(screen.getByRole("option", { name: "Suraj's iPhone Microphone" }).querySelector('[data-device-icon="phone"]')).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Logitech Webcam Microphone" }).querySelector('[data-device-icon="webcam"]')).toBeTruthy();
+  });
+
   it("shows real local history instead of static demo transcripts", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -362,7 +383,7 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
     expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
-    expect(screen.getByText(/Failed to fetch/)).toBeTruthy();
+    expect(screen.getByText(/Failed to fetch/, { selector: "p" })).toBeTruthy();
 
     const audio = screen.getByLabelText("Recording audio: Recording failed to transcribe");
     expect(audio.tagName).toBe("AUDIO");

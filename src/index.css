@@ -233,13 +233,13 @@
 
   /* Scrollbar styles */
   .scrollbar-macos {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(214, 214, 214, 0.24) transparent;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
   }
 
   .scrollbar-macos::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 0;
+    height: 0;
   }
 
   .scrollbar-macos::-webkit-scrollbar-track {
@@ -250,12 +250,32 @@
     min-height: 44px;
     border: 3px solid transparent;
     border-radius: 999px;
-    background: rgba(214, 214, 214, 0.22);
+    background: transparent;
     background-clip: padding-box;
     transition: background 150ms ease;
   }
 
   .scrollbar-macos::-webkit-scrollbar-thumb:hover {
+    background: transparent;
+    background-clip: padding-box;
+  }
+
+  .scrollbar-macos.is-scrollbar-visible {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(214, 214, 214, 0.24) transparent;
+  }
+
+  .scrollbar-macos.is-scrollbar-visible::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scrollbar-macos.is-scrollbar-visible::-webkit-scrollbar-thumb {
+    background: rgba(214, 214, 214, 0.22);
+    background-clip: padding-box;
+  }
+
+  .scrollbar-macos.is-scrollbar-visible::-webkit-scrollbar-thumb:hover {
     background: rgba(214, 214, 214, 0.34);
     background-clip: padding-box;
   }

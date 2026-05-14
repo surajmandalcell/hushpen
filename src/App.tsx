@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  Activity,
   BrainCircuit,
+  Bluetooth,
+  Camera,
   Check,
   CheckCircle2,
   ChevronDown,
-  CircleStop,
-  Database,
+  Copy,
+  Headphones,
   History,
   Home,
-  Keyboard,
-  Layers2,
   Library,
+  Laptop,
   Mic2,
   Pause,
   Play,
   RefreshCw,
+  Search,
   Settings,
+  Smartphone,
+  Trash2,
+  Usb,
   Volume2,
   type LucideIcon,
 } from "lucide-react";
@@ -44,6 +48,7 @@ interface RuntimeInfo {
   defaultModelRepo?: string;
   dataDir?: string;
   overlaySettings?: OverlaySettings;
+  shortcut?: string;
   shortcutRegistered?: boolean;
 }
 
@@ -69,6 +74,39 @@ interface TranscriptHistoryRow {
 interface AudioInputDeviceOption {
   id: string;
   label: string;
+}
+
+type AudioInputDeviceIconType = "mic" | "laptop" | "phone" | "webcam" | "headphones" | "bluetooth" | "usb";
+
+const audioInputDeviceIconByType: Record<AudioInputDeviceIconType, LucideIcon> = {
+  mic: Mic2,
+  laptop: Laptop,
+  phone: Smartphone,
+  webcam: Camera,
+  headphones: Headphones,
+  bluetooth: Bluetooth,
+  usb: Usb,
+};
+
+function getAudioInputDeviceIconType(device: AudioInputDeviceOption): AudioInputDeviceIconType {
+  const value = `${device.id} ${device.label}`.toLowerCase();
+
+  if (device.id === "default" || value.includes("system default")) return "mic";
+  if (/(iphone|ipad|android|mobile|\bphone\b)/.test(value)) return "phone";
+  if (/(macbook|built-in|builtin|internal|laptop)/.test(value)) return "laptop";
+  if (/(webcam|camera|facetime|logitech|brio|c920)/.test(value)) return "webcam";
+  if (/(airpods|headphone|headset|earbud|earphone|buds)/.test(value)) return "headphones";
+  if (/(bluetooth|\bbt\b)/.test(value)) return "bluetooth";
+  if (/(usb|external|interface|focusrite|scarlett|yeti|rode|shure|elgato|studio)/.test(value)) return "usb";
+
+  return "mic";
+}
+
+function AudioInputDeviceIcon({ device, className }: { device: AudioInputDeviceOption; className: string }) {
+  const iconType = getAudioInputDeviceIconType(device);
+  const Icon = audioInputDeviceIconByType[iconType];
+
+  return <Icon aria-hidden="true" data-device-icon={iconType} className={className} />;
 }
 
 const navItems: NavItem[] = [
@@ -124,6 +162,18 @@ const modelCards = [
     status: "Not installed",
   },
 ];
+
+const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
+  const position = index / 71;
+  const envelope = 0.42 + 0.58 * Math.sin(Math.PI * position);
+  const shape = 0.42 + 0.2 * Math.sin(index * 1.7) + 0.16 * Math.sin(index * 0.53 + 1.1);
+  return Math.round(clampNumber(6 + 18 * envelope * shape, 5, 24));
+});
+
+const sharedRadiusClass = "rounded-[9px]";
+const panelSurfaceClass = "overflow-hidden rounded-[18px] border border-[#505050] bg-[linear-gradient(135deg,rgba(70,70,70,0.86),rgba(54,54,54,0.9))] shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]";
+const panelDividerClass = "border-[#505050]";
+const iconTileClass = `grid size-8 shrink-0 place-items-center ${sharedRadiusClass} bg-[#303030] text-[#d7d7d7]`;
 
 const waveformBarCount = 76;
 const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
@@ -299,38 +349,30 @@ function formatDuration(seconds: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
-function formatRelativeTime(createdAt: number, now = Date.now()) {
-  const elapsedSeconds = Math.max(0, Math.floor((now - createdAt) / 1000));
-  if (elapsedSeconds < 45) return "Just now";
-  if (elapsedSeconds < 90) return "1 min ago";
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) return `${elapsedMinutes} min ago`;
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours} hr ago`;
-  if (elapsedHours < 48) return "Yesterday";
-
+function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
+  const elapsedDays = Math.max(0, Math.floor((startOfDay(now) - startOfDay(createdAt)) / 86_400_000));
+  if (elapsedDays === 0) return "Today";
+  if (elapsedDays === 1) return "Yesterday";
+  if (elapsedDays < 30) return `${elapsedDays} days ago`;
   return historyDateFormatter.format(new Date(createdAt));
 }
 
-function countWords(text: string) {
-  return text.trim().split(/\s+/).filter(Boolean).length;
+function startOfDay(timestamp: number) {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
-function buildHomeStats(rows: TranscriptHistoryRow[]) {
-  const completedRows = rows.filter((row) => row.status === "completed");
-  const wordsThisWeek = completedRows.reduce((total, row) => total + countWords(row.text), 0);
-  const spokenSeconds = completedRows.reduce((total, row) => total + row.durationSeconds, 0);
-  const avgWpm = spokenSeconds > 0 ? Math.round(wordsThisWeek / (spokenSeconds / 60)) : 0;
-  const savedMinutes = Math.max(0, Math.round(wordsThisWeek / 42));
-
-  return [
-    { value: `${avgWpm} WPM`, label: "Average speed" },
-    { value: String(wordsThisWeek), label: "Words this week" },
-    { value: String(rows.length), label: "Recordings" },
-    { value: savedMinutes ? `${savedMinutes} minute${savedMinutes === 1 ? "" : "s"}` : "0 minutes", label: "Saved this week" },
-  ];
+function formatShortcutParts(shortcut?: string) {
+  const normalized = (shortcut || "CommandOrControl+`").split("+").map((part) => part.trim()).filter(Boolean);
+  return normalized.map((part) => {
+    if (part === "CommandOrControl" || part === "Command" || part === "Meta") return "⌘";
+    if (part === "Control" || part === "Ctrl") return "⌃";
+    if (part === "Alt" || part === "Option") return "⌥";
+    if (part === "Shift") return "⇧";
+    if (part === "Escape") return "esc";
+    return part.replace("Backquote", "`");
+  });
 }
 
 function getErrorMessage(error: unknown) {
@@ -466,10 +508,11 @@ function App() {
   const [audioInputDevicesError, setAudioInputDevicesError] = useState<string | null>(null);
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
-  const [historyFilter, setHistoryFilter] = useState("All");
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
+  const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
+  const scrollbarTimerRef = useRef<number | null>(null);
   useMicrophoneWaveform(isRecording);
 
   const addHistoryRow = useCallback((row: TranscriptHistoryRow) => {
@@ -478,6 +521,30 @@ function App() {
       saveTranscriptHistory(next);
       return next;
     });
+  }, []);
+
+  const deleteHistoryRow = useCallback((rowId: string) => {
+    setHistoryRows((current) => {
+      const next = current.filter((row) => row.id !== rowId);
+      saveTranscriptHistory(next);
+      return next;
+    });
+  }, []);
+
+  const copyHistoryText = useCallback((text: string) => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+  }, []);
+
+  const showScrollbarTemporarily = useCallback((durationMs = 1200) => {
+    setIsScrollbarVisible(true);
+    if (scrollbarTimerRef.current) {
+      window.clearTimeout(scrollbarTimerRef.current);
+    }
+
+    scrollbarTimerRef.current = window.setTimeout(() => {
+      setIsScrollbarVisible(false);
+      scrollbarTimerRef.current = null;
+    }, durationMs);
   }, []);
 
   const syncRecordingBridge = useCallback(async (active: boolean) => {
@@ -717,6 +784,16 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    showScrollbarTemporarily(1600);
+  }, [activeView, showScrollbarTemporarily]);
+
+  useEffect(() => () => {
+    if (scrollbarTimerRef.current) {
+      window.clearTimeout(scrollbarTimerRef.current);
+    }
+  }, []);
+
   const activeTitle = useMemo(() => navItems.find((item) => item.id === activeView)?.label ?? "Home", [activeView]);
 
   const handleWindowAction = (action: WindowAction) => {
@@ -730,6 +807,10 @@ function App() {
       void stopRecordingFlow(true);
     }
   }, [startRecordingFlow, stopRecordingFlow]);
+
+  const handleScrollActivity = useCallback(() => {
+    showScrollbarTemporarily(1100);
+  }, [showScrollbarTemporarily]);
 
   const handleOverlayPlacementChange = useCallback((placement: OverlayPlacement) => {
     setOverlayPlacement(placement);
@@ -746,7 +827,7 @@ function App() {
     <div className="h-screen w-screen overflow-hidden bg-[#2f2f2f] font-[Inter,-apple-system,BlinkMacSystemFont,'SF_Pro_Text','Segoe_UI',sans-serif] text-[#ededed] antialiased">
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)] sm:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
-        <section className="grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#444444]">
+        <section className="grid min-h-0 min-w-0 grid-rows-[34px_minmax(0,1fr)] bg-[radial-gradient(circle_at_68%_10%,rgba(57,89,62,0.16),transparent_38%),#333333] sm:border-l sm:border-[#3f3f3f]">
           <Toolbar
             activeTitle={activeTitle}
             audioInputDevices={audioInputDevices}
@@ -755,17 +836,22 @@ function App() {
             audioInputDevicesLoading={audioInputDevicesLoading}
             onSelectAudioInput={handleAudioInputChange}
           />
-          <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-4 sm:px-4 lg:px-4">
+          <main
+            className={`scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-3 pb-5 pt-3 sm:px-4 ${isScrollbarVisible ? "is-scrollbar-visible" : ""}`}
+            onScroll={handleScrollActivity}
+            onTouchMove={handleScrollActivity}
+            onWheel={handleScrollActivity}
+          >
             {activeView === "home" && (
               <HomeView
                 isRecording={isRecording}
                 recordingStatus={recordingStatus}
                 recordingError={recordingError}
                 durationSeconds={recordingDurationSeconds}
-                selectedModel={selectedModel}
-                historyRows={historyRows}
+                shortcut={runtimeInfo?.shortcut}
                 onToggleRecording={() => handleSetRecording(!isRecording)}
                 onOpenHistory={() => setActiveView("history")}
+                onOpenModels={() => setActiveView("models")}
               />
             )}
             {activeView === "sound" && (
@@ -782,7 +868,13 @@ function App() {
               />
             )}
             {activeView === "models" && <ModelsView selectedModel={selectedModel} onSelectModel={setSelectedModel} />}
-            {activeView === "history" && <HistoryView rows={historyRows} activeFilter={historyFilter} onFilterChange={setHistoryFilter} />}
+            {activeView === "history" && (
+              <HistoryView
+                rows={historyRows}
+                onCopyRow={copyHistoryText}
+                onDeleteRow={deleteHistoryRow}
+              />
+            )}
             {activeView === "configuration" && (
               <SettingsView
                 runtimeInfo={runtimeInfo}
@@ -900,9 +992,9 @@ function Toolbar({
   onSelectAudioInput,
 }: ToolbarProps) {
   return (
-    <header className="flex min-w-0 items-center justify-between border-b border-[#3f3f3f] bg-[#363636] px-4 [-webkit-app-region:drag]">
+    <header className="flex min-w-0 items-center justify-between border-b border-[#3c3c3c]/70 bg-transparent px-4 [-webkit-app-region:drag]">
       <div className="flex min-w-0 items-center">
-        <span className="truncate text-[12px] font-semibold text-[#cfcfcf]">{activeTitle}</span>
+        <span className="truncate text-[12px] font-semibold text-[#bdbdbd]">{activeTitle}</span>
       </div>
       <MicrophoneSelector
         ariaLabel="Toolbar microphone selector"
@@ -922,10 +1014,10 @@ interface HomeViewProps {
   recordingStatus: RecordingStatus;
   recordingError: string | null;
   durationSeconds: number;
-  selectedModel: string;
-  historyRows: TranscriptHistoryRow[];
+  shortcut?: string;
   onToggleRecording: () => void;
   onOpenHistory: () => void;
+  onOpenModels: () => void;
 }
 
 function HomeView({
@@ -933,10 +1025,10 @@ function HomeView({
   recordingStatus,
   recordingError,
   durationSeconds,
-  selectedModel,
-  historyRows,
+  shortcut,
   onToggleRecording,
   onOpenHistory,
+  onOpenModels,
 }: HomeViewProps) {
   const isBusy = recordingStatus === "starting" || recordingStatus === "transcribing";
   const statusDetail = recordingStatus === "starting"
@@ -945,21 +1037,12 @@ function HomeView({
       ? "Transcribing captured audio..."
       : isRecording
         ? `Recording ${formatDuration(durationSeconds)}`
-        : selectedModel;
-
-  const stats = buildHomeStats(historyRows);
+        : "Turn your voice to text with a single click.";
+  const shortcutParts = formatShortcutParts(shortcut);
+  const recordingActionLabel = isRecording ? "Stop Recording" : recordingStatus === "transcribing" ? "Transcribing" : "Start Recording";
 
   return (
-    <section className="mx-auto flex w-full max-w-[520px] flex-col gap-5">
-      <div className="grid grid-cols-2 overflow-hidden rounded-[14px] bg-[#303030] sm:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="p-4">
-            <p className="text-[15px] font-bold leading-none text-[#f3f3f3]">{stat.value}</p>
-            <p className="mt-2 text-[11px] font-semibold leading-none text-[#a4a4a4]">{stat.label}</p>
-          </div>
-        ))}
-      </div>
-
+    <section className="mx-auto flex w-full max-w-[520px] flex-col gap-4 pt-1">
       <span
         aria-label={isRecording ? "Recording active" : "Recording inactive"}
         className="sr-only"
@@ -967,19 +1050,18 @@ function HomeView({
 
       <section>
         <h2 className="mb-3 text-[13px] font-semibold text-[#a9a9a9]">Get started</h2>
-        <div className="space-y-1">
+        <div className="space-y-2">
           <HomeActionRow
             icon={<Mic2 className="size-3.5" />}
             title={isRecording ? "Stop recording" : "Start recording"}
             detail={statusDetail}
-            trailing={(
-              <PrimaryButton onClick={onToggleRecording} disabled={isBusy}>
-                {isRecording ? <CircleStop className="size-3" /> : <Mic2 className="size-3" />}
-                {isRecording ? "Stop Recording" : recordingStatus === "transcribing" ? "Transcribing" : "Start Recording"}
-              </PrimaryButton>
-            )}
+            disabled={isBusy}
+            trailing={<ShortcutCluster parts={shortcutParts} />}
+            ariaLabel={recordingActionLabel}
+            onClick={onToggleRecording}
           />
-          <HomeActionRow icon={<Keyboard className="size-3.5" />} title="Customize shortcuts" />
+          <HomeActionRow icon={<History className="size-3.5" />} title="Review history" detail="Replay saved recordings and transcripts." onClick={onOpenHistory} />
+          <HomeActionRow icon={<Library className="size-3.5" />} title="Choose speech model" detail="Pick the recognizer for new dictations." onClick={onOpenModels} />
         </div>
       </section>
 
@@ -989,19 +1071,6 @@ function HomeView({
         </p>
       ) : null}
 
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold text-[#a9a9a9]">What's new?</h2>
-          <button type="button" className="text-[12px] font-semibold text-[#ececec] hover:text-white" onClick={onOpenHistory}>
-            View history
-          </button>
-        </div>
-        <div className="overflow-hidden rounded-[8px] border border-[#5c5c5c] bg-[#404040]">
-          <UpdateRow date="May 14" title="Compact dark home" detail="Dark split window, compact navigation, stats, and action rows." />
-          <UpdateRow date="May 13" title="Recording history playback" detail="Every dictation keeps its playable source audio, even when transcription fails." />
-          <UpdateRow date="May 13" title="Local Whisper sidecar" detail="Desktop development now starts the local sidecar and uses the working Whisper Base model." />
-        </div>
-      </section>
     </section>
   );
 }
@@ -1011,16 +1080,18 @@ interface HomeActionRowProps {
   title: string;
   detail?: string;
   trailing?: ReactNode;
+  ariaLabel?: string;
+  disabled?: boolean;
   onClick?: () => void;
 }
 
-function HomeActionRow({ icon, title, detail, trailing, onClick }: HomeActionRowProps) {
+function HomeActionRow({ icon, title, detail, trailing, ariaLabel, disabled = false, onClick }: HomeActionRowProps) {
   const content = (
     <>
       <div className="grid size-7 shrink-0 place-items-center text-[#a8a8a8]">{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[14px] font-bold leading-5 text-[#eeeeee]">{title}</p>
-        {detail ? <p className="truncate text-[13px] font-semibold leading-5 text-[#a8a8a8]">{detail}</p> : null}
+        <p className="truncate text-[14px] font-semibold leading-5 text-[#eeeeee]">{title}</p>
+        {detail ? <p className="truncate text-[13px] font-semibold leading-5 text-[#aaa]">{detail}</p> : null}
       </div>
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
     </>
@@ -1028,31 +1099,19 @@ function HomeActionRow({ icon, title, detail, trailing, onClick }: HomeActionRow
 
   if (onClick) {
     return (
-      <button type="button" className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left transition hover:bg-[#424242]" onClick={onClick}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        className={`flex w-full items-center gap-3 ${sharedRadiusClass} px-2.5 py-2 text-left transition hover:bg-[#424242]/80 disabled:cursor-not-allowed disabled:opacity-70`}
+        disabled={disabled}
+        onClick={onClick}
+      >
         {content}
       </button>
     );
   }
 
-  return <div className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5">{content}</div>;
-}
-
-interface UpdateRowProps {
-  date: string;
-  title: string;
-  detail: string;
-}
-
-function UpdateRow({ date, title, detail }: UpdateRowProps) {
-  return (
-    <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-3 border-t border-[#5c5c5c] px-4 py-3 first:border-t-0">
-      <p className="text-[12px] font-bold text-[#8d8d8d]">{date}</p>
-      <div className="min-w-0">
-        <p className="truncate text-[14px] font-bold text-[#eeeeee]">{title}</p>
-        <p className="mt-1 text-[13px] font-semibold leading-5 text-[#b6b6b6]">{detail}</p>
-      </div>
-    </div>
-  );
+  return <div className={`flex w-full items-center gap-3 ${sharedRadiusClass} px-2.5 py-2`}>{content}</div>;
 }
 
 interface SoundViewProps {
@@ -1090,6 +1149,10 @@ function MicrophoneSelector({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listboxId = useRef(`mic-options-${Math.random().toString(36).slice(2)}`);
   const isToolbar = variant === "toolbar";
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? {
+    id: selectedDeviceId,
+    label: selectedLabel,
+  };
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -1133,12 +1196,10 @@ function MicrophoneSelector({
           : "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#5c5c5c] bg-[#303030] px-2 py-1.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:text-[#8a8a8a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"}
         onClick={() => setIsOpen((current) => !current)}
       >
-        {isToolbar ? null : <Mic2 className="size-3.5 shrink-0 text-[#bdbdbd]" />}
+        <AudioInputDeviceIcon device={selectedDevice} className={isToolbar ? "size-3 shrink-0 text-current" : "size-3 shrink-0 text-[#bdbdbd]"} />
         <span className={isToolbar ? "hidden min-w-0 truncate sm:inline" : "min-w-0 flex-1 whitespace-normal break-words text-left leading-4"}>
           {selectedLabel}
         </span>
-        {isToolbar ? <Mic2 className="size-3 shrink-0 text-current" /> : null}
-        <ChevronDown className={`size-3 shrink-0 text-current transition ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen ? (
@@ -1162,6 +1223,7 @@ function MicrophoneSelector({
                 }`}
                 onClick={() => handleSelect(device.id)}
               >
+                <AudioInputDeviceIcon device={device} className="mt-0.5 size-3 shrink-0 text-[#bdbdbd]" />
                 <span className="min-w-0 flex-1 whitespace-normal break-words">{device.label}</span>
                 {selected ? <Check className="mt-0.5 size-3 shrink-0 text-[#9bcfff]" /> : null}
               </button>
@@ -1236,27 +1298,37 @@ interface ModelsViewProps {
 
 function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
   return (
-    <ViewFrame title="Speech models">
-      <GroupedPanel>
+    <ViewFrame title="Models library">
+      <GroupedPanel title="Recognition models">
         {modelCards.map((model) => (
           <button
             key={model.name}
             type="button"
-            className="flex w-full items-center gap-3 border-t border-[#5c5c5c] p-3 text-left first:border-t-0 hover:bg-[#4a4a4a]"
+            aria-pressed={selectedModel === model.name}
+            className={`flex w-full items-center gap-3 border-t ${panelDividerClass} p-4 text-left transition first:border-t-0 hover:bg-[#4b4b4b]/70 ${
+              selectedModel === model.name ? "bg-[#4b4b4b]/70" : ""
+            }`}
             onClick={() => onSelectModel(model.name)}
           >
-            <div className="grid size-7 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">
+            <div className={iconTileClass}>
               <BrainCircuit className="size-3.5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{model.name}</p>
-              <p className="truncate text-[12px] text-[#b4b4b4]">{model.detail}</p>
+              <p className="truncate text-[14px] font-semibold text-[#f2f2f2]">{model.name}</p>
+              <p className="mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{model.detail}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <ModelTag>{model.speed}</ModelTag>
+                <ModelTag>{model.status}</ModelTag>
+              </div>
             </div>
-            <div className="hidden text-right text-[12px] text-[#a8a8a8] sm:block">
-              <p>{model.speed}</p>
-              <p>{model.status}</p>
-            </div>
-            {selectedModel === model.name ? <CheckCircle2 className="size-3.5 text-[#88c7ff]" /> : null}
+            {selectedModel === model.name ? (
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
+                <CheckCircle2 className="size-3.5 text-[#0a84ff]" />
+                Selected
+              </span>
+            ) : (
+              <span className="shrink-0 text-[12px] font-semibold text-[#a8a8a8]">Use model</span>
+            )}
           </button>
         ))}
       </GroupedPanel>
@@ -1264,65 +1336,150 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
   );
 }
 
-interface HistoryViewProps {
-  rows: TranscriptHistoryRow[];
-  activeFilter: string;
-  onFilterChange: (filter: string) => void;
+interface ModelTagProps {
+  children: ReactNode;
 }
 
-function HistoryView({ rows, activeFilter, onFilterChange }: HistoryViewProps) {
-  const filters = ["All", "Completed", "Failed"];
-  const filteredRows = rows.filter((row) => {
-    if (activeFilter === "All") return true;
-    return row.status === activeFilter.toLowerCase();
-  });
+function ModelTag({ children }: ModelTagProps) {
+  return <span className="rounded-[7px] bg-[#303030] px-2 py-1 text-[11px] font-semibold text-[#c8c8c8]">{children}</span>;
+}
+
+interface HistoryViewProps {
+  rows: TranscriptHistoryRow[];
+  onCopyRow: (text: string) => void;
+  onDeleteRow: (rowId: string) => void;
+}
+
+function HistoryView({ rows, onCopyRow, onDeleteRow }: HistoryViewProps) {
+  const [query, setQuery] = useState("");
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(rows[0]?.id ?? null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredRows = rows.filter((row) => (
+    !normalizedQuery
+    || row.title.toLowerCase().includes(normalizedQuery)
+    || row.text.toLowerCase().includes(normalizedQuery)
+    || row.model.toLowerCase().includes(normalizedQuery)
+  ));
+  const groupedRows = filteredRows.reduce<Array<{ label: string; rows: TranscriptHistoryRow[] }>>((groups, row) => {
+    const label = formatHistoryGroupLabel(row.createdAt);
+    const group = groups.find((item) => item.label === label);
+    if (group) {
+      group.rows.push(row);
+    } else {
+      groups.push({ label, rows: [row] });
+    }
+    return groups;
+  }, []);
+
+  useEffect(() => {
+    setExpandedRowId((current) => {
+      if (current && rows.some((row) => row.id === current)) return current;
+      return rows[0]?.id ?? null;
+    });
+  }, [rows]);
 
   return (
-    <ViewFrame title="Transcript library">
-      <div className="inline-flex rounded-lg border border-[#5c5c5c] bg-[#303030] p-0.5">
-        {filters.map((filter) => (
-          <button
-            key={filter}
-            type="button"
-            className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition ${
-              activeFilter === filter ? "bg-[#686868] text-white" : "text-[#b6b6b6] hover:text-white"
-            }`}
-            onClick={() => onFilterChange(filter)}
-          >
-            {filter}
-          </button>
-        ))}
+    <section className="mx-auto w-full max-w-[520px] space-y-4">
+      <h2 className="sr-only">History</h2>
+      <div className="flex h-10 items-center gap-2 rounded-full border border-[#464646] bg-[#282828]/85 px-3 text-[#8e8e8e] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+        <Search className="size-3.5 shrink-0" />
+        <input
+          type="search"
+          aria-label="Search history"
+          className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-[#e8e8e8] outline-none placeholder:text-[#777]"
+          placeholder="Find..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <ShortcutCluster parts={["⌘", "F"]} muted />
       </div>
 
-      {filteredRows.length ? (
-        <GroupedPanel>
-          {filteredRows.map((row) => (
-            <PanelRow
-              key={row.id}
-              icon={<History className="size-3.5" />}
-              title={row.title}
-              detail={row.status === "failed" ? `${row.kind} - ${formatDuration(row.durationSeconds)} - ${row.error ?? "Failed"}` : `${row.kind} - ${formatDuration(row.durationSeconds)} - ${row.model}`}
-              trailing={<span className="text-[12px] font-medium text-[#77777f]">{formatRelativeTime(row.createdAt)}</span>}
-              extra={row.recordingUrl ? <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} /> : null}
-            />
+      {groupedRows.length ? (
+        <div className="space-y-5">
+          {groupedRows.map((group) => (
+            <section key={group.label} className="space-y-2">
+              <h3 className="px-2 text-[12px] font-semibold text-[#858585]">{group.label}</h3>
+              <div className="space-y-2">
+                {group.rows.map((row) => (
+                  <HistoryCard
+                    key={row.id}
+                    row={row}
+                    expanded={expandedRowId === row.id}
+                    onCopy={() => onCopyRow(row.text)}
+                    onDelete={() => onDeleteRow(row.id)}
+                    onToggle={() => setExpandedRowId((current) => (current === row.id ? null : row.id))}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
-        </GroupedPanel>
+        </div>
       ) : (
-        <div className="rounded-[10px] border border-[#5c5c5c] bg-[#404040] p-6 text-center">
+        <div className={`${panelSurfaceClass} p-6 text-center`}>
           <p className="text-[14px] font-semibold text-[#eeeeee]">No transcription history yet</p>
           <p className="mt-1 text-[12px] leading-5 text-[#b4b4b4]">Stop a recording after dictation and the transcript will appear here.</p>
         </div>
       )}
-    </ViewFrame>
+    </section>
+  );
+}
+
+interface HistoryCardProps {
+  row: TranscriptHistoryRow;
+  expanded: boolean;
+  onCopy: () => void;
+  onDelete: () => void;
+  onToggle: () => void;
+}
+
+function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardProps) {
+  return (
+    <article className={`${panelSurfaceClass} transition ${expanded ? "p-4" : "p-0"}`}>
+      <button
+        type="button"
+        className={`block w-full text-left ${expanded ? "" : "px-4 py-4"}`}
+        onClick={onToggle}
+      >
+        <p className={`${expanded ? "line-clamp-3" : "truncate"} text-[13px] font-semibold leading-5 text-[#f1f1f1]`}>
+          {expanded ? row.text || row.title : row.title}
+        </p>
+      </button>
+
+      {expanded ? (
+        <div className="mt-3 space-y-3">
+          {row.recordingUrl ? <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} durationSeconds={row.durationSeconds} /> : null}
+          {row.status === "failed" ? (
+            <p className="rounded-[8px] border border-[#5c5c5c] bg-[#303030] px-3 py-2 text-[12px] font-medium text-[#ffb3aa]">
+              {row.error ?? "Transcription failed"}
+            </p>
+          ) : null}
+          <div className="flex items-center justify-between">
+            <div className="inline-flex rounded-[8px] bg-[#5a5a5a]/45 p-0.5">
+              <span className="rounded-[7px] bg-[#777] px-2 py-1 text-[12px] font-semibold text-white">Original</span>
+              <span className="px-2 py-1 text-[12px] font-semibold text-[#9d9d9d]">Segmented</span>
+            </div>
+            <div className="flex items-center gap-1 text-[#bdbdbd]">
+              <button type="button" aria-label={`Copy transcript: ${row.title}`} className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555]`} onClick={onCopy}>
+                <Copy className="size-3" />
+              </button>
+              <button type="button" aria-label={`Delete transcript: ${row.title}`} className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555]`} onClick={onDelete}>
+                <Trash2 className="size-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
 interface HistoryRecordingPlayerProps {
   title: string;
   src: string;
+  durationSeconds: number;
 }
 
-function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerProps) {
+function HistoryRecordingPlayer({ title, src, durationSeconds }: HistoryRecordingPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -1345,16 +1502,25 @@ function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerProps) {
   };
 
   return (
-    <div className="flex max-w-[420px] items-center gap-2 rounded-[8px] border border-[#5c5c5c] bg-[#3a3a3a] p-2">
+    <div className={`flex items-center gap-3 ${sharedRadiusClass} border border-[#626262]/70 bg-[#606060]/45 px-3 py-2`}>
       <button
         type="button"
         aria-label={`${isPlaying ? "Pause" : "Play"} recording: ${title}`}
-        className="grid size-6 shrink-0 place-items-center rounded-[7px] bg-[#0a84ff] text-white transition hover:bg-[#0877e8] active:scale-[0.97]"
+        className={`grid size-7 shrink-0 place-items-center ${sharedRadiusClass} text-white transition active:scale-[0.97] ${isPlaying ? "bg-[#0a84ff]" : "bg-[#6e6e6e] hover:bg-[#777]"}`}
         onClick={togglePlayback}
       >
         {isPlaying ? <Pause className="size-3" /> : <Play className="size-3" />}
       </button>
-      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#b6b6b6]">Saved recording</span>
+      <div className="flex min-w-0 flex-1 items-center gap-px overflow-hidden" aria-hidden="true">
+        {historyWaveformBars.map((height, index) => (
+          <span
+            key={`history-wave-${index}`}
+            className="w-px shrink-0 rounded-full bg-[#a9a9a9]"
+            style={{ height: `${height}px`, opacity: index % 4 === 0 ? 0.35 : 0.62 }}
+          />
+        ))}
+      </div>
+      <span className="shrink-0 text-[12px] font-semibold text-[#e0e0e0]">{formatDuration(durationSeconds)}</span>
       <audio
         ref={audioRef}
         aria-label={`Recording audio: ${title}`}
@@ -1376,24 +1542,78 @@ interface SettingsViewProps {
 }
 
 function SettingsView({ runtimeInfo, selectedModel, overlayPlacement, onOverlayPlacementChange }: SettingsViewProps) {
+  const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
+
   return (
-    <ViewFrame title="Desktop behavior">
-      <GroupedPanel title="Storage">
-        <PanelRow icon={<Database className="size-3.5" />} title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} />
-        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusLabel>Active</StatusLabel>} />
+    <ViewFrame title="Configuration">
+      <GroupedPanel title="Recording window">
+        <div className="p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-[#f0f0f0]">Style</span>
+            <StatusLabel>Mini</StatusLabel>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <RecordingWindowPreview label="Classic" variant="classic" />
+            <RecordingWindowPreview label="Mini" variant="mini" selected />
+            <RecordingWindowPreview label="Hidden" variant="hidden" />
+          </div>
+          <div className={`mt-4 flex min-w-0 items-center justify-between border-t ${panelDividerClass} pt-3`}>
+            <div>
+              <p className="text-[13px] font-semibold text-[#eeeeee]">Position</p>
+            </div>
+            <OverlayPlacementControl placement={overlayPlacement} onChange={onOverlayPlacementChange} />
+          </div>
+        </div>
       </GroupedPanel>
 
-      <GroupedPanel title="Desktop integration">
-        <PanelRow icon={<Layers2 className="size-3.5" />} title="Single instance" trailing={<StatusLabel>On</StatusLabel>} />
-        <PanelRow icon={<Activity className="size-3.5" />} title="Tray and overlay" trailing={<StatusLabel>On</StatusLabel>} />
-        <PanelRow
-          icon={<Settings className="size-3.5" />}
-          title="Recording overlay position"
-          detail={runtimeInfo?.overlaySettings?.customBounds ? "Drag position remembered for that monitor" : "Choose the default edge for the hotkey overlay"}
-          trailing={<OverlayPlacementControl placement={overlayPlacement} onChange={onOverlayPlacementChange} />}
-        />
+      <GroupedPanel title="Keyboard shortcuts">
+        <PanelRow title="Toggle recording" detail="Start or stop recording" trailing={<ShortcutCluster parts={shortcutParts} />} />
+        <PanelRow title="Cancel recording" detail="Discard active recording" trailing={<ShortcutBadge>esc</ShortcutBadge>} />
       </GroupedPanel>
+
+      <GroupedPanel title="Application">
+        <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusLabel>Active</StatusLabel>} />
+        <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} />
+        <PanelRow title="Single instance" trailing={<StatusLabel>On</StatusLabel>} />
+        <PanelRow title="Tray and overlay" trailing={<StatusLabel>On</StatusLabel>} />
+      </GroupedPanel>
+
+      <div className={panelSurfaceClass}>
+        <button type="button" className="flex h-11 w-full items-center justify-between px-4 text-left text-[13px] font-semibold text-[#eeeeee] transition hover:bg-[#484848]/70">
+          <span>Advanced settings</span>
+          <ChevronDown className="-rotate-90 size-4 text-[#d2d2d2]" />
+        </button>
+      </div>
     </ViewFrame>
+  );
+}
+
+interface RecordingWindowPreviewProps {
+  label: string;
+  selected?: boolean;
+  variant: "classic" | "mini" | "hidden";
+}
+
+function RecordingWindowPreview({ label, selected = false, variant }: RecordingWindowPreviewProps) {
+  return (
+    <div className={`${sharedRadiusClass} border p-1.5 text-center ${selected ? "border-[#0a84ff] bg-[#28343a]" : "border-[#5b5b5b] bg-[#262626]/70"}`}>
+      <div className="grid h-12 place-items-center rounded-[7px] bg-[#111] text-[#d8d8d8]">
+        {variant === "hidden" ? (
+          <span className="text-[15px] text-[#6f6f6f]">⊘</span>
+        ) : (
+          <span className={`flex items-center gap-px ${variant === "mini" ? "w-10" : "w-16"}`} aria-hidden="true">
+            {historyWaveformBars.slice(0, variant === "mini" ? 18 : 30).map((height, index) => (
+              <span
+                key={`${label}-${index}`}
+                className="w-px rounded-full bg-[#d7d7d7]"
+                style={{ height: `${Math.max(4, Math.round(height * 0.45))}px`, opacity: index % 3 === 0 ? 0.55 : 0.9 }}
+              />
+            ))}
+          </span>
+        )}
+      </div>
+      <p className={`mt-1 text-[11px] font-semibold ${selected ? "text-white" : "text-[#b6b6b6]"}`}>{label}</p>
+    </div>
   );
 }
 
@@ -1404,7 +1624,7 @@ interface OverlayPlacementControlProps {
 
 function OverlayPlacementControl({ placement, onChange }: OverlayPlacementControlProps) {
   return (
-    <div className="inline-flex rounded-lg border border-[#5c5c5c] bg-[#303030] p-0.5">
+    <div className={`inline-flex ${sharedRadiusClass} bg-[#2b2b2b] p-0.5`}>
       {(["top", "bottom"] as const).map((option) => {
         const active = placement === option;
         const label = option === "top" ? "Top" : "Bottom";
@@ -1415,8 +1635,8 @@ function OverlayPlacementControl({ placement, onChange }: OverlayPlacementContro
             type="button"
             aria-label={`${label} overlay position`}
             aria-pressed={active}
-            className={`h-7 rounded-md px-2.5 text-[12px] font-semibold transition ${
-              active ? "bg-[#686868] text-white" : "text-[#b6b6b6] hover:text-white"
+            className={`h-7 rounded-[7px] px-2.5 text-[12px] font-semibold transition ${
+              active ? "bg-[#686868] text-white" : "text-[#aaa] hover:text-white"
             }`}
             onClick={() => onChange(option)}
           >
@@ -1435,10 +1655,8 @@ interface ViewFrameProps {
 
 function ViewFrame({ title, children }: ViewFrameProps) {
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-3">
-      <div>
-        <h2 className="text-[17px] font-semibold tracking-normal text-[#d8d8d8]">{title}</h2>
-      </div>
+    <section className="mx-auto w-full max-w-[520px] space-y-4">
+      <h2 className="sr-only">{title}</h2>
       {children}
     </section>
   );
@@ -1451,15 +1669,15 @@ interface GroupedPanelProps {
 
 function GroupedPanel({ title, children }: GroupedPanelProps) {
   return (
-    <section>
-      {title ? <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-[#a9a9a9]">{title}</h3> : null}
-      <div className="rounded-[10px] border border-[#5c5c5c] bg-[#404040]">{children}</div>
+    <section className="space-y-2">
+      {title ? <h3 className="px-1 text-[13px] font-semibold text-[#a8a8a8]">{title}</h3> : null}
+      <div className={panelSurfaceClass}>{children}</div>
     </section>
   );
 }
 
 interface PanelRowProps {
-  icon: ReactNode;
+  icon?: ReactNode;
   title: string;
   detail?: string;
   trailing?: ReactNode;
@@ -1468,16 +1686,16 @@ interface PanelRowProps {
 
 function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
   return (
-    <div className="border-t border-[#5c5c5c] p-3 first:border-t-0">
+    <div className={`border-t ${panelDividerClass} p-4 first:border-t-0`}>
       <div className="flex min-w-0 items-center gap-3">
-        <div className="grid size-7 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">{icon}</div>
+        {icon ? <div className={iconTileClass}>{icon}</div> : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
-          {detail ? <p className="truncate text-[12px] text-[#b4b4b4]">{detail}</p> : null}
+          {detail ? <p className="mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{detail}</p> : null}
         </div>
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
-      {extra ? <div className="mt-2 pl-10">{extra}</div> : null}
+      {extra ? <div className={icon ? "mt-3 pl-11" : "mt-3"}>{extra}</div> : null}
     </div>
   );
 }
@@ -1490,23 +1708,28 @@ function StatusLabel({ children }: StatusLabelProps) {
   return <span className="text-[12px] font-semibold text-[#cfcfcf]">{children}</span>;
 }
 
-interface PrimaryButtonProps {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
+interface ShortcutClusterProps {
+  parts: string[];
+  muted?: boolean;
 }
 
-function PrimaryButton({ children, onClick, disabled = false }: PrimaryButtonProps) {
+function ShortcutCluster({ parts, muted = false }: ShortcutClusterProps) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#6b6b6b] bg-[#5a5a5a] px-3 text-[12px] font-bold text-white shadow-none transition hover:bg-[#686868] active:scale-[0.97] disabled:cursor-not-allowed disabled:border-[#555] disabled:bg-[#484848] disabled:text-[#9b9b9b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
-      onClick={onClick}
-    >
-      {children}
-    </button>
+    <span className="inline-flex shrink-0 items-center gap-1">
+      {parts.map((part, index) => (
+        <ShortcutBadge key={`${part}-${index}`} muted={muted}>{part}</ShortcutBadge>
+      ))}
+    </span>
   );
+}
+
+interface ShortcutBadgeProps {
+  children: ReactNode;
+  muted?: boolean;
+}
+
+function ShortcutBadge({ children, muted = false }: ShortcutBadgeProps) {
+  return <span className={`grid min-w-5 place-items-center rounded-[5px] px-1.5 py-1 text-[11px] font-semibold leading-none ${muted ? "bg-[#3a3a3a] text-[#858585]" : "bg-[#646464] text-[#f2f2f2]"}`}>{children}</span>;
 }
 
 export default App;
