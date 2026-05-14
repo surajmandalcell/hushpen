@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, dialog, globalShortcut, ipcMain, Menu, shell, screen, session } = require("electron");
+const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, shell, screen, session } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
@@ -185,29 +185,6 @@ function registerIpc() {
     updateOverlayWaveformFrame(frame);
   });
 
-  ipcMain.handle("dialog:select-audio", async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: "Choose audio or video to transcribe",
-      properties: ["openFile", "multiSelections"],
-      filters: [
-        {
-          name: "Audio and Video",
-          extensions: ["mp3", "wav", "m4a", "flac", "aac", "ogg", "mp4", "mov", "mkv", "webm"],
-        },
-        { name: "All Files", extensions: ["*"] },
-      ],
-    });
-
-    if (result.canceled) {
-      return [];
-    }
-
-    return result.filePaths.map((filePath) => ({
-      fileName: path.basename(filePath),
-      path: filePath,
-    }));
-  });
-
   ipcMain.handle("window:control", (event, action) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
     if (!senderWindow) return;
@@ -283,7 +260,6 @@ function createMenu() {
       label: "File",
       submenu: [
         { label: "Start or Stop Recording", accelerator: RECORDING_SHORTCUT, click: () => setRecording(!isRecording, "menu") },
-        { label: "Add Files", accelerator: "CmdOrCtrl+O", click: () => showMainWindow().webContents.send("menu:add-files") },
       ],
     },
     {
@@ -328,7 +304,6 @@ function updateTrayMenu() {
       accelerator: RECORDING_SHORTCUT,
       click: () => setRecording(!isRecording, "tray"),
     },
-    { label: "Add Files", click: () => showMainWindow().webContents.send("menu:add-files") },
     { type: "separator" },
     { label: "Quit ASR Pro", click: quitApp },
   ]));

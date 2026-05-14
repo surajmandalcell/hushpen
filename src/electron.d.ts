@@ -49,8 +49,6 @@ declare global {
           y: number;
         } | null;
       }>;
-      selectAudioFiles: () => Promise<Array<{ fileName: string; path: string }>>;
-      onAddFiles: (callback: () => void) => () => void;
       setRecording: (active: boolean) => Promise<{ isRecording: boolean }>;
       toggleRecording: () => Promise<{ isRecording: boolean }>;
       setWaveformFrame?: (frame: number[]) => void;

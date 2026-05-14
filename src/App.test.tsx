@@ -74,26 +74,29 @@ function mockAudioCapture() {
 }
 
 describe("ASR Pro Electron shell", () => {
-  it("renders a Superwhisper-style home surface without the bottom-left Pro pill", () => {
+  it("renders a focused light recording surface without copied workspace features", () => {
     render(<App />);
 
-    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "Recording" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("Average speed")).toBeTruthy();
     expect(screen.getByText("Words this week")).toBeTruthy();
-    expect(screen.getByText("Get started")).toBeTruthy();
-    expect(screen.getByText("What's new?")).toBeTruthy();
+    expect(screen.getByText("Recordings")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Recording" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Ready to Dictate" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
     expect(screen.getAllByText("Local Whisper").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Superwhisper/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Modes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Vocabulary" })).toBeNull();
+    expect(screen.queryByText("What's new?")).toBeNull();
+    expect(screen.queryByText("Create a mode")).toBeNull();
+    expect(screen.queryByText("Add vocabulary")).toBeNull();
   });
 
-  it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", () => {
+  it("keeps the shell free of copied file, mode, vocabulary, and model tabs", () => {
     window.asrpro = {
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
-      selectAudioFiles: vi.fn(),
-      onAddFiles: vi.fn(),
       getRuntimeState: vi.fn(),
       setRecording: vi.fn(),
       toggleRecording: vi.fn(),
@@ -103,13 +106,15 @@ describe("ASR Pro Electron shell", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Modes" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Vocabulary" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Configuration" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sound" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Models library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Recording" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "History" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Modes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Vocabulary" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Configuration" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sound" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Models library" })).toBeNull();
     expect(screen.queryByText("Local first")).toBeNull();
     expect(screen.queryByText("Global overlay active")).toBeNull();
     expect(screen.queryByText(/CommandOrControl/)).toBeNull();
@@ -117,30 +122,30 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   });
 
-  it("navigates to the file transcription workspace", async () => {
+  it("navigates from recording to the transcript history", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Modes" }));
+    await user.click(screen.getByRole("button", { name: /^Open history/ }));
 
-    expect(screen.getByRole("heading", { name: "Drop audio or video" })).toBeTruthy();
-    expect(screen.getByText("Queued transcription jobs")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy();
+    expect(screen.getByText("No transcription history yet")).toBeTruthy();
   });
 
   it("shows a visible selected state on the active sidebar item", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const homeButton = screen.getByRole("button", { name: "Home" });
-    expect(homeButton.getAttribute("aria-current")).toBe("page");
-    expect(homeButton.className).toContain("bg-[#686868]");
+    const recordingButton = screen.getByRole("button", { name: "Recording" });
+    expect(recordingButton.getAttribute("aria-current")).toBe("page");
+    expect(recordingButton.className).toContain("bg-white/[0.85]");
 
-    const modesButton = screen.getByRole("button", { name: "Modes" });
-    await user.click(modesButton);
+    const historyButton = screen.getByRole("button", { name: "History" });
+    await user.click(historyButton);
 
-    expect(modesButton.getAttribute("aria-current")).toBe("page");
-    expect(modesButton.className).toContain("bg-[#686868]");
-    expect(homeButton.getAttribute("aria-current")).toBeNull();
+    expect(historyButton.getAttribute("aria-current")).toBe("page");
+    expect(historyButton.className).toContain("bg-white/[0.85]");
+    expect(recordingButton.getAttribute("aria-current")).toBeNull();
   });
 
   it("renders a non-uniform full-width waveform baseline", () => {
@@ -210,9 +215,19 @@ describe("ASR Pro Electron shell", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Transcript library" })).toBeTruthy());
     expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
-    const audio = screen.getByLabelText("Play recording: Buy milk and schedule the product demo.");
+    const audio = screen.getByLabelText("Recording audio: Buy milk and schedule the product demo.");
     expect(audio.tagName).toBe("AUDIO");
     expect(audio.getAttribute("src")).toMatch(/^data:audio\/webm/);
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pauseSpy = vi.spyOn(window.HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+
+    await user.click(screen.getByRole("button", { name: "Play recording: Buy milk and schedule the product demo." }));
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause recording: Buy milk and schedule the product demo." })).toBeTruthy());
+
+    await user.click(screen.getByRole("button", { name: "Pause recording: Buy milk and schedule the product demo." }));
+    expect(pauseSpy).toHaveBeenCalledTimes(1);
 
     const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
     expect(stored).toHaveLength(1);
@@ -237,9 +252,13 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
     expect(screen.getByText(/Failed to fetch/)).toBeTruthy();
 
-    const audio = screen.getByLabelText("Play recording: Recording failed to transcribe");
+    const audio = screen.getByLabelText("Recording audio: Recording failed to transcribe");
     expect(audio.tagName).toBe("AUDIO");
     expect(audio.getAttribute("src")).toMatch(/^data:audio\/webm/);
+    const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+
+    await user.click(screen.getByRole("button", { name: "Play recording: Recording failed to transcribe" }));
+    expect(playSpy).toHaveBeenCalledTimes(1);
 
     const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
     expect(stored).toHaveLength(1);
@@ -254,8 +273,6 @@ describe("ASR Pro Electron shell", () => {
     window.asrpro = {
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
-      selectAudioFiles: vi.fn(),
-      onAddFiles: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
         defaultModel: "Local Whisper",
@@ -288,8 +305,6 @@ describe("ASR Pro Electron shell", () => {
     window.asrpro = {
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
-      selectAudioFiles: vi.fn(),
-      onAddFiles: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
         defaultModel: "Parakeet-TDT-0.6B-v3",
@@ -304,7 +319,7 @@ describe("ASR Pro Electron shell", () => {
     };
 
     render(<App />);
-    await user.click(screen.getByRole("button", { name: "Configuration" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Top overlay position" }).getAttribute("aria-pressed")).toBe("true"));
 
     await user.click(screen.getByRole("button", { name: "Bottom overlay position" }));
