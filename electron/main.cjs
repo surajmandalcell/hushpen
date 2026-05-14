@@ -95,9 +95,9 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     width: 780,
-    height: 580,
+    height: 520,
     minWidth: 680,
-    minHeight: 500,
+    minHeight: 440,
     show: false,
     frame: false,
     title: "ASR Pro",

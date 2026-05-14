@@ -648,9 +648,9 @@ function App() {
     <div className="h-screen w-screen overflow-hidden bg-[#2f2f2f] font-[Inter,-apple-system,BlinkMacSystemFont,'SF_Pro_Text','Segoe_UI',sans-serif] text-[#ededed] antialiased">
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)] sm:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
-        <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#5b5b5b]">
+        <section className="grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#444444]">
           <Toolbar activeTitle={activeTitle} />
-          <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-5 sm:px-4 lg:px-4">
+          <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-4 sm:px-4 lg:px-4">
             {activeView === "home" && (
               <HomeView
                 isRecording={isRecording}
@@ -771,20 +771,13 @@ interface ToolbarProps {
 
 function Toolbar({ activeTitle }: ToolbarProps) {
   return (
-    <header className="flex min-w-0 items-center justify-between border-b border-[#545454] bg-[#3f3f3f] px-4 [-webkit-app-region:drag]">
-      <div className="flex min-w-0 items-center gap-3">
-        <button
-          type="button"
-          aria-label="Split view"
-          className="grid size-7 place-items-center rounded-md text-[#cfcfcf] transition hover:bg-[#505050] [-webkit-app-region:no-drag]"
-        >
-          <Layers2 className="size-4" />
-        </button>
-        <span className="truncate text-[13px] font-medium text-[#cfcfcf]">{activeTitle}</span>
+    <header className="flex min-w-0 items-center justify-between border-b border-[#3f3f3f] bg-[#363636] px-4 [-webkit-app-region:drag]">
+      <div className="flex min-w-0 items-center">
+        <span className="truncate text-[12px] font-semibold text-[#cfcfcf]">{activeTitle}</span>
       </div>
-      <div className="inline-flex min-w-0 items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium text-[#d8d8d8]">
-        <span className="hidden truncate sm:inline">MacBook Pro Microphone (Default)</span>
-        <Mic2 className="size-4 shrink-0 text-[#cfcfcf]" />
+      <div className="inline-flex min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-[#bdbdbd]">
+        <span className="hidden truncate sm:inline">MacBook Pro Microphone</span>
+        <Mic2 className="size-3 shrink-0 text-[#bdbdbd]" />
       </div>
     </header>
   );
@@ -842,17 +835,17 @@ function HomeView({
         <h2 className="mb-3 text-[13px] font-bold text-[#a9a9a9]">Get started</h2>
         <div className="space-y-1">
           <HomeActionRow
-            icon={<Mic2 className="size-4" />}
+            icon={<Mic2 className="size-3.5" />}
             title={isRecording ? "Stop recording" : "Start recording"}
             detail={statusDetail}
             trailing={(
               <PrimaryButton onClick={onToggleRecording} disabled={isBusy}>
-                {isRecording ? <CircleStop className="size-4" /> : <Mic2 className="size-4" />}
+                {isRecording ? <CircleStop className="size-3" /> : <Mic2 className="size-3" />}
                 {isRecording ? "Stop Recording" : recordingStatus === "transcribing" ? "Transcribing" : "Start Recording"}
               </PrimaryButton>
             )}
           />
-          <HomeActionRow icon={<Keyboard className="size-4" />} title="Customize shortcuts" detail="Global recording is wired through the desktop bridge." />
+          <HomeActionRow icon={<Keyboard className="size-3.5" />} title="Customize shortcuts" detail="Global recording is wired through the desktop bridge." />
         </div>
       </section>
 
@@ -892,7 +885,7 @@ interface HomeActionRowProps {
 function HomeActionRow({ icon, title, detail, trailing, onClick }: HomeActionRowProps) {
   const content = (
     <>
-      <div className="grid size-8 shrink-0 place-items-center text-[#a8a8a8]">{icon}</div>
+      <div className="grid size-7 shrink-0 place-items-center text-[#a8a8a8]">{icon}</div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[14px] font-bold leading-5 text-[#eeeeee]">{title}</p>
         <p className="truncate text-[13px] font-semibold leading-5 text-[#a8a8a8]">{detail}</p>
@@ -939,8 +932,8 @@ function SoundView({ selectedModel, isRecording }: SoundViewProps) {
   return (
     <ViewFrame title="Sound">
       <GroupedPanel title="Input">
-        <PanelRow icon={<Mic2 className="size-4" />} title="MacBook Pro Microphone" detail={isRecording ? "Recording is active" : "Default input device"} trailing={<StatusPill tone={isRecording ? "red" : "green"}>{isRecording ? "Live" : "Default"}</StatusPill>} />
-        <PanelRow icon={<BrainCircuit className="size-4" />} title="Recognition model" detail={selectedModel} trailing={<StatusPill tone="blue">Local</StatusPill>} />
+        <PanelRow icon={<Mic2 className="size-3.5" />} title="MacBook Pro Microphone" detail={isRecording ? "Recording is active" : "Default input device"} trailing={<StatusPill tone={isRecording ? "red" : "green"}>{isRecording ? "Live" : "Default"}</StatusPill>} />
+        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Recognition model" detail={selectedModel} trailing={<StatusPill tone="blue">Local</StatusPill>} />
       </GroupedPanel>
     </ViewFrame>
   );
@@ -962,8 +955,8 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
             className="flex w-full items-center gap-3 border-t border-[#5c5c5c] p-3 text-left first:border-t-0 hover:bg-[#4a4a4a]"
             onClick={() => onSelectModel(model.name)}
           >
-            <div className="grid size-8 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">
-              <BrainCircuit className="size-4" />
+            <div className="grid size-7 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">
+              <BrainCircuit className="size-3.5" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{model.name}</p>
@@ -973,7 +966,7 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
               <p>{model.speed}</p>
               <p>{model.status}</p>
             </div>
-            {selectedModel === model.name ? <CheckCircle2 className="size-4 text-[#88c7ff]" /> : null}
+            {selectedModel === model.name ? <CheckCircle2 className="size-3.5 text-[#88c7ff]" /> : null}
           </button>
         ))}
       </GroupedPanel>
@@ -1016,7 +1009,7 @@ function HistoryView({ rows, activeFilter, onFilterChange }: HistoryViewProps) {
           {filteredRows.map((row) => (
             <PanelRow
               key={row.id}
-              icon={<History className="size-4" />}
+              icon={<History className="size-3.5" />}
               title={row.title}
               detail={row.status === "failed" ? `${row.kind} - ${formatDuration(row.durationSeconds)} - ${row.error ?? "Failed"}` : `${row.kind} - ${formatDuration(row.durationSeconds)} - ${row.model}`}
               trailing={<span className="text-[12px] font-medium text-[#77777f]">{formatRelativeTime(row.createdAt)}</span>}
@@ -1066,10 +1059,10 @@ function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerProps) {
       <button
         type="button"
         aria-label={`${isPlaying ? "Pause" : "Play"} recording: ${title}`}
-        className="grid size-7 shrink-0 place-items-center rounded-[8px] bg-[#0a84ff] text-white transition hover:bg-[#0877e8] active:scale-[0.97]"
+        className="grid size-6 shrink-0 place-items-center rounded-[7px] bg-[#0a84ff] text-white transition hover:bg-[#0877e8] active:scale-[0.97]"
         onClick={togglePlayback}
       >
-        {isPlaying ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+        {isPlaying ? <Pause className="size-3" /> : <Play className="size-3" />}
       </button>
       <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#b6b6b6]">Saved recording</span>
       <audio
@@ -1096,15 +1089,15 @@ function SettingsView({ runtimeInfo, selectedModel, overlayPlacement, onOverlayP
   return (
     <ViewFrame title="Desktop behavior">
       <GroupedPanel title="Storage">
-        <PanelRow icon={<Database className="size-4" />} title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} />
-        <PanelRow icon={<BrainCircuit className="size-4" />} title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusPill tone="green">Active</StatusPill>} />
+        <PanelRow icon={<Database className="size-3.5" />} title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} />
+        <PanelRow icon={<BrainCircuit className="size-3.5" />} title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<StatusPill tone="green">Active</StatusPill>} />
       </GroupedPanel>
 
       <GroupedPanel title="Desktop integration">
-        <PanelRow icon={<Layers2 className="size-4" />} title="Single instance" detail="Launching again focuses the running app" trailing={<StatusPill tone="green">On</StatusPill>} />
-        <PanelRow icon={<Activity className="size-4" />} title="Tray and overlay" detail="Close hides to tray; hotkey recording shows a draggable floating pill" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow icon={<Layers2 className="size-3.5" />} title="Single instance" detail="Launching again focuses the running app" trailing={<StatusPill tone="green">On</StatusPill>} />
+        <PanelRow icon={<Activity className="size-3.5" />} title="Tray and overlay" detail="Close hides to tray; hotkey recording shows a draggable floating pill" trailing={<StatusPill tone="green">On</StatusPill>} />
         <PanelRow
-          icon={<Settings className="size-4" />}
+          icon={<Settings className="size-3.5" />}
           title="Recording overlay position"
           detail={runtimeInfo?.overlaySettings?.customBounds ? "Drag position remembered for that monitor" : "Choose the default edge for the hotkey overlay"}
           trailing={<OverlayPlacementControl placement={overlayPlacement} onChange={onOverlayPlacementChange} />}
@@ -1152,9 +1145,9 @@ interface ViewFrameProps {
 
 function ViewFrame({ title, children }: ViewFrameProps) {
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-4">
+    <section className="mx-auto w-full max-w-4xl space-y-3">
       <div>
-        <h2 className="text-[22px] font-semibold tracking-normal text-[#f0f0f0] sm:text-[24px]">{title}</h2>
+        <h2 className="text-[17px] font-semibold tracking-normal text-[#d8d8d8]">{title}</h2>
       </div>
       {children}
     </section>
@@ -1187,14 +1180,14 @@ function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
   return (
     <div className="border-t border-[#5c5c5c] p-3 first:border-t-0">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">{icon}</div>
+        <div className="grid size-7 shrink-0 place-items-center rounded-md bg-[#303030] text-[#d7d7d7]">{icon}</div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
           <p className="truncate text-[12px] text-[#b4b4b4]">{detail}</p>
         </div>
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
-      {extra ? <div className="mt-2 pl-11">{extra}</div> : null}
+      {extra ? <div className="mt-2 pl-10">{extra}</div> : null}
     </div>
   );
 }
@@ -1254,7 +1247,7 @@ function PrimaryButton({ children, onClick, disabled = false }: PrimaryButtonPro
     <button
       type="button"
       disabled={disabled}
-      className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-[#6b6b6b] bg-[#5a5a5a] px-3 text-[12px] font-bold text-white shadow-none transition hover:bg-[#686868] active:scale-[0.97] disabled:cursor-not-allowed disabled:border-[#555] disabled:bg-[#484848] disabled:text-[#9b9b9b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
+      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#6b6b6b] bg-[#5a5a5a] px-3 text-[12px] font-bold text-white shadow-none transition hover:bg-[#686868] active:scale-[0.97] disabled:cursor-not-allowed disabled:border-[#555] disabled:bg-[#484848] disabled:text-[#9b9b9b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
       onClick={onClick}
     >
       {children}
