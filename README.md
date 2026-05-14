@@ -35,14 +35,21 @@ A professional desktop application for AI-powered speech recognition and transcr
 | Logo mark SVG | `src/assets/asrpro-logo-mark.svg` | Transparent D07 infinity mark |
 | Dark tray SVG/PNG | `src/assets/asrpro-tray-dark.svg`, `src/assets/asrpro-tray-dark.png` | Dark glyph for light tray/menu backgrounds |
 | Light tray SVG/PNG | `src/assets/asrpro-tray-light.svg`, `src/assets/asrpro-tray-light.png` | Light glyph for dark tray/menu backgrounds |
-| Packaged icons | `src-tauri/icons/` | macOS, Windows, Linux, Tauri, and Electron packaging |
+| Packaged icons | `src-tauri/icons/` | macOS, Windows, and Linux Electron packaging; retained from the legacy Tauri tree |
+
+## Supported Desktop Runtime
+
+| Runtime | Status | Notes |
+|---|---|---|
+| Electron | Supported | Canonical desktop shell for macOS, Windows, and Linux. Packaged installs start the Python sidecar automatically. |
+| Tauri | Unsupported | Legacy files may remain for icons or historical context, but Tauri is not a maintained release path until it is explicitly revived and `cargo check` passes. |
 
 ## Prerequisites
 
 ### Required Software
 
 - **Node.js**: Version 20.19+ or 22.12+ (current: 20.17.0 with warnings)
-- **Python**: Version 3.8+ with pip
+- **Python**: Version 3.8+ with pip for development and sidecar packaging
 - **Git**: For cloning and version control
 
 ### System Requirements
@@ -68,7 +75,7 @@ cd asrpro
 npm install
 ```
 
-### 3. Install Python Dependencies
+### 3. Install Python Dependencies For Development
 
 ```bash
 cd sidecar
@@ -77,6 +84,8 @@ python3 -m venv .venv
 pip install -r requirements.txt
 cd ..
 ```
+
+Production installers do not require end users to install Python manually. The release build bundles a platform-specific sidecar executable under Electron `extraResources`.
 
 ### 4. Download AI Models
 
@@ -102,6 +111,8 @@ npm run electron:dev
 # Frontend development
 npm run dev          # Start Vite dev server on 127.0.0.1:4270
 npm run sidecar:dev  # Start Python sidecar on 127.0.0.1:8000
+npm run sidecar:build # Build the platform-specific sidecar executable
+npm run sidecar:check # Verify the sidecar executable exists for packaging
 npm run build        # Typecheck and build renderer assets
 npm run preview      # Preview production renderer on 127.0.0.1:4271
 npm test             # Run renderer interaction tests
@@ -171,9 +182,20 @@ Get-ChildItem -Path . -Name "__pycache__" -Recurse -Directory | Remove-Item -Rec
 
 ### Desktop Application
 
+Build the sidecar executable on the target OS before creating production installers. Windows packages need `sidecar/bin/asrpro-sidecar.exe`; macOS and Linux packages need `sidecar/bin/asrpro-sidecar`.
+
 ```bash
+# Build the Python sidecar executable for the current OS
+npm run sidecar:build
+
+# Verify the production sidecar executable is present
+npm run sidecar:check
+
 # Build renderer and an unpacked Electron app for the current OS
 npm run electron:pack
+
+# Build configured installers/packages for the current OS
+npm run electron:dist
 ```
 
 **Output files:**
@@ -181,6 +203,16 @@ npm run electron:pack
 - macOS configured targets: DMG and ZIP
 - Windows configured targets: NSIS installer and portable executable
 - Linux configured targets: AppImage and DEB
+
+### Packaged Runtime Behavior
+
+| Platform | Sidecar startup | Data directory |
+|---|---|---|
+| macOS | Electron starts the bundled sidecar from app resources when no healthy sidecar is already running. | App resource `data/` directory, matching the existing macOS release behavior. |
+| Windows | Electron starts `resources/sidecar/bin/asrpro-sidecar.exe` and waits for `/health`. | Electron user-writable app data under the current user's profile. |
+| Linux | Electron starts `resources/sidecar/bin/asrpro-sidecar` and waits for `/health`. | Electron user-writable app data under the current user's profile. |
+
+Development keeps local state in `tmp/app-data` and can use either `npm run electron:dev` or the Electron main process fallback that starts `sidecar/main.py`.
 
 ### Frontend Only
 
@@ -197,7 +229,7 @@ Create `.env` files as needed:
 
 ```bash
 # .env.local (frontend)
-VITE_API_URL=http://localhost:8000
+VITE_ASRPRO_API_URL=http://localhost:8000
 
 # sidecar/.env (backend)
 MODEL_CACHE_DIR=./models

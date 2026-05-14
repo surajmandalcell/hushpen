@@ -62,14 +62,15 @@ describe("Electron runtime helpers", () => {
     expect(dataDir).toBe("/Applications/ASR Pro.app/Contents/Resources/data");
   });
 
-  it("resolves contained data beside the executable on Windows and Linux", () => {
+  it("resolves packaged Windows and Linux data under user-writable app data", () => {
     expect(runtime.resolveContainedDataDir({
       isPackaged: true,
       platform: "win32",
       resourcesPath: "C:\\ASR Pro\\resources",
       exePath: "C:\\ASR Pro\\ASR Pro.exe",
       appPath: "C:\\repo",
-    })).toBe("C:\\ASR Pro\\data");
+      userDataPath: "C:\\Users\\suraj\\AppData\\Roaming\\ASR Pro",
+    })).toBe("C:\\Users\\suraj\\AppData\\Roaming\\ASR Pro\\data");
 
     expect(runtime.resolveContainedDataDir({
       isPackaged: true,
@@ -77,7 +78,72 @@ describe("Electron runtime helpers", () => {
       resourcesPath: "/opt/asrpro/resources",
       exePath: "/opt/asrpro/asrpro",
       appPath: "/repo",
-    })).toBe("/opt/asrpro/data");
+      userDataPath: "/home/suraj/.config/ASR Pro",
+    })).toBe("/home/suraj/.config/ASR Pro/data");
+  });
+
+  it("builds a packaged sidecar launch config from bundled executables", () => {
+    const windowsExecutable = "C:\\ASR Pro\\resources\\sidecar\\bin\\asrpro-sidecar.exe";
+    const linuxExecutable = "/opt/asrpro/resources/sidecar/bin/asrpro-sidecar";
+    const existing = new Set([windowsExecutable, linuxExecutable]);
+    const existsSync = (candidate: string) => existing.has(candidate);
+
+    expect(runtime.buildSidecarLaunchConfig({
+      isPackaged: true,
+      platform: "win32",
+      resourcesPath: "C:\\ASR Pro\\resources",
+      appPath: "C:\\repo",
+      existsSync,
+    })).toMatchObject({
+      mode: "executable",
+      command: windowsExecutable,
+      args: [],
+      healthUrl: "http://127.0.0.1:8000/health",
+    });
+
+    expect(runtime.buildSidecarLaunchConfig({
+      isPackaged: true,
+      platform: "linux",
+      resourcesPath: "/opt/asrpro/resources",
+      appPath: "/repo",
+      existsSync,
+    })).toMatchObject({
+      mode: "executable",
+      command: linuxExecutable,
+      args: [],
+      healthUrl: "http://127.0.0.1:8000/health",
+    });
+  });
+
+  it("uses Python source only for development sidecar launches", () => {
+    const mainPath = "/repo/sidecar/main.py";
+    const existsSync = (candidate: string) => candidate === mainPath;
+
+    expect(runtime.buildSidecarLaunchConfig({
+      isPackaged: false,
+      platform: "darwin",
+      resourcesPath: "/repo/resources",
+      appPath: "/repo",
+      pythonCommand: "/repo/sidecar/.venv/bin/python",
+      existsSync,
+    })).toMatchObject({
+      mode: "python",
+      command: "/repo/sidecar/.venv/bin/python",
+      args: [mainPath],
+      cwd: "/repo/sidecar",
+    });
+
+    expect(runtime.buildSidecarLaunchConfig({
+      isPackaged: true,
+      platform: "linux",
+      resourcesPath: "/opt/asrpro/resources",
+      appPath: "/repo",
+      existsSync: () => false,
+    })).toMatchObject({
+      mode: "missing",
+      command: null,
+      error: "Packaged ASR Pro is missing its bundled Python sidecar executable.",
+    });
   });
 
   it("resolves platform app and tray icon assets", () => {

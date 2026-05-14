@@ -3,6 +3,7 @@ ModelManager: lifecycle, loader creation, and inference entry points.
 """
 
 import logging
+import os
 from typing import Dict, Any, Optional, List, BinaryIO
 
 from utils.device import DeviceDetector
@@ -31,11 +32,15 @@ class ModelManager:
         await self.device_detector.detect_capabilities()
         self._initialize_loader_configs()
         default_model = self.settings.get_config("models.default_model")
-        if default_model:
+        if default_model and should_eager_load_default_model():
             if await self.set_model(default_model):
                 logger.info(f"Default model {default_model} loaded")
             else:
                 logger.warning(f"Default model {default_model} could not be loaded")
+        elif default_model:
+            logger.info(
+                f"Skipping eager load for default model {default_model}; it will load on first transcription or model selection"
+            )
         logger.info("Model manager initialized")
 
     def _initialize_loader_configs(self):
@@ -240,3 +245,8 @@ class ModelManager:
     async def cleanup(self):
         logger.info("Cleaning up model manager")
         await self.unload_all_models()
+
+
+def should_eager_load_default_model() -> bool:
+    value = os.environ.get("ASRPRO_EAGER_LOAD_MODEL", "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}

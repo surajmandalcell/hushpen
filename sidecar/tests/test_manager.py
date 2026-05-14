@@ -42,6 +42,22 @@ class TestModelManager:
             assert "nemo" in manager.loader_configs
 
     @pytest.mark.asyncio
+    async def test_initialize_can_skip_eager_default_model(self, settings, monkeypatch):
+        """Test startup can avoid blocking on default model downloads."""
+        monkeypatch.setenv("ASRPRO_EAGER_LOAD_MODEL", "0")
+        manager = ModelManager(settings)
+
+        with patch.object(
+            manager.device_detector, "detect_capabilities", new_callable=AsyncMock
+        ) as mock_detect:
+            with patch.object(manager, "set_model", new_callable=AsyncMock, return_value=True) as mock_set_model:
+                await manager.initialize()
+
+            mock_detect.assert_called_once()
+            mock_set_model.assert_not_called()
+            assert manager.current_model is None
+
+    @pytest.mark.asyncio
     async def test_list_available_models(self, settings):
         """Test listing available models."""
         manager = ModelManager(settings)

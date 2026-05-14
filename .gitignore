@@ -13,6 +13,8 @@ dist-ssr
 tmp/
 data/
 release/
+sidecar/bin/*
+!sidecar/bin/README.md
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

@@ -13,9 +13,11 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4271",
     "sidecar:dev": "if [ -x sidecar/.venv/bin/python ]; then sidecar/.venv/bin/python sidecar/main.py; else python3 sidecar/main.py; fi",
+    "sidecar:build": "node scripts/build-sidecar.cjs",
+    "sidecar:check": "node scripts/check-sidecar-bundle.cjs",
     "electron:dev": "concurrently -k \"npm:sidecar:dev\" \"npm:dev\" \"wait-on http://127.0.0.1:4270 http://127.0.0.1:8000/health && electron .\"",
-    "electron:pack": "npm run build && electron-builder --dir",
-    "electron:dist": "npm run build && electron-builder",
+    "electron:pack": "npm run build && npm run sidecar:check && electron-builder --dir",
+    "electron:dist": "npm run build && npm run sidecar:check && electron-builder",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -57,6 +59,34 @@
       "dist/**/*",
       "electron/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "sidecar/bin",
+        "to": "sidecar/bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "sidecar",
+        "to": "sidecar/source",
+        "filter": [
+          "main.py",
+          "requirements.txt",
+          "README.md",
+          "api/**/*",
+          "config/**/*",
+          "models/**/*",
+          "utils/**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!bin/**",
+          "!build/**",
+          "!outputs/**",
+          "!tests/**"
+        ]
+      }
     ],
     "mac": {
       "icon": "src-tauri/icons/icon.icns",

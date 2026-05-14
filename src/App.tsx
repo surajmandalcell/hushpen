@@ -50,8 +50,20 @@ interface RuntimeInfo {
   defaultModelRepo?: string;
   dataDir?: string;
   overlaySettings?: OverlaySettings;
+  sidecar?: SidecarRuntimeState;
   shortcut?: string;
   shortcutRegistered?: boolean;
+}
+
+interface SidecarRuntimeState {
+  status: string;
+  mode?: string;
+  healthUrl?: string;
+  command?: string | null;
+  args?: string[];
+  pid?: number | null;
+  error?: string | null;
+  updatedAt?: string;
 }
 
 interface NavItem {
@@ -126,7 +138,7 @@ const sidebarIconTone: Record<ViewId, string> = {
   sound: "bg-[#737373] text-white",
   models: "bg-[#8f8f8f] text-white",
   history: "bg-[#7167ff] text-white",
-  about: "bg-[#4d6b73] text-white",
+  about: "border border-[#92c2c6]/25 bg-[#92c2c6]/15 text-[#b9dfe2]",
 };
 
 const defaultModelName = "Local Whisper";
@@ -165,6 +177,31 @@ const modelCards = [
     speed: "Optional",
     status: "Not installed",
   },
+];
+
+const aboutFeatureRows: Array<{ icon: LucideIcon; title: string; detail: string }> = [
+  {
+    icon: Mic2,
+    title: "Fast dictation",
+    detail: "Record from your preferred microphone and keep the flow inside the desktop app.",
+  },
+  {
+    icon: Library,
+    title: "Local model workspace",
+    detail: "Use the built-in Whisper path today, with optional model slots ready for deeper testing.",
+  },
+  {
+    icon: History,
+    title: "Searchable history",
+    detail: "Review recent transcripts, copy text, and replay saved recordings from one place.",
+  },
+];
+
+const aboutFactRows: Array<{ label: string; value: string }> = [
+  { label: "Version", value: "0.1.0" },
+  { label: "Runtime", value: "Electron + React" },
+  { label: "Recognition", value: "Local Whisper with optional Parakeet models" },
+  { label: "Storage", value: "Local desktop workspace" },
 ];
 
 const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
@@ -769,7 +806,7 @@ function App() {
       }).catch(() => {});
     }
 
-    return api.onRecordingState?.((state) => {
+    const unsubscribeRecording = api.onRecordingState?.((state) => {
       setRuntimeInfo((current) => (current ? { ...current, isRecording: state.isRecording } : current));
       if (recordingTransitionRef.current) {
         setIsRecording(state.isRecording);
@@ -782,6 +819,15 @@ function App() {
         void stopRecordingFlow(false);
       }
     });
+
+    const unsubscribeSidecar = api.onSidecarState?.((sidecar) => {
+      setRuntimeInfo((current) => (current ? { ...current, sidecar } : { isRecording: false, sidecar }));
+    });
+
+    return () => {
+      unsubscribeRecording?.();
+      unsubscribeSidecar?.();
+    };
   }, [startRecordingFlow, stopRecordingFlow]);
 
   useEffect(() => {
@@ -862,7 +908,7 @@ function App() {
   }, []);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#2f2f2f] font-[Inter,-apple-system,BlinkMacSystemFont,'SF_Pro_Text','Segoe_UI',sans-serif] text-[#ededed] antialiased">
+    <div className="app-chrome h-screen w-screen overflow-hidden bg-[#2f2f2f] font-[Inter,-apple-system,BlinkMacSystemFont,'SF_Pro_Text','Segoe_UI',sans-serif] text-[#ededed] antialiased">
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[208px_minmax(0,1fr)] sm:grid-rows-1">
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
         <section className="grid min-h-0 min-w-0 grid-rows-[34px_minmax(0,1fr)] bg-[radial-gradient(circle_at_68%_10%,rgba(57,89,62,0.16),transparent_38%),#333333] sm:border-l sm:border-[#3f3f3f]">
@@ -971,7 +1017,7 @@ function Sidebar({ activeView, onChange, onWindowAction }: SidebarProps) {
               type="button"
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
-              className={`mb-1 flex h-9 shrink-0 items-center gap-2 rounded-[9px] px-2.5 text-left text-[13px] font-semibold transition sm:w-full ${
+              className={`mb-1 flex h-9 shrink-0 items-center gap-2 rounded-[9px] px-2.5 text-left text-[13px] font-semibold transition outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9bcfff]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-[#3c3c3c] sm:w-full ${
                 isActive
                   ? "bg-[#686868] text-white"
                   : "text-[#d0d0d0] hover:bg-[#505050]"
@@ -1125,7 +1171,7 @@ function HomeView({
       </section>
 
       {recordingError ? (
-        <p role="alert" className="px-1 text-[12px] font-medium text-[#ff9c8f]">
+        <p role="alert" className="selectable-text px-1 text-[12px] font-medium text-[#ff9c8f]">
           {recordingError}
         </p>
       ) : null}
@@ -1164,7 +1210,7 @@ function HomeActionRow({ icon, title, detail, trailing, ariaLabel, disabled = fa
       <div className="grid size-7 shrink-0 place-items-center text-[#a8a8a8]">{icon}</div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[14px] font-semibold leading-5 text-[#eeeeee]">{title}</p>
-        {detail ? <p className="truncate text-[13px] font-semibold leading-5 text-[#aaa]">{detail}</p> : null}
+        {detail ? <p className="selectable-text truncate text-[13px] font-semibold leading-5 text-[#aaa]">{detail}</p> : null}
       </div>
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
     </>
@@ -1199,7 +1245,7 @@ function UpdateRow({ date, title, detail }: UpdateRowProps) {
       <p className="text-[12px] font-semibold text-[#8d8d8d]">{date}</p>
       <div className="min-w-0">
         <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
-        <p className="mt-1 text-[12px] font-medium leading-5 text-[#b6b6b6]">{detail}</p>
+        <p className="selectable-text mt-1 text-[12px] font-medium leading-5 text-[#b6b6b6]">{detail}</p>
       </div>
     </div>
   );
@@ -1371,7 +1417,7 @@ function SoundView({
                 </button>
               </div>
               {audioInputDevicesError ? (
-                <p role="status" className="text-[12px] font-medium text-[#ffb3aa]">
+                <p role="status" className="selectable-text text-[12px] font-medium text-[#ffb3aa]">
                   {audioInputDevicesError}
                 </p>
               ) : null}
@@ -1413,7 +1459,7 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-[#f2f2f2]">{model.name}</p>
-              <p className="mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{model.detail}</p>
+              <p className="selectable-text mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{model.detail}</p>
             </div>
             {selectedModel === model.name ? (
               <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
@@ -1503,7 +1549,7 @@ function HistoryView({ rows, onCopyRow, onDeleteRow }: HistoryViewProps) {
       ) : (
         <div className={`${panelSurfaceClass} p-6 text-center`}>
           <p className="text-[14px] font-semibold text-[#eeeeee]">No transcription history yet</p>
-          <p className="mt-1 text-[12px] leading-5 text-[#b4b4b4]">Stop a recording after dictation and the transcript will appear here.</p>
+          <p className="selectable-text mt-1 text-[12px] leading-5 text-[#b4b4b4]">Stop a recording after dictation and the transcript will appear here.</p>
         </div>
       )}
     </section>
@@ -1526,11 +1572,11 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
         className="block w-full text-left"
         onClick={onToggle}
       >
-        <p className={`${expanded ? "line-clamp-3" : "truncate"} text-[13px] font-semibold leading-5 text-[#f1f1f1]`}>
+        <p className={`selectable-text ${expanded ? "line-clamp-3" : "truncate"} text-[13px] font-semibold leading-5 text-[#f1f1f1]`}>
           {row.title}
         </p>
         {expanded && row.status !== "failed" && row.text && row.text !== row.title ? (
-          <p className="mt-2 text-[12px] font-medium leading-5 text-[#c7c7c7]">{row.text}</p>
+          <p className="selectable-text mt-2 text-[12px] font-medium leading-5 text-[#c7c7c7]">{row.text}</p>
         ) : null}
       </button>
 
@@ -1538,7 +1584,7 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
         <div className="history-card-details mt-3 space-y-3">
           {row.recordingUrl ? <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} durationSeconds={row.durationSeconds} /> : null}
           {row.status === "failed" ? (
-            <p className={`${sharedRadiusClass} border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-[12px] font-medium text-[#ffb3aa]`}>
+            <p className={`selectable-text ${sharedRadiusClass} border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-[12px] font-medium text-[#ffb3aa]`}>
               {row.error ?? "Transcription failed"}
             </p>
           ) : null}
@@ -1643,6 +1689,9 @@ function SettingsView({
   onOpenSound,
 }: SettingsViewProps) {
   const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
+  const sidecar = runtimeInfo?.sidecar;
+  const sidecarStatus = formatSidecarStatus(sidecar?.status);
+  const sidecarDetail = sidecar?.error || sidecar?.mode || sidecar?.healthUrl || "Waiting for desktop runtime";
 
   return (
     <ViewFrame title="Configuration">
@@ -1661,26 +1710,61 @@ function SettingsView({
       <GroupedPanel title="Application">
         <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
         <PanelRow title="Microphone input" detail={selectedAudioInputLabel} trailing={<NavigateButton label="Change" onClick={onOpenSound} />} />
+        <PanelRow title="Sidecar" detail={sidecarDetail} trailing={<StatusLabel>{sidecarStatus}</StatusLabel>} />
         <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} trailing={<StatusLabel>Read only</StatusLabel>} />
       </GroupedPanel>
     </ViewFrame>
   );
 }
 
+function formatSidecarStatus(status?: string) {
+  if (status === "ready") return "Ready";
+  if (status === "starting") return "Starting";
+  if (status === "failed") return "Failed";
+  if (status === "stopped") return "Stopped";
+  return "Unknown";
+}
+
 function AboutView() {
   return (
     <ViewFrame title="About ASR Pro">
       <GroupedPanel>
-        <div className="flex flex-col items-center px-6 py-7 text-center">
-          <div className="grid size-24 place-items-center rounded-[22px] bg-[#f6f4ef] text-[#26343b] shadow-[0_18px_42px_rgba(0,0,0,0.22)]">
-            <AppLogoMark className="size-20" title="ASR Pro" />
+        <div className="px-5 py-6">
+          <div className="flex flex-col items-center text-center">
+            <div className="grid size-24 place-items-center rounded-[22px] bg-[#f6f4ef] text-[#26343b] shadow-[0_18px_42px_rgba(0,0,0,0.22)] ring-1 ring-white/50">
+              <AppLogoMark className="size-20" title="ASR Pro" />
+            </div>
+            <h3 className="mt-5 text-[22px] font-semibold tracking-normal text-[#f4f4f4]">ASR Pro</h3>
+            <p className="selectable-text mt-1 text-[12px] font-semibold text-[#a8a8a8]">Version 0.1.0</p>
+            <p className="selectable-text mt-4 max-w-[390px] text-[13px] leading-5 text-[#cfcfcf]">
+              A quiet desktop workspace for private dictation, file transcription, and local speech model testing.
+            </p>
           </div>
-          <h3 className="mt-5 text-[20px] font-semibold text-[#f2f2f2]">ASR Pro</h3>
-          <p className="mt-1 text-[12px] font-medium text-[#a8a8a8]">Version 0.1.0</p>
-          <p className="mt-4 max-w-[360px] text-[13px] leading-5 text-[#c7c7c7]">
-            Desktop speech recognition and transcription workspace for local dictation, file transcription, and model testing.
-          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-2">
+            {aboutFactRows.map((fact) => (
+              <div key={fact.label} className={`${sharedRadiusClass} border border-white/[0.075] bg-white/[0.045] px-3 py-3`}>
+                <p className="text-[11px] font-semibold uppercase text-[#888]">{fact.label}</p>
+                <p className="selectable-text mt-1 text-[12px] font-semibold leading-4 text-[#e4e4e4]">{fact.value}</p>
+              </div>
+            ))}
+          </div>
         </div>
+      </GroupedPanel>
+
+      <GroupedPanel title="Highlights">
+        {aboutFeatureRows.map((feature) => {
+          const Icon = feature.icon;
+
+          return (
+            <PanelRow
+              key={feature.title}
+              icon={<Icon className="size-3.5" />}
+              title={feature.title}
+              detail={feature.detail}
+            />
+          );
+        })}
       </GroupedPanel>
     </ViewFrame>
   );
@@ -1761,7 +1845,7 @@ function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
         {icon ? <div className={iconTileClass}>{icon}</div> : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
-          {detail ? <p className="mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{detail}</p> : null}
+          {detail ? <p className="selectable-text mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{detail}</p> : null}
         </div>
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>

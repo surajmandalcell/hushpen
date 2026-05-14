@@ -37,7 +37,7 @@ This minimizes steps to add/remove a model.
 The loader resolves candidates as on-disk paths when `source: "file"`.
 # ASR Pro Python Sidecar
 
-This is the Python sidecar for the ASR Pro Tauri+React application.
+This is the Python sidecar for the ASR Pro Electron + React application.
 
 ## Purpose
 
@@ -61,6 +61,15 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
+
+Packaged Electron builds should bundle a platform-specific executable instead of requiring end users to install Python:
+
+```bash
+npm run sidecar:build
+npm run sidecar:check
+```
+
+The generated executable is written to `sidecar/bin/` and is intentionally ignored by git.
 
 ## API Endpoints
 

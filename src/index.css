@@ -24,6 +24,20 @@
   input, button, select, textarea {
     @apply font-sf;
   }
+
+  .app-chrome,
+  .app-chrome * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  .app-chrome :is(input, textarea, select, [contenteditable="true"]),
+  .app-chrome .selectable-text,
+  .app-chrome .selectable-text * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 /* Custom component styles */

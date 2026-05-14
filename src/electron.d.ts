@@ -1,6 +1,16 @@
 export {};
 
 type OverlayPlacement = "top" | "bottom";
+type SidecarState = {
+  status: string;
+  mode?: string;
+  healthUrl?: string;
+  command?: string | null;
+  args?: string[];
+  pid?: number | null;
+  error?: string | null;
+  updatedAt?: string;
+};
 
 declare global {
   interface Window {
@@ -32,7 +42,9 @@ declare global {
         };
         shortcut: string;
         shortcutRegistered: boolean;
+        sidecar?: SidecarState;
       }>;
+      getSidecarState?: () => Promise<SidecarState>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;
         customBounds: {
@@ -53,6 +65,7 @@ declare global {
       toggleRecording: () => Promise<{ isRecording: boolean }>;
       setWaveformFrame?: (frame: number[]) => void;
       onRecordingState: (callback: (state: { isRecording: boolean; source: string }) => void) => () => void;
+      onSidecarState?: (callback: (state: SidecarState) => void) => () => void;
       windowControl: (action: "minimize" | "maximize" | "close") => Promise<void>;
     };
   }

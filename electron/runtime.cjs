@@ -1,6 +1,10 @@
 const path = require("node:path");
+const fs = require("node:fs");
 
 const RECORDING_SHORTCUT = "CommandOrControl+`";
+const SIDECAR_HOST = "127.0.0.1";
+const SIDECAR_PORT = 8000;
+const SIDECAR_HEALTH_URL = `http://${SIDECAR_HOST}:${SIDECAR_PORT}/health`;
 const OVERLAY_WINDOW_SIZE = {
   width: 156,
   height: 40,
@@ -21,7 +25,7 @@ function platformPath(platform) {
   return platform === "win32" ? path.win32 : path.posix;
 }
 
-function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath, appPath }) {
+function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath, appPath, userDataPath }) {
   const pathModule = platformPath(platform);
 
   if (!isPackaged) {
@@ -30,6 +34,10 @@ function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath,
 
   if (platform === "darwin") {
     return pathModule.join(resourcesPath, "data");
+  }
+
+  if (userDataPath) {
+    return pathModule.join(userDataPath, "data");
   }
 
   return pathModule.join(pathModule.dirname(exePath), "data");
@@ -53,6 +61,103 @@ function buildModelPaths(dataDir) {
     modelsDir,
     defaultModelDir,
     defaultModelManifest: path.join(defaultModelDir, "model.json"),
+  };
+}
+
+function resolveSidecarResourceRoot({ isPackaged, resourcesPath, appPath, platform }) {
+  const pathModule = platformPath(platform);
+  return isPackaged
+    ? pathModule.join(resourcesPath, "sidecar")
+    : pathModule.join(appPath, "sidecar");
+}
+
+function getSidecarExecutableName(platform) {
+  return platform === "win32" ? "asrpro-sidecar.exe" : "asrpro-sidecar";
+}
+
+function resolveSidecarExecutablePath({
+  isPackaged,
+  platform,
+  resourcesPath,
+  appPath,
+  existsSync = fs.existsSync,
+}) {
+  const pathModule = platformPath(platform);
+  const sidecarRoot = resolveSidecarResourceRoot({ isPackaged, resourcesPath, appPath, platform });
+  const executableName = getSidecarExecutableName(platform);
+  const candidates = isPackaged
+    ? [
+        pathModule.join(sidecarRoot, "bin", executableName),
+        pathModule.join(sidecarRoot, executableName),
+      ]
+    : [
+        pathModule.join(sidecarRoot, "bin", executableName),
+        pathModule.join(sidecarRoot, "dist", executableName),
+      ];
+
+  return candidates.find((candidate) => existsSync(candidate)) || null;
+}
+
+function resolveSidecarSourcePath({ isPackaged, platform, resourcesPath, appPath }) {
+  const pathModule = platformPath(platform);
+  const sidecarRoot = resolveSidecarResourceRoot({ isPackaged, resourcesPath, appPath, platform });
+  return isPackaged
+    ? pathModule.join(sidecarRoot, "source", "main.py")
+    : pathModule.join(sidecarRoot, "main.py");
+}
+
+function defaultPythonCommand(platform) {
+  return platform === "win32" ? "python" : "python3";
+}
+
+function buildSidecarLaunchConfig({
+  isPackaged,
+  platform,
+  resourcesPath,
+  appPath,
+  pythonCommand,
+  existsSync = fs.existsSync,
+}) {
+  const pathModule = platformPath(platform);
+  const executablePath = resolveSidecarExecutablePath({
+    isPackaged,
+    platform,
+    resourcesPath,
+    appPath,
+    existsSync,
+  });
+
+  if (executablePath) {
+    return {
+      mode: "executable",
+      command: executablePath,
+      args: [],
+      cwd: pathModule.dirname(executablePath),
+      healthUrl: SIDECAR_HEALTH_URL,
+    };
+  }
+
+  const sourcePath = resolveSidecarSourcePath({ isPackaged, platform, resourcesPath, appPath });
+  if (!isPackaged && existsSync(sourcePath)) {
+    return {
+      mode: "python",
+      command: pythonCommand || defaultPythonCommand(platform),
+      args: [sourcePath],
+      cwd: pathModule.dirname(sourcePath),
+      healthUrl: SIDECAR_HEALTH_URL,
+    };
+  }
+
+  return {
+    mode: "missing",
+    command: null,
+    args: [],
+    cwd: null,
+    healthUrl: SIDECAR_HEALTH_URL,
+    sourcePath,
+    error: isPackaged
+      ? "Packaged ASR Pro is missing its bundled Python sidecar executable."
+      : "ASR Pro could not find the development Python sidecar source.",
   };
 }
 
@@ -319,12 +424,19 @@ module.exports = {
   OVERLAY_EDGE_MARGIN,
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
+  SIDECAR_HEALTH_URL,
+  SIDECAR_HOST,
+  SIDECAR_PORT,
   buildModelPaths,
+  buildSidecarLaunchConfig,
   createRecordingOverlayHtml,
+  getSidecarExecutableName,
   normalizeOverlaySettings,
   resolveAppIconPath,
   resolveContainedDataDir,
   resolveOverlayBounds,
+  resolveSidecarExecutablePath,
+  resolveSidecarSourcePath,
   resolveTrayIconPath,
   shouldShowRecordingOverlay,
 };
