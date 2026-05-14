@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import {
   ArrowUpRight,
   BrainCircuit,
@@ -224,10 +224,17 @@ const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
 });
 
 const sharedRadiusClass = "rounded-[12px]";
+const insetControlRadiusClass = "rounded-[10px]";
 const panelGlassClass = "rounded-[22px] border border-white/[0.095] bg-white/[0.055] backdrop-blur-2xl";
 const panelSurfaceClass = `overflow-hidden ${panelGlassClass}`;
 const panelDividerClass = "border-white/[0.08]";
 const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusClass} bg-white/[0.07] text-[#d7d7d7]`;
+const focusRingClass = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]";
+const panelControlButtonClass = `inline-flex min-h-8 items-center justify-center gap-1.5 ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] ${focusRingClass}`;
+const dropdownSurfaceClass = `absolute z-50 max-h-64 overflow-y-auto ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] p-1 shadow-2xl shadow-black/40`;
+const dropdownOptionButtonClass = `flex w-full min-w-0 items-start gap-2 ${insetControlRadiusClass} px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition`;
+const segmentedControlClass = `inline-flex ${sharedRadiusClass} border border-white/[0.08] bg-[#2b2b2b] p-0.5`;
+const segmentedItemClass = `h-7 ${insetControlRadiusClass} px-2.5 text-[12px] font-semibold transition ${focusRingClass}`;
 
 const waveformBarCount = 76;
 const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
@@ -1305,6 +1312,87 @@ interface SoundViewProps {
   onOpenModels: () => void;
 }
 
+function PanelControlButton({ className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button {...props} className={`${panelControlButtonClass} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+interface DropdownSurfaceProps {
+  id: string;
+  ariaLabel: string;
+  alignClassName: string;
+  children: ReactNode;
+}
+
+function DropdownSurface({ id, ariaLabel, alignClassName, children }: DropdownSurfaceProps) {
+  return (
+    <div id={id} role="listbox" aria-label={ariaLabel} className={`${alignClassName} ${dropdownSurfaceClass}`}>
+      {children}
+    </div>
+  );
+}
+
+interface DropdownOptionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  selected: boolean;
+}
+
+function DropdownOptionButton({ selected, className = "", children, ...props }: DropdownOptionButtonProps) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      {...props}
+      className={`${dropdownOptionButtonClass} ${selected ? "bg-[#5a5a5a] text-white" : "text-[#dddddd] hover:bg-[#454545]"} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface SegmentedControlOption<TValue extends string> {
+  value: TValue;
+  label: string;
+  ariaLabel: string;
+}
+
+const overlayPlacementControlOptions: readonly SegmentedControlOption<OverlayPlacement>[] = [
+  { value: "top", label: "Top", ariaLabel: "Top overlay position" },
+  { value: "bottom", label: "Bottom", ariaLabel: "Bottom overlay position" },
+];
+
+interface SegmentedControlProps<TValue extends string> {
+  value: TValue;
+  options: readonly SegmentedControlOption<TValue>[];
+  onChange: (value: TValue) => void;
+}
+
+function SegmentedControl<TValue extends string>({ value, options, onChange }: SegmentedControlProps<TValue>) {
+  return (
+    <div className={segmentedControlClass}>
+      {options.map((option) => {
+        const active = value === option.value;
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-label={option.ariaLabel}
+            aria-pressed={active}
+            className={`${segmentedItemClass} ${active ? "bg-[#686868] text-white" : "text-[#aaa] hover:text-white"}`}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface MicrophoneSelectorProps {
   ariaLabel: string;
   devices: AudioInputDeviceOption[];
@@ -1332,6 +1420,14 @@ function MicrophoneSelector({
     id: selectedDeviceId,
     label: selectedLabel,
   };
+  const triggerContent = (
+    <>
+      <AudioInputDeviceIcon device={selectedDevice} className={isToolbar ? "size-3 shrink-0 text-current" : "size-3 shrink-0 text-[#bdbdbd]"} />
+      <span className={isToolbar ? "hidden min-w-0 truncate sm:inline" : "min-w-0 flex-1 whitespace-normal break-words text-left leading-4"}>
+        {selectedLabel}
+      </span>
+    </>
+  );
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -1363,52 +1459,56 @@ function MicrophoneSelector({
 
   return (
     <div ref={rootRef} className={`relative min-w-0 ${isToolbar ? "[-webkit-app-region:no-drag]" : "w-full"}`}>
-      <button
-        type="button"
-        aria-controls={isOpen ? listboxId.current : undefined}
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
-        aria-label={ariaLabel}
-        disabled={disabled}
-        className={isToolbar
-          ? "toolbar-mic-trigger inline-flex h-7 max-w-[260px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] font-medium text-[#bdbdbd] disabled:cursor-not-allowed disabled:text-[#7d7d7d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
-          : "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md border border-[#5c5c5c] bg-[#303030] px-2 py-1.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] disabled:cursor-not-allowed disabled:text-[#8a8a8a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"}
-        onClick={() => setIsOpen((current) => !current)}
-      >
-        <AudioInputDeviceIcon device={selectedDevice} className={isToolbar ? "size-3 shrink-0 text-current" : "size-3 shrink-0 text-[#bdbdbd]"} />
-        <span className={isToolbar ? "hidden min-w-0 truncate sm:inline" : "min-w-0 flex-1 whitespace-normal break-words text-left leading-4"}>
-          {selectedLabel}
-        </span>
-      </button>
+      {isToolbar ? (
+        <button
+          type="button"
+          aria-controls={isOpen ? listboxId.current : undefined}
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          className={`toolbar-mic-trigger inline-flex h-7 max-w-[260px] min-w-0 items-center gap-1.5 ${sharedRadiusClass} px-1.5 text-[12px] font-medium text-[#bdbdbd] disabled:cursor-not-allowed disabled:text-[#7d7d7d] ${focusRingClass}`}
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          {triggerContent}
+        </button>
+      ) : (
+        <PanelControlButton
+          type="button"
+          aria-controls={isOpen ? listboxId.current : undefined}
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          className="w-full min-w-0 justify-start px-2 py-1.5 text-left"
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          {triggerContent}
+        </PanelControlButton>
+      )}
 
       {isOpen ? (
-        <div
+        <DropdownSurface
           id={listboxId.current}
-          role="listbox"
-          aria-label="Microphone options"
-          className={`${isToolbar ? "right-0 top-full mt-1 w-[320px] max-w-[calc(100vw-1rem)]" : "left-0 top-full mt-1 w-full min-w-[260px]"} absolute z-50 max-h-64 overflow-y-auto rounded-[9px] border border-[#5c5c5c] bg-[#303030] p-1 shadow-2xl shadow-black/40`}
+          ariaLabel="Microphone options"
+          alignClassName={isToolbar ? "right-0 top-full mt-1 w-[320px] max-w-[calc(100vw-1rem)]" : "left-0 top-full mt-1 w-full min-w-[260px]"}
         >
           {devices.map((device) => {
             const selected = device.id === selectedDeviceId;
 
             return (
-              <button
+              <DropdownOptionButton
                 key={device.id}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                className={`flex w-full min-w-0 items-start gap-2 rounded-[7px] px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition ${
-                  selected ? "bg-[#5a5a5a] text-white" : "text-[#dddddd] hover:bg-[#454545]"
-                }`}
+                selected={selected}
                 onClick={() => handleSelect(device.id)}
               >
                 <AudioInputDeviceIcon device={device} className="mt-0.5 size-3 shrink-0 text-[#bdbdbd]" />
                 <span className="min-w-0 flex-1 whitespace-normal break-words">{device.label}</span>
                 {selected ? <Check className="mt-0.5 size-3 shrink-0 text-[#9bcfff]" /> : null}
-              </button>
+              </DropdownOptionButton>
             );
           })}
-        </div>
+        </DropdownSurface>
       ) : null}
     </div>
   );
@@ -1446,16 +1546,16 @@ function SoundView({
                   variant="panel"
                   onSelect={onSelectAudioInput}
                 />
-                <button
+                <PanelControlButton
                   type="button"
                   aria-label="Refresh microphones"
-                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#5c5c5c] bg-[#303030] px-2.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#4a4a4a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]"
+                  className="h-8 px-2.5 hover:bg-[#4a4a4a]"
                   disabled={audioInputDevicesLoading}
                   onClick={onRefreshAudioInputs}
                 >
                   <RefreshCw className={`size-3 ${audioInputDevicesLoading ? "animate-spin" : ""}`} />
                   <span>Refresh</span>
-                </button>
+                </PanelControlButton>
               </div>
               {audioInputDevicesError ? (
                 <p role="status" className="selectable-text text-[12px] font-medium text-[#ffb3aa]">
@@ -1836,27 +1936,7 @@ interface OverlayPlacementControlProps {
 
 function OverlayPlacementControl({ placement, onChange }: OverlayPlacementControlProps) {
   return (
-    <div className={`inline-flex ${sharedRadiusClass} bg-[#2b2b2b] p-0.5`}>
-      {(["top", "bottom"] as const).map((option) => {
-        const active = placement === option;
-        const label = option === "top" ? "Top" : "Bottom";
-
-        return (
-          <button
-            key={option}
-            type="button"
-            aria-label={`${label} overlay position`}
-            aria-pressed={active}
-            className={`h-7 rounded-[7px] px-2.5 text-[12px] font-semibold transition ${
-              active ? "bg-[#686868] text-white" : "text-[#aaa] hover:text-white"
-            }`}
-            onClick={() => onChange(option)}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl value={placement} options={overlayPlacementControlOptions} onChange={onChange} />
   );
 }
 

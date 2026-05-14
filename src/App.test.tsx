@@ -441,6 +441,37 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByRole("option", { name: "Logitech Webcam Microphone" }).querySelector('[data-device-icon="webcam"]')).toBeTruthy();
   });
 
+  it("uses shared rounded styling for the Sound microphone controls", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture([
+      { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
+      { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
+    ]);
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Sound" }));
+
+    const selector = await screen.findByRole("button", { name: "Microphone selector" });
+    const refreshButton = screen.getByRole("button", { name: "Refresh microphones" });
+
+    expect(selector.className).toContain("rounded-[12px]");
+    expect(selector.className).not.toContain("rounded-md");
+    expect(selector.className).not.toContain("rounded-[7px]");
+    expect(refreshButton.className).toContain("rounded-[12px]");
+    expect(refreshButton.className).not.toContain("rounded-md");
+    expect(refreshButton.className).not.toContain("rounded-[7px]");
+
+    await user.click(selector);
+
+    const listbox = screen.getByRole("listbox", { name: "Microphone options" });
+    const option = screen.getByRole("option", { name: "USB Microphone" });
+
+    expect(listbox.className).toContain("rounded-[12px]");
+    expect(listbox.className).not.toContain("rounded-[9px]");
+    expect(option.className).toContain("rounded-[10px]");
+    expect(option.className).not.toContain("rounded-[7px]");
+  });
+
   it("shows real local history instead of static demo transcripts", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -659,6 +690,23 @@ describe("ASR Pro Electron shell", () => {
 
     expect(setOverlaySettings).toHaveBeenCalledWith({ placement: "bottom" });
     expect(screen.getByRole("button", { name: "Bottom overlay position" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("uses shared rounded styling inside the configuration position control", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+
+    const topButton = screen.getByRole("button", { name: "Top overlay position" });
+    const bottomButton = screen.getByRole("button", { name: "Bottom overlay position" });
+    const segmentedControl = topButton.parentElement;
+
+    expect(segmentedControl?.className).toContain("rounded-[12px]");
+    expect(topButton.className).toContain("rounded-[10px]");
+    expect(bottomButton.className).toContain("rounded-[10px]");
+    expect(topButton.className).not.toContain("rounded-[7px]");
+    expect(bottomButton.className).not.toContain("rounded-[7px]");
   });
 
   it("routes configuration references to their real settings pages", async () => {
