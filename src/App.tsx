@@ -650,7 +650,7 @@ function App() {
         <Sidebar activeView={activeView} onChange={setActiveView} onWindowAction={handleWindowAction} />
         <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)] bg-[#363636] sm:border-l sm:border-[#5b5b5b]">
           <Toolbar activeTitle={activeTitle} />
-          <main className="min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-5 sm:px-4 lg:px-4">
+          <main className="scrollbar-macos min-h-0 min-w-0 overflow-y-auto px-4 pb-6 pt-5 sm:px-4 lg:px-4">
             {activeView === "home" && (
               <HomeView
                 isRecording={isRecording}

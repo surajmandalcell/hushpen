@@ -290,24 +290,34 @@
   /* Scrollbar styles */
   .scrollbar-macos {
     scrollbar-width: thin;
-    scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+    scrollbar-color: rgba(214, 214, 214, 0.24) transparent;
   }
 
   .scrollbar-macos::-webkit-scrollbar {
-    @apply w-2;
+    width: 10px;
+    height: 10px;
   }
 
   .scrollbar-macos::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    background: transparent;
   }
 
   .scrollbar-macos::-webkit-scrollbar-thumb {
-    @apply bg-gray-400 bg-opacity-50 rounded-full;
-    @apply hover:bg-opacity-70 transition-all duration-150;
+    min-height: 44px;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: rgba(214, 214, 214, 0.22);
+    background-clip: padding-box;
+    transition: background 150ms ease;
   }
 
   .scrollbar-macos::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-500;
+    background: rgba(214, 214, 214, 0.34);
+    background-clip: padding-box;
+  }
+
+  .scrollbar-macos::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
