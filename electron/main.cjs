@@ -14,6 +14,7 @@ const {
   DEFAULT_OVERLAY_SETTINGS,
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
+  buildLinuxAutostartDesktopEntry,
   buildModelPaths,
   collectRuntimeStorageStats,
   createRecordingOverlayHtml,
@@ -68,6 +69,8 @@ const TEXT_EDITOR_OPTIONS = Object.freeze([
 const DEFAULT_APP_SETTINGS = Object.freeze({
   defaultTextEditor: "system",
   autoCopyTranscripts: true,
+  launchAtStartup: false,
+  startupExecutablePath: "",
 });
 const textEditorIconDataUrlCache = new Map();
 
@@ -102,14 +105,16 @@ if (!hasSingleInstanceLock) {
 }
 
 function configureContainedData() {
+  const executablePath = getCurrentExecutablePath();
   containedDataDir = resolveContainedDataDir({
     isPackaged: app.isPackaged,
     platform: process.platform,
     resourcesPath: process.resourcesPath,
-    exePath: app.getPath("exe"),
+    exePath: executablePath,
     appPath: app.getAppPath(),
     userDataPath: app.getPath("userData"),
     dataDirOverride: process.env.ASRPRO_DATA_DIR,
+    portableExecutableDir: process.env.PORTABLE_EXECUTABLE_DIR,
   });
 
   const paths = buildModelPaths(containedDataDir);
@@ -274,6 +279,8 @@ function registerIpc() {
   ipcMain.handle("settings:text-editor", (_event, editorId) => setDefaultTextEditor(editorId));
 
   ipcMain.handle("settings:auto-copy-transcripts", (_event, enabled) => setAutoCopyTranscripts(enabled));
+
+  ipcMain.handle("settings:startup", (_event, enabled) => setStartupLaunch(enabled));
 
   ipcMain.handle("recording:set", (_event, active) => {
     setRecording(Boolean(active), "renderer");
@@ -454,6 +461,8 @@ async function getRuntimeState() {
     models: listModels(containedDataDir),
     defaultTextEditor: appSettings.defaultTextEditor,
     autoCopyTranscripts: appSettings.autoCopyTranscripts,
+    launchAtStartup: appSettings.launchAtStartup,
+    startup: getStartupLaunchState(),
     textEditors: await getTextEditorOptions(),
     overlaySettings,
     engine: engineState,
@@ -888,6 +897,8 @@ function normalizeAppSettings(settings = {}) {
   return {
     defaultTextEditor: normalizeTextEditorId(settings.defaultTextEditor),
     autoCopyTranscripts: normalizeBooleanSetting(settings.autoCopyTranscripts, DEFAULT_APP_SETTINGS.autoCopyTranscripts),
+    launchAtStartup: normalizeBooleanSetting(settings.launchAtStartup, DEFAULT_APP_SETTINGS.launchAtStartup),
+    startupExecutablePath: normalizeStartupExecutablePath(settings.startupExecutablePath),
   };
 }
 
@@ -898,6 +909,10 @@ function normalizeBooleanSetting(value, fallback) {
 function normalizeTextEditorId(editorId) {
   const normalized = typeof editorId === "string" ? editorId : DEFAULT_APP_SETTINGS.defaultTextEditor;
   return TEXT_EDITOR_OPTIONS.some((editor) => editor.id === normalized) ? normalized : DEFAULT_APP_SETTINGS.defaultTextEditor;
+}
+
+function normalizeStartupExecutablePath(value) {
+  return typeof value === "string" ? value : DEFAULT_APP_SETTINGS.startupExecutablePath;
 }
 
 function getTextEditorOption(editorId) {
@@ -938,6 +953,170 @@ function setAutoCopyTranscripts(enabled) {
   });
   saveAppSettings();
   return appSettings;
+}
+
+function setStartupLaunch(enabled) {
+  const executablePath = getCurrentExecutablePath();
+  const previousExecutablePath = appSettings.startupExecutablePath;
+
+  if (previousExecutablePath && previousExecutablePath !== executablePath) {
+    disableStartupLaunchPath(previousExecutablePath);
+  }
+
+  if (enabled) {
+    enableStartupLaunchPath(executablePath);
+  } else {
+    disableStartupLaunchPath(executablePath);
+  }
+
+  appSettings = normalizeAppSettings({
+    ...appSettings,
+    launchAtStartup: Boolean(enabled),
+    startupExecutablePath: executablePath,
+  });
+  saveAppSettings();
+
+  return {
+    ...appSettings,
+    startup: getStartupLaunchState(),
+  };
+}
+
+function getStartupLaunchState() {
+  const executablePath = getCurrentExecutablePath();
+  const supported = ["darwin", "win32", "linux"].includes(process.platform);
+
+  if (!supported) {
+    return {
+      supported: false,
+      enabled: false,
+      executablePath,
+      detail: "Startup launch is not available on this platform.",
+    };
+  }
+
+  if (process.platform === "linux") {
+    return getLinuxStartupLaunchState(executablePath);
+  }
+
+  const settings = app.getLoginItemSettings(getLoginItemOptions(executablePath));
+  return {
+    supported: true,
+    enabled: Boolean(settings.openAtLogin),
+    executablePath,
+    registeredExecutablePath: appSettings.startupExecutablePath || executablePath,
+    status: settings.status,
+    requiresApproval: settings.status === "requires-approval",
+  };
+}
+
+function getCurrentExecutablePath() {
+  if (process.platform === "win32" && process.env.PORTABLE_EXECUTABLE_FILE) {
+    return process.env.PORTABLE_EXECUTABLE_FILE;
+  }
+
+  return app.getPath("exe");
+}
+
+function enableStartupLaunchPath(executablePath) {
+  if (process.platform === "linux") {
+    writeLinuxStartupLaunch(executablePath);
+    return;
+  }
+
+  if (process.platform === "darwin" || process.platform === "win32") {
+    const loginItemSettings = {
+      ...getLoginItemOptions(executablePath),
+      openAtLogin: true,
+    };
+    if (process.platform === "win32") {
+      loginItemSettings.enabled = true;
+    }
+    app.setLoginItemSettings(loginItemSettings);
+  }
+}
+
+function disableStartupLaunchPath(executablePath) {
+  if (process.platform === "linux") {
+    removeLinuxStartupLaunch();
+    return;
+  }
+
+  if (process.platform === "darwin" || process.platform === "win32") {
+    const loginItemSettings = {
+      ...getLoginItemOptions(executablePath),
+      openAtLogin: false,
+    };
+    if (process.platform === "win32") {
+      loginItemSettings.enabled = false;
+    }
+    app.setLoginItemSettings(loginItemSettings);
+  }
+}
+
+function getLoginItemOptions(executablePath) {
+  if (process.platform !== "win32") return {};
+
+  return {
+    path: executablePath,
+    args: [],
+  };
+}
+
+function getLinuxStartupLaunchState(executablePath) {
+  const autostartPath = getLinuxAutostartFilePath();
+  const registeredExecutablePath = readLinuxAutostartExecutablePath(autostartPath);
+  const enabled = fs.existsSync(autostartPath)
+    && !readTextFile(autostartPath).includes("X-GNOME-Autostart-enabled=false")
+    && registeredExecutablePath === executablePath;
+
+  return {
+    supported: true,
+    enabled,
+    executablePath,
+    registeredExecutablePath,
+    autostartPath,
+  };
+}
+
+function writeLinuxStartupLaunch(executablePath) {
+  const autostartPath = getLinuxAutostartFilePath();
+  fs.mkdirSync(path.dirname(autostartPath), { recursive: true });
+  fs.writeFileSync(autostartPath, buildLinuxAutostartDesktopEntry({
+    appName: APP_NAME,
+    executablePath,
+  }), "utf8");
+}
+
+function removeLinuxStartupLaunch() {
+  fs.rmSync(getLinuxAutostartFilePath(), { force: true });
+}
+
+function getLinuxAutostartFilePath() {
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(app.getPath("home"), ".config");
+  return path.join(configHome, "autostart", "asrpro.desktop");
+}
+
+function readLinuxAutostartExecutablePath(autostartPath) {
+  const source = readTextFile(autostartPath);
+  const execLine = source.split(/\r?\n/).find((line) => line.startsWith("Exec="));
+  if (!execLine) return "";
+
+  const execValue = execLine.slice("Exec=".length).trim();
+  const quotedMatch = execValue.match(/^"((?:\\.|[^"])*)"/);
+  if (quotedMatch) {
+    return quotedMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+
+  return execValue.split(/\s+/)[0] || "";
+}
+
+function readTextFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
 }
 
 function positionRecordingOverlay() {

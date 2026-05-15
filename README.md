@@ -52,6 +52,13 @@ ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a 
 | Lazy loading | The app starts without loading a speech model. Model download and initialization happen only when transcription is requested. |
 | Packaging | Electron Builder packages renderer assets, Electron main/preload files, app icons, tray assets, and the native Whisper addon. |
 
+## Operator Docs
+
+| Page | Use |
+|---|---|
+| [Portable data](docs/portable-data.md) | Explains `asrpro-data/`, what moves with the app, and when macOS uses standard app support storage. |
+| [Startup launch](docs/startup.md) | Explains the Configuration toggle, platform startup targets, and how re-enabling replaces an old executable path. |
+
 ## Architecture
 
 | Layer | Stack | Responsibility |
@@ -143,9 +150,14 @@ Release output is written to `release/`. Code signing, notarization, and store s
 | Mode | Data path behavior |
 |---|---|
 | Development | Electron keeps local state under `tmp/app-data`. |
-| Packaged app | Electron resolves the user-writable app data path, then stores ASR Pro data under its `data/` child directory. |
+| Packaged Windows | ASR Pro stores history, models, config, session data, logs, and cache beside `ASR Pro.exe` under `asrpro-data/`. |
+| Packaged Linux | ASR Pro stores history, models, config, session data, logs, and cache beside the executable under `asrpro-data/`. |
+| Packaged macOS in Applications folders | ASR Pro uses standard app support storage and keeps its data under a `data/` child directory. |
+| Packaged macOS outside Applications folders | ASR Pro stores app data beside `ASR Pro.app` under `asrpro-data/`. |
 | Models | Whisper model files are stored under the app data model cache. |
 | Logs and session data | Logs, Chromium session data, config, and overlay settings are kept under the app-owned data directory. |
+
+See [Portable data](docs/portable-data.md) for the full folder map and move checklist.
 
 ## Configuration
 
@@ -155,6 +167,8 @@ Release output is written to `release/`. Code signing, notarization, and store s
 | `ASRPRO_DEFAULT_MODEL` | `whisper-base-en` | Default model identifier exposed to the runtime. |
 | `ASRPRO_SCREENSHOT_MODE` | unset | Seeds deterministic local UI data for README screenshot capture. |
 
+Startup launch is controlled from Configuration, Application, `Launch at startup`. See [Startup launch](docs/startup.md) for how the app replaces the saved startup target after a moved install.
+
 ## IPC Surface
 
 | API | Purpose |
@@ -162,6 +176,7 @@ Release output is written to `release/`. Code signing, notarization, and store s
 | `getRuntimeState` | Read app paths, model list, overlay settings, and engine state. |
 | `getModels` | Read available native Whisper models and local cache status. |
 | `transcribeAudio` | Transcribe a renderer-provided audio payload with the selected model. |
+| `setStartupLaunch` | Enable or disable login startup for the current executable path. |
 | `onEngineState` | Subscribe to engine loading, downloading, transcribing, ready, and error states. |
 
 ## Quality Gates

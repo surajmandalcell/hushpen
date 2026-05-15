@@ -220,6 +220,35 @@ describe("Electron runtime helpers", () => {
     expect(preloadSource).toContain('ipcRenderer.invoke("settings:auto-copy-transcripts"');
   });
 
+  it("exposes startup launch settings through Electron IPC", () => {
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+
+    expect(mainSource).toContain("launchAtStartup: false");
+    expect(mainSource).toContain('ipcMain.handle("settings:startup"');
+    expect(mainSource).toContain("setStartupLaunch");
+    expect(mainSource).toContain("app.setLoginItemSettings");
+    expect(mainSource).toContain("buildLinuxAutostartDesktopEntry");
+    expect(mainSource).toContain("PORTABLE_EXECUTABLE_FILE");
+    expect(preloadSource).toContain("setStartupLaunch");
+    expect(preloadSource).toContain('ipcRenderer.invoke("settings:startup"');
+  });
+
+  it("links the portable data and startup docs from the README", () => {
+    const readme = readFileSync("README.md", "utf8");
+    const portableDocs = readFileSync("docs/portable-data.md", "utf8");
+    const startupDocs = readFileSync("docs/startup.md", "utf8");
+
+    expect(readme).toContain("docs/portable-data.md");
+    expect(readme).toContain("docs/startup.md");
+    expect(portableDocs).toContain("asrpro-data/");
+    expect(portableDocs).toContain("history");
+    expect(portableDocs).toContain("models");
+    expect(portableDocs).toContain("config");
+    expect(startupDocs).toContain("Launch at startup");
+    expect(startupDocs).toContain("replaces the saved startup target");
+  });
+
   it("renders the recording overlay as a text-free waveform pill", () => {
     const html = runtime.createRecordingOverlayHtml();
 
@@ -253,7 +282,7 @@ describe("Electron runtime helpers", () => {
     expect(runtime.shouldShowRecordingOverlay("menu")).toBe(true);
   });
 
-  it("resolves packaged data under writable app data when available", () => {
+  it("uses standard app data for packaged macOS apps in Applications folders", () => {
     const dataDir = runtime.resolveContainedDataDir({
       isPackaged: true,
       platform: "darwin",
@@ -264,6 +293,58 @@ describe("Electron runtime helpers", () => {
     });
 
     expect(dataDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data");
+
+    expect(runtime.resolveContainedDataDir({
+      isPackaged: true,
+      platform: "darwin",
+      resourcesPath: "/Volumes/External1TB/Applications/ASR Pro.app/Contents/Resources",
+      exePath: "/Volumes/External1TB/Applications/ASR Pro.app/Contents/MacOS/ASR Pro",
+      appPath: "/project",
+      userDataPath: "/Users/suraj/Library/Application Support/ASR Pro",
+    })).toBe("/Users/suraj/Library/Application Support/ASR Pro/data");
+  });
+
+  it("keeps packaged Windows and Linux data beside the executable", () => {
+    expect(runtime.resolveContainedDataDir({
+      isPackaged: true,
+      platform: "win32",
+      resourcesPath: "D:\\Tools\\ASR Pro\\resources",
+      exePath: "D:\\Tools\\ASR Pro\\ASR Pro.exe",
+      appPath: "C:\\repo",
+      userDataPath: "C:\\Users\\suraj\\AppData\\Roaming\\ASR Pro",
+    })).toBe("D:\\Tools\\ASR Pro\\asrpro-data");
+
+    expect(runtime.resolveContainedDataDir({
+      isPackaged: true,
+      platform: "linux",
+      resourcesPath: "/mnt/tools/asrpro/resources",
+      exePath: "/mnt/tools/asrpro/asrpro",
+      appPath: "/repo",
+      userDataPath: "/home/suraj/.config/ASR Pro",
+    })).toBe("/mnt/tools/asrpro/asrpro-data");
+  });
+
+  it("uses the electron-builder portable executable folder on Windows when present", () => {
+    expect(runtime.resolveContainedDataDir({
+      isPackaged: true,
+      platform: "win32",
+      resourcesPath: "C:\\Users\\suraj\\AppData\\Local\\Temp\\asrpro-portable\\resources",
+      exePath: "C:\\Users\\suraj\\AppData\\Local\\Temp\\asrpro-portable\\ASR Pro.exe",
+      appPath: "C:\\repo",
+      userDataPath: "C:\\Users\\suraj\\AppData\\Roaming\\ASR Pro",
+      portableExecutableDir: "E:\\Tools\\ASR Pro",
+    })).toBe("E:\\Tools\\ASR Pro\\asrpro-data");
+  });
+
+  it("keeps packaged macOS data beside the app when outside Applications folders", () => {
+    expect(runtime.resolveContainedDataDir({
+      isPackaged: true,
+      platform: "darwin",
+      resourcesPath: "/Users/suraj/Downloads/ASR Pro.app/Contents/Resources",
+      exePath: "/Users/suraj/Downloads/ASR Pro.app/Contents/MacOS/ASR Pro",
+      appPath: "/project",
+      userDataPath: "/Users/suraj/Library/Application Support/ASR Pro",
+    })).toBe("/Users/suraj/Downloads/asrpro-data");
   });
 
   it("uses an explicit data directory override for isolated automation runs", () => {
@@ -280,32 +361,19 @@ describe("Electron runtime helpers", () => {
     expect(dataDir).toBe("/private/tmp/asrpro-readme-capture-1234");
   });
 
-  it("resolves packaged Windows and Linux data under user-writable app data", () => {
-    expect(runtime.resolveContainedDataDir({
-      isPackaged: true,
-      platform: "win32",
-      resourcesPath: "C:\\ASR Pro\\resources",
-      exePath: "C:\\ASR Pro\\ASR Pro.exe",
-      appPath: "C:\\repo",
-      userDataPath: "C:\\Users\\suraj\\AppData\\Roaming\\ASR Pro",
-    })).toBe("C:\\Users\\suraj\\AppData\\Roaming\\ASR Pro\\data");
-
-    expect(runtime.resolveContainedDataDir({
-      isPackaged: true,
-      platform: "linux",
-      resourcesPath: "/opt/asrpro/resources",
-      exePath: "/opt/asrpro/asrpro",
-      appPath: "/repo",
-      userDataPath: "/home/suraj/.config/ASR Pro",
-    })).toBe("/home/suraj/.config/ASR Pro/data");
-  });
-
   it("resolves Whisper model cache paths under app data", () => {
     const paths = runtime.buildModelPaths("/Users/suraj/Library/Application Support/ASR Pro/data");
 
     expect(paths.modelsDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data/models");
     expect(paths.whisperModelsDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data/models/whisper");
     expect(paths.defaultModelPath).toBe("/Users/suraj/Library/Application Support/ASR Pro/data/models/whisper/ggml-base.en.bin");
+  });
+
+  it("builds a Linux autostart entry for the current executable", () => {
+    expect(runtime.buildLinuxAutostartDesktopEntry({
+      appName: "ASR Pro",
+      executablePath: "/mnt/tools/asrpro/asrpro",
+    })).toContain('Exec="/mnt/tools/asrpro/asrpro"');
   });
 
   it("resolves platform app and tray icon assets", () => {

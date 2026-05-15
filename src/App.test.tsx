@@ -1488,6 +1488,48 @@ describe("ASR Pro Electron shell", () => {
     expect(autoCopySwitch.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("reconfigures launch at startup from configuration", async () => {
+    const user = userEvent.setup();
+    const setStartupLaunch = vi.fn().mockResolvedValue({
+      startup: {
+        supported: true,
+        enabled: true,
+        executablePath: "D:\\Tools\\ASR Pro\\ASR Pro.exe",
+      },
+    });
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Whisper Base English",
+        shortcut: "CommandOrControl+`",
+        startup: {
+          supported: true,
+          enabled: false,
+          executablePath: "D:\\Tools\\ASR Pro\\ASR Pro.exe",
+        },
+      }),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      setStartupLaunch,
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+
+    const startupSwitch = await screen.findByRole("switch", { name: "Launch at startup" });
+    expect(startupSwitch.getAttribute("aria-checked")).toBe("false");
+
+    await user.click(startupSwitch);
+
+    expect(setStartupLaunch).toHaveBeenCalledWith(true);
+    expect(startupSwitch.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText("D:\\Tools\\ASR Pro\\ASR Pro.exe")).toBeTruthy();
+  });
+
   it("does not copy completed recordings when automatic transcript copying is disabled", async () => {
     const user = userEvent.setup();
     mockAudioCapture();

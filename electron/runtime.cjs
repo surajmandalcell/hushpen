@@ -17,14 +17,16 @@ const DEFAULT_OVERLAY_SETTINGS = Object.freeze({
   placement: "top",
   customBounds: null,
 });
+const PORTABLE_DATA_DIR_NAME = "asrpro-data";
 
 function platformPath(platform) {
   return platform === "win32" ? path.win32 : path.posix;
 }
 
-function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath, appPath, userDataPath, dataDirOverride }) {
+function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath, appPath, userDataPath, dataDirOverride, portableExecutableDir }) {
   const pathModule = platformPath(platform);
   const explicitDataDir = typeof dataDirOverride === "string" ? dataDirOverride.trim() : "";
+  const portableDir = typeof portableExecutableDir === "string" ? portableExecutableDir.trim() : "";
 
   if (explicitDataDir) {
     return pathModule.isAbsolute(explicitDataDir)
@@ -36,15 +38,67 @@ function resolveContainedDataDir({ isPackaged, platform, resourcesPath, exePath,
     return pathModule.join(appPath, "tmp", "app-data");
   }
 
+  if (platform === "darwin" && isMacAppInApplicationsFolder(exePath)) {
+    return userDataPath
+      ? pathModule.join(userDataPath, "data")
+      : pathModule.join(resourcesPath, "data");
+  }
+
+  if (platform === "darwin") {
+    const bundlePath = resolveMacAppBundlePath(exePath);
+    const appContainerDir = bundlePath ? pathModule.dirname(bundlePath) : pathModule.dirname(exePath);
+    return pathModule.join(appContainerDir, PORTABLE_DATA_DIR_NAME);
+  }
+
+  if (platform === "win32" && portableDir) {
+    return pathModule.join(portableDir, PORTABLE_DATA_DIR_NAME);
+  }
+
+  if (platform === "win32" || platform === "linux") {
+    return pathModule.join(pathModule.dirname(exePath), PORTABLE_DATA_DIR_NAME);
+  }
+
   if (userDataPath) {
     return pathModule.join(userDataPath, "data");
   }
 
-  if (platform === "darwin") {
-    return pathModule.join(resourcesPath, "data");
-  }
+  return pathModule.join(pathModule.dirname(exePath), PORTABLE_DATA_DIR_NAME);
+}
 
-  return pathModule.join(pathModule.dirname(exePath), "data");
+function resolveMacAppBundlePath(exePath = "") {
+  const normalized = String(exePath).replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  const appIndex = parts.findIndex((part) => part.toLowerCase().endsWith(".app"));
+  if (appIndex < 0) return "";
+  return `/${parts.slice(0, appIndex + 1).join("/")}`;
+}
+
+function isMacAppInApplicationsFolder(exePath = "") {
+  const bundlePath = resolveMacAppBundlePath(exePath);
+  if (!bundlePath) return false;
+
+  const parentDir = path.posix.dirname(bundlePath);
+  return parentDir === "/Applications"
+    || parentDir === "/System/Applications"
+    || /^\/Volumes\/[^/]+\/Applications$/i.test(parentDir)
+    || /^\/Users\/[^/]+\/Applications$/i.test(parentDir);
+}
+
+function buildLinuxAutostartDesktopEntry({ appName = "ASR Pro", executablePath = "" } = {}) {
+  return [
+    "[Desktop Entry]",
+    "Type=Application",
+    `Name=${appName}`,
+    `Exec=${quoteDesktopExecPath(executablePath)}`,
+    "Terminal=false",
+    "X-GNOME-Autostart-enabled=true",
+    "Categories=Utility;Audio;",
+    "",
+  ].join("\n");
+}
+
+function quoteDesktopExecPath(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function resolveRuntimeAssetRoot({ isPackaged, resourcesPath, appPath }) {
@@ -441,6 +495,7 @@ module.exports = {
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
   buildModelPaths,
+  buildLinuxAutostartDesktopEntry,
   collectRuntimeStorageStats,
   createRecordingOverlayHtml,
   normalizeOverlaySettings,

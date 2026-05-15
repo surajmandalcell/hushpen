@@ -49,6 +49,17 @@ type TextEditorOption = {
   iconDataUrl?: string;
 };
 
+type StartupSettings = {
+  supported: boolean;
+  enabled: boolean;
+  executablePath?: string;
+  registeredExecutablePath?: string;
+  autostartPath?: string;
+  status?: string;
+  requiresApproval?: boolean;
+  detail?: string;
+};
+
 declare global {
   interface Window {
     asrpro?: {
@@ -75,6 +86,8 @@ declare global {
         storageStats?: RuntimeStorageStats;
         defaultTextEditor?: string;
         autoCopyTranscripts?: boolean;
+        launchAtStartup?: boolean;
+        startup?: StartupSettings;
         textEditors?: TextEditorOption[];
         overlaySettings?: {
           placement: OverlayPlacement;
@@ -120,6 +133,10 @@ declare global {
       }>;
       setAutoCopyTranscripts?: (enabled: boolean) => Promise<{
         autoCopyTranscripts: boolean;
+      }>;
+      setStartupLaunch?: (enabled: boolean) => Promise<{
+        launchAtStartup?: boolean;
+        startup?: StartupSettings;
       }>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;

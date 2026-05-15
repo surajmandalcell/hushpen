@@ -63,12 +63,25 @@ interface RuntimeInfo {
   storageStats?: RuntimeStorageStats;
   defaultTextEditor?: string;
   autoCopyTranscripts?: boolean;
+  launchAtStartup?: boolean;
+  startup?: StartupSettings;
   textEditors?: TextEditorOption[];
   shortcut?: string;
   shortcutRegistered?: boolean;
   capabilities?: {
     nativeWhisper?: boolean;
   };
+}
+
+interface StartupSettings {
+  supported: boolean;
+  enabled: boolean;
+  executablePath?: string;
+  registeredExecutablePath?: string;
+  autostartPath?: string;
+  status?: string;
+  requiresApproval?: boolean;
+  detail?: string;
 }
 
 interface AppInfo {
@@ -943,6 +956,7 @@ function App() {
   const [textEditorOptions, setTextEditorOptions] = useState<TextEditorOption[]>(defaultTextEditorOptions);
   const [selectedTextEditorId, setSelectedTextEditorId] = useState(defaultTextEditorId);
   const [autoCopyTranscripts, setAutoCopyTranscripts] = useState(defaultAutoCopyTranscripts);
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
   const [openingTranscriptRowId, setOpeningTranscriptRowId] = useState<string | null>(null);
@@ -1181,6 +1195,35 @@ function App() {
     }).catch(() => {});
   }, []);
 
+  const handleStartupLaunchChange = useCallback((enabled: boolean) => {
+    setLaunchAtStartup(enabled);
+    setRuntimeInfo((current) => (current ? {
+      ...current,
+      launchAtStartup: enabled,
+      startup: current.startup ? { ...current.startup, enabled } : current.startup,
+    } : current));
+
+    const saveStartup = window.asrpro?.setStartupLaunch?.(enabled);
+    if (!saveStartup) return;
+
+    saveStartup.then((settings) => {
+      const nextLaunchAtStartup = normalizeLaunchAtStartup(settings.startup, settings.launchAtStartup);
+      setLaunchAtStartup(nextLaunchAtStartup);
+      setRuntimeInfo((current) => (current ? {
+        ...current,
+        launchAtStartup: nextLaunchAtStartup,
+        startup: settings.startup ?? current.startup,
+      } : current));
+    }).catch(() => {
+      setLaunchAtStartup(!enabled);
+      setRuntimeInfo((current) => (current ? {
+        ...current,
+        launchAtStartup: !enabled,
+        startup: current.startup ? { ...current.startup, enabled: !enabled } : current.startup,
+      } : current));
+    });
+  }, []);
+
   const selectedAudioInputLabel = useMemo(() => (
     audioInputDevices.find((device) => device.id === selectedAudioInputId)?.label ?? defaultAudioInputLabel
   ), [audioInputDevices, selectedAudioInputId]);
@@ -1403,6 +1446,7 @@ function App() {
         setTextEditorOptions(nextTextEditorOptions);
         setSelectedTextEditorId(normalizeTextEditorId(state.defaultTextEditor, nextTextEditorOptions));
         setAutoCopyTranscripts(normalizeAutoCopyTranscripts(state.autoCopyTranscripts));
+        setLaunchAtStartup(normalizeLaunchAtStartup(state.startup, state.launchAtStartup));
         if (!overlayPlacementTouchedRef.current) {
           setOverlayPlacement(normalizeOverlayPlacement(state.overlaySettings?.placement));
         }
@@ -1607,9 +1651,11 @@ function App() {
                 selectedTextEditorId={selectedTextEditorId}
                 selectedTextEditorLabel={selectedTextEditorLabel}
                 autoCopyTranscripts={autoCopyTranscripts}
+                launchAtStartup={launchAtStartup}
                 onOverlayPlacementChange={handleOverlayPlacementChange}
                 onTextEditorChange={handleTextEditorChange}
                 onAutoCopyTranscriptsChange={handleAutoCopyTranscriptsChange}
+                onStartupLaunchChange={handleStartupLaunchChange}
                 onOpenModels={() => setActiveView("models")}
                 onOpenSound={() => setActiveView("sound")}
               />
@@ -1627,6 +1673,11 @@ function normalizeOverlayPlacement(value: unknown): OverlayPlacement {
 
 function normalizeAutoCopyTranscripts(value: unknown) {
   return typeof value === "boolean" ? value : defaultAutoCopyTranscripts;
+}
+
+function normalizeLaunchAtStartup(startup?: StartupSettings, fallback?: boolean) {
+  if (typeof startup?.enabled === "boolean") return startup.enabled;
+  return typeof fallback === "boolean" ? fallback : false;
 }
 
 function mergeOverlaySettings(runtimeInfo: RuntimeInfo | null, overlaySettings: OverlaySettings): RuntimeInfo | null {
@@ -2702,9 +2753,11 @@ interface SettingsViewProps {
   selectedTextEditorId: string;
   selectedTextEditorLabel: string;
   autoCopyTranscripts: boolean;
+  launchAtStartup: boolean;
   onOverlayPlacementChange: (placement: OverlayPlacement) => void;
   onTextEditorChange: (editorId: string) => void;
   onAutoCopyTranscriptsChange: (enabled: boolean) => void;
+  onStartupLaunchChange: (enabled: boolean) => void;
   onOpenModels: () => void;
   onOpenSound: () => void;
 }
@@ -2718,9 +2771,11 @@ function SettingsView({
   selectedTextEditorId,
   selectedTextEditorLabel,
   autoCopyTranscripts,
+  launchAtStartup,
   onOverlayPlacementChange,
   onTextEditorChange,
   onAutoCopyTranscriptsChange,
+  onStartupLaunchChange,
   onOpenModels,
   onOpenSound,
 }: SettingsViewProps) {
@@ -2728,6 +2783,10 @@ function SettingsView({
   const engine = runtimeInfo?.engine;
   const engineStatus = formatEngineStatus(engine?.status);
   const engineDetail = engine?.error || engine?.detail || (engine?.status === "idle" ? "Loads the selected Whisper model when needed" : engine?.model || engine?.mode || "Waiting for desktop runtime");
+  const startup = runtimeInfo?.startup;
+  const startupSupported = startup?.supported ?? Boolean(window.asrpro?.setStartupLaunch);
+  const startupPath = startup?.executablePath || startup?.registeredExecutablePath || "Starts ASR Pro when you sign in";
+  const startupDetail = startup?.detail || startupPath;
 
   return (
     <ViewFrame title="Configuration">
@@ -2766,6 +2825,18 @@ function SettingsView({
               label="Auto-copy transcripts"
               checked={autoCopyTranscripts}
               onChange={onAutoCopyTranscriptsChange}
+            />
+          )}
+        />
+        <PanelRow
+          title="Launch at startup"
+          detail={startupDetail}
+          trailing={(
+            <ToggleSwitch
+              label="Launch at startup"
+              checked={launchAtStartup}
+              disabled={!startupSupported}
+              onChange={onStartupLaunchChange}
             />
           )}
         />
@@ -2862,17 +2933,19 @@ interface OverlayPlacementControlProps {
 interface ToggleSwitchProps {
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }
 
-function ToggleSwitch({ label, checked, onChange }: ToggleSwitchProps) {
+function ToggleSwitch({ label, checked, disabled = false, onChange }: ToggleSwitchProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={`relative h-6 w-11 shrink-0 rounded-full border border-white/[0.1] transition ${focusRingClass} ${checked ? "bg-[#5f9fc6]/70" : "bg-[#2b2b2b]"}`}
+      disabled={disabled}
+      className={`relative h-6 w-11 shrink-0 rounded-full border border-white/[0.1] transition ${focusRingClass} ${disabled ? "cursor-not-allowed opacity-50" : ""} ${checked ? "bg-[#5f9fc6]/70" : "bg-[#2b2b2b]"}`}
       onClick={() => onChange(!checked)}
     >
       <span
