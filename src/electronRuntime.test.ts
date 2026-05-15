@@ -153,6 +153,19 @@ describe("Electron runtime helpers", () => {
     expect(preloadSource).toContain("setDefaultTextEditor");
   });
 
+  it("exposes a persisted app setting for automatic transcript clipboard copying", () => {
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+
+    expect(mainSource).toContain("autoCopyTranscripts: true");
+    expect(mainSource).toContain("autoCopyTranscripts: normalizeBooleanSetting(settings.autoCopyTranscripts, DEFAULT_APP_SETTINGS.autoCopyTranscripts)");
+    expect(mainSource).toContain("setAutoCopyTranscripts");
+    expect(mainSource).toContain('ipcMain.handle("settings:auto-copy-transcripts"');
+    expect(mainSource).toContain("autoCopyTranscripts: appSettings.autoCopyTranscripts");
+    expect(preloadSource).toContain("setAutoCopyTranscripts");
+    expect(preloadSource).toContain('ipcRenderer.invoke("settings:auto-copy-transcripts"');
+  });
+
   it("renders the recording overlay as a text-free waveform pill", () => {
     const html = runtime.createRecordingOverlayHtml();
 

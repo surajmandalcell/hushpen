@@ -80,6 +80,17 @@ function mockAudioCapture(devices: Partial<MediaDeviceInfo>[] = []) {
   return { stopTrack, getUserMedia, enumerateDevices };
 }
 
+function mockClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+
+  return writeText;
+}
+
 function renderedClassNames() {
   return Array.from(document.querySelectorAll("[class]"))
     .map((element) => element.getAttribute("class") || "")
@@ -798,9 +809,10 @@ describe("ASR Pro Electron shell", () => {
     expect(JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]")).toEqual([]);
   });
 
-  it("records audio, transcribes it, stores the result, and stays on the current page", async () => {
+  it("records audio, transcribes it, stores the result, copies it, and stays on the current page", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
+    const clipboardWriteText = mockClipboard();
     const transcribeAudio = vi.fn().mockResolvedValue({
       text: "Buy milk and schedule the product demo.",
       model: "whisper-base-en",
@@ -832,6 +844,7 @@ describe("ASR Pro Electron shell", () => {
       const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
       expect(stored).toHaveLength(1);
     });
+    expect(clipboardWriteText).toHaveBeenCalledWith("Buy milk and schedule the product demo.");
 
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
@@ -1306,6 +1319,79 @@ describe("ASR Pro Electron shell", () => {
 
     expect(setOverlaySettings).toHaveBeenCalledWith({ placement: "bottom" });
     expect(screen.getByRole("button", { name: "Bottom overlay position" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("toggles automatic transcript clipboard copying from configuration", async () => {
+    const user = userEvent.setup();
+    const setAutoCopyTranscripts = vi.fn().mockResolvedValue({ autoCopyTranscripts: false });
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Whisper Base English",
+        shortcut: "CommandOrControl+`",
+        autoCopyTranscripts: true,
+      }),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      setAutoCopyTranscripts,
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+
+    const autoCopySwitch = await screen.findByRole("switch", { name: "Auto-copy transcripts" });
+    expect(autoCopySwitch.getAttribute("aria-checked")).toBe("true");
+
+    await user.click(autoCopySwitch);
+
+    expect(setAutoCopyTranscripts).toHaveBeenCalledWith(false);
+    expect(autoCopySwitch.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("does not copy completed recordings when automatic transcript copying is disabled", async () => {
+    const user = userEvent.setup();
+    mockAudioCapture();
+    const clipboardWriteText = mockClipboard();
+    const getRuntimeState = vi.fn().mockResolvedValue({
+      isRecording: false,
+      defaultModel: "Whisper Base English",
+      shortcut: "CommandOrControl+`",
+      autoCopyTranscripts: false,
+    });
+    const transcribeAudio = vi.fn().mockResolvedValue({
+      text: "Do not copy this transcript.",
+      model: "whisper-base-en",
+    });
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState,
+      transcribeAudio,
+      setRecording: vi.fn().mockResolvedValue({ isRecording: false }),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+    await waitFor(() => expect(getRuntimeState).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-copy transcripts" }).getAttribute("aria-checked")).toBe("false"));
+    await user.click(screen.getByRole("button", { name: "Home" }));
+
+    await user.click(screen.getByRole("button", { name: "Start Recording" }));
+    await screen.findByRole("button", { name: "Stop Recording" });
+    await user.click(screen.getByRole("button", { name: "Stop Recording" }));
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+      expect(stored[0]?.text).toBe("Do not copy this transcript.");
+    });
+    expect(clipboardWriteText).not.toHaveBeenCalled();
   });
 
   it("selects the default text editor from configuration", async () => {

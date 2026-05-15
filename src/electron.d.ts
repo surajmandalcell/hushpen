@@ -74,6 +74,7 @@ declare global {
         models?: EngineModelInfo[];
         storageStats?: RuntimeStorageStats;
         defaultTextEditor?: string;
+        autoCopyTranscripts?: boolean;
         textEditors?: TextEditorOption[];
         overlaySettings?: {
           placement: OverlayPlacement;
@@ -116,6 +117,9 @@ declare global {
       }>;
       setDefaultTextEditor?: (editorId: string) => Promise<{
         defaultTextEditor: string;
+      }>;
+      setAutoCopyTranscripts?: (enabled: boolean) => Promise<{
+        autoCopyTranscripts: boolean;
       }>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;

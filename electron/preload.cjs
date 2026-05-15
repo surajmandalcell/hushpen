@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("asrpro", {
   openTranscriptText: (request) => ipcRenderer.invoke("transcript:open-text", request),
   deleteTranscriptText: (request) => ipcRenderer.invoke("transcript:delete-text", request),
   setDefaultTextEditor: (editorId) => ipcRenderer.invoke("settings:text-editor", editorId),
+  setAutoCopyTranscripts: (enabled) => ipcRenderer.invoke("settings:auto-copy-transcripts", Boolean(enabled)),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:get"),
   setOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   setRecording: (active) => ipcRenderer.invoke("recording:set", Boolean(active)),

@@ -67,6 +67,7 @@ const TEXT_EDITOR_OPTIONS = Object.freeze([
 ]);
 const DEFAULT_APP_SETTINGS = Object.freeze({
   defaultTextEditor: "system",
+  autoCopyTranscripts: true,
 });
 const textEditorIconDataUrlCache = new Map();
 
@@ -272,6 +273,8 @@ function registerIpc() {
 
   ipcMain.handle("settings:text-editor", (_event, editorId) => setDefaultTextEditor(editorId));
 
+  ipcMain.handle("settings:auto-copy-transcripts", (_event, enabled) => setAutoCopyTranscripts(enabled));
+
   ipcMain.handle("recording:set", (_event, active) => {
     setRecording(Boolean(active), "renderer");
     return getRecordingState();
@@ -450,6 +453,7 @@ async function getRuntimeState() {
     defaultModelId: DEFAULT_MODEL.id,
     models: listModels(containedDataDir),
     defaultTextEditor: appSettings.defaultTextEditor,
+    autoCopyTranscripts: appSettings.autoCopyTranscripts,
     textEditors: await getTextEditorOptions(),
     overlaySettings,
     engine: engineState,
@@ -883,7 +887,12 @@ function updateOverlaySettings(settings) {
 function normalizeAppSettings(settings = {}) {
   return {
     defaultTextEditor: normalizeTextEditorId(settings.defaultTextEditor),
+    autoCopyTranscripts: normalizeBooleanSetting(settings.autoCopyTranscripts, DEFAULT_APP_SETTINGS.autoCopyTranscripts),
   };
+}
+
+function normalizeBooleanSetting(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function normalizeTextEditorId(editorId) {
@@ -917,6 +926,15 @@ function setDefaultTextEditor(editorId) {
   appSettings = normalizeAppSettings({
     ...appSettings,
     defaultTextEditor: editorId,
+  });
+  saveAppSettings();
+  return appSettings;
+}
+
+function setAutoCopyTranscripts(enabled) {
+  appSettings = normalizeAppSettings({
+    ...appSettings,
+    autoCopyTranscripts: Boolean(enabled),
   });
   saveAppSettings();
   return appSettings;

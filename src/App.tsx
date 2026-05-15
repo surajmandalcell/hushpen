@@ -62,6 +62,7 @@ interface RuntimeInfo {
   models?: EngineModelInfo[];
   storageStats?: RuntimeStorageStats;
   defaultTextEditor?: string;
+  autoCopyTranscripts?: boolean;
   textEditors?: TextEditorOption[];
   shortcut?: string;
   shortcutRegistered?: boolean;
@@ -206,6 +207,7 @@ const defaultAudioInputId = "default";
 const defaultAudioInputLabel = "System default";
 const defaultAudioInputOptions: AudioInputDeviceOption[] = [{ id: defaultAudioInputId, label: defaultAudioInputLabel }];
 const defaultTextEditorId = "system";
+const defaultAutoCopyTranscripts = true;
 const defaultTextEditorOptions: TextEditorOption[] = [
   { id: "system", label: "System default", detail: "Use the operating system default editor" },
   { id: "textedit", label: "TextEdit", detail: "Open transcript text in Apple TextEdit" },
@@ -937,6 +939,7 @@ function App() {
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
   const [textEditorOptions, setTextEditorOptions] = useState<TextEditorOption[]>(defaultTextEditorOptions);
   const [selectedTextEditorId, setSelectedTextEditorId] = useState(defaultTextEditorId);
+  const [autoCopyTranscripts, setAutoCopyTranscripts] = useState(defaultAutoCopyTranscripts);
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
   const [openingTranscriptRowId, setOpeningTranscriptRowId] = useState<string | null>(null);
@@ -982,9 +985,13 @@ function App() {
     });
   }, []);
 
-  const copyHistoryText = useCallback((text: string) => {
+  const writeTextToClipboard = useCallback((text: string) => {
     void navigator.clipboard?.writeText(text).catch(() => {});
   }, []);
+
+  const copyHistoryText = useCallback((text: string) => {
+    writeTextToClipboard(text);
+  }, [writeTextToClipboard]);
 
   const runtimeModels = useMemo(() => getRuntimeModels(runtimeInfo?.models), [runtimeInfo?.models]);
   const selectedModelId = useMemo(() => (
@@ -1155,6 +1162,20 @@ function App() {
     }).catch(() => {});
   }, [textEditorOptions]);
 
+  const handleAutoCopyTranscriptsChange = useCallback((enabled: boolean) => {
+    setAutoCopyTranscripts(enabled);
+    setRuntimeInfo((current) => (current ? { ...current, autoCopyTranscripts: enabled } : current));
+
+    const saveAutoCopyTranscripts = window.asrpro?.setAutoCopyTranscripts?.(enabled);
+    if (!saveAutoCopyTranscripts) return;
+
+    saveAutoCopyTranscripts.then((settings) => {
+      const nextAutoCopy = normalizeAutoCopyTranscripts(settings.autoCopyTranscripts);
+      setAutoCopyTranscripts(nextAutoCopy);
+      setRuntimeInfo((current) => (current ? { ...current, autoCopyTranscripts: nextAutoCopy } : current));
+    }).catch(() => {});
+  }, []);
+
   const selectedAudioInputLabel = useMemo(() => (
     audioInputDevices.find((device) => device.id === selectedAudioInputId)?.label ?? defaultAudioInputLabel
   ), [audioInputDevices, selectedAudioInputId]);
@@ -1276,14 +1297,18 @@ function App() {
       if (!text || !text.trim()) {
         throw new Error("No transcription text returned");
       }
+      const normalizedText = text.replace(/\s+/g, " ").trim();
 
       addHistoryRow(createTranscriptHistoryRow({
-        text,
+        text: normalizedText,
         model: selectedModel,
         durationSeconds,
         startedAt,
         recordingUrl,
       }));
+      if (autoCopyTranscripts) {
+        writeTextToClipboard(normalizedText);
+      }
       setRecordingStatus("idle");
       setRecordingError(null);
     } catch (error) {
@@ -1306,7 +1331,7 @@ function App() {
       recordingStartedAtRef.current = null;
       recordingTransitionRef.current = null;
     }
-  }, [addHistoryRow, selectedModel, syncRecordingBridge, transcribeRecording]);
+  }, [addHistoryRow, autoCopyTranscripts, selectedModel, syncRecordingBridge, transcribeRecording, writeTextToClipboard]);
 
   useEffect(() => {
     const api = window.asrpro;
@@ -1336,6 +1361,7 @@ function App() {
         const nextTextEditorOptions = normalizeTextEditorOptions(state.textEditors);
         setTextEditorOptions(nextTextEditorOptions);
         setSelectedTextEditorId(normalizeTextEditorId(state.defaultTextEditor, nextTextEditorOptions));
+        setAutoCopyTranscripts(normalizeAutoCopyTranscripts(state.autoCopyTranscripts));
         if (!overlayPlacementTouchedRef.current) {
           setOverlayPlacement(normalizeOverlayPlacement(state.overlaySettings?.placement));
         }
@@ -1533,8 +1559,10 @@ function App() {
                 textEditorOptions={textEditorOptions}
                 selectedTextEditorId={selectedTextEditorId}
                 selectedTextEditorLabel={selectedTextEditorLabel}
+                autoCopyTranscripts={autoCopyTranscripts}
                 onOverlayPlacementChange={handleOverlayPlacementChange}
                 onTextEditorChange={handleTextEditorChange}
+                onAutoCopyTranscriptsChange={handleAutoCopyTranscriptsChange}
                 onOpenModels={() => setActiveView("models")}
                 onOpenSound={() => setActiveView("sound")}
               />
@@ -1548,6 +1576,10 @@ function App() {
 
 function normalizeOverlayPlacement(value: unknown): OverlayPlacement {
   return value === "bottom" ? "bottom" : "top";
+}
+
+function normalizeAutoCopyTranscripts(value: unknown) {
+  return typeof value === "boolean" ? value : defaultAutoCopyTranscripts;
 }
 
 function mergeOverlaySettings(runtimeInfo: RuntimeInfo | null, overlaySettings: OverlaySettings): RuntimeInfo | null {
@@ -2616,8 +2648,10 @@ interface SettingsViewProps {
   textEditorOptions: TextEditorOption[];
   selectedTextEditorId: string;
   selectedTextEditorLabel: string;
+  autoCopyTranscripts: boolean;
   onOverlayPlacementChange: (placement: OverlayPlacement) => void;
   onTextEditorChange: (editorId: string) => void;
+  onAutoCopyTranscriptsChange: (enabled: boolean) => void;
   onOpenModels: () => void;
   onOpenSound: () => void;
 }
@@ -2630,8 +2664,10 @@ function SettingsView({
   textEditorOptions,
   selectedTextEditorId,
   selectedTextEditorLabel,
+  autoCopyTranscripts,
   onOverlayPlacementChange,
   onTextEditorChange,
+  onAutoCopyTranscriptsChange,
   onOpenModels,
   onOpenSound,
 }: SettingsViewProps) {
@@ -2666,6 +2702,17 @@ function SettingsView({
               selectedEditorId={selectedTextEditorId}
               selectedLabel={selectedTextEditorLabel}
               onSelect={onTextEditorChange}
+            />
+          )}
+        />
+        <PanelRow
+          title="Auto-copy transcripts"
+          detail="Copy completed dictation to clipboard"
+          trailing={(
+            <ToggleSwitch
+              label="Auto-copy transcripts"
+              checked={autoCopyTranscripts}
+              onChange={onAutoCopyTranscriptsChange}
             />
           )}
         />
@@ -2757,6 +2804,30 @@ function AboutView({ appInfo, storagePath }: AboutViewProps) {
 interface OverlayPlacementControlProps {
   placement: OverlayPlacement;
   onChange: (placement: OverlayPlacement) => void;
+}
+
+interface ToggleSwitchProps {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+function ToggleSwitch({ label, checked, onChange }: ToggleSwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`relative h-6 w-11 shrink-0 rounded-full border border-white/[0.1] transition ${focusRingClass} ${checked ? "bg-[#5f9fc6]/70" : "bg-[#2b2b2b]"}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        aria-hidden="true"
+        className={`absolute left-[3px] top-[3px] size-[18px] rounded-full bg-[#f1f1f1] shadow-[0_1px_4px_rgba(0,0,0,0.35)] transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`}
+      />
+    </button>
+  );
 }
 
 function OverlayPlacementControl({ placement, onChange }: OverlayPlacementControlProps) {
