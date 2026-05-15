@@ -1164,6 +1164,13 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getAllByText("120 MiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Whisper models")).toBeTruthy();
     expect(screen.getByText("Needs setup").className).toContain("text-[11px]");
+    expect(screen.queryByText("Selected")).toBeNull();
+    expect(screen.queryByText(/^Ready$/)).toBeNull();
+
+    const baseSelectButton = screen.getByRole("button", { name: "Select Whisper Base English" });
+    expect(baseSelectButton.textContent).not.toContain("Selected");
+    expect(baseSelectButton.parentElement?.textContent).toContain("Current model");
+    expect(screen.getByLabelText("Whisper Base English downloaded").parentElement?.textContent).toContain("Downloaded model");
 
     const downloadButton = screen.getByRole("button", { name: "Download Whisper Large v3 Turbo" });
     expect(downloadButton.textContent).not.toContain("Download");
@@ -1180,7 +1187,7 @@ describe("ASR Pro Electron shell", () => {
     expect(deleteModel).toHaveBeenCalledWith("whisper-base-en");
   });
 
-  it("keeps the selected model after the runtime state refreshes", async () => {
+  it("selects models only through the check button", async () => {
     const user = userEvent.setup();
     const models = [
       {
@@ -1221,6 +1228,12 @@ describe("ASR Pro Electron shell", () => {
 
     const smallButton = await screen.findByRole("button", { name: "Select Whisper Small English" });
     await waitFor(() => expect(getRuntimeState).toHaveBeenCalledTimes(1));
+    const smallName = screen.getByText("Whisper Small English");
+
+    expect(smallName.closest("button")).toBeNull();
+    await user.click(smallName);
+    expect(smallButton.getAttribute("aria-pressed")).toBe("false");
+
     await user.click(smallButton);
 
     await waitFor(() => expect(smallButton.getAttribute("aria-pressed")).toBe("true"));

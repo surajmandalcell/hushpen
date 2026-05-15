@@ -2162,12 +2162,8 @@ function ModelsView({
               className={`border-t ${panelDividerClass} p-3 first:border-t-0 ${selected ? "bg-white/[0.055]" : ""}`}
             >
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  aria-pressed={selected}
-                  aria-label={`Select ${model.displayName}`}
-                  className={`flex min-w-0 flex-1 items-center gap-3 ${sharedRadiusClass} px-2 py-1.5 text-left transition hover:bg-white/[0.055] ${focusRingClass}`}
-                  onClick={() => onSelectModel(model.displayName)}
+                <div
+                  className={`flex min-w-0 flex-1 items-center gap-3 ${sharedRadiusClass} px-2 py-1.5 text-left`}
                 >
                   <div className={iconTileClass}>
                     <BrainCircuit className="size-3" />
@@ -2179,15 +2175,14 @@ function ModelsView({
                     </span>
                     <span className="selectable-text mt-0.5 block text-[12px] font-medium leading-4 text-[#aaa]">{model.detail}</span>
                   </span>
-                  {selected ? (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
-                      <CheckCircle2 className="size-3.5 text-[#0a84ff]" />
-                      Selected
-                    </span>
-                  ) : null}
-                </button>
+                </div>
                 <div className="flex shrink-0 items-center justify-end gap-2 pl-11 sm:pl-0">
-                  <ModelStatusLabel installed={installed} />
+                  <ModelSelectButton
+                    modelName={model.displayName}
+                    selected={selected}
+                    onClick={() => onSelectModel(model.displayName)}
+                  />
+                  <ModelStatusLabel installed={installed} modelName={model.displayName} />
                   {installed ? (
                     <ModelActionButton
                       ariaLabel={`Delete ${model.displayName}`}
@@ -2228,15 +2223,63 @@ function ModelsView({
   );
 }
 
-function ModelStatusLabel({ installed }: { installed: boolean }) {
-  const Icon = installed ? CheckCircle2 : Info;
-  const toneClass = installed ? "text-[#a9d9b8]" : "text-[#d9bd72]";
-  const label = installed ? "Ready" : "Needs setup";
+interface HoverPopoverProps {
+  content: string;
+  children: ReactNode;
+}
+
+function HoverPopover({ content, children }: HoverPopoverProps) {
+  return (
+    <span className="group relative inline-flex">
+      {children}
+      <span className="pointer-events-none absolute right-0 top-full z-30 mt-1 whitespace-nowrap rounded-[8px] border border-white/[0.1] bg-[#1f1f1f] px-2 py-1 text-[11px] font-semibold text-[#eeeeee] opacity-0 shadow-xl shadow-black/35 transition group-hover:opacity-100 group-focus-within:opacity-100">
+        {content}
+      </span>
+    </span>
+  );
+}
+
+interface ModelSelectButtonProps {
+  modelName: string;
+  selected: boolean;
+  onClick: () => void;
+}
+
+function ModelSelectButton({ modelName, selected, onClick }: ModelSelectButtonProps) {
+  return (
+    <HoverPopover content={selected ? "Current model" : "Select model"}>
+      <button
+        type="button"
+        aria-label={`Select ${modelName}`}
+        aria-pressed={selected}
+        className={`grid size-8 shrink-0 place-items-center rounded-full border-0 bg-transparent p-0 transition active:scale-[0.96] ${focusRingClass} ${selected ? "text-[#9bcfff] hover:bg-[#263b4d]" : "text-[#cfcfcf] hover:bg-white/[0.08] hover:text-[#eeeeee]"}`}
+        onClick={onClick}
+      >
+        {selected ? <CheckCircle2 className="size-3.5" /> : <Check className="size-3.5" />}
+      </button>
+    </HoverPopover>
+  );
+}
+
+function ModelStatusLabel({ installed, modelName }: { installed: boolean; modelName: string }) {
+  if (installed) {
+    return (
+      <HoverPopover content="Downloaded model">
+        <span
+          role="img"
+          aria-label={`${modelName} downloaded`}
+          className="grid size-8 shrink-0 place-items-center rounded-full text-[#a9d9b8]"
+        >
+          <CheckCircle2 className="size-3.5" />
+        </span>
+      </HoverPopover>
+    );
+  }
 
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold ${toneClass}`}>
-      <Icon className="size-3" />
-      {label}
+    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[#d9bd72]">
+      <Info className="size-3" />
+      Needs setup
     </span>
   );
 }
@@ -2255,16 +2298,17 @@ function ModelActionButton({ ariaLabel, busy, kind, onClick }: ModelActionButton
     : "text-[#cfcfcf] hover:bg-[#344235] hover:text-[#bce7c9]";
 
   return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      title={ariaLabel}
-      className={`grid size-8 shrink-0 place-items-center rounded-full border-0 bg-transparent p-0 transition active:scale-[0.96] disabled:cursor-wait disabled:opacity-55 ${toneClass} ${focusRingClass}`}
-      disabled={busy}
-      onClick={onClick}
-    >
-      <Icon className={`size-3.5 ${busy ? "animate-spin" : ""}`} />
-    </button>
+    <HoverPopover content={kind === "delete" ? "Delete model" : "Download model"}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        className={`grid size-8 shrink-0 place-items-center rounded-full border-0 bg-transparent p-0 transition active:scale-[0.96] disabled:cursor-wait disabled:opacity-55 ${toneClass} ${focusRingClass}`}
+        disabled={busy}
+        onClick={onClick}
+      >
+        <Icon className={`size-3.5 ${busy ? "animate-spin" : ""}`} />
+      </button>
+    </HoverPopover>
   );
 }
 
