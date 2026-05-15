@@ -248,13 +248,13 @@
   /* Scrollbar styles */
   .scrollbar-macos {
     scrollbar-width: thin;
-    scrollbar-color: rgba(214, 214, 214, 0.24) transparent;
+    scrollbar-color: rgba(214, 214, 214, 0.18) transparent;
     scrollbar-gutter: stable;
   }
 
   .scrollbar-macos::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 4px;
+    height: 4px;
   }
 
   .scrollbar-macos::-webkit-scrollbar-track {
@@ -264,14 +264,18 @@
   .scrollbar-macos::-webkit-scrollbar-thumb {
     min-height: 36px;
     border-radius: 999px;
-    background: rgba(214, 214, 214, 0.24);
+    background: rgba(214, 214, 214, 0.18);
     background-clip: padding-box;
     transition: background 150ms ease;
   }
 
   .scrollbar-macos::-webkit-scrollbar-thumb:hover {
-    background: rgba(214, 214, 214, 0.34);
+    background: rgba(214, 214, 214, 0.28);
     background-clip: padding-box;
+  }
+
+  .dropdown-options-scrollbar {
+    scrollbar-gutter: auto;
   }
 
   .scrollbar-autohide {
@@ -284,16 +288,16 @@
   }
 
   .scrollbar-autohide.is-scrollbar-visible {
-    scrollbar-color: rgba(214, 214, 214, 0.24) transparent;
+    scrollbar-color: rgba(214, 214, 214, 0.18) transparent;
   }
 
   .scrollbar-autohide.is-scrollbar-visible::-webkit-scrollbar-thumb {
-    background: rgba(214, 214, 214, 0.24);
+    background: rgba(214, 214, 214, 0.18);
     background-clip: padding-box;
   }
 
   .scrollbar-autohide.is-scrollbar-visible::-webkit-scrollbar-thumb:hover {
-    background: rgba(214, 214, 214, 0.34);
+    background: rgba(214, 214, 214, 0.28);
     background-clip: padding-box;
   }
 

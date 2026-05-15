@@ -151,8 +151,9 @@ describe("ASR Pro Electron shell", () => {
 
     expect(css).toContain(".scrollbar-macos");
     expect(css).toContain(".scrollbar-autohide");
-    expect(css).toContain("width: 6px;");
-    expect(css).toContain("height: 6px;");
+    expect(css).toContain("width: 4px;");
+    expect(css).toContain("height: 4px;");
+    expect(css).toContain("rgba(214, 214, 214, 0.18)");
     expect(css).toContain(".scrollbar-autohide:not(.is-scrollbar-visible)");
     expect(css).not.toContain("width: 10px;");
     expect(css).not.toContain("border: 3px solid transparent;");
@@ -181,6 +182,10 @@ describe("ASR Pro Electron shell", () => {
 
     const listbox = screen.getByRole("listbox", { name: "Microphone options" });
     expect(listbox.className).toContain("scrollbar-macos");
+    expect(listbox.className).toContain("dropdown-options-scrollbar");
+    expect(listbox.className).toContain("overflow-y-auto");
+    expect(listbox.className).toContain("overflow-x-hidden");
+    expect(listbox.className).toContain("pr-0.5");
     expect(listbox.className).not.toContain("scrollbar-autohide");
     expect(listbox.className).not.toContain("is-scrollbar-visible");
   });
