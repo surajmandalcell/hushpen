@@ -119,7 +119,7 @@ npm run electron:pack
 |---|---|
 | macOS | DMG, ZIP, unpacked app |
 | Windows | NSIS, portable executable |
-| Linux | AppImage, DEB |
+| Linux | AppImage, DEB, RPM, tar.gz |
 
 Release output is written to `release/`. Code signing, notarization, and store submission credentials are intentionally outside the repository and should be supplied by the release environment.
 
@@ -188,8 +188,10 @@ asrpro/
 | Logo SVG | `src/assets/asrpro-logo.svg` | README, About view, and scalable app branding. |
 | Logo PNG | `src/assets/asrpro-logo.png` | Raster previews and external surfaces. |
 | Logo mark SVG | `src/assets/asrpro-logo-mark.svg` | Compact D07 mark used inside the app shell. |
-| Tray icons | `src/assets/asrpro-tray-dark.png`, `src/assets/asrpro-tray-light.png` | Native tray/menu glyphs. |
-| App icons | `src/assets/asrpro-app-icon.icns`, `src/assets/asrpro-app-icon.ico`, `src/assets/asrpro-app-icon.png` | Electron Builder macOS, Windows, and Linux icons. |
+| macOS Dock icon | `src/assets/asrpro-app-icon.icns`, `src/assets/asrpro-app-icon.png` | Packaged app icon plus development Dock icon override for `make dev`. |
+| Windows app and tray icons | `src/assets/asrpro-app-icon.ico`, `src/assets/asrpro-tray-dark.ico`, `src/assets/asrpro-tray-light.ico` | Electron Builder executable/taskbar icon and Windows tray icons. |
+| Linux app icons | `src/assets/linux-icons/*.png` | Size-labelled PNG icon set for Linux desktop/package integration. |
+| macOS/Linux tray icons | `src/assets/asrpro-tray-dark.png`, `src/assets/asrpro-tray-light.png` | Native tray/menu glyphs where PNG tray assets are expected. |
 | Screenshots | `docs/screenshots/*.png` | Production README gallery. |
 
 ## Troubleshooting

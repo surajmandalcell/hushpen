@@ -190,13 +190,22 @@ describe("Electron runtime helpers", () => {
     const assetRoot = "/repo/src/assets";
 
     expect(runtime.resolveTrayIconPath("darwin", assetRoot)).toBe(path.join(assetRoot, "asrpro-tray-dark.png"));
-    expect(runtime.resolveTrayIconPath("win32", assetRoot, false)).toBe(path.join(assetRoot, "asrpro-tray-dark.png"));
-    expect(runtime.resolveTrayIconPath("win32", assetRoot, true)).toBe(path.join(assetRoot, "asrpro-tray-light.png"));
+    expect(runtime.resolveTrayIconPath("win32", assetRoot, false)).toBe(path.join(assetRoot, "asrpro-tray-dark.ico"));
+    expect(runtime.resolveTrayIconPath("win32", assetRoot, true)).toBe(path.join(assetRoot, "asrpro-tray-light.ico"));
     expect(runtime.resolveTrayIconPath("linux", assetRoot, false)).toBe(path.join(assetRoot, "asrpro-tray-dark.png"));
     expect(runtime.resolveTrayIconPath("linux", assetRoot, true)).toBe(path.join(assetRoot, "asrpro-tray-light.png"));
     expect(runtime.resolveAppIconPath("darwin", assetRoot)).toBe(path.join(assetRoot, "asrpro-app-icon.png"));
     expect(runtime.resolveAppIconPath("win32", assetRoot)).toBe(path.join(assetRoot, "asrpro-app-icon.ico"));
     expect(runtime.resolveAppIconPath("linux", assetRoot)).toBe(path.join(assetRoot, "asrpro-app-icon.png"));
+  });
+
+  it("sets the macOS development Dock icon from runtime assets", () => {
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+
+    expect(mainSource).toContain("setMacDockIcon();");
+    expect(mainSource).toContain("function setMacDockIcon()");
+    expect(mainSource).toContain('process.platform !== "darwin"');
+    expect(mainSource).toContain("app.dock.setIcon(createAppIcon())");
   });
 
   it("resolves runtime asset roots for development and packaged apps", () => {

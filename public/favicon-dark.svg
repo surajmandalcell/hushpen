@@ -1,14 +1,55 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="ASR Pro favicon dark mode">
-  <path
-    d="M 188 512
-       C 188 356 356 342 512 512
-       C 668 682 836 668 836 512
-       C 836 356 668 342 512 512
-       C 356 682 188 668 188 512"
-    fill="none"
-    stroke="#ffffff"
-    stroke-width="84"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
+  <defs>
+    <linearGradient id="plate" x1="150" y1="104" x2="874" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#42555b"/>
+      <stop offset="0.48" stop-color="#26343b"/>
+      <stop offset="1" stop-color="#0f1c21"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(714 266) rotate(128) scale(570 462)">
+      <stop offset="0" stop-color="#c6f4f4" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#c6f4f4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ribbon" x1="198" y1="364" x2="828" y2="674" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eff7f5"/>
+      <stop offset="0.54" stop-color="#92c2c6"/>
+      <stop offset="1" stop-color="#f8fbf9"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="132" y1="88" x2="906" y2="936" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <clipPath id="icon-clip">
+      <rect width="1024" height="1024" rx="224"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#icon-clip)">
+    <rect width="1024" height="1024" rx="224" fill="url(#plate)"/>
+    <rect width="1024" height="1024" rx="224" fill="url(#glow)"/>
+    <path
+      d="M 188 512
+         C 188 356 356 342 512 512
+         C 668 682 836 668 836 512
+         C 836 356 668 342 512 512
+         C 356 682 188 668 188 512"
+      fill="none"
+      stroke="url(#ribbon)"
+      stroke-width="128"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M 188 512
+         C 188 356 356 342 512 512
+         C 668 682 836 668 836 512
+         C 836 356 668 342 512 512
+         C 356 682 188 668 188 512"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="26"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      opacity="0.42"
+    />
+    <rect x="18" y="18" width="988" height="988" rx="214" fill="none" stroke="url(#rim)" stroke-width="36"/>
+  </g>
 </svg>

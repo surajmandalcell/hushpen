@@ -382,6 +382,15 @@ function createTrayIcon() {
   return icon;
 }
 
+function createAppIcon() {
+  return nativeImage.createFromPath(resolveAppIconPath(process.platform, getRuntimeAssetRoot()));
+}
+
+function setMacDockIcon() {
+  if (process.platform !== "darwin" || !app.dock) return;
+  app.dock.setIcon(createAppIcon());
+}
+
 function getRuntimeAssetRoot() {
   return resolveRuntimeAssetRoot({
     isPackaged: app.isPackaged,
@@ -818,6 +827,7 @@ if (hasSingleInstanceLock) {
     } else {
       Menu.setApplicationMenu(createMenu());
     }
+    setMacDockIcon();
     createWindow();
     if (!SCREENSHOT_MODE) {
       registerGlobalShortcut();

@@ -54,6 +54,7 @@ function resolveRuntimeAssetRoot({ isPackaged, resourcesPath, appPath }) {
 
 function resolveTrayIconPath(platform, assetRoot, useLightGlyph = false) {
   if (platform === "darwin") return path.join(assetRoot, "asrpro-tray-dark.png");
+  if (platform === "win32") return path.join(assetRoot, useLightGlyph ? "asrpro-tray-light.ico" : "asrpro-tray-dark.ico");
   return path.join(assetRoot, useLightGlyph ? "asrpro-tray-light.png" : "asrpro-tray-dark.png");
 }
 

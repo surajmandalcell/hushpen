@@ -17,6 +17,25 @@ describe("ASR engine development scripts", () => {
     expect(packageSource).toContain('"afterPack": "scripts/after-pack-cleanup.cjs"');
   });
 
+  it("packages platform-specific app and tray icon assets", () => {
+    const buildConfig = packageMetadata.build;
+    const assetFilter = buildConfig.extraResources[0].filter;
+
+    expect(buildConfig.mac.icon).toBe("src/assets/asrpro-app-icon.icns");
+    expect(buildConfig.win.icon).toBe("src/assets/asrpro-app-icon.ico");
+    expect(buildConfig.linux.icon).toBe("src/assets/linux-icons");
+    expect(buildConfig.linux.target).toEqual(["AppImage", "deb", "rpm", "tar.gz"]);
+    expect(assetFilter).toEqual(expect.arrayContaining([
+      "asrpro-app-icon.icns",
+      "asrpro-app-icon.ico",
+      "asrpro-app-icon.png",
+      "asrpro-tray-dark.ico",
+      "asrpro-tray-light.ico",
+      "asrpro-tray-dark.png",
+      "asrpro-tray-light.png",
+    ]));
+  });
+
   it("launches the Electron shell without waiting for the lazy engine", () => {
     const electronDevScript = packageMetadata.scripts["electron:dev"];
 

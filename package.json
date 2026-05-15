@@ -76,6 +76,8 @@
           "asrpro-app-icon.icns",
           "asrpro-app-icon.ico",
           "asrpro-app-icon.png",
+          "asrpro-tray-dark.ico",
+          "asrpro-tray-light.ico",
           "asrpro-tray-dark.png",
           "asrpro-tray-light.png"
         ]
@@ -97,10 +99,12 @@
       ]
     },
     "linux": {
-      "icon": "src/assets/asrpro-app-icon.png",
+      "icon": "src/assets/linux-icons",
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "rpm",
+        "tar.gz"
       ],
       "category": "Utility"
     }
