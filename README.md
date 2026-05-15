@@ -1,7 +1,7 @@
 # ASR Pro
 
 <p align="center">
-  <img src="./src/assets/asrpro-logo.svg" alt="ASR Pro logo" width="112" height="112" />
+  <img src="./src/assets/asrpro-app-icon.png" alt="ASR Pro logo" width="128" height="128" />
 </p>
 
 <p align="center">
@@ -16,6 +16,16 @@
 </p>
 
 ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a native Node Whisper engine. The current default model is Whisper Base English. Smaller and multilingual Whisper options are selectable in the model library.
+
+## Current Preview
+
+| Updated logo | Current desktop UI |
+|---|---|
+| <img src="./src/assets/asrpro-app-icon.png" alt="ASR Pro logo" width="160" /> | ![ASR Pro home screen](docs/screenshots/asrpro-home.png) |
+
+| App details | README screenshot set |
+|---|---|
+| ![ASR Pro about screen](docs/screenshots/asrpro-about.png) | Captured from the Electron app at `780x520` for Home, Configuration, Sound, Models library, History, and About. |
 
 ## Screenshots
 
