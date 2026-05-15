@@ -12,7 +12,7 @@ build\:win:
 	@node scripts/build-electron.cjs win --x64 $(ARGS)
 
 build\:linux:
-	@node scripts/build-electron.cjs linux $(ARGS)
+	@PATH="/opt/homebrew/opt/binutils/bin:/usr/local/opt/binutils/bin:$$PATH" node scripts/build-electron.cjs linux --x64 $(ARGS)
 
 help:
 	@printf "Usage:\n"

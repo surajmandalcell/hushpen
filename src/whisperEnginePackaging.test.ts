@@ -1,7 +1,17 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import packageMetadata from "../package.json";
+
+const require = createRequire(import.meta.url);
+const afterPackCleanup = require("../scripts/after-pack-cleanup.cjs") as (context: {
+  appOutDir: string;
+  arch: number | string;
+  electronPlatformName: string;
+}) => Promise<void>;
 
 describe("ASR engine development scripts", () => {
   it("uses the native Whisper check as the active engine path", () => {
@@ -61,6 +71,20 @@ describe("ASR engine development scripts", () => {
     expect(dryRun).toContain("node scripts/build-electron.cjs win --x64");
   });
 
+  it("builds Linux release artifacts as x64 from the Make target", () => {
+    const dryRun = execFileSync("make", ["-n", "build:linux"], { encoding: "utf8" });
+
+    expect(dryRun).toContain("node scripts/build-electron.cjs linux --x64");
+    expect(dryRun).toContain("/opt/homebrew/opt/binutils/bin");
+    expect(dryRun).toContain("/usr/local/opt/binutils/bin");
+  });
+
+  it("uses distinct Windows artifact names for installer and portable builds", () => {
+    expect(packageMetadata.build.nsis.artifactName).toContain("Setup");
+    expect(packageMetadata.build.portable.artifactName).toContain("Portable");
+    expect(packageMetadata.build.nsis.artifactName).not.toBe(packageMetadata.build.portable.artifactName);
+  });
+
   it("checks the native Whisper addon dependency", () => {
     const scriptPath = "scripts/check-whisper-engine.cjs";
 
@@ -81,5 +105,38 @@ describe("ASR engine development scripts", () => {
     expect(scriptSource).toContain("@kutalia");
     expect(scriptSource).toContain("whisper-node-addon");
     expect(scriptSource).toContain("app.asar.unpacked");
+  });
+
+  it("keeps x64 native addon binaries when Electron Builder passes numeric arch values", async () => {
+    const appOutDir = join(tmpdir(), `asrpro-after-pack-${Date.now()}`);
+    const distDir = join(
+      appOutDir,
+      "resources",
+      "app.asar.unpacked",
+      "node_modules",
+      "@kutalia",
+      "whisper-node-addon",
+      "dist",
+    );
+
+    try {
+      for (const dirname of ["js", "linux-arm64", "linux-x64", "mac-arm64", "win32-x64"]) {
+        mkdirSync(join(distDir, dirname), { recursive: true });
+      }
+
+      await afterPackCleanup({
+        appOutDir,
+        arch: 1,
+        electronPlatformName: "linux",
+      });
+
+      expect(existsSync(join(distDir, "js"))).toBe(true);
+      expect(existsSync(join(distDir, "linux-x64"))).toBe(true);
+      expect(existsSync(join(distDir, "linux-arm64"))).toBe(false);
+      expect(existsSync(join(distDir, "mac-arm64"))).toBe(false);
+      expect(existsSync(join(distDir, "win32-x64"))).toBe(false);
+    } finally {
+      rmSync(appOutDir, { force: true, recursive: true });
+    }
   });
 });

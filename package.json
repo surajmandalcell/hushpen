@@ -1,7 +1,7 @@
 {
   "name": "asrpro",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "productName": "ASR Pro",
   "description": "Cross-platform desktop speech recognition and transcription workspace.",
   "author": "Suraj Mandal <surajmandalcell@gmail.com>",
@@ -97,6 +97,12 @@
         "nsis",
         "portable"
       ]
+    },
+    "nsis": {
+      "artifactName": "ASR-Pro-${version}-${os}-${arch}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "ASR-Pro-${version}-${os}-${arch}-Portable.${ext}"
     },
     "linux": {
       "icon": "src/assets/linux-icons",

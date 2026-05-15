@@ -3,7 +3,8 @@ const path = require("node:path");
 
 function normalizeArch(arch) {
   if (arch === "arm64" || arch === 3) return "arm64";
-  if (arch === "x64" || arch === 0) return "x64";
+  if (arch === "x64" || arch === 1) return "x64";
+  if (arch === "ia32" || arch === 0) return "ia32";
   return process.arch;
 }
 
