@@ -221,6 +221,7 @@ const modelIdsByName: Record<string, string> = {
 };
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
 const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
+const selectedModelStorageKey = "asrpro.selectedModel.v1";
 const seededScreenshotHistoryIdPrefix = "readme-history-";
 const seededScreenshotHistoryRows = new Map([
   ["Product demo follow-up", "Summarize the product demo, send the follow-up notes, and schedule the model comparison review."],
@@ -402,6 +403,33 @@ function saveSelectedAudioInputId(deviceId: string) {
     window.localStorage.setItem(audioInputDeviceStorageKey, deviceId);
   } catch {
     // Local storage failures should not block recording.
+  }
+}
+
+function normalizeSelectedModelName(value: unknown, models: EngineModelInfo[] = fallbackModelCards) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+
+  const normalized = value.trim();
+  const byName = models.find((model) => model.displayName === normalized);
+  if (byName) return byName.displayName;
+
+  const byId = models.find((model) => model.id === normalized);
+  return byId?.displayName;
+}
+
+function loadSelectedModelName(models: EngineModelInfo[] = fallbackModelCards) {
+  try {
+    return normalizeSelectedModelName(window.localStorage.getItem(selectedModelStorageKey), models);
+  } catch {
+    return undefined;
+  }
+}
+
+function saveSelectedModelName(modelName: string) {
+  try {
+    window.localStorage.setItem(selectedModelStorageKey, modelName);
+  } catch {
+    // Local storage failures should not block recognition.
   }
 }
 
@@ -898,7 +926,7 @@ function App() {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>("idle");
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
-  const [selectedModel, setSelectedModel] = useState(defaultModelName);
+  const [selectedModel, setSelectedModel] = useState(() => loadSelectedModelName() ?? defaultModelName);
   const [audioInputDevices, setAudioInputDevices] = useState<AudioInputDeviceOption[]>(defaultAudioInputOptions);
   const [selectedAudioInputId, setSelectedAudioInputId] = useState(loadSelectedAudioInputId);
   const [audioInputDevicesLoading, setAudioInputDevicesLoading] = useState(false);
@@ -916,6 +944,7 @@ function App() {
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
+  const runtimeStateLoadedRef = useRef(false);
   const scrollbarTimerRef = useRef<number | null>(null);
   const overlayPlacementTouchedRef = useRef(false);
   useMicrophoneWaveform(isRecording);
@@ -1105,6 +1134,11 @@ function App() {
     saveSelectedAudioInputId(deviceId);
   }, []);
 
+  const handleSelectModel = useCallback((modelName: string) => {
+    setSelectedModel(modelName);
+    saveSelectedModelName(modelName);
+  }, []);
+
   const handleTextEditorChange = useCallback((editorId: string) => {
     const normalizedEditorId = normalizeTextEditorId(editorId, textEditorOptions);
     setSelectedTextEditorId(normalizedEditorId);
@@ -1287,11 +1321,17 @@ function App() {
       }).catch(() => {});
     }
 
-    if (api.getRuntimeState) {
+    if (api.getRuntimeState && !runtimeStateLoadedRef.current) {
+      runtimeStateLoadedRef.current = true;
       Promise.resolve(api.getRuntimeState()).then((state) => {
         if (!state) return;
         setRuntimeInfo(state);
-        setSelectedModel(state.defaultModel || defaultModelName);
+        const nextModels = getRuntimeModels(state.models);
+        const nextSelectedModel = loadSelectedModelName(nextModels)
+          ?? normalizeSelectedModelName(state.defaultModelId, nextModels)
+          ?? normalizeSelectedModelName(state.defaultModel, nextModels)
+          ?? defaultModelName;
+        setSelectedModel(nextSelectedModel);
         const nextTextEditorOptions = normalizeTextEditorOptions(state.textEditors);
         setTextEditorOptions(nextTextEditorOptions);
         setSelectedTextEditorId(normalizeTextEditorId(state.defaultTextEditor, nextTextEditorOptions));
@@ -1303,7 +1343,9 @@ function App() {
         } else if (!recordingTransitionRef.current && !audioRecordingService.isRecording()) {
           setIsRecording(false);
         }
-      }).catch(() => {});
+      }).catch(() => {
+        runtimeStateLoadedRef.current = false;
+      });
     }
 
     const unsubscribeRecording = api.onRecordingState?.((state) => {
@@ -1464,7 +1506,7 @@ function App() {
                 engine={runtimeInfo?.engine}
                 busyModelId={modelActionId}
                 actionError={modelLibraryError}
-                onSelectModel={setSelectedModel}
+                onSelectModel={handleSelectModel}
                 onDownloadModel={handleDownloadModel}
                 onDeleteModel={handleDeleteModel}
               />
@@ -2145,29 +2187,21 @@ function ModelsView({
                   ) : null}
                 </button>
                 <div className="flex shrink-0 items-center justify-end gap-2 pl-11 sm:pl-0">
-                  <StatusLabel>{installed ? "Ready" : "Needs setup"}</StatusLabel>
+                  <ModelStatusLabel installed={installed} />
                   {installed ? (
-                    <PanelControlButton
-                      type="button"
-                      aria-label={`Delete ${model.displayName}`}
-                      className="h-8 px-2.5 hover:bg-[#4a3333]"
-                      disabled={busy}
+                    <ModelActionButton
+                      ariaLabel={`Delete ${model.displayName}`}
+                      busy={busy}
+                      kind="delete"
                       onClick={() => onDeleteModel(model.id)}
-                    >
-                      <Trash2 className="size-3" />
-                      <span>{busy ? "Deleting" : "Delete"}</span>
-                    </PanelControlButton>
+                    />
                   ) : (
-                    <PanelControlButton
-                      type="button"
-                      aria-label={`Download ${model.displayName}`}
-                      className="h-8 px-2.5 hover:bg-[#394a40]"
-                      disabled={busy}
+                    <ModelActionButton
+                      ariaLabel={`Download ${model.displayName}`}
+                      busy={busy}
+                      kind="download"
                       onClick={() => onDownloadModel(model.id)}
-                    >
-                      {busy ? <RefreshCw className="size-3 animate-spin" /> : <Download className="size-3" />}
-                      <span>{busy ? "Setting up" : "Download"}</span>
-                    </PanelControlButton>
+                    />
                   )}
                 </div>
               </div>
@@ -2191,6 +2225,46 @@ function ModelsView({
       ) : null}
       <ResourceStatsPanel stats={storageStats} />
     </ViewFrame>
+  );
+}
+
+function ModelStatusLabel({ installed }: { installed: boolean }) {
+  const Icon = installed ? CheckCircle2 : Info;
+  const toneClass = installed ? "text-[#a9d9b8]" : "text-[#d9bd72]";
+  const label = installed ? "Ready" : "Needs setup";
+
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold ${toneClass}`}>
+      <Icon className="size-3" />
+      {label}
+    </span>
+  );
+}
+
+interface ModelActionButtonProps {
+  ariaLabel: string;
+  busy: boolean;
+  kind: "download" | "delete";
+  onClick: () => void;
+}
+
+function ModelActionButton({ ariaLabel, busy, kind, onClick }: ModelActionButtonProps) {
+  const Icon = busy ? RefreshCw : kind === "delete" ? Trash2 : Download;
+  const toneClass = kind === "delete"
+    ? "text-[#cfcfcf] hover:bg-[#4a3333] hover:text-[#ffb3aa]"
+    : "text-[#cfcfcf] hover:bg-[#344235] hover:text-[#bce7c9]";
+
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      className={`grid size-8 shrink-0 place-items-center rounded-full border-0 bg-transparent p-0 transition active:scale-[0.96] disabled:cursor-wait disabled:opacity-55 ${toneClass} ${focusRingClass}`}
+      disabled={busy}
+      onClick={onClick}
+    >
+      <Icon className={`size-3.5 ${busy ? "animate-spin" : ""}`} />
+    </button>
   );
 }
 

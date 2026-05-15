@@ -90,14 +90,14 @@ describe("Electron runtime helpers", () => {
         heapUsed: 40,
         external: 20,
         arrayBuffers: 10,
-      });
+      }, "whisper-base-en");
 
       expect(stats.groups.map((group: { id: string }) => group.id)).toEqual(["memory", "disk"]);
       expect(stats.groups[0].items.map((item: { id: string; bytes: number }) => [item.id, item.bytes])).toEqual([
         ["resident", 100],
         ["heap", 40],
         ["native", 20],
-        ["buffers", 10],
+        ["model-footprint", 12],
       ]);
       expect(stats.groups[1].items.map((item: { id: string; bytes: number }) => [item.id, item.bytes])).toEqual([
         ["whisper-models", 12],

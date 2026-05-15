@@ -1105,6 +1105,7 @@ describe("ASR Pro Electron shell", () => {
           items: [
             { id: "resident", label: "Resident set", bytes: 125_829_120 },
             { id: "heap", label: "JavaScript heap", bytes: 41_943_040 },
+            { id: "model-footprint", label: "AI model footprint", bytes: 148_897_792 },
           ],
         },
         {
@@ -1159,14 +1160,73 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getAllByText("1.5 GiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Runtime memory")).toBeTruthy();
     expect(screen.getByText("Resident set")).toBeTruthy();
+    expect(screen.getByText("AI model footprint")).toBeTruthy();
     expect(screen.getAllByText("120 MiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Whisper models")).toBeTruthy();
+    expect(screen.getByText("Needs setup").className).toContain("text-[11px]");
 
-    await user.click(screen.getByRole("button", { name: "Download Whisper Large v3 Turbo" }));
+    const downloadButton = screen.getByRole("button", { name: "Download Whisper Large v3 Turbo" });
+    expect(downloadButton.textContent).not.toContain("Download");
+    expect(downloadButton.className).toContain("border-0");
+
+    await user.click(downloadButton);
     expect(downloadModel).toHaveBeenCalledWith("whisper-large-v3-turbo");
 
-    await user.click(screen.getByRole("button", { name: "Delete Whisper Base English" }));
+    const deleteButton = screen.getByRole("button", { name: "Delete Whisper Base English" });
+    expect(deleteButton.textContent).not.toContain("Delete");
+    expect(deleteButton.className).toContain("border-0");
+
+    await user.click(deleteButton);
     expect(deleteModel).toHaveBeenCalledWith("whisper-base-en");
+  });
+
+  it("keeps the selected model after the runtime state refreshes", async () => {
+    const user = userEvent.setup();
+    const models = [
+      {
+        id: "whisper-base-en",
+        displayName: "Whisper Base English",
+        detail: "Default local model for English dictation",
+        sizeLabel: "142 MiB",
+        installed: true,
+        diskBytes: 148_897_792,
+      },
+      {
+        id: "whisper-small-en",
+        displayName: "Whisper Small English",
+        detail: "Better accuracy, larger local model",
+        sizeLabel: "466 MiB",
+        installed: false,
+        diskBytes: 0,
+      },
+    ];
+    const getRuntimeState = vi.fn().mockResolvedValue({
+      isRecording: false,
+      defaultModel: "Whisper Base English",
+      models,
+      shortcut: "CommandOrControl+`",
+    });
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState,
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Models library" }));
+
+    const smallButton = await screen.findByRole("button", { name: "Select Whisper Small English" });
+    await waitFor(() => expect(getRuntimeState).toHaveBeenCalledTimes(1));
+    await user.click(smallButton);
+
+    await waitFor(() => expect(smallButton.getAttribute("aria-pressed")).toBe("true"));
+    expect(getRuntimeState).toHaveBeenCalledTimes(1);
+    expect(smallButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Select Whisper Base English" }).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("updates the recording overlay placement from settings", async () => {

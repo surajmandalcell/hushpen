@@ -75,11 +75,13 @@ function buildModelPaths(dataDir) {
   };
 }
 
-function collectRuntimeStorageStats(dataDir, memoryUsage = process.memoryUsage()) {
+function collectRuntimeStorageStats(dataDir, memoryUsage = process.memoryUsage(), modelId = DEFAULT_MODEL.id) {
   const paths = buildModelPaths(dataDir);
   const transcriptDir = path.join(dataDir, "transcripts");
   const configDir = path.join(dataDir, "config");
+  const model = AVAILABLE_MODELS.find((candidate) => candidate.id === modelId) || DEFAULT_MODEL;
   const modelBytes = getPathSizeBytes(paths.whisperModelsDir);
+  const activeModelBytes = getPathSizeBytes(getModelPath(dataDir, model.id));
   const transcriptBytes = getPathSizeBytes(transcriptDir);
   const configBytes = getPathSizeBytes(configDir);
   const totalDiskBytes = getPathSizeBytes(dataDir);
@@ -112,10 +114,10 @@ function collectRuntimeStorageStats(dataDir, memoryUsage = process.memoryUsage()
             detail: "Native addon and V8 external memory",
           },
           {
-            id: "buffers",
-            label: "Array buffers",
-            bytes: normalizeByteCount(memoryUsage.arrayBuffers),
-            detail: "Audio and binary buffers",
+            id: "model-footprint",
+            label: "AI model footprint",
+            bytes: activeModelBytes,
+            detail: `${model.displayName} file estimate`,
           },
         ],
       },

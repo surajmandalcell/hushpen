@@ -453,7 +453,7 @@ async function getRuntimeState() {
     textEditors: await getTextEditorOptions(),
     overlaySettings,
     engine: engineState,
-    storageStats: collectRuntimeStorageStats(containedDataDir),
+    storageStats: collectRuntimeStorageStats(containedDataDir, process.memoryUsage(), engineState.modelId),
     shortcut: RECORDING_SHORTCUT,
     shortcutRegistered,
     capabilities: {
