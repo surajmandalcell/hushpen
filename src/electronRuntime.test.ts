@@ -46,27 +46,31 @@ describe("Electron runtime helpers", () => {
     expect(indexSource).toContain('<html lang="en" class="dark">');
     expect(indexSource).toContain('id="app-loading-state"');
     expect(indexSource).toContain("Loading ASR Pro");
-    expect(indexSource).toMatch(/html,s*body,s*#root[sS]*background:s*#2f2f2f/);
+    expect(indexSource).toMatch(/html,\s*body,\s*#root[\s\S]*background:\s*#2f2f2f/);
     expect(rendererEntrySource).toContain('document.getElementById("app-loading-state")');
     expect(rendererEntrySource).toContain("requestAnimationFrame");
     expect(mainSource).toContain('const MAIN_WINDOW_BACKGROUND = "#2f2f2f";');
     expect(mainSource).toContain("backgroundColor: MAIN_WINDOW_BACKGROUND");
   });
 
-  it("uses Parakeet-TDT-0.6B-v3 as the default model", () => {
-    expect(runtime.DEFAULT_MODEL.id).toBe("parakeet-tdt-0.6b-v3");
-    expect(runtime.DEFAULT_MODEL.displayName).toBe("Parakeet-TDT-0.6B-v3");
-    expect(runtime.DEFAULT_MODEL.repo).toBe("nvidia/parakeet-tdt-0.6b-v3");
+  it("uses Whisper Base English as the default native model", () => {
+    expect(runtime.DEFAULT_MODEL.id).toBe("whisper-base-en");
+    expect(runtime.DEFAULT_MODEL.displayName).toBe("Whisper Base English");
+    expect(runtime.DEFAULT_MODEL.fileName).toBe("ggml-base.en.bin");
+    expect(runtime.AVAILABLE_MODELS.map((model: { id: string }) => model.id)).toEqual([
+      "whisper-tiny-en",
+      "whisper-base-en",
+      "whisper-small-en",
+      "whisper-base",
+    ]);
   });
 
-  it("does not block the main window on Python engine startup", () => {
+  it("uses Electron IPC for native Node Whisper transcription", () => {
     const mainSource = readFileSync("electron/main.cjs", "utf8");
     const preloadSource = readFileSync("electron/preload.cjs", "utf8");
 
-    expect(mainSource).toContain('ipcMain.handle("engine:ensure-ready"');
-    expect(mainSource).toContain("lazyEngineStartup: true");
-    expect(preloadSource).toContain("ensureEngineReady");
-    expect(mainSource).not.toContain("await startSidecar();");
+    expect(mainSource).toContain('ipcMain.handle("engine:transcribe-audio"');
+    expect(preloadSource).toContain("transcribeAudio");
     expect(mainSource.indexOf("createWindow();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut();"));
   });
 
@@ -93,7 +97,6 @@ describe("Electron runtime helpers", () => {
     expect(html).not.toContain("transition: height");
     expect(html).not.toContain("animation:");
     expect(html).not.toContain("Recording now");
-    expect(html).not.toContain("Parakeet-TDT");
     expect(html).not.toContain("CommandOrControl");
   });
 
@@ -151,68 +154,12 @@ describe("Electron runtime helpers", () => {
     })).toBe("/home/suraj/.config/ASR Pro/data");
   });
 
-  it("builds a packaged sidecar launch config from bundled executables", () => {
-    const windowsExecutable = "C:\\ASR Pro\\resources\\sidecar\\bin\\asrpro-sidecar.exe";
-    const linuxExecutable = "/opt/asrpro/resources/sidecar/bin/asrpro-sidecar";
-    const existing = new Set([windowsExecutable, linuxExecutable]);
-    const existsSync = (candidate: string) => existing.has(candidate);
+  it("resolves Whisper model cache paths under app data", () => {
+    const paths = runtime.buildModelPaths("/Users/suraj/Library/Application Support/ASR Pro/data");
 
-    expect(runtime.buildSidecarLaunchConfig({
-      isPackaged: true,
-      platform: "win32",
-      resourcesPath: "C:\\ASR Pro\\resources",
-      appPath: "C:\\repo",
-      existsSync,
-    })).toMatchObject({
-      mode: "executable",
-      command: windowsExecutable,
-      args: [],
-      healthUrl: "http://127.0.0.1:8000/health",
-    });
-
-    expect(runtime.buildSidecarLaunchConfig({
-      isPackaged: true,
-      platform: "linux",
-      resourcesPath: "/opt/asrpro/resources",
-      appPath: "/repo",
-      existsSync,
-    })).toMatchObject({
-      mode: "executable",
-      command: linuxExecutable,
-      args: [],
-      healthUrl: "http://127.0.0.1:8000/health",
-    });
-  });
-
-  it("uses Python source only for development sidecar launches", () => {
-    const mainPath = "/repo/sidecar/main.py";
-    const existsSync = (candidate: string) => candidate === mainPath;
-
-    expect(runtime.buildSidecarLaunchConfig({
-      isPackaged: false,
-      platform: "darwin",
-      resourcesPath: "/repo/resources",
-      appPath: "/repo",
-      pythonCommand: "/repo/sidecar/.venv/bin/python",
-      existsSync,
-    })).toMatchObject({
-      mode: "python",
-      command: "/repo/sidecar/.venv/bin/python",
-      args: [mainPath],
-      cwd: "/repo/sidecar",
-    });
-
-    expect(runtime.buildSidecarLaunchConfig({
-      isPackaged: true,
-      platform: "linux",
-      resourcesPath: "/opt/asrpro/resources",
-      appPath: "/repo",
-      existsSync: () => false,
-    })).toMatchObject({
-      mode: "missing",
-      command: null,
-      error: "Packaged ASR Pro is missing its bundled Python ASR engine executable.",
-    });
+    expect(paths.modelsDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data/models");
+    expect(paths.whisperModelsDir).toBe("/Users/suraj/Library/Application Support/ASR Pro/data/models/whisper");
+    expect(paths.defaultModelPath).toBe("/Users/suraj/Library/Application Support/ASR Pro/data/models/whisper/ggml-base.en.bin");
   });
 
   it("resolves platform app and tray icon assets", () => {

@@ -9,22 +9,21 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4270",
+    "postinstall": "node scripts/prepare-whisper-addon.cjs",
     "start": "electron .",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4271",
-    "sidecar:setup": "node scripts/ensure-sidecar-env.cjs",
-    "sidecar:dev": "node scripts/ensure-sidecar-env.cjs --run",
-    "sidecar:build": "node scripts/build-sidecar.cjs",
-    "sidecar:check": "node scripts/check-sidecar-bundle.cjs",
+    "engine:check": "node scripts/check-whisper-engine.cjs",
     "electron:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:4270 && electron .\"",
-    "electron:pack": "npm run build && npm run sidecar:check && electron-builder --dir",
-    "electron:dist": "npm run build && npm run sidecar:check && electron-builder",
+    "electron:pack": "npm run build && npm run engine:check && electron-builder --dir",
+    "electron:dist": "npm run build && npm run engine:check && electron-builder",
     "screenshots:readme": "node scripts/capture-readme-screenshots.cjs && npm run screenshots:check",
     "screenshots:check": "node scripts/check-readme-screenshots.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@kutalia/whisper-node-addon": "^1.1.0",
     "lucide-react": "^0.544.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
@@ -54,6 +53,7 @@
     "appId": "com.surajmandal.asrpro",
     "productName": "ASR Pro",
     "artifactName": "ASR-Pro-${version}-${os}-${arch}.${ext}",
+    "afterPack": "scripts/after-pack-cleanup.cjs",
     "asar": true,
     "directories": {
       "output": "release"
@@ -61,7 +61,12 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "node_modules/@kutalia/whisper-node-addon/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/@kutalia/whisper-node-addon/dist/**/*"
     ],
     "extraResources": [
       {
@@ -73,13 +78,6 @@
           "asrpro-app-icon.png",
           "asrpro-tray-dark.png",
           "asrpro-tray-light.png"
-        ]
-      },
-      {
-        "from": "sidecar/bin",
-        "to": "sidecar/bin",
-        "filter": [
-          "**/*"
         ]
       }
     ],

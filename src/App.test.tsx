@@ -113,7 +113,7 @@ describe("ASR Pro Electron shell", () => {
         title: "Meeting follow-up",
         text: "Send the launch notes and review the transcript.",
         kind: "Dictation",
-        model: "Parakeet-TDT-0.6B-v3",
+        model: "Whisper Base English",
         durationSeconds: 12,
         createdAt: Date.now(),
         status: "completed",
@@ -292,7 +292,7 @@ describe("ASR Pro Electron shell", () => {
       getAppInfo: vi.fn().mockResolvedValue({ name: "ASR Pro", version: "2.4.6" }),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Parakeet-TDT-0.6B-v3",
+        defaultModel: "Whisper Base English",
         dataDir: "/Users/surajmandal/Library/Application Support/ASR Pro/data",
         shortcut: "CommandOrControl+`",
       }),
@@ -544,7 +544,7 @@ describe("ASR Pro Electron shell", () => {
         title: "Product demo follow-up",
         text: "Summarize the product demo, send the follow-up notes, and schedule the model comparison review.",
         kind: "Dictation",
-        model: "Parakeet-TDT-0.6B-v3",
+        model: "Whisper Base English",
         durationSeconds: 58,
         createdAt: Date.now(),
         status: "completed",
@@ -554,7 +554,7 @@ describe("ASR Pro Electron shell", () => {
         title: "Original planning note",
         text: "Keep the real user transcript and saved source audio.",
         kind: "Dictation",
-        model: "Parakeet-TDT-0.6B-v3",
+        model: "Whisper Base English",
         durationSeconds: 12,
         createdAt: Date.now(),
         status: "completed",
@@ -584,7 +584,7 @@ describe("ASR Pro Electron shell", () => {
         title: "Product demo follow-up",
         text: "Summarize the product demo, send the follow-up notes, and schedule the model comparison review.",
         kind: "Dictation",
-        model: "Parakeet-TDT-0.6B-v3",
+        model: "Whisper Base English",
         durationSeconds: 58,
         createdAt: Date.now(),
         status: "completed",
@@ -608,7 +608,7 @@ describe("ASR Pro Electron shell", () => {
         title: "Team retro notes",
         text: "Summarize the retro themes and send the follow-up notes.",
         kind: "Dictation",
-        model: "Parakeet-TDT-0.6B-v3",
+        model: "Whisper Base English",
         durationSeconds: 58,
         createdAt: Date.now(),
         status: "completed",
@@ -621,20 +621,78 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("Team retro notes")).toBeTruthy();
     expect(screen.getByText("No source audio saved")).toBeTruthy();
     expect(screen.queryByLabelText("Recording audio: Team retro notes")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reprocess clip: Team retro notes" })).toBeNull();
+  });
+
+  it("reprocesses a saved history clip from the row actions", async () => {
+    const user = userEvent.setup();
+    const transcribeAudio = vi.fn().mockResolvedValue({
+      text: "Updated transcript from the saved clip.",
+      model: "whisper-base-en",
+      modelName: "Whisper Base English",
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    window.asrpro = {
+      transcribeAudio,
+      windowControl: vi.fn(),
+    } as any;
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "history-reprocess-row",
+        title: "Original clip",
+        text: "Original transcript text.",
+        kind: "Dictation",
+        model: "Whisper Base English",
+        durationSeconds: 18,
+        createdAt: Date.now(),
+        status: "completed",
+        recordingUrl: "data:audio/webm;base64,c2F2ZWQgYXVkaW8=",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    await user.click(screen.getByRole("button", { name: "Reprocess clip: Original clip" }));
+
+    await waitFor(() => {
+      expect(transcribeAudio).toHaveBeenCalledWith(expect.objectContaining({
+        audioData: expect.any(ArrayBuffer),
+        mimeType: "audio/webm",
+        modelId: "whisper-base-en",
+      }));
+    });
+    expect((transcribeAudio.mock.calls[0][0].audioData as ArrayBuffer).byteLength).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(screen.getByText("Updated transcript from the saved clip.")).toBeTruthy());
+    const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      id: "history-reprocess-row",
+      title: "Updated transcript from the saved clip.",
+      text: "Updated transcript from the saved clip.",
+      model: "Whisper Base English",
+      status: "completed",
+      recordingUrl: "data:audio/webm;base64,c2F2ZWQgYXVkaW8=",
+    });
   });
 
   it("records audio, transcribes it, stores the result, and stays on the current page", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      headers: new Headers({ "content-type": "application/json" }),
-      json: async () => ({
-        text: "Buy milk and schedule the product demo.",
-        duration: 1.7,
-      }),
+    const transcribeAudio = vi.fn().mockResolvedValue({
+      text: "Buy milk and schedule the product demo.",
+      model: "whisper-base-en",
+      modelName: "Whisper Base English",
     });
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
+    window.asrpro = {
+      transcribeAudio,
+      windowControl: vi.fn(),
+    } as any;
 
     render(<App />);
 
@@ -643,16 +701,13 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "Stop Recording" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "http://127.0.0.1:8000/v1/audio/transcriptions",
-        expect.objectContaining({
-          method: "POST",
-          body: expect.any(FormData),
-        }),
-      );
+      expect(transcribeAudio).toHaveBeenCalledWith(expect.objectContaining({
+        audioData: expect.any(ArrayBuffer),
+        mimeType: expect.any(String),
+        modelId: "whisper-base-en",
+      }));
     });
-    const formData = fetchMock.mock.calls[0][1].body as FormData;
-    expect(formData.get("model")).toBe("parakeet-tdt-0.6b-v3");
+    expect(fetchMock).not.toHaveBeenCalled();
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
@@ -689,11 +744,14 @@ describe("ASR Pro Electron shell", () => {
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
-  it("keeps a playable recording in history when transcription fetch fails without changing pages", async () => {
+  it("keeps a playable recording in history when native transcription fails without changing pages", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
-    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-    vi.stubGlobal("fetch", fetchMock);
+    const transcribeAudio = vi.fn().mockRejectedValue(new Error("Whisper model download failed."));
+    window.asrpro = {
+      transcribeAudio,
+      windowControl: vi.fn(),
+    } as any;
 
     render(<App />);
 
@@ -712,7 +770,7 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "History" })).toBeTruthy());
     expect(screen.getByText("Recording failed to transcribe")).toBeTruthy();
-    expect(screen.getByText("Failed to load.")).toBeTruthy();
+    expect(screen.getByText("Whisper model download failed. Check your connection and try again.")).toBeTruthy();
 
     const audio = screen.getByLabelText("Recording audio: Recording failed to transcribe");
     expect(audio.tagName).toBe("AUDIO");
@@ -725,40 +783,34 @@ describe("ASR Pro Electron shell", () => {
     const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
     expect(stored).toHaveLength(1);
     expect(stored[0].status).toBe("failed");
-    expect(stored[0].error).toBe("Failed to load.");
+    expect(stored[0].error).toBe("Whisper model download failed. Check your connection and try again.");
     expect(stored[0].recordingUrl).toMatch(/^data:audio\/webm/);
   });
 
-  it("queues transcription behind lazy engine startup and shows preparation status", async () => {
+  it("queues transcription behind the native Whisper engine and shows preparation status", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
-    let resolveEngineReady: ((state: { status: string; mode: string }) => void) | undefined;
-    const ensureEngineReady = vi.fn(() => new Promise<{ status: string; mode: string }>((resolve) => {
-      resolveEngineReady = resolve;
+    let resolveTranscription: ((result: { text: string; model: string }) => void) | undefined;
+    const transcribeAudio = vi.fn(() => new Promise<{ text: string; model: string }>((resolve) => {
+      resolveTranscription = resolve;
     }));
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      headers: new Headers({ "content-type": "application/json" }),
-      json: async () => ({
-        text: "Queued transcription completed after the engine became ready.",
-      }),
-    });
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     window.asrpro = {
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Parakeet-TDT-0.6B-v3",
+        defaultModel: "Whisper Base English",
         shortcut: "CommandOrControl+`",
-        sidecar: { status: "idle", mode: "lazy" },
-        capabilities: { lazyEngineStartup: true },
+        engine: { status: "idle", mode: "native-node" },
+        capabilities: { nativeWhisper: true },
       }),
-      ensureEngineReady,
+      transcribeAudio,
       setRecording: vi.fn().mockResolvedValue({ isRecording: false }),
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
-      onSidecarState: vi.fn(),
+      onEngineState: vi.fn(),
       windowControl: vi.fn(),
     } as any;
 
@@ -768,44 +820,41 @@ describe("ASR Pro Electron shell", () => {
     await screen.findByRole("button", { name: "Stop Recording" });
     await user.click(screen.getByRole("button", { name: "Stop Recording" }));
 
-    await screen.findByText("Preparing Parakeet engine...");
-    expect(screen.getByText("Preparing engine")).toBeTruthy();
-    expect(ensureEngineReady).toHaveBeenCalledTimes(1);
+    await screen.findByText("Loading Whisper model and transcribing...");
+    expect(screen.getByText("Transcribing")).toBeTruthy();
+    expect(transcribeAudio).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
 
     await act(async () => {
-      resolveEngineReady?.({ status: "ready", mode: "python" });
+      resolveTranscription?.({ text: "Queued transcription completed after native Whisper became ready.", model: "whisper-base-en" });
     });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
-      expect(stored[0]?.text).toBe("Queued transcription completed after the engine became ready.");
+      expect(stored[0]?.text).toBe("Queued transcription completed after native Whisper became ready.");
     });
   });
 
-  it("avoids stale engine IPC calls and shows a clean restart message", async () => {
+  it("does not call the renderer network path for transcription", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
-    const ensureEngineReady = vi.fn().mockRejectedValue(
-      new Error("Error invoking remote method 'engine:ensure-ready': Error: No handler registered for 'engine:ensure-ready'"),
-    );
-    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const transcribeAudio = vi.fn().mockResolvedValue({ text: "Native Whisper path only.", model: "whisper-base-en" });
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     window.asrpro = {
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Parakeet-TDT-0.6B-v3",
+        defaultModel: "Whisper Base English",
         shortcut: "CommandOrControl+`",
-        sidecar: { status: "idle", mode: "lazy" },
+        engine: { status: "idle", mode: "native-node" },
       }),
-      ensureEngineReady,
+      transcribeAudio,
       setRecording: vi.fn().mockResolvedValue({ isRecording: false }),
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
-      onSidecarState: vi.fn(),
+      onEngineState: vi.fn(),
       windowControl: vi.fn(),
     } as any;
 
@@ -815,24 +864,18 @@ describe("ASR Pro Electron shell", () => {
     await screen.findByRole("button", { name: "Stop Recording" });
     await user.click(screen.getByRole("button", { name: "Stop Recording" }));
 
-    await screen.findByText("Engine bridge needs restart. Restart ASR Pro, then try again.");
-    expect(screen.getByText("Engine needs restart")).toBeTruthy();
-    expect(ensureEngineReady).not.toHaveBeenCalled();
-    expect(screen.queryByText(/engine:ensure-ready/i)).toBeNull();
+    await waitFor(() => expect(transcribeAudio).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/No handler registered/i)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8000/health", expect.any(Object));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("syncs recording state from the global shortcut and tray bridge without changing pages", async () => {
     mockAudioCapture();
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      headers: new Headers({ "content-type": "application/json" }),
-      json: async () => ({
-        text: "Shortcut dictation stayed on home.",
-      }),
+    const transcribeAudio = vi.fn().mockResolvedValue({
+      text: "Shortcut dictation stayed on home.",
+      model: "whisper-base-en",
     });
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     let recordingListener: ((state: { isRecording: boolean; source: string }) => void) | undefined;
     window.asrpro = {
@@ -840,9 +883,10 @@ describe("ASR Pro Electron shell", () => {
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Parakeet-TDT-0.6B-v3",
+        defaultModel: "Whisper Base English",
         shortcut: "CommandOrControl+`",
       }),
+      transcribeAudio,
       setRecording: vi.fn(),
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn((callback) => {
@@ -871,7 +915,8 @@ describe("ASR Pro Electron shell", () => {
       const stored = JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]");
       expect(stored).toHaveLength(1);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(transcribeAudio).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
   });
@@ -894,19 +939,22 @@ describe("ASR Pro Electron shell", () => {
     expect(classNames).not.toContain("text-[#ffb3aa]");
   });
 
-  it("shows Parakeet as the only selectable model and keeps Whisper disabled", async () => {
+  it("shows selectable native Whisper model options", async () => {
     const user = userEvent.setup();
 
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Models library" }));
 
-    const parakeetButton = screen.getByRole("button", { name: /Parakeet-TDT-0\.6B-v3/i });
-    const whisperButton = screen.getByRole("button", { name: /Local Whisper/i }) as HTMLButtonElement;
+    const baseButton = screen.getByRole("button", { name: /Whisper Base English/i });
+    const tinyButton = screen.getByRole("button", { name: /Whisper Tiny English/i }) as HTMLButtonElement;
+    const smallButton = screen.getByRole("button", { name: /Whisper Small English/i }) as HTMLButtonElement;
+    const multilingualButton = screen.getByRole("button", { name: /Whisper Base Multilingual/i }) as HTMLButtonElement;
 
-    expect(parakeetButton.getAttribute("aria-pressed")).toBe("true");
-    expect(whisperButton.disabled).toBe(true);
-    expect(screen.getByText("Future placeholder")).toBeTruthy();
-    expect(screen.queryByText("Use model")).toBeNull();
+    expect(baseButton.getAttribute("aria-pressed")).toBe("true");
+    expect(tinyButton.disabled).toBe(false);
+    expect(smallButton.disabled).toBe(false);
+    expect(multilingualButton.disabled).toBe(false);
+    expect(screen.queryByText("Future placeholder")).toBeNull();
   });
 
   it("updates the recording overlay placement from settings", async () => {
@@ -917,7 +965,7 @@ describe("ASR Pro Electron shell", () => {
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
         isRecording: false,
-        defaultModel: "Parakeet-TDT-0.6B-v3",
+        defaultModel: "Whisper Base English",
         shortcut: "CommandOrControl+`",
         overlaySettings: { placement: "top", customBounds: null },
       }),
@@ -932,7 +980,6 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("button", { name: "Configuration" }));
     expect(screen.getByText("Recording overlay")).toBeTruthy();
     expect(screen.getByText("Engine")).toBeTruthy();
-    expect(screen.queryByText("Sidecar")).toBeNull();
     expect(screen.queryByText("Recording window")).toBeNull();
     expect(screen.queryByText("Classic")).toBeNull();
     expect(screen.queryByText("Hidden")).toBeNull();

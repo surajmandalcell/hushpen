@@ -10,7 +10,7 @@ export default defineConfig(async () => ({
     port: 4270,
     strictPort: true,
     watch: {
-      ignored: ["**/release/**", "**/sidecar/build/**", "**/tmp/**"],
+      ignored: ["**/release/**", "**/tmp/**"],
     },
   },
 }));

@@ -1,15 +1,23 @@
 export {};
 
 type OverlayPlacement = "top" | "bottom";
-type SidecarState = {
+type EngineState = {
   status: string;
   mode?: string;
-  healthUrl?: string;
-  command?: string | null;
-  args?: string[];
-  pid?: number | null;
+  modelId?: string;
+  model?: string;
+  detail?: string;
+  progress?: number | null;
   error?: string | null;
   updatedAt?: string;
+};
+
+type EngineModelInfo = {
+  id: string;
+  displayName: string;
+  detail: string;
+  sizeLabel: string;
+  installed?: boolean;
 };
 
 declare global {
@@ -33,6 +41,8 @@ declare global {
         isRecording: boolean;
         dataDir: string;
         defaultModel: string;
+        defaultModelId?: string;
+        models?: EngineModelInfo[];
         overlaySettings?: {
           placement: OverlayPlacement;
           customBounds: {
@@ -43,13 +53,18 @@ declare global {
         };
         shortcut: string;
         shortcutRegistered: boolean;
-        sidecar?: SidecarState;
+        engine?: EngineState;
         capabilities?: {
-          lazyEngineStartup?: boolean;
+          nativeWhisper?: boolean;
         };
       }>;
-      getSidecarState?: () => Promise<SidecarState>;
-      ensureEngineReady?: () => Promise<SidecarState>;
+      getEngineState?: () => Promise<EngineState>;
+      getModels?: () => Promise<EngineModelInfo[]>;
+      transcribeAudio?: (request: { audioData: ArrayBuffer; mimeType: string; modelId: string }) => Promise<{
+        text: string;
+        model: string;
+        modelName?: string;
+      }>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;
         customBounds: {
@@ -70,7 +85,7 @@ declare global {
       toggleRecording: () => Promise<{ isRecording: boolean }>;
       setWaveformFrame?: (frame: number[]) => void;
       onRecordingState: (callback: (state: { isRecording: boolean; source: string }) => void) => () => void;
-      onSidecarState?: (callback: (state: SidecarState) => void) => () => void;
+      onEngineState?: (callback: (state: EngineState) => void) => () => void;
       windowControl: (action: "minimize" | "close") => Promise<void>;
     };
   }

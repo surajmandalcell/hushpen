@@ -7,8 +7,9 @@ contextBridge.exposeInMainWorld("asrpro", {
   getPlatform: () => ipcRenderer.invoke("app:platform"),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   getRuntimeState: () => ipcRenderer.invoke("runtime:state"),
-  getSidecarState: () => ipcRenderer.invoke("sidecar:state"),
-  ensureEngineReady: () => ipcRenderer.invoke("engine:ensure-ready"),
+  getEngineState: () => ipcRenderer.invoke("engine:state"),
+  getModels: () => ipcRenderer.invoke("engine:models"),
+  transcribeAudio: (request) => ipcRenderer.invoke("engine:transcribe-audio", request),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:get"),
   setOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   setRecording: (active) => ipcRenderer.invoke("recording:set", Boolean(active)),
@@ -21,10 +22,10 @@ contextBridge.exposeInMainWorld("asrpro", {
     ipcRenderer.on("recording:state", listener);
     return () => ipcRenderer.removeListener("recording:state", listener);
   },
-  onSidecarState: (callback) => {
+  onEngineState: (callback) => {
     const listener = (_event, state) => callback(state);
-    ipcRenderer.on("sidecar:state", listener);
-    return () => ipcRenderer.removeListener("sidecar:state", listener);
+    ipcRenderer.on("engine:state", listener);
+    return () => ipcRenderer.removeListener("engine:state", listener);
   },
   windowControl: (action) => {
     if (!allowedWindowActions.has(action)) {

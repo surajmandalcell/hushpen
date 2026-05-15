@@ -1,10 +1,12 @@
 const path = require("node:path");
-const fs = require("node:fs");
+const {
+  AVAILABLE_MODELS,
+  DEFAULT_MODEL,
+  getModelPath,
+  getWhisperModelsDir,
+} = require("./whisper-engine.cjs");
 
 const RECORDING_SHORTCUT = "CommandOrControl+`";
-const SIDECAR_HOST = "127.0.0.1";
-const SIDECAR_PORT = 8000;
-const SIDECAR_HEALTH_URL = `http://${SIDECAR_HOST}:${SIDECAR_PORT}/health`;
 const OVERLAY_WINDOW_SIZE = {
   width: 156,
   height: 40,
@@ -14,12 +16,6 @@ const DEFAULT_OVERLAY_SETTINGS = Object.freeze({
   placement: "top",
   customBounds: null,
 });
-
-const DEFAULT_MODEL = {
-  id: "parakeet-tdt-0.6b-v3",
-  displayName: "Parakeet-TDT-0.6B-v3",
-  repo: "nvidia/parakeet-tdt-0.6b-v3",
-};
 
 function platformPath(platform) {
   return platform === "win32" ? path.win32 : path.posix;
@@ -68,109 +64,12 @@ function resolveAppIconPath(platform, assetRoot) {
 
 function buildModelPaths(dataDir) {
   const modelsDir = path.join(dataDir, "models");
-  const defaultModelDir = path.join(modelsDir, DEFAULT_MODEL.id);
+  const whisperModelsDir = getWhisperModelsDir(dataDir);
 
   return {
     modelsDir,
-    defaultModelDir,
-    defaultModelManifest: path.join(defaultModelDir, "model.json"),
-  };
-}
-
-function resolveSidecarResourceRoot({ isPackaged, resourcesPath, appPath, platform }) {
-  const pathModule = platformPath(platform);
-  return isPackaged
-    ? pathModule.join(resourcesPath, "sidecar")
-    : pathModule.join(appPath, "sidecar");
-}
-
-function getSidecarExecutableName(platform) {
-  return platform === "win32" ? "asrpro-sidecar.exe" : "asrpro-sidecar";
-}
-
-function resolveSidecarExecutablePath({
-  isPackaged,
-  platform,
-  resourcesPath,
-  appPath,
-  existsSync = fs.existsSync,
-}) {
-  const pathModule = platformPath(platform);
-  const sidecarRoot = resolveSidecarResourceRoot({ isPackaged, resourcesPath, appPath, platform });
-  const executableName = getSidecarExecutableName(platform);
-  const candidates = isPackaged
-    ? [
-        pathModule.join(sidecarRoot, "bin", executableName),
-        pathModule.join(sidecarRoot, executableName),
-      ]
-    : [
-        pathModule.join(sidecarRoot, "bin", executableName),
-        pathModule.join(sidecarRoot, "dist", executableName),
-      ];
-
-  return candidates.find((candidate) => existsSync(candidate)) || null;
-}
-
-function resolveSidecarSourcePath({ isPackaged, platform, resourcesPath, appPath }) {
-  const pathModule = platformPath(platform);
-  const sidecarRoot = resolveSidecarResourceRoot({ isPackaged, resourcesPath, appPath, platform });
-  return isPackaged
-    ? pathModule.join(sidecarRoot, "source", "main.py")
-    : pathModule.join(sidecarRoot, "main.py");
-}
-
-function defaultPythonCommand(platform) {
-  return platform === "win32" ? "python" : "python3";
-}
-
-function buildSidecarLaunchConfig({
-  isPackaged,
-  platform,
-  resourcesPath,
-  appPath,
-  pythonCommand,
-  existsSync = fs.existsSync,
-}) {
-  const pathModule = platformPath(platform);
-  const executablePath = resolveSidecarExecutablePath({
-    isPackaged,
-    platform,
-    resourcesPath,
-    appPath,
-    existsSync,
-  });
-
-  if (executablePath) {
-    return {
-      mode: "executable",
-      command: executablePath,
-      args: [],
-      cwd: pathModule.dirname(executablePath),
-      healthUrl: SIDECAR_HEALTH_URL,
-    };
-  }
-
-  const sourcePath = resolveSidecarSourcePath({ isPackaged, platform, resourcesPath, appPath });
-  if (!isPackaged && existsSync(sourcePath)) {
-    return {
-      mode: "python",
-      command: pythonCommand || defaultPythonCommand(platform),
-      args: [sourcePath],
-      cwd: pathModule.dirname(sourcePath),
-      healthUrl: SIDECAR_HEALTH_URL,
-    };
-  }
-
-  return {
-    mode: "missing",
-    command: null,
-    args: [],
-    cwd: null,
-    healthUrl: SIDECAR_HEALTH_URL,
-    sourcePath,
-    error: isPackaged
-      ? "Packaged ASR Pro is missing its bundled Python ASR engine executable."
-      : "ASR Pro could not find the development Python ASR engine source.",
+    whisperModelsDir,
+    defaultModelPath: getModelPath(dataDir, DEFAULT_MODEL.id),
   };
 }
 
@@ -432,25 +331,19 @@ function shouldShowRecordingOverlay(source) {
 }
 
 module.exports = {
+  AVAILABLE_MODELS,
   DEFAULT_MODEL,
   DEFAULT_OVERLAY_SETTINGS,
   OVERLAY_EDGE_MARGIN,
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
-  SIDECAR_HEALTH_URL,
-  SIDECAR_HOST,
-  SIDECAR_PORT,
   buildModelPaths,
-  buildSidecarLaunchConfig,
   createRecordingOverlayHtml,
-  getSidecarExecutableName,
   normalizeOverlaySettings,
   resolveAppIconPath,
   resolveContainedDataDir,
   resolveOverlayBounds,
   resolveRuntimeAssetRoot,
-  resolveSidecarExecutablePath,
-  resolveSidecarSourcePath,
   resolveTrayIconPath,
   shouldShowRecordingOverlay,
 };

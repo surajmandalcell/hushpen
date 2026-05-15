@@ -32,7 +32,6 @@ import {
 } from "lucide-react";
 import packageMetadata from "../package.json";
 import { AppLogoMark } from "./components/icons";
-import { apiClient } from "./services/api";
 import { audioRecordingService } from "./services/audioRecording";
 
 type ViewId = "home" | "configuration" | "sound" | "models" | "history" | "about";
@@ -53,14 +52,14 @@ interface RuntimeInfo {
   isRecording: boolean;
   defaultModel?: string;
   defaultModelId?: string;
-  defaultModelRepo?: string;
   dataDir?: string;
   overlaySettings?: OverlaySettings;
-  sidecar?: EngineRuntimeState;
+  engine?: EngineRuntimeState;
+  models?: EngineModelInfo[];
   shortcut?: string;
   shortcutRegistered?: boolean;
   capabilities?: {
-    lazyEngineStartup?: boolean;
+    nativeWhisper?: boolean;
   };
 }
 
@@ -72,12 +71,20 @@ interface AppInfo {
 interface EngineRuntimeState {
   status: string;
   mode?: string;
-  healthUrl?: string;
-  command?: string | null;
-  args?: string[];
-  pid?: number | null;
+  modelId?: string;
+  model?: string;
+  detail?: string;
+  progress?: number | null;
   error?: string | null;
   updatedAt?: string;
+}
+
+interface EngineModelInfo {
+  id: string;
+  displayName: string;
+  detail: string;
+  sizeLabel: string;
+  installed?: boolean;
 }
 
 interface NavItem {
@@ -155,13 +162,15 @@ const sidebarIconTone: Record<ViewId, string> = {
   about: "bg-[#727272] text-white",
 };
 
-const parakeetModelName = "Parakeet-TDT-0.6B-v3";
-const defaultModelName = parakeetModelName;
+const defaultModelName = "Whisper Base English";
 const defaultAudioInputId = "default";
 const defaultAudioInputLabel = "System default";
 const defaultAudioInputOptions: AudioInputDeviceOption[] = [{ id: defaultAudioInputId, label: defaultAudioInputLabel }];
 const modelIdsByName: Record<string, string> = {
-  [parakeetModelName]: "parakeet-tdt-0.6b-v3",
+  "Whisper Tiny English": "whisper-tiny-en",
+  "Whisper Base English": "whisper-base-en",
+  "Whisper Small English": "whisper-small-en",
+  "Whisper Base Multilingual": "whisper-base",
 };
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
 const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
@@ -178,18 +187,32 @@ const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
 
 const modelCards = [
   {
-    name: parakeetModelName,
-    detail: "NVIDIA NeMo, multilingual, punctuation and timestamps",
+    name: "Whisper Tiny English",
+    detail: "Fastest local model, lowest memory use",
+    speed: "Fastest",
+    status: "Active",
+    disabled: false,
+  },
+  {
+    name: "Whisper Base English",
+    detail: "Default local model for English dictation",
     speed: "Default",
     status: "Active",
     disabled: false,
   },
   {
-    name: "Local Whisper",
-    detail: "Whisper remains reserved for a future engine option",
-    speed: "Disabled",
-    status: "Future placeholder",
-    disabled: true,
+    name: "Whisper Small English",
+    detail: "Higher accuracy with a larger local model",
+    speed: "Accurate",
+    status: "Active",
+    disabled: false,
+  },
+  {
+    name: "Whisper Base Multilingual",
+    detail: "Small multilingual model with language detection",
+    speed: "Multilingual",
+    status: "Active",
+    disabled: false,
   },
 ];
 
@@ -503,12 +526,16 @@ function formatShortcutParts(shortcut?: string) {
 function getErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Recording failed";
 
-  if (/engine:ensure-ready|No handler registered|Error invoking remote method/i.test(message)) {
-    return "Engine bridge needs restart. Restart ASR Pro, then try again.";
+  if (/No handler registered|Error invoking remote method/i.test(message)) {
+    return "Native Whisper engine needs restart. Restart ASR Pro, then try again.";
   }
 
-  if (/ASR engine is not ready|did not become healthy/i.test(message)) {
-    return "ASR engine is still starting. Try again in a moment.";
+  if (/Model download failed|checksum mismatch/i.test(message)) {
+    return "Whisper model download failed. Check your connection and try again.";
+  }
+
+  if (/native Whisper addon|whisper\.node|libwhisper/i.test(message)) {
+    return "Native Whisper engine could not load. Reinstall dependencies, then restart ASR Pro.";
   }
 
   if (/failed to fetch|load failed|networkerror|network request failed/i.test(message)) {
@@ -519,16 +546,9 @@ function getErrorMessage(error: unknown) {
 }
 
 function getRecordingErrorTitle(message: string) {
-  if (/Engine bridge needs restart/i.test(message)) return "Engine needs restart";
-  if (/Engine unavailable|Failed to load|still starting/i.test(message)) return "Engine unavailable";
+  if (/needs restart/i.test(message)) return "Engine needs restart";
+  if (/Engine unavailable|Failed to load|download failed/i.test(message)) return "Engine unavailable";
   return "Recording failed";
-}
-
-function createRecordingFile(blob: Blob) {
-  const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("mpeg") ? "mp3" : blob.type.includes("wav") ? "wav" : "webm";
-  return new File([blob], `dictation-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`, {
-    type: blob.type || "audio/webm",
-  });
 }
 
 function createTranscriptHistoryRow({
@@ -557,6 +577,132 @@ function createTranscriptHistoryRow({
     status: "completed",
     recordingUrl,
   };
+}
+
+async function createTranscriptionAudioPayload(blob: Blob) {
+  const wavBlob = await convertBlobToWav(blob).catch(() => blob);
+
+  return {
+    audioData: await wavBlob.arrayBuffer(),
+    mimeType: wavBlob.type || blob.type || "audio/wav",
+  };
+}
+
+function dataUrlToBlob(dataUrl: string) {
+  if (!dataUrl.startsWith("data:")) {
+    throw new Error("Saved source audio could not be loaded.");
+  }
+
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    throw new Error("Saved source audio could not be loaded.");
+  }
+
+  const header = dataUrl.slice(5, commaIndex);
+  const payload = dataUrl.slice(commaIndex + 1);
+  const headerParts = header.split(";").filter(Boolean);
+  const mimeType = headerParts[0] || "audio/webm";
+  const isBase64 = headerParts.includes("base64");
+
+  try {
+    const bytes = isBase64
+      ? Uint8Array.from(window.atob(payload), (character) => character.charCodeAt(0))
+      : new TextEncoder().encode(decodeURIComponent(payload));
+
+    return new Blob([bytes], { type: mimeType });
+  } catch {
+    throw new Error("Saved source audio could not be loaded.");
+  }
+}
+
+async function convertBlobToWav(blob: Blob) {
+  if (blob.type.includes("wav")) return blob;
+
+  const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return blob;
+
+  const audioContext = new AudioContextCtor();
+  if (typeof audioContext.decodeAudioData !== "function") {
+    await audioContext.close?.().catch(() => {});
+    return blob;
+  }
+
+  const sourceData = await blob.arrayBuffer();
+  const decoded = await audioContext.decodeAudioData(sourceData.slice(0));
+  await audioContext.close?.().catch(() => {});
+  const monoSamples = mixAudioBufferToMono(decoded);
+  const samples = resamplePcm(monoSamples, decoded.sampleRate, 16000);
+  const wavData = encodePcm16Wav(samples, 16000);
+
+  return new Blob([wavData], { type: "audio/wav" });
+}
+
+function mixAudioBufferToMono(audioBuffer: AudioBuffer) {
+  const samples = new Float32Array(audioBuffer.length);
+  const channelCount = Math.max(1, audioBuffer.numberOfChannels);
+
+  for (let channel = 0; channel < channelCount; channel += 1) {
+    const channelData = audioBuffer.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] += channelData[index] / channelCount;
+    }
+  }
+
+  return samples;
+}
+
+function resamplePcm(samples: Float32Array, sourceRate: number, targetRate: number) {
+  if (sourceRate === targetRate) return samples;
+
+  const targetLength = Math.max(1, Math.round(samples.length * targetRate / sourceRate));
+  const resampled = new Float32Array(targetLength);
+  const ratio = (samples.length - 1) / Math.max(1, targetLength - 1);
+
+  for (let index = 0; index < targetLength; index += 1) {
+    const sourceIndex = index * ratio;
+    const lower = Math.floor(sourceIndex);
+    const upper = Math.min(samples.length - 1, lower + 1);
+    const weight = sourceIndex - lower;
+    resampled[index] = samples[lower] * (1 - weight) + samples[upper] * weight;
+  }
+
+  return resampled;
+}
+
+function encodePcm16Wav(samples: Float32Array, sampleRate: number) {
+  const bytesPerSample = 2;
+  const dataLength = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataLength, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 8 * bytesPerSample, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (const sample of samples) {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    view.setInt16(offset, Math.round(clamped < 0 ? clamped * 32768 : clamped * 32767), true);
+    offset += bytesPerSample;
+  }
+
+  return buffer;
+}
+
+function writeAscii(view: DataView, offset: number, value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
 }
 
 function readBlobAsDataUrl(blob: Blob) {
@@ -655,6 +801,7 @@ function App() {
   const [appInfo, setAppInfo] = useState<AppInfo>(defaultAppInfo);
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
+  const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
@@ -665,6 +812,14 @@ function App() {
   const addHistoryRow = useCallback((row: TranscriptHistoryRow) => {
     setHistoryRows((current) => {
       const next = [row, ...current].slice(0, 100);
+      saveTranscriptHistory(next);
+      return next;
+    });
+  }, []);
+
+  const updateHistoryRow = useCallback((rowId: string, updater: (row: TranscriptHistoryRow) => TranscriptHistoryRow) => {
+    setHistoryRows((current) => {
+      const next = current.map((row) => (row.id === rowId ? updater(row) : row));
       saveTranscriptHistory(next);
       return next;
     });
@@ -706,45 +861,54 @@ function App() {
     }
   }, []);
 
-  const ensureEngineReadyForTranscription = useCallback(async () => {
-    const desktopApi = window.asrpro;
-    if (!desktopApi) return;
-
-    let currentRuntime = runtimeInfo;
-
-    if (desktopApi.getRuntimeState && currentRuntime?.capabilities?.lazyEngineStartup !== true) {
-      const refreshedRuntime = await desktopApi.getRuntimeState().catch(() => null);
-      if (refreshedRuntime) {
-        currentRuntime = refreshedRuntime;
-        setRuntimeInfo(refreshedRuntime);
-      }
+  const transcribeRecording = useCallback(async (audioBlob: Blob) => {
+    const transcribeAudio = window.asrpro?.transcribeAudio;
+    if (!transcribeAudio) {
+      throw new Error("Native Whisper engine is not available.");
     }
 
-    const ensureEngineReady = desktopApi.ensureEngineReady;
-    if (typeof ensureEngineReady !== "function") {
-      return;
-    }
+    const payload = await createTranscriptionAudioPayload(audioBlob);
+    return transcribeAudio({
+      ...payload,
+      modelId: modelIdsByName[selectedModel] ?? "whisper-base-en",
+    });
+  }, [selectedModel]);
 
-    const canUseLazyEngineBridge =
-      currentRuntime?.capabilities?.lazyEngineStartup === true;
+  const reprocessHistoryRow = useCallback(async (row: TranscriptHistoryRow) => {
+    if (!row.recordingUrl || reprocessingHistoryRowId) return;
 
-    if (canUseLazyEngineBridge) {
-      const engineState = await ensureEngineReady();
-      setRuntimeInfo((current) => (current ? { ...current, sidecar: engineState } : { isRecording: false, sidecar: engineState }));
-
-      if (engineState.status !== "ready") {
-        throw new Error(engineState.error || "ASR engine is not ready.");
-      }
-
-      return;
-    }
+    setReprocessingHistoryRowId(row.id);
 
     try {
-      await apiClient.healthCheck();
-    } catch {
-      throw new Error("Engine bridge needs restart. Restart ASR Pro, then try again.");
+      const result = await transcribeRecording(dataUrlToBlob(row.recordingUrl));
+      const text = typeof result === "string" ? result : result?.text;
+      if (!text || !text.trim()) {
+        throw new Error("No transcription text returned");
+      }
+
+      const normalizedText = text.replace(/\s+/g, " ").trim();
+      updateHistoryRow(row.id, (current) => ({
+        ...current,
+        title: buildHistoryTitle(normalizedText),
+        text: normalizedText,
+        model: selectedModel,
+        status: "completed",
+        error: undefined,
+      }));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      updateHistoryRow(row.id, (current) => ({
+        ...current,
+        text: current.status === "failed" || !current.text.trim() ? message : current.text,
+        title: current.status === "failed" || !current.title.trim() ? getRecordingErrorTitle(message) : current.title,
+        model: selectedModel,
+        status: "failed",
+        error: message,
+      }));
+    } finally {
+      setReprocessingHistoryRowId(null);
     }
-  }, [runtimeInfo]);
+  }, [reprocessingHistoryRowId, selectedModel, transcribeRecording, updateHistoryRow]);
 
   const refreshAudioInputDevices = useCallback(async () => {
     const mediaDevices = navigator.mediaDevices;
@@ -864,9 +1028,8 @@ function App() {
 
       recordingUrl = await readBlobAsDataUrl(audioBlob);
       setRecordingStatus("preparing-engine");
-      await ensureEngineReadyForTranscription();
       setRecordingStatus("transcribing");
-      const result = await apiClient.transcribeFile(createRecordingFile(audioBlob), modelIdsByName[selectedModel] ?? selectedModel);
+      const result = await transcribeRecording(audioBlob);
       const text = typeof result === "string" ? result : result?.text;
       if (!text || !text.trim()) {
         throw new Error("No transcription text returned");
@@ -901,7 +1064,7 @@ function App() {
       recordingStartedAtRef.current = null;
       recordingTransitionRef.current = null;
     }
-  }, [addHistoryRow, ensureEngineReadyForTranscription, selectedModel, syncRecordingBridge]);
+  }, [addHistoryRow, selectedModel, syncRecordingBridge, transcribeRecording]);
 
   useEffect(() => {
     const api = window.asrpro;
@@ -947,8 +1110,8 @@ function App() {
       }
     });
 
-    const unsubscribeEngine = api.onSidecarState?.((engineState) => {
-      setRuntimeInfo((current) => (current ? { ...current, sidecar: engineState } : { isRecording: false, sidecar: engineState }));
+    const unsubscribeEngine = api.onEngineState?.((engineState) => {
+      setRuntimeInfo((current) => (current ? { ...current, engine: engineState } : { isRecording: false, engine: engineState }));
     });
 
     return () => {
@@ -1088,7 +1251,9 @@ function App() {
               <HistoryView
                 rows={historyRows}
                 onCopyRow={copyHistoryText}
+                onReprocessRow={reprocessHistoryRow}
                 onDeleteRow={deleteHistoryRow}
+                reprocessingRowId={reprocessingHistoryRowId}
               />
             )}
             {activeView === "about" && <AboutView appInfo={appInfo} storagePath={runtimeInfo?.dataDir} />}
@@ -1271,9 +1436,9 @@ function HomeView({
   const statusDetail = recordingStatus === "starting"
     ? "Opening microphone..."
     : recordingStatus === "preparing-engine"
-      ? "Preparing Parakeet engine..."
+      ? "Preparing Whisper engine..."
     : recordingStatus === "transcribing"
-      ? "Loading Parakeet model and transcribing..."
+      ? "Loading Whisper model and transcribing..."
       : isRecording
         ? `Recording ${formatDuration(durationSeconds)}`
         : "Turn your voice to text with a single click.";
@@ -1345,7 +1510,7 @@ function HomeView({
         <div className={panelSurfaceClass}>
           <UpdateRow date="May 14" title="Recording history playback" detail="Saved dictations keep playable source audio with their transcripts." />
           <UpdateRow date="May 14" title="Microphone picker" detail="Choose the input device from the toolbar or Sound settings." />
-          <UpdateRow date="May 13" title="Parakeet engine" detail="Desktop transcription now defaults to Parakeet-TDT-0.6B-v3 through the local NeMo engine." />
+          <UpdateRow date="May 13" title="Native Whisper engine" detail="Desktop transcription now runs through local Whisper models in Electron." />
         </div>
       </section>
     </section>
@@ -1739,10 +1904,12 @@ function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
 interface HistoryViewProps {
   rows: TranscriptHistoryRow[];
   onCopyRow: (text: string) => void;
+  onReprocessRow: (row: TranscriptHistoryRow) => void;
   onDeleteRow: (rowId: string) => void;
+  reprocessingRowId: string | null;
 }
 
-function HistoryView({ rows, onCopyRow, onDeleteRow }: HistoryViewProps) {
+function HistoryView({ rows, onCopyRow, onReprocessRow, onDeleteRow, reprocessingRowId }: HistoryViewProps) {
   const [query, setQuery] = useState("");
   const [expandedRowId, setExpandedRowId] = useState<string | null>(rows[0]?.id ?? null);
   const normalizedQuery = query.trim().toLowerCase();
@@ -1798,8 +1965,10 @@ function HistoryView({ rows, onCopyRow, onDeleteRow }: HistoryViewProps) {
                     row={row}
                     expanded={expandedRowId === row.id}
                     onCopy={() => onCopyRow(row.text)}
+                    onReprocess={() => onReprocessRow(row)}
                     onDelete={() => onDeleteRow(row.id)}
                     onToggle={() => setExpandedRowId((current) => (current === row.id ? null : row.id))}
+                    reprocessing={reprocessingRowId === row.id}
                   />
                 ))}
               </div>
@@ -1820,11 +1989,15 @@ interface HistoryCardProps {
   row: TranscriptHistoryRow;
   expanded: boolean;
   onCopy: () => void;
+  onReprocess: () => void;
   onDelete: () => void;
   onToggle: () => void;
+  reprocessing: boolean;
 }
 
-function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardProps) {
+function HistoryCard({ row, expanded, onCopy, onReprocess, onDelete, onToggle, reprocessing }: HistoryCardProps) {
+  const canReprocess = Boolean(row.recordingUrl);
+
   return (
     <article className={`${panelSurfaceClass} p-4 transition-colors duration-200 ${expanded ? "bg-white/[0.07]" : ""}`}>
       <button
@@ -1858,6 +2031,18 @@ function HistoryCard({ row, expanded, onCopy, onDelete, onToggle }: HistoryCardP
               <span className="px-2 py-1 text-[12px] font-semibold text-[#9d9d9d]">Segmented</span>
             </div>
             <div className="flex items-center gap-1 text-[#bdbdbd]">
+              {canReprocess ? (
+                <button
+                  type="button"
+                  aria-busy={reprocessing || undefined}
+                  aria-label={`Reprocess clip: ${row.title}`}
+                  className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555] disabled:cursor-wait disabled:opacity-55`}
+                  disabled={reprocessing}
+                  onClick={onReprocess}
+                >
+                  <RefreshCw className={`size-3 ${reprocessing ? "animate-spin" : ""}`} />
+                </button>
+              ) : null}
               <button type="button" aria-label={`Copy transcript: ${row.title}`} className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555]`} onClick={onCopy}>
                 <Copy className="size-3" />
               </button>
@@ -1962,9 +2147,9 @@ function SettingsView({
   onOpenSound,
 }: SettingsViewProps) {
   const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
-  const engine = runtimeInfo?.sidecar;
+  const engine = runtimeInfo?.engine;
   const engineStatus = formatEngineStatus(engine?.status);
-  const engineDetail = engine?.error || (engine?.status === "idle" ? "Starts when transcription is needed" : engine?.mode || engine?.healthUrl || "Waiting for desktop runtime");
+  const engineDetail = engine?.error || engine?.detail || (engine?.status === "idle" ? "Loads the selected Whisper model when needed" : engine?.model || engine?.mode || "Waiting for desktop runtime");
 
   return (
     <ViewFrame title="Configuration">
@@ -1981,7 +2166,7 @@ function SettingsView({
       </GroupedPanel>
 
       <GroupedPanel title="Application">
-        <PanelRow title="Default model" detail={runtimeInfo?.defaultModelRepo ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
+        <PanelRow title="Default model" detail={runtimeInfo?.defaultModel ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
         <PanelRow title="Microphone input" detail={selectedAudioInputLabel} trailing={<NavigateButton label="Change" onClick={onOpenSound} />} />
         <PanelRow title="Engine" detail={engineDetail} trailing={<StatusLabel>{engineStatus}</StatusLabel>} />
         <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} trailing={<StatusLabel>Read only</StatusLabel>} />
@@ -1993,6 +2178,8 @@ function SettingsView({
 function formatEngineStatus(status?: string) {
   if (status === "ready") return "Ready";
   if (status === "starting") return "Starting";
+  if (status === "downloading") return "Downloading";
+  if (status === "transcribing") return "Transcribing";
   if (status === "idle") return "Idle";
   if (status === "failed") return "Failed";
   if (status === "stopped") return "Stopped";

@@ -1,7 +1,5 @@
 const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, shell, screen, session } = require("electron");
-const { spawn } = require("node:child_process");
 const fs = require("node:fs");
-const http = require("node:http");
 const path = require("node:path");
 const {
   APP_ID,
@@ -9,12 +7,11 @@ const {
   buildAboutPanelOptions,
 } = require("./identity.cjs");
 const {
+  AVAILABLE_MODELS,
   DEFAULT_MODEL,
   DEFAULT_OVERLAY_SETTINGS,
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
-  SIDECAR_HEALTH_URL,
-  buildSidecarLaunchConfig,
   buildModelPaths,
   createRecordingOverlayHtml,
   normalizeOverlaySettings,
@@ -25,6 +22,10 @@ const {
   resolveTrayIconPath,
   shouldShowRecordingOverlay,
 } = require("./runtime.cjs");
+const {
+  listModels,
+  transcribeAudioFile,
+} = require("./whisper-engine.cjs");
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:4270";
 const MAIN_WINDOW_SIZE = { width: 780, height: 520 };
@@ -35,18 +36,18 @@ let mainWindow;
 let overlayWindow;
 let tray;
 let containedDataDir;
-let sidecarProcess;
-let sidecarStartPromise;
 let isQuitting = false;
 let isRecording = false;
 let shortcutRegistered = false;
 let overlaySettings = DEFAULT_OVERLAY_SETTINGS;
 let positioningOverlay = false;
 let lastWaveformFrame = [];
-let sidecarState = {
+let engineState = {
   status: "idle",
-  mode: "lazy",
-  healthUrl: SIDECAR_HEALTH_URL,
+  mode: "native-node",
+  modelId: DEFAULT_MODEL.id,
+  model: DEFAULT_MODEL.displayName,
+  progress: null,
   error: null,
 };
 
@@ -78,7 +79,7 @@ function configureContainedData() {
     path.join(containedDataDir, "session"),
     path.join(containedDataDir, "logs"),
     paths.modelsDir,
-    paths.defaultModelDir,
+    paths.whisperModelsDir,
   ]) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -89,25 +90,7 @@ function configureContainedData() {
 
   process.env.ASRPRO_DATA_DIR = containedDataDir;
   process.env.ASRPRO_DEFAULT_MODEL = DEFAULT_MODEL.id;
-  process.env.ASRPRO_DEFAULT_MODEL_REPO = DEFAULT_MODEL.repo;
-  process.env.HF_HOME = path.join(paths.modelsDir, "huggingface");
-  process.env.HUGGINGFACE_HUB_CACHE = path.join(paths.modelsDir, "huggingface", "hub");
-  process.env.NEMO_HOME = path.join(paths.modelsDir, "nemo");
-  process.env.TORCH_HOME = path.join(paths.modelsDir, "torch");
   process.env.XDG_CACHE_HOME = path.join(containedDataDir, "cache");
-
-  if (!fs.existsSync(paths.defaultModelManifest)) {
-    fs.writeFileSync(
-      paths.defaultModelManifest,
-      JSON.stringify({
-        id: DEFAULT_MODEL.id,
-        displayName: DEFAULT_MODEL.displayName,
-        repo: DEFAULT_MODEL.repo,
-        status: "download-on-first-use",
-        cacheDir: paths.defaultModelDir,
-      }, null, 2)
-    );
-  }
 
   overlaySettings = loadOverlaySettings();
 }
@@ -228,9 +211,11 @@ function registerIpc() {
 
   ipcMain.handle("runtime:state", () => getRuntimeState());
 
-  ipcMain.handle("sidecar:state", () => sidecarState);
+  ipcMain.handle("engine:state", () => engineState);
 
-  ipcMain.handle("engine:ensure-ready", () => ensureSidecarReady());
+  ipcMain.handle("engine:models", () => listModels(containedDataDir));
+
+  ipcMain.handle("engine:transcribe-audio", (_event, request) => transcribeAudio(request));
 
   ipcMain.handle("overlay-settings:get", () => overlaySettings);
 
@@ -403,214 +388,86 @@ function getRuntimeState() {
     dataDir: containedDataDir,
     defaultModel: DEFAULT_MODEL.displayName,
     defaultModelId: DEFAULT_MODEL.id,
-    defaultModelRepo: DEFAULT_MODEL.repo,
+    models: listModels(containedDataDir),
     overlaySettings,
-    sidecar: sidecarState,
+    engine: engineState,
     shortcut: RECORDING_SHORTCUT,
     shortcutRegistered,
     capabilities: {
-      lazyEngineStartup: true,
+      nativeWhisper: true,
     },
   };
 }
 
-function getDevelopmentPythonCommand() {
-  const localPython = process.platform === "win32"
-    ? path.join(app.getAppPath(), "sidecar", ".venv", "Scripts", "python.exe")
-    : path.join(app.getAppPath(), "sidecar", ".venv", "bin", "python");
-
-  if (fs.existsSync(localPython)) return localPython;
-  return process.platform === "win32" ? "python" : "python3";
-}
-
-function getSidecarLaunchConfig() {
-  return buildSidecarLaunchConfig({
-    isPackaged: app.isPackaged,
-    platform: process.platform,
-    resourcesPath: process.resourcesPath,
-    appPath: app.getAppPath(),
-    pythonCommand: getDevelopmentPythonCommand(),
-  });
-}
-
-function setSidecarState(nextState) {
-  sidecarState = {
-    ...sidecarState,
+function setEngineState(nextState) {
+  engineState = {
+    ...engineState,
     ...nextState,
-    healthUrl: SIDECAR_HEALTH_URL,
     updatedAt: new Date().toISOString(),
   };
-  emitSidecarState();
-  return sidecarState;
-}
-
-function emitSidecarState() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("sidecar:state", sidecarState);
+    mainWindow.webContents.send("engine:state", engineState);
   }
+  return engineState;
 }
 
-function checkSidecarHealth(timeoutMs = 900) {
-  return new Promise((resolve) => {
-    const healthUrl = new URL(SIDECAR_HEALTH_URL);
-    const request = http.get({
-      hostname: healthUrl.hostname,
-      port: healthUrl.port,
-      path: healthUrl.pathname,
-      timeout: timeoutMs,
-    }, (response) => {
-      response.resume();
-      resolve(response.statusCode >= 200 && response.statusCode < 300);
-    });
-
-    request.on("timeout", () => {
-      request.destroy();
-      resolve(false);
-    });
-    request.on("error", () => resolve(false));
-  });
+function createTempAudioPath(mimeType = "audio/wav") {
+  const extension = mimeType.includes("wav") ? "wav" : "audio";
+  const tempDir = fs.mkdtempSync(path.join(app.getPath("temp"), "asrpro-whisper-"));
+  return {
+    tempDir,
+    filePath: path.join(tempDir, `recording.${extension}`),
+  };
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForSidecarHealth(timeoutMs = 15000, shouldAbort = () => false) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (shouldAbort()) return false;
-    if (await checkSidecarHealth(800)) return true;
-    await delay(250);
+function toAudioBuffer(audioData) {
+  if (Buffer.isBuffer(audioData)) return audioData;
+  if (audioData instanceof ArrayBuffer) return Buffer.from(audioData);
+  if (ArrayBuffer.isView(audioData)) {
+    return Buffer.from(audioData.buffer, audioData.byteOffset, audioData.byteLength);
   }
-  return false;
+  if (Array.isArray(audioData)) return Buffer.from(audioData);
+  throw new Error("Transcription audio payload is missing.");
 }
 
-async function ensureSidecarReady() {
-  if (sidecarState.status === "ready") {
-    if (await checkSidecarHealth(500)) return sidecarState;
-    sidecarStartPromise = undefined;
-    setSidecarState({
-      status: "idle",
-      mode: "lazy",
-      pid: null,
+async function transcribeAudio(request = {}) {
+  const modelId = request.modelId || DEFAULT_MODEL.id;
+  const model = AVAILABLE_MODELS.find((candidate) => candidate.id === modelId);
+  if (!model) {
+    throw new Error(`Unsupported recognition model: ${modelId}`);
+  }
+
+  const { tempDir, filePath } = createTempAudioPath(request.mimeType);
+  try {
+    fs.writeFileSync(filePath, toAudioBuffer(request.audioData));
+    const result = await transcribeAudioFile({
+      filePath,
+      modelId: model.id,
+      dataDir: containedDataDir,
+      onState: setEngineState,
+    });
+    setEngineState({
+      status: "ready",
+      mode: "native-node",
+      modelId: model.id,
+      model: model.displayName,
+      progress: null,
       error: null,
     });
-  }
-
-  return startSidecar();
-}
-
-async function startSidecar() {
-  if (sidecarStartPromise) return sidecarStartPromise;
-
-  sidecarStartPromise = (async () => {
-    if (await checkSidecarHealth(500)) {
-      return setSidecarState({
-        status: "ready",
-        mode: "external",
-        pid: null,
-        error: null,
-      });
-    }
-
-    const launchConfig = getSidecarLaunchConfig();
-    if (launchConfig.mode === "missing") {
-      return setSidecarState({
-        status: "failed",
-        mode: "missing",
-        command: null,
-        args: [],
-        pid: null,
-        error: launchConfig.error,
-      });
-    }
-
-    setSidecarState({
-      status: "starting",
-      mode: launchConfig.mode,
-      command: launchConfig.command,
-      args: launchConfig.args,
-      pid: null,
-      error: null,
-    });
-
-    let spawnError = null;
-    sidecarProcess = spawn(launchConfig.command, launchConfig.args, {
-      cwd: launchConfig.cwd,
-      env: {
-        ...process.env,
-        ASRPRO_DATA_DIR: containedDataDir,
-        ASRPRO_EAGER_LOAD_MODEL: "0",
-      },
-      stdio: "ignore",
-      windowsHide: true,
-    });
-
-    sidecarProcess.once("error", (error) => {
-      spawnError = error;
-      setSidecarState({
-        status: "failed",
-        mode: launchConfig.mode,
-        command: launchConfig.command,
-        args: launchConfig.args,
-        pid: null,
-        error: error.message,
-      });
-    });
-
-    sidecarProcess.once("exit", (code, signal) => {
-      const wasManagedProcess = sidecarProcess;
-      sidecarProcess = undefined;
-      sidecarStartPromise = undefined;
-      if (!isQuitting && wasManagedProcess) {
-        setSidecarState({
-          status: "failed",
-          mode: launchConfig.mode,
-          pid: null,
-          error: `ASR engine exited with code ${code ?? "null"} and signal ${signal ?? "null"}.`,
-        });
-      }
-    });
-
-    const ready = await waitForSidecarHealth(15000, () => Boolean(spawnError));
-    if (ready) {
-      return setSidecarState({
-        status: "ready",
-        mode: launchConfig.mode,
-        command: launchConfig.command,
-        args: launchConfig.args,
-        pid: sidecarProcess?.pid ?? null,
-        error: null,
-      });
-    }
-
-    if (sidecarProcess && !sidecarProcess.killed) {
-      sidecarProcess.kill();
-    }
-
-    return setSidecarState({
+    return result;
+  } catch (error) {
+    setEngineState({
       status: "failed",
-      mode: launchConfig.mode,
-      command: launchConfig.command,
-      args: launchConfig.args,
-      pid: null,
-      error: spawnError?.message || "ASR engine did not become healthy before the startup timeout.",
+      mode: "native-node",
+      modelId: model.id,
+      model: model.displayName,
+      progress: null,
+      error: error instanceof Error ? error.message : "Whisper transcription failed.",
     });
-  })();
-
-  const state = await sidecarStartPromise;
-  if (state.status !== "ready") {
-    sidecarStartPromise = undefined;
+    throw error;
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
-  return state;
-}
-
-function stopSidecar() {
-  if (sidecarProcess && !sidecarProcess.killed) {
-    sidecarProcess.kill();
-  }
-  sidecarProcess = undefined;
-  sidecarStartPromise = undefined;
 }
 
 function setRecording(active, source = "app") {
@@ -803,7 +660,6 @@ function persistDraggedOverlayPosition() {
 function quitApp() {
   isQuitting = true;
   hideRecordingOverlay();
-  stopSidecar();
   if (tray) {
     tray.destroy();
     tray = undefined;
@@ -822,12 +678,12 @@ if (hasSingleInstanceLock) {
     registerIpc();
     configureMediaPermissions();
     if (SCREENSHOT_MODE) {
-      setSidecarState({
+      setEngineState({
         status: "ready",
         mode: "screenshot",
-        command: null,
-        args: [],
-        pid: null,
+        modelId: DEFAULT_MODEL.id,
+        model: DEFAULT_MODEL.displayName,
+        progress: null,
         error: null,
       });
       Menu.setApplicationMenu(null);
@@ -856,7 +712,6 @@ app.on("before-quit", () => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   hideRecordingOverlay();
-  stopSidecar();
   if (tray) {
     tray.destroy();
     tray = undefined;
