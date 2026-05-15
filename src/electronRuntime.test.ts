@@ -95,6 +95,9 @@ describe("Electron runtime helpers", () => {
     expect(mainSource).toContain("deleteTranscriptText");
     expect(mainSource).toContain("setDefaultTextEditor");
     expect(mainSource).toContain('ipcMain.handle("settings:text-editor"');
+    expect(mainSource).toContain("app.getFileIcon");
+    expect(mainSource).toContain("iconDataUrl");
+    expect(mainSource).toContain("macBundleNames");
     expect(preloadSource).toContain("openTranscriptText");
     expect(preloadSource).toContain('ipcRenderer.invoke("transcript:open-text"');
     expect(preloadSource).toContain("deleteTranscriptText");

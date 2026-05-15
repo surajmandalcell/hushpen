@@ -24,6 +24,7 @@ type TextEditorOption = {
   id: string;
   label: string;
   detail: string;
+  iconDataUrl?: string;
 };
 
 declare global {

@@ -1098,6 +1098,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("selects the default text editor from configuration", async () => {
     const user = userEvent.setup();
+    const iconDataUrl = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
     const setDefaultTextEditor = vi.fn().mockResolvedValue({ defaultTextEditor: "textedit" });
     window.asrpro = {
       getPlatform: vi.fn(),
@@ -1106,6 +1107,12 @@ describe("ASR Pro Electron shell", () => {
         isRecording: false,
         defaultModel: "Whisper Base English",
         defaultTextEditor: "system",
+        textEditors: [
+          { id: "system", label: "System default", detail: "Use the operating system default editor", iconDataUrl },
+          { id: "textedit", label: "TextEdit", detail: "Open transcript text in Apple TextEdit", iconDataUrl },
+          { id: "vscode", label: "Visual Studio Code", detail: "Open transcript text in VS Code", iconDataUrl },
+          { id: "cursor", label: "Cursor", detail: "Open transcript text in Cursor", iconDataUrl },
+        ],
         shortcut: "CommandOrControl+`",
       }),
       setRecording: vi.fn(),
@@ -1120,10 +1127,24 @@ describe("ASR Pro Electron shell", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Text editor selector" }).textContent).toContain("System default"));
     await user.click(screen.getByRole("button", { name: "Text editor selector" }));
-    await user.click(screen.getByRole("option", { name: /TextEdit/i }));
+    const systemOption = screen.getByRole("option", { name: "System default" });
+    const textEditOption = screen.getByRole("option", { name: "TextEdit" });
+    const vsCodeOption = screen.getByRole("option", { name: "Visual Studio Code" });
+
+    const systemIcon = systemOption.querySelector('[data-editor-icon="system"]');
+    const textEditIcon = textEditOption.querySelector('[data-editor-icon="textedit"]');
+    const vsCodeIcon = vsCodeOption.querySelector('[data-editor-icon="vscode"]');
+
+    expect(systemIcon?.tagName).toBe("IMG");
+    expect(textEditIcon?.tagName).toBe("IMG");
+    expect(vsCodeIcon?.tagName).toBe("IMG");
+    expect(screen.queryByText("Open transcript text in Apple TextEdit")).toBeNull();
+
+    await user.click(textEditOption);
 
     expect(setDefaultTextEditor).toHaveBeenCalledWith("textedit");
     expect(screen.getByRole("button", { name: "Text editor selector" }).textContent).toContain("TextEdit");
+    expect(screen.getByRole("button", { name: "Text editor selector" }).querySelector('[data-editor-icon="textedit"]')?.tagName).toBe("IMG");
   });
 
   it("uses shared rounded styling inside the configuration position control", async () => {

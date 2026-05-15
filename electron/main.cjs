@@ -45,23 +45,27 @@ const TEXT_EDITOR_OPTIONS = Object.freeze([
     label: "TextEdit",
     detail: "Open transcript text in Apple TextEdit",
     macApp: "TextEdit",
+    macBundleNames: ["TextEdit.app"],
   },
   {
     id: "vscode",
     label: "Visual Studio Code",
     detail: "Open transcript text in VS Code",
     macApp: "Visual Studio Code",
+    macBundleNames: ["Visual Studio Code.app"],
   },
   {
     id: "cursor",
     label: "Cursor",
     detail: "Open transcript text in Cursor",
     macApp: "Cursor",
+    macBundleNames: ["Cursor.app"],
   },
 ]);
 const DEFAULT_APP_SETTINGS = Object.freeze({
   defaultTextEditor: "system",
 });
+const textEditorIconDataUrlCache = new Map();
 
 let mainWindow;
 let overlayWindow;
@@ -431,7 +435,7 @@ function getRecordingState(source = "app") {
   };
 }
 
-function getRuntimeState() {
+async function getRuntimeState() {
   return {
     ...getRecordingState(),
     dataDir: containedDataDir,
@@ -439,7 +443,7 @@ function getRuntimeState() {
     defaultModelId: DEFAULT_MODEL.id,
     models: listModels(containedDataDir),
     defaultTextEditor: appSettings.defaultTextEditor,
-    textEditors: TEXT_EDITOR_OPTIONS,
+    textEditors: await getTextEditorOptions(),
     overlaySettings,
     engine: engineState,
     shortcut: RECORDING_SHORTCUT,
@@ -448,6 +452,69 @@ function getRuntimeState() {
       nativeWhisper: true,
     },
   };
+}
+
+async function getTextEditorOptions() {
+  return Promise.all(TEXT_EDITOR_OPTIONS.map(async (editor) => {
+    const { macApp, macBundleNames, ...publicEditor } = editor;
+    return {
+      ...publicEditor,
+      iconDataUrl: await getTextEditorIconDataUrl(editor),
+    };
+  }));
+}
+
+async function getTextEditorIconDataUrl(editor) {
+  if (textEditorIconDataUrlCache.has(editor.id)) {
+    return textEditorIconDataUrlCache.get(editor.id);
+  }
+
+  let iconDataUrl = "";
+  try {
+    const iconTarget = getTextEditorIconTarget(editor);
+    if (iconTarget) {
+      const icon = await app.getFileIcon(iconTarget, { size: "normal" });
+      if (!icon.isEmpty()) {
+        iconDataUrl = icon.resize({ width: 32, height: 32 }).toDataURL();
+      }
+    }
+  } catch {
+    iconDataUrl = "";
+  }
+
+  textEditorIconDataUrlCache.set(editor.id, iconDataUrl);
+  return iconDataUrl;
+}
+
+function getTextEditorIconTarget(editor) {
+  if (editor.id === DEFAULT_APP_SETTINGS.defaultTextEditor) {
+    return ensureSystemTextIconProbe();
+  }
+
+  if (process.platform === "darwin" && Array.isArray(editor.macBundleNames)) {
+    const appDirectories = [
+      "/Applications",
+      "/System/Applications",
+      path.join(app.getPath("home"), "Applications"),
+    ];
+
+    for (const appDirectory of appDirectories) {
+      for (const bundleName of editor.macBundleNames) {
+        const bundlePath = path.join(appDirectory, bundleName);
+        if (fs.existsSync(bundlePath)) return bundlePath;
+      }
+    }
+  }
+
+  return "";
+}
+
+function ensureSystemTextIconProbe() {
+  const probePath = path.join(containedDataDir, "config", "text-editor-icon-probe.txt");
+  if (!fs.existsSync(probePath)) {
+    fs.writeFileSync(probePath, "", "utf8");
+  }
+  return probePath;
 }
 
 function setEngineState(nextState) {

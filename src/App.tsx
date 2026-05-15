@@ -94,6 +94,7 @@ interface TextEditorOption {
   id: string;
   label: string;
   detail: string;
+  iconDataUrl?: string;
 }
 
 interface NavItem {
@@ -409,6 +410,7 @@ function normalizeTextEditorOptions(options: unknown): TextEditorOption[] {
       id: String(candidate.id),
       label: String(candidate.label),
       detail: candidate.detail ? String(candidate.detail) : "",
+      iconDataUrl: typeof candidate.iconDataUrl === "string" ? candidate.iconDataUrl : undefined,
     });
   }
 
@@ -2419,6 +2421,11 @@ function TextEditorSelector({ options, selectedEditorId, selectedLabel, onSelect
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listboxId = useRef(`text-editor-options-${Math.random().toString(36).slice(2)}`);
+  const selectedEditor = options.find((editor) => editor.id === selectedEditorId) ?? {
+    id: selectedEditorId,
+    label: selectedLabel,
+    detail: "",
+  };
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -2459,7 +2466,7 @@ function TextEditorSelector({ options, selectedEditorId, selectedLabel, onSelect
         className="w-full min-w-0 justify-start px-2 py-1.5 text-left"
         onClick={() => setIsOpen((current) => !current)}
       >
-        <FileText className="size-3 shrink-0 text-[#bdbdbd]" />
+        <TextEditorIcon editor={selectedEditor} className="size-3 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
       </PanelControlButton>
 
@@ -2476,14 +2483,11 @@ function TextEditorSelector({ options, selectedEditorId, selectedLabel, onSelect
               <DropdownOptionButton
                 key={editor.id}
                 selected={selected}
-                aria-label={`${editor.label}${editor.detail ? `, ${editor.detail}` : ""}`}
+                aria-label={editor.label}
                 onClick={() => handleSelect(editor.id)}
               >
-                <FileText className="mt-0.5 size-3 shrink-0 text-[#bdbdbd]" />
-                <span className="min-w-0 flex-1">
-                  <span className="block whitespace-normal break-words">{editor.label}</span>
-                  {editor.detail ? <span className="block whitespace-normal break-words text-[11px] font-medium text-[#9f9f9f]">{editor.detail}</span> : null}
-                </span>
+                <TextEditorIcon editor={editor} className="mt-0.5 size-3 shrink-0" />
+                <span className="min-w-0 flex-1 whitespace-normal break-words">{editor.label}</span>
                 {selected ? <Check className="mt-0.5 size-3 shrink-0 text-[#9bcfff]" /> : null}
               </DropdownOptionButton>
             );
@@ -2491,6 +2495,22 @@ function TextEditorSelector({ options, selectedEditorId, selectedLabel, onSelect
         </DropdownSurface>
       ) : null}
     </div>
+  );
+}
+
+function TextEditorIcon({ editor, className }: { editor: TextEditorOption; className: string }) {
+  if (!editor.iconDataUrl) {
+    return <span aria-hidden="true" data-editor-icon={editor.id} className={className} />;
+  }
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      data-editor-icon={editor.id}
+      className={`${className} rounded-[3px] object-contain`}
+      src={editor.iconDataUrl}
+    />
   );
 }
 
