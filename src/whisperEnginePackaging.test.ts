@@ -36,6 +36,17 @@ describe("ASR engine development scripts", () => {
     ]));
   });
 
+  it("keeps the app icon padded and on the selected Light Glass background", () => {
+    const iconSource = readFileSync("src/assets/asrpro-app-icon.svg", "utf8");
+
+    expect(iconSource).toContain('id="light-glass"');
+    expect(iconSource).toContain('data-icon-artwork="padded"');
+    expect(iconSource).toContain('transform="translate(72 72) scale(0.859375)"');
+    expect(iconSource).toContain('stop-color="#d5dad8"');
+    expect(iconSource).toContain('stop-color="#b3bbb9"');
+    expect(iconSource).toContain('stop-color="#879190"');
+  });
+
   it("launches the Electron shell without waiting for the lazy engine", () => {
     const electronDevScript = packageMetadata.scripts["electron:dev"];
 

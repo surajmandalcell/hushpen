@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="ASR Pro logo">
   <defs>
-    <linearGradient id="blue-titanium" x1="166" y1="116" x2="884" y2="944" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#b4bec2"/>
-      <stop offset="0.48" stop-color="#7d8b91"/>
-      <stop offset="1" stop-color="#56646a"/>
+    <linearGradient id="light-glass" x1="166" y1="116" x2="884" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d5dad8"/>
+      <stop offset="0.48" stop-color="#b3bbb9"/>
+      <stop offset="1" stop-color="#879190"/>
     </linearGradient>
     <linearGradient id="surface-shade" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
@@ -14,8 +14,8 @@
       <rect width="1024" height="1024" rx="224"/>
     </clipPath>
   </defs>
-  <g clip-path="url(#icon-clip)">
-    <rect width="1024" height="1024" rx="224" fill="url(#blue-titanium)"/>
+  <g data-icon-artwork="padded" transform="translate(72 72) scale(0.859375)" clip-path="url(#icon-clip)">
+    <rect width="1024" height="1024" rx="224" fill="url(#light-glass)"/>
     <rect width="1024" height="1024" rx="224" fill="url(#surface-shade)"/>
     <g transform="translate(205 205) scale(0.6)">
       <path

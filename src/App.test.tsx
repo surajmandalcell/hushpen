@@ -294,18 +294,18 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByRole("list", { name: "Highlights" })).toBeNull();
   });
 
-  it("uses the Blue Titanium brand tile on About", async () => {
+  it("uses the Light Glass brand tile on About", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "About" }));
 
-    const brandTile = document.querySelector('[data-brand-icon-surface="blue-titanium"]');
+    const brandTile = document.querySelector('[data-brand-icon-surface="light-glass"]');
 
     expect(brandTile).toBeTruthy();
-    expect(brandTile?.getAttribute("style")).toContain("rgb(180, 190, 194)");
-    expect(brandTile?.getAttribute("style")).toContain("rgb(125, 139, 145)");
-    expect(brandTile?.getAttribute("style")).toContain("rgb(86, 100, 106)");
+    expect(brandTile?.getAttribute("style")).toContain("rgb(213, 218, 216)");
+    expect(brandTile?.getAttribute("style")).toContain("rgb(179, 187, 185)");
+    expect(brandTile?.getAttribute("style")).toContain("rgb(135, 145, 144)");
   });
 
   it("shows real About metadata without implementation stack or highlights", async () => {

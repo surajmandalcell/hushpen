@@ -2349,9 +2349,9 @@ function AboutView({ appInfo, storagePath }: AboutViewProps) {
       <section aria-label="About product summary" className={panelSurfaceClass}>
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start">
           <div
-            data-brand-icon-surface="blue-titanium"
+            data-brand-icon-surface="light-glass"
             className="grid size-[72px] shrink-0 place-items-center rounded-[16px] text-[#26343b] shadow-[inset_0_1px_0_rgba(255,255,255,0.44),inset_0_-10px_18px_rgba(0,0,0,0.18)]"
-            style={{ background: "linear-gradient(145deg, #b4bec2, #7d8b91 48%, #56646a)" }}
+            style={{ background: "linear-gradient(145deg, #d5dad8, #b3bbb9 48%, #879190)" }}
           >
             <AppLogoMark className="size-16" title="ASR Pro" />
           </div>
