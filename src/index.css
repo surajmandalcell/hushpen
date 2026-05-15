@@ -246,36 +246,49 @@
   }
 
   /* Scrollbar styles */
+  *,
   .scrollbar-macos {
     scrollbar-width: thin;
-    scrollbar-color: rgba(214, 214, 214, 0.18) transparent;
+    scrollbar-color: rgba(214, 214, 214, 0.12) transparent;
+  }
+
+  .scrollbar-macos {
     scrollbar-gutter: stable;
   }
 
+  *::-webkit-scrollbar,
   .scrollbar-macos::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 8px;
+    height: 8px;
   }
 
+  *::-webkit-scrollbar-track,
   .scrollbar-macos::-webkit-scrollbar-track {
     background: transparent;
   }
 
+  *::-webkit-scrollbar-thumb,
   .scrollbar-macos::-webkit-scrollbar-thumb {
     min-height: 36px;
+    border: 3px solid transparent;
     border-radius: 999px;
-    background: rgba(214, 214, 214, 0.18);
-    background-clip: padding-box;
+    background: rgba(214, 214, 214, 0.12);
+    background-clip: content-box;
     transition: background 150ms ease;
   }
 
+  *::-webkit-scrollbar-thumb:hover,
   .scrollbar-macos::-webkit-scrollbar-thumb:hover {
-    background: rgba(214, 214, 214, 0.28);
-    background-clip: padding-box;
+    background: rgba(214, 214, 214, 0.2);
+    background-clip: content-box;
   }
 
   .dropdown-options-scrollbar {
     scrollbar-gutter: auto;
+  }
+
+  .dropdown-options-scrollbar::-webkit-scrollbar-track {
+    margin-block: 6px;
   }
 
   .scrollbar-autohide {
@@ -284,23 +297,24 @@
 
   .scrollbar-autohide:not(.is-scrollbar-visible)::-webkit-scrollbar-thumb {
     background: transparent;
-    background-clip: padding-box;
+    background-clip: content-box;
   }
 
   .scrollbar-autohide.is-scrollbar-visible {
-    scrollbar-color: rgba(214, 214, 214, 0.18) transparent;
+    scrollbar-color: rgba(214, 214, 214, 0.12) transparent;
   }
 
   .scrollbar-autohide.is-scrollbar-visible::-webkit-scrollbar-thumb {
-    background: rgba(214, 214, 214, 0.18);
-    background-clip: padding-box;
+    background: rgba(214, 214, 214, 0.12);
+    background-clip: content-box;
   }
 
   .scrollbar-autohide.is-scrollbar-visible::-webkit-scrollbar-thumb:hover {
-    background: rgba(214, 214, 214, 0.28);
-    background-clip: padding-box;
+    background: rgba(214, 214, 214, 0.2);
+    background-clip: content-box;
   }
 
+  *::-webkit-scrollbar-corner,
   .scrollbar-macos::-webkit-scrollbar-corner {
     background: transparent;
   }

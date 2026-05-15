@@ -146,17 +146,19 @@ describe("ASR Pro Electron shell", () => {
     expect(css).toContain(".app-chrome :is(input, textarea, select, [contenteditable=\"true\"])");
   });
 
-  it("defines one thin scrollbar style with autohide scoped to the main content pane", () => {
+  it("defines subtle inset scrollbar styling with class-specific autohide", () => {
     const css = appStylesheet();
 
+    expect(css).toContain("*::-webkit-scrollbar");
     expect(css).toContain(".scrollbar-macos");
     expect(css).toContain(".scrollbar-autohide");
-    expect(css).toContain("width: 4px;");
-    expect(css).toContain("height: 4px;");
-    expect(css).toContain("rgba(214, 214, 214, 0.18)");
+    expect(css).toContain("width: 8px;");
+    expect(css).toContain("height: 8px;");
+    expect(css).toContain("border: 3px solid transparent;");
+    expect(css).toContain("background-clip: content-box;");
+    expect(css).toContain("rgba(214, 214, 214, 0.12)");
     expect(css).toContain(".scrollbar-autohide:not(.is-scrollbar-visible)");
     expect(css).not.toContain("width: 10px;");
-    expect(css).not.toContain("border: 3px solid transparent;");
   });
 
   it("keeps scrollbar autohide behavior off dropdowns and sidebar scroll areas", async () => {
@@ -188,6 +190,8 @@ describe("ASR Pro Electron shell", () => {
     expect(listbox.className).toContain("pr-0.5");
     expect(listbox.className).not.toContain("scrollbar-autohide");
     expect(listbox.className).not.toContain("is-scrollbar-visible");
+    expect(appStylesheet()).toContain(".dropdown-options-scrollbar::-webkit-scrollbar-track");
+    expect(appStylesheet()).toContain("margin-block: 6px;");
   });
 
   it("renders a Superwhisper-style home surface without the bottom-left Pro pill", () => {
