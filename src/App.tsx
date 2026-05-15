@@ -661,14 +661,17 @@ function formatShortcutParts(shortcut?: string) {
 }
 
 function getErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : "Recording failed";
+  const rawMessage = error instanceof Error ? error.message : "Recording failed";
+  const message = rawMessage
+    .replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i, "")
+    .trim();
 
-  if (/No handler registered|Error invoking remote method/i.test(message)) {
-    return "Native Whisper engine needs restart. Restart ASR Pro, then try again.";
+  if (/Model download failed|checksum mismatch|\.download|ENOENT.*models[\\/]+whisper|rename .*ggml-/i.test(message)) {
+    return "Whisper model download failed. Check your connection and try again.";
   }
 
-  if (/Model download failed|checksum mismatch/i.test(message)) {
-    return "Whisper model download failed. Check your connection and try again.";
+  if (/No handler registered/i.test(rawMessage)) {
+    return "Native Whisper engine needs restart. Restart ASR Pro, then try again.";
   }
 
   if (/native Whisper addon|whisper\.node|libwhisper/i.test(message)) {
@@ -943,7 +946,8 @@ function App() {
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
   const [openingTranscriptRowId, setOpeningTranscriptRowId] = useState<string | null>(null);
-  const [modelActionId, setModelActionId] = useState<string | null>(null);
+  const [modelActionIds, setModelActionIds] = useState<Set<string>>(() => new Set());
+  const [modelDownloadProgress, setModelDownloadProgress] = useState<Record<string, number>>({});
   const [modelLibraryError, setModelLibraryError] = useState<string | null>(null);
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
   const recordingStartedAtRef = useRef<number | null>(null);
@@ -951,6 +955,7 @@ function App() {
   const runtimeStateLoadedRef = useRef(false);
   const scrollbarTimerRef = useRef<number | null>(null);
   const overlayPlacementTouchedRef = useRef(false);
+  const modelActionIdsRef = useRef<Set<string>>(new Set());
   useMicrophoneWaveform(isRecording);
 
   const addHistoryRow = useCallback((row: TranscriptHistoryRow) => {
@@ -1184,11 +1189,45 @@ function App() {
     textEditorOptions.find((editor) => editor.id === selectedTextEditorId)?.label ?? defaultTextEditorOptions[0].label
   ), [selectedTextEditorId, textEditorOptions]);
 
+  const beginModelAction = useCallback((modelId: string) => {
+    if (modelActionIdsRef.current.has(modelId)) return false;
+    const nextIds = new Set(modelActionIdsRef.current);
+    nextIds.add(modelId);
+    modelActionIdsRef.current = nextIds;
+    setModelActionIds(nextIds);
+    return true;
+  }, []);
+
+  const endModelAction = useCallback((modelId: string) => {
+    if (!modelActionIdsRef.current.has(modelId)) return;
+    const nextIds = new Set(modelActionIdsRef.current);
+    nextIds.delete(modelId);
+    modelActionIdsRef.current = nextIds;
+    setModelActionIds(nextIds);
+  }, []);
+
+  const updateModelDownloadProgress = useCallback((modelId: string, progress: number) => {
+    const nextProgress = clampNumber(progress, 0, 100);
+    setModelDownloadProgress((current) => (
+      current[modelId] === nextProgress ? current : { ...current, [modelId]: nextProgress }
+    ));
+  }, []);
+
+  const clearModelDownloadProgress = useCallback((modelId: string) => {
+    setModelDownloadProgress((current) => {
+      if (!(modelId in current)) return current;
+      const next = { ...current };
+      delete next[modelId];
+      return next;
+    });
+  }, []);
+
   const handleDownloadModel = useCallback(async (modelId: string) => {
     const downloadModel = window.asrpro?.downloadModel;
     if (!downloadModel) return;
+    if (!beginModelAction(modelId)) return;
 
-    setModelActionId(modelId);
+    updateModelDownloadProgress(modelId, 0);
     setModelLibraryError(null);
 
     try {
@@ -1197,15 +1236,16 @@ function App() {
     } catch (error) {
       setModelLibraryError(getErrorMessage(error));
     } finally {
-      setModelActionId(null);
+      endModelAction(modelId);
+      clearModelDownloadProgress(modelId);
     }
-  }, []);
+  }, [beginModelAction, clearModelDownloadProgress, endModelAction, updateModelDownloadProgress]);
 
   const handleDeleteModel = useCallback(async (modelId: string) => {
     const deleteModel = window.asrpro?.deleteModel;
     if (!deleteModel) return;
+    if (!beginModelAction(modelId)) return;
 
-    setModelActionId(modelId);
     setModelLibraryError(null);
 
     try {
@@ -1214,9 +1254,10 @@ function App() {
     } catch (error) {
       setModelLibraryError(getErrorMessage(error));
     } finally {
-      setModelActionId(null);
+      endModelAction(modelId);
+      clearModelDownloadProgress(modelId);
     }
-  }, []);
+  }, [beginModelAction, clearModelDownloadProgress, endModelAction]);
 
   const startRecordingFlow = useCallback(async (syncBridge = true) => {
     if (recordingTransitionRef.current || audioRecordingService.isRecording()) {
@@ -1391,13 +1432,18 @@ function App() {
 
     const unsubscribeEngine = api.onEngineState?.((engineState) => {
       setRuntimeInfo((current) => (current ? { ...current, engine: engineState } : { isRecording: false, engine: engineState }));
+      if (engineState.modelId && engineState.status === "downloading" && typeof engineState.progress === "number") {
+        updateModelDownloadProgress(engineState.modelId, engineState.progress);
+      } else if (engineState.modelId && engineState.status !== "downloading") {
+        clearModelDownloadProgress(engineState.modelId);
+      }
     });
 
     return () => {
       unsubscribeRecording?.();
       unsubscribeEngine?.();
     };
-  }, [startRecordingFlow, stopRecordingFlow]);
+  }, [clearModelDownloadProgress, startRecordingFlow, stopRecordingFlow, updateModelDownloadProgress]);
 
   useEffect(() => {
     void refreshAudioInputDevices();
@@ -1531,7 +1577,8 @@ function App() {
                 models={runtimeModels}
                 storageStats={runtimeInfo?.storageStats}
                 engine={runtimeInfo?.engine}
-                busyModelId={modelActionId}
+                busyModelIds={modelActionIds}
+                modelProgressById={modelDownloadProgress}
                 actionError={modelLibraryError}
                 onSelectModel={handleSelectModel}
                 onDownloadModel={handleDownloadModel}
@@ -2159,7 +2206,8 @@ interface ModelsViewProps {
   models: EngineModelInfo[];
   storageStats?: RuntimeStorageStats;
   engine?: EngineRuntimeState;
-  busyModelId: string | null;
+  busyModelIds: ReadonlySet<string>;
+  modelProgressById: Record<string, number>;
   actionError: string | null;
   onSelectModel: (model: string) => void;
   onDownloadModel: (modelId: string) => void;
@@ -2171,7 +2219,8 @@ function ModelsView({
   models,
   storageStats,
   engine,
-  busyModelId,
+  busyModelIds,
+  modelProgressById,
   actionError,
   onSelectModel,
   onDownloadModel,
@@ -2182,12 +2231,16 @@ function ModelsView({
       <GroupedPanel title="Recognition models" allowOverflow>
         {models.map((model) => {
           const selected = selectedModel === model.displayName;
-          const busy = busyModelId === model.id;
+          const busy = busyModelIds.has(model.id);
           const installed = Boolean(model.installed);
           const diskLabel = installed && model.diskBytes ? formatByteCount(model.diskBytes) : model.sizeLabel;
-          const progress = busy && engine?.modelId === model.id && typeof engine.progress === "number"
+          const trackedProgress = modelProgressById[model.id];
+          const fallbackProgress = busy && engine?.modelId === model.id && typeof engine.progress === "number"
             ? clampNumber(engine.progress, 0, 100)
             : null;
+          const progress = busy && typeof trackedProgress === "number"
+            ? clampNumber(trackedProgress, 0, 100)
+            : fallbackProgress;
 
           return (
             <div

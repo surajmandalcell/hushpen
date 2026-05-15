@@ -1,12 +1,20 @@
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import https from "node:https";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { Readable } from "node:stream";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const runtime = require("../electron/runtime.cjs");
 const whisperEngine = require("../electron/whisper-engine.cjs");
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("Electron runtime helpers", () => {
   it("uses CommandOrControl+` as the global recording shortcut", () => {
@@ -130,6 +138,52 @@ describe("Electron runtime helpers", () => {
     expect(mainSource).toContain('ipcMain.handle("engine:transcribe-audio"');
     expect(preloadSource).toContain("transcribeAudio");
     expect(mainSource.indexOf("createWindow();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut();"));
+  });
+
+  it("shares one in-flight file download when the same model is requested twice", async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "asrpro-duplicate-model-download-"));
+    const model = whisperEngine.AVAILABLE_MODELS.find((candidate: { id: string }) => candidate.id === "whisper-tiny-en");
+    const originalSha1 = model.sha1;
+    const payload = Buffer.from("tiny model fixture");
+    model.sha1 = createHash("sha1").update(payload).digest("hex");
+    let requestCount = 0;
+
+    vi.spyOn(https, "get").mockImplementation(((_url: string | URL, callback: (response: Readable) => void) => {
+      requestCount += 1;
+      const request = new EventEmitter();
+      const response = new Readable({
+        read() {},
+      }) as Readable & {
+        statusCode?: number;
+        headers: Record<string, string>;
+      };
+      response.statusCode = 200;
+      response.headers = { "content-length": String(payload.length) };
+
+      setTimeout(() => {
+        callback(response);
+        setTimeout(() => {
+          response.push(payload);
+          response.push(null);
+        }, 5);
+      }, 0);
+
+      return request;
+    }) as typeof https.get);
+
+    try {
+      const [first, second] = await Promise.all([
+        whisperEngine.downloadModelFile({ modelId: model.id, dataDir }),
+        whisperEngine.downloadModelFile({ modelId: model.id, dataDir }),
+      ]);
+
+      expect(first.path).toBe(second.path);
+      expect(requestCount).toBe(1);
+      expect(readFileSync(whisperEngine.getModelPath(dataDir, model.id))).toEqual(payload);
+    } finally {
+      model.sha1 = originalSha1;
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("opens history transcript text through Electron IPC", () => {

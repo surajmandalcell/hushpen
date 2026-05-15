@@ -58,6 +58,7 @@ const AVAILABLE_MODELS = Object.freeze([
 const DEFAULT_MODEL = AVAILABLE_MODELS[1];
 
 let addon;
+const modelDownloadPromises = new Map();
 
 function getModelById(modelId) {
   return AVAILABLE_MODELS.find((model) => model.id === modelId) || DEFAULT_MODEL;
@@ -150,27 +151,43 @@ async function ensureModel(model, dataDir, onState = () => {}) {
     return modelPath;
   }
 
-  fs.mkdirSync(path.dirname(modelPath), { recursive: true });
-  onState({
-    status: "downloading",
-    modelId: model.id,
-    model: model.displayName,
-    detail: `Downloading ${model.displayName}`,
-    progress: 0,
-  });
+  const downloadKey = `${path.resolve(dataDir)}:${model.id}`;
+  const currentDownload = modelDownloadPromises.get(downloadKey);
+  if (currentDownload) return currentDownload;
 
-  await downloadFile(`${WHISPER_MODEL_BASE_URL}/${model.fileName}`, modelPath, (progress) => {
+  const downloadPromise = (async () => {
+    fs.mkdirSync(path.dirname(modelPath), { recursive: true });
     onState({
       status: "downloading",
       modelId: model.id,
       model: model.displayName,
       detail: `Downloading ${model.displayName}`,
-      progress,
+      progress: 0,
     });
-  });
 
-  await verifySha1(modelPath, model.sha1);
-  return modelPath;
+    await downloadFile(`${WHISPER_MODEL_BASE_URL}/${model.fileName}`, modelPath, (progress) => {
+      onState({
+        status: "downloading",
+        modelId: model.id,
+        model: model.displayName,
+        detail: `Downloading ${model.displayName}`,
+        progress,
+      });
+    });
+
+    await verifySha1(modelPath, model.sha1);
+    return modelPath;
+  })();
+
+  modelDownloadPromises.set(downloadKey, downloadPromise);
+
+  try {
+    return await downloadPromise;
+  } finally {
+    if (modelDownloadPromises.get(downloadKey) === downloadPromise) {
+      modelDownloadPromises.delete(downloadKey);
+    }
+  }
 }
 
 async function downloadModelFile({ modelId, dataDir, onState = () => {} }) {
@@ -227,10 +244,21 @@ function downloadFile(url, destination, onProgress = () => {}) {
       response.pipe(output);
 
       output.on("finish", () => {
-        output.close(() => {
-          fs.renameSync(tempPath, destination);
-          onProgress(100);
-          resolve();
+        output.close((closeError) => {
+          if (closeError) {
+            fs.rmSync(tempPath, { force: true });
+            reject(closeError);
+            return;
+          }
+
+          try {
+            fs.renameSync(tempPath, destination);
+            onProgress(100);
+            resolve();
+          } catch (error) {
+            fs.rmSync(tempPath, { force: true });
+            reject(error);
+          }
         });
       });
       output.on("error", (error) => {

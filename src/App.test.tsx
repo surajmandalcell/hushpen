@@ -1232,6 +1232,142 @@ describe("ASR Pro Electron shell", () => {
     expect(deleteModel).toHaveBeenCalledWith("whisper-base-en");
   });
 
+  it("keeps concurrent model setup progress attached to each row", async () => {
+    const user = userEvent.setup();
+    const models = [
+      {
+        id: "whisper-tiny-en",
+        displayName: "Whisper Tiny English",
+        detail: "Fastest local model, lowest memory use",
+        sizeLabel: "75 MiB",
+        installed: false,
+        diskBytes: 0,
+      },
+      {
+        id: "whisper-small-en",
+        displayName: "Whisper Small English",
+        detail: "Better accuracy, larger local model",
+        sizeLabel: "466 MiB",
+        installed: false,
+        diskBytes: 0,
+      },
+    ];
+    let engineListener: ((state: any) => void) | undefined;
+    const downloadResolvers: Record<string, (state: any) => void> = {};
+    const downloadModel = vi.fn((modelId: string) => new Promise((resolve) => {
+      downloadResolvers[modelId] = resolve;
+    }));
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Whisper Base English",
+        models,
+        shortcut: "CommandOrControl+`",
+      }),
+      downloadModel,
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      onEngineState: vi.fn((listener) => {
+        engineListener = listener;
+        return vi.fn();
+      }),
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Models library" }));
+
+    const tinyDownloadButton = await screen.findByRole("button", { name: "Download Whisper Tiny English" }) as HTMLButtonElement;
+    const smallDownloadButton = screen.getByRole("button", { name: "Download Whisper Small English" }) as HTMLButtonElement;
+
+    try {
+      await user.click(tinyDownloadButton);
+      await waitFor(() => expect(downloadModel).toHaveBeenCalledWith("whisper-tiny-en"));
+      act(() => {
+        engineListener?.({
+          status: "downloading",
+          modelId: "whisper-tiny-en",
+          model: "Whisper Tiny English",
+          detail: "Downloading Whisper Tiny English",
+          progress: 25,
+        });
+      });
+      expect(await screen.findByText("25%")).toBeTruthy();
+
+      await user.click(smallDownloadButton);
+      await waitFor(() => expect(downloadModel).toHaveBeenCalledWith("whisper-small-en"));
+      act(() => {
+        engineListener?.({
+          status: "downloading",
+          modelId: "whisper-small-en",
+          model: "Whisper Small English",
+          detail: "Downloading Whisper Small English",
+          progress: 40,
+        });
+      });
+
+      expect(screen.getByText("25%")).toBeTruthy();
+      expect(screen.getByText("40%")).toBeTruthy();
+      expect(tinyDownloadButton.disabled).toBe(true);
+      expect(smallDownloadButton.disabled).toBe(true);
+    } finally {
+      act(() => {
+        downloadResolvers["whisper-tiny-en"]?.({
+          isRecording: false,
+          defaultModel: "Whisper Base English",
+          models,
+        });
+        downloadResolvers["whisper-small-en"]?.({
+          isRecording: false,
+          defaultModel: "Whisper Base English",
+          models,
+        });
+      });
+    }
+  });
+
+  it("shows model setup failures instead of restart guidance for IPC download errors", async () => {
+    const user = userEvent.setup();
+    const models = [
+      {
+        id: "whisper-base",
+        displayName: "Whisper Base Multilingual",
+        detail: "Small multilingual model with language detection",
+        sizeLabel: "142 MiB",
+        installed: false,
+        diskBytes: 0,
+      },
+    ];
+    const downloadModel = vi.fn().mockRejectedValue(
+      new Error("Error invoking remote method 'engine:model-download': Error: ENOENT: no such file or directory, rename 'C:\\Users\\shekh\\AppData\\Roaming\\ASR Pro\\data\\models\\whisper\\ggml-base.bin.download' -> 'C:\\Users\\shekh\\AppData\\Roaming\\ASR Pro\\data\\models\\whisper\\ggml-base.bin'")
+    );
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Whisper Base English",
+        models,
+        shortcut: "CommandOrControl+`",
+      }),
+      downloadModel,
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Models library" }));
+    await user.click(await screen.findByRole("button", { name: "Download Whisper Base Multilingual" }));
+
+    expect(await screen.findByText("Whisper model download failed. Check your connection and try again.")).toBeTruthy();
+    expect(screen.queryByText(/Restart ASR Pro/i)).toBeNull();
+  });
+
   it("selects models only through the check button", async () => {
     const user = userEvent.setup();
     const models = [
