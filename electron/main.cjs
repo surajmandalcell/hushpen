@@ -78,6 +78,7 @@ function configureContainedData() {
     path.join(containedDataDir, "config"),
     path.join(containedDataDir, "session"),
     path.join(containedDataDir, "logs"),
+    path.join(containedDataDir, "transcripts"),
     paths.modelsDir,
     paths.whisperModelsDir,
   ]) {
@@ -216,6 +217,8 @@ function registerIpc() {
   ipcMain.handle("engine:models", () => listModels(containedDataDir));
 
   ipcMain.handle("engine:transcribe-audio", (_event, request) => transcribeAudio(request));
+
+  ipcMain.handle("transcript:open-text", (_event, request) => openTranscriptText(request));
 
   ipcMain.handle("overlay-settings:get", () => overlaySettings);
 
@@ -468,6 +471,33 @@ async function transcribeAudio(request = {}) {
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+function sanitizeTranscriptFileName(value = "transcript") {
+  const normalized = String(value)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return (normalized || "transcript").slice(0, 80);
+}
+
+async function openTranscriptText(request = {}) {
+  const title = typeof request.title === "string" && request.title.trim() ? request.title : "Transcript";
+  const text = typeof request.text === "string" ? request.text.trim() : "";
+  const transcriptDir = path.join(containedDataDir, "transcripts");
+  const fileName = `${sanitizeTranscriptFileName(title)}.txt`;
+  const filePath = path.join(transcriptDir, fileName);
+
+  fs.mkdirSync(transcriptDir, { recursive: true });
+  fs.writeFileSync(filePath, `${text || "No transcript text available."}\n`, "utf8");
+
+  const openError = await shell.openPath(filePath);
+  if (openError) {
+    throw new Error(openError);
+  }
+
+  return { filePath };
 }
 
 function setRecording(active, source = "app") {

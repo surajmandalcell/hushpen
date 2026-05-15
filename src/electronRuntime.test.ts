@@ -74,6 +74,17 @@ describe("Electron runtime helpers", () => {
     expect(mainSource.indexOf("createWindow();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut();"));
   });
 
+  it("opens history transcript text through Electron IPC", () => {
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+
+    expect(mainSource).toContain('ipcMain.handle("transcript:open-text"');
+    expect(mainSource).toContain("openTranscriptText");
+    expect(mainSource).toContain("shell.openPath(filePath)");
+    expect(preloadSource).toContain("openTranscriptText");
+    expect(preloadSource).toContain('ipcRenderer.invoke("transcript:open-text"');
+  });
+
   it("renders the recording overlay as a text-free waveform pill", () => {
     const html = runtime.createRecordingOverlayHtml();
 

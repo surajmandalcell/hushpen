@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  FileText,
   Github,
   Headphones,
   History,
@@ -258,6 +259,7 @@ const panelDividerClass = "border-white/[0.08]";
 const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusClass} bg-white/[0.07] text-[#d7d7d7]`;
 const focusRingClass = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]";
 const panelControlButtonClass = `inline-flex min-h-8 items-center justify-center gap-1.5 ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] ${focusRingClass}`;
+const historyActionButtonClass = `grid size-7 place-items-center ${sharedRadiusClass} text-[#bdbdbd] transition hover:bg-[#555] hover:text-white disabled:cursor-wait disabled:opacity-55`;
 const dropdownSurfaceClass = `scrollbar-macos absolute z-50 max-h-64 overflow-y-auto ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] p-1 shadow-2xl shadow-black/40`;
 const dropdownOptionButtonClass = `flex w-full min-w-0 items-start gap-2 ${insetControlRadiusClass} px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition`;
 const segmentedControlClass = `inline-flex ${sharedRadiusClass} border border-white/[0.08] bg-[#2b2b2b] p-0.5`;
@@ -802,6 +804,7 @@ function App() {
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
+  const [openingTranscriptRowId, setOpeningTranscriptRowId] = useState<string | null>(null);
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
@@ -909,6 +912,30 @@ function App() {
       setReprocessingHistoryRowId(null);
     }
   }, [reprocessingHistoryRowId, selectedModel, transcribeRecording, updateHistoryRow]);
+
+  const openHistoryTranscriptText = useCallback(async (row: TranscriptHistoryRow) => {
+    if (!row.text.trim() || openingTranscriptRowId) return;
+
+    setOpeningTranscriptRowId(row.id);
+
+    try {
+      const request = {
+        title: row.title,
+        text: row.text,
+      };
+
+      if (window.asrpro?.openTranscriptText) {
+        await window.asrpro.openTranscriptText(request);
+        return;
+      }
+
+      const blobUrl = URL.createObjectURL(new Blob([`${row.text.trim()}\n`], { type: "text/plain;charset=utf-8" }));
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } finally {
+      setOpeningTranscriptRowId(null);
+    }
+  }, [openingTranscriptRowId]);
 
   const refreshAudioInputDevices = useCallback(async () => {
     const mediaDevices = navigator.mediaDevices;
@@ -1252,8 +1279,10 @@ function App() {
                 rows={historyRows}
                 onCopyRow={copyHistoryText}
                 onReprocessRow={reprocessHistoryRow}
+                onOpenTranscriptRow={openHistoryTranscriptText}
                 onDeleteRow={deleteHistoryRow}
                 reprocessingRowId={reprocessingHistoryRowId}
+                openingTranscriptRowId={openingTranscriptRowId}
               />
             )}
             {activeView === "about" && <AboutView appInfo={appInfo} storagePath={runtimeInfo?.dataDir} />}
@@ -1905,11 +1934,13 @@ interface HistoryViewProps {
   rows: TranscriptHistoryRow[];
   onCopyRow: (text: string) => void;
   onReprocessRow: (row: TranscriptHistoryRow) => void;
+  onOpenTranscriptRow: (row: TranscriptHistoryRow) => void;
   onDeleteRow: (rowId: string) => void;
   reprocessingRowId: string | null;
+  openingTranscriptRowId: string | null;
 }
 
-function HistoryView({ rows, onCopyRow, onReprocessRow, onDeleteRow, reprocessingRowId }: HistoryViewProps) {
+function HistoryView({ rows, onCopyRow, onReprocessRow, onOpenTranscriptRow, onDeleteRow, reprocessingRowId, openingTranscriptRowId }: HistoryViewProps) {
   const [query, setQuery] = useState("");
   const [expandedRowId, setExpandedRowId] = useState<string | null>(rows[0]?.id ?? null);
   const normalizedQuery = query.trim().toLowerCase();
@@ -1966,9 +1997,11 @@ function HistoryView({ rows, onCopyRow, onReprocessRow, onDeleteRow, reprocessin
                     expanded={expandedRowId === row.id}
                     onCopy={() => onCopyRow(row.text)}
                     onReprocess={() => onReprocessRow(row)}
+                    onOpenTranscript={() => onOpenTranscriptRow(row)}
                     onDelete={() => onDeleteRow(row.id)}
                     onToggle={() => setExpandedRowId((current) => (current === row.id ? null : row.id))}
                     reprocessing={reprocessingRowId === row.id}
+                    openingTranscript={openingTranscriptRowId === row.id}
                   />
                 ))}
               </div>
@@ -1990,13 +2023,16 @@ interface HistoryCardProps {
   expanded: boolean;
   onCopy: () => void;
   onReprocess: () => void;
+  onOpenTranscript: () => void;
   onDelete: () => void;
   onToggle: () => void;
   reprocessing: boolean;
+  openingTranscript: boolean;
 }
 
-function HistoryCard({ row, expanded, onCopy, onReprocess, onDelete, onToggle, reprocessing }: HistoryCardProps) {
+function HistoryCard({ row, expanded, onCopy, onReprocess, onOpenTranscript, onDelete, onToggle, reprocessing, openingTranscript }: HistoryCardProps) {
   const canReprocess = Boolean(row.recordingUrl);
+  const canOpenTranscript = Boolean(row.text.trim());
 
   return (
     <article className={`${panelSurfaceClass} p-4 transition-colors duration-200 ${expanded ? "bg-white/[0.07]" : ""}`}>
@@ -2014,9 +2050,9 @@ function HistoryCard({ row, expanded, onCopy, onReprocess, onDelete, onToggle, r
       </button>
 
       {expanded ? (
-        <div className="history-card-details mt-3 space-y-3">
+          <div className="history-card-details mt-3 space-y-3">
           {row.recordingUrl ? (
-            <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} durationSeconds={row.durationSeconds} />
+            <HistoryRecordingPlayer title={row.title} src={row.recordingUrl} />
           ) : (
             <MissingHistoryAudioNotice />
           )}
@@ -2036,17 +2072,29 @@ function HistoryCard({ row, expanded, onCopy, onReprocess, onDelete, onToggle, r
                   type="button"
                   aria-busy={reprocessing || undefined}
                   aria-label={`Reprocess clip: ${row.title}`}
-                  className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555] disabled:cursor-wait disabled:opacity-55`}
+                  className={historyActionButtonClass}
                   disabled={reprocessing}
                   onClick={onReprocess}
                 >
                   <RefreshCw className={`size-3 ${reprocessing ? "animate-spin" : ""}`} />
                 </button>
               ) : null}
-              <button type="button" aria-label={`Copy transcript: ${row.title}`} className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555]`} onClick={onCopy}>
+              {canOpenTranscript ? (
+                <button
+                  type="button"
+                  aria-busy={openingTranscript || undefined}
+                  aria-label={`Open transcript text: ${row.title}`}
+                  className={historyActionButtonClass}
+                  disabled={openingTranscript}
+                  onClick={onOpenTranscript}
+                >
+                  <FileText className="size-3" />
+                </button>
+              ) : null}
+              <button type="button" aria-label={`Copy transcript: ${row.title}`} className={historyActionButtonClass} onClick={onCopy}>
                 <Copy className="size-3" />
               </button>
-              <button type="button" aria-label={`Delete transcript: ${row.title}`} className={`grid size-7 place-items-center ${sharedRadiusClass} transition hover:bg-[#555]`} onClick={onDelete}>
+              <button type="button" aria-label={`Delete transcript: ${row.title}`} className={historyActionButtonClass} onClick={onDelete}>
                 <Trash2 className="size-3" />
               </button>
             </div>
@@ -2069,10 +2117,9 @@ function MissingHistoryAudioNotice() {
 interface HistoryRecordingPlayerProps {
   title: string;
   src: string;
-  durationSeconds: number;
 }
 
-function HistoryRecordingPlayer({ title, src, durationSeconds }: HistoryRecordingPlayerProps) {
+function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -2113,7 +2160,6 @@ function HistoryRecordingPlayer({ title, src, durationSeconds }: HistoryRecordin
           />
         ))}
       </div>
-      <span className="shrink-0 text-[12px] font-semibold text-[#e0e0e0]">{formatDuration(durationSeconds)}</span>
       <audio
         ref={audioRef}
         aria-label={`Recording audio: ${title}`}

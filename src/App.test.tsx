@@ -679,6 +679,59 @@ describe("ASR Pro Electron shell", () => {
     });
   });
 
+  it("opens a saved history transcript in the text editor action and keeps action icons visually consistent", async () => {
+    const user = userEvent.setup();
+    const openTranscriptText = vi.fn().mockResolvedValue({
+      filePath: "/Users/surajmandal/Library/Application Support/ASR Pro/data/transcripts/original-clip.txt",
+    });
+    window.asrpro = {
+      openTranscriptText,
+      windowControl: vi.fn(),
+    } as any;
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "history-open-text-row",
+        title: "Original clip",
+        text: "Original transcript text.",
+        kind: "Dictation",
+        model: "Whisper Base English",
+        durationSeconds: 18,
+        createdAt: Date.now(),
+        status: "completed",
+        recordingUrl: "data:audio/webm;base64,c2F2ZWQgYXVkaW8=",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(screen.queryByText("0:18")).toBeNull();
+
+    const reprocessButton = screen.getByRole("button", { name: "Reprocess clip: Original clip" });
+    const openTextButton = screen.getByRole("button", { name: "Open transcript text: Original clip" });
+    const copyButton = screen.getByRole("button", { name: "Copy transcript: Original clip" });
+    const deleteButton = screen.getByRole("button", { name: "Delete transcript: Original clip" });
+
+    expect([
+      reprocessButton,
+      openTextButton,
+      copyButton,
+      deleteButton,
+    ].map((button) => button.className)).toEqual([
+      reprocessButton.className,
+      reprocessButton.className,
+      reprocessButton.className,
+      reprocessButton.className,
+    ]);
+
+    await user.click(openTextButton);
+
+    expect(openTranscriptText).toHaveBeenCalledWith({
+      title: "Original clip",
+      text: "Original transcript text.",
+    });
+  });
+
   it("records audio, transcribes it, stores the result, and stays on the current page", async () => {
     const user = userEvent.setup();
     mockAudioCapture();

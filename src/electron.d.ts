@@ -65,6 +65,9 @@ declare global {
         model: string;
         modelName?: string;
       }>;
+      openTranscriptText?: (request: { title: string; text: string }) => Promise<{
+        filePath: string;
+      }>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;
         customBounds: {
