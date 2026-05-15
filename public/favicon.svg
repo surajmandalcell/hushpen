@@ -1,89 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="ASR Pro favicon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="ASR Pro logo">
   <defs>
-    <linearGradient id="plate" x1="166" y1="116" x2="884" y2="944" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fbf8ef"/>
-      <stop offset="0.42" stop-color="#edf4f2"/>
-      <stop offset="1" stop-color="#b9dde0"/>
+    <linearGradient id="blue-titanium" x1="166" y1="116" x2="884" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b4bec2"/>
+      <stop offset="0.48" stop-color="#7d8b91"/>
+      <stop offset="1" stop-color="#56646a"/>
     </linearGradient>
-    <radialGradient id="sky" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(754 244) rotate(130) scale(616 488)">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.82"/>
-      <stop offset="0.44" stop-color="#b9eef0" stop-opacity="0.46"/>
-      <stop offset="1" stop-color="#b9eef0" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="warm" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(232 792) rotate(-32) scale(414 312)">
-      <stop offset="0" stop-color="#ffd38e" stop-opacity="0.44"/>
-      <stop offset="1" stop-color="#ffd38e" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="ribbon" x1="194" y1="356" x2="832" y2="682" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#16272d"/>
-      <stop offset="0.52" stop-color="#26343b"/>
-      <stop offset="1" stop-color="#0f2026"/>
+    <linearGradient id="surface-shade" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.52" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.18"/>
     </linearGradient>
-    <linearGradient id="ribbon-glass" x1="248" y1="360" x2="784" y2="656" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.68"/>
-      <stop offset="0.24" stop-color="#92c2c6" stop-opacity="0.42"/>
-      <stop offset="0.56" stop-color="#ffffff" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.5"/>
-    </linearGradient>
-    <linearGradient id="rim" x1="132" y1="88" x2="906" y2="936" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.78"/>
-      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.18"/>
-      <stop offset="1" stop-color="#0f2026" stop-opacity="0.16"/>
-    </linearGradient>
-    <filter id="mark-shadow" x="80" y="260" width="864" height="520" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#0d2228" flood-opacity="0.24"/>
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#ffffff" flood-opacity="0.22"/>
-    </filter>
     <clipPath id="icon-clip">
       <rect width="1024" height="1024" rx="224"/>
     </clipPath>
   </defs>
   <g clip-path="url(#icon-clip)">
-    <rect width="1024" height="1024" rx="224" fill="url(#plate)"/>
-    <rect width="1024" height="1024" rx="224" fill="url(#sky)"/>
-    <rect width="1024" height="1024" rx="224" fill="url(#warm)"/>
-    <path d="M-18 660C170 582 267 617 421 716C576 815 745 817 1054 642V1080H-18Z" fill="#5daab1" opacity="0.16"/>
-    <path d="M-24 248C142 178 275 184 408 262C546 343 637 328 793 230C878 177 955 163 1048 184V0H-24Z" fill="#ffffff" opacity="0.33"/>
-    <path
-      d="M 188 512
-         C 188 356 356 342 512 512
-         C 668 682 836 668 836 512
-         C 836 356 668 342 512 512
-         C 356 682 188 668 188 512"
-      fill="none"
-      stroke="url(#ribbon)"
-      stroke-width="120"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-    <path
-      d="M 188 512
-         C 188 356 356 342 512 512
-         C 668 682 836 668 836 512
-         C 836 356 668 342 512 512
-         C 356 682 188 668 188 512"
-      fill="none"
-      stroke="#92c2c6"
-      stroke-width="68"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      opacity="0.24"
-    />
-    <path
-      d="M 188 512
-         C 188 356 356 342 512 512
-         C 668 682 836 668 836 512
-         C 836 356 668 342 512 512
-         C 356 682 188 668 188 512"
-      fill="none"
-      stroke="url(#ribbon-glass)"
-      stroke-width="28"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      opacity="0.72"
-    />
-    <path d="M184 304C302 224 402 241 507 356" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" opacity="0.38"/>
-    <path d="M590 684C704 764 821 747 904 650" fill="none" stroke="#0f2026" stroke-width="22" stroke-linecap="round" opacity="0.12"/>
-    <rect x="18" y="18" width="988" height="988" rx="214" fill="none" stroke="url(#rim)" stroke-width="36"/>
+    <rect width="1024" height="1024" rx="224" fill="url(#blue-titanium)"/>
+    <rect width="1024" height="1024" rx="224" fill="url(#surface-shade)"/>
+    <g transform="translate(205 205) scale(0.6)">
+      <path
+        d="M 188 512
+       C 188 356 356 342 512 512
+       C 668 682 836 668 836 512
+       C 836 356 668 342 512 512
+       C 356 682 188 668 188 512"
+        fill="none"
+        stroke="#26343b"
+        stroke-width="84"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </g>
   </g>
 </svg>

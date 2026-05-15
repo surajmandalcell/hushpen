@@ -294,6 +294,20 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByRole("list", { name: "Highlights" })).toBeNull();
   });
 
+  it("uses the Blue Titanium brand tile on About", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "About" }));
+
+    const brandTile = document.querySelector('[data-brand-icon-surface="blue-titanium"]');
+
+    expect(brandTile).toBeTruthy();
+    expect(brandTile?.getAttribute("style")).toContain("rgb(180, 190, 194)");
+    expect(brandTile?.getAttribute("style")).toContain("rgb(125, 139, 145)");
+    expect(brandTile?.getAttribute("style")).toContain("rgb(86, 100, 106)");
+  });
+
   it("shows real About metadata without implementation stack or highlights", async () => {
     const user = userEvent.setup();
     window.asrpro = {
