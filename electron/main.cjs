@@ -66,6 +66,7 @@ const TEXT_EDITOR_OPTIONS = Object.freeze([
     macBundleNames: ["Cursor.app"],
   },
 ]);
+const RESERVED_TRANSCRIPT_FILE_NAME_CHARACTERS = new Set(["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]);
 const DEFAULT_APP_SETTINGS = Object.freeze({
   defaultTextEditor: "system",
   autoCopyTranscripts: true,
@@ -477,9 +478,10 @@ async function getRuntimeState() {
 
 async function getTextEditorOptions() {
   return Promise.all(TEXT_EDITOR_OPTIONS.map(async (editor) => {
-    const { macApp, macBundleNames, ...publicEditor } = editor;
     return {
-      ...publicEditor,
+      id: editor.id,
+      label: editor.label,
+      detail: editor.detail,
       iconDataUrl: await getTextEditorIconDataUrl(editor),
     };
   }));
@@ -664,8 +666,13 @@ async function transcribeAudio(request = {}) {
 }
 
 function sanitizeTranscriptFileName(value = "transcript") {
-  const normalized = String(value)
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+  const normalized = Array.from(String(value), (character) => {
+    if (RESERVED_TRANSCRIPT_FILE_NAME_CHARACTERS.has(character) || character.charCodeAt(0) < 32) {
+      return " ";
+    }
+
+    return character;
+  }).join("")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -883,7 +890,7 @@ function updateOverlaySettings(settings) {
     ...(settings || {}),
   };
 
-  if (settings && Object.prototype.hasOwnProperty.call(settings, "placement")) {
+  if (settings && Object.hasOwn(settings, "placement")) {
     nextSettings.customBounds = null;
   }
 

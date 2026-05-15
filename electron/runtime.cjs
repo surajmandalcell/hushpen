@@ -232,7 +232,7 @@ function getPathSizeBytes(targetPath) {
 
 function normalizeOverlaySettings(value = {}) {
   const placement = value && value.placement === "bottom" ? "bottom" : "top";
-  const customBounds = normalizeCustomBounds(value && value.customBounds);
+  const customBounds = normalizeCustomBounds(value?.customBounds);
 
   return {
     placement,
@@ -294,13 +294,13 @@ function resolveOverlayBounds({
 }
 
 function getDisplayWorkArea(display) {
-  const area = display && (display.workArea || display.bounds);
+  const area = display?.workArea || display?.bounds;
 
   return {
-    x: Number(area && area.x) || 0,
-    y: Number(area && area.y) || 0,
-    width: Number(area && area.width) || 800,
-    height: Number(area && area.height) || 600,
+    x: Number(area?.x) || 0,
+    y: Number(area?.y) || 0,
+    width: Number(area?.width) || 800,
+    height: Number(area?.height) || 600,
   };
 }
 
@@ -483,7 +483,7 @@ function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function shouldShowRecordingOverlay(source) {
+function shouldShowRecordingOverlay() {
   return true;
 }
 
