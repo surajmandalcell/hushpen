@@ -1163,7 +1163,10 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("AI model footprint")).toBeTruthy();
     expect(screen.getAllByText("120 MiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Whisper models")).toBeTruthy();
-    expect(screen.getByText("Needs setup").className).toContain("text-[11px]");
+    const setupBadge = screen.getByText("Needs setup");
+    expect(setupBadge.className).toContain("rounded-[7px]");
+    expect(setupBadge.className).toContain("bg-white/[0.075]");
+    expect(setupBadge.className).toContain("px-1.5");
     expect(screen.queryByText("Selected")).toBeNull();
     expect(screen.queryByText(/^Ready$/)).toBeNull();
 
@@ -1171,6 +1174,11 @@ describe("ASR Pro Electron shell", () => {
     expect(baseSelectButton.textContent).not.toContain("Selected");
     expect(baseSelectButton.parentElement?.textContent).toContain("Current model");
     expect(screen.getByLabelText("Whisper Base English downloaded").parentElement?.textContent).toContain("Downloaded model");
+    const controlColumns = Array.from(document.querySelectorAll("[data-model-controls]"));
+    expect(controlColumns).toHaveLength(initialModels.length);
+    for (const controls of controlColumns) {
+      expect(controls.className).toContain("grid-cols-[32px_86px_32px]");
+    }
 
     const downloadButton = screen.getByRole("button", { name: "Download Whisper Large v3 Turbo" });
     expect(downloadButton.textContent).not.toContain("Download");

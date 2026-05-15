@@ -309,6 +309,7 @@ const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusCla
 const focusRingClass = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]";
 const panelControlButtonClass = `inline-flex min-h-8 items-center justify-center gap-1.5 ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] ${focusRingClass}`;
 const historyActionButtonClass = `grid size-7 place-items-center ${sharedRadiusClass} text-[#bdbdbd] transition hover:bg-[#555] hover:text-white disabled:cursor-wait disabled:opacity-55`;
+const modelMetaBadgeClass = "rounded-[7px] bg-white/[0.075] px-1.5 py-0.5 text-[11px] font-semibold text-[#bcbcbc]";
 const dropdownSurfaceClass = `scrollbar-macos dropdown-options-scrollbar absolute z-50 max-h-64 overflow-x-hidden overflow-y-auto ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] py-1 pl-1 pr-0.5 shadow-2xl shadow-black/40`;
 const dropdownOptionButtonClass = `flex w-full min-w-0 items-start gap-2 ${insetControlRadiusClass} px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition`;
 const segmentedControlClass = `inline-flex ${sharedRadiusClass} border border-white/[0.08] bg-[#2b2b2b] p-0.5`;
@@ -2171,12 +2172,12 @@ function ModelsView({
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[13px] font-semibold leading-5 text-[#f2f2f2]">{model.displayName}</span>
-                      <span className="rounded-[7px] bg-white/[0.075] px-1.5 py-0.5 text-[11px] font-semibold text-[#bcbcbc]">{diskLabel}</span>
+                      <span className={modelMetaBadgeClass}>{diskLabel}</span>
                     </span>
                     <span className="selectable-text mt-0.5 block text-[12px] font-medium leading-4 text-[#aaa]">{model.detail}</span>
                   </span>
                 </div>
-                <div className="flex shrink-0 items-center justify-end gap-2 pl-11 sm:pl-0">
+                <div data-model-controls className="grid shrink-0 grid-cols-[32px_86px_32px] items-center gap-2 pl-11 sm:pl-0">
                   <ModelSelectButton
                     modelName={model.displayName}
                     selected={selected}
@@ -2277,8 +2278,7 @@ function ModelStatusLabel({ installed, modelName }: { installed: boolean; modelN
   }
 
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[#d9bd72]">
-      <Info className="size-3" />
+    <span className={`${modelMetaBadgeClass} justify-self-center text-[#c9c0a4]`}>
       Needs setup
     </span>
   );
