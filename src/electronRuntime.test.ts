@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -63,7 +64,50 @@ describe("Electron runtime helpers", () => {
       "whisper-base-en",
       "whisper-small-en",
       "whisper-base",
+      "whisper-large-v3-turbo",
     ]);
+    expect(runtime.AVAILABLE_MODELS.find((model: { id: string }) => model.id === "whisper-large-v3-turbo")).toMatchObject({
+      displayName: "Whisper Large v3 Turbo",
+      fileName: "ggml-large-v3-turbo.bin",
+      sizeLabel: "1.5 GiB",
+      sha1: "4af2b29d7ec73d781377bfd1758ca957a807e941",
+    });
+  });
+
+  it("reports model storage and runtime memory grouped for the settings surface", () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "asrpro-model-stats-"));
+
+    try {
+      mkdirSync(path.join(dataDir, "models", "whisper"), { recursive: true });
+      mkdirSync(path.join(dataDir, "transcripts"), { recursive: true });
+      mkdirSync(path.join(dataDir, "config"), { recursive: true });
+      writeFileSync(path.join(dataDir, "models", "whisper", "ggml-base.en.bin"), Buffer.alloc(12), { flag: "w" });
+      writeFileSync(path.join(dataDir, "transcripts", "note.txt"), Buffer.alloc(5), { flag: "w" });
+      writeFileSync(path.join(dataDir, "config", "settings.json"), Buffer.alloc(3), { flag: "w" });
+
+      const stats = runtime.collectRuntimeStorageStats(dataDir, {
+        rss: 100,
+        heapUsed: 40,
+        external: 20,
+        arrayBuffers: 10,
+      });
+
+      expect(stats.groups.map((group: { id: string }) => group.id)).toEqual(["memory", "disk"]);
+      expect(stats.groups[0].items.map((item: { id: string; bytes: number }) => [item.id, item.bytes])).toEqual([
+        ["resident", 100],
+        ["heap", 40],
+        ["native", 20],
+        ["buffers", 10],
+      ]);
+      expect(stats.groups[1].items.map((item: { id: string; bytes: number }) => [item.id, item.bytes])).toEqual([
+        ["whisper-models", 12],
+        ["transcripts", 5],
+        ["configuration", 3],
+        ["other", 0],
+      ]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("normalizes native Whisper segment arrays without timestamp metadata", () => {

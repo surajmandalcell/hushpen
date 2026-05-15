@@ -1,4 +1,5 @@
 const path = require("node:path");
+const fs = require("node:fs");
 const {
   AVAILABLE_MODELS,
   DEFAULT_MODEL,
@@ -72,6 +73,105 @@ function buildModelPaths(dataDir) {
     whisperModelsDir,
     defaultModelPath: getModelPath(dataDir, DEFAULT_MODEL.id),
   };
+}
+
+function collectRuntimeStorageStats(dataDir, memoryUsage = process.memoryUsage()) {
+  const paths = buildModelPaths(dataDir);
+  const transcriptDir = path.join(dataDir, "transcripts");
+  const configDir = path.join(dataDir, "config");
+  const modelBytes = getPathSizeBytes(paths.whisperModelsDir);
+  const transcriptBytes = getPathSizeBytes(transcriptDir);
+  const configBytes = getPathSizeBytes(configDir);
+  const totalDiskBytes = getPathSizeBytes(dataDir);
+  const knownDiskBytes = modelBytes + transcriptBytes + configBytes;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    groups: [
+      {
+        id: "memory",
+        label: "Runtime memory",
+        totalBytes: normalizeByteCount(memoryUsage.rss),
+        items: [
+          {
+            id: "resident",
+            label: "Resident set",
+            bytes: normalizeByteCount(memoryUsage.rss),
+            detail: "Electron main process",
+          },
+          {
+            id: "heap",
+            label: "JavaScript heap",
+            bytes: normalizeByteCount(memoryUsage.heapUsed),
+            detail: "Renderer bridge and app logic",
+          },
+          {
+            id: "native",
+            label: "Native allocations",
+            bytes: normalizeByteCount(memoryUsage.external),
+            detail: "Native addon and V8 external memory",
+          },
+          {
+            id: "buffers",
+            label: "Array buffers",
+            bytes: normalizeByteCount(memoryUsage.arrayBuffers),
+            detail: "Audio and binary buffers",
+          },
+        ],
+      },
+      {
+        id: "disk",
+        label: "App data on disk",
+        totalBytes: totalDiskBytes,
+        items: [
+          {
+            id: "whisper-models",
+            label: "Whisper models",
+            bytes: modelBytes,
+            path: paths.whisperModelsDir,
+          },
+          {
+            id: "transcripts",
+            label: "Transcripts",
+            bytes: transcriptBytes,
+            path: transcriptDir,
+          },
+          {
+            id: "configuration",
+            label: "Configuration",
+            bytes: configBytes,
+            path: configDir,
+          },
+          {
+            id: "other",
+            label: "Other app data",
+            bytes: Math.max(0, totalDiskBytes - knownDiskBytes),
+            path: dataDir,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function normalizeByteCount(value) {
+  const bytes = Number(value);
+  return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes) : 0;
+}
+
+function getPathSizeBytes(targetPath) {
+  try {
+    const stat = fs.lstatSync(targetPath);
+    if (!stat.isDirectory()) {
+      return stat.size;
+    }
+
+    return fs.readdirSync(targetPath, { withFileTypes: true }).reduce((total, entry) => (
+      total + getPathSizeBytes(path.join(targetPath, entry.name))
+    ), 0);
+  } catch {
+    return 0;
+  }
 }
 
 function normalizeOverlaySettings(value = {}) {
@@ -339,6 +439,7 @@ module.exports = {
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
   buildModelPaths,
+  collectRuntimeStorageStats,
   createRecordingOverlayHtml,
   normalizeOverlaySettings,
   resolveAppIconPath,

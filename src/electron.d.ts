@@ -18,6 +18,28 @@ type EngineModelInfo = {
   detail: string;
   sizeLabel: string;
   installed?: boolean;
+  diskBytes?: number;
+  path?: string;
+  downloadUrl?: string;
+};
+
+type StorageStatsGroup = {
+  id: string;
+  label: string;
+  totalBytes: number;
+  detail?: string;
+  items: Array<{
+    id: string;
+    label: string;
+    bytes: number;
+    detail?: string;
+    path?: string;
+  }>;
+};
+
+type RuntimeStorageStats = {
+  generatedAt?: string;
+  groups: StorageStatsGroup[];
 };
 
 type TextEditorOption = {
@@ -50,6 +72,7 @@ declare global {
         defaultModel: string;
         defaultModelId?: string;
         models?: EngineModelInfo[];
+        storageStats?: RuntimeStorageStats;
         defaultTextEditor?: string;
         textEditors?: TextEditorOption[];
         overlaySettings?: {
@@ -69,6 +92,16 @@ declare global {
       }>;
       getEngineState?: () => Promise<EngineState>;
       getModels?: () => Promise<EngineModelInfo[]>;
+      downloadModel?: (modelId: string) => Promise<{
+        isRecording: boolean;
+        models?: EngineModelInfo[];
+        storageStats?: RuntimeStorageStats;
+      }>;
+      deleteModel?: (modelId: string) => Promise<{
+        isRecording: boolean;
+        models?: EngineModelInfo[];
+        storageStats?: RuntimeStorageStats;
+      }>;
       transcribeAudio?: (request: { audioData: ArrayBuffer; mimeType: string; modelId: string }) => Promise<{
         text: string;
         model: string;

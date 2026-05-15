@@ -70,8 +70,9 @@ flowchart LR
 | Whisper Base English | `whisper-base-en` | `ggml-base.en.bin` | Default English model. |
 | Whisper Small English | `whisper-small-en` | `ggml-small.en.bin` | Higher accuracy English model with slower load and transcription. |
 | Whisper Base Multilingual | `whisper-base` | `ggml-base.bin` | General multilingual transcription. |
+| Whisper Large v3 Turbo | `whisper-large-v3-turbo` | `ggml-large-v3-turbo.bin` | Highest-accuracy bundled option with faster large-model decoding. |
 
-Models are downloaded lazily into the app-owned data directory. The first transcription for a model can be slower while the file downloads and the native engine initializes.
+Models can be downloaded or deleted individually from the Models library. They are also downloaded lazily into the app-owned data directory when a selected model is first used.
 
 ## Requirements
 

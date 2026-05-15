@@ -15,6 +15,7 @@ const {
   OVERLAY_WINDOW_SIZE,
   RECORDING_SHORTCUT,
   buildModelPaths,
+  collectRuntimeStorageStats,
   createRecordingOverlayHtml,
   normalizeOverlaySettings,
   resolveContainedDataDir,
@@ -25,6 +26,8 @@ const {
   shouldShowRecordingOverlay,
 } = require("./runtime.cjs");
 const {
+  deleteModelFile,
+  downloadModelFile,
   listModels,
   transcribeAudioFile,
 } = require("./whisper-engine.cjs");
@@ -253,6 +256,10 @@ function registerIpc() {
 
   ipcMain.handle("engine:models", () => listModels(containedDataDir));
 
+  ipcMain.handle("engine:model-download", (_event, request) => downloadModel(request));
+
+  ipcMain.handle("engine:model-delete", (_event, request) => deleteModel(request));
+
   ipcMain.handle("engine:transcribe-audio", (_event, request) => transcribeAudio(request));
 
   ipcMain.handle("transcript:open-text", (_event, request) => openTranscriptText(request));
@@ -446,6 +453,7 @@ async function getRuntimeState() {
     textEditors: await getTextEditorOptions(),
     overlaySettings,
     engine: engineState,
+    storageStats: collectRuntimeStorageStats(containedDataDir),
     shortcut: RECORDING_SHORTCUT,
     shortcutRegistered,
     capabilities: {
@@ -546,6 +554,60 @@ function toAudioBuffer(audioData) {
   }
   if (Array.isArray(audioData)) return Buffer.from(audioData);
   throw new Error("Transcription audio payload is missing.");
+}
+
+async function downloadModel(request = {}) {
+  const model = AVAILABLE_MODELS.find((candidate) => candidate.id === request.modelId);
+  if (!model) {
+    throw new Error(`Unsupported recognition model: ${request.modelId}`);
+  }
+
+  try {
+    await downloadModelFile({
+      modelId: model.id,
+      dataDir: containedDataDir,
+      onState: setEngineState,
+    });
+
+    setEngineState({
+      status: "ready",
+      mode: "native-node",
+      modelId: model.id,
+      model: model.displayName,
+      progress: null,
+      error: null,
+    });
+  } catch (error) {
+    setEngineState({
+      status: "failed",
+      mode: "native-node",
+      modelId: model.id,
+      model: model.displayName,
+      progress: null,
+      error: error instanceof Error ? error.message : "Whisper model setup failed.",
+    });
+    throw error;
+  }
+
+  return getRuntimeState();
+}
+
+async function deleteModel(request = {}) {
+  const model = AVAILABLE_MODELS.find((candidate) => candidate.id === request.modelId);
+  if (!model) {
+    throw new Error(`Unsupported recognition model: ${request.modelId}`);
+  }
+
+  if ((engineState.status === "downloading" || engineState.status === "transcribing") && engineState.modelId === model.id) {
+    throw new Error(`${model.displayName} is currently in use.`);
+  }
+
+  deleteModelFile({
+    modelId: model.id,
+    dataDir: containedDataDir,
+  });
+
+  return getRuntimeState();
 }
 
 async function transcribeAudio(request = {}) {

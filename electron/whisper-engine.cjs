@@ -44,6 +44,15 @@ const AVAILABLE_MODELS = Object.freeze([
     sizeLabel: "142 MB",
     sha1: "465707469ff3a37a2b9b8d8f89f2f99de7299dac",
   },
+  {
+    id: "whisper-large-v3-turbo",
+    displayName: "Whisper Large v3 Turbo",
+    detail: "High accuracy multilingual model with faster large-model decoding",
+    fileName: "ggml-large-v3-turbo.bin",
+    language: "auto",
+    sizeLabel: "1.5 GiB",
+    sha1: "4af2b29d7ec73d781377bfd1758ca957a807e941",
+  },
 ]);
 
 const DEFAULT_MODEL = AVAILABLE_MODELS[1];
@@ -52,6 +61,14 @@ let addon;
 
 function getModelById(modelId) {
   return AVAILABLE_MODELS.find((model) => model.id === modelId) || DEFAULT_MODEL;
+}
+
+function requireModelById(modelId) {
+  const model = AVAILABLE_MODELS.find((candidate) => candidate.id === modelId);
+  if (!model) {
+    throw new Error(`Unsupported recognition model: ${modelId}`);
+  }
+  return model;
 }
 
 function getWhisperModelsDir(dataDir) {
@@ -68,8 +85,18 @@ function listModels(dataDir) {
     ...model,
     path: getModelPath(dataDir, model.id),
     installed: fs.existsSync(getModelPath(dataDir, model.id)),
+    diskBytes: getModelFileSize(dataDir, model.id),
     downloadUrl: `${WHISPER_MODEL_BASE_URL}/${model.fileName}`,
   }));
+}
+
+function getModelFileSize(dataDir, modelId) {
+  const modelPath = getModelPath(dataDir, modelId);
+  try {
+    return fs.statSync(modelPath).size;
+  } catch {
+    return 0;
+  }
 }
 
 function loadAddon() {
@@ -144,6 +171,30 @@ async function ensureModel(model, dataDir, onState = () => {}) {
 
   await verifySha1(modelPath, model.sha1);
   return modelPath;
+}
+
+async function downloadModelFile({ modelId, dataDir, onState = () => {} }) {
+  const model = requireModelById(modelId);
+  const modelPath = await ensureModel(model, dataDir, onState);
+  return {
+    model: listModels(dataDir).find((candidate) => candidate.id === model.id),
+    path: modelPath,
+  };
+}
+
+function deleteModelFile({ modelId, dataDir }) {
+  const model = requireModelById(modelId);
+  const modelPath = getModelPath(dataDir, model.id);
+  const wasInstalled = fs.existsSync(modelPath);
+
+  fs.rmSync(modelPath, { force: true });
+  fs.rmSync(`${modelPath}.download`, { force: true });
+
+  return {
+    deleted: wasInstalled,
+    model: listModels(dataDir).find((candidate) => candidate.id === model.id),
+    path: modelPath,
+  };
 }
 
 function downloadFile(url, destination, onProgress = () => {}) {
@@ -296,5 +347,7 @@ module.exports = {
   listModels,
   normalizeTranscriptionResult,
   loadAddon,
+  downloadModelFile,
+  deleteModelFile,
   transcribeAudioFile,
 };

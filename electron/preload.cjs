@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("asrpro", {
   getRuntimeState: () => ipcRenderer.invoke("runtime:state"),
   getEngineState: () => ipcRenderer.invoke("engine:state"),
   getModels: () => ipcRenderer.invoke("engine:models"),
+  downloadModel: (modelId) => ipcRenderer.invoke("engine:model-download", { modelId }),
+  deleteModel: (modelId) => ipcRenderer.invoke("engine:model-delete", { modelId }),
   transcribeAudio: (request) => ipcRenderer.invoke("engine:transcribe-audio", request),
   openTranscriptText: (request) => ipcRenderer.invoke("transcript:open-text", request),
   deleteTranscriptText: (request) => ipcRenderer.invoke("transcript:delete-text", request),

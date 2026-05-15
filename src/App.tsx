@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import {
+  Activity,
   ArrowUpRight,
   BrainCircuit,
   Bluetooth,
@@ -8,8 +9,10 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Download,
   FileText,
   Github,
+  HardDrive,
   Headphones,
   History,
   Home,
@@ -57,6 +60,7 @@ interface RuntimeInfo {
   overlaySettings?: OverlaySettings;
   engine?: EngineRuntimeState;
   models?: EngineModelInfo[];
+  storageStats?: RuntimeStorageStats;
   defaultTextEditor?: string;
   textEditors?: TextEditorOption[];
   shortcut?: string;
@@ -88,6 +92,30 @@ interface EngineModelInfo {
   detail: string;
   sizeLabel: string;
   installed?: boolean;
+  diskBytes?: number;
+  path?: string;
+  downloadUrl?: string;
+}
+
+interface RuntimeStorageStats {
+  generatedAt?: string;
+  groups: StorageStatsGroup[];
+}
+
+interface StorageStatsGroup {
+  id: string;
+  label: string;
+  totalBytes: number;
+  detail?: string;
+  items: StorageStatsItem[];
+}
+
+interface StorageStatsItem {
+  id: string;
+  label: string;
+  bytes: number;
+  detail?: string;
+  path?: string;
 }
 
 interface TextEditorOption {
@@ -189,6 +217,7 @@ const modelIdsByName: Record<string, string> = {
   "Whisper Base English": "whisper-base-en",
   "Whisper Small English": "whisper-small-en",
   "Whisper Base Multilingual": "whisper-base",
+  "Whisper Large v3 Turbo": "whisper-large-v3-turbo",
 };
 const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
 const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
@@ -203,34 +232,36 @@ const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 });
 
-const modelCards = [
+const fallbackModelCards: EngineModelInfo[] = [
   {
-    name: "Whisper Tiny English",
+    id: "whisper-tiny-en",
+    displayName: "Whisper Tiny English",
     detail: "Fastest local model, lowest memory use",
-    speed: "Fastest",
-    status: "Active",
-    disabled: false,
+    sizeLabel: "75 MB",
   },
   {
-    name: "Whisper Base English",
+    id: "whisper-base-en",
+    displayName: "Whisper Base English",
     detail: "Default local model for English dictation",
-    speed: "Default",
-    status: "Active",
-    disabled: false,
+    sizeLabel: "142 MB",
   },
   {
-    name: "Whisper Small English",
+    id: "whisper-small-en",
+    displayName: "Whisper Small English",
     detail: "Higher accuracy with a larger local model",
-    speed: "Accurate",
-    status: "Active",
-    disabled: false,
+    sizeLabel: "466 MB",
   },
   {
-    name: "Whisper Base Multilingual",
+    id: "whisper-base",
+    displayName: "Whisper Base Multilingual",
     detail: "Small multilingual model with language detection",
-    speed: "Multilingual",
-    status: "Active",
-    disabled: false,
+    sizeLabel: "142 MB",
+  },
+  {
+    id: "whisper-large-v3-turbo",
+    displayName: "Whisper Large v3 Turbo",
+    detail: "High accuracy multilingual model with faster large-model decoding",
+    sizeLabel: "1.5 GiB",
   },
 ];
 
@@ -503,6 +534,37 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(rounded / 60);
   const remainingSeconds = rounded % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function formatByteCount(bytes?: number) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let scaled = value;
+  let unitIndex = 0;
+
+  while (scaled >= 1024 && unitIndex < units.length - 1) {
+    scaled /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = scaled >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${scaled.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function getRuntimeModels(models?: EngineModelInfo[]) {
+  return models?.length ? models : fallbackModelCards;
+}
+
+function mergeRuntimeInfo(current: RuntimeInfo | null, next?: Partial<RuntimeInfo> | null): RuntimeInfo | null {
+  if (!next) return current;
+
+  return {
+    ...(current ?? { isRecording: false }),
+    ...next,
+    isRecording: next.isRecording ?? current?.isRecording ?? false,
+  };
 }
 
 function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
@@ -849,6 +911,8 @@ function App() {
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
   const [openingTranscriptRowId, setOpeningTranscriptRowId] = useState<string | null>(null);
+  const [modelActionId, setModelActionId] = useState<string | null>(null);
+  const [modelLibraryError, setModelLibraryError] = useState<string | null>(null);
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(true);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
@@ -892,6 +956,11 @@ function App() {
     void navigator.clipboard?.writeText(text).catch(() => {});
   }, []);
 
+  const runtimeModels = useMemo(() => getRuntimeModels(runtimeInfo?.models), [runtimeInfo?.models]);
+  const selectedModelId = useMemo(() => (
+    runtimeModels.find((model) => model.displayName === selectedModel)?.id ?? modelIdsByName[selectedModel] ?? "whisper-base-en"
+  ), [runtimeModels, selectedModel]);
+
   const showScrollbarTemporarily = useCallback((durationMs = 1200) => {
     setIsScrollbarVisible(true);
     if (scrollbarTimerRef.current) {
@@ -925,9 +994,9 @@ function App() {
     const payload = await createTranscriptionAudioPayload(audioBlob);
     return transcribeAudio({
       ...payload,
-      modelId: modelIdsByName[selectedModel] ?? "whisper-base-en",
+      modelId: selectedModelId,
     });
-  }, [selectedModel]);
+  }, [selectedModelId]);
 
   const reprocessHistoryRow = useCallback(async (row: TranscriptHistoryRow) => {
     if (!row.recordingUrl || reprocessingHistoryRowId) return;
@@ -1058,6 +1127,40 @@ function App() {
   const selectedTextEditorLabel = useMemo(() => (
     textEditorOptions.find((editor) => editor.id === selectedTextEditorId)?.label ?? defaultTextEditorOptions[0].label
   ), [selectedTextEditorId, textEditorOptions]);
+
+  const handleDownloadModel = useCallback(async (modelId: string) => {
+    const downloadModel = window.asrpro?.downloadModel;
+    if (!downloadModel) return;
+
+    setModelActionId(modelId);
+    setModelLibraryError(null);
+
+    try {
+      const state = await downloadModel(modelId);
+      setRuntimeInfo((current) => mergeRuntimeInfo(current, state));
+    } catch (error) {
+      setModelLibraryError(getErrorMessage(error));
+    } finally {
+      setModelActionId(null);
+    }
+  }, []);
+
+  const handleDeleteModel = useCallback(async (modelId: string) => {
+    const deleteModel = window.asrpro?.deleteModel;
+    if (!deleteModel) return;
+
+    setModelActionId(modelId);
+    setModelLibraryError(null);
+
+    try {
+      const state = await deleteModel(modelId);
+      setRuntimeInfo((current) => mergeRuntimeInfo(current, state));
+    } catch (error) {
+      setModelLibraryError(getErrorMessage(error));
+    } finally {
+      setModelActionId(null);
+    }
+  }, []);
 
   const startRecordingFlow = useCallback(async (syncBridge = true) => {
     if (recordingTransitionRef.current || audioRecordingService.isRecording()) {
@@ -1353,7 +1456,19 @@ function App() {
                 onOpenModels={() => setActiveView("models")}
               />
             )}
-            {activeView === "models" && <ModelsView selectedModel={selectedModel} onSelectModel={setSelectedModel} />}
+            {activeView === "models" && (
+              <ModelsView
+                selectedModel={selectedModel}
+                models={runtimeModels}
+                storageStats={runtimeInfo?.storageStats}
+                engine={runtimeInfo?.engine}
+                busyModelId={modelActionId}
+                actionError={modelLibraryError}
+                onSelectModel={setSelectedModel}
+                onDownloadModel={handleDownloadModel}
+                onDeleteModel={handleDeleteModel}
+              />
+            )}
             {activeView === "history" && (
               <HistoryView
                 rows={historyRows}
@@ -1966,51 +2081,163 @@ function SoundView({
 
 interface ModelsViewProps {
   selectedModel: string;
+  models: EngineModelInfo[];
+  storageStats?: RuntimeStorageStats;
+  engine?: EngineRuntimeState;
+  busyModelId: string | null;
+  actionError: string | null;
   onSelectModel: (model: string) => void;
+  onDownloadModel: (modelId: string) => void;
+  onDeleteModel: (modelId: string) => void;
 }
 
-function ModelsView({ selectedModel, onSelectModel }: ModelsViewProps) {
+function ModelsView({
+  selectedModel,
+  models,
+  storageStats,
+  engine,
+  busyModelId,
+  actionError,
+  onSelectModel,
+  onDownloadModel,
+  onDeleteModel,
+}: ModelsViewProps) {
   return (
     <ViewFrame title="Models library">
-      <GroupedPanel title="Recognition models">
-        {modelCards.map((model) => (
-          <button
-            key={model.name}
-            type="button"
-            disabled={model.disabled}
-            aria-pressed={selectedModel === model.name}
-            className={`flex min-h-14 w-full items-center gap-3 border-t ${panelDividerClass} px-3 py-2 text-left transition first:border-t-0 ${
-              model.disabled ? "cursor-not-allowed opacity-55" : "hover:bg-white/[0.065]"
-            } ${
-              selectedModel === model.name ? "bg-white/[0.075]" : ""
-            }`}
-            onClick={() => {
-              if (!model.disabled) {
-                onSelectModel(model.name);
-              }
-            }}
-          >
-            <div className={iconTileClass}>
-              <BrainCircuit className="size-3" />
+      <GroupedPanel title="Recognition models" allowOverflow>
+        {models.map((model) => {
+          const selected = selectedModel === model.displayName;
+          const busy = busyModelId === model.id;
+          const installed = Boolean(model.installed);
+          const diskLabel = installed && model.diskBytes ? formatByteCount(model.diskBytes) : model.sizeLabel;
+          const progress = busy && engine?.modelId === model.id && typeof engine.progress === "number"
+            ? clampNumber(engine.progress, 0, 100)
+            : null;
+
+          return (
+            <div
+              key={model.id}
+              className={`border-t ${panelDividerClass} p-3 first:border-t-0 ${selected ? "bg-white/[0.055]" : ""}`}
+            >
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={`Select ${model.displayName}`}
+                  className={`flex min-w-0 flex-1 items-center gap-3 ${sharedRadiusClass} px-2 py-1.5 text-left transition hover:bg-white/[0.055] ${focusRingClass}`}
+                  onClick={() => onSelectModel(model.displayName)}
+                >
+                  <div className={iconTileClass}>
+                    <BrainCircuit className="size-3" />
+                  </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[13px] font-semibold leading-5 text-[#f2f2f2]">{model.displayName}</span>
+                      <span className="rounded-[7px] bg-white/[0.075] px-1.5 py-0.5 text-[11px] font-semibold text-[#bcbcbc]">{diskLabel}</span>
+                    </span>
+                    <span className="selectable-text mt-0.5 block text-[12px] font-medium leading-4 text-[#aaa]">{model.detail}</span>
+                  </span>
+                  {selected ? (
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
+                      <CheckCircle2 className="size-3.5 text-[#0a84ff]" />
+                      Selected
+                    </span>
+                  ) : null}
+                </button>
+                <div className="flex shrink-0 items-center justify-end gap-2 pl-11 sm:pl-0">
+                  <StatusLabel>{installed ? "Ready" : "Needs setup"}</StatusLabel>
+                  {installed ? (
+                    <PanelControlButton
+                      type="button"
+                      aria-label={`Delete ${model.displayName}`}
+                      className="h-8 px-2.5 hover:bg-[#4a3333]"
+                      disabled={busy}
+                      onClick={() => onDeleteModel(model.id)}
+                    >
+                      <Trash2 className="size-3" />
+                      <span>{busy ? "Deleting" : "Delete"}</span>
+                    </PanelControlButton>
+                  ) : (
+                    <PanelControlButton
+                      type="button"
+                      aria-label={`Download ${model.displayName}`}
+                      className="h-8 px-2.5 hover:bg-[#394a40]"
+                      disabled={busy}
+                      onClick={() => onDownloadModel(model.id)}
+                    >
+                      {busy ? <RefreshCw className="size-3 animate-spin" /> : <Download className="size-3" />}
+                      <span>{busy ? "Setting up" : "Download"}</span>
+                    </PanelControlButton>
+                  )}
+                </div>
+              </div>
+              {progress !== null ? (
+                <div className="mt-3 pl-11">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-[#9c9c9c]">
+                    <span>Setup progress</span>
+                    <span>{Math.round(progress)}%</span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                    <div className="h-full rounded-full bg-[#9bcfff]" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-[#f2f2f2]">{model.name}</p>
-              <p className="selectable-text mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{model.detail}</p>
-            </div>
-            {model.disabled ? (
-              <span className="shrink-0 text-[12px] font-semibold text-[#a8a8a8]">{model.status}</span>
-            ) : selectedModel === model.name ? (
-              <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#e8e8e8]">
-                <CheckCircle2 className="size-3.5 text-[#0a84ff]" />
-                Selected
-              </span>
-            ) : (
-              <span className="shrink-0 text-[12px] font-semibold text-[#a8a8a8]">Use model</span>
-            )}
-          </button>
-        ))}
+          );
+        })}
       </GroupedPanel>
+      {actionError ? (
+        <p role="status" className="selectable-text px-1 text-[12px] font-semibold text-[#ffb3aa]">{actionError}</p>
+      ) : null}
+      <ResourceStatsPanel stats={storageStats} />
     </ViewFrame>
+  );
+}
+
+function ResourceStatsPanel({ stats }: { stats?: RuntimeStorageStats }) {
+  const groups = stats?.groups ?? [];
+
+  return (
+    <GroupedPanel title="Storage and memory" allowOverflow>
+      {groups.length ? (
+        groups.map((group) => (
+          <section key={group.id} className={`border-t ${panelDividerClass} p-4 first:border-t-0`}>
+            <div className="flex items-center gap-3">
+              <div className={iconTileClass}>
+                {group.id === "memory" ? <Activity className="size-3" /> : <HardDrive className="size-3" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-[#eeeeee]">{group.label}</p>
+                {group.detail ? <p className="selectable-text mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{group.detail}</p> : null}
+              </div>
+              <span className="shrink-0 text-[13px] font-semibold text-[#f0f0f0]">{formatByteCount(group.totalBytes)}</span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {group.items.map((item) => (
+                <div key={item.id} className={`${sharedRadiusClass} border border-white/[0.07] bg-white/[0.045] px-3 py-2`}>
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate text-[12px] font-semibold text-[#d8d8d8]">{item.label}</span>
+                    <span className="shrink-0 text-[12px] font-semibold text-[#eeeeee]">{formatByteCount(item.bytes)}</span>
+                  </div>
+                  {item.detail || item.path ? (
+                    <p className="selectable-text mt-1 truncate text-[11px] font-medium text-[#8f8f8f]">{item.detail ?? formatHomeRelativePath(item.path)}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))
+      ) : (
+        <div className="p-4">
+          <PanelRow
+            icon={<HardDrive className="size-3.5" />}
+            title="Runtime stats"
+            detail="Waiting for desktop storage and memory details"
+            trailing={<StatusLabel>Pending</StatusLabel>}
+          />
+        </div>
+      )}
+    </GroupedPanel>
   );
 }
 
