@@ -9,10 +9,12 @@ const electronPath = require("electron");
 
 const expectedSize = { width: 780, height: 520 };
 const screenshotViews = [
-  { name: "Home", file: "asrpro-home.png", evidenceFile: "concept1.jpg", button: "Home" },
-  { name: "History", file: "asrpro-history.png", evidenceFile: "concept2.jpg", button: "History" },
-  { name: "Models", file: "asrpro-models.png", evidenceFile: "concept3.jpg", button: "Models library" },
-  { name: "About", file: "asrpro-about.png", evidenceFile: "concept4.jpg", button: "About" },
+  { name: "Home", file: "asrpro-home.png", evidenceFile: "asrpro_home.jpg", button: "Home" },
+  { name: "Configuration", file: "asrpro-configuration.png", evidenceFile: "asrpro_configuration.jpg", button: "Configuration" },
+  { name: "Sound", file: "asrpro-sound.png", evidenceFile: "asrpro_sound.jpg", button: "Sound" },
+  { name: "Models library", file: "asrpro-models.png", evidenceFile: "asrpro_models_library.jpg", button: "Models library" },
+  { name: "History", file: "asrpro-history.png", evidenceFile: "asrpro_history.jpg", button: "History" },
+  { name: "About", file: "asrpro-about.png", evidenceFile: "asrpro_about.jpg", button: "About" },
 ];
 const screenshotWindowRadius = 12;
 const screenshotMatteColor = "#1f1f1f";
@@ -216,6 +218,7 @@ async function main() {
   const evidenceDir = path.join(repoRoot, "_evidence");
   const captureDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "asrpro-readme-capture-"));
   fs.mkdirSync(screenshotDir, { recursive: true });
+  fs.rmSync(evidenceDir, { recursive: true, force: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
 
   const port = await findAvailablePort(4270);

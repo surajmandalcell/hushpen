@@ -19,13 +19,17 @@ ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a 
 
 ## Screenshots
 
-| Home | History |
+| Home | Configuration |
 |---|---|
-| ![ASR Pro home screen](docs/screenshots/asrpro-home.png) | ![ASR Pro transcript history](docs/screenshots/asrpro-history.png) |
+| ![ASR Pro home screen](docs/screenshots/asrpro-home.png) | ![ASR Pro configuration screen](docs/screenshots/asrpro-configuration.png) |
 
-| Models | About |
+| Sound | Models |
 |---|---|
-| ![ASR Pro model library](docs/screenshots/asrpro-models.png) | ![ASR Pro about screen](docs/screenshots/asrpro-about.png) |
+| ![ASR Pro sound settings](docs/screenshots/asrpro-sound.png) | ![ASR Pro model library](docs/screenshots/asrpro-models.png) |
+
+| History | About |
+|---|---|
+| ![ASR Pro transcript history](docs/screenshots/asrpro-history.png) | ![ASR Pro about screen](docs/screenshots/asrpro-about.png) |
 
 ## Highlights
 
@@ -167,7 +171,7 @@ npm run electron:pack
 | `npm test -- --run` | Renderer, Electron runtime helpers, packaging config, and UI interaction tests pass. |
 | `npm run engine:check` | The native Whisper dependency can be required by Node. |
 | `npm run electron:pack` | Electron Builder can assemble the current OS app with bundled runtime resources. |
-| Manual runtime smoke | The packaged or previewed app loads, has no console errors, and can navigate Home, History, Models, and About. |
+| Manual runtime smoke | The packaged or previewed app loads, has no console errors, and can navigate Home, Configuration, Sound, Models, History, and About. |
 
 ## Repository Layout
 
