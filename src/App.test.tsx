@@ -1068,11 +1068,19 @@ describe("ASR Pro Electron shell", () => {
     const tinyButton = screen.getByRole("button", { name: "Select Whisper Tiny English" }) as HTMLButtonElement;
     const smallButton = screen.getByRole("button", { name: "Select Whisper Small English" }) as HTMLButtonElement;
     const multilingualButton = screen.getByRole("button", { name: "Select Whisper Base Multilingual" }) as HTMLButtonElement;
+    const modelButtons = screen.getAllByRole("button", { name: /^Select Whisper/ }).map((button) => button.getAttribute("aria-label"));
 
     expect(baseButton.getAttribute("aria-pressed")).toBe("true");
     expect(tinyButton.disabled).toBe(false);
     expect(smallButton.disabled).toBe(false);
     expect(multilingualButton.disabled).toBe(false);
+    expect(modelButtons).toEqual([
+      "Select Whisper Tiny English",
+      "Select Whisper Base English",
+      "Select Whisper Base Multilingual",
+      "Select Whisper Small English",
+      "Select Whisper Large v3 Turbo",
+    ]);
     expect(screen.queryByText("Future placeholder")).toBeNull();
   });
 
@@ -1105,7 +1113,8 @@ describe("ASR Pro Electron shell", () => {
           items: [
             { id: "resident", label: "Resident set", bytes: 125_829_120 },
             { id: "heap", label: "JavaScript heap", bytes: 41_943_040 },
-            { id: "model-footprint", label: "AI model footprint", bytes: 148_897_792 },
+            { id: "native", label: "Native allocations", bytes: 2_831_155 },
+            { id: "model-memory", label: "AI model memory", bytes: 148_897_792, detail: "Whisper Base English active model estimate" },
           ],
         },
         {
@@ -1160,7 +1169,9 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getAllByText("1.5 GiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Runtime memory")).toBeTruthy();
     expect(screen.getByText("Resident set")).toBeTruthy();
-    expect(screen.getByText("AI model footprint")).toBeTruthy();
+    expect(screen.getByText("Native allocations")).toBeTruthy();
+    expect(screen.getByText("AI model memory")).toBeTruthy();
+    expect(screen.getByText("Whisper Base English active model estimate")).toBeTruthy();
     expect(screen.getAllByText("120 MiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Whisper models")).toBeTruthy();
     const turboMetaRow = screen.getByText("Whisper Large v3 Turbo").parentElement;

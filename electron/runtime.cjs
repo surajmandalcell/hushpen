@@ -114,10 +114,10 @@ function collectRuntimeStorageStats(dataDir, memoryUsage = process.memoryUsage()
             detail: "Native addon and V8 external memory",
           },
           {
-            id: "model-footprint",
-            label: "AI model footprint",
+            id: "model-memory",
+            label: "AI model memory",
             bytes: activeModelBytes,
-            detail: `${model.displayName} file estimate`,
+            detail: `${model.displayName} active model estimate`,
           },
         ],
       },

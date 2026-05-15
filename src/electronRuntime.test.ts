@@ -62,8 +62,8 @@ describe("Electron runtime helpers", () => {
     expect(runtime.AVAILABLE_MODELS.map((model: { id: string }) => model.id)).toEqual([
       "whisper-tiny-en",
       "whisper-base-en",
-      "whisper-small-en",
       "whisper-base",
+      "whisper-small-en",
       "whisper-large-v3-turbo",
     ]);
     expect(runtime.AVAILABLE_MODELS.find((model: { id: string }) => model.id === "whisper-large-v3-turbo")).toMatchObject({
@@ -97,7 +97,11 @@ describe("Electron runtime helpers", () => {
         ["resident", 100],
         ["heap", 40],
         ["native", 20],
-        ["model-footprint", 12],
+        ["model-memory", 12],
+      ]);
+      expect(stats.groups[0].items.map((item: { label: string; detail?: string }) => [item.label, item.detail])).toContainEqual([
+        "AI model memory",
+        "Whisper Base English active model estimate",
       ]);
       expect(stats.groups[1].items.map((item: { id: string; bytes: number }) => [item.id, item.bytes])).toEqual([
         ["whisper-models", 12],

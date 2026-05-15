@@ -27,15 +27,6 @@ const AVAILABLE_MODELS = Object.freeze([
     sha1: "137c40403d78fd54d454da0f9bd998f78703390c",
   },
   {
-    id: "whisper-small-en",
-    displayName: "Whisper Small English",
-    detail: "Better accuracy, larger local model",
-    fileName: "ggml-small.en.bin",
-    language: "en",
-    sizeLabel: "466 MB",
-    sha1: "db8a495a91d927739e50b3fc1cc4c6b8f6c2d022",
-  },
-  {
     id: "whisper-base",
     displayName: "Whisper Base Multilingual",
     detail: "Small multilingual Whisper model",
@@ -43,6 +34,15 @@ const AVAILABLE_MODELS = Object.freeze([
     language: "auto",
     sizeLabel: "142 MB",
     sha1: "465707469ff3a37a2b9b8d8f89f2f99de7299dac",
+  },
+  {
+    id: "whisper-small-en",
+    displayName: "Whisper Small English",
+    detail: "Better accuracy, larger local model",
+    fileName: "ggml-small.en.bin",
+    language: "en",
+    sizeLabel: "466 MB",
+    sha1: "db8a495a91d927739e50b3fc1cc4c6b8f6c2d022",
   },
   {
     id: "whisper-large-v3-turbo",

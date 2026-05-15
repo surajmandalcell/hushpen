@@ -247,16 +247,16 @@ const fallbackModelCards: EngineModelInfo[] = [
     sizeLabel: "142 MB",
   },
   {
-    id: "whisper-small-en",
-    displayName: "Whisper Small English",
-    detail: "Higher accuracy with a larger local model",
-    sizeLabel: "466 MB",
-  },
-  {
     id: "whisper-base",
     displayName: "Whisper Base Multilingual",
     detail: "Small multilingual model with language detection",
     sizeLabel: "142 MB",
+  },
+  {
+    id: "whisper-small-en",
+    displayName: "Whisper Small English",
+    detail: "Higher accuracy with a larger local model",
+    sizeLabel: "466 MB",
   },
   {
     id: "whisper-large-v3-turbo",
