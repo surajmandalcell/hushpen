@@ -15,17 +15,13 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178C6" />
 </p>
 
-ASR Pro is a cross-platform desktop app built with Electron, React, Vite, and a native Node Whisper engine. The current default model is Whisper Base English. Smaller and multilingual Whisper options are selectable in the model library.
+ASR Pro is a cross-platform desktop app for local-first speech transcription. It records or imports audio, converts it to a transcription-ready WAV payload, and runs speech recognition through a native Whisper engine inside the Electron runtime. The current default model is Whisper Base English, with smaller, larger, and multilingual Whisper models available from the model library.
 
-## Current Preview
+## Preview
 
-| Updated logo | Current desktop UI |
-|---|---|
-| <img src="./src/assets/asrpro-app-icon.png" alt="ASR Pro logo" width="160" /> | ![ASR Pro home screen](docs/screenshots/asrpro-home.png) |
-
-| App details | README screenshot set |
-|---|---|
-| ![ASR Pro about screen](docs/screenshots/asrpro-about.png) | Captured from the Electron app at `780x520` for Home, Configuration, Sound, Models library, History, and About. |
+<p align="center">
+  <img src="docs/screenshots/asrpro-home.png" alt="ASR Pro home screen" width="780" />
+</p>
 
 ## Screenshots
 
@@ -165,7 +161,7 @@ See [Portable data](docs/portable-data.md) for the full folder map and move chec
 |---|---|---|
 | `ASRPRO_DATA_DIR` | Electron-provided app data path | Overrides app data, model cache, and temporary transcription storage. |
 | `ASRPRO_DEFAULT_MODEL` | `whisper-base-en` | Default model identifier exposed to the runtime. |
-| `ASRPRO_SCREENSHOT_MODE` | unset | Seeds deterministic local UI data for README screenshot capture. |
+| `ASRPRO_SCREENSHOT_MODE` | unset | Seeds deterministic local UI data for screenshot capture. |
 
 Startup launch is controlled from Configuration, Application, `Launch at startup`. See [Startup launch](docs/startup.md) for how the app replaces the saved startup target after a moved install.
 
@@ -202,7 +198,7 @@ npm run electron:pack
 
 ```text
 asrpro/
-├── docs/screenshots/       # README screenshots captured from the current app UI
+├── docs/screenshots/       # Product screenshots used by the README gallery
 ├── electron/               # Electron main, preload, overlay, identity, runtime, and Whisper engine helpers
 ├── scripts/                # Screenshot and native engine validation helpers
 ├── src/                    # React renderer, app shell, assets, services, and Vitest tests
@@ -222,7 +218,7 @@ asrpro/
 | Windows app and tray icons | `src/assets/asrpro-app-icon.ico`, `src/assets/asrpro-tray-dark.ico`, `src/assets/asrpro-tray-light.ico` | Electron Builder executable/taskbar icon and Windows tray icons. |
 | Linux app icons | `src/assets/linux-icons/*.png` | Size-labelled PNG icon set for Linux desktop/package integration. |
 | macOS/Linux tray icons | `src/assets/asrpro-tray-dark.png`, `src/assets/asrpro-tray-light.png` | Native tray/menu glyphs where PNG tray assets are expected. |
-| Screenshots | `docs/screenshots/*.png` | Production README gallery. |
+| Screenshots | `docs/screenshots/*.png` | Product screenshot gallery. |
 
 ## Troubleshooting
 
@@ -235,7 +231,7 @@ asrpro/
 
 ## License
 
-No public license file is currently tracked. All rights are reserved unless a license is added to the repository.
+A public license has not been declared in this repository yet. Add a `LICENSE` file before accepting outside contributions or publishing this as an open-source project.
 
 ## Maintainer
 
