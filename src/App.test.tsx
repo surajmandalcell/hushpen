@@ -1172,6 +1172,7 @@ describe("ASR Pro Electron shell", () => {
     expect(setupBadge.className).toContain("px-1");
     expect(setupBadge.className).toContain("py-[1px]");
     expect(setupBadge.className).toContain("text-[10px]");
+    expect(setupBadge.className).toContain("text-[#e6b85c]");
     const sizeBadge = turboMetaRow?.querySelector("span:nth-child(2)");
     expect(sizeBadge?.className).toContain("text-[10px]");
     expect(screen.queryByText("Selected")).toBeNull();
@@ -1180,7 +1181,17 @@ describe("ASR Pro Electron shell", () => {
     const baseSelectButton = screen.getByRole("button", { name: "Select Whisper Base English" });
     expect(baseSelectButton.textContent).not.toContain("Selected");
     expect(baseSelectButton.parentElement?.textContent).toContain("Current model");
-    expect(screen.getByLabelText("Whisper Base English downloaded").parentElement?.textContent).toContain("Downloaded model");
+    expect(baseSelectButton.className).toContain("text-[#9bcfff]");
+    expect(baseSelectButton.querySelector(".lucide-check")).toBeTruthy();
+    expect(baseSelectButton.querySelector(".lucide-circle-check")).toBeNull();
+    const downloadedStatus = screen.getByLabelText("Whisper Base English downloaded");
+    expect(downloadedStatus.className).toContain("text-[#a9d9b8]");
+    expect(downloadedStatus.querySelector(".lucide-circle-check")).toBeTruthy();
+    expect(downloadedStatus.parentElement?.textContent).toContain("Downloaded model");
+    const pendingStatus = screen.getByLabelText("Whisper Large v3 Turbo not downloaded");
+    expect(pendingStatus.className).toContain("text-[#cfcfcf]");
+    expect(pendingStatus.className).toContain("opacity-75");
+    expect(pendingStatus.querySelector(".lucide-circle-check")).toBeTruthy();
     const controlColumns = Array.from(document.querySelectorAll("[data-model-controls]"));
     expect(controlColumns).toHaveLength(initialModels.length);
     for (const controls of controlColumns) {

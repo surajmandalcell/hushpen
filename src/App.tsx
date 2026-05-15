@@ -2173,7 +2173,7 @@ function ModelsView({
                     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[13px] font-semibold leading-5 text-[#f2f2f2]">{model.displayName}</span>
                       <span className={modelMetaBadgeClass}>{diskLabel}</span>
-                      {!installed ? <span className={`${modelMetaBadgeClass} text-[#c9c0a4]`}>Needs setup</span> : null}
+                      {!installed ? <span className={`${modelMetaBadgeClass} text-[#e6b85c]`}>Needs setup</span> : null}
                     </span>
                     <span className="selectable-text mt-0.5 block text-[12px] font-medium leading-4 text-[#aaa]">{model.detail}</span>
                   </span>
@@ -2257,7 +2257,7 @@ function ModelSelectButton({ modelName, selected, onClick }: ModelSelectButtonPr
         className={`grid size-8 shrink-0 place-items-center rounded-full border-0 bg-transparent p-0 transition active:scale-[0.96] ${focusRingClass} ${selected ? "text-[#9bcfff] hover:bg-[#263b4d]" : "text-[#cfcfcf] hover:bg-white/[0.08] hover:text-[#eeeeee]"}`}
         onClick={onClick}
       >
-        {selected ? <CheckCircle2 className="size-3.5" /> : <Check className="size-3.5" />}
+        <Check className="size-3.5" />
       </button>
     </HoverPopover>
   );
@@ -2278,7 +2278,17 @@ function ModelStatusLabel({ installed, modelName }: { installed: boolean; modelN
     );
   }
 
-  return <span aria-hidden="true" className="size-8 shrink-0 justify-self-center" />;
+  return (
+    <HoverPopover content="Not downloaded">
+      <span
+        role="img"
+        aria-label={`${modelName} not downloaded`}
+        className="grid size-8 shrink-0 place-items-center rounded-full text-[#cfcfcf] opacity-75"
+      >
+        <CheckCircle2 className="size-3.5" />
+      </span>
+    </HoverPopover>
+  );
 }
 
 interface ModelActionButtonProps {
