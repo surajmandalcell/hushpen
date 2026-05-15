@@ -38,6 +38,21 @@ describe("Electron runtime helpers", () => {
     expect(preloadSource).not.toContain('"maximize"');
   });
 
+  it("keeps the startup paint dark with a temporary loader until React mounts", () => {
+    const indexSource = readFileSync("index.html", "utf8");
+    const rendererEntrySource = readFileSync("src/main.tsx", "utf8");
+    const mainSource = readFileSync("electron/main.cjs", "utf8");
+
+    expect(indexSource).toContain('<html lang="en" class="dark">');
+    expect(indexSource).toContain('id="app-loading-state"');
+    expect(indexSource).toContain("Loading ASR Pro");
+    expect(indexSource).toMatch(/html,s*body,s*#root[sS]*background:s*#2f2f2f/);
+    expect(rendererEntrySource).toContain('document.getElementById("app-loading-state")');
+    expect(rendererEntrySource).toContain("requestAnimationFrame");
+    expect(mainSource).toContain('const MAIN_WINDOW_BACKGROUND = "#2f2f2f";');
+    expect(mainSource).toContain("backgroundColor: MAIN_WINDOW_BACKGROUND");
+  });
+
   it("uses Parakeet-TDT-0.6B-v3 as the default model", () => {
     expect(runtime.DEFAULT_MODEL.id).toBe("parakeet-tdt-0.6b-v3");
     expect(runtime.DEFAULT_MODEL.displayName).toBe("Parakeet-TDT-0.6B-v3");

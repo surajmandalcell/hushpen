@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" media="(prefers-color-scheme: light)" />
@@ -9,10 +9,185 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ASR Pro</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #2f2f2f;
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #2f2f2f;
+      }
+
+      body {
+        overflow: hidden;
+        color: #ededed;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      #root:not(:empty) + #app-loading-state {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #app-loading-state {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        grid-template-columns: 208px minmax(0, 1fr);
+        background: #2f2f2f;
+        transition: opacity 160ms ease, visibility 160ms ease;
+      }
+
+      .app-loading-sidebar {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        background: #3c3c3c;
+        border-right: 1px solid #3f3f3f;
+      }
+
+      .app-loading-titlebar {
+        display: flex;
+        align-items: center;
+        height: 48px;
+        padding: 0 16px;
+        -webkit-app-region: drag;
+      }
+
+      .app-loading-dots {
+        display: flex;
+        gap: 7px;
+      }
+
+      .app-loading-dot {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+      }
+
+      .app-loading-dot.close {
+        background: #ff5f57;
+      }
+
+      .app-loading-dot.minimize {
+        background: #febc2e;
+      }
+
+      .app-loading-main {
+        display: grid;
+        min-width: 0;
+        place-items: center;
+        background: radial-gradient(circle at 68% 10%, rgba(57, 89, 62, 0.16), transparent 38%), #333333;
+      }
+
+      .app-loading-content {
+        display: grid;
+        justify-items: center;
+        gap: 12px;
+      }
+
+      .app-loading-mark {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 12px;
+        background: #202020;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 14px 36px rgba(0, 0, 0, 0.26);
+        color: #f0f0f0;
+        font-size: 15px;
+        font-weight: 750;
+      }
+
+      .app-loading-copy {
+        margin: 0;
+        color: #d8d8d8;
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .app-loading-progress {
+        position: relative;
+        width: 132px;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .app-loading-progress::after {
+        position: absolute;
+        inset: 0;
+        width: 42%;
+        border-radius: inherit;
+        background: #ededed;
+        content: "";
+        animation: app-loading-progress 1.1s ease-in-out infinite;
+      }
+
+      @keyframes app-loading-progress {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(250%);
+        }
+      }
+
+      @media (max-width: 639px) {
+        #app-loading-state {
+          grid-template-columns: 1fr;
+          grid-template-rows: 48px minmax(0, 1fr);
+        }
+
+        .app-loading-sidebar {
+          border-right: 0;
+          border-bottom: 1px solid #3f3f3f;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #app-loading-state {
+          transition: none;
+        }
+
+        .app-loading-progress::after {
+          animation: none;
+          transform: none;
+        }
+      }
+    </style>
   </head>
 
   <body>
     <div id="root"></div>
+    <div id="app-loading-state" role="status" aria-label="Loading ASR Pro">
+      <div class="app-loading-sidebar" aria-hidden="true">
+        <div class="app-loading-titlebar">
+          <div class="app-loading-dots">
+            <span class="app-loading-dot close"></span>
+            <span class="app-loading-dot minimize"></span>
+          </div>
+        </div>
+      </div>
+      <div class="app-loading-main">
+        <div class="app-loading-content">
+          <div class="app-loading-mark" aria-hidden="true">ASR</div>
+          <p class="app-loading-copy">Loading ASR Pro</p>
+          <div class="app-loading-progress" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
