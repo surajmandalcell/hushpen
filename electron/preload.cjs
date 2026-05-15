@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("asrpro", {
   getModels: () => ipcRenderer.invoke("engine:models"),
   transcribeAudio: (request) => ipcRenderer.invoke("engine:transcribe-audio", request),
   openTranscriptText: (request) => ipcRenderer.invoke("transcript:open-text", request),
+  setDefaultTextEditor: (editorId) => ipcRenderer.invoke("settings:text-editor", editorId),
   getOverlaySettings: () => ipcRenderer.invoke("overlay-settings:get"),
   setOverlaySettings: (settings) => ipcRenderer.invoke("overlay-settings:update", settings),
   setRecording: (active) => ipcRenderer.invoke("recording:set", Boolean(active)),

@@ -223,10 +223,35 @@ function normalizeTranscriptionResult(result) {
   const transcription = result.transcription ?? result.text ?? result;
   if (typeof transcription === "string") return transcription.trim();
   if (Array.isArray(transcription)) {
-    return transcription.flat(Infinity).join(" ").replace(/\s+/g, " ").trim();
+    return transcription.map(extractTranscriptText).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   }
 
   return String(transcription).trim();
+}
+
+function extractTranscriptText(value) {
+  if (typeof value === "string") {
+    return isTimestampToken(value) ? "" : value.trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(extractTranscriptText).filter(Boolean).join(" ");
+  }
+
+  if (value && typeof value === "object") {
+    const text = value.text ?? value.transcription ?? value.sentence ?? value.content;
+    if (text !== undefined) {
+      return extractTranscriptText(text);
+    }
+  }
+
+  return "";
+}
+
+function isTimestampToken(value) {
+  const token = String(value).trim();
+  if (!token || !token.includes(":")) return false;
+  return /^-?\d+(?::-?\d+){1,3}(?:[,.]-?\d+)?$/.test(token);
 }
 
 async function transcribeAudioFile({ filePath, modelId, dataDir, onState = () => {} }) {

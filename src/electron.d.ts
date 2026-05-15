@@ -20,6 +20,12 @@ type EngineModelInfo = {
   installed?: boolean;
 };
 
+type TextEditorOption = {
+  id: string;
+  label: string;
+  detail: string;
+};
+
 declare global {
   interface Window {
     asrpro?: {
@@ -43,6 +49,8 @@ declare global {
         defaultModel: string;
         defaultModelId?: string;
         models?: EngineModelInfo[];
+        defaultTextEditor?: string;
+        textEditors?: TextEditorOption[];
         overlaySettings?: {
           placement: OverlayPlacement;
           customBounds: {
@@ -67,6 +75,9 @@ declare global {
       }>;
       openTranscriptText?: (request: { title: string; text: string }) => Promise<{
         filePath: string;
+      }>;
+      setDefaultTextEditor?: (editorId: string) => Promise<{
+        defaultTextEditor: string;
       }>;
       getOverlaySettings?: () => Promise<{
         placement: OverlayPlacement;

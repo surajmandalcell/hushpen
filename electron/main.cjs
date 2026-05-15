@@ -1,6 +1,8 @@
 const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, shell, screen, session } = require("electron");
+const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { promisify } = require("node:util");
 const {
   APP_ID,
   APP_NAME,
@@ -31,6 +33,35 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:4270
 const MAIN_WINDOW_SIZE = { width: 780, height: 520 };
 const MAIN_WINDOW_BACKGROUND = "#2f2f2f";
 const SCREENSHOT_MODE = process.env.ASRPRO_SCREENSHOT_MODE === "1";
+const execFileAsync = promisify(execFile);
+const TEXT_EDITOR_OPTIONS = Object.freeze([
+  {
+    id: "system",
+    label: "System default",
+    detail: "Use the operating system default editor",
+  },
+  {
+    id: "textedit",
+    label: "TextEdit",
+    detail: "Open transcript text in Apple TextEdit",
+    macApp: "TextEdit",
+  },
+  {
+    id: "vscode",
+    label: "Visual Studio Code",
+    detail: "Open transcript text in VS Code",
+    macApp: "Visual Studio Code",
+  },
+  {
+    id: "cursor",
+    label: "Cursor",
+    detail: "Open transcript text in Cursor",
+    macApp: "Cursor",
+  },
+]);
+const DEFAULT_APP_SETTINGS = Object.freeze({
+  defaultTextEditor: "system",
+});
 
 let mainWindow;
 let overlayWindow;
@@ -40,6 +71,7 @@ let isQuitting = false;
 let isRecording = false;
 let shortcutRegistered = false;
 let overlaySettings = DEFAULT_OVERLAY_SETTINGS;
+let appSettings = DEFAULT_APP_SETTINGS;
 let positioningOverlay = false;
 let lastWaveformFrame = [];
 let engineState = {
@@ -94,6 +126,7 @@ function configureContainedData() {
   process.env.XDG_CACHE_HOME = path.join(containedDataDir, "cache");
 
   overlaySettings = loadOverlaySettings();
+  appSettings = loadAppSettings();
 }
 
 function createWindow() {
@@ -223,6 +256,8 @@ function registerIpc() {
   ipcMain.handle("overlay-settings:get", () => overlaySettings);
 
   ipcMain.handle("overlay-settings:update", (_event, settings) => updateOverlaySettings(settings));
+
+  ipcMain.handle("settings:text-editor", (_event, editorId) => setDefaultTextEditor(editorId));
 
   ipcMain.handle("recording:set", (_event, active) => {
     setRecording(Boolean(active), "renderer");
@@ -392,6 +427,8 @@ function getRuntimeState() {
     defaultModel: DEFAULT_MODEL.displayName,
     defaultModelId: DEFAULT_MODEL.id,
     models: listModels(containedDataDir),
+    defaultTextEditor: appSettings.defaultTextEditor,
+    textEditors: TEXT_EDITOR_OPTIONS,
     overlaySettings,
     engine: engineState,
     shortcut: RECORDING_SHORTCUT,
@@ -492,12 +529,27 @@ async function openTranscriptText(request = {}) {
   fs.mkdirSync(transcriptDir, { recursive: true });
   fs.writeFileSync(filePath, `${text || "No transcript text available."}\n`, "utf8");
 
+  await openTranscriptFile(filePath, appSettings.defaultTextEditor);
+
+  return { filePath };
+}
+
+async function openTranscriptFile(filePath, editorId = DEFAULT_APP_SETTINGS.defaultTextEditor) {
+  const editor = getTextEditorOption(editorId);
+
+  if (process.platform === "darwin" && editor.macApp) {
+    try {
+      await execFileAsync("open", ["-a", editor.macApp, filePath]);
+      return;
+    } catch {
+      // Fall back to the system handler when a configured app is not available.
+    }
+  }
+
   const openError = await shell.openPath(filePath);
   if (openError) {
     throw new Error(openError);
   }
-
-  return { filePath };
 }
 
 function setRecording(active, source = "app") {
@@ -617,6 +669,10 @@ function getOverlaySettingsPath() {
   return path.join(containedDataDir, "config", "overlay-settings.json");
 }
 
+function getAppSettingsPath() {
+  return path.join(containedDataDir, "config", "app-settings.json");
+}
+
 function loadOverlaySettings() {
   try {
     const settingsPath = getOverlaySettingsPath();
@@ -648,6 +704,48 @@ function updateOverlaySettings(settings) {
   saveOverlaySettings();
   positionRecordingOverlay();
   return overlaySettings;
+}
+
+function normalizeAppSettings(settings = {}) {
+  return {
+    defaultTextEditor: normalizeTextEditorId(settings.defaultTextEditor),
+  };
+}
+
+function normalizeTextEditorId(editorId) {
+  const normalized = typeof editorId === "string" ? editorId : DEFAULT_APP_SETTINGS.defaultTextEditor;
+  return TEXT_EDITOR_OPTIONS.some((editor) => editor.id === normalized) ? normalized : DEFAULT_APP_SETTINGS.defaultTextEditor;
+}
+
+function getTextEditorOption(editorId) {
+  const normalized = normalizeTextEditorId(editorId);
+  return TEXT_EDITOR_OPTIONS.find((editor) => editor.id === normalized) || TEXT_EDITOR_OPTIONS[0];
+}
+
+function loadAppSettings() {
+  try {
+    const settingsPath = getAppSettingsPath();
+    if (!fs.existsSync(settingsPath)) {
+      return DEFAULT_APP_SETTINGS;
+    }
+
+    return normalizeAppSettings(JSON.parse(fs.readFileSync(settingsPath, "utf8")));
+  } catch {
+    return DEFAULT_APP_SETTINGS;
+  }
+}
+
+function saveAppSettings() {
+  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(appSettings, null, 2));
+}
+
+function setDefaultTextEditor(editorId) {
+  appSettings = normalizeAppSettings({
+    ...appSettings,
+    defaultTextEditor: editorId,
+  });
+  saveAppSettings();
+  return appSettings;
 }
 
 function positionRecordingOverlay() {

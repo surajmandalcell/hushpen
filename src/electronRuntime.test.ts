@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const runtime = require("../electron/runtime.cjs");
+const whisperEngine = require("../electron/whisper-engine.cjs");
 
 describe("Electron runtime helpers", () => {
   it("uses CommandOrControl+` as the global recording shortcut", () => {
@@ -65,6 +66,15 @@ describe("Electron runtime helpers", () => {
     ]);
   });
 
+  it("normalizes native Whisper segment arrays without timestamp metadata", () => {
+    expect(whisperEngine.normalizeTranscriptionResult({
+      transcription: [
+        ["00:-16:-47,-260", "00:00:30,000", "Hello, I am not talking about the T3."],
+        ["00:00:30,000", "00:00:40,000", "This is the actual next sentence."],
+      ],
+    })).toBe("Hello, I am not talking about the T3. This is the actual next sentence.");
+  });
+
   it("uses Electron IPC for native Node Whisper transcription", () => {
     const mainSource = readFileSync("electron/main.cjs", "utf8");
     const preloadSource = readFileSync("electron/preload.cjs", "utf8");
@@ -80,9 +90,12 @@ describe("Electron runtime helpers", () => {
 
     expect(mainSource).toContain('ipcMain.handle("transcript:open-text"');
     expect(mainSource).toContain("openTranscriptText");
-    expect(mainSource).toContain("shell.openPath(filePath)");
+    expect(mainSource).toContain("openTranscriptFile(filePath, appSettings.defaultTextEditor)");
+    expect(mainSource).toContain("setDefaultTextEditor");
+    expect(mainSource).toContain('ipcMain.handle("settings:text-editor"');
     expect(preloadSource).toContain("openTranscriptText");
     expect(preloadSource).toContain('ipcRenderer.invoke("transcript:open-text"');
+    expect(preloadSource).toContain("setDefaultTextEditor");
   });
 
   it("renders the recording overlay as a text-free waveform pill", () => {

@@ -1049,6 +1049,36 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByRole("button", { name: "Bottom overlay position" }).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("selects the default text editor from configuration", async () => {
+    const user = userEvent.setup();
+    const setDefaultTextEditor = vi.fn().mockResolvedValue({ defaultTextEditor: "textedit" });
+    window.asrpro = {
+      getPlatform: vi.fn(),
+      getAppInfo: vi.fn(),
+      getRuntimeState: vi.fn().mockResolvedValue({
+        isRecording: false,
+        defaultModel: "Whisper Base English",
+        defaultTextEditor: "system",
+        shortcut: "CommandOrControl+`",
+      }),
+      setRecording: vi.fn(),
+      toggleRecording: vi.fn(),
+      onRecordingState: vi.fn(),
+      setDefaultTextEditor,
+      windowControl: vi.fn(),
+    } as any;
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Configuration" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Text editor selector" }).textContent).toContain("System default"));
+    await user.click(screen.getByRole("button", { name: "Text editor selector" }));
+    await user.click(screen.getByRole("option", { name: /TextEdit/i }));
+
+    expect(setDefaultTextEditor).toHaveBeenCalledWith("textedit");
+    expect(screen.getByRole("button", { name: "Text editor selector" }).textContent).toContain("TextEdit");
+  });
+
   it("uses shared rounded styling inside the configuration position control", async () => {
     const user = userEvent.setup();
 

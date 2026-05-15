@@ -57,6 +57,8 @@ interface RuntimeInfo {
   overlaySettings?: OverlaySettings;
   engine?: EngineRuntimeState;
   models?: EngineModelInfo[];
+  defaultTextEditor?: string;
+  textEditors?: TextEditorOption[];
   shortcut?: string;
   shortcutRegistered?: boolean;
   capabilities?: {
@@ -86,6 +88,12 @@ interface EngineModelInfo {
   detail: string;
   sizeLabel: string;
   installed?: boolean;
+}
+
+interface TextEditorOption {
+  id: string;
+  label: string;
+  detail: string;
 }
 
 interface NavItem {
@@ -167,6 +175,13 @@ const defaultModelName = "Whisper Base English";
 const defaultAudioInputId = "default";
 const defaultAudioInputLabel = "System default";
 const defaultAudioInputOptions: AudioInputDeviceOption[] = [{ id: defaultAudioInputId, label: defaultAudioInputLabel }];
+const defaultTextEditorId = "system";
+const defaultTextEditorOptions: TextEditorOption[] = [
+  { id: "system", label: "System default", detail: "Use the operating system default editor" },
+  { id: "textedit", label: "TextEdit", detail: "Open transcript text in Apple TextEdit" },
+  { id: "vscode", label: "Visual Studio Code", detail: "Open transcript text in VS Code" },
+  { id: "cursor", label: "Cursor", detail: "Open transcript text in Cursor" },
+];
 const modelIdsByName: Record<string, string> = {
   "Whisper Tiny English": "whisper-tiny-en",
   "Whisper Base English": "whisper-base-en",
@@ -374,6 +389,29 @@ function buildAudioInputDeviceOptions(devices: MediaDeviceInfo[]): AudioInputDev
   }
 
   return options;
+}
+
+function normalizeTextEditorId(editorId: unknown, options: TextEditorOption[] = defaultTextEditorOptions) {
+  const normalized = typeof editorId === "string" ? editorId : defaultTextEditorId;
+  return options.some((option) => option.id === normalized) ? normalized : defaultTextEditorId;
+}
+
+function normalizeTextEditorOptions(options: unknown): TextEditorOption[] {
+  if (!Array.isArray(options)) return defaultTextEditorOptions;
+
+  const normalized: TextEditorOption[] = [];
+  for (const option of options) {
+    if (!option || typeof option !== "object") continue;
+    const candidate = option as Partial<TextEditorOption>;
+    if (!candidate.id || !candidate.label) continue;
+    normalized.push({
+      id: String(candidate.id),
+      label: String(candidate.label),
+      detail: candidate.detail ? String(candidate.detail) : "",
+    });
+  }
+
+  return normalized.length ? normalized : defaultTextEditorOptions;
 }
 
 function loadTranscriptHistory() {
@@ -802,6 +840,8 @@ function App() {
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo>(defaultAppInfo);
   const [overlayPlacement, setOverlayPlacement] = useState<OverlayPlacement>("top");
+  const [textEditorOptions, setTextEditorOptions] = useState<TextEditorOption[]>(defaultTextEditorOptions);
+  const [selectedTextEditorId, setSelectedTextEditorId] = useState(defaultTextEditorId);
   const [historyRows, setHistoryRows] = useState<TranscriptHistoryRow[]>(loadTranscriptHistory);
   const [reprocessingHistoryRowId, setReprocessingHistoryRowId] = useState<string | null>(null);
   const [openingTranscriptRowId, setOpeningTranscriptRowId] = useState<string | null>(null);
@@ -978,9 +1018,28 @@ function App() {
     saveSelectedAudioInputId(deviceId);
   }, []);
 
+  const handleTextEditorChange = useCallback((editorId: string) => {
+    const normalizedEditorId = normalizeTextEditorId(editorId, textEditorOptions);
+    setSelectedTextEditorId(normalizedEditorId);
+    setRuntimeInfo((current) => (current ? { ...current, defaultTextEditor: normalizedEditorId } : current));
+
+    const saveTextEditor = window.asrpro?.setDefaultTextEditor?.(normalizedEditorId);
+    if (!saveTextEditor) return;
+
+    saveTextEditor.then((settings) => {
+      const nextEditorId = normalizeTextEditorId(settings.defaultTextEditor, textEditorOptions);
+      setSelectedTextEditorId(nextEditorId);
+      setRuntimeInfo((current) => (current ? { ...current, defaultTextEditor: nextEditorId } : current));
+    }).catch(() => {});
+  }, [textEditorOptions]);
+
   const selectedAudioInputLabel = useMemo(() => (
     audioInputDevices.find((device) => device.id === selectedAudioInputId)?.label ?? defaultAudioInputLabel
   ), [audioInputDevices, selectedAudioInputId]);
+
+  const selectedTextEditorLabel = useMemo(() => (
+    textEditorOptions.find((editor) => editor.id === selectedTextEditorId)?.label ?? defaultTextEditorOptions[0].label
+  ), [selectedTextEditorId, textEditorOptions]);
 
   const startRecordingFlow = useCallback(async (syncBridge = true) => {
     if (recordingTransitionRef.current || audioRecordingService.isRecording()) {
@@ -1112,6 +1171,9 @@ function App() {
         if (!state) return;
         setRuntimeInfo(state);
         setSelectedModel(state.defaultModel || defaultModelName);
+        const nextTextEditorOptions = normalizeTextEditorOptions(state.textEditors);
+        setTextEditorOptions(nextTextEditorOptions);
+        setSelectedTextEditorId(normalizeTextEditorId(state.defaultTextEditor, nextTextEditorOptions));
         if (!overlayPlacementTouchedRef.current) {
           setOverlayPlacement(normalizeOverlayPlacement(state.overlaySettings?.placement));
         }
@@ -1292,7 +1354,11 @@ function App() {
                 selectedModel={selectedModel}
                 selectedAudioInputLabel={selectedAudioInputLabel}
                 overlayPlacement={overlayPlacement}
+                textEditorOptions={textEditorOptions}
+                selectedTextEditorId={selectedTextEditorId}
+                selectedTextEditorLabel={selectedTextEditorLabel}
                 onOverlayPlacementChange={handleOverlayPlacementChange}
+                onTextEditorChange={handleTextEditorChange}
                 onOpenModels={() => setActiveView("models")}
                 onOpenSound={() => setActiveView("sound")}
               />
@@ -2178,7 +2244,11 @@ interface SettingsViewProps {
   selectedModel: string;
   selectedAudioInputLabel: string;
   overlayPlacement: OverlayPlacement;
+  textEditorOptions: TextEditorOption[];
+  selectedTextEditorId: string;
+  selectedTextEditorLabel: string;
   onOverlayPlacementChange: (placement: OverlayPlacement) => void;
+  onTextEditorChange: (editorId: string) => void;
   onOpenModels: () => void;
   onOpenSound: () => void;
 }
@@ -2188,7 +2258,11 @@ function SettingsView({
   selectedModel,
   selectedAudioInputLabel,
   overlayPlacement,
+  textEditorOptions,
+  selectedTextEditorId,
+  selectedTextEditorLabel,
   onOverlayPlacementChange,
+  onTextEditorChange,
   onOpenModels,
   onOpenSound,
 }: SettingsViewProps) {
@@ -2211,9 +2285,21 @@ function SettingsView({
         <PanelRow title="Toggle recording" detail="Registered by the desktop app" trailing={<ShortcutCluster parts={shortcutParts} />} />
       </GroupedPanel>
 
-      <GroupedPanel title="Application">
+      <GroupedPanel title="Application" allowOverflow>
         <PanelRow title="Default model" detail={runtimeInfo?.defaultModel ?? selectedModel} trailing={<NavigateButton label="Change" onClick={onOpenModels} />} />
         <PanelRow title="Microphone input" detail={selectedAudioInputLabel} trailing={<NavigateButton label="Change" onClick={onOpenSound} />} />
+        <PanelRow
+          title="Transcript editor"
+          detail="Used for history text files"
+          trailing={(
+            <TextEditorSelector
+              options={textEditorOptions}
+              selectedEditorId={selectedTextEditorId}
+              selectedLabel={selectedTextEditorLabel}
+              onSelect={onTextEditorChange}
+            />
+          )}
+        />
         <PanelRow title="Engine" detail={engineDetail} trailing={<StatusLabel>{engineStatus}</StatusLabel>} />
         <PanelRow title="Data folder" detail={runtimeInfo?.dataDir ?? "App-contained data directory"} trailing={<StatusLabel>Read only</StatusLabel>} />
       </GroupedPanel>
@@ -2303,6 +2389,92 @@ interface OverlayPlacementControlProps {
 function OverlayPlacementControl({ placement, onChange }: OverlayPlacementControlProps) {
   return (
     <SegmentedControl value={placement} options={overlayPlacementControlOptions} onChange={onChange} />
+  );
+}
+
+interface TextEditorSelectorProps {
+  options: TextEditorOption[];
+  selectedEditorId: string;
+  selectedLabel: string;
+  onSelect: (editorId: string) => void;
+}
+
+function TextEditorSelector({ options, selectedEditorId, selectedLabel, onSelect }: TextEditorSelectorProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const listboxId = useRef(`text-editor-options-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setIsOpen(false);
+    };
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (editorId: string) => {
+    onSelect(editorId);
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="relative min-w-[180px]">
+      <PanelControlButton
+        type="button"
+        aria-controls={isOpen ? listboxId.current : undefined}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-label="Text editor selector"
+        className="w-full min-w-0 justify-start px-2 py-1.5 text-left"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <FileText className="size-3 shrink-0 text-[#bdbdbd]" />
+        <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
+      </PanelControlButton>
+
+      {isOpen ? (
+        <DropdownSurface
+          id={listboxId.current}
+          ariaLabel="Text editor options"
+          alignClassName="right-0 top-full mt-1 w-[260px] max-w-[calc(100vw-1rem)]"
+        >
+          {options.map((editor) => {
+            const selected = editor.id === selectedEditorId;
+
+            return (
+              <DropdownOptionButton
+                key={editor.id}
+                selected={selected}
+                aria-label={`${editor.label}${editor.detail ? `, ${editor.detail}` : ""}`}
+                onClick={() => handleSelect(editor.id)}
+              >
+                <FileText className="mt-0.5 size-3 shrink-0 text-[#bdbdbd]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block whitespace-normal break-words">{editor.label}</span>
+                  {editor.detail ? <span className="block whitespace-normal break-words text-[11px] font-medium text-[#9f9f9f]">{editor.detail}</span> : null}
+                </span>
+                {selected ? <Check className="mt-0.5 size-3 shrink-0 text-[#9bcfff]" /> : null}
+              </DropdownOptionButton>
+            );
+          })}
+        </DropdownSurface>
+      ) : null}
+    </div>
   );
 }
 
