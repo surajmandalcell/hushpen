@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import packageMetadata from "../package.json";
 
@@ -52,6 +53,12 @@ describe("ASR engine development scripts", () => {
     const electronDevScript = packageMetadata.scripts["electron:dev"];
 
     expect(electronDevScript).toContain("wait-on http://127.0.0.1:4270");
+  });
+
+  it("builds Windows release artifacts as x64 from the Make target", () => {
+    const dryRun = execFileSync("make", ["-n", "build:win"], { encoding: "utf8" });
+
+    expect(dryRun).toContain("node scripts/build-electron.cjs win --x64");
   });
 
   it("checks the native Whisper addon dependency", () => {
