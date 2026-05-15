@@ -1163,10 +1163,17 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("AI model footprint")).toBeTruthy();
     expect(screen.getAllByText("120 MiB").length).toBeGreaterThan(0);
     expect(screen.getByText("Whisper models")).toBeTruthy();
+    const turboMetaRow = screen.getByText("Whisper Large v3 Turbo").parentElement;
+    expect(turboMetaRow?.textContent).toContain("1.5 GiB");
+    expect(turboMetaRow?.textContent).toContain("Needs setup");
     const setupBadge = screen.getByText("Needs setup");
-    expect(setupBadge.className).toContain("rounded-[7px]");
+    expect(setupBadge.className).toContain("rounded-[6px]");
     expect(setupBadge.className).toContain("bg-white/[0.075]");
-    expect(setupBadge.className).toContain("px-1.5");
+    expect(setupBadge.className).toContain("px-1");
+    expect(setupBadge.className).toContain("py-[1px]");
+    expect(setupBadge.className).toContain("text-[10px]");
+    const sizeBadge = turboMetaRow?.querySelector("span:nth-child(2)");
+    expect(sizeBadge?.className).toContain("text-[10px]");
     expect(screen.queryByText("Selected")).toBeNull();
     expect(screen.queryByText(/^Ready$/)).toBeNull();
 
@@ -1177,7 +1184,8 @@ describe("ASR Pro Electron shell", () => {
     const controlColumns = Array.from(document.querySelectorAll("[data-model-controls]"));
     expect(controlColumns).toHaveLength(initialModels.length);
     for (const controls of controlColumns) {
-      expect(controls.className).toContain("grid-cols-[32px_86px_32px]");
+      expect(controls.className).toContain("grid-cols-[32px_32px_32px]");
+      expect(controls.textContent).not.toContain("Needs setup");
     }
 
     const downloadButton = screen.getByRole("button", { name: "Download Whisper Large v3 Turbo" });
