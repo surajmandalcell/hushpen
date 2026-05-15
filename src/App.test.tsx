@@ -1165,14 +1165,8 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("Whisper models")).toBeTruthy();
     const turboMetaRow = screen.getByText("Whisper Large v3 Turbo").parentElement;
     expect(turboMetaRow?.textContent).toContain("1.5 GiB");
-    expect(turboMetaRow?.textContent).toContain("Needs setup");
-    const setupBadge = screen.getByText("Needs setup");
-    expect(setupBadge.className).toContain("rounded-[6px]");
-    expect(setupBadge.className).toContain("bg-white/[0.075]");
-    expect(setupBadge.className).toContain("px-1");
-    expect(setupBadge.className).toContain("py-[1px]");
-    expect(setupBadge.className).toContain("text-[10px]");
-    expect(setupBadge.className).toContain("text-[#e6b85c]");
+    expect(turboMetaRow?.textContent).not.toContain("Needs setup");
+    expect(screen.queryByText("Needs setup")).toBeNull();
     const sizeBadge = turboMetaRow?.querySelector("span:nth-child(2)");
     expect(sizeBadge?.className).toContain("text-[10px]");
     expect(screen.queryByText("Selected")).toBeNull();

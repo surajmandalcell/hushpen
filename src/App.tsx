@@ -2173,7 +2173,6 @@ function ModelsView({
                     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[13px] font-semibold leading-5 text-[#f2f2f2]">{model.displayName}</span>
                       <span className={modelMetaBadgeClass}>{diskLabel}</span>
-                      {!installed ? <span className={`${modelMetaBadgeClass} text-[#e6b85c]`}>Needs setup</span> : null}
                     </span>
                     <span className="selectable-text mt-0.5 block text-[12px] font-medium leading-4 text-[#aaa]">{model.detail}</span>
                   </span>
