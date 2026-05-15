@@ -253,6 +253,8 @@ function registerIpc() {
 
   ipcMain.handle("transcript:open-text", (_event, request) => openTranscriptText(request));
 
+  ipcMain.handle("transcript:delete-text", (_event, request) => deleteTranscriptText(request));
+
   ipcMain.handle("overlay-settings:get", () => overlaySettings);
 
   ipcMain.handle("overlay-settings:update", (_event, settings) => updateOverlaySettings(settings));
@@ -531,9 +533,8 @@ function sanitizeTranscriptFileName(value = "transcript") {
 async function openTranscriptText(request = {}) {
   const title = typeof request.title === "string" && request.title.trim() ? request.title : "Transcript";
   const text = typeof request.text === "string" ? request.text.trim() : "";
-  const transcriptDir = path.join(containedDataDir, "transcripts");
-  const fileName = `${sanitizeTranscriptFileName(title)}.txt`;
-  const filePath = path.join(transcriptDir, fileName);
+  const transcriptDir = getTranscriptDir();
+  const filePath = getTranscriptTextPath(title);
 
   fs.mkdirSync(transcriptDir, { recursive: true });
   fs.writeFileSync(filePath, `${text || "No transcript text available."}\n`, "utf8");
@@ -541,6 +542,41 @@ async function openTranscriptText(request = {}) {
   await openTranscriptFile(filePath, appSettings.defaultTextEditor);
 
   return { filePath };
+}
+
+function getTranscriptDir() {
+  return path.join(containedDataDir, "transcripts");
+}
+
+function getTranscriptTextPath(title) {
+  return path.join(getTranscriptDir(), `${sanitizeTranscriptFileName(title)}.txt`);
+}
+
+async function deleteTranscriptText(request = {}) {
+  const filePath = resolveTranscriptDeletePath(request);
+  const existed = fs.existsSync(filePath);
+  fs.rmSync(filePath, { force: true });
+
+  return { deleted: existed, filePath };
+}
+
+function resolveTranscriptDeletePath(request = {}) {
+  const transcriptDir = getTranscriptDir();
+  const requestedFilePath = typeof request.filePath === "string" ? request.filePath.trim() : "";
+  const filePath = requestedFilePath
+    ? path.resolve(requestedFilePath)
+    : getTranscriptTextPath(typeof request.title === "string" && request.title.trim() ? request.title : "Transcript");
+
+  if (!isPathInside(transcriptDir, filePath)) {
+    throw new Error("Transcript file path is outside ASR Pro data.");
+  }
+
+  return filePath;
+}
+
+function isPathInside(parentDir, candidatePath) {
+  const relativePath = path.relative(path.resolve(parentDir), path.resolve(candidatePath));
+  return relativePath === "" || (relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
 async function openTranscriptFile(filePath, editorId = DEFAULT_APP_SETTINGS.defaultTextEditor) {

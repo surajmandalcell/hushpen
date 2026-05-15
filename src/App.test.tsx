@@ -737,6 +737,49 @@ describe("ASR Pro Electron shell", () => {
     });
   });
 
+  it("deletes an opened transcript text file when deleting its history row", async () => {
+    const user = userEvent.setup();
+    const transcriptFilePath = "/Users/surajmandal/Library/Application Support/ASR Pro/data/transcripts/original-clip.txt";
+    const openTranscriptText = vi.fn().mockResolvedValue({ filePath: transcriptFilePath });
+    const deleteTranscriptText = vi.fn().mockResolvedValue({ deleted: true });
+    window.asrpro = {
+      openTranscriptText,
+      deleteTranscriptText,
+      windowControl: vi.fn(),
+    } as any;
+    window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
+      {
+        id: "history-delete-text-row",
+        title: "Original clip",
+        text: "Original transcript text.",
+        kind: "Dictation",
+        model: "Whisper Base English",
+        durationSeconds: 18,
+        createdAt: Date.now(),
+        status: "completed",
+        recordingUrl: "data:audio/webm;base64,c2F2ZWQgYXVkaW8=",
+      },
+    ]));
+
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    await user.click(screen.getByRole("button", { name: "Open transcript text: Original clip" }));
+    await waitFor(() => expect(openTranscriptText).toHaveBeenCalledWith({
+      title: "Original clip",
+      text: "Original transcript text.",
+    }));
+
+    await user.click(screen.getByRole("button", { name: "Delete transcript: Original clip" }));
+
+    await waitFor(() => expect(deleteTranscriptText).toHaveBeenCalledWith({
+      title: "Original clip",
+      filePath: transcriptFilePath,
+    }));
+    expect(screen.queryByText("Original clip")).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem("asrpro.transcriptHistory.v1") || "[]")).toEqual([]);
+  });
+
   it("records audio, transcribes it, stores the result, and stays on the current page", async () => {
     const user = userEvent.setup();
     mockAudioCapture();

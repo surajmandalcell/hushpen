@@ -112,6 +112,7 @@ interface TranscriptHistoryRow {
   createdAt: number;
   status: "completed" | "failed";
   recordingUrl?: string;
+  transcriptFilePath?: string;
   error?: string;
 }
 
@@ -476,6 +477,7 @@ function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | n
     createdAt: Number.isFinite(row.createdAt) ? Number(row.createdAt) : Date.now(),
     status,
     recordingUrl: typeof row.recordingUrl === "string" && row.recordingUrl ? row.recordingUrl : undefined,
+    transcriptFilePath: typeof row.transcriptFilePath === "string" && row.transcriptFilePath ? row.transcriptFilePath : undefined,
     error: typeof row.error === "string" ? row.error : undefined,
   };
 }
@@ -868,9 +870,17 @@ function App() {
     });
   }, []);
 
-  const deleteHistoryRow = useCallback((rowId: string) => {
+  const deleteHistoryRow = useCallback((row: TranscriptHistoryRow) => {
+    const deleteTranscriptText = window.asrpro?.deleteTranscriptText;
+    if (deleteTranscriptText) {
+      void deleteTranscriptText({
+        title: row.title,
+        filePath: row.transcriptFilePath,
+      }).catch(() => {});
+    }
+
     setHistoryRows((current) => {
-      const next = current.filter((row) => row.id !== rowId);
+      const next = current.filter((currentRow) => currentRow.id !== row.id);
       saveTranscriptHistory(next);
       return next;
     });
@@ -965,7 +975,13 @@ function App() {
       };
 
       if (window.asrpro?.openTranscriptText) {
-        await window.asrpro.openTranscriptText(request);
+        const result = await window.asrpro.openTranscriptText(request);
+        if (result?.filePath) {
+          updateHistoryRow(row.id, (current) => ({
+            ...current,
+            transcriptFilePath: result.filePath,
+          }));
+        }
         return;
       }
 
@@ -975,7 +991,7 @@ function App() {
     } finally {
       setOpeningTranscriptRowId(null);
     }
-  }, [openingTranscriptRowId]);
+  }, [openingTranscriptRowId, updateHistoryRow]);
 
   const refreshAudioInputDevices = useCallback(async () => {
     const mediaDevices = navigator.mediaDevices;
@@ -2001,7 +2017,7 @@ interface HistoryViewProps {
   onCopyRow: (text: string) => void;
   onReprocessRow: (row: TranscriptHistoryRow) => void;
   onOpenTranscriptRow: (row: TranscriptHistoryRow) => void;
-  onDeleteRow: (rowId: string) => void;
+  onDeleteRow: (row: TranscriptHistoryRow) => void;
   reprocessingRowId: string | null;
   openingTranscriptRowId: string | null;
 }
@@ -2064,7 +2080,7 @@ function HistoryView({ rows, onCopyRow, onReprocessRow, onOpenTranscriptRow, onD
                     onCopy={() => onCopyRow(row.text)}
                     onReprocess={() => onReprocessRow(row)}
                     onOpenTranscript={() => onOpenTranscriptRow(row)}
-                    onDelete={() => onDeleteRow(row.id)}
+                    onDelete={() => onDeleteRow(row)}
                     onToggle={() => setExpandedRowId((current) => (current === row.id ? null : row.id))}
                     reprocessing={reprocessingRowId === row.id}
                     openingTranscript={openingTranscriptRowId === row.id}

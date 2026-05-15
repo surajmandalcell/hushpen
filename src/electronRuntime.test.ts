@@ -91,10 +91,14 @@ describe("Electron runtime helpers", () => {
     expect(mainSource).toContain('ipcMain.handle("transcript:open-text"');
     expect(mainSource).toContain("openTranscriptText");
     expect(mainSource).toContain("openTranscriptFile(filePath, appSettings.defaultTextEditor)");
+    expect(mainSource).toContain('ipcMain.handle("transcript:delete-text"');
+    expect(mainSource).toContain("deleteTranscriptText");
     expect(mainSource).toContain("setDefaultTextEditor");
     expect(mainSource).toContain('ipcMain.handle("settings:text-editor"');
     expect(preloadSource).toContain("openTranscriptText");
     expect(preloadSource).toContain('ipcRenderer.invoke("transcript:open-text"');
+    expect(preloadSource).toContain("deleteTranscriptText");
+    expect(preloadSource).toContain('ipcRenderer.invoke("transcript:delete-text"');
     expect(preloadSource).toContain("setDefaultTextEditor");
   });
 

@@ -76,6 +76,10 @@ declare global {
       openTranscriptText?: (request: { title: string; text: string }) => Promise<{
         filePath: string;
       }>;
+      deleteTranscriptText?: (request: { title: string; filePath?: string }) => Promise<{
+        deleted: boolean;
+        filePath: string;
+      }>;
       setDefaultTextEditor?: (editorId: string) => Promise<{
         defaultTextEditor: string;
       }>;
