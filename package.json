@@ -1,7 +1,7 @@
 {
   "name": "asrpro",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "productName": "ASR Pro",
   "description": "Cross-platform desktop speech recognition and transcription workspace.",
   "author": "Suraj Mandal <surajmandalcell@gmail.com>",
