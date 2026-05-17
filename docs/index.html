@@ -15,7 +15,8 @@
       content="Private desktop speech transcription with local Whisper models and app-owned storage."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="./screenshots/asrpro-home.png" />
+    <meta property="og:url" content="https://surajmandalcell.github.io/asrpro/" />
+    <meta property="og:image" content="https://surajmandalcell.github.io/asrpro/screenshots/asrpro-home.png" />
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
     <style>
@@ -46,6 +47,11 @@
         --accent-purple: #7167ff;
         --accent-teal: #92c2c6;
         --status-error: #ff9c8f;
+        --shadow-window: 0 16px 34px rgba(0, 0, 0, 0.18);
+        --shadow-panel: inset 0 1px 0 rgba(238, 238, 238, 0.035);
+        --shadow-overlay: 0 18px 42px rgba(0, 0, 0, 0.26);
+        --border-subtle: rgba(142, 142, 142, 0.22);
+        --border-accent: rgba(146, 194, 198, 0.34);
         --max-page: 1180px;
         --font: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
       }
@@ -61,8 +67,8 @@
       body {
         margin: 0;
         background:
-          linear-gradient(135deg, rgba(146, 194, 198, 0.12) 0%, transparent 38%),
-          linear-gradient(180deg, #333333 0%, var(--background) 42%, #2b2b2b 100%);
+          linear-gradient(180deg, #343434 0%, var(--background) 38%, #2b2b2b 100%),
+          repeating-linear-gradient(90deg, rgba(84, 84, 84, 0.08) 0 1px, transparent 1px 96px);
         color: var(--text-body);
         font-family: var(--font);
         line-height: 1.54;
@@ -76,8 +82,8 @@
         z-index: -1;
         pointer-events: none;
         background-image:
-          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+          linear-gradient(rgba(168, 168, 168, 0.052) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(168, 168, 168, 0.036) 1px, transparent 1px);
         background-size: 56px 56px;
         mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent 72%);
       }
@@ -104,8 +110,8 @@
         position: sticky;
         top: 0;
         z-index: 20;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(47, 47, 47, 0.86);
+        border-bottom: 1px solid rgba(84, 84, 84, 0.48);
+        background: rgba(47, 47, 47, 0.88);
         backdrop-filter: blur(18px);
       }
 
@@ -133,7 +139,7 @@
         width: 34px;
         height: 34px;
         border-radius: 9px;
-        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
       }
 
       .nav-links {
@@ -150,6 +156,12 @@
         min-height: 32px;
         border-radius: 10px;
         padding: 8px 10px;
+        white-space: nowrap;
+        transition:
+          background 160ms ease,
+          color 160ms ease,
+          border-color 160ms ease,
+          transform 160ms ease;
       }
 
       .nav-link:hover,
@@ -170,6 +182,8 @@
       .nav-action:hover,
       .nav-action:focus-visible {
         background: var(--surface-control-hover);
+        border-color: var(--border-accent);
+        transform: translateY(-1px);
       }
 
       .icon {
@@ -184,16 +198,31 @@
       }
 
       .hero {
+        position: relative;
         display: grid;
         grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
         align-items: center;
-        gap: clamp(32px, 5vw, 68px);
-        min-height: calc(88svh - 68px);
+        column-gap: clamp(32px, 5vw, 68px);
+        row-gap: 0;
+        min-height: clamp(680px, calc(100svh - 68px), 820px);
         padding: clamp(56px, 8vw, 98px) 0 clamp(38px, 7vw, 72px);
       }
 
       .hero-copy {
+        grid-column: 1;
+        grid-row: 1;
+        position: relative;
         max-width: 550px;
+      }
+
+      .hero-copy::before {
+        content: "";
+        display: block;
+        width: 68px;
+        height: 2px;
+        margin-bottom: 24px;
+        border-radius: 999px;
+        background: var(--accent-teal);
       }
 
       h1,
@@ -205,18 +234,18 @@
 
       h1 {
         color: var(--text-heading);
-        font-size: clamp(46px, 8vw, 92px);
+        font-size: clamp(44px, 6vw, 74px);
         font-weight: 650;
-        line-height: 0.96;
+        line-height: 0.98;
       }
 
       .hero-copy p {
         max-width: 500px;
         margin-top: 22px;
         color: var(--text-body);
-        font-size: clamp(17px, 2.2vw, 22px);
+        font-size: clamp(16px, 1.8vw, 20px);
         font-weight: 500;
-        line-height: 1.42;
+        line-height: 1.48;
       }
 
       .hero-actions {
@@ -239,20 +268,29 @@
         color: var(--text-primary);
         font-size: 12px;
         font-weight: 700;
+        transform: translate(var(--magnet-x, 0), var(--magnet-y, 0));
+        transition:
+          background 160ms ease,
+          border-color 160ms ease,
+          color 160ms ease,
+          transform 180ms ease;
       }
 
       .button.primary {
         border-color: rgba(146, 194, 198, 0.5);
-        background: #d9f4f4;
+        background: #c7e6e8;
         color: #10171d;
+        box-shadow: inset 0 1px 0 rgba(238, 244, 245, 0.36);
       }
 
       .button:hover,
       .button:focus-visible {
-        transform: translateY(-1px);
+        border-color: var(--border-accent);
       }
 
       .hero-notes {
+        grid-column: 1;
+        grid-row: 2;
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1px;
@@ -288,20 +326,41 @@
       }
 
       .product-frame {
+        grid-column: 2;
+        grid-row: 1 / span 3;
         position: relative;
         min-width: 0;
+        --tilt-x: 0deg;
+        --tilt-y: 0deg;
+        transform: perspective(1200px) rotateX(var(--tilt-y)) rotateY(var(--tilt-x));
+        transform-style: preserve-3d;
+        transition: transform 260ms ease;
+      }
+
+      .product-frame::before {
+        content: "";
+        position: absolute;
+        inset: -22px -18px auto 12%;
+        height: 72px;
+        border-top: 1px solid rgba(146, 194, 198, 0.22);
+        border-right: 1px solid rgba(146, 194, 198, 0.12);
+        border-radius: 22px 22px 0 0;
+        opacity: 0.85;
+        transform: translateZ(-20px);
       }
 
       .app-window {
+        position: relative;
+        z-index: 1;
         overflow: hidden;
         width: 100%;
         max-width: 780px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
+        border: 1px solid var(--border-subtle);
         border-radius: 22px;
         background: var(--surface-elevated);
         box-shadow:
-          0 38px 70px rgba(0, 0, 0, 0.34),
-          0 12px 26px rgba(0, 0, 0, 0.24);
+          inset 0 1px 0 rgba(238, 238, 238, 0.05),
+          var(--shadow-window);
       }
 
       .app-window img {
@@ -313,14 +372,15 @@
 
       .window-callout {
         position: absolute;
+        z-index: 2;
         right: clamp(10px, 3vw, 28px);
         bottom: clamp(-30px, -3vw, -22px);
         width: min(300px, 72%);
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        border: 1px solid var(--border-subtle);
         border-radius: 22px;
         background: rgba(43, 43, 43, 0.92);
-        box-shadow: 0 24px 50px rgba(0, 0, 0, 0.28);
+        box-shadow: var(--shadow-overlay);
         backdrop-filter: blur(16px);
       }
 
@@ -358,6 +418,46 @@
         line-height: 1.4;
       }
 
+      .ambient-signal {
+        grid-column: 1;
+        grid-row: 3;
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) 64px;
+        align-items: center;
+        gap: 10px;
+        max-width: 520px;
+        margin-top: 22px;
+        color: var(--text-subtle);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .ambient-signal-line {
+        position: relative;
+        height: 22px;
+        overflow: hidden;
+        border-radius: 999px;
+        background:
+          linear-gradient(90deg, transparent, rgba(146, 194, 198, 0.2), transparent),
+          rgba(48, 48, 48, 0.82);
+      }
+
+      .ambient-signal-line::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 44' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 23 C24 23 24 10 48 10 C72 10 72 34 96 34 C120 34 120 18 144 18 C168 18 168 27 192 27 C216 27 216 13 240 13 C264 13 264 31 288 31 C312 31 312 20 336 20 C368 20 368 23 400 23' fill='none' stroke='%2392C2C6' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
+          center / 400px 44px repeat-x;
+        opacity: 0.72;
+        animation: signal-pan 8s linear infinite;
+      }
+
+      @keyframes signal-pan {
+        to {
+          transform: translateX(-200px);
+        }
+      }
+
       .section-heading {
         display: grid;
         grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.55fr);
@@ -387,6 +487,7 @@
         border: 1px solid var(--divider);
         border-radius: 22px;
         background: var(--divider);
+        box-shadow: var(--shadow-panel);
       }
 
       .workflow-list,
@@ -410,16 +511,21 @@
         color: inherit;
         text-align: left;
         cursor: pointer;
+        transition:
+          background 160ms ease,
+          transform 180ms ease;
       }
 
       .workflow-item:hover,
       .workflow-item:focus-visible {
         background: var(--surface-control-hover);
+        transform: translateX(2px);
       }
 
       .workflow-item[aria-selected="true"] {
         background: var(--sidebar-active);
         color: var(--text-primary);
+        box-shadow: inset 0 0 0 1px rgba(146, 194, 198, 0.18);
       }
 
       .workflow-item svg {
@@ -456,6 +562,43 @@
         padding: clamp(18px, 3vw, 28px);
       }
 
+      .workflow-panel:focus-visible {
+        outline-offset: -4px;
+      }
+
+      .workflow-metadata {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1px;
+        margin-top: 18px;
+        overflow: hidden;
+        border: 1px solid var(--divider);
+        border-radius: 14px;
+        background: var(--divider);
+      }
+
+      .workflow-metadata .meta-item {
+        min-width: 0;
+        padding: 10px;
+        background: rgba(48, 48, 48, 0.86);
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .workflow-metadata strong {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--text-heading);
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .workflow-metadata .meta-copy {
+        display: block;
+      }
+
       .panel-eyeline {
         display: flex;
         align-items: center;
@@ -472,18 +615,43 @@
       }
 
       .workflow-shot {
+        position: relative;
         margin-top: 18px;
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-subtle);
         border-radius: 18px;
+        aspect-ratio: 780 / 520;
         background: var(--surface-elevated);
+        box-shadow: var(--shadow-panel);
       }
 
       .workflow-shot img {
+        position: absolute;
+        inset: 0;
         width: 100%;
-        height: auto;
-        aspect-ratio: 780 / 520;
+        height: 100%;
         object-fit: contain;
+        opacity: 0;
+        transform: scale(1);
+        transition:
+          opacity 240ms ease,
+          transform 220ms ease;
+      }
+
+      .workflow-shot img.is-active {
+        opacity: 1;
+        z-index: 1;
+      }
+
+      .workflow-shot img.is-entering {
+        opacity: 1;
+        transform: scale(1);
+        z-index: 2;
+      }
+
+      .workflow-shot img.is-leaving {
+        opacity: 0;
+        transform: scale(0.985);
       }
 
       .workflow-copy {
@@ -514,6 +682,7 @@
         border: 1px solid var(--divider);
         border-radius: 22px;
         background: var(--divider);
+        box-shadow: var(--shadow-panel);
       }
 
       .storage-row {
@@ -528,6 +697,18 @@
 
       .storage-row:hover {
         background: rgba(66, 66, 66, 0.9);
+      }
+
+      .storage-row,
+      .model-row {
+        transition:
+          background 160ms ease,
+          transform 180ms ease;
+      }
+
+      .storage-row:hover,
+      .model-row:hover {
+        transform: translateX(2px);
       }
 
       .storage-row .tile {
@@ -557,7 +738,7 @@
         display: inline-flex;
         width: fit-content;
         max-width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-subtle);
         border-radius: 9px;
         padding: 8px 10px;
         background: var(--surface-elevated);
@@ -579,6 +760,7 @@
         border: 1px solid var(--divider);
         border-radius: 22px;
         background: rgba(58, 58, 58, 0.88);
+        box-shadow: var(--shadow-panel);
       }
 
       .model-row {
@@ -593,6 +775,10 @@
 
       .model-row:first-child {
         border-top: 0;
+      }
+
+      .model-row:hover {
+        background: rgba(66, 66, 66, 0.5);
       }
 
       .model-row strong {
@@ -619,9 +805,10 @@
 
       .model-visual {
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-subtle);
         border-radius: 22px;
         background: var(--surface-elevated);
+        box-shadow: var(--shadow-panel);
       }
 
       .model-visual img {
@@ -639,9 +826,13 @@
 
       .gallery-card {
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border-subtle);
         border-radius: 18px;
         background: var(--surface);
+        transition:
+          border-color 160ms ease,
+          background 160ms ease,
+          transform 180ms ease;
       }
 
       .gallery-card img {
@@ -652,7 +843,15 @@
         transition: transform 180ms ease;
       }
 
-      .gallery-card:hover img {
+      .gallery-card:hover,
+      .gallery-card:focus-visible {
+        border-color: var(--border-accent);
+        background: rgba(66, 66, 66, 0.72);
+        transform: translateY(-2px);
+      }
+
+      .gallery-card:hover img,
+      .gallery-card:focus-visible img {
         transform: scale(1.018);
       }
 
@@ -667,7 +866,7 @@
         width: min(var(--max-page), calc(100% - 32px));
         margin: 86px auto 0;
         padding: 28px 0 42px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid rgba(84, 84, 84, 0.72);
         color: var(--text-muted);
         font-size: 12px;
         font-weight: 600;
@@ -690,6 +889,19 @@
         color: var(--text-primary);
       }
 
+      .reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition:
+          opacity 520ms ease,
+          transform 520ms ease;
+      }
+
+      .reveal.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
       :focus-visible {
         outline: 2px solid var(--focus);
         outline-offset: 3px;
@@ -708,6 +920,14 @@
           padding-top: 54px;
         }
 
+        .hero-copy,
+        .hero-notes,
+        .product-frame,
+        .ambient-signal {
+          grid-column: auto;
+          grid-row: auto;
+        }
+
         .product-frame {
           max-width: 780px;
         }
@@ -718,21 +938,57 @@
           align-items: flex-start;
           flex-direction: column;
           gap: 12px;
+          width: calc(100% - 20px);
           padding: 14px 0;
         }
 
         .nav-links {
-          width: 100%;
           flex-wrap: wrap;
           align-items: flex-start;
+          width: 100%;
+        }
+
+        .nav-link,
+        .nav-action {
+          flex: 0 1 auto;
         }
 
         .hero-notes,
         .workflow-copy,
+        .workflow-metadata,
         .storage-row,
         .model-row,
         .footer-content {
           grid-template-columns: 1fr;
+        }
+
+        .hero {
+          gap: 26px;
+          padding-top: 30px;
+        }
+
+        .hero-copy::before {
+          margin-bottom: 18px;
+        }
+
+        .hero-copy p {
+          margin-top: 16px;
+        }
+
+        .hero-actions {
+          margin-top: 22px;
+        }
+
+        .product-frame {
+          transform: none;
+        }
+
+        .product-frame::before {
+          display: none;
+        }
+
+        .hero-actions .button {
+          flex: 1 1 180px;
         }
 
         .window-callout {
@@ -750,6 +1006,65 @@
         .gallery-grid {
           grid-template-columns: 1fr;
         }
+
+        .ambient-signal {
+          grid-template-columns: 28px minmax(96px, 1fr) 42px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .hero {
+          gap: 18px;
+        }
+
+        .nav-action {
+          max-width: none;
+        }
+
+        .section,
+        .footer {
+          width: calc(100% - 20px);
+        }
+
+        .note,
+        .storage-row,
+        .model-row {
+          padding: 14px;
+        }
+
+        .hero-notes {
+          margin-top: 0;
+        }
+
+        .window-callout {
+          position: absolute;
+          right: 10px;
+          bottom: 10px;
+          left: 10px;
+          width: auto;
+          margin-top: 0;
+          border-radius: 16px;
+        }
+
+        .callout-row {
+          grid-template-columns: 30px minmax(0, 1fr);
+          gap: 10px;
+          padding: 10px;
+        }
+
+        .callout-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 10px;
+        }
+
+        .callout-row strong {
+          font-size: 12px;
+        }
+
+        .callout-row span {
+          font-size: 11px;
+        }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -761,6 +1076,7 @@
           animation-duration: 0.001ms !important;
           animation-iteration-count: 1 !important;
         }
+
       }
     </style>
   </head>
@@ -812,20 +1128,6 @@
                 Build from source
               </a>
             </div>
-            <div class="hero-notes" aria-label="Product summary">
-              <div class="note">
-                <strong>Local-first</strong>
-                <span>No external transcription API in the recognition path.</span>
-              </div>
-              <div class="note">
-                <strong>Desktop-native</strong>
-                <span>Tray controls, shortcut capture, and fixed macOS-style shell.</span>
-              </div>
-              <div class="note">
-                <strong>Model control</strong>
-                <span>Download, select, and remove Whisper models from the app.</span>
-              </div>
-            </div>
           </div>
 
           <div class="product-frame" aria-label="ASR Pro product preview">
@@ -846,10 +1148,30 @@
                 </span>
                 <span>
                   <strong>Record, transcribe, keep moving</strong>
-                  <span>Designed as a compact utility, not a web dashboard.</span>
+                  <span>Designed as a compact utility for private transcription.</span>
                 </span>
               </div>
             </div>
+          </div>
+
+          <div class="hero-notes" aria-label="Product summary">
+            <div class="note">
+              <strong>Local-first</strong>
+              <span>No external transcription API in the recognition path.</span>
+            </div>
+            <div class="note">
+              <strong>Desktop-native</strong>
+              <span>Tray controls, shortcut capture, and fixed macOS-style shell.</span>
+            </div>
+            <div class="note">
+              <strong>Model control</strong>
+              <span>Download, select, and remove Whisper models from the app.</span>
+            </div>
+          </div>
+          <div class="ambient-signal" aria-hidden="true">
+            <span>local</span>
+            <span class="ambient-signal-line"></span>
+            <span>ready</span>
           </div>
         </section>
 
@@ -862,33 +1184,33 @@
             </p>
           </div>
           <div class="workflow" data-workflow>
-            <div class="workflow-list" role="tablist" aria-label="ASR Pro workflow">
-              <button class="workflow-item" type="button" role="tab" aria-selected="true" data-shot="home">
+            <div class="workflow-list" role="tablist" aria-label="ASR Pro workflow" aria-orientation="vertical">
+              <button class="workflow-item" id="tab-home" type="button" role="tab" aria-selected="true" aria-controls="workflow-panel" tabindex="0" data-shot="home">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 5l8 6.5V20H5v-8.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
                 </span>
                 <span><strong>Capture speech</strong><span>Start from Home, tray, or shortcut.</span></span>
               </button>
-              <button class="workflow-item" type="button" role="tab" aria-selected="false" data-shot="history">
+              <button class="workflow-item" id="tab-history" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-shot="history">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
                 </span>
                 <span><strong>Use transcript history</strong><span>Search, copy, open, delete, or reprocess saved clips.</span></span>
               </button>
-              <button class="workflow-item" type="button" role="tab" aria-selected="false" data-shot="sound">
+              <button class="workflow-item" id="tab-sound" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-shot="sound">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M4 14v-4m4 7V7m4 13V4m4 11V9m4 7V8" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
                 </span>
                 <span><strong>Choose inputs</strong><span>Refresh devices and control microphone behavior.</span></span>
               </button>
-              <button class="workflow-item" type="button" role="tab" aria-selected="false" data-shot="configuration">
+              <button class="workflow-item" id="tab-configuration" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-shot="configuration">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v4m0 8v4M6 8h12M6 16h12M8 6v4m8 4v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
                 </span>
                 <span><strong>Set preferences</strong><span>Auto-copy, text editor, startup launch, and overlay placement.</span></span>
               </button>
             </div>
-            <div class="workflow-panel">
+            <div class="workflow-panel" id="workflow-panel" role="tabpanel" aria-labelledby="tab-home" tabindex="0" aria-live="polite">
               <div class="panel-eyeline">
                 <span data-shot-label>Home</span>
                 <strong>780 x 520 fixed desktop shell</strong>
@@ -896,10 +1218,19 @@
               <div class="workflow-shot">
                 <img
                   data-shot-image
+                  class="is-active"
                   src="./screenshots/asrpro-home.png"
                   width="780"
                   height="520"
                   alt="ASR Pro home screen."
+                />
+                <img
+                  data-shot-image
+                  src="./screenshots/asrpro-home.png"
+                  width="780"
+                  height="520"
+                  alt=""
+                  aria-hidden="true"
                 />
               </div>
               <div class="workflow-copy">
@@ -912,6 +1243,11 @@
                 </div>
                 <a class="button" href="#screens">View screens</a>
               </div>
+              <div class="workflow-metadata" aria-label="Current workflow details">
+                <div class="meta-item"><strong data-meta-primary>Local model</strong><span class="meta-copy" data-meta-primary-copy>Selected model and readiness stay visible before capture.</span></div>
+                <div class="meta-item"><strong data-meta-secondary>Desktop shell</strong><span class="meta-copy" data-meta-secondary-copy>Fixed 780 x 520 window with compact controls.</span></div>
+                <div class="meta-item"><strong data-meta-tertiary>History path</strong><span class="meta-copy" data-meta-tertiary-copy>Recent output stays available without a hosted account.</span></div>
+              </div>
             </div>
           </div>
         </section>
@@ -920,8 +1256,8 @@
           <div class="section-heading">
             <h2>Private by shape, not by slogan.</h2>
             <p>
-              ASR Pro keeps useful state under app-owned paths. The product page mirrors that
-              reality instead of asking visitors to trust vague privacy claims.
+              ASR Pro keeps useful state under app-owned paths, so recordings, transcripts, and
+              model files stay organized around local desktop work.
             </p>
           </div>
           <div class="storage-list">
@@ -1009,8 +1345,8 @@
           <div class="section-heading">
             <h2>Every screen stays compact.</h2>
             <p>
-              The public page uses real product screenshots. No invented dashboards, no fake metrics,
-              and no oversized marketing panels pretending to be the app.
+              Real app screens show the same restrained shell used for recording, history,
+              configuration, sound input, and local model management.
             </p>
           </div>
           <div class="gallery-grid">
@@ -1046,8 +1382,8 @@
         <div class="footer-content">
           <span>ASR Pro: private desktop speech transcription with local Whisper models.</span>
           <div class="footer-links">
-            <a href="https://github.com/surajmandalcell/asrpro/blob/master/docs/portable-data.md" rel="noreferrer">Portable data</a>
-            <a href="https://github.com/surajmandalcell/asrpro/blob/master/docs/startup.md" rel="noreferrer">Startup launch</a>
+            <a href="./portable-data.html">Portable data</a>
+            <a href="./startup.html">Startup launch</a>
             <a href="https://github.com/surajmandalcell/asrpro/issues" rel="noreferrer">Issues</a>
           </div>
         </div>
@@ -1063,6 +1399,11 @@
           title: "Start and stop recording without leaving the app.",
           copy:
             "Home keeps the main recording action, selected microphone, model state, and last transcript visible in the same compact shell.",
+          meta: [
+            ["Local model", "Selected model and readiness stay visible before capture."],
+            ["Desktop shell", "Fixed 780 x 520 window with compact controls."],
+            ["History path", "Recent output stays available without a hosted account."],
+          ],
         },
         history: {
           label: "History",
@@ -1071,6 +1412,11 @@
           title: "Keep useful transcripts close.",
           copy:
             "History supports search, copying, deletion, text-file opening, and reprocessing when the saved audio clip is available.",
+          meta: [
+            ["Searchable rows", "Recent transcripts remain close to the recording flow."],
+            ["Saved clips", "Available source audio can be reprocessed from history."],
+            ["Local files", "Text openings are written inside app-owned storage."],
+          ],
         },
         sound: {
           label: "Sound",
@@ -1079,6 +1425,11 @@
           title: "Use the right input before recording.",
           copy:
             "The Sound screen keeps device selection, refresh state, and microphone feedback in the same focused desktop workspace.",
+          meta: [
+            ["Input control", "Refresh and choose available microphones before capture."],
+            ["Device feedback", "Sound state stays readable in the compact app shell."],
+            ["Recording fit", "Controls are tuned for daily dictation instead of setup churn."],
+          ],
         },
         configuration: {
           label: "Configuration",
@@ -1087,32 +1438,217 @@
           title: "Tune the desktop behavior.",
           copy:
             "Configuration covers startup launch, auto-copy behavior, overlay placement, and preferred transcript editor without leaving the app.",
+          meta: [
+            ["Startup launch", "Turning it on writes the current executable target."],
+            ["Auto-copy", "Completed transcript text can move directly to the clipboard."],
+            ["Overlay placement", "The floating recording pill can stay where it belongs."],
+          ],
         },
       };
 
       const workflow = document.querySelector("[data-workflow]");
-      const shotImage = document.querySelector("[data-shot-image]");
+      const shotImages = Array.from(document.querySelectorAll("[data-shot-image]"));
       const shotLabel = document.querySelector("[data-shot-label]");
       const shotTitle = document.querySelector("[data-shot-title]");
       const shotCopy = document.querySelector("[data-shot-copy]");
+      const workflowPanel = document.querySelector("#workflow-panel");
+      const metaNodes = [
+        [document.querySelector("[data-meta-primary]"), document.querySelector("[data-meta-primary-copy]")],
+        [document.querySelector("[data-meta-secondary]"), document.querySelector("[data-meta-secondary-copy]")],
+        [document.querySelector("[data-meta-tertiary]"), document.querySelector("[data-meta-tertiary-copy]")],
+      ];
 
-      workflow?.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-shot]");
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const preloadedShots = new Map();
+      let shotRequestId = 0;
+      let activeShotIndex = 0;
+
+      Object.values(workflowData).forEach(({ src }) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = src;
+        preloadedShots.set(src, image);
+      });
+
+      function whenShotReady(src) {
+        const image = preloadedShots.get(src);
+        if (!image || image.complete) return Promise.resolve();
+
+        return new Promise((resolve) => {
+          image.addEventListener("load", resolve, { once: true });
+          image.addEventListener("error", resolve, { once: true });
+        });
+      }
+
+      function setImageAccessibility(activeImage, inactiveImage, alt) {
+        activeImage.alt = alt;
+        activeImage.removeAttribute("aria-hidden");
+        inactiveImage.alt = "";
+        inactiveImage.setAttribute("aria-hidden", "true");
+      }
+
+      function crossfadeShot(next, requestId) {
+        const activeImage = shotImages[activeShotIndex];
+        const nextShotIndex = activeShotIndex === 0 ? 1 : 0;
+        const incomingImage = shotImages[nextShotIndex];
+
+        if (!activeImage || !incomingImage) return;
+
+        if (activeImage.src.endsWith(next.src.slice(1))) {
+          activeImage.classList.remove("is-entering", "is-leaving");
+          activeImage.classList.add("is-active");
+          setImageAccessibility(activeImage, incomingImage, next.alt);
+          return;
+        }
+
+        incomingImage.src = next.src;
+        incomingImage.classList.remove("is-active", "is-entering", "is-leaving");
+        activeImage.classList.remove("is-entering", "is-leaving");
+        setImageAccessibility(incomingImage, activeImage, next.alt);
+
+        if (prefersReducedMotion) {
+          activeImage.classList.remove("is-active", "is-entering", "is-leaving");
+          incomingImage.classList.add("is-active");
+          activeShotIndex = nextShotIndex;
+          return;
+        }
+
+        whenShotReady(next.src).then(() => {
+          if (requestId !== shotRequestId) return;
+
+          window.requestAnimationFrame(() => {
+            incomingImage.classList.add("is-entering");
+            activeImage.classList.add("is-leaving");
+            activeImage.classList.remove("is-active");
+          });
+
+          window.setTimeout(() => {
+            if (requestId !== shotRequestId) return;
+
+            incomingImage.classList.remove("is-entering", "is-leaving");
+            incomingImage.classList.add("is-active");
+            activeImage.classList.remove("is-active", "is-entering", "is-leaving");
+            activeImage.alt = "";
+            activeImage.setAttribute("aria-hidden", "true");
+            activeShotIndex = nextShotIndex;
+          }, 260);
+        });
+      }
+
+      function selectWorkflow(button) {
         if (!button) return;
 
         const next = workflowData[button.dataset.shot];
         if (!next) return;
+        const requestId = ++shotRequestId;
 
         workflow.querySelectorAll("[data-shot]").forEach((item) => {
           item.setAttribute("aria-selected", String(item === button));
+          item.setAttribute("tabindex", item === button ? "0" : "-1");
         });
 
-        shotImage.src = next.src;
-        shotImage.alt = next.alt;
+        crossfadeShot(next, requestId);
+
         shotLabel.textContent = next.label;
         shotTitle.textContent = next.title;
         shotCopy.textContent = next.copy;
+        workflowPanel.setAttribute("aria-labelledby", button.id);
+
+        next.meta.forEach((item, index) => {
+          const [label, copy] = item;
+          const [labelNode, copyNode] = metaNodes[index];
+          labelNode.textContent = label;
+          copyNode.textContent = copy;
+        });
+      }
+
+      workflow?.addEventListener("click", (event) => {
+        selectWorkflow(event.target.closest("[data-shot]"));
       });
+
+      workflow?.addEventListener("keydown", (event) => {
+        const tabs = Array.from(workflow.querySelectorAll("[data-shot]"));
+        const currentIndex = tabs.indexOf(document.activeElement);
+        if (currentIndex < 0) return;
+
+        const keyMap = {
+          ArrowDown: 1,
+          ArrowRight: 1,
+          ArrowUp: -1,
+          ArrowLeft: -1,
+        };
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectWorkflow(tabs[currentIndex]);
+          return;
+        }
+
+        if (event.key === "Home" || event.key === "End" || keyMap[event.key]) {
+          event.preventDefault();
+          const nextIndex =
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? tabs.length - 1
+                : (currentIndex + keyMap[event.key] + tabs.length) % tabs.length;
+          tabs[nextIndex].focus();
+          selectWorkflow(tabs[nextIndex]);
+        }
+      });
+
+      if (!prefersReducedMotion) {
+        document.querySelectorAll(".button").forEach((button) => {
+          button.addEventListener("pointermove", (event) => {
+            const rect = button.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width - 0.5) * 5;
+            const y = ((event.clientY - rect.top) / rect.height - 0.5) * 5;
+            button.style.setProperty("--magnet-x", `${x}px`);
+            button.style.setProperty("--magnet-y", `${y}px`);
+          });
+          button.addEventListener("pointerleave", () => {
+            button.style.removeProperty("--magnet-x");
+            button.style.removeProperty("--magnet-y");
+          });
+        });
+
+        document.querySelectorAll(".product-frame").forEach((frame) => {
+          frame.addEventListener("pointermove", (event) => {
+            const rect = frame.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width - 0.5) * 4;
+            const y = ((event.clientY - rect.top) / rect.height - 0.5) * -3;
+            frame.style.setProperty("--tilt-x", `${x}deg`);
+            frame.style.setProperty("--tilt-y", `${y}deg`);
+          });
+          frame.addEventListener("pointerleave", () => {
+            frame.style.removeProperty("--tilt-x");
+            frame.style.removeProperty("--tilt-y");
+          });
+        });
+
+        const revealTargets = document.querySelectorAll(
+          ".section-heading, .workflow, .storage-row, .model-row, .model-visual, .gallery-card, .footer",
+        );
+        revealTargets.forEach((target) => target.classList.add("reveal"));
+
+        if (!("IntersectionObserver" in window)) {
+          revealTargets.forEach((target) => target.classList.add("is-visible"));
+        } else {
+          const revealObserver = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add("is-visible");
+                  revealObserver.unobserve(entry.target);
+                }
+              });
+            },
+            { threshold: 0.12 },
+          );
+
+          revealTargets.forEach((target) => revealObserver.observe(target));
+        }
+      }
     </script>
   </body>
 </html>

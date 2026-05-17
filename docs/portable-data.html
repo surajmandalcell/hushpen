@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASR Pro Portable Data</title>
+    <meta
+      name="description"
+      content="How ASR Pro keeps packaged app data, models, transcripts, and settings portable."
+    />
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --background: #2f2f2f;
+        --surface: #3a3a3a;
+        --surface-elevated: #2b2b2b;
+        --surface-control: #303030;
+        --surface-control-hover: #3a3a3a;
+        --border: #474747;
+        --border-control: #5c5c5c;
+        --text-primary: #eeeeee;
+        --text-heading: #f4f4f4;
+        --text-body: #cfcfcf;
+        --text-muted: #a8a8a8;
+        --accent-teal: #92c2c6;
+        --font: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(180deg, #343434 0%, var(--background) 42%, #2b2b2b 100%),
+          linear-gradient(rgba(168, 168, 168, 0.04) 1px, transparent 1px);
+        background-size: auto, 56px 56px;
+        color: var(--text-body);
+        font-family: var(--font);
+        line-height: 1.56;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .shell {
+        width: min(980px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 0;
+      }
+
+      .brand,
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-heading);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .brand img {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
+      }
+
+      .back-link {
+        min-height: 36px;
+        border: 1px solid var(--border-control);
+        border-radius: 12px;
+        padding: 9px 12px;
+        background: var(--surface-control);
+        transition:
+          background 160ms ease,
+          border-color 160ms ease,
+          transform 160ms ease;
+      }
+
+      .back-link:hover,
+      .back-link:focus-visible {
+        border-color: rgba(146, 194, 198, 0.45);
+        background: var(--surface-control-hover);
+        transform: translateY(-1px);
+      }
+
+      main {
+        padding: clamp(46px, 8vw, 88px) 0 72px;
+      }
+
+      .eyebrow {
+        display: block;
+        width: 68px;
+        height: 2px;
+        margin-bottom: 24px;
+        border-radius: 999px;
+        background: var(--accent-teal);
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        color: var(--text-heading);
+        font-size: clamp(40px, 7vw, 72px);
+        font-weight: 650;
+        line-height: 0.98;
+      }
+
+      .lead {
+        max-width: 700px;
+        margin-top: 22px;
+        color: var(--text-body);
+        font-size: clamp(16px, 2vw, 20px);
+        font-weight: 600;
+      }
+
+      .summary {
+        margin-top: 28px;
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        padding: 20px;
+        background: rgba(58, 58, 58, 0.78);
+        color: var(--text-primary);
+        font-weight: 650;
+      }
+
+      .content {
+        display: grid;
+        gap: 28px;
+        margin-top: 56px;
+        min-width: 0;
+      }
+
+      section {
+        border-top: 1px solid var(--border);
+        padding-top: 28px;
+        min-width: 0;
+      }
+
+      h2 {
+        color: var(--text-heading);
+        font-size: clamp(24px, 4vw, 38px);
+        font-weight: 650;
+        line-height: 1.04;
+      }
+
+      section > p {
+        max-width: 760px;
+        margin-top: 12px;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      .table-wrap {
+        max-width: 100%;
+        min-width: 0;
+        margin-top: 18px;
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: rgba(43, 43, 43, 0.68);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 560px;
+      }
+
+      th,
+      td {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+        font-size: 13px;
+      }
+
+      th {
+        color: var(--text-heading);
+        font-weight: 700;
+      }
+
+      td {
+        color: var(--text-body);
+        font-weight: 600;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      code {
+        color: var(--text-primary);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.93em;
+        overflow-wrap: anywhere;
+      }
+
+      :focus-visible {
+        outline: 2px solid #9bcfff;
+        outline-offset: 3px;
+      }
+
+      @media (max-width: 620px) {
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        main {
+          padding-top: 34px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <nav class="nav" aria-label="Portable data navigation">
+          <a class="brand" href="./index.html" aria-label="ASR Pro home">
+            <img src="./assets/asrpro-app-icon.png" width="34" height="34" alt="" />
+            <span>ASR Pro</span>
+          </a>
+          <a class="back-link" href="./index.html">Back to ASR Pro</a>
+        </nav>
+      </header>
+
+      <main>
+        <span class="eyebrow" aria-hidden="true"></span>
+        <h1>Portable data</h1>
+        <p class="lead">
+          Packaged Windows and Linux builds keep ASR Pro data beside the executable in
+          <code>asrpro-data/</code>. macOS does the same when the app is outside a normal
+          Applications folder.
+        </p>
+        <p class="summary">
+          Move the executable folder with <code>asrpro-data/</code> and the app carries models,
+          transcripts, configuration, and useful runtime state with it.
+        </p>
+
+        <div class="content">
+          <section>
+            <h2>Intent</h2>
+            <p>
+              ASR Pro is local-first. The app should be movable without scattering private
+              dictation state across hidden system folders.
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Goal</th><th>Result</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Keep models local</td><td>Whisper model downloads stay under the app-owned data folder.</td></tr>
+                  <tr><td>Keep history local</td><td>Transcript history, text exports, session state, and Chromium local storage stay under app-owned data paths.</td></tr>
+                  <tr><td>Keep config local</td><td>App settings, overlay settings, startup preference, and editor preference stay in <code>config/</code>.</td></tr>
+                  <tr><td>Make moves predictable</td><td>Move the executable folder with <code>asrpro-data/</code> and useful state moves with it.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h2>Data folder rules</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Platform and location</th><th>Data folder</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Windows packaged app</td><td>Folder containing <code>ASR Pro.exe</code> plus <code>asrpro-data/</code></td></tr>
+                  <tr><td>Windows portable <code>.exe</code></td><td>Folder from <code>PORTABLE_EXECUTABLE_DIR</code> plus <code>asrpro-data/</code></td></tr>
+                  <tr><td>Linux packaged app</td><td>Folder containing the executable plus <code>asrpro-data/</code></td></tr>
+                  <tr><td>macOS in an Applications folder</td><td>Standard app support path with ASR Pro data under <code>data/</code></td></tr>
+                  <tr><td>macOS outside Applications</td><td>Folder containing <code>ASR Pro.app</code> plus <code>asrpro-data/</code></td></tr>
+                  <tr><td>Development</td><td><code>tmp/app-data/</code> in the repo</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h2>What lives inside</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Folder</th><th>Contents</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>asrpro-data/models/whisper/</code></td><td>Downloaded Whisper model files.</td></tr>
+                  <tr><td><code>asrpro-data/transcripts/</code></td><td>Text files opened from transcript history.</td></tr>
+                  <tr><td><code>asrpro-data/config/</code></td><td>App settings, overlay settings, startup preference, and editor preference.</td></tr>
+                  <tr><td><code>asrpro-data/user-data/</code></td><td>Electron user data, including renderer local storage used by history.</td></tr>
+                  <tr><td><code>asrpro-data/session/</code></td><td>Chromium session data.</td></tr>
+                  <tr><td><code>asrpro-data/logs/</code></td><td>Electron logs.</td></tr>
+                  <tr><td><code>asrpro-data/cache/</code></td><td>Runtime cache paths exposed to native dependencies.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h2>Move checklist</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Step</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>1</td><td>Quit ASR Pro from the tray or app menu.</td></tr>
+                  <tr><td>2</td><td>Move the executable folder and sibling <code>asrpro-data/</code> folder together.</td></tr>
+                  <tr><td>3</td><td>Start ASR Pro from the new location.</td></tr>
+                  <tr><td>4</td><td>If startup launch is enabled, turn it off and on so the saved startup target is replaced.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
