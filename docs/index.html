@@ -67,10 +67,10 @@
       body {
         margin: 0;
         background:
-          linear-gradient(180deg, #ffffff 0%, var(--background) 44%, #ffffff 100%);
+          linear-gradient(180deg, #ffffff 0%, #f7f8fb 38%, #ffffff 100%);
         color: var(--text-body);
         font-family: var(--font);
-        line-height: 1.54;
+        line-height: 1.45;
         letter-spacing: 0;
       }
 
@@ -84,7 +84,7 @@
           linear-gradient(rgba(16, 16, 16, 0.026) 1px, transparent 1px),
           linear-gradient(90deg, rgba(16, 16, 16, 0.018) 1px, transparent 1px);
         background-size: 72px 72px;
-        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 54%);
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 44%);
       }
 
       a {
@@ -95,6 +95,10 @@
       img {
         display: block;
         max-width: 100%;
+      }
+
+      figure {
+        margin: 0;
       }
 
       button {
@@ -131,7 +135,7 @@
         justify-content: space-between;
         gap: 20px;
         width: min(var(--max-page), calc(100% - 32px));
-        min-height: 68px;
+        min-height: 62px;
         margin: 0 auto;
       }
 
@@ -213,16 +217,16 @@
         display: grid;
         grid-template-columns: 1fr;
         justify-items: center;
-        row-gap: clamp(18px, 3vw, 34px);
+        row-gap: clamp(10px, 1.8vw, 18px);
         min-height: auto;
-        padding: clamp(30px, 5vw, 54px) 0 clamp(44px, 7vw, 76px);
+        padding: clamp(16px, 3.4vw, 32px) 0 clamp(24px, 4.8vw, 46px);
       }
 
       .hero-copy {
         grid-column: 1;
         grid-row: 2;
         position: relative;
-        max-width: 860px;
+        max-width: 720px;
         text-align: center;
       }
 
@@ -239,19 +243,19 @@
 
       h1 {
         color: var(--text-heading);
-        font-size: clamp(48px, 6.2vw, 76px);
+        font-size: clamp(48px, 6.4vw, 82px);
         font-weight: 800;
-        letter-spacing: -0.045em;
+        letter-spacing: 0;
         line-height: 0.98;
       }
 
       .hero-copy p {
-        max-width: 760px;
-        margin: 18px auto 0;
+        max-width: 560px;
+        margin: 12px auto 0;
         color: var(--text-body);
-        font-size: clamp(19px, 2vw, 24px);
+        font-size: clamp(17px, 1.55vw, 20px);
         font-weight: 500;
-        line-height: 1.28;
+        line-height: 1.24;
       }
 
       .hero-actions {
@@ -259,7 +263,7 @@
         flex-wrap: wrap;
         justify-content: center;
         gap: 12px;
-        margin-top: 26px;
+        margin-top: 18px;
       }
 
       .button {
@@ -267,7 +271,7 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
-        min-height: 50px;
+        min-height: 48px;
         border: 1px solid var(--border-control);
         border-radius: 999px;
         padding: 13px 22px;
@@ -300,9 +304,10 @@
         grid-column: 1;
         grid-row: 3;
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: clamp(28px, 6vw, 78px);
-        width: min(720px, 100%);
+        grid-template-columns: repeat(3, minmax(0, auto));
+        justify-content: center;
+        gap: clamp(18px, 4vw, 52px);
+        width: min(560px, 100%);
         margin-top: 0;
         border: 0;
         border-radius: 0;
@@ -318,7 +323,7 @@
 
       .note strong {
         display: block;
-        color: var(--text-subtle);
+        color: var(--text-muted);
         font-size: 14px;
         font-weight: 800;
         line-height: 1.2;
@@ -337,7 +342,7 @@
         grid-column: 1;
         grid-row: 1;
         position: relative;
-        width: min(820px, 100%);
+        width: min(1040px, 100%);
         min-width: 0;
         --tilt-x: 0deg;
         --tilt-y: 0deg;
@@ -349,15 +354,14 @@
       .product-frame::before {
         content: "";
         position: absolute;
-        inset: 10% 4% auto;
-        height: 62%;
-        border-radius: 42px;
+        inset: 8% -2% auto;
+        height: 64%;
+        border-radius: 0;
         background:
-          linear-gradient(135deg, rgba(255, 122, 50, 0.18), rgba(10, 132, 255, 0.1)),
-          #fff5df;
-        filter: blur(18px);
-        opacity: 0.74;
-        transform: translateZ(-20px) translateY(18px);
+          linear-gradient(135deg, rgba(255, 122, 50, 0.16), rgba(10, 132, 255, 0.1), rgba(146, 194, 198, 0.14));
+        filter: blur(24px);
+        opacity: 0.72;
+        transform: translateZ(-20px) translateY(12px);
       }
 
       .product-frame::after {
@@ -365,8 +369,8 @@
         position: absolute;
         left: 18%;
         right: 18%;
-        bottom: -18px;
-        height: 34px;
+        bottom: -14px;
+        height: 28px;
         border-radius: 999px;
         background: rgba(23, 28, 39, 0.16);
         filter: blur(18px);
@@ -375,73 +379,32 @@
       .app-window {
         position: relative;
         z-index: 1;
-        overflow: visible;
+        overflow: hidden;
         width: 100%;
-        max-width: 820px;
+        max-width: 1040px;
         margin: 0 auto;
-        border: 1px solid rgba(16, 16, 16, 0.12);
-        border-radius: 30px;
-        padding: 10px;
-        background: var(--surface-elevated);
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
         box-shadow:
-          inset 0 1px 0 rgba(255, 255, 255, 0.9),
-          var(--shadow-window);
+          0 1px 0 rgba(255, 255, 255, 0.9),
+          0 34px 86px rgba(23, 28, 39, 0.2),
+          0 8px 24px rgba(23, 28, 39, 0.08);
       }
 
       .app-window img {
         width: 100%;
-        height: auto;
-        aspect-ratio: 780 / 520;
-        object-fit: contain;
-        border-radius: 22px;
+        height: clamp(210px, 30vw, 350px);
+        object-fit: cover;
+        object-position: center top;
+        border-radius: 0;
+        transform: scale(1.012);
+        transition: transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
       }
 
-      .window-callout {
-        position: absolute;
-        z-index: 2;
-        right: clamp(10px, 7vw, 88px);
-        bottom: clamp(16px, 4vw, 44px);
-        width: min(340px, 72%);
-        overflow: hidden;
-        border: 1px solid var(--border-subtle);
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.86);
-        box-shadow: var(--shadow-overlay);
-        backdrop-filter: blur(18px) saturate(1.4);
-      }
-
-      .callout-row {
-        display: grid;
-        grid-template-columns: 36px minmax(0, 1fr);
-        gap: 12px;
-        padding: 14px;
-      }
-
-      .callout-icon {
-        display: grid;
-        place-items: center;
-        width: 36px;
-        height: 36px;
-        border-radius: 14px;
-        background: #eef6ff;
-        color: var(--accent-blue);
-      }
-
-      .callout-row strong {
-        display: block;
-        color: var(--text-heading);
-        font-size: 14px;
-        font-weight: 650;
-        line-height: 1.28;
-      }
-
-      .callout-row > span:not(.callout-icon) {
-        display: block;
-        margin-top: 3px;
-        color: var(--text-muted);
-        font-size: 12px;
-        font-weight: 600;
-        line-height: 1.4;
+      .product-frame:hover .app-window img {
+        transform: scale(1.032);
       }
 
       .ambient-signal {
@@ -453,7 +416,7 @@
         gap: 10px;
         width: min(560px, 100%);
         max-width: none;
-        margin-top: 0;
+        margin-top: -2px;
         color: var(--text-subtle);
         font-size: 11px;
         font-weight: 700;
@@ -487,30 +450,30 @@
 
       .section-heading {
         display: grid;
-        grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.55fr);
+        grid-template-columns: minmax(0, 0.82fr) minmax(260px, 0.5fr);
         align-items: end;
-        gap: 28px;
-        padding: clamp(80px, 10vw, 132px) 0 28px;
+        gap: 20px;
+        padding: clamp(54px, 8vw, 96px) 0 18px;
       }
 
       h2 {
         color: var(--text-heading);
-        font-size: clamp(42px, 5.5vw, 80px);
+        font-size: clamp(40px, 5.2vw, 72px);
         font-weight: 800;
-        letter-spacing: -0.045em;
+        letter-spacing: 0;
         line-height: 0.96;
       }
 
       .section-heading p {
         color: var(--text-muted);
-        font-size: clamp(16px, 1.6vw, 20px);
+        font-size: clamp(15px, 1.45vw, 18px);
         font-weight: 500;
-        line-height: 1.35;
+        line-height: 1.28;
       }
 
       .workflow {
         display: grid;
-        grid-template-columns: 0.86fr 1.14fr;
+        grid-template-columns: 252px minmax(0, 1fr);
         gap: 0;
         overflow: hidden;
         border: 1px solid rgba(16, 16, 16, 0.08);
@@ -525,18 +488,19 @@
       }
 
       .workflow-list {
-        padding: 16px;
+        padding: 10px;
         border-right: 1px solid var(--divider);
       }
 
       .workflow-item {
         display: grid;
-        grid-template-columns: 40px minmax(0, 1fr);
-        gap: 12px;
+        grid-template-columns: 34px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
         width: 100%;
         border: 0;
-        border-radius: 20px;
-        padding: 14px;
+        border-radius: 15px;
+        padding: 10px;
         background: transparent;
         color: inherit;
         text-align: left;
@@ -559,23 +523,22 @@
       }
 
       .workflow-item svg {
-        width: 22px;
-        height: 22px;
+        width: 19px;
+        height: 19px;
       }
 
       .workflow-icon {
         display: grid;
         place-items: center;
-        width: 40px;
-        height: 40px;
+        width: 34px;
+        height: 34px;
         margin-top: 0;
-        border-radius: 15px;
+        border-radius: 12px;
         background: #f0f2f6;
         color: var(--accent-blue);
       }
 
       .workflow-icon svg,
-      .callout-icon svg,
       .storage-row .tile svg {
         display: block;
         margin: 0;
@@ -584,11 +547,18 @@
       .workflow-item strong {
         display: block;
         color: var(--text-heading);
-        font-size: 14px;
-        font-weight: 650;
+        font-size: 15px;
+        font-weight: 720;
+        line-height: 1.05;
       }
 
       .workflow-item > span:not(.workflow-icon) {
+        display: block;
+        margin-top: 0;
+        color: inherit;
+      }
+
+      .workflow-item > span:not(.workflow-icon) > span {
         display: block;
         margin-top: 4px;
         color: var(--text-muted);
@@ -597,7 +567,7 @@
       }
 
       .workflow-panel {
-        padding: clamp(22px, 3vw, 34px);
+        padding: clamp(16px, 2.4vw, 24px);
       }
 
       .workflow-panel:focus-visible {
@@ -608,16 +578,18 @@
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1px;
-        margin-top: 18px;
-        overflow: hidden;
-        border: 1px solid var(--divider);
-        border-radius: 18px;
-        background: var(--divider);
+        margin-top: 14px;
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
       }
 
       .workflow-metadata .meta-item {
         min-width: 0;
-        padding: 10px;
+        padding: 8px 10px;
+        border: 1px solid rgba(16, 16, 16, 0.08);
+        border-radius: 999px;
         background: #f8f9fb;
         color: var(--text-muted);
         font-size: 11px;
@@ -626,15 +598,15 @@
       }
 
       .workflow-metadata strong {
-        display: block;
-        margin-bottom: 3px;
+        display: inline;
+        margin-bottom: 0;
         color: var(--text-heading);
         font-size: 12px;
         font-weight: 650;
       }
 
       .workflow-metadata .meta-copy {
-        display: block;
+        display: none;
       }
 
       .panel-eyeline {
@@ -654,25 +626,26 @@
 
       .workflow-shot {
         position: relative;
-        margin-top: 18px;
-        overflow: visible;
-        border: 1px solid var(--border-subtle);
-        border-radius: 26px;
-        padding: 10px;
-        aspect-ratio: 780 / 520;
-        background: #f5f5f7;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        margin-top: 12px;
+        overflow: hidden;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        aspect-ratio: 16 / 9;
+        background: transparent;
+        box-shadow: 0 18px 44px rgba(23, 28, 39, 0.12);
       }
 
       .workflow-shot img {
         position: absolute;
-        inset: 10px;
-        width: calc(100% - 20px);
-        height: calc(100% - 20px);
-        object-fit: contain;
-        border-radius: 18px;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        border-radius: 0;
         opacity: 0;
-        transform: scale(1);
+        transform: scale(1.012);
         transition:
           opacity 240ms ease,
           transform 220ms ease;
@@ -685,52 +658,52 @@
 
       .workflow-shot img.is-entering {
         opacity: 1;
-        transform: scale(1);
+        transform: scale(1.012);
         z-index: 2;
       }
 
       .workflow-shot img.is-leaving {
         opacity: 0;
-        transform: scale(0.985);
+        transform: scale(0.995);
       }
 
       .workflow-copy {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(150px, 0.45fr);
-        gap: 18px;
-        margin-top: 20px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        margin-top: 14px;
       }
 
       .workflow-copy h3 {
         color: var(--text-heading);
-        font-size: clamp(24px, 3vw, 36px);
+        font-size: clamp(23px, 2.8vw, 32px);
         font-weight: 800;
-        letter-spacing: -0.03em;
+        letter-spacing: 0;
         line-height: 1.02;
       }
 
       .workflow-copy p {
         margin-top: 8px;
         color: var(--text-muted);
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 500;
       }
 
       .storage-list {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 18px;
+        gap: 12px;
       }
 
       .storage-row {
         display: grid;
         grid-template-columns: 48px 1fr;
         align-items: start;
-        gap: 16px;
-        min-height: 220px;
-        padding: 24px;
+        gap: 14px;
+        min-height: 168px;
+        padding: 18px;
         border: 1px solid rgba(16, 16, 16, 0.08);
-        border-radius: 30px;
+        border-radius: 22px;
         background: #ffffff;
         box-shadow: var(--shadow-panel);
       }
@@ -763,15 +736,15 @@
 
       .storage-row h3 {
         color: var(--text-heading);
-        font-size: 22px;
+        font-size: 19px;
         font-weight: 800;
-        letter-spacing: -0.03em;
+        letter-spacing: 0;
       }
 
       .storage-row p {
         margin-top: 4px;
         color: var(--text-muted);
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 500;
         line-height: 1.42;
       }
@@ -794,7 +767,7 @@
       .models {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(340px, 0.84fr);
-        gap: 28px;
+        gap: 18px;
         align-items: start;
       }
 
@@ -811,8 +784,8 @@
         grid-template-columns: minmax(150px, 1fr) 86px minmax(150px, 0.85fr);
         gap: 14px;
         align-items: center;
-        min-height: 70px;
-        padding: 16px 18px;
+        min-height: 58px;
+        padding: 13px 16px;
         border-top: 1px solid var(--divider);
       }
 
@@ -847,54 +820,54 @@
       }
 
       .model-visual {
-        overflow: visible;
-        border: 1px solid rgba(16, 16, 16, 0.08);
-        border-radius: 30px;
-        padding: 10px;
-        background: #ffffff;
-        box-shadow: var(--shadow-panel);
+        overflow: hidden;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+        box-shadow: 0 18px 44px rgba(23, 28, 39, 0.12);
       }
 
       .model-visual img {
         width: 100%;
-        height: auto;
-        aspect-ratio: 780 / 520;
-        object-fit: contain;
-        border-radius: 22px;
+        height: clamp(320px, 31vw, 440px);
+        min-height: 360px;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        object-position: center top;
+        border-radius: 0;
       }
 
       .gallery-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 18px;
+        gap: 14px;
       }
 
       .gallery-card {
-        overflow: visible;
-        border: 1px solid rgba(16, 16, 16, 0.08);
-        border-radius: 28px;
-        padding: 8px;
-        background: #ffffff;
-        box-shadow: 0 14px 34px rgba(23, 28, 39, 0.07);
+        overflow: hidden;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
         transition:
-          border-color 160ms ease,
-          background 160ms ease,
           transform 180ms ease;
       }
 
       .gallery-card img {
         width: 100%;
         height: auto;
-        aspect-ratio: 780 / 520;
-        object-fit: contain;
-        border-radius: 20px;
+        aspect-ratio: 4 / 3;
+        object-fit: cover;
+        object-position: center top;
+        border-radius: 0;
+        box-shadow: 0 12px 30px rgba(23, 28, 39, 0.1);
         transition: transform 180ms ease;
       }
 
       .gallery-card:hover,
       .gallery-card:focus-visible {
-        border-color: var(--border-accent);
-        background: #ffffff;
         transform: translateY(-5px);
       }
 
@@ -904,15 +877,15 @@
       }
 
       .gallery-card figcaption {
-        padding: 12px 14px 14px;
+        padding: 8px 2px 0;
         color: var(--text-heading);
-        font-size: 15px;
+        font-size: 13px;
         font-weight: 750;
       }
 
       .footer {
         width: min(var(--max-page), calc(100% - 32px));
-        margin: 86px auto 0;
+        margin: 62px auto 0;
         padding: 28px 0 42px;
         border-top: 1px solid rgba(16, 16, 16, 0.08);
         color: var(--text-muted);
@@ -971,6 +944,11 @@
         .product-frame {
           max-width: 860px;
         }
+
+        .workflow-list {
+          border-right: 0;
+          border-bottom: 1px solid var(--divider);
+        }
       }
 
       @media (max-width: 720px) {
@@ -993,7 +971,6 @@
           flex: 0 1 auto;
         }
 
-        .hero-notes,
         .workflow-copy,
         .workflow-metadata,
         .storage-row,
@@ -1009,7 +986,7 @@
 
         h1 {
           font-size: clamp(38px, 11vw, 54px);
-          letter-spacing: -0.052em;
+          letter-spacing: 0;
         }
 
         .hero-copy p {
@@ -1032,14 +1009,6 @@
 
         .hero-actions .button {
           flex: 1 1 180px;
-        }
-
-        .window-callout {
-          position: relative;
-          right: auto;
-          bottom: auto;
-          width: 100%;
-          margin-top: 12px;
         }
 
         .storage-row {
@@ -1085,47 +1054,11 @@
           width: calc(100% - 20px);
         }
 
-        .note,
         .storage-row,
         .model-row {
           padding: 14px;
         }
 
-        .hero-notes {
-          grid-template-columns: 1fr;
-          gap: 14px;
-          margin-top: 0;
-        }
-
-        .window-callout {
-          position: absolute;
-          right: 10px;
-          bottom: 10px;
-          left: 10px;
-          width: auto;
-          margin-top: 0;
-          border-radius: 16px;
-        }
-
-        .callout-row {
-          grid-template-columns: 30px minmax(0, 1fr);
-          gap: 10px;
-          padding: 10px;
-        }
-
-        .callout-icon {
-          width: 30px;
-          height: 30px;
-          border-radius: 10px;
-        }
-
-        .callout-row strong {
-          font-size: 12px;
-        }
-
-        .callout-row span {
-          font-size: 11px;
-        }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -1170,10 +1103,9 @@
       <main id="top">
         <section class="section hero" aria-labelledby="hero-title">
           <div class="hero-copy">
-            <h1 id="hero-title">Private transcripts, kept local</h1>
+            <h1 id="hero-title">Speech to text, kept local</h1>
             <p>
-              Private desktop speech transcription for people who want recordings, transcripts,
-              models, and history to stay under their own control.
+              Record, transcribe, search. All local.
             </p>
             <div class="hero-actions" aria-label="Project actions">
               <a class="button primary" href="https://github.com/surajmandalcell/asrpro/releases" rel="noreferrer">
@@ -1181,12 +1113,6 @@
                   <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
                 Get a release
-              </a>
-              <a class="button" href="https://github.com/surajmandalcell/asrpro#quick-start" rel="noreferrer">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="m8 9 4-4 4 4M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                Build from source
               </a>
             </div>
           </div>
@@ -1200,33 +1126,17 @@
                 alt="ASR Pro home screen with recording controls, transcript status, and sidebar navigation."
               />
             </div>
-            <div class="window-callout">
-              <div class="callout-row">
-                <span class="callout-icon" aria-hidden="true">
-                  <svg class="icon" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 18.5v2.5m0-2.5a6 6 0 0 0 6-6v-1m-6 7.5a6 6 0 0 1-6-6v-1m6 4a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 1 0-7 0v5A3.5 3.5 0 0 0 12 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                  </svg>
-                </span>
-                <span>
-                  <strong>Record, transcribe, keep moving</strong>
-                  <span>Designed as a compact utility for private transcription.</span>
-                </span>
-              </div>
-            </div>
           </div>
 
           <div class="hero-notes" aria-label="Product summary">
             <div class="note">
-              <strong>Local-first</strong>
-              <span>No external transcription API in the recognition path.</span>
+              <strong>Local speech</strong>
             </div>
             <div class="note">
-              <strong>Desktop-native</strong>
-              <span>Tray controls, shortcut capture, and fixed macOS-style shell.</span>
+              <strong>History</strong>
             </div>
             <div class="note">
-              <strong>Model control</strong>
-              <span>Download, select, and remove Whisper models from the app.</span>
+              <strong>Models</strong>
             </div>
           </div>
           <div class="ambient-signal" aria-hidden="true">
@@ -1238,10 +1148,9 @@
 
         <section class="section" id="workflow">
           <div class="section-heading">
-            <h2>A focused transcription workspace.</h2>
+            <h2>Capture. Review. Repeat.</h2>
             <p>
-              The app is organized around the normal desktop loop: capture audio, review output,
-              keep useful history, and tune the local model when the job needs it.
+              A tight desktop loop for recording, searching, and reprocessing clips.
             </p>
           </div>
           <div class="workflow" data-workflow>
@@ -1250,31 +1159,31 @@
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 5l8 6.5V20H5v-8.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
                 </span>
-                <span><strong>Capture speech</strong><span>Start from Home, tray, or shortcut.</span></span>
+                <span><strong>Capture</strong></span>
               </button>
               <button class="workflow-item" id="tab-history" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-shot="history">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
                 </span>
-                <span><strong>Use transcript history</strong><span>Search, copy, open, delete, or reprocess saved clips.</span></span>
+                <span><strong>History</strong></span>
               </button>
               <button class="workflow-item" id="tab-sound" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-shot="sound">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M4 14v-4m4 7V7m4 13V4m4 11V9m4 7V8" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
                 </span>
-                <span><strong>Choose inputs</strong><span>Refresh devices and control microphone behavior.</span></span>
+                <span><strong>Inputs</strong></span>
               </button>
               <button class="workflow-item" id="tab-configuration" type="button" role="tab" aria-selected="false" aria-controls="workflow-panel" tabindex="-1" data-shot="configuration">
                 <span class="workflow-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v4m0 8v4M6 8h12M6 16h12M8 6v4m8 4v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
                 </span>
-                <span><strong>Set preferences</strong><span>Auto-copy, text editor, startup launch, and overlay placement.</span></span>
+                <span><strong>Preferences</strong></span>
               </button>
             </div>
             <div class="workflow-panel" id="workflow-panel" role="tabpanel" aria-labelledby="tab-home" tabindex="0" aria-live="polite">
               <div class="panel-eyeline">
                 <span data-shot-label>Home</span>
-                <strong>780 x 520 fixed desktop shell</strong>
+                <strong>local desktop flow</strong>
               </div>
               <div class="workflow-shot">
                 <img
@@ -1296,18 +1205,16 @@
               </div>
               <div class="workflow-copy">
                 <div>
-                  <h3 data-shot-title>Start and stop recording without leaving the app.</h3>
+                  <h3 data-shot-title>Capture without context switching.</h3>
                   <p data-shot-copy>
-                    Home keeps the main recording action, selected microphone, model state, and
-                    last transcript visible in the same compact shell.
+                    Recording, input, model, and transcript stay in one compact view.
                   </p>
                 </div>
-                <a class="button" href="#screens">View screens</a>
               </div>
               <div class="workflow-metadata" aria-label="Current workflow details">
-                <div class="meta-item"><strong data-meta-primary>Local model</strong><span class="meta-copy" data-meta-primary-copy>Selected model and readiness stay visible before capture.</span></div>
-                <div class="meta-item"><strong data-meta-secondary>Desktop shell</strong><span class="meta-copy" data-meta-secondary-copy>Fixed 780 x 520 window with compact controls.</span></div>
-                <div class="meta-item"><strong data-meta-tertiary>History path</strong><span class="meta-copy" data-meta-tertiary-copy>Recent output stays available without a hosted account.</span></div>
+                <div class="meta-item"><strong data-meta-primary>Model ready</strong><span class="meta-copy" data-meta-primary-copy>Ready</span></div>
+                <div class="meta-item"><strong data-meta-secondary>780 x 520</strong><span class="meta-copy" data-meta-secondary-copy>Desktop shell</span></div>
+                <div class="meta-item"><strong data-meta-tertiary>Local history</strong><span class="meta-copy" data-meta-tertiary-copy>Saved locally</span></div>
               </div>
             </div>
           </div>
@@ -1315,10 +1222,9 @@
 
         <section class="section" id="privacy">
           <div class="section-heading">
-            <h2>Private by shape, not by slogan.</h2>
+            <h2>Local by default.</h2>
             <p>
-              ASR Pro keeps useful state under app-owned paths, so recordings, transcripts, and
-              model files stay organized around local desktop work.
+              Models, transcripts, settings, and logs stay in app-owned storage.
             </p>
           </div>
           <div class="storage-list">
@@ -1327,8 +1233,8 @@
                 <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Zm0 0v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
               </span>
               <span>
-                <h3>Models live locally</h3>
-                <p>Whisper files are downloaded on demand and cached for the selected install.</p>
+                <h3>Models</h3>
+                <p>Downloaded on demand and cached locally.</p>
               </span>
               <code>models/whisper/</code>
             </div>
@@ -1337,8 +1243,8 @@
                 <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm7 1v4h4" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
               </span>
               <span>
-                <h3>Transcripts stay in app storage</h3>
-                <p>History rows and opened text files stay in the data folder, not a hosted account.</p>
+                <h3>Transcripts</h3>
+                <p>History and text files stay on disk.</p>
               </span>
               <code>transcripts/</code>
             </div>
@@ -1347,8 +1253,8 @@
                 <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 3 4 7v6c0 4.4 3.1 7.2 8 8 4.9-.8 8-3.6 8-8V7l-8-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
               </span>
               <span>
-                <h3>Portable builds carry their state</h3>
-                <p>Windows and Linux packaged apps keep data beside the executable for easier moves.</p>
+                <h3>Portable data</h3>
+                <p>Packaged state can move with the app.</p>
               </span>
               <code>asrpro-data/</code>
             </div>
@@ -1357,10 +1263,9 @@
 
         <section class="section" id="models">
           <div class="section-heading">
-            <h2>Pick the model that fits the work.</h2>
+            <h2>Pick speed or accuracy.</h2>
             <p>
-              Base English is the default. Smaller models favor speed, larger models favor accuracy,
-              and everything is selected from the local Models library.
+              Start with Base English. Switch models from the local library.
             </p>
           </div>
           <div class="models">
@@ -1368,27 +1273,27 @@
               <div class="model-row">
                 <strong>Whisper Tiny English</strong>
                 <span class="model-size">75 MB</span>
-                <span>Fastest English dictation.</span>
+                <span>Fastest.</span>
               </div>
               <div class="model-row">
                 <strong>Whisper Base English</strong>
                 <span class="model-size">142 MB</span>
-                <span>Default local English model.</span>
+                <span>Default.</span>
               </div>
               <div class="model-row">
                 <strong>Whisper Base Multilingual</strong>
                 <span class="model-size">142 MB</span>
-                <span>Small multilingual option.</span>
+                <span>Multilingual.</span>
               </div>
               <div class="model-row">
                 <strong>Whisper Small English</strong>
                 <span class="model-size">466 MB</span>
-                <span>Better English accuracy.</span>
+                <span>Sharper.</span>
               </div>
               <div class="model-row">
                 <strong>Whisper Large v3 Turbo</strong>
                 <span class="model-size">1.5 GiB</span>
-                <span>Highest-accuracy bundled option.</span>
+                <span>Largest.</span>
               </div>
             </div>
             <figure class="model-visual">
@@ -1404,10 +1309,9 @@
 
         <section class="section" id="screens">
           <div class="section-heading">
-            <h2>Every screen stays compact.</h2>
+            <h2>Actual app screens.</h2>
             <p>
-              Real app screens show the same restrained shell used for recording, history,
-              configuration, sound input, and local model management.
+              No mockups. These are the shipped desktop views.
             </p>
           </div>
           <div class="gallery-grid">
@@ -1441,7 +1345,7 @@
 
       <footer class="footer">
         <div class="footer-content">
-          <span>ASR Pro: private desktop speech transcription with local Whisper models.</span>
+          <span>ASR Pro: private desktop transcription with local Whisper.</span>
           <div class="footer-links">
             <a href="./portable-data.html">Portable data</a>
             <a href="./startup.html">Startup launch</a>
@@ -1457,39 +1361,39 @@
           label: "Home",
           src: "./screenshots/asrpro-home.png",
           alt: "ASR Pro home screen.",
-          title: "Start and stop recording without leaving the app.",
+          title: "Capture without context switching.",
           copy:
-            "Home keeps the main recording action, selected microphone, model state, and last transcript visible in the same compact shell.",
+            "Recording, input, model, and transcript stay in one compact view.",
           meta: [
-            ["Local model", "Selected model and readiness stay visible before capture."],
-            ["Desktop shell", "Fixed 780 x 520 window with compact controls."],
-            ["History path", "Recent output stays available without a hosted account."],
+            ["Model ready", "Ready"],
+            ["780 x 520", "Desktop shell"],
+            ["Local history", "Saved locally"],
           ],
         },
         history: {
           label: "History",
           src: "./screenshots/asrpro-history.png",
           alt: "ASR Pro transcript history screen.",
-          title: "Keep useful transcripts close.",
+          title: "Search saved clips.",
           copy:
-            "History supports search, copying, deletion, text-file opening, and reprocessing when the saved audio clip is available.",
+            "Copy, open, delete, or reprocess from local transcript history.",
           meta: [
-            ["Searchable rows", "Recent transcripts remain close to the recording flow."],
-            ["Saved clips", "Available source audio can be reprocessed from history."],
-            ["Local files", "Text openings are written inside app-owned storage."],
+            ["Search", "Rows"],
+            ["Reprocess", "Saved clips"],
+            ["Text files", "Local"],
           ],
         },
         sound: {
           label: "Sound",
           src: "./screenshots/asrpro-sound.png",
           alt: "ASR Pro sound settings screen.",
-          title: "Use the right input before recording.",
+          title: "Pick the right input.",
           copy:
-            "The Sound screen keeps device selection, refresh state, and microphone feedback in the same focused desktop workspace.",
+            "Refresh devices and choose the microphone before capture.",
           meta: [
-            ["Input control", "Refresh and choose available microphones before capture."],
-            ["Device feedback", "Sound state stays readable in the compact app shell."],
-            ["Recording fit", "Controls are tuned for daily dictation instead of setup churn."],
+            ["Refresh", "Devices"],
+            ["Mic", "Selected"],
+            ["State", "Readable"],
           ],
         },
         configuration: {
@@ -1498,11 +1402,11 @@
           alt: "ASR Pro configuration screen.",
           title: "Tune the desktop behavior.",
           copy:
-            "Configuration covers startup launch, auto-copy behavior, overlay placement, and preferred transcript editor without leaving the app.",
+            "Auto-copy, startup, editor choice, and overlay placement stay close.",
           meta: [
-            ["Startup launch", "Turning it on writes the current executable target."],
-            ["Auto-copy", "Completed transcript text can move directly to the clipboard."],
-            ["Overlay placement", "The floating recording pill can stay where it belongs."],
+            ["Startup", "Launch"],
+            ["Auto-copy", "Clipboard"],
+            ["Overlay", "Placement"],
           ],
         },
       };
