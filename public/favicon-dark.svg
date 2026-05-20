@@ -1,43 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="ASR Pro logo">
   <defs>
-    <linearGradient id="ink-slate" x1="166" y1="116" x2="884" y2="944" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#20272d"/>
-      <stop offset="0.5" stop-color="#10171d"/>
-      <stop offset="1" stop-color="#04070a"/>
+    <linearGradient id="g-carbon" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1c1c1f"/>
+      <stop offset="1" stop-color="#0a0a0b"/>
     </linearGradient>
-    <linearGradient id="surface-shade" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.2"/>
-      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.45"/>
+    <linearGradient id="g-rim" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
     </linearGradient>
-    <linearGradient id="surface-shine" x1="180" y1="132" x2="740" y2="720" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/>
-      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    <linearGradient id="g-symbol-v3" x1="0" y1="300" x2="1024" y2="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#a1a1aa"/>
     </linearGradient>
-    <clipPath id="icon-clip">
-      <rect width="1024" height="1024" rx="224"/>
-    </clipPath>
+    <filter id="f-shadow-dense" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="15" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="f-inset-symbol" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
   </defs>
-  <g data-icon-artwork="padded" transform="translate(72 72) scale(0.859375)" clip-path="url(#icon-clip)">
-    <rect width="1024" height="1024" rx="224" fill="url(#ink-slate)"/>
-    <rect width="1024" height="1024" rx="224" fill="url(#surface-shade)"/>
-    <rect width="1024" height="1024" rx="224" fill="url(#surface-shine)"/>
-    <rect x="0.5" y="0.5" width="1023" height="1023" rx="223.5" fill="none" stroke="#ffffff" stroke-opacity="0.075"/>
-    <g transform="translate(205 205) scale(0.6)">
-      <path
-        d="M 188 512
-       C 188 356 356 342 512 512
-       C 668 682 836 668 836 512
-       C 836 356 668 342 512 512
-       C 356 682 188 668 188 512"
-        fill="none"
-        stroke="#eef4f5"
-        stroke-opacity="0.88"
-        stroke-width="84"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+  <g transform="translate(80 80) scale(0.84375)">
+    <!-- Carbon plate -->
+    <rect width="1024" height="1024" rx="224" fill="url(#g-carbon)"/>
+    
+    <!-- Chamfer borders -->
+    <rect x="1" y="1" width="1022" height="1022" rx="223" fill="none" stroke="url(#g-rim)" stroke-width="2"/>
+    <rect x="3" y="3" width="1018" height="1018" rx="221" fill="none" stroke="#000000" stroke-opacity="0.5" stroke-width="1.5"/>
+
+    <!-- Wave Symbol -->
+    <g transform="translate(205 205) scale(0.6)" filter="url(#f-inset-symbol)">
+      <path d="M 188 512 C 188 356 356 342 512 512 C 668 682 836 668 836 512 C 836 356 668 342 512 512 C 356 682 188 668 188 512" 
+            fill="none" stroke="url(#g-symbol-v3)" stroke-width="84" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
   </g>
 </svg>
