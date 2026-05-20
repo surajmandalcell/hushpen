@@ -3,361 +3,299 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ASR Pro Startup Launch</title>
-    <meta
-      name="description"
-      content="How ASR Pro registers startup launch and repairs moved portable installs."
-    />
+    <title>ASR Pro - Startup Launch Guide</title>
+    <meta name="description" content="How ASR Pro registers startup launch and repairs moved portable installs." />
+    <meta name="theme-color" content="#090a0c" />
+    
+    <!-- Icons -->
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
-    <style>
-      :root {
-        color-scheme: light;
-        --background: #f5f5f7;
-        --surface: #ffffff;
-        --surface-elevated: #ffffff;
-        --surface-control: #ffffff;
-        --surface-control-hover: #f1f4f8;
-        --border: #e1e3e8;
-        --border-control: #dfe3ea;
-        --text-primary: #101010;
-        --text-heading: #050507;
-        --text-body: #292b31;
-        --text-muted: #686d78;
-        --accent-teal: #0886ff;
-        --font: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html {
-        scroll-behavior: smooth;
-      }
-
-      body {
-        margin: 0;
-        background:
-          linear-gradient(180deg, #ffffff 0%, var(--background) 44%, #ffffff 100%),
-          linear-gradient(rgba(16, 16, 16, 0.026) 1px, transparent 1px);
-        background-size: auto, 72px 72px;
-        color: var(--text-body);
-        font-family: var(--font);
-        line-height: 1.56;
-      }
-
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
-
-      .shell {
-        width: min(980px, calc(100% - 32px));
-        margin: 0 auto;
-      }
-
-      .nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 22px 0;
-      }
-
-      .brand,
-      .back-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        color: var(--text-heading);
-        font-size: 13px;
-        font-weight: 700;
-      }
-
-      .brand img {
-        width: 34px;
-        height: 34px;
-        border-radius: 9px;
-        box-shadow: 0 8px 22px rgba(23, 28, 39, 0.14);
-      }
-
-      .back-link {
-        min-height: 36px;
-        border: 1px solid var(--border-control);
-        border-radius: 999px;
-        padding: 9px 12px;
-        background: var(--surface-control);
-        transition:
-          background 160ms ease,
-          border-color 160ms ease,
-          transform 160ms ease;
-      }
-
-      .back-link:hover,
-      .back-link:focus-visible {
-        border-color: rgba(10, 132, 255, 0.34);
-        background: var(--surface-control-hover);
-        transform: translateY(-1px);
-      }
-
-      main {
-        padding: clamp(46px, 8vw, 88px) 0 72px;
-      }
-
-      .eyebrow {
-        display: block;
-        width: 68px;
-        height: 2px;
-        margin-bottom: 24px;
-        border-radius: 999px;
-        background: var(--accent-teal);
-      }
-
-      h1,
-      h2,
-      p {
-        margin: 0;
-      }
-
-      h1 {
-        max-width: 760px;
-        color: var(--text-heading);
-        font-size: clamp(48px, 8vw, 86px);
-        font-weight: 800;
-        letter-spacing: -0.05em;
-        line-height: 0.96;
-      }
-
-      .lead {
-        max-width: 700px;
-        margin-top: 22px;
-        color: var(--text-body);
-        font-size: clamp(16px, 2vw, 20px);
-        font-weight: 500;
-        line-height: 1.34;
-      }
-
-      .summary {
-        margin-top: 28px;
-        border: 1px solid var(--border);
-        border-radius: 30px;
-        padding: 20px;
-        background: #ffffff;
-        color: var(--text-primary);
-        font-weight: 700;
-        box-shadow: 0 20px 50px rgba(23, 28, 39, 0.08);
-      }
-
-      .content {
-        display: grid;
-        gap: 28px;
-        margin-top: 56px;
-        min-width: 0;
-      }
-
-      section {
-        border-top: 1px solid var(--border);
-        padding-top: 28px;
-        min-width: 0;
-      }
-
-      h2 {
-        color: var(--text-heading);
-        font-size: clamp(30px, 5vw, 52px);
-        font-weight: 800;
-        letter-spacing: -0.04em;
-        line-height: 0.98;
-      }
-
-      section > p {
-        max-width: 760px;
-        margin-top: 12px;
-        color: var(--text-muted);
-        font-weight: 500;
-      }
-
-      .table-wrap {
-        max-width: 100%;
-        min-width: 0;
-        margin-top: 18px;
-        overflow-x: auto;
-        border: 1px solid var(--border);
-        border-radius: 24px;
-        background: #ffffff;
-        box-shadow: 0 16px 36px rgba(23, 28, 39, 0.06);
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 560px;
-      }
-
-      th,
-      td {
-        padding: 14px 16px;
-        border-bottom: 1px solid var(--border);
-        text-align: left;
-        vertical-align: top;
-        font-size: 13px;
-      }
-
-      th {
-        color: var(--text-heading);
-        font-weight: 700;
-      }
-
-      td {
-        color: var(--text-body);
-        font-weight: 600;
-      }
-
-      tr:last-child td {
-        border-bottom: 0;
-      }
-
-      code {
-        color: var(--text-primary);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 0.93em;
-        overflow-wrap: anywhere;
-      }
-
-      :focus-visible {
-        outline: 2px solid #0a84ff;
-        outline-offset: 3px;
-      }
-
-      @media (max-width: 620px) {
-        .nav {
-          align-items: flex-start;
-          flex-direction: column;
-        }
-
-        main {
-          padding-top: 34px;
-        }
-      }
-    </style>
+    
+    <!-- Shared Stylesheet -->
+    <link rel="stylesheet" href="./assets/docs.css" />
+    
+    <!-- AlpineJS -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   </head>
-  <body>
-    <div class="shell">
-      <header>
-        <nav class="nav" aria-label="Startup launch navigation">
-          <a class="brand" href="./index.html" aria-label="ASR Pro home">
-            <img src="./assets/asrpro-app-icon.png" width="34" height="34" alt="" />
+  <body x-data="{ sidebarOpen: false }">
+    <div class="app-container">
+      
+      <!-- Responsive Navigation Sidebar -->
+      <aside class="sidebar" :class="sidebarOpen ? 'open' : ''" @click.outside="sidebarOpen = false" id="app-sidebar">
+        <div class="sidebar-header">
+          <a class="brand" href="index.html">
             <span>ASR Pro</span>
+            <span class="brand-badge">v1.0.1</span>
           </a>
-          <a class="back-link" href="./index.html">Back to ASR Pro</a>
-        </nav>
-      </header>
-
-      <main>
-        <span class="eyebrow" aria-hidden="true"></span>
-        <h1>Startup launch</h1>
-        <p class="lead">
-          Use Configuration, Application, <code>Launch at startup</code>. Turning it on writes
-          the current executable path, so moved installs can repair the saved startup target.
-        </p>
-        <p class="summary">
-          ASR Pro starts after login, keeps the setting in app config, and rewrites the target
-          when startup launch is enabled from a new path.
-        </p>
-
-        <div class="content">
-          <section>
-            <h2>Intent</h2>
-            <p>
-              Startup launch should be simple for normal users and repairable for portable-style
-              installs.
-            </p>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Behavior</th><th>Detail</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Toggle on</td><td>Registers the current executable for login startup.</td></tr>
-                  <tr><td>Toggle off</td><td>Removes the saved ASR Pro startup entry for this install.</td></tr>
-                  <tr><td>Toggle on again after moving</td><td>Replaces the saved startup target with the current executable path.</td></tr>
-                  <tr><td>Stored preference</td><td>Saved in <code>asrpro-data/config/app-settings.json</code> for portable installs.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section>
-            <h2>Where to find it</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Screen</th><th>Control</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Configuration</td><td>Application</td></tr>
-                  <tr><td>Application</td><td>Launch at startup</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p>The row shows the executable path the app currently sees.</p>
-          </section>
-
-          <section>
-            <h2>Platform behavior</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Platform</th><th>Mechanism</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Windows</td><td>Electron login item registration for the current <code>.exe</code> path. Portable builds use <code>PORTABLE_EXECUTABLE_FILE</code> when available.</td></tr>
-                  <tr><td>macOS</td><td>Electron login item registration for the current app.</td></tr>
-                  <tr><td>Linux</td><td>Writes <code>asrpro.desktop</code> to the user autostart folder.</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p>
-              Linux writes to <code>$XDG_CONFIG_HOME/autostart/asrpro.desktop</code> when
-              <code>XDG_CONFIG_HOME</code> is set, otherwise it writes to
-              <code>~/.config/autostart/asrpro.desktop</code>.
-            </p>
-          </section>
-
-          <section>
-            <h2>Moving the app</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Scenario</th><th>Fix</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Windows folder moved</td><td>Open ASR Pro from the new folder, then turn <code>Launch at startup</code> on again.</td></tr>
-                  <tr><td>Linux executable moved</td><td>Open ASR Pro from the new folder, then turn <code>Launch at startup</code> on again.</td></tr>
-                  <tr><td>macOS app outside Applications moved</td><td>Open the moved <code>.app</code>, then turn <code>Launch at startup</code> on again.</td></tr>
-                  <tr><td>Startup points at an old copy</td><td>Toggle off, then toggle on. The next enabled state replaces the saved startup target.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section>
-            <h2>Boundaries</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>This does</th><th>This does not</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Starts ASR Pro after login.</td><td>Sync models or history between folders.</td></tr>
-                  <tr><td>Rewrites the startup target when enabled from a new path.</td><td>Move <code>asrpro-data/</code> for the user.</td></tr>
-                  <tr><td>Keeps the setting in app config.</td><td>Change system security approvals on behalf of the user.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
         </div>
-      </main>
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <span class="nav-section-title">Documentation</span>
+            <a href="index.html" class="nav-item" id="nav-tour">
+              <svg class="orange" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"></path>
+              </svg>
+              <span>Getting Started</span>
+            </a>
+            <a href="portable-data.html" class="nav-item" id="nav-portable">
+              <svg class="teal" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"></path>
+              </svg>
+              <span>Portable Data</span>
+            </a>
+            <a href="startup.html" class="nav-item active" id="nav-startup">
+              <svg class="purple" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.64 8.38a9 9 0 11-6.16 6.16A14.98 14.98 0 002.38 2.38a14.98 14.98 0 0012.12 6.16z"></path>
+              </svg>
+              <span>Startup Launch</span>
+            </a>
+          </div>
+          <div class="nav-section">
+            <span class="nav-section-title">Resources</span>
+            <a href="https://github.com/surajmandalcell/asrpro" class="nav-item" target="_blank" rel="noopener">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"></path>
+              </svg>
+              <span>GitHub Repository</span>
+            </a>
+            <a href="https://github.com/surajmandalcell/asrpro/releases" class="nav-item" target="_blank" rel="noopener">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+              </svg>
+              <span>Download Releases</span>
+            </a>
+            <a href="https://github.com/surajmandalcell/asrpro/issues" class="nav-item" target="_blank" rel="noopener">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"></path>
+              </svg>
+              <span>Report Issues</span>
+            </a>
+          </div>
+        </nav>
+      </aside>
+      
+      <!-- Main Content Panel -->
+      <div class="main-panel">
+        
+        <!-- Header -->
+        <header class="main-header">
+          <button class="mobile-toggle" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle Navigation">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"></path>
+            </svg>
+          </button>
+          
+          <nav class="breadcrumbs" aria-label="Breadcrumb">
+            <span class="breadcrumbs-muted">ASR Pro Docs</span>
+            <span class="breadcrumbs-separator">/</span>
+            <span class="breadcrumbs-active">Startup Launch</span>
+          </nav>
+          
+          <div class="header-actions">
+            <a href="https://github.com/surajmandalcell/asrpro" class="github-btn" target="_blank" rel="noopener">
+              <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.167 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.577.688.479C19.138 20.164 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+              </svg>
+              <span>Star on GitHub</span>
+            </a>
+          </div>
+        </header>
+        
+        <!-- Main Viewport -->
+        <main class="content-viewport">
+          <h1 class="page-title">Startup Launch</h1>
+          <p class="page-lead">Set up ASR Pro to launch automatically at system login. Turning it on registers your current binary executable path, so you can easily repair the startup hook if you move your app.</p>
+          
+          <!-- TL;DR Callout Banner -->
+          <div class="callout tldr">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.64 8.38a9 9 0 11-6.16 6.16A14.98 14.98 0 002.38 2.38a14.98 14.98 0 0012.12 6.16z"></path>
+            </svg>
+            <div>
+              <div class="callout-title">TL;DR Startup Logic</div>
+              ASR Pro registers with the system autostart registry, keeps the state in your local app config, and automatically rewrites the path hook if you re-toggle it from a new location.
+            </div>
+          </div>
+          
+          <!-- Intent Section -->
+          <section class="doc-section">
+            <h2>Intent</h2>
+            <p>The startup launch toggle makes auto-starting convenient for normal users while remaining easily repairable when running portable, local-first setups.</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 30%;">Behavior</th>
+                    <th>Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Toggle On</strong></td>
+                    <td>Registers the current executable binary for startup at user login.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Toggle Off</strong></td>
+                    <td>Removes the saved autostart hook from the operating system.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Re-toggle on move</strong></td>
+                    <td>Overwrites and updates the system startup target with the new location.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Saved configuration</strong></td>
+                    <td>Preferences are written to <code>asrpro-data/config/app-settings.json</code>.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          
+          <!-- Where to Find It Section -->
+          <section class="doc-section">
+            <h2>Where to Find It</h2>
+            <p>You can toggle autostart directly from the app chrome interface:</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 30%;">Screen Tab</th>
+                    <th style="width: 30%;">Section</th>
+                    <th>Control Row</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Configuration</strong></td>
+                    <td>Application</td>
+                    <td>Launch at startup (with path verification indicator)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>The toggle row inside the app displays the specific binary executable path that ASR Pro resolved.</p>
+          </section>
+          
+          <!-- Platform Behavior Section -->
+          <section class="doc-section">
+            <h2>Platform Behavior</h2>
+            <p>ASR Pro uses standard Electron API wrappers to communicate with OS-specific startup autostart registries:</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 30%;">Operating System</th>
+                    <th>Mechanism</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Windows</strong></td>
+                    <td>Electron Registry launch key helper. Portable builds hook into the environment variable <code>PORTABLE_EXECUTABLE_FILE</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>macOS</strong></td>
+                    <td>Native Login Items registry binding to target the bundled <code>.app</code> container.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Linux</strong></td>
+                    <td>Writes standard autostart entry files to user configuration directories.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>On Linux, ASR Pro writes an autostart desktop entry to <code>$XDG_CONFIG_HOME/autostart/asrpro.desktop</code> if the environment variable is set; otherwise, it defaults to <code>~/.config/autostart/asrpro.desktop</code>.</p>
+          </section>
+          
+          <!-- Moving the App Section -->
+          <section class="doc-section">
+            <h2>Moving the App</h2>
+            <p>If you relocate the application folder on your disk, follow this simple procedure to fix the startup shortcut:</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 40%;">Relocation Scenario</th>
+                    <th>How to Repair</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Windows folder moved</td>
+                    <td>Run <code>ASR Pro.exe</code> from its new path, then toggle <strong>Launch at startup</strong> off and on again.</td>
+                  </tr>
+                  <tr>
+                    <td>Linux executable moved</td>
+                    <td>Run the binary from the new directory, then toggle <strong>Launch at startup</strong> off and on again.</td>
+                  </tr>
+                  <tr>
+                    <td>macOS app relocated</td>
+                    <td>Launch the relocated <code>ASR Pro.app</code> container, then toggle <strong>Launch at startup</strong> off and on again.</td>
+                  </tr>
+                  <tr>
+                    <td>Startup points at an old file</td>
+                    <td>Simply toggle off, then toggle on inside the running instance. The latest toggle rewrites the system link.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          
+          <!-- Boundaries Section -->
+          <section class="doc-section">
+            <h2>Boundaries</h2>
+            <p>To keep the application sandboxed and transparent, ASR Pro limits its configuration footprints:</p>
+            
+            <div class="boundaries-grid">
+              <div class="boundary-box">
+                <div class="boundary-header does">
+                  <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0110 21a3.745 3.745 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.745 3.745 0 013.296-1.043A3.745 3.745 0 0114 3c1.25 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z"></path>
+                  </svg>
+                  <span>This does</span>
+                </div>
+                <ul class="boundary-list">
+                  <li class="boundary-item">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"></path></svg>
+                    <span>Launches ASR Pro silently in the background at system boot.</span>
+                  </li>
+                  <li class="boundary-item">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"></path></svg>
+                    <span>Automatically corrects shortcut records when enabled from a new path.</span>
+                  </li>
+                  <li class="boundary-item">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"></path></svg>
+                    <span>Persists setting state directly inside your portable config file.</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div class="boundary-box">
+                <div class="boundary-header does-not">
+                  <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <span>This does not</span>
+                </div>
+                <ul class="boundary-list">
+                  <li class="boundary-item">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    <span>Sync transcription history or Whisper models between directories.</span>
+                  </li>
+                  <li class="boundary-item">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    <span>Physically move or mirror the <code>asrpro-data/</code> directory itself.</span>
+                  </li>
+                  <li class="boundary-item">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    <span>Alter operating system security configurations or administrative credentials.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
   </body>
 </html>

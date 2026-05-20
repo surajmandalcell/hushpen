@@ -74,3 +74,6 @@ venv.bak/
 # Claude directories
 .claude
 !.vscode/settings.json
+css_layout_guide.md
+dark_mode_guide.md
+guides.json
