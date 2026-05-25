@@ -568,7 +568,7 @@
         position: relative;
         display: grid;
         grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.08fr);
-        align-items: start;
+        align-items: center;
         gap: clamp(44px, 6vw, 92px);
         min-height: 72svh;
         padding: clamp(58px, 7.6vw, 96px) 0 clamp(58px, 8vw, 106px);
@@ -581,9 +581,9 @@
       }
 
       .finish-copy {
-        position: sticky;
-        top: 112px;
+        position: static;
         display: grid;
+        align-content: center;
         gap: 18px;
       }
 
@@ -604,6 +604,7 @@
 
       .feature-strip {
         display: grid;
+        align-content: center;
         gap: 2px;
         margin-top: 8px;
       }
