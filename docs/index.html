@@ -50,10 +50,7 @@
         margin: 0;
         overflow-x: hidden;
         overflow-x: clip;
-        background:
-          radial-gradient(circle at 84% 14%, rgba(255, 122, 50, 0.24), transparent 31rem),
-          radial-gradient(circle at 8% 24%, rgba(155, 207, 255, 0.14), transparent 29rem),
-          linear-gradient(180deg, #030304 0%, #050609 56%, #030304 100%);
+        background: #030304;
         color: var(--ink);
         font-family: var(--text-font);
         letter-spacing: 0;
@@ -63,23 +60,25 @@
         content: "";
         position: fixed;
         inset: 0;
-        z-index: -2;
+        z-index: 0;
         pointer-events: none;
         background:
-          linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-        background-size: 86px 86px;
-        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 72%);
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+        background-size: 84px 84px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.54), transparent 78%);
       }
 
       body::after {
         content: "";
         position: fixed;
         inset: 0;
-        z-index: -1;
+        z-index: 0;
         pointer-events: none;
-        background: radial-gradient(circle at var(--mx) var(--my), rgba(255, 255, 255, 0.08), transparent 24rem);
-        opacity: 0.72;
+        background:
+          radial-gradient(circle at var(--mx) var(--my), rgba(255, 255, 255, 0.09), transparent 23rem),
+          linear-gradient(180deg, rgba(3, 3, 4, 0.08), #030304 84%);
+        opacity: 0.82;
         transition: opacity 180ms ease;
       }
 
@@ -110,8 +109,99 @@
       }
 
       .page-shell {
+        position: relative;
+        z-index: 1;
         min-height: 100svh;
         isolation: isolate;
+      }
+
+      .shader-field {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+        overflow: clip;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 12% 18%, rgba(155, 207, 255, 0.16), transparent 28rem),
+          radial-gradient(circle at 86% 8%, rgba(255, 122, 50, 0.2), transparent 30rem),
+          linear-gradient(180deg, #030304 0%, #050609 56%, #030304 100%);
+      }
+
+      .shader-field::before,
+      .shader-field::after,
+      .shader-panel {
+        position: absolute;
+        pointer-events: none;
+      }
+
+      .shader-field::before {
+        content: "";
+        inset: -28% -18%;
+        background:
+          linear-gradient(112deg, transparent 0 12%, rgba(155, 207, 255, 0.42) 12% 16%, transparent 16% 24%, rgba(113, 103, 255, 0.34) 24% 30%, transparent 30% 43%, rgba(255, 122, 50, 0.38) 43% 49%, transparent 49% 64%, rgba(146, 194, 198, 0.3) 64% 69%, transparent 69% 100%),
+          conic-gradient(from 220deg at 64% 46%, rgba(255, 122, 50, 0.18), rgba(155, 207, 255, 0.15), rgba(113, 103, 255, 0.18), rgba(255, 122, 50, 0.18));
+        filter: blur(24px) saturate(1.55);
+        opacity: 0.68;
+        transform: rotate(-8deg) scale(1.08);
+        animation: shader-drift 18s ease-in-out infinite alternate;
+      }
+
+      .shader-field::after {
+        content: "";
+        inset: 0;
+        background:
+          repeating-linear-gradient(108deg, rgba(255, 255, 255, 0.1) 0 1px, transparent 1px 78px),
+          linear-gradient(90deg, rgba(3, 3, 4, 0.84), rgba(3, 3, 4, 0.2) 46%, rgba(3, 3, 4, 0.72));
+        opacity: 0.34;
+        mix-blend-mode: screen;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.24) 72%, transparent);
+      }
+
+      .shader-panel {
+        width: 58vw;
+        height: 30vh;
+        border-radius: 999px;
+        filter: blur(36px) saturate(1.45);
+        mix-blend-mode: screen;
+        opacity: 0.42;
+        transform: rotate(var(--rotate));
+        animation: panel-float 14s ease-in-out infinite alternate;
+      }
+
+      .shader-panel.one {
+        --rotate: -18deg;
+        top: 12vh;
+        right: -15vw;
+        background: linear-gradient(90deg, transparent, rgba(255, 122, 50, 0.85), rgba(113, 103, 255, 0.42), transparent);
+      }
+
+      .shader-panel.two {
+        --rotate: 14deg;
+        top: 38vh;
+        left: -22vw;
+        background: linear-gradient(90deg, transparent, rgba(155, 207, 255, 0.66), rgba(146, 194, 198, 0.34), transparent);
+        animation-delay: -5s;
+      }
+
+      .shader-panel.three {
+        --rotate: -9deg;
+        bottom: 8vh;
+        right: 12vw;
+        background: linear-gradient(90deg, transparent, rgba(113, 103, 255, 0.42), rgba(255, 122, 50, 0.48), transparent);
+        animation-delay: -9s;
+      }
+
+      @keyframes shader-drift {
+        to {
+          transform: rotate(-4deg) translate3d(3vw, -2vh, 0) scale(1.14);
+        }
+      }
+
+      @keyframes panel-float {
+        to {
+          transform: rotate(calc(var(--rotate) + 4deg)) translate3d(-3vw, 2vh, 0);
+        }
       }
 
       .site-header {
@@ -209,8 +299,7 @@
         grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.08fr);
         align-items: start;
         gap: clamp(44px, 6vw, 92px);
-        min-height: calc(100svh - 72px);
-        padding: clamp(42px, 7vw, 86px) 0 clamp(54px, 8vw, 92px);
+        padding: clamp(38px, 5.8vw, 72px) 0 clamp(30px, 4.4vw, 54px);
       }
 
       .hero-copy {
@@ -476,13 +565,28 @@
       }
 
       .finish {
+        position: relative;
         display: grid;
         grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.08fr);
         align-items: start;
         gap: clamp(44px, 6vw, 92px);
-        min-height: 86svh;
-        padding: clamp(72px, 10vw, 132px) 0 clamp(70px, 10vw, 126px);
+        min-height: 72svh;
+        padding: clamp(58px, 7.6vw, 96px) 0 clamp(58px, 8vw, 106px);
+        scroll-margin-top: 72px;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .finish::before {
+        content: "";
+        position: absolute;
+        inset: 18px 0 30px;
+        z-index: -1;
+        background:
+          linear-gradient(112deg, rgba(155, 207, 255, 0.08), transparent 28%, rgba(255, 122, 50, 0.08) 58%, transparent),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 62%);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+        opacity: 0.9;
       }
 
       .finish-copy {
@@ -495,8 +599,8 @@
       .finish-copy h2 {
         max-width: 680px;
         color: #ffffff;
-        font-size: clamp(48px, 6.8vw, 96px);
-        line-height: 0.9;
+        font-size: clamp(48px, 5.9vw, 84px);
+        line-height: 0.93;
       }
 
       .finish-copy p {
@@ -510,7 +614,7 @@
       .feature-strip {
         display: grid;
         gap: 0;
-        margin-top: 6px;
+        margin-top: 4px;
         border-top: 1px solid var(--line);
       }
 
@@ -525,13 +629,11 @@
         transform: translateZ(0);
         transition:
           color 180ms ease,
-          padding 180ms ease,
           background 180ms ease;
       }
 
       .feature-row:hover {
-        padding-left: 10px;
-        background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), transparent);
+        background: linear-gradient(90deg, rgba(155, 207, 255, 0.08), transparent 74%);
       }
 
       .feature-icon {
@@ -746,6 +848,10 @@
       }
 
       @media (max-width: 420px) {
+        .shader-panel {
+          display: none;
+        }
+
         .nav-link:not(.github) {
           display: none;
         }
@@ -778,6 +884,11 @@
     </style>
   </head>
   <body>
+    <div class="shader-field" aria-hidden="true">
+      <span class="shader-panel one"></span>
+      <span class="shader-panel two"></span>
+      <span class="shader-panel three"></span>
+    </div>
     <div class="page-shell">
       <header class="site-header" data-header>
         <nav class="nav" aria-label="Primary">
@@ -904,7 +1015,7 @@
 
         <section id="tour" class="section finish" aria-labelledby="tour-title">
           <div class="finish-copy">
-            <h2 id="tour-title">Desktop speech without the cloud theater.</h2>
+            <h2 id="tour-title">Local speech. Desktop control.</h2>
             <p>Private capture, searchable history, device control, and preferences that stay close to the operating system.</p>
             <div class="finish-actions">
               <a class="button primary" href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noopener">
