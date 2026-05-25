@@ -166,24 +166,24 @@ function heroCardStyle(index: number, active: number, total: number, pointerX: n
 
   let opacity = 0;
   let zIndex = 1;
-  let transform = "translate3d(0, 36px, -160px) scale(0.78)";
+  let transform = "translate3d(0, 26px, -104px) scale(0.82)";
 
   if (diff === 0) {
     opacity = 1;
     zIndex = 6;
-    transform = `translate3d(${pointerX * 14}px, ${pointerY * 14}px, 0) rotateX(${pointerY * -4}deg) rotateY(${pointerX * 6}deg) scale(1)`;
+    transform = `translate3d(${pointerX * 8}px, ${pointerY * 8}px, 0) rotateX(${pointerY * -2.6}deg) rotateY(${pointerX * 4}deg) scale(1)`;
   } else if (diff === 1) {
     opacity = 0.9;
     zIndex = 5;
-    transform = "translate3d(116px, 76px, -70px) rotate(6deg) scale(0.88)";
+    transform = "translate3d(76px, 42px, -48px) rotate(4deg) scale(0.9)";
   } else if (diff === 2) {
-    opacity = 0.58;
+    opacity = 0.54;
     zIndex = 4;
-    transform = "translate3d(192px, 128px, -120px) rotate(10deg) scale(0.74)";
+    transform = "translate3d(124px, 72px, -86px) rotate(7deg) scale(0.8)";
   } else if (diff === -1) {
-    opacity = 0.42;
+    opacity = 0.36;
     zIndex = 3;
-    transform = "translate3d(-42px, -24px, -80px) rotate(-4deg) scale(0.92)";
+    transform = "translate3d(-26px, -18px, -62px) rotate(-3deg) scale(0.94)";
   }
 
   return {
@@ -311,7 +311,7 @@ export default function App() {
             <div className="hero-stage" onPointerMove={onHeroPointerMove} onPointerLeave={() => setPointer({ x: 0, y: 0 })}>
               <div className="hero-glow hero-glow-one" aria-hidden="true" />
               <div className="hero-glow hero-glow-two" aria-hidden="true" />
-              {heroStack}
+              <div className="hero-stack">{heroStack}</div>
             </div>
 
             <div className="hero-meta">
