@@ -588,102 +588,219 @@
       }
 
       .finish-copy h2 {
-        max-width: 680px;
+        max-width: 560px;
         color: #ffffff;
-        font-size: clamp(48px, 5.9vw, 84px);
-        line-height: 0.93;
+        font-size: clamp(56px, 6.1vw, 90px);
+        font-weight: 730;
+        line-height: 0.9;
       }
 
       .finish-copy p {
-        max-width: 610px;
+        max-width: 500px;
         color: var(--ink-soft);
-        font-size: clamp(18px, 2vw, 25px);
-        font-weight: 540;
-        line-height: 1.28;
+        font-size: clamp(18px, 1.9vw, 24px);
+        font-weight: 520;
+        line-height: 1.26;
       }
 
-      .feature-strip {
+      .tour-panel {
         display: grid;
         align-content: center;
-        gap: 2px;
-        margin-top: 8px;
+        gap: 24px;
+        width: min(100%, 720px);
       }
 
-      .feature-row {
+      .tour-preview {
         position: relative;
-        display: grid;
-        grid-template-columns: 42px minmax(0, 1fr);
-        align-items: center;
-        gap: 16px;
-        min-height: 76px;
-        padding: 10px 0 12px;
-        color: var(--ink);
-        transform: translateZ(0);
-        transition: color 180ms ease;
+        min-height: 420px;
+        overflow: hidden;
+        isolation: isolate;
       }
 
-      .feature-row::after {
+      .tour-preview::before {
         content: "";
         position: absolute;
-        right: 0;
-        bottom: 0;
-        left: 58px;
-        height: 1px;
-        background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        inset: 6% 0 0 14%;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 46%),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.06), transparent 18%, transparent 100%);
+        pointer-events: none;
       }
 
-      .feature-row:last-child::after {
+      .tour-preview::after {
+        content: "";
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02));
+        pointer-events: none;
+      }
+
+      .tour-preview-meta {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+        display: grid;
+        gap: 10px;
+      }
+
+      .tour-preview-index {
+        color: rgba(255, 255, 255, 0.1);
+        font-family: var(--display-font);
+        font-size: clamp(72px, 9vw, 122px);
+        font-weight: 760;
+        line-height: 0.82;
+      }
+
+      .tour-preview-label {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 12px;
+        font-weight: 720;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .tour-preview-title {
+        color: #ffffff;
+        font-family: var(--display-font);
+        font-size: clamp(24px, 2.45vw, 36px);
+        font-weight: 710;
+        line-height: 0.98;
         display: none;
       }
 
-      .feature-icon {
+      .tour-shot {
+        position: absolute;
+        inset: 0;
         display: grid;
-        place-items: center;
-        width: 42px;
-        height: 42px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.028);
-        color: var(--blue);
+        align-items: end;
+        justify-items: end;
+        padding: 48px 0 10px 118px;
+        opacity: 0;
+        transform: translate3d(0, 14px, 0);
+        transition:
+          opacity 280ms ease,
+          transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
-      .feature-row:nth-child(2) .feature-icon {
-        color: var(--purple);
+      .tour-shot.is-active {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
       }
 
-      .feature-row:nth-child(3) .feature-icon {
-        color: var(--orange);
+      .tour-shot img {
+        width: min(100%, 640px);
+        max-height: 100%;
+        object-fit: contain;
+        object-position: right center;
+        filter: brightness(1.08) saturate(1.04) drop-shadow(0 34px 78px rgba(0, 0, 0, 0.54));
       }
 
-      .feature-row:nth-child(4) .feature-icon {
-        color: #92c2c6;
+      .tour-rail {
+        display: grid;
       }
 
-      .feature-icon svg {
-        width: 20px;
-        height: 20px;
+      .tour-item {
+        position: relative;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr);
+        align-items: start;
+        gap: 16px;
+        width: 100%;
+        padding: 18px 0 18px 18px;
+        border: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-align: left;
+        transition:
+          transform 180ms ease,
+          color 180ms ease;
       }
 
-      .feature-row h3 {
-        margin: 0 0 4px;
-        color: #ffffff;
-        font-size: clamp(20px, 2.1vw, 28px);
+      .tour-item:last-child {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .tour-item::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        bottom: 12px;
+        left: 0;
+        width: 2px;
+        background: var(--accent, var(--blue));
+        opacity: 0;
+        transform: scaleY(0.55);
+        transform-origin: center;
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+      }
+
+      .tour-item:hover,
+      .tour-item:focus-visible,
+      .tour-item.is-active {
+        transform: translateX(8px);
+        outline: none;
+      }
+
+      .tour-item:hover::before,
+      .tour-item:focus-visible::before,
+      .tour-item.is-active::before {
+        opacity: 1;
+        transform: scaleY(1);
+      }
+
+      .tour-item-index {
+        color: rgba(255, 255, 255, 0.4);
+        font-family: var(--display-font);
+        font-size: 13px;
         font-weight: 720;
-        line-height: 1.04;
+        line-height: 1.1;
       }
 
-      .feature-row p {
+      .tour-item-copy {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .tour-item-copy strong {
+        color: rgba(255, 255, 255, 0.78);
+        font-family: var(--display-font);
+        font-size: clamp(22px, 2.2vw, 32px);
+        font-weight: 710;
+        line-height: 1;
+        transition: color 180ms ease;
+      }
+
+      .tour-item-copy span {
         color: var(--ink-muted);
         font-size: 15px;
         font-weight: 520;
         line-height: 1.34;
       }
 
+      .tour-item:hover .tour-item-copy strong,
+      .tour-item:focus-visible .tour-item-copy strong,
+      .tour-item.is-active .tour-item-copy strong {
+        color: #ffffff;
+      }
+
+      .tour-item:hover .tour-item-index,
+      .tour-item:focus-visible .tour-item-index,
+      .tour-item.is-active .tour-item-index {
+        color: var(--accent, var(--blue));
+      }
+
       .finish-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
-        margin-top: 10px;
+        margin-top: 8px;
       }
 
       .reveal {
@@ -743,6 +860,7 @@
 
         .finish-copy {
           position: static;
+          align-content: start;
         }
       }
 
@@ -828,23 +946,57 @@
         }
 
         .finish-copy h2 {
-          font-size: clamp(46px, 14vw, 76px);
+          font-size: clamp(44px, 13vw, 70px);
         }
 
         .finish-copy p {
           font-size: 17px;
         }
 
-        .feature-row {
-          grid-template-columns: 38px minmax(0, 1fr);
-          gap: 14px;
-          min-height: 72px;
-          padding: 10px 0 12px;
+        .tour-panel {
+          gap: 18px;
         }
 
-        .feature-icon {
-          width: 38px;
-          height: 38px;
+        .tour-preview {
+          min-height: 0;
+          aspect-ratio: 1.08;
+        }
+
+        .tour-preview::before {
+          inset: 8% 0 0 0;
+        }
+
+        .tour-preview-title {
+          font-size: clamp(22px, 7vw, 32px);
+        }
+
+        .tour-preview-index {
+          font-size: clamp(58px, 17vw, 86px);
+        }
+
+        .tour-shot {
+          padding: 78px 0 12px 0;
+          justify-items: center;
+        }
+
+        .tour-shot img {
+          width: 100%;
+        }
+
+        .tour-item {
+          grid-template-columns: 38px minmax(0, 1fr);
+          gap: 12px;
+          padding: 16px 0 16px 14px;
+        }
+
+        .tour-item:hover,
+        .tour-item:focus-visible,
+        .tour-item.is-active {
+          transform: translateX(0);
+        }
+
+        .tour-item-copy strong {
+          font-size: 26px;
         }
       }
 
@@ -1016,8 +1168,8 @@
 
         <section id="tour" class="section finish" aria-labelledby="tour-title">
           <div class="finish-copy">
-            <h2 id="tour-title">Local speech. Desktop control.</h2>
-            <p>Private capture, searchable history, device control, and preferences that stay close to the operating system.</p>
+            <h2 id="tour-title">Voice in. Text out. Nothing leaves.</h2>
+            <p>Capture from the tray, recover every saved clip, and retune the desktop flow without pushing speech into a hosted pipeline.</p>
             <div class="finish-actions">
               <a class="button primary" href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noopener">
                 <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
@@ -1025,63 +1177,61 @@
                 </svg>
                 <span>Get ASR Pro</span>
               </a>
-              <a class="button" href="https://github.com/surajmandalcell/asrpro/issues" target="_blank" rel="noopener">
-                <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v5m0 3h.01M21 12A9 9 0 1 1 3 12a9 9 0 0 1 18 0Z" />
-                </svg>
-                <span>Issues</span>
-              </a>
             </div>
           </div>
 
-          <div class="feature-strip" aria-label="Core workflow">
-            <article class="feature-row">
-              <span class="feature-icon" aria-hidden="true">
-                <svg fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-                </svg>
-              </span>
-              <div>
-                <h3>Capture speech</h3>
-                <p>Home, tray, or shortcut.</p>
+          <div class="tour-panel" aria-label="Core workflow">
+            <div class="tour-preview" aria-live="polite">
+              <div class="tour-preview-meta">
+                <span class="tour-preview-index" data-tour-index>01</span>
+                <span class="tour-preview-label" data-tour-preview-label>Home</span>
+                <span class="tour-preview-title" data-tour-preview-title>Capture speech</span>
               </div>
-            </article>
-            <article class="feature-row">
-              <span class="feature-icon" aria-hidden="true">
-                <svg fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 18a7.5 7.5 0 1 1 5.3-2.2L21 21" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 9h5M8 12h3" />
-                </svg>
-              </span>
-              <div>
-                <h3>Use transcript history</h3>
-                <p>Search, copy, open, delete, reprocess.</p>
-              </div>
-            </article>
-            <article class="feature-row">
-              <span class="feature-icon" aria-hidden="true">
-                <svg fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M7 8v8a5 5 0 0 0 10 0V8" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4h6M9 16h6" />
-                </svg>
-              </span>
-              <div>
-                <h3>Choose inputs</h3>
-                <p>Refresh devices and control microphone behavior.</p>
-              </div>
-            </article>
-            <article class="feature-row">
-              <span class="feature-icon" aria-hidden="true">
-                <svg fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M7 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM4 17h16M17 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
-                </svg>
-              </span>
-              <div>
-                <h3>Set preferences</h3>
-                <p>Clipboard, editor, startup, overlay placement.</p>
-              </div>
-            </article>
+
+              <figure class="tour-shot is-active" data-tour-shot>
+                <img src="./screenshots/asrpro-home.png" alt="ASR Pro home recording screen" />
+              </figure>
+              <figure class="tour-shot" data-tour-shot>
+                <img src="./screenshots/asrpro-history.png" alt="ASR Pro transcript history screen" />
+              </figure>
+              <figure class="tour-shot" data-tour-shot>
+                <img src="./screenshots/asrpro-sound.png" alt="ASR Pro microphone input settings screen" />
+              </figure>
+              <figure class="tour-shot" data-tour-shot>
+                <img src="./screenshots/asrpro-configuration.png" alt="ASR Pro configuration screen" />
+              </figure>
+            </div>
+
+            <div class="tour-rail" aria-label="Feature explorer">
+              <button class="tour-item is-active" type="button" aria-pressed="true" data-tour-item data-tour-label="Home" data-tour-title="Capture speech" style="--accent: var(--blue)">
+                <span class="tour-item-index">01</span>
+                <span class="tour-item-copy">
+                  <strong>Capture speech</strong>
+                  <span>Home, tray, or shortcut.</span>
+                </span>
+              </button>
+              <button class="tour-item" type="button" aria-pressed="false" data-tour-item data-tour-label="History" data-tour-title="Search history" style="--accent: var(--purple)">
+                <span class="tour-item-index">02</span>
+                <span class="tour-item-copy">
+                  <strong>Search history</strong>
+                  <span>Copy, reopen, delete, or reprocess saved clips.</span>
+                </span>
+              </button>
+              <button class="tour-item" type="button" aria-pressed="false" data-tour-item data-tour-label="Sound" data-tour-title="Choose inputs" style="--accent: var(--orange)">
+                <span class="tour-item-index">03</span>
+                <span class="tour-item-copy">
+                  <strong>Choose inputs</strong>
+                  <span>Refresh devices and control microphone behavior.</span>
+                </span>
+              </button>
+              <button class="tour-item" type="button" aria-pressed="false" data-tour-item data-tour-label="Preferences" data-tour-title="Set preferences" style="--accent: #92c2c6">
+                <span class="tour-item-index">04</span>
+                <span class="tour-item-copy">
+                  <strong>Set preferences</strong>
+                  <span>Clipboard, editor, startup, and overlay placement.</span>
+                </span>
+              </button>
+            </div>
           </div>
         </section>
       </main>
@@ -1097,6 +1247,11 @@
         const text = document.querySelector("[data-current-text]");
         const prev = document.querySelector("[data-prev]");
         const next = document.querySelector("[data-next]");
+        const tourItems = Array.from(document.querySelectorAll("[data-tour-item]"));
+        const tourShots = Array.from(document.querySelectorAll("[data-tour-shot]"));
+        const tourIndex = document.querySelector("[data-tour-index]");
+        const tourLabel = document.querySelector("[data-tour-preview-label]");
+        const tourTitle = document.querySelector("[data-tour-preview-title]");
         const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         let active = 0;
         let timer = 0;
@@ -1128,14 +1283,50 @@
           restartTimer();
         };
 
+        const setTour = (index) => {
+          if (!tourItems.length || !tourShots.length) {
+            return;
+          }
+
+          const safeIndex = ((index % tourItems.length) + tourItems.length) % tourItems.length;
+          const current = tourItems[safeIndex];
+
+          tourItems.forEach((item, itemIndex) => {
+            item.classList.toggle("is-active", itemIndex === safeIndex);
+            item.setAttribute("aria-pressed", itemIndex === safeIndex ? "true" : "false");
+          });
+          tourShots.forEach((shot, shotIndex) => {
+            shot.classList.toggle("is-active", shotIndex === safeIndex);
+          });
+
+          if (tourIndex) {
+            tourIndex.textContent = String(safeIndex + 1).padStart(2, "0");
+          }
+
+          if (tourLabel) {
+            tourLabel.textContent = current.dataset.tourLabel || "";
+          }
+
+          if (tourTitle) {
+            tourTitle.textContent = current.dataset.tourTitle || "";
+          }
+        };
+
         prev.addEventListener("click", () => setActive(active - 1));
         next.addEventListener("click", () => setActive(active + 1));
         dots.forEach((dot) => {
           dot.addEventListener("click", () => setActive(Number(dot.dataset.dot)));
         });
+        tourItems.forEach((item, index) => {
+          const activate = () => setTour(index);
+          item.addEventListener("mouseenter", activate);
+          item.addEventListener("focus", activate);
+          item.addEventListener("click", activate);
+        });
 
         window.addEventListener("scroll", setHeaderTint, { passive: true });
         setHeaderTint();
+        setTour(0);
         restartTimer();
       })();
     </script>
