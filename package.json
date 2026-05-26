@@ -9,9 +9,6 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4270",
-    "docs:dev": "vite --config vite.docs.config.ts",
-    "docs:build": "node scripts/build-docs-site.cjs",
-    "docs:preview": "vite preview --config vite.docs.config.ts",
     "postinstall": "node scripts/prepare-whisper-addon.cjs",
     "start": "electron .",
     "build": "tsc -b && vite build",
