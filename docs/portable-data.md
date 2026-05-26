@@ -10,7 +10,7 @@ ASR Pro is local-first. The app should be movable without scattering private dic
 |---|---|
 | Keep models local | Whisper model downloads stay under the app-owned data folder. |
 | Keep history local | Transcript history, text exports, session state, and Chromium local storage stay under app-owned data paths. |
-| Keep config local | App settings, overlay settings, startup preference, and editor preference stay in `config/`. |
+| Keep config local | App settings, overlay settings, launch preference, and editor preference stay in `config/`. |
 | Make moves predictable | Move the executable folder with `asrpro-data/` and the app carries its useful state with it. |
 
 ## Data Folder Rules
@@ -33,7 +33,7 @@ ASR Pro is local-first. The app should be movable without scattering private dic
 |---|---|
 | `asrpro-data/models/whisper/` | Downloaded Whisper model files. |
 | `asrpro-data/transcripts/` | Text files opened from transcript history. |
-| `asrpro-data/config/` | App settings, overlay settings, startup preference, and editor preference. |
+| `asrpro-data/config/` | App settings, overlay settings, launch preference, and editor preference. |
 | `asrpro-data/user-data/` | Electron user data, including renderer local storage used by history. |
 | `asrpro-data/session/` | Chromium session data. |
 | `asrpro-data/logs/` | Electron logs. |
@@ -46,11 +46,11 @@ ASR Pro is local-first. The app should be movable without scattering private dic
 | 1 | Quit ASR Pro from the tray or app menu. |
 | 2 | Move the executable folder and the sibling `asrpro-data/` folder together. |
 | 3 | Start ASR Pro from the new location. |
-| 4 | If startup launch is enabled, toggle `Launch at startup` off and on, or simply turn it on again, so the saved startup target is replaced with the new executable path. |
+| 4 | If `Launch at startup` is enabled, toggle it off and on, or simply turn it on again, so the saved sign-in target is replaced with the new executable path. |
 
 ## Windows Portable Notes
 
-Electron-builder portable `.exe` files run through an extracted runtime. ASR Pro uses electron-builder's `PORTABLE_EXECUTABLE_DIR` and `PORTABLE_EXECUTABLE_FILE` values when they are present, so data and startup launch target the real `.exe` the user moved, not the temporary extracted executable.
+Electron-builder portable `.exe` files run through an extracted runtime. ASR Pro uses electron-builder's `PORTABLE_EXECUTABLE_DIR` and `PORTABLE_EXECUTABLE_FILE` values when they are present, so data and sign-in launch target the real `.exe` the user moved, not the temporary extracted executable.
 
 ## Automation Override
 

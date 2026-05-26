@@ -71,7 +71,7 @@ The default recognition model is **Whisper Base English**. Additional Whisper mo
 | Transcript history | Stores recent transcript rows locally, supports search, copy, delete, text-file opening, and reprocessing saved audio clips. |
 | Auto-copy | Completed transcripts can be copied to the clipboard automatically. |
 | Text editor preference | Transcript text files can open with the system default editor, TextEdit, VS Code, or Cursor when available. |
-| Startup launch | The Configuration screen can register ASR Pro to start at login and repair the target path after a portable install moves. |
+| Open on sign-in | The Configuration screen can register ASR Pro to start at login and repair the target path after a portable install moves. |
 | Resource visibility | The Models library reports local model storage and runtime memory groups exposed by the Electron runtime. |
 
 ## Models
@@ -187,7 +187,7 @@ flowchart LR
 | `ASRPRO_DEFAULT_MODEL` | `whisper-base-en` | Exposes the runtime default model identifier. |
 | `ASRPRO_SCREENSHOT_MODE` | unset | Seeds deterministic local UI data for screenshot capture. |
 
-Startup launch is controlled from Configuration, Application, `Launch at startup`. See [Startup launch](docs/startup.md) for how ASR Pro replaces the saved startup target when an install moves.
+Open on sign-in is controlled from Configuration, Application, `Launch at startup`. See [Getting started](docs/getting-started.md) for first-run setup and [Open on sign-in](docs/startup.md) for how ASR Pro replaces the saved sign-in target when an install moves.
 
 ## Runtime API
 
@@ -233,7 +233,8 @@ npm run electron:pack
 asrpro/
 ├── docs/
 │   ├── portable-data.md      # App-contained data behavior and move checklist
-│   ├── startup.md            # Login startup behavior by platform
+│   ├── getting-started.md    # First-run setup guide
+│   ├── startup.md            # Open on sign-in behavior by platform
 │   └── screenshots/          # Product screenshots used by this README
 ├── electron/                 # Electron main, preload, overlay, identity, runtime, and Whisper helpers
 ├── scripts/                  # Build, screenshot, packaging, and native engine checks
@@ -248,8 +249,9 @@ asrpro/
 
 | Document | Purpose |
 |---|---|
+| [Getting started](docs/getting-started.md) | Covers first-run setup, model selection, input selection, and the first recording. |
 | [Portable data](docs/portable-data.md) | Explains `asrpro-data/`, platform storage rules, and how to move an install safely. |
-| [Startup launch](docs/startup.md) | Explains the Configuration toggle, platform startup targets, and moved-install repair behavior. |
+| [Open on sign-in](docs/startup.md) | Explains the Configuration toggle, platform sign-in targets, and moved-install repair behavior. |
 | [Design system](DESIGN.md) | Captures the compact graphite desktop UI direction, spacing, colors, icon rules, and shell behavior. |
 
 ## Maintaining Screenshots
@@ -286,7 +288,7 @@ External contribution policy is intentionally conservative until a public licens
 | First transcription is slow | The selected Whisper model may be downloading or initializing. Download the model from the Models library before recording when predictable startup matters. |
 | Model download fails | Check network access, retry setup, or select an already downloaded model. Failed partial downloads use a `.download` suffix and are cleaned by retry/delete flows. |
 | Native engine check fails | Run `npm install` again and confirm the installed native addon supports the current OS and CPU architecture. |
-| Startup launches an old copy | Open the moved app, then toggle `Launch at startup` off and on from Configuration. |
+| ASR Pro opens from an old location | Open the moved app, then toggle `Launch at startup` off and on from Configuration. |
 | A transcript opens in the wrong editor | Change Configuration, Application, `Transcript editor`, then open the transcript again from History. |
 
 ## Security And Privacy Notes

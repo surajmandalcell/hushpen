@@ -19,7 +19,7 @@
         <a class="brand" href="./index.html">ASR Pro</a>
         <nav class="nav-links" aria-label="Primary">
           <a class="is-active" href="./portable-data.html">Portable data</a>
-          <a href="./startup.html">Startup launch</a>
+          <a href="./getting-started.html">Getting started</a>
           <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a>
           <a class="nav-cta" href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
@@ -28,16 +28,16 @@
 
     <main class="shell">
       <section class="doc-hero">
-        <p class="prompt-line">$ cat ./portable-data.md</p>
+        <p class="prompt-line">Data storage</p>
         <h1>Portable data</h1>
         <p class="lead">
           Packaged Windows and Linux builds keep ASR Pro data beside the executable in <code>asrpro-data/</code>. macOS does the same
           when the app is outside a normal Applications folder.
         </p>
         <div class="doc-jump">
-          <a href="#rules">jump rules</a>
-          <a href="#contents">jump contents</a>
-          <a href="#move">jump move-checklist</a>
+          <a href="#rules">Resolution rules</a>
+          <a href="#contents">What moves</a>
+          <a href="#move">Move checklist</a>
         </div>
       </section>
 
@@ -105,7 +105,7 @@
                 </tr>
                 <tr>
                   <td><code>asrpro-data/config/</code></td>
-                  <td>preferences, defaults, startup state, and editor targets</td>
+                  <td>preferences, defaults, launch state, and editor targets</td>
                 </tr>
                 <tr>
                   <td><code>asrpro-data/user-data/</code></td>
@@ -130,7 +130,7 @@
             <li>move the executable or app bundle together with its sibling <code>asrpro-data/</code> folder</li>
             <li>launch ASR Pro from the new location</li>
             <li>confirm models, transcripts, and history are still present</li>
-            <li>if startup launch was enabled, repair it by toggling it off and on again in the new location</li>
+            <li>if <strong>Launch at startup</strong> was enabled, toggle it off and on again from the new location</li>
           </ul>
           <div class="doc-note">
             Packaged Windows and Linux builds are designed around this sibling-folder model. macOS uses the same pattern only when the app is being run outside the standard Applications location.

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASR Pro | Getting started</title>
+    <meta
+      name="description"
+      content="Install ASR Pro, choose an input and local Whisper model, record a first clip, and keep portable data behavior predictable."
+    />
+    <meta name="theme-color" content="#050705" />
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./assets/docs.css" />
+  </head>
+  <body class="page-doc">
+    <header class="site-nav">
+      <div class="site-nav-inner">
+        <a class="brand" href="./index.html">ASR Pro</a>
+        <nav class="nav-links" aria-label="Primary">
+          <a href="./portable-data.html">Portable data</a>
+          <a class="is-active" href="./getting-started.html">Getting started</a>
+          <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a>
+          <a class="nav-cta" href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="doc-hero">
+        <p class="prompt-line">First run guide</p>
+        <h1>Getting started</h1>
+        <p class="lead">
+          Install ASR Pro, pick a microphone, choose a local Whisper model, and record a short clip. The app keeps speech,
+          transcripts, and settings local unless you move them yourself.
+        </p>
+        <div class="doc-jump">
+          <a href="#install">Install</a>
+          <a href="#first-run">First run</a>
+          <a href="#record">Record and review</a>
+          <a href="#keep">Keep it working</a>
+        </div>
+      </section>
+
+      <div class="doc-grid">
+        <section id="install" class="doc-section">
+          <h2>Install</h2>
+          <p>Start with a packaged release for the machine you are actually using.</p>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>step</th>
+                  <th>what to do</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Download</strong></td>
+                  <td>Open <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a> and grab the package for your platform.</td>
+                </tr>
+                <tr>
+                  <td><strong>Place it</strong></td>
+                  <td>Keep portable Windows and Linux builds in a folder you can move later with their sibling <code>asrpro-data/</code> folder.</td>
+                </tr>
+                <tr>
+                  <td><strong>Open it</strong></td>
+                  <td>Launch ASR Pro, then let the app create its local config, history, and model folders.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="first-run" class="doc-section">
+          <h2>First run</h2>
+          <ul>
+            <li>open <strong>Sound</strong> and pick the microphone you want ASR Pro to use</li>
+            <li>open <strong>Models library</strong> and choose a Whisper model for local transcription</li>
+            <li>open <strong>Configuration</strong> for shortcuts, auto-copy, editor handoff, overlay placement, and launch on sign-in</li>
+            <li>return to <strong>Home</strong> when the input and model look right</li>
+          </ul>
+        </section>
+
+        <section id="record" class="doc-section">
+          <h2>Record and review</h2>
+          <ul>
+            <li>start recording from Home, the tray, or the keyboard shortcut</li>
+            <li>stop after a short sample so the first transcription finishes quickly</li>
+            <li>copy the transcript, open it in your editor, or send it through the history workflow</li>
+            <li>use <strong>History</strong> to search, reopen, delete, or reprocess saved clips</li>
+          </ul>
+        </section>
+
+        <section id="keep" class="doc-section">
+          <h2>Keep it working</h2>
+          <p>ASR Pro is designed for local, movable installs. The only maintenance step that usually matters is keeping the app and its data together.</p>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>case</th>
+                  <th>fix</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Moving the app</strong></td>
+                  <td>Move the executable or app bundle together with <code>asrpro-data/</code>. See <a href="./portable-data.html">Portable data</a>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Open on sign-in</strong></td>
+                  <td>Turn on <strong>Launch at startup</strong> from Configuration. If the app moves later, toggle it off and on again from the new location.</td>
+                </tr>
+                <tr>
+                  <td><strong>Wrong microphone</strong></td>
+                  <td>Refresh devices from Sound and pick the intended input again.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

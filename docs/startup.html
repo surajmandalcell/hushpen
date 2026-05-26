@@ -3,12 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ASR Pro | Startup launch</title>
-    <meta
-      name="description"
-      content="How ASR Pro registers launch at login and how to repair the startup hook after moving the install."
-    />
+    <title>ASR Pro | Getting started</title>
+    <meta http-equiv="refresh" content="0; url=./getting-started.html" />
+    <meta name="description" content="This page moved to the ASR Pro getting started guide." />
     <meta name="theme-color" content="#050705" />
+    <link rel="canonical" href="./getting-started.html" />
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="./assets/docs.css" />
@@ -19,7 +18,7 @@
         <a class="brand" href="./index.html">ASR Pro</a>
         <nav class="nav-links" aria-label="Primary">
           <a href="./portable-data.html">Portable data</a>
-          <a class="is-active" href="./startup.html">Startup launch</a>
+          <a class="is-active" href="./getting-started.html">Getting started</a>
           <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a>
           <a class="nav-cta" href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
@@ -28,85 +27,16 @@
 
     <main class="shell">
       <section class="doc-hero">
-        <p class="prompt-line">$ cat ./startup.md</p>
-        <h1>Startup launch</h1>
+        <p class="prompt-line">Page moved</p>
+        <h1>Getting started moved</h1>
         <p class="lead">
-          Turning on launch at startup registers the current executable path with the operating system. If you move the app later, the
-          fix is simply to run it from the new location and toggle startup off and on again.
+          The public guide now starts with setup, first run, recording, and local data behavior. Continue to
+          <a href="./getting-started.html">Getting started</a>.
         </p>
-        <div class="doc-jump">
-          <a href="#where">jump where-to-find-it</a>
-          <a href="#platforms">jump platform-behavior</a>
-          <a href="#repair">jump repair</a>
-        </div>
       </section>
-
-      <div class="doc-grid">
-        <section id="where" class="doc-section">
-          <h2>Where to find it</h2>
-          <p>Inside the app, the control lives in <strong>Configuration</strong> under the <strong>Application</strong> section.</p>
-          <div class="doc-table-wrap">
-            <table class="doc-table">
-              <thead>
-                <tr>
-                  <th>screen</th>
-                  <th>section</th>
-                  <th>control</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Configuration</strong></td>
-                  <td>Application</td>
-                  <td>Launch at startup, with the resolved executable path</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="platforms" class="doc-section">
-          <h2>Platform behavior</h2>
-          <p>ASR Pro uses the normal operating-system startup mechanisms rather than inventing a custom launcher.</p>
-          <div class="doc-table-wrap">
-            <table class="doc-table">
-              <thead>
-                <tr>
-                  <th>platform</th>
-                  <th>mechanism</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Windows</strong></td>
-                  <td>Electron startup registration, with portable builds resolving through <code>PORTABLE_EXECUTABLE_FILE</code></td>
-                </tr>
-                <tr>
-                  <td><strong>macOS</strong></td>
-                  <td>native Login Items registration against the current <code>.app</code> bundle</td>
-                </tr>
-                <tr>
-                  <td><strong>Linux</strong></td>
-                  <td>writes an autostart desktop entry to <code>$XDG_CONFIG_HOME/autostart/</code> or <code>~/.config/autostart/</code></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="repair" class="doc-section">
-          <h2>Repair after moving the app</h2>
-          <ul>
-            <li>launch ASR Pro from the new path</li>
-            <li>open <strong>Configuration</strong></li>
-            <li>toggle <strong>Launch at startup</strong> off</li>
-            <li>toggle it on again so the system record points at the new binary</li>
-          </ul>
-          <div class="doc-note">
-            The startup state is also reflected in <code>asrpro-data/config/app-settings.json</code>, but the authoritative fix is always to re-register from the currently running app.
-          </div>
-        </section>
-      </div>
     </main>
+    <script>
+      window.location.replace("./getting-started.html");
+    </script>
   </body>
 </html>

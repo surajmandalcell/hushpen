@@ -234,19 +234,23 @@ describe("Electron runtime helpers", () => {
     expect(preloadSource).toContain('ipcRenderer.invoke("settings:startup"');
   });
 
-  it("links the portable data and startup docs from the README", () => {
+  it("links the portable data and setup docs from the README", () => {
     const readme = readFileSync("README.md", "utf8");
     const portableDocs = readFileSync("docs/portable-data.md", "utf8");
+    const gettingStartedDocs = readFileSync("docs/getting-started.md", "utf8");
     const startupDocs = readFileSync("docs/startup.md", "utf8");
 
     expect(readme).toContain("docs/portable-data.md");
+    expect(readme).toContain("docs/getting-started.md");
     expect(readme).toContain("docs/startup.md");
     expect(portableDocs).toContain("asrpro-data/");
     expect(portableDocs).toContain("history");
     expect(portableDocs).toContain("models");
     expect(portableDocs).toContain("config");
+    expect(gettingStartedDocs).toContain("pick a microphone");
+    expect(gettingStartedDocs).toContain("Launch at startup");
     expect(startupDocs).toContain("Launch at startup");
-    expect(startupDocs).toContain("replaces the saved startup target");
+    expect(startupDocs).toContain("replaces the saved sign-in target");
   });
 
   it("renders the recording overlay as a text-free waveform pill", () => {
