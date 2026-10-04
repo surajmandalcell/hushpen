@@ -266,6 +266,19 @@ describe("Electron runtime helpers", () => {
     expect(html).not.toContain("CommandOrControl");
   });
 
+  it("locks the overlay page to a hash of its own inline script", () => {
+    const html = runtime.createRecordingOverlayHtml();
+    const policy = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ?? "";
+    const scripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g), (match) => match[1]);
+    const hash = createHash("sha256").update(scripts[0]).digest("base64");
+
+    expect(scripts).toHaveLength(1);
+    expect(policy).toContain("default-src 'none'");
+    expect(policy).toContain(`script-src 'sha256-${hash}'`);
+    expect(policy).not.toMatch(/script-src[^;]*unsafe/);
+    expect(html.indexOf("Content-Security-Policy")).toBeLessThan(html.indexOf("<style>"));
+  });
+
   it("shows the global recording overlay for every recording start source", () => {
     expect(runtime.shouldShowRecordingOverlay("renderer")).toBe(true);
     expect(runtime.shouldShowRecordingOverlay("shortcut")).toBe(true);

@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const path = require("node:path");
 const fs = require("node:fs");
 const {
@@ -309,82 +310,7 @@ function clamp(value, min, max) {
   return Math.round(Math.min(Math.max(value, min), max));
 }
 
-function createRecordingOverlayHtml() {
-  const waveformBars = buildOverlayWaveformBars(44);
-  const barsHtml = waveformBars.map((height, index) => (
-    `<span data-base="${height}" style="--bar-height:${height}px;--bar-opacity:${edgeOpacity(index, waveformBars.length)}"></span>`
-  )).join("");
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      html, body {
-        margin: 0;
-        background: transparent;
-        overflow: hidden;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        user-select: none;
-        cursor: move;
-      }
-      body {
-        width: ${OVERLAY_WINDOW_SIZE.width}px;
-        height: ${OVERLAY_WINDOW_SIZE.height}px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .surface {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 148px;
-        height: 32px;
-        box-sizing: border-box;
-        padding: 6px 8px;
-        border-radius: 999px;
-        color: #f1f1f1;
-        background:
-          linear-gradient(180deg, rgba(40, 40, 42, 0.96), rgba(20, 20, 22, 0.92)),
-          rgba(18, 18, 20, 0.94);
-        border: 1px solid rgba(105, 105, 112, 0.22);
-        box-shadow:
-          0 12px 26px rgba(0, 0, 0, 0.32),
-          inset 0 1px 0 rgba(90, 90, 96, 0.14),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.42);
-        backdrop-filter: saturate(180%) blur(20px);
-        -webkit-backdrop-filter: saturate(180%) blur(20px);
-        -webkit-app-region: drag;
-      }
-      .waveform {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 1px;
-        width: 132px;
-        height: 20px;
-        overflow: hidden;
-        mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-        -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-      }
-      .waveform span {
-        width: 2px;
-        height: var(--bar-height);
-        border-radius: 999px;
-        background: rgba(230, 230, 234, var(--bar-opacity));
-        transform-origin: center;
-        will-change: height, background;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="surface" role="status" aria-label="ASR Pro recording overlay">
-      <span class="waveform" aria-hidden="true">${barsHtml}</span>
-    </div>
-    <script>
+const OVERLAY_SCRIPT = `
       (() => {
         const bars = Array.from(document.querySelectorAll(".waveform span"));
         const bases = bars.map((bar) => Number(bar.dataset.base) || 8);
@@ -455,7 +381,94 @@ function createRecordingOverlayHtml() {
         window.asrproSetWaveformFrame = setWaveformFrame;
         window.asrproOverlay?.onWaveformFrame?.(setWaveformFrame);
       })();
-    </script>
+`;
+
+// The overlay page is a data: URL, so its CSP can only allow the one inline script by hash.
+const OVERLAY_CSP = [
+  "default-src 'none'",
+  `script-src 'sha256-${crypto.createHash("sha256").update(OVERLAY_SCRIPT).digest("base64")}'`,
+  "style-src 'unsafe-inline'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+
+function createRecordingOverlayHtml() {
+  const waveformBars = buildOverlayWaveformBars(44);
+  const barsHtml = waveformBars.map((height, index) => (
+    `<span data-base="${height}" style="--bar-height:${height}px;--bar-opacity:${edgeOpacity(index, waveformBars.length)}"></span>`
+  )).join("");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="${OVERLAY_CSP}" />
+    <style>
+      html, body {
+        margin: 0;
+        background: transparent;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        user-select: none;
+        cursor: move;
+      }
+      body {
+        width: ${OVERLAY_WINDOW_SIZE.width}px;
+        height: ${OVERLAY_WINDOW_SIZE.height}px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .surface {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 148px;
+        height: 32px;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        border-radius: 999px;
+        color: #f1f1f1;
+        background:
+          linear-gradient(180deg, rgba(40, 40, 42, 0.96), rgba(20, 20, 22, 0.92)),
+          rgba(18, 18, 20, 0.94);
+        border: 1px solid rgba(105, 105, 112, 0.22);
+        box-shadow:
+          0 12px 26px rgba(0, 0, 0, 0.32),
+          inset 0 1px 0 rgba(90, 90, 96, 0.14),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.42);
+        backdrop-filter: saturate(180%) blur(20px);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
+        -webkit-app-region: drag;
+      }
+      .waveform {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        width: 132px;
+        height: 20px;
+        overflow: hidden;
+        mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+        -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+      }
+      .waveform span {
+        width: 2px;
+        height: var(--bar-height);
+        border-radius: 999px;
+        background: rgba(230, 230, 234, var(--bar-opacity));
+        transform-origin: center;
+        will-change: height, background;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="surface" role="status" aria-label="ASR Pro recording overlay">
+      <span class="waveform" aria-hidden="true">${barsHtml}</span>
+    </div>
+    <script>${OVERLAY_SCRIPT}</script>
   </body>
 </html>`;
 }
