@@ -145,7 +145,7 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-interface TranscriptHistoryRow {
+export interface TranscriptHistoryRow {
   id: string;
   title: string;
   text: string;
@@ -330,8 +330,8 @@ const dropdownOptionButtonClass = `flex w-full min-w-0 items-start gap-2 ${inset
 const segmentedControlClass = `inline-flex ${sharedRadiusClass} border border-white/[0.08] bg-[#2b2b2b] p-0.5`;
 const segmentedItemClass = `h-7 ${insetControlRadiusClass} px-2.5 text-[12px] font-semibold transition ${focusRingClass}`;
 
-const waveformBarCount = 76;
-const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
+export const waveformBarCount = 76;
+export const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
   const position = index / Math.max(1, waveformBarCount - 1);
   const envelope = 0.36 + 0.64 * Math.sin(Math.PI * position);
   const voiceShape = 0.48
@@ -346,13 +346,13 @@ const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => 
     opacity: edgeDistance < 5 ? 0.34 + edgeDistance * 0.08 : 0.78,
   };
 });
-const idleWaveformFrame = waveformBaseBars.map((bar) => bar.baseHeight);
+export const idleWaveformFrame = waveformBaseBars.map((bar) => bar.baseHeight);
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function buildReactiveWaveformFrame(frequencies: Uint8Array, voiceLevel: number, timestamp: number, previousFrame: number[]) {
+export function buildReactiveWaveformFrame(frequencies: Uint8Array, voiceLevel: number, timestamp: number, previousFrame: number[]) {
   return waveformBaseBars.map((bar, index) => {
     const position = index / Math.max(1, waveformBaseBars.length - 1);
     const bin = Math.min(frequencies.length - 1, Math.floor(Math.pow(position, 1.34) * frequencies.length * 0.86));
@@ -374,7 +374,7 @@ function buildReactiveWaveformFrame(frequencies: Uint8Array, voiceLevel: number,
   });
 }
 
-function toOverlayWaveformSamples(frame: number[]) {
+export function toOverlayWaveformSamples(frame: number[]) {
   const overlayCount = 55;
   return Array.from({ length: overlayCount }, (_, index) => {
     const sourceIndex = Math.round((index / Math.max(1, overlayCount - 1)) * (waveformBaseBars.length - 1));
@@ -384,7 +384,7 @@ function toOverlayWaveformSamples(frame: number[]) {
   });
 }
 
-function sendOverlayWaveformFrame(frame: number[], hasVoice: boolean) {
+export function sendOverlayWaveformFrame(frame: number[], hasVoice: boolean) {
   window.asrpro?.setWaveformFrame?.(hasVoice ? toOverlayWaveformSamples(frame) : []);
 }
 
@@ -492,7 +492,7 @@ function normalizeTextEditorOptions(options: unknown): TextEditorOption[] {
   return normalized.length ? normalized : defaultTextEditorOptions;
 }
 
-function loadTranscriptHistory() {
+export function loadTranscriptHistory() {
   try {
     const raw = window.localStorage.getItem(transcriptHistoryStorageKey);
     if (!raw) return [];
@@ -535,7 +535,7 @@ function isSeededScreenshotHistoryRow(row: TranscriptHistoryRow) {
   return seededScreenshotHistoryRows.get(row.title) === row.text;
 }
 
-function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | null {
+export function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | null {
   if (!value || typeof value !== "object") return null;
 
   const row = value as Partial<TranscriptHistoryRow>;
@@ -559,7 +559,7 @@ function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | n
   };
 }
 
-function saveTranscriptHistory(rows: TranscriptHistoryRow[]) {
+export function saveTranscriptHistory(rows: TranscriptHistoryRow[]) {
   try {
     window.localStorage.setItem(transcriptHistoryStorageKey, JSON.stringify(rows.slice(0, 100)));
   } catch {
@@ -567,20 +567,20 @@ function saveTranscriptHistory(rows: TranscriptHistoryRow[]) {
   }
 }
 
-function buildHistoryTitle(text: string) {
+export function buildHistoryTitle(text: string) {
   const compact = text.replace(/\s+/g, " ").trim();
   if (!compact) return "Untitled dictation";
   return compact.length > 92 ? `${compact.slice(0, 89)}...` : compact;
 }
 
-function formatDuration(seconds: number) {
+export function formatDuration(seconds: number) {
   const rounded = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(rounded / 60);
   const remainingSeconds = rounded % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
-function formatByteCount(bytes?: number) {
+export function formatByteCount(bytes?: number) {
   const value = Number(bytes);
   if (!Number.isFinite(value) || value <= 0) return "0 B";
 
@@ -611,7 +611,7 @@ function mergeRuntimeInfo(current: RuntimeInfo | null, next?: Partial<RuntimeInf
   };
 }
 
-function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
+export function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
   const elapsedDays = Math.max(0, Math.floor((startOfDay(now) - startOfDay(createdAt)) / 86_400_000));
   if (elapsedDays === 0) return "Today";
   if (elapsedDays === 1) return "Yesterday";
@@ -619,11 +619,11 @@ function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
   return historyDateFormatter.format(new Date(createdAt));
 }
 
-function countWords(text: string) {
+export function countWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function formatHomeRelativePath(filePath?: string) {
+export function formatHomeRelativePath(filePath?: string) {
   if (!filePath) return undefined;
   return filePath.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
 }
@@ -657,7 +657,7 @@ function startOfDay(timestamp: number) {
   return date.getTime();
 }
 
-function formatShortcutParts(shortcut?: string) {
+export function formatShortcutParts(shortcut?: string) {
   const normalized = (shortcut || "CommandOrControl+`").split("+").flatMap((part) => {
     const trimmed = part.trim();
     return trimmed ? [trimmed] : [];
@@ -673,7 +673,7 @@ function formatShortcutParts(shortcut?: string) {
   });
 }
 
-function getErrorMessage(error: unknown) {
+export function getErrorMessage(error: unknown) {
   const rawMessage = error instanceof Error ? error.message : "Recording failed";
   const message = rawMessage
     .replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i, "")
@@ -741,7 +741,7 @@ async function createTranscriptionAudioPayload(blob: Blob) {
   };
 }
 
-function dataUrlToBlob(dataUrl: string) {
+export function dataUrlToBlob(dataUrl: string) {
   if (!dataUrl.startsWith("data:")) {
     throw new Error("Saved source audio could not be loaded.");
   }
@@ -768,7 +768,7 @@ function dataUrlToBlob(dataUrl: string) {
   }
 }
 
-async function convertBlobToWav(blob: Blob) {
+export async function convertBlobToWav(blob: Blob) {
   if (blob.type.includes("wav")) return blob;
 
   const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -790,7 +790,7 @@ async function convertBlobToWav(blob: Blob) {
   return new Blob([wavData], { type: "audio/wav" });
 }
 
-function mixAudioBufferToMono(audioBuffer: AudioBuffer) {
+export function mixAudioBufferToMono(audioBuffer: AudioBuffer) {
   const samples = new Float32Array(audioBuffer.length);
   const channelCount = Math.max(1, audioBuffer.numberOfChannels);
 
@@ -804,7 +804,7 @@ function mixAudioBufferToMono(audioBuffer: AudioBuffer) {
   return samples;
 }
 
-function resamplePcm(samples: Float32Array, sourceRate: number, targetRate: number) {
+export function resamplePcm(samples: Float32Array, sourceRate: number, targetRate: number) {
   if (sourceRate === targetRate) return samples;
 
   const targetLength = Math.max(1, Math.round(samples.length * targetRate / sourceRate));
@@ -822,7 +822,7 @@ function resamplePcm(samples: Float32Array, sourceRate: number, targetRate: numb
   return resampled;
 }
 
-function encodePcm16Wav(samples: Float32Array, sampleRate: number) {
+export function encodePcm16Wav(samples: Float32Array, sampleRate: number) {
   const bytesPerSample = 2;
   const dataLength = samples.length * bytesPerSample;
   const buffer = new ArrayBuffer(44 + dataLength);
