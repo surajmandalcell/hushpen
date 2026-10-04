@@ -1,3 +1,5 @@
+import type { ErrorCode } from "./contracts";
+
 export interface EngineRuntimeState {
   status: string;
   mode?: string;
@@ -6,6 +8,7 @@ export interface EngineRuntimeState {
   detail?: string;
   progress?: number | null;
   error?: string | null;
+  errorCode?: ErrorCode | null;
   updatedAt?: string;
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Toolbar } from "./components/layout/Toolbar";
 import { useScrollbarAutohide } from "./components/layout/useScrollbarAutohide";
@@ -10,6 +10,7 @@ import { useRecordingFlow } from "./features/recording/useRecordingFlow";
 import { useTranscriber } from "./features/recording/useTranscriber";
 import { useRuntimeBridge } from "./features/runtime/useRuntimeBridge";
 import { useSettings } from "./features/settings/useSettings";
+import { bridge } from "./lib/bridge";
 import { defaultAppInfo } from "./lib/defaults";
 import type { AppInfo, ViewId, WindowAction } from "./types/app";
 import type { RuntimeInfo } from "./types/runtime";
@@ -21,7 +22,7 @@ interface AppProps {
 }
 
 function handleWindowAction(action: WindowAction) {
-  void window.asrpro?.windowControl(action);
+  if (bridge.isAvailable()) bridge.windowControl(action).catch(() => {});
 }
 
 function App({ historyRepository = localStorageHistoryRepository }: AppProps) {
@@ -41,11 +42,17 @@ function App({ historyRepository = localStorageHistoryRepository }: AppProps) {
     addHistoryRow: history.addRow,
     setRuntimeInfo,
   });
+  const applyModelSelection = models.applyRuntimeState;
+  const applyAudioSelection = audio.applyRuntimeState;
+  const applyRuntimeSelections = useCallback((state: RuntimeInfo) => {
+    applyModelSelection(state);
+    applyAudioSelection(state);
+  }, [applyAudioSelection, applyModelSelection]);
   const { isScrollbarVisible, handleScrollActivity } = useScrollbarAutohide(activeView);
   useRuntimeBridge({
     setRuntimeInfo,
     setAppInfo,
-    applyModelState: models.applyRuntimeState,
+    applyModelState: applyRuntimeSelections,
     applySettingsState: settings.applyRuntimeState,
     restoreRecordingState: recording.restoreFromRuntime,
     applyRecordingState: recording.applyBridgeState,

@@ -9,7 +9,7 @@ import type { ViewProps } from "../../types/view";
 import { buildHomeStats } from "./homeStats";
 
 export function HomeView({ recording, models, history, runtimeInfo, navigate }: ViewProps) {
-  const { isRecording, status: recordingStatus, error: recordingError, durationSeconds } = recording;
+  const { isRecording, status: recordingStatus, error: recordingError, errorCode: recordingErrorCode, durationSeconds } = recording;
   const isBusy = recordingStatus === "starting" || recordingStatus === "preparing-engine" || recordingStatus === "transcribing";
   const statusDetail = recordingStatus === "starting"
     ? "Opening microphone..."
@@ -69,7 +69,7 @@ export function HomeView({ recording, models, history, runtimeInfo, navigate }: 
           </span>
           <span className="min-w-0">
             <span className="block text-[12px] font-semibold leading-4 text-[#ffd2ca]">
-              {getRecordingErrorTitle(recordingError)}
+              {getRecordingErrorTitle(recordingErrorCode ?? undefined)}
             </span>
             <span className="block break-words text-[12px] font-medium leading-5 text-[#ffad9f]">
               {recordingError}

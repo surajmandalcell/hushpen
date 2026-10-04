@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { getErrorMessage, getRecordingErrorTitle } from "../../lib/errors";
+import { bridge } from "../../lib/bridge";
+import { getErrorCode, getErrorMessage, getRecordingErrorTitle } from "../../lib/errors";
 import { buildHistoryTitle } from "../../lib/history";
 import { dataUrlToBlob } from "../../lib/wav";
 import type { TranscriptHistoryRow } from "../../types/history";
@@ -34,9 +35,8 @@ export function useHistory({ repository, selectedModel, transcribe }: UseHistory
   }, [repository]);
 
   const deleteRow = useCallback((row: TranscriptHistoryRow) => {
-    const deleteTranscriptText = window.asrpro?.deleteTranscriptText;
-    if (deleteTranscriptText) {
-      void deleteTranscriptText({
+    if (bridge.isAvailable()) {
+      void bridge.deleteTranscriptText({
         title: row.title,
         filePath: row.transcriptFilePath,
       }).catch(() => {});
@@ -75,7 +75,7 @@ export function useHistory({ repository, selectedModel, transcribe }: UseHistory
       updateRow(row.id, (current) => ({
         ...current,
         text: current.status === "failed" || !current.text.trim() ? message : current.text,
-        title: current.status === "failed" || !current.title.trim() ? getRecordingErrorTitle(message) : current.title,
+        title: current.status === "failed" || !current.title.trim() ? getRecordingErrorTitle(getErrorCode(error)) : current.title,
         model: selectedModel,
         status: "failed",
         error: message,
@@ -96,8 +96,8 @@ export function useHistory({ repository, selectedModel, transcribe }: UseHistory
         text: row.text,
       };
 
-      if (window.asrpro?.openTranscriptText) {
-        const result = await window.asrpro.openTranscriptText(request);
+      if (bridge.isAvailable()) {
+        const result = await bridge.openTranscriptText(request);
         if (result?.filePath) {
           updateRow(row.id, (current) => ({
             ...current,

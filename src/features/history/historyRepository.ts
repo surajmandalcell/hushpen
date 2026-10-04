@@ -1,3 +1,4 @@
+import { bridge } from "../../lib/bridge";
 import { defaultModelName } from "../../lib/defaults";
 import { buildHistoryTitle } from "../../lib/history";
 import type { TranscriptHistoryRow } from "../../types/history";
@@ -48,7 +49,7 @@ function isSeededScreenshotHistoryRow(row: TranscriptHistoryRow) {
 }
 
 function sanitizeTranscriptHistoryRows(rows: TranscriptHistoryRow[]) {
-  if (window.asrpro?.isScreenshotMode) {
+  if (bridge.isScreenshotMode()) {
     return { rows, removedSeededRows: false };
   }
 

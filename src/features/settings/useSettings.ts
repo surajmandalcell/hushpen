@@ -12,6 +12,7 @@ import {
   normalizeTextEditorId,
   normalizeTextEditorOptions,
 } from "../../lib/runtime";
+import { bridge } from "../../lib/bridge";
 import type { RuntimeInfo } from "../../types/runtime";
 import type { OverlayPlacement, TextEditorOption } from "../../types/settings";
 
@@ -47,11 +48,8 @@ export function useSettings({ setRuntimeInfo }: UseSettingsOptions) {
     setSelectedTextEditorId(normalizedEditorId);
     setRuntimeInfo((current) => (current ? { ...current, defaultTextEditor: normalizedEditorId } : current));
 
-    const saveTextEditor = window.asrpro?.setDefaultTextEditor?.(normalizedEditorId);
-    if (!saveTextEditor) return;
-
-    saveTextEditor.then((settings) => {
-      const nextEditorId = normalizeTextEditorId(settings.defaultTextEditor, textEditorOptions);
+    bridge.setSetting("editor.defaultTextEditor", normalizedEditorId).then(({ values }) => {
+      const nextEditorId = normalizeTextEditorId(values["editor.defaultTextEditor"], textEditorOptions);
       setSelectedTextEditorId(nextEditorId);
       setRuntimeInfo((current) => (current ? { ...current, defaultTextEditor: nextEditorId } : current));
     }).catch(() => {});
@@ -61,11 +59,8 @@ export function useSettings({ setRuntimeInfo }: UseSettingsOptions) {
     setAutoCopyTranscripts(enabled);
     setRuntimeInfo((current) => (current ? { ...current, autoCopyTranscripts: enabled } : current));
 
-    const saveAutoCopyTranscripts = window.asrpro?.setAutoCopyTranscripts?.(enabled);
-    if (!saveAutoCopyTranscripts) return;
-
-    saveAutoCopyTranscripts.then((settings) => {
-      const nextAutoCopy = normalizeAutoCopyTranscripts(settings.autoCopyTranscripts);
+    bridge.setSetting("output.autoCopy", enabled).then(({ values }) => {
+      const nextAutoCopy = normalizeAutoCopyTranscripts(values["output.autoCopy"]);
       setAutoCopyTranscripts(nextAutoCopy);
       setRuntimeInfo((current) => (current ? { ...current, autoCopyTranscripts: nextAutoCopy } : current));
     }).catch(() => {});
@@ -79,16 +74,13 @@ export function useSettings({ setRuntimeInfo }: UseSettingsOptions) {
       startup: current.startup ? { ...current.startup, enabled } : current.startup,
     } : current));
 
-    const saveStartup = window.asrpro?.setStartupLaunch?.(enabled);
-    if (!saveStartup) return;
-
-    saveStartup.then((settings) => {
-      const nextLaunchAtStartup = normalizeLaunchAtStartup(settings.startup, settings.launchAtStartup);
+    bridge.setSetting("startup.launchAtLogin", enabled).then(({ values, startup }) => {
+      const nextLaunchAtStartup = normalizeLaunchAtStartup(startup, values["startup.launchAtLogin"] === true);
       setLaunchAtStartup(nextLaunchAtStartup);
       setRuntimeInfo((current) => (current ? {
         ...current,
         launchAtStartup: nextLaunchAtStartup,
-        startup: settings.startup ?? current.startup,
+        startup: startup ?? current.startup,
       } : current));
     }).catch(() => {
       setLaunchAtStartup(!enabled);
@@ -105,10 +97,10 @@ export function useSettings({ setRuntimeInfo }: UseSettingsOptions) {
     setOverlayPlacement(placement);
     setRuntimeInfo((current) => mergeOverlaySettings(current, { placement, customBounds: null }));
 
-    window.asrpro?.setOverlaySettings?.({ placement }).then((settings) => {
-      const nextPlacement = normalizeOverlayPlacement(settings.placement);
+    bridge.setSetting("overlay.placement", placement).then(({ values }) => {
+      const nextPlacement = normalizeOverlayPlacement(values["overlay.placement"]);
       setOverlayPlacement(nextPlacement);
-      setRuntimeInfo((current) => mergeOverlaySettings(current, { ...settings, placement: nextPlacement }));
+      setRuntimeInfo((current) => mergeOverlaySettings(current, { placement: nextPlacement, customBounds: null }));
     }).catch(() => {});
   }, [setRuntimeInfo]);
 

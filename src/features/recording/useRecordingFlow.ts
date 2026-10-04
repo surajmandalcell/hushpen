@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { defaultAudioInputId } from "../../lib/defaults";
 import { writeTextToClipboard } from "../../lib/clipboard";
-import { getErrorMessage } from "../../lib/errors";
+import { bridge } from "../../lib/bridge";
+import { getErrorCode, getErrorMessage } from "../../lib/errors";
+import type { ErrorCode } from "../../types/contracts";
 import { createTranscriptHistoryRow } from "../../lib/history";
 import { readBlobAsDataUrl } from "../../lib/wav";
 import { audioRecordingService } from "../../services/audioRecording";
@@ -31,18 +33,18 @@ export function useRecordingFlow({
   const [isRecording, setIsRecording] = useState(false);
   const [status, setStatus] = useState<RecordingStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<ErrorCode | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const recordingStartedAtRef = useRef<number | null>(null);
   const recordingTransitionRef = useRef<"starting" | "stopping" | null>(null);
   useMicrophoneWaveform(isRecording);
 
   const syncRecordingBridge = useCallback(async (active: boolean) => {
-    const api = window.asrpro;
-    if (!api?.setRecording) return;
+    if (!bridge.isAvailable()) return;
 
     try {
-      const state = await api.setRecording(active);
-      setRuntimeInfo((current) => (current ? { ...current, isRecording: state.isRecording } : current));
+      const state = await bridge.setRecording(active);
+      setRuntimeInfo((current) => (current ? { ...current, isRecording: state?.isRecording ?? active } : current));
     } catch {
       setRuntimeInfo((current) => (current ? { ...current, isRecording: active } : current));
     }
@@ -56,6 +58,7 @@ export function useRecordingFlow({
     recordingTransitionRef.current = "starting";
     setStatus("starting");
     setError(null);
+    setErrorCode(null);
 
     try {
       await audioRecordingService.startRecording({
@@ -79,6 +82,7 @@ export function useRecordingFlow({
       setIsRecording(false);
       setStatus("error");
       setError(message);
+      setErrorCode(getErrorCode(caught) ?? null);
       setRuntimeInfo((current) => (current ? { ...current, isRecording: false } : current));
       if (syncBridge) {
         await syncRecordingBridge(false);
@@ -141,10 +145,12 @@ export function useRecordingFlow({
       }
       setStatus("idle");
       setError(null);
+      setErrorCode(null);
     } catch (caught) {
       const message = getErrorMessage(caught);
       setStatus("error");
       setError(message);
+      setErrorCode(getErrorCode(caught) ?? null);
       addHistoryRow({
         id: `dictation-error-${startedAt}`,
         title: "Recording failed to transcribe",
@@ -218,6 +224,7 @@ export function useRecordingFlow({
     isRecording,
     status,
     error,
+    errorCode,
     durationSeconds,
     setRecording,
     applyBridgeState,

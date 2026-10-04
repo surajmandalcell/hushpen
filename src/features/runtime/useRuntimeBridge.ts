@@ -1,4 +1,6 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { bridge } from "../../lib/bridge";
+import { readLegacyLocalStorageSettings } from "../../lib/storage";
 import type { AppInfo } from "../../types/app";
 import type { RuntimeInfo } from "../../types/runtime";
 
@@ -26,22 +28,23 @@ export function useRuntimeBridge({
   const runtimeStateLoadedRef = useRef(false);
 
   useEffect(() => {
-    const api = window.asrpro;
-    if (!api) return undefined;
+    if (!bridge.isAvailable()) return undefined;
 
-    if (api.getAppInfo) {
-      Promise.resolve(api.getAppInfo()).then((info) => {
-        if (!info) return;
-        setAppInfo((current) => ({
-          name: info.name || current.name,
-          version: info.version || current.version,
-        }));
-      }).catch(() => {});
-    }
+    bridge.getAppInfo().then((info) => {
+      if (!info) return;
+      setAppInfo((current) => ({
+        name: info.name || current.name,
+        version: info.version || current.version,
+      }));
+    }).catch(() => {});
 
-    if (api.getRuntimeState && !runtimeStateLoadedRef.current) {
+    if (!runtimeStateLoadedRef.current) {
       runtimeStateLoadedRef.current = true;
-      Promise.resolve(api.getRuntimeState()).then((state) => {
+      const legacy = readLegacyLocalStorageSettings();
+      const importLegacy = legacy.selectedModelName || legacy.audioInputId
+        ? bridge.importLegacySettings(legacy).catch(() => undefined)
+        : Promise.resolve(undefined);
+      importLegacy.then(() => bridge.getRuntimeState()).then((state) => {
         if (!state) return;
         setRuntimeInfo(state);
         applyModelState(state);
@@ -52,12 +55,12 @@ export function useRuntimeBridge({
       });
     }
 
-    const unsubscribeRecording = api.onRecordingState?.((state) => {
+    const unsubscribeRecording = bridge.onRecordingState((state) => {
       setRuntimeInfo((current) => (current ? { ...current, isRecording: state.isRecording } : current));
       applyRecordingState(state.isRecording);
     });
 
-    const unsubscribeEngine = api.onEngineState?.((engineState) => {
+    const unsubscribeEngine = bridge.onEngineState((engineState) => {
       setRuntimeInfo((current) => (current ? { ...current, engine: engineState } : { isRecording: false, engine: engineState }));
       if (engineState.modelId && engineState.status === "downloading" && typeof engineState.progress === "number") {
         updateModelDownloadProgress(engineState.modelId, engineState.progress);
@@ -67,8 +70,8 @@ export function useRuntimeBridge({
     });
 
     return () => {
-      unsubscribeRecording?.();
-      unsubscribeEngine?.();
+      unsubscribeRecording();
+      unsubscribeEngine();
     };
   }, [
     applyModelState,

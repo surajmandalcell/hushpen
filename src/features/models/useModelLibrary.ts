@@ -1,13 +1,10 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { bridge } from "../../lib/bridge";
 import { defaultModelName, modelIdsByName } from "../../lib/defaults";
 import { getErrorMessage } from "../../lib/errors";
 import { clampNumber } from "../../lib/math";
 import { getRuntimeModels, mergeRuntimeInfo } from "../../lib/runtime";
-import {
-  loadSelectedModelName,
-  normalizeSelectedModelName,
-  saveSelectedModelName,
-} from "../../lib/storage";
+import { normalizeSelectedModelName } from "../../lib/storage";
 import type { RuntimeInfo } from "../../types/runtime";
 
 interface UseModelLibraryOptions {
@@ -16,7 +13,7 @@ interface UseModelLibraryOptions {
 }
 
 export function useModelLibrary({ runtimeInfo, setRuntimeInfo }: UseModelLibraryOptions) {
-  const [selectedModel, setSelectedModel] = useState(() => loadSelectedModelName() ?? defaultModelName);
+  const [selectedModel, setSelectedModel] = useState(defaultModelName);
   const [busyModelIds, setBusyModelIds] = useState<Set<string>>(() => new Set());
   const [progressById, setProgressById] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +26,15 @@ export function useModelLibrary({ runtimeInfo, setRuntimeInfo }: UseModelLibrary
 
   const selectModel = useCallback((modelName: string) => {
     setSelectedModel(modelName);
-    saveSelectedModelName(modelName);
-  }, []);
+    const modelId = models.find((model) => model.displayName === modelName)?.id ?? modelIdsByName[modelName];
+    if (modelId && bridge.isAvailable()) {
+      bridge.setSetting("transcription.modelId", modelId).catch(() => {});
+    }
+  }, [models]);
 
   const applyRuntimeState = useCallback((state: RuntimeInfo) => {
     const nextModels = getRuntimeModels(state.models);
-    const nextSelectedModel = loadSelectedModelName(nextModels)
-      ?? normalizeSelectedModelName(state.defaultModelId, nextModels)
+    const nextSelectedModel = normalizeSelectedModelName(state.defaultModelId, nextModels)
       ?? normalizeSelectedModelName(state.defaultModel, nextModels)
       ?? defaultModelName;
     setSelectedModel(nextSelectedModel);
@@ -75,15 +74,14 @@ export function useModelLibrary({ runtimeInfo, setRuntimeInfo }: UseModelLibrary
   }, []);
 
   const downloadModel = useCallback(async (modelId: string) => {
-    const download = window.asrpro?.downloadModel;
-    if (!download) return;
+    if (!bridge.isAvailable()) return;
     if (!beginModelAction(modelId)) return;
 
     updateDownloadProgress(modelId, 0);
     setError(null);
 
     try {
-      const state = await download(modelId);
+      const state = await bridge.downloadModel(modelId);
       setRuntimeInfo((current) => mergeRuntimeInfo(current, state));
     } catch (caught) {
       setError(getErrorMessage(caught));
@@ -94,14 +92,13 @@ export function useModelLibrary({ runtimeInfo, setRuntimeInfo }: UseModelLibrary
   }, [beginModelAction, clearDownloadProgress, endModelAction, setRuntimeInfo, updateDownloadProgress]);
 
   const deleteModel = useCallback(async (modelId: string) => {
-    const remove = window.asrpro?.deleteModel;
-    if (!remove) return;
+    if (!bridge.isAvailable()) return;
     if (!beginModelAction(modelId)) return;
 
     setError(null);
 
     try {
-      const state = await remove(modelId);
+      const state = await bridge.deleteModel(modelId);
       setRuntimeInfo((current) => mergeRuntimeInfo(current, state));
     } catch (caught) {
       setError(getErrorMessage(caught));

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "./lib/bridge";
 import { getErrorMessage } from "./lib/errors";
 import { countWords, formatByteCount, formatDuration, formatHistoryGroupLabel, formatHomeRelativePath } from "./lib/format";
 import { buildHistoryTitle } from "./lib/history";
@@ -209,28 +210,33 @@ describe("buildHistoryTitle", () => {
 });
 
 describe("getErrorMessage", () => {
-  it("maps model download failures to the download message", () => {
-    expect(getErrorMessage(new Error("Model download failed: 404"))).toBe("Whisper model download failed. Check your connection and try again.");
-    expect(getErrorMessage(new Error("checksum mismatch for ggml-base.bin"))).toBe("Whisper model download failed. Check your connection and try again.");
-    expect(getErrorMessage(new Error("ENOENT: no such file or directory, open '/data/models/whisper/ggml-base.bin'"))).toBe("Whisper model download failed. Check your connection and try again.");
+  const downloadMessage = "Whisper model download failed. Check your connection and try again.";
+
+  it("maps model download failure codes to the download message", () => {
+    expect(getErrorMessage(new AppError("MODEL_DOWNLOAD_FAILED"))).toBe(downloadMessage);
+    expect(getErrorMessage(new AppError("MODEL_DOWNLOAD_STALLED"))).toBe(downloadMessage);
+    expect(getErrorMessage(new AppError("MODEL_CHECKSUM_MISMATCH"))).toBe(downloadMessage);
   });
 
-  it("maps a missing IPC handler to the restart message", () => {
-    expect(getErrorMessage(new Error("No handler registered for 'whisper:get-state'"))).toBe("Native Whisper engine needs restart. Restart ASR Pro, then try again.");
+  it("maps a not-ready engine to the restart message", () => {
+    expect(getErrorMessage(new AppError("ENGINE_NOT_READY"))).toBe("Native Whisper engine needs restart. Restart ASR Pro, then try again.");
   });
 
   it("maps native addon load failures to the reinstall message", () => {
-    expect(getErrorMessage(new Error("The native Whisper addon could not be loaded"))).toBe("Native Whisper engine could not load. Reinstall dependencies, then restart ASR Pro.");
-    expect(getErrorMessage(new Error("Cannot find module whisper.node"))).toBe("Native Whisper engine could not load. Reinstall dependencies, then restart ASR Pro.");
+    expect(getErrorMessage(new AppError("ENGINE_LOAD_FAILED"))).toBe("Native Whisper engine could not load. Reinstall dependencies, then restart ASR Pro.");
   });
 
-  it("maps network failures to a generic load message", () => {
-    expect(getErrorMessage(new Error("failed to fetch"))).toBe("Failed to load.");
-    expect(getErrorMessage(new Error("NetworkError when attempting to fetch"))).toBe("Failed to load.");
+  it("maps an offline code to a generic load message", () => {
+    expect(getErrorMessage(new AppError("OFFLINE"))).toBe("Failed to load.");
   });
 
-  it("strips the Electron invoke prefix and keeps the underlying message", () => {
-    expect(getErrorMessage(new Error("Error invoking remote method 'history:add': Error: boom"))).toBe("boom");
+  it("ignores English detail text when a code is present", () => {
+    expect(getErrorMessage(new AppError("MODEL_DOWNLOAD_FAILED", undefined, "Cannot find module whisper.node"))).toBe(downloadMessage);
+    expect(getErrorMessage(new AppError("INTERNAL", undefined, "failed to fetch"))).toBe("Something went wrong. Try again.");
+  });
+
+  it("does not map plain Error text to a code", () => {
+    expect(getErrorMessage(new Error("Model download failed: 404"))).toBe("Model download failed: 404");
     expect(getErrorMessage(new Error("boom"))).toBe("boom");
   });
 
@@ -416,14 +422,14 @@ describe("waveform feed", () => {
   });
 
   it("sends samples to the overlay only while voice is present", () => {
-    const setWaveformFrame = vi.fn();
-    window.asrpro = { setWaveformFrame } as unknown as Window["asrpro"];
+    const send = vi.fn();
+    window.asrpro = { send } as unknown as Window["asrpro"];
 
     sendOverlayWaveformFrame(idleWaveformFrame, false);
-    expect(setWaveformFrame).toHaveBeenLastCalledWith([]);
+    expect(send).toHaveBeenLastCalledWith("recording:waveform-frame", []);
 
     sendOverlayWaveformFrame(idleWaveformFrame, true);
-    expect(setWaveformFrame).toHaveBeenLastCalledWith(idleSamplesOfFrame());
+    expect(send).toHaveBeenLastCalledWith("recording:waveform-frame", idleSamplesOfFrame());
 
     window.asrpro = undefined;
   });

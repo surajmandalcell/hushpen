@@ -1,3 +1,4 @@
+import { bridge } from "./bridge";
 import { clampNumber } from "./math";
 
 export const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
@@ -62,7 +63,7 @@ export function toOverlayWaveformSamples(frame: number[]) {
 }
 
 export function sendOverlayWaveformFrame(frame: number[], hasVoice: boolean) {
-  window.asrpro?.setWaveformFrame?.(hasVoice ? toOverlayWaveformSamples(frame) : []);
+  bridge.sendWaveformFrame(hasVoice ? toOverlayWaveformSamples(frame) : []);
 }
 
 export function scheduleWaveformFrame(callback: FrameRequestCallback) {

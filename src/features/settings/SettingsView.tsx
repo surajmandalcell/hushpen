@@ -6,6 +6,8 @@ import { ShortcutCluster } from "../../components/ui/ShortcutCluster";
 import { StatusLabel } from "../../components/ui/StatusLabel";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { ViewFrame } from "../../components/ui/ViewFrame";
+import { bridge } from "../../lib/bridge";
+import { getMessageForCode } from "../../lib/errors";
 import { formatEngineStatus } from "../../lib/format";
 import { formatShortcutParts } from "../../lib/shortcut";
 import type { OverlayPlacement } from "../../types/settings";
@@ -21,9 +23,9 @@ export function SettingsView({ runtimeInfo, models, audio, settings, navigate }:
   const shortcutParts = formatShortcutParts(runtimeInfo?.shortcut);
   const engine = runtimeInfo?.engine;
   const engineStatus = formatEngineStatus(engine?.status);
-  const engineDetail = engine?.error || engine?.detail || (engine?.status === "idle" ? "Loads the selected Whisper model when needed" : engine?.model || engine?.mode || "Waiting for desktop runtime");
+  const engineDetail = (engine?.errorCode ? getMessageForCode(engine.errorCode) : engine?.error) || engine?.detail || (engine?.status === "idle" ? "Loads the selected Whisper model when needed" : engine?.model || engine?.mode || "Waiting for desktop runtime");
   const startup = runtimeInfo?.startup;
-  const startupSupported = startup?.supported ?? Boolean(window.asrpro?.setStartupLaunch);
+  const startupSupported = startup?.supported ?? bridge.isAvailable();
   const startupPath = startup?.executablePath || startup?.registeredExecutablePath || "Starts ASR Pro when you sign in";
   const startupDetail = startup?.detail || startupPath;
 

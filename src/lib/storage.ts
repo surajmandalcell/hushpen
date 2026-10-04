@@ -1,24 +1,27 @@
 import type { EngineModelInfo } from "../types/engine";
-import { defaultAudioInputId, fallbackModelCards } from "./defaults";
+import { fallbackModelCards } from "./defaults";
 
 const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
 const selectedModelStorageKey = "asrpro.selectedModel.v1";
 
-export function loadSelectedAudioInputId() {
-  try {
-    const stored = window.localStorage.getItem(audioInputDeviceStorageKey);
-    return stored && stored.trim() ? stored : defaultAudioInputId;
-  } catch {
-    return defaultAudioInputId;
-  }
+export interface LegacyLocalStorageSettings {
+  selectedModelName?: string;
+  audioInputId?: string;
 }
 
-export function saveSelectedAudioInputId(deviceId: string) {
+// The 1.x renderer kept these two choices in localStorage. They are only read
+// (never written or removed) so the main process can import them once.
+export function readLegacyLocalStorageSettings(): LegacyLocalStorageSettings {
+  const legacy: LegacyLocalStorageSettings = {};
   try {
-    window.localStorage.setItem(audioInputDeviceStorageKey, deviceId);
+    const model = window.localStorage.getItem(selectedModelStorageKey);
+    if (model && model.trim()) legacy.selectedModelName = model.trim();
+    const device = window.localStorage.getItem(audioInputDeviceStorageKey);
+    if (device && device.trim()) legacy.audioInputId = device.trim();
   } catch {
-    // Local storage failures should not block recording.
+    // Blocked storage means there is nothing to import.
   }
+  return legacy;
 }
 
 export function normalizeSelectedModelName(value: unknown, models: EngineModelInfo[] = fallbackModelCards) {
@@ -30,20 +33,4 @@ export function normalizeSelectedModelName(value: unknown, models: EngineModelIn
 
   const byId = models.find((model) => model.id === normalized);
   return byId?.displayName;
-}
-
-export function loadSelectedModelName(models: EngineModelInfo[] = fallbackModelCards) {
-  try {
-    return normalizeSelectedModelName(window.localStorage.getItem(selectedModelStorageKey), models);
-  } catch {
-    return undefined;
-  }
-}
-
-export function saveSelectedModelName(modelName: string) {
-  try {
-    window.localStorage.setItem(selectedModelStorageKey, modelName);
-  } catch {
-    // Local storage failures should not block recognition.
-  }
 }

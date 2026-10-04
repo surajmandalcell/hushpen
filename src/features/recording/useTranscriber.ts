@@ -1,15 +1,15 @@
 import { useCallback } from "react";
+import { AppError, bridge } from "../../lib/bridge";
 import { createTranscriptionAudioPayload } from "../../lib/wav";
 
 export function useTranscriber(selectedModelId: string) {
   return useCallback(async (audioBlob: Blob) => {
-    const transcribeAudio = window.asrpro?.transcribeAudio;
-    if (!transcribeAudio) {
-      throw new Error("Native Whisper engine is not available.");
+    if (!bridge.isAvailable()) {
+      throw new AppError("ENGINE_NOT_READY");
     }
 
     const payload = await createTranscriptionAudioPayload(audioBlob);
-    return transcribeAudio({
+    return bridge.transcribeAudio({
       ...payload,
       modelId: selectedModelId,
     });

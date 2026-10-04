@@ -5,6 +5,7 @@ export interface RuntimeInfo {
   isRecording: boolean;
   defaultModel?: string;
   defaultModelId?: string;
+  audioInputId?: string;
   dataDir?: string;
   overlaySettings?: OverlaySettings;
   engine?: EngineRuntimeState;

@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { AppError } from "./lib/bridge";
 import { audioRecordingService } from "./services/audioRecording";
+import { installFakeMain } from "./test/fakeMain";
 import { renderApp } from "./test/renderApp";
 import packageMetadata from "../package.json";
 
@@ -228,7 +230,7 @@ describe("ASR Pro Electron shell", () => {
   });
 
   it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", async () => {
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn(),
@@ -236,7 +238,7 @@ describe("ASR Pro Electron shell", () => {
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
       windowControl: vi.fn(),
-    };
+    });
 
     await renderApp();
 
@@ -321,7 +323,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("shows real About metadata without implementation stack or highlights", async () => {
     const user = userEvent.setup();
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn().mockResolvedValue({ name: "ASR Pro", version: "2.4.6" }),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -334,7 +336,7 @@ describe("ASR Pro Electron shell", () => {
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
       windowControl: vi.fn(),
-    };
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "About" }));
@@ -451,7 +453,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("restores the saved microphone selection", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem("asrpro.audioInputDevice.v1", "usb-mic");
+    installFakeMain({ getRuntimeState: vi.fn().mockResolvedValue({ isRecording: false, audioInputId: "usb-mic" }) });
     mockAudioCapture([
       { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
       { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
@@ -463,12 +465,11 @@ describe("ASR Pro Electron shell", () => {
     const selector = await screen.findByRole("button", { name: "Microphone selector" });
 
     await waitFor(() => expect(selector.textContent).toContain("USB Microphone"));
-    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("usb-mic");
   });
 
   it("resets a missing saved microphone to the system default", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem("asrpro.audioInputDevice.v1", "missing-mic");
+    const fakeMain = installFakeMain({ getRuntimeState: vi.fn().mockResolvedValue({ isRecording: false, audioInputId: "missing-mic" }) });
     const { getUserMedia } = mockAudioCapture([
       { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
     ]);
@@ -479,7 +480,7 @@ describe("ASR Pro Electron shell", () => {
     const selector = await screen.findByRole("button", { name: "Microphone selector" });
 
     await waitFor(() => expect(selector.textContent).toContain("System default"));
-    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("default");
+    await waitFor(() => expect(fakeMain.settingsWrites).toContainEqual({ key: "recording.audioInputId", value: "default" }));
 
     await user.click(screen.getByRole("button", { name: "Home" }));
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
@@ -492,6 +493,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("opens the toolbar microphone selector and applies the selected device", async () => {
     const user = userEvent.setup();
+    const fakeMain = installFakeMain();
     mockAudioCapture([
       { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
       { kind: "audioinput", deviceId: "studio-mic", label: "Studio Microphone With A Long Name" },
@@ -504,7 +506,7 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getByRole("option", { name: "Studio Microphone With A Long Name" }));
 
     await waitFor(() => expect(toolbarSelector.textContent).toContain("Studio Microphone With A Long Name"));
-    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("studio-mic");
+    expect(fakeMain.settingsWrites).toContainEqual({ key: "recording.audioInputId", value: "studio-mic" });
   });
 
   it("uses microphone device icons instead of dropdown arrows", async () => {
@@ -611,7 +613,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("keeps seeded screenshot fixture rows only in screenshot mode", async () => {
     const user = userEvent.setup();
-    window.asrpro = { isScreenshotMode: true } as any;
+    installFakeMain({ isScreenshotMode: true });
     window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
       {
         id: "readme-history-1",
@@ -667,10 +669,10 @@ describe("ASR Pro Electron shell", () => {
     });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    window.asrpro = {
+    installFakeMain({
       transcribeAudio,
       windowControl: vi.fn(),
-    } as any;
+    });
     window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
       {
         id: "history-reprocess-row",
@@ -718,10 +720,10 @@ describe("ASR Pro Electron shell", () => {
     const openTranscriptText = vi.fn().mockResolvedValue({
       filePath: "/Users/surajmandal/Library/Application Support/ASR Pro/data/transcripts/original-clip.txt",
     });
-    window.asrpro = {
+    installFakeMain({
       openTranscriptText,
       windowControl: vi.fn(),
-    } as any;
+    });
     window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
       {
         id: "history-open-text-row",
@@ -771,11 +773,11 @@ describe("ASR Pro Electron shell", () => {
     const transcriptFilePath = "/Users/surajmandal/Library/Application Support/ASR Pro/data/transcripts/original-clip.txt";
     const openTranscriptText = vi.fn().mockResolvedValue({ filePath: transcriptFilePath });
     const deleteTranscriptText = vi.fn().mockResolvedValue({ deleted: true });
-    window.asrpro = {
+    installFakeMain({
       openTranscriptText,
       deleteTranscriptText,
       windowControl: vi.fn(),
-    } as any;
+    });
     window.localStorage.setItem("asrpro.transcriptHistory.v1", JSON.stringify([
       {
         id: "history-delete-text-row",
@@ -820,10 +822,10 @@ describe("ASR Pro Electron shell", () => {
     });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    window.asrpro = {
+    installFakeMain({
       transcribeAudio,
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
 
@@ -879,11 +881,11 @@ describe("ASR Pro Electron shell", () => {
   it("keeps a playable recording in history when native transcription fails without changing pages", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
-    const transcribeAudio = vi.fn().mockRejectedValue(new Error("Whisper model download failed."));
-    window.asrpro = {
+    const transcribeAudio = vi.fn().mockRejectedValue(new AppError("MODEL_DOWNLOAD_FAILED", { modelId: "whisper-base-en" }));
+    installFakeMain({
       transcribeAudio,
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
 
@@ -928,7 +930,7 @@ describe("ASR Pro Electron shell", () => {
     }));
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -944,7 +946,7 @@ describe("ASR Pro Electron shell", () => {
       onRecordingState: vi.fn(),
       onEngineState: vi.fn(),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
 
@@ -973,7 +975,7 @@ describe("ASR Pro Electron shell", () => {
     const transcribeAudio = vi.fn().mockResolvedValue({ text: "Native Whisper path only.", model: "whisper-base-en" });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -988,7 +990,7 @@ describe("ASR Pro Electron shell", () => {
       onRecordingState: vi.fn(),
       onEngineState: vi.fn(),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
 
@@ -1010,7 +1012,7 @@ describe("ASR Pro Electron shell", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     let recordingListener: ((state: { isRecording: boolean; source: string }) => void) | undefined;
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1026,7 +1028,7 @@ describe("ASR Pro Electron shell", () => {
         return vi.fn();
       }),
       windowControl: vi.fn(),
-    };
+    });
 
     await renderApp();
     await waitFor(() => expect(recordingListener).toBeTruthy());
@@ -1157,7 +1159,7 @@ describe("ASR Pro Electron shell", () => {
       )),
       storageStats,
     });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1173,7 +1175,7 @@ describe("ASR Pro Electron shell", () => {
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
@@ -1257,7 +1259,7 @@ describe("ASR Pro Electron shell", () => {
     const downloadModel = vi.fn((modelId: string) => new Promise((resolve) => {
       downloadResolvers[modelId] = resolve;
     }));
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1275,7 +1277,7 @@ describe("ASR Pro Electron shell", () => {
         return vi.fn();
       }),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
@@ -1342,9 +1344,9 @@ describe("ASR Pro Electron shell", () => {
       },
     ];
     const downloadModel = vi.fn().mockRejectedValue(
-      new Error("Error invoking remote method 'engine:model-download': Error: ENOENT: no such file or directory, rename 'C:\\Users\\shekh\\AppData\\Roaming\\ASR Pro\\data\\models\\whisper\\ggml-base.bin.download' -> 'C:\\Users\\shekh\\AppData\\Roaming\\ASR Pro\\data\\models\\whisper\\ggml-base.bin'")
+      new AppError("MODEL_DOWNLOAD_FAILED", { modelId: "whisper-base" }, "ENOENT: no such file or directory, rename ggml-base.bin.download")
     );
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1358,7 +1360,7 @@ describe("ASR Pro Electron shell", () => {
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
@@ -1394,7 +1396,7 @@ describe("ASR Pro Electron shell", () => {
       models,
       shortcut: "CommandOrControl+`",
     });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState,
@@ -1402,7 +1404,7 @@ describe("ASR Pro Electron shell", () => {
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
@@ -1426,7 +1428,7 @@ describe("ASR Pro Electron shell", () => {
   it("updates the recording overlay placement from settings", async () => {
     const user = userEvent.setup();
     const setOverlaySettings = vi.fn().mockResolvedValue({ placement: "bottom", customBounds: null });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1440,7 +1442,7 @@ describe("ASR Pro Electron shell", () => {
       onRecordingState: vi.fn(),
       setOverlaySettings,
       windowControl: vi.fn(),
-    };
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
@@ -1460,7 +1462,7 @@ describe("ASR Pro Electron shell", () => {
   it("toggles automatic transcript clipboard copying from configuration", async () => {
     const user = userEvent.setup();
     const setAutoCopyTranscripts = vi.fn().mockResolvedValue({ autoCopyTranscripts: false });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1474,7 +1476,7 @@ describe("ASR Pro Electron shell", () => {
       onRecordingState: vi.fn(),
       setAutoCopyTranscripts,
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
@@ -1497,7 +1499,7 @@ describe("ASR Pro Electron shell", () => {
         executablePath: "D:\\Tools\\ASR Pro\\ASR Pro.exe",
       },
     });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1515,7 +1517,7 @@ describe("ASR Pro Electron shell", () => {
       onRecordingState: vi.fn(),
       setStartupLaunch,
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
@@ -1544,7 +1546,7 @@ describe("ASR Pro Electron shell", () => {
       text: "Do not copy this transcript.",
       model: "whisper-base-en",
     });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState,
@@ -1553,7 +1555,7 @@ describe("ASR Pro Electron shell", () => {
       toggleRecording: vi.fn(),
       onRecordingState: vi.fn(),
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
@@ -1576,7 +1578,7 @@ describe("ASR Pro Electron shell", () => {
     const user = userEvent.setup();
     const iconDataUrl = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
     const setDefaultTextEditor = vi.fn().mockResolvedValue({ defaultTextEditor: "textedit" });
-    window.asrpro = {
+    installFakeMain({
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
       getRuntimeState: vi.fn().mockResolvedValue({
@@ -1596,7 +1598,7 @@ describe("ASR Pro Electron shell", () => {
       onRecordingState: vi.fn(),
       setDefaultTextEditor,
       windowControl: vi.fn(),
-    } as any;
+    });
 
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
@@ -1653,5 +1655,34 @@ describe("ASR Pro Electron shell", () => {
     await user.click(screen.getAllByRole("button", { name: "Change" })[1]);
 
     expect(screen.getByRole("button", { name: "Sound" }).getAttribute("aria-current")).toBe("page");
+  });
+});
+
+describe("legacy localStorage import", () => {
+  it("hands the saved model and microphone to the main process once and keeps the old keys", async () => {
+    window.localStorage.setItem("asrpro.selectedModel.v1", "Whisper Small English");
+    window.localStorage.setItem("asrpro.audioInputDevice.v1", "usb-mic");
+    const importLegacySettings = vi.fn().mockResolvedValue({ imported: true, values: {} });
+    installFakeMain({
+      importLegacySettings,
+      getRuntimeState: vi.fn().mockResolvedValue({ isRecording: false, defaultModelId: "whisper-small-en", audioInputId: "usb-mic" }),
+    });
+    mockAudioCapture([{ kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" }]);
+
+    await renderApp();
+
+    await waitFor(() => expect(importLegacySettings).toHaveBeenCalledTimes(1));
+    expect(importLegacySettings).toHaveBeenCalledWith({ selectedModelName: "Whisper Small English", audioInputId: "usb-mic" });
+    expect(window.localStorage.getItem("asrpro.selectedModel.v1")).toBe("Whisper Small English");
+    expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("usb-mic");
+  });
+
+  it("does not call the import when there is nothing in localStorage", async () => {
+    const importLegacySettings = vi.fn();
+    installFakeMain({ importLegacySettings, getRuntimeState: vi.fn().mockResolvedValue({ isRecording: false }) });
+
+    await renderApp();
+
+    expect(importLegacySettings).not.toHaveBeenCalled();
   });
 });

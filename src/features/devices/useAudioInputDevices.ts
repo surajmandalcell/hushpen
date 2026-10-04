@@ -5,12 +5,19 @@ import {
   defaultAudioInputLabel,
   defaultAudioInputOptions,
 } from "../../lib/defaults";
-import { loadSelectedAudioInputId, saveSelectedAudioInputId } from "../../lib/storage";
+import { bridge } from "../../lib/bridge";
+import type { RuntimeInfo } from "../../types/runtime";
 import type { AudioInputDeviceOption } from "../../types/audio";
+
+function persistAudioInputId(deviceId: string) {
+  if (bridge.isAvailable()) {
+    bridge.setSetting("recording.audioInputId", deviceId).catch(() => {});
+  }
+}
 
 export function useAudioInputDevices() {
   const [devices, setDevices] = useState<AudioInputDeviceOption[]>(defaultAudioInputOptions);
-  const [selectedDeviceId, setSelectedDeviceId] = useState(loadSelectedAudioInputId);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(defaultAudioInputId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +28,7 @@ export function useAudioInputDevices() {
       setDevices(defaultAudioInputOptions);
       setError("Microphone list is not available.");
       setSelectedDeviceId(defaultAudioInputId);
-      saveSelectedAudioInputId(defaultAudioInputId);
+      persistAudioInputId(defaultAudioInputId);
       return;
     }
 
@@ -36,7 +43,7 @@ export function useAudioInputDevices() {
       setSelectedDeviceId((current) => {
         const nextDeviceId = nextOptions.some((device) => device.id === current) ? current : defaultAudioInputId;
         if (nextDeviceId !== current) {
-          saveSelectedAudioInputId(nextDeviceId);
+          persistAudioInputId(nextDeviceId);
         }
         return nextDeviceId;
       });
@@ -44,7 +51,7 @@ export function useAudioInputDevices() {
       setDevices(defaultAudioInputOptions);
       setError("Microphone list could not be loaded.");
       setSelectedDeviceId(defaultAudioInputId);
-      saveSelectedAudioInputId(defaultAudioInputId);
+      persistAudioInputId(defaultAudioInputId);
     } finally {
       setLoading(false);
     }
@@ -52,8 +59,15 @@ export function useAudioInputDevices() {
 
   const select = useCallback((deviceId: string) => {
     setSelectedDeviceId(deviceId);
-    saveSelectedAudioInputId(deviceId);
+    persistAudioInputId(deviceId);
   }, []);
+
+  const applyRuntimeState = useCallback((state: RuntimeInfo) => {
+    if (!state.audioInputId) return;
+    setSelectedDeviceId(state.audioInputId);
+    // The saved device may have been unplugged; refresh drops it in favor of the default.
+    void refresh();
+  }, [refresh]);
 
   const selectedLabel = useMemo(() => (
     devices.find((device) => device.id === selectedDeviceId)?.label ?? defaultAudioInputLabel
@@ -75,7 +89,7 @@ export function useAudioInputDevices() {
     return () => mediaDevices.removeEventListener("devicechange", handleDeviceChange);
   }, [refresh]);
 
-  return { devices, selectedDeviceId, selectedLabel, loading, error, refresh, select };
+  return { devices, selectedDeviceId, selectedLabel, loading, error, refresh, select, applyRuntimeState };
 }
 
 export type AudioInputDevices = ReturnType<typeof useAudioInputDevices>;
