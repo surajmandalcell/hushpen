@@ -1,7 +1,10 @@
 const { BrowserWindow } = require("electron");
+const { EXTERNAL_TARGETS, FOLDER_TARGETS } = require("../shell/openTargets.cjs");
 const { v } = require("./validate.cjs");
 
-function registerAppIpc({ router, ctx, getRuntimeState }) {
+const OPEN_TARGETS = [...Object.keys(EXTERNAL_TARGETS), ...FOLDER_TARGETS];
+
+function registerAppIpc({ router, ctx, getRuntimeState, openTargets }) {
   router.handle("app:platform", v.none(), () => ({
     platform: process.platform,
     arch: process.arch,
@@ -16,6 +19,8 @@ function registerAppIpc({ router, ctx, getRuntimeState }) {
     name: ctx.app.getName(),
     version: ctx.app.getVersion(),
   }));
+
+  router.handle("shell:open", v.object({ target: v.oneOf(OPEN_TARGETS) }), ({ target }) => openTargets.open(target));
 
   router.handle("runtime:state", v.none(), () => getRuntimeState());
 

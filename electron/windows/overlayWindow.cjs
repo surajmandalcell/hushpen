@@ -1,4 +1,3 @@
-const path = require("node:path");
 const { BrowserWindow, screen } = require("electron");
 const {
   OVERLAY_WINDOW_SIZE,
@@ -8,6 +7,7 @@ const {
   RECORDING_SHORTCUT,
 } = require("../runtime.cjs");
 const { getModelById } = require("../whisper-engine.cjs");
+const { secureWebPreferences } = require("./webPreferences.cjs");
 
 const DRAG_SAVE_DELAY_MS = 250;
 
@@ -113,13 +113,7 @@ function createOverlayController({ ctx }) {
       alwaysOnTop: true,
       hasShadow: false,
       backgroundColor: "#00000000",
-      webPreferences: {
-        preload: path.join(__dirname, "..", "overlay-preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        backgroundThrottling: false,
-      },
+      webPreferences: secureWebPreferences("overlay-preload.cjs"),
     });
     ctx.windows.overlay = win;
 

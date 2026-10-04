@@ -1,16 +1,15 @@
-function isTrustedAppUrl(value = "", devServerUrl) {
-  if (!value) return false;
+const { isAppUrl } = require("./appUrl.cjs");
 
-  try {
-    const url = new URL(value);
-    const devUrl = new URL(devServerUrl);
-    return url.protocol === "file:" || url.origin === devUrl.origin;
-  } catch {
-    return value.startsWith("file://") || value.startsWith(devServerUrl);
-  }
+function isTrustedOrigin(details, webContents, appUrl) {
+  return [
+    details.requestingUrl,
+    details.requestingOrigin,
+    details.securityOrigin,
+    webContents?.getURL?.(),
+  ].some((candidate) => isAppUrl(candidate, appUrl));
 }
 
-function isTrustedMediaPermission(webContents, permission, details = {}, devServerUrl) {
+function isTrustedMediaPermission(webContents, permission, details = {}, appUrl) {
   if (permission !== "media") return false;
 
   const mediaType = details.mediaType || (Array.isArray(details.mediaTypes) ? details.mediaTypes[0] : undefined);
@@ -18,27 +17,33 @@ function isTrustedMediaPermission(webContents, permission, details = {}, devServ
     return false;
   }
 
-  return [
-    details.requestingUrl,
-    details.requestingOrigin,
-    details.securityOrigin,
-    webContents?.getURL?.(),
-  ].some((candidate) => isTrustedAppUrl(candidate, devServerUrl));
+  return isTrustedOrigin(details, webContents, appUrl);
 }
 
-function configureMediaPermissions({ devServerUrl }) {
+// `navigator.clipboard.writeText` needs this permission once a permission handler is
+// installed. Reading the clipboard stays denied: nothing in the app needs it.
+function isTrustedClipboardWrite(webContents, permission, details = {}, appUrl) {
+  return permission === "clipboard-sanitized-write" && isTrustedOrigin(details, webContents, appUrl);
+}
+
+function isAllowedPermission(webContents, permission, details, appUrl) {
+  return isTrustedMediaPermission(webContents, permission, details, appUrl)
+    || isTrustedClipboardWrite(webContents, permission, details, appUrl);
+}
+
+function configureMediaPermissions({ appUrl }) {
   const { session } = require("electron");
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
-    callback(isTrustedMediaPermission(webContents, permission, details, devServerUrl));
+    callback(isAllowedPermission(webContents, permission, details, appUrl));
   });
 
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details = {}) => (
-    isTrustedMediaPermission(webContents, permission, {
+    isAllowedPermission(webContents, permission, {
       ...details,
       requestingOrigin,
-    }, devServerUrl)
+    }, appUrl)
   ));
 }
 
-module.exports = { configureMediaPermissions, isTrustedAppUrl, isTrustedMediaPermission };
+module.exports = { configureMediaPermissions, isAllowedPermission, isTrustedClipboardWrite, isTrustedMediaPermission };

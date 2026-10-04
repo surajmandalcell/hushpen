@@ -68,7 +68,7 @@ describe("main window flags (D-15)", () => {
 
   it("creates the BrowserWindow with the three flags set to false", () => {
     const source = readFileSync("electron/windows/mainWindow.cjs", "utf8");
-    const options = source.slice(source.indexOf("new BrowserWindow({"), source.indexOf("webPreferences"));
+    const options = source.slice(source.indexOf("new BrowserWindow({"), source.indexOf("webPreferences:"));
 
     expect(options).toMatch(/resizable: false/);
     expect(options).toMatch(/maximizable: false/);

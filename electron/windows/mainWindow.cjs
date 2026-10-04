@@ -1,8 +1,8 @@
-const path = require("node:path");
-const { BrowserWindow, shell } = require("electron");
+const { BrowserWindow } = require("electron");
 const { APP_NAME } = require("../identity.cjs");
 const { resolveAppIconPath } = require("../runtime.cjs");
-const { DEV_SERVER_URL, MAIN_WINDOW_BACKGROUND, MAIN_WINDOW_SIZE } = require("../core/constants.cjs");
+const { MAIN_WINDOW_BACKGROUND, MAIN_WINDOW_SIZE } = require("../core/constants.cjs");
+const { secureWebPreferences } = require("./webPreferences.cjs");
 
 // The window must stay 780x520 on every platform (D-15). Each flag below is also
 // re-applied after creation because some platforms ignore constructor flags.
@@ -41,7 +41,7 @@ function lockMainWindowSize(win, platform = process.platform) {
   });
 }
 
-function createMainWindowController({ ctx, getAssetRoot }) {
+function createMainWindowController({ ctx, getAssetRoot, appUrl }) {
   function create() {
     const existing = ctx.windows.main;
     if (existing && !existing.isDestroyed()) {
@@ -63,13 +63,7 @@ function createMainWindowController({ ctx, getAssetRoot }) {
       title: APP_NAME,
       icon: resolveAppIconPath(ctx.platform, getAssetRoot()),
       backgroundColor: MAIN_WINDOW_BACKGROUND,
-      webPreferences: {
-        preload: path.join(__dirname, "..", "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
-        backgroundThrottling: false,
-      },
+      webPreferences: secureWebPreferences("preload.cjs"),
     });
     ctx.windows.main = win;
     lockMainWindowSize(win, ctx.platform);
@@ -89,18 +83,9 @@ function createMainWindowController({ ctx, getAssetRoot }) {
       ctx.windows.main = undefined;
     });
 
-    win.webContents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
-      return { action: "deny" };
-    });
-
     win.webContents.session.clearCache().catch(() => {});
 
-    if (ctx.app.isPackaged) {
-      win.loadFile(path.join(__dirname, "../../dist/index.html"));
-    } else {
-      win.loadURL(DEV_SERVER_URL);
-    }
+    win.loadURL(appUrl);
 
     return win;
   }

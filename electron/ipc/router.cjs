@@ -1,6 +1,14 @@
 const registry = require("../../shared/ipc-channels.json");
 const { AppError, fail, ok, toErrorShape } = require("../core/errors.cjs");
+const { isAppUrl } = require("../windows/appUrl.cjs");
 const { validate } = require("./validate.cjs");
+
+const OVERLAY_URL_PREFIX = "data:text/html";
+
+function isTrustedFrameUrl(role, url, appUrl) {
+  if (role === "main-window") return isAppUrl(url, appUrl);
+  return typeof url === "string" && url.startsWith(OVERLAY_URL_PREFIX);
+}
 
 function describeChannel(channel, kind) {
   const entry = registry.channels[channel];
@@ -10,13 +18,20 @@ function describeChannel(channel, kind) {
   return entry;
 }
 
-function isTrustedSender(ctx, event, roles) {
+/**
+ * A sender is trusted when it is the top frame of the window registered for one
+ * of the channel's roles, and that frame still shows the page the app loaded.
+ */
+function isTrustedSender(ctx, event, roles, appUrl) {
   const sender = event && event.sender;
   if (!sender || !event.senderFrame || event.senderFrame !== sender.mainFrame) return false;
 
   return roles.some((role) => {
     const win = role === "main-window" ? ctx.windows.main : role === "overlay" ? ctx.windows.overlay : undefined;
-    return Boolean(win) && !win.isDestroyed() && win.webContents.id === sender.id;
+    return Boolean(win)
+      && !win.isDestroyed()
+      && win.webContents.id === sender.id
+      && isTrustedFrameUrl(role, event.senderFrame.url, appUrl);
   });
 }
 
@@ -31,13 +46,13 @@ function logFailure(ctx, channel, error) {
  * reply with an envelope. Handlers never throw to the renderer: errors become
  * `{ ok: false, error: { code, params?, detail? } }` and are logged locally.
  */
-function createRouter({ ctx, ipc = require("electron").ipcMain }) {
+function createRouter({ ctx, appUrl, ipc = require("electron").ipcMain }) {
   function handle(channel, schema, handler) {
     const { roles } = describeChannel(channel, "invoke");
 
     ipc.handle(channel, async (event, payload) => {
       try {
-        if (!isTrustedSender(ctx, event, roles)) {
+        if (!isTrustedSender(ctx, event, roles, appUrl)) {
           throw new AppError("FORBIDDEN_SENDER", undefined, "Sender is not a registered window for this channel.");
         }
         const input = validate(schema, payload);
@@ -54,7 +69,7 @@ function createRouter({ ctx, ipc = require("electron").ipcMain }) {
 
     ipc.on(channel, (event, payload) => {
       try {
-        if (!isTrustedSender(ctx, event, roles)) {
+        if (!isTrustedSender(ctx, event, roles, appUrl)) {
           throw new AppError("FORBIDDEN_SENDER", undefined, "Sender is not a registered window for this channel.");
         }
         handler(validate(schema, payload), event);

@@ -3,6 +3,7 @@
     "app:platform": { "kind": "invoke", "roles": ["main-window"] },
     "app:info": { "kind": "invoke", "roles": ["main-window"] },
     "window:control": { "kind": "invoke", "roles": ["main-window"] },
+    "shell:open": { "kind": "invoke", "roles": ["main-window"] },
     "runtime:state": { "kind": "invoke", "roles": ["main-window"] },
     "settings:get-all": { "kind": "invoke", "roles": ["main-window"] },
     "settings:set": { "kind": "invoke", "roles": ["main-window"] },

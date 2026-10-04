@@ -11,6 +11,8 @@ const { createSettingsRegistry } = require("../../electron/settings/registry.cjs
 const { createLog } = require("../../electron/core/log.cjs");
 const { v } = require("../../electron/ipc/validate.cjs");
 
+const appUrl = "file:///app/dist/index.html";
+
 type Handler = (event: unknown, payload?: unknown) => Promise<{ ok: boolean; value?: unknown; error?: { code: string; params?: unknown; detail?: string } }>;
 
 let dir: string;
@@ -25,7 +27,7 @@ function setup() {
     handle: (channel: string, handler: Handler) => handlers.set(channel, handler),
     on: (channel: string, handler: (event: unknown, payload?: unknown) => void) => listeners.set(channel, handler),
   };
-  const mainFrame = {};
+  const mainFrame = { url: appUrl };
   const mainWebContents = { id: 7, mainFrame };
   const ctx = {
     log,
@@ -34,7 +36,7 @@ function setup() {
     state: {},
   };
   const trusted = { sender: mainWebContents, senderFrame: mainFrame };
-  const router = createRouter({ ctx, ipc });
+  const router = createRouter({ ctx, ipc, appUrl });
   return { ctx, router, handlers, listeners, trusted, log, call: (channel: string, event: unknown, payload?: unknown) => (handlers.get(channel) as Handler)(event, payload) };
 }
 
@@ -81,6 +83,56 @@ describe("IPC router", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("rejects the main window itself while it shows a page that is not the app", async () => {
+    const { router, call, ctx } = setup();
+    const handler = vi.fn();
+    router.handle("app:platform", v.none(), handler);
+    const mainWebContents = ctx.windows.main.webContents;
+
+    for (const url of ["https://example.com/", "file:///assets/fixtures/speech-short.wav", "about:blank", ""]) {
+      const frame = { url };
+      mainWebContents.mainFrame = frame;
+      expect((await call("app:platform", { sender: mainWebContents, senderFrame: frame })).error?.code).toBe("FORBIDDEN_SENDER");
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("rejects a frame inside the main window", async () => {
+    const { router, call, ctx } = setup();
+    const handler = vi.fn();
+    router.handle("app:platform", v.none(), handler);
+
+    const subframe = { url: appUrl };
+    expect((await call("app:platform", { sender: ctx.windows.main.webContents, senderFrame: subframe })).error?.code).toBe("FORBIDDEN_SENDER");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("rejects a second window that loads the app page and the same preload", async () => {
+    const { router, call } = setup();
+    const handler = vi.fn();
+    router.handle("settings:get-all", v.none(), handler);
+
+    const frame = { url: appUrl };
+    const hidden = { sender: { id: 8, mainFrame: frame }, senderFrame: frame };
+    expect((await call("settings:get-all", hidden)).error?.code).toBe("FORBIDDEN_SENDER");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("applies the same sender check to fire-and-forget channels", () => {
+    const { router, listeners, trusted } = setup();
+    const handler = vi.fn();
+    router.on("recording:waveform-frame", v.numberArray(), handler);
+    const listener = listeners.get("recording:waveform-frame") as (event: unknown, payload?: unknown) => void;
+
+    const frame = { url: "https://example.com/" };
+    listener({ sender: { id: 7, mainFrame: frame }, senderFrame: frame }, [0.1]);
+    listener({ sender: { id: 99, mainFrame: {} }, senderFrame: {} }, [0.1]);
+    expect(handler).not.toHaveBeenCalled();
+
+    listener(trusted, [0.1]);
+    expect(handler).toHaveBeenCalledWith([0.1], trusted);
+  });
+
   it("rejects an invalid payload with INVALID_ARGUMENT", async () => {
     const { router, trusted, call } = setup();
     const handler = vi.fn();
@@ -115,7 +167,7 @@ describe("settings:set and settings:import-legacy", () => {
     const base = setup();
     const settings = createSettingsRegistry({ configDir: join(dir, "config"), log: base.log });
     const ctx = { ...base.ctx, settings };
-    const router = createRouter({ ctx, ipc: { handle: (channel: string, handler: Handler) => base.handlers.set(channel, handler), on: () => undefined } });
+    const router = createRouter({ ctx, appUrl, ipc: { handle: (channel: string, handler: Handler) => base.handlers.set(channel, handler), on: () => undefined } });
     const overlay = { position: vi.fn() };
     const startup = { apply: (value: boolean) => ({ "startup.launchAtLogin": value }), getState: () => ({ supported: true, enabled: false }) };
     registerSettingsIpc({ router, ctx, overlay, startup });

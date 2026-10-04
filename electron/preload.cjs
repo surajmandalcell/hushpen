@@ -6,6 +6,7 @@ const INVOKE_CHANNELS = new Set([
   "app:platform",
   "app:info",
   "window:control",
+  "shell:open",
   "runtime:state",
   "settings:get-all",
   "settings:set",

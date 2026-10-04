@@ -1,7 +1,7 @@
 const { app, Menu, nativeImage, nativeTheme } = require("electron");
 const { APP_ID, APP_NAME, buildAboutPanelOptions } = require("./identity.cjs");
 const { DEFAULT_MODEL, resolveAppIconPath, resolveRuntimeAssetRoot } = require("./runtime.cjs");
-const { DEV_SERVER_URL, SCREENSHOT_MODE } = require("./core/constants.cjs");
+const { DEV_SERVER_URL, DIST_INDEX_PATH, SCREENSHOT_MODE } = require("./core/constants.cjs");
 const { createContext } = require("./core/context.cjs");
 const { createRecordingController } = require("./core/recording.cjs");
 const { createRouter } = require("./ipc/router.cjs");
@@ -14,10 +14,13 @@ const { registerTranscriptIpc } = require("./ipc/transcripts.cjs");
 const { createMenu } = require("./shell/menu.cjs");
 const { registerGlobalShortcut, unregisterGlobalShortcuts } = require("./shell/shortcuts.cjs");
 const { createStartup, resolveExecutablePath } = require("./shell/startup.cjs");
+const { createOpenTargets } = require("./shell/openTargets.cjs");
 const { createTextEditors } = require("./shell/textEditors.cjs");
 const { createTrayController } = require("./shell/tray.cjs");
+const { resolveAppUrl } = require("./windows/appUrl.cjs");
 const { createMainWindowController } = require("./windows/mainWindow.cjs");
 const { configureMediaPermissions } = require("./windows/mediaPermissions.cjs");
+const { installNavigationGuard } = require("./windows/navigationGuard.cjs");
 const { createOverlayController } = require("./windows/overlayWindow.cjs");
 
 app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
@@ -46,7 +49,10 @@ const getAssetRoot = () => resolveRuntimeAssetRoot({
   appPath: app.getAppPath(),
 });
 
-const mainWindow = createMainWindowController({ ctx, getAssetRoot });
+const appUrl = resolveAppUrl({ isPackaged: app.isPackaged, devServerUrl: DEV_SERVER_URL, distIndexPath: DIST_INDEX_PATH });
+installNavigationGuard({ app, appUrl });
+
+const mainWindow = createMainWindowController({ ctx, getAssetRoot, appUrl });
 const overlay = createOverlayController({ ctx });
 const recording = createRecordingController({ ctx, overlay });
 const textEditors = createTextEditors({ ctx });
@@ -68,11 +74,11 @@ const tray = createTrayController({ ctx, actions, getAssetRoot });
 ctx.events.on("recording-changed", () => tray.updateMenu());
 
 function registerIpc() {
-  const router = createRouter({ ctx });
+  const router = createRouter({ ctx, appUrl });
   const getRuntimeState = createRuntimeState({ ctx, recording, overlay, textEditors, startup });
   const engine = createEngineService({ ctx, getRuntimeState });
 
-  registerAppIpc({ router, ctx, getRuntimeState });
+  registerAppIpc({ router, ctx, getRuntimeState, openTargets: createOpenTargets({ ctx }) });
   registerSettingsIpc({ router, ctx, overlay, startup });
   registerRecordingIpc({ router, recording, overlay });
   registerEngineIpc({ router, ctx, engine });
@@ -94,7 +100,7 @@ if (hasSingleInstanceLock) {
 
   app.whenReady().then(() => {
     const engine = registerIpc();
-    configureMediaPermissions({ devServerUrl: DEV_SERVER_URL });
+    configureMediaPermissions({ appUrl });
     if (SCREENSHOT_MODE) {
       engine.setState({
         status: "ready",
