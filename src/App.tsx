@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
   BrainCircuit,
-  Bluetooth,
   Bug,
-  Camera,
   Check,
   CheckCircle2,
   Copy,
@@ -13,12 +11,10 @@ import {
   FileText,
   Github,
   HardDrive,
-  Headphones,
   History,
   Home,
   Info,
   Library,
-  Laptop,
   Mic2,
   Minus,
   Pause,
@@ -26,176 +22,94 @@ import {
   RefreshCw,
   Search,
   Settings,
-  Smartphone,
   Trash2,
-  Usb,
   Volume2,
   VolumeX,
   X,
   type LucideIcon,
 } from "lucide-react";
-import packageMetadata from "../package.json";
 import { AppLogoMark } from "./components/icons";
+import { AudioInputDeviceIcon } from "./components/ui/AudioInputDeviceIcon";
+import {
+  focusRingClass,
+  historyActionButtonClass,
+  iconTileClass,
+  modelMetaBadgeClass,
+  panelDividerClass,
+  panelSurfaceClass,
+  sharedRadiusClass,
+} from "./components/ui/classes";
+import { DropdownOptionButton, DropdownSurface } from "./components/ui/Dropdown";
+import { GroupedPanel } from "./components/ui/GroupedPanel";
+import { HoverPopover } from "./components/ui/HoverPopover";
+import { NavigateButton } from "./components/ui/NavigateButton";
+import { PanelControlButton } from "./components/ui/PanelControlButton";
+import { PanelRow } from "./components/ui/PanelRow";
+import { SegmentedControl, type SegmentedControlOption } from "./components/ui/SegmentedControl";
+import { ShortcutCluster } from "./components/ui/ShortcutCluster";
+import { StatusLabel } from "./components/ui/StatusLabel";
+import { TextEditorIcon } from "./components/ui/TextEditorIcon";
+import { ToggleSwitch } from "./components/ui/ToggleSwitch";
+import { ViewFrame } from "./components/ui/ViewFrame";
+import { buildAudioInputDeviceOptions } from "./lib/audioDevices";
+import {
+  defaultAppInfo,
+  defaultAudioInputId,
+  defaultAudioInputLabel,
+  defaultAudioInputOptions,
+  defaultAutoCopyTranscripts,
+  defaultModelName,
+  defaultTextEditorId,
+  defaultTextEditorOptions,
+  modelIdsByName,
+} from "./lib/defaults";
+import { getErrorMessage, getRecordingErrorTitle } from "./lib/errors";
+import {
+  countWords,
+  formatByteCount,
+  formatDuration,
+  formatEngineStatus,
+  formatHistoryGroupLabel,
+  formatHomeRelativePath,
+} from "./lib/format";
+import { buildHistoryTitle, createTranscriptHistoryRow } from "./lib/history";
+import { clampNumber } from "./lib/math";
+import {
+  getRuntimeModels,
+  mergeOverlaySettings,
+  mergeRuntimeInfo,
+  normalizeAutoCopyTranscripts,
+  normalizeLaunchAtStartup,
+  normalizeOverlayPlacement,
+  normalizeTextEditorId,
+  normalizeTextEditorOptions,
+} from "./lib/runtime";
+import { formatShortcutParts } from "./lib/shortcut";
+import {
+  loadSelectedAudioInputId,
+  loadSelectedModelName,
+  loadTranscriptHistory,
+  normalizeSelectedModelName,
+  saveSelectedAudioInputId,
+  saveSelectedModelName,
+  saveTranscriptHistory,
+} from "./lib/storage";
+import { dataUrlToBlob, createTranscriptionAudioPayload, readBlobAsDataUrl } from "./lib/wav";
+import {
+  buildReactiveWaveformFrame,
+  cancelWaveformFrame,
+  historyWaveformBars,
+  idleWaveformFrame,
+  scheduleWaveformFrame,
+  sendOverlayWaveformFrame,
+} from "./lib/waveform";
 import { audioRecordingService } from "./services/audioRecording";
-
-type ViewId = "home" | "configuration" | "sound" | "models" | "history" | "about";
-type WindowAction = "minimize" | "close";
-type OverlayPlacement = "top" | "bottom";
-type RecordingStatus = "idle" | "starting" | "recording" | "preparing-engine" | "transcribing" | "error";
-
-interface OverlaySettings {
-  placement: OverlayPlacement;
-  customBounds: {
-    displayId: number;
-    x: number;
-    y: number;
-  } | null;
-}
-
-interface RuntimeInfo {
-  isRecording: boolean;
-  defaultModel?: string;
-  defaultModelId?: string;
-  dataDir?: string;
-  overlaySettings?: OverlaySettings;
-  engine?: EngineRuntimeState;
-  models?: EngineModelInfo[];
-  storageStats?: RuntimeStorageStats;
-  defaultTextEditor?: string;
-  autoCopyTranscripts?: boolean;
-  launchAtStartup?: boolean;
-  startup?: StartupSettings;
-  textEditors?: TextEditorOption[];
-  shortcut?: string;
-  shortcutRegistered?: boolean;
-  capabilities?: {
-    nativeWhisper?: boolean;
-  };
-}
-
-interface StartupSettings {
-  supported: boolean;
-  enabled: boolean;
-  executablePath?: string;
-  registeredExecutablePath?: string;
-  autostartPath?: string;
-  status?: string;
-  requiresApproval?: boolean;
-  detail?: string;
-}
-
-interface AppInfo {
-  name: string;
-  version: string;
-}
-
-interface EngineRuntimeState {
-  status: string;
-  mode?: string;
-  modelId?: string;
-  model?: string;
-  detail?: string;
-  progress?: number | null;
-  error?: string | null;
-  updatedAt?: string;
-}
-
-interface EngineModelInfo {
-  id: string;
-  displayName: string;
-  detail: string;
-  sizeLabel: string;
-  installed?: boolean;
-  diskBytes?: number;
-  path?: string;
-  downloadUrl?: string;
-}
-
-interface RuntimeStorageStats {
-  generatedAt?: string;
-  groups: StorageStatsGroup[];
-}
-
-interface StorageStatsGroup {
-  id: string;
-  label: string;
-  totalBytes: number;
-  detail?: string;
-  items: StorageStatsItem[];
-}
-
-interface StorageStatsItem {
-  id: string;
-  label: string;
-  bytes: number;
-  detail?: string;
-  path?: string;
-}
-
-interface TextEditorOption {
-  id: string;
-  label: string;
-  detail: string;
-  iconDataUrl?: string;
-}
-
-interface NavItem {
-  id: ViewId;
-  label: string;
-  icon: LucideIcon;
-}
-
-export interface TranscriptHistoryRow {
-  id: string;
-  title: string;
-  text: string;
-  kind: "Dictation" | "File";
-  model: string;
-  durationSeconds: number;
-  createdAt: number;
-  status: "completed" | "failed";
-  recordingUrl?: string;
-  transcriptFilePath?: string;
-  error?: string;
-}
-
-interface AudioInputDeviceOption {
-  id: string;
-  label: string;
-}
-
-type AudioInputDeviceIconType = "mic" | "laptop" | "phone" | "webcam" | "headphones" | "bluetooth" | "usb";
-
-const audioInputDeviceIconByType: Record<AudioInputDeviceIconType, LucideIcon> = {
-  mic: Mic2,
-  laptop: Laptop,
-  phone: Smartphone,
-  webcam: Camera,
-  headphones: Headphones,
-  bluetooth: Bluetooth,
-  usb: Usb,
-};
-
-function getAudioInputDeviceIconType(device: AudioInputDeviceOption): AudioInputDeviceIconType {
-  const value = `${device.id} ${device.label}`.toLowerCase();
-
-  if (device.id === "default" || value.includes("system default")) return "mic";
-  if (/(iphone|ipad|android|mobile|\bphone\b)/.test(value)) return "phone";
-  if (/(macbook|built-in|builtin|internal|laptop)/.test(value)) return "laptop";
-  if (/(webcam|camera|facetime|logitech|brio|c920)/.test(value)) return "webcam";
-  if (/(airpods|headphone|headset|earbud|earphone|buds)/.test(value)) return "headphones";
-  if (/(bluetooth|\bbt\b)/.test(value)) return "bluetooth";
-  if (/(usb|external|interface|focusrite|scarlett|yeti|rode|shure|elgato|studio)/.test(value)) return "usb";
-
-  return "mic";
-}
-
-function AudioInputDeviceIcon({ device, className }: { device: AudioInputDeviceOption; className: string }) {
-  const iconType = getAudioInputDeviceIconType(device);
-  const Icon = audioInputDeviceIconByType[iconType];
-
-  return <Icon aria-hidden="true" data-device-icon={iconType} className={className} />;
-}
+import type { AppInfo, NavItem, RecordingStatus, ViewId, WindowAction } from "./types/app";
+import type { AudioInputDeviceOption } from "./types/audio";
+import type { EngineModelInfo, EngineRuntimeState } from "./types/engine";
+import type { TranscriptHistoryRow } from "./types/history";
+import type { RuntimeInfo, RuntimeStorageStats } from "./types/runtime";
+import type { OverlayPlacement, TextEditorOption } from "./types/settings";
 
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: Home },
@@ -215,78 +129,6 @@ const sidebarIconTone: Record<ViewId, string> = {
   about: "bg-[#727272] text-white",
 };
 
-const defaultModelName = "Whisper Base English";
-const defaultAudioInputId = "default";
-const defaultAudioInputLabel = "System default";
-const defaultAudioInputOptions: AudioInputDeviceOption[] = [{ id: defaultAudioInputId, label: defaultAudioInputLabel }];
-const defaultTextEditorId = "system";
-const defaultAutoCopyTranscripts = true;
-const defaultTextEditorOptions: TextEditorOption[] = [
-  { id: "system", label: "System default", detail: "Use the operating system default editor" },
-  { id: "textedit", label: "TextEdit", detail: "Open transcript text in Apple TextEdit" },
-  { id: "vscode", label: "Visual Studio Code", detail: "Open transcript text in VS Code" },
-  { id: "cursor", label: "Cursor", detail: "Open transcript text in Cursor" },
-];
-const modelIdsByName: Record<string, string> = {
-  "Whisper Tiny English": "whisper-tiny-en",
-  "Whisper Base English": "whisper-base-en",
-  "Whisper Small English": "whisper-small-en",
-  "Whisper Base Multilingual": "whisper-base",
-  "Whisper Large v3 Turbo": "whisper-large-v3-turbo",
-};
-const transcriptHistoryStorageKey = "asrpro.transcriptHistory.v1";
-const audioInputDeviceStorageKey = "asrpro.audioInputDevice.v1";
-const selectedModelStorageKey = "asrpro.selectedModel.v1";
-const seededScreenshotHistoryIdPrefix = "readme-history-";
-const seededScreenshotHistoryRows = new Map([
-  ["Product demo follow-up", "Summarize the product demo, send the follow-up notes, and schedule the model comparison review."],
-  ["Roadmap voice note", "Keep the desktop release private first, tighten screenshot checks, and verify the packaged runtime before sharing."],
-  ["Audio file transcript", "The imported audio sample should stay in history with model details and a replayable local recording."],
-]);
-const historyDateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-});
-
-const fallbackModelCards: EngineModelInfo[] = [
-  {
-    id: "whisper-tiny-en",
-    displayName: "Whisper Tiny English",
-    detail: "Fastest local model, lowest memory use",
-    sizeLabel: "75 MB",
-  },
-  {
-    id: "whisper-base-en",
-    displayName: "Whisper Base English",
-    detail: "Default local model for English dictation",
-    sizeLabel: "142 MB",
-  },
-  {
-    id: "whisper-base",
-    displayName: "Whisper Base Multilingual",
-    detail: "Small multilingual model with language detection",
-    sizeLabel: "142 MB",
-  },
-  {
-    id: "whisper-small-en",
-    displayName: "Whisper Small English",
-    detail: "Higher accuracy with a larger local model",
-    sizeLabel: "466 MB",
-  },
-  {
-    id: "whisper-large-v3-turbo",
-    displayName: "Whisper Large v3 Turbo",
-    detail: "High accuracy multilingual model with faster large-model decoding",
-    sizeLabel: "1.5 GiB",
-  },
-];
-
-const appBuildVersion = typeof packageMetadata.version === "string" ? packageMetadata.version : "1.0.0";
-
-const defaultAppInfo: AppInfo = {
-  name: "ASR Pro",
-  version: appBuildVersion,
-};
 const githubRepositoryUrl = "https://github.com/surajmandalcell/asrpro";
 const githubIssueUrl = `${githubRepositoryUrl}/issues/new`;
 const aboutActionLinks: Array<{ icon: LucideIcon; label: string; detail: string; href: string }> = [
@@ -303,330 +145,6 @@ const aboutActionLinks: Array<{ icon: LucideIcon; label: string; detail: string;
     href: githubIssueUrl,
   },
 ];
-
-const historyWaveformBars = Array.from({ length: 72 }, (_, index) => {
-  const position = index / 71;
-  const envelope = 0.42 + 0.58 * Math.sin(Math.PI * position);
-  const shape = 0.42 + 0.2 * Math.sin(index * 1.7) + 0.16 * Math.sin(index * 0.53 + 1.1);
-  return {
-    id: `history-wave-${index}`,
-    index,
-    height: Math.round(clampNumber(6 + 18 * envelope * shape, 5, 24)),
-  };
-});
-
-const sharedRadiusClass = "rounded-[12px]";
-const insetControlRadiusClass = "rounded-[10px]";
-const panelGlassClass = "rounded-[22px] border border-white/[0.095] bg-white/[0.055] backdrop-blur-2xl";
-const panelSurfaceClass = `overflow-hidden ${panelGlassClass}`;
-const panelDividerClass = "border-white/[0.08]";
-const iconTileClass = `grid size-7 shrink-0 place-items-center ${sharedRadiusClass} bg-white/[0.07] text-[#d7d7d7]`;
-const focusRingClass = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bcfff]";
-const panelControlButtonClass = `inline-flex min-h-8 items-center justify-center gap-1.5 ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] text-[12px] font-semibold text-[#eeeeee] transition hover:bg-[#3a3a3a] active:scale-[0.97] disabled:cursor-not-allowed disabled:text-[#8a8a8a] ${focusRingClass}`;
-const historyActionButtonClass = `grid size-7 place-items-center ${sharedRadiusClass} text-[#bdbdbd] transition hover:bg-[#555] hover:text-white disabled:cursor-wait disabled:opacity-55`;
-const modelMetaBadgeClass = "rounded-[6px] bg-white/[0.075] px-1 py-[1px] text-[10px] font-semibold leading-4 text-[#bcbcbc]";
-const dropdownSurfaceClass = `scrollbar-macos dropdown-options-scrollbar absolute z-50 max-h-64 overflow-x-hidden overflow-y-auto ${sharedRadiusClass} border border-[#5c5c5c] bg-[#303030] py-1 pl-1 pr-0.5 shadow-2xl shadow-black/40`;
-const dropdownOptionButtonClass = `flex w-full min-w-0 items-start gap-2 ${insetControlRadiusClass} px-2.5 py-2 text-left text-[12px] font-semibold leading-4 transition`;
-const segmentedControlClass = `inline-flex ${sharedRadiusClass} border border-white/[0.08] bg-[#2b2b2b] p-0.5`;
-const segmentedItemClass = `h-7 ${insetControlRadiusClass} px-2.5 text-[12px] font-semibold transition ${focusRingClass}`;
-
-export const waveformBarCount = 76;
-export const waveformBaseBars = Array.from({ length: waveformBarCount }, (_, index) => {
-  const position = index / Math.max(1, waveformBarCount - 1);
-  const envelope = 0.36 + 0.64 * Math.sin(Math.PI * position);
-  const voiceShape = 0.48
-    + 0.26 * Math.sin(index * 1.39 + 0.4)
-    + 0.18 * Math.sin(index * 0.47 + 1.7)
-    + 0.12 * Math.sin(index * 2.13 + 0.9);
-  const edgeDistance = Math.min(index, waveformBarCount - 1 - index);
-
-  return {
-    id: `wave-${index}`,
-    baseHeight: Math.round(clampNumber(10 + 42 * envelope * voiceShape, 8, 46)),
-    opacity: edgeDistance < 5 ? 0.34 + edgeDistance * 0.08 : 0.78,
-  };
-});
-export const idleWaveformFrame = waveformBaseBars.map((bar) => bar.baseHeight);
-
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-export function buildReactiveWaveformFrame(frequencies: Uint8Array, voiceLevel: number, timestamp: number, previousFrame: number[]) {
-  return waveformBaseBars.map((bar, index) => {
-    const position = index / Math.max(1, waveformBaseBars.length - 1);
-    const bin = Math.min(frequencies.length - 1, Math.floor(Math.pow(position, 1.34) * frequencies.length * 0.86));
-    const spectralLevel = Math.max(
-      frequencies[bin] / 255,
-      (frequencies[Math.min(frequencies.length - 1, bin + 2)] || 0) / 255 * 0.82,
-    );
-    const unevenLift = clampNumber(
-      0.64
-        + 0.24 * Math.sin(index * 0.83 + timestamp * 0.009)
-        + 0.18 * Math.sin(index * 1.71 + timestamp * 0.006),
-      0.42,
-      1.14,
-    );
-    const target = clampNumber(bar.baseHeight + voiceLevel * (9 + spectralLevel * 48) * unevenLift, 6, 64);
-    const previous = previousFrame[index] ?? bar.baseHeight;
-
-    return Math.round((previous * 0.5 + target * 0.5) * 10) / 10;
-  });
-}
-
-export function toOverlayWaveformSamples(frame: number[]) {
-  const overlayCount = 55;
-  return Array.from({ length: overlayCount }, (_, index) => {
-    const sourceIndex = Math.round((index / Math.max(1, overlayCount - 1)) * (waveformBaseBars.length - 1));
-    const baseHeight = waveformBaseBars[sourceIndex]?.baseHeight ?? 8;
-    const height = frame[sourceIndex] ?? baseHeight;
-    return clampNumber(((height - baseHeight) / (64 - baseHeight)) * 1.45, 0, 1);
-  });
-}
-
-export function sendOverlayWaveformFrame(frame: number[], hasVoice: boolean) {
-  window.asrpro?.setWaveformFrame?.(hasVoice ? toOverlayWaveformSamples(frame) : []);
-}
-
-function scheduleWaveformFrame(callback: FrameRequestCallback) {
-  if (typeof window.requestAnimationFrame === "function") {
-    return window.requestAnimationFrame(callback);
-  }
-
-  return window.setTimeout(() => callback(performance.now()), 16);
-}
-
-function cancelWaveformFrame(id: number) {
-  if (typeof window.cancelAnimationFrame === "function") {
-    window.cancelAnimationFrame(id);
-    return;
-  }
-
-  window.clearTimeout(id);
-}
-
-function loadSelectedAudioInputId() {
-  try {
-    const stored = window.localStorage.getItem(audioInputDeviceStorageKey);
-    return stored && stored.trim() ? stored : defaultAudioInputId;
-  } catch {
-    return defaultAudioInputId;
-  }
-}
-
-function saveSelectedAudioInputId(deviceId: string) {
-  try {
-    window.localStorage.setItem(audioInputDeviceStorageKey, deviceId);
-  } catch {
-    // Local storage failures should not block recording.
-  }
-}
-
-function normalizeSelectedModelName(value: unknown, models: EngineModelInfo[] = fallbackModelCards) {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-
-  const normalized = value.trim();
-  const byName = models.find((model) => model.displayName === normalized);
-  if (byName) return byName.displayName;
-
-  const byId = models.find((model) => model.id === normalized);
-  return byId?.displayName;
-}
-
-function loadSelectedModelName(models: EngineModelInfo[] = fallbackModelCards) {
-  try {
-    return normalizeSelectedModelName(window.localStorage.getItem(selectedModelStorageKey), models);
-  } catch {
-    return undefined;
-  }
-}
-
-function saveSelectedModelName(modelName: string) {
-  try {
-    window.localStorage.setItem(selectedModelStorageKey, modelName);
-  } catch {
-    // Local storage failures should not block recognition.
-  }
-}
-
-function buildAudioInputDeviceOptions(devices: MediaDeviceInfo[]): AudioInputDeviceOption[] {
-  const options: AudioInputDeviceOption[] = [...defaultAudioInputOptions];
-  const seenDeviceIds = new Set([defaultAudioInputId]);
-  let unnamedAudioInputCount = 0;
-
-  for (const device of devices) {
-    if (device.kind !== "audioinput" || !device.deviceId || seenDeviceIds.has(device.deviceId)) {
-      continue;
-    }
-
-    seenDeviceIds.add(device.deviceId);
-    unnamedAudioInputCount += 1;
-    const label = device.label.trim() || `Microphone ${unnamedAudioInputCount}`;
-    options.push({ id: device.deviceId, label });
-  }
-
-  return options;
-}
-
-function normalizeTextEditorId(editorId: unknown, options: TextEditorOption[] = defaultTextEditorOptions) {
-  const normalized = typeof editorId === "string" ? editorId : defaultTextEditorId;
-  return options.some((option) => option.id === normalized) ? normalized : defaultTextEditorId;
-}
-
-function normalizeTextEditorOptions(options: unknown): TextEditorOption[] {
-  if (!Array.isArray(options)) return defaultTextEditorOptions;
-
-  const normalized: TextEditorOption[] = [];
-  for (const option of options) {
-    if (!option || typeof option !== "object") continue;
-    const candidate = option as Partial<TextEditorOption>;
-    if (!candidate.id || !candidate.label) continue;
-    normalized.push({
-      id: String(candidate.id),
-      label: String(candidate.label),
-      detail: candidate.detail ? String(candidate.detail) : "",
-      iconDataUrl: typeof candidate.iconDataUrl === "string" ? candidate.iconDataUrl : undefined,
-    });
-  }
-
-  return normalized.length ? normalized : defaultTextEditorOptions;
-}
-
-export function loadTranscriptHistory() {
-  try {
-    const raw = window.localStorage.getItem(transcriptHistoryStorageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    const rows: TranscriptHistoryRow[] = [];
-    for (const item of parsed) {
-      const row = normalizeTranscriptHistoryRow(item);
-      if (row) rows.push(row);
-    }
-
-    const sanitized = sanitizeTranscriptHistoryRows(rows);
-    if (sanitized.removedSeededRows) {
-      saveTranscriptHistory(sanitized.rows);
-    }
-
-    return sanitized.rows;
-  } catch {
-    return [];
-  }
-}
-
-function sanitizeTranscriptHistoryRows(rows: TranscriptHistoryRow[]) {
-  if (window.asrpro?.isScreenshotMode) {
-    return { rows, removedSeededRows: false };
-  }
-
-  const sanitizedRows = rows.filter((row) => !isSeededScreenshotHistoryRow(row));
-  return {
-    rows: sanitizedRows,
-    removedSeededRows: sanitizedRows.length !== rows.length,
-  };
-}
-
-function isSeededScreenshotHistoryRow(row: TranscriptHistoryRow) {
-  if (row.recordingUrl) return false;
-  if (row.id.startsWith(seededScreenshotHistoryIdPrefix)) return true;
-
-  return seededScreenshotHistoryRows.get(row.title) === row.text;
-}
-
-export function normalizeTranscriptHistoryRow(value: unknown): TranscriptHistoryRow | null {
-  if (!value || typeof value !== "object") return null;
-
-  const row = value as Partial<TranscriptHistoryRow>;
-  const text = typeof row.text === "string" ? row.text : "";
-  const title = typeof row.title === "string" && row.title.trim() ? row.title : buildHistoryTitle(text);
-  const kind = row.kind === "File" ? "File" : "Dictation";
-  const status = row.status === "failed" ? "failed" : "completed";
-
-  return {
-    id: typeof row.id === "string" && row.id ? row.id : `history-${Date.now()}`,
-    title,
-    text,
-    kind,
-    model: typeof row.model === "string" && row.model ? row.model : defaultModelName,
-    durationSeconds: Number.isFinite(row.durationSeconds) ? Math.max(0, Math.round(Number(row.durationSeconds))) : 0,
-    createdAt: Number.isFinite(row.createdAt) ? Number(row.createdAt) : Date.now(),
-    status,
-    recordingUrl: typeof row.recordingUrl === "string" && row.recordingUrl ? row.recordingUrl : undefined,
-    transcriptFilePath: typeof row.transcriptFilePath === "string" && row.transcriptFilePath ? row.transcriptFilePath : undefined,
-    error: typeof row.error === "string" ? row.error : undefined,
-  };
-}
-
-export function saveTranscriptHistory(rows: TranscriptHistoryRow[]) {
-  try {
-    window.localStorage.setItem(transcriptHistoryStorageKey, JSON.stringify(rows.slice(0, 100)));
-  } catch {
-    // Local history should never break the recording flow.
-  }
-}
-
-export function buildHistoryTitle(text: string) {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (!compact) return "Untitled dictation";
-  return compact.length > 92 ? `${compact.slice(0, 89)}...` : compact;
-}
-
-export function formatDuration(seconds: number) {
-  const rounded = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(rounded / 60);
-  const remainingSeconds = rounded % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-}
-
-export function formatByteCount(bytes?: number) {
-  const value = Number(bytes);
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let scaled = value;
-  let unitIndex = 0;
-
-  while (scaled >= 1024 && unitIndex < units.length - 1) {
-    scaled /= 1024;
-    unitIndex += 1;
-  }
-
-  const precision = scaled >= 10 || unitIndex === 0 ? 0 : 1;
-  return `${scaled.toFixed(precision)} ${units[unitIndex]}`;
-}
-
-function getRuntimeModels(models?: EngineModelInfo[]) {
-  return models?.length ? models : fallbackModelCards;
-}
-
-function mergeRuntimeInfo(current: RuntimeInfo | null, next?: Partial<RuntimeInfo> | null): RuntimeInfo | null {
-  if (!next) return current;
-
-  return {
-    ...(current ?? { isRecording: false }),
-    ...next,
-    isRecording: next.isRecording ?? current?.isRecording ?? false,
-  };
-}
-
-export function formatHistoryGroupLabel(createdAt: number, now = Date.now()) {
-  const elapsedDays = Math.max(0, Math.floor((startOfDay(now) - startOfDay(createdAt)) / 86_400_000));
-  if (elapsedDays === 0) return "Today";
-  if (elapsedDays === 1) return "Yesterday";
-  if (elapsedDays < 30) return `${elapsedDays} days ago`;
-  return historyDateFormatter.format(new Date(createdAt));
-}
-
-export function countWords(text: string) {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-export function formatHomeRelativePath(filePath?: string) {
-  if (!filePath) return undefined;
-  return filePath.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
-}
 
 function buildAboutFactRows(appVersion: string, storagePath?: string): Array<{ label: string; value: string }> {
   return [
@@ -649,229 +167,6 @@ function buildHomeStats(rows: TranscriptHistoryRow[]) {
     { value: String(rows.length), label: "Recordings" },
     { value: savedMinutes ? `${savedMinutes} minute${savedMinutes === 1 ? "" : "s"}` : "0 minutes", label: "Saved this week" },
   ];
-}
-
-function startOfDay(timestamp: number) {
-  const date = new Date(timestamp);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-export function formatShortcutParts(shortcut?: string) {
-  const normalized = (shortcut || "CommandOrControl+`").split("+").flatMap((part) => {
-    const trimmed = part.trim();
-    return trimmed ? [trimmed] : [];
-  });
-
-  return normalized.map((part) => {
-    if (part === "CommandOrControl" || part === "Command" || part === "Meta") return "⌘";
-    if (part === "Control" || part === "Ctrl") return "⌃";
-    if (part === "Alt" || part === "Option") return "⌥";
-    if (part === "Shift") return "⇧";
-    if (part === "Escape") return "esc";
-    return part.replace("Backquote", "`");
-  });
-}
-
-export function getErrorMessage(error: unknown) {
-  const rawMessage = error instanceof Error ? error.message : "Recording failed";
-  const message = rawMessage
-    .replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i, "")
-    .trim();
-
-  if (/Model download failed|checksum mismatch|\.download|ENOENT.*models[\\/]+whisper|rename .*ggml-/i.test(message)) {
-    return "Whisper model download failed. Check your connection and try again.";
-  }
-
-  if (/No handler registered/i.test(rawMessage)) {
-    return "Native Whisper engine needs restart. Restart ASR Pro, then try again.";
-  }
-
-  if (/native Whisper addon|whisper\.node|libwhisper/i.test(message)) {
-    return "Native Whisper engine could not load. Reinstall dependencies, then restart ASR Pro.";
-  }
-
-  if (/failed to fetch|load failed|networkerror|network request failed/i.test(message)) {
-    return "Failed to load.";
-  }
-
-  return message;
-}
-
-function getRecordingErrorTitle(message: string) {
-  if (/needs restart/i.test(message)) return "Engine needs restart";
-  if (/Engine unavailable|Failed to load|download failed/i.test(message)) return "Engine unavailable";
-  return "Recording failed";
-}
-
-function createTranscriptHistoryRow({
-  text,
-  model,
-  durationSeconds,
-  startedAt,
-  recordingUrl,
-}: {
-  text: string;
-  model: string;
-  durationSeconds: number;
-  startedAt: number;
-  recordingUrl: string;
-}): TranscriptHistoryRow {
-  const normalizedText = text.replace(/\s+/g, " ").trim();
-
-  return {
-    id: `dictation-${startedAt}-${Math.random().toString(36).slice(2, 8)}`,
-    title: buildHistoryTitle(normalizedText),
-    text: normalizedText,
-    kind: "Dictation",
-    model,
-    durationSeconds,
-    createdAt: Date.now(),
-    status: "completed",
-    recordingUrl,
-  };
-}
-
-async function createTranscriptionAudioPayload(blob: Blob) {
-  const wavBlob = await convertBlobToWav(blob).catch(() => blob);
-
-  return {
-    audioData: await wavBlob.arrayBuffer(),
-    mimeType: wavBlob.type || blob.type || "audio/wav",
-  };
-}
-
-export function dataUrlToBlob(dataUrl: string) {
-  if (!dataUrl.startsWith("data:")) {
-    throw new Error("Saved source audio could not be loaded.");
-  }
-
-  const commaIndex = dataUrl.indexOf(",");
-  if (commaIndex < 0) {
-    throw new Error("Saved source audio could not be loaded.");
-  }
-
-  const header = dataUrl.slice(5, commaIndex);
-  const payload = dataUrl.slice(commaIndex + 1);
-  const headerParts = header.split(";").filter(Boolean);
-  const mimeType = headerParts[0] || "audio/webm";
-  const isBase64 = headerParts.includes("base64");
-
-  try {
-    const bytes = isBase64
-      ? Uint8Array.from(window.atob(payload), (character) => character.charCodeAt(0))
-      : new TextEncoder().encode(decodeURIComponent(payload));
-
-    return new Blob([bytes], { type: mimeType });
-  } catch {
-    throw new Error("Saved source audio could not be loaded.");
-  }
-}
-
-export async function convertBlobToWav(blob: Blob) {
-  if (blob.type.includes("wav")) return blob;
-
-  const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) return blob;
-
-  const audioContext = new AudioContextCtor();
-  if (typeof audioContext.decodeAudioData !== "function") {
-    await audioContext.close?.().catch(() => {});
-    return blob;
-  }
-
-  const sourceData = await blob.arrayBuffer();
-  const decoded = await audioContext.decodeAudioData(sourceData.slice(0));
-  await audioContext.close?.().catch(() => {});
-  const monoSamples = mixAudioBufferToMono(decoded);
-  const samples = resamplePcm(monoSamples, decoded.sampleRate, 16000);
-  const wavData = encodePcm16Wav(samples, 16000);
-
-  return new Blob([wavData], { type: "audio/wav" });
-}
-
-export function mixAudioBufferToMono(audioBuffer: AudioBuffer) {
-  const samples = new Float32Array(audioBuffer.length);
-  const channelCount = Math.max(1, audioBuffer.numberOfChannels);
-
-  for (let channel = 0; channel < channelCount; channel += 1) {
-    const channelData = audioBuffer.getChannelData(channel);
-    for (let index = 0; index < samples.length; index += 1) {
-      samples[index] += channelData[index] / channelCount;
-    }
-  }
-
-  return samples;
-}
-
-export function resamplePcm(samples: Float32Array, sourceRate: number, targetRate: number) {
-  if (sourceRate === targetRate) return samples;
-
-  const targetLength = Math.max(1, Math.round(samples.length * targetRate / sourceRate));
-  const resampled = new Float32Array(targetLength);
-  const ratio = (samples.length - 1) / Math.max(1, targetLength - 1);
-
-  for (let index = 0; index < targetLength; index += 1) {
-    const sourceIndex = index * ratio;
-    const lower = Math.floor(sourceIndex);
-    const upper = Math.min(samples.length - 1, lower + 1);
-    const weight = sourceIndex - lower;
-    resampled[index] = samples[lower] * (1 - weight) + samples[upper] * weight;
-  }
-
-  return resampled;
-}
-
-export function encodePcm16Wav(samples: Float32Array, sampleRate: number) {
-  const bytesPerSample = 2;
-  const dataLength = samples.length * bytesPerSample;
-  const buffer = new ArrayBuffer(44 + dataLength);
-  const view = new DataView(buffer);
-
-  writeAscii(view, 0, "RIFF");
-  view.setUint32(4, 36 + dataLength, true);
-  writeAscii(view, 8, "WAVE");
-  writeAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
-  view.setUint16(34, 8 * bytesPerSample, true);
-  writeAscii(view, 36, "data");
-  view.setUint32(40, dataLength, true);
-
-  let offset = 44;
-  for (const sample of samples) {
-    const clamped = Math.max(-1, Math.min(1, sample));
-    view.setInt16(offset, Math.round(clamped < 0 ? clamped * 32768 : clamped * 32767), true);
-    offset += bytesPerSample;
-  }
-
-  return buffer;
-}
-
-function writeAscii(view: DataView, offset: number, value: string) {
-  for (let index = 0; index < value.length; index += 1) {
-    view.setUint8(offset + index, value.charCodeAt(index));
-  }
-}
-
-function readBlobAsDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to save recording audio"));
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-
-      reject(new Error("Failed to save recording audio"));
-    };
-    reader.readAsDataURL(blob);
-  });
 }
 
 function useMicrophoneWaveform(active: boolean) {
@@ -1667,27 +962,6 @@ function App() {
   );
 }
 
-function normalizeOverlayPlacement(value: unknown): OverlayPlacement {
-  return value === "bottom" ? "bottom" : "top";
-}
-
-function normalizeAutoCopyTranscripts(value: unknown) {
-  return typeof value === "boolean" ? value : defaultAutoCopyTranscripts;
-}
-
-function normalizeLaunchAtStartup(startup?: StartupSettings, fallback?: boolean) {
-  if (typeof startup?.enabled === "boolean") return startup.enabled;
-  return typeof fallback === "boolean" ? fallback : false;
-}
-
-function mergeOverlaySettings(runtimeInfo: RuntimeInfo | null, overlaySettings: OverlaySettings): RuntimeInfo | null {
-  if (!runtimeInfo) return runtimeInfo;
-  return {
-    ...runtimeInfo,
-    overlaySettings,
-  };
-}
-
 interface SidebarProps {
   activeView: ViewId;
   onChange: (view: ViewId) => void;
@@ -1988,86 +1262,10 @@ interface SoundViewProps {
   onOpenModels: () => void;
 }
 
-function PanelControlButton({ className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button {...props} className={`${panelControlButtonClass} ${className}`}>
-      {children}
-    </button>
-  );
-}
-
-interface DropdownSurfaceProps {
-  id: string;
-  ariaLabel: string;
-  alignClassName: string;
-  children: ReactNode;
-}
-
-function DropdownSurface({ id, ariaLabel, alignClassName, children }: DropdownSurfaceProps) {
-  return (
-    <div id={id} role="listbox" aria-label={ariaLabel} className={`${alignClassName} ${dropdownSurfaceClass}`}>
-      {children}
-    </div>
-  );
-}
-
-interface DropdownOptionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  selected: boolean;
-}
-
-function DropdownOptionButton({ selected, className = "", children, ...props }: DropdownOptionButtonProps) {
-  return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      {...props}
-      className={`${dropdownOptionButtonClass} ${selected ? "bg-[#5a5a5a] text-white" : "text-[#dddddd] hover:bg-[#454545]"} ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-interface SegmentedControlOption<TValue extends string> {
-  value: TValue;
-  label: string;
-  ariaLabel: string;
-}
-
 const overlayPlacementControlOptions: readonly SegmentedControlOption<OverlayPlacement>[] = [
   { value: "top", label: "Top", ariaLabel: "Top overlay position" },
   { value: "bottom", label: "Bottom", ariaLabel: "Bottom overlay position" },
 ];
-
-interface SegmentedControlProps<TValue extends string> {
-  value: TValue;
-  options: readonly SegmentedControlOption<TValue>[];
-  onChange: (value: TValue) => void;
-}
-
-function SegmentedControl<TValue extends string>({ value, options, onChange }: SegmentedControlProps<TValue>) {
-  return (
-    <div className={segmentedControlClass}>
-      {options.map((option) => {
-        const active = value === option.value;
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-label={option.ariaLabel}
-            aria-pressed={active}
-            className={`${segmentedItemClass} ${active ? "bg-[#686868] text-white" : "text-[#aaa] hover:text-white"}`}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 interface MicrophoneSelectorProps {
   ariaLabel: string;
@@ -2357,22 +1555,6 @@ function ModelsView({
       ) : null}
       <ResourceStatsPanel stats={storageStats} />
     </ViewFrame>
-  );
-}
-
-interface HoverPopoverProps {
-  content: string;
-  children: ReactNode;
-}
-
-function HoverPopover({ content, children }: HoverPopoverProps) {
-  return (
-    <span className="group relative inline-flex">
-      {children}
-      <span className="pointer-events-none absolute right-0 top-full z-30 mt-1 whitespace-nowrap rounded-[8px] border border-white/[0.1] bg-[#1f1f1f] px-2 py-1 text-[11px] font-semibold text-[#eeeeee] opacity-0 shadow-xl shadow-black/35 transition group-hover:opacity-100 group-focus-within:opacity-100">
-        {content}
-      </span>
-    </span>
   );
 }
 
@@ -2847,17 +2029,6 @@ function SettingsView({
   );
 }
 
-function formatEngineStatus(status?: string) {
-  if (status === "ready") return "Ready";
-  if (status === "starting") return "Starting";
-  if (status === "downloading") return "Downloading";
-  if (status === "transcribing") return "Transcribing";
-  if (status === "idle") return "Idle";
-  if (status === "failed") return "Failed";
-  if (status === "stopped") return "Stopped";
-  return "Unknown";
-}
-
 interface AboutViewProps {
   appInfo: AppInfo;
   storagePath?: string;
@@ -2928,32 +2099,6 @@ function AboutView({ appInfo, storagePath }: AboutViewProps) {
 interface OverlayPlacementControlProps {
   placement: OverlayPlacement;
   onChange: (placement: OverlayPlacement) => void;
-}
-
-interface ToggleSwitchProps {
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-}
-
-function ToggleSwitch({ label, checked, disabled = false, onChange }: ToggleSwitchProps) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      className={`relative h-6 w-11 shrink-0 rounded-full border border-white/[0.1] transition ${focusRingClass} ${disabled ? "cursor-not-allowed opacity-50" : ""} ${checked ? "bg-[#5f9fc6]/70" : "bg-[#2b2b2b]"}`}
-      onClick={() => onChange(!checked)}
-    >
-      <span
-        aria-hidden="true"
-        className={`absolute left-[3px] top-[3px] size-[18px] rounded-full bg-[#f1f1f1] shadow-[0_1px_4px_rgba(0,0,0,0.35)] transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`}
-      />
-    </button>
-  );
 }
 
 function OverlayPlacementControl({ placement, onChange }: OverlayPlacementControlProps) {
@@ -3048,125 +2193,6 @@ function TextEditorSelector({ options, selectedEditorId, selectedLabel, onSelect
       ) : null}
     </div>
   );
-}
-
-function TextEditorIcon({ editor, className }: { editor: TextEditorOption; className: string }) {
-  if (!editor.iconDataUrl) {
-    return <span aria-hidden="true" data-editor-icon={editor.id} className={className} />;
-  }
-
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      data-editor-icon={editor.id}
-      className={`${className} rounded-[3px] object-contain`}
-      src={editor.iconDataUrl}
-    />
-  );
-}
-
-interface ViewFrameProps {
-  title: string;
-  children: ReactNode;
-}
-
-function ViewFrame({ title, children }: ViewFrameProps) {
-  return (
-    <section className="mx-auto w-full max-w-[520px] space-y-4">
-      <h2 className="sr-only">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-interface GroupedPanelProps {
-  title?: string;
-  allowOverflow?: boolean;
-  children: ReactNode;
-}
-
-function GroupedPanel({ title, allowOverflow = false, children }: GroupedPanelProps) {
-  return (
-    <section className="space-y-2">
-      {title ? <h3 className="px-1 text-[13px] font-semibold text-[#a8a8a8]">{title}</h3> : null}
-      <div className={allowOverflow ? panelGlassClass : panelSurfaceClass}>{children}</div>
-    </section>
-  );
-}
-
-interface PanelRowProps {
-  icon?: ReactNode;
-  title: string;
-  detail?: string;
-  trailing?: ReactNode;
-  extra?: ReactNode;
-}
-
-function PanelRow({ icon, title, detail, trailing, extra }: PanelRowProps) {
-  return (
-    <div className={`border-t ${panelDividerClass} p-4 first:border-t-0`}>
-      <div className="flex min-w-0 items-center gap-3">
-        {icon ? <div className={iconTileClass}>{icon}</div> : null}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-[#eeeeee]">{title}</p>
-          {detail ? <p className="selectable-text mt-0.5 truncate text-[12px] font-medium text-[#aaa]">{detail}</p> : null}
-        </div>
-        {trailing ? <div className="shrink-0">{trailing}</div> : null}
-      </div>
-      {extra ? <div className={icon ? "mt-3 pl-11" : "mt-3"}>{extra}</div> : null}
-    </div>
-  );
-}
-
-interface StatusLabelProps {
-  children: ReactNode;
-}
-
-interface NavigateButtonProps {
-  label: string;
-  onClick: () => void;
-}
-
-function NavigateButton({ label, onClick }: NavigateButtonProps) {
-  return (
-    <button
-      type="button"
-      className={`inline-flex h-7 items-center gap-1.5 ${sharedRadiusClass} bg-white/[0.08] px-2.5 text-[12px] font-semibold text-[#eeeeee] transition hover:bg-white/[0.12] active:scale-[0.97]`}
-      onClick={onClick}
-    >
-      <span>{label}</span>
-      <ArrowUpRight className="size-3" />
-    </button>
-  );
-}
-
-function StatusLabel({ children }: StatusLabelProps) {
-  return <span className="text-[12px] font-semibold text-[#cfcfcf]">{children}</span>;
-}
-
-interface ShortcutClusterProps {
-  parts: string[];
-  muted?: boolean;
-}
-
-function ShortcutCluster({ parts, muted = false }: ShortcutClusterProps) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1">
-      {parts.map((part) => (
-        <ShortcutBadge key={part} muted={muted}>{part}</ShortcutBadge>
-      ))}
-    </span>
-  );
-}
-
-interface ShortcutBadgeProps {
-  children: ReactNode;
-  muted?: boolean;
-}
-
-function ShortcutBadge({ children, muted = false }: ShortcutBadgeProps) {
-  return <span className={`grid min-w-5 place-items-center rounded-[5px] px-1.5 py-1 text-[11px] font-semibold leading-none ${muted ? "bg-[#3a3a3a] text-[#858585]" : "bg-[#646464] text-[#f2f2f2]"}`}>{children}</span>;
 }
 
 export default App;

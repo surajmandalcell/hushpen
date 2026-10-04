@@ -1,28 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getErrorMessage } from "./lib/errors";
+import { countWords, formatByteCount, formatDuration, formatHistoryGroupLabel, formatHomeRelativePath } from "./lib/format";
+import { buildHistoryTitle } from "./lib/history";
+import { formatShortcutParts } from "./lib/shortcut";
+import { loadTranscriptHistory, normalizeTranscriptHistoryRow, saveTranscriptHistory } from "./lib/storage";
+import { convertBlobToWav, dataUrlToBlob, encodePcm16Wav, mixAudioBufferToMono, resamplePcm } from "./lib/wav";
 import {
-  buildHistoryTitle,
   buildReactiveWaveformFrame,
-  convertBlobToWav,
-  countWords,
-  dataUrlToBlob,
-  encodePcm16Wav,
-  formatByteCount,
-  formatDuration,
-  formatHistoryGroupLabel,
-  formatHomeRelativePath,
-  formatShortcutParts,
-  getErrorMessage,
   idleWaveformFrame,
-  loadTranscriptHistory,
-  mixAudioBufferToMono,
-  normalizeTranscriptHistoryRow,
-  resamplePcm,
-  saveTranscriptHistory,
   sendOverlayWaveformFrame,
   toOverlayWaveformSamples,
   waveformBaseBars,
-  type TranscriptHistoryRow,
-} from "./App";
+} from "./lib/waveform";
+import type { TranscriptHistoryRow } from "./types/history";
 
 describe("encodePcm16Wav", () => {
   it("writes a 44-byte RIFF header for 16 kHz mono PCM16", () => {
