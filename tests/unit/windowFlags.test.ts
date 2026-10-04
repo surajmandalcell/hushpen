@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const { lockMainWindowSize } = require("../../electron/windows/mainWindow.cjs") as {
-  lockMainWindowSize: (win: unknown) => void;
+  lockMainWindowSize: (win: unknown, platform?: string) => void;
 };
 
 function fakeWindow(size: [number, number] = [780, 520]) {
@@ -39,6 +39,14 @@ describe("main window flags (D-15)", () => {
     expect(state.fullScreenable).toBe(false);
     expect(state.min).toEqual([780, 520]);
     expect(state.max).toEqual([780, 520]);
+  });
+
+  it("reports not maximizable on Linux even though Electron always answers true there", () => {
+    const { win } = fakeWindow();
+    (win as Record<string, unknown>).isMaximizable = () => true;
+    lockMainWindowSize(win, "linux");
+
+    expect((win as unknown as { isMaximizable: () => boolean }).isMaximizable()).toBe(false);
   });
 
   it("restores the fixed size when a platform resizes, maximizes, or fullscreens anyway", () => {

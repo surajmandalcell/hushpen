@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppError, bridge, isAppError } from "./bridge";
-import { getErrorMessage } from "./errors";
+import { getErrorMessage, getRecordingErrorTitle } from "./errors";
 
 afterEach(() => {
   window.asrpro = undefined;
@@ -65,5 +65,15 @@ describe("error messages come from codes", () => {
     const error = new AppError("ENGINE_LOAD_FAILED", undefined, "Cannot find module whisper.node");
 
     expect(getErrorMessage(error)).toBe("Native Whisper engine could not load. Reinstall dependencies, then restart ASR Pro.");
+  });
+});
+
+describe("recording error titles", () => {
+  it("keeps the 1.x titles per code", () => {
+    expect(getRecordingErrorTitle("ENGINE_NOT_READY")).toBe("Engine needs restart");
+    expect(getRecordingErrorTitle("MODEL_DOWNLOAD_FAILED")).toBe("Engine unavailable");
+    expect(getRecordingErrorTitle("OFFLINE")).toBe("Engine unavailable");
+    expect(getRecordingErrorTitle("ENGINE_LOAD_FAILED")).toBe("Recording failed");
+    expect(getRecordingErrorTitle(undefined)).toBe("Recording failed");
   });
 });

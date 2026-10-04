@@ -6,12 +6,17 @@ const { DEV_SERVER_URL, MAIN_WINDOW_BACKGROUND, MAIN_WINDOW_SIZE } = require("..
 
 // The window must stay 780x520 on every platform (D-15). Each flag below is also
 // re-applied after creation because some platforms ignore constructor flags.
-function lockMainWindowSize(win) {
+function lockMainWindowSize(win, platform = process.platform) {
   win.setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height);
   win.setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height);
   win.setResizable(false);
   win.setMaximizable(false);
   win.setFullScreenable(false);
+
+  // Electron ignores setMaximizable on Linux and isMaximizable() keeps answering
+  // true, although the window cannot be maximized (not resizable, and the
+  // "maximize" handler below undoes it). Report what the window really does.
+  if (platform === "linux") win.isMaximizable = () => false;
 
   win.on("will-resize", (event) => {
     event.preventDefault();
@@ -67,7 +72,7 @@ function createMainWindowController({ ctx, getAssetRoot }) {
       },
     });
     ctx.windows.main = win;
-    lockMainWindowSize(win);
+    lockMainWindowSize(win, ctx.platform);
 
     win.once("ready-to-show", () => {
       win.show();

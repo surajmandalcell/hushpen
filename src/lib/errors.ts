@@ -24,14 +24,12 @@ const messagesByCode: Partial<Record<ErrorCode, string>> = {
   SETTINGS_INVALID: "That setting could not be saved.",
 };
 
+// Same titles the 1.x text matching produced; a load failure still reads "Recording failed".
 const titlesByCode: Partial<Record<ErrorCode, string>> = {
   ENGINE_NOT_READY: "Engine needs restart",
-  ENGINE_LOAD_FAILED: "Engine unavailable",
-  ENGINE_CRASHED: "Engine unavailable",
   MODEL_DOWNLOAD_FAILED: "Engine unavailable",
   MODEL_DOWNLOAD_STALLED: "Engine unavailable",
   MODEL_CHECKSUM_MISMATCH: "Engine unavailable",
-  MODEL_MISSING: "Engine unavailable",
   OFFLINE: "Engine unavailable",
 };
 

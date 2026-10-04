@@ -39,7 +39,7 @@ describe("Electron runtime helpers", () => {
       expect(source).not.toContain('action === "maximize"');
       expect(source).not.toContain(".maximize()");
     }
-    expect(windowSource).toContain("lockMainWindowSize(win)");
+    expect(windowSource).toContain("lockMainWindowSize(win, ctx.platform)");
     expect(windowSource).toContain("setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
     expect(windowSource).toContain("setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
     expect(windowSource).toContain('win.on("will-resize"');
