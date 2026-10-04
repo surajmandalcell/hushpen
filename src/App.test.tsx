@@ -882,7 +882,7 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.getByText("Buy milk and schedule the product demo.")).toBeTruthy();
     const audio = screen.getByLabelText("Recording audio: Buy milk and schedule the product demo.");
     expect(audio.tagName).toBe("AUDIO");
-    expect(audio.getAttribute("src")).toMatch(/^data:audio\/webm/);
+    expect(audio.getAttribute("src")).toMatch(/^blob:/);
     const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const pauseSpy = vi.spyOn(window.HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
 
@@ -931,7 +931,7 @@ describe("ASR Pro Electron shell", () => {
 
     const audio = screen.getByLabelText("Recording audio: Recording failed to transcribe");
     expect(audio.tagName).toBe("AUDIO");
-    expect(audio.getAttribute("src")).toMatch(/^data:audio\/webm/);
+    expect(audio.getAttribute("src")).toMatch(/^blob:/);
     const playSpy = vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
 
     await user.click(screen.getByRole("button", { name: "Play recording: Recording failed to transcribe" }));
