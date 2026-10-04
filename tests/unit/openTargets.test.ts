@@ -8,6 +8,7 @@ const { EXTERNAL_TARGETS, FOLDER_TARGETS, createOpenTargets, isAllowedExternalUr
   createOpenTargets: (options: {
     shell: { openExternal: (url: string) => Promise<void>; openPath: (path: string) => Promise<string> };
     ctx: { dataDir: string; layout: { logsDir: string } };
+    mkdir?: (path: string, options: { recursive: true }) => void;
   }) => { open: (target: string) => Promise<void> };
   isAllowedExternalUrl: (url: unknown) => boolean;
 };
@@ -19,7 +20,8 @@ function setup(openPathReply = "") {
     openPath: vi.fn(async (_path: string) => openPathReply),
   };
   const ctx = { dataDir: "/data", layout: { logsDir: "/data/logs" } };
-  return { shell, ...createOpenTargets({ shell, ctx }) };
+  const mkdir = vi.fn();
+  return { shell, mkdir, ...createOpenTargets({ shell, ctx, mkdir }) };
 }
 
 describe("shell:open targets", () => {
@@ -50,6 +52,18 @@ describe("shell:open targets", () => {
 
     expect(shell.openPath.mock.calls.map(([target]) => target)).toEqual(["/data", "/data/logs"]);
     expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+
+  it("creates a folder before opening it, so a fresh install has a log folder to show", async () => {
+    const { open, shell, mkdir } = setup();
+    shell.openPath.mockImplementation(async (target: string) => {
+      expect(mkdir).toHaveBeenCalledWith(target, { recursive: true });
+      return "";
+    });
+
+    await open("log-folder");
+
+    expect(shell.openPath).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an unknown target without opening anything", async () => {

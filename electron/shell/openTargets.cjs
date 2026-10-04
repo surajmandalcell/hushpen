@@ -1,3 +1,4 @@
+const fs = require("node:fs");
 const { AppError } = require("../core/errors.cjs");
 
 const REPOSITORY_URL = "https://github.com/surajmandalcell/asrpro";
@@ -26,7 +27,7 @@ function isAllowedExternalUrl(value) {
     && (url.pathname === REPOSITORY_PATH || url.pathname.startsWith(`${REPOSITORY_PATH}/`));
 }
 
-function createOpenTargets({ ctx, shell = require("electron").shell }) {
+function createOpenTargets({ ctx, shell = require("electron").shell, mkdir = fs.mkdirSync }) {
   const folders = {
     "data-folder": () => ctx.dataDir,
     "log-folder": () => ctx.layout.logsDir,
@@ -41,7 +42,10 @@ function createOpenTargets({ ctx, shell = require("electron").shell }) {
     }
 
     if (Object.hasOwn(folders, target)) {
-      const failure = await shell.openPath(folders[target]());
+      const folder = folders[target]();
+      // The log folder only exists after the first logged error.
+      mkdir(folder, { recursive: true });
+      const failure = await shell.openPath(folder);
       if (failure) throw new AppError("INTERNAL", { target }, "The folder could not be opened.");
       return;
     }
