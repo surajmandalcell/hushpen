@@ -198,13 +198,36 @@ describe("settings:set and settings:import-legacy", () => {
     expect(settings.get("recording.audioInputId")).toBe("usb-mic");
   });
 
-  it("ignores an unknown legacy model name and leaves the import open", async () => {
+  it("closes the import on the first attempt even when an unknown legacy model name is rejected", async () => {
     const { call, trusted, settings } = settingsSetup();
 
     const reply = await call("settings:import-legacy", trusted, { selectedModelName: "Not A Model" });
 
     expect(reply.value).toEqual(expect.objectContaining({ imported: false }));
     expect(settings.get("transcription.modelId")).toBe("whisper-base-en");
-    expect(settings.get("migrations.legacyLocalStorage")).toBe(false);
+    expect(settings.get("migrations.legacyLocalStorage")).toBe(true);
+  });
+
+  it("closes the import on the first attempt when the payload is empty", async () => {
+    const { call, trusted, settings } = settingsSetup();
+
+    const reply = await call("settings:import-legacy", trusted, {});
+
+    expect(reply.value).toEqual(expect.objectContaining({ imported: false }));
+    expect(settings.get("migrations.legacyLocalStorage")).toBe(true);
+  });
+
+  it("keeps a model and microphone chosen after a rejected first import", async () => {
+    const { call, trusted, settings } = settingsSetup();
+
+    await call("settings:import-legacy", trusted, { selectedModelName: "Not A Model" });
+    await call("settings:set", trusted, { key: "transcription.modelId", value: "whisper-small-en" });
+    await call("settings:set", trusted, { key: "recording.audioInputId", value: "desk-mic" });
+
+    const again = await call("settings:import-legacy", trusted, { selectedModelName: "Whisper Base English", audioInputId: "old-mic" });
+
+    expect(again.value).toEqual(expect.objectContaining({ imported: false }));
+    expect(settings.get("transcription.modelId")).toBe("whisper-small-en");
+    expect(settings.get("recording.audioInputId")).toBe("desk-mic");
   });
 });

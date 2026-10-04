@@ -42,7 +42,10 @@ export function useRuntimeBridge({
       runtimeStateLoadedRef.current = true;
       const legacy = readLegacyLocalStorageSettings();
       const importLegacy = legacy.selectedModelName || legacy.audioInputId
-        ? bridge.importLegacySettings(legacy).catch(() => undefined)
+        ? bridge.getSettings()
+          .then((settings) => settings.values["migrations.legacyLocalStorage"] === true, () => false)
+          .then((closed) => (closed ? undefined : bridge.importLegacySettings(legacy)))
+          .catch(() => undefined)
         : Promise.resolve(undefined);
       importLegacy.then(() => bridge.getRuntimeState()).then((state) => {
         if (!state) return;

@@ -1700,6 +1700,22 @@ describe("legacy localStorage import", () => {
     expect(window.localStorage.getItem("asrpro.audioInputDevice.v1")).toBe("usb-mic");
   });
 
+  it("skips the import when the main process already closed it", async () => {
+    window.localStorage.setItem("asrpro.selectedModel.v1", "Whisper Small English");
+    window.localStorage.setItem("asrpro.audioInputDevice.v1", "usb-mic");
+    const importLegacySettings = vi.fn();
+    const getSettings = vi.fn().mockResolvedValue({ schemaVersion: 1, values: { "migrations.legacyLocalStorage": true } });
+    const getRuntimeState = vi.fn().mockResolvedValue({ isRecording: false });
+    installFakeMain({ importLegacySettings, getSettings, getRuntimeState });
+
+    await renderApp();
+
+    await waitFor(() => expect(getRuntimeState).toHaveBeenCalled());
+    expect(getSettings).toHaveBeenCalled();
+    expect(importLegacySettings).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("asrpro.selectedModel.v1")).toBe("Whisper Small English");
+  });
+
   it("does not call the import when there is nothing in localStorage", async () => {
     const importLegacySettings = vi.fn();
     installFakeMain({ importLegacySettings, getRuntimeState: vi.fn().mockResolvedValue({ isRecording: false }) });

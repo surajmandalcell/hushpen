@@ -29,6 +29,7 @@ export interface FakeMainHandlers {
   setStartupLaunch?: Handler;
   setOverlaySettings?: Handler;
   importLegacySettings?: Handler;
+  getSettings?: Handler;
   setWaveformFrame?: Handler;
   onRecordingState?: Handler;
   onEngineState?: Handler;
@@ -98,6 +99,9 @@ export function installFakeMain(handlers: FakeMainHandlers = {}): FakeMain {
     "transcript:open-text": (payload: unknown) => call(handlers.openTranscriptText, payload),
     "transcript:delete-text": (payload: unknown) => call(handlers.deleteTranscriptText, payload),
     "settings:set": setSetting,
+    "settings:get-all": () => (
+      handlers.getSettings ? call(handlers.getSettings) : { schemaVersion: 1, values: {} }
+    ),
     "settings:import-legacy": (payload: unknown) => (
       handlers.importLegacySettings ? call(handlers.importLegacySettings, payload) : { imported: false, values: {} }
     ),

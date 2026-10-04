@@ -101,6 +101,7 @@ export const bridge = {
   windowControl: (action: WindowAction) => invoke<void>("window:control", { action }),
   openTarget: (target: OpenTarget) => invoke<void>("shell:open", { target }),
 
+  getSettings: () => invoke<{ schemaVersion: number; values: SettingsValues }>("settings:get-all"),
   setSetting: (key: SettingKey, value: unknown) => invoke<SettingsReply>("settings:set", { key, value }),
   importLegacySettings: (legacy: LegacySettingsImport) => (
     invoke<{ imported: boolean; values: SettingsValues }>("settings:import-legacy", legacy)

@@ -65,12 +65,12 @@ function registerSettingsIpc({ router, ctx, overlay, startup }) {
       }
     }
 
-    if (Object.keys(patch).length === 0) {
-      return { imported: false, values: settings.getAll() };
-    }
-
+    // The renderer keeps the old keys, so the marker closes the import on the
+    // first attempt even when nothing was accepted. Otherwise a later choice
+    // in the UI would be overwritten on the next start.
+    const imported = Object.keys(patch).length > 0;
     patch["migrations.legacyLocalStorage"] = true;
-    return { imported: true, values: settings.update(patch) };
+    return { imported, values: settings.update(patch) };
   });
 }
 
