@@ -3,6 +3,7 @@
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { patchLinuxAddonDir } = require("./patch-elf-runpath.cjs");
 
 function getPackageRoot() {
   return path.dirname(require.resolve("@kutalia/whisper-node-addon/package.json"));
@@ -40,10 +41,23 @@ function prepareDarwinAddon() {
   run("install_name_tool", ["-add_rpath", "@loader_path", addonPath]);
 }
 
+function prepareLinuxAddons() {
+  // Runs on every host OS: Linux artifacts can be cross-built from macOS, and
+  // the upstream binaries carry a CI-runner RUNPATH instead of $ORIGIN.
+  const distDir = path.join(getPackageRoot(), "dist");
+  if (!fs.existsSync(distDir)) return;
+
+  for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("linux-")) continue;
+    patchLinuxAddonDir(path.join(distDir, entry.name));
+  }
+}
+
 try {
   if (process.platform === "darwin") {
     prepareDarwinAddon();
   }
+  prepareLinuxAddons();
 } catch (error) {
   console.error("Failed to prepare native Whisper addon.");
   console.error(error instanceof Error ? error.message : error);

@@ -1,5 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { patchLinuxAddonDir } = require("./patch-elf-runpath.cjs");
+
+const LINUX_UNUSED_ADDON_FILES = ["vulkan-shaders-gen", "libwhisper.so", "libwhisper.so.1.7.6"];
 
 function normalizeArch(arch) {
   if (arch === "arm64" || arch === 3) return "arm64";
@@ -50,5 +53,15 @@ module.exports = async function afterPackCleanup(context) {
     if (!entry.isDirectory() || entry.name === keepDir || entry.name === "js") continue;
     if (!/^(mac|linux|win32)-/.test(entry.name)) continue;
     fs.rmSync(path.join(addonDistDir, entry.name), { recursive: true, force: true });
+  }
+
+  if (platform === "linux") {
+    const linuxDir = path.join(addonDistDir, keepDir);
+    // whisper.node only NEEDs libwhisper.so.1; the other copies are identical files
+    // (not symlinks) and vulkan-shaders-gen is a build-time tool.
+    for (const unused of LINUX_UNUSED_ADDON_FILES) {
+      fs.rmSync(path.join(linuxDir, unused), { force: true });
+    }
+    patchLinuxAddonDir(linuxDir);
   }
 };

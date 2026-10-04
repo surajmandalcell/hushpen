@@ -59,6 +59,12 @@ const DEFAULT_MODEL = AVAILABLE_MODELS[1];
 
 let addon;
 const modelDownloadPromises = new Map();
+const NATIVE_LOAD_ERROR_PREFIX = "Native Whisper engine could not load:";
+const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
+const DOWNLOAD_MAX_REDIRECTS = 8;
+const VERIFIED_SUFFIX = ".verified";
+// Set ASRPRO_DISABLE_GPU=1 to force CPU decoding (useful for broken Vulkan drivers on Linux).
+let gpuDisabled = process.env.ASRPRO_DISABLE_GPU === "1";
 
 function getModelById(modelId) {
   return AVAILABLE_MODELS.find((model) => model.id === modelId) || DEFAULT_MODEL;
@@ -102,6 +108,7 @@ function getModelFileSize(dataDir, modelId) {
 
 function loadAddon() {
   if (!addon) {
+    assertNativeAddonAvailable();
     try {
       addon = require("@kutalia/whisper-node-addon");
     } catch (error) {
@@ -111,8 +118,26 @@ function loadAddon() {
   return addon;
 }
 
+function getAddonPackageRoot() {
+  return path.dirname(require.resolve("@kutalia/whisper-node-addon/package.json"));
+}
+
+function assertNativeAddonAvailable() {
+  const nativeDir = getNativeAddonDir();
+  let addonPath = "";
+  try {
+    addonPath = path.join(getAddonPackageRoot(), "dist", nativeDir, "whisper.node");
+  } catch {
+    return;
+  }
+
+  if (!fs.existsSync(addonPath)) {
+    throw new Error(`${NATIVE_LOAD_ERROR_PREFIX} no prebuilt engine is available for ${process.platform}-${process.arch}.`);
+  }
+}
+
 function loadAddonFromPackagedBinary(originalError) {
-  const packageRoot = path.dirname(require.resolve("@kutalia/whisper-node-addon/package.json"));
+  const packageRoot = getAddonPackageRoot();
   const nativeDir = getNativeAddonDir();
   const addonPath = path.join(packageRoot, "dist", nativeDir, "whisper.node");
 
@@ -127,8 +152,41 @@ function loadAddonFromPackagedBinary(originalError) {
   } catch (fallbackError) {
     const originalMessage = originalError instanceof Error ? originalError.message : String(originalError);
     const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-    throw new Error(`Failed to load native Whisper addon. Package loader: ${originalMessage}. Binary loader: ${fallbackMessage}`);
+    const error = new Error(describeNativeLoadError(`${originalMessage}\n${fallbackMessage}`));
+    error.details = `Failed to load native Whisper addon. Package loader: ${originalMessage}. Binary loader: ${fallbackMessage}`;
+    throw error;
   }
+}
+
+function describeNativeLoadError(rawMessage = "") {
+  const message = String(rawMessage);
+  const glibcMatch = message.match(/GLIBC_(\d+\.\d+)'? not found/);
+  if (glibcMatch) {
+    return `${NATIVE_LOAD_ERROR_PREFIX} this Linux system's C library is too old (needs glibc ${glibcMatch[1]} or newer, e.g. Ubuntu 24.04, Debian 13, Fedora 39).`;
+  }
+
+  const glibcxxMatch = message.match(/GLIBCXX_(\d+(?:\.\d+)+)'? not found/);
+  if (glibcxxMatch) {
+    return `${NATIVE_LOAD_ERROR_PREFIX} the system C++ runtime is too old (needs libstdc++ with GLIBCXX_${glibcxxMatch[1]}, from GCC 13 or newer).`;
+  }
+
+  if (/libvulkan\.so\.1/.test(message)) {
+    return `${NATIVE_LOAD_ERROR_PREFIX} the Vulkan loader is missing. Install libvulkan1 (Debian/Ubuntu), vulkan-loader (Fedora) or vulkan-icd-loader (Arch), then restart ASR Pro.`;
+  }
+
+  if (/libgomp\.so\.1/.test(message)) {
+    return `${NATIVE_LOAD_ERROR_PREFIX} the OpenMP runtime is missing. Install libgomp1 (Debian/Ubuntu) or libgomp (Fedora/Arch), then restart ASR Pro.`;
+  }
+
+  if (/lib(whisper|ggml)[\w.-]*\.so[\w.]*: cannot open shared object file/.test(message)) {
+    return `${NATIVE_LOAD_ERROR_PREFIX} bundled engine libraries could not be found. This build is packaged incorrectly; reinstall ASR Pro.`;
+  }
+
+  if (/wrong ELF class|invalid ELF header|Exec format error|incompatible architecture/i.test(message)) {
+    return `${NATIVE_LOAD_ERROR_PREFIX} the bundled engine does not match this CPU architecture (${process.arch}).`;
+  }
+
+  return `${NATIVE_LOAD_ERROR_PREFIX} ${message.split("\n").find(Boolean) || "unknown error"}`;
 }
 
 function getNativeAddonDir() {
@@ -139,7 +197,7 @@ function getNativeAddonDir() {
   };
   const platform = platformMap[process.platform];
   if (!platform) {
-    throw new Error(`Unsupported platform for native Whisper addon: ${process.platform}`);
+    throw new Error(`${NATIVE_LOAD_ERROR_PREFIX} ${process.platform} is not supported.`);
   }
   return `${platform}-${process.arch}`;
 }
@@ -147,7 +205,7 @@ function getNativeAddonDir() {
 async function ensureModel(model, dataDir, onState = () => {}) {
   const modelPath = getModelPath(dataDir, model.id);
   if (fs.existsSync(modelPath)) {
-    await verifySha1(modelPath, model.sha1);
+    await verifyModelFile(modelPath, model.sha1);
     return modelPath;
   }
 
@@ -175,7 +233,7 @@ async function ensureModel(model, dataDir, onState = () => {}) {
       });
     });
 
-    await verifySha1(modelPath, model.sha1);
+    await verifyModelFile(modelPath, model.sha1);
     return modelPath;
   })();
 
@@ -206,6 +264,7 @@ function deleteModelFile({ modelId, dataDir }) {
 
   fs.rmSync(modelPath, { force: true });
   fs.rmSync(`${modelPath}.download`, { force: true });
+  fs.rmSync(`${modelPath}${VERIFIED_SUFFIX}`, { force: true });
 
   return {
     deleted: wasInstalled,
@@ -214,20 +273,39 @@ function deleteModelFile({ modelId, dataDir }) {
   };
 }
 
-function downloadFile(url, destination, onProgress = () => {}) {
+function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0) {
   const tempPath = `${destination}.download`;
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      fs.rmSync(tempPath, { force: true });
+      reject(error);
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
     const request = https.get(url, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
-        downloadFile(response.headers.location, destination, onProgress).then(resolve, reject);
+        if (redirectCount >= DOWNLOAD_MAX_REDIRECTS) {
+          fail(new Error("Model download failed: too many redirects."));
+          return;
+        }
+        const nextUrl = new URL(response.headers.location, url).toString();
+        settled = true;
+        downloadFile(nextUrl, destination, onProgress, redirectCount + 1).then(resolve, reject);
         return;
       }
 
       if (response.statusCode !== 200) {
         response.resume();
-        reject(new Error(`Model download failed with HTTP ${response.statusCode}`));
+        fail(new Error(`Model download failed with HTTP ${response.statusCode}`));
         return;
       }
 
@@ -235,43 +313,86 @@ function downloadFile(url, destination, onProgress = () => {}) {
       let downloadedBytes = 0;
       const output = fs.createWriteStream(tempPath);
 
+      const abortStream = (error) => {
+        output.destroy();
+        fail(error);
+      };
+
       response.on("data", (chunk) => {
         downloadedBytes += chunk.length;
         if (totalBytes > 0) {
           onProgress(Math.round((downloadedBytes / totalBytes) * 100));
         }
       });
+      response.on("aborted", () => abortStream(new Error("Model download failed: connection was interrupted.")));
+      response.on("error", (error) => abortStream(error));
       response.pipe(output);
 
       output.on("finish", () => {
         output.close((closeError) => {
           if (closeError) {
-            fs.rmSync(tempPath, { force: true });
-            reject(closeError);
+            fail(closeError);
+            return;
+          }
+
+          if (totalBytes > 0 && downloadedBytes < totalBytes) {
+            fail(new Error("Model download failed: connection closed before the file finished downloading."));
             return;
           }
 
           try {
             fs.renameSync(tempPath, destination);
             onProgress(100);
-            resolve();
+            succeed();
           } catch (error) {
-            fs.rmSync(tempPath, { force: true });
-            reject(error);
+            fail(error);
           }
         });
       });
-      output.on("error", (error) => {
-        fs.rmSync(tempPath, { force: true });
-        reject(error);
-      });
+      output.on("error", (error) => abortStream(error));
     });
 
-    request.on("error", (error) => {
-      fs.rmSync(tempPath, { force: true });
-      reject(error);
-    });
+    if (typeof request.setTimeout === "function") {
+      request.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
+        const error = new Error("Model download failed: the connection timed out.");
+        if (typeof request.destroy === "function") request.destroy(error);
+        fail(error);
+      });
+    }
+
+    request.on("error", (error) => fail(error));
   });
+}
+
+function readVerifiedStamp(filePath) {
+  try {
+    return fs.readFileSync(`${filePath}${VERIFIED_SUFFIX}`, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function buildVerifiedStamp(filePath, expectedSha1) {
+  const stat = fs.statSync(filePath);
+  return `${expectedSha1}:${stat.size}:${Math.round(stat.mtimeMs)}`;
+}
+
+async function verifyModelFile(filePath, expectedSha1) {
+  if (!expectedSha1) return;
+
+  try {
+    if (readVerifiedStamp(filePath) === buildVerifiedStamp(filePath, expectedSha1)) return;
+  } catch {
+    // Fall through to a full hash when the file cannot be stat'ed.
+  }
+
+  await verifySha1(filePath, expectedSha1);
+
+  try {
+    fs.writeFileSync(`${filePath}${VERIFIED_SUFFIX}`, buildVerifiedStamp(filePath, expectedSha1), "utf8");
+  } catch {
+    // A read-only models folder only costs a re-hash next time.
+  }
 }
 
 function verifySha1(filePath, expectedSha1) {
@@ -287,6 +408,7 @@ function verifySha1(filePath, expectedSha1) {
       const actualSha1 = hash.digest("hex");
       if (actualSha1 !== expectedSha1) {
         fs.rmSync(filePath, { force: true });
+        fs.rmSync(`${filePath}${VERIFIED_SUFFIX}`, { force: true });
         reject(new Error(`Downloaded model checksum mismatch for ${path.basename(filePath)}.`));
         return;
       }
