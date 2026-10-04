@@ -5,6 +5,12 @@
   "productName": "ASR Pro",
   "description": "Cross-platform desktop speech recognition and transcription workspace.",
   "author": "Suraj Mandal <surajmandalcell@gmail.com>",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/surajmandalcell/asrpro",
+  "engines": {
+    "node": "^22.0.0",
+    "npm": "^10.0.0"
+  },
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
