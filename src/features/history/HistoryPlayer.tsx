@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pause, Play, VolumeX } from "lucide-react";
 import { sharedRadiusClass } from "../../components/ui/classes";
+import { dataUrlToBlob } from "../../lib/wav";
 import { historyWaveformBars } from "../../lib/waveform";
 
 export function MissingHistoryAudioNotice() {
@@ -17,9 +18,34 @@ interface HistoryRecordingPlayerProps {
   src: string;
 }
 
+// The page CSP does not allow data: media, and 1.x history rows keep their audio as a data URL.
+function usePlayableSource(src: string) {
+  const isDataUrl = src.startsWith("data:");
+  const [blobUrl, setBlobUrl] = useState<string>();
+
+  useEffect(() => {
+    if (!isDataUrl) return;
+
+    let url: string;
+    try {
+      url = URL.createObjectURL(dataUrlToBlob(src));
+    } catch {
+      return;
+    }
+    setBlobUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+      setBlobUrl(undefined);
+    };
+  }, [isDataUrl, src]);
+
+  return isDataUrl ? blobUrl : src;
+}
+
 export function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const playableSrc = usePlayableSource(src);
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
@@ -62,7 +88,7 @@ export function HistoryRecordingPlayer({ title, src }: HistoryRecordingPlayerPro
         ref={audioRef}
         aria-label={`Recording audio: ${title}`}
         preload="metadata"
-        src={src}
+        src={playableSrc}
         onEnded={() => setIsPlaying(false)}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
