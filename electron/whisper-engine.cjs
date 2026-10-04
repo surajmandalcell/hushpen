@@ -4,6 +4,7 @@ const https = require("node:https");
 const os = require("node:os");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { AppError } = require("./core/errors.cjs");
 
 const WHISPER_MODEL_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
@@ -70,7 +71,7 @@ function getModelById(modelId) {
 function requireModelById(modelId) {
   const model = AVAILABLE_MODELS.find((candidate) => candidate.id === modelId);
   if (!model) {
-    throw new Error(`Unsupported recognition model: ${modelId}`);
+    throw new AppError("INVALID_ARGUMENT", { modelId: String(modelId).slice(0, 80) }, "Unsupported recognition model.");
   }
   return model;
 }
@@ -129,7 +130,7 @@ function assertNativeAddonAvailable() {
   }
 
   if (!fs.existsSync(addonPath)) {
-    throw new Error(`${NATIVE_LOAD_ERROR_PREFIX} no prebuilt engine is available for ${process.platform}-${process.arch}.`);
+    throw new AppError("ENGINE_LOAD_FAILED", undefined, `${NATIVE_LOAD_ERROR_PREFIX} no prebuilt engine is available for ${process.platform}-${process.arch}.`);
   }
 }
 
@@ -149,9 +150,11 @@ function loadAddonFromPackagedBinary(originalError) {
   } catch (fallbackError) {
     const originalMessage = originalError instanceof Error ? originalError.message : String(originalError);
     const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-    const error = new Error(describeNativeLoadError(`${originalMessage}\n${fallbackMessage}`));
-    error.details = `Failed to load native Whisper addon. Package loader: ${originalMessage}. Binary loader: ${fallbackMessage}`;
-    throw error;
+    throw new AppError(
+      "ENGINE_LOAD_FAILED",
+      undefined,
+      `${describeNativeLoadError(`${originalMessage}\n${fallbackMessage}`)} (package loader: ${originalMessage.split("\n")[0]}; binary loader: ${fallbackMessage.split("\n")[0]})`,
+    );
   }
 }
 
@@ -194,7 +197,7 @@ function getNativeAddonDir() {
   };
   const platform = platformMap[process.platform];
   if (!platform) {
-    throw new Error(`${NATIVE_LOAD_ERROR_PREFIX} ${process.platform} is not supported.`);
+    throw new AppError("ENGINE_LOAD_FAILED", undefined, `${NATIVE_LOAD_ERROR_PREFIX} ${process.platform} is not supported.`);
   }
   return `${platform}-${process.arch}`;
 }
@@ -270,6 +273,11 @@ function deleteModelFile({ modelId, dataDir }) {
   };
 }
 
+function toDownloadError(error) {
+  if (error instanceof AppError) return error;
+  return new AppError("MODEL_DOWNLOAD_FAILED", undefined, error instanceof Error ? error.message : String(error));
+}
+
 function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0) {
   const tempPath = `${destination}.download`;
 
@@ -279,7 +287,7 @@ function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0
       if (settled) return;
       settled = true;
       fs.rmSync(tempPath, { force: true });
-      reject(error);
+      reject(toDownloadError(error));
     };
     const succeed = () => {
       if (settled) return;
@@ -291,7 +299,7 @@ function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
         if (redirectCount >= DOWNLOAD_MAX_REDIRECTS) {
-          fail(new Error("Model download failed: too many redirects."));
+          fail(new AppError("MODEL_DOWNLOAD_FAILED", undefined, "Model download failed: too many redirects."));
           return;
         }
         const nextUrl = new URL(response.headers.location, url).toString();
@@ -302,7 +310,7 @@ function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0
 
       if (response.statusCode !== 200) {
         response.resume();
-        fail(new Error(`Model download failed with HTTP ${response.statusCode}`));
+        fail(new AppError("MODEL_DOWNLOAD_FAILED", undefined, `Model download failed with HTTP ${response.statusCode}`));
         return;
       }
 
@@ -321,7 +329,7 @@ function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0
           onProgress(Math.round((downloadedBytes / totalBytes) * 100));
         }
       });
-      response.on("aborted", () => abortStream(new Error("Model download failed: connection was interrupted.")));
+      response.on("aborted", () => abortStream(new AppError("MODEL_DOWNLOAD_STALLED", undefined, "Model download failed: connection was interrupted.")));
       response.on("error", (error) => abortStream(error));
       response.pipe(output);
 
@@ -333,7 +341,7 @@ function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0
           }
 
           if (totalBytes > 0 && downloadedBytes < totalBytes) {
-            fail(new Error("Model download failed: connection closed before the file finished downloading."));
+            fail(new AppError("MODEL_DOWNLOAD_FAILED", undefined, "Model download failed: connection closed before the file finished downloading."));
             return;
           }
 
@@ -351,7 +359,7 @@ function downloadFile(url, destination, onProgress = () => {}, redirectCount = 0
 
     if (typeof request.setTimeout === "function") {
       request.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
-        const error = new Error("Model download failed: the connection timed out.");
+        const error = new AppError("MODEL_DOWNLOAD_STALLED", undefined, "Model download failed: the connection timed out.");
         if (typeof request.destroy === "function") request.destroy(error);
         fail(error);
       });
@@ -406,7 +414,7 @@ function verifySha1(filePath, expectedSha1) {
       if (actualSha1 !== expectedSha1) {
         fs.rmSync(filePath, { force: true });
         fs.rmSync(`${filePath}${VERIFIED_SUFFIX}`, { force: true });
-        reject(new Error(`Downloaded model checksum mismatch for ${path.basename(filePath)}.`));
+        reject(new AppError("MODEL_CHECKSUM_MISMATCH", undefined, `Downloaded model checksum mismatch for ${path.basename(filePath)}.`));
         return;
       }
       resolve();

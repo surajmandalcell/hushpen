@@ -1,0 +1,113 @@
+const path = require("node:path");
+const { BrowserWindow, shell } = require("electron");
+const { APP_NAME } = require("../identity.cjs");
+const { resolveAppIconPath } = require("../runtime.cjs");
+const { DEV_SERVER_URL, MAIN_WINDOW_BACKGROUND, MAIN_WINDOW_SIZE } = require("../core/constants.cjs");
+
+// The window must stay 780x520 on every platform (D-15). Each flag below is also
+// re-applied after creation because some platforms ignore constructor flags.
+function lockMainWindowSize(win) {
+  win.setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height);
+  win.setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height);
+  win.setResizable(false);
+  win.setMaximizable(false);
+  win.setFullScreenable(false);
+
+  win.on("will-resize", (event) => {
+    event.preventDefault();
+    win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+  });
+
+  win.on("resize", () => {
+    const [width, height] = win.getSize();
+    if (width !== MAIN_WINDOW_SIZE.width || height !== MAIN_WINDOW_SIZE.height) {
+      win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+    }
+  });
+
+  win.on("maximize", () => {
+    win.unmaximize();
+    win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+  });
+
+  win.on("enter-full-screen", () => {
+    win.setFullScreen(false);
+    win.setSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height, false);
+  });
+}
+
+function createMainWindowController({ ctx, getAssetRoot }) {
+  function create() {
+    const existing = ctx.windows.main;
+    if (existing && !existing.isDestroyed()) {
+      return existing;
+    }
+
+    const win = new BrowserWindow({
+      width: MAIN_WINDOW_SIZE.width,
+      height: MAIN_WINDOW_SIZE.height,
+      minWidth: MAIN_WINDOW_SIZE.width,
+      minHeight: MAIN_WINDOW_SIZE.height,
+      maxWidth: MAIN_WINDOW_SIZE.width,
+      maxHeight: MAIN_WINDOW_SIZE.height,
+      show: false,
+      frame: false,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      title: APP_NAME,
+      icon: resolveAppIconPath(ctx.platform, getAssetRoot()),
+      backgroundColor: MAIN_WINDOW_BACKGROUND,
+      webPreferences: {
+        preload: path.join(__dirname, "..", "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        backgroundThrottling: false,
+      },
+    });
+    ctx.windows.main = win;
+    lockMainWindowSize(win);
+
+    win.once("ready-to-show", () => {
+      win.show();
+    });
+
+    win.on("close", (event) => {
+      if (!ctx.state.isQuitting) {
+        event.preventDefault();
+        win.hide();
+      }
+    });
+
+    win.on("closed", () => {
+      ctx.windows.main = undefined;
+    });
+
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      shell.openExternal(url);
+      return { action: "deny" };
+    });
+
+    win.webContents.session.clearCache().catch(() => {});
+
+    if (ctx.app.isPackaged) {
+      win.loadFile(path.join(__dirname, "../../dist/index.html"));
+    } else {
+      win.loadURL(DEV_SERVER_URL);
+    }
+
+    return win;
+  }
+
+  function show() {
+    const win = create();
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+
+  return { create, show };
+}
+
+module.exports = { createMainWindowController, lockMainWindowSize };

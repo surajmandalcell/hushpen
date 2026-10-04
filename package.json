@@ -71,6 +71,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "shared/**/*",
       "node_modules/@kutalia/whisper-node-addon/**/*",
       "package.json"
     ],

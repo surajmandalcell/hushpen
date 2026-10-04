@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const require = createRequire(import.meta.url);
 const runtime = require("../electron/runtime.cjs");
 const whisperEngine = require("../electron/whisper-engine.cjs");
+const constants = require("../electron/core/constants.cjs");
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -22,36 +23,39 @@ describe("Electron runtime helpers", () => {
   });
 
   it("keeps the main window fixed-size and removes maximize entry points", () => {
-    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const windowSource = readFileSync("electron/windows/mainWindow.cjs", "utf8");
+    const constantsSource = readFileSync("electron/core/constants.cjs", "utf8");
     const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+    const windowIpcSource = readFileSync("electron/ipc/app.cjs", "utf8");
+    const menuSource = readFileSync("electron/shell/menu.cjs", "utf8");
 
-    expect(mainSource).toContain("const MAIN_WINDOW_SIZE = { width: 780, height: 520 };");
-    expect(mainSource).toContain('const SCREENSHOT_MODE = process.env.ASRPRO_SCREENSHOT_MODE === "1";');
-    expect(mainSource).toMatch(
-      /mainWindow = new BrowserWindow\(\{[\s\S]*?width: MAIN_WINDOW_SIZE\.width,[\s\S]*?height: MAIN_WINDOW_SIZE\.height,[\s\S]*?minWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?minHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?maxWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?maxHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?resizable: false,[\s\S]*?maximizable: false,[\s\S]*?fullscreenable: false,/
+    expect(constants.MAIN_WINDOW_SIZE).toEqual({ width: 780, height: 520 });
+    expect(constantsSource).toContain('const SCREENSHOT_MODE = process.env.ASRPRO_SCREENSHOT_MODE === "1";');
+    expect(windowSource).toMatch(
+      /new BrowserWindow\(\{[\s\S]*?width: MAIN_WINDOW_SIZE\.width,[\s\S]*?height: MAIN_WINDOW_SIZE\.height,[\s\S]*?minWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?minHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?maxWidth: MAIN_WINDOW_SIZE\.width,[\s\S]*?maxHeight: MAIN_WINDOW_SIZE\.height,[\s\S]*?resizable: false,[\s\S]*?maximizable: false,[\s\S]*?fullscreenable: false,/
     );
-    expect(mainSource).not.toContain('role: "zoom"');
-    expect(mainSource).not.toContain('action === "maximize"');
-    expect(mainSource).not.toContain("senderWindow.maximize()");
-    expect(mainSource).toContain("lockMainWindowSize(mainWindow)");
-    expect(mainSource).toContain("setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
-    expect(mainSource).toContain("setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
-    expect(mainSource).toContain('win.on("will-resize"');
-    expect(mainSource).toContain("event.preventDefault()");
-    expect(mainSource).toContain('win.on("maximize"');
-    expect(mainSource).toContain("win.unmaximize()");
-    expect(mainSource).toContain('win.on("enter-full-screen"');
-    expect(mainSource).toContain("win.setFullScreen(false)");
-    expect(mainSource).toContain('mode: "screenshot"');
-    expect(mainSource).toContain("if (!SCREENSHOT_MODE)");
-    expect(preloadSource).toContain('new Set(["minimize", "close"])');
+    for (const source of [windowSource, windowIpcSource, menuSource]) {
+      expect(source).not.toContain('role: "zoom"');
+      expect(source).not.toContain('action === "maximize"');
+      expect(source).not.toContain(".maximize()");
+    }
+    expect(windowSource).toContain("lockMainWindowSize(win)");
+    expect(windowSource).toContain("setMinimumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
+    expect(windowSource).toContain("setMaximumSize(MAIN_WINDOW_SIZE.width, MAIN_WINDOW_SIZE.height)");
+    expect(windowSource).toContain('win.on("will-resize"');
+    expect(windowSource).toContain("event.preventDefault()");
+    expect(windowSource).toContain('win.on("maximize"');
+    expect(windowSource).toContain("win.unmaximize()");
+    expect(windowSource).toContain('win.on("enter-full-screen"');
+    expect(windowSource).toContain("win.setFullScreen(false)");
+    expect(readFileSync("electron/main.cjs", "utf8")).toContain('mode: "screenshot"');
+    expect(readFileSync("electron/main.cjs", "utf8")).toContain("if (!SCREENSHOT_MODE)");
     expect(preloadSource).not.toContain('"maximize"');
   });
-
   it("keeps the startup paint dark with a temporary loader until React mounts", () => {
     const indexSource = readFileSync("index.html", "utf8");
     const rendererEntrySource = readFileSync("src/main.tsx", "utf8");
-    const mainSource = readFileSync("electron/main.cjs", "utf8");
+    const windowSource = readFileSync("electron/windows/mainWindow.cjs", "utf8");
 
     expect(indexSource).toContain('<html lang="en" class="dark">');
     expect(indexSource).toContain('id="app-loading-state"');
@@ -59,10 +63,9 @@ describe("Electron runtime helpers", () => {
     expect(indexSource).toMatch(/html,\s*body,\s*#root[\s\S]*background:\s*#2f2f2f/);
     expect(rendererEntrySource).toContain('document.getElementById("app-loading-state")');
     expect(rendererEntrySource).toContain("requestAnimationFrame");
-    expect(mainSource).toContain('const MAIN_WINDOW_BACKGROUND = "#2f2f2f";');
-    expect(mainSource).toContain("backgroundColor: MAIN_WINDOW_BACKGROUND");
+    expect(constants.MAIN_WINDOW_BACKGROUND).toBe("#2f2f2f");
+    expect(windowSource).toContain("backgroundColor: MAIN_WINDOW_BACKGROUND");
   });
-
   it("uses Whisper Base English as the default native model", () => {
     expect(runtime.DEFAULT_MODEL.id).toBe("whisper-base-en");
     expect(runtime.DEFAULT_MODEL.displayName).toBe("Whisper Base English");
@@ -133,13 +136,13 @@ describe("Electron runtime helpers", () => {
 
   it("uses Electron IPC for native Node Whisper transcription", () => {
     const mainSource = readFileSync("electron/main.cjs", "utf8");
-    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+    const engineIpcSource = readFileSync("electron/ipc/engine.cjs", "utf8");
+    const channels = JSON.parse(readFileSync("shared/ipc-channels.json", "utf8")).channels;
 
-    expect(mainSource).toContain('ipcMain.handle("engine:transcribe-audio"');
-    expect(preloadSource).toContain("transcribeAudio");
-    expect(mainSource.indexOf("createWindow();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut();"));
+    expect(engineIpcSource).toContain('router.handle("engine:transcribe-audio"');
+    expect(channels["engine:transcribe-audio"].kind).toBe("invoke");
+    expect(mainSource.indexOf("mainWindow.create();")).toBeLessThan(mainSource.indexOf("registerGlobalShortcut({ actions })"));
   });
-
   it("shares one in-flight file download when the same model is requested twice", async () => {
     const dataDir = mkdtempSync(path.join(tmpdir(), "asrpro-duplicate-model-download-"));
     const model = whisperEngine.AVAILABLE_MODELS.find((candidate: { id: string }) => candidate.id === "whisper-tiny-en");
@@ -187,53 +190,37 @@ describe("Electron runtime helpers", () => {
   });
 
   it("opens history transcript text through Electron IPC", () => {
-    const mainSource = readFileSync("electron/main.cjs", "utf8");
-    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+    const transcriptSource = readFileSync("electron/ipc/transcripts.cjs", "utf8");
+    const editorSource = readFileSync("electron/shell/textEditors.cjs", "utf8");
+    const channels = JSON.parse(readFileSync("shared/ipc-channels.json", "utf8")).channels;
 
-    expect(mainSource).toContain('ipcMain.handle("transcript:open-text"');
-    expect(mainSource).toContain("openTranscriptText");
-    expect(mainSource).toContain("openTranscriptFile(filePath, appSettings.defaultTextEditor)");
-    expect(mainSource).toContain('ipcMain.handle("transcript:delete-text"');
-    expect(mainSource).toContain("deleteTranscriptText");
-    expect(mainSource).toContain("setDefaultTextEditor");
-    expect(mainSource).toContain('ipcMain.handle("settings:text-editor"');
-    expect(mainSource).toContain("app.getFileIcon");
-    expect(mainSource).toContain("iconDataUrl");
-    expect(mainSource).toContain("macBundleNames");
-    expect(preloadSource).toContain("openTranscriptText");
-    expect(preloadSource).toContain('ipcRenderer.invoke("transcript:open-text"');
-    expect(preloadSource).toContain("deleteTranscriptText");
-    expect(preloadSource).toContain('ipcRenderer.invoke("transcript:delete-text"');
-    expect(preloadSource).toContain("setDefaultTextEditor");
+    expect(transcriptSource).toContain('router.handle("transcript:open-text"');
+    expect(transcriptSource).toContain('textEditors.openFile(filePath, ctx.settings.get("editor.defaultTextEditor"))');
+    expect(transcriptSource).toContain('router.handle("transcript:delete-text"');
+    expect(editorSource).toContain("app.getFileIcon");
+    expect(editorSource).toContain("iconDataUrl");
+    expect(editorSource).toContain("macBundleNames");
+    expect(channels["transcript:open-text"].kind).toBe("invoke");
+    expect(channels["transcript:delete-text"].kind).toBe("invoke");
   });
-
   it("exposes a persisted app setting for automatic transcript clipboard copying", () => {
-    const mainSource = readFileSync("electron/main.cjs", "utf8");
-    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+    const defaults = JSON.parse(readFileSync("shared/settings-defaults.json", "utf8"));
+    const runtimeStateSource = readFileSync("electron/ipc/runtimeState.cjs", "utf8");
 
-    expect(mainSource).toContain("autoCopyTranscripts: true");
-    expect(mainSource).toContain("autoCopyTranscripts: normalizeBooleanSetting(settings.autoCopyTranscripts, DEFAULT_APP_SETTINGS.autoCopyTranscripts)");
-    expect(mainSource).toContain("setAutoCopyTranscripts");
-    expect(mainSource).toContain('ipcMain.handle("settings:auto-copy-transcripts"');
-    expect(mainSource).toContain("autoCopyTranscripts: appSettings.autoCopyTranscripts");
-    expect(preloadSource).toContain("setAutoCopyTranscripts");
-    expect(preloadSource).toContain('ipcRenderer.invoke("settings:auto-copy-transcripts"');
+    expect(defaults["output.autoCopy"]).toBe(true);
+    expect(runtimeStateSource).toContain('autoCopyTranscripts: values["output.autoCopy"]');
   });
-
   it("exposes startup launch settings through Electron IPC", () => {
-    const mainSource = readFileSync("electron/main.cjs", "utf8");
-    const preloadSource = readFileSync("electron/preload.cjs", "utf8");
+    const defaults = JSON.parse(readFileSync("shared/settings-defaults.json", "utf8"));
+    const startupSource = readFileSync("electron/shell/startup.cjs", "utf8");
+    const settingsIpcSource = readFileSync("electron/ipc/settings.cjs", "utf8");
 
-    expect(mainSource).toContain("launchAtStartup: false");
-    expect(mainSource).toContain('ipcMain.handle("settings:startup"');
-    expect(mainSource).toContain("setStartupLaunch");
-    expect(mainSource).toContain("app.setLoginItemSettings");
-    expect(mainSource).toContain("buildLinuxAutostartDesktopEntry");
-    expect(mainSource).toContain("PORTABLE_EXECUTABLE_FILE");
-    expect(preloadSource).toContain("setStartupLaunch");
-    expect(preloadSource).toContain('ipcRenderer.invoke("settings:startup"');
+    expect(defaults["startup.launchAtLogin"]).toBe(false);
+    expect(settingsIpcSource).toContain('"startup.launchAtLogin"');
+    expect(startupSource).toContain("app.setLoginItemSettings");
+    expect(startupSource).toContain("buildLinuxAutostartDesktopEntry");
+    expect(startupSource).toContain("PORTABLE_EXECUTABLE_FILE");
   });
-
   it("links the portable data and setup docs from the README", () => {
     const readme = readFileSync("README.md", "utf8");
     const portableDocs = readFileSync("docs/portable-data.md", "utf8");
@@ -399,9 +386,8 @@ describe("Electron runtime helpers", () => {
     expect(mainSource).toContain("setMacDockIcon();");
     expect(mainSource).toContain("function setMacDockIcon()");
     expect(mainSource).toContain('process.platform !== "darwin"');
-    expect(mainSource).toContain("app.dock.setIcon(createAppIcon())");
+    expect(mainSource).toContain("app.dock.setIcon(");
   });
-
   it("resolves runtime asset roots for development and packaged apps", () => {
     expect(runtime.resolveRuntimeAssetRoot({
       isPackaged: false,
