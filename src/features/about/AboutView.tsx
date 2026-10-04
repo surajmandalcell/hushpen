@@ -3,7 +3,59 @@ import { AppLogoMark } from "../../components/icons";
 import { iconTileClass, panelDividerClass, panelSurfaceClass } from "../../components/ui/classes";
 import { ViewFrame } from "../../components/ui/ViewFrame";
 import type { ViewProps } from "../../types/view";
-import { aboutActionLinks, buildAboutFactRows } from "./aboutContent";
+import { bridge } from "../../lib/bridge";
+import { aboutActionLinks, aboutFolderActions, buildAboutFactRows, type AboutAction } from "./aboutContent";
+
+const actionRowClass = `group/link flex min-w-0 items-center gap-3 border-t ${panelDividerClass} px-5 py-3 text-left no-underline transition-colors first:border-t-0 hover:bg-white/[0.045] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9bcfff]/70 sm:border-l sm:border-t-0 sm:first:border-l-0`;
+
+function AboutActionRow({ action }: { action: AboutAction }) {
+  const Icon = action.icon;
+  const open = () => {
+    void bridge.openTarget(action.target).catch(() => {});
+  };
+  const content = (
+    <>
+      <span className={iconTileClass}>
+        <Icon className="size-3.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-semibold leading-5 text-[#eeeeee]">{action.label}</span>
+        <span className="block truncate text-[12px] font-medium leading-5 text-[#aaa]">{action.detail}</span>
+      </span>
+      <ArrowUpRight className="size-3.5 shrink-0 text-[#9f9f9f] transition-colors group-hover/link:text-[#eeeeee]" />
+    </>
+  );
+
+  if (action.href) {
+    return (
+      <a
+        href={action.href}
+        className={actionRowClass}
+        aria-label={`${action.label}: ${action.detail}`}
+        onClick={(event) => {
+          event.preventDefault();
+          open();
+        }}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <button type="button" className={actionRowClass} aria-label={action.label} onClick={open}>
+      {content}
+    </button>
+  );
+}
+
+function AboutActionGroup({ label, actions }: { label: string; actions: AboutAction[] }) {
+  return (
+    <div aria-label={label} className={`grid border-t ${panelDividerClass} sm:grid-cols-2`}>
+      {actions.map((action) => <AboutActionRow key={action.label} action={action} />)}
+    </div>
+  );
+}
 
 export function AboutView({ appInfo, runtimeInfo }: ViewProps) {
   const facts = buildAboutFactRows(appInfo.version, runtimeInfo?.dataDir);
@@ -37,31 +89,8 @@ export function AboutView({ appInfo, runtimeInfo }: ViewProps) {
           ))}
         </dl>
 
-        <div aria-label="GitHub links" className={`grid border-t ${panelDividerClass} sm:grid-cols-2`}>
-          {aboutActionLinks.map((link) => {
-            const Icon = link.icon;
-
-            return (
-              <a
-                key={link.label}
-                href={link.href}
-                target="_blank"
-                rel="noreferrer"
-                className={`group/link flex min-w-0 items-center gap-3 border-t ${panelDividerClass} px-5 py-3 text-left no-underline transition-colors first:border-t-0 hover:bg-white/[0.045] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9bcfff]/70 sm:border-l sm:border-t-0 sm:first:border-l-0`}
-                aria-label={`${link.label}: ${link.detail}`}
-              >
-                <span className={iconTileClass}>
-                  <Icon className="size-3.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-semibold leading-5 text-[#eeeeee]">{link.label}</span>
-                  <span className="block truncate text-[12px] font-medium leading-5 text-[#aaa]">{link.detail}</span>
-                </span>
-                <ArrowUpRight className="size-3.5 shrink-0 text-[#9f9f9f] transition-colors group-hover/link:text-[#eeeeee]" />
-              </a>
-            );
-          })}
-        </div>
+        <AboutActionGroup label="GitHub links" actions={aboutActionLinks} />
+        <AboutActionGroup label="Local folders" actions={aboutFolderActions} />
       </section>
     </ViewFrame>
   );

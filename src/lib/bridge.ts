@@ -1,6 +1,6 @@
 import errorCodes from "../../shared/error-codes.json";
 import type { ErrorCode, ErrorShape, SettingKey, SettingsValues } from "../types/contracts";
-import type { AppInfo, WindowAction } from "../types/app";
+import type { AppInfo, OpenTarget, WindowAction } from "../types/app";
 import type { EngineRuntimeState } from "../types/engine";
 import type { RuntimeInfo } from "../types/runtime";
 import type { StartupSettings } from "../types/settings";
@@ -99,6 +99,7 @@ export const bridge = {
   getRuntimeState: () => invoke<RuntimeInfo>("runtime:state"),
   getEngineState: () => invoke<EngineRuntimeState>("engine:get-state"),
   windowControl: (action: WindowAction) => invoke<void>("window:control", { action }),
+  openTarget: (target: OpenTarget) => invoke<void>("shell:open", { target }),
 
   setSetting: (key: SettingKey, value: unknown) => invoke<SettingsReply>("settings:set", { key, value }),
   importLegacySettings: (legacy: LegacySettingsImport) => (

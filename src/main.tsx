@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { swallowStrayFileDrops } from "./lib/dropGuard";
+
+swallowStrayFileDrops();
 
 const rootElement = document.getElementById("root");
 

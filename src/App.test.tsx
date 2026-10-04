@@ -350,8 +350,9 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("/Users/surajmandal/Library/Application Support/ASR Pro/data")).toBeNull();
   });
 
-  it("renders GitHub project and issue links on About", async () => {
+  it("opens the GitHub project and issue pages through named targets", async () => {
     const user = userEvent.setup();
+    const fake = installFakeMain();
     await renderApp();
 
     await user.click(screen.getByRole("button", { name: "About" }));
@@ -360,9 +361,31 @@ describe("ASR Pro Electron shell", () => {
     const issueLink = screen.getByRole("link", { name: /Report issue/i });
 
     expect(githubLink.getAttribute("href")).toBe("https://github.com/surajmandalcell/asrpro");
-    expect(githubLink.getAttribute("target")).toBe("_blank");
     expect(issueLink.getAttribute("href")).toBe("https://github.com/surajmandalcell/asrpro/issues/new");
-    expect(issueLink.getAttribute("target")).toBe("_blank");
+    expect(githubLink.getAttribute("target")).toBeNull();
+
+    await user.click(githubLink);
+    await user.click(issueLink);
+
+    expect(fake.invoke).toHaveBeenCalledWith("shell:open", { target: "repo" });
+    expect(fake.invoke).toHaveBeenCalledWith("shell:open", { target: "issues" });
+  });
+
+  it("shows Open data folder and Open log folder rows that use named targets", async () => {
+    const user = userEvent.setup();
+    const fake = installFakeMain();
+    await renderApp();
+
+    await user.click(screen.getByRole("button", { name: "About" }));
+    const summaryPanel = document.querySelector('section[aria-label="About product summary"]');
+
+    await user.click(screen.getByRole("button", { name: "Open data folder" }));
+    await user.click(screen.getByRole("button", { name: "Open log folder" }));
+
+    expect(summaryPanel?.contains(screen.getByRole("button", { name: "Open data folder" }))).toBe(true);
+    expect(summaryPanel?.contains(screen.getByRole("button", { name: "Open log folder" }))).toBe(true);
+    expect(fake.invoke).toHaveBeenCalledWith("shell:open", { target: "data-folder" });
+    expect(fake.invoke).toHaveBeenCalledWith("shell:open", { target: "log-folder" });
   });
 
   it("navigates to the transcript history", async () => {

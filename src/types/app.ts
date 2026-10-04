@@ -1,4 +1,5 @@
 export type ViewId = "home" | "configuration" | "sound" | "models" | "history" | "about";
+export type OpenTarget = "repo" | "issues" | "releases" | "data-folder" | "log-folder";
 export type WindowAction = "minimize" | "close";
 export type RecordingStatus = "idle" | "starting" | "recording" | "preparing-engine" | "transcribing" | "error";
 

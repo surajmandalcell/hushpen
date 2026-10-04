@@ -16,6 +16,7 @@ export interface FakeMainHandlers {
   getRuntimeState?: Handler;
   getEngineState?: Handler;
   windowControl?: Handler;
+  openTarget?: Handler;
   setRecording?: Handler;
   toggleRecording?: Handler;
   downloadModel?: Handler;
@@ -88,6 +89,7 @@ export function installFakeMain(handlers: FakeMainHandlers = {}): FakeMain {
     "runtime:state": () => call(handlers.getRuntimeState),
     "engine:get-state": () => call(handlers.getEngineState),
     "window:control": (payload: { action: string }) => call(handlers.windowControl, payload.action),
+    "shell:open": (payload: { target: string }) => call(handlers.openTarget, payload.target),
     "recording:set": (payload: { active: boolean }) => call(handlers.setRecording, payload.active),
     "recording:toggle": () => call(handlers.toggleRecording),
     "models:download": (payload: { modelId: string }) => call(handlers.downloadModel, payload.modelId),
