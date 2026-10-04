@@ -63,9 +63,6 @@ const NATIVE_LOAD_ERROR_PREFIX = "Native Whisper engine could not load:";
 const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
 const DOWNLOAD_MAX_REDIRECTS = 8;
 const VERIFIED_SUFFIX = ".verified";
-// Set ASRPRO_DISABLE_GPU=1 to force CPU decoding (useful for broken Vulkan drivers on Linux).
-let gpuDisabled = process.env.ASRPRO_DISABLE_GPU === "1";
-
 function getModelById(modelId) {
   return AVAILABLE_MODELS.find((model) => model.id === modelId) || DEFAULT_MODEL;
 }

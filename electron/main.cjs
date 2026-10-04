@@ -887,7 +887,7 @@ function saveOverlaySettings() {
 function updateOverlaySettings(settings) {
   const nextSettings = {
     ...overlaySettings,
-    ...(settings || {}),
+    ...settings,
   };
 
   if (settings && Object.hasOwn(settings, "placement")) {

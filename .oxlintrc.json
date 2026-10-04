@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "import", "unicorn", "oxc"],
+  "env": { "browser": true, "es2024": true },
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/hooks": "off",
+    "react/exhaustive-effect-dependencies": "off",
+    "react/memo-dependencies": "off",
+    "react/refs": "warn",
+    "react/purity": "warn",
+    "react/set-state-in-effect": "warn",
+    "react/react-in-jsx-scope": "off",
+    "import/no-cycle": "error"
+  },
+  "overrides": [
+    {
+      "files": ["electron/**/*.cjs", "scripts/**/*.cjs"],
+      "env": { "node": true, "commonjs": true, "browser": false }
+    },
+    {
+      "files": ["tests/**/*.ts", "**/*.test.ts", "**/*.test.tsx"],
+      "env": { "node": true },
+      "plugins": ["vitest"],
+      "rules": { "vitest/require-mock-type-parameters": "off" }
+    }
+  ],
+  "ignorePatterns": ["dist/**", "release/**", "node_modules/**"]
+}
