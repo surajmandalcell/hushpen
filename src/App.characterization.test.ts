@@ -3,7 +3,11 @@ import { getErrorMessage } from "./lib/errors";
 import { countWords, formatByteCount, formatDuration, formatHistoryGroupLabel, formatHomeRelativePath } from "./lib/format";
 import { buildHistoryTitle } from "./lib/history";
 import { formatShortcutParts } from "./lib/shortcut";
-import { loadTranscriptHistory, normalizeTranscriptHistoryRow, saveTranscriptHistory } from "./lib/storage";
+import {
+  loadTranscriptHistory,
+  normalizeTranscriptHistoryRow,
+  saveTranscriptHistory,
+} from "./features/history/historyRepository";
 import { convertBlobToWav, dataUrlToBlob, encodePcm16Wav, mixAudioBufferToMono, resamplePcm } from "./lib/wav";
 import {
   buildReactiveWaveformFrame,

@@ -1,10 +1,10 @@
 import { act } from "react";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import App from "./App";
 import { audioRecordingService } from "./services/audioRecording";
+import { renderApp } from "./test/renderApp";
 import packageMetadata from "../package.json";
 
 afterEach(async () => {
@@ -102,8 +102,8 @@ function appStylesheet() {
 }
 
 describe("ASR Pro Electron shell", () => {
-  it("scopes the app shell to non-selectable chrome while keeping text exceptions selectable", () => {
-    render(<App />);
+  it("scopes the app shell to non-selectable chrome while keeping text exceptions selectable", async () => {
+    await renderApp();
 
     const shell = document.body.firstElementChild?.firstElementChild;
     const homeButton = screen.getByRole("button", { name: "Home" });
@@ -131,7 +131,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     const search = screen.getByRole("searchbox", { name: "Search history" }) as HTMLInputElement;
@@ -179,7 +179,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
     ]);
 
-    render(<App />);
+    await renderApp();
     const mainPane = document.querySelector("main");
     const sidebarNav = screen.getByRole("navigation", { name: "Primary" });
 
@@ -205,8 +205,8 @@ describe("ASR Pro Electron shell", () => {
     expect(appStylesheet()).toContain("margin-block: 6px;");
   });
 
-  it("renders a Superwhisper-style home surface without the bottom-left Pro pill", () => {
-    render(<App />);
+  it("renders a Superwhisper-style home surface without the bottom-left Pro pill", async () => {
+    await renderApp();
 
     expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("Average speed")).toBeTruthy();
@@ -227,7 +227,7 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByText("Add vocabulary")).toBeNull();
   });
 
-  it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", () => {
+  it("keeps the shell free of titlebar slogans, shortcut badges, and redundant tabs", async () => {
     window.asrpro = {
       getPlatform: vi.fn(),
       getAppInfo: vi.fn(),
@@ -238,7 +238,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     };
 
-    render(<App />);
+    await renderApp();
 
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Modes" })).toBeNull();
@@ -254,8 +254,8 @@ describe("ASR Pro Electron shell", () => {
     expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   });
 
-  it("renders only fixed close and minimize traffic lights with hover glyphs", () => {
-    render(<App />);
+  it("renders only fixed close and minimize traffic lights with hover glyphs", async () => {
+    await renderApp();
 
     const closeButton = screen.getByRole("button", { name: "Close window" });
     const minimizeButton = screen.getByRole("button", { name: "Minimize window" });
@@ -275,7 +275,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("renders About metadata as a flat definition list instead of nested fact cards", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "About" }));
 
@@ -290,7 +290,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("renders About content on grouped app surfaces without standalone white rules", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "About" }));
 
@@ -307,7 +307,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("uses the Ink Slate brand tile on About", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "About" }));
 
@@ -336,7 +336,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     };
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "About" }));
 
     await waitFor(() => expect(screen.getAllByText("2.4.6").length).toBeGreaterThan(0));
@@ -350,7 +350,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("renders GitHub project and issue links on About", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "About" }));
 
@@ -365,7 +365,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("navigates to the transcript history", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "History" }));
 
@@ -375,7 +375,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("shows a visible selected state on the active sidebar item", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     const homeButton = screen.getByRole("button", { name: "Home" });
     expect(homeButton.getAttribute("aria-current")).toBe("page");
@@ -389,8 +389,8 @@ describe("ASR Pro Electron shell", () => {
     expect(homeButton.getAttribute("aria-current")).toBeNull();
   });
 
-  it("keeps the About sidebar icon neutral", () => {
-    render(<App />);
+  it("keeps the About sidebar icon neutral", async () => {
+    await renderApp();
 
     const aboutButton = screen.getByRole("button", { name: "About" });
     const aboutIconTile = aboutButton.querySelector("span");
@@ -402,8 +402,8 @@ describe("ASR Pro Electron shell", () => {
     expect(aboutIconTile?.className).not.toContain("border");
   });
 
-  it("does not render a local waveform inside the home page", () => {
-    render(<App />);
+  it("does not render a local waveform inside the home page", async () => {
+    await renderApp();
 
     expect(document.querySelector(".in-app-waveform")).toBeNull();
   });
@@ -411,7 +411,7 @@ describe("ASR Pro Electron shell", () => {
   it("toggles recording state from the dashboard", async () => {
     const user = userEvent.setup();
     mockAudioCapture();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
 
@@ -427,7 +427,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
     ]);
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
     const selector = await screen.findByRole("button", { name: "Microphone selector" });
@@ -457,7 +457,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
     ]);
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
     const selector = await screen.findByRole("button", { name: "Microphone selector" });
@@ -473,7 +473,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "built-in-mic", label: "Built-in Microphone" },
     ]);
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
     const selector = await screen.findByRole("button", { name: "Microphone selector" });
@@ -497,7 +497,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "studio-mic", label: "Studio Microphone With A Long Name" },
     ]);
 
-    render(<App />);
+    await renderApp();
 
     const toolbarSelector = await screen.findByRole("button", { name: "Toolbar microphone selector" });
     await user.click(toolbarSelector);
@@ -515,7 +515,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "webcam-mic", label: "Logitech Webcam Microphone" },
     ]);
 
-    render(<App />);
+    await renderApp();
 
     const toolbarSelector = await screen.findByRole("button", { name: "Toolbar microphone selector" });
     expect(toolbarSelector.querySelector(".lucide-chevron-down")).toBeNull();
@@ -535,7 +535,7 @@ describe("ASR Pro Electron shell", () => {
       { kind: "audioinput", deviceId: "usb-mic", label: "USB Microphone" },
     ]);
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Sound" }));
 
     const selector = await screen.findByRole("button", { name: "Microphone selector" });
@@ -561,7 +561,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("shows real local history instead of static demo transcripts", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "History" }));
 
@@ -596,7 +596,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     expect(screen.queryByText("Product demo follow-up")).toBeNull();
@@ -625,7 +625,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     expect(screen.getByText("Product demo follow-up")).toBeTruthy();
@@ -649,7 +649,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     expect(screen.getByText("Team retro notes")).toBeTruthy();
@@ -685,7 +685,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     await user.click(screen.getByRole("button", { name: "Reprocess clip: Original clip" }));
@@ -736,7 +736,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     expect(screen.queryByText("0:18")).toBeNull();
@@ -790,7 +790,7 @@ describe("ASR Pro Electron shell", () => {
       },
     ]));
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "History" }));
 
     await user.click(screen.getByRole("button", { name: "Open transcript text: Original clip" }));
@@ -825,7 +825,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
     await screen.findByRole("button", { name: "Stop Recording" });
@@ -885,7 +885,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
     await screen.findByRole("button", { name: "Stop Recording" });
@@ -946,7 +946,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
     await screen.findByRole("button", { name: "Stop Recording" });
@@ -990,7 +990,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Start Recording" }));
     await screen.findByRole("button", { name: "Stop Recording" });
@@ -1028,7 +1028,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     };
 
-    render(<App />);
+    await renderApp();
     await waitFor(() => expect(recordingListener).toBeTruthy());
 
     await act(async () => {
@@ -1056,7 +1056,7 @@ describe("ASR Pro Electron shell", () => {
   it("uses neutral page status labels instead of colored status pills", async () => {
     const user = userEvent.setup();
 
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Sound" }));
     expect(screen.getByText(/^(Default|Ready)$/)).toBeTruthy();
@@ -1074,7 +1074,7 @@ describe("ASR Pro Electron shell", () => {
   it("shows selectable native Whisper model options", async () => {
     const user = userEvent.setup();
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
 
     const baseButton = screen.getByRole("button", { name: "Select Whisper Base English" });
@@ -1175,7 +1175,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
 
     expect(await screen.findByRole("button", { name: "Select Whisper Large v3 Turbo" })).toBeTruthy();
@@ -1277,7 +1277,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
 
     const tinyDownloadButton = await screen.findByRole("button", { name: "Download Whisper Tiny English" }) as HTMLButtonElement;
@@ -1314,7 +1314,7 @@ describe("ASR Pro Electron shell", () => {
       expect(tinyDownloadButton.disabled).toBe(true);
       expect(smallDownloadButton.disabled).toBe(true);
     } finally {
-      act(() => {
+      await act(async () => {
         downloadResolvers["whisper-tiny-en"]?.({
           isRecording: false,
           defaultModel: "Whisper Base English",
@@ -1360,7 +1360,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
     await user.click(await screen.findByRole("button", { name: "Download Whisper Base Multilingual" }));
 
@@ -1404,7 +1404,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Models library" }));
 
     const smallButton = await screen.findByRole("button", { name: "Select Whisper Small English" });
@@ -1442,7 +1442,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     };
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
     expect(screen.getByText("Recording overlay")).toBeTruthy();
     expect(screen.getByText("Engine")).toBeTruthy();
@@ -1476,7 +1476,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
 
     const autoCopySwitch = await screen.findByRole("switch", { name: "Auto-copy transcripts" });
@@ -1517,7 +1517,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
 
     const startupSwitch = await screen.findByRole("switch", { name: "Launch at startup" });
@@ -1555,7 +1555,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
     await waitFor(() => expect(getRuntimeState).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByRole("switch", { name: "Auto-copy transcripts" }).getAttribute("aria-checked")).toBe("false"));
@@ -1598,7 +1598,7 @@ describe("ASR Pro Electron shell", () => {
       windowControl: vi.fn(),
     } as any;
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Text editor selector" }).textContent).toContain("System default"));
@@ -1626,7 +1626,7 @@ describe("ASR Pro Electron shell", () => {
   it("uses shared rounded styling inside the configuration position control", async () => {
     const user = userEvent.setup();
 
-    render(<App />);
+    await renderApp();
     await user.click(screen.getByRole("button", { name: "Configuration" }));
 
     const topButton = screen.getByRole("button", { name: "Top overlay position" });
@@ -1642,7 +1642,7 @@ describe("ASR Pro Electron shell", () => {
 
   it("routes configuration references to their real settings pages", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Configuration" }));
     await user.click(screen.getAllByRole("button", { name: "Change" })[0]);
