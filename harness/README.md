@@ -124,6 +124,11 @@ Pixel tests and anything that opens a window never run on the Mac. GPUI componen
 (`TestAppContext`, `cargo test -p hushpen-app --lib`) open no window and activate no app there;
 run them only when no game is in front (`lsappinfo info -only name "$(lsappinfo front)"`).
 
+`harness/mac-nowindow-proof.sh` is the proof (VAL-FND-033). It refuses to start while a game is in
+front (exit 2), runs the lib tests while it reads the frontmost app every 100 ms, and fails if the
+frontmost app changes or a new app registers. It only reads; it never activates anything. The log
+is `$HUSHPEN_ROOT/evidence/m0-harness/mac-nowindow-proof.log`.
+
 ## Cleanup
 
 `harness/stop-all.sh`. A leftover slot is removed by exact name only: `docker rm -f hushpen-val-1`.
