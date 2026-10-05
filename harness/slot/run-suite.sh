@@ -1,0 +1,17 @@
+#!/bin/bash
+# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|core|full>
+# Runs the suite scripts in order and writes result.json. core and full are smoke plus env today;
+# a feature that adds end-to-end checks adds a script to suites/ and to the lists below.
+case "${1:-}" in
+  smoke) scripts=(smoke) ;;
+  env) scripts=(env) ;;
+  core | full) scripts=(smoke env) ;;
+  *) echo "run-suite: unknown suite '${1:-}'" >&2; exit 2 ;;
+esac
+. /harness/slot/lib.sh
+: >"$CHECKS"
+for script in "${scripts[@]}"; do
+  # A script records its outcome with check; its own exit code carries nothing.
+  bash "/harness/slot/suites/$script.sh"
+done
+finish "$1"
