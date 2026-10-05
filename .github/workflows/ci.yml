@@ -59,7 +59,7 @@ jobs:
             {"target":"linux-arm64","os":"ubuntu-22.04-arm"}
           ]'
           picked=$(jq -c --arg wanted ",${TARGETS// /}," \
-            '[.[] | select($wanted | contains("," + .target + ","))]' <<<"$all")
+            '[.[] | select(.target as $t | $wanted | contains("," + $t + ","))]' <<<"$all")
           if [ "$picked" = "[]" ]; then
             echo "::error::targets '$TARGETS' matches none of macos-arm64, linux-x64, linux-arm64"
             exit 1
