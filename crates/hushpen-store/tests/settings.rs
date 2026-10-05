@@ -190,3 +190,14 @@ fn set_rejects_unknown_internal_and_invalid_input() {
             .is_err()
     );
 }
+
+#[test]
+fn values_lists_every_known_key_with_its_current_value() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    store.set("dictation.maxMinutes", json!(9)).unwrap();
+    let values = store.values();
+    assert_eq!(values.get("dictation.maxMinutes"), Some(&json!(9)));
+    assert_eq!(values.get("updates.check"), Some(&json!(false)));
+    assert!(!values.contains_key("_unknown"));
+}

@@ -90,6 +90,11 @@ impl SettingsStore {
         self.lock().values.get(key).cloned()
     }
 
+    /// A copy of every known key and its current value.
+    pub fn values(&self) -> Map<String, Value> {
+        self.lock().values.clone()
+    }
+
     /// Sets a user-facing key. Internal keys are refused.
     pub fn set(&self, key: &str, value: Value) -> Result<()> {
         self.set_checked(key, value, false)
