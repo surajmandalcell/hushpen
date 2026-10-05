@@ -13,3 +13,10 @@ workspace = true
 
 [dependencies]
 hushpen-core.workspace = true
+directories.workspace = true
+log = { workspace = true, features = ["std"] }
+rusqlite.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

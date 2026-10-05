@@ -3,6 +3,7 @@
 use crate::assets::{AppAssets, register_fonts};
 use crate::instance::{self, Start};
 use crate::shell::Shell;
+use crate::storage;
 use crate::theme::{self, space};
 use futures::StreamExt;
 use futures::channel::mpsc;
@@ -10,18 +11,35 @@ use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Bounds, Window, WindowBounds, WindowOptions, px, size,
 };
 use hushpen_platform::window::{WindowHandle, lock_chrome};
+use hushpen_store::data_dir::DataDir;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::process::ExitCode;
 
 const APP_ID: &str = "hushpen";
 
 pub fn run() -> ExitCode {
-    let data_dir = crate::paths::data_dir();
-    let instance = match instance::start(&data_dir) {
+    let data = match DataDir::open(hushpen_store::data_dir::resolve_from_env()) {
+        Ok(data) => data,
+        Err(error) => {
+            eprintln!("hushpen: could not open the data folder: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let instance = match instance::start(data.root()) {
         Ok(Start::First(instance)) => instance,
         Ok(Start::AlreadyRunning) => return ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("hushpen: could not start: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(error) = storage::install_logger(&data) {
+        eprintln!("hushpen: could not start the log: {error}");
+    }
+    let _storage = match storage::open(data) {
+        Ok(storage) => storage,
+        Err(error) => {
+            eprintln!("hushpen: could not open the data folder: {error}");
             return ExitCode::FAILURE;
         }
     };
