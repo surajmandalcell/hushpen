@@ -3,21 +3,20 @@
 mod gate;
 mod net_audit;
 mod release_check;
+mod root;
 
-use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: cargo xtask <gate|net-audit|release-check [--binary <path>] [--guard]>";
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("xtask lives one level below the repo root")
-        .to_path_buf()
-}
-
 fn main() -> ExitCode {
-    let root = repo_root();
+    let root = match root::repo_root() {
+        Ok(root) => root,
+        Err(message) => {
+            eprintln!("xtask: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
     let result = match std::env::args().nth(1).as_deref() {
         Some("gate") => gate::run(&root),
         Some("net-audit") => net_audit::run(&root),
