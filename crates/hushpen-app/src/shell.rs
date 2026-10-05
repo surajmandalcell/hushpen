@@ -7,8 +7,8 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     ClickEvent, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
-    MouseDownEvent, ParentElement, Render, StatefulInteractiveElement, Styled, Window, div, px,
-    svg, transparent_black,
+    MouseDownEvent, ParentElement, Render, Role, StatefulInteractiveElement, Styled, Window, div,
+    px, svg, transparent_black,
 };
 
 const TRAFFIC_GROUP: &str = "traffic-lights";
@@ -42,6 +42,7 @@ impl Shell {
     pub fn select(&mut self, view: View, cx: &mut Context<Self>) {
         if self.active != view {
             self.active = view;
+            hook::record_event("view", view.key());
             cx.notify();
         }
     }
@@ -83,6 +84,7 @@ impl Shell {
     fn traffic_light(
         &self,
         name: &'static str,
+        label: &'static str,
         fill: u32,
         glyph: u32,
         icon: IconName,
@@ -91,6 +93,8 @@ impl Shell {
         div()
             .id(hook::id("window", name))
             .test_support()
+            .role(Role::Button)
+            .aria_label(label)
             .size(px(size::TRAFFIC_LIGHT))
             .flex_none()
             .flex()
@@ -128,6 +132,7 @@ impl Shell {
                     .gap(px(space::SM))
                     .child(self.traffic_light(
                         "close",
+                        "Close",
                         color::WINDOW_CLOSE,
                         color::WINDOW_CLOSE_GLYPH,
                         IconName::X,
@@ -135,6 +140,7 @@ impl Shell {
                     ))
                     .child(self.traffic_light(
                         "minimize",
+                        "Minimize",
                         color::WINDOW_MINIMIZE,
                         color::WINDOW_MINIMIZE_GLYPH,
                         IconName::Minus,
@@ -150,6 +156,8 @@ impl Shell {
             .id(hook::id("sidebar", view.key()))
             .test_support()
             .track_focus(&self.nav_focus[view.index()])
+            .role(Role::Button)
+            .aria_label(view.title())
             .flex()
             .items_center()
             .gap(px(space::SM))
@@ -245,6 +253,7 @@ impl Shell {
                 div()
                     .id(hook::id("view", "title"))
                     .test_support()
+                    .aria_label(self.active.title())
                     .text_token(TITLE_MD)
                     .text_color(theme::rgb_of(color::TEXT_HEADING))
                     .child(self.active.title()),

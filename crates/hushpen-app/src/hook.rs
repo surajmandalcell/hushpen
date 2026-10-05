@@ -5,6 +5,34 @@
 
 use gpui_kit::SharedString;
 
+#[cfg(feature = "test-automation")]
+mod automation;
+#[cfg(feature = "test-automation")]
+pub use automation::{
+    Hooks, Job, Surface, attach, register_action, set_state_section, set_wav_feeder, start,
+};
+
+/// Records a timestamped event for `hookctl events`. Does nothing in a build
+/// without the test hook.
+#[cfg(feature = "test-automation")]
+pub fn record_event(kind: &str, detail: &str) {
+    hushpen_testhook::logs::record_event(kind, detail);
+}
+
+#[cfg(not(feature = "test-automation"))]
+pub fn record_event(_kind: &str, _detail: &str) {}
+
+/// Records one network request (purpose, host, result) for `hookctl net`.
+/// Every network call site calls this once it knows the result. Does nothing
+/// in a build without the test hook.
+#[cfg(feature = "test-automation")]
+pub fn record_net(purpose: &str, host: &str, result: &str) {
+    hushpen_testhook::logs::record_net(purpose, host, result);
+}
+
+#[cfg(not(feature = "test-automation"))]
+pub fn record_net(_purpose: &str, _host: &str, _result: &str) {}
+
 pub fn id(view: &str, element: &str) -> SharedString {
     format!("{view}.{element}").into()
 }

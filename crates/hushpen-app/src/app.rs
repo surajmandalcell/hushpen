@@ -8,12 +8,14 @@ use crate::theme::{self, space};
 use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Window, WindowBounds, WindowOptions, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, Entity, Window, WindowBounds, WindowOptions, px,
+    size,
 };
 use hushpen_platform::window::{WindowHandle, lock_chrome};
 use hushpen_store::data_dir::DataDir;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::process::ExitCode;
+use std::rc::Rc;
 
 const APP_ID: &str = "hushpen";
 
@@ -36,13 +38,20 @@ pub fn run() -> ExitCode {
     if let Err(error) = storage::install_logger(&data) {
         eprintln!("hushpen: could not start the log: {error}");
     }
+    #[cfg(feature = "test-automation")]
+    let (_hook_server, hook_jobs) = match crate::hook::start(&data) {
+        Some((server, jobs)) => (Some(server), Some(jobs)),
+        None => (None, None),
+    };
     let _storage = match storage::open(data) {
-        Ok(storage) => storage,
+        Ok(storage) => Rc::new(storage),
         Err(error) => {
             eprintln!("hushpen: could not open the data folder: {error}");
             return ExitCode::FAILURE;
         }
     };
+    #[cfg(feature = "test-automation")]
+    let hook_storage = Rc::clone(&_storage);
     let (show_requests, shown) = mpsc::unbounded::<()>();
     let _guard = instance.serve(move || {
         let _ = show_requests.unbounded_send(());
@@ -62,14 +71,26 @@ pub fn run() -> ExitCode {
             })
             .detach();
 
-            let handle = match open_main_window(cx) {
-                Ok(handle) => handle,
+            let (handle, _shell) = match open_main_window(cx) {
+                Ok(opened) => opened,
                 Err(error) => {
                     eprintln!("hushpen: could not open the window: {error:#}");
                     cx.quit();
                     return;
                 }
             };
+            #[cfg(feature = "test-automation")]
+            if let Some(jobs) = hook_jobs {
+                crate::hook::attach(
+                    cx,
+                    jobs,
+                    crate::hook::Surface {
+                        window: handle,
+                        shell: _shell,
+                        settings: Rc::new(move || hook_storage.settings.values()),
+                    },
+                );
+            }
             cx.spawn(async move |cx| {
                 let mut shown = shown;
                 while shown.next().await.is_some() {
@@ -83,9 +104,9 @@ pub fn run() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn open_main_window(cx: &mut App) -> gpui_kit::Result<AnyWindowHandle> {
+fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
     let window_size = size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT));
-    let (handle, _shell) = gpui_kit::open_window(
+    let (handle, shell) = gpui_kit::open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
@@ -103,7 +124,7 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<AnyWindowHandle> {
         |window, cx| cx.new(|cx| Shell::new(window, cx)),
     )?;
     let _ = handle.update(cx, |_, window, _| lock_native_chrome(window));
-    Ok(handle)
+    Ok((handle, shell))
 }
 
 fn lock_native_chrome(window: &Window) {

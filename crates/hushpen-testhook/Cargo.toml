@@ -10,3 +10,13 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+# Turned on by hushpen-app's test-automation feature. It makes this crate
+# refuse to compile without debug assertions, so a release build with the
+# hook fails here before the slow crates build.
+guard = []
+
+[dependencies]
+hushpen-store.workspace = true
+serde_json.workspace = true

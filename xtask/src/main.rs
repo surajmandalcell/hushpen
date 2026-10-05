@@ -2,11 +2,12 @@
 
 mod gate;
 mod net_audit;
+mod release_check;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit>";
+const USAGE: &str = "usage: cargo xtask <gate|net-audit|release-check [--binary <path>] [--guard]>";
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -20,6 +21,10 @@ fn main() -> ExitCode {
     let result = match std::env::args().nth(1).as_deref() {
         Some("gate") => gate::run(&root),
         Some("net-audit") => net_audit::run(&root),
+        Some("release-check") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            release_check::run(&root, &rest)
+        }
         _ => Err(USAGE.to_string()),
     };
     match result {

@@ -51,6 +51,10 @@ impl View {
         }
     }
 
+    pub fn from_key(key: &str) -> Option<View> {
+        Self::ALL.into_iter().find(|view| view.key() == key)
+    }
+
     pub fn icon(self) -> IconName {
         match self {
             View::Home => IconName::House,
@@ -119,6 +123,16 @@ mod tests {
                 "{view:?}"
             );
         }
+    }
+
+    #[test]
+    fn from_key_finds_every_view_and_nothing_else() {
+        for view in View::ALL {
+            assert_eq!(View::from_key(view.key()), Some(view));
+        }
+        assert_eq!(View::from_key("Home"), None);
+        assert_eq!(View::from_key(""), None);
+        assert_eq!(View::from_key("nowhere"), None);
     }
 
     #[test]

@@ -17,7 +17,12 @@ path = "src/main.rs"
 
 [features]
 # Debug builds only; release-check proves it is absent from shipped binaries.
-test-automation = ["dep:hushpen-testhook"]
+test-automation = [
+    "dep:hushpen-testhook",
+    "dep:serde_json",
+    "hushpen-testhook/guard",
+    "gpui-kit/test-support",
+]
 
 [dependencies]
 hushpen-audio.workspace = true
@@ -30,6 +35,7 @@ futures.workspace = true
 gpui-kit.workspace = true
 log.workspace = true
 raw-window-handle.workspace = true
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

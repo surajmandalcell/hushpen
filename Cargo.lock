@@ -3145,6 +3145,7 @@ dependencies = [
  "hushpen-testhook",
  "log",
  "raw-window-handle",
+ "serde_json",
  "tempfile",
 ]
 
@@ -3200,6 +3201,10 @@ dependencies = [
 [[package]]
 name = "hushpen-testhook"
 version = "2.0.0"
+dependencies = [
+ "hushpen-store",
+ "serde_json",
+]
 
 [[package]]
 name = "hybrid-array"

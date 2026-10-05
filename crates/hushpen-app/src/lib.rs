@@ -1,5 +1,11 @@
 //! Hushpen desktop app.
 
+#[cfg(all(feature = "test-automation", not(debug_assertions)))]
+compile_error!(
+    "the test hook is for debug builds only: build without the test-automation feature, \
+     or without --release"
+);
+
 pub mod app;
 pub mod assets;
 pub mod cli;
