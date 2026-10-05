@@ -35,6 +35,11 @@ gpui-pre-wgpu = "=0.3.7"
 gpui-kit = "=0.7.0"
 gpui-tray = { version = "=0.1.4", default-features = false, features = ["gpui-kit"] }
 
+# Window handles, logging facade, and channels (versions already locked by GPUI).
+futures = { version = "=0.3.34", default-features = false, features = ["std"] }
+log = "=0.4.34"
+raw-window-handle = "=0.6.2"
+
 # Speech and language models.
 whisper-rs = "=0.16.0"
 llama-cpp-2 = { version = "=0.1.158", default-features = false }

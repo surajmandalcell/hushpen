@@ -26,3 +26,11 @@ hushpen-engine.workspace = true
 hushpen-platform.workspace = true
 hushpen-store.workspace = true
 hushpen-testhook = { workspace = true, optional = true }
+directories.workspace = true
+futures.workspace = true
+gpui-kit.workspace = true
+log.workspace = true
+raw-window-handle.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }

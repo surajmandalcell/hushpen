@@ -39,6 +39,7 @@ allow = [
     "Unicode-DFS-2016",
     "CC0-1.0",
     "BSL-1.0",
+    "bzip2-1.0.6",
     "OFL-1.1",
     "Unlicense",
     "CDLA-Permissive-2.0",
