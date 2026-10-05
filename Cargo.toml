@@ -1,0 +1,86 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/hushpen-app",
+    "crates/hushpen-audio",
+    "crates/hushpen-core",
+    "crates/hushpen-engine",
+    "crates/hushpen-llm",
+    "crates/hushpen-platform",
+    "crates/hushpen-store",
+    "crates/hushpen-testhook",
+    "xtask",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/surajmandalcell/asrpro"
+publish = false
+
+[workspace.dependencies]
+# Workspace crates.
+hushpen-audio = { path = "crates/hushpen-audio" }
+hushpen-core = { path = "crates/hushpen-core" }
+hushpen-engine = { path = "crates/hushpen-engine" }
+hushpen-platform = { path = "crates/hushpen-platform" }
+hushpen-store = { path = "crates/hushpen-store" }
+hushpen-testhook = { path = "crates/hushpen-testhook" }
+
+# UI.
+gpui-pre = "=0.3.7"
+gpui-pre-wgpu = "=0.3.7"
+gpui-kit = "=0.7.0"
+gpui-tray = { version = "=0.1.4", default-features = false, features = ["gpui-kit"] }
+
+# Speech and language models.
+whisper-rs = "=0.16.0"
+llama-cpp-2 = { version = "=0.1.158", default-features = false }
+
+# Audio.
+cpal = "=0.18.2"
+hound = "=3.5.1"
+rubato = "=5.0.1"
+symphonia = { version = "=0.6.1", default-features = false, features = [
+    "aac", "isomp4", "mp3", "flac", "wav", "ogg", "vorbis", "alac", "aiff",
+] }
+
+# Platform.
+arboard = "=3.6.1"
+auto-launch = "=0.6.0"
+core-foundation = "=0.10.1"
+core-graphics = "=0.25.0"
+directories = "=6.0.0"
+enigo = "=0.6.1"
+global-hotkey = "=0.8.0"
+objc2 = "=0.6.4"
+objc2-app-kit = "=0.3.2"
+objc2-application-services = "=0.3.2"
+objc2-core-graphics = "=0.3.2"
+objc2-service-management = "=0.3.2"
+sys-locale = "=0.3.2"
+x11rb = { version = "=0.14.0", features = ["xinput", "xtest"] }
+
+# Storage, network, and signing.
+minisign = "=0.10.0"
+minisign-verify = "=0.3.0"
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
+sha2 = "=0.11.0"
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls", "gzip"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+codegen-units = 1

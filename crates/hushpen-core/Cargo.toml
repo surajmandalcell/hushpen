@@ -1,0 +1,12 @@
+[package]
+name = "hushpen-core"
+description = "Hushpen pure logic: state machine, cleanup rules, protocol frames, errors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,28 @@
+[package]
+name = "hushpen-app"
+description = "Hushpen desktop app (GPUI)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "hushpen"
+path = "src/main.rs"
+
+[features]
+# Debug builds only; release-check proves it is absent from shipped binaries.
+test-automation = ["dep:hushpen-testhook"]
+
+[dependencies]
+hushpen-audio.workspace = true
+hushpen-core.workspace = true
+hushpen-engine.workspace = true
+hushpen-platform.workspace = true
+hushpen-store.workspace = true
+hushpen-testhook = { workspace = true, optional = true }

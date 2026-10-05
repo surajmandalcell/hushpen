@@ -1,0 +1,89 @@
+name: CI
+
+# Manual only. Every dispatch counts against the CI budget in the mission
+# library, so nothing here runs on push, tag, or pull request.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Comma-separated build targets (macos-arm64, linux-x64, linux-arm64)
+        type: string
+        default: macos-arm64,linux-x64,linux-arm64
+      suite:
+        description: Which jobs to run
+        type: choice
+        options:
+          - gate
+          - engine
+          - package
+          - e2e
+          - full
+        default: gate
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  GGML_NATIVE: "OFF"
+
+jobs:
+  gate:
+    if: inputs.suite == 'gate' || inputs.suite == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - name: Gate
+        run: cargo xtask gate
+
+  plan:
+    if: inputs.suite != 'gate'
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          all='[
+            {"target":"macos-arm64","os":"macos-15"},
+            {"target":"linux-x64","os":"ubuntu-22.04"},
+            {"target":"linux-arm64","os":"ubuntu-22.04-arm"}
+          ]'
+          picked=$(jq -c --arg wanted ",${TARGETS// /}," \
+            '[.[] | select($wanted | contains("," + .target + ","))]' <<<"$all")
+          if [ "$picked" = "[]" ]; then
+            echo "::error::targets '$TARGETS' matches none of macos-arm64, linux-x64, linux-arm64"
+            exit 1
+          fi
+          echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Release build
+        run: cargo build --release --locked -p hushpen-app -p hushpen-llm
+      - name: Run both binaries
+        run: |
+          ./target/release/hushpen --version
+          ./target/release/hushpen-llm --version

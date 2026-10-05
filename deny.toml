@@ -1,0 +1,68 @@
+[graph]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+]
+
+[advisories]
+version = 2
+# Unmaintained-crate notices that come with the GPUI pin. Remove an entry
+# when the pin moves past the crate.
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained; pulled in by the GPUI pin" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in by the GPUI pin" },
+    { id = "RUSTSEC-2026-0192", reason = "rustybuzz is unmaintained; pulled in by the GPUI pin" },
+    { id = "RUSTSEC-2026-0206", reason = "ttf-parser is unmaintained; pulled in by the GPUI pin" },
+]
+
+# Hushpen is AGPL-3.0-or-later. Every license below can be combined with it.
+# MPL-2.0 (symphonia) is file-level copyleft; its notice ships with the app.
+[licenses]
+version = 2
+allow = [
+    "AGPL-3.0",
+    "GPL-3.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "MPL-2.0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",
+    "OFL-1.1",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.93
+unused-allowed-license = "allow"
+
+# The workspace crates (publish = false) are AGPL-3.0-or-later themselves.
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    { name = "reqwest", reason = "HTTP goes through ureq in hushpen-app/src/net" },
+    { name = "openssl-sys", reason = "TLS is rustls with ring; no system OpenSSL" },
+    { name = "aws-lc-sys", reason = "ureq uses the ring provider" },
+    { name = "native-tls", reason = "TLS is rustls with ring" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

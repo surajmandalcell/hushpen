@@ -1,0 +1,16 @@
+[package]
+name = "hushpen-engine"
+description = "Hushpen speech engine child and child process supervisor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hushpen-audio.workspace = true
+hushpen-core.workspace = true
