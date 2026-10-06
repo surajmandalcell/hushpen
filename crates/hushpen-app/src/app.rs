@@ -63,6 +63,12 @@ pub fn run() -> ExitCode {
             gpui_kit::init(cx);
             register_fonts(cx);
             theme::install(cx);
+            // The logger is a process-wide static, so `Drop` never runs for it.
+            cx.on_app_quit(|_| {
+                log::logger().flush();
+                async {}
+            })
+            .detach();
             // Close quits for now; it will hide to the tray once the tray exists.
             cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {

@@ -60,3 +60,28 @@ fn a_small_file_is_appended_to() {
     assert_eq!(fs::read_to_string(&path).unwrap(), "one\ntwo\n");
     assert_eq!(names(tmp.path()), ["hushpen.log"]);
 }
+
+#[test]
+fn a_logged_line_is_in_the_file_after_the_logger_is_dropped() {
+    use hushpen_store::log_file::{FileLogger, Filter};
+    use log::{Level, Log, Record};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("logs").join("hushpen.log");
+    let sink = RotatingFile::open(&path, LOG_MAX_BYTES, LOG_FILES).unwrap();
+    let logger = FileLogger::new(sink, Filter::parse(Some("info")));
+    logger.log(
+        &Record::builder()
+            .level(Level::Info)
+            .target("hushpen_app::storage")
+            .args(format_args!("STARTUP version=test"))
+            .build(),
+    );
+    drop(logger);
+
+    let log = fs::read_to_string(&path).unwrap();
+    assert!(
+        log.ends_with(" INFO hushpen_app::storage STARTUP version=test\n"),
+        "{log}"
+    );
+}

@@ -8,7 +8,7 @@
 use crate::{Error, Result, time};
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -16,14 +16,24 @@ pub const LOG_MAX_BYTES: u64 = 2_000_000;
 /// The live file plus `.1` and `.2`.
 pub const LOG_FILES: usize = 3;
 const DETAIL_LIMIT: usize = 500;
+/// The code that starts the first line of every run (see `hushpen-app`).
+const STARTUP_CODE: &str = "STARTUP";
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::Info;
 
 pub struct RotatingFile {
     path: PathBuf,
     max_bytes: u64,
     files: usize,
-    file: File,
+    file: BufWriter<File>,
     size: u64,
+    #[cfg(test)]
+    syncs: u32,
+}
+
+impl Drop for RotatingFile {
+    fn drop(&mut self) {
+        let _ = self.sync();
+    }
 }
 
 impl RotatingFile {
@@ -41,6 +51,8 @@ impl RotatingFile {
             files: files.max(1),
             file: open_append(path)?,
             size,
+            #[cfg(test)]
+            syncs: 0,
         };
         if size >= max_bytes {
             log.rotate()?;
@@ -48,6 +60,9 @@ impl RotatingFile {
         Ok(log)
     }
 
+    /// Writes the line and flushes it to the OS, so a crash of this process
+    /// keeps it. Use [`RotatingFile::sync`] for a line that must also survive
+    /// a power loss.
     pub fn write_line(&mut self, line: &str) -> Result<()> {
         let length = line.len() as u64;
         if self.size > 0 && self.size + length > self.max_bytes {
@@ -55,12 +70,30 @@ impl RotatingFile {
         }
         self.file
             .write_all(line.as_bytes())
+            .and_then(|()| self.file.flush())
             .map_err(|e| Error::io(format!("could not write {}", self.path.display()), e))?;
         self.size += length;
         Ok(())
     }
 
+    /// Flushes and asks the OS to write the file data to the disk.
+    pub fn sync(&mut self) -> Result<()> {
+        self.file
+            .flush()
+            .and_then(|()| self.file.get_ref().sync_data())
+            .map_err(|e| Error::io(format!("could not sync {}", self.path.display()), e))?;
+        #[cfg(test)]
+        {
+            self.syncs += 1;
+        }
+        Ok(())
+    }
+
     fn rotate(&mut self) -> Result<()> {
+        // Buffered bytes belong to the file that is about to be renamed.
+        self.file
+            .flush()
+            .map_err(|e| Error::io(format!("could not write {}", self.path.display()), e))?;
         let numbered = |n: usize| PathBuf::from(format!("{}.{n}", self.path.display()));
         let context =
             |e: io::Error| Error::io(format!("could not rotate {}", self.path.display()), e);
@@ -81,11 +114,12 @@ impl RotatingFile {
     }
 }
 
-fn open_append(path: &Path) -> Result<File> {
+fn open_append(path: &Path) -> Result<BufWriter<File>> {
     OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
+        .map(BufWriter::new)
         .map_err(|e| Error::io(format!("could not open {}", path.display()), e))
 }
 
@@ -170,19 +204,33 @@ impl Log for FileLogger {
         if !self.enabled(record.metadata()) {
             return;
         }
+        let message = record.args().to_string();
         let line = format_line(
             time::now_unix_ms(),
             record.level(),
             record.target(),
-            &record.args().to_string(),
+            &message,
         );
         if let Ok(mut sink) = self.sink.lock() {
             // A full disk must not take the app down with it.
             let _ = sink.write_line(&line);
+            if needs_sync(record.level(), &message) {
+                let _ = sink.sync();
+            }
         }
     }
 
-    fn flush(&self) {}
+    fn flush(&self) {
+        if let Ok(mut sink) = self.sink.lock() {
+            let _ = sink.sync();
+        }
+    }
+}
+
+/// Lines worth an fsync: they explain a crash, so they must reach the disk
+/// before the crash happens.
+fn needs_sync(level: Level, message: &str) -> bool {
+    level <= Level::Warn || message.starts_with(STARTUP_CODE)
 }
 
 fn format_line(unix_ms: u64, level: Level, scope: &str, message: &str) -> String {
@@ -212,6 +260,63 @@ pub fn install(log_path: &Path, rust_log: Option<&str>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn logger_in(dir: &Path) -> (FileLogger, PathBuf) {
+        let path = dir.join("logs").join("hushpen.log");
+        let sink = RotatingFile::open(&path, LOG_MAX_BYTES, LOG_FILES).unwrap();
+        (FileLogger::new(sink, Filter::parse(Some("info"))), path)
+    }
+
+    fn emit(logger: &FileLogger, level: Level, message: &str) {
+        logger.log(
+            &Record::builder()
+                .level(level)
+                .target("t")
+                .args(format_args!("{message}"))
+                .build(),
+        );
+    }
+
+    fn syncs(logger: &FileLogger) -> u32 {
+        logger.sink.lock().unwrap().syncs
+    }
+
+    #[test]
+    fn only_warn_error_and_startup_lines_are_synced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (logger, _) = logger_in(tmp.path());
+        emit(&logger, Level::Info, "SOMETHING fine");
+        emit(&logger, Level::Debug, "filtered out");
+        assert_eq!(syncs(&logger), 0);
+        emit(&logger, Level::Warn, "SETTINGS_CORRUPT x");
+        assert_eq!(syncs(&logger), 1);
+        emit(&logger, Level::Error, "BOOM x");
+        assert_eq!(syncs(&logger), 2);
+        emit(&logger, Level::Info, "STARTUP version=1");
+        assert_eq!(syncs(&logger), 3);
+    }
+
+    #[test]
+    fn flush_syncs_and_the_line_is_on_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (logger, path) = logger_in(tmp.path());
+        emit(&logger, Level::Info, "SOMETHING fine");
+        logger.flush();
+        assert_eq!(syncs(&logger), 1);
+        assert!(
+            fs::read_to_string(path)
+                .unwrap()
+                .ends_with("t SOMETHING fine\n")
+        );
+    }
+
+    #[test]
+    fn an_accepted_line_is_in_the_file_before_any_flush() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (logger, path) = logger_in(tmp.path());
+        emit(&logger, Level::Info, "SOMETHING fine");
+        assert!(fs::read_to_string(path).unwrap().contains("SOMETHING fine"));
+    }
 
     #[test]
     fn no_spec_means_info() {
