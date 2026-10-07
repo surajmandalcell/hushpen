@@ -1,6 +1,7 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
 use crate::assets::{AppAssets, register_fonts};
+use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
 use crate::shell::Shell;
 use crate::storage;
@@ -43,15 +44,16 @@ pub fn run() -> ExitCode {
         Some((server, jobs)) => (Some(server), Some(jobs)),
         None => (None, None),
     };
-    let _storage = match storage::open(data) {
+    let storage = match storage::open(data) {
         Ok(storage) => Rc::new(storage),
         Err(error) => {
             eprintln!("hushpen: could not open the data folder: {error}");
             return ExitCode::FAILURE;
         }
     };
+    let engine = Rc::new(EngineHost::start(&storage.data, &storage.settings.values()));
     #[cfg(feature = "test-automation")]
-    let hook_storage = Rc::clone(&_storage);
+    let hook_storage = Rc::clone(&storage);
     let (show_requests, shown) = mpsc::unbounded::<()>();
     let _guard = instance.serve(move || {
         let _ = show_requests.unbounded_send(());
@@ -64,7 +66,9 @@ pub fn run() -> ExitCode {
             register_fonts(cx);
             theme::install(cx);
             // The logger is a process-wide static, so `Drop` never runs for it.
-            cx.on_app_quit(|_| {
+            let quit_engine = Rc::clone(&engine);
+            cx.on_app_quit(move |_| {
+                quit_engine.shutdown();
                 log::logger().flush();
                 async {}
             })
@@ -87,15 +91,17 @@ pub fn run() -> ExitCode {
             };
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
+                let settings_storage = Rc::clone(&hook_storage);
                 crate::hook::attach(
                     cx,
                     jobs,
                     crate::hook::Surface {
                         window: handle,
                         shell: _shell,
-                        settings: Rc::new(move || hook_storage.settings.values()),
+                        settings: Rc::new(move || settings_storage.settings.values()),
                     },
                 );
+                crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
             }
             cx.spawn(async move |cx| {
                 let mut shown = shown;

@@ -3182,6 +3182,9 @@ dependencies = [
 [[package]]
 name = "hushpen-core"
 version = "2.0.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "hushpen-engine"
@@ -3190,6 +3193,9 @@ dependencies = [
  "hound",
  "hushpen-audio",
  "hushpen-core",
+ "hushpen-store",
+ "serde_json",
+ "tempfile",
  "whisper-rs",
  "whisper-rs-sys",
 ]

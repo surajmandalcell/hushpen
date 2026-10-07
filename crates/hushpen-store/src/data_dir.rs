@@ -118,6 +118,15 @@ impl DataDir {
         self.logs_dir().join("hushpen.log")
     }
 
+    pub fn engine_log_path(&self) -> PathBuf {
+        self.logs_dir().join("engine.log")
+    }
+
+    /// Where `ggml-<id>.bin` speech models live. The folder is created by the model manager.
+    pub fn whisper_models_dir(&self) -> PathBuf {
+        self.root.join("models").join("whisper")
+    }
+
     pub fn marker_path(&self) -> PathBuf {
         self.root.join(MARKER_NAME)
     }

@@ -9,6 +9,7 @@ fn main() -> ExitCode {
             println!("{}", cli::version_line());
             ExitCode::SUCCESS
         }
+        Command::Engine(args) => hushpen_engine::engine_main(&args),
         Command::Unknown(argument) => {
             eprintln!("hushpen: unknown argument '{argument}'. Try --version.");
             ExitCode::from(2)

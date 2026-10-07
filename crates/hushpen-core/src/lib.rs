@@ -1,5 +1,9 @@
 //! Pure Hushpen logic. No IO, no native libraries.
 
+pub mod error;
+pub mod protocol;
+pub mod threads;
+
 /// Product version, shared by the app, the children, and the packagers.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

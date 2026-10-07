@@ -13,6 +13,10 @@ use hushpen_engine::{
     AsrEngine, CancelFlag, EngineError, LoadOptions, TranscribeOptions, WhisperEngine,
 };
 
+// The child process and supervisor tests share the helpers below.
+#[path = "it/child.rs"]
+mod child;
+
 fn assets_dir() -> Option<PathBuf> {
     std::env::var_os("HUSHPEN_TEST_ASSETS").map(PathBuf::from)
 }

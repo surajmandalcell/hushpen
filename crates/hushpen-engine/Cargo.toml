@@ -18,6 +18,8 @@ heavy = []
 [dependencies]
 hushpen-audio.workspace = true
 hushpen-core.workspace = true
+hushpen-store.workspace = true
+hound.workspace = true
 whisper-rs.workspace = true
 whisper-rs-sys.workspace = true
 
@@ -25,4 +27,5 @@ whisper-rs-sys.workspace = true
 whisper-rs = { workspace = true, features = ["metal"] }
 
 [dev-dependencies]
-hound.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

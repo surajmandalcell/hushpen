@@ -23,6 +23,30 @@ extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
     unsafe { (*(user_data as *const AtomicBool)).load(Ordering::Relaxed) }
 }
 
+extern "C" fn native_log(level: u32, text: *const std::ffi::c_char, _user_data: *mut c_void) {
+    // Debug builds of whisper.cpp print every decoded token at DEBUG level, which is transcript
+    // text. Only warnings and errors may reach stderr, and so engine.log.
+    if text.is_null()
+        || !(level == whisper_rs_sys::ggml_log_level_GGML_LOG_LEVEL_WARN
+            || level == whisper_rs_sys::ggml_log_level_GGML_LOG_LEVEL_ERROR)
+    {
+        return;
+    }
+    // SAFETY: whisper.cpp passes a NUL-terminated string that lives for this call.
+    let text = unsafe { std::ffi::CStr::from_ptr(text) };
+    eprint!("{}", text.to_string_lossy());
+}
+
+/// Routes whisper.cpp and ggml logging through a filter that drops everything below a warning.
+/// Call it once in the engine child before any model loads.
+pub fn quiet_native_logs() {
+    // SAFETY: `native_log` is a plain function that ignores its user data.
+    unsafe {
+        whisper_rs_sys::whisper_log_set(Some(native_log), std::ptr::null_mut());
+        whisper_rs_sys::ggml_log_set(Some(native_log), std::ptr::null_mut());
+    }
+}
+
 /// The whisper.cpp version string the fork was built from, for example `1.9.4`.
 pub fn whisper_cpp_version() -> &'static str {
     whisper_rs::get_whisper_version()

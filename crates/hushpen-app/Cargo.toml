@@ -19,7 +19,6 @@ path = "src/main.rs"
 # Debug builds only; release-check proves it is absent from shipped binaries.
 test-automation = [
     "dep:hushpen-testhook",
-    "dep:serde_json",
     "hushpen-testhook/guard",
     "gpui-kit/test-support",
 ]
@@ -45,7 +44,7 @@ gpui-pre-wgpu = { workspace = true, features = ["test-support"], optional = true
 image = { workspace = true, optional = true }
 log.workspace = true
 raw-window-handle.workspace = true
-serde_json = { workspace = true, optional = true }
+serde_json.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }

@@ -4,13 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// One piece of recognized speech with its time span in the audio.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Segment {
-    pub start_ms: u64,
-    pub end_ms: u64,
-    pub text: String,
-}
+pub use hushpen_core::protocol::Segment;
 
 /// The full result of one job.
 #[derive(Debug, Clone, PartialEq, Eq)]

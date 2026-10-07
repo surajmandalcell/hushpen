@@ -8,9 +8,13 @@ use gpui_kit::SharedString;
 #[cfg(feature = "test-automation")]
 mod automation;
 #[cfg(feature = "test-automation")]
+mod engine;
+#[cfg(feature = "test-automation")]
 pub use automation::{
     Hooks, Job, Surface, attach, register_action, set_state_section, set_wav_feeder, start,
 };
+#[cfg(feature = "test-automation")]
+pub use engine::attach as attach_engine;
 
 /// Records a timestamped event for `hookctl events`. Does nothing in a build
 /// without the test hook.

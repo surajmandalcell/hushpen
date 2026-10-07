@@ -1,17 +1,21 @@
-//! Command line. `--version` is answered before anything touches the
+//! Command line. `--version` and `engine` are answered before anything touches the
 //! display, the data folder, or the single-instance lock.
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Run,
     Version,
+    /// The speech engine child, with the arguments after `engine`.
+    Engine(Vec<String>),
     Unknown(String),
 }
 
 pub fn parse(args: impl IntoIterator<Item = String>) -> Command {
-    match args.into_iter().next().as_deref() {
+    let mut args = args.into_iter();
+    match args.next().as_deref() {
         None => Command::Run,
         Some("--version" | "-V") => Command::Version,
+        Some("engine") => Command::Engine(args.collect()),
         Some(other) => Command::Unknown(other.to_string()),
     }
 }
@@ -37,6 +41,15 @@ mod tests {
     fn version_flags_print_the_version() {
         assert_eq!(parse_args(&["--version"]), Command::Version);
         assert_eq!(parse_args(&["-V"]), Command::Version);
+    }
+
+    #[test]
+    fn the_engine_subcommand_keeps_its_own_arguments() {
+        assert_eq!(parse_args(&["engine"]), Command::Engine(vec![]));
+        assert_eq!(
+            parse_args(&["engine", "--smoke", "a.wav"]),
+            Command::Engine(vec!["--smoke".into(), "a.wav".into()])
+        );
     }
 
     #[test]

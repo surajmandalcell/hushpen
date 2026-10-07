@@ -9,6 +9,7 @@ compile_error!(
 pub mod app;
 pub mod assets;
 pub mod cli;
+pub mod engine_host;
 pub mod hook;
 pub mod instance;
 pub mod shell;
