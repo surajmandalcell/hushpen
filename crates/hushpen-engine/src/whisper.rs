@@ -75,9 +75,7 @@ pub struct WhisperEngine {
 impl WhisperEngine {
     pub fn load(model: &Path, options: LoadOptions) -> Result<Self, EngineError> {
         if let Some(feature) = crate::cpu::missing_cpu_feature() {
-            return Err(EngineError::LoadFailed(format!(
-                "this CPU lacks {feature}, which the speech engine needs"
-            )));
+            return Err(EngineError::UnsupportedCpu(feature));
         }
         let path = model
             .to_str()
@@ -223,4 +221,19 @@ impl WhisperEngine {
 
 fn centiseconds_to_ms(value: i64) -> u64 {
     u64::try_from(value).unwrap_or(0).saturating_mul(10)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_language_picker_list_is_the_list_of_the_linked_whisper() {
+        let linked = usize::try_from(whisper_rs::get_lang_max_id() + 1).unwrap();
+        assert_eq!(hushpen_core::language::LANGUAGES.len(), linked);
+        for (code, _) in hushpen_core::language::LANGUAGES {
+            let id = get_lang_id(code).unwrap_or_else(|| panic!("whisper lacks {code}"));
+            assert_eq!(get_lang_str(id), Some(code));
+        }
+    }
 }

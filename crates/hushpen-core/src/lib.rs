@@ -2,8 +2,10 @@
 
 pub mod catalog;
 pub mod error;
+pub mod language;
 pub mod protocol;
 pub mod threads;
+pub mod transcript;
 
 /// Product version, shared by the app, the children, and the packagers.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

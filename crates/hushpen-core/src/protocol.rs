@@ -281,6 +281,18 @@ pub enum Event {
     Pong,
 }
 
+/// The `reason` of an `ENGINE_LOAD_FAILED` error when the CPU lacks an instruction set.
+pub const REASON_CPU: &str = "cpu";
+
+/// The `params` object of an error event.
+pub type Params = Map<String, Value>;
+
+/// The `detail` and `reason` texts of an error event's `params`.
+pub fn error_texts(params: &Params) -> (String, Option<String>) {
+    let text = |key: &str| params.get(key).and_then(Value::as_str).map(str::to_owned);
+    (text("detail").unwrap_or_default(), text("reason"))
+}
+
 impl Event {
     pub fn error(job: Option<u64>, code: &str, detail: impl Into<String>) -> Self {
         let mut params = Map::new();
@@ -290,6 +302,20 @@ impl Event {
             code: code.to_owned(),
             params,
         }
+    }
+
+    /// An error with a `reason` parameter next to the `detail`.
+    pub fn error_with_reason(
+        job: Option<u64>,
+        code: &str,
+        detail: impl Into<String>,
+        reason: &str,
+    ) -> Self {
+        let mut event = Self::error(job, code, detail);
+        if let Self::Error { params, .. } = &mut event {
+            params.insert("reason".into(), Value::String(reason.to_owned()));
+        }
+        event
     }
 
     pub fn to_json(&self) -> Value {
@@ -612,6 +638,27 @@ mod tests {
         for event in events {
             assert_eq!(Event::from_json(&event.to_json()), Ok(event));
         }
+    }
+
+    #[test]
+    fn an_error_can_carry_a_reason_that_survives_the_wire() {
+        let sent = Event::error_with_reason(None, "ENGINE_LOAD_FAILED", "no AVX2", REASON_CPU);
+        let frame = Frame {
+            kind: FrameKind::Json,
+            payload: serde_json::to_vec(&sent.to_json()).unwrap(),
+        };
+        let Event::Error { params, .. } = Event::from_frame(&frame).unwrap() else {
+            panic!("an error event");
+        };
+        assert_eq!(
+            error_texts(&params),
+            ("no AVX2".to_owned(), Some("cpu".to_owned()))
+        );
+        let plain = Event::error(None, "ENGINE_LOAD_FAILED", "bad file");
+        let Event::Error { params, .. } = plain else {
+            panic!("an error event");
+        };
+        assert_eq!(error_texts(&params), ("bad file".to_owned(), None));
     }
 
     #[test]

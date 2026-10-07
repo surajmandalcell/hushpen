@@ -33,7 +33,7 @@ sample() { # <label> <x> <y> <want>
   got=$(pixel "$RUN_OUT/first.png" $(at "$2" "$3"))
   [ "$got" = "$4" ] || failures+="$1 at ($2,$3) is $got, want $4; "
 }
-sample content 500 300 "#2F2F2F"
+sample content 220 300 "#2F2F2F"
 sample sidebar 100 450 "#3C3C3C"
 sample "active Home fill" 190 66 "#686868"
 sample "close light" 26 24 "#FF5F57"

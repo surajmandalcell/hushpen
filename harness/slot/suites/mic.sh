@@ -251,6 +251,10 @@ start_app
 wait_until 10 cap_is '.devices | map(select(.id | test("vmic2_src"))) | length' 1
 index=$(cap '.devices | map(.id | test("vmic2_src")) | index(true) + 1')
 id2=$(cap '.devices[] | select(.id | test("vmic2_src")) | .id')
+# The device list sits below the dictation panel: scroll the page until the row is in the window.
+read -r ox oy < <(settled_origin "$(app_window)")
+xdotool mousemove $((ox + 220)) $((oy + 300))
+for _ in $(seq 8); do xdotool click 5; sleep 0.1; done
 $HC click "home.mic.device.$index" >/dev/null
 wait_until 5 cap_is .saved_device "$id2"
 /harness/slot/app.sh stop

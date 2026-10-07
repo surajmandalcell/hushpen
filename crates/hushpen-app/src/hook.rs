@@ -8,6 +8,8 @@ use gpui_kit::SharedString;
 #[cfg(feature = "test-automation")]
 mod automation;
 #[cfg(feature = "test-automation")]
+mod dictation;
+#[cfg(feature = "test-automation")]
 mod engine;
 #[cfg(feature = "test-automation")]
 mod mic;
@@ -15,8 +17,11 @@ mod mic;
 mod models;
 #[cfg(feature = "test-automation")]
 pub use automation::{
-    Hooks, Job, Surface, attach, register_action, set_state_section, set_wav_feeder, start,
+    Hooks, Job, Surface, attach, mark_disabled, register_action, set_state_section, set_wav_feeder,
+    start,
 };
+#[cfg(feature = "test-automation")]
+pub use dictation::attach as attach_dictation;
 #[cfg(feature = "test-automation")]
 pub use engine::attach as attach_engine;
 #[cfg(feature = "test-automation")]
@@ -33,6 +38,10 @@ pub fn record_event(kind: &str, detail: &str) {
 
 #[cfg(not(feature = "test-automation"))]
 pub fn record_event(_kind: &str, _detail: &str) {}
+
+/// Tells the hook that an element is drawn disabled. Does nothing without the hook.
+#[cfg(not(feature = "test-automation"))]
+pub fn mark_disabled(_id: &str, _disabled: bool) {}
 
 /// Records one network request (purpose, host, result) for `hookctl net`.
 /// Every network call site calls this once it knows the result. Does nothing

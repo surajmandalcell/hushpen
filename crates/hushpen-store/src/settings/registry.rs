@@ -9,6 +9,8 @@ pub(super) enum Kind {
     Text(usize),
     /// A string that may be empty.
     OptionalText(usize),
+    /// `auto` or a language code that whisper knows.
+    Language,
     Choice(&'static [&'static str]),
     Int(i64, i64),
     Float(f64, f64),
@@ -47,6 +49,10 @@ impl Spec {
             Kind::OptionalText(max) => value
                 .as_str()
                 .filter(|s| s.chars().count() <= *max)
+                .map(|_| value.clone()),
+            Kind::Language => value
+                .as_str()
+                .filter(|s| hushpen_core::language::is_setting_value(s))
                 .map(|_| value.clone()),
             Kind::Choice(options) => value
                 .as_str()
@@ -138,7 +144,7 @@ pub(super) static REGISTRY: &[Spec] = &[
         })
     }),
     spec!("dictation.modelId", Kind::OptionalText(128), |_| json!("")),
-    spec!("dictation.language", Kind::Text(32), |_| json!("auto")),
+    spec!("dictation.language", Kind::Language, |_| json!("auto")),
     spec!(
         "dictation.recentLanguages",
         Kind::TextList(5),

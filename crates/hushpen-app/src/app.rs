@@ -1,6 +1,7 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
 use crate::assets::{AppAssets, register_fonts};
+use crate::dictation::{Dictation, Engine};
 use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
 use crate::mic::{self, CpalBackend, Mic};
@@ -54,11 +55,17 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let engine = Rc::new(EngineHost::start(&storage.data));
+    let default_model = hushpen_core::catalog::embedded()
+        .default_whisper()
+        .map(|entry| entry.id.clone())
+        .unwrap_or_default();
+    let engine = Rc::new(EngineHost::start(&storage.data, &default_model));
     let recovered = mic::sweep_orphans(&storage.data);
     let mic_storage = Rc::clone(&storage);
     let models_storage = Rc::clone(&storage);
     let models_engine = Rc::clone(&engine);
+    let dictation_storage = Rc::clone(&storage);
+    let dictation_engine = Rc::clone(&engine);
     #[cfg(feature = "test-automation")]
     let hook_storage = Rc::clone(&storage);
     let (show_requests, shown) = mpsc::unbounded::<()>();
@@ -114,6 +121,19 @@ pub fn run() -> ExitCode {
                 )
             });
             shell.update(cx, |shell, cx| shell.attach_models(models.clone(), cx));
+            let dictation = cx.new(|cx| {
+                Dictation::new(
+                    dictation_storage,
+                    mic.clone(),
+                    models.clone(),
+                    Engine::host(&dictation_engine),
+                    models::thread_spawner(),
+                    cx,
+                )
+            });
+            shell.update(cx, |shell, cx| {
+                shell.attach_dictation(dictation.clone(), cx)
+            });
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);
@@ -129,6 +149,7 @@ pub fn run() -> ExitCode {
                 crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_models(cx, models);
+                crate::hook::attach_dictation(cx, dictation);
             }
             cx.spawn(async move |cx| {
                 let mut shown = shown;

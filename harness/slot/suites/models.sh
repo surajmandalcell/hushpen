@@ -51,9 +51,13 @@ select_model() {
   hook_action model-select "{\"id\":\"$1\"}" >/dev/null
 }
 
+models_rendered() { $HC tree | jq -e 'any(.[]; .id | startswith("models.row."))' >/dev/null; }
+
 open_models() {
   $HC click sidebar.models >/dev/null
   wait_until 5 view_is models
+  # The tree follows the next frame: wait until the rows exist before a click targets one.
+  wait_until 5 models_rendered
 }
 
 echo "== VAL-MOD-002 the view lists the catalog with state"

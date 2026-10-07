@@ -272,14 +272,16 @@ impl Worker {
                     },
                 );
             }
-            Err(failure) => send(
-                &self.output,
-                &Event::error(
-                    None,
-                    failure.code().unwrap_or(error::ENGINE_LOAD_FAILED),
-                    failure.to_string(),
-                ),
-            ),
+            Err(failure) => {
+                let code = failure.code().unwrap_or(error::ENGINE_LOAD_FAILED);
+                let event = match failure.reason() {
+                    Some(reason) => {
+                        Event::error_with_reason(None, code, failure.to_string(), reason)
+                    }
+                    None => Event::error(None, code, failure.to_string()),
+                };
+                send(&self.output, &event);
+            }
         }
     }
 
@@ -440,6 +442,9 @@ mod tests {
             }
             if name.contains("bad") {
                 return Err(EngineError::LoadFailed("not a model".into()));
+            }
+            if name.contains("oldcpu") {
+                return Err(EngineError::UnsupportedCpu("AVX2"));
             }
             Ok(Box::new(Fake { job_ms }) as Box<dyn AsrEngine>)
         })
@@ -646,6 +651,24 @@ mod tests {
                 other => panic!("unexpected {other:?}"),
             }
         }
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn a_cpu_that_lacks_an_instruction_set_is_a_load_failure_with_the_cpu_reason() {
+        let mut session = Session::start(0);
+        let Event::Error {
+            job: None,
+            code,
+            params,
+        } = session.load("ggml-oldcpu.bin")
+        else {
+            panic!("expected a load error");
+        };
+        assert_eq!(code, error::ENGINE_LOAD_FAILED);
+        assert_eq!(params.get("reason"), Some(&json!("cpu")));
+        session.send(&Request::Ping);
+        assert_eq!(session.next(), Event::Pong);
         assert_eq!(session.finish(), 0);
     }
 

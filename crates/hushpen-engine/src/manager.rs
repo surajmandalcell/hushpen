@@ -320,23 +320,15 @@ impl Manager {
                 code,
                 params,
             } => {
-                let detail = params
-                    .get("detail")
-                    .and_then(|detail| detail.as_str())
-                    .unwrap_or_default()
-                    .to_owned();
-                self.finish(job, JobOutcome::Failed(Failure { code, detail }), None);
+                let failure = failure_from(code, &params);
+                self.finish(job, JobOutcome::Failed(failure), None);
             }
             Event::Error {
                 job: None,
                 code,
                 params,
             } => {
-                let detail = params
-                    .get("detail")
-                    .and_then(|detail| detail.as_str())
-                    .unwrap_or_default()
-                    .to_owned();
+                let failure = failure_from(code.clone(), &params);
                 if code == error::ENGINE_LOAD_FAILED
                     && let Some(entry) = self.sent_loads.pop_front()
                 {
@@ -346,7 +338,7 @@ impl Manager {
                         &format!("model={} code={code}", model_name(&entry.spec.path)),
                     );
                     if let Some(reply) = entry.reply {
-                        let _ = reply.send(Err(Failure { code, detail }));
+                        let _ = reply.send(Err(failure));
                     }
                     self.publish();
                 } else {
@@ -745,6 +737,15 @@ impl Manager {
             status.gpu = self.gpu;
             status.restarts = self.restarts;
         });
+    }
+}
+
+fn failure_from(code: String, params: &hushpen_core::protocol::Params) -> Failure {
+    let (detail, reason) = hushpen_core::protocol::error_texts(params);
+    Failure {
+        code,
+        detail,
+        reason,
     }
 }
 

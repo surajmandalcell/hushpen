@@ -33,6 +33,29 @@ const UI_ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 
 type FeedWav = Box<dyn Fn(&mut App, &Path) -> Result<Value, String>>;
 
+thread_local! {
+    /// Ids of elements the last frame drew as disabled. GPUI divs have no disabled flag in
+    /// the accessibility tree, so the views report it here and the tree and `click` honor it.
+    static DISABLED: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::default();
+}
+
+/// Records whether the element `id` is drawn disabled. Call it while rendering the element.
+pub fn mark_disabled(id: &str, disabled: bool) {
+    DISABLED.with(|set| {
+        let mut set = set.borrow_mut();
+        if disabled {
+            set.insert(id.to_owned());
+        } else {
+            set.remove(id);
+        }
+    });
+}
+
+fn is_disabled(id: &str) -> bool {
+    DISABLED.with(|set| set.borrow().contains(id))
+}
+
 /// What features register. It lives in a GPUI global so any handler can add
 /// an action or replace a state section.
 pub struct Hooks {
@@ -347,7 +370,7 @@ pub fn tree(window: &Window) -> Vec<ElementInfo> {
                 .to_string(),
             bounds: bounds_of(snapshot.bounds(), (0.0, 0.0)),
             root_bounds: bounds_of(snapshot.bounds(), origin),
-            enabled: snapshot.disabled() != Some(true),
+            enabled: snapshot.disabled() != Some(true) && !is_disabled(&id_of(snapshot)),
             focused: is_focused(snapshot),
             visible: snapshot.visible(),
         })
@@ -388,7 +411,7 @@ pub fn click(window: &mut Window, cx: &mut App, id: &str) -> Result<Value, Strin
     if !snapshot.visible() {
         return Err(format!("element '{id}' is not visible"));
     }
-    if snapshot.disabled() == Some(true) {
+    if snapshot.disabled() == Some(true) || is_disabled(id) {
         return Err(format!("element '{id}' is disabled"));
     }
     let position = snapshot.bounds().center();

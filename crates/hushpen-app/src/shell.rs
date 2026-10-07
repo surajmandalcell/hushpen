@@ -1,5 +1,6 @@
 //! The app window: sidebar, toolbar, traffic lights, and the active view.
 
+use crate::dictation::{self, Dictation};
 use crate::hook;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
@@ -23,6 +24,7 @@ pub struct Shell {
     nav_focus: Vec<FocusHandle>,
     mic: Option<Entity<Mic>>,
     models: Option<Entity<Models>>,
+    dictation: Option<Entity<Dictation>>,
 }
 
 impl Shell {
@@ -38,7 +40,15 @@ impl Shell {
                 .collect(),
             mic: None,
             models: None,
+            dictation: None,
         }
+    }
+
+    /// Shows dictation on Home and repaints when it changes.
+    pub fn attach_dictation(&mut self, dictation: Entity<Dictation>, cx: &mut Context<Self>) {
+        cx.observe(&dictation, |_, _, cx| cx.notify()).detach();
+        self.dictation = Some(dictation);
+        cx.notify();
     }
 
     /// Shows the model library in the Models view and repaints when it changes.
@@ -280,10 +290,16 @@ impl Shell {
             )
     }
 
-    fn content(&self, cx: &mut App) -> impl IntoElement {
+    fn content(&self, shell: &Entity<Shell>, cx: &mut App) -> impl IntoElement {
         let view = self.active;
         let body = match (&self.mic, &self.models, view) {
-            (Some(mic), _, View::Home) => mic::panel::render(mic, cx).into_any_element(),
+            (Some(mic), _, View::Home) => {
+                let mut home = div().flex().flex_col().gap(px(space::LG));
+                if let Some(dictation) = &self.dictation {
+                    home = home.child(dictation::panel::render(dictation, shell, cx));
+                }
+                home.child(mic::panel::render(mic, cx)).into_any_element()
+            }
             (_, Some(models), View::Models) => models::panel::render(models, cx).into_any_element(),
             _ => div()
                 .id(hook::id(view.key(), "placeholder"))
@@ -329,6 +345,7 @@ fn start_move(event: &MouseDownEvent, window: &mut Window, _cx: &mut gpui_kit::A
 
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let shell = cx.entity();
         div()
             .id("shell")
             .track_focus(&self.shell_focus)
@@ -340,7 +357,7 @@ impl Render for Shell {
             .font_family(theme::FONT_FAMILY)
             .text_token(BODY_MD)
             .child(self.sidebar(cx))
-            .child(self.content(cx))
+            .child(self.content(&shell, cx))
     }
 }
 

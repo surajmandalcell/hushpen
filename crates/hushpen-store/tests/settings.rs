@@ -172,6 +172,26 @@ fn bad_values_reset_to_their_defaults_on_load() {
 }
 
 #[test]
+fn a_language_that_whisper_does_not_know_resets_to_auto() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("settings.json"),
+        json!({"schemaVersion": 1, "values": {"dictation.language": "xx-invalid"}}).to_string(),
+    )
+    .unwrap();
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    assert_eq!(store.get("dictation.language"), Some(json!("auto")));
+    assert_eq!(
+        read(&tmp.path().join("settings.json"))["values"]["dictation.language"],
+        json!("auto")
+    );
+    store.set("dictation.language", json!("es")).unwrap();
+    assert_eq!(store.get("dictation.language"), Some(json!("es")));
+    assert!(store.set("dictation.language", json!("xx")).is_err());
+    assert_eq!(store.get("dictation.language"), Some(json!("es")));
+}
+
+#[test]
 fn set_rejects_unknown_internal_and_invalid_input() {
     let tmp = tempfile::tempdir().unwrap();
     let store = SettingsStore::open(tmp.path()).unwrap();

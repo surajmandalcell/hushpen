@@ -196,6 +196,28 @@ impl Models {
             .unwrap_or_default()
     }
 
+    /// The id a dictation really uses: the chosen model, or the catalog default while none is
+    /// chosen.
+    pub fn effective(&self) -> String {
+        let chosen = self.active();
+        if !chosen.trim().is_empty() {
+            return chosen;
+        }
+        self.rows
+            .iter()
+            .find(|row| row.entry.default)
+            .map(|row| row.entry.id.clone())
+            .unwrap_or_default()
+    }
+
+    /// The effective model, once its file is verified. Home records only with this.
+    pub fn usable(&self) -> Option<&Row> {
+        let id = self.effective();
+        self.index_of(&id)
+            .map(|index| &self.rows[index])
+            .filter(|row| row.state == ModelState::Ready)
+    }
+
     fn model_path(&self, entry: &ModelEntry) -> PathBuf {
         self.storage.data.whisper_models_dir().join(&entry.file)
     }
@@ -215,6 +237,7 @@ impl Models {
     /// other file is hashed on a worker thread and stays `Verifying` until the hash is known.
     fn scan(&mut self) {
         let mut to_hash = Vec::new();
+        let mut failed = Vec::new();
         for row in &mut self.rows {
             if matches!(row.state, ModelState::Downloading { .. }) {
                 continue;
@@ -223,12 +246,18 @@ impl Models {
             row.state = match model_files::check(&path, row.entry.bytes, &row.entry.sha256) {
                 Check::Missing => ModelState::NotDownloaded,
                 Check::Ready => ModelState::Ready,
-                Check::WrongSize => ModelState::Failed,
+                Check::WrongSize => {
+                    failed.push(failure_text(&row.entry));
+                    ModelState::Failed
+                }
                 Check::NeedsHash => {
                     to_hash.push((row.entry.clone(), path));
                     ModelState::Verifying
                 }
             };
+        }
+        if let Some(message) = failed.pop() {
+            self.set_notice(MODEL_HASH_MISMATCH, message);
         }
         if to_hash.is_empty() {
             return;
@@ -289,6 +318,8 @@ impl Models {
                     self.rows[index].state = if ready {
                         ModelState::Ready
                     } else {
+                        let message = failure_text(&self.rows[index].entry);
+                        self.set_notice(MODEL_HASH_MISMATCH, message);
                         ModelState::Failed
                     };
                     hook::record_event("models", &format!("verified {id} ready={ready}"));
@@ -354,10 +385,7 @@ impl Models {
     /// Loads the active model into the engine, but only once its file is verified. The engine
     /// starts with no model so that a changed file is never loaded.
     fn load_active(&self) {
-        let ready = self
-            .index_of(&self.active())
-            .is_some_and(|index| self.rows[index].state == ModelState::Ready);
-        if let (true, Some(engine)) = (ready, &self.engine) {
+        if let (true, Some(engine)) = (self.usable().is_some(), &self.engine) {
             engine.apply_settings(&self.storage.settings.values());
         }
     }
@@ -534,6 +562,16 @@ impl Models {
             })).collect::<Vec<_>>(),
         })
     }
+}
+
+/// What a failed row says. The row shows it on one line, so it can be cut short; the view
+/// notice shows all of it.
+pub fn failure_text(entry: &ModelEntry) -> String {
+    format!(
+        "{} failed verification: the file on disk is not the pinned {} file, so it is never used. Download it again to replace it.",
+        entry.name,
+        panel::format_size(entry.bytes)
+    )
 }
 
 fn notice_for_failure(failure: &Failure, name: &str) -> Notice {

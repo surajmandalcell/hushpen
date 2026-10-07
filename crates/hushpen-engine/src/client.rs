@@ -49,7 +49,7 @@ impl Default for Timing {
             healthy_after: Duration::from_secs(60),
             ping_interval: Duration::from_secs(2),
             pong_timeout: Duration::from_secs(5),
-            cancel_grace: Duration::from_millis(800),
+            cancel_grace: Duration::from_millis(500),
             ready_timeout: Duration::from_secs(10),
             submit_wait: Duration::from_secs(10),
         }
@@ -113,6 +113,9 @@ pub struct Status {
 pub struct Failure {
     pub code: String,
     pub detail: String,
+    /// A stable word that tells apart causes of one code, for example `cpu` for an
+    /// `ENGINE_LOAD_FAILED` on a processor that lacks an instruction set.
+    pub reason: Option<String>,
 }
 
 impl Failure {
@@ -120,7 +123,12 @@ impl Failure {
         Self {
             code: code.to_owned(),
             detail: detail.into(),
+            reason: None,
         }
+    }
+
+    pub fn is_unsupported_cpu(&self) -> bool {
+        self.reason.as_deref() == Some(hushpen_core::protocol::REASON_CPU)
     }
 }
 
@@ -384,5 +392,16 @@ impl JobHandle {
             hushpen_core::error::ENGINE_UNAVAILABLE,
             "the supervisor has stopped",
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cancel_that_needs_a_kill_settles_well_under_a_second() {
+        let grace = Timing::default().cancel_grace;
+        assert_eq!(grace, Duration::from_millis(500));
     }
 }

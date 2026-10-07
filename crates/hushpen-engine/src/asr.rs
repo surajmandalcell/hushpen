@@ -59,6 +59,9 @@ impl CancelFlag {
 pub enum EngineError {
     /// The model file could not be opened or is not a whisper model.
     LoadFailed(String),
+    /// The CPU lacks an instruction set the build needs, for example `AVX2`. This is a load
+    /// failure whose reason is `cpu`, so the UI can say the processor is not supported.
+    UnsupportedCpu(&'static str),
     /// The job was stopped through its [`CancelFlag`].
     Cancelled,
     /// The language code is not one whisper knows.
@@ -73,11 +76,19 @@ impl EngineError {
     /// The stable code the UI matches on. A cancel is not an error and has none.
     pub fn code(&self) -> Option<&'static str> {
         match self {
-            Self::LoadFailed(_) => Some("ENGINE_LOAD_FAILED"),
+            Self::LoadFailed(_) | Self::UnsupportedCpu(_) => Some("ENGINE_LOAD_FAILED"),
             Self::Cancelled => None,
             Self::BadLanguage(_) => Some("ENGINE_BAD_LANGUAGE"),
             Self::NoAudio => Some("ENGINE_NO_SPEECH"),
             Self::Failed(_) => Some("ENGINE_CRASHED"),
+        }
+    }
+
+    /// A stable word for why the error happened, when the code alone is not enough.
+    pub fn reason(&self) -> Option<&'static str> {
+        match self {
+            Self::UnsupportedCpu(_) => Some(hushpen_core::protocol::REASON_CPU),
+            _ => None,
         }
     }
 }
@@ -86,6 +97,9 @@ impl fmt::Display for EngineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::LoadFailed(detail) => write!(f, "model load failed: {detail}"),
+            Self::UnsupportedCpu(feature) => {
+                write!(f, "this CPU lacks {feature}, which the speech engine needs")
+            }
             Self::Cancelled => f.write_str("job cancelled"),
             Self::BadLanguage(code) => write!(f, "unknown language code: {code}"),
             Self::NoAudio => f.write_str("no audio samples"),

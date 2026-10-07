@@ -41,14 +41,18 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
             .iter()
             .map(|row| RowView {
                 name: row.entry.name.clone(),
-                detail: format!(
-                    "{} · {}",
-                    format_size(row.entry.bytes),
-                    match row.entry.languages {
-                        Languages::Multilingual => "Multilingual",
-                        Languages::English => "English only",
-                    },
-                ),
+                detail: if row.state == ModelState::Failed {
+                    super::failure_text(&row.entry)
+                } else {
+                    format!(
+                        "{} · {}",
+                        format_size(row.entry.bytes),
+                        match row.entry.languages {
+                            Languages::Multilingual => "Multilingual",
+                            Languages::English => "English only",
+                        },
+                    )
+                },
                 recommended: row.entry.default,
                 state: row.state,
                 active: row.entry.id == active,
@@ -209,6 +213,10 @@ fn model_row(
                 )
                 .child(
                     div()
+                        .id(hook::indexed("models", "detail", index))
+                        .test_support()
+                        .w_full()
+                        .min_w_0()
                         .text_token(BODY_SM)
                         .text_color(theme::rgb_of(color::TEXT_MUTED))
                         .truncate()
@@ -236,9 +244,11 @@ fn status(index: usize, row: &RowView) -> impl IntoElement + use<> {
         .id(hook::indexed("models", "status", index))
         .test_support()
         .flex()
+        .flex_none()
         .items_center()
         .justify_end()
         .min_w(px(PROGRESS_WIDTH))
+        .whitespace_nowrap()
         .text_token(BODY_SM)
         .text_color(theme::rgb_of(tone))
         .child(text)

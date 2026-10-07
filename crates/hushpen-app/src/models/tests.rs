@@ -258,6 +258,30 @@ fn a_file_of_the_wrong_size_is_failed_without_hashing(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_failed_row_puts_its_full_explanation_in_the_view_notice(cx: &mut TestAppContext) {
+    let rig = rig(cx, &[("beta", b"short")], None, instant());
+    let (notice, detail) = rig.models.read_with(cx, |models, _| {
+        let row = &models.rows()[models.index_of("beta").unwrap()];
+        (models.notice().cloned(), failure_text(&row.entry))
+    });
+    let notice = notice.expect("a failed row sets the notice");
+    assert_eq!(notice.code, MODEL_HASH_MISMATCH);
+    assert_eq!(notice.message, detail);
+    assert!(
+        detail.len() > 100,
+        "the row detail is long enough to need truncating"
+    );
+}
+
+#[gpui_kit::test]
+fn a_file_that_fails_the_hash_check_sets_the_notice_too(cx: &mut TestAppContext) {
+    let rig = rig(cx, &[("beta", b"wrong bytes ok!")], None, instant());
+    settle(cx, &rig);
+    assert_eq!(state_of(cx, &rig, "beta"), ModelState::Failed);
+    assert_eq!(notice_code(cx, &rig), Some(MODEL_HASH_MISMATCH));
+}
+
+#[gpui_kit::test]
 fn a_failed_model_can_be_downloaded_again(cx: &mut TestAppContext) {
     let rig = rig(cx, &[("beta", b"short")], None, instant());
     act(cx, &rig, |models, cx| models.download("beta", cx)).unwrap();
