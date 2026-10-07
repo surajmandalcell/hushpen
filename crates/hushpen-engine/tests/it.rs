@@ -211,6 +211,31 @@ fn abort_of_a_long_job_returns_within_one_second() {
     }
 }
 
+/// 130 s of speech is two windows; the merge must keep time order and not repeat the overlap.
+#[test]
+fn long_input_is_merged_in_time_order() {
+    let mut engine = load(false);
+    let clip = read_wav(&short_wav());
+    let pcm: Vec<f32> = clip.iter().copied().cycle().take(16_000 * 130).collect();
+    let result = engine
+        .transcribe(&pcm, &english(), &CancelFlag::new())
+        .expect("transcribe");
+    // A segment that straddles the hand-over point may start inside the previous one, but the
+    // end times still rise.
+    let mut last_end = 0;
+    for segment in &result.segments {
+        assert!(segment.start_ms < segment.end_ms);
+        assert!(segment.end_ms >= last_end, "segments out of order");
+        last_end = segment.end_ms;
+    }
+    assert!(last_end > 120_000, "no segment from the second window");
+    let fox = words(&result.text).matches("quick brown fox").count();
+    assert!(
+        (22..=27).contains(&fox),
+        "expected about 25 repeats, got {fox}"
+    );
+}
+
 /// The raw callback must not stop a job whose flag is never set.
 #[test]
 fn a_job_without_cancel_runs_to_the_full_text() {

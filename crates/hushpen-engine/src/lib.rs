@@ -2,6 +2,7 @@
 
 mod asr;
 mod cpu;
+mod windows;
 // Calls the whisper abort callback through the raw FFI API (see the module comment).
 #[allow(unsafe_code)]
 mod whisper;

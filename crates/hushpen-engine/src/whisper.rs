@@ -16,6 +16,7 @@ use whisper_rs::{
 use crate::asr::{
     AsrEngine, CancelFlag, EngineError, LoadOptions, Segment, TranscribeOptions, Transcript,
 };
+use crate::windows;
 
 extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
     // SAFETY: `user_data` is the `AtomicBool` of a `CancelFlag` that outlives the `full()` call.
@@ -108,6 +109,45 @@ impl AsrEngine for WhisperEngine {
             Some("en")
         };
 
+        let mut segments = Vec::new();
+        let mut detected = language.map(str::to_owned);
+        for window in windows::plan(pcm.len()) {
+            if cancel.is_cancelled() {
+                return Err(EngineError::Cancelled);
+            }
+            let (found, language_used) = self.run_window(
+                &pcm[window.start..window.end],
+                detected.as_deref(),
+                options.prompt.as_deref(),
+                cancel,
+            )?;
+            // Later windows reuse the language of the first one instead of detecting again.
+            detected.get_or_insert(language_used);
+            segments.extend(windows::own_segments(&window, found));
+        }
+        let text = segments
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<String>()
+            .trim()
+            .to_owned();
+        Ok(Transcript {
+            text,
+            language: detected.unwrap_or_else(|| "und".to_owned()),
+            segments,
+        })
+    }
+}
+
+impl WhisperEngine {
+    /// One whisper call. Returns the segments in window time and the language used.
+    fn run_window(
+        &mut self,
+        pcm: &[f32],
+        language: Option<&str>,
+        prompt: Option<&str>,
+        cancel: &CancelFlag,
+    ) -> Result<(Vec<Segment>, String), EngineError> {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(i32::try_from(self.threads).unwrap_or(i32::MAX));
         params.set_language(language);
@@ -115,7 +155,7 @@ impl AsrEngine for WhisperEngine {
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_print_timestamps(false);
-        if let Some(prompt) = options.prompt.as_deref().filter(|p| !p.is_empty()) {
+        if let Some(prompt) = prompt.filter(|p| !p.is_empty()) {
             params.set_initial_prompt(prompt);
         }
         // SAFETY: the pointer is the flag inside `cancel`, which this call borrows until
@@ -147,23 +187,13 @@ impl AsrEngine for WhisperEngine {
                 text,
             });
         }
-        let text = segments
-            .iter()
-            .map(|s| s.text.as_str())
-            .collect::<String>()
-            .trim()
-            .to_owned();
-        let detected = match language {
+        let used = match language {
             Some(code) => code.to_owned(),
             None => get_lang_str(self.state.full_lang_id_from_state())
                 .unwrap_or("und")
                 .to_owned(),
         };
-        Ok(Transcript {
-            text,
-            language: detected,
-            segments,
-        })
+        Ok((segments, used))
     }
 }
 
