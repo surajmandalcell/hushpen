@@ -87,3 +87,42 @@ jobs:
         run: |
           ./target/release/hushpen --version
           ./target/release/hushpen-llm --version
+      - name: Show the whisper.cpp build settings
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        run: |
+          cache=$(find target/release/build -path '*whisper-rs-sys-*' -name CMakeCache.txt | head -n 1)
+          echo "CMakeCache: $cache"
+          grep -E '^(GGML_NATIVE|GGML_AVX2|GGML_FMA|GGML_F16C|GGML_METAL|WHISPER_BUILD_IS_DEV):' "$cache"
+          grep -q '^GGML_NATIVE:BOOL=OFF$' "$cache"
+          if grep -E -- '-mcpu=native|-march=native' "$(dirname "$cache")/compile_commands.json"; then
+            echo "::error::native CPU flags in the ggml build"
+            exit 1
+          fi
+          grep -h 'whisper.cpp version' target/release/build/whisper-rs-sys-*/output
+      - name: Cache the engine test model
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: models/ggml-tiny.en.bin
+          key: ggml-tiny.en-921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f
+      - name: Download the engine test model
+        if: (inputs.suite == 'engine' || inputs.suite == 'full') && steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -fsSL --retry 3 -o models/ggml-tiny.en.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
+      - name: Engine smoke (CPU, 2 threads)
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        env:
+          HUSHPEN_TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
+        run: |
+          echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  models/ggml-tiny.en.bin" | shasum -a 256 -c -
+          cargo test --release -p hushpen-engine --features heavy --test it --locked -- --test-threads=1 --nocapture
+      - name: Engine smoke (Metal, best effort)
+        if: (inputs.suite == 'engine' || inputs.suite == 'full') && matrix.target == 'macos-arm64'
+        continue-on-error: true
+        env:
+          HUSHPEN_TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
+          HUSHPEN_TEST_GPU: "1"
+        run: cargo test --release -p hushpen-engine --features heavy --test it --locked transcribes_short_clip_on_gpu -- --nocapture
