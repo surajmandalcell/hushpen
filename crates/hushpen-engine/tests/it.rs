@@ -1,7 +1,7 @@
 //! Heavy integration tests: the real whisper engine with a real model.
 //!
 //! Inputs: `HUSHPEN_TEST_MODEL` (a ggml model file) or `HUSHPEN_TEST_ASSETS`
-//! (`models/whisper/ggml-tiny.en.bin`). The short clip falls back to `tests/data`.
+//! (`models/whisper/ggml-tiny.en.bin`). The short clip falls back to `tests/fixtures`.
 //! `HUSHPEN_TEST_GPU=1` turns on the GPU test (Metal, macOS only).
 #![cfg(feature = "heavy")]
 
@@ -32,7 +32,7 @@ fn short_wav() -> PathBuf {
     let shared = assets_dir().map(|d| d.join("fixtures/speech-short.wav"));
     match shared {
         Some(path) if path.exists() => path,
-        _ => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/speech-short.wav"),
+        _ => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/speech-short.wav"),
     }
 }
 
