@@ -11,6 +11,8 @@ members = [
     "crates/hushpen-testhook",
     "xtask",
 ]
+# The vendored fork is a plain path package, not a member: the gate lints only our code.
+exclude = ["vendor/whisper-rs-sys"]
 
 [workspace.package]
 version = "2.0.0"
@@ -44,6 +46,7 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 # Speech and language models.
 whisper-rs = "=0.16.0"
+whisper-rs-sys = "=0.15.0"
 llama-cpp-2 = { version = "=0.1.158", default-features = false }
 
 # Audio.
@@ -77,6 +80,10 @@ rusqlite = { version = "=0.40.2", features = ["bundled"] }
 sha2 = "=0.11.0"
 tempfile = "=3.27.0"
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls", "gzip"] }
+
+# whisper.cpp 1.9.4 with a fixed version reader, bindings for 1.9.4, and GGML_NATIVE=OFF.
+[patch.crates-io]
+whisper-rs-sys = { path = "vendor/whisper-rs-sys" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
