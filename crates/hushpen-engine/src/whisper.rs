@@ -49,6 +49,11 @@ pub struct WhisperEngine {
 
 impl WhisperEngine {
     pub fn load(model: &Path, options: LoadOptions) -> Result<Self, EngineError> {
+        if let Some(feature) = crate::cpu::missing_cpu_feature() {
+            return Err(EngineError::LoadFailed(format!(
+                "this CPU lacks {feature}, which the speech engine needs"
+            )));
+        }
         let path = model
             .to_str()
             .ok_or_else(|| EngineError::LoadFailed("model path is not valid UTF-8".into()))?;

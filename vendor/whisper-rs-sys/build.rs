@@ -278,20 +278,18 @@ fn main() {
     // Hushpen: whisper.cpp reports "1.9.4", not "1.9.4-dev".
     config.define("WHISPER_BUILD_IS_DEV", "OFF");
 
-    // Hushpen: conservative x64 baseline (SSE4.2 and AVX). A build on a new CI runner must
-    // not use AVX2, FMA, F16C, BMI2 or AVX512, or older CPUs die with SIGILL. These are
-    // defaults; a GGML_* variable in the environment may still raise them.
+    // Hushpen: x64 baseline of x86-64-v3 (AVX2, FMA, F16C, BMI2; Haswell and Zen 1 or newer),
+    // never AVX512. A CI runner with AVX512 must not leak it into a build for users. An
+    // AVX-only build was tried: tiny.en took 9 s for a 5 s clip on a CI runner, because
+    // without FMA and F16C the fp16 matrix code runs scalar. These are defaults; a GGML_*
+    // variable in the environment may still change them.
     if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
         && env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux")
     {
-        for flag in [
-            "GGML_AVX2",
-            "GGML_FMA",
-            "GGML_F16C",
-            "GGML_BMI2",
-            "GGML_AVX512",
-            "GGML_AVX_VNNI",
-        ] {
+        for flag in ["GGML_AVX2", "GGML_FMA", "GGML_F16C", "GGML_BMI2"] {
+            config.define(flag, "ON");
+        }
+        for flag in ["GGML_AVX512", "GGML_AVX_VNNI"] {
             config.define(flag, "OFF");
         }
     }
