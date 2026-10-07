@@ -4,6 +4,7 @@ use crate::assets::{AppAssets, register_fonts};
 use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
 use crate::mic::{self, CpalBackend, Mic};
+use crate::models::{self, Models};
 use crate::shell::Shell;
 use crate::storage;
 use crate::theme::{self, space};
@@ -53,9 +54,11 @@ pub fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let engine = Rc::new(EngineHost::start(&storage.data, &storage.settings.values()));
+    let engine = Rc::new(EngineHost::start(&storage.data));
     let recovered = mic::sweep_orphans(&storage.data);
     let mic_storage = Rc::clone(&storage);
+    let models_storage = Rc::clone(&storage);
+    let models_engine = Rc::clone(&engine);
     #[cfg(feature = "test-automation")]
     let hook_storage = Rc::clone(&storage);
     let (show_requests, shown) = mpsc::unbounded::<()>();
@@ -100,6 +103,17 @@ pub fn run() -> ExitCode {
                 mic
             });
             shell.update(cx, |shell, cx| shell.attach_mic(mic.clone(), cx));
+            let models = cx.new(|cx| {
+                Models::new(
+                    models_storage,
+                    hushpen_core::catalog::embedded(),
+                    models::production_transfer(),
+                    models::thread_spawner(),
+                    Some(models_engine),
+                    cx,
+                )
+            });
+            shell.update(cx, |shell, cx| shell.attach_models(models.clone(), cx));
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);
@@ -114,6 +128,7 @@ pub fn run() -> ExitCode {
                 );
                 crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
                 crate::hook::attach_mic(cx, mic);
+                crate::hook::attach_models(cx, models);
             }
             cx.spawn(async move |cx| {
                 let mut shown = shown;

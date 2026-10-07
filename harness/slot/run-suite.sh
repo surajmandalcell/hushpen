@@ -1,12 +1,13 @@
 #!/bin/bash
-# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|core|full>
+# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|mic|models|core|full>
 # Runs the suite scripts in order and writes result.json. core and full are smoke plus env today;
 # a feature that adds end-to-end checks adds a script to suites/ and to the lists below.
 case "${1:-}" in
   smoke) scripts=(smoke) ;;
   env) scripts=(env) ;;
   mic) scripts=(mic) ;;
-  core | full) scripts=(smoke env mic) ;;
+  models) scripts=(models) ;;
+  core | full) scripts=(smoke env mic models) ;;
   *) echo "run-suite: unknown suite '${1:-}'" >&2; exit 2 ;;
 esac
 . /harness/slot/lib.sh

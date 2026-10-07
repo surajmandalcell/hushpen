@@ -127,6 +127,11 @@ impl DataDir {
         self.root.join("models").join("whisper")
     }
 
+    /// `cache/downloads/<file>.download`: model downloads in progress. Created by the first download.
+    pub fn downloads_dir(&self) -> PathBuf {
+        self.root.join("cache").join("downloads")
+    }
+
     /// `cache/sessions/<id>.wav`: audio being recorded. Created by the first capture.
     pub fn sessions_dir(&self) -> PathBuf {
         self.root.join("cache").join("sessions")

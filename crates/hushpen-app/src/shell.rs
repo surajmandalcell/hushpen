@@ -2,6 +2,7 @@
 
 use crate::hook;
 use crate::mic::{self, Mic};
+use crate::models::{self, Models};
 use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
@@ -21,6 +22,7 @@ pub struct Shell {
     shell_focus: FocusHandle,
     nav_focus: Vec<FocusHandle>,
     mic: Option<Entity<Mic>>,
+    models: Option<Entity<Models>>,
 }
 
 impl Shell {
@@ -35,7 +37,15 @@ impl Shell {
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
             mic: None,
+            models: None,
         }
+    }
+
+    /// Shows the model library in the Models view and repaints when it changes.
+    pub fn attach_models(&mut self, models: Entity<Models>, cx: &mut Context<Self>) {
+        cx.observe(&models, |_, _, cx| cx.notify()).detach();
+        self.models = Some(models);
+        cx.notify();
     }
 
     /// Shows the microphone panel on Home and repaints when the microphone changes.
@@ -272,8 +282,9 @@ impl Shell {
 
     fn content(&self, cx: &mut App) -> impl IntoElement {
         let view = self.active;
-        let body = match (&self.mic, view) {
-            (Some(mic), View::Home) => mic::panel::render(mic, cx).into_any_element(),
+        let body = match (&self.mic, &self.models, view) {
+            (Some(mic), _, View::Home) => mic::panel::render(mic, cx).into_any_element(),
+            (_, Some(models), View::Models) => models::panel::render(models, cx).into_any_element(),
             _ => div()
                 .id(hook::id(view.key(), "placeholder"))
                 .test_support()

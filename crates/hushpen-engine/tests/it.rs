@@ -240,6 +240,49 @@ fn long_input_is_merged_in_time_order() {
     );
 }
 
+/// Prints the release-to-text time of the short clip for each model in `HUSHPEN_TEST_MODELS`
+/// (comma-separated paths). Run by hand to refresh the table in `library/engine.md`:
+/// `cargo test -p hushpen-engine --features heavy --release --test it measure_latency -- --ignored --nocapture`.
+/// `HUSHPEN_TEST_GPU=1` measures Metal; `HUSHPEN_TEST_THREADS` sets the CPU thread count.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn measure_latency() {
+    let models = std::env::var("HUSHPEN_TEST_MODELS").expect("set HUSHPEN_TEST_MODELS");
+    let gpu = std::env::var("HUSHPEN_TEST_GPU").as_deref() == Ok("1");
+    let threads = std::env::var("HUSHPEN_TEST_THREADS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(2);
+    let pcm = read_wav(&short_wav());
+    for path in models.split(',').map(PathBuf::from) {
+        let loaded = Instant::now();
+        let mut engine =
+            WhisperEngine::load(&path, LoadOptions { gpu, threads }).expect("load model");
+        let load_ms = loaded.elapsed().as_millis();
+        let mut runs = Vec::new();
+        let mut text = String::new();
+        for _ in 0..8 {
+            let started = Instant::now();
+            let result = engine
+                .transcribe(&pcm, &english(), &CancelFlag::new())
+                .expect("transcribe");
+            runs.push(started.elapsed().as_millis());
+            text = result.text;
+        }
+        let first = runs[0];
+        let mut warm = runs[1..].to_vec();
+        warm.sort_unstable();
+        eprintln!(
+            "LATENCY model={} gpu={} threads={threads} load_ms={load_ms} first_ms={first} warm_median_ms={} warm_min_ms={} text={:?}",
+            path.file_name().unwrap().to_string_lossy(),
+            engine.gpu_in_use(),
+            warm[warm.len() / 2],
+            warm[0],
+            text.trim()
+        );
+    }
+}
+
 /// The raw callback must not stop a job whose flag is never set.
 #[test]
 fn a_job_without_cancel_runs_to_the_full_text() {

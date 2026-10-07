@@ -5,6 +5,7 @@ pub mod data_dir;
 pub mod db;
 mod error;
 pub mod log_file;
+pub mod model_files;
 pub mod settings;
 pub mod time;
 

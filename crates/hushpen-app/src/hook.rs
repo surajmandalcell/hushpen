@@ -12,6 +12,8 @@ mod engine;
 #[cfg(feature = "test-automation")]
 mod mic;
 #[cfg(feature = "test-automation")]
+mod models;
+#[cfg(feature = "test-automation")]
 pub use automation::{
     Hooks, Job, Surface, attach, register_action, set_state_section, set_wav_feeder, start,
 };
@@ -19,6 +21,8 @@ pub use automation::{
 pub use engine::attach as attach_engine;
 #[cfg(feature = "test-automation")]
 pub use mic::attach as attach_mic;
+#[cfg(feature = "test-automation")]
+pub use models::attach as attach_models;
 
 /// Records a timestamped event for `hookctl events`. Does nothing in a build
 /// without the test hook.

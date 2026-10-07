@@ -1,5 +1,6 @@
 //! Pure Hushpen logic. No IO, no native libraries.
 
+pub mod catalog;
 pub mod error;
 pub mod protocol;
 pub mod threads;

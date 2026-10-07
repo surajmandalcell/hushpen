@@ -1,5 +1,5 @@
 //! The app's side of the speech engine: starts the `hushpen engine` child through the
-//! supervisor, and loads the model the settings name.
+//! supervisor, and loads the model the settings name once the model library has verified it.
 //!
 //! The UI never loads a model itself. A crash of the child fails the running job and nothing
 //! else; the supervisor restarts it and reloads the last model.
@@ -19,9 +19,10 @@ pub struct EngineHost {
 }
 
 impl EngineHost {
-    /// Starts the child and asks it to load the model from `settings`, if one is chosen.
+    /// Starts the child with no model. The model library loads the chosen model through
+    /// `apply_settings` once the file has passed its hash check.
     /// A child that cannot start is retried by the supervisor; this never fails.
-    pub fn start(data: &DataDir, settings: &Map<String, Value>) -> Self {
+    pub fn start(data: &DataDir) -> Self {
         let log = EngineLog::open(&data.engine_log_path()).unwrap_or_else(|error| {
             log::warn!("ENGINE_LOG_OFF could not open engine.log: {error}");
             EngineLog::discard()
@@ -31,13 +32,11 @@ impl EngineHost {
             program,
             args: vec![OsString::from("engine")],
         };
-        let host = Self {
+        Self {
             client: EngineClient::start(spec, Timing::default(), log),
             models_dir: data.whisper_models_dir(),
             loaded: Mutex::new(None),
-        };
-        host.apply_settings(settings);
-        host
+        }
     }
 
     #[cfg(all(test, feature = "test-automation"))]
