@@ -6,13 +6,15 @@
 //! same channel. The worker thread downmixes, resamples to 16 kHz mono, writes
 //! the session WAV, and measures levels.
 
-use crate::devices::{DEFAULT_ID, inputs_of};
+use crate::devices::DEFAULT_ID;
 use crate::error::CaptureError;
 use crate::levels::LevelMeter;
 use crate::resample::{MonoResampler, TARGET_RATE, downmix};
 use crate::session::SessionWriter;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{DeviceId, FromSample, SampleFormat, SizedSample, StreamConfig};
+use cpal::{
+    BufferSize, DeviceId, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize,
+};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -22,10 +24,17 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 /// How long the stream may deliver no callbacks at all before the capture
-/// counts as lost.
-const STALL_LIMIT: Duration = Duration::from_millis(1500);
-/// How often the mic thread checks that the selected device still exists.
+/// counts as lost. A PulseAudio virtual source sends nothing while no one plays
+/// into it, so this is long; a removed device is caught by the device poll.
+const STALL_LIMIT: Duration = Duration::from_secs(10);
+/// How often the mic thread checks that the device it opened still exists.
 const DEVICE_POLL: Duration = Duration::from_secs(1);
+/// Silence is inserted for a pause in the microphone's delivery longer than this. Host
+/// buffers are 20 ms to 100 ms, so shorter gaps are only jitter.
+const MID_STREAM_GAP_MS: u64 = 250;
+/// At the end of a session the file is padded to the wall clock when it falls short by more
+/// than this.
+const END_GAP_MS: u64 = 100;
 const MIC_START_TIMEOUT: Duration = Duration::from_secs(8);
 const MIC_STOP_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -59,6 +68,8 @@ pub(crate) enum Msg {
         rate: u32,
         channels: u16,
         data: Vec<f32>,
+        /// When the host handed the audio over.
+        at: Instant,
     },
     FeedStart,
     FeedEnd,
@@ -107,7 +118,7 @@ impl Capture {
             stop: stop_tx,
             done: done_rx,
         };
-        match Self::with_worker(path, sink, tx, rx) {
+        match Self::with_worker(path, sink, tx, rx, true) {
             Ok(mut capture) => {
                 capture.mic = Some(mic);
                 Ok(capture)
@@ -122,14 +133,17 @@ impl Capture {
     /// A session with no microphone. Only [`Capture::feeder`] supplies audio.
     pub fn start_without_mic(path: PathBuf, sink: EventSink) -> Result<Self, CaptureError> {
         let (tx, rx) = mpsc::channel();
-        Self::with_worker(path, sink, tx, rx)
+        Self::with_worker(path, sink, tx, rx, false)
     }
 
+    /// `paced` makes the file follow the wall clock: time in which the
+    /// microphone delivered nothing becomes silence.
     fn with_worker(
         path: PathBuf,
         sink: EventSink,
         tx: Sender<Msg>,
         rx: Receiver<Msg>,
+        paced: bool,
     ) -> Result<Self, CaptureError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -137,7 +151,7 @@ impl Capture {
         let writer = SessionWriter::create(&path)?;
         let worker = thread::Builder::new()
             .name("hushpen-capture".into())
-            .spawn(move || Worker::new(path, writer, sink).run(&rx))?;
+            .spawn(move || Worker::new(path, writer, sink, paced).run(&rx))?;
         Ok(Self {
             tx,
             worker: Some(worker),
@@ -200,10 +214,14 @@ struct Worker {
     failed: bool,
     mono: Vec<f32>,
     out: Vec<f32>,
+    paced: bool,
+    started: Instant,
+    /// 16 kHz samples in the file so far.
+    written: u64,
 }
 
 impl Worker {
-    fn new(path: PathBuf, writer: SessionWriter, sink: EventSink) -> Self {
+    fn new(path: PathBuf, writer: SessionWriter, sink: EventSink, paced: bool) -> Self {
         Self {
             path,
             writer: Some(writer),
@@ -215,6 +233,9 @@ impl Worker {
             failed: false,
             mono: Vec::new(),
             out: Vec::new(),
+            paced,
+            started: Instant::now(),
+            written: 0,
         }
     }
 
@@ -226,14 +247,23 @@ impl Worker {
                     rate,
                     channels,
                     data,
+                    at,
                 }) => {
                     // While a test feed plays, it replaces the microphone.
                     if source == Source::Mic && self.feeding {
                         continue;
                     }
+                    if source == Source::Mic {
+                        let chunk_ms = (data.len() / usize::from(channels.max(1))) as u64 * 1000
+                            / u64::from(rate.max(1));
+                        self.pad_to(at, chunk_ms, MID_STREAM_GAP_MS);
+                    }
                     self.ingest(source, rate, channels, &data);
                 }
-                Ok(Msg::FeedStart) => self.feeding = true,
+                Ok(Msg::FeedStart) => {
+                    self.pad_to(Instant::now(), 0, MID_STREAM_GAP_MS);
+                    self.feeding = true;
+                }
                 Ok(Msg::FeedEnd) => {
                     self.flush(Source::Feed);
                     self.feeding = false;
@@ -300,10 +330,27 @@ impl Worker {
         self.write(&out);
     }
 
+    /// Fills the file with silence up to `at` minus `chunk_ms` when the gap is longer than
+    /// `min_gap_ms`. A virtual source sends nothing while idle, and a late start or a dropout
+    /// must not pull the later audio earlier in the file.
+    fn pad_to(&mut self, at: Instant, chunk_ms: u64, min_gap_ms: u64) {
+        if !self.paced {
+            return;
+        }
+        let elapsed_ms = at.saturating_duration_since(self.started).as_millis() as u64;
+        let written_ms = self.written * 1000 / u64::from(TARGET_RATE);
+        let gap_ms = elapsed_ms.saturating_sub(written_ms + chunk_ms);
+        if gap_ms > min_gap_ms {
+            let silence = vec![0.0; (gap_ms * u64::from(TARGET_RATE) / 1000) as usize];
+            self.write(&silence);
+        }
+    }
+
     fn write(&mut self, samples: &[f32]) {
         if samples.is_empty() {
             return;
         }
+        self.written += samples.len() as u64;
         if let Some(writer) = self.writer.as_mut()
             && !self.failed
             && let Err(error) = writer.write(samples)
@@ -325,6 +372,7 @@ impl Worker {
     fn close(&mut self) -> Result<Finished, CaptureError> {
         self.flush(Source::Mic);
         self.flush(Source::Feed);
+        self.pad_to(Instant::now(), 0, END_GAP_MS);
         let writer = self
             .writer
             .take()
@@ -384,12 +432,12 @@ fn run_mic(
         let config = device.default_input_config()?;
         let stream = build_stream(&device, &config, &tx, &last_data, epoch, &reporter)?;
         stream.play()?;
-        Ok(stream)
+        Ok((stream, device.id().ok()))
     });
-    let stream = match opened {
-        Ok(stream) => {
+    let (stream, opened_id) = match opened {
+        Ok(opened) => {
             let _ = ready.send(Ok(()));
-            stream
+            opened
         }
         Err(error) => {
             let _ = ready.send(Err(error));
@@ -410,10 +458,12 @@ fn run_mic(
             reporter.report(CaptureError::unavailable(
                 "the microphone stopped sending audio",
             ));
-        } else if selection != DEFAULT_ID
-            && !selection.is_empty()
-            && inputs_of(&host).is_ok_and(|devices| devices.iter().all(|d| d.id != selection))
+        } else if let Some(id) = &opened_id
+            && let Ok(mut devices) = host.input_devices()
+            && !devices.any(|device| device.id().is_ok_and(|found| found == *id))
         {
+            // PulseAudio moves a stream to another source when its source goes away,
+            // so the stream itself never reports the loss.
             reporter.report(CaptureError::unavailable("the microphone was removed"));
         }
     }
@@ -428,8 +478,7 @@ fn build_stream(
     epoch: Instant,
     reporter: &Arc<Reporter>,
 ) -> Result<cpal::Stream, CaptureError> {
-    let stream_config = config.config();
-    match config.sample_format() {
+    let build = |stream_config: StreamConfig| match config.sample_format() {
         SampleFormat::F32 => typed::<f32>(device, stream_config, tx, last_data, epoch, reporter),
         SampleFormat::I16 => typed::<i16>(device, stream_config, tx, last_data, epoch, reporter),
         SampleFormat::U16 => typed::<u16>(device, stream_config, tx, last_data, epoch, reporter),
@@ -437,7 +486,18 @@ fn build_stream(
         other => Err(CaptureError::failed(format!(
             "unsupported microphone sample format {other:?}"
         ))),
+    };
+    // PulseAudio hands out about 2 s per callback unless a size is requested, which would
+    // delay the level meter and look like a stalled microphone.
+    let mut stream_config = config.config();
+    if let SupportedBufferSize::Range { min, max } = *config.buffer_size() {
+        stream_config.buffer_size = BufferSize::Fixed((config.sample_rate() / 50).clamp(min, max));
+        if let Ok(stream) = build(stream_config) {
+            return Ok(stream);
+        }
+        stream_config.buffer_size = BufferSize::Default;
     }
+    build(stream_config)
 }
 
 fn typed<T>(
@@ -469,6 +529,7 @@ where
                 rate,
                 channels,
                 data,
+                at: Instant::now(),
             });
         },
         move |error| {
@@ -532,6 +593,121 @@ mod tests {
             writer.write_sample(value).unwrap();
         }
         writer.finalize().unwrap();
+    }
+
+    /// Runs a worker on a thread the way `Capture` does and returns its sender.
+    fn worker(path: &Path, paced: bool) -> (Sender<Msg>, Instant, JoinHandle<()>) {
+        let (tx, rx) = mpsc::channel();
+        let writer = SessionWriter::create(path).unwrap();
+        let worker = Worker::new(path.to_path_buf(), writer, events().0, paced);
+        let started = worker.started;
+        (tx, started, thread::spawn(move || worker.run(&rx)))
+    }
+
+    fn tone_second(at: Instant) -> Msg {
+        let data = (0..16_000)
+            .map(|i| f32::sin(2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16_000.0) * 0.4)
+            .collect();
+        Msg::Frames {
+            source: Source::Mic,
+            rate: 16_000,
+            channels: 1,
+            data,
+            at,
+        }
+    }
+
+    fn stop(tx: &Sender<Msg>) -> Finished {
+        let (reply, answer) = mpsc::channel();
+        tx.send(Msg::Stop(reply)).unwrap();
+        answer.recv().unwrap().unwrap()
+    }
+
+    #[test]
+    fn a_late_first_delivery_leaves_the_lead_as_silence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, started, handle) = worker(&path, true);
+        tx.send(tone_second(started + Duration::from_secs(3)))
+            .unwrap();
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        assert!(
+            (2_950..=3_050).contains(&finished.duration_ms),
+            "2 s of lead then 1 s of tone, got {} ms",
+            finished.duration_ms
+        );
+        let samples: Vec<i16> = hound::WavReader::open(&path)
+            .unwrap()
+            .samples::<i16>()
+            .map(Result::unwrap)
+            .collect();
+        assert!(samples[..30_000].iter().all(|s| *s == 0));
+        assert!(samples[34_000..].iter().any(|s| s.abs() > 5_000));
+    }
+
+    #[test]
+    fn a_pause_in_delivery_becomes_silence_and_later_audio_keeps_its_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, started, handle) = worker(&path, true);
+        tx.send(tone_second(started + Duration::from_secs(1)))
+            .unwrap();
+        tx.send(tone_second(started + Duration::from_secs(4)))
+            .unwrap();
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        assert!(
+            (3_950..=4_050).contains(&finished.duration_ms),
+            "1 s tone, 2 s pause, 1 s tone, got {} ms",
+            finished.duration_ms
+        );
+    }
+
+    #[test]
+    fn delivery_jitter_is_not_padded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, started, handle) = worker(&path, true);
+        tx.send(tone_second(started + Duration::from_millis(1_100)))
+            .unwrap();
+        tx.send(tone_second(started + Duration::from_millis(2_150)))
+            .unwrap();
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        assert_eq!(finished.duration_ms, 2_000);
+    }
+
+    #[test]
+    fn the_end_of_a_session_is_padded_to_the_wall_clock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, _, handle) = worker(&path, true);
+        thread::sleep(Duration::from_millis(500));
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        assert!(
+            (480..=700).contains(&finished.duration_ms),
+            "an idle source still gives the elapsed time, got {} ms",
+            finished.duration_ms
+        );
+    }
+
+    #[test]
+    fn an_unpaced_session_writes_only_what_arrives() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, started, handle) = worker(&path, false);
+        tx.send(tone_second(started + Duration::from_secs(3)))
+            .unwrap();
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        assert_eq!(finished.duration_ms, 1_000);
     }
 
     #[test]

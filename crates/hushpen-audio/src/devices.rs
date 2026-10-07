@@ -46,7 +46,7 @@ pub fn list_inputs() -> Result<Vec<InputDevice>, CaptureError> {
     inputs_of(&host)
 }
 
-pub(crate) fn inputs_of(host: &cpal::Host) -> Result<Vec<InputDevice>, CaptureError> {
+fn inputs_of(host: &cpal::Host) -> Result<Vec<InputDevice>, CaptureError> {
     let default_id = host
         .default_input_device()
         .and_then(|device| device.id().ok())

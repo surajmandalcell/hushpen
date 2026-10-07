@@ -39,12 +39,34 @@ pub fn open(data: DataDir) -> Result<Storage> {
 /// Sends `log` records to `logs/hushpen.log`, filtered by `RUST_LOG`.
 pub fn install_logger(data: &DataDir) -> Result<()> {
     let rust_log = std::env::var("RUST_LOG").ok();
-    log_file::install(&data.log_path(), rust_log.as_deref())
+    log_file::install(&data.log_path(), quiet_pulseaudio(rust_log).as_deref())
+}
+
+/// The PulseAudio client logs an ERROR line each time the microphone list poll
+/// disconnects, every 2 s. Capture reports real failures itself.
+fn quiet_pulseaudio(rust_log: Option<String>) -> Option<String> {
+    match rust_log {
+        Some(spec) if spec.contains("pulseaudio") => Some(spec),
+        Some(spec) if !spec.trim().is_empty() => Some(format!("{spec},pulseaudio=off")),
+        _ => Some("pulseaudio=off".to_string()),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pulseaudio_client_is_silenced_unless_asked_for() {
+        let level = |spec: Option<&str>| {
+            log_file::Filter::parse(quiet_pulseaudio(spec.map(String::from)).as_deref())
+                .level_for("pulseaudio::client::reactor")
+        };
+        assert_eq!(level(None), log::LevelFilter::Off);
+        assert_eq!(level(Some("")), log::LevelFilter::Off);
+        assert_eq!(level(Some("debug")), log::LevelFilter::Off);
+        assert_eq!(level(Some("pulseaudio=debug")), log::LevelFilter::Debug);
+    }
 
     #[test]
     fn a_new_folder_gets_settings_and_a_wal_database() {

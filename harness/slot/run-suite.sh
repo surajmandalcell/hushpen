@@ -5,7 +5,8 @@
 case "${1:-}" in
   smoke) scripts=(smoke) ;;
   env) scripts=(env) ;;
-  core | full) scripts=(smoke env) ;;
+  mic) scripts=(mic) ;;
+  core | full) scripts=(smoke env mic) ;;
   *) echo "run-suite: unknown suite '${1:-}'" >&2; exit 2 ;;
 esac
 . /harness/slot/lib.sh

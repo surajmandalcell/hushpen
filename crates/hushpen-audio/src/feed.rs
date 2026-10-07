@@ -66,6 +66,7 @@ impl Feeder {
                         rate,
                         channels,
                         data: data.to_vec(),
+                        at: Instant::now(),
                     };
                     if tx.send(frames).is_err() {
                         break;

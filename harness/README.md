@@ -99,7 +99,8 @@ screenshots, and the hook tree and state. It exits 0 only when every check in ev
 |---|---|---|
 | `smoke` | yes | `window maps` (780x520), `token colors` (DESIGN.md samples), `click` (a real mouse click on a sidebar item opens its view), `maximize check` (wmctrl maximize and fullscreen, `xdotool windowsize`, Alt+F10, toolbar double click all keep 780x520) |
 | `env` | yes | `tools`, `lavapipe`, `audio routing`, `play-wav padding`, `status notifier host`, `portal`, `xi2 keycode 108`, `keys released`, `paste targets` |
-| `core`, `full` | no | `smoke` plus `env` for now; later features add scripts under `slot/suites/` |
+| `mic` | no | `VAL-MIC-001` to `008`: the picker, the level meter, the session WAV (16 kHz mono, speed, offline transcript), recovery after `kill -9`, the saved mic across a restart, fallback when it is gone, no mic, a mic removed while recording, and the hook WAV feed. It empties `/data`, restarts the app, and loads and unloads PulseAudio modules, so it needs its own slot |
+| `core`, `full` | no | `smoke`, `env`, and `mic`; later features add scripts under `slot/suites/` |
 
 Paste targets (`slot/targets.sh`): an xterm with `cat > /out/xterm.txt` and a translation override
 for Ctrl+Shift+V, a stock xterm (`--stock`) that only takes Shift+Insert from PRIMARY, and a GTK
