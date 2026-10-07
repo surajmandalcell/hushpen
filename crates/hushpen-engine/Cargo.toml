@@ -11,6 +11,18 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Integration tests with a real model (tests/it.rs). Off by default.
+heavy = []
+
 [dependencies]
 hushpen-audio.workspace = true
 hushpen-core.workspace = true
+whisper-rs.workspace = true
+whisper-rs-sys.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { workspace = true, features = ["metal"] }
+
+[dev-dependencies]
+hound.workspace = true
