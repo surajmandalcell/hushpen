@@ -69,6 +69,15 @@ fn a_new_folder_gets_a_marker_and_its_subfolders() {
 }
 
 #[test]
+fn session_recordings_live_under_the_cache_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("data");
+    let data = DataDir::open(&root).unwrap();
+
+    assert_eq!(data.sessions_dir(), root.join("cache").join("sessions"));
+}
+
+#[test]
 fn a_second_open_keeps_the_created_time() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("data");

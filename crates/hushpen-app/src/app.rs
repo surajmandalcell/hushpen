@@ -3,6 +3,7 @@
 use crate::assets::{AppAssets, register_fonts};
 use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
+use crate::mic::{self, CpalBackend, Mic};
 use crate::shell::Shell;
 use crate::storage;
 use crate::theme::{self, space};
@@ -17,6 +18,7 @@ use hushpen_store::data_dir::DataDir;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::process::ExitCode;
 use std::rc::Rc;
+use std::sync::Arc;
 
 const APP_ID: &str = "hushpen";
 
@@ -52,6 +54,8 @@ pub fn run() -> ExitCode {
         }
     };
     let engine = Rc::new(EngineHost::start(&storage.data, &storage.settings.values()));
+    let recovered = mic::sweep_orphans(&storage.data);
+    let mic_storage = Rc::clone(&storage);
     #[cfg(feature = "test-automation")]
     let hook_storage = Rc::clone(&storage);
     let (show_requests, shown) = mpsc::unbounded::<()>();
@@ -81,7 +85,7 @@ pub fn run() -> ExitCode {
             })
             .detach();
 
-            let (handle, _shell) = match open_main_window(cx) {
+            let (handle, shell) = match open_main_window(cx) {
                 Ok(opened) => opened,
                 Err(error) => {
                     eprintln!("hushpen: could not open the window: {error:#}");
@@ -89,6 +93,13 @@ pub fn run() -> ExitCode {
                     return;
                 }
             };
+            let mic = cx.new(|cx| {
+                let mut mic = Mic::new(mic_storage, Arc::new(CpalBackend), cx);
+                mic.set_recovered(recovered);
+                mic.refresh(cx);
+                mic
+            });
+            shell.update(cx, |shell, cx| shell.attach_mic(mic.clone(), cx));
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);
@@ -97,11 +108,12 @@ pub fn run() -> ExitCode {
                     jobs,
                     crate::hook::Surface {
                         window: handle,
-                        shell: _shell,
+                        shell,
                         settings: Rc::new(move || settings_storage.settings.values()),
                     },
                 );
                 crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
+                crate::hook::attach_mic(cx, mic);
             }
             cx.spawn(async move |cx| {
                 let mut shown = shown;

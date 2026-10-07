@@ -1,14 +1,15 @@
 //! The app window: sidebar, toolbar, traffic lights, and the active view.
 
 use crate::hook;
+use crate::mic::{self, Mic};
 use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    ClickEvent, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
-    MouseDownEvent, ParentElement, Render, Role, StatefulInteractiveElement, Styled, Window, div,
-    px, svg, transparent_black,
+    App, ClickEvent, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, ParentElement, Render, Role, StatefulInteractiveElement, Styled,
+    Window, div, px, svg, transparent_black,
 };
 
 const TRAFFIC_GROUP: &str = "traffic-lights";
@@ -19,6 +20,7 @@ pub struct Shell {
     /// focused element, so without it the first Tab would reach no handler.
     shell_focus: FocusHandle,
     nav_focus: Vec<FocusHandle>,
+    mic: Option<Entity<Mic>>,
 }
 
 impl Shell {
@@ -32,7 +34,15 @@ impl Shell {
                 .iter()
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
+            mic: None,
         }
+    }
+
+    /// Shows the microphone panel on Home and repaints when the microphone changes.
+    pub fn attach_mic(&mut self, mic: Entity<Mic>, cx: &mut Context<Self>) {
+        cx.observe(&mic, |_, _, cx| cx.notify()).detach();
+        self.mic = Some(mic);
+        cx.notify();
     }
 
     pub fn active(&self) -> View {
@@ -260,8 +270,17 @@ impl Shell {
             )
     }
 
-    fn content(&self) -> impl IntoElement {
+    fn content(&self, cx: &mut App) -> impl IntoElement {
         let view = self.active;
+        let body = match (&self.mic, view) {
+            (Some(mic), View::Home) => mic::panel::render(mic, cx).into_any_element(),
+            _ => div()
+                .id(hook::id(view.key(), "placeholder"))
+                .test_support()
+                .text_color(theme::rgb_of(color::TEXT_MUTED))
+                .child("Nothing here yet.")
+                .into_any_element(),
+        };
         div()
             .id(hook::id("content", "pane"))
             .flex()
@@ -284,13 +303,7 @@ impl Shell {
                             .max_w(px(space::CONTENT_MAX_WIDTH))
                             .mx_auto()
                             .p(px(space::XL))
-                            .child(
-                                div()
-                                    .id(hook::id(view.key(), "placeholder"))
-                                    .test_support()
-                                    .text_color(theme::rgb_of(color::TEXT_MUTED))
-                                    .child("Nothing here yet."),
-                            ),
+                            .child(body),
                     ),
             )
     }
@@ -316,7 +329,7 @@ impl Render for Shell {
             .font_family(theme::FONT_FAMILY)
             .text_token(BODY_MD)
             .child(self.sidebar(cx))
-            .child(self.content())
+            .child(self.content(cx))
     }
 }
 

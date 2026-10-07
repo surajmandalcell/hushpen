@@ -12,6 +12,7 @@ pub mod cli;
 pub mod engine_host;
 pub mod hook;
 pub mod instance;
+pub mod mic;
 pub mod shell;
 pub mod storage;
 pub mod theme;

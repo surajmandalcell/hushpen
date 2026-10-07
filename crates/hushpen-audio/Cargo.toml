@@ -13,3 +13,13 @@ workspace = true
 
 [dependencies]
 hushpen-core.workspace = true
+cpal.workspace = true
+hound.workspace = true
+log.workspace = true
+rubato.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { workspace = true, features = ["pulseaudio"] }
+
+[dev-dependencies]
+tempfile.workspace = true

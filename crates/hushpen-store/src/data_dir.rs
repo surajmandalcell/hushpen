@@ -127,6 +127,11 @@ impl DataDir {
         self.root.join("models").join("whisper")
     }
 
+    /// `cache/sessions/<id>.wav`: audio being recorded. Created by the first capture.
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.root.join("cache").join("sessions")
+    }
+
     pub fn marker_path(&self) -> PathBuf {
         self.root.join(MARKER_NAME)
     }

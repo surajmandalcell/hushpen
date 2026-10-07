@@ -23,7 +23,20 @@ pub fn register_fonts(cx: &App) {
 
 icon_assets!(
     ShellIcons,
-    [House, Clock, BookA, Import, Cpu, Settings, Info, X, Minus]
+    [
+        House,
+        Clock,
+        BookA,
+        Import,
+        Cpu,
+        Settings,
+        Info,
+        X,
+        Minus,
+        Mic,
+        Check,
+        CircleAlert
+    ]
 );
 
 /// The app's own icons first, then the GPUI Kit defaults its controls use.
