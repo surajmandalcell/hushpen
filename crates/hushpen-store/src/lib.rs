@@ -2,6 +2,7 @@
 
 mod atomic;
 pub mod data_dir;
+pub mod data_move;
 pub mod db;
 pub mod dictionary;
 mod error;

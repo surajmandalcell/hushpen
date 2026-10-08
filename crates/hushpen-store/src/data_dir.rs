@@ -13,7 +13,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const PRODUCT: &str = "hushpen";
-const MARKER_NAME: &str = ".hushpen-data";
+pub(crate) const MARKER_NAME: &str = ".hushpen-data";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Os {
@@ -58,6 +58,95 @@ pub fn resolve_from_env() -> PathBuf {
         std::env::var_os("XDG_DATA_HOME").as_deref(),
         base_dirs.as_ref().map(BaseDirs::home_dir),
     )
+}
+
+/// The full resolution order: `HUSHPEN_DATA_DIR` wins, then the pointer in
+/// `<default>/location.json`, then the default folder itself.
+pub fn resolve_effective(
+    os: Os,
+    data_dir_override: Option<&OsStr>,
+    xdg_data_home: Option<&OsStr>,
+    home: Option<&Path>,
+) -> Result<PathBuf> {
+    let default = resolve(os, data_dir_override, xdg_data_home, home);
+    if data_dir_override.is_some_and(|dir| !dir.is_empty()) {
+        return Ok(default);
+    }
+    effective(&default)
+}
+
+/// `resolve_effective` from the process environment.
+pub fn resolve_effective_from_env() -> Result<PathBuf> {
+    let base_dirs = BaseDirs::new();
+    resolve_effective(
+        Os::CURRENT,
+        std::env::var_os("HUSHPEN_DATA_DIR").as_deref(),
+        std::env::var_os("XDG_DATA_HOME").as_deref(),
+        base_dirs.as_ref().map(BaseDirs::home_dir),
+    )
+}
+
+/// The pointer lives in the default folder only, never in a moved one.
+pub fn location_file(default: &Path) -> PathBuf {
+    default.join("location.json")
+}
+
+/// The folder the pointer names. `Ok(None)` when there is no pointer. A
+/// malformed file or a relative path is an error: silently opening the
+/// default folder would strand the moved data.
+pub fn read_location(default: &Path) -> Result<Option<PathBuf>> {
+    let path = location_file(default);
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(Error::io(
+                format!("could not read {}", path.display()),
+                error,
+            ));
+        }
+    };
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| Error::io(format!("unreadable pointer {}", path.display()), e.into()))?;
+    let named = value
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute());
+    named.map(Some).ok_or_else(|| {
+        Error::io(
+            format!("{} has no absolute \"path\"", path.display()),
+            io::ErrorKind::InvalidData.into(),
+        )
+    })
+}
+
+/// The data folder the pointer selects, or `default` when there is none.
+pub fn effective(default: &Path) -> Result<PathBuf> {
+    Ok(read_location(default)?.unwrap_or_else(|| default.to_path_buf()))
+}
+
+/// Points the default folder at `target`, or removes the pointer with `None`.
+pub fn write_location(default: &Path, target: Option<&Path>) -> Result<()> {
+    let path = location_file(default);
+    match target {
+        Some(target) => {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| Error::io(format!("could not create {}", parent.display()), e))?;
+            }
+            let pointer = serde_json::json!({ "path": target });
+            atomic::write(&path, pointer.to_string().as_bytes())
+        }
+        None => match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(Error::io(
+                format!("could not remove {}", path.display()),
+                error,
+            )),
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

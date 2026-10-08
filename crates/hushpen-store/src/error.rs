@@ -15,6 +15,9 @@ pub enum Error {
     ForeignDataFolder(PathBuf),
     /// The bundled SQLite lacks FTS5 or the trigram tokenizer.
     Fts5TrigramUnavailable(String),
+    /// A data folder move did not finish. The text names the folders and the
+    /// step that failed, never file contents.
+    MoveFailed(String),
     UnknownSetting(String),
     /// Carries the key only, never the rejected value.
     InvalidSetting(String),
@@ -41,6 +44,7 @@ impl fmt::Display for Error {
             Self::Fts5TrigramUnavailable(reason) => {
                 write!(f, "SQLite FTS5 trigram search is unavailable: {reason}")
             }
+            Self::MoveFailed(reason) => write!(f, "the data folder move failed: {reason}"),
             Self::UnknownSetting(key) => write!(f, "unknown setting '{key}'"),
             Self::InvalidSetting(key) => write!(f, "invalid value for setting '{key}'"),
             Self::LoggerAlreadySet => write!(f, "a logger is already installed"),
