@@ -3,7 +3,11 @@
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
-    Run,
+    /// `hidden` comes from `--hidden`, the flag the login item carries: the
+    /// app starts in the tray without a window.
+    Run {
+        hidden: bool,
+    },
     Version,
     /// The speech engine child, with the arguments after `engine`.
     Engine(Vec<String>),
@@ -13,7 +17,11 @@ pub enum Command {
 pub fn parse(args: impl IntoIterator<Item = String>) -> Command {
     let mut args = args.into_iter();
     match args.next().as_deref() {
-        None => Command::Run,
+        None => Command::Run { hidden: false },
+        Some("--hidden") => match args.next() {
+            None => Command::Run { hidden: true },
+            Some(other) => Command::Unknown(other),
+        },
         Some("--version" | "-V") => Command::Version,
         Some("engine") => Command::Engine(args.collect()),
         Some(other) => Command::Unknown(other.to_string()),
@@ -34,7 +42,16 @@ mod tests {
 
     #[test]
     fn no_arguments_start_the_app() {
-        assert_eq!(parse_args(&[]), Command::Run);
+        assert_eq!(parse_args(&[]), Command::Run { hidden: false });
+    }
+
+    #[test]
+    fn the_hidden_flag_starts_the_app_without_a_window() {
+        assert_eq!(parse_args(&["--hidden"]), Command::Run { hidden: true });
+        assert_eq!(
+            parse_args(&["--hidden", "extra"]),
+            Command::Unknown("extra".into())
+        );
     }
 
     #[test]

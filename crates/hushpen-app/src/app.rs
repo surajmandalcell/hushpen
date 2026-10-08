@@ -36,8 +36,17 @@ use std::sync::Arc;
 
 const APP_ID: &str = "hushpen";
 
-pub fn run() -> ExitCode {
-    let data = match DataDir::open(hushpen_store::data_dir::resolve_from_env()) {
+pub fn run(hidden: bool) -> ExitCode {
+    let root = match hushpen_store::data_dir::resolve_effective_from_env() {
+        Ok(root) => root,
+        Err(error) => {
+            // A corrupt pointer must not strand the app: fall back to the
+            // default folder and say so.
+            eprintln!("hushpen: the data folder pointer is broken ({error}); using the default");
+            hushpen_store::data_dir::resolve_from_env()
+        }
+    };
+    let data = match DataDir::open(root) {
         Ok(data) => data,
         Err(error) => {
             eprintln!("hushpen: could not open the data folder: {error}");
@@ -206,6 +215,17 @@ pub fn run() -> ExitCode {
             shell.update(cx, |shell, cx| {
                 shell.attach_onboarding(onboarding.clone(), cx)
             });
+            // A login start (`--hidden`) or the Start hidden setting puts the
+            // window away before the first paint; a pending onboarding always
+            // shows it.
+            let start_hidden = storage
+                .settings
+                .get("startup.startHidden")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            if (hidden || start_hidden) && !onboarding.read(cx).active() {
+                main_window::step_aside(cx);
+            }
             let history = handle
                 .update(cx, |_, window, cx| {
                     cx.new(|cx| History::new(history_storage, controller.clone(), window, cx))
