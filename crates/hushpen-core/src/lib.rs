@@ -1,6 +1,7 @@
 //! Pure Hushpen logic. No IO, no native libraries.
 
 pub mod catalog;
+pub mod cleanup;
 pub mod dictation;
 pub mod error;
 pub mod insert;
