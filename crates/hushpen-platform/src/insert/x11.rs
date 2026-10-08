@@ -7,6 +7,7 @@
 mod chord;
 mod clipboard;
 mod focus;
+mod grab;
 
 use super::{Inserter, OWN_APP_ID, Target, plan};
 use crate::keys::{Reason, Unavailable};

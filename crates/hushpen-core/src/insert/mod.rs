@@ -5,6 +5,7 @@
 //! touches a display or a pasteboard.
 
 pub mod flow;
+pub mod guard;
 pub mod method;
 pub mod report;
 

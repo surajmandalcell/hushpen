@@ -1,5 +1,5 @@
-//! Test hook for dictation: the `dictation`, `pipeline`, `global_keys`, and `last_insert` state
-//! sections, and the actions that record, feed the pipeline, copy, and choose the language.
+//! Test hook for dictation: the `dictation`, `pipeline`, `global_keys`, `last_insert`, and
+//! `permissions` state sections, and the actions that record, feed the pipeline, copy, and choose the language.
 //! Compiled only with the `test-automation` feature.
 
 use super::{register_action, set_state_section};
@@ -40,6 +40,10 @@ pub fn attach(cx: &mut App, dictation: Entity<Dictation>) {
     set_state_section(cx, "last_insert", {
         let controller = controller.clone();
         move |cx| controller.read(cx).last_insert_json()
+    });
+    set_state_section(cx, "permissions", {
+        let controller = controller.clone();
+        move |cx| controller.read(cx).permissions_json()
     });
     let _ = register_action(
         cx,

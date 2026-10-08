@@ -8,8 +8,13 @@ pub enum Outcome {
     Pasted,
     /// The text is on the clipboard and no key was sent.
     CopiedOnly,
-    /// macOS has not allowed Hushpen to post keys. The text is on the clipboard.
+    /// macOS has not allowed Hushpen to post keys. No key was sent and the clipboard was not
+    /// touched; the app copies the text.
     NoPermission,
+    /// A secure field or secure input is on. Nothing was sent and the clipboard was not touched.
+    BlockedSecure,
+    /// Another client holds the keyboard. Nothing was sent and the clipboard was not touched.
+    BlockedGrab,
     Failed,
 }
 
@@ -19,6 +24,8 @@ impl Outcome {
             Outcome::Pasted => "pasted",
             Outcome::CopiedOnly => "copied_only",
             Outcome::NoPermission => "no_permission",
+            Outcome::BlockedSecure => "blocked_secure",
+            Outcome::BlockedGrab => "blocked_grab",
             Outcome::Failed => "failed",
         }
     }

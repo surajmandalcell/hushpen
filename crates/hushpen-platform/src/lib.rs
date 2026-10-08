@@ -2,6 +2,7 @@
 
 pub mod insert;
 pub mod keys;
+pub mod permissions;
 pub mod window;
 
 #[cfg(target_os = "linux")]

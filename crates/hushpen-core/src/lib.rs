@@ -5,6 +5,7 @@ pub mod dictation;
 pub mod error;
 pub mod insert;
 pub mod language;
+pub mod permission;
 pub mod protocol;
 pub mod threads;
 pub mod transcript;

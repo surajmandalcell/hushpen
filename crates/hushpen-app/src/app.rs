@@ -139,6 +139,9 @@ pub fn run() -> ExitCode {
             });
             start_keys(&controller, cx);
             start_insert(&controller, cx);
+            controller.update(cx, |controller, _| {
+                controller.attach_permissions(hushpen_platform::permissions::system());
+            });
             let dictation =
                 cx.new(|cx| Dictation::new(dictation_storage, models.clone(), controller, cx));
             shell.update(cx, |shell, cx| {

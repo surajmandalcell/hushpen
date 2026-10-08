@@ -7,12 +7,14 @@
 // The pasteboard owner class and the AppKit constants need objc2's `unsafe` calls.
 #![allow(unsafe_code)]
 
+mod guard;
 mod layout;
 
 use super::{Inserter, SystemClock, Target, mono_ms, plan};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use hushpen_core::insert::flow::{self, Backend, ChordError, Receipts, Request, Step};
+use hushpen_core::insert::guard::{Block, check};
 use hushpen_core::insert::{Chord, Overrides, Report, Selection, choose_mac};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
@@ -111,6 +113,10 @@ impl MacBoard {
 
 impl Backend for MacBoard {
     type Snapshot = Vec<Item>;
+
+    fn guard(&mut self) -> Option<Block> {
+        check(&guard::MacProbe)
+    }
 
     fn snapshot(&mut self, _selection: Selection) -> Self::Snapshot {
         let Some(items) = self.pasteboard.pasteboardItems() else {

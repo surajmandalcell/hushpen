@@ -20,14 +20,17 @@ use hushpen_core::dictation::{
 };
 use hushpen_core::error::{
     self, CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_LOAD_FAILED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH,
-    INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_WAYLAND,
+    INSERT_KEYBOARD_GRABBED, INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_SECURE_FIELD,
+    INSERT_WAYLAND,
 };
 use hushpen_core::insert::flow::Step;
 use hushpen_core::insert::{Outcome, Overrides, Report};
 use hushpen_core::language;
+use hushpen_core::permission::Preflight;
 use hushpen_engine::{JobOutcome, TranscribeSpec};
 use hushpen_platform::insert::Inserter;
 use hushpen_platform::keys::{Reason, Unavailable};
+use permissions::PermissionWatch;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -37,6 +40,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+mod permissions;
 #[cfg(test)]
 pub(crate) mod testkit;
 #[cfg(test)]
@@ -49,6 +53,8 @@ const MAX_MINUTES_SETTING: &str = "dictation.maxMinutes";
 const TICK: Duration = Duration::from_millis(100);
 /// How often the idle view looks for a failed model load, which a worker thread reports.
 const PROBLEM_POLL: Duration = Duration::from_secs(1);
+/// How often the permissions are read again. Reading never prompts.
+const PERMISSION_POLL: Duration = Duration::from_secs(5);
 /// A Home start never waits for a result flash. This is added to the clock to end one.
 const FLASH_END_MS: u64 = 60_000;
 
@@ -250,6 +256,7 @@ pub struct Controller {
     last_phase: Phase,
     insert: InsertSupport,
     last_insert: LastInsert,
+    permissions: Option<PermissionWatch>,
 }
 
 impl Controller {
@@ -296,6 +303,18 @@ impl Controller {
             }
         })
         .detach();
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(PERMISSION_POLL).await;
+                if this
+                    .update(cx, |me, cx| me.refresh_permissions(cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
         cx.observe(&mic, |me, _, cx| me.mic_changed(cx)).detach();
         cx.observe(&models, |_, _, cx| cx.notify()).detach();
         let config = config_from(&storage);
@@ -328,11 +347,38 @@ impl Controller {
             last_phase: Phase::Idle,
             insert: InsertSupport::Detached,
             last_insert: Arc::default(),
+            permissions: None,
         }
     }
 
     pub fn attach_insert(&mut self, support: InsertSupport) {
         self.insert = support;
+    }
+
+    /// Reads the permissions now and again every few seconds, and records which grants are
+    /// lost since the last start.
+    pub fn attach_permissions(&mut self, preflight: Arc<dyn Preflight>) {
+        self.permissions = Some(PermissionWatch::start(preflight, &self.storage.settings));
+    }
+
+    fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
+        if let Some(watch) = &mut self.permissions
+            && watch.refresh(&self.storage.settings)
+        {
+            cx.notify();
+        }
+    }
+
+    /// The permissions that were granted before and are missing now, for onboarding.
+    pub fn lost_permissions(&self) -> &[hushpen_core::permission::Permission] {
+        self.permissions.as_ref().map_or(&[], PermissionWatch::lost)
+    }
+
+    /// `hookctl state` section `permissions`.
+    pub fn permissions_json(&self) -> Value {
+        self.permissions
+            .as_ref()
+            .map_or_else(permissions::unattached_json, PermissionWatch::to_json)
     }
 
     /// For threads that feed the pipeline, such as the key listener.
@@ -573,7 +619,15 @@ impl Controller {
                 self.warned = true;
                 hook::record_event("pipeline", &format!("warning {seconds_left}s left"));
             }
-            Effect::Notify { code } => self.notify(code),
+            Effect::Notify { code } => {
+                self.notify(code);
+                if code == INSERT_NO_PERMISSION
+                    && let Some(text) = self.last_text.clone()
+                {
+                    // The guard writes nothing; the copy is for the user's own paste.
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                }
+            }
         }
         Ok(())
     }
@@ -1060,6 +1114,14 @@ fn failure_for(code: &str) -> (&'static str, &'static str) {
         INSERT_NO_PERMISSION => (
             INSERT_NO_PERMISSION,
             "Hushpen is not allowed to press keys, so it could not paste. The text is on your clipboard. Use Paste last transcript once you allow it.",
+        ),
+        INSERT_SECURE_FIELD => (
+            INSERT_SECURE_FIELD,
+            "Secure input is on, so Hushpen did not paste. Your clipboard is unchanged. Use Paste last transcript in another field.",
+        ),
+        INSERT_KEYBOARD_GRABBED => (
+            INSERT_KEYBOARD_GRABBED,
+            "Another app holds the keyboard, so Hushpen did not paste. Your clipboard is unchanged. Use Paste last transcript when the keyboard is free.",
         ),
         _ => (
             ENGINE_CRASHED,

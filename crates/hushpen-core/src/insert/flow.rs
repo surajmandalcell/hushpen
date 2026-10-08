@@ -4,6 +4,7 @@
 //! The platform supplies a [`Backend`] and a [`Clock`]; this module owns the order and the
 //! timing, so the restore rules are tested without a display or a pasteboard.
 
+use super::guard::Block;
 use super::method::{Chord, Method, Selection};
 use super::report::{Outcome, Report, Restore};
 use crate::error::{INSERT_NO_PERMISSION, INSERT_NO_RECEIPT};
@@ -39,6 +40,12 @@ pub enum ChordError {
 pub trait Backend {
     /// What was on the selection before: every format, or nothing.
     type Snapshot;
+
+    /// Why a paste must not start. Asked before the clipboard is read or written, and only for
+    /// a paste: a copy sends no key.
+    fn guard(&mut self) -> Option<Block> {
+        None
+    }
 
     fn snapshot(&mut self, selection: Selection) -> Self::Snapshot;
     /// Makes Hushpen the owner of the selection with the text, and clears the receipts.
@@ -139,6 +146,13 @@ pub fn run<B: Backend>(
             return copy_only(backend, request.text, report, observe);
         }
     };
+    if let Some(block) = backend.guard() {
+        report.outcome = block.outcome();
+        report.code = Some(block.code());
+        report.restore = Restore::NotNeeded;
+        observe(Step::Settled(&report));
+        return report;
+    }
     let selection = chord.selection();
     report.chord = Some(chord);
     report.selection = Some(selection);
@@ -236,6 +250,7 @@ fn copy_only<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::insert::guard::tests::MockPlatform;
     use crate::insert::method::Chord;
     use std::cell::{Cell, RefCell};
     use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -266,6 +281,7 @@ mod tests {
         panic_on_chord: bool,
         write_error: bool,
         chord_at: Option<u64>,
+        platform: MockPlatform,
     }
 
     impl FakeBoard {
@@ -280,6 +296,7 @@ mod tests {
                 panic_on_chord: false,
                 write_error: false,
                 chord_at: None,
+                platform: MockPlatform::default(),
             }
         }
 
@@ -290,6 +307,10 @@ mod tests {
 
     impl Backend for FakeBoard {
         type Snapshot = Option<&'static str>;
+
+        fn guard(&mut self) -> Option<Block> {
+            crate::insert::guard::check(&self.platform)
+        }
 
         fn snapshot(&mut self, selection: Selection) -> Self::Snapshot {
             self.note(format!("snapshot {}", selection.key()));
@@ -569,6 +590,97 @@ mod tests {
         assert_eq!(report.outcome, Outcome::NoPermission);
         assert_eq!(report.code, Some("INSERT_NO_PERMISSION"));
         assert_eq!(report.restore, Restore::NotNeeded);
+    }
+
+    /// A blocked paste leaves the clipboard and the keyboard alone, and says so once.
+    fn assert_untouched(rig: &Rig, report: &Report, steps: &[String], outcome: Outcome) {
+        assert_eq!(report.outcome, outcome);
+        assert_eq!(report.restore, Restore::NotNeeded);
+        assert_eq!(report.chord, None);
+        assert_eq!(report.chord_sent_ms, None);
+        assert!(
+            rig.board.log.borrow().is_empty(),
+            "no snapshot, write, chord, or restore: {:?}",
+            rig.board.log.borrow()
+        );
+        assert_eq!(steps, ["settled"]);
+    }
+
+    #[test]
+    fn secure_event_input_blocks_the_paste_with_no_key_and_no_clipboard_write() {
+        let mut rig = rig();
+        rig.board.platform.secure_input = true;
+
+        let (report, steps) = paste(&mut rig, Chord::CmdV);
+
+        assert_untouched(&rig, &report, &steps, Outcome::BlockedSecure);
+        assert_eq!(report.code, Some("INSERT_SECURE_FIELD"));
+    }
+
+    #[test]
+    fn a_focused_secure_text_field_blocks_the_paste_with_no_key_and_no_clipboard_write() {
+        let mut rig = rig();
+        rig.board.platform.secure_field = true;
+
+        let (report, steps) = paste(&mut rig, Chord::CmdV);
+
+        assert_untouched(&rig, &report, &steps, Outcome::BlockedSecure);
+        assert_eq!(report.code, Some("INSERT_SECURE_FIELD"));
+    }
+
+    #[test]
+    fn missing_post_event_access_blocks_the_paste_with_no_key_and_no_clipboard_write() {
+        let mut rig = rig();
+        rig.board.platform.post_event_denied = true;
+
+        let (report, steps) = paste(&mut rig, Chord::CmdV);
+
+        assert_untouched(&rig, &report, &steps, Outcome::NoPermission);
+        assert_eq!(report.code, Some("INSERT_NO_PERMISSION"));
+    }
+
+    #[test]
+    fn a_keyboard_grab_blocks_the_paste_with_no_key_and_no_clipboard_write() {
+        let mut rig = rig();
+        rig.board.platform.grabbed = true;
+
+        let (report, steps) = paste(&mut rig, Chord::CtrlV);
+
+        assert_untouched(&rig, &report, &steps, Outcome::BlockedGrab);
+        assert_eq!(report.code, Some("INSERT_KEYBOARD_GRABBED"));
+    }
+
+    #[test]
+    fn with_every_answer_clear_the_paste_goes_through() {
+        let mut rig = rig();
+
+        let (report, _) = paste(&mut rig, Chord::CmdV);
+
+        assert!(rig.board.log.borrow().iter().any(|l| l == "chord cmd+v"));
+        assert_ne!(report.outcome, Outcome::BlockedSecure);
+        assert_eq!(report.code, Some("INSERT_NO_RECEIPT"), "no target read it");
+    }
+
+    #[test]
+    fn a_copy_only_run_is_not_asked_about_secure_fields() {
+        let mut rig = rig();
+        rig.board.platform.secure_input = true;
+        let request = Request {
+            text: "hello",
+            target: "",
+            method: Method::CopyOnly,
+            copy_note: Some("override"),
+        };
+
+        let report = run(
+            &mut rig.board,
+            &FakeClock(Rc::clone(&rig.now)),
+            &request,
+            &mut |_| {},
+        );
+
+        assert_eq!(report.outcome, Outcome::CopiedOnly);
+        assert!(rig.board.platform.asked.borrow().is_empty());
     }
 
     #[test]

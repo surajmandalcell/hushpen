@@ -561,3 +561,134 @@ fn runs_that_fail_before_the_text_exists_insert_nothing_and_leave_the_clipboard(
     assert_eq!(machine_state(cx, &rig), State::Done);
     assert_eq!(inserter.calls.lock().unwrap().len(), 1);
 }
+
+fn blocked_inserter(outcome: InsertOutcome, code: &'static str) -> Arc<FakeInserter> {
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    {
+        let mut script = inserter.script.lock().unwrap();
+        *script = Report::new("GtkTarget");
+        script.outcome = outcome;
+        script.code = Some(code);
+        script.restore = hushpen_core::insert::Restore::NotNeeded;
+    }
+    inserter
+}
+
+#[gpui_kit::test]
+fn a_keyboard_grab_fails_the_run_with_its_code_and_keeps_clipboard_and_text(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = blocked_inserter(InsertOutcome::BlockedGrab, "INSERT_KEYBOARD_GRABBED");
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("grabbed words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(machine_state(cx, &rig), State::Failed);
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_KEYBOARD_GRABBED"));
+    let message = rig
+        .controller
+        .read_with(cx, |c, _| c.notice().unwrap().message.clone());
+    assert!(
+        message.contains("Another app holds the keyboard"),
+        "{message}"
+    );
+    assert_eq!(clipboard(cx).as_deref(), Some("OLD"));
+    assert_eq!(last_insert(cx, &rig)["outcome"], "blocked_grab");
+    assert_eq!(last_insert(cx, &rig)["code"], "INSERT_KEYBOARD_GRABBED");
+    let chars = rig
+        .controller
+        .read_with(cx, |c, _| c.pipeline_json()["last_text_chars"].clone());
+    assert_eq!(chars, 13, "Paste last transcript still has the text");
+}
+
+#[gpui_kit::test]
+fn a_secure_field_fails_the_run_with_its_code_and_keeps_clipboard_and_text(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = blocked_inserter(InsertOutcome::BlockedSecure, "INSERT_SECURE_FIELD");
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("secret words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(machine_state(cx, &rig), State::Failed);
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_SECURE_FIELD"));
+    let message = rig
+        .controller
+        .read_with(cx, |c, _| c.notice().unwrap().message.clone());
+    assert!(message.contains("Secure input is on"), "{message}");
+    assert_eq!(clipboard(cx).as_deref(), Some("OLD"));
+    assert_eq!(last_insert(cx, &rig)["outcome"], "blocked_secure");
+}
+
+#[gpui_kit::test]
+fn missing_key_permission_copies_the_text_after_the_guard_wrote_nothing(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = blocked_inserter(InsertOutcome::NoPermission, "INSERT_NO_PERMISSION");
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("allowed later", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_NO_PERMISSION"));
+    assert_eq!(last_insert(cx, &rig)["outcome"], "no_permission");
+    assert_eq!(clipboard(cx).as_deref(), Some("allowed later"));
+}
+
+struct Scripted(hushpen_core::permission::Permissions);
+
+impl hushpen_core::permission::Preflight for Scripted {
+    fn microphone(&self) -> hushpen_core::permission::Access {
+        self.0.microphone
+    }
+
+    fn post_event(&self) -> hushpen_core::permission::Access {
+        self.0.accessibility
+    }
+
+    fn listen_event(&self) -> hushpen_core::permission::Access {
+        self.0.input_monitoring
+    }
+}
+
+#[gpui_kit::test]
+fn the_permissions_state_lists_every_key_and_the_grants_lost_since_the_last_start(
+    cx: &mut TestAppContext,
+) {
+    use hushpen_core::permission::{Access, Permissions};
+    let rig = rig(cx, &["base"], "base");
+    let unattached = rig.controller.read_with(cx, |c, _| c.permissions_json());
+    assert_eq!(unattached["microphone"], "notApplicable");
+    assert_eq!(unattached["lost"], json!([]));
+
+    rig.storage
+        .settings
+        .set_internal(
+            "permissions.lastGranted",
+            json!({"microphone": true, "accessibility": true, "inputMonitoring": true}),
+        )
+        .unwrap();
+    let preflight = Arc::new(Scripted(Permissions {
+        microphone: Access::Granted,
+        accessibility: Access::Denied,
+        input_monitoring: Access::Granted,
+    }));
+    rig.controller
+        .update(cx, |controller, _| controller.attach_permissions(preflight));
+
+    let state = rig.controller.read_with(cx, |c, _| c.permissions_json());
+    assert_eq!(state["microphone"], "granted");
+    assert_eq!(state["accessibility"], "denied");
+    assert_eq!(state["inputMonitoring"], "granted");
+    assert_eq!(state["lost"], json!(["accessibility"]));
+    let lost = rig
+        .controller
+        .read_with(cx, |c, _| c.lost_permissions().len());
+    assert_eq!(lost, 1);
+}

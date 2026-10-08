@@ -5,9 +5,11 @@
 //! receipt. A second connection reads the selection that was there before (every target the owner
 //! offers) so it can be offered again afterwards, and sends the paste chord through XTest.
 
+use super::grab::GrabProbe;
 use super::{Atoms, chord};
 use crate::insert::mono_ms;
 use hushpen_core::insert::flow::{Backend, ChordError, Receipts};
+use hushpen_core::insert::guard::{Block, check};
 use hushpen_core::insert::{Chord, Selection};
 use std::error::Error;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -575,6 +577,13 @@ impl X11Board {
 
 impl Backend for X11Board {
     type Snapshot = Option<Offer>;
+
+    fn guard(&mut self) -> Option<Block> {
+        check(&GrabProbe {
+            conn: &self.reader.conn,
+            root: self.reader.root,
+        })
+    }
 
     fn snapshot(&mut self, selection: Selection) -> Self::Snapshot {
         let atom = self.shared.selection_atom(selection);
