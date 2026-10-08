@@ -32,10 +32,16 @@ start_one() {
   mkdir -p "$dir/data" "$dir/out" "$dir/logs"
   # Empty the folders but keep them: a folder deleted and recreated under a fresh bind mount
   # once showed up as a missing /data in the next container.
-  [ "$keep_data" = 1 ] || find "${dir:?}/data" "${dir:?}/logs" -mindepth 1 -delete
+  # The pause matters: a container started in the same moment as the emptying (after the slot
+  # had run before) found no /logs at all, so init.sh died at once. OrbStack failed on every second
+  # start without the pause and on none of 12 starts with 0.5 s or more.
+  if [ "$keep_data" != 1 ]; then
+    find "${dir:?}/data" "${dir:?}/logs" -mindepth 1 -delete
+    sleep 1
+  fi
   local fixtures=()
   [ -d "$HUSHPEN_TEST_FIXTURES" ] && fixtures=(-v "$HUSHPEN_TEST_FIXTURES:/fixtures:ro")
-  docker run -d --rm --init --platform linux/arm64 --name "$name" \
+  docker run -d --init --platform linux/arm64 --name "$name" \
     --cpus "${VAL_CPUS:-2}" --memory "${VAL_MEM:-2g}" \
     -e SLOT="$slot" \
     -v "$HARNESS_DIR:/harness:ro" \
@@ -48,7 +54,10 @@ start_one() {
     sleep 0.1
   done
   docker exec "$name" test -f /tmp/slot-ready 2>/dev/null || {
-    echo "$name did not become ready; init log:" >&2
+    echo "$name did not become ready; container state: $(docker inspect -f '{{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} {{.State.Error}}' "$name" 2>&1)" >&2
+    echo "container log:" >&2
+    docker logs --tail 20 "$name" >&2 2>&1
+    echo "init log:" >&2
     cat "$dir/logs/init.log" >&2
     return 1
   }

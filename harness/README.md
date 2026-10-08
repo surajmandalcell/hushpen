@@ -95,6 +95,11 @@ every check, keeps only the newest run per suite, and removes the slots (also wh
 Output per slot: `slots/<n>/out/<suite>-<timestamp>/` with `result.json`, `suite.log`,
 screenshots, and the hook tree and state. It exits 0 only when every check in every slot passed.
 
+The run happens in a detached session: `$HUSHPEN_ROOT/runs/<run id>.log` holds the output and
+`<run id>.status` (written last) holds the exit code. The command only follows that log, so a
+caller that is killed (a tool call that ends kills its process group) does not stop the run or
+leave slots behind. `SUITE_TIMEOUT` (seconds, default 3600) bounds a run.
+
 | Suite | UI-only | Checks |
 |---|---|---|
 | `smoke` | yes | `window maps` (780x520), `token colors` (DESIGN.md samples), `click` (a real mouse click on a sidebar item opens its view), `maximize check` (wmctrl maximize and fullscreen, `xdotool windowsize`, Alt+F10, toolbar double click all keep 780x520) |
@@ -102,7 +107,8 @@ screenshots, and the hook tree and state. It exits 0 only when every check in ev
 | `mic` | no | `VAL-MIC-001` to `008`: the picker, the level meter, the session WAV (16 kHz mono, speed, offline transcript), recovery after `kill -9`, the saved mic across a restart, fallback when it is gone, no mic, a mic removed while recording, and the hook WAV feed. It empties `/data`, restarts the app, and loads and unloads PulseAudio modules, so it needs its own slot |
 | `models` | no | `VAL-MOD-002` to `005` and `008`: real downloads from Hugging Face (progress, cancel, `kill -9` resume, a changed file fails the hash check, delete, switching the active model). Needs outside network, empties `/data`, and downloads about 0.6 GB, so it needs its own slot |
 | `engine` | no | `VAL-ENG-011`: starts a fresh app and kills the engine child three times in a row; the gaps must be about 1 s, 5 s, and 30 s, the UI pid must not change, and the hook must answer in every gap. Run it on a fresh app: any engine restart in the last 60 s moves the first gap to 5 s. Takes about 80 s |
-| `core`, `full` | no | `smoke`, `env`, `mic`, `models`, `home`, and `engine`; later features add scripts under `slot/suites/` |
+| `tail` | no | the capture tail: a clip that ends on speech is stopped at once and keeps its last word |
+| `core`, `full` | no | `smoke`, `env`, `mic`, `models`, `home`, `tail`, and `engine`; later features add scripts under `slot/suites/` |
 
 Paste targets (`slot/targets.sh`): an xterm with `cat > /out/xterm.txt` and a translation override
 for Ctrl+Shift+V, a stock xterm (`--stock`) that only takes Shift+Insert from PRIMARY, and a GTK
