@@ -6,13 +6,14 @@
 //! working through its buttons.
 
 use hushpen_core::dictation::AppEvent;
+use hushpen_core::shortcut::{Bindings, Combo, Recording};
 use std::sync::Arc;
 
+mod hub;
+#[cfg(any(target_os = "linux", test))]
+mod keymap;
 pub mod session;
-pub mod shortcut;
 pub mod tap;
-
-pub use shortcut::Shortcut;
 
 #[cfg(target_os = "linux")]
 mod x11;
@@ -23,24 +24,8 @@ mod macos;
 /// Where the platform thread sends what it saw. Called from the platform thread.
 pub type Sink = Arc<dyn Fn(AppEvent) + Send + Sync>;
 
-/// The modifier that starts a dictation while it is held.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HoldKey {
-    /// Right Option on a Mac, Right Alt (X11 keycode 108) elsewhere.
-    #[default]
-    RightOption,
-    /// The Fn key. Only macOS reports it.
-    Fn,
-}
-
-impl HoldKey {
-    pub fn key(self) -> &'static str {
-        match self {
-            HoldKey::RightOption => "right-option",
-            HoldKey::Fn => "fn",
-        }
-    }
-}
+/// Where the recorder reports. Called from the platform thread.
+pub type RecordSink = Arc<dyn Fn(Recording) + Send + Sync>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
@@ -106,14 +91,41 @@ pub struct GlobalKeys {
 }
 
 impl GlobalKeys {
-    /// `paste_last` is the "Paste last transcript" shortcut. The sink gets
-    /// [`AppEvent::PasteLast`] when it is released.
-    pub fn start(
-        hold: HoldKey,
-        paste_last: Option<Shortcut>,
-        sink: Sink,
-    ) -> Result<Self, Unavailable> {
-        start(hold, paste_last, sink)
+    /// `bindings` are the live shortcuts. The sink gets their pipeline events; the record sink
+    /// gets progress while [`GlobalKeys::start_recording`] is open.
+    pub fn start(bindings: Bindings, sink: Sink, record: RecordSink) -> Result<Self, Unavailable> {
+        start(bindings, sink, record)
+    }
+
+    /// Swaps the live shortcuts. A hold that is on is let go first.
+    pub fn set_bindings(&self, bindings: Bindings) {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        self.inner.set_bindings(bindings);
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        let _ = bindings;
+    }
+
+    /// Opens the recorder: no live shortcut fires until it reports a result or is stopped.
+    pub fn start_recording(&self) {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        self.inner.start_recording();
+    }
+
+    pub fn stop_recording(&self) {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        self.inner.stop_recording();
+    }
+
+    /// Whether another app already holds this chord. Only a chord with a letter can be held:
+    /// a modifier alone is never grabbed. macOS has no way to ask, so it always answers no.
+    pub fn in_use(&self, combo: &Combo) -> bool {
+        #[cfg(target_os = "linux")]
+        return self.inner.in_use(combo);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = combo;
+            false
+        }
     }
 
     /// Esc belongs to the pipeline while a session runs and to the focused app otherwise.
@@ -127,11 +139,7 @@ impl GlobalKeys {
 }
 
 #[cfg(target_os = "linux")]
-fn start(
-    hold: HoldKey,
-    paste_last: Option<Shortcut>,
-    sink: Sink,
-) -> Result<GlobalKeys, Unavailable> {
+fn start(bindings: Bindings, sink: Sink, record: RecordSink) -> Result<GlobalKeys, Unavailable> {
     match session::detect() {
         session::Session::Wayland => return Err(Unavailable::wayland()),
         session::Session::NoDisplay => {
@@ -143,27 +151,19 @@ fn start(
         session::Session::X11 => {}
     }
     Ok(GlobalKeys {
-        inner: x11::X11Keys::start(hold, paste_last, sink)?,
+        inner: x11::X11Keys::start(bindings, sink, record)?,
     })
 }
 
 #[cfg(target_os = "macos")]
-fn start(
-    hold: HoldKey,
-    paste_last: Option<Shortcut>,
-    sink: Sink,
-) -> Result<GlobalKeys, Unavailable> {
+fn start(bindings: Bindings, sink: Sink, record: RecordSink) -> Result<GlobalKeys, Unavailable> {
     Ok(GlobalKeys {
-        inner: macos::MacKeys::start(hold, paste_last, sink)?,
+        inner: macos::MacKeys::start(bindings, sink, record)?,
     })
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn start(
-    _hold: HoldKey,
-    _paste_last: Option<Shortcut>,
-    _sink: Sink,
-) -> Result<GlobalKeys, Unavailable> {
+fn start(_bindings: Bindings, _sink: Sink, _record: RecordSink) -> Result<GlobalKeys, Unavailable> {
     Err(Unavailable::new(
         Reason::Unsupported,
         "Global keys are not available on this system.",

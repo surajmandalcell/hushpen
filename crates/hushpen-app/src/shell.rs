@@ -7,6 +7,7 @@ use crate::hook;
 use crate::main_window;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
+use crate::shortcuts::{self, Shortcuts};
 use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
@@ -30,6 +31,7 @@ pub struct Shell {
     dictation: Option<Entity<Dictation>>,
     dictionary: Option<Entity<Dictionary>>,
     history: Option<Entity<History>>,
+    shortcuts: Option<Entity<Shortcuts>>,
     /// The scroll position of the content pane. The History list reads it to draw only the
     /// rows near the screen and to see when its end shows.
     content_scroll: ScrollHandle,
@@ -51,8 +53,16 @@ impl Shell {
             dictation: None,
             dictionary: None,
             history: None,
+            shortcuts: None,
             content_scroll: ScrollHandle::new(),
         }
+    }
+
+    /// Shows the shortcut recorder in the Settings view and repaints when it changes.
+    pub fn attach_shortcuts(&mut self, shortcuts: Entity<Shortcuts>, cx: &mut Context<Self>) {
+        cx.observe(&shortcuts, |_, _, cx| cx.notify()).detach();
+        self.shortcuts = Some(shortcuts);
+        cx.notify();
     }
 
     /// Shows the personal dictionary in the Dictionary view and repaints when it changes.
@@ -343,12 +353,17 @@ impl Shell {
             (_, _, Some(dictionary), _, View::Dictionary) => {
                 dictionary::panel::render(dictionary, cx).into_any_element()
             }
-            _ => div()
-                .id(hook::id(view.key(), "placeholder"))
-                .test_support()
-                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                .child("Nothing here yet.")
-                .into_any_element(),
+            _ => match (&self.shortcuts, view) {
+                (Some(shortcuts), View::Settings) => {
+                    shortcuts::panel::render(shortcuts, cx).into_any_element()
+                }
+                _ => div()
+                    .id(hook::id(view.key(), "placeholder"))
+                    .test_support()
+                    .text_color(theme::rgb_of(color::TEXT_MUTED))
+                    .child("Nothing here yet.")
+                    .into_any_element(),
+            },
         };
         div()
             .id(hook::id("content", "pane"))

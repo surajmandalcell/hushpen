@@ -14,6 +14,7 @@ use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
 use crate::native::native_handle;
 use crate::shell::Shell;
+use crate::shortcuts::Shortcuts;
 use crate::storage;
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
@@ -24,7 +25,8 @@ use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Bounds, Entity, Window, WindowBounds, WindowOptions, px,
     size,
 };
-use hushpen_platform::keys::{GlobalKeys, HoldKey};
+use hushpen_core::shortcut::Platform;
+use hushpen_platform::keys::GlobalKeys;
 use hushpen_platform::window::lock_chrome;
 use hushpen_store::data_dir::DataDir;
 use std::process::ExitCode;
@@ -172,7 +174,12 @@ pub fn run() -> ExitCode {
                     cx,
                 )
             });
-            start_keys(&controller, cx);
+            let shortcuts =
+                cx.new(|cx| Shortcuts::new(Rc::clone(&dictation_storage), Platform::current(), cx));
+            shell.update(cx, |shell, cx| {
+                shell.attach_shortcuts(shortcuts.clone(), cx)
+            });
+            start_keys(&controller, &shortcuts, cx);
             start_insert(&controller, cx);
             start_cues(&controller, cx);
             controller.update(cx, |controller, _| {
@@ -254,6 +261,7 @@ pub fn run() -> ExitCode {
                 crate::hook::attach_flow_bar(cx, flow_bar, flow_bar_host);
                 crate::hook::attach_tray(cx, tray_controller, tray.is_some());
                 crate::hook::attach_mic(cx, mic);
+                crate::hook::attach_shortcuts(cx, shortcuts);
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_dictation(cx, dictation);
                 if let Some(dictionary) = dictionary {
@@ -310,26 +318,37 @@ fn no_display_exit() -> Option<ExitCode> {
     None
 }
 
-/// Starts the hold key and Esc listener and hands the controller what it needs to run them.
-/// A failure is not fatal: the buttons still work, and Home says why the keys are off.
-fn start_keys(controller: &Entity<Controller>, cx: &mut App) {
+/// Starts the key listener with the saved shortcuts and hands the controller and the Shortcuts
+/// section what they need to run it. A failure is not fatal: the buttons still work, and Home
+/// says why the keys are off.
+fn start_keys(controller: &Entity<Controller>, shortcuts: &Entity<Shortcuts>, cx: &mut App) {
     let events = controller.read(cx).sender();
     let sink: hushpen_platform::keys::Sink = Arc::new(move |event| events.send(event));
-    let paste_last = controller.read(cx).paste_last_shortcut();
-    let (status, session_active): (KeysStatus, Rc<dyn Fn(bool)>) =
-        match GlobalKeys::start(HoldKey::default(), Some(paste_last), sink) {
-            Ok(keys) => (
-                KeysStatus::Available,
-                Rc::new(move |active| keys.set_session_active(active)),
-            ),
-            Err(why) => {
-                log::warn!("global keys not available: {}", why.reason.key());
-                (KeysStatus::Unavailable(why), Rc::new(|_| {}))
-            }
-        };
-    controller.update(cx, |controller, _| {
-        controller.attach_keys(status, session_active)
-    });
+    let (bindings, record) = {
+        let shortcuts = shortcuts.read(cx);
+        (shortcuts.bindings(), shortcuts.record_sink())
+    };
+    match GlobalKeys::start(bindings, sink, record) {
+        Ok(keys) => {
+            let keys = Rc::new(keys);
+            let session = Rc::clone(&keys);
+            controller.update(cx, |controller, _| {
+                controller.attach_keys(
+                    KeysStatus::Available,
+                    Rc::new(move |active| session.set_session_active(active)),
+                )
+            });
+            shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Ok(keys), cx));
+        }
+        Err(why) => {
+            log::warn!("global keys not available: {}", why.reason.key());
+            let message = why.message.clone();
+            controller.update(cx, |controller, _| {
+                controller.attach_keys(KeysStatus::Unavailable(why), Rc::new(|_| {}))
+            });
+            shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Err(message), cx));
+        }
+    }
 }
 
 /// Gives the controller the sound player. The player opens the output on its own thread.

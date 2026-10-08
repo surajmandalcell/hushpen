@@ -932,29 +932,6 @@ fn a_start_that_fails_plays_no_start_cue(cx: &mut TestAppContext) {
     assert!(!played.lock().unwrap().contains(&(Cue::Start, 0.5)));
 }
 
-#[gpui_kit::test]
-fn the_paste_last_shortcut_comes_from_its_setting_with_a_default_for_bad_text(
-    cx: &mut TestAppContext,
-) {
-    use hushpen_platform::keys::Shortcut;
-    let rig = rig(cx, &["base"], "base");
-    let shortcut =
-        |cx: &mut TestAppContext| rig.controller.read_with(cx, |c, _| c.paste_last_shortcut());
-    assert_eq!(shortcut(cx), Shortcut::default_paste_last());
-
-    rig.storage
-        .settings
-        .set("shortcut.pasteLast", json!("Ctrl+Shift+Alt+9"))
-        .unwrap();
-    assert_eq!(shortcut(cx), Shortcut::parse("Ctrl+Shift+Alt+9").unwrap());
-
-    rig.storage
-        .settings
-        .set("shortcut.pasteLast", json!("V"))
-        .unwrap();
-    assert_eq!(shortcut(cx), Shortcut::default_paste_last());
-}
-
 fn add_entry(rig: &Rig, phrase: &str, heard_as: Option<&str>) -> i64 {
     hushpen_store::dictionary::add(&rig.storage.database, phrase, heard_as)
         .unwrap()

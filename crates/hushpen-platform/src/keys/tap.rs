@@ -5,35 +5,59 @@
 //! decides. The key codes and flag bits are the macOS values (`kVK_RightOption`,
 //! `kCGEventFlagMaskAlternate`, and so on), so this module compiles everywhere.
 
-use super::HoldKey;
-use hushpen_core::dictation::AppEvent;
+use hushpen_core::shortcut::{Modifier, Phys, Side};
+use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
 
-pub const KEYCODE_RIGHT_OPTION: i64 = 61;
-pub const KEYCODE_FN: i64 = 63;
 pub const KEYCODE_ESCAPE: i64 = 53;
+const KEYCODE_FN: i64 = 63;
 
 pub const FLAG_ALTERNATE: u64 = 0x0008_0000;
 pub const FLAG_SECONDARY_FN: u64 = 0x0080_0000;
+pub const FLAG_SHIFT: u64 = 0x0002_0000;
+pub const FLAG_CONTROL: u64 = 0x0004_0000;
+pub const FLAG_COMMAND: u64 = 0x0010_0000;
+
+/// The bits that say which physical key holds a modifier. Synthetic events may lack them.
+const DEVICE_BITS: u64 = 0x0000_207F;
 
 /// How often the tap thread checks that the tap still lives.
 pub const HEALTH_INTERVAL: Duration = Duration::from_secs(5);
 
-impl HoldKey {
-    fn mac_keycode(self) -> i64 {
-        match self {
-            HoldKey::RightOption => KEYCODE_RIGHT_OPTION,
-            HoldKey::Fn => KEYCODE_FN,
-        }
-    }
+/// A modifier key on the Mac keyboard: its key code, its flag in the event, its own bit, and
+/// the key it stands for.
+struct ModifierKey {
+    keycode: i64,
+    flag: u64,
+    device_bit: u64,
+    phys: Phys,
+}
 
-    fn mac_flag(self) -> u64 {
-        match self {
-            HoldKey::RightOption => FLAG_ALTERNATE,
-            HoldKey::Fn => FLAG_SECONDARY_FN,
-        }
+const fn modifier(
+    keycode: i64,
+    flag: u64,
+    device_bit: u64,
+    m: Modifier,
+    side: Side,
+) -> ModifierKey {
+    ModifierKey {
+        keycode,
+        flag,
+        device_bit,
+        phys: Phys::Modifier(m, side),
     }
 }
+
+const MODIFIER_KEYS: [ModifierKey; 8] = [
+    modifier(59, FLAG_CONTROL, 0x0001, Modifier::Ctrl, Side::Left),
+    modifier(62, FLAG_CONTROL, 0x2000, Modifier::Ctrl, Side::Right),
+    modifier(58, FLAG_ALTERNATE, 0x0020, Modifier::Alt, Side::Left),
+    modifier(61, FLAG_ALTERNATE, 0x0040, Modifier::Alt, Side::Right),
+    modifier(56, FLAG_SHIFT, 0x0002, Modifier::Shift, Side::Left),
+    modifier(60, FLAG_SHIFT, 0x0004, Modifier::Shift, Side::Right),
+    modifier(55, FLAG_COMMAND, 0x0008, Modifier::Cmd, Side::Left),
+    modifier(54, FLAG_COMMAND, 0x0010, Modifier::Cmd, Side::Right),
+];
 
 /// What the tap callback saw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,135 +82,84 @@ pub enum TapEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TapAction {
-    Emit(AppEvent),
+    /// A key went down (`true`) or up (`false`).
+    Key(Phys, bool),
     /// Turn the tap on again.
     Reenable,
     Ignore,
 }
 
-pub const FLAG_SHIFT: u64 = 0x0002_0000;
-pub const FLAG_CONTROL: u64 = 0x0004_0000;
-pub const FLAG_COMMAND: u64 = 0x0010_0000;
-const FLAGS_MODIFIERS: u64 = FLAG_SHIFT | FLAG_CONTROL | FLAG_ALTERNATE | FLAG_COMMAND;
-
-/// A shortcut as the tap sees it: the key code of its letter on the current layout, and the
-/// modifier flags it needs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ShortcutKeys {
-    pub keycode: i64,
-    pub flags: u64,
-}
-
-impl ShortcutKeys {
-    pub fn new(keycode: i64, shortcut: super::Shortcut) -> Self {
-        let flags = [
-            (shortcut.ctrl, FLAG_CONTROL),
-            (shortcut.alt, FLAG_ALTERNATE),
-            (shortcut.shift, FLAG_SHIFT),
-            (shortcut.cmd, FLAG_COMMAND),
-        ]
-        .into_iter()
-        .filter(|(wanted, _)| *wanted)
-        .fold(0, |all, (_, flag)| all | flag);
-        Self { keycode, flags }
-    }
-}
-
-/// Progress of the paste last shortcut: it fires when the letter and its modifiers are up.
-#[derive(Debug, Default)]
-struct Paste {
-    armed: bool,
-    key_down: bool,
-}
-
-/// Turns tap events into pipeline events for one hold key.
+/// Turns tap events into key presses and releases.
 #[derive(Debug)]
 pub struct Decoder {
-    hold: HoldKey,
-    down: bool,
-    shortcut: Option<ShortcutKeys>,
-    paste: Paste,
+    /// The letter and digit keys on the current layout, by key code.
+    chars: HashMap<i64, char>,
+    /// The modifiers that are down, so a flags event is a change or nothing.
+    down: BTreeSet<Phys>,
 }
 
 impl Decoder {
-    pub fn new(hold: HoldKey) -> Self {
+    pub fn new(chars: HashMap<i64, char>) -> Self {
         Self {
-            hold,
-            down: false,
-            shortcut: None,
-            paste: Paste::default(),
+            chars,
+            down: BTreeSet::new(),
         }
-    }
-
-    /// Also decodes the paste last shortcut.
-    pub fn with_shortcut(mut self, shortcut: Option<ShortcutKeys>) -> Self {
-        self.shortcut = shortcut;
-        self
     }
 
     pub fn decode(&mut self, event: TapEvent) -> TapAction {
         match event {
-            TapEvent::FlagsChanged { keycode, flags } if keycode == self.hold.mac_keycode() => {
-                let pressed = flags & self.hold.mac_flag() != 0;
-                match (pressed, self.down) {
-                    (true, false) => {
-                        self.down = true;
-                        TapAction::Emit(AppEvent::HoldDown)
-                    }
-                    (false, true) => {
-                        self.down = false;
-                        TapAction::Emit(AppEvent::HoldUp)
-                    }
-                    _ => self.released(flags),
-                }
-            }
-            TapEvent::FlagsChanged { flags, .. } => self.released(flags),
-            TapEvent::KeyDown { keycode, .. } if keycode == KEYCODE_ESCAPE => {
-                TapAction::Emit(AppEvent::Esc)
-            }
-            TapEvent::KeyDown { keycode, flags } => {
-                if let Some(shortcut) = self.shortcut
-                    && keycode == shortcut.keycode
-                {
-                    self.paste.key_down = true;
-                    // The shortcut's own modifiers and no others: Ctrl+V is not Ctrl+Shift+V.
-                    if flags & FLAGS_MODIFIERS == shortcut.flags {
-                        self.paste.armed = true;
-                    }
-                }
-                TapAction::Ignore
-            }
-            TapEvent::KeyUp { keycode, flags } => {
-                if self
-                    .shortcut
-                    .is_some_and(|shortcut| shortcut.keycode == keycode)
-                {
-                    self.paste.key_down = false;
-                    return self.released(flags);
-                }
-                TapAction::Ignore
-            }
+            TapEvent::FlagsChanged { keycode, flags } => self.flags_changed(keycode, flags),
+            TapEvent::KeyDown { keycode, .. } => self.key(keycode, true),
+            TapEvent::KeyUp { keycode, .. } => self.key(keycode, false),
             TapEvent::DisabledByTimeout | TapEvent::DisabledByUserInput => TapAction::Reenable,
         }
     }
 
-    /// The shortcut was completed and every key of it is up now.
-    fn released(&mut self, flags: u64) -> TapAction {
-        let Some(shortcut) = self.shortcut else {
-            return TapAction::Ignore;
-        };
-        if !self.paste.armed || self.paste.key_down || flags & shortcut.flags != 0 {
-            return TapAction::Ignore;
+    fn key(&self, keycode: i64, down: bool) -> TapAction {
+        if keycode == KEYCODE_ESCAPE {
+            return TapAction::Key(Phys::Esc, down);
         }
-        self.paste.armed = false;
-        TapAction::Emit(AppEvent::PasteLast)
+        match self.chars.get(&keycode) {
+            Some(c) => TapAction::Key(Phys::Char(*c), down),
+            None => TapAction::Ignore,
+        }
     }
 
-    /// A reinstalled tap cannot see the release of a key that went down before it. The pipeline
-    /// must not stay in a hold forever, so a key that was down is released now.
-    pub fn reset(&mut self) -> Option<AppEvent> {
-        self.paste = Paste::default();
-        std::mem::take(&mut self.down).then_some(AppEvent::HoldUp)
+    fn flags_changed(&mut self, keycode: i64, flags: u64) -> TapAction {
+        let (phys, pressed) = if keycode == KEYCODE_FN {
+            (Phys::Fn, flags & FLAG_SECONDARY_FN != 0)
+        } else if let Some(key) = MODIFIER_KEYS.iter().find(|key| key.keycode == keycode) {
+            // Both Options share one flag, so the key's own bit says which one is down. A
+            // synthetic event with no device bits has only the shared flag.
+            let pressed = if flags & DEVICE_BITS != 0 {
+                flags & key.device_bit != 0
+            } else {
+                flags & key.flag != 0
+            };
+            (key.phys, pressed)
+        } else {
+            return TapAction::Ignore;
+        };
+        let changed = if pressed {
+            self.down.insert(phys)
+        } else {
+            self.down.remove(&phys)
+        };
+        if changed {
+            TapAction::Key(phys, pressed)
+        } else {
+            TapAction::Ignore
+        }
+    }
+
+    /// The user switched layouts, so the same letter sits on another key.
+    pub fn set_chars(&mut self, chars: HashMap<i64, char>) {
+        self.chars = chars;
+    }
+
+    /// A reinstalled tap cannot see the release of a key that went down before it.
+    pub fn reset(&mut self) {
+        self.down.clear();
     }
 }
 
@@ -251,29 +224,49 @@ impl<T: Tap> TapGuard<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hushpen_core::dictation::AppEvent;
+    use hushpen_core::shortcut::{Bindings, Combo, Engine, HandsFree, Output, Platform};
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
+
+    const KEYCODE_RIGHT_OPTION: i64 = 61;
+    const KEYCODE_V: i64 = 9;
+    const CTRL_CMD: u64 = FLAG_CONTROL | FLAG_COMMAND;
+
+    fn decoder() -> Decoder {
+        Decoder::new(HashMap::from([(KEYCODE_V, 'v'), (49, ' ')]))
+    }
 
     fn flags(keycode: i64, flags: u64) -> TapEvent {
         TapEvent::FlagsChanged { keycode, flags }
     }
 
+    fn key_down(keycode: i64) -> TapEvent {
+        TapEvent::KeyDown { keycode, flags: 0 }
+    }
+
+    fn key_up(keycode: i64) -> TapEvent {
+        TapEvent::KeyUp { keycode, flags: 0 }
+    }
+
+    const R_OPTION: Phys = Phys::Modifier(Modifier::Alt, Side::Right);
+
     #[test]
-    fn right_option_with_the_alternate_flag_is_hold_down_and_clearing_it_is_hold_up() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
+    fn right_option_with_the_alternate_flag_is_down_and_clearing_it_is_up() {
+        let mut decoder = decoder();
         assert_eq!(
             decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE)),
-            TapAction::Emit(AppEvent::HoldDown)
+            TapAction::Key(R_OPTION, true)
         );
         assert_eq!(
             decoder.decode(flags(KEYCODE_RIGHT_OPTION, 0)),
-            TapAction::Emit(AppEvent::HoldUp)
+            TapAction::Key(R_OPTION, false)
         );
     }
 
     #[test]
-    fn a_repeated_flags_event_does_not_repeat_hold_down_or_hold_up() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
+    fn a_repeated_flags_event_is_not_a_second_change() {
+        let mut decoder = decoder();
         decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE));
         assert_eq!(
             decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE)),
@@ -287,172 +280,82 @@ mod tests {
     }
 
     #[test]
-    fn left_option_keycode_58_gives_nothing() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
-        assert_eq!(decoder.decode(flags(58, FLAG_ALTERNATE)), TapAction::Ignore);
-        assert_eq!(decoder.decode(flags(58, 0)), TapAction::Ignore);
+    fn the_device_bit_tells_which_option_key_is_still_down() {
+        let mut decoder = decoder();
+        let both = FLAG_ALTERNATE | 0x0020 | 0x0040;
+        decoder.decode(flags(58, FLAG_ALTERNATE | 0x0020));
+        decoder.decode(flags(KEYCODE_RIGHT_OPTION, both));
+        // Right Option comes up while Left Option stays down: the shared flag is still set.
+        assert_eq!(
+            decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE | 0x0020)),
+            TapAction::Key(R_OPTION, false)
+        );
     }
 
     #[test]
-    fn with_the_fn_setting_keycode_63_and_the_secondary_fn_flag_hold_the_key() {
-        let mut decoder = Decoder::new(HoldKey::Fn);
+    fn left_option_is_the_left_alt_key_and_not_the_right() {
+        let mut decoder = decoder();
+        assert_eq!(
+            decoder.decode(flags(58, FLAG_ALTERNATE)),
+            TapAction::Key(Phys::Modifier(Modifier::Alt, Side::Left), true)
+        );
+    }
+
+    #[test]
+    fn right_control_shift_and_command_have_their_own_key_codes() {
+        let mut decoder = decoder();
+        for (keycode, flag, expected) in [
+            (
+                62,
+                FLAG_CONTROL,
+                Phys::Modifier(Modifier::Ctrl, Side::Right),
+            ),
+            (60, FLAG_SHIFT, Phys::Modifier(Modifier::Shift, Side::Right)),
+            (54, FLAG_COMMAND, Phys::Modifier(Modifier::Cmd, Side::Right)),
+            (55, FLAG_COMMAND, Phys::Modifier(Modifier::Cmd, Side::Left)),
+        ] {
+            assert_eq!(
+                decoder.decode(flags(keycode, flag)),
+                TapAction::Key(expected, true)
+            );
+        }
+    }
+
+    #[test]
+    fn fn_is_key_code_63_with_the_secondary_fn_flag() {
+        let mut decoder = decoder();
         assert_eq!(
             decoder.decode(flags(KEYCODE_FN, FLAG_SECONDARY_FN)),
-            TapAction::Emit(AppEvent::HoldDown)
+            TapAction::Key(Phys::Fn, true)
         );
         assert_eq!(
             decoder.decode(flags(KEYCODE_FN, 0)),
-            TapAction::Emit(AppEvent::HoldUp)
-        );
-        assert_eq!(
-            decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE)),
-            TapAction::Ignore,
-            "Right Option does nothing while Fn is the hold key"
+            TapAction::Key(Phys::Fn, false)
         );
     }
 
     #[test]
-    fn the_default_setting_ignores_fn() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
+    fn letters_come_from_the_layout_table_and_escape_is_key_code_53() {
+        let mut decoder = decoder();
         assert_eq!(
-            decoder.decode(flags(KEYCODE_FN, FLAG_SECONDARY_FN)),
-            TapAction::Ignore
-        );
-    }
-
-    #[test]
-    fn escape_key_down_is_esc_and_other_keys_are_ignored() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
-        assert_eq!(
-            decoder.decode(TapEvent::KeyDown {
-                keycode: KEYCODE_ESCAPE,
-                flags: 0
-            }),
-            TapAction::Emit(AppEvent::Esc)
+            decoder.decode(key_down(KEYCODE_V)),
+            TapAction::Key(Phys::Char('v'), true)
         );
         assert_eq!(
-            decoder.decode(TapEvent::KeyUp {
-                keycode: KEYCODE_ESCAPE,
-                flags: 0
-            }),
-            TapAction::Ignore
+            decoder.decode(key_up(KEYCODE_V)),
+            TapAction::Key(Phys::Char('v'), false)
         );
         assert_eq!(
-            decoder.decode(TapEvent::KeyDown {
-                keycode: 0,
-                flags: 0
-            }),
-            TapAction::Ignore
+            decoder.decode(key_down(KEYCODE_ESCAPE)),
+            TapAction::Key(Phys::Esc, true)
         );
-    }
-
-    const KEYCODE_V: i64 = 9;
-    const CTRL_CMD: u64 = FLAG_CONTROL | FLAG_COMMAND;
-
-    fn paste_decoder() -> Decoder {
-        let shortcut = super::super::Shortcut::parse("Ctrl+Cmd+V").unwrap();
-        Decoder::new(HoldKey::RightOption)
-            .with_shortcut(Some(ShortcutKeys::new(KEYCODE_V, shortcut)))
-    }
-
-    fn key_down(keycode: i64, flags: u64) -> TapEvent {
-        TapEvent::KeyDown { keycode, flags }
-    }
-
-    fn key_up(keycode: i64, flags: u64) -> TapEvent {
-        TapEvent::KeyUp { keycode, flags }
-    }
-
-    #[test]
-    fn the_shortcut_keys_carry_its_modifier_flags() {
-        let shortcut = super::super::Shortcut::parse("Ctrl+Alt+Shift+V").unwrap();
-        assert_eq!(
-            ShortcutKeys::new(KEYCODE_V, shortcut).flags,
-            FLAG_CONTROL | FLAG_ALTERNATE | FLAG_SHIFT
-        );
-    }
-
-    #[test]
-    fn paste_last_fires_when_the_letter_and_the_modifiers_are_up() {
-        let mut decoder = paste_decoder();
-        assert_eq!(
-            decoder.decode(flags(55, FLAG_CONTROL)),
-            TapAction::Ignore,
-            "a modifier alone does nothing"
-        );
-        assert_eq!(
-            decoder.decode(key_down(KEYCODE_V, CTRL_CMD)),
-            TapAction::Ignore
-        );
-        assert_eq!(
-            decoder.decode(key_up(KEYCODE_V, CTRL_CMD)),
-            TapAction::Ignore,
-            "the modifiers are still down"
-        );
-        assert_eq!(
-            decoder.decode(flags(55, FLAG_CONTROL)),
-            TapAction::Ignore,
-            "Control is still down"
-        );
-        assert_eq!(
-            decoder.decode(flags(59, 0)),
-            TapAction::Emit(AppEvent::PasteLast)
-        );
-        assert_eq!(decoder.decode(flags(59, 0)), TapAction::Ignore, "only once");
-    }
-
-    #[test]
-    fn paste_last_fires_when_the_modifiers_come_up_before_the_letter() {
-        let mut decoder = paste_decoder();
-        decoder.decode(key_down(KEYCODE_V, CTRL_CMD));
-        assert_eq!(decoder.decode(flags(55, 0)), TapAction::Ignore);
-        assert_eq!(
-            decoder.decode(key_up(KEYCODE_V, 0)),
-            TapAction::Emit(AppEvent::PasteLast)
-        );
-    }
-
-    #[test]
-    fn the_letter_with_other_modifiers_is_not_the_shortcut() {
-        let mut decoder = paste_decoder();
-        decoder.decode(key_down(KEYCODE_V, FLAG_COMMAND));
-        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
-        decoder.decode(key_down(KEYCODE_V, CTRL_CMD | FLAG_SHIFT));
-        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
-        decoder.decode(key_down(KEYCODE_V, 0));
-        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
-    }
-
-    #[test]
-    fn a_paste_key_the_app_sends_itself_is_not_the_shortcut() {
-        let mut decoder = paste_decoder();
-        decoder.decode(key_down(KEYCODE_V, FLAG_COMMAND));
-        assert_eq!(
-            decoder.decode(key_up(KEYCODE_V, FLAG_COMMAND)),
-            TapAction::Ignore
-        );
-        assert_eq!(decoder.decode(flags(55, 0)), TapAction::Ignore);
-    }
-
-    #[test]
-    fn without_a_shortcut_nothing_fires() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
-        decoder.decode(key_down(KEYCODE_V, CTRL_CMD));
-        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
-        assert_eq!(decoder.decode(flags(55, 0)), TapAction::Ignore);
-    }
-
-    #[test]
-    fn a_reset_forgets_a_half_done_shortcut() {
-        let mut decoder = paste_decoder();
-        decoder.decode(key_down(KEYCODE_V, CTRL_CMD));
-        decoder.reset();
-        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
+        assert_eq!(decoder.decode(key_down(0)), TapAction::Ignore);
+        assert_eq!(decoder.decode(flags(57, 0)), TapAction::Ignore, "Caps Lock");
     }
 
     #[test]
     fn a_tap_disabled_event_asks_for_a_re_enable() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
+        let mut decoder = decoder();
         assert_eq!(
             decoder.decode(TapEvent::DisabledByTimeout),
             TapAction::Reenable
@@ -464,12 +367,106 @@ mod tests {
     }
 
     #[test]
-    fn a_reset_releases_a_key_that_was_down_once() {
-        let mut decoder = Decoder::new(HoldKey::RightOption);
-        assert_eq!(decoder.reset(), None);
+    fn a_reset_forgets_the_modifiers_that_were_down() {
+        let mut decoder = decoder();
         decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE));
-        assert_eq!(decoder.reset(), Some(AppEvent::HoldUp));
-        assert_eq!(decoder.reset(), None);
+        decoder.reset();
+        assert_eq!(
+            decoder.decode(flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE)),
+            TapAction::Key(R_OPTION, true)
+        );
+    }
+
+    /// Feeds tap events through the decoder and the engine, as the tap thread does.
+    fn run(engine: &mut Engine, decoder: &mut Decoder, events: &[TapEvent]) -> Vec<AppEvent> {
+        let mut out = Vec::new();
+        for event in events {
+            let outputs = match decoder.decode(*event) {
+                TapAction::Key(key, true) => engine.press(key),
+                TapAction::Key(key, false) => engine.release(key),
+                TapAction::Reenable | TapAction::Ignore => Vec::new(),
+            };
+            out.extend(outputs.into_iter().filter_map(|output| match output {
+                Output::App(event) => Some(event),
+                Output::Record(_) => None,
+            }));
+        }
+        out
+    }
+
+    fn mac_bindings() -> Bindings {
+        let mac = |text: &str| Combo::parse(text, Platform::MacOs).unwrap();
+        Bindings {
+            hold: Some(mac("RightOption")),
+            hands_free: Some(HandsFree::Default),
+            paste_last: Some(mac("Ctrl+Cmd+V")),
+            command: Some(mac("RightOption+RightShift")),
+        }
+    }
+
+    #[test]
+    fn the_default_mac_shortcuts_work_through_the_decoder() {
+        let mut engine = Engine::new(mac_bindings());
+        let mut decoder = decoder();
+        let held = run(
+            &mut engine,
+            &mut decoder,
+            &[
+                flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE),
+                flags(KEYCODE_RIGHT_OPTION, 0),
+            ],
+        );
+        assert_eq!(held, [AppEvent::HoldDown, AppEvent::HoldUp]);
+        let pasted = run(
+            &mut engine,
+            &mut decoder,
+            &[
+                flags(59, FLAG_CONTROL),
+                flags(55, CTRL_CMD),
+                key_down(KEYCODE_V),
+                key_up(KEYCODE_V),
+                flags(55, FLAG_CONTROL),
+                flags(59, 0),
+            ],
+        );
+        assert_eq!(pasted, [AppEvent::PasteLast]);
+    }
+
+    #[test]
+    fn a_paste_key_the_app_sends_itself_is_not_the_shortcut() {
+        let mut engine = Engine::new(mac_bindings());
+        let mut decoder = decoder();
+        let events = run(
+            &mut engine,
+            &mut decoder,
+            &[
+                flags(55, FLAG_COMMAND),
+                key_down(KEYCODE_V),
+                key_up(KEYCODE_V),
+                flags(55, 0),
+            ],
+        );
+        assert_eq!(events, []);
+    }
+
+    #[test]
+    fn fn_can_be_the_hold_key() {
+        let mut engine = Engine::new(Bindings {
+            hold: Some(Combo::parse("Fn", Platform::MacOs).unwrap()),
+            ..Bindings::default()
+        });
+        let mut decoder = decoder();
+        let events = run(
+            &mut engine,
+            &mut decoder,
+            &[
+                flags(KEYCODE_RIGHT_OPTION, FLAG_ALTERNATE),
+                flags(KEYCODE_RIGHT_OPTION, 0),
+                flags(KEYCODE_FN, FLAG_SECONDARY_FN),
+                flags(KEYCODE_FN, 0),
+            ],
+        );
+        assert_eq!(events, [AppEvent::HoldDown, AppEvent::HoldUp]);
     }
 
     #[derive(Clone)]
@@ -501,7 +498,7 @@ mod tests {
     fn a_disabled_event_turns_the_tap_on_again() {
         let enabled = Rc::default();
         let guard = TapGuard::new(fake(1, &enabled), Instant::now());
-        let mut decoder = Decoder::new(HoldKey::RightOption);
+        let mut decoder = decoder();
         if decoder.decode(TapEvent::DisabledByTimeout) == TapAction::Reenable {
             guard.reenable();
         }

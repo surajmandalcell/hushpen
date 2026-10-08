@@ -6,10 +6,9 @@
 // `CFMachPortIsValid` is a plain C call on a port that this module owns.
 #![allow(unsafe_code)]
 
-use super::tap::{
-    Decoder, HEALTH_INTERVAL, Health, ShortcutKeys, Tap, TapAction, TapEvent, TapGuard,
-};
-use super::{HoldKey, Reason, Shortcut, Sink, Unavailable};
+use super::hub::Hub;
+use super::tap::{Decoder, HEALTH_INTERVAL, Health, Tap, TapAction, TapEvent, TapGuard};
+use super::{Reason, RecordSink, Sink, Unavailable};
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortIsValid;
 use core_foundation::runloop::{
@@ -19,7 +18,9 @@ use core_graphics::event::{
     CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
     CallbackResult, EventField,
 };
+use hushpen_core::shortcut::Bindings;
 use objc2_core_graphics::CGPreflightListenEventAccess;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -29,7 +30,21 @@ use std::time::{Duration, Instant};
 /// How long one run loop slice lasts before the thread looks at the flags again.
 const SLICE: Duration = Duration::from_millis(250);
 
-pub(super) struct MacKeys;
+const SPACE_KEYCODE: i64 = 49;
+
+pub(super) struct MacKeys {
+    hub: Arc<Hub>,
+}
+
+/// The letter, digit, and Space keys on the layout in use, by key code.
+fn layout_chars() -> HashMap<i64, char> {
+    let mut chars: HashMap<i64, char> = ('a'..='z')
+        .chain('0'..='9')
+        .filter_map(|c| Some((i64::from(crate::insert::key_code_for(c)?), c)))
+        .collect();
+    chars.insert(SPACE_KEYCODE, ' ');
+    chars
+}
 
 struct InstalledTap {
     tap: CGEventTap<'static>,
@@ -55,12 +70,12 @@ impl Drop for InstalledTap {
 
 fn install(
     decoder: &Arc<Mutex<Decoder>>,
-    sink: &Sink,
+    hub: &Arc<Hub>,
     reenable: &Arc<AtomicBool>,
 ) -> Option<InstalledTap> {
     let callback = {
         let decoder = Arc::clone(decoder);
-        let sink = Arc::clone(sink);
+        let hub = Arc::clone(hub);
         let reenable = Arc::clone(reenable);
         move |_proxy, kind: CGEventType, event: &core_graphics::event::CGEvent| {
             let tap_event = match kind {
@@ -85,7 +100,8 @@ fn install(
                 Err(_) => TapAction::Ignore,
             };
             match action {
-                TapAction::Emit(app_event) => sink(app_event),
+                TapAction::Key(key, true) => hub.press(key),
+                TapAction::Key(key, false) => hub.release(key),
                 TapAction::Reenable => reenable.store(true, Ordering::Release),
                 TapAction::Ignore => {}
             }
@@ -112,13 +128,27 @@ fn install(
 }
 
 impl MacKeys {
-    /// The tap only listens, so there is nothing to grab for a session.
-    pub(super) fn set_session_active(&self, _active: bool) {}
+    /// The tap only listens, so there is nothing to grab for a session; Esc is only sent on.
+    pub(super) fn set_session_active(&self, active: bool) {
+        self.hub.set_escape(active);
+    }
+
+    pub(super) fn set_bindings(&self, bindings: Bindings) {
+        self.hub.set_bindings(bindings);
+    }
+
+    pub(super) fn start_recording(&self) {
+        self.hub.start_recording();
+    }
+
+    pub(super) fn stop_recording(&self) {
+        self.hub.stop_recording();
+    }
 
     pub(super) fn start(
-        hold: HoldKey,
-        paste_last: Option<Shortcut>,
+        bindings: Bindings,
         sink: Sink,
+        record: RecordSink,
     ) -> Result<Self, Unavailable> {
         // Creating a tap without Input Monitoring makes macOS ask. The ask belongs to
         // onboarding, after a click, so here the grant is only read.
@@ -128,14 +158,12 @@ impl MacKeys {
                 "Input Monitoring is not allowed for Hushpen, so global keys are off.",
             ));
         }
-        let shortcut = paste_last.and_then(|shortcut| {
-            let keycode = crate::insert::key_code_for(shortcut.key)?;
-            Some(ShortcutKeys::new(i64::from(keycode), shortcut))
-        });
+        let hub = Arc::new(Hub::new(bindings, sink, record));
         let (ready, started) = mpsc::channel();
+        let thread_hub = Arc::clone(&hub);
         thread::Builder::new()
             .name("hushpen-keys".into())
-            .spawn(move || run(hold, shortcut, sink, ready))
+            .spawn(move || run(&thread_hub, ready))
             .map_err(|error| {
                 Unavailable::new(
                     Reason::Failed,
@@ -143,7 +171,7 @@ impl MacKeys {
                 )
             })?;
         match started.recv() {
-            Ok(true) => Ok(Self),
+            Ok(true) => Ok(Self { hub }),
             _ => Err(Unavailable::new(
                 Reason::Permission,
                 "macOS did not let Hushpen listen for keys. Check Input Monitoring.",
@@ -152,10 +180,10 @@ impl MacKeys {
     }
 }
 
-fn run(hold: HoldKey, shortcut: Option<ShortcutKeys>, sink: Sink, ready: mpsc::Sender<bool>) {
-    let decoder = Arc::new(Mutex::new(Decoder::new(hold).with_shortcut(shortcut)));
+fn run(hub: &Arc<Hub>, ready: mpsc::Sender<bool>) {
+    let decoder = Arc::new(Mutex::new(Decoder::new(layout_chars())));
     let reenable = Arc::new(AtomicBool::new(false));
-    let Some(first) = install(&decoder, &sink, &reenable) else {
+    let Some(first) = install(&decoder, hub, &reenable) else {
         let _ = ready.send(false);
         return;
     };
@@ -168,12 +196,17 @@ fn run(hold: HoldKey, shortcut: Option<ShortcutKeys>, sink: Sink, ready: mpsc::S
             guard.reenable();
         }
         let health = guard.health_check(Instant::now(), || {
-            let released = decoder.lock().ok().and_then(|mut decoder| decoder.reset());
-            if let Some(event) = released {
-                sink(event);
+            if let Ok(mut decoder) = decoder.lock() {
+                decoder.reset();
             }
-            install(&decoder, &sink, &reenable)
+            hub.reset();
+            install(&decoder, hub, &reenable)
         });
+        if health.is_some()
+            && let Ok(mut decoder) = decoder.lock()
+        {
+            decoder.set_chars(layout_chars());
+        }
         match health {
             Some(Health::Reinstalled) => log::warn!("the key tap was dead and was installed again"),
             Some(Health::Dead) => log::warn!(

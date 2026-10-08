@@ -34,6 +34,7 @@ icon_assets!(
         X,
         Minus,
         Mic,
+        Keyboard,
         Check,
         CircleAlert,
         Square,

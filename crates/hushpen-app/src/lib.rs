@@ -25,6 +25,7 @@ pub mod models;
 pub mod native;
 pub mod net;
 pub mod shell;
+pub mod shortcuts;
 pub mod storage;
 pub mod theme;
 pub mod tray;

@@ -32,7 +32,7 @@ use hushpen_core::language;
 use hushpen_core::permission::Preflight;
 use hushpen_engine::{JobOutcome, TranscribeSpec};
 use hushpen_platform::insert::Inserter;
-use hushpen_platform::keys::{Reason, Shortcut, Unavailable};
+use hushpen_platform::keys::{Reason, Unavailable};
 use hushpen_store::dictionary as store_dictionary;
 use permissions::PermissionWatch;
 use serde_json::{Value, json};
@@ -232,7 +232,6 @@ type TimedSegments = (u64, Vec<hushpen_store::history::Segment>);
 
 const INSERT_COPIED: &str = "INSERT_COPIED";
 
-const PASTE_LAST_SETTING: &str = "shortcut.pasteLast";
 const CLEANUP_RULES_SETTING: &str = "cleanup.rules";
 const SPOKEN_PUNCTUATION_SETTING: &str = "cleanup.spokenPunctuation";
 pub const CUE_SOUNDS_SETTING: &str = "audio.cueSounds";
@@ -396,15 +395,6 @@ impl Controller {
 
     pub fn attach_insert(&mut self, support: InsertSupport) {
         self.insert = support;
-    }
-
-    /// The `shortcut.pasteLast` setting, or the system default when the text does not parse.
-    pub fn paste_last_shortcut(&self) -> Shortcut {
-        self.storage
-            .settings
-            .get(PASTE_LAST_SETTING)
-            .and_then(|value| value.as_str().and_then(Shortcut::parse))
-            .unwrap_or_else(Shortcut::default_paste_last)
     }
 
     pub fn attach_cues(&mut self, cues: CueSink) {
