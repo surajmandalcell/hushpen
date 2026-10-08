@@ -301,9 +301,12 @@ fn open_view(cx: &mut App, shell: &Entity<Shell>, args: &Value) -> Result<Value,
 }
 
 fn window_section(cx: &mut App, window: AnyWindowHandle) -> Value {
-    window
+    let mut state = window
         .update(cx, |_, window, _| window_state(window))
-        .unwrap_or_else(|_| json!({"open": false}))
+        .unwrap_or_else(|_| json!({"open": false}));
+    // How the window left the screen: "hidden" to the tray, "minimized", or null while it shows.
+    state["away"] = json!(crate::main_window::away(cx).map(crate::main_window::Away::key));
+    state
 }
 
 pub fn window_state(window: &Window) -> Value {

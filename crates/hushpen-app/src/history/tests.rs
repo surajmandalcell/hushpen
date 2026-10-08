@@ -424,6 +424,38 @@ fn copy_puts_the_final_text_on_the_clipboard(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn re_paste_hides_the_main_window_so_the_focus_returns_to_the_app_that_had_it(
+    cx: &mut TestAppContext,
+) {
+    let view = open(cx);
+    seed(&view, "A", 1_000, "again please");
+    reload(cx, &view);
+    let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, view.handle, true));
+
+    click(cx, &view, "history.row.0");
+    click(cx, &view, "history.repaste");
+
+    assert_eq!(calls.hidden.get(), 1);
+    assert_eq!(
+        cx.update(|cx| crate::main_window::away(cx)),
+        Some(crate::main_window::Away::Hidden)
+    );
+}
+
+#[gpui_kit::test]
+fn re_paste_with_no_tray_minimizes_the_window_instead_of_hiding_it(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed(&view, "A", 1_000, "again please");
+    reload(cx, &view);
+    let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, view.handle, false));
+
+    click(cx, &view, "history.row.0");
+    click(cx, &view, "history.repaste");
+
+    assert_eq!((calls.hidden.get(), calls.minimized.get()), (0, 1));
+}
+
+#[gpui_kit::test]
 fn delete_hides_the_row_at_once_and_undo_brings_back_the_row_segments_and_audio(
     cx: &mut TestAppContext,
 ) {

@@ -11,6 +11,7 @@ use crate::controller::{Controller, monotonic_ms};
 use crate::dictation::Dictation;
 use crate::hook;
 use crate::mic::Mic;
+use crate::native::native_handle;
 use crate::storage::Storage;
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, Window, point, px,
@@ -297,7 +298,7 @@ impl FlowBar {
 
     /// The left button went down on the bar. It becomes a click or a drag when it comes up.
     pub fn press(&mut self, window: &Window, cx: &mut Context<Self>) {
-        self.native = window::native_handle(window);
+        self.native = native_handle(window);
         self.scale = if cfg!(target_os = "linux") {
             window.scale_factor()
         } else {
@@ -356,8 +357,14 @@ impl FlowBar {
     }
 
     fn click(&mut self, cx: &mut Context<Self>) {
-        self.picker = None;
         hook::record_event("flowbar", "click");
+        self.toggle(cx);
+    }
+
+    /// Starts a dictation, or stops the one that runs: a click on the bar, or the tray entry. A
+    /// start that preflight refuses shows its reason on the bar.
+    pub fn toggle(&mut self, cx: &mut Context<Self>) {
+        self.picker = None;
         let result = self.controller.update(cx, |controller, cx| {
             controller.dispatch(AppEvent::FlowBarClick, cx)
         });
@@ -448,18 +455,25 @@ impl Render for FlowBar {
 pub fn run(cx: &mut App, bar: Entity<FlowBar>, host: Box<dyn Host>) -> SharedHost {
     let host: SharedHost = Rc::new(RefCell::new(host));
     let driver = Rc::clone(&host);
+    // The task lives until the app is dropped, so it holds the bar weakly: a strong handle would
+    // outlive the entity map and fail the leak check when the app quits.
+    let bar = bar.downgrade();
     cx.spawn(async move |cx| {
         loop {
             let wait = cx.update(|cx| {
                 let screen = driver.borrow().screen(cx);
-                let (plan, pressed) =
-                    bar.update(cx, |bar, cx| (bar.tick(screen, cx), bar.is_pressed()));
+                let Ok((plan, pressed)) =
+                    bar.update(cx, |bar, cx| (bar.tick(screen, cx), bar.is_pressed()))
+                else {
+                    return None;
+                };
                 match plan {
                     Some(bounds) => driver.borrow_mut().show(bounds, cx),
                     None => driver.borrow_mut().hide(cx),
                 }
-                if pressed { DRAG_TICK } else { TICK }
+                Some(if pressed { DRAG_TICK } else { TICK })
             });
+            let Some(wait) = wait else { break };
             cx.background_executor().timer(wait).await;
         }
     })

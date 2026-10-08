@@ -40,6 +40,7 @@ hushpen-store.workspace = true
 hushpen-testhook = { workspace = true, optional = true }
 futures.workspace = true
 gpui-kit.workspace = true
+gpui-tray.workspace = true
 gpui-pre-wgpu = { workspace = true, features = ["test-support"], optional = true }
 image = { workspace = true, optional = true }
 log.workspace = true

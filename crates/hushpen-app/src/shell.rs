@@ -4,6 +4,7 @@ use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::history::{self, History};
 use crate::hook;
+use crate::main_window;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
 use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
@@ -130,8 +131,8 @@ impl Shell {
         cx.stop_propagation();
     }
 
-    fn close(&mut self, _: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        cx.quit();
+    fn close(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        main_window::close_requested(window, cx);
     }
 
     fn minimize(&mut self, _: &ClickEvent, window: &mut Window, _cx: &mut Context<Self>) {
@@ -564,6 +565,22 @@ mod tests {
             })
             .unwrap();
         assert!(close_x < minimize_x, "close comes first");
+    }
+
+    #[gpui_kit::test]
+    fn the_close_light_hides_the_window_to_the_tray(cx: &mut TestAppContext) {
+        let (handle, _) = open(cx);
+        let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, handle, true));
+        click(cx, handle, "window.close");
+        assert_eq!((calls.hidden.get(), calls.minimized.get()), (1, 0));
+    }
+
+    #[gpui_kit::test]
+    fn the_close_light_minimizes_when_no_tray_can_bring_the_window_back(cx: &mut TestAppContext) {
+        let (handle, _) = open(cx);
+        let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, handle, false));
+        click(cx, handle, "window.close");
+        assert_eq!((calls.hidden.get(), calls.minimized.get()), (0, 1));
     }
 
     #[gpui_kit::test]

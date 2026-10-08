@@ -73,6 +73,8 @@ objc2-foundation = "=0.3.2"
 objc2-service-management = "=0.3.2"
 sys-locale = "=0.3.2"
 x11rb = { version = "=0.14.0", features = ["xinput", "xtest"] }
+# The StatusNotifier watcher check; the same zbus and features gpui-tray uses.
+zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
 # Save dialog fallback on Linux: the portal through a libdbus loaded at run time, then zenity.
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
 

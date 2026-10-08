@@ -24,6 +24,8 @@ mod models;
 #[cfg(feature = "test-automation")]
 mod settings;
 #[cfg(feature = "test-automation")]
+mod tray;
+#[cfg(feature = "test-automation")]
 pub use automation::{
     ExtraWindow, Hooks, Job, Surface, attach, mark_disabled, register_action, register_window,
     set_state_section, set_wav_feeder, start,
@@ -44,6 +46,8 @@ pub use mic::attach as attach_mic;
 pub use models::attach as attach_models;
 #[cfg(feature = "test-automation")]
 pub use settings::attach as attach_settings;
+#[cfg(feature = "test-automation")]
+pub use tray::attach as attach_tray;
 
 /// Records a timestamped event for `hookctl events`. Does nothing in a build
 /// without the test hook.

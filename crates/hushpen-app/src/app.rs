@@ -1,5 +1,6 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
+use crate::app_menu;
 use crate::assets::{AppAssets, register_fonts};
 use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic_clock};
 use crate::dictation::Dictation;
@@ -8,11 +9,14 @@ use crate::engine_host::EngineHost;
 use crate::flow_bar::{self, FlowBar, OpenHistory, PopUp};
 use crate::history::History;
 use crate::instance::{self, Start};
+use crate::main_window;
 use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
+use crate::native::native_handle;
 use crate::shell::Shell;
 use crate::storage;
 use crate::theme::{self, space};
+use crate::tray::{self, Surfaces};
 use crate::views::View;
 use futures::StreamExt;
 use futures::channel::mpsc;
@@ -21,9 +25,8 @@ use gpui_kit::{
     size,
 };
 use hushpen_platform::keys::{GlobalKeys, HoldKey};
-use hushpen_platform::window::{WindowHandle, lock_chrome};
+use hushpen_platform::window::lock_chrome;
 use hushpen_store::data_dir::DataDir;
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::process::ExitCode;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -106,14 +109,30 @@ pub fn run() -> ExitCode {
                     return;
                 }
             };
-            // Close quits for now; it will hide to the tray once the tray exists. The flow bar
-            // opens and closes its own window, which must not end the app.
+            // Close hides the window to the tray, or minimizes it when no tray can bring it
+            // back; only the tray's Quit ends the app. If the window is ever closed for real,
+            // the app ends with it. The flow bar opens and closes its own window, which must
+            // not end the app.
             cx.on_window_closed(move |cx, _| {
                 if !cx.windows().contains(&handle) {
                     cx.quit();
                 }
             })
             .detach();
+            let tray_host = Rc::new(hushpen_platform::tray_host::available);
+            if !tray_host() {
+                log::warn!(
+                    "no tray host: no StatusNotifier watcher owns the session bus name, so closing the window minimizes it"
+                );
+            }
+            let _ = handle.update(cx, |_, window, cx| {
+                main_window::install(cx, handle, native_handle(window), tray_host);
+                window.on_window_should_close(cx, |window, cx| {
+                    main_window::close_requested(window, cx);
+                    false
+                });
+            });
+            app_menu::install(cx);
             let mic = cx.new(|cx| {
                 let mut mic = Mic::new(mic_storage, Arc::new(CpalBackend), cx);
                 mic.set_recovered(recovered);
@@ -184,20 +203,40 @@ pub fn run() -> ExitCode {
             shell.update(cx, |shell, cx| {
                 shell.attach_dictation(dictation.clone(), cx)
             });
+            let tray_controller = controller.clone();
             let flow_bar = cx.new(|_| {
                 FlowBar::new(
                     dictation_storage,
-                    controller,
+                    controller.clone(),
                     dictation.clone(),
                     mic.clone(),
                 )
             });
             flow_bar.update(cx, |bar, _| {
-                bar.on_open_history(open_history(handle, shell.clone(), history.clone()))
+                bar.on_open_history(open_history(shell.clone(), history.clone()))
             });
+            tray::register_actions(
+                cx,
+                &Surfaces {
+                    controller,
+                    flow_bar: flow_bar.clone(),
+                    shell: shell.clone(),
+                },
+            );
+            let tray = tray::install(cx, &tray_controller);
+            if let Some(tray) = &tray {
+                tray::follow_appearance(cx, handle, tray);
+                let closing = tray.clone();
+                cx.on_app_quit(move |cx| {
+                    // The icon leaves the panel now, not when the process is reaped.
+                    let _ = closing.close(cx);
+                    async {}
+                })
+                .detach();
+            }
             #[cfg_attr(not(feature = "test-automation"), allow(unused_variables))]
             let flow_bar_host =
-                flow_bar::run(cx, flow_bar.clone(), Box::new(PopUp::new(flow_bar.clone())));
+                flow_bar::run(cx, flow_bar.clone(), Box::new(PopUp::new(&flow_bar)));
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);
@@ -213,6 +252,7 @@ pub fn run() -> ExitCode {
                 crate::hook::attach_settings(cx, Rc::clone(&hook_storage));
                 crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
                 crate::hook::attach_flow_bar(cx, flow_bar, flow_bar_host);
+                crate::hook::attach_tray(cx, tray_controller, tray.is_some());
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_dictation(cx, dictation);
@@ -226,9 +266,7 @@ pub fn run() -> ExitCode {
             cx.spawn(async move |cx| {
                 let mut shown = shown;
                 while shown.next().await.is_some() {
-                    cx.update(|cx| {
-                        let _ = handle.update(cx, |_, window, _| window.activate_window());
-                    });
+                    cx.update(main_window::show);
                 }
             })
             .detach();
@@ -238,11 +276,7 @@ pub fn run() -> ExitCode {
 
 /// What the flow bar's "Open history" button does: show the main window on the History view
 /// with the row open.
-fn open_history(
-    window: AnyWindowHandle,
-    shell: Entity<Shell>,
-    history: Option<Entity<History>>,
-) -> OpenHistory {
+fn open_history(shell: Entity<Shell>, history: Option<Entity<History>>) -> OpenHistory {
     Rc::new(move |id, cx| {
         shell.update(cx, |shell, cx| shell.select(View::History, cx));
         if let Some(history) = &history {
@@ -252,7 +286,7 @@ fn open_history(
                 }
             });
         }
-        let _ = window.update(cx, |_, window, _| window.activate_window());
+        main_window::show(cx);
     })
 }
 
@@ -343,19 +377,8 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<S
 }
 
 fn lock_native_chrome(window: &Window) {
-    let native = match HasWindowHandle::window_handle(window).map(|handle| handle.as_raw()) {
-        Ok(RawWindowHandle::Xcb(handle)) => WindowHandle::X11(handle.window.get()),
-        Ok(RawWindowHandle::Xlib(handle)) => match u32::try_from(handle.window) {
-            Ok(id) => WindowHandle::X11(id),
-            Err(_) => WindowHandle::Other,
-        },
-        Ok(RawWindowHandle::AppKit(handle)) => {
-            WindowHandle::AppKit(handle.ns_view.as_ptr() as usize)
-        }
-        _ => WindowHandle::Other,
-    };
     if let Err(error) = lock_chrome(
-        native,
+        native_handle(window),
         space::WINDOW_WIDTH as u16,
         space::WINDOW_HEIGHT as u16,
     ) {

@@ -15,6 +15,10 @@ mod appkit;
 mod overlay_appkit;
 #[cfg(target_os = "linux")]
 mod overlay_x11;
+#[cfg(target_os = "macos")]
+mod visibility_appkit;
+#[cfg(target_os = "linux")]
+mod visibility_x11;
 
 /// The native window behind a GPUI window, as plain integers so the platform
 /// layer never depends on GPUI.
@@ -76,6 +80,29 @@ pub fn lock_chrome(handle: WindowHandle, width: u16, height: u16) -> Result<(), 
             let _ = (width, height);
             Ok(())
         }
+    }
+}
+
+/// Takes the window off the screen without closing it, so the tray can bring it back. Backends
+/// it does not know are left alone; the caller then falls back to minimizing.
+pub fn hide(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => visibility_x11::hide(window),
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => visibility_appkit::hide(view),
+        _ => Err(ChromeError::new("this window backend cannot be hidden")),
+    }
+}
+
+/// Puts a hidden window back on the screen and in front.
+pub fn show(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => visibility_x11::show(window),
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => visibility_appkit::show(view),
+        _ => Err(ChromeError::new("this window backend cannot be shown")),
     }
 }
 

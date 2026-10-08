@@ -6,7 +6,9 @@ compile_error!(
      or without --release"
 );
 
+pub mod actions;
 pub mod app;
+pub mod app_menu;
 pub mod assets;
 pub mod cli;
 pub mod controller;
@@ -17,10 +19,13 @@ pub mod flow_bar;
 pub mod history;
 pub mod hook;
 pub mod instance;
+pub mod main_window;
 pub mod mic;
 pub mod models;
+pub mod native;
 pub mod net;
 pub mod shell;
 pub mod storage;
 pub mod theme;
+pub mod tray;
 pub mod views;

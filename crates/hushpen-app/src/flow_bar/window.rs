@@ -1,46 +1,38 @@
 //! The flow bar's native window: a GPUI pop-up that the app places itself.
 
 use super::{FlowBar, Host};
+use crate::native::native_handle;
 use gpui_kit::{
-    AnyWindowHandle, App, Bounds, Entity, Pixels, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowKind, WindowOptions,
+    AnyWindowHandle, App, Bounds, Entity, Pixels, WeakEntity, WindowBackgroundAppearance,
+    WindowBounds, WindowKind, WindowOptions,
 };
-use hushpen_platform::window::{Frame, WindowHandle, pin_overlay, place_overlay};
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use hushpen_platform::window::{Frame, pin_overlay, place_overlay};
 
 /// The window class of the pop-up. It must not contain `hushpen`: the harness finds the main
 /// window by that class.
 const APP_ID: &str = "flowbar";
 
-pub(crate) fn native_handle(window: &Window) -> WindowHandle {
-    match HasWindowHandle::window_handle(window).map(|handle| handle.as_raw()) {
-        Ok(RawWindowHandle::Xcb(handle)) => WindowHandle::X11(handle.window.get()),
-        Ok(RawWindowHandle::Xlib(handle)) => match u32::try_from(handle.window) {
-            Ok(id) => WindowHandle::X11(id),
-            Err(_) => WindowHandle::Other,
-        },
-        Ok(RawWindowHandle::AppKit(handle)) => {
-            WindowHandle::AppKit(handle.ns_view.as_ptr() as usize)
-        }
-        _ => WindowHandle::Other,
-    }
-}
-
 /// Opens the pop-up on first use, then moves and sizes it. The window never takes the focus:
 /// it opens unfocused, as a pop-up that the window manager does not manage (X11) or a
 /// non-activating panel (macOS).
 pub struct PopUp {
-    view: Entity<FlowBar>,
+    /// Weak, because the app's frame task owns the host until the app is dropped.
+    view: WeakEntity<FlowBar>,
     handle: Option<AnyWindowHandle>,
 }
 
 impl PopUp {
-    pub fn new(view: Entity<FlowBar>) -> Self {
-        Self { view, handle: None }
+    pub fn new(view: &Entity<FlowBar>) -> Self {
+        Self {
+            view: view.downgrade(),
+            handle: None,
+        }
     }
 
     fn open(&mut self, bounds: Bounds<Pixels>, cx: &mut App) {
-        let view = self.view.clone();
+        let Some(view) = self.view.upgrade() else {
+            return;
+        };
         let opened = gpui_kit::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

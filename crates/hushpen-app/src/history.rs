@@ -460,6 +460,9 @@ impl History {
         match text {
             Ok(text) => {
                 self.message = None;
+                // The click that got here runs inside the window's own update, so the window
+                // steps aside once that ends. The controller then waits for the focus to leave.
+                cx.defer(crate::main_window::step_aside);
                 self.controller
                     .update(cx, |controller, cx| controller.repaste(text, cx));
                 cx.notify();

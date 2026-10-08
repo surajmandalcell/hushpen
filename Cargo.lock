@@ -3071,6 +3071,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "829258540ea51bb9ea4a71686beffe5c99586901ba9f39944d06e4a180ab63fe"
 
 [[package]]
+name = "gpui-tray"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c01af03fe16178c6051e7611ae1699d4d6d5b537d579e38aea7efeec0af2a433"
+dependencies = [
+ "async-channel",
+ "gpui-pre",
+ "image",
+ "log",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "thiserror 2.0.21",
+ "windows 0.62.2",
+ "zbus",
+]
+
+[[package]]
 name = "granit-parser"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3301,6 +3319,7 @@ dependencies = [
  "futures",
  "gpui-kit",
  "gpui-pre-wgpu",
+ "gpui-tray",
  "hushpen-audio",
  "hushpen-core",
  "hushpen-engine",
@@ -3370,6 +3389,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "x11rb 0.14.0",
+ "zbus",
 ]
 
 [[package]]
