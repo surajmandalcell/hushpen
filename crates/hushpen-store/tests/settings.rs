@@ -20,6 +20,21 @@ fn a_missing_file_is_created_with_defaults() {
 }
 
 #[test]
+fn the_fresh_max_duration_is_the_pipeline_default_of_six_minutes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    let minutes = store
+        .get("dictation.maxMinutes")
+        .and_then(|value| value.as_u64())
+        .unwrap();
+    assert_eq!(minutes, 6);
+    assert_eq!(
+        hushpen_core::dictation::Config::with_max_minutes(minutes),
+        hushpen_core::dictation::Config::default()
+    );
+}
+
+#[test]
 fn a_change_survives_a_restart() {
     let tmp = tempfile::tempdir().unwrap();
     let store = SettingsStore::open(tmp.path()).unwrap();
