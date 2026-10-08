@@ -5,6 +5,7 @@ pub mod cleanup;
 pub mod dictation;
 pub mod dictionary;
 pub mod error;
+pub mod export;
 pub mod insert;
 pub mod language;
 pub mod permission;
