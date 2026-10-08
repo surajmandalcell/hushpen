@@ -358,3 +358,64 @@ fn the_row_keeps_the_timed_segments_of_the_transcript(cx: &mut TestAppContext) {
         [(0, 0, 400, "two"), (1, 400, 900, "parts")]
     );
 }
+
+fn set_retention(rig: &Rig, value: &str) {
+    rig.storage
+        .settings
+        .set("history.audioRetention", json!(value))
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn the_default_keeps_audio_for_a_finished_run(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    say(&rig, outcome_text("kept words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    let row = only_row(&rig);
+    assert!(audio_of(&rig, &row).is_file());
+    assert_eq!(row.audio_removed_at, None);
+}
+
+#[gpui_kit::test]
+fn never_saves_the_text_of_a_finished_run_and_no_audio(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    set_retention(&rig, "never");
+    say(&rig, outcome_text("words without audio", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    let row = only_row(&rig);
+    assert_eq!(row.status, "completed");
+    assert_eq!(row.final_text.as_deref(), Some("words without audio"));
+    assert_eq!(row.audio_path, None);
+    assert!(row.audio_removed_at.is_some());
+    assert!(kept_wavs(&rig).is_empty());
+    assert!(
+        session_wavs(&rig).is_empty(),
+        "the session file is gone too"
+    );
+}
+
+#[gpui_kit::test]
+fn never_keeps_the_audio_of_a_failed_run_so_reprocess_can_recover_it(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    set_retention(&rig, "never");
+    let failed = failed_row_with_audio(cx, &rig);
+    assert!(audio_of(&rig, &failed).is_file());
+    assert_eq!(failed.audio_removed_at, None);
+    say(&rig, outcome_text("the lighthouse keeper", "en"));
+
+    reprocess(cx, &rig, &failed.id).unwrap();
+
+    let row = only_row(&rig);
+    assert_eq!(row.status, "completed");
+    assert_eq!(row.final_text.as_deref(), Some("the lighthouse keeper"));
+    assert_eq!(
+        row.audio_path, None,
+        "the recovered row no longer needs audio"
+    );
+    assert!(row.audio_removed_at.is_some());
+    assert!(kept_wavs(&rig).is_empty());
+}

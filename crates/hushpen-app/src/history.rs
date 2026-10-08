@@ -7,14 +7,16 @@
 //! or the app quits, or the app starts again, the audio file goes too.
 
 pub mod panel;
+pub mod playback;
+mod sweep;
 
 use crate::controller::{Controller, ReprocessState, failure_for};
 use crate::hook;
 use crate::storage::Storage;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, Point, ScrollHandle, Window,
-    px,
+    App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FocusHandle, Pixels, Point,
+    ScrollHandle, Window, px,
 };
 use hushpen_store::history::{self, Cursor, Row, Stored};
 use serde_json::{Value, json};
@@ -56,6 +58,8 @@ pub struct Focus {
     pub undo: FocusHandle,
     pub more: FocusHandle,
     pub back: FocusHandle,
+    pub play: FocusHandle,
+    pub seek: FocusHandle,
     pub copy: FocusHandle,
     pub repaste: FocusHandle,
     pub reprocess: FocusHandle,
@@ -82,6 +86,12 @@ pub struct History {
     scroll: ScrollHandle,
     /// The scroll range at the time the next page was last asked for.
     asked_at: Cell<f32>,
+    playback: Option<playback::Playback>,
+    tick_generation: u64,
+    /// Where the seek bar was drawn, so a click can tell how far along it landed.
+    pub(crate) seek_bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// Tests play without a sound device.
+    silent_playback: bool,
     pub(crate) focus: Focus,
     pub(crate) row_focus: Vec<FocusHandle>,
 }
@@ -111,6 +121,8 @@ impl History {
             undo: handle(cx),
             more: handle(cx),
             back: handle(cx),
+            play: handle(cx),
+            seek: handle(cx),
             copy: handle(cx),
             repaste: handle(cx),
             reprocess: handle(cx),
@@ -136,10 +148,15 @@ impl History {
             seen_revision,
             scroll: ScrollHandle::new(),
             asked_at: Cell::new(0.0),
+            playback: None,
+            tick_generation: 0,
+            seek_bounds: Rc::new(Cell::new(Bounds::default())),
+            silent_playback: cfg!(test),
             focus,
             row_focus: Vec::new(),
         };
         view.reload(cx);
+        view.start_sweeps(cx);
         view
     }
 
@@ -349,6 +366,9 @@ impl History {
         let row = history::get(&self.storage.database, id)
             .map_err(|error| error.to_string())?
             .ok_or("That transcript is no longer in the history.")?;
+        if self.detail.as_ref().is_none_or(|open| open.id != row.id) {
+            self.playback = None;
+        }
         self.detail = Some(row);
         self.message = None;
         self.confirm_clear = false;
@@ -357,6 +377,7 @@ impl History {
     }
 
     pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.playback = None;
         if self.detail.take().is_some() {
             cx.notify();
         }
@@ -439,6 +460,9 @@ impl History {
             Err(message) => return self.refuse(message, cx),
         };
         self.finish_undo();
+        if self.playback.as_ref().is_some_and(|open| open.id == row.id) {
+            self.playback = None;
+        }
         let stored = match history::delete(&self.storage.database, &row.id) {
             Ok(Some(stored)) => stored,
             Ok(None) => return self.refuse("That transcript is already gone.".into(), cx),
@@ -542,6 +566,7 @@ impl History {
             return self.refuse("Choose Clear all first.".into(), cx);
         }
         self.confirm_clear = false;
+        self.playback = None;
         self.finish_undo();
         self.undo_generation += 1;
         match history::clear(&self.storage.database) {
@@ -592,6 +617,7 @@ impl History {
                 "status": row.status,
                 "title": panel::title(row),
                 "insert_outcome": row.insert_outcome,
+                "audio_removed": row.audio_removed_at.is_some(),
             })).collect::<Vec<_>>(),
             "detail": self.detail.as_ref().map(|row| json!({
                 "id": row.id,
@@ -607,7 +633,10 @@ impl History {
                 "language": row.language_detected.as_ref().or(row.language_requested.as_ref()),
                 "insert_outcome": row.insert_outcome,
                 "audio": self.audio_available(row, cx),
+                "audio_removed_at": row.audio_removed_at,
+                "audio_note": panel::audio_note(row, self.audio_available(row, cx)),
             })),
+            "playback": self.playback_json(),
             "last": history::newest(&self.storage.database).ok().flatten().map(|row| json!({
                 "id": row.id,
                 "status": row.status,

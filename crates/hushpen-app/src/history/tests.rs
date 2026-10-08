@@ -658,3 +658,255 @@ fn the_panel_and_its_controls_fit_the_content_width(cx: &mut TestAppContext) {
         "a long text stays on one line"
     );
 }
+
+/// 16 kHz mono 16-bit silence of `seconds`, written by hand so the test needs no encoder.
+fn silence_wav(seconds: u32) -> Vec<u8> {
+    let data = 16_000 * 2 * seconds;
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u16.to_le_bytes());
+    bytes.extend_from_slice(&1_u16.to_le_bytes());
+    bytes.extend_from_slice(&16_000_u32.to_le_bytes());
+    bytes.extend_from_slice(&32_000_u32.to_le_bytes());
+    bytes.extend_from_slice(&2_u16.to_le_bytes());
+    bytes.extend_from_slice(&16_u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data.to_le_bytes());
+    bytes.resize(bytes.len() + data as usize, 0);
+    bytes
+}
+
+fn seed_with_wav(view: &Fixture, id: &str, created_at: i64, seconds: u32) -> PathBuf {
+    let (row, path) = seed_with_audio(view, id, created_at, &format!("words of {id}"));
+    fs::write(&path, silence_wav(seconds)).unwrap();
+    let mut row = row;
+    row.duration_ms = i64::from(seconds) * 1000;
+    history::delete(&view.rig.storage.database, id).unwrap();
+    history::save(&view.rig.storage.database, &row, &[]).unwrap();
+    path
+}
+
+fn playback(cx: &mut TestAppContext, view: &Fixture) -> Value {
+    state(cx, view)["playback"].clone()
+}
+
+#[gpui_kit::test]
+fn the_detail_view_has_play_and_a_seek_bar_when_the_audio_is_there(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_with_wav(&view, "A", 1_000, 4);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+
+    assert!(present(cx, &view, "history.play"));
+    assert!(present(cx, &view, "history.seek"));
+    assert!(present(cx, &view, "history.time"));
+    assert!(!present(cx, &view, "history.audio-missing"));
+    assert_eq!(playback(cx, &view), Value::Null);
+}
+
+#[gpui_kit::test]
+fn play_starts_the_player_and_the_button_becomes_pause(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_with_wav(&view, "A", 1_000, 4);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+
+    click(cx, &view, "history.play");
+
+    let playing = playback(cx, &view);
+    assert_eq!(playing["id"], "A");
+    assert_eq!(playing["playing"], true);
+    assert_eq!(playing["duration_ms"], 4_000);
+
+    click(cx, &view, "history.play");
+    assert_eq!(playback(cx, &view)["playing"], false);
+}
+
+#[gpui_kit::test]
+fn a_click_in_the_middle_of_the_seek_bar_moves_to_half_the_duration(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_with_wav(&view, "A", 1_000, 4);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+    let bounds = cx
+        .update_window(view.handle, |_, window, _| {
+            window.find("history.seek").bounds()
+        })
+        .unwrap();
+
+    cx.update_window(view.handle, move |_, window, cx| {
+        window.click_at(
+            "history.seek",
+            point(bounds.size.width / 2.0, bounds.size.height / 2.0),
+            cx,
+        )
+    })
+    .unwrap();
+    frame(cx, &view);
+
+    let position = playback(cx, &view)["position_ms"].as_u64().unwrap();
+    assert!(
+        (1_800..=2_200).contains(&position),
+        "the position is {position} ms of 4000"
+    );
+}
+
+#[gpui_kit::test]
+fn the_arrow_keys_move_the_position_and_leaving_the_detail_ends_playback(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_with_wav(&view, "A", 1_000, 20);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+    view.history.update(cx, |history, cx| {
+        history.seek_ms(None, 2_000, cx).unwrap();
+        history.seek_by(None, 5_000, cx).unwrap();
+    });
+    assert_eq!(playback(cx, &view)["position_ms"], 7_000);
+    view.history.update(cx, |history, cx| {
+        history.seek_by(None, -60_000, cx).unwrap();
+    });
+    assert_eq!(playback(cx, &view)["position_ms"], 0);
+
+    click(cx, &view, "history.back");
+
+    assert_eq!(playback(cx, &view), Value::Null);
+}
+
+#[gpui_kit::test]
+fn a_row_whose_file_was_deleted_by_hand_has_no_play_and_reprocess_is_refused(
+    cx: &mut TestAppContext,
+) {
+    let view = open(cx);
+    let path = seed_with_wav(&view, "A", 1_000, 4);
+    reload(cx, &view);
+    fs::remove_file(&path).unwrap();
+    click(cx, &view, "history.row.0");
+
+    assert!(!present(cx, &view, "history.play"));
+    assert!(!present(cx, &view, "history.seek"));
+    assert!(present(cx, &view, "history.audio-missing"));
+    let detail = state(cx, &view)["detail"].clone();
+    assert_eq!(detail["audio"], false);
+    assert!(!detail["audio_note"].as_str().unwrap().contains("removed"));
+    let played = view
+        .history
+        .update(cx, |history, cx| history.play(None, cx));
+    assert!(played.unwrap_err().contains("not available"));
+    let reprocess = view
+        .history
+        .update(cx, |history, cx| history.reprocess(None, cx));
+    assert!(reprocess.unwrap_err().contains("audio"));
+}
+
+const DAY_MS: i64 = 86_400_000;
+
+fn set_retention(view: &Fixture, value: &str) {
+    view.rig
+        .storage
+        .settings
+        .set("history.audioRetention", json!(value))
+        .unwrap();
+}
+
+fn sweep(cx: &mut TestAppContext, view: &Fixture) {
+    view.history.update(cx, |history, cx| {
+        history.sweep_audio(cx);
+    });
+    frame(cx, view);
+}
+
+#[gpui_kit::test]
+fn the_default_sweep_removes_old_audio_and_the_row_says_audio_removed(cx: &mut TestAppContext) {
+    let view = open(cx);
+    let now = history::now_ms();
+    let old = seed_with_wav(&view, "OLD", now - 31 * DAY_MS, 2);
+    let young = seed_with_wav(&view, "YOUNG", now - 29 * DAY_MS, 2);
+    reload(cx, &view);
+
+    sweep(cx, &view);
+
+    assert!(!old.exists());
+    assert!(young.exists());
+    let rows = state(cx, &view)["rows"].clone();
+    assert_eq!(rows[0]["id"], "YOUNG");
+    assert_eq!(rows[0]["audio_removed"], false);
+    assert_eq!(rows[1]["id"], "OLD");
+    assert_eq!(rows[1]["audio_removed"], true);
+    assert_eq!(
+        history::page(&view.rig.storage.database, "words of OLD", None, 10)
+            .unwrap()
+            .rows
+            .len(),
+        1,
+        "the text is still found"
+    );
+
+    click(cx, &view, "history.row.1");
+    assert!(!present(cx, &view, "history.play"));
+    let detail = state(cx, &view)["detail"].clone();
+    assert!(
+        detail["audio_note"]
+            .as_str()
+            .unwrap()
+            .starts_with("Audio removed")
+    );
+    assert!(present(cx, &view, "history.audio-missing"));
+    let refused = view
+        .history
+        .update(cx, |history, cx| history.reprocess(None, cx));
+    assert!(refused.is_err());
+}
+
+#[gpui_kit::test]
+fn keep_forever_never_removes_and_a_changed_setting_applies_at_the_next_sweep(
+    cx: &mut TestAppContext,
+) {
+    let view = open(cx);
+    let old = seed_with_wav(&view, "OLD", history::now_ms() - 400 * DAY_MS, 2);
+    reload(cx, &view);
+    set_retention(&view, "forever");
+
+    sweep(cx, &view);
+    assert!(old.exists());
+
+    set_retention(&view, "30d");
+    assert!(old.exists(), "changing the setting alone removes nothing");
+    sweep(cx, &view);
+    assert!(!old.exists());
+}
+
+#[gpui_kit::test]
+fn a_sweep_ends_the_playback_of_a_row_that_lost_its_audio(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_with_wav(&view, "OLD", history::now_ms() - 40 * DAY_MS, 4);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+    click(cx, &view, "history.play");
+    assert_eq!(playback(cx, &view)["id"], "OLD");
+
+    sweep(cx, &view);
+
+    assert_eq!(playback(cx, &view), Value::Null);
+    assert!(!present(cx, &view, "history.play"));
+}
+
+#[gpui_kit::test]
+fn a_new_view_sweeps_at_start_so_the_first_frame_shows_audio_removed(cx: &mut TestAppContext) {
+    let view = open(cx);
+    let old = seed_with_wav(&view, "OLD", history::now_ms() - 31 * DAY_MS, 2);
+    let storage = Rc::clone(&view.rig.storage);
+    let controller = view.rig.controller.clone();
+
+    let restarted = cx
+        .update_window(view.handle, move |_, window, cx| {
+            cx.new(|cx| History::new(storage, controller, window, cx))
+        })
+        .unwrap();
+
+    assert!(!old.exists());
+    let state = cx.update(|cx| restarted.read(cx).state_json(cx));
+    assert_eq!(state["rows"][0]["audio_removed"], true);
+}

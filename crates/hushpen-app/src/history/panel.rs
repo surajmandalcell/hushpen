@@ -1,6 +1,7 @@
 //! The History view: one grouped panel with the search box and a row for each transcript, or
 //! the detail of one transcript.
 
+use super::playback::{self, KEY_STEP_MS, PlaybackInfo};
 use super::{History, ROW_HEIGHT};
 use crate::controller::ReprocessState;
 use crate::hook;
@@ -11,11 +12,13 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{
-    App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, svg,
-    transparent_black,
+    App, Bounds, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, Pixels, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    relative, svg, transparent_black,
 };
 use hushpen_store::history::Row;
+use std::cell::Cell;
+use std::rc::Rc;
 
 const EMPTY_TEXT: &str = "No transcripts yet. Dictate something and it shows here.";
 const TITLE_CHARS: usize = 160;
@@ -81,7 +84,25 @@ fn meta(row: &Row) -> String {
         parts.push(seconds(row.duration_ms));
     }
     parts.push(outcome(row));
+    if row.audio_removed_at.is_some() {
+        parts.push(AUDIO_REMOVED.to_owned());
+    }
     parts.join(" \u{b7} ")
+}
+
+pub const AUDIO_REMOVED: &str = "Audio removed";
+
+/// What the detail view says in place of the player, or `None` when the audio plays.
+pub fn audio_note(row: &Row, available: bool) -> Option<String> {
+    if available {
+        return None;
+    }
+    Some(if row.audio_removed_at.is_some() {
+        format!("{AUDIO_REMOVED}. This transcript cannot be played or reprocessed.")
+    } else {
+        "The audio of this transcript is not available, so it cannot be played or reprocessed."
+            .to_owned()
+    })
 }
 
 pub fn render(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<> {
@@ -477,7 +498,7 @@ fn entry_row(
 }
 
 fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoElement + use<> {
-    let (focus, audio, reprocess, message) = {
+    let (focus, audio, reprocess, message, playback) = {
         let view = history.read(cx);
         (
             [
@@ -490,6 +511,12 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             view.audio_available(&row, cx),
             view.reprocess_state(&row.id, cx),
             view.message().map(str::to_owned),
+            Player {
+                info: view.playback_info(&row),
+                play_focus: view.focus.play.clone(),
+                seek_focus: view.focus.seek.clone(),
+                seek_bounds: Rc::clone(&view.seek_bounds),
+            },
         )
     };
     let [
@@ -587,6 +614,9 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             ),
     );
     panel = panel.child(controls);
+    if audio {
+        panel = panel.child(player_row(history, &row.id, playback));
+    }
     if let Some(message) = message {
         panel = panel.child(message_row(message));
     }
@@ -599,11 +629,8 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         }
         None => {}
     }
-    if !audio {
-        panel = panel.child(note_row(
-            "audio-missing",
-            "The audio of this transcript is not available, so it cannot be reprocessed.".into(),
-        ));
+    if let Some(note) = audio_note(&row, audio) {
+        panel = panel.child(note_row("audio-missing", note));
     }
     let language = row
         .language_detected
@@ -633,6 +660,163 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         panel = panel.child(field(key, label, value));
     }
     panel
+}
+
+/// What the player row of the detail view needs from the view.
+struct Player {
+    info: PlaybackInfo,
+    play_focus: FocusHandle,
+    seek_focus: FocusHandle,
+    seek_bounds: Rc<Cell<Bounds<Pixels>>>,
+}
+
+fn player_row(history: &Entity<History>, id: &str, player: Player) -> impl IntoElement + use<> {
+    let Player {
+        info,
+        play_focus,
+        seek_focus,
+        seek_bounds,
+    } = player;
+    let fraction = match info.duration_ms {
+        0 => 0.0,
+        total => (info.position_ms as f32 / total as f32).clamp(0.0, 1.0),
+    };
+    let toggle = {
+        let history = history.clone();
+        let id = id.to_owned();
+        move |_: &mut Window, cx: &mut App| {
+            history.update(cx, |history, cx| {
+                let _ = history.toggle_playback(Some(&id), cx);
+            });
+        }
+    };
+    let seek_to = {
+        let history = history.clone();
+        let id = id.to_owned();
+        let bounds = Rc::clone(&seek_bounds);
+        move |event: &ClickEvent, _: &mut Window, cx: &mut App| {
+            // A key press clicks too, and it has no place along the bar.
+            if event.mouse_position().is_none() {
+                return;
+            }
+            let track = bounds.get();
+            let width = f32::from(track.size.width);
+            if width <= 0.0 {
+                return;
+            }
+            let along = f32::from(event.position().x - track.origin.x) / width;
+            history.update(cx, |history, cx| {
+                let _ = history.seek_fraction(Some(&id), along, cx);
+            });
+        }
+    };
+    let seek_by_key = {
+        let history = history.clone();
+        let id = id.to_owned();
+        move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+            let step = match event.keystroke.key.as_str() {
+                "left" => -KEY_STEP_MS,
+                "right" => KEY_STEP_MS,
+                _ => return,
+            };
+            history.update(cx, |history, cx| {
+                let _ = history.seek_by(Some(&id), step, cx);
+            });
+            cx.stop_propagation();
+        }
+    };
+    let time = format!(
+        "{} / {}",
+        playback::clock(info.position_ms),
+        playback::clock(info.duration_ms)
+    );
+    let track = div()
+        .relative()
+        .w_full()
+        .h(px(6.0))
+        .rounded(px(radius::FULL))
+        .bg(theme::rgb_of(color::SURFACE_ELEVATED))
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .h_full()
+                .w(relative(fraction))
+                .rounded(px(radius::FULL))
+                .bg(theme::rgb_of(color::ACCENT_BLUE)),
+        );
+    let mut row = div()
+        .flex()
+        .flex_col()
+        .gap(px(space::SM))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .border_t_1()
+        .border_color(theme::rgb_of(color::DIVIDER))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .child(button(
+                    hook::id("history", "play"),
+                    if info.playing { "Pause" } else { "Play" },
+                    &play_focus,
+                    true,
+                    toggle,
+                ))
+                .child(
+                    div()
+                        .on_children_prepainted(move |children, _, _| {
+                            if let Some(bar) = children.first() {
+                                seek_bounds.set(*bar);
+                            }
+                        })
+                        .id(hook::id("history", "seek"))
+                        .test_support()
+                        .role(Role::Slider)
+                        .aria_label("Seek")
+                        .track_focus(&seek_focus)
+                        .flex_1()
+                        .min_w_0()
+                        .h(px(28.0))
+                        .px(px(size::FOCUS_RING))
+                        .flex()
+                        .items_center()
+                        .rounded(px(radius::SM))
+                        .border_2()
+                        .border_color(transparent_black())
+                        .cursor_pointer()
+                        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+                        .on_click(seek_to)
+                        .on_key_down(seek_by_key)
+                        .child(track),
+                )
+                .child(
+                    div()
+                        .id(hook::id("history", "time"))
+                        .test_support()
+                        .aria_label(time.clone())
+                        .flex_none()
+                        .text_token(LABEL_MD)
+                        .text_color(theme::rgb_of(color::TEXT_MUTED))
+                        .child(time),
+                ),
+        );
+    if let Some(error) = info.error {
+        row = row.child(
+            div()
+                .id(hook::id("history", "player-error"))
+                .test_support()
+                .role(Role::Alert)
+                .aria_label(error.clone())
+                .text_token(BODY_SM)
+                .text_color(theme::rgb_of(color::STATUS_ERROR))
+                .child(error),
+        );
+    }
+    row
 }
 
 fn field(key: &'static str, label: &'static str, value: Option<String>) -> impl IntoElement {

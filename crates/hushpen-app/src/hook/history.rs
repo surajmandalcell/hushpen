@@ -22,14 +22,9 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
         let history = history.clone();
         move |cx| history.read(cx).state_json(cx)
     });
-    let action = |cx: &mut App,
-                  name: &str,
-                  description: &str,
-                  run: fn(
-        &mut History,
-        Option<String>,
-        &mut gpui_kit::Context<History>,
-    ) -> Result<(), String>| {
+    type Run =
+        fn(&mut History, Option<String>, &mut gpui_kit::Context<History>) -> Result<(), String>;
+    let action = |cx: &mut App, name: &str, description: &str, run: Run| {
         let history = history.clone();
         let _ = register_action(cx, name, description, move |cx, args| {
             history.update(cx, |history, cx| run(history, id_of(&args), cx))?;
@@ -68,6 +63,42 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
         |history, _, cx| {
             history.close(cx);
             Ok(())
+        },
+    );
+    action(
+        cx,
+        "history-play",
+        "Play the audio of a transcript, like Play. Args: {\"id\": \"<row id>\"}; with no id it \
+         uses the open detail view. The position is in `hookctl state` section `history`, key \
+         `playback`.",
+        |history, id, cx| history.play(id.as_deref(), cx),
+    );
+    action(
+        cx,
+        "history-pause",
+        "Pause the audio of a transcript, like Pause. Args as history-play.",
+        |history, id, cx| history.pause(id.as_deref(), cx),
+    );
+    let _ = register_action(
+        cx,
+        "history-seek",
+        "Move the audio of a transcript like a click on the seek bar. Args: {\"fraction\": 0.5} \
+         or {\"ms\": 1500}, and optionally {\"id\": \"<row id>\"}.",
+        {
+            let history = history.clone();
+            move |cx, args| {
+                let id = id_of(&args);
+                history.update(cx, |history, cx| {
+                    if let Some(ms) = args.get("ms").and_then(Value::as_u64) {
+                        history.seek_ms(id.as_deref(), ms, cx)
+                    } else if let Some(fraction) = args.get("fraction").and_then(Value::as_f64) {
+                        history.seek_fraction(id.as_deref(), fraction as f32, cx)
+                    } else {
+                        Err("needs args like {\"fraction\": 0.5} or {\"ms\": 1500}".to_owned())
+                    }
+                })?;
+                Ok(Value::Null)
+            }
         },
     );
     action(

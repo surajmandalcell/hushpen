@@ -141,7 +141,7 @@ pub fn now_ms() -> i64 {
 
 /// Fails before any write when the file or its folder is read-only, so a history that cannot
 /// be written is reported the same way on every platform and for every user.
-fn ensure_writable(db: &Database) -> Result<()> {
+pub(crate) fn ensure_writable(db: &Database) -> Result<()> {
     if db.read_only() || db.is_locked_read_only() {
         return Err(Error::io(
             "the history database is read-only",

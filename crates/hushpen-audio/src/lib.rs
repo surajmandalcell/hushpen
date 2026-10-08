@@ -7,6 +7,7 @@ pub mod error;
 pub mod feed;
 pub mod levels;
 mod mic_stream;
+pub mod playback;
 pub mod resample;
 pub mod session;
 
@@ -15,4 +16,5 @@ pub use cue::CuePlayer;
 pub use devices::{DEFAULT_ID, InputDevice, Selection, list_inputs, resolve_selection};
 pub use error::CaptureError;
 pub use feed::{FeedInfo, Feeder};
+pub use playback::{PlaybackError, Player};
 pub use session::{RecoveredSession, Sweep, recover_orphans};

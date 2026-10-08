@@ -12,6 +12,7 @@ use hushpen_core::error::HISTORY_WRITE_FAILED;
 use hushpen_core::transcript::strip_blank_markers;
 use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
 use hushpen_store::history::{self, Reprocessed, Row, Segment};
+use hushpen_store::retention::{self, Retention};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -49,6 +50,15 @@ impl Controller {
         self.history_revision
     }
 
+    /// The audio retention setting, read each time so a change applies to the next run.
+    pub fn retention(&self) -> Retention {
+        self.storage
+            .settings
+            .get(retention::SETTING)
+            .and_then(|value| value.as_str().map(Retention::from_setting))
+            .unwrap_or(Retention::Days(retention::DEFAULT_DAYS))
+    }
+
     pub fn reprocess_state(&self) -> Option<&(String, ReprocessState)> {
         self.reprocess.as_ref()
     }
@@ -78,6 +88,13 @@ impl Controller {
             .filter(|(owner, _)| *owner == session)
             .map(|(_, language)| language);
         let non_empty = |text: &str| Some(text.to_owned()).filter(|text| !text.is_empty());
+        let status_key = match status {
+            RowStatus::Done => "completed",
+            RowStatus::Cancelled => "cancelled",
+            RowStatus::Failed => "failed",
+        };
+        let keep_audio = wav.is_some() && self.retention().keeps(status_key);
+        let dropped_audio = wav.is_some() && !keep_audio;
         let raw_text = match status {
             RowStatus::Cancelled => text.clone().or_else(|| non_empty(&self.pending.raw)),
             _ => non_empty(&self.pending.raw),
@@ -86,12 +103,7 @@ impl Controller {
             id: id.clone(),
             created_at,
             kind: "dictation".to_owned(),
-            status: match status {
-                RowStatus::Done => "completed",
-                RowStatus::Cancelled => "cancelled",
-                RowStatus::Failed => "failed",
-            }
-            .to_owned(),
+            status: status_key.to_owned(),
             error_code: code.map(str::to_owned),
             duration_ms: self.pending.duration_ms,
             model_id: self.pending.model_id.clone(),
@@ -106,7 +118,8 @@ impl Controller {
             },
             insert_outcome: Some(insert_outcome),
             target_app,
-            audio_path: wav.as_ref().map(|_| format!("audio/{id}.wav")),
+            audio_path: keep_audio.then(|| format!("audio/{id}.wav")),
+            audio_removed_at: dropped_audio.then_some(created_at),
             ..Row::default()
         };
         let segments = self
@@ -123,7 +136,14 @@ impl Controller {
             return;
         }
         if let Some(wav) = wav {
-            self.wav = Some(self.archive_audio(&wav, &id));
+            if keep_audio {
+                self.wav = Some(self.archive_audio(&wav, &id));
+            } else {
+                if let Err(error) = fs::remove_file(&wav) {
+                    log::warn!("the audio of a finished run was not removed: {error}");
+                }
+                self.wav = None;
+            }
         }
         self.history_revision += 1;
         hook::record_event("history", &format!("saved {}", row.status));
@@ -234,6 +254,7 @@ impl Controller {
                     };
                     match history::reprocess(&self.storage.database, id, &result) {
                         Ok(()) => {
+                            self.drop_finished_audio(id);
                             self.history_revision += 1;
                             hook::record_event("history", &format!("reprocessed {id}"));
                             self.reprocess = None;
@@ -255,6 +276,29 @@ impl Controller {
         hook::record_event("history", &format!("reprocess failed {id}"));
         self.reprocess = Some((id.to_owned(), state));
         cx.notify();
+    }
+
+    /// With "never keep audio", a row that a reprocess has just finished no longer needs its
+    /// audio.
+    fn drop_finished_audio(&self, id: &str) {
+        if self.retention() != Retention::Never {
+            return;
+        }
+        let path = history::get(&self.storage.database, id)
+            .ok()
+            .flatten()
+            .and_then(|row| row.audio_path);
+        if let Some(path) = path
+            && let Err(error) = retention::remove_audio(
+                &self.storage.database,
+                self.storage.data.root(),
+                id,
+                &path,
+                history::now_ms(),
+            )
+        {
+            log::warn!("the audio of a reprocessed row was not removed: {error}");
+        }
     }
 
     /// True while the focused window is Hushpen's own, so a paste would only copy.
