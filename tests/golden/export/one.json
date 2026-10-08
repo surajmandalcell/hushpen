@@ -2,36 +2,36 @@
   "format_version": 1,
   "rows": [
     {
+      "id": "01HQEXPORT0000000000000001",
       "created_at": 1700000000000,
       "created_at_iso": "2023-11-14T22:13:20.000Z",
-      "duration_ms": 3601250,
-      "error_code": null,
-      "final_text": "Hello there. This is the second segment. Last words, café ☕.",
-      "id": "01HQEXPORT0000000000000001",
       "kind": "dictation",
-      "language_detected": "en",
-      "language_requested": "auto",
+      "status": "completed",
+      "error_code": null,
+      "duration_ms": 3601250,
       "model": "base",
+      "language_requested": "auto",
+      "language_detected": "en",
+      "target_app": "Target-gtk.py",
       "raw_text": "hello there this is the second segment last words cafe",
+      "final_text": "Hello there. This is the second segment. Last words, café ☕.",
       "segments": [
         {
-          "end_ms": 1500,
           "start_ms": 0,
+          "end_ms": 1500,
           "text": "Hello there."
         },
         {
-          "end_ms": 62345,
           "start_ms": 1500,
+          "end_ms": 62345,
           "text": "This is the second segment."
         },
         {
-          "end_ms": 3601250,
           "start_ms": 3600000,
+          "end_ms": 3601250,
           "text": "Last words, café ☕."
         }
-      ],
-      "status": "completed",
-      "target_app": "Target-gtk.py"
+      ]
     }
   ]
 }

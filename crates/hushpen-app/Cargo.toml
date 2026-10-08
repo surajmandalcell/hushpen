@@ -48,6 +48,9 @@ serde_json.workspace = true
 sha2.workspace = true
 ureq.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd.workspace = true
+
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true

@@ -35,7 +35,9 @@ icon_assets!(
         Minus,
         Mic,
         Check,
-        CircleAlert
+        CircleAlert,
+        Square,
+        SquareCheck
     ]
 );
 

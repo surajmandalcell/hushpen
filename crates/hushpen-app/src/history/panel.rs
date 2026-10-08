@@ -16,6 +16,7 @@ use gpui_kit::{
     ParentElement, Pixels, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
     relative, svg, transparent_black,
 };
+use hushpen_core::export::Format;
 use hushpen_store::history::Row;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -125,7 +126,15 @@ struct Snapshot {
     can_undo: bool,
     confirming: bool,
     message: Option<String>,
+    notice: Option<String>,
     search: Entity<InputState>,
+    selecting: bool,
+    /// For each drawn row, whether it is selected.
+    selected: Vec<bool>,
+    selection_len: usize,
+    select_focus: FocusHandle,
+    select_all_focus: FocusHandle,
+    format_focus: [FocusHandle; 4],
 }
 
 fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<> {
@@ -148,7 +157,17 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
                 can_undo: view.can_undo(),
                 confirming: view.confirming_clear(),
                 message: view.message().map(str::to_owned),
+                notice: view.notice().map(str::to_owned),
                 search: view.search_input().clone(),
+                selecting: view.selecting(),
+                selected: view.rows()[view.window_rows()]
+                    .iter()
+                    .map(|row| view.is_selected(&row.id))
+                    .collect(),
+                selection_len: view.selection().len(),
+                select_focus: view.focus.select.clone(),
+                select_all_focus: view.focus.select_all.clone(),
+                format_focus: view.focus.export_format.clone(),
             },
             [
                 view.focus.clear.clone(),
@@ -167,6 +186,12 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
         more_focus,
     ] = focus;
     let mut panel = panel_shell("list").child(toolbar(history, &snap, &clear_focus));
+    if snap.selecting {
+        panel = panel.child(select_bar(history, &snap));
+    }
+    if let Some(notice) = snap.notice.clone() {
+        panel = panel.child(note_row("notice", notice));
+    }
     if snap.confirming {
         panel = panel.child(confirm_row(
             history,
@@ -195,8 +220,15 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
     if snap.first > 0 {
         panel = panel.child(div().flex_none().h(px(snap.first as f32 * ROW_HEIGHT)));
     }
-    for (offset, (row, focus)) in snap.rows.into_iter().zip(snap.row_focus).enumerate() {
-        panel = panel.child(entry_row(history, snap.first + offset, row, focus));
+    for (offset, ((row, focus), selected)) in snap
+        .rows
+        .into_iter()
+        .zip(snap.row_focus)
+        .zip(snap.selected)
+        .enumerate()
+    {
+        let mode = snap.selecting.then_some(selected);
+        panel = panel.child(entry_row(history, snap.first + offset, row, focus, mode));
     }
     if snap.below > 0 {
         panel = panel.child(div().flex_none().h(px(snap.below as f32 * ROW_HEIGHT)));
@@ -253,6 +285,15 @@ fn toolbar(
             let _ = history.update(cx, |history, cx| history.ask_clear(cx));
         }
     };
+    let select = {
+        let history = history.clone();
+        move |_: &mut Window, cx: &mut App| {
+            history.update(cx, |history, cx| {
+                let on = !history.selecting();
+                history.set_selecting(on, cx);
+            });
+        }
+    };
     div()
         .id(hook::id("history", "toolbar"))
         .test_support()
@@ -269,12 +310,76 @@ fn toolbar(
             ),
         )
         .child(button(
+            hook::id("history", "select"),
+            if snap.selecting { "Done" } else { "Select" },
+            &snap.select_focus,
+            snap.total > 0 || snap.selecting,
+            select,
+        ))
+        .child(button(
             hook::id("history", "clear"),
             "Clear all",
             clear_focus,
             snap.total > 0,
             clear,
         ))
+}
+
+/// The line above the list while rows are being chosen: how many, and the four formats.
+fn select_bar(history: &Entity<History>, snap: &Snapshot) -> impl IntoElement + use<> {
+    let all = {
+        let history = history.clone();
+        move |_: &mut Window, cx: &mut App| {
+            history.update(cx, |history, cx| history.toggle_select_all(cx));
+        }
+    };
+    let count = snap.selection_len;
+    let text = match count {
+        0 => "Choose transcripts to export.".to_owned(),
+        count => format!("{count} selected"),
+    };
+    banner(
+        "select-bar",
+        text,
+        div()
+            .flex_none()
+            .flex()
+            .gap(px(space::SM))
+            .child(button(
+                hook::id("history", "select-all"),
+                "All",
+                &snap.select_all_focus,
+                !snap.rows.is_empty(),
+                all,
+            ))
+            .child(format_buttons(history, &snap.format_focus, count > 0)),
+    )
+}
+
+/// One button for each export format. They write the rows that are selected, or the open one.
+fn format_buttons(
+    history: &Entity<History>,
+    focus: &[FocusHandle; 4],
+    enabled: bool,
+) -> impl IntoElement + use<> {
+    let mut group = div().flex_none().flex().gap(px(space::SM));
+    for (format, focus) in Format::ALL.into_iter().zip(focus) {
+        let press = {
+            let history = history.clone();
+            move |_: &mut Window, cx: &mut App| {
+                // A refusal shows in the message row.
+                let _ = history.update(cx, |history, cx| history.export(format, None, cx));
+            }
+        };
+        group = group.child(button(
+            hook::id("history", &format!("export-{}", format.extension())),
+            format.label(),
+            focus,
+            enabled,
+            press,
+        ));
+    }
+    group
 }
 
 fn confirm_row(
@@ -400,13 +505,22 @@ fn entry_row(
     index: usize,
     row: Row,
     focus: FocusHandle,
+    selection: Option<bool>,
 ) -> impl IntoElement + use<> {
     let id = row.id.clone();
+    let selecting = selection.is_some();
+    // While rows are being chosen, a press chooses the row instead of opening it.
     let open = {
         let history = history.clone();
         move |_: &mut Window, cx: &mut App| {
             let id = id.clone();
-            let _ = history.update(cx, |history, cx| history.open(&id, cx));
+            history.update(cx, |history, cx| {
+                if selecting {
+                    history.toggle_selected(&id, cx);
+                } else {
+                    let _ = history.open(&id, cx);
+                }
+            });
         }
     };
     let on_click = {
@@ -436,12 +550,16 @@ fn entry_row(
     let headline = title(&row);
     let detail = meta(&row);
     let failed = row.status == "failed";
+    let label = match selection {
+        Some(true) => format!("{headline}, selected"),
+        _ => headline.clone(),
+    };
     div()
         .id(hook::indexed("history", "row", index))
         .test_support()
         .track_focus(&focus)
         .role(Role::Button)
-        .aria_label(headline.clone())
+        .aria_label(label)
         .h(px(ROW_HEIGHT))
         .flex_none()
         .flex()
@@ -457,10 +575,12 @@ fn entry_row(
         .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
         .on_click(on_click)
         .on_key_down(on_key)
-        .child(icon_tile(match row.status.as_str() {
-            "failed" => IconName::CircleAlert,
-            "cancelled" => IconName::X,
-            _ => IconName::Clock,
+        .child(icon_tile(match (selection, row.status.as_str()) {
+            (Some(true), _) => IconName::SquareCheck,
+            (Some(false), _) => IconName::Square,
+            (None, "failed") => IconName::CircleAlert,
+            (None, "cancelled") => IconName::X,
+            (None, _) => IconName::Clock,
         }))
         .child(
             div()
@@ -498,7 +618,7 @@ fn entry_row(
 }
 
 fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoElement + use<> {
-    let (focus, audio, reprocess, message, playback) = {
+    let (focus, audio, reprocess, message, playback, export) = {
         let view = history.read(cx);
         (
             [
@@ -516,6 +636,12 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
                 play_focus: view.focus.play.clone(),
                 seek_focus: view.focus.seek.clone(),
                 seek_bounds: Rc::clone(&view.seek_bounds),
+            },
+            DetailExport {
+                open: view.export_menu_open(),
+                notice: view.notice().map(str::to_owned),
+                button_focus: view.focus.export.clone(),
+                format_focus: view.focus.export_format.clone(),
             },
         )
     };
@@ -580,6 +706,18 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             }),
         ))
         .child(button(
+            hook::id("history", "export"),
+            "Export",
+            &export.button_focus,
+            true,
+            {
+                let history = history.clone();
+                move |_: &mut Window, cx: &mut App| {
+                    history.update(cx, |history, cx| history.toggle_export_menu(cx));
+                }
+            },
+        ))
+        .child(button(
             hook::id("history", "delete"),
             "Delete",
             &delete_focus,
@@ -614,6 +752,16 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             ),
     );
     panel = panel.child(controls);
+    if export.open {
+        panel = panel.child(banner(
+            "export-bar",
+            "Export this transcript as".to_owned(),
+            format_buttons(history, &export.format_focus, has_text),
+        ));
+    }
+    if let Some(notice) = export.notice {
+        panel = panel.child(note_row("notice", notice));
+    }
     if audio {
         panel = panel.child(player_row(history, &row.id, playback));
     }
@@ -660,6 +808,14 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         panel = panel.child(field(key, label, value));
     }
     panel
+}
+
+/// What the export controls of the detail view need from the view.
+struct DetailExport {
+    open: bool,
+    notice: Option<String>,
+    button_focus: FocusHandle,
+    format_focus: [FocusHandle; 4],
 }
 
 /// What the player row of the detail view needs from the view.

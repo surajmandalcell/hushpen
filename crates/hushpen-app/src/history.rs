@@ -6,8 +6,10 @@
 //! database at once and keeps it, with its audio, for the undo window. When the window ends,
 //! or the app quits, or the app starts again, the audio file goes too.
 
+pub mod export;
 pub mod panel;
 pub mod playback;
+mod save_dialog;
 mod sweep;
 
 use crate::controller::{Controller, ReprocessState, failure_for};
@@ -64,6 +66,11 @@ pub struct Focus {
     pub repaste: FocusHandle,
     pub reprocess: FocusHandle,
     pub delete: FocusHandle,
+    pub select: FocusHandle,
+    pub select_all: FocusHandle,
+    pub export: FocusHandle,
+    /// One for each of `Format::ALL`.
+    pub export_format: [FocusHandle; 4],
 }
 
 pub struct History {
@@ -81,6 +88,16 @@ pub struct History {
     undo_window: Duration,
     confirm_clear: bool,
     message: Option<String>,
+    /// What the last action did, in a neutral line. A problem goes in `message`.
+    notice: Option<String>,
+    /// Rows are chosen with a click instead of opened.
+    selecting: bool,
+    selection: Vec<String>,
+    /// The format row of the detail view.
+    export_menu: bool,
+    export_busy: bool,
+    export_dir: Option<PathBuf>,
+    last_export: Option<export::Exported>,
     seen_revision: u64,
     /// The scroll position of the pane that holds the list.
     scroll: ScrollHandle,
@@ -127,6 +144,10 @@ impl History {
             repaste: handle(cx),
             reprocess: handle(cx),
             delete: handle(cx),
+            select: handle(cx),
+            select_all: handle(cx),
+            export: handle(cx),
+            export_format: std::array::from_fn(|_| handle(cx)),
         };
         sweep_trash(&storage);
         let seen_revision = controller.read(cx).history_revision();
@@ -145,6 +166,13 @@ impl History {
             undo_window: UNDO_WINDOW,
             confirm_clear: false,
             message: None,
+            notice: None,
+            selecting: false,
+            selection: Vec::new(),
+            export_menu: false,
+            export_busy: false,
+            export_dir: None,
+            last_export: None,
             seen_revision,
             scroll: ScrollHandle::new(),
             asked_at: Cell::new(0.0),
@@ -371,6 +399,8 @@ impl History {
         }
         self.detail = Some(row);
         self.message = None;
+        self.notice = None;
+        self.export_menu = false;
         self.confirm_clear = false;
         cx.notify();
         Ok(())
@@ -378,6 +408,7 @@ impl History {
 
     pub fn close(&mut self, cx: &mut Context<Self>) {
         self.playback = None;
+        self.export_menu = false;
         if self.detail.take().is_some() {
             cx.notify();
         }
@@ -471,6 +502,7 @@ impl History {
             }
         };
         let audio = self.park_audio(&stored.row);
+        self.forget_selected(&stored.row.id);
         self.undo = Some(Undo { stored, audio });
         self.undo_generation += 1;
         let generation = self.undo_generation;
@@ -587,6 +619,7 @@ impl History {
         }
         self.detail = None;
         self.message = None;
+        self.selection.clear();
         self.reload(cx);
         hook::record_event("history", "cleared");
         Ok(())
@@ -618,6 +651,7 @@ impl History {
                 "title": panel::title(row),
                 "insert_outcome": row.insert_outcome,
                 "audio_removed": row.audio_removed_at.is_some(),
+                "selected": self.is_selected(&row.id),
             })).collect::<Vec<_>>(),
             "detail": self.detail.as_ref().map(|row| json!({
                 "id": row.id,
@@ -650,6 +684,12 @@ impl History {
             "undo": self.undo.as_ref().map(|undo| json!({"id": undo.stored.row.id})),
             "confirm_clear": self.confirm_clear,
             "message": self.message,
+            "notice": self.notice,
+            "selecting": self.selecting,
+            "selection": self.selection,
+            "export_menu": self.export_menu,
+            "export_busy": self.export_busy,
+            "export": self.last_export.as_ref().map(export::Exported::json),
             "reprocess": reprocess,
             "read_only": self.storage.database.read_only(),
         })

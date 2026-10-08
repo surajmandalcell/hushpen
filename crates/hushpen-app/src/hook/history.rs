@@ -5,6 +5,7 @@
 use super::{register_action, set_state_section};
 use crate::history::History;
 use gpui_kit::{AnyWindowHandle, App, Entity};
+use hushpen_core::export::Format;
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -163,6 +164,61 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
         |history, _, cx| {
             history.cancel_clear(cx);
             Ok(())
+        },
+    );
+    let _ = register_action(
+        cx,
+        "history-select",
+        "Choose transcripts for an export, like clicking rows in Select mode. Args: \
+         {\"ids\": [\"<row id>\", ...]} makes them the whole selection; {\"id\": \"<row id>\"} \
+         toggles one; {\"all\": true} toggles every loaded row; {\"off\": true} leaves Select \
+         mode. The selection is in `hookctl state` section `history`, key `selection`.",
+        {
+            let history = history.clone();
+            move |cx, args| {
+                history.update(cx, |history, cx| {
+                    if args.get("off").and_then(Value::as_bool) == Some(true) {
+                        history.set_selecting(false, cx);
+                    } else if args.get("all").and_then(Value::as_bool) == Some(true) {
+                        history.toggle_select_all(cx);
+                    } else if let Some(ids) = args.get("ids").and_then(Value::as_array) {
+                        let ids = ids.iter().filter_map(Value::as_str).map(str::to_owned);
+                        history.select_only(ids.collect(), cx);
+                    } else if let Some(id) = id_of(&args) {
+                        history.toggle_selected(&id, cx);
+                    } else {
+                        history.set_selecting(true, cx);
+                    }
+                });
+                Ok(Value::Null)
+            }
+        },
+    );
+    let _ = register_action(
+        cx,
+        "history-export",
+        "Export transcripts to one file, like a format button. Args: {\"format\": \"txt\" | \
+         \"srt\" | \"vtt\" | \"json\"} and optionally {\"ids\": [...]}; with no ids it uses the \
+         selection, then the open detail view. The save dialog asks for the path unless \
+         `hookctl paths <file>` queued one. The result is in `hookctl state` section \
+         `history`, keys `export`, `notice`, and `message`.",
+        {
+            let history = history.clone();
+            move |cx, args| {
+                let format = args
+                    .get("format")
+                    .and_then(Value::as_str)
+                    .and_then(Format::from_key)
+                    .ok_or("needs args like {\"format\": \"srt\"} (txt, srt, vtt, or json)")?;
+                let ids = args.get("ids").and_then(Value::as_array).map(|ids| {
+                    ids.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                });
+                history.update(cx, |history, cx| history.export(format, ids, cx))?;
+                Ok(Value::Null)
+            }
         },
     );
     frames(cx);

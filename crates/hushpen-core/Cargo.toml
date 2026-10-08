@@ -12,4 +12,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-serde_json.workspace = true
+# The JSON export lists the keys in the order the writer inserts them.
+serde_json = { workspace = true, features = ["preserve_order"] }

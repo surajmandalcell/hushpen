@@ -10,6 +10,8 @@ use gpui_kit::{
 };
 use hushpen_store::history::Segment;
 
+mod export;
+
 struct Fixture {
     handle: AnyWindowHandle,
     history: Entity<History>,
