@@ -13,9 +13,19 @@ stop() {
   rm -f "$pidfile" /run/hook.sock
 }
 
+# A fresh data folder opens onboarding, which covers the window every other suite drives. Those
+# suites start with onboarding marked finished; the onboarding suite sets HARNESS_ONBOARDING=fresh.
+seed_onboarding_done() {
+  [ "${HARNESS_ONBOARDING:-}" = fresh ] && return 0
+  [ -e /data/config/settings.json ] && return 0
+  mkdir -p /data/config
+  printf '%s\n' '{"schemaVersion": 1, "values": {"onboarding.completed": true}}' >/data/config/settings.json
+}
+
 start() {
   stop
   [ -x /app/hushpen ] || { echo "app: /app/hushpen is missing; run harness/build-app.sh" >&2; return 1; }
+  seed_onboarding_done
   local begin
   begin=$(date +%s%3N)
   /app/hushpen >/logs/app.log 2>&1 &

@@ -207,6 +207,9 @@ wait_until 3 test "$(clip)" = OLD || failures+="the clipboard reads '$(clip)' in
 [ "$(count)" = "$after" ] || failures+="Re-paste changed the row count; "
 shot hist-012-repaste
 $HC click history.back >/dev/null
+# Re-paste with Hushpen focused hides the window to the tray; a restart brings it back.
+/harness/slot/app.sh restart >/dev/null
+wait_until 20 $HC state
 check_failures "VAL-HIST-012 copy and re-paste" "Copy put '$final' on the clipboard; Re-paste typed it into the entry and the clipboard came back to OLD" "$failures"
 
 echo "== VAL-HIST-003 cancelled runs: Esc in transcribing makes a row, Esc in listening and a tap make none"

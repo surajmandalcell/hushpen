@@ -68,3 +68,13 @@ finish() { # <suite>
   echo "result: $RUN_OUT/result.json passed=$passed"
   [ "$passed" = true ]
 }
+
+# Onboarding repair: a finished data folder that starts with no microphone opens the permissions
+# step. After the microphone is back, Continue returns to the main window.
+onboarding_field_is() { [ "$(/app/hookctl state | jq -r ".onboarding$1")" = "$2" ]; }
+leave_onboarding_repair() {
+  onboarding_field_is .mode repair || return 0
+  wait_until 10 onboarding_field_is .can_continue true || return 1
+  /app/hookctl click onboarding.continue >/dev/null
+  wait_until 5 onboarding_field_is .active false
+}

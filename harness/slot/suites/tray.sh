@@ -249,6 +249,7 @@ pactl load-module module-null-sink sink_name=cues >/dev/null
 pactl set-default-source vmic_src
 pactl set-default-sink cues
 sleep 2.5
+leave_onboarding_repair || failures+="onboarding repair did not close after the mic came back; "
 check_failures "VAL-TRAY-007 preflight" "no sources: state $state_now, notice $code, bar $bar_state ('$bar_msg'), first entry '$label_now', app pid $pid0 still running" "$failures"
 
 echo "== VAL-TRAY-004 close hides to the tray; Show Hushpen and Settings bring the window back"

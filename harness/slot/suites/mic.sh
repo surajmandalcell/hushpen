@@ -324,6 +324,7 @@ failures=""
 [ "$nomic_state" != listening ] || failures+="state is listening without a mic; "
 load_mic_modules
 sleep 2.5
+leave_onboarding_repair || failures+="onboarding repair did not close after the mic came back; "
 pid_before=$(cat /tmp/app.pid)
 python3 /harness/slot/pad-wav.py "$SPEECH" "$RUN_OUT/padded/speech-short.wav" 1000 >/dev/null
 hook_action capture-start >/dev/null
