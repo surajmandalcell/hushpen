@@ -6,14 +6,10 @@
 
 use objc2_service_management::{SMAppService, SMAppServiceStatus};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct MacLoginItem;
 
 impl MacLoginItem {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn current() -> std::io::Result<Self> {
         Ok(Self)
     }
