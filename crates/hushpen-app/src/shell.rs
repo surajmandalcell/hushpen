@@ -2,6 +2,7 @@
 
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
+use crate::history::{self, History};
 use crate::hook;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
@@ -11,8 +12,8 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     App, ClickEvent, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, ParentElement, Render, Role, StatefulInteractiveElement, Styled,
-    Window, div, px, svg, transparent_black,
+    MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
+    StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
 
 const TRAFFIC_GROUP: &str = "traffic-lights";
@@ -27,6 +28,10 @@ pub struct Shell {
     models: Option<Entity<Models>>,
     dictation: Option<Entity<Dictation>>,
     dictionary: Option<Entity<Dictionary>>,
+    history: Option<Entity<History>>,
+    /// The scroll position of the content pane. The History list reads it to draw only the
+    /// rows near the screen and to see when its end shows.
+    content_scroll: ScrollHandle,
 }
 
 impl Shell {
@@ -44,6 +49,8 @@ impl Shell {
             models: None,
             dictation: None,
             dictionary: None,
+            history: None,
+            content_scroll: ScrollHandle::new(),
         }
     }
 
@@ -51,6 +58,15 @@ impl Shell {
     pub fn attach_dictionary(&mut self, dictionary: Entity<Dictionary>, cx: &mut Context<Self>) {
         cx.observe(&dictionary, |_, _, cx| cx.notify()).detach();
         self.dictionary = Some(dictionary);
+        cx.notify();
+    }
+
+    /// Shows the transcript history in the History view and repaints when it changes.
+    pub fn attach_history(&mut self, history: Entity<History>, cx: &mut Context<Self>) {
+        cx.observe(&history, |_, _, cx| cx.notify()).detach();
+        let scroll = self.content_scroll.clone();
+        history.update(cx, |history, _| history.use_scroll(scroll));
+        self.history = Some(history);
         cx.notify();
     }
 
@@ -82,6 +98,7 @@ impl Shell {
     pub fn select(&mut self, view: View, cx: &mut Context<Self>) {
         if self.active != view {
             self.active = view;
+            self.content_scroll.set_offset(Point::default());
             hook::record_event("view", view.key());
             cx.notify();
         }
@@ -302,18 +319,27 @@ impl Shell {
 
     fn content(&self, shell: &Entity<Shell>, cx: &mut App) -> impl IntoElement {
         let view = self.active;
-        let body = match (&self.mic, &self.models, &self.dictionary, view) {
-            (Some(mic), _, _, View::Home) => {
+        let body = match (
+            &self.mic,
+            &self.models,
+            &self.dictionary,
+            &self.history,
+            view,
+        ) {
+            (Some(mic), _, _, _, View::Home) => {
                 let mut home = div().flex().flex_col().gap(px(space::LG));
                 if let Some(dictation) = &self.dictation {
                     home = home.child(dictation::panel::render(dictation, shell, cx));
                 }
                 home.child(mic::panel::render(mic, cx)).into_any_element()
             }
-            (_, Some(models), _, View::Models) => {
+            (_, Some(models), _, _, View::Models) => {
                 models::panel::render(models, cx).into_any_element()
             }
-            (_, _, Some(dictionary), View::Dictionary) => {
+            (_, _, _, Some(history), View::History) => {
+                history::panel::render(history, cx).into_any_element()
+            }
+            (_, _, Some(dictionary), _, View::Dictionary) => {
                 dictionary::panel::render(dictionary, cx).into_any_element()
             }
             _ => div()
@@ -339,6 +365,7 @@ impl Shell {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.content_scroll)
                     .child(
                         div()
                             .w_full()

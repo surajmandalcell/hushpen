@@ -283,6 +283,18 @@ pub fn session_wavs(rig: &Rig) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
+/// The WAV files that history rows keep.
+pub fn kept_wavs(rig: &Rig) -> Vec<PathBuf> {
+    std::fs::read_dir(rig.storage.data.audio_dir())
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .filter(|path| path.extension().is_some_and(|ext| ext == "wav"))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// An inserter that records what it was asked and answers with a scripted report.
 pub struct FakeInserter {
     pub target: Mutex<Target>,

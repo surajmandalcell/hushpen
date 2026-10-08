@@ -226,7 +226,7 @@ impl DictationMachine {
     fn no_speech(&mut self, now: u64) -> Vec<Effect> {
         self.enter(State::Failed, now);
         vec![
-            Effect::DiscardAudio,
+            failed_row(None, ENGINE_NO_SPEECH),
             Effect::Notify {
                 code: ENGINE_NO_SPEECH,
             },

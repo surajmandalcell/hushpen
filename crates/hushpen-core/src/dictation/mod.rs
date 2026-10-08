@@ -162,8 +162,6 @@ pub enum Effect {
         keep: bool,
     },
     Cue(Cue),
-    /// Delete the finished session audio: the run had no words.
-    DiscardAudio,
     Transcribe {
         session: u64,
     },
@@ -179,6 +177,8 @@ pub enum Effect {
         text: String,
         delivery: Delivery,
     },
+    /// Save one history row for the run, with the session audio when it has any. A run that
+    /// ends with no words is a `Failed` row with `ENGINE_NO_SPEECH`.
     SaveRow {
         status: RowStatus,
         text: Option<String>,

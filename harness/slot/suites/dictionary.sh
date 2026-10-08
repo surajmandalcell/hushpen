@@ -4,8 +4,8 @@
 # text, reach the whisper prompt, and a non-ASCII replacement reaches the GTK entry byte for byte
 # while the clipboard comes back byte for byte.
 # The hold key is Right Alt (X11 keycode 108); the words come from the virtual microphone.
-# The history row columns (prompt, rule_text, final_text) belong to the history feature and are
-# not checked here. Needs speech-short.wav in /assets/fixtures. Busy: it transcribes with base. It
+# The history row columns (prompt, rule_text, final_text) are read with sqlite3 for VAL-DICT-003 and
+# VAL-DICT-006. Needs speech-short.wav in /assets/fixtures. Busy: it transcribes with base. It
 # empties /data and restarts the app, so the slot must not be shared. Runs in one slot through
 # with-env.sh.
 . /harness/slot/lib.sh
@@ -52,6 +52,7 @@ ptt_run() { # <wav>: hold the key for the whole clip; waits until the run has en
   wait_until 240 run_ended
 }
 
+last_row() { sqlite3 "$DB" "select coalesce($1, '') from transcript order by created_at desc, id desc limit 1"; }
 rows() { sqlite3 "$DB" "select count(*) from dictionary_entry"; }
 rows_is() { [ "$(rows)" = "$1" ]; }
 row_of() { sqlite3 "$DB" "select phrase || '|' || coalesce(heard_as, 'NULL') from dictionary_entry order by id" | paste -sd, -; }
@@ -140,7 +141,12 @@ shot dict-003
 got=$(gtk_commit)
 case " $got " in *Foxtrel*) ;; *) failures+="the entry has no Foxtrel: '$got'; " ;; esac
 grep -Eiwq 'fox' <<<"$got" && failures+="the entry still has the word fox: '$got'; "
-check_failures "VAL-DICT-003 replacement inserted" "entry '$got'" "$failures"
+row_rule=$(last_row rule_text)
+row_final=$(last_row final_text)
+case "$row_rule" in *Foxtrel*) ;; *) failures+="the row rule_text has no Foxtrel: '$row_rule'; " ;; esac
+case "$row_final" in *Foxtrel*) ;; *) failures+="the row final_text has no Foxtrel: '$row_final'; " ;; esac
+[ "$row_final" = "$got" ] || failures+="the row final_text '$row_final' is not the inserted '$got'; "
+check_failures "VAL-DICT-003 replacement inserted" "entry '$got', row rule_text '$row_rule'" "$failures"
 
 echo "== VAL-DICT-006 (hook half) a stored word reaches the whisper prompt, and leaves it when deleted"
 failures=""
@@ -151,6 +157,8 @@ ptt_run "$SHORT_WAV" || failures+="the run did not end; "
 state_prompt=$($HC state | jq -r '.pipeline.prompt // ""')
 case "$(event_prompt)" in *Zyxtrel*) ;; *) failures+="the transcribe event prompt has no Zyxtrel: '$(event_prompt)'; " ;; esac
 case "$state_prompt" in *Zyxtrel*) ;; *) failures+="pipeline.prompt has no Zyxtrel: '$state_prompt'; " ;; esac
+row_prompt=$(last_row prompt)
+case "$row_prompt" in *Zyxtrel*) ;; *) failures+="the row prompt column has no Zyxtrel: '$row_prompt'; " ;; esac
 zyx_id=$(sqlite3 "$DB" "select id from dictionary_entry where phrase = 'Zyxtrel'")
 $HC action dictionary-delete "{\"id\":$zyx_id}" >/dev/null
 [ "$(rows)" = 1 ] || failures+="the word was not deleted; "
@@ -159,6 +167,7 @@ set_clip OLD
 focus "$GT"
 ptt_run "$SHORT_WAV" || failures+="the second run did not end; "
 case "$(event_prompt)" in *Zyxtrel*) failures+="the deleted word is still in the prompt: '$(event_prompt)'; " ;; esac
+case "$(last_row prompt)" in *Zyxtrel*) failures+="the next row prompt column still has Zyxtrel: '$(last_row prompt)'; " ;; esac
 check_failures "VAL-DICT-006 prompt follows the dictionary" "prompt '$state_prompt', then without the word: '$(event_prompt)'" "$failures"
 
 echo "== VAL-DICT-004 an edited entry and a deleted entry change the next dictation"

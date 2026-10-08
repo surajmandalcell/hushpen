@@ -15,6 +15,7 @@ use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{ClipboardItem, Context, Entity};
+pub use history::ReprocessState;
 use hushpen_core::cleanup;
 use hushpen_core::dictation::{
     AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus, State,
@@ -43,6 +44,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+mod history;
+#[cfg(test)]
+mod history_tests;
 mod permissions;
 #[cfg(test)]
 pub(crate) mod testkit;
@@ -224,6 +228,7 @@ pub enum InsertSupport {
 /// The newest insertion: its session, the wall clock time at which the text was ready, and what
 /// happened. A worker thread writes it as the steps go by.
 type LastInsert = Arc<Mutex<Option<(u64, u64, Report)>>>;
+type TimedSegments = (u64, Vec<hushpen_store::history::Segment>);
 
 const INSERT_COPIED: &str = "INSERT_COPIED";
 
@@ -250,6 +255,8 @@ pub struct Controller {
     cancel: Option<Arc<CancelToken>>,
     /// The language the engine detected, with the session that it belongs to.
     detected: Arc<Mutex<Option<(u64, String)>>>,
+    /// The timed pieces of the shown words, with the session that they belong to.
+    segments: Arc<Mutex<Option<TimedSegments>>>,
     transcript: String,
     language: Option<String>,
     notice: Option<Notice>,
@@ -275,6 +282,13 @@ pub struct Controller {
     /// The session whose text a "Paste last transcript" is putting in right now. The machine
     /// has no state for it, so the controller keeps the answer.
     pasting_last: Option<u64>,
+    /// The text of the paste that `pasting_last` waits for.
+    pasting_text: Option<String>,
+    /// What the history row of the running session needs from the steps before the save.
+    pending: history::Pending,
+    /// Counts the saved and changed history rows, so the History view reloads only when needed.
+    history_revision: u64,
+    reprocess: Option<(String, ReprocessState)>,
 }
 
 impl Controller {
@@ -348,6 +362,7 @@ impl Controller {
             wav: None,
             cancel: None,
             detected: Arc::default(),
+            segments: Arc::default(),
             transcript: String::new(),
             language: None,
             notice: None,
@@ -369,6 +384,10 @@ impl Controller {
             permissions: None,
             cues: None,
             pasting_last: None,
+            pasting_text: None,
+            pending: history::Pending::default(),
+            history_revision: 0,
+            reprocess: None,
         }
     }
 
@@ -685,12 +704,10 @@ impl Controller {
                 }
             }
             Effect::PasteLast => self.paste_last(cx),
-            Effect::DiscardAudio => {
-                if let Some(wav) = &self.wav {
-                    discard_wav(wav);
-                }
+            Effect::Transcribe { session } => {
+                self.pending.model_id = Some(self.models.read(cx).effective());
+                self.transcribe(session, queue);
             }
-            Effect::Transcribe { session } => self.transcribe(session, queue),
             Effect::CancelTranscribe => {
                 if let Some(token) = self.cancel.take() {
                     token.cancel();
@@ -698,6 +715,8 @@ impl Controller {
             }
             Effect::Clean { session, raw } => {
                 let text = self.rule_cleanup(&raw);
+                self.pending.raw = raw;
+                self.pending.rule = text.clone();
                 queue.push_back(AppEvent::Cleaned { session, text });
             }
             Effect::StopLlm => {}
@@ -706,7 +725,7 @@ impl Controller {
                 text,
                 delivery,
             } => self.insert(session, text, delivery, queue, cx),
-            Effect::SaveRow { status, text, .. } => self.save_row(status, text),
+            Effect::SaveRow { status, text, code } => self.save_row(status, text, code),
             Effect::UpdatePasteLast { text } => self.last_text = Some(text),
             Effect::MaxDurationWarning { seconds_left } => {
                 self.warned = true;
@@ -736,7 +755,9 @@ impl Controller {
         self.result = None;
         self.warned = false;
         self.wav = None;
+        self.pending = history::Pending::default();
         *self.detected.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self.segments.lock().unwrap_or_else(|p| p.into_inner()) = None;
         match self.mic.update(cx, |mic, cx| mic.start(cx)) {
             Ok(path) => {
                 self.wav = Some(path);
@@ -764,7 +785,10 @@ impl Controller {
             return;
         }
         match stopped {
-            Ok(Some(finished)) => self.wav = Some(finished.path),
+            Ok(Some(finished)) => {
+                self.pending.duration_ms = i64::try_from(finished.duration_ms).unwrap_or(0);
+                self.wav = Some(finished.path);
+            }
             Ok(None) => {
                 self.detail = Some("The recording ended before it could be transcribed.".into());
                 queue.push_back(AppEvent::TranscribeFailed {
@@ -792,6 +816,7 @@ impl Controller {
             return;
         };
         let language = self.language();
+        self.pending.language_requested = Some(language.clone());
         let prompt = Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
         hook::record_event(
             "transcribe",
@@ -808,9 +833,12 @@ impl Controller {
         let run = Arc::clone(&self.engine.run);
         let events = self.events.clone();
         let detected = Arc::clone(&self.detected);
+        let segments = Arc::clone(&self.segments);
         let spawned = (self.spawn)(Box::new(move || {
             let event = match run(spec, token) {
                 JobOutcome::Done(done) => {
+                    *segments.lock().unwrap_or_else(|p| p.into_inner()) =
+                        Some((session, history::segments_of(&done)));
                     if done.language != "und" {
                         *detected.lock().unwrap_or_else(|p| p.into_inner()) =
                             Some((session, done.language));
@@ -911,12 +939,18 @@ impl Controller {
             return;
         };
         hook::record_event("insert", "paste-last");
+        self.paste_text(text, cx);
+    }
+
+    /// Puts `text` into the focused app, or copies it when the system cannot paste.
+    fn paste_text(&mut self, text: String, cx: &mut Context<Self>) {
         let session = self.machine.session();
         let ready_unix_ms = unix_ms();
         if let InsertSupport::Ready(inserter) = &self.insert {
             let inserter = Arc::clone(inserter);
             if self.paste(session, &text, inserter, ready_unix_ms) {
                 self.pasting_last = Some(session);
+                self.pasting_text = Some(text);
                 return;
             }
         }
@@ -962,11 +996,12 @@ impl Controller {
             });
             hook::record_event("insert", &format!("paste-last failed {code}"));
             if code == INSERT_NO_PERMISSION
-                && let Some(text) = self.last_text.clone()
+                && let Some(text) = self.pasting_text.take().or_else(|| self.last_text.clone())
             {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
             }
         }
+        self.pasting_text = None;
         true
     }
 
@@ -1082,7 +1117,8 @@ impl Controller {
         });
     }
 
-    fn save_row(&mut self, status: RowStatus, text: Option<String>) {
+    fn save_row(&mut self, status: RowStatus, text: Option<String>, code: Option<&'static str>) {
+        self.record_history(status, &text, code);
         match status {
             RowStatus::Done => {
                 self.transcript = text.unwrap_or_default();
@@ -1102,9 +1138,6 @@ impl Controller {
                     "DICTATION_DONE session={session} chars={}",
                     self.transcript.chars().count()
                 );
-                if let Some(wav) = &self.wav {
-                    discard_wav(wav);
-                }
             }
             RowStatus::Cancelled | RowStatus::Failed => {}
         }
@@ -1249,15 +1282,8 @@ fn config_from(storage: &Storage) -> Config {
     minutes.map_or_else(Config::default, Config::with_max_minutes)
 }
 
-/// The audio of a finished run is not kept; the test hook keeps it for inspection.
-fn discard_wav(path: &Path) {
-    if !cfg!(feature = "test-automation") {
-        let _ = std::fs::remove_file(path);
-    }
-}
-
 /// The code and the message of a failed run. Every failure after the recording keeps it.
-fn failure_for(code: &str) -> (&'static str, &'static str) {
+pub(crate) fn failure_for(code: &str) -> (&'static str, &'static str) {
     match code {
         error::ENGINE_UNAVAILABLE => (
             error::ENGINE_UNAVAILABLE,

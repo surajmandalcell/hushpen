@@ -11,6 +11,7 @@
 HOLD=108
 GTK_FILE=/out/gtk.txt
 FILLER_WAV=/fixtures/filler-dictation.wav
+DB=/data/history/history.db
 
 pstate() { $HC state | jq -r .pipeline.state; }
 pstate_is() { [ "$(pstate)" = "$1" ]; }
@@ -27,6 +28,7 @@ run_ended() {
 focus() { xdotool windowfocus --sync "$1"; }
 set_setting() { hook_action set-setting "{\"key\":\"$1\",\"value\":$2}" >/dev/null; }
 has_filler() { grep -Eiwq 'um+|uh+|er+m?' <<<"$1"; }
+last_row() { sqlite3 "$DB" "select coalesce($1, '') from transcript order by created_at desc, id desc limit 1"; }
 
 gtk_commit() { # Enter in the GTK entry writes what it holds to /out/gtk.txt; prints it
   rm -f "$GTK_FILE"
@@ -70,7 +72,14 @@ clean_got=$(gtk_commit)
 [ -n "$clean_got" ] && [ "$clean_got" = "$clean_text" ] || failures+="the entry holds '$clean_got' but the transcript is '$clean_text'; "
 has_filler "$clean_got" && failures+="the entry still has a filler: $clean_got; "
 case "$clean_got" in [A-Z]*) ;; *) failures+="the entry does not start with a capital letter: $clean_got; " ;; esac
-check_failures "VAL-CLN-008 filler fixture inserted clean" "entry '$clean_got'" "$failures"
+row_raw=$(last_row raw_text)
+row_rule=$(last_row rule_text)
+row_final=$(last_row final_text)
+has_filler "$row_raw" || failures+="the row raw_text has no filler: '$row_raw'; "
+[ -n "$row_rule" ] && ! has_filler "$row_rule" || failures+="the row rule_text is empty or has a filler: '$row_rule'; "
+[ "$row_raw" != "$row_rule" ] || failures+="the row raw_text and rule_text are the same: '$row_raw'; "
+[ "$row_final" = "$clean_got" ] || failures+="the row final_text '$row_final' is not the inserted '$clean_got'; "
+check_failures "VAL-CLN-008 filler fixture inserted clean" "entry '$clean_got', row raw '$row_raw', rule '$row_rule'" "$failures"
 
 echo "== VAL-CLN-008 (2) cleanup.rules off inserts the raw text, which holds a filler"
 failures=""
@@ -85,5 +94,7 @@ raw_text=$(dict .transcript)
 raw_got=$(gtk_commit)
 [ -n "$raw_got" ] && [ "$raw_got" = "$raw_text" ] || failures+="the entry holds '$raw_got' but the transcript is '$raw_text'; "
 has_filler "$raw_got" || failures+="the raw text has no filler, so the fixture is invalid: $raw_got; "
+[ "$(last_row raw_text)" = "$(last_row rule_text)" ] || failures+="with the rules off the row rule_text '$(last_row rule_text)' differs from raw_text '$(last_row raw_text)'; "
+[ "$(last_row final_text)" = "$raw_got" ] || failures+="the row final_text '$(last_row final_text)' is not the inserted '$raw_got'; "
 check_failures "VAL-CLN-008 cleanup off inserts raw" "entry '$raw_got'" "$failures"
 set_setting cleanup.rules true

@@ -81,6 +81,7 @@ impl DataDir {
             data.root.clone(),
             data.config_dir(),
             data.history_dir(),
+            data.audio_dir(),
             data.logs_dir(),
         ] {
             fs::create_dir_all(&dir)
@@ -135,6 +136,17 @@ impl DataDir {
     /// `cache/sessions/<id>.wav`: audio being recorded. Created by the first capture.
     pub fn sessions_dir(&self) -> PathBuf {
         self.root.join("cache").join("sessions")
+    }
+
+    /// `audio/<id>.wav`: the audio of each history row.
+    pub fn audio_dir(&self) -> PathBuf {
+        self.root.join("audio")
+    }
+
+    /// `audio/.trash/`: the audio of a row that was deleted and can still come back. Whatever
+    /// is there at the next start was not undone.
+    pub fn trash_dir(&self) -> PathBuf {
+        self.audio_dir().join(".trash")
     }
 
     pub fn marker_path(&self) -> PathBuf {

@@ -14,6 +14,8 @@ mod dictionary;
 #[cfg(feature = "test-automation")]
 mod engine;
 #[cfg(feature = "test-automation")]
+mod history;
+#[cfg(feature = "test-automation")]
 mod mic;
 #[cfg(feature = "test-automation")]
 mod models;
@@ -30,6 +32,8 @@ pub use dictation::attach as attach_dictation;
 pub use dictionary::attach as attach_dictionary;
 #[cfg(feature = "test-automation")]
 pub use engine::attach as attach_engine;
+#[cfg(feature = "test-automation")]
+pub use history::attach as attach_history;
 #[cfg(feature = "test-automation")]
 pub use mic::attach as attach_mic;
 #[cfg(feature = "test-automation")]

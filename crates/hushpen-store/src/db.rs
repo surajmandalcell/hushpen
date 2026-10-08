@@ -90,6 +90,7 @@ pub struct Report {
 pub struct Database {
     conn: Connection,
     report: Report,
+    path: PathBuf,
 }
 
 impl Database {
@@ -113,7 +114,7 @@ impl Database {
                 path,
                 OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?;
-            return Ok(Self::finish(conn, sqlite_version, found, true));
+            return Ok(Self::finish(conn, path, sqlite_version, found, true));
         }
 
         conn.busy_timeout(Duration::from_secs(5))?;
@@ -125,11 +126,12 @@ impl Database {
         for (version, sql) in migrations.iter().enumerate().skip(found as usize) {
             migrate(&conn, sql, version as i64 + 1)?;
         }
-        Ok(Self::finish(conn, sqlite_version, target, false))
+        Ok(Self::finish(conn, path, sqlite_version, target, false))
     }
 
     fn finish(
         conn: Connection,
+        path: &Path,
         sqlite_version: String,
         user_version: i64,
         read_only: bool,
@@ -139,6 +141,7 @@ impl Database {
             .unwrap_or_default();
         Self {
             conn,
+            path: path.to_path_buf(),
             report: Report {
                 sqlite_version,
                 journal_mode,
@@ -155,6 +158,14 @@ impl Database {
 
     pub fn read_only(&self) -> bool {
         self.report.read_only
+    }
+
+    /// True when the database file or its folder has no write permission. A connection that was
+    /// opened before the permission changed would still write, so callers ask first.
+    pub fn is_locked_read_only(&self) -> bool {
+        let readonly =
+            |path: &Path| fs::metadata(path).is_ok_and(|meta| meta.permissions().readonly());
+        readonly(&self.path) || self.path.parent().is_some_and(readonly)
     }
 
     pub fn user_version(&self) -> Result<i64> {

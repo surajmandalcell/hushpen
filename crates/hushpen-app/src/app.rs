@@ -5,6 +5,7 @@ use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic
 use crate::dictation::Dictation;
 use crate::dictionary::Dictionary;
 use crate::engine_host::EngineHost;
+use crate::history::History;
 use crate::instance::{self, Start};
 use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
@@ -71,6 +72,7 @@ pub fn run() -> ExitCode {
     let models_storage = Rc::clone(&storage);
     let models_engine = Rc::clone(&engine);
     let dictionary_storage = Rc::clone(&storage);
+    let history_storage = Rc::clone(&storage);
     let dictation_storage = Rc::clone(&storage);
     let dictation_engine = Rc::clone(&engine);
     #[cfg(feature = "test-automation")]
@@ -155,6 +157,20 @@ pub fn run() -> ExitCode {
             controller.update(cx, |controller, _| {
                 controller.attach_permissions(hushpen_platform::permissions::system());
             });
+            let history = handle
+                .update(cx, |_, window, cx| {
+                    cx.new(|cx| History::new(history_storage, controller.clone(), window, cx))
+                })
+                .ok();
+            if let Some(history) = &history {
+                shell.update(cx, |shell, cx| shell.attach_history(history.clone(), cx));
+                let quitting = history.clone();
+                cx.on_app_quit(move |cx| {
+                    quitting.update(cx, |history, _| history.finish_undo());
+                    async {}
+                })
+                .detach();
+            }
             let dictation =
                 cx.new(|cx| Dictation::new(dictation_storage, models.clone(), controller, cx));
             shell.update(cx, |shell, cx| {
@@ -179,6 +195,9 @@ pub fn run() -> ExitCode {
                 crate::hook::attach_dictation(cx, dictation);
                 if let Some(dictionary) = dictionary {
                     crate::hook::attach_dictionary(cx, dictionary);
+                }
+                if let Some(history) = history {
+                    crate::hook::attach_history(cx, history, handle);
                 }
             }
             cx.spawn(async move |cx| {

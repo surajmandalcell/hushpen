@@ -23,7 +23,7 @@ fn notice_code(cx: &mut TestAppContext, rig: &Rig) -> Option<&'static str> {
 }
 
 /// One push-to-talk run: down, a 2 s hold, up, and the engine answers.
-fn hold_run(cx: &mut TestAppContext, rig: &Rig, from: u64) {
+pub(super) fn hold_run(cx: &mut TestAppContext, rig: &Rig, from: u64) {
     send_at(cx, rig, from, AppEvent::HoldDown).unwrap();
     send_at(cx, rig, from + 2_000, AppEvent::HoldUp).unwrap();
     settle(cx, rig);
@@ -84,6 +84,7 @@ fn a_tap_under_250_ms_is_not_a_recording(cx: &mut TestAppContext) {
     assert_eq!(machine_state(cx, &rig), State::Idle);
     assert!(rig.specs.lock().unwrap().is_empty(), "no engine job");
     assert!(session_wavs(&rig).is_empty(), "the tap left no audio");
+    assert!(kept_wavs(&rig).is_empty(), "a tap makes no history audio");
 }
 
 #[gpui_kit::test]
@@ -164,10 +165,11 @@ fn esc_in_transcribing_cancels_the_job_keeps_the_audio_and_the_next_run_works(
     send_at(cx, &rig, 3_100, AppEvent::Esc).unwrap();
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
     assert_eq!(
-        session_wavs(&rig).len(),
+        kept_wavs(&rig).len(),
         1,
-        "a cancelled run keeps its audio"
+        "a cancelled run keeps its audio with its history row"
     );
+    assert!(session_wavs(&rig).is_empty());
 
     // The engine answers late; the answer must change nothing.
     settle(cx, &rig);
@@ -227,7 +229,7 @@ fn a_run_with_no_words_ends_failed_with_no_speech_and_the_next_run_works(cx: &mu
         rig.controller.read_with(cx, |c, _| c.phase()),
         Phase::NoSpeech
     );
-    assert!(session_wavs(&rig).is_empty(), "silence leaves no audio");
+    assert_eq!(kept_wavs(&rig).len(), 1, "silence keeps its audio");
 
     send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
     hold_run(cx, &rig, 7_000);
@@ -246,7 +248,7 @@ fn an_engine_failure_ends_failed_and_keeps_the_audio(cx: &mut TestAppContext) {
 
     assert_eq!(machine_state(cx, &rig), State::Failed);
     assert_eq!(notice_code(cx, &rig), Some("ENGINE_CRASHED"));
-    assert_eq!(session_wavs(&rig).len(), 1);
+    assert_eq!(kept_wavs(&rig).len(), 1);
 }
 
 #[gpui_kit::test]
@@ -616,7 +618,7 @@ fn runs_that_fail_before_the_text_exists_insert_nothing_and_leave_the_clipboard(
     assert_eq!(inserter.calls.lock().unwrap().len(), 1);
 }
 
-fn blocked_inserter(outcome: InsertOutcome, code: &'static str) -> Arc<FakeInserter> {
+pub(super) fn blocked_inserter(outcome: InsertOutcome, code: &'static str) -> Arc<FakeInserter> {
     let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
     {
         let mut script = inserter.script.lock().unwrap();

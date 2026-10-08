@@ -668,7 +668,7 @@ fn an_answer_from_an_older_session_is_ignored() {
 }
 
 #[test]
-fn a_transcript_with_no_words_fails_with_no_speech_and_keeps_no_text() {
+fn a_transcript_with_no_words_fails_with_no_speech_and_saves_a_failed_row() {
     for text in ["", "  ", "[BLANK_AUDIO]", "(silence) [MUSIC]"] {
         let mut m = reach(State::Transcribing);
         let effects = handle(
@@ -683,7 +683,7 @@ fn a_transcript_with_no_words_fails_with_no_speech_and_keeps_no_text() {
         assert_eq!(
             effects,
             vec![
-                Effect::DiscardAudio,
+                failed_row(None, ENGINE_NO_SPEECH),
                 Effect::Notify {
                     code: ENGINE_NO_SPEECH
                 }
