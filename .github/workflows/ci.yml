@@ -160,9 +160,10 @@ jobs:
       - name: Build the harness image
         run: docker build --platform linux/amd64 -t hushpen-val:noble -f harness/Dockerfile harness
       - name: Insertion suite
-        run: harness/run-suite.sh insert --slots 1 --build
+        # Root, because the container writes the slot folders as root and the scripts then clean them.
+        run: sudo -E harness/run-suite.sh insert --slots 1 --build
       - name: Guards suite
-        run: harness/run-suite.sh guards --slots 1
+        run: sudo -E harness/run-suite.sh guards --slots 1
       - name: Keep the suite output
         if: always()
         uses: actions/upload-artifact@v4
