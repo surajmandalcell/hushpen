@@ -167,3 +167,32 @@ fn a_newer_database_opens_read_only() {
             .is_err()
     );
 }
+
+#[test]
+fn a_checkpoint_folds_the_wal_into_the_database_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history").join("history.db");
+    let db = Database::open(&path).unwrap();
+    db.connection()
+        .execute(
+            "INSERT INTO transcript (id, created_at, kind, status, duration_ms) VALUES ('one', 1, 'dictation', 'completed', 5)",
+            [],
+        )
+        .unwrap();
+    let wal = tmp.path().join("history").join("history.db-wal");
+    assert!(wal.exists(), "a write in WAL mode leaves a journal");
+
+    db.checkpoint().unwrap();
+
+    let wal_bytes = std::fs::metadata(&wal).map(|meta| meta.len()).unwrap_or(0);
+    assert_eq!(wal_bytes, 0, "the journal is empty after the checkpoint");
+    // The main file alone now holds the row, so a plain copy is complete.
+    let bytes = std::fs::read(&path).unwrap();
+    let copy = tmp.path().join("copy.db");
+    std::fs::write(&copy, &bytes).unwrap();
+    let check = Connection::open(&copy).unwrap();
+    let count: i64 = check
+        .query_row("SELECT COUNT(*) FROM transcript", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 1);
+}

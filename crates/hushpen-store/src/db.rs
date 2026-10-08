@@ -174,6 +174,23 @@ impl Database {
             .query_row("PRAGMA user_version", [], |row| row.get(0))?)
     }
 
+    /// Folds the WAL into the database file, so a plain file copy (the data
+    /// folder move) carries every row.
+    pub fn checkpoint(&self) -> Result<()> {
+        self.conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .and_then(|busy| match busy {
+                0 => Ok(()),
+                _ => Err(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+                    Some("a reader holds the journal".to_owned()),
+                )),
+            })?;
+        Ok(())
+    }
+
     pub fn report(&self) -> &Report {
         &self.report
     }
