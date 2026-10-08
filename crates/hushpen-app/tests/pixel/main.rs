@@ -23,9 +23,11 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
+use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
 use hushpen_app::shell::Shell;
 use hushpen_app::theme::{self, space};
 use hushpen_app::views::View;
+use hushpen_core::flow_bar::BarState;
 use image::RgbaImage;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -107,15 +109,18 @@ fn capture_every_view() -> Vec<Capture> {
 }
 
 fn check_against_baseline(capture: &Capture, failures: &mut Vec<String>) {
-    let name = capture.view.key();
+    check_image(capture.view.key(), &capture.image, failures);
+}
+
+fn check_image(name: &str, image: &RgbaImage, failures: &mut Vec<String>) {
     let path = baselines_dir().join(format!("{name}.png"));
     if updating() {
         std::fs::create_dir_all(baselines_dir()).expect("create the baselines folder");
-        capture.image.save(&path).expect("write the baseline");
+        image.save(&path).expect("write the baseline");
         return;
     }
     let baseline = match image::open(&path) {
-        Ok(image) => image.to_rgba8(),
+        Ok(baseline) => baseline.to_rgba8(),
         Err(error) => {
             failures.push(format!(
                 "{name}: no baseline at {} ({error}); approve one with HUSHPEN_PIXEL_UPDATE=1",
@@ -124,7 +129,7 @@ fn check_against_baseline(capture: &Capture, failures: &mut Vec<String>) {
             return;
         }
     };
-    let outcome = compare(&capture.image, &baseline);
+    let outcome = compare(image, &baseline);
     if outcome.passed() {
         return;
     }
@@ -132,8 +137,8 @@ fn check_against_baseline(capture: &Capture, failures: &mut Vec<String>) {
     std::fs::create_dir_all(&out).expect("create the output folder");
     let actual_path = out.join(format!("{name}-actual.png"));
     let diff_path = out.join(format!("{name}-diff.png"));
-    capture.image.save(&actual_path).expect("write the capture");
-    diff_image(&capture.image, &baseline)
+    image.save(&actual_path).expect("write the capture");
+    diff_image(image, &baseline)
         .save(&diff_path)
         .expect("write the diff");
     let why = match outcome {
@@ -196,4 +201,87 @@ fn captures_are_780x520_at_scale_two_and_use_the_design_tokens() {
             );
         }
     }
+}
+
+fn flow_bar_states() -> Vec<(&'static str, Props)> {
+    let mut listening = Props::new(BarState::Listening);
+    listening.levels = (0..32)
+        .map(|n| (0.5 + 0.5 * (n as f32 * 0.55).sin()) * (n as f32 / 31.0))
+        .collect();
+    let mut transcribing = Props::new(BarState::Transcribing);
+    transcribing.dot = 1;
+    let mut result = Props::new(BarState::Result);
+    result.message = "Inserted".into();
+    let mut error = Props::new(BarState::Error);
+    error.message = "No speech heard".into();
+    error.open_history = true;
+    let mut blocked = Props::new(BarState::Blocked);
+    blocked.message = "Another app holds the keyboard".into();
+    blocked.open_history = true;
+    let mut spanish = Props::new(BarState::Idle);
+    spanish.language.label = "ES".into();
+    let mut list = Props::new(BarState::Idle);
+    list.picker = Picker::List {
+        codes: vec!["auto", "es", "en", "de", "fr", "it"],
+        selected: "es".into(),
+        below: false,
+    };
+    let mut off = Props::new(BarState::Idle);
+    off.language.enabled = false;
+    off.language.reason = Some("This model understands English only.".into());
+    off.picker = Picker::Reason {
+        text: "This model understands English only.".into(),
+        below: true,
+    };
+    vec![
+        ("flowbar-idle", Props::new(BarState::Idle)),
+        ("flowbar-idle-spanish", spanish),
+        ("flowbar-listening", listening),
+        ("flowbar-transcribing", transcribing),
+        ("flowbar-result", result),
+        ("flowbar-error", error),
+        ("flowbar-blocked", blocked),
+        ("flowbar-picker", list),
+        ("flowbar-picker-off", off),
+    ]
+}
+
+fn capture_flow_bar(props: Props) -> RgbaImage {
+    let mut cx = headless();
+    let (width, height) = size_of(&props);
+    let handle = cx
+        .open_window(size(px(width), px(height)), move |window, cx| {
+            let bar = cx.new(|_| Preview(props));
+            cx.new(|cx| gpui_kit::base::Root::new(bar, window, cx))
+        })
+        .expect("open the headless window");
+    cx.run_until_parked();
+    cx.capture_screenshot(handle.into())
+        .expect("capture the window")
+}
+
+#[test]
+fn every_flow_bar_state_matches_its_approved_baseline() {
+    let mut failures = Vec::new();
+    for (name, props) in flow_bar_states() {
+        check_image(name, &capture_flow_bar(props), &mut failures);
+    }
+    assert!(
+        failures.is_empty(),
+        "pixel baselines failed:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn the_flow_bar_is_a_compact_dark_pill_at_scale_two() {
+    let image = capture_flow_bar(Props::new(BarState::Listening));
+    assert_eq!(image.dimensions(), (320, 64), "160x32 at scale two");
+    let [r, g, b, a] = image.get_pixel(24, 32).0;
+    assert_eq!(
+        format!("#{r:02X}{g:02X}{b:02X}"),
+        "#2B2B2B",
+        "the pill is the elevated surface"
+    );
+    assert_eq!(a, 255);
 }

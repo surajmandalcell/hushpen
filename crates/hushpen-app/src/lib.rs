@@ -13,6 +13,7 @@ pub mod controller;
 pub mod dictation;
 pub mod dictionary;
 pub mod engine_host;
+pub mod flow_bar;
 pub mod history;
 pub mod hook;
 pub mod instance;

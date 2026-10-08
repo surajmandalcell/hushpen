@@ -115,6 +115,7 @@ pub fn outcome_text(text: &str, language: &str) -> JobOutcome {
 pub struct Rig {
     pub controller: Entity<Controller>,
     pub dictation: Entity<Dictation>,
+    pub mic: Entity<Mic>,
     pub models: Entity<Models>,
     pub storage: Rc<storage::Storage>,
     pub work: Work,
@@ -207,7 +208,7 @@ pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
     let controller = cx.new(|cx| {
         Controller::new(
             Rc::clone(&storage),
-            mic,
+            mic.clone(),
             models.clone(),
             engine,
             Rc::clone(&spawn),
@@ -220,6 +221,7 @@ pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
     Rig {
         controller,
         dictation,
+        mic,
         models,
         storage,
         work,

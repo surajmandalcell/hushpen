@@ -288,6 +288,8 @@ pub struct Controller {
     pending: history::Pending,
     /// Counts the saved and changed history rows, so the History view reloads only when needed.
     history_revision: u64,
+    /// The id of the newest row a run saved.
+    last_row: Option<String>,
     reprocess: Option<(String, ReprocessState)>,
 }
 
@@ -387,6 +389,7 @@ impl Controller {
             pasting_text: None,
             pending: history::Pending::default(),
             history_revision: 0,
+            last_row: None,
             reprocess: None,
         }
     }
@@ -526,6 +529,18 @@ impl Controller {
 
     pub fn notice(&self) -> Option<&Notice> {
         self.notice.as_ref()
+    }
+
+    /// The code of the failure that ended the run, while the pipeline shows `Failed`.
+    pub fn failure_code(&self) -> Option<&'static str> {
+        (self.machine.state() == State::Failed)
+            .then(|| self.notice.as_ref().map(|notice| notice.code))
+            .flatten()
+    }
+
+    /// The id of the newest history row a dictation saved, for "Open history".
+    pub fn last_row_id(&self) -> Option<&str> {
+        self.last_row.as_deref()
     }
 
     pub fn session(&self) -> Option<&Path> {
@@ -1090,6 +1105,12 @@ impl Controller {
             Some((session, ready, report)) => report.to_json(*session, *ready),
             None => Value::Null,
         }
+    }
+
+    /// Whether the newest insert only reached the clipboard.
+    pub fn copied_only(&self) -> bool {
+        let slot = self.last_insert.lock().unwrap_or_else(|p| p.into_inner());
+        matches!(&*slot, Some((_, _, report)) if report.outcome == Outcome::CopiedOnly)
     }
 
     /// The words for a notice after a copy that did not press a paste key.

@@ -419,3 +419,58 @@ fn never_keeps_the_audio_of_a_failed_run_so_reprocess_can_recover_it(cx: &mut Te
     assert!(row.audio_removed_at.is_some());
     assert!(kept_wavs(&rig).is_empty());
 }
+
+#[gpui_kit::test]
+fn the_newest_saved_row_is_the_one_the_flow_bar_opens(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let last = |cx: &mut TestAppContext| {
+        rig.controller.read_with(cx, |controller, _| {
+            controller.last_row_id().map(str::to_owned)
+        })
+    };
+    assert_eq!(last(cx), None);
+
+    say(&rig, outcome_text("first words", "en"));
+    hold_run(cx, &rig, 1_000);
+    let first = last(cx).unwrap();
+    assert_eq!(only_row(&rig).id, first);
+
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    say(
+        &rig,
+        JobOutcome::Failed(Failure::new("ENGINE_NO_SPEECH", "no audio")),
+    );
+    hold_run(cx, &rig, 10_000);
+    let second = last(cx).unwrap();
+    assert_ne!(second, first);
+    let failed = history::get(&rig.storage.database, &second)
+        .unwrap()
+        .unwrap();
+    assert_eq!(failed.status, "failed");
+    assert_eq!(failed.error_code.as_deref(), Some("ENGINE_NO_SPEECH"));
+}
+
+#[gpui_kit::test]
+fn the_failure_code_is_known_only_while_the_run_is_failed(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let failure = |cx: &mut TestAppContext| {
+        rig.controller
+            .read_with(cx, |controller, _| controller.failure_code())
+    };
+    assert_eq!(failure(cx), None);
+    say(
+        &rig,
+        JobOutcome::Failed(Failure::new("ENGINE_NO_SPEECH", "no audio")),
+    );
+    hold_run(cx, &rig, 1_000);
+    assert_eq!(machine_state(cx, &rig), State::Failed);
+    assert_eq!(failure(cx), Some("ENGINE_NO_SPEECH"));
+
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    assert_eq!(
+        failure(cx),
+        None,
+        "idle again: the bar holds the error itself"
+    );
+}

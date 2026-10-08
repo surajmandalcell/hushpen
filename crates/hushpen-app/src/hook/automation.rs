@@ -62,7 +62,17 @@ pub struct Hooks {
     actions: ActionRegistry<App>,
     state: StateRegistry<App>,
     feed_wav: Option<FeedWav>,
+    windows: Vec<FindWindow>,
 }
+
+/// A window besides the main one whose elements the tree lists and `click` reaches, such as
+/// the flow bar. `origin` is where its top left corner is on the screen.
+pub struct ExtraWindow {
+    pub window: AnyWindowHandle,
+    pub origin: (f64, f64),
+}
+
+type FindWindow = Rc<dyn Fn(&mut App) -> Option<ExtraWindow>>;
 
 impl Global for Hooks {}
 
@@ -81,6 +91,11 @@ pub fn register_action(
 /// Sets (or replaces) a top-level section of `hookctl state`.
 pub fn set_state_section(cx: &mut App, name: &str, read: impl Fn(&mut App) -> Value + 'static) {
     cx.update_global::<Hooks, _>(|hooks, _| hooks.state.set_section(name, read));
+}
+
+/// Adds a window to the tree and to `click`. `find` returns it while it is open.
+pub fn register_window(cx: &mut App, find: impl Fn(&mut App) -> Option<ExtraWindow> + 'static) {
+    cx.update_global::<Hooks, _>(|hooks, _| hooks.windows.push(Rc::new(find)));
 }
 
 /// Connects `hookctl feed-wav` to the capture path.
@@ -231,6 +246,7 @@ pub fn install(cx: &mut App, surface: &Surface) {
         actions: ActionRegistry::default(),
         state: StateRegistry::default(),
         feed_wav: None,
+        windows: Vec::new(),
     };
 
     let window = surface.window;
@@ -305,18 +321,51 @@ pub fn window_state(window: &Window) -> Value {
 
 fn answer(cx: &mut App, window: AnyWindowHandle, call: Call) -> Result<Answer, String> {
     match call {
-        Call::Tree => window
-            .update(cx, |_, window, _| Answer::Tree(tree(window)))
-            .map_err(|_| "the window is closed".to_string()),
+        Call::Tree => {
+            let mut elements = window
+                .update(cx, |_, window, _| tree(window))
+                .map_err(|_| "the window is closed".to_string())?;
+            for extra in extra_windows(cx) {
+                if let Ok(more) = extra
+                    .window
+                    .update(cx, |_, window, _| tree_at(window, Some(extra.origin)))
+                {
+                    elements.extend(more);
+                }
+            }
+            elements.sort_by(|a, b| a.id.cmp(&b.id));
+            Ok(Answer::Tree(elements))
+        }
         Call::State => {
             Ok(Answer::Value(cx.update_global::<Hooks, _>(|hooks, cx| {
                 hooks.state.snapshot(cx)
             })))
         }
-        Call::Click(id) => window
-            .update(cx, |_, window, cx| click(window, cx, &id))
-            .map_err(|_| "the window is closed".to_string())?
-            .map(Answer::Value),
+        Call::Click(id) => {
+            let main = window
+                .update(cx, |_, window, cx| click(window, cx, &id))
+                .map_err(|_| "the window is closed".to_string())?;
+            match main {
+                Err(error) if error.starts_with("no element") => {
+                    for extra in extra_windows(cx) {
+                        let has = extra
+                            .window
+                            .update(cx, |_, window, _| has_element(window, &id))
+                            .unwrap_or(false);
+                        if has {
+                            return extra
+                                .window
+                                .update(cx, |_, window, cx| click(window, cx, &id))
+                                .map_err(|_| "the window is closed".to_string())?
+                                .map(Answer::Value);
+                        }
+                    }
+                    Err(error)
+                }
+                other => other,
+            }
+            .map(Answer::Value)
+        }
         Call::Actions => Ok(Answer::Actions(cx.global::<Hooks>().actions.list())),
         Call::RunAction { name, args } => cx
             .update_global::<Hooks, _>(|hooks, cx| hooks.actions.run(cx, &name, args))
@@ -328,6 +377,18 @@ fn answer(cx: &mut App, window: AnyWindowHandle, call: Call) -> Result<Answer, S
             })
             .map(Answer::Value),
     }
+}
+
+fn extra_windows(cx: &mut App) -> Vec<ExtraWindow> {
+    let finders = cx.global::<Hooks>().windows.clone();
+    finders.iter().filter_map(|find| find(cx)).collect()
+}
+
+fn has_element(window: &Window, id: &str) -> bool {
+    let target = ElementId::Name(id.to_string().into());
+    snapshots(window)
+        .iter()
+        .any(|snapshot| snapshot.path().last() == Some(&target))
 }
 
 fn round(value: f32) -> f64 {
@@ -353,11 +414,16 @@ fn id_of(snapshot: &ElementSnapshot) -> String {
 
 /// Elements that called `.test_support()` in the last frame, sorted by id.
 pub fn tree(window: &Window) -> Vec<ElementInfo> {
+    tree_at(window, None)
+}
+
+/// Like [`tree`], with the screen position of the window when the window itself cannot say.
+pub fn tree_at(window: &Window, screen_origin: Option<(f64, f64)>) -> Vec<ElementInfo> {
     let window_bounds = window.bounds();
-    let origin = (
+    let origin = screen_origin.unwrap_or((
         round(f32::from(window_bounds.origin.x)),
         round(f32::from(window_bounds.origin.y)),
-    );
+    ));
     let mut elements: Vec<_> = snapshots(window)
         .iter()
         .map(|snapshot| ElementInfo {
@@ -712,5 +778,80 @@ mod tests {
             panic!("feed failed");
         };
         assert_eq!(value["fed"], "/tmp/x.wav");
+    }
+
+    struct Badge {
+        clicks: Rc<std::cell::Cell<u32>>,
+    }
+
+    impl gpui_kit::Render for Badge {
+        fn render(
+            &mut self,
+            _: &mut Window,
+            _: &mut gpui_kit::Context<Self>,
+        ) -> impl gpui_kit::IntoElement {
+            use gpui_kit::TestSupportExt as _;
+            use gpui_kit::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled};
+            let clicks = Rc::clone(&self.clicks);
+            gpui_kit::div()
+                .id("badge.button")
+                .test_support()
+                .w(px(60.0))
+                .h(px(20.0))
+                .child("Badge")
+                .on_click(move |_, _, _| clicks.set(clicks.get() + 1))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_registered_window_joins_the_tree_at_its_screen_origin_and_takes_clicks(
+        cx: &mut TestAppContext,
+    ) {
+        let fixture = open(cx);
+        let clicks = Rc::new(std::cell::Cell::new(0));
+        let badge = {
+            let clicks = Rc::clone(&clicks);
+            cx.update(|cx| {
+                gpui_kit::open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(GpuiBounds {
+                            origin: Point::default(),
+                            size: size(px(60.0), px(20.0)),
+                        })),
+                        ..Default::default()
+                    },
+                    cx,
+                    move |_, cx| cx.new(|_| Badge { clicks }),
+                )
+                .expect("open the second window")
+                .0
+            })
+        };
+        cx.update(|cx| {
+            register_window(cx, move |_| {
+                Some(ExtraWindow {
+                    window: badge,
+                    origin: (500.0, 700.0),
+                })
+            })
+        });
+        cx.update_window(badge, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+
+        let tree = tree_of(cx, &fixture);
+        let button = element(&tree, "badge.button");
+        assert_eq!(button.text, "");
+        assert_eq!((button.root_bounds.x, button.root_bounds.y), (500.0, 700.0));
+        assert!(
+            tree.iter().any(|e| e.id == "sidebar.home"),
+            "the main window stays"
+        );
+
+        ask(cx, &fixture, Call::Click("badge.button".into())).unwrap();
+        assert_eq!(clicks.get(), 1);
+        let Err(error) = ask(cx, &fixture, Call::Click("badge.nope".into())) else {
+            panic!("expected an error");
+        };
+        assert!(error.contains("no element 'badge.nope'"), "{error}");
     }
 }

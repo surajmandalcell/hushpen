@@ -146,6 +146,7 @@ impl Controller {
             }
         }
         self.history_revision += 1;
+        self.last_row = Some(id);
         hook::record_event("history", &format!("saved {}", row.status));
     }
 

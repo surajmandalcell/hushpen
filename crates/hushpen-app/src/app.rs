@@ -5,6 +5,7 @@ use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic
 use crate::dictation::Dictation;
 use crate::dictionary::Dictionary;
 use crate::engine_host::EngineHost;
+use crate::flow_bar::{self, FlowBar, OpenHistory, PopUp};
 use crate::history::History;
 use crate::instance::{self, Start};
 use crate::mic::{self, CpalBackend, Mic};
@@ -12,6 +13,7 @@ use crate::models::{self, Models};
 use crate::shell::Shell;
 use crate::storage;
 use crate::theme::{self, space};
+use crate::views::View;
 use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui_kit::{
@@ -96,14 +98,6 @@ pub fn run() -> ExitCode {
                 async {}
             })
             .detach();
-            // Close quits for now; it will hide to the tray once the tray exists.
-            cx.on_window_closed(|cx, _| {
-                if cx.windows().is_empty() {
-                    cx.quit();
-                }
-            })
-            .detach();
-
             let (handle, shell) = match open_main_window(cx) {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -112,6 +106,14 @@ pub fn run() -> ExitCode {
                     return;
                 }
             };
+            // Close quits for now; it will hide to the tray once the tray exists. The flow bar
+            // opens and closes its own window, which must not end the app.
+            cx.on_window_closed(move |cx, _| {
+                if !cx.windows().contains(&handle) {
+                    cx.quit();
+                }
+            })
+            .detach();
             let mic = cx.new(|cx| {
                 let mut mic = Mic::new(mic_storage, Arc::new(CpalBackend), cx);
                 mic.set_recovered(recovered);
@@ -171,11 +173,31 @@ pub fn run() -> ExitCode {
                 })
                 .detach();
             }
-            let dictation =
-                cx.new(|cx| Dictation::new(dictation_storage, models.clone(), controller, cx));
+            let dictation = cx.new(|cx| {
+                Dictation::new(
+                    Rc::clone(&dictation_storage),
+                    models.clone(),
+                    controller.clone(),
+                    cx,
+                )
+            });
             shell.update(cx, |shell, cx| {
                 shell.attach_dictation(dictation.clone(), cx)
             });
+            let flow_bar = cx.new(|_| {
+                FlowBar::new(
+                    dictation_storage,
+                    controller,
+                    dictation.clone(),
+                    mic.clone(),
+                )
+            });
+            flow_bar.update(cx, |bar, _| {
+                bar.on_open_history(open_history(handle, shell.clone(), history.clone()))
+            });
+            #[cfg_attr(not(feature = "test-automation"), allow(unused_variables))]
+            let flow_bar_host =
+                flow_bar::run(cx, flow_bar.clone(), Box::new(PopUp::new(flow_bar.clone())));
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);
@@ -190,6 +212,7 @@ pub fn run() -> ExitCode {
                 );
                 crate::hook::attach_settings(cx, Rc::clone(&hook_storage));
                 crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
+                crate::hook::attach_flow_bar(cx, flow_bar, flow_bar_host);
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_dictation(cx, dictation);
@@ -211,6 +234,26 @@ pub fn run() -> ExitCode {
             .detach();
         });
     ExitCode::SUCCESS
+}
+
+/// What the flow bar's "Open history" button does: show the main window on the History view
+/// with the row open.
+fn open_history(
+    window: AnyWindowHandle,
+    shell: Entity<Shell>,
+    history: Option<Entity<History>>,
+) -> OpenHistory {
+    Rc::new(move |id, cx| {
+        shell.update(cx, |shell, cx| shell.select(View::History, cx));
+        if let Some(history) = &history {
+            history.update(cx, |history, cx| {
+                if let Err(reason) = history.open(id, cx) {
+                    log::warn!("the flow bar could not open that row: {reason}");
+                }
+            });
+        }
+        let _ = window.update(cx, |_, window, _| window.activate_window());
+    })
 }
 
 /// The window toolkit panics when it finds no display server, so a session with none ends
