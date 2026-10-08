@@ -29,7 +29,8 @@ use hushpen_core::error::{
 use hushpen_core::insert::flow::Step;
 use hushpen_core::insert::{Outcome, Overrides, Report};
 use hushpen_core::language;
-use hushpen_core::permission::Preflight;
+use hushpen_core::onboarding::{Availability, KeyGate};
+use hushpen_core::permission::{Permissions, Preflight};
 use hushpen_engine::{JobOutcome, TranscribeSpec};
 use hushpen_platform::insert::Inserter;
 use hushpen_platform::keys::{Reason, Unavailable};
@@ -44,6 +45,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(test)]
+mod gate_tests;
 mod history;
 #[cfg(test)]
 mod history_tests;
@@ -290,6 +293,10 @@ pub struct Controller {
     /// The id of the newest row a run saved.
     last_row: Option<String>,
     reprocess: Option<(String, ReprocessState)>,
+    /// Whether onboarding lets a dictation start, and where its words go.
+    gate: KeyGate,
+    /// Words that a practice dictation delivered, until onboarding takes them.
+    practice: Option<String>,
 }
 
 impl Controller {
@@ -390,6 +397,8 @@ impl Controller {
             history_revision: 0,
             last_row: None,
             reprocess: None,
+            gate: KeyGate::Open,
+            practice: None,
         }
     }
 
@@ -459,7 +468,7 @@ impl Controller {
         self.permissions = Some(PermissionWatch::start(preflight, &self.storage.settings));
     }
 
-    fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
+    pub fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
         if let Some(watch) = &mut self.permissions
             && watch.refresh(&self.storage.settings)
         {
@@ -470,6 +479,60 @@ impl Controller {
     /// The permissions that were granted before and are missing now, for onboarding.
     pub fn lost_permissions(&self) -> &[hushpen_core::permission::Permission] {
         self.permissions.as_ref().map_or(&[], PermissionWatch::lost)
+    }
+
+    /// What the system lets Hushpen do now, as of the last read.
+    pub fn access(&self) -> Permissions {
+        self.permissions.as_ref().map_or_else(
+            || Permissions::read(&hushpen_core::permission::NotApplicable),
+            |watch| *watch.current(),
+        )
+    }
+
+    /// Whether the global keys run, for the onboarding permissions page.
+    pub fn keys_availability(&self) -> Availability {
+        match &self.keys {
+            Some(KeysStatus::Available) => Availability::Ready,
+            Some(KeysStatus::Unavailable(why)) => unavailable(why),
+            None => Availability::Off("Global keys are not running.".into()),
+        }
+    }
+
+    /// Whether finished text can be pasted, for the onboarding permissions page.
+    pub fn paste_availability(&self) -> Availability {
+        match &self.insert {
+            InsertSupport::Ready(_) => Availability::Ready,
+            InsertSupport::Unavailable(why) => unavailable(why),
+            InsertSupport::Detached => Availability::Off("Paste is not set up.".into()),
+        }
+    }
+
+    /// The engine call, for work that is not a dictation, such as the microphone test.
+    pub fn runner(&self) -> Runner {
+        Arc::clone(&self.engine.run)
+    }
+
+    pub fn spawner(&self) -> Spawner {
+        Rc::clone(&self.spawn)
+    }
+
+    /// Sets what onboarding allows. `Closed` refuses every start, `Practice` lets dictations
+    /// start but delivers their words to [`Controller::take_practice`], and `Open` is normal.
+    pub fn set_gate(&mut self, gate: KeyGate, cx: &mut Context<Self>) {
+        if self.gate != gate {
+            self.gate = gate;
+            hook::record_event("onboarding", &format!("gate {gate:?}"));
+            cx.notify();
+        }
+    }
+
+    pub fn gate(&self) -> KeyGate {
+        self.gate
+    }
+
+    /// The words of the newest practice dictation, once.
+    pub fn take_practice(&mut self) -> Option<String> {
+        self.practice.take()
     }
 
     /// `hookctl state` section `permissions`.
@@ -665,6 +728,15 @@ impl Controller {
                 | AppEvent::HomeToggle
                 | AppEvent::FlowBarClick
         );
+        let refused = match self.gate {
+            KeyGate::Open => false,
+            KeyGate::Closed => starts || matches!(event, AppEvent::PasteLast),
+            KeyGate::Practice => matches!(event, AppEvent::PasteLast),
+        };
+        if refused {
+            hook::record_event("onboarding", "key-blocked");
+            return Err("onboarding is not finished: no dictation can start yet".into());
+        }
         if !starts {
             return Ok(());
         }
@@ -731,7 +803,11 @@ impl Controller {
                 delivery,
             } => self.insert(session, text, delivery, queue, cx),
             Effect::SaveRow { status, text, code } => self.save_row(status, text, code),
-            Effect::UpdatePasteLast { text } => self.last_text = Some(text),
+            Effect::UpdatePasteLast { text } => {
+                if self.gate != KeyGate::Practice {
+                    self.last_text = Some(text);
+                }
+            }
             Effect::MaxDurationWarning { seconds_left } => {
                 self.warned = true;
                 hook::record_event("pipeline", &format!("warning {seconds_left}s left"));
@@ -893,6 +969,12 @@ impl Controller {
         queue: &mut VecDeque<AppEvent>,
         cx: &mut Context<Self>,
     ) {
+        if self.gate == KeyGate::Practice {
+            hook::record_event("onboarding", "practice-text");
+            self.practice = Some(text);
+            queue.push_back(AppEvent::Inserted { session });
+            return;
+        }
         self.last_text = Some(text.clone());
         let ready_unix_ms = unix_ms();
         if delivery == Delivery::Paste
@@ -1129,7 +1211,14 @@ impl Controller {
     }
 
     fn save_row(&mut self, status: RowStatus, text: Option<String>, code: Option<&'static str>) {
-        self.record_history(status, &text, code);
+        if self.gate == KeyGate::Practice {
+            // A practice run is not the user's dictation: no row, and no audio kept.
+            if let Some(wav) = self.wav.take() {
+                let _ = std::fs::remove_file(wav);
+            }
+        } else {
+            self.record_history(status, &text, code);
+        }
         match status {
             RowStatus::Done => {
                 self.transcript = text.unwrap_or_default();
@@ -1254,6 +1343,14 @@ impl Controller {
             "last_text_chars": self.last_text.as_ref().map(|text| text.chars().count()),
             "prompt": self.last_prompt,
         })
+    }
+}
+
+fn unavailable(why: &Unavailable) -> Availability {
+    if why.reason == Reason::Wayland {
+        Availability::NotOnWayland
+    } else {
+        Availability::Off(why.message.clone())
     }
 }
 

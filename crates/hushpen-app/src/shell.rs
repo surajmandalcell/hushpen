@@ -7,6 +7,7 @@ use crate::hook;
 use crate::main_window;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
+use crate::onboarding::{self, Onboarding};
 use crate::shortcuts::{self, Shortcuts};
 use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
 use crate::views::View;
@@ -32,6 +33,10 @@ pub struct Shell {
     dictionary: Option<Entity<Dictionary>>,
     history: Option<Entity<History>>,
     shortcuts: Option<Entity<Shortcuts>>,
+    /// While it is active, the window shows onboarding instead of the sidebar and the views.
+    onboarding: Option<Entity<Onboarding>>,
+    /// Onboarding was on screen in the last frame.
+    onboarding_shown: bool,
     /// The scroll position of the content pane. The History list reads it to draw only the
     /// rows near the screen and to see when its end shows.
     content_scroll: ScrollHandle,
@@ -54,6 +59,8 @@ impl Shell {
             dictionary: None,
             history: None,
             shortcuts: None,
+            onboarding: None,
+            onboarding_shown: false,
             content_scroll: ScrollHandle::new(),
         }
     }
@@ -62,6 +69,13 @@ impl Shell {
     pub fn attach_shortcuts(&mut self, shortcuts: Entity<Shortcuts>, cx: &mut Context<Self>) {
         cx.observe(&shortcuts, |_, _, cx| cx.notify()).detach();
         self.shortcuts = Some(shortcuts);
+        cx.notify();
+    }
+
+    /// Shows onboarding in place of the normal window while it is active.
+    pub fn attach_onboarding(&mut self, onboarding: Entity<Onboarding>, cx: &mut Context<Self>) {
+        cx.observe(&onboarding, |_, _, cx| cx.notify()).detach();
+        self.onboarding = Some(onboarding);
         cx.notify();
     }
 
@@ -184,8 +198,18 @@ impl Shell {
     }
 
     fn sidebar_title(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        self.title_bar(hook::id("sidebar", "title"), cx)
+    }
+
+    /// The strip with the traffic lights. The window has no system title bar, so it is also the
+    /// place to drag the window by.
+    fn title_bar(
+        &self,
+        id: gpui_kit::SharedString,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         div()
-            .id(hook::id("sidebar", "title"))
+            .id(id)
             .h(px(space::SIDEBAR_TITLE_HEIGHT))
             .w_full()
             .flex_none()
@@ -402,9 +426,9 @@ fn start_move(event: &MouseDownEvent, window: &mut Window, _cx: &mut gpui_kit::A
 }
 
 impl Render for Shell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let shell = cx.entity();
-        div()
+        let frame = div()
             .id("shell")
             .track_focus(&self.shell_focus)
             .flex()
@@ -413,9 +437,38 @@ impl Render for Shell {
             .bg(theme::rgb_of(color::BACKGROUND))
             .text_color(theme::rgb_of(color::TEXT_BODY))
             .font_family(theme::FONT_FAMILY)
-            .text_token(BODY_MD)
-            .child(self.sidebar(cx))
-            .child(self.content(&shell, cx))
+            .text_token(BODY_MD);
+        let onboarding = self.onboarding.clone().filter(|o| o.read(cx).active());
+        if self.onboarding_shown && onboarding.is_none() {
+            // The control that held focus left with onboarding, and with no focus the keys reach
+            // no handler.
+            let home = self.shell_focus.clone();
+            window.defer(cx, move |window, cx| window.focus(&home, cx));
+        }
+        if onboarding.is_some() && window.focused(cx).is_none() {
+            // A control can leave the page while it has focus, such as the Download button when
+            // the model is ready. Onboarding repaints every second, so the loss is seen here.
+            let home = self.shell_focus.clone();
+            window.defer(cx, move |window, cx| window.focus(&home, cx));
+        }
+        self.onboarding_shown = onboarding.is_some();
+        match onboarding {
+            Some(onboarding) => frame
+                .flex_col()
+                .child(self.title_bar(hook::id("onboarding", "title-bar"), cx))
+                .child(
+                    div()
+                        .id(hook::id("onboarding", "scroll"))
+                        .test_support()
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .child(onboarding::panel::render(&onboarding, cx)),
+                ),
+            None => frame
+                .child(self.sidebar(cx))
+                .child(self.content(&shell, cx)),
+        }
     }
 }
 

@@ -38,7 +38,9 @@ icon_assets!(
         Check,
         CircleAlert,
         Square,
-        SquareCheck
+        SquareCheck,
+        Monitor,
+        Download
     ]
 );
 

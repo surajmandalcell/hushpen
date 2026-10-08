@@ -31,6 +31,8 @@ pub type Work = Rc<RefCell<VecDeque<Box<dyn FnOnce() + Send>>>>;
 pub struct FakeMic {
     pub start_error: Mutex<Option<CaptureError>>,
     pub starts: std::sync::atomic::AtomicUsize,
+    /// The sink of the newest session, so a test can send levels.
+    pub sink: Mutex<Option<EventSink>>,
 }
 
 struct FakeSession {
@@ -46,10 +48,11 @@ impl MicBackend for FakeMic {
         &self,
         _device: &str,
         path: PathBuf,
-        _sink: EventSink,
+        sink: EventSink,
     ) -> Result<Box<dyn MicSession>, CaptureError> {
         self.starts
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *self.sink.lock().unwrap() = Some(sink);
         if let Some(error) = self.start_error.lock().unwrap().clone() {
             return Err(error);
         }
@@ -160,6 +163,7 @@ pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
     let mic_backend = Arc::new(FakeMic {
         start_error: Mutex::new(None),
         starts: std::sync::atomic::AtomicUsize::new(0),
+        sink: Mutex::default(),
     });
     let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), mic_backend.clone(), cx));
     let models = cx.new(|cx| {

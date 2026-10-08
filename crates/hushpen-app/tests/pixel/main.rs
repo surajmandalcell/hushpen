@@ -23,13 +23,24 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
+use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
+use hushpen_app::mic::{CpalBackend, Mic};
+use hushpen_app::models::{self, Models};
+use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
 use hushpen_app::shell::Shell;
+use hushpen_app::storage;
 use hushpen_app::theme::{self, space};
 use hushpen_app::views::View;
 use hushpen_core::flow_bar::BarState;
+use hushpen_core::onboarding::{Session, Step};
+use hushpen_core::shortcut::Platform;
+use hushpen_engine::JobOutcome;
+use hushpen_store::data_dir::DataDir;
 use image::RgbaImage;
+use serde_json::json;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 fn baselines_dir() -> PathBuf {
@@ -201,6 +212,96 @@ fn captures_are_780x520_at_scale_two_and_use_the_design_tokens() {
             );
         }
     }
+}
+
+/// The main window with onboarding open at `step`, on a data folder with no models.
+fn capture_onboarding(step: &str) -> RgbaImage {
+    let tmp = tempfile::tempdir().expect("a scratch folder");
+    let storage = Rc::new(
+        storage::open(DataDir::open(tmp.path().join("data")).expect("open the data folder"))
+            .expect("open the storage"),
+    );
+    storage
+        .settings
+        .set_internal("onboarding.step", json!(step))
+        .expect("store the step");
+    let mut cx = headless();
+    let handle = cx
+        .open_window(
+            size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
+            |window, cx| {
+                let shell = cx.new(|cx| Shell::new(window, cx));
+                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(CpalBackend), cx));
+                let models = cx.new(|cx| {
+                    Models::new(
+                        Rc::clone(&storage),
+                        hushpen_core::catalog::embedded(),
+                        models::production_transfer(),
+                        models::thread_spawner(),
+                        None,
+                        cx,
+                    )
+                });
+                let engine = Engine::new(Arc::new(|_, _| JobOutcome::Cancelled), Rc::new(|| None));
+                let controller = cx.new(|cx| {
+                    Controller::new(
+                        Rc::clone(&storage),
+                        mic.clone(),
+                        models.clone(),
+                        engine,
+                        models::thread_spawner(),
+                        monotonic_clock(),
+                        cx,
+                    )
+                });
+                controller.update(cx, |controller, _| {
+                    controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
+                });
+                let onboarding = cx.new(|cx| {
+                    Onboarding::new(
+                        OnboardingParts {
+                            storage: Rc::clone(&storage),
+                            mic,
+                            models,
+                            controller,
+                            guide: Rc::new(SystemGuide),
+                            platform: Platform::Linux,
+                            session: Session::X11,
+                        },
+                        cx,
+                    )
+                });
+                shell.update(cx, |shell, cx| shell.attach_onboarding(onboarding, cx));
+                cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
+            },
+        )
+        .expect("open the headless window");
+    cx.run_until_parked();
+    cx.capture_screenshot(handle.into())
+        .expect("capture the window")
+}
+
+#[test]
+fn every_onboarding_step_matches_its_approved_baseline() {
+    let mut failures = Vec::new();
+    for step in Step::ALL {
+        let image = capture_onboarding(step.key());
+        assert_eq!(image.dimensions(), (1560, 1040), "{}", step.key());
+        check_image(&format!("onboarding-{}", step.key()), &image, &mut failures);
+    }
+    assert!(
+        failures.is_empty(),
+        "pixel baselines failed:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn onboarding_takes_the_whole_window_with_no_sidebar() {
+    let image = capture_onboarding("permissions");
+    assert_eq!(hex_at(&image, 100, 450), "#2F2F2F", "no sidebar color");
+    assert_eq!(hex_at(&image, 26, 24), "#FF5F57", "close light");
+    assert_eq!(hex_at(&image, 47, 24), "#FEBC2E", "minimize light");
 }
 
 fn flow_bar_states() -> Vec<(&'static str, Props)> {

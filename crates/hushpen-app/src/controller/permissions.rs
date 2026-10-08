@@ -55,7 +55,6 @@ impl PermissionWatch {
         }
     }
 
-    #[cfg(test)]
     pub fn current(&self) -> &Permissions {
         &self.current
     }

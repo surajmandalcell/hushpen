@@ -24,6 +24,7 @@ pub mod mic;
 pub mod models;
 pub mod native;
 pub mod net;
+pub mod onboarding;
 pub mod shell;
 pub mod shortcuts;
 pub mod storage;

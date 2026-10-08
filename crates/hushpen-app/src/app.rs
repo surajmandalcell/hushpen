@@ -13,6 +13,7 @@ use crate::main_window;
 use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
 use crate::native::native_handle;
+use crate::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
 use crate::shell::Shell;
 use crate::shortcuts::Shortcuts;
 use crate::storage;
@@ -185,6 +186,26 @@ pub fn run() -> ExitCode {
             controller.update(cx, |controller, _| {
                 controller.attach_permissions(hushpen_platform::permissions::system());
             });
+            let onboarding = cx.new(|cx| {
+                Onboarding::new(
+                    OnboardingParts {
+                        storage: Rc::clone(&dictation_storage),
+                        mic: mic.clone(),
+                        models: models.clone(),
+                        controller: controller.clone(),
+                        guide: Rc::new(SystemGuide),
+                        platform: Platform::current(),
+                        session: display_session(),
+                    },
+                    cx,
+                )
+            });
+            onboarding.update(cx, |onboarding, cx| {
+                onboarding.attach_shortcuts(shortcuts.clone(), cx)
+            });
+            shell.update(cx, |shell, cx| {
+                shell.attach_onboarding(onboarding.clone(), cx)
+            });
             let history = handle
                 .update(cx, |_, window, cx| {
                     cx.new(|cx| History::new(history_storage, controller.clone(), window, cx))
@@ -263,6 +284,7 @@ pub fn run() -> ExitCode {
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_shortcuts(cx, shortcuts);
                 crate::hook::attach_models(cx, models);
+                crate::hook::attach_onboarding(cx, onboarding);
                 crate::hook::attach_dictation(cx, dictation);
                 if let Some(dictionary) = dictionary {
                     crate::hook::attach_dictionary(cx, dictionary);
@@ -316,6 +338,23 @@ fn no_display_exit() -> Option<ExitCode> {
 #[cfg(not(target_os = "linux"))]
 fn no_display_exit() -> Option<ExitCode> {
     None
+}
+
+/// The display session for the onboarding permissions page. macOS has no such choice.
+#[cfg(target_os = "linux")]
+fn display_session() -> hushpen_core::onboarding::Session {
+    use hushpen_core::onboarding::Session;
+    use hushpen_platform::keys::session::{Session as Found, detect};
+    match detect() {
+        Found::X11 => Session::X11,
+        Found::Wayland => Session::Wayland,
+        Found::NoDisplay => Session::NoDisplay,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn display_session() -> hushpen_core::onboarding::Session {
+    hushpen_core::onboarding::Session::X11
 }
 
 /// Starts the key listener with the saved shortcuts and hands the controller and the Shortcuts

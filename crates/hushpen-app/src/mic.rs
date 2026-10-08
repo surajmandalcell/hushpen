@@ -82,6 +82,8 @@ pub struct Mic {
     backend: Arc<dyn MicBackend>,
     events: UnboundedSender<MicEvent>,
     devices: Vec<InputDevice>,
+    /// The microphone list was read at least once.
+    listed: bool,
     saved: String,
     selection: Selection,
     /// The current notice says the saved microphone is missing.
@@ -129,6 +131,7 @@ impl Mic {
             backend,
             events,
             devices: Vec::new(),
+            listed: false,
             saved,
             selection: Selection::Default,
             gone_notice: false,
@@ -158,6 +161,12 @@ impl Mic {
 
     pub fn devices(&self) -> &[InputDevice] {
         &self.devices
+    }
+
+    /// Whether the list of microphones was read at least once. Before that, an empty list
+    /// means "not looked yet", not "no microphone".
+    pub fn listed(&self) -> bool {
+        self.listed
     }
 
     pub fn saved(&self) -> &str {
@@ -262,7 +271,8 @@ impl Mic {
             }
         };
         let selection = resolve_selection(&self.saved, &devices);
-        if devices == self.devices && selection == self.selection {
+        let first = !std::mem::replace(&mut self.listed, true);
+        if !first && devices == self.devices && selection == self.selection {
             return;
         }
         self.devices = devices;

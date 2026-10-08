@@ -22,6 +22,8 @@ mod mic;
 #[cfg(feature = "test-automation")]
 mod models;
 #[cfg(feature = "test-automation")]
+mod onboarding;
+#[cfg(feature = "test-automation")]
 mod settings;
 #[cfg(feature = "test-automation")]
 mod shortcuts;
@@ -46,6 +48,8 @@ pub use history::attach as attach_history;
 pub use mic::attach as attach_mic;
 #[cfg(feature = "test-automation")]
 pub use models::attach as attach_models;
+#[cfg(feature = "test-automation")]
+pub use onboarding::attach as attach_onboarding;
 #[cfg(feature = "test-automation")]
 pub use settings::attach as attach_settings;
 #[cfg(feature = "test-automation")]
