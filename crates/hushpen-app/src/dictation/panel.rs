@@ -24,6 +24,8 @@ struct Snapshot {
     status: String,
     transcript: String,
     notice: Option<(String, bool)>,
+    /// Why the global keys are off, shown as plain information rather than an error.
+    keys_notice: Option<String>,
     can_record: bool,
     language: String,
     detail: String,
@@ -41,31 +43,29 @@ pub fn render(
         let me = dictation.read(cx);
         let blocker = me.blocker(cx);
         let off = me.picker_off_reason(cx);
-        let language = me.language();
+        let language = me.language(cx);
+        let phase = me.phase(cx);
         let detected = me
-            .detected()
+            .detected(cx)
             .map(|code| language::label(code).to_owned())
-            .filter(|_| me.phase() == Phase::Done);
+            .filter(|_| phase == Phase::Done);
         let detail = match (off, detected) {
             (Some(reason), _) => reason.to_owned(),
             (None, Some(name)) => format!("Detected: {name}"),
             (None, None) if language == language::AUTO => "Detects the language you speak".into(),
             (None, None) => String::new(),
         };
-        let notice = match (me.notice(), blocker) {
-            (Some(notice), _) if me.phase() != Phase::Listening => {
-                Some((notice.message.clone(), false))
-            }
-            (_, Some(blocker)) if !me.phase().busy() => {
-                Some((blocker.message, blocker.models_link))
-            }
+        let notice = match (me.notice(cx), blocker) {
+            (Some(notice), _) if phase != Phase::Listening => Some((notice.message.clone(), false)),
+            (_, Some(blocker)) if !phase.busy() => Some((blocker.message, blocker.models_link)),
             _ => None,
         };
         Snapshot {
-            phase: me.phase(),
-            status: status_text(me.phase(), me.can_record(cx)),
-            transcript: me.transcript().to_owned(),
+            phase,
+            status: status_text(phase, me.can_record(cx)),
+            transcript: me.transcript(cx).to_owned(),
             notice,
+            keys_notice: me.keys_notice(cx).map(str::to_owned),
             can_record: me.can_record(cx),
             language,
             detail,
@@ -99,6 +99,9 @@ pub fn render(
         .child(header(dictation, &view, &record_focus, &copy_focus));
     if let Some((message, link)) = view.notice.clone() {
         panel = panel.child(notice_row(shell, message, link, &models_focus));
+    }
+    if let Some(message) = view.keys_notice.clone() {
+        panel = panel.child(keys_row(message));
     }
     panel =
         panel
@@ -235,6 +238,31 @@ fn notice_row(
                 open,
             )
         }))
+}
+
+fn keys_row(message: String) -> impl IntoElement + use<> {
+    div()
+        .id(hook::id("home", "keys-notice"))
+        .test_support()
+        .role(Role::Status)
+        .aria_label(message.clone())
+        .flex()
+        .items_center()
+        .gap(px(space::SM))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .border_t_1()
+        .border_color(theme::rgb_of(color::DIVIDER))
+        .text_token(BODY_MD)
+        .text_color(theme::rgb_of(color::TEXT_MUTED))
+        .child(
+            svg()
+                .path(IconName::Info.path())
+                .size(px(14.0))
+                .flex_none()
+                .text_color(theme::rgb_of(color::TEXT_MUTED)),
+        )
+        .child(div().flex_1().min_w_0().child(message))
 }
 
 fn transcript_row(view: &Snapshot) -> impl IntoElement + use<> {

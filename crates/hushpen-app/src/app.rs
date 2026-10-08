@@ -1,7 +1,8 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
 use crate::assets::{AppAssets, register_fonts};
-use crate::dictation::{Dictation, Engine};
+use crate::controller::{Controller, Engine, KeysStatus, monotonic_clock};
+use crate::dictation::Dictation;
 use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
 use crate::mic::{self, CpalBackend, Mic};
@@ -15,6 +16,7 @@ use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Bounds, Entity, Window, WindowBounds, WindowOptions, px,
     size,
 };
+use hushpen_platform::keys::{GlobalKeys, HoldKey};
 use hushpen_platform::window::{WindowHandle, lock_chrome};
 use hushpen_store::data_dir::DataDir;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -42,6 +44,9 @@ pub fn run() -> ExitCode {
     };
     if let Err(error) = storage::install_logger(&data) {
         eprintln!("hushpen: could not start the log: {error}");
+    }
+    if let Some(exit) = no_display_exit() {
+        return exit;
     }
     #[cfg(feature = "test-automation")]
     let (_hook_server, hook_jobs) = match crate::hook::start(&data) {
@@ -121,16 +126,20 @@ pub fn run() -> ExitCode {
                 )
             });
             shell.update(cx, |shell, cx| shell.attach_models(models.clone(), cx));
-            let dictation = cx.new(|cx| {
-                Dictation::new(
-                    dictation_storage,
+            let controller = cx.new(|cx| {
+                Controller::new(
+                    Rc::clone(&dictation_storage),
                     mic.clone(),
                     models.clone(),
                     Engine::host(&dictation_engine),
                     models::thread_spawner(),
+                    monotonic_clock(),
                     cx,
                 )
             });
+            start_keys(&controller, cx);
+            let dictation =
+                cx.new(|cx| Dictation::new(dictation_storage, models.clone(), controller, cx));
             shell.update(cx, |shell, cx| {
                 shell.attach_dictation(dictation.clone(), cx)
             });
@@ -162,6 +171,47 @@ pub fn run() -> ExitCode {
             .detach();
         });
     ExitCode::SUCCESS
+}
+
+/// The window toolkit panics when it finds no display server, so a session with none ends
+/// here, with the reason in the log and a clean exit.
+#[cfg(target_os = "linux")]
+fn no_display_exit() -> Option<ExitCode> {
+    let session = hushpen_platform::keys::session::display_problem()?;
+    let reason = match session {
+        hushpen_platform::keys::session::Session::Wayland => "wayland",
+        _ => "no-display",
+    };
+    log::warn!("global keys not available: {reason}; no display server can be reached");
+    eprintln!("hushpen: no display server can be reached (global keys not available: {reason})");
+    log::logger().flush();
+    Some(ExitCode::SUCCESS)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn no_display_exit() -> Option<ExitCode> {
+    None
+}
+
+/// Starts the hold key and Esc listener and hands the controller what it needs to run them.
+/// A failure is not fatal: the buttons still work, and Home says why the keys are off.
+fn start_keys(controller: &Entity<Controller>, cx: &mut App) {
+    let events = controller.read(cx).sender();
+    let sink: hushpen_platform::keys::Sink = Arc::new(move |event| events.send(event));
+    let (status, session_active): (KeysStatus, Rc<dyn Fn(bool)>) =
+        match GlobalKeys::start(HoldKey::default(), sink) {
+            Ok(keys) => (
+                KeysStatus::Available,
+                Rc::new(move |active| keys.set_session_active(active)),
+            ),
+            Err(why) => {
+                log::warn!("global keys not available: {}", why.reason.key());
+                (KeysStatus::Unavailable(why), Rc::new(|_| {}))
+            }
+        };
+    controller.update(cx, |controller, _| {
+        controller.attach_keys(status, session_active)
+    });
 }
 
 fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
