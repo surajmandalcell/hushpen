@@ -172,6 +172,21 @@ failures=""
 [ -z "$missing" ] || failures+="transcript misses: $missing ($text); "
 check_failures "VAL-MIC-003 session WAV" "16000 Hz mono 16-bit, $wav_secs s vs $SESSION_WALL_MS ms wall (diff $diff_ms ms), transcript: $text" "$failures"
 
+# A 2 s recording with nothing playing: the virtual mic sends no audio at all, so the first
+# callback comes late, and the file must still follow the wall clock.
+started=$(now_ms)
+hook_action capture-start >/dev/null
+wait_state listening 5
+sleep 2
+quiet_stop=$(hook_action capture-stop '{"keep":true}')
+quiet_wall_ms=$(($(now_ms) - started))
+quiet_ms=$(jq -r .duration_ms <<<"$quiet_stop")
+quiet_diff=$((quiet_wall_ms - quiet_ms))
+[ "$quiet_diff" -lt 0 ] && quiet_diff=$((-quiet_diff))
+failures=""
+[ "$quiet_diff" -le 300 ] || failures+="the 2 s WAV is ${quiet_ms} ms but start to stop took ${quiet_wall_ms} ms; "
+check_failures "VAL-MIC-003 short session WAV" "$quiet_ms ms vs $quiet_wall_ms ms wall (diff $quiet_diff ms), no audio played" "$failures"
+
 echo "== VAL-MIC-008 hook WAV feed"
 rm -f "$SESSIONS"/*.wav
 speech_session feed feed

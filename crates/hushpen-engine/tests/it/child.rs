@@ -470,6 +470,13 @@ fn cancel_settles_in_under_a_second_also_when_the_engine_hangs() {
     );
 
     // A stopped engine cannot answer a cancel; the supervisor kills it and starts a new one.
+    // The last cancel may have killed the engine, so wait for its replacement before reading the pid.
+    assert!(
+        client.wait_for(Duration::from_secs(20), |s| s.state == EngineState::Ready
+            && s.pid.is_some()
+            && s.model.is_some()),
+        "the engine did not settle after the cancel rounds"
+    );
     let stopped_pid = client.status().pid.expect("a running engine");
     let job = client.transcribe(english(&long));
     std::thread::sleep(Duration::from_millis(300));

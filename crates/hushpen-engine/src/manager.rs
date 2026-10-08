@@ -520,6 +520,8 @@ impl Manager {
         let Some(mut running) = self.running.take() else {
             return;
         };
+        // A caller released below must not read the dead child's pid as the live engine.
+        self.publish();
         self.generation += 1;
         let pid = running.child.id();
         let uptime = running.spawned.elapsed();
