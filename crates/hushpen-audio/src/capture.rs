@@ -93,6 +93,9 @@ impl Capture {
     /// `list_inputs`) into a new WAV at `path`. The file is created only after
     /// the microphone opened.
     pub fn start(device: &str, path: PathBuf, sink: EventSink) -> Result<Self, CaptureError> {
+        // Opening a stream can take a second on PulseAudio. The file's clock starts with the
+        // caller's start action, not when the stream is up, or that second is missing from it.
+        let started = Instant::now();
         let (tx, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (stop_tx, stop_rx) = mpsc::channel();
@@ -118,7 +121,7 @@ impl Capture {
             stop: stop_tx,
             done: done_rx,
         };
-        match Self::with_worker(path, sink, tx, rx, true) {
+        match Self::with_worker(path, sink, tx, rx, true, started) {
             Ok(mut capture) => {
                 capture.mic = Some(mic);
                 Ok(capture)
@@ -132,18 +135,20 @@ impl Capture {
 
     /// A session with no microphone. Only [`Capture::feeder`] supplies audio.
     pub fn start_without_mic(path: PathBuf, sink: EventSink) -> Result<Self, CaptureError> {
+        let started = Instant::now();
         let (tx, rx) = mpsc::channel();
-        Self::with_worker(path, sink, tx, rx, false)
+        Self::with_worker(path, sink, tx, rx, false, started)
     }
 
-    /// `paced` makes the file follow the wall clock: time in which the
-    /// microphone delivered nothing becomes silence.
+    /// `paced` makes the file follow the wall clock, counted from `started`: time in which
+    /// the microphone delivered nothing becomes silence.
     fn with_worker(
         path: PathBuf,
         sink: EventSink,
         tx: Sender<Msg>,
         rx: Receiver<Msg>,
         paced: bool,
+        started: Instant,
     ) -> Result<Self, CaptureError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -151,7 +156,7 @@ impl Capture {
         let writer = SessionWriter::create(&path)?;
         let worker = thread::Builder::new()
             .name("hushpen-capture".into())
-            .spawn(move || Worker::new(path, writer, sink, paced).run(&rx))?;
+            .spawn(move || Worker::new(path, writer, sink, paced, started).run(&rx))?;
         Ok(Self {
             tx,
             worker: Some(worker),
@@ -221,7 +226,13 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(path: PathBuf, writer: SessionWriter, sink: EventSink, paced: bool) -> Self {
+    fn new(
+        path: PathBuf,
+        writer: SessionWriter,
+        sink: EventSink,
+        paced: bool,
+        started: Instant,
+    ) -> Self {
         Self {
             path,
             writer: Some(writer),
@@ -234,7 +245,7 @@ impl Worker {
             mono: Vec::new(),
             out: Vec::new(),
             paced,
-            started: Instant::now(),
+            started,
             written: 0,
         }
     }
@@ -597,10 +608,17 @@ mod tests {
 
     /// Runs a worker on a thread the way `Capture` does and returns its sender.
     fn worker(path: &Path, paced: bool) -> (Sender<Msg>, Instant, JoinHandle<()>) {
+        worker_since(path, paced, Instant::now())
+    }
+
+    fn worker_since(
+        path: &Path,
+        paced: bool,
+        started: Instant,
+    ) -> (Sender<Msg>, Instant, JoinHandle<()>) {
         let (tx, rx) = mpsc::channel();
         let writer = SessionWriter::create(path).unwrap();
-        let worker = Worker::new(path.to_path_buf(), writer, events().0, paced);
-        let started = worker.started;
+        let worker = Worker::new(path.to_path_buf(), writer, events().0, paced, started);
         (tx, started, thread::spawn(move || worker.run(&rx)))
     }
 
@@ -693,6 +711,41 @@ mod tests {
         assert!(
             (480..=700).contains(&finished.duration_ms),
             "an idle source still gives the elapsed time, got {} ms",
+            finished.duration_ms
+        );
+    }
+
+    #[test]
+    fn time_spent_opening_the_stream_counts_toward_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let start_action = Instant::now() - Duration::from_millis(1_100);
+        let (tx, _, handle) = worker_since(&path, true, start_action);
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        assert!(
+            (1_100..=1_300).contains(&finished.duration_ms),
+            "the 1.1 s before the worker existed is in the file, got {} ms",
+            finished.duration_ms
+        );
+    }
+
+    #[test]
+    fn a_two_second_session_with_a_late_first_callback_matches_the_wall_clock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let start_action = Instant::now() - Duration::from_millis(2_000);
+        let (tx, _, handle) = worker_since(&path, true, start_action);
+        // the stream opened late and the first delivery, 1 s of audio, arrives only now
+        tx.send(tone_second(Instant::now())).unwrap();
+        let finished = stop(&tx);
+        handle.join().unwrap();
+
+        let wall_ms = start_action.elapsed().as_millis() as i64;
+        assert!(
+            (finished.duration_ms as i64 - wall_ms).abs() <= 300,
+            "wall {wall_ms} ms, file {} ms",
             finished.duration_ms
         );
     }
