@@ -143,8 +143,8 @@ jobs:
     timeout-minutes: 90
     env:
       HUSHPEN_PLATFORM: linux/amd64
-      HUSHPEN_ROOT: ${{ runner.temp }}/hushpen
-      HUSHPEN_TEST_ASSETS: ${{ runner.temp }}/assets
+      HUSHPEN_ROOT: /home/runner/work/_temp/hushpen
+      HUSHPEN_TEST_ASSETS: /home/runner/work/_temp/assets
     steps:
       - uses: actions/checkout@v4
       - name: Free disk space for the debug build and the image
