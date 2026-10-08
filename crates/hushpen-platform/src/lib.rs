@@ -2,6 +2,7 @@
 
 pub mod insert;
 pub mod keys;
+pub mod login_item;
 pub mod permissions;
 pub mod tray_host;
 pub mod window;
