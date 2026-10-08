@@ -133,12 +133,13 @@ impl AsrEngine for WhisperEngine {
 
         let mut segments = Vec::new();
         let mut detected = language.map(str::to_owned);
-        for window in windows::plan(pcm.len()) {
+        let padded = windows::with_tail_pad(pcm);
+        for window in windows::plan(padded.len()) {
             if cancel.is_cancelled() {
                 return Err(EngineError::Cancelled);
             }
             let (found, language_used) = self.run_window(
-                &pcm[window.start..window.end],
+                &padded[window.start..window.end],
                 detected.as_deref(),
                 options.prompt.as_deref(),
                 cancel,
@@ -147,6 +148,7 @@ impl AsrEngine for WhisperEngine {
             detected.get_or_insert(language_used);
             segments.extend(windows::own_segments(&window, found));
         }
+        let segments = windows::clip_to_audio(segments, pcm.len());
         let text = segments
             .iter()
             .map(|s| s.text.as_str())

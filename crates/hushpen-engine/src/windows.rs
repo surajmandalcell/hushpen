@@ -60,6 +60,32 @@ pub fn own_segments(window: &Window, segments: Vec<Segment>) -> Vec<Segment> {
         .collect()
 }
 
+/// Silence added after the audio. whisper can drop the last word of a clip that stops on
+/// speech, and a recording that ends the moment the user stops talking does exactly that.
+pub const TAIL_PAD: usize = SAMPLE_RATE * 3 / 10;
+
+/// The audio followed by [`TAIL_PAD`] of digital silence.
+pub fn with_tail_pad(pcm: &[f32]) -> Vec<f32> {
+    let mut padded = Vec::with_capacity(pcm.len() + TAIL_PAD);
+    padded.extend_from_slice(pcm);
+    padded.resize(pcm.len() + TAIL_PAD, 0.0);
+    padded
+}
+
+/// Takes the pad out of the result again: a segment that starts inside it is dropped (whisper
+/// can invent words for silence) and one that runs into it ends where the audio ends.
+pub fn clip_to_audio(segments: Vec<Segment>, audio_samples: usize) -> Vec<Segment> {
+    let audio_ms = (audio_samples * 1000 / SAMPLE_RATE) as u64;
+    segments
+        .into_iter()
+        .filter(|s| s.start_ms < audio_ms)
+        .map(|s| Segment {
+            end_ms: s.end_ms.min(audio_ms),
+            ..s
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,6 +96,30 @@ mod tests {
             end_ms,
             text: text.into(),
         }
+    }
+
+    #[test]
+    fn the_tail_pad_is_silence_after_the_untouched_audio() {
+        let padded = with_tail_pad(&[0.5, -0.5, 0.25]);
+        assert_eq!(padded.len(), 3 + TAIL_PAD);
+        assert_eq!(padded[..3], [0.5, -0.5, 0.25]);
+        assert!(padded[3..].iter().all(|s| *s == 0.0));
+        assert_eq!(with_tail_pad(&[]).len(), TAIL_PAD);
+    }
+
+    #[test]
+    fn the_pad_never_shows_in_the_segments() {
+        let audio = 2 * SAMPLE_RATE;
+        let kept = clip_to_audio(
+            vec![
+                seg(0, 1_000, "inside"),
+                seg(1_500, 2_200, "runs into the pad"),
+                seg(2_000, 2_300, "only in the pad"),
+            ],
+            audio,
+        );
+        let spans: Vec<_> = kept.iter().map(|s| (s.start_ms, s.end_ms)).collect();
+        assert_eq!(spans, [(0, 1_000), (1_500, 2_000)]);
     }
 
     #[test]

@@ -128,6 +128,45 @@ fn transcribes_short_clip_on_gpu() {
     assert_expected_words(&result.text);
 }
 
+/// The clip cut right after its last loud sample: it ends on speech with no trailing silence.
+fn cut_at_last_speech(pcm: &[f32]) -> Vec<f32> {
+    let last = pcm.iter().rposition(|s| s.abs() > 0.01).expect("speech");
+    pcm[..=last].to_vec()
+}
+
+#[test]
+fn a_clip_that_ends_on_speech_keeps_its_last_word() {
+    let mut engine = load(false);
+    let clip = cut_at_last_speech(&read_wav(&short_wav()));
+    let result = engine
+        .transcribe(&clip, &english(), &CancelFlag::new())
+        .expect("transcribe");
+    assert_expected_words(&result.text);
+    let audio_ms = clip.len() as u64 * 1000 / 16_000;
+    for segment in &result.segments {
+        assert!(
+            segment.end_ms <= audio_ms,
+            "a segment runs past the audio into the pad: {segment:?}"
+        );
+    }
+
+    let Some(long) = assets_dir().map(|d| d.join("fixtures/dictation-45s.wav")) else {
+        return;
+    };
+    if !long.exists() {
+        return;
+    }
+    let clip = cut_at_last_speech(&read_wav(&long));
+    let result = engine
+        .transcribe(&clip, &english(), &CancelFlag::new())
+        .expect("transcribe");
+    assert!(
+        words(&result.text).ends_with("the final word of this dictation is lighthouse"),
+        "unexpected transcript tail: {}",
+        words(&result.text)
+    );
+}
+
 #[test]
 fn detects_language_when_none_is_given() {
     let mut engine = load(false);

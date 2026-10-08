@@ -37,6 +37,10 @@ const MID_STREAM_GAP_MS: u64 = 250;
 const END_GAP_MS: u64 = 100;
 const MIC_START_TIMEOUT: Duration = Duration::from_secs(8);
 const MIC_STOP_TIMEOUT: Duration = Duration::from_millis(1500);
+/// How long a stop waits for the host to hand over the audio it still holds. Audio buffers
+/// are 20 ms to 100 ms, so a callback after the stop request means the last words are in the
+/// file. A source that sends nothing, such as an idle virtual one, costs the whole wait.
+const TAIL_DRAIN_MAX: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CaptureEvent {
@@ -86,6 +90,9 @@ pub struct Capture {
     worker: Option<JoinHandle<()>>,
     mic: Option<MicHandle>,
     pub(crate) feeding: Arc<AtomicBool>,
+    started: Instant,
+    /// Milliseconds after `started` of the newest microphone delivery the worker wrote, plus 1.
+    mic_seen: Arc<AtomicU64>,
 }
 
 impl Capture {
@@ -154,19 +161,30 @@ impl Capture {
             std::fs::create_dir_all(parent)?;
         }
         let writer = SessionWriter::create(&path)?;
+        let mic_seen = Arc::new(AtomicU64::new(0));
+        let seen = Arc::clone(&mic_seen);
         let worker = thread::Builder::new()
             .name("hushpen-capture".into())
-            .spawn(move || Worker::new(path, writer, sink, paced, started).run(&rx))?;
+            .spawn(move || {
+                let mut worker = Worker::new(path, writer, sink, paced, started);
+                worker.mic_seen = seen;
+                worker.run(&rx);
+            })?;
         Ok(Self {
             tx,
             worker: Some(worker),
             mic: None,
             feeding: Arc::new(AtomicBool::new(false)),
+            started,
+            mic_seen,
         })
     }
 
     /// Closes the microphone, fixes the WAV header, and returns the file.
     pub fn stop(mut self) -> Result<Finished, CaptureError> {
+        if self.mic.is_some() {
+            self.drain_tail();
+        }
         if let Some(mic) = self.mic.take() {
             mic.shut_down();
         }
@@ -181,6 +199,18 @@ impl Capture {
             let _ = worker.join();
         }
         result
+    }
+}
+
+impl Capture {
+    /// Waits until the microphone has delivered something after now, so audio the host still
+    /// held when the user stopped is in the file instead of being replaced by padding.
+    fn drain_tail(&self) {
+        let asked_ms = self.started.elapsed().as_millis() as u64;
+        let give_up = Instant::now() + TAIL_DRAIN_MAX;
+        while self.mic_seen.load(Ordering::SeqCst) <= asked_ms && Instant::now() < give_up {
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 }
 
@@ -223,6 +253,7 @@ struct Worker {
     started: Instant,
     /// 16 kHz samples in the file so far.
     written: u64,
+    mic_seen: Arc<AtomicU64>,
 }
 
 impl Worker {
@@ -247,6 +278,7 @@ impl Worker {
             paced,
             started,
             written: 0,
+            mic_seen: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -270,6 +302,10 @@ impl Worker {
                         self.pad_to(at, chunk_ms, MID_STREAM_GAP_MS);
                     }
                     self.ingest(source, rate, channels, &data);
+                    if source == Source::Mic {
+                        let ms = at.saturating_duration_since(self.started).as_millis() as u64;
+                        self.mic_seen.fetch_max(ms + 1, Ordering::SeqCst);
+                    }
                 }
                 Ok(Msg::FeedStart) => {
                     self.pad_to(Instant::now(), 0, MID_STREAM_GAP_MS);
@@ -639,6 +675,83 @@ mod tests {
         let (reply, answer) = mpsc::channel();
         tx.send(Msg::Stop(reply)).unwrap();
         answer.recv().unwrap().unwrap()
+    }
+
+    /// A capture whose microphone is a thread that delivers 100 ms of tone `after` from now, as
+    /// a host does with audio it was still holding. `None` delivers nothing.
+    fn capture_with_slow_host(path: &Path, after: Option<Duration>) -> Capture {
+        let (tx, rx) = mpsc::channel();
+        let started = Instant::now();
+        let mut capture = Capture::with_worker(
+            path.to_path_buf(),
+            events().0,
+            tx.clone(),
+            rx,
+            true,
+            started,
+        )
+        .unwrap();
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        thread::spawn(move || {
+            // A closed stream drops what the host still held, so a stop signal before `after`
+            // ends the thread without delivering.
+            if let Some(after) = after
+                && stop_rx.recv_timeout(after).is_err()
+            {
+                let data = (0..1_600)
+                    .map(|i| {
+                        f32::sin(2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16_000.0) * 0.4
+                    })
+                    .collect();
+                let _ = tx.send(Msg::Frames {
+                    source: Source::Mic,
+                    rate: 16_000,
+                    channels: 1,
+                    data,
+                    at: Instant::now(),
+                });
+            }
+            let _ = stop_rx.recv();
+            let _ = done_tx.send(());
+        });
+        capture.mic = Some(MicHandle {
+            stop: stop_tx,
+            done: done_rx,
+        });
+        capture
+    }
+
+    #[test]
+    fn audio_the_host_hands_over_after_the_stop_request_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let capture = capture_with_slow_host(&path, Some(Duration::from_millis(90)));
+        thread::sleep(Duration::from_millis(10));
+        let finished = capture.stop().unwrap();
+
+        let samples: Vec<i16> = hound::WavReader::open(&finished.path)
+            .unwrap()
+            .samples::<i16>()
+            .map(Result::unwrap)
+            .collect();
+        assert!(
+            samples.iter().any(|s| s.abs() > 5_000),
+            "the 100 ms the host still held is a tone in the file, not silence"
+        );
+    }
+
+    #[test]
+    fn a_silent_host_delays_the_stop_only_up_to_the_drain_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let capture = capture_with_slow_host(&dir.path().join("a.wav"), None);
+        let asked = Instant::now();
+        capture.stop().unwrap();
+        let took = asked.elapsed();
+        assert!(
+            (TAIL_DRAIN_MAX..TAIL_DRAIN_MAX + Duration::from_millis(500)).contains(&took),
+            "took {took:?}"
+        );
     }
 
     #[test]
