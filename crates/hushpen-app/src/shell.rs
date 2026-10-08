@@ -1,5 +1,6 @@
 //! The app window: sidebar, toolbar, traffic lights, and the active view.
 
+use crate::about::{self, About};
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::history::{self, History};
@@ -8,7 +9,8 @@ use crate::main_window;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
 use crate::onboarding::{self, Onboarding};
-use crate::shortcuts::{self, Shortcuts};
+use crate::settings::{self, Settings};
+use crate::shortcuts::Shortcuts;
 use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
@@ -33,6 +35,8 @@ pub struct Shell {
     dictionary: Option<Entity<Dictionary>>,
     history: Option<Entity<History>>,
     shortcuts: Option<Entity<Shortcuts>>,
+    settings: Option<Entity<Settings>>,
+    about: Option<Entity<About>>,
     /// While it is active, the window shows onboarding instead of the sidebar and the views.
     onboarding: Option<Entity<Onboarding>>,
     /// Onboarding was on screen in the last frame.
@@ -59,6 +63,8 @@ impl Shell {
             dictionary: None,
             history: None,
             shortcuts: None,
+            settings: None,
+            about: None,
             onboarding: None,
             onboarding_shown: false,
             content_scroll: ScrollHandle::new(),
@@ -69,6 +75,20 @@ impl Shell {
     pub fn attach_shortcuts(&mut self, shortcuts: Entity<Shortcuts>, cx: &mut Context<Self>) {
         cx.observe(&shortcuts, |_, _, cx| cx.notify()).detach();
         self.shortcuts = Some(shortcuts);
+        cx.notify();
+    }
+
+    /// Shows the Settings view and repaints when it changes.
+    pub fn attach_settings(&mut self, settings: Entity<Settings>, cx: &mut Context<Self>) {
+        cx.observe(&settings, |_, _, cx| cx.notify()).detach();
+        self.settings = Some(settings);
+        cx.notify();
+    }
+
+    /// Shows the About view and repaints when it changes.
+    pub fn attach_about(&mut self, about: Entity<About>, cx: &mut Context<Self>) {
+        cx.observe(&about, |_, _, cx| cx.notify()).detach();
+        self.about = Some(about);
         cx.notify();
     }
 
@@ -125,6 +145,12 @@ impl Shell {
             self.active = view;
             self.content_scroll.set_offset(Point::default());
             hook::record_event("view", view.key());
+            // The Settings view re-reads launch at login from the system.
+            if view == View::Settings
+                && let Some(settings) = &self.settings
+            {
+                settings.update(cx, |settings, cx| settings.opened(cx));
+            }
             cx.notify();
         }
     }
@@ -377,17 +403,17 @@ impl Shell {
             (_, _, Some(dictionary), _, View::Dictionary) => {
                 dictionary::panel::render(dictionary, cx).into_any_element()
             }
-            _ => match (&self.shortcuts, view) {
-                (Some(shortcuts), View::Settings) => {
-                    shortcuts::panel::render(shortcuts, cx).into_any_element()
+            (_, _, _, _, View::Settings) => match &self.settings {
+                Some(settings) => {
+                    settings::render(settings, self.shortcuts.as_ref(), cx).into_any_element()
                 }
-                _ => div()
-                    .id(hook::id(view.key(), "placeholder"))
-                    .test_support()
-                    .text_color(theme::rgb_of(color::TEXT_MUTED))
-                    .child("Nothing here yet.")
-                    .into_any_element(),
+                None => placeholder(view).into_any_element(),
             },
+            (_, _, _, _, View::About) => match &self.about {
+                Some(about) => about::render(about, cx).into_any_element(),
+                None => placeholder(view).into_any_element(),
+            },
+            _ => placeholder(view).into_any_element(),
         };
         div()
             .id(hook::id("content", "pane"))
@@ -416,6 +442,14 @@ impl Shell {
                     ),
             )
     }
+}
+
+fn placeholder(view: View) -> impl IntoElement {
+    div()
+        .id(hook::id(view.key(), "placeholder"))
+        .test_support()
+        .text_color(theme::rgb_of(color::TEXT_MUTED))
+        .child("Nothing here yet.")
 }
 
 fn start_move(event: &MouseDownEvent, window: &mut Window, _cx: &mut gpui_kit::App) {

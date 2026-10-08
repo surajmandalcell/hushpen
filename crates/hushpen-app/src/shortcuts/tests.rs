@@ -400,7 +400,34 @@ mod view {
             )
             .expect("open test window")
         });
+        let storage = Rc::clone(&rig.storage);
+        let settings = cx.new(|cx| {
+            crate::settings::Settings::new(
+                crate::settings::Parts {
+                    storage,
+                    mic: cx.new(|cx| {
+                        crate::mic::Mic::new(
+                            Rc::clone(&rig.storage),
+                            std::sync::Arc::new(crate::controller::testkit::FakeMic {
+                                start_error: std::sync::Mutex::new(None),
+                                starts: std::sync::atomic::AtomicUsize::new(0),
+                                sink: std::sync::Mutex::new(None),
+                            }),
+                            cx,
+                        )
+                    }),
+                    login: None,
+                    default_data_dir: None,
+                    restart: None,
+                },
+                cx,
+            )
+        });
+        settings.update(cx, |settings, cx| {
+            settings.select_section(crate::settings::Section::Shortcuts, cx)
+        });
         shell.update(cx, |shell, cx| {
+            shell.attach_settings(settings, cx);
             shell.attach_shortcuts(rig.shortcuts.clone(), cx);
             shell.select(View::Settings, cx);
         });

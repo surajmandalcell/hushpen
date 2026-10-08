@@ -1,5 +1,6 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
+use crate::about::{About, SystemOpener};
 use crate::app_menu;
 use crate::assets::{AppAssets, register_fonts};
 use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic_clock};
@@ -14,6 +15,7 @@ use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
 use crate::native::native_handle;
 use crate::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
+use crate::settings::{Parts as SettingsParts, Settings};
 use crate::shell::Shell;
 use crate::shortcuts::Shortcuts;
 use crate::storage;
@@ -212,6 +214,27 @@ pub fn run(hidden: bool) -> ExitCode {
             onboarding.update(cx, |onboarding, cx| {
                 onboarding.attach_shortcuts(shortcuts.clone(), cx)
             });
+            let login_item = hushpen_platform::login_item::LoginItem::current()
+                .map_err(|error| log::warn!("launch at login is unavailable: {error}"))
+                .ok()
+                .map(|item| Rc::new(item) as Rc<dyn crate::settings::LoginToggle>);
+            let settings_view = cx.new(|cx| {
+                Settings::new(
+                    SettingsParts {
+                        storage: Rc::clone(&storage),
+                        mic: mic.clone(),
+                        login: login_item,
+                        default_data_dir: None,
+                        restart: None,
+                    },
+                    cx,
+                )
+            });
+            shell.update(cx, |shell, cx| {
+                shell.attach_settings(settings_view.clone(), cx)
+            });
+            let about = cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
+            shell.update(cx, |shell, cx| shell.attach_about(about.clone(), cx));
             shell.update(cx, |shell, cx| {
                 shell.attach_onboarding(onboarding.clone(), cx)
             });
@@ -303,6 +326,8 @@ pub fn run(hidden: bool) -> ExitCode {
                 crate::hook::attach_tray(cx, tray_controller, tray.is_some());
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_shortcuts(cx, shortcuts);
+                crate::hook::attach_settings_view(cx, settings_view);
+                crate::hook::attach_about(cx, about);
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_onboarding(cx, onboarding);
                 crate::hook::attach_dictation(cx, dictation);

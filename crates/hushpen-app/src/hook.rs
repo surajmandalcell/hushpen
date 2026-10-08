@@ -6,6 +6,8 @@
 use gpui_kit::SharedString;
 
 #[cfg(feature = "test-automation")]
+mod about;
+#[cfg(feature = "test-automation")]
 mod automation;
 #[cfg(feature = "test-automation")]
 mod dictation;
@@ -26,9 +28,13 @@ mod onboarding;
 #[cfg(feature = "test-automation")]
 mod settings;
 #[cfg(feature = "test-automation")]
+mod settings_view;
+#[cfg(feature = "test-automation")]
 mod shortcuts;
 #[cfg(feature = "test-automation")]
 mod tray;
+#[cfg(feature = "test-automation")]
+pub use about::attach as attach_about;
 #[cfg(feature = "test-automation")]
 pub use automation::{
     ExtraWindow, Hooks, Job, Surface, attach, mark_disabled, register_action, register_window,
@@ -52,6 +58,8 @@ pub use models::attach as attach_models;
 pub use onboarding::attach as attach_onboarding;
 #[cfg(feature = "test-automation")]
 pub use settings::attach as attach_settings;
+#[cfg(feature = "test-automation")]
+pub use settings_view::attach as attach_settings_view;
 #[cfg(feature = "test-automation")]
 pub use shortcuts::attach as attach_shortcuts;
 #[cfg(feature = "test-automation")]

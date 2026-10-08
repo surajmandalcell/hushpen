@@ -6,6 +6,7 @@ compile_error!(
      or without --release"
 );
 
+pub mod about;
 pub mod actions;
 pub mod app;
 pub mod app_menu;
@@ -25,6 +26,7 @@ pub mod models;
 pub mod native;
 pub mod net;
 pub mod onboarding;
+pub mod settings;
 pub mod shell;
 pub mod shortcuts;
 pub mod storage;
