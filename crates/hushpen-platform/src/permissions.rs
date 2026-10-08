@@ -41,3 +41,16 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
         Ok(())
     }
 }
+
+/// Opens a folder in the file manager (Finder on macOS). Linux has no
+/// managed file manager call yet, so this is a no-op there. Call this only
+/// after a click.
+pub fn open_path(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    return macos::open_path(path);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}

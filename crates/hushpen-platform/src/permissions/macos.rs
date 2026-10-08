@@ -54,6 +54,13 @@ pub(super) fn open_url(url: &str) -> std::io::Result<()> {
         .map(|_| ())
 }
 
+pub(super) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
+    std::process::Command::new("/usr/bin/open")
+        .arg(path)
+        .status()
+        .map(|_| ())
+}
+
 fn granted(yes: bool) -> Access {
     if yes { Access::Granted } else { Access::Denied }
 }
