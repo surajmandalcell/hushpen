@@ -18,6 +18,7 @@ pub const CAPTURE_FAILED: &str = "CAPTURE_FAILED";
 pub const CAPTURE_RECOVERED: &str = "CAPTURE_RECOVERED";
 pub const MIC_PERMISSION: &str = "MIC_PERMISSION";
 pub const MIC_UNAVAILABLE: &str = "MIC_UNAVAILABLE";
+pub const MIC_BUSY: &str = "MIC_BUSY";
 pub const MODEL_IN_USE: &str = "MODEL_IN_USE";
 pub const MODEL_HASH_MISMATCH: &str = "MODEL_HASH_MISMATCH";
 pub const MODEL_HOST_BLOCKED: &str = "MODEL_HOST_BLOCKED";

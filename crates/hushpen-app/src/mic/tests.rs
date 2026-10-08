@@ -196,7 +196,7 @@ fn a_saved_mic_that_is_gone_falls_back_to_the_default_with_a_notice(cx: &mut Tes
     );
 
     rig.mic
-        .update(cx, |mic, cx| mic.start(cx))
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
         .expect("capture starts on the default");
     assert_eq!(rig.backend.started.lock().unwrap()[0].0, "default");
 
@@ -218,7 +218,10 @@ fn starting_with_no_microphone_fails_with_a_notice_and_never_listens(cx: &mut Te
     let rig = rig(cx, None);
     *rig.backend.start_error.lock().unwrap() = Some(CaptureError::unavailable("none"));
     devices(cx, &rig, Vec::new());
-    let error = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap_err();
+    let error = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap_err();
     assert_eq!(error.code, "MIC_UNAVAILABLE");
     let state = state_json(cx, &rig);
     assert_eq!(state["state"], "failed");
@@ -238,7 +241,10 @@ fn a_microphone_that_fails_to_open_after_the_start_ends_the_session_and_deletes_
 ) {
     let rig = rig(cx, None);
     devices(cx, &rig, virtual_mics());
-    let path = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    let path = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     assert!(path.exists());
 
     rig.mic.update(cx, |mic, cx| {
@@ -277,7 +283,9 @@ fn the_selected_microphone_is_opened_ahead_of_a_start_and_again_when_it_changes(
         .unwrap();
     assert_eq!(rig.backend.warmed(), ["default", "pulseaudio:vmic2_src"]);
 
-    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     rig.mic
         .update(cx, |mic, cx| mic.select("default", cx))
         .unwrap();
@@ -292,7 +300,10 @@ fn the_selected_microphone_is_opened_ahead_of_a_start_and_again_when_it_changes(
 fn a_session_collects_levels_and_stop_keeps_or_deletes_the_file(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
     devices(cx, &rig, virtual_mics());
-    let path = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    let path = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     assert_eq!(path.parent().unwrap(), rig.root.join("cache/sessions"));
     let generation = 1;
     rig.mic.update(cx, |mic, cx| {
@@ -325,7 +336,9 @@ fn a_session_collects_levels_and_stop_keeps_or_deletes_the_file(cx: &mut TestApp
     assert_eq!(state["level"], 0.0);
     assert_eq!(state["last_session"], path.to_string_lossy().as_ref());
 
-    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     let second = rig
         .mic
         .update(cx, |mic, cx| mic.stop(false, cx))
@@ -345,7 +358,10 @@ fn a_session_collects_levels_and_stop_keeps_or_deletes_the_file(cx: &mut TestApp
 fn a_mic_error_during_a_session_closes_the_file_and_shows_a_notice(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
     devices(cx, &rig, virtual_mics());
-    let path = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    let path = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     rig.mic.update(cx, |mic, cx| {
         mic.handle(
             MicEvent::Capture {
@@ -376,12 +392,16 @@ fn a_mic_error_during_a_session_closes_the_file_and_shows_a_notice(cx: &mut Test
 #[gpui_kit::test]
 fn events_from_an_ended_session_are_ignored(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
-    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     rig.mic
         .update(cx, |mic, cx| mic.stop(true, cx))
         .unwrap()
         .unwrap();
-    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     rig.mic.update(cx, |mic, cx| {
         mic.handle(
             MicEvent::Capture {
@@ -407,8 +427,14 @@ fn events_from_an_ended_session_are_ignored(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_second_start_reuses_the_running_session(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
-    let first = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
-    let second = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    let first = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
+    let second = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     assert_eq!(first, second);
     assert_eq!(rig.backend.started.lock().unwrap().len(), 1);
 }
@@ -419,7 +445,68 @@ fn feeding_a_wav_needs_a_running_session(cx: &mut TestAppContext) {
     let wav = rig.root.join("x.wav");
     let error = rig.mic.update(cx, |mic, _| mic.feed_wav(&wav)).unwrap_err();
     assert!(error.contains("start one first"), "{error}");
-    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
     let fed = rig.mic.update(cx, |mic, _| mic.feed_wav(&wav)).unwrap();
     assert_eq!(fed["duration_ms"], 1000);
+}
+
+#[gpui_kit::test]
+fn a_test_cannot_take_over_a_dictation(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    let error = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap_err();
+    assert_eq!(error.code, "MIC_BUSY");
+    assert_eq!(rig.backend.started.lock().unwrap().len(), 1);
+    // The dictation session is untouched and still marked as dictation.
+    assert_eq!(
+        rig.mic.read_with(cx, |mic, _| mic.session_use()),
+        Some(CaptureUse::Dictation)
+    );
+    let state = state_json(cx, &rig);
+    assert_eq!(state["state"], "listening");
+}
+
+#[gpui_kit::test]
+fn a_dictation_cannot_take_over_a_test(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
+    let error = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap_err();
+    assert_eq!(error.code, "MIC_BUSY");
+    assert_eq!(
+        rig.mic.read_with(cx, |mic, _| mic.session_use()),
+        Some(CaptureUse::Test)
+    );
+}
+
+#[gpui_kit::test]
+fn the_use_clears_with_the_session(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.stop(true, cx))
+        .unwrap()
+        .unwrap();
+    assert_eq!(rig.mic.read_with(cx, |mic, _| mic.session_use()), None);
+    // And the test can start now.
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
+        .unwrap();
+    assert_eq!(
+        rig.mic.read_with(cx, |mic, _| mic.session_use()),
+        Some(CaptureUse::Test)
+    );
 }

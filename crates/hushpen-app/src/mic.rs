@@ -63,6 +63,23 @@ pub struct Notice {
     pub message: String,
 }
 
+/// Who the running capture session serves. A dictation and the test panel
+/// never share one microphone stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureUse {
+    Test,
+    Dictation,
+}
+
+impl CaptureUse {
+    pub fn key(self) -> &'static str {
+        match self {
+            CaptureUse::Test => "test",
+            CaptureUse::Dictation => "dictation",
+        }
+    }
+}
+
 pub enum MicEvent {
     Capture {
         generation: u64,
@@ -75,6 +92,7 @@ struct Session {
     inner: Box<dyn MicSession>,
     path: PathBuf,
     generation: u64,
+    used_for: CaptureUse,
 }
 
 pub struct Mic {
@@ -337,10 +355,35 @@ impl Mic {
         }
     }
 
-    /// Starts one capture session into `cache/sessions`.
-    pub fn start(&mut self, cx: &mut Context<Self>) -> Result<PathBuf, CaptureError> {
+    /// Who the running session serves, if one runs.
+    pub fn session_use(&self) -> Option<CaptureUse> {
+        self.session.as_ref().map(|session| session.used_for)
+    }
+
+    /// Starts one capture session into `cache/sessions`. A session serves one
+    /// use: a second caller of the same use shares it, a caller of another
+    /// use gets `MIC_BUSY` instead of taking the stream over.
+    pub fn start(
+        &mut self,
+        used_for: CaptureUse,
+        cx: &mut Context<Self>,
+    ) -> Result<PathBuf, CaptureError> {
         if let Some(session) = &self.session {
-            return Ok(session.path.clone());
+            if session.used_for == used_for {
+                return Ok(session.path.clone());
+            }
+            let error = CaptureError {
+                code: hushpen_core::error::MIC_BUSY,
+                detail: format!(
+                    "the microphone is in use by {}",
+                    match session.used_for {
+                        CaptureUse::Dictation => "dictation",
+                        CaptureUse::Test => "the microphone test",
+                    }
+                ),
+            };
+            hook::record_event("capture", &format!("busy {}", used_for.key()));
+            return Err(error);
         }
         let device = self.device_id();
         self.generation += 1;
@@ -356,6 +399,7 @@ impl Mic {
                     inner,
                     path: path.clone(),
                     generation,
+                    used_for,
                 });
                 self.state = CaptureState::Listening;
                 self.levels.clear();
@@ -473,6 +517,7 @@ impl Mic {
                 "message": notice.message,
             })),
             "session": self.session.as_ref().map(|session| session.path.to_string_lossy().into_owned()),
+            "session_use": self.session.as_ref().map(|session| session.used_for.key()),
             "recovered": self.recovered.iter().map(|session| json!({
                 "id": session.id,
                 "path": session.path.to_string_lossy(),

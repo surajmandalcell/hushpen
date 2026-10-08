@@ -1,7 +1,7 @@
 //! The microphone panel on the Home view: test button, level meter, notice,
 //! and the microphone list.
 
-use super::{CaptureState, METER_BARS, Mic};
+use super::{CaptureState, CaptureUse, METER_BARS, Mic};
 use crate::hook;
 use crate::theme::{
     self, BODY_MD, BODY_SM, LABEL_MD, ROW_TITLE, StyledType, color, radius, size, space,
@@ -28,7 +28,7 @@ struct Row {
 }
 
 pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
-    let (state, meter, notice, rows, button_focus, row_focus, default_name) = {
+    let (state, busy, meter, notice, rows, button_focus, row_focus, default_name) = {
         let mic = mic.read(cx);
         let default_selected = !matches!(mic.selection(), Selection::Device(_));
         let rows: Vec<Row> = std::iter::once(Row {
@@ -49,9 +49,19 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
                 }),
         )
         .collect();
+        // While a dictation owns the stream the panel shows a busy note and
+        // rests the meter: the levels on screen belong to a test only.
+        let busy = mic.state() == CaptureState::Listening
+            && mic.session_use() == Some(CaptureUse::Dictation);
+        let meter = if busy {
+            vec![0.0; METER_BARS]
+        } else {
+            mic.meter()
+        };
         (
             mic.state(),
-            mic.meter(),
+            busy,
+            meter,
             mic.notice().map(|notice| notice.message.clone()),
             rows,
             mic.button_focus.clone(),
@@ -59,7 +69,7 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
             mic.default_name().map(str::to_string),
         )
     };
-    let listening = state == CaptureState::Listening;
+    let listening = state == CaptureState::Listening && !busy;
 
     let mut panel = div()
         .id(hook::id("home", "mic"))
@@ -72,7 +82,7 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
         .rounded(px(radius::PANEL))
         .border_1()
         .border_color(theme::rgb_of(color::DIVIDER))
-        .child(header(mic, state, &button_focus, default_name))
+        .child(header(mic, state, busy, &button_focus, default_name))
         .child(meter_row(&meter, listening));
     if let Some(message) = notice {
         panel = panel.child(notice_row(message));
@@ -86,6 +96,7 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
 fn header(
     mic: &Entity<Mic>,
     state: CaptureState,
+    busy: bool,
     focus: &FocusHandle,
     default_name: Option<String>,
 ) -> impl IntoElement + use<> {
@@ -96,7 +107,7 @@ fn header(
                 if mic.state() == CaptureState::Listening {
                     let _ = mic.stop(cfg!(feature = "test-automation"), cx);
                 } else {
-                    let _ = mic.start(cx);
+                    let _ = mic.start(CaptureUse::Test, cx);
                 }
             });
         }
@@ -111,13 +122,15 @@ fn header(
             cx.stop_propagation();
         }
     };
-    let listening = state == CaptureState::Listening;
+    let listening = state == CaptureState::Listening && !busy;
     let label = if listening {
         "Stop test"
     } else {
         "Test microphone"
     };
-    let detail = if listening {
+    let detail = if busy {
+        "Mic in use by dictation".to_string()
+    } else if listening {
         "Listening".to_string()
     } else {
         default_name.map_or_else(
@@ -153,11 +166,12 @@ fn header(
                         .child(detail),
                 ),
         )
-        .child(
-            div()
-                .id(hook::id("home", "mic.record"))
+        .child({
+            let id = hook::id("home", "mic.record");
+            hook::mark_disabled(&id, busy);
+            let mut button = div()
+                .id(id)
                 .test_support()
-                .track_focus(focus)
                 .role(Role::Button)
                 .aria_label(label)
                 .flex_none()
@@ -171,13 +185,20 @@ fn header(
                 .bg(theme::rgb_of(color::SURFACE_CONTROL))
                 .text_token(LABEL_MD)
                 .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                .cursor_pointer()
-                .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-                .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-                .on_click(on_click)
-                .on_key_down(on_key)
-                .child(label),
-        )
+                .child(label);
+            if busy {
+                button = button.text_color(theme::rgb_of(color::TEXT_DISABLED));
+            } else {
+                button = button
+                    .track_focus(focus)
+                    .cursor_pointer()
+                    .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+                    .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+                    .on_click(on_click)
+                    .on_key_down(on_key);
+            }
+            button
+        })
 }
 
 fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {

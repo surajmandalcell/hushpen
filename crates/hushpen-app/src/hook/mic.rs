@@ -3,7 +3,7 @@
 //! Compiled only with the `test-automation` feature.
 
 use super::{register_action, set_state_section, set_wav_feeder};
-use crate::mic::Mic;
+use crate::mic::{CaptureUse, Mic};
 use gpui_kit::{App, Entity};
 use serde_json::{Value, json};
 
@@ -20,7 +20,7 @@ pub fn attach(cx: &mut App, mic: Entity<Mic>) {
         {
             let mic = mic.clone();
             move |cx, _| {
-                mic.update(cx, |mic, cx| mic.start(cx))
+                mic.update(cx, |mic, cx| mic.start(CaptureUse::Test, cx))
                     .map(|path| json!({"path": path.to_string_lossy()}))
                     .map_err(|error| error.to_string())
             }

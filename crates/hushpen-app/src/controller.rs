@@ -839,7 +839,9 @@ impl Controller {
         self.pending = history::Pending::default();
         *self.detected.lock().unwrap_or_else(|p| p.into_inner()) = None;
         *self.segments.lock().unwrap_or_else(|p| p.into_inner()) = None;
-        match self.mic.update(cx, |mic, cx| mic.start(cx)) {
+        match self.mic.update(cx, |mic, cx| {
+            mic.start(crate::mic::CaptureUse::Dictation, cx)
+        }) {
             Ok(path) => {
                 self.wav = Some(path);
                 Ok(())

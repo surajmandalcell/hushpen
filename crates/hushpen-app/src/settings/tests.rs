@@ -212,7 +212,11 @@ fn sections_switch_and_close_the_open_picker(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_move_during_a_recording_is_refused(cx: &mut TestAppContext) {
     let rig = rig(cx);
-    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| {
+            mic.start(crate::mic::CaptureUse::Dictation, cx)
+        })
+        .unwrap();
     rig.settings.update(cx, |me, cx| me.change_data_folder(cx));
     read(cx, &rig, |me| {
         assert_eq!(me.move_state, MoveState::Idle);

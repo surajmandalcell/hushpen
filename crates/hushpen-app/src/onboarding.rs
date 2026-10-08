@@ -483,7 +483,10 @@ impl Onboarding {
             MicPhase::Listening => self.stop_mic_test(cx),
             MicPhase::Idle => {
                 self.notice = None;
-                match self.mic.update(cx, |mic, cx| mic.start(cx)) {
+                match self
+                    .mic
+                    .update(cx, |mic, cx| mic.start(crate::mic::CaptureUse::Test, cx))
+                {
                     Ok(_) => {
                         self.mic_test = MicTest {
                             phase: MicPhase::Listening,
