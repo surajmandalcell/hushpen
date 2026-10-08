@@ -401,6 +401,60 @@ fn a_hold_run_pastes_through_the_inserter_and_leaves_the_clipboard_alone(cx: &mu
     assert_eq!(report["restore"], "restored");
 }
 
+fn inserted_after_a_run(cx: &mut TestAppContext, rig: &Rig, said: &str) -> String {
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, rig, &inserter);
+    say(rig, outcome_text(said, "en"));
+    hold_run(cx, rig, 1_000);
+    assert_eq!(machine_state(cx, rig), State::Done);
+    let calls = inserter.calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    calls[0].0.clone()
+}
+
+#[gpui_kit::test]
+fn the_rule_cleanup_inserts_the_text_without_fillers(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("cleanup.rules", json!(true))
+        .unwrap();
+
+    let inserted = inserted_after_a_run(cx, &rig, "um I think uh we should go");
+
+    assert_eq!(inserted, "I think we should go.");
+}
+
+#[gpui_kit::test]
+fn turning_the_rules_off_inserts_the_raw_text(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("cleanup.rules", json!(false))
+        .unwrap();
+
+    let inserted = inserted_after_a_run(cx, &rig, "um I think uh we should go");
+
+    assert_eq!(inserted, "um I think uh we should go");
+}
+
+#[gpui_kit::test]
+fn the_spoken_punctuation_setting_reaches_the_rule_cleanup(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("cleanup.rules", json!(true))
+        .unwrap();
+    rig.storage
+        .settings
+        .set("cleanup.spokenPunctuation", json!(false))
+        .unwrap();
+
+    let inserted = inserted_after_a_run(cx, &rig, "um hello comma world");
+
+    assert_eq!(inserted, "Hello comma world.");
+}
+
 #[gpui_kit::test]
 fn the_per_app_chords_setting_reaches_the_inserter(cx: &mut TestAppContext) {
     let rig = rig(cx, &["base"], "base");

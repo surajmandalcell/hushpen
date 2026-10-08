@@ -147,6 +147,9 @@ pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
         .settings
         .set("dictation.modelId", json!(chosen))
         .unwrap();
+    // The pipeline tests compare the engine's words with the inserted words; the cleanup tests
+    // turn the rules on.
+    storage.settings.set("cleanup.rules", json!(false)).unwrap();
     let work: Work = Rc::default();
     let queue = Rc::clone(&work);
     let spawn: Spawner = Rc::new(move |job| {

@@ -15,6 +15,7 @@ use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{ClipboardItem, Context, Entity};
+use hushpen_core::cleanup;
 use hushpen_core::dictation::{
     AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus, State,
 };
@@ -225,6 +226,8 @@ type LastInsert = Arc<Mutex<Option<(u64, u64, Report)>>>;
 const INSERT_COPIED: &str = "INSERT_COPIED";
 
 const PASTE_LAST_SETTING: &str = "shortcut.pasteLast";
+const CLEANUP_RULES_SETTING: &str = "cleanup.rules";
+const SPOKEN_PUNCTUATION_SETTING: &str = "cleanup.spokenPunctuation";
 pub const CUE_SOUNDS_SETTING: &str = "audio.cueSounds";
 pub const CUE_VOLUME_SETTING: &str = "audio.cueVolume";
 
@@ -379,6 +382,25 @@ impl Controller {
 
     pub fn attach_cues(&mut self, cues: CueSink) {
         self.cues = Some(cues);
+    }
+
+    /// The rule cleanup, unless `cleanup.rules` is off. The settings are read each time, so a
+    /// change takes effect on the next dictation.
+    fn rule_cleanup(&self, raw: &str) -> String {
+        let flag = |key: &str| {
+            self.storage
+                .settings
+                .get(key)
+                .and_then(|value| value.as_bool())
+                .unwrap_or(true)
+        };
+        if !flag(CLEANUP_RULES_SETTING) {
+            return raw.to_owned();
+        }
+        let options = cleanup::Options {
+            spoken_punctuation: flag(SPOKEN_PUNCTUATION_SETTING),
+        };
+        cleanup::clean(raw, &options)
     }
 
     /// Plays the cue unless the user turned the sounds off. The settings are read each time, so
@@ -658,7 +680,8 @@ impl Controller {
                 }
             }
             Effect::Clean { session, raw } => {
-                queue.push_back(AppEvent::Cleaned { session, text: raw });
+                let text = self.rule_cleanup(&raw);
+                queue.push_back(AppEvent::Cleaned { session, text });
             }
             Effect::StopLlm => {}
             Effect::Insert {
