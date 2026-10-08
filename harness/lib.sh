@@ -8,6 +8,9 @@ HUSHPEN_REPO=${HUSHPEN_REPO:-$(dirname "$HARNESS_DIR")}
 HUSHPEN_TEST_ASSETS=${HUSHPEN_TEST_ASSETS:-/Volumes/External1TB/data/_custom/asrpro-test-assets}
 HUSHPEN_TEST_FIXTURES=${HUSHPEN_TEST_FIXTURES:-/Volumes/External1TB/data/_custom/hushpen-test-assets}
 HARNESS_IMAGE=${HUSHPEN_IMAGE:-hushpen-val:noble}
+# linux/arm64 on the Mac; the x64 CI runner sets linux/amd64.
+HARNESS_PLATFORM=${HUSHPEN_PLATFORM:-linux/arm64}
+HARNESS_TARGET=$HUSHPEN_ROOT/target/linux-${HARNESS_PLATFORM#linux/}
 # The debug app and hookctl the slots run. build-app.sh fills it; slots mount it read-only so a
 # rebuild never changes a binary under a running slot.
 HARNESS_BIN=$HUSHPEN_ROOT/harness-bin

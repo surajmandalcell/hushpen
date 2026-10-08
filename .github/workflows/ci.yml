@@ -44,7 +44,7 @@ jobs:
         run: cargo xtask gate
 
   plan:
-    if: inputs.suite != 'gate'
+    if: inputs.suite != 'gate' && inputs.suite != 'e2e'
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -134,3 +134,39 @@ jobs:
           HUSHPEN_TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
           HUSHPEN_TEST_GPU: "1"
         run: cargo test --release -p hushpen-engine --features heavy --test it --locked transcribes_short_clip_on_gpu -- --nocapture
+
+  # The core harness subset on the x64 runner: the same container, suites, and checks as the Mac
+  # harness, with the models and the speech clip fetched here. Runs only for linux-x64.
+  e2e-x64:
+    if: (inputs.suite == 'e2e' || inputs.suite == 'full') && contains(format(',{0},', inputs.targets), ',linux-x64,')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      HUSHPEN_PLATFORM: linux/amd64
+      HUSHPEN_ROOT: ${{ runner.temp }}/hushpen
+      HUSHPEN_TEST_ASSETS: ${{ runner.temp }}/assets
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space for the debug build and the image
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Fetch the base model and the speech clip
+        run: |
+          mkdir -p "$HUSHPEN_TEST_ASSETS/models/whisper" "$HUSHPEN_TEST_ASSETS/fixtures"
+          curl -fsSL --retry 3 -o "$HUSHPEN_TEST_ASSETS/models/whisper/ggml-base.bin" \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+          echo "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe  $HUSHPEN_TEST_ASSETS/models/whisper/ggml-base.bin" | sha256sum -c -
+          cp crates/hushpen-engine/tests/fixtures/speech-short.wav "$HUSHPEN_TEST_ASSETS/fixtures/"
+          echo "8fc4dec907177d271433fbe06ec67f457f2735bc986dbed8325d57280c4f6131  $HUSHPEN_TEST_ASSETS/fixtures/speech-short.wav" | sha256sum -c -
+      - name: Build the harness image
+        run: docker build --platform linux/amd64 -t hushpen-val:noble -f harness/Dockerfile harness
+      - name: Insertion suite
+        run: harness/run-suite.sh insert --slots 1 --build
+      - name: Guards suite
+        run: harness/run-suite.sh guards --slots 1
+      - name: Keep the suite output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-x64
+          path: ${{ runner.temp }}/hushpen/slots/1/out
+          if-no-files-found: ignore

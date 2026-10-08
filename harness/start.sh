@@ -41,7 +41,7 @@ start_one() {
   fi
   local fixtures=()
   [ -d "$HUSHPEN_TEST_FIXTURES" ] && fixtures=(-v "$HUSHPEN_TEST_FIXTURES:/fixtures:ro")
-  docker run -d --init --platform linux/arm64 --name "$name" \
+  docker run -d --init --platform "$HARNESS_PLATFORM" --name "$name" \
     --cpus "${VAL_CPUS:-2}" --memory "${VAL_MEM:-2g}" \
     -e SLOT="$slot" \
     -v "$HARNESS_DIR:/harness:ro" \
