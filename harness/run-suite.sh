@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|dictionary|history|audio|export|flowbar|core|full> --slots N [--build]
+# usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|dictionary|history|audio|export|flowbar|tray|core|full> --slots N [--build]
 # Starts slots 1..N, runs the suite in every slot at once, prints each slot's checks, keeps only
 # the newest run per suite under slots/<n>/out/, and removes the slots again (also on failure).
 # smoke and env are UI-only, so N may be up to 6; any other suite is limited to 3 busy slots.
@@ -26,8 +26,8 @@ while [ $# -gt 0 ]; do
 done
 case "$suite" in
   smoke | env) ui_only=1 ;;
-  mic | models | home | tail | hotkey | insert | guards | paste-last | engine | cleanup | dictionary | history | audio | export | flowbar | core | full) ui_only=0 ;;
-  *) die "usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|dictionary|history|audio|export|flowbar|core|full> --slots N [--build]" ;;
+  mic | models | home | tail | hotkey | insert | guards | paste-last | engine | cleanup | dictionary | history | audio | export | flowbar | tray | core | full) ui_only=0 ;;
+  *) die "usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|dictionary|history|audio|export|flowbar|tray|core|full> --slots N [--build]" ;;
 esac
 [[ $slots =~ ^[1-6]$ ]] || die "--slots must be 1 to 6, got '$slots'"
 if [ "$slots" -gt 3 ] && [ "$ui_only" != 1 ]; then
