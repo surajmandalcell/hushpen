@@ -124,6 +124,10 @@ impl SettingsStore {
         let mut state = self.lock();
         let mut next = state.clone();
         next.values.insert(key.into(), cleaned);
+        // Picking a position preset replaces a dragged position; both land in one write.
+        if key == "overlay.position" {
+            next.values.insert("overlay.customPos".into(), Value::Null);
+        }
         self.persist(&next)?;
         *state = next;
         Ok(())

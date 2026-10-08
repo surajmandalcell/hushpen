@@ -11,6 +11,10 @@ mod x11;
 
 #[cfg(target_os = "macos")]
 mod appkit;
+#[cfg(target_os = "macos")]
+mod overlay_appkit;
+#[cfg(target_os = "linux")]
+mod overlay_x11;
 
 /// The native window behind a GPUI window, as plain integers so the platform
 /// layer never depends on GPUI.
@@ -75,6 +79,62 @@ pub fn lock_chrome(handle: WindowHandle, width: u16, height: u16) -> Result<(), 
     }
 }
 
+/// A window rectangle in screen pixels, origin at the top left of the primary screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Frame {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Moves and sizes the flow bar in one step. The window manager does not manage a pop-up, so
+/// the app has to do it. Backends it does not know are left alone.
+pub fn place_overlay(handle: WindowHandle, frame: Frame) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => overlay_x11::place(window, frame),
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => overlay_appkit::place(view, frame),
+        _ => {
+            let _ = frame;
+            Ok(())
+        }
+    }
+}
+
+/// Where the pointer is on the screen and whether the left button is down. Pixels on X11,
+/// points on macOS, from the top left of the screen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pointer {
+    pub x: f32,
+    pub y: f32,
+    pub left: bool,
+}
+
+/// Reads the pointer, for dragging the flow bar. `None` where the backend cannot say.
+pub fn pointer(handle: WindowHandle) -> Option<Pointer> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(_) => overlay_x11::pointer().ok(),
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(_) => overlay_appkit::pointer().ok(),
+        _ => None,
+    }
+}
+
+/// Keeps the flow bar above every other window, and visible while another app is in front.
+/// Call once, right after the window opens.
+pub fn pin_overlay(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => overlay_x11::pin(window),
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => overlay_appkit::pin(view),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,5 +156,14 @@ mod tests {
     #[test]
     fn unknown_backends_are_left_alone() {
         assert!(lock_chrome(WindowHandle::Other, 780, 520).is_ok());
+        let frame = Frame {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 10,
+        };
+        assert!(place_overlay(WindowHandle::Other, frame).is_ok());
+        assert!(pin_overlay(WindowHandle::Other).is_ok());
+        assert!(pointer(WindowHandle::Other).is_none());
     }
 }

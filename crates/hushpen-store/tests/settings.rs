@@ -236,3 +236,38 @@ fn values_lists_every_known_key_with_its_current_value() {
     assert_eq!(values.get("updates.check"), Some(&json!(false)));
     assert!(!values.contains_key("_unknown"));
 }
+
+#[test]
+fn choosing_a_flow_bar_position_clears_the_dragged_position() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    store
+        .set_internal("overlay.customPos", json!({"x": 340.0, "y": 600.0}))
+        .unwrap();
+    assert_eq!(
+        store.get("overlay.customPos"),
+        Some(json!({"x": 340.0, "y": 600.0}))
+    );
+
+    // The same preset counts: the user picked a position, so the dragged one goes.
+    store.set("overlay.position", json!("bottom")).unwrap();
+    assert_eq!(store.get("overlay.customPos"), Some(Value::Null));
+    drop(store);
+
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    assert_eq!(store.get("overlay.customPos"), Some(Value::Null));
+}
+
+#[test]
+fn a_refused_position_keeps_the_dragged_position() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    store
+        .set_internal("overlay.customPos", json!({"x": 1.0, "y": 2.0}))
+        .unwrap();
+    assert!(store.set("overlay.position", json!("left")).is_err());
+    assert_eq!(
+        store.get("overlay.customPos"),
+        Some(json!({"x": 1.0, "y": 2.0}))
+    );
+}

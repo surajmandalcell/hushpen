@@ -6,6 +6,7 @@ pub mod dictation;
 pub mod dictionary;
 pub mod error;
 pub mod export;
+pub mod flow_bar;
 pub mod insert;
 pub mod language;
 pub mod permission;
