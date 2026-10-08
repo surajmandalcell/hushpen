@@ -85,8 +85,22 @@ fn each_row_opens_its_target_and_logs_the_request(cx: &mut TestAppContext) {
     );
     let requests = read(cx, &rig, |me| me.requests.borrow().clone());
     assert_eq!(requests.len(), 4);
-    assert_eq!(requests[0], json!({"target": "data-folder", "ok": true}));
-    assert_eq!(requests[3], json!({"target": "issues", "ok": true}));
+    assert_eq!(
+        requests[0],
+        json!({
+            "target": "data-folder",
+            "url": rig.storage.data.root().display().to_string(),
+            "ok": true,
+        })
+    );
+    assert_eq!(
+        requests[3],
+        json!({
+            "target": "issues",
+            "url": hushpen_core::links::ISSUES_URL,
+            "ok": true,
+        })
+    );
 }
 
 #[gpui_kit::test]
@@ -98,7 +112,10 @@ fn a_failed_open_is_logged_and_shown(cx: &mut TestAppContext) {
         assert!(me.notice.as_deref().unwrap().contains("browser"));
         me.requests.borrow().clone()
     });
-    assert_eq!(requests[0], json!({"target": "github", "ok": false}));
+    assert_eq!(
+        requests[0],
+        json!({"target": "github", "url": hushpen_core::links::REPO_URL, "ok": false})
+    );
 }
 
 #[gpui_kit::test]
@@ -107,4 +124,14 @@ fn the_data_folder_shows_home_relative(cx: &mut TestAppContext) {
     // The rig folder is not under HOME, so it shows in full.
     let shown = read(cx, &rig, About::data_folder_display);
     assert_eq!(shown, rig.storage.data.root().display().to_string());
+}
+
+#[gpui_kit::test]
+fn opening_the_log_folder_recreates_it(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let logs = rig.storage.data.logs_dir();
+    std::fs::remove_dir_all(&logs).unwrap();
+    rig.about
+        .update(cx, |me, cx| me.open(Target::LogFolder, cx));
+    assert!(logs.is_dir(), "logs/ came back for the file manager");
 }

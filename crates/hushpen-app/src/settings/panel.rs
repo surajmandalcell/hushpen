@@ -1,7 +1,7 @@
 //! The Settings view: a section bar on top, then one grouped panel per
 //! section. Every control has a stable hook id: `settings.<section>.<name>`.
 
-use super::{MoveState, Section, Settings};
+use super::{MoveState, Section, Settings, slots};
 use crate::hook;
 use crate::mic;
 use crate::shortcuts::{self, Shortcuts};
@@ -16,19 +16,10 @@ use gpui_kit::{
     transparent_black,
 };
 
-// Focus slots in `Settings::control_focus`.
-const LOGIN: usize = 0;
-const HIDDEN: usize = 1;
-const MIC: usize = 2;
-const SOUNDS: usize = 3;
-const RULES: usize = 4;
-const FLOWBAR: usize = 5;
-const FLOWBAR_IDLE: usize = 6;
-const POSITION: usize = 7;
-const CHANGE_FOLDER: usize = 8;
-const RETENTION: usize = 9;
-const RETENTION_OPTION: usize = 10; // ..=12
-const POSITION_OPTION: usize = 13; // ..=14
+use slots::{
+    CHANGE_FOLDER, FLOWBAR, FLOWBAR_IDLE, HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION,
+    RETENTION_OPTION, RULES, SOUNDS,
+};
 
 pub fn render(
     settings: &Entity<Settings>,
@@ -56,11 +47,25 @@ pub fn render(
         Section::Storage => storage_section(settings, &focus, cx).into_any_element(),
         Section::Updates => updates().into_any_element(),
     };
+    // Esc with an open picker closes it and focuses the trigger again.
+    let on_escape = {
+        let settings = settings.clone();
+        move |event: &KeyDownEvent, window: &mut Window, cx: &mut App| {
+            if event.keystroke.key.as_str() == "escape" {
+                let focus = settings.update(cx, |me, cx| me.close_picker(cx));
+                if let Some(focus) = focus {
+                    window.focus(&focus, cx);
+                    cx.stop_propagation();
+                }
+            }
+        }
+    };
     let mut page = div()
         .flex()
         .flex_col()
         .gap(px(space::LG))
         .w_full()
+        .on_key_down(on_escape)
         .child(section_bar(settings, section, &section_focus));
     if let Some(message) = notice {
         page = page.child(notice_row(message));

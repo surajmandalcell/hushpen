@@ -14,6 +14,23 @@ use std::rc::Rc;
 
 pub(crate) use panel::render;
 
+/// Focus slots in [`Settings::control_focus`], shared with the panel.
+pub(crate) mod slots {
+    pub const LOGIN: usize = 0;
+    pub const HIDDEN: usize = 1;
+    pub const MIC: usize = 2;
+    pub const SOUNDS: usize = 3;
+    pub const RULES: usize = 4;
+    pub const FLOWBAR: usize = 5;
+    pub const FLOWBAR_IDLE: usize = 6;
+    pub const POSITION: usize = 7;
+    pub const CHANGE_FOLDER: usize = 8;
+    pub const RETENTION: usize = 9;
+    pub const RETENTION_OPTION: usize = 10; // ..=12
+    pub const POSITION_OPTION: usize = 13; // ..=14
+    pub const COUNT: usize = 16;
+}
+
 /// The sections of the Settings view, in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
@@ -159,6 +176,19 @@ impl Settings {
                 .collect(),
             control_focus: (0..16).map(|_| cx.focus_handle().tab_stop(true)).collect(),
         }
+    }
+
+    /// Esc in an open picker: close it and give the focus back to the
+    /// trigger. Returns the handle to focus, or None when nothing was open.
+    pub fn close_picker(&mut self, cx: &mut Context<Self>) -> Option<FocusHandle> {
+        let slot = match self.picker.take()? {
+            "audio.mic" => slots::MIC,
+            "storage.retention" => slots::RETENTION,
+            "flowbar.position" => slots::POSITION,
+            _ => return None,
+        };
+        cx.notify();
+        Some(self.control_focus[slot].clone())
     }
 
     /// The Settings view opened: re-read launch at login from the system, so

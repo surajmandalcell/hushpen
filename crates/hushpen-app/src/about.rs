@@ -84,14 +84,28 @@ impl About {
     }
 
     pub fn open(&mut self, target: Target, cx: &mut Context<Self>) {
+        let url = match target {
+            Target::DataFolder => self.storage.data.root().display().to_string(),
+            Target::LogFolder => {
+                // A deleted logs folder comes back before the file manager opens it.
+                let logs = self.storage.data.logs_dir();
+                if let Err(error) = std::fs::create_dir_all(&logs) {
+                    log::warn!("the log folder could not be created: {error}");
+                }
+                logs.display().to_string()
+            }
+            Target::Github => hushpen_core::links::REPO_URL.to_owned(),
+            Target::Issues => hushpen_core::links::ISSUES_URL.to_owned(),
+        };
         let result = match target {
-            Target::DataFolder => self.opener.open_path(self.storage.data.root()),
-            Target::LogFolder => self.opener.open_path(&self.storage.data.logs_dir()),
-            Target::Github => self.opener.open_url(hushpen_core::links::REPO_URL),
-            Target::Issues => self.opener.open_url(hushpen_core::links::ISSUES_URL),
+            Target::DataFolder | Target::LogFolder => {
+                self.opener.open_path(std::path::Path::new(&url))
+            }
+            Target::Github | Target::Issues => self.opener.open_url(&url),
         };
         self.requests.borrow_mut().push(json!({
             "target": target.key(),
+            "url": url,
             "ok": result.is_ok(),
         }));
         hook::record_event("about", &format!("open {}", target.key()));

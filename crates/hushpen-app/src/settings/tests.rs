@@ -284,3 +284,17 @@ fn a_finished_move_restarts_into_the_new_folder(cx: &mut TestAppContext) {
         .collect();
     assert!(left.is_empty(), "{left:?}");
 }
+
+#[gpui_kit::test]
+fn escape_closes_the_picker_and_names_the_trigger(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.settings
+        .update(cx, |me, cx| me.toggle_picker("storage.retention", cx));
+    assert_eq!(read(cx, &rig, |me| me.picker), Some("storage.retention"));
+    let focus = rig.settings.update(cx, |me, cx| me.close_picker(cx));
+    assert!(focus.is_some());
+    assert_eq!(read(cx, &rig, |me| me.picker), None);
+    // Closing again is a no-op.
+    let focus = rig.settings.update(cx, |me, cx| me.close_picker(cx));
+    assert!(focus.is_none());
+}
