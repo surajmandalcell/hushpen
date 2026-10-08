@@ -165,6 +165,21 @@ jobs:
           echo "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe  $HUSHPEN_TEST_ASSETS/models/whisper/ggml-base.bin" | sha256sum -c -
           cp crates/hushpen-engine/tests/fixtures/speech-short.wav "$HUSHPEN_TEST_ASSETS/fixtures/"
           echo "8fc4dec907177d271433fbe06ec67f457f2735bc986dbed8325d57280c4f6131  $HUSHPEN_TEST_ASSETS/fixtures/speech-short.wav" | sha256sum -c -
+      # The insertion suite kills the engine during a long clip and feeds it silence; neither needs real words.
+      - name: Make the long clip and the silent clip
+        run: |
+          python3 - <<'PY'
+          import os, wave
+          fixtures = os.path.join(os.environ["HUSHPEN_TEST_ASSETS"], "fixtures")
+          with wave.open(os.path.join(fixtures, "speech-short.wav"), "rb") as src:
+              params, frames = src.getparams(), src.readframes(src.getnframes())
+          with wave.open(os.path.join(fixtures, "dictation-45s.wav"), "wb") as out:
+              out.setparams(params)
+              out.writeframes(frames * 10)
+          with wave.open(os.path.join(fixtures, "silence-5s.wav"), "wb") as out:
+              out.setparams(params)
+              out.writeframes(b"\0\0" * params.framerate * 5)
+          PY
       - name: Build the harness image
         run: docker build --platform linux/amd64 -t hushpen-val:noble -f harness/Dockerfile harness
       - name: Insertion suite

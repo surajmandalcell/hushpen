@@ -6,7 +6,13 @@ use std::time::{Duration, Instant};
 use hushpen_core::cleanup::{Options, clean};
 use hushpen_core::dictionary::{Entry, apply};
 
-const BUDGET: Duration = Duration::from_millis(50);
+// A debug build with sibling tests on a shared two-core runner runs far slower than a
+// release build, so only a release build is held to the 50 ms of the contract.
+const BUDGET: Duration = if cfg!(debug_assertions) {
+    Duration::from_millis(500)
+} else {
+    Duration::from_millis(50)
+};
 const RUNS: usize = 100;
 
 /// About 45 s of speech: 110 words with fillers, repeats, and spoken punctuation.
