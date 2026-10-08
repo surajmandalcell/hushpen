@@ -152,7 +152,7 @@ echo "== VAL-PTT-009 Esc passes through while idle"
 failures=""
 focus "$XT"
 for round in 1 2; do
-  [ "$round" = 1 ] || { sleep 1; ptt_run speech-short.wav; focus "$XT"; }
+  [ "$round" = 1 ] || { sleep 1; focus "$GT"; ptt_run speech-short.wav; sleep 0.5; focus "$XT"; }
   size=$(xterm_size)
   T0=$(now_ms)
   xdotool key $ESC

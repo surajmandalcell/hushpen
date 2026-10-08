@@ -1,7 +1,7 @@
 //! Shared fixtures for the controller and Home tests: a fake microphone, a fake engine that
 //! answers from a queue, a models folder on disk, and a clock the test moves by hand.
 
-use super::{CancelToken, Clock, Controller, Engine};
+use super::{CancelToken, Clock, Controller, Engine, InsertSupport};
 use crate::dictation::Dictation;
 use crate::engine_host::LoadProblem;
 use crate::mic::{Mic, MicBackend, MicSession};
@@ -12,7 +12,10 @@ use gpui_kit::{AppContext, ClipboardItem, Entity, TestAppContext};
 use hushpen_audio::{CaptureError, EventSink, FeedInfo, Finished, InputDevice};
 use hushpen_core::catalog::Catalog;
 use hushpen_core::dictation::{AppEvent, State};
+use hushpen_core::insert::flow::Step;
+use hushpen_core::insert::{Chord, Outcome as InsertOutcome, Overrides, Report, Restore};
 use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
+use hushpen_platform::insert::{Inserter, Target};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files;
 use serde_json::json;
@@ -275,4 +278,73 @@ pub fn session_wavs(rig: &Rig) -> Vec<PathBuf> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// An inserter that records what it was asked and answers with a scripted report.
+pub struct FakeInserter {
+    pub target: Mutex<Target>,
+    pub script: Mutex<Report>,
+    pub calls: Mutex<Vec<(String, Target, Overrides)>>,
+    pub panic: std::sync::atomic::AtomicBool,
+}
+
+impl FakeInserter {
+    pub fn pasted_into(label: &str, chord: Chord) -> Arc<Self> {
+        let mut report = Report::new(label);
+        report.outcome = InsertOutcome::Pasted;
+        report.chord = Some(chord);
+        report.selection = Some(chord.selection());
+        report.chord_sent_ms = Some(40);
+        report.first_receipt_ms = Some(90);
+        report.last_receipt_ms = Some(95);
+        report.restore = Restore::Restored;
+        Arc::new(Self {
+            target: Mutex::new(Target {
+                window: Some(7),
+                label: label.into(),
+                classes: vec![label.into()],
+                own: false,
+            }),
+            script: Mutex::new(report),
+            calls: Mutex::default(),
+            panic: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+}
+
+impl Inserter for FakeInserter {
+    fn target(&self) -> Target {
+        self.target.lock().unwrap().clone()
+    }
+
+    fn insert(
+        &self,
+        text: &str,
+        target: &Target,
+        overrides: &Overrides,
+        observe: &mut dyn FnMut(Step<'_>),
+    ) -> Report {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((text.to_owned(), target.clone(), overrides.clone()));
+        if self.panic.load(std::sync::atomic::Ordering::SeqCst) {
+            panic!("the paste path broke");
+        }
+        let report = self.script.lock().unwrap().clone();
+        if report.chord_sent_ms.is_some() {
+            observe(Step::ChordSent(&report));
+        }
+        observe(Step::Settled(&report));
+        observe(Step::Restored(&report));
+        report
+    }
+}
+
+/// Gives the controller of `rig` this inserter, the way `main` does with the system one.
+pub fn attach_inserter(cx: &mut TestAppContext, rig: &Rig, inserter: &Arc<FakeInserter>) {
+    let inserter: Arc<dyn Inserter> = inserter.clone();
+    rig.controller.update(cx, |controller, _| {
+        controller.attach_insert(InsertSupport::Ready(inserter));
+    });
 }

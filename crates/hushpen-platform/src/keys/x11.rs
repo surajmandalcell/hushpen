@@ -8,6 +8,7 @@
 //! while a session runs.
 
 use super::{HoldKey, Reason, Sink, Unavailable};
+use crate::x11util::keycode_of;
 use hushpen_core::dictation::AppEvent;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -35,22 +36,6 @@ pub(super) struct X11Keys {
 
 fn unavailable(what: &str, error: impl std::fmt::Display) -> Unavailable {
     Unavailable::new(Reason::Failed, format!("{what}: {error}"))
-}
-
-fn keycode_of(conn: &RustConnection, keysym: u32) -> Option<u8> {
-    let setup = conn.setup();
-    let (min, max) = (setup.min_keycode, setup.max_keycode);
-    let map = conn
-        .get_keyboard_mapping(min, max - min + 1)
-        .ok()?
-        .reply()
-        .ok()?;
-    let per = usize::from(map.keysyms_per_keycode).max(1);
-    map.keysyms
-        .chunks(per)
-        .position(|keysyms| keysyms.contains(&keysym))
-        .and_then(|index| u8::try_from(index).ok())
-        .and_then(|index| min.checked_add(index))
 }
 
 /// Esc with or without Alt held (the hold key is Alt), and with Caps Lock and Num Lock in any

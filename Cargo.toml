@@ -69,6 +69,7 @@ objc2 = "=0.6.4"
 objc2-app-kit = "=0.3.2"
 objc2-application-services = "=0.3.2"
 objc2-core-graphics = "=0.3.2"
+objc2-foundation = "=0.3.2"
 objc2-service-management = "=0.3.2"
 sys-locale = "=0.3.2"
 x11rb = { version = "=0.14.0", features = ["xinput", "xtest"] }

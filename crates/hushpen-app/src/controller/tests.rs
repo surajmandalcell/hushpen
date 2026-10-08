@@ -1,9 +1,12 @@
 use super::testkit::*;
-use super::{KeysStatus, Phase};
+use super::{InsertSupport, KeysStatus, Phase};
 use gpui_kit::TestAppContext;
 use hushpen_audio::CaptureError;
 use hushpen_core::dictation::{AppEvent, Mode, State};
+use hushpen_core::insert::{Chord, Method, Outcome as InsertOutcome, Report, choose_x11};
 use hushpen_engine::{Failure, JobOutcome};
+use hushpen_platform::keys::Unavailable;
+use serde_json::json;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -362,4 +365,199 @@ fn the_pipeline_json_reports_state_mode_and_session(cx: &mut TestAppContext) {
     assert_eq!(listening["state"], "listening");
     assert_eq!(listening["mode"], "hold");
     assert_eq!(listening["session"], 1);
+}
+
+fn last_insert(cx: &mut TestAppContext, rig: &Rig) -> serde_json::Value {
+    rig.controller
+        .read_with(cx, |controller, _| controller.last_insert_json())
+}
+
+#[gpui_kit::test]
+fn a_hold_run_pastes_through_the_inserter_and_leaves_the_clipboard_alone(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("the quick brown fox", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(machine_state(cx, &rig), State::Done);
+    let calls = inserter.calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "the quick brown fox");
+    assert_eq!(calls[0].1.label, "GtkTarget");
+    assert_eq!(
+        clipboard(cx).as_deref(),
+        Some("OLD"),
+        "the inserter owns the clipboard"
+    );
+    let report = last_insert(cx, &rig);
+    assert_eq!(report["outcome"], "pasted");
+    assert_eq!(report["chord"], "ctrl+v");
+    assert_eq!(report["target"], "GtkTarget");
+    assert_eq!(report["session"], 1);
+    assert!(report["ready_unix_ms"].as_u64().unwrap() > 0);
+    assert_eq!(report["restore"], "restored");
+}
+
+#[gpui_kit::test]
+fn the_per_app_chords_setting_reaches_the_inserter(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("XTerm", Chord::ShiftInsert);
+    attach_inserter(cx, &rig, &inserter);
+    rig.storage
+        .settings
+        .set("insert.appChords", json!({"xterm": "ctrl+shift+v"}))
+        .unwrap();
+    say(&rig, outcome_text("words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    let calls = inserter.calls.lock().unwrap();
+    let classes = vec!["xterm".to_owned()];
+    assert_eq!(
+        choose_x11(&classes, &calls[0].2),
+        Method::Paste(Chord::CtrlShiftV)
+    );
+}
+
+#[gpui_kit::test]
+fn a_paste_that_nobody_read_fails_the_run_and_keeps_the_text_for_paste_last(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("Helper", Chord::CtrlV);
+    {
+        let mut script = inserter.script.lock().unwrap();
+        script.outcome = InsertOutcome::Failed;
+        script.code = Some("INSERT_NO_RECEIPT");
+        script.first_receipt_ms = None;
+        script.last_receipt_ms = None;
+    }
+    attach_inserter(cx, &rig, &inserter);
+    say(&rig, outcome_text("lost words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(machine_state(cx, &rig), State::Failed);
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_NO_RECEIPT"));
+    let message = rig
+        .controller
+        .read_with(cx, |c, _| c.notice().unwrap().message.clone());
+    assert!(message.contains("Paste last transcript"), "{message}");
+    assert_eq!(last_insert(cx, &rig)["outcome"], "failed");
+    let chars = rig
+        .controller
+        .read_with(cx, |c, _| c.pipeline_json()["last_text_chars"].clone());
+    assert_eq!(chars, 10, "the text can still be pasted later");
+}
+
+#[gpui_kit::test]
+fn a_copy_only_result_ends_done_with_a_notice_that_says_why(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("", Chord::CtrlV);
+    {
+        let mut script = inserter.script.lock().unwrap();
+        *script = Report::new("");
+        script.outcome = InsertOutcome::CopiedOnly;
+        script.note = Some("no-target");
+    }
+    attach_inserter(cx, &rig, &inserter);
+    say(&rig, outcome_text("copied words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(machine_state(cx, &rig), State::Done);
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_COPIED"));
+    assert_eq!(last_insert(cx, &rig)["outcome"], "copied_only");
+    assert_eq!(last_insert(cx, &rig)["note"], "no-target");
+}
+
+#[gpui_kit::test]
+fn a_panic_in_the_paste_path_fails_the_run_and_the_next_run_works(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    inserter
+        .panic
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    attach_inserter(cx, &rig, &inserter);
+    say(&rig, outcome_text("first", "en"));
+    say(&rig, outcome_text("second", "en"));
+
+    hold_run(cx, &rig, 1_000);
+    assert_eq!(machine_state(cx, &rig), State::Failed);
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_NO_RECEIPT"));
+
+    inserter
+        .panic
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    hold_run(cx, &rig, 7_000);
+    assert_eq!(machine_state(cx, &rig), State::Done);
+}
+
+#[gpui_kit::test]
+fn a_home_run_copies_and_never_presses_a_key(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("from home", "en"));
+
+    send_at(cx, &rig, 1_000, AppEvent::HomeToggle).unwrap();
+    send_at(cx, &rig, 2_000, AppEvent::HomeToggle).unwrap();
+    settle(cx, &rig);
+
+    assert_eq!(machine_state(cx, &rig), State::Done);
+    assert!(inserter.calls.lock().unwrap().is_empty());
+    assert_eq!(clipboard(cx).as_deref(), Some("from home"));
+}
+
+#[gpui_kit::test]
+fn a_system_that_cannot_paste_copies_the_text_and_says_why(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.controller.update(cx, |controller, _| {
+        controller.attach_insert(InsertSupport::Unavailable(Unavailable::wayland()));
+    });
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("wayland words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(machine_state(cx, &rig), State::Done);
+    assert_eq!(clipboard(cx).as_deref(), Some("wayland words"));
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_WAYLAND"));
+}
+
+#[gpui_kit::test]
+fn runs_that_fail_before_the_text_exists_insert_nothing_and_leave_the_clipboard(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(
+        &rig,
+        JobOutcome::Failed(Failure::new("ENGINE_CRASHED", "the engine died")),
+    );
+    say(&rig, outcome_text("[BLANK_AUDIO]", "en"));
+    say(&rig, outcome_text("works again", "en"));
+
+    hold_run(cx, &rig, 1_000);
+    assert_eq!(machine_state(cx, &rig), State::Failed);
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    hold_run(cx, &rig, 7_000);
+    assert_eq!(notice_code(cx, &rig), Some("ENGINE_NO_SPEECH"));
+    assert!(
+        inserter.calls.lock().unwrap().is_empty(),
+        "nothing was pasted"
+    );
+    assert_eq!(clipboard(cx).as_deref(), Some("OLD"));
+
+    send_at(cx, &rig, 12_000, AppEvent::Tick).unwrap();
+    hold_run(cx, &rig, 13_000);
+    assert_eq!(machine_state(cx, &rig), State::Done);
+    assert_eq!(inserter.calls.lock().unwrap().len(), 1);
 }

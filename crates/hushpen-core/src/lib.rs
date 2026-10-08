@@ -3,6 +3,7 @@
 pub mod catalog;
 pub mod dictation;
 pub mod error;
+pub mod insert;
 pub mod language;
 pub mod protocol;
 pub mod threads;

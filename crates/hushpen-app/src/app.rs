@@ -1,7 +1,7 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
 use crate::assets::{AppAssets, register_fonts};
-use crate::controller::{Controller, Engine, KeysStatus, monotonic_clock};
+use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic_clock};
 use crate::dictation::Dictation;
 use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
@@ -138,6 +138,7 @@ pub fn run() -> ExitCode {
                 )
             });
             start_keys(&controller, cx);
+            start_insert(&controller, cx);
             let dictation =
                 cx.new(|cx| Dictation::new(dictation_storage, models.clone(), controller, cx));
             shell.update(cx, |shell, cx| {
@@ -212,6 +213,18 @@ fn start_keys(controller: &Entity<Controller>, cx: &mut App) {
     controller.update(cx, |controller, _| {
         controller.attach_keys(status, session_active)
     });
+}
+
+/// Sets up paste. When the system cannot paste, finished text is copied and Home says why.
+fn start_insert(controller: &Entity<Controller>, cx: &mut App) {
+    let support = match hushpen_platform::insert::system() {
+        Ok(inserter) => InsertSupport::Ready(inserter),
+        Err(why) => {
+            log::warn!("paste not available: {}", why.reason.key());
+            InsertSupport::Unavailable(why)
+        }
+    };
+    controller.update(cx, |controller, _| controller.attach_insert(support));
 }
 
 fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {

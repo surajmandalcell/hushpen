@@ -16,21 +16,26 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{ClipboardItem, Context, Entity};
 use hushpen_core::dictation::{
-    AppEvent, Config, Cue, DictationMachine, Effect, Mode, RowStatus, State,
+    AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus, State,
 };
 use hushpen_core::error::{
     self, CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_LOAD_FAILED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH,
+    INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_WAYLAND,
 };
+use hushpen_core::insert::flow::Step;
+use hushpen_core::insert::{Outcome, Overrides, Report};
 use hushpen_core::language;
 use hushpen_engine::{JobOutcome, TranscribeSpec};
-use hushpen_platform::keys::Unavailable;
+use hushpen_platform::insert::Inserter;
+use hushpen_platform::keys::{Reason, Unavailable};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
 pub(crate) mod testkit;
@@ -197,6 +202,22 @@ pub enum KeysStatus {
     Unavailable(Unavailable),
 }
 
+/// How finished text reaches the focused app.
+#[derive(Clone)]
+pub enum InsertSupport {
+    /// Nothing was set up: the text is copied and no key is pressed.
+    Detached,
+    Ready(Arc<dyn Inserter>),
+    /// The system cannot paste (Wayland, no display): the text is copied and Home says why.
+    Unavailable(Unavailable),
+}
+
+/// The newest insertion: its session, the wall clock time at which the text was ready, and what
+/// happened. A worker thread writes it as the steps go by.
+type LastInsert = Arc<Mutex<Option<(u64, u64, Report)>>>;
+
+const INSERT_COPIED: &str = "INSERT_COPIED";
+
 pub struct Controller {
     storage: Rc<Storage>,
     mic: Entity<Mic>,
@@ -227,6 +248,8 @@ pub struct Controller {
     session_active: Option<Rc<dyn Fn(bool)>>,
     esc_taken: bool,
     last_phase: Phase,
+    insert: InsertSupport,
+    last_insert: LastInsert,
 }
 
 impl Controller {
@@ -303,7 +326,13 @@ impl Controller {
             session_active: None,
             esc_taken: false,
             last_phase: Phase::Idle,
+            insert: InsertSupport::Detached,
+            last_insert: Arc::default(),
         }
+    }
+
+    pub fn attach_insert(&mut self, support: InsertSupport) {
+        self.insert = support;
     }
 
     /// For threads that feed the pipeline, such as the key listener.
@@ -533,10 +562,11 @@ impl Controller {
                 queue.push_back(AppEvent::Cleaned { session, text: raw });
             }
             Effect::StopLlm => {}
-            Effect::Insert { session, text, .. } => {
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
-                queue.push_back(AppEvent::Inserted { session });
-            }
+            Effect::Insert {
+                session,
+                text,
+                delivery,
+            } => self.insert(session, text, delivery, queue, cx),
             Effect::SaveRow { status, text, .. } => self.save_row(status, text),
             Effect::UpdatePasteLast { text } => self.last_text = Some(text),
             Effect::MaxDurationWarning { seconds_left } => {
@@ -667,6 +697,165 @@ impl Controller {
         }
     }
 
+    /// Puts the finished text into the focused app, or copies it when it cannot. The text is
+    /// kept for "Paste last transcript" before anything can fail.
+    fn insert(
+        &mut self,
+        session: u64,
+        text: String,
+        delivery: Delivery,
+        queue: &mut VecDeque<AppEvent>,
+        cx: &mut Context<Self>,
+    ) {
+        self.last_text = Some(text.clone());
+        let ready_unix_ms = unix_ms();
+        if delivery == Delivery::Paste
+            && let InsertSupport::Ready(inserter) = &self.insert
+        {
+            let inserter = Arc::clone(inserter);
+            if self.paste(session, &text, inserter, ready_unix_ms) {
+                return;
+            }
+        }
+        let note = match (delivery, &self.insert) {
+            (Delivery::Copy, _) => "home",
+            (_, InsertSupport::Unavailable(_)) => "unavailable",
+            _ => "no-inserter",
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        let mut report = Report::new("");
+        report.outcome = Outcome::CopiedOnly;
+        report.note = Some(note);
+        report.restore = hushpen_core::insert::Restore::NotNeeded;
+        store_report(&self.last_insert, session, ready_unix_ms, &report);
+        if delivery == Delivery::Paste
+            && let InsertSupport::Unavailable(why) = &self.insert
+        {
+            let code = if why.reason == Reason::Wayland {
+                INSERT_WAYLAND
+            } else {
+                INSERT_COPIED
+            };
+            self.notice = Some(Notice {
+                code,
+                message: why.message.clone(),
+            });
+        }
+        queue.push_back(AppEvent::Inserted { session });
+    }
+
+    /// Hands the paste to a worker thread. The machine hears `Inserted` or `InsertFailed` once
+    /// the target read the text or the wait ran out, and the clipboard comes back after that.
+    /// Returns false when the thread could not start.
+    fn paste(
+        &mut self,
+        session: u64,
+        text: &str,
+        inserter: Arc<dyn Inserter>,
+        ready_unix_ms: u64,
+    ) -> bool {
+        let target = inserter.target();
+        let overrides = Overrides::from_value(
+            &self
+                .storage
+                .settings
+                .get("insert.appChords")
+                .unwrap_or(Value::Null),
+        );
+        let text = text.to_owned();
+        let events = self.events.clone();
+        let last = Arc::clone(&self.last_insert);
+        let spawned = (self.spawn)(Box::new(move || {
+            let mut settled = false;
+            let finish = |report: &Report, settled: &mut bool| {
+                if std::mem::replace(settled, true) {
+                    return;
+                }
+                let event = match (report.outcome, report.code) {
+                    (Outcome::Pasted | Outcome::CopiedOnly, _) => AppEvent::Inserted { session },
+                    (_, code) => AppEvent::InsertFailed {
+                        session,
+                        code: code.unwrap_or(INSERT_NO_RECEIPT),
+                    },
+                };
+                let _ = events.unbounded_send((event, None));
+            };
+            let ran = catch_unwind(AssertUnwindSafe(|| {
+                inserter.insert(&text, &target, &overrides, &mut |step| match step {
+                    Step::ChordSent(report) => {
+                        store_report(&last, session, ready_unix_ms, report);
+                        hook::record_event("insert", &chord_detail(report));
+                    }
+                    Step::Settled(report) => {
+                        store_report(&last, session, ready_unix_ms, report);
+                        hook::record_event("insert", &format!("settled {}", report.outcome.key()));
+                        finish(report, &mut settled);
+                    }
+                    Step::Restored(report) => {
+                        store_report(&last, session, ready_unix_ms, report);
+                        hook::record_event("insert", &format!("restore {}", report.restore.key()));
+                    }
+                })
+            }));
+            match ran {
+                Ok(report) => {
+                    store_report(&last, session, ready_unix_ms, &report);
+                    finish(&report, &mut settled);
+                }
+                Err(_) => {
+                    log::error!("{INSERT_NO_RECEIPT} the paste path panicked");
+                    if !settled {
+                        let _ = events.unbounded_send((
+                            AppEvent::InsertFailed {
+                                session,
+                                code: INSERT_NO_RECEIPT,
+                            },
+                            None,
+                        ));
+                    }
+                }
+            }
+        }));
+        if let Err(error) = spawned {
+            log::warn!("{INSERT_NO_RECEIPT} could not start the paste: {error}");
+            return false;
+        }
+        true
+    }
+
+    /// `hookctl state` section `last_insert`.
+    pub fn last_insert_json(&self) -> Value {
+        match &*self.last_insert.lock().unwrap_or_else(|p| p.into_inner()) {
+            Some((session, ready, report)) => report.to_json(*session, *ready),
+            None => Value::Null,
+        }
+    }
+
+    /// The words for a notice after a copy that did not press a paste key.
+    fn copy_notice(&mut self, session: u64) {
+        let slot = self.last_insert.lock().unwrap_or_else(|p| p.into_inner());
+        let Some((owner, _, report)) = &*slot else {
+            return;
+        };
+        if *owner != session || report.outcome != Outcome::CopiedOnly {
+            return;
+        }
+        let message = match report.note {
+            Some("no-target") => "No app had the focus, so the text is on your clipboard.",
+            Some("override") => "Paste is off for this app, so the text is on your clipboard.",
+            Some("own-window") => "Hushpen had the focus, so the text is on your clipboard.",
+            Some("no-paste") => {
+                "Hushpen could not press the paste key, so the text is on your clipboard."
+            }
+            _ => return,
+        };
+        drop(slot);
+        self.notice = Some(Notice {
+            code: INSERT_COPIED,
+            message: message.to_owned(),
+        });
+    }
+
     fn save_row(&mut self, status: RowStatus, text: Option<String>) {
         match status {
             RowStatus::Done => {
@@ -682,6 +871,7 @@ impl Controller {
                     .map(|(_, code)| code);
                 self.result = Some(Phase::Done);
                 self.last_result = Some("done");
+                self.copy_notice(session);
                 log::info!(
                     "DICTATION_DONE session={session} chars={}",
                     self.transcript.chars().count()
@@ -796,6 +986,25 @@ impl Controller {
     }
 }
 
+fn unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(0))
+}
+
+fn store_report(last: &LastInsert, session: u64, ready_unix_ms: u64, report: &Report) {
+    *last.lock().unwrap_or_else(|p| p.into_inner()) =
+        Some((session, ready_unix_ms, report.clone()));
+}
+
+fn chord_detail(report: &Report) -> String {
+    format!(
+        "chord {} {}",
+        report.chord.map_or("none", |chord| chord.key()),
+        report.target
+    )
+}
+
 fn cue_key(cue: Cue) -> &'static str {
     match cue {
         Cue::Start => "start",
@@ -844,6 +1053,14 @@ fn failure_for(code: &str) -> (&'static str, &'static str) {
             "No speech was heard. Try again and speak a little closer to the microphone.",
         ),
         error::CAPTURE_FAILED => (CAPTURE_FAILED, "Recording stopped because of an error."),
+        INSERT_NO_RECEIPT => (
+            INSERT_NO_RECEIPT,
+            "The app did not take the text. Use Paste last transcript to try again.",
+        ),
+        INSERT_NO_PERMISSION => (
+            INSERT_NO_PERMISSION,
+            "Hushpen is not allowed to press keys, so it could not paste. The text is on your clipboard. Use Paste last transcript once you allow it.",
+        ),
         _ => (
             ENGINE_CRASHED,
             "The speech engine stopped while transcribing. The recording was kept.",
