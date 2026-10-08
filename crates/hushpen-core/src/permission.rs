@@ -33,6 +33,21 @@ impl Permission {
             Permission::InputMonitoring => "inputMonitoring",
         }
     }
+
+    /// The Privacy pane of System Settings that holds this permission.
+    pub fn settings_url(self) -> &'static str {
+        match self {
+            Permission::Microphone => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            }
+            Permission::Accessibility => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            }
+            Permission::InputMonitoring => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

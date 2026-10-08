@@ -1,12 +1,16 @@
-//! macOS permission state. Every call here reads; none can show a prompt.
+//! macOS permission state. The preflight calls read and never prompt; `request` and
+//! `open_url` run only after a click on an onboarding button.
 
 // A message to a framework class that the objc2 bindings of this workspace do not wrap.
 #![allow(unsafe_code)]
 
-use hushpen_core::permission::{Access, Preflight};
+use hushpen_core::permission::{Access, Permission, Preflight};
 use objc2::msg_send;
 use objc2::runtime::AnyClass;
-use objc2_core_graphics::{CGPreflightListenEventAccess, CGPreflightPostEventAccess};
+use objc2_core_graphics::{
+    CGPreflightListenEventAccess, CGPreflightPostEventAccess, CGRequestListenEventAccess,
+    CGRequestPostEventAccess,
+};
 use objc2_foundation::NSString;
 
 /// `AVMediaTypeAudio`.
@@ -29,6 +33,25 @@ impl Preflight for MacPreflight {
     fn listen_event(&self) -> Access {
         granted(CGPreflightListenEventAccess())
     }
+}
+
+pub(super) fn request(permission: Permission) {
+    match permission {
+        Permission::Accessibility => {
+            CGRequestPostEventAccess();
+        }
+        Permission::InputMonitoring => {
+            CGRequestListenEventAccess();
+        }
+        Permission::Microphone => {}
+    }
+}
+
+pub(super) fn open_url(url: &str) -> std::io::Result<()> {
+    std::process::Command::new("/usr/bin/open")
+        .arg(url)
+        .status()
+        .map(|_| ())
 }
 
 fn granted(yes: bool) -> Access {

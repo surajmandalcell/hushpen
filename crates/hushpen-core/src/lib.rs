@@ -9,6 +9,7 @@ pub mod export;
 pub mod flow_bar;
 pub mod insert;
 pub mod language;
+pub mod onboarding;
 pub mod permission;
 pub mod protocol;
 pub mod shortcut;
