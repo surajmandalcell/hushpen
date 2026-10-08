@@ -31,6 +31,8 @@ pub const INSERT_WAYLAND: &str = "INSERT_WAYLAND";
 pub const INSERT_NO_TRANSCRIPT: &str = "INSERT_NO_TRANSCRIPT";
 pub const SHORTCUT_IN_USE: &str = "SHORTCUT_IN_USE";
 pub const SHORTCUT_RESERVED: &str = "SHORTCUT_RESERVED";
+/// The recorded keys are not a shortcut, such as a letter with no modifier.
+pub const SHORTCUT_INVALID: &str = "SHORTCUT_INVALID";
 pub const LLM_TIMEOUT: &str = "LLM_TIMEOUT";
 pub const LLM_GUARD_REJECTED: &str = "LLM_GUARD_REJECTED";
 pub const LLM_UNAVAILABLE: &str = "LLM_UNAVAILABLE";

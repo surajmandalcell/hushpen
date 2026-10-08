@@ -11,6 +11,7 @@ pub mod insert;
 pub mod language;
 pub mod permission;
 pub mod protocol;
+pub mod shortcut;
 pub mod threads;
 pub mod transcript;
 

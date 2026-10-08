@@ -1,6 +1,7 @@
 //! The settings registry: every key, its default, and its validation rule.
 
 use crate::data_dir::Os;
+use hushpen_core::shortcut::{Platform, Slot};
 use serde_json::{Map, Value, json};
 
 pub(super) enum Kind {
@@ -107,6 +108,15 @@ fn mac(os: Os) -> bool {
     os == Os::MacOs
 }
 
+fn shortcut_default(slot: Slot, os: Os) -> Value {
+    let platform = if mac(os) {
+        Platform::MacOs
+    } else {
+        Platform::Linux
+    };
+    json!(slot.default_text(platform))
+}
+
 macro_rules! spec {
     ($key:literal, $kind:expr, $default:expr) => {
         Spec {
@@ -127,21 +137,18 @@ macro_rules! spec {
 }
 
 pub(super) static REGISTRY: &[Spec] = &[
-    spec!("shortcut.hold", Kind::Text(64), |os| {
-        json!(if mac(os) { "RightOption" } else { "RightAlt" })
-    }),
-    spec!("shortcut.handsFree", Kind::Text(64), |_| {
-        json!("DoubleTap+Hold+Space")
+    spec!("shortcut.hold", Kind::Text(64), |os| shortcut_default(
+        Slot::Hold,
+        os
+    )),
+    spec!("shortcut.handsFree", Kind::Text(64), |os| {
+        shortcut_default(Slot::HandsFree, os)
     }),
     spec!("shortcut.pasteLast", Kind::Text(64), |os| {
-        json!(if mac(os) { "Ctrl+Cmd+V" } else { "Ctrl+Alt+V" })
+        shortcut_default(Slot::PasteLast, os)
     }),
     spec!("shortcut.command", Kind::Text(64), |os| {
-        json!(if mac(os) {
-            "RightOption+RightShift"
-        } else {
-            "RightAlt+RightShift"
-        })
+        shortcut_default(Slot::Command, os)
     }),
     spec!("dictation.modelId", Kind::OptionalText(128), |_| json!("")),
     spec!("dictation.language", Kind::Language, |_| json!("auto")),
