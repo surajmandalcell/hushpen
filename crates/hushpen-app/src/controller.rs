@@ -19,6 +19,7 @@ use hushpen_core::cleanup;
 use hushpen_core::dictation::{
     AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus, State,
 };
+use hushpen_core::dictionary;
 use hushpen_core::error::{
     self, CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_LOAD_FAILED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH,
     INSERT_KEYBOARD_GRABBED, INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_NO_TRANSCRIPT,
@@ -31,6 +32,7 @@ use hushpen_core::permission::Preflight;
 use hushpen_engine::{JobOutcome, TranscribeSpec};
 use hushpen_platform::insert::Inserter;
 use hushpen_platform::keys::{Reason, Shortcut, Unavailable};
+use hushpen_store::dictionary as store_dictionary;
 use permissions::PermissionWatch;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -257,6 +259,8 @@ pub struct Controller {
     last_result: Option<&'static str>,
     refused: Option<&'static str>,
     last_text: Option<String>,
+    /// The whisper prompt of the newest transcription, for the hook.
+    last_prompt: Option<String>,
     warned: bool,
     start_failed: bool,
     problem: Option<LoadProblem>,
@@ -352,6 +356,7 @@ impl Controller {
             last_result: None,
             refused: None,
             last_text: None,
+            last_prompt: None,
             warned: false,
             start_failed: false,
             problem: None,
@@ -384,8 +389,9 @@ impl Controller {
         self.cues = Some(cues);
     }
 
-    /// The rule cleanup, unless `cleanup.rules` is off. The settings are read each time, so a
-    /// change takes effect on the next dictation.
+    /// The rule cleanup, unless `cleanup.rules` is off, and then the dictionary replacements,
+    /// which run either way. The settings and the dictionary are read each time, so a change
+    /// takes effect on the next dictation.
     fn rule_cleanup(&self, raw: &str) -> String {
         let flag = |key: &str| {
             self.storage
@@ -394,13 +400,24 @@ impl Controller {
                 .and_then(|value| value.as_bool())
                 .unwrap_or(true)
         };
-        if !flag(CLEANUP_RULES_SETTING) {
-            return raw.to_owned();
-        }
-        let options = cleanup::Options {
-            spoken_punctuation: flag(SPOKEN_PUNCTUATION_SETTING),
+        let cleaned = if flag(CLEANUP_RULES_SETTING) {
+            let options = cleanup::Options {
+                spoken_punctuation: flag(SPOKEN_PUNCTUATION_SETTING),
+            };
+            cleanup::clean(raw, &options)
+        } else {
+            raw.to_owned()
         };
-        cleanup::clean(raw, &options)
+        dictionary::apply(&cleaned, &self.dictionary())
+    }
+
+    /// The personal dictionary. A database that cannot be read counts as an empty one: a
+    /// dictation must not fail because of it.
+    fn dictionary(&self) -> Vec<dictionary::Entry> {
+        store_dictionary::list(&self.storage.database).unwrap_or_else(|error| {
+            log::warn!("the dictionary could not be read: {error}");
+            Vec::new()
+        })
     }
 
     /// Plays the cue unless the user turned the sounds off. The settings are read each time, so
@@ -775,10 +792,16 @@ impl Controller {
             return;
         };
         let language = self.language();
+        let prompt = Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
+        hook::record_event(
+            "transcribe",
+            &format!("prompt {}", prompt.as_deref().unwrap_or("")),
+        );
+        self.last_prompt = prompt.clone();
         let spec = TranscribeSpec {
             wav_path: wav,
             language: (language != language::AUTO).then_some(language),
-            prompt: None,
+            prompt,
         };
         let token = Arc::new(CancelToken::default());
         self.cancel = Some(Arc::clone(&token));
@@ -1185,6 +1208,7 @@ impl Controller {
             "refused": self.refused,
             "warning": self.warned,
             "last_text_chars": self.last_text.as_ref().map(|text| text.chars().count()),
+            "prompt": self.last_prompt,
         })
     }
 }

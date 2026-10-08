@@ -3,6 +3,7 @@
 use crate::assets::{AppAssets, register_fonts};
 use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic_clock};
 use crate::dictation::Dictation;
+use crate::dictionary::Dictionary;
 use crate::engine_host::EngineHost;
 use crate::instance::{self, Start};
 use crate::mic::{self, CpalBackend, Mic};
@@ -69,6 +70,7 @@ pub fn run() -> ExitCode {
     let mic_storage = Rc::clone(&storage);
     let models_storage = Rc::clone(&storage);
     let models_engine = Rc::clone(&engine);
+    let dictionary_storage = Rc::clone(&storage);
     let dictation_storage = Rc::clone(&storage);
     let dictation_engine = Rc::clone(&engine);
     #[cfg(feature = "test-automation")]
@@ -126,6 +128,16 @@ pub fn run() -> ExitCode {
                 )
             });
             shell.update(cx, |shell, cx| shell.attach_models(models.clone(), cx));
+            let dictionary = handle
+                .update(cx, |_, window, cx| {
+                    cx.new(|cx| Dictionary::new(dictionary_storage, window, cx))
+                })
+                .ok();
+            if let Some(dictionary) = &dictionary {
+                shell.update(cx, |shell, cx| {
+                    shell.attach_dictionary(dictionary.clone(), cx)
+                });
+            }
             let controller = cx.new(|cx| {
                 Controller::new(
                     Rc::clone(&dictation_storage),
@@ -165,6 +177,9 @@ pub fn run() -> ExitCode {
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_dictation(cx, dictation);
+                if let Some(dictionary) = dictionary {
+                    crate::hook::attach_dictionary(cx, dictionary);
+                }
             }
             cx.spawn(async move |cx| {
                 let mut shown = shown;

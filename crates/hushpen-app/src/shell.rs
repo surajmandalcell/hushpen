@@ -1,6 +1,7 @@
 //! The app window: sidebar, toolbar, traffic lights, and the active view.
 
 use crate::dictation::{self, Dictation};
+use crate::dictionary::{self, Dictionary};
 use crate::hook;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
@@ -25,6 +26,7 @@ pub struct Shell {
     mic: Option<Entity<Mic>>,
     models: Option<Entity<Models>>,
     dictation: Option<Entity<Dictation>>,
+    dictionary: Option<Entity<Dictionary>>,
 }
 
 impl Shell {
@@ -41,7 +43,15 @@ impl Shell {
             mic: None,
             models: None,
             dictation: None,
+            dictionary: None,
         }
+    }
+
+    /// Shows the personal dictionary in the Dictionary view and repaints when it changes.
+    pub fn attach_dictionary(&mut self, dictionary: Entity<Dictionary>, cx: &mut Context<Self>) {
+        cx.observe(&dictionary, |_, _, cx| cx.notify()).detach();
+        self.dictionary = Some(dictionary);
+        cx.notify();
     }
 
     /// Shows dictation on Home and repaints when it changes.
@@ -292,15 +302,20 @@ impl Shell {
 
     fn content(&self, shell: &Entity<Shell>, cx: &mut App) -> impl IntoElement {
         let view = self.active;
-        let body = match (&self.mic, &self.models, view) {
-            (Some(mic), _, View::Home) => {
+        let body = match (&self.mic, &self.models, &self.dictionary, view) {
+            (Some(mic), _, _, View::Home) => {
                 let mut home = div().flex().flex_col().gap(px(space::LG));
                 if let Some(dictation) = &self.dictation {
                     home = home.child(dictation::panel::render(dictation, shell, cx));
                 }
                 home.child(mic::panel::render(mic, cx)).into_any_element()
             }
-            (_, Some(models), View::Models) => models::panel::render(models, cx).into_any_element(),
+            (_, Some(models), _, View::Models) => {
+                models::panel::render(models, cx).into_any_element()
+            }
+            (_, _, Some(dictionary), View::Dictionary) => {
+                dictionary::panel::render(dictionary, cx).into_any_element()
+            }
             _ => div()
                 .id(hook::id(view.key(), "placeholder"))
                 .test_support()

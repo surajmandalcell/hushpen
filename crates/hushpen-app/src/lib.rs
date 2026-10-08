@@ -11,6 +11,7 @@ pub mod assets;
 pub mod cli;
 pub mod controller;
 pub mod dictation;
+pub mod dictionary;
 pub mod engine_host;
 pub mod hook;
 pub mod instance;

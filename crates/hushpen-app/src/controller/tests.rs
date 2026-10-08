@@ -952,3 +952,114 @@ fn the_paste_last_shortcut_comes_from_its_setting_with_a_default_for_bad_text(
         .unwrap();
     assert_eq!(shortcut(cx), Shortcut::default_paste_last());
 }
+
+fn add_entry(rig: &Rig, phrase: &str, heard_as: Option<&str>) -> i64 {
+    hushpen_store::dictionary::add(&rig.storage.database, phrase, heard_as)
+        .unwrap()
+        .id
+}
+
+fn prompt_of_last_job(rig: &Rig) -> Option<String> {
+    rig.specs.lock().unwrap().last().unwrap().prompt.clone()
+}
+
+#[gpui_kit::test]
+fn a_replacement_changes_the_inserted_text_after_the_rules_ran(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("cleanup.rules", json!(true))
+        .unwrap();
+    add_entry(&rig, "Foxtrel", Some("fox"));
+
+    let inserted = inserted_after_a_run(cx, &rig, "um fox comma fox");
+
+    assert_eq!(inserted, "Foxtrel, Foxtrel.");
+}
+
+#[gpui_kit::test]
+fn a_replacement_also_runs_when_the_rules_are_off(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    add_entry(&rig, "Foxtrel", Some("fox"));
+
+    let inserted = inserted_after_a_run(cx, &rig, "um the quick brown fox");
+
+    assert_eq!(inserted, "um the quick brown Foxtrel");
+}
+
+#[gpui_kit::test]
+fn an_edited_and_a_deleted_entry_apply_to_the_next_dictation(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    let id = add_entry(&rig, "Foxtrel", Some("fox"));
+    let dictate = |cx: &mut TestAppContext, from: u64| {
+        // A tick ends the result flash of the run before.
+        send_at(cx, &rig, from - 1_000, AppEvent::Tick).unwrap();
+        say(&rig, outcome_text("the fox", "en"));
+        hold_run(cx, &rig, from);
+        inserter.calls.lock().unwrap().last().unwrap().0.clone()
+    };
+    assert_eq!(dictate(cx, 10_000), "the Foxtrel");
+
+    hushpen_store::dictionary::update(&rig.storage.database, id, "Vixen", Some("fox")).unwrap();
+    assert_eq!(dictate(cx, 20_000), "the Vixen");
+
+    hushpen_store::dictionary::delete(&rig.storage.database, id).unwrap();
+    assert_eq!(dictate(cx, 30_000), "the fox");
+}
+
+#[gpui_kit::test]
+fn the_dictionary_words_go_into_the_whisper_prompt(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let id = add_entry(&rig, "Zyxtrel", None);
+    add_entry(&rig, "Foxtrel", Some("fox"));
+    say(&rig, outcome_text("hello", "en"));
+    hold_run(cx, &rig, 1_000);
+    assert_eq!(
+        prompt_of_last_job(&rig).as_deref(),
+        Some("Zyxtrel, Foxtrel")
+    );
+
+    hushpen_store::dictionary::delete(&rig.storage.database, id).unwrap();
+    send_at(cx, &rig, 9_000, AppEvent::Tick).unwrap();
+    say(&rig, outcome_text("hello", "en"));
+    hold_run(cx, &rig, 10_000);
+    assert_eq!(prompt_of_last_job(&rig).as_deref(), Some("Foxtrel"));
+}
+
+#[gpui_kit::test]
+fn an_empty_dictionary_sends_no_prompt(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    say(&rig, outcome_text("hello", "en"));
+    hold_run(cx, &rig, 1_000);
+    assert_eq!(prompt_of_last_job(&rig), None);
+}
+
+#[gpui_kit::test]
+fn the_prompt_sent_to_the_engine_is_capped(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    for n in 0..300 {
+        add_entry(&rig, &format!("Name{n:03}"), None);
+    }
+    say(&rig, outcome_text("hello", "en"));
+    hold_run(cx, &rig, 1_000);
+
+    let prompt = prompt_of_last_job(&rig).unwrap();
+    assert!(
+        hushpen_core::dictionary::estimated_tokens(prompt.chars().count())
+            <= hushpen_core::dictionary::PROMPT_TOKEN_CAP
+    );
+    assert!(prompt.starts_with("Name000, Name001"));
+}
+
+#[gpui_kit::test]
+fn the_hook_sees_the_prompt_of_a_dictation_in_the_state(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    add_entry(&rig, "Zyxtrel", None);
+    say(&rig, outcome_text("hello", "en"));
+    hold_run(cx, &rig, 1_000);
+
+    let pipeline = rig.controller.read_with(cx, |c, _| c.pipeline_json());
+    assert_eq!(pipeline["prompt"], "Zyxtrel");
+}
