@@ -37,6 +37,14 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+      # The tests link hushpen-app, which links the GPUI libraries like the build job does.
+      - name: Install the GPUI build libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libfontconfig-dev libfreetype-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev \
+            libxi-dev libxrandr-dev libasound2-dev libvulkan-dev libdbus-1-dev
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny@0.20.2
