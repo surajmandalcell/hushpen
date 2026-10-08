@@ -174,7 +174,9 @@ impl Settings {
                 .iter()
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
-            control_focus: (0..16).map(|_| cx.focus_handle().tab_stop(true)).collect(),
+            control_focus: (0..slots::COUNT)
+                .map(|_| cx.focus_handle().tab_stop(true))
+                .collect(),
         }
     }
 
