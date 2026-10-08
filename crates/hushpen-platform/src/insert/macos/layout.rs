@@ -45,10 +45,11 @@ const NO_DEAD_KEYS: u32 = 1;
 /// The key code that types `v` on the layout in use. A layout with no Latin letters (Russian, for
 /// example) falls back to the Latin layout the system keeps for shortcuts.
 pub(super) fn v_key_code() -> u16 {
-    layout_v().unwrap_or(ANSI_V)
+    key_code_for('v').unwrap_or(ANSI_V)
 }
 
-fn layout_v() -> Option<u16> {
+/// The key code that types `target` (a letter or digit) on the layout in use.
+pub(crate) fn key_code_for(target: char) -> Option<u16> {
     // SAFETY: the call returns an owned input source (create rule) or null.
     let source = unsafe {
         let raw = TISCopyCurrentASCIICapableKeyboardLayoutInputSource();
@@ -71,7 +72,7 @@ fn layout_v() -> Option<u16> {
     let layout = data.bytes();
     // SAFETY: a plain C call with no arguments.
     let keyboard_type = u32::from(unsafe { LMGetKbdType() });
-    find_key('v', |code| {
+    find_key(target, |code| {
         let mut dead = 0u32;
         let mut length = 0usize;
         let mut buffer = [0u16; 4];

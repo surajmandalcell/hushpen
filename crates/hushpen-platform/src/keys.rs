@@ -9,7 +9,10 @@ use hushpen_core::dictation::AppEvent;
 use std::sync::Arc;
 
 pub mod session;
+pub mod shortcut;
 pub mod tap;
+
+pub use shortcut::Shortcut;
 
 #[cfg(target_os = "linux")]
 mod x11;
@@ -103,8 +106,14 @@ pub struct GlobalKeys {
 }
 
 impl GlobalKeys {
-    pub fn start(hold: HoldKey, sink: Sink) -> Result<Self, Unavailable> {
-        start(hold, sink)
+    /// `paste_last` is the "Paste last transcript" shortcut. The sink gets
+    /// [`AppEvent::PasteLast`] when it is released.
+    pub fn start(
+        hold: HoldKey,
+        paste_last: Option<Shortcut>,
+        sink: Sink,
+    ) -> Result<Self, Unavailable> {
+        start(hold, paste_last, sink)
     }
 
     /// Esc belongs to the pipeline while a session runs and to the focused app otherwise.
@@ -118,7 +127,11 @@ impl GlobalKeys {
 }
 
 #[cfg(target_os = "linux")]
-fn start(hold: HoldKey, sink: Sink) -> Result<GlobalKeys, Unavailable> {
+fn start(
+    hold: HoldKey,
+    paste_last: Option<Shortcut>,
+    sink: Sink,
+) -> Result<GlobalKeys, Unavailable> {
     match session::detect() {
         session::Session::Wayland => return Err(Unavailable::wayland()),
         session::Session::NoDisplay => {
@@ -130,19 +143,27 @@ fn start(hold: HoldKey, sink: Sink) -> Result<GlobalKeys, Unavailable> {
         session::Session::X11 => {}
     }
     Ok(GlobalKeys {
-        inner: x11::X11Keys::start(hold, sink)?,
+        inner: x11::X11Keys::start(hold, paste_last, sink)?,
     })
 }
 
 #[cfg(target_os = "macos")]
-fn start(hold: HoldKey, sink: Sink) -> Result<GlobalKeys, Unavailable> {
+fn start(
+    hold: HoldKey,
+    paste_last: Option<Shortcut>,
+    sink: Sink,
+) -> Result<GlobalKeys, Unavailable> {
     Ok(GlobalKeys {
-        inner: macos::MacKeys::start(hold, sink)?,
+        inner: macos::MacKeys::start(hold, paste_last, sink)?,
     })
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn start(_hold: HoldKey, _sink: Sink) -> Result<GlobalKeys, Unavailable> {
+fn start(
+    _hold: HoldKey,
+    _paste_last: Option<Shortcut>,
+    _sink: Sink,
+) -> Result<GlobalKeys, Unavailable> {
     Err(Unavailable::new(
         Reason::Unsupported,
         "Global keys are not available on this system.",

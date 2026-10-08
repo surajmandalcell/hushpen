@@ -20,8 +20,8 @@ use hushpen_core::dictation::{
 };
 use hushpen_core::error::{
     self, CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_LOAD_FAILED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH,
-    INSERT_KEYBOARD_GRABBED, INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_SECURE_FIELD,
-    INSERT_WAYLAND,
+    INSERT_KEYBOARD_GRABBED, INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_NO_TRANSCRIPT,
+    INSERT_SECURE_FIELD, INSERT_WAYLAND,
 };
 use hushpen_core::insert::flow::Step;
 use hushpen_core::insert::{Outcome, Overrides, Report};
@@ -29,7 +29,7 @@ use hushpen_core::language;
 use hushpen_core::permission::Preflight;
 use hushpen_engine::{JobOutcome, TranscribeSpec};
 use hushpen_platform::insert::Inserter;
-use hushpen_platform::keys::{Reason, Unavailable};
+use hushpen_platform::keys::{Reason, Shortcut, Unavailable};
 use permissions::PermissionWatch;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -224,6 +224,13 @@ type LastInsert = Arc<Mutex<Option<(u64, u64, Report)>>>;
 
 const INSERT_COPIED: &str = "INSERT_COPIED";
 
+const PASTE_LAST_SETTING: &str = "shortcut.pasteLast";
+pub const CUE_SOUNDS_SETTING: &str = "audio.cueSounds";
+pub const CUE_VOLUME_SETTING: &str = "audio.cueVolume";
+
+/// Plays one cue at a volume from 0.0 to 1.0 and returns at once.
+pub type CueSink = Arc<dyn Fn(Cue, f32) + Send + Sync>;
+
 pub struct Controller {
     storage: Rc<Storage>,
     mic: Entity<Mic>,
@@ -257,6 +264,10 @@ pub struct Controller {
     insert: InsertSupport,
     last_insert: LastInsert,
     permissions: Option<PermissionWatch>,
+    cues: Option<CueSink>,
+    /// The session whose text a "Paste last transcript" is putting in right now. The machine
+    /// has no state for it, so the controller keeps the answer.
+    pasting_last: Option<u64>,
 }
 
 impl Controller {
@@ -348,11 +359,47 @@ impl Controller {
             insert: InsertSupport::Detached,
             last_insert: Arc::default(),
             permissions: None,
+            cues: None,
+            pasting_last: None,
         }
     }
 
     pub fn attach_insert(&mut self, support: InsertSupport) {
         self.insert = support;
+    }
+
+    /// The `shortcut.pasteLast` setting, or the system default when the text does not parse.
+    pub fn paste_last_shortcut(&self) -> Shortcut {
+        self.storage
+            .settings
+            .get(PASTE_LAST_SETTING)
+            .and_then(|value| value.as_str().and_then(Shortcut::parse))
+            .unwrap_or_else(Shortcut::default_paste_last)
+    }
+
+    pub fn attach_cues(&mut self, cues: CueSink) {
+        self.cues = Some(cues);
+    }
+
+    /// Plays the cue unless the user turned the sounds off. The settings are read each time, so
+    /// a change takes effect on the next cue.
+    fn play_cue(&self, cue: Cue) {
+        let Some(cues) = &self.cues else {
+            return;
+        };
+        let settings = &self.storage.settings;
+        let on = settings
+            .get(CUE_SOUNDS_SETTING)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
+        if !on {
+            return;
+        }
+        let volume = settings
+            .get(CUE_VOLUME_SETTING)
+            .and_then(|value| value.as_f64())
+            .map_or(0.5, |volume| volume as f32);
+        cues(cue, volume);
     }
 
     /// Reads the permissions now and again every few seconds, and records which grants are
@@ -501,6 +548,10 @@ impl Controller {
         let mut outcome = Ok(());
         let mut changed = false;
         while let Some(event) = queue.pop_front() {
+            if self.paste_last_answered(&event, cx) {
+                changed = true;
+                continue;
+            }
             if let Err(reason) = self.preflight(&event, now, cx) {
                 outcome = Err(reason);
                 changed = true;
@@ -591,8 +642,10 @@ impl Controller {
                 let failed_start = cue == Cue::Start && std::mem::take(&mut self.start_failed);
                 if !failed_start {
                     hook::record_event("cue", cue_key(cue));
+                    self.play_cue(cue);
                 }
             }
+            Effect::PasteLast => self.paste_last(cx),
             Effect::DiscardAudio => {
                 if let Some(wav) = &self.wav {
                     discard_wav(wav);
@@ -796,6 +849,79 @@ impl Controller {
             });
         }
         queue.push_back(AppEvent::Inserted { session });
+    }
+
+    /// Puts the last final text into the focused app again. The text is not saved as a new
+    /// history row and does not change the shown transcript.
+    fn paste_last(&mut self, cx: &mut Context<Self>) {
+        self.notice = None;
+        let Some(text) = self.last_text.clone() else {
+            let (code, message) = failure_for(INSERT_NO_TRANSCRIPT);
+            self.notice = Some(Notice {
+                code,
+                message: message.to_owned(),
+            });
+            hook::record_event("insert", "paste-last none");
+            return;
+        };
+        hook::record_event("insert", "paste-last");
+        let session = self.machine.session();
+        let ready_unix_ms = unix_ms();
+        if let InsertSupport::Ready(inserter) = &self.insert {
+            let inserter = Arc::clone(inserter);
+            if self.paste(session, &text, inserter, ready_unix_ms) {
+                self.pasting_last = Some(session);
+                return;
+            }
+        }
+        let note = match &self.insert {
+            InsertSupport::Unavailable(_) => "unavailable",
+            _ => "no-inserter",
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        let mut report = Report::new("");
+        report.outcome = Outcome::CopiedOnly;
+        report.note = Some(note);
+        report.restore = hushpen_core::insert::Restore::NotNeeded;
+        store_report(&self.last_insert, session, ready_unix_ms, &report);
+        if let InsertSupport::Unavailable(why) = &self.insert {
+            self.notice = Some(Notice {
+                code: if why.reason == Reason::Wayland {
+                    INSERT_WAYLAND
+                } else {
+                    INSERT_COPIED
+                },
+                message: why.message.clone(),
+            });
+        }
+    }
+
+    /// Takes the answer of a "Paste last transcript" off the queue. Only a failure says
+    /// anything; the machine never hears about either.
+    fn paste_last_answered(&mut self, event: &AppEvent, cx: &mut Context<Self>) -> bool {
+        let (session, code) = match event {
+            AppEvent::Inserted { session } => (*session, None),
+            AppEvent::InsertFailed { session, code } => (*session, Some(*code)),
+            _ => return false,
+        };
+        if self.pasting_last != Some(session) {
+            return false;
+        }
+        self.pasting_last = None;
+        if let Some(code) = code {
+            let (code, message) = failure_for(code);
+            self.notice = Some(Notice {
+                code,
+                message: message.to_owned(),
+            });
+            hook::record_event("insert", &format!("paste-last failed {code}"));
+            if code == INSERT_NO_PERMISSION
+                && let Some(text) = self.last_text.clone()
+            {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+            }
+        }
+        true
     }
 
     /// Hands the paste to a worker thread. The machine hears `Inserted` or `InsertFailed` once
@@ -1122,6 +1248,10 @@ fn failure_for(code: &str) -> (&'static str, &'static str) {
         INSERT_KEYBOARD_GRABBED => (
             INSERT_KEYBOARD_GRABBED,
             "Another app holds the keyboard, so Hushpen did not paste. Your clipboard is unchanged. Use Paste last transcript when the keyboard is free.",
+        ),
+        INSERT_NO_TRANSCRIPT => (
+            INSERT_NO_TRANSCRIPT,
+            "No transcript is available yet. Dictate something first.",
         ),
         _ => (
             ENGINE_CRASHED,

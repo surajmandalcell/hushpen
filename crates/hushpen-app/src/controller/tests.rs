@@ -2,7 +2,7 @@ use super::testkit::*;
 use super::{InsertSupport, KeysStatus, Phase};
 use gpui_kit::TestAppContext;
 use hushpen_audio::CaptureError;
-use hushpen_core::dictation::{AppEvent, Mode, State};
+use hushpen_core::dictation::{AppEvent, Cue, Mode, State};
 use hushpen_core::insert::{Chord, Method, Outcome as InsertOutcome, Report, choose_x11};
 use hushpen_engine::{Failure, JobOutcome};
 use hushpen_platform::keys::Unavailable;
@@ -691,4 +691,210 @@ fn the_permissions_state_lists_every_key_and_the_grants_lost_since_the_last_star
         .controller
         .read_with(cx, |c, _| c.lost_permissions().len());
     assert_eq!(lost, 1);
+}
+
+fn paste_calls(inserter: &FakeInserter) -> Vec<String> {
+    inserter
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(text, _, _)| text.clone())
+        .collect()
+}
+
+#[gpui_kit::test]
+fn paste_last_with_no_transcript_inserts_nothing_and_says_so(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+
+    send_at(cx, &rig, 1_000, AppEvent::PasteLast).unwrap();
+    settle(cx, &rig);
+
+    assert!(paste_calls(&inserter).is_empty());
+    assert_eq!(clipboard(cx).as_deref(), Some("OLD"));
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_NO_TRANSCRIPT"));
+    let message = rig
+        .controller
+        .read_with(cx, |c, _| c.notice().unwrap().message.clone());
+    assert!(message.contains("No transcript is available"), "{message}");
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+}
+
+#[gpui_kit::test]
+fn paste_last_inserts_the_last_final_text_and_skips_cancelled_and_empty_runs(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    put_on_clipboard(cx, "OLD");
+    say(&rig, outcome_text("the first words", "en"));
+    hold_run(cx, &rig, 1_000);
+    assert_eq!(machine_state(cx, &rig), State::Done);
+
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    send_at(cx, &rig, 7_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 7_800, AppEvent::Esc).unwrap();
+    send_at(cx, &rig, 8_000, AppEvent::HoldUp).unwrap();
+    send_at(cx, &rig, 9_000, AppEvent::Tick).unwrap();
+    say(&rig, outcome_text("[BLANK_AUDIO]", "en"));
+    hold_run(cx, &rig, 10_000);
+    assert_eq!(notice_code(cx, &rig), Some("ENGINE_NO_SPEECH"));
+    send_at(cx, &rig, 16_000, AppEvent::Tick).unwrap();
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    let before = paste_calls(&inserter).len();
+
+    send_at(cx, &rig, 17_000, AppEvent::PasteLast).unwrap();
+    settle(cx, &rig);
+
+    let calls = paste_calls(&inserter);
+    assert_eq!(calls.len(), before + 1);
+    assert_eq!(calls.last().map(String::as_str), Some("the first words"));
+    assert_eq!(clipboard(cx).as_deref(), Some("OLD"));
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    assert_eq!(notice_code(cx, &rig), None);
+    assert_eq!(last_insert(cx, &rig)["outcome"], "pasted");
+}
+
+#[gpui_kit::test]
+fn paste_last_is_ignored_while_a_session_runs(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    say(&rig, outcome_text("kept words", "en"));
+    hold_run(cx, &rig, 1_000);
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    send_at(cx, &rig, 7_000, AppEvent::HoldDown).unwrap();
+    let before = paste_calls(&inserter).len();
+
+    send_at(cx, &rig, 7_500, AppEvent::PasteLast).unwrap();
+    settle(cx, &rig);
+
+    assert_eq!(paste_calls(&inserter).len(), before);
+    assert_eq!(machine_state(cx, &rig), State::Listening);
+}
+
+#[gpui_kit::test]
+fn a_failed_paste_last_says_why_and_the_text_stays_available(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    attach_inserter(cx, &rig, &inserter);
+    say(&rig, outcome_text("kept words", "en"));
+    hold_run(cx, &rig, 1_000);
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    {
+        let mut script = inserter.script.lock().unwrap();
+        *script = Report::new("GtkTarget");
+        script.outcome = InsertOutcome::BlockedSecure;
+        script.code = Some("INSERT_SECURE_FIELD");
+    }
+
+    send_at(cx, &rig, 7_000, AppEvent::PasteLast).unwrap();
+    settle(cx, &rig);
+
+    assert_eq!(notice_code(cx, &rig), Some("INSERT_SECURE_FIELD"));
+    assert_eq!(
+        machine_state(cx, &rig),
+        State::Idle,
+        "the machine is left alone"
+    );
+    let chars = rig
+        .controller
+        .read_with(cx, |c, _| c.pipeline_json()["last_text_chars"].clone());
+    assert_eq!(chars, 10);
+}
+
+type Played = Arc<std::sync::Mutex<Vec<(Cue, f32)>>>;
+
+fn listen_for_cues(cx: &mut TestAppContext, rig: &Rig) -> Played {
+    let played = Played::default();
+    let log = Arc::clone(&played);
+    rig.controller.update(cx, |controller, _| {
+        controller.attach_cues(Arc::new(move |cue, volume| {
+            log.lock().unwrap().push((cue, volume));
+        }));
+    });
+    played
+}
+
+#[gpui_kit::test]
+fn the_start_stop_and_cancel_cues_play_at_the_saved_volume(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let played = listen_for_cues(cx, &rig);
+    rig.storage
+        .settings
+        .set("audio.cueVolume", json!(0.25))
+        .unwrap();
+    say(&rig, outcome_text("words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
+    send_at(cx, &rig, 7_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 7_500, AppEvent::Esc).unwrap();
+
+    assert_eq!(
+        *played.lock().unwrap(),
+        vec![
+            (Cue::Start, 0.25),
+            (Cue::Stop, 0.25),
+            (Cue::Start, 0.25),
+            (Cue::Cancel, 0.25)
+        ]
+    );
+}
+
+#[gpui_kit::test]
+fn turning_the_cue_sounds_off_silences_every_cue(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let played = listen_for_cues(cx, &rig);
+    rig.storage
+        .settings
+        .set("audio.cueSounds", json!(false))
+        .unwrap();
+    say(&rig, outcome_text("words", "en"));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert!(played.lock().unwrap().is_empty());
+    assert_eq!(machine_state(cx, &rig), State::Done);
+}
+
+#[gpui_kit::test]
+fn a_start_that_fails_plays_no_start_cue(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let played = listen_for_cues(cx, &rig);
+    *rig.mic_backend.start_error.lock().unwrap() = Some(CaptureError::new(
+        hushpen_core::error::MIC_UNAVAILABLE,
+        "no input device",
+    ));
+
+    assert!(send_at(cx, &rig, 1_000, AppEvent::HoldDown).is_err());
+
+    assert!(!played.lock().unwrap().contains(&(Cue::Start, 0.5)));
+}
+
+#[gpui_kit::test]
+fn the_paste_last_shortcut_comes_from_its_setting_with_a_default_for_bad_text(
+    cx: &mut TestAppContext,
+) {
+    use hushpen_platform::keys::Shortcut;
+    let rig = rig(cx, &["base"], "base");
+    let shortcut =
+        |cx: &mut TestAppContext| rig.controller.read_with(cx, |c, _| c.paste_last_shortcut());
+    assert_eq!(shortcut(cx), Shortcut::default_paste_last());
+
+    rig.storage
+        .settings
+        .set("shortcut.pasteLast", json!("Ctrl+Shift+Alt+9"))
+        .unwrap();
+    assert_eq!(shortcut(cx), Shortcut::parse("Ctrl+Shift+Alt+9").unwrap());
+
+    rig.storage
+        .settings
+        .set("shortcut.pasteLast", json!("V"))
+        .unwrap();
+    assert_eq!(shortcut(cx), Shortcut::default_paste_last());
 }

@@ -11,6 +11,7 @@ struct Fake {
     start_error: Mutex<Option<CaptureError>>,
     started: Mutex<Vec<(String, PathBuf)>>,
     stopped: Arc<Mutex<u32>>,
+    warmed: Mutex<Vec<String>>,
 }
 
 struct FakeSession {
@@ -18,9 +19,19 @@ struct FakeSession {
     stopped: Arc<Mutex<u32>>,
 }
 
+impl Fake {
+    fn warmed(&self) -> Vec<String> {
+        self.warmed.lock().unwrap().clone()
+    }
+}
+
 impl MicBackend for Fake {
     fn list(&self) -> Result<Vec<InputDevice>, CaptureError> {
         Ok(Vec::new())
+    }
+
+    fn warm(&self, device: &str) {
+        self.warmed.lock().unwrap().push(device.to_string());
     }
 
     fn start(
@@ -219,6 +230,62 @@ fn starting_with_no_microphone_fails_with_a_notice_and_never_listens(cx: &mut Te
             .contains("No microphone is available")
     );
     assert_eq!(state["session"], Value::Null);
+}
+
+#[gpui_kit::test]
+fn a_microphone_that_fails_to_open_after_the_start_ends_the_session_and_deletes_the_file(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, None);
+    devices(cx, &rig, virtual_mics());
+    let path = rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    assert!(path.exists());
+
+    rig.mic.update(cx, |mic, cx| {
+        mic.handle(
+            MicEvent::Capture {
+                generation: 1,
+                event: CaptureEvent::StartFailed(CaptureError::unavailable("gone")),
+            },
+            cx,
+        )
+    });
+
+    let state = state_json(cx, &rig);
+    assert_eq!(state["state"], "failed");
+    assert_eq!(state["notice"]["code"], "MIC_UNAVAILABLE");
+    assert!(
+        state["notice"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("No microphone is available")
+    );
+    assert!(!path.exists(), "a start that got no audio leaves no file");
+    assert_eq!(*rig.backend.stopped.lock().unwrap(), 1);
+}
+
+#[gpui_kit::test]
+fn the_selected_microphone_is_opened_ahead_of_a_start_and_again_when_it_changes(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, None);
+    devices(cx, &rig, virtual_mics());
+    assert_eq!(rig.backend.warmed(), ["default"]);
+
+    rig.mic
+        .update(cx, |mic, cx| mic.select("pulseaudio:vmic2_src", cx))
+        .unwrap();
+    assert_eq!(rig.backend.warmed(), ["default", "pulseaudio:vmic2_src"]);
+
+    rig.mic.update(cx, |mic, cx| mic.start(cx)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.select("default", cx))
+        .unwrap();
+    assert_eq!(
+        rig.backend.warmed().len(),
+        2,
+        "a running session keeps its stream"
+    );
 }
 
 #[gpui_kit::test]

@@ -81,6 +81,7 @@ fn every_event() -> Vec<AppEvent> {
         AppEvent::HomeToggle,
         AppEvent::FlowBarClick,
         AppEvent::Esc,
+        AppEvent::PasteLast,
         AppEvent::Tick,
         AppEvent::CaptureError {
             code: CAPTURE_FAILED,
@@ -115,10 +116,11 @@ fn variant_index(event: &AppEvent) -> usize {
         AppEvent::Cleaned { .. } => 10,
         AppEvent::Inserted { .. } => 11,
         AppEvent::InsertFailed { .. } => 12,
+        AppEvent::PasteLast => 13,
     }
 }
 
-const VARIANTS: usize = 13;
+const VARIANTS: usize = 14;
 
 fn start_effects() -> Vec<Effect> {
     vec![Effect::StartCapture { session: 1 }, Effect::Cue(Cue::Start)]
@@ -151,6 +153,9 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         E::FlowBarClick,
     ] {
         rows.push((State::Idle, start, State::Listening, start_effects()));
+    }
+    for resting in [State::Idle, State::Done, State::Cancelled, State::Failed] {
+        rows.push((resting, E::PasteLast, resting, vec![Effect::PasteLast]));
     }
     rows.push((
         State::Listening,
@@ -312,7 +317,7 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
         }
     }
     assert_eq!(pairs, State::ALL.len() * VARIANTS);
-    assert_eq!(pairs, 104);
+    assert_eq!(pairs, 112);
 }
 
 #[test]

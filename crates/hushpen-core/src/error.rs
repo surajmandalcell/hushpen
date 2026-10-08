@@ -27,6 +27,8 @@ pub const INSERT_KEYBOARD_GRABBED: &str = "INSERT_KEYBOARD_GRABBED";
 pub const INSERT_NO_PERMISSION: &str = "INSERT_NO_PERMISSION";
 pub const INSERT_NO_RECEIPT: &str = "INSERT_NO_RECEIPT";
 pub const INSERT_WAYLAND: &str = "INSERT_WAYLAND";
+/// "Paste last transcript" was used before any dictation had text.
+pub const INSERT_NO_TRANSCRIPT: &str = "INSERT_NO_TRANSCRIPT";
 pub const SHORTCUT_IN_USE: &str = "SHORTCUT_IN_USE";
 pub const SHORTCUT_RESERVED: &str = "SHORTCUT_RESERVED";
 pub const LLM_TIMEOUT: &str = "LLM_TIMEOUT";

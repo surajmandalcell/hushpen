@@ -44,9 +44,11 @@ pub enum TapEvent {
     },
     KeyDown {
         keycode: i64,
+        flags: u64,
     },
     KeyUp {
         keycode: i64,
+        flags: u64,
     },
     /// `kCGEventTapDisabledByTimeout`: the system turned the tap off because the callback was slow.
     DisabledByTimeout,
@@ -62,16 +64,64 @@ pub enum TapAction {
     Ignore,
 }
 
+pub const FLAG_SHIFT: u64 = 0x0002_0000;
+pub const FLAG_CONTROL: u64 = 0x0004_0000;
+pub const FLAG_COMMAND: u64 = 0x0010_0000;
+const FLAGS_MODIFIERS: u64 = FLAG_SHIFT | FLAG_CONTROL | FLAG_ALTERNATE | FLAG_COMMAND;
+
+/// A shortcut as the tap sees it: the key code of its letter on the current layout, and the
+/// modifier flags it needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShortcutKeys {
+    pub keycode: i64,
+    pub flags: u64,
+}
+
+impl ShortcutKeys {
+    pub fn new(keycode: i64, shortcut: super::Shortcut) -> Self {
+        let flags = [
+            (shortcut.ctrl, FLAG_CONTROL),
+            (shortcut.alt, FLAG_ALTERNATE),
+            (shortcut.shift, FLAG_SHIFT),
+            (shortcut.cmd, FLAG_COMMAND),
+        ]
+        .into_iter()
+        .filter(|(wanted, _)| *wanted)
+        .fold(0, |all, (_, flag)| all | flag);
+        Self { keycode, flags }
+    }
+}
+
+/// Progress of the paste last shortcut: it fires when the letter and its modifiers are up.
+#[derive(Debug, Default)]
+struct Paste {
+    armed: bool,
+    key_down: bool,
+}
+
 /// Turns tap events into pipeline events for one hold key.
 #[derive(Debug)]
 pub struct Decoder {
     hold: HoldKey,
     down: bool,
+    shortcut: Option<ShortcutKeys>,
+    paste: Paste,
 }
 
 impl Decoder {
     pub fn new(hold: HoldKey) -> Self {
-        Self { hold, down: false }
+        Self {
+            hold,
+            down: false,
+            shortcut: None,
+            paste: Paste::default(),
+        }
+    }
+
+    /// Also decodes the paste last shortcut.
+    pub fn with_shortcut(mut self, shortcut: Option<ShortcutKeys>) -> Self {
+        self.shortcut = shortcut;
+        self
     }
 
     pub fn decode(&mut self, event: TapEvent) -> TapAction {
@@ -87,20 +137,55 @@ impl Decoder {
                         self.down = false;
                         TapAction::Emit(AppEvent::HoldUp)
                     }
-                    _ => TapAction::Ignore,
+                    _ => self.released(flags),
                 }
             }
-            TapEvent::KeyDown { keycode } if keycode == KEYCODE_ESCAPE => {
+            TapEvent::FlagsChanged { flags, .. } => self.released(flags),
+            TapEvent::KeyDown { keycode, .. } if keycode == KEYCODE_ESCAPE => {
                 TapAction::Emit(AppEvent::Esc)
             }
+            TapEvent::KeyDown { keycode, flags } => {
+                if let Some(shortcut) = self.shortcut
+                    && keycode == shortcut.keycode
+                {
+                    self.paste.key_down = true;
+                    // The shortcut's own modifiers and no others: Ctrl+V is not Ctrl+Shift+V.
+                    if flags & FLAGS_MODIFIERS == shortcut.flags {
+                        self.paste.armed = true;
+                    }
+                }
+                TapAction::Ignore
+            }
+            TapEvent::KeyUp { keycode, flags } => {
+                if self
+                    .shortcut
+                    .is_some_and(|shortcut| shortcut.keycode == keycode)
+                {
+                    self.paste.key_down = false;
+                    return self.released(flags);
+                }
+                TapAction::Ignore
+            }
             TapEvent::DisabledByTimeout | TapEvent::DisabledByUserInput => TapAction::Reenable,
-            _ => TapAction::Ignore,
         }
+    }
+
+    /// The shortcut was completed and every key of it is up now.
+    fn released(&mut self, flags: u64) -> TapAction {
+        let Some(shortcut) = self.shortcut else {
+            return TapAction::Ignore;
+        };
+        if !self.paste.armed || self.paste.key_down || flags & shortcut.flags != 0 {
+            return TapAction::Ignore;
+        }
+        self.paste.armed = false;
+        TapAction::Emit(AppEvent::PasteLast)
     }
 
     /// A reinstalled tap cannot see the release of a key that went down before it. The pipeline
     /// must not stay in a hold forever, so a key that was down is released now.
     pub fn reset(&mut self) -> Option<AppEvent> {
+        self.paste = Paste::default();
         std::mem::take(&mut self.down).then_some(AppEvent::HoldUp)
     }
 }
@@ -240,20 +325,129 @@ mod tests {
         let mut decoder = Decoder::new(HoldKey::RightOption);
         assert_eq!(
             decoder.decode(TapEvent::KeyDown {
-                keycode: KEYCODE_ESCAPE
+                keycode: KEYCODE_ESCAPE,
+                flags: 0
             }),
             TapAction::Emit(AppEvent::Esc)
         );
         assert_eq!(
             decoder.decode(TapEvent::KeyUp {
-                keycode: KEYCODE_ESCAPE
+                keycode: KEYCODE_ESCAPE,
+                flags: 0
             }),
             TapAction::Ignore
         );
         assert_eq!(
-            decoder.decode(TapEvent::KeyDown { keycode: 0 }),
+            decoder.decode(TapEvent::KeyDown {
+                keycode: 0,
+                flags: 0
+            }),
             TapAction::Ignore
         );
+    }
+
+    const KEYCODE_V: i64 = 9;
+    const CTRL_CMD: u64 = FLAG_CONTROL | FLAG_COMMAND;
+
+    fn paste_decoder() -> Decoder {
+        let shortcut = super::super::Shortcut::parse("Ctrl+Cmd+V").unwrap();
+        Decoder::new(HoldKey::RightOption)
+            .with_shortcut(Some(ShortcutKeys::new(KEYCODE_V, shortcut)))
+    }
+
+    fn key_down(keycode: i64, flags: u64) -> TapEvent {
+        TapEvent::KeyDown { keycode, flags }
+    }
+
+    fn key_up(keycode: i64, flags: u64) -> TapEvent {
+        TapEvent::KeyUp { keycode, flags }
+    }
+
+    #[test]
+    fn the_shortcut_keys_carry_its_modifier_flags() {
+        let shortcut = super::super::Shortcut::parse("Ctrl+Alt+Shift+V").unwrap();
+        assert_eq!(
+            ShortcutKeys::new(KEYCODE_V, shortcut).flags,
+            FLAG_CONTROL | FLAG_ALTERNATE | FLAG_SHIFT
+        );
+    }
+
+    #[test]
+    fn paste_last_fires_when_the_letter_and_the_modifiers_are_up() {
+        let mut decoder = paste_decoder();
+        assert_eq!(
+            decoder.decode(flags(55, FLAG_CONTROL)),
+            TapAction::Ignore,
+            "a modifier alone does nothing"
+        );
+        assert_eq!(
+            decoder.decode(key_down(KEYCODE_V, CTRL_CMD)),
+            TapAction::Ignore
+        );
+        assert_eq!(
+            decoder.decode(key_up(KEYCODE_V, CTRL_CMD)),
+            TapAction::Ignore,
+            "the modifiers are still down"
+        );
+        assert_eq!(
+            decoder.decode(flags(55, FLAG_CONTROL)),
+            TapAction::Ignore,
+            "Control is still down"
+        );
+        assert_eq!(
+            decoder.decode(flags(59, 0)),
+            TapAction::Emit(AppEvent::PasteLast)
+        );
+        assert_eq!(decoder.decode(flags(59, 0)), TapAction::Ignore, "only once");
+    }
+
+    #[test]
+    fn paste_last_fires_when_the_modifiers_come_up_before_the_letter() {
+        let mut decoder = paste_decoder();
+        decoder.decode(key_down(KEYCODE_V, CTRL_CMD));
+        assert_eq!(decoder.decode(flags(55, 0)), TapAction::Ignore);
+        assert_eq!(
+            decoder.decode(key_up(KEYCODE_V, 0)),
+            TapAction::Emit(AppEvent::PasteLast)
+        );
+    }
+
+    #[test]
+    fn the_letter_with_other_modifiers_is_not_the_shortcut() {
+        let mut decoder = paste_decoder();
+        decoder.decode(key_down(KEYCODE_V, FLAG_COMMAND));
+        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
+        decoder.decode(key_down(KEYCODE_V, CTRL_CMD | FLAG_SHIFT));
+        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
+        decoder.decode(key_down(KEYCODE_V, 0));
+        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
+    }
+
+    #[test]
+    fn a_paste_key_the_app_sends_itself_is_not_the_shortcut() {
+        let mut decoder = paste_decoder();
+        decoder.decode(key_down(KEYCODE_V, FLAG_COMMAND));
+        assert_eq!(
+            decoder.decode(key_up(KEYCODE_V, FLAG_COMMAND)),
+            TapAction::Ignore
+        );
+        assert_eq!(decoder.decode(flags(55, 0)), TapAction::Ignore);
+    }
+
+    #[test]
+    fn without_a_shortcut_nothing_fires() {
+        let mut decoder = Decoder::new(HoldKey::RightOption);
+        decoder.decode(key_down(KEYCODE_V, CTRL_CMD));
+        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
+        assert_eq!(decoder.decode(flags(55, 0)), TapAction::Ignore);
+    }
+
+    #[test]
+    fn a_reset_forgets_a_half_done_shortcut() {
+        let mut decoder = paste_decoder();
+        decoder.decode(key_down(KEYCODE_V, CTRL_CMD));
+        decoder.reset();
+        assert_eq!(decoder.decode(key_up(KEYCODE_V, 0)), TapAction::Ignore);
     }
 
     #[test]

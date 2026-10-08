@@ -99,6 +99,8 @@ pub enum AppEvent {
     /// A click on the flow bar or the tray entry.
     FlowBarClick,
     Esc,
+    /// The "Paste last transcript" shortcut.
+    PasteLast,
     /// Time passed. Sent at least every 250 ms while a session runs, and again at each deadline.
     Tick,
     CaptureError {
@@ -185,6 +187,8 @@ pub enum Effect {
     UpdatePasteLast {
         text: String,
     },
+    /// Insert the last final text again. Only asked for while no session runs.
+    PasteLast,
     /// Show "1 minute left".
     MaxDurationWarning {
         seconds_left: u64,

@@ -139,6 +139,7 @@ pub fn run() -> ExitCode {
             });
             start_keys(&controller, cx);
             start_insert(&controller, cx);
+            start_cues(&controller, cx);
             controller.update(cx, |controller, _| {
                 controller.attach_permissions(hushpen_platform::permissions::system());
             });
@@ -159,6 +160,7 @@ pub fn run() -> ExitCode {
                         settings: Rc::new(move || settings_storage.settings.values()),
                     },
                 );
+                crate::hook::attach_settings(cx, Rc::clone(&hook_storage));
                 crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_models(cx, models);
@@ -202,8 +204,9 @@ fn no_display_exit() -> Option<ExitCode> {
 fn start_keys(controller: &Entity<Controller>, cx: &mut App) {
     let events = controller.read(cx).sender();
     let sink: hushpen_platform::keys::Sink = Arc::new(move |event| events.send(event));
+    let paste_last = controller.read(cx).paste_last_shortcut();
     let (status, session_active): (KeysStatus, Rc<dyn Fn(bool)>) =
-        match GlobalKeys::start(HoldKey::default(), sink) {
+        match GlobalKeys::start(HoldKey::default(), Some(paste_last), sink) {
             Ok(keys) => (
                 KeysStatus::Available,
                 Rc::new(move |active| keys.set_session_active(active)),
@@ -215,6 +218,15 @@ fn start_keys(controller: &Entity<Controller>, cx: &mut App) {
         };
     controller.update(cx, |controller, _| {
         controller.attach_keys(status, session_active)
+    });
+}
+
+/// Gives the controller the sound player. The player opens the output on its own thread.
+fn start_cues(controller: &Entity<Controller>, cx: &mut App) {
+    let player = Arc::new(hushpen_audio::CuePlayer::new());
+    player.warm();
+    controller.update(cx, |controller, _| {
+        controller.attach_cues(Arc::new(move |cue, volume| player.play(cue, volume)))
     });
 }
 

@@ -1,42 +1,28 @@
 //! Microphone capture into the session WAV.
 //!
-//! Three kinds of threads cooperate. The mic thread owns the cpal stream
-//! (streams are not `Send` everywhere), watches the device, and pushes raw
-//! frames into a channel. The test feeder pushes frames from a WAV into the
-//! same channel. The worker thread downmixes, resamples to 16 kHz mono, writes
-//! the session WAV, and measures levels.
+//! Three kinds of threads cooperate. The mic thread (see [`crate::mic_stream`]) owns the cpal
+//! stream (streams are not `Send` everywhere), watches the device, and pushes raw frames into
+//! a channel. The test feeder pushes frames from a WAV into the same channel. The worker
+//! thread downmixes, resamples to 16 kHz mono, writes the session WAV, and measures levels.
 
-use crate::devices::DEFAULT_ID;
 use crate::error::CaptureError;
 use crate::levels::LevelMeter;
+use crate::mic_stream::{MicHandle, MicHub};
 use crate::resample::{MonoResampler, TARGET_RATE, downmix};
 use crate::session::SessionWriter;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{
-    BufferSize, DeviceId, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize,
-};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, LazyLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-/// How long the stream may deliver no callbacks at all before the capture
-/// counts as lost. A PulseAudio virtual source sends nothing while no one plays
-/// into it, so this is long; a removed device is caught by the device poll.
-const STALL_LIMIT: Duration = Duration::from_secs(10);
-/// How often the mic thread checks that the device it opened still exists.
-const DEVICE_POLL: Duration = Duration::from_secs(1);
 /// Silence is inserted for a pause in the microphone's delivery longer than this. Host
 /// buffers are 20 ms to 100 ms, so shorter gaps are only jitter.
 const MID_STREAM_GAP_MS: u64 = 250;
 /// At the end of a session the file is padded to the wall clock when it falls short by more
 /// than this.
 const END_GAP_MS: u64 = 100;
-const MIC_START_TIMEOUT: Duration = Duration::from_secs(8);
-const MIC_STOP_TIMEOUT: Duration = Duration::from_millis(1500);
 /// How long a stop waits for the host to hand over the audio it still holds. Audio buffers
 /// are 20 ms to 100 ms, so a callback after the stop request means the last words are in the
 /// file. A source that sends nothing, such as an idle virtual one, costs the whole wait.
@@ -46,6 +32,11 @@ const TAIL_DRAIN_MAX: Duration = Duration::from_millis(250);
 pub enum CaptureEvent {
     /// 0.0 to 1.0, about 20 times a second while audio flows.
     Level(f32),
+    /// The microphone stream is running and the session now receives its audio.
+    Started,
+    /// The microphone did not open. The session stays open; call [`Capture::stop`] to discard
+    /// it.
+    StartFailed(CaptureError),
     /// Sent at most once. The session stays open; call [`Capture::stop`] to
     /// close the file.
     Error(CaptureError),
@@ -80,9 +71,12 @@ pub(crate) enum Msg {
     Stop(Sender<Result<Finished, CaptureError>>),
 }
 
-struct MicHandle {
-    stop: Sender<()>,
-    done: Receiver<()>,
+static HUB: LazyLock<MicHub> = LazyLock::new(MicHub::new);
+
+/// Opens the microphone stream for `device` ahead of time, paused, so the next
+/// [`Capture::start`] begins at once. Returns immediately.
+pub fn warm_microphone(device: &str) {
+    HUB.warm(device);
 }
 
 pub struct Capture {
@@ -97,47 +91,17 @@ pub struct Capture {
 
 impl Capture {
     /// Starts recording from `device` (`"default"` or an id from
-    /// `list_inputs`) into a new WAV at `path`. The file is created only after
-    /// the microphone opened.
+    /// `list_inputs`) into a new WAV at `path`. Returns at once: the microphone is resumed on
+    /// its own thread, and a microphone that does not open ends in
+    /// [`CaptureEvent::StartFailed`]. The file's clock starts with this call, so time spent
+    /// opening a stream is silence in the file instead of missing from it.
     pub fn start(device: &str, path: PathBuf, sink: EventSink) -> Result<Self, CaptureError> {
-        // Opening a stream can take a second on PulseAudio. The file's clock starts with the
-        // caller's start action, not when the stream is up, or that second is missing from it.
         let started = Instant::now();
         let (tx, rx) = mpsc::channel();
-        let (ready_tx, ready_rx) = mpsc::channel();
-        let (stop_tx, stop_rx) = mpsc::channel();
-        let (done_tx, done_rx) = mpsc::channel();
-        let selection = device.to_string();
-        let mic_tx = tx.clone();
-        let mic_sink = Arc::clone(&sink);
-        thread::Builder::new()
-            .name("hushpen-mic".into())
-            .spawn(move || {
-                run_mic(&selection, mic_tx, mic_sink, ready_tx, stop_rx);
-                let _ = done_tx.send(());
-            })?;
-        match ready_rx.recv_timeout(MIC_START_TIMEOUT) {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => return Err(error),
-            Err(_) => {
-                let _ = stop_tx.send(());
-                return Err(CaptureError::unavailable("the microphone did not start"));
-            }
-        }
-        let mic = MicHandle {
-            stop: stop_tx,
-            done: done_rx,
-        };
-        match Self::with_worker(path, sink, tx, rx, true, started) {
-            Ok(mut capture) => {
-                capture.mic = Some(mic);
-                Ok(capture)
-            }
-            Err(error) => {
-                mic.shut_down();
-                Err(error)
-            }
-        }
+        let mut capture =
+            Self::with_worker(path, Arc::clone(&sink), tx.clone(), rx, true, started)?;
+        capture.mic = Some(HUB.attach(device, &tx, &sink)?);
+        Ok(capture)
     }
 
     /// A session with no microphone. Only [`Capture::feeder`] supplies audio.
@@ -220,15 +184,6 @@ impl Drop for Capture {
             mic.shut_down();
         }
         // A dropped sender makes the worker finalize the file.
-    }
-}
-
-impl MicHandle {
-    /// Waits briefly. A host that hangs while closing a stream must not hang
-    /// the app; the thread is left to finish on its own.
-    fn shut_down(self) {
-        let _ = self.stop.send(());
-        let _ = self.done.recv_timeout(MIC_STOP_TIMEOUT);
     }
 }
 
@@ -431,165 +386,6 @@ impl Worker {
             duration_ms: samples * 1000 / u64::from(TARGET_RATE),
         })
     }
-}
-
-/// Finds the cpal device for a saved id. `"default"` follows the system.
-fn find_device(host: &cpal::Host, selection: &str) -> Result<cpal::Device, CaptureError> {
-    if selection.is_empty() || selection == DEFAULT_ID {
-        return host
-            .default_input_device()
-            .ok_or_else(|| CaptureError::unavailable("no default microphone"));
-    }
-    let id = DeviceId::from_str(selection)
-        .map_err(|error| CaptureError::unavailable(format!("bad device id: {error}")))?;
-    host.device_by_id(&id)
-        .ok_or_else(|| CaptureError::unavailable(format!("microphone {selection} is not there")))
-}
-
-/// Reports one failure, once.
-struct Reporter {
-    failed: AtomicBool,
-    sink: EventSink,
-}
-
-impl Reporter {
-    fn report(&self, error: CaptureError) {
-        if !self.failed.swap(true, Ordering::SeqCst) {
-            log::warn!("{error}");
-            (self.sink)(CaptureEvent::Error(error));
-        }
-    }
-}
-
-fn run_mic(
-    selection: &str,
-    tx: Sender<Msg>,
-    sink: EventSink,
-    ready: Sender<Result<(), CaptureError>>,
-    stop: Receiver<()>,
-) {
-    let host = cpal::default_host();
-    let epoch = Instant::now();
-    let last_data = Arc::new(AtomicU64::new(0));
-    let reporter = Arc::new(Reporter {
-        failed: AtomicBool::new(false),
-        sink,
-    });
-    let opened = find_device(&host, selection).and_then(|device| {
-        let config = device.default_input_config()?;
-        let stream = build_stream(&device, &config, &tx, &last_data, epoch, &reporter)?;
-        stream.play()?;
-        Ok((stream, device.id().ok()))
-    });
-    let (stream, opened_id) = match opened {
-        Ok(opened) => {
-            let _ = ready.send(Ok(()));
-            opened
-        }
-        Err(error) => {
-            let _ = ready.send(Err(error));
-            return;
-        }
-    };
-    last_data.store(epoch.elapsed().as_millis() as u64, Ordering::SeqCst);
-    let mut next_poll = Instant::now() + DEVICE_POLL;
-    while let Err(RecvTimeoutError::Timeout) = stop.recv_timeout(Duration::from_millis(250)) {
-        if Instant::now() < next_poll {
-            continue;
-        }
-        next_poll = Instant::now() + DEVICE_POLL;
-        let silent_for = epoch
-            .elapsed()
-            .saturating_sub(Duration::from_millis(last_data.load(Ordering::SeqCst)));
-        if silent_for > STALL_LIMIT {
-            reporter.report(CaptureError::unavailable(
-                "the microphone stopped sending audio",
-            ));
-        } else if let Some(id) = &opened_id
-            && let Ok(mut devices) = host.input_devices()
-            && !devices.any(|device| device.id().is_ok_and(|found| found == *id))
-        {
-            // PulseAudio moves a stream to another source when its source goes away,
-            // so the stream itself never reports the loss.
-            reporter.report(CaptureError::unavailable("the microphone was removed"));
-        }
-    }
-    drop(stream);
-}
-
-fn build_stream(
-    device: &cpal::Device,
-    config: &cpal::SupportedStreamConfig,
-    tx: &Sender<Msg>,
-    last_data: &Arc<AtomicU64>,
-    epoch: Instant,
-    reporter: &Arc<Reporter>,
-) -> Result<cpal::Stream, CaptureError> {
-    let build = |stream_config: StreamConfig| match config.sample_format() {
-        SampleFormat::F32 => typed::<f32>(device, stream_config, tx, last_data, epoch, reporter),
-        SampleFormat::I16 => typed::<i16>(device, stream_config, tx, last_data, epoch, reporter),
-        SampleFormat::U16 => typed::<u16>(device, stream_config, tx, last_data, epoch, reporter),
-        SampleFormat::I32 => typed::<i32>(device, stream_config, tx, last_data, epoch, reporter),
-        other => Err(CaptureError::failed(format!(
-            "unsupported microphone sample format {other:?}"
-        ))),
-    };
-    // PulseAudio hands out about 2 s per callback unless a size is requested, which would
-    // delay the level meter and look like a stalled microphone.
-    let mut stream_config = config.config();
-    if let SupportedBufferSize::Range { min, max } = *config.buffer_size() {
-        stream_config.buffer_size = BufferSize::Fixed((config.sample_rate() / 50).clamp(min, max));
-        if let Ok(stream) = build(stream_config) {
-            return Ok(stream);
-        }
-        stream_config.buffer_size = BufferSize::Default;
-    }
-    build(stream_config)
-}
-
-fn typed<T>(
-    device: &cpal::Device,
-    config: StreamConfig,
-    tx: &Sender<Msg>,
-    last_data: &Arc<AtomicU64>,
-    epoch: Instant,
-    reporter: &Arc<Reporter>,
-) -> Result<cpal::Stream, CaptureError>
-where
-    T: SizedSample + Send + 'static,
-    f32: FromSample<T>,
-{
-    let (rate, channels) = (config.sample_rate, config.channels);
-    let tx = tx.clone();
-    let last_data = Arc::clone(last_data);
-    let on_error = Arc::clone(reporter);
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[T], _| {
-            last_data.store(epoch.elapsed().as_millis() as u64, Ordering::SeqCst);
-            let data = data
-                .iter()
-                .map(|sample| sample.to_sample::<f32>())
-                .collect();
-            let _ = tx.send(Msg::Frames {
-                source: Source::Mic,
-                rate,
-                channels,
-                data,
-                at: Instant::now(),
-            });
-        },
-        move |error| {
-            use cpal::ErrorKind::{DeviceChanged, RealtimeDenied, Xrun};
-            if matches!(error.kind(), DeviceChanged | Xrun | RealtimeDenied) {
-                log::debug!("microphone stream: {error}");
-            } else {
-                on_error.report(error.into());
-            }
-        },
-        None,
-    )?;
-    Ok(stream)
 }
 
 /// A path for a new session file in `dir`, named by start time. A counter
@@ -907,7 +703,9 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 CaptureEvent::Level(level) => Some(*level),
-                CaptureEvent::Error(_) => None,
+                CaptureEvent::Error(_) | CaptureEvent::Started | CaptureEvent::StartFailed(_) => {
+                    None
+                }
             })
             .collect();
         assert_eq!(levels.len(), 40, "20 values per second for 2 s");

@@ -6,8 +6,10 @@
 // `CFMachPortIsValid` is a plain C call on a port that this module owns.
 #![allow(unsafe_code)]
 
-use super::tap::{Decoder, HEALTH_INTERVAL, Health, Tap, TapAction, TapEvent, TapGuard};
-use super::{HoldKey, Reason, Sink, Unavailable};
+use super::tap::{
+    Decoder, HEALTH_INTERVAL, Health, ShortcutKeys, Tap, TapAction, TapEvent, TapGuard,
+};
+use super::{HoldKey, Reason, Shortcut, Sink, Unavailable};
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortIsValid;
 use core_foundation::runloop::{
@@ -68,9 +70,11 @@ fn install(
                 },
                 CGEventType::KeyDown => TapEvent::KeyDown {
                     keycode: event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE),
+                    flags: event.get_flags().bits(),
                 },
                 CGEventType::KeyUp => TapEvent::KeyUp {
                     keycode: event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE),
+                    flags: event.get_flags().bits(),
                 },
                 CGEventType::TapDisabledByTimeout => TapEvent::DisabledByTimeout,
                 CGEventType::TapDisabledByUserInput => TapEvent::DisabledByUserInput,
@@ -111,7 +115,11 @@ impl MacKeys {
     /// The tap only listens, so there is nothing to grab for a session.
     pub(super) fn set_session_active(&self, _active: bool) {}
 
-    pub(super) fn start(hold: HoldKey, sink: Sink) -> Result<Self, Unavailable> {
+    pub(super) fn start(
+        hold: HoldKey,
+        paste_last: Option<Shortcut>,
+        sink: Sink,
+    ) -> Result<Self, Unavailable> {
         // Creating a tap without Input Monitoring makes macOS ask. The ask belongs to
         // onboarding, after a click, so here the grant is only read.
         if !CGPreflightListenEventAccess() {
@@ -120,10 +128,14 @@ impl MacKeys {
                 "Input Monitoring is not allowed for Hushpen, so global keys are off.",
             ));
         }
+        let shortcut = paste_last.and_then(|shortcut| {
+            let keycode = crate::insert::key_code_for(shortcut.key)?;
+            Some(ShortcutKeys::new(i64::from(keycode), shortcut))
+        });
         let (ready, started) = mpsc::channel();
         thread::Builder::new()
             .name("hushpen-keys".into())
-            .spawn(move || run(hold, sink, ready))
+            .spawn(move || run(hold, shortcut, sink, ready))
             .map_err(|error| {
                 Unavailable::new(
                     Reason::Failed,
@@ -140,8 +152,8 @@ impl MacKeys {
     }
 }
 
-fn run(hold: HoldKey, sink: Sink, ready: mpsc::Sender<bool>) {
-    let decoder = Arc::new(Mutex::new(Decoder::new(hold)));
+fn run(hold: HoldKey, shortcut: Option<ShortcutKeys>, sink: Sink, ready: mpsc::Sender<bool>) {
+    let decoder = Arc::new(Mutex::new(Decoder::new(hold).with_shortcut(shortcut)));
     let reenable = Arc::new(AtomicBool::new(false));
     let Some(first) = install(&decoder, &sink, &reenable) else {
         let _ = ready.send(false);

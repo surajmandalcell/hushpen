@@ -10,6 +10,8 @@
 mod guard;
 mod layout;
 
+pub(crate) use layout::key_code_for;
+
 use super::{Inserter, SystemClock, Target, mono_ms, plan};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};

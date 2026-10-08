@@ -241,7 +241,9 @@ impl Mic {
                         self.levels.push_back(level);
                         cx.notify();
                     }
-                    CaptureEvent::Error(error) => self.lost(&error, cx),
+                    CaptureEvent::Started => hook::record_event("capture", "mic-open"),
+                    CaptureEvent::StartFailed(error) => self.lost(&error, true, cx),
+                    CaptureEvent::Error(error) => self.lost(&error, false, cx),
                 }
             }
         }
@@ -265,6 +267,7 @@ impl Mic {
         }
         self.devices = devices;
         self.selection = selection;
+        self.warm();
         match &self.selection {
             Selection::Missing(id) => {
                 if !self.gone_notice {
@@ -299,6 +302,7 @@ impl Mic {
             .map_err(|error| error.to_string())?;
         self.saved = id.to_string();
         self.selection = resolve_selection(&self.saved, &self.devices);
+        self.warm();
         if self.gone_notice {
             self.notice = None;
             self.gone_notice = false;
@@ -308,15 +312,27 @@ impl Mic {
         Ok(())
     }
 
+    fn device_id(&self) -> String {
+        match &self.selection {
+            Selection::Device(id) => id.clone(),
+            Selection::Default | Selection::Missing(_) => DEFAULT_ID.to_string(),
+        }
+    }
+
+    /// Opens the selected microphone ahead of the next start, so a key press never waits for it
+    /// and audio right after the press is kept.
+    fn warm(&self) {
+        if self.session.is_none() {
+            self.backend.warm(&self.device_id());
+        }
+    }
+
     /// Starts one capture session into `cache/sessions`.
     pub fn start(&mut self, cx: &mut Context<Self>) -> Result<PathBuf, CaptureError> {
         if let Some(session) = &self.session {
             return Ok(session.path.clone());
         }
-        let device = match &self.selection {
-            Selection::Device(id) => id.clone(),
-            Selection::Default | Selection::Missing(_) => DEFAULT_ID.to_string(),
-        };
+        let device = self.device_id();
         self.generation += 1;
         let generation = self.generation;
         let events = self.events.clone();
@@ -386,18 +402,22 @@ impl Mic {
         result.map(Some)
     }
 
-    /// The microphone failed under a running session. The audio so far stays on disk.
-    fn lost(&mut self, error: &CaptureError, cx: &mut Context<Self>) {
+    /// The microphone failed under a running session, or did not open (`starting`). The audio so
+    /// far stays on disk, except for a start that never got any.
+    fn lost(&mut self, error: &CaptureError, starting: bool, cx: &mut Context<Self>) {
         let Some(session) = self.session.take() else {
             return;
         };
         self.levels.clear();
         match session.inner.stop() {
+            Ok(finished) if starting => {
+                let _ = std::fs::remove_file(&finished.path);
+            }
             Ok(finished) => self.last_session = Some(finished.path),
             Err(close) => log::warn!("{close}"),
         }
         self.state = CaptureState::Failed;
-        self.notice = Some(notice_for(error, false));
+        self.notice = Some(notice_for(error, starting));
         self.gone_notice = false;
         log::warn!("{error}");
         hook::record_event("capture", &format!("failed {}", error.code));

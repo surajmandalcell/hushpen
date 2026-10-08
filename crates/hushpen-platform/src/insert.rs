@@ -17,6 +17,8 @@ mod x11;
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+pub(crate) use macos::key_code_for;
 
 /// The window name of Hushpen's own windows (`WM_CLASS`).
 pub const OWN_APP_ID: &str = "hushpen";

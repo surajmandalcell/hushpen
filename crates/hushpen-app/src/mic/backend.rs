@@ -2,11 +2,15 @@
 //! real microphone (on macOS that shows a permission prompt).
 
 use hushpen_audio::{Capture, CaptureError, EventSink, FeedInfo, Finished, InputDevice};
+use hushpen_core::permission::Access;
 use std::path::{Path, PathBuf};
 
 pub trait MicBackend: Send + Sync + 'static {
     fn list(&self) -> Result<Vec<InputDevice>, CaptureError>;
-    /// `device` is `"default"` or an id from `list`.
+    /// Gets the microphone ready so the next `start` begins at once. Returns at once.
+    fn warm(&self, _device: &str) {}
+    /// `device` is `"default"` or an id from `list`. Returns at once: a microphone that does
+    /// not open ends in [`hushpen_audio::CaptureEvent::StartFailed`] on the sink.
     fn start(
         &self,
         device: &str,
@@ -26,6 +30,15 @@ pub struct CpalBackend;
 impl MicBackend for CpalBackend {
     fn list(&self) -> Result<Vec<InputDevice>, CaptureError> {
         hushpen_audio::list_inputs()
+    }
+
+    fn warm(&self, device: &str) {
+        // Opening a stream is what makes macOS ask for the microphone, and that question
+        // belongs to onboarding, never to start-up.
+        let allowed = hushpen_platform::permissions::system().microphone();
+        if matches!(allowed, Access::Granted | Access::NotApplicable) {
+            hushpen_audio::warm_microphone(device);
+        }
     }
 
     fn start(

@@ -7,6 +7,7 @@
 //! Alt+Esc, which makes that one grab fail, so the cancel comes from the raw event, and only
 //! while a session runs.
 
+use super::shortcut::{Group, Matcher, Shortcut};
 use super::{HoldKey, Reason, Sink, Unavailable};
 use crate::x11util::keycode_of;
 use hushpen_core::dictation::AppEvent;
@@ -22,6 +23,11 @@ use x11rb::rust_connection::RustConnection;
 /// X11 keycode of the Right Alt key on evdev keyboards (evdev 100 plus the X offset of 8).
 const KEYCODE_RIGHT_ALT: u8 = 108;
 const KEYSYM_ESCAPE: u32 = 0xff1b;
+const KEYSYMS_CTRL: [u32; 2] = [0xffe3, 0xffe4];
+/// Left Alt only: Right Alt is the hold key.
+const KEYSYMS_ALT: [u32; 1] = [0xffe9];
+const KEYSYMS_SHIFT: [u32; 2] = [0xffe1, 0xffe2];
+const KEYSYMS_SUPER: [u32; 2] = [0xffeb, 0xffec];
 /// `XIAllMasterDevices`: every master keyboard and pointer, so no device is missed.
 const ALL_MASTER_DEVICES: u16 = 1;
 
@@ -53,8 +59,40 @@ fn escape_modifiers() -> Vec<ModMask> {
         .collect()
 }
 
+/// The key codes of the shortcut on this keyboard, or `None` when a key it needs is missing.
+fn matcher_for(conn: &RustConnection, shortcut: Shortcut) -> Option<Matcher> {
+    let codes = |keysyms: &[u32]| -> Vec<u32> {
+        keysyms
+            .iter()
+            .filter_map(|keysym| keycode_of(conn, *keysym).map(u32::from))
+            .collect()
+    };
+    let key = keycode_of(conn, u32::from(shortcut.key))?;
+    let groups = [
+        (shortcut.ctrl, &KEYSYMS_CTRL[..]),
+        (shortcut.alt, &KEYSYMS_ALT[..]),
+        (shortcut.shift, &KEYSYMS_SHIFT[..]),
+        (shortcut.cmd, &KEYSYMS_SUPER[..]),
+    ]
+    .map(|(wanted, keysyms)| Group {
+        wanted,
+        codes: codes(keysyms),
+    });
+    if groups
+        .iter()
+        .any(|group| group.wanted && group.codes.is_empty())
+    {
+        return None;
+    }
+    Some(Matcher::new(u32::from(key), groups.into()))
+}
+
 impl X11Keys {
-    pub(super) fn start(hold: HoldKey, sink: Sink) -> Result<Self, Unavailable> {
+    pub(super) fn start(
+        hold: HoldKey,
+        paste_last: Option<Shortcut>,
+        sink: Sink,
+    ) -> Result<Self, Unavailable> {
         if hold != HoldKey::RightOption {
             return Err(Unavailable::new(
                 Reason::Unsupported,
@@ -85,13 +123,22 @@ impl X11Keys {
         let escape = keycode_of(&conn, KEYSYM_ESCAPE)
             .ok_or_else(|| Unavailable::new(Reason::Failed, "This keyboard has no Esc key."))?;
 
+        let paste = paste_last.and_then(|shortcut| {
+            let matcher = matcher_for(&conn, shortcut);
+            if matcher.is_none() {
+                log::warn!("the paste last shortcut needs a key this keyboard does not have");
+            }
+            matcher
+        });
         let conn = Arc::new(conn);
         let active = Arc::new(AtomicBool::new(false));
         let reader = Arc::clone(&conn);
         let reading = Arc::clone(&active);
         thread::Builder::new()
             .name("hushpen-keys".into())
-            .spawn(move || read_events(&reader, KEYCODE_RIGHT_ALT, escape, &reading, &sink))
+            .spawn(move || {
+                read_events(&reader, KEYCODE_RIGHT_ALT, escape, paste, &reading, &sink);
+            })
             .map_err(|e| unavailable("start the key listener", e))?;
         Ok(Self {
             conn,
@@ -144,7 +191,14 @@ impl X11Keys {
     }
 }
 
-fn read_events(conn: &RustConnection, hold: u8, escape: u8, session: &AtomicBool, sink: &Sink) {
+fn read_events(
+    conn: &RustConnection,
+    hold: u8,
+    escape: u8,
+    mut paste: Option<Matcher>,
+    session: &AtomicBool,
+    sink: &Sink,
+) {
     let mut down = false;
     loop {
         let event = match conn.wait_for_event() {
@@ -159,6 +213,9 @@ fn read_events(conn: &RustConnection, hold: u8, escape: u8, session: &AtomicBool
                 if press.flags.contains(KeyEventFlags::KEY_REPEAT) {
                     continue;
                 }
+                if let Some(matcher) = &mut paste {
+                    matcher.press(press.detail);
+                }
                 if press.detail == u32::from(hold) && !down {
                     down = true;
                     sink(AppEvent::HoldDown);
@@ -166,9 +223,16 @@ fn read_events(conn: &RustConnection, hold: u8, escape: u8, session: &AtomicBool
                     sink(AppEvent::Esc);
                 }
             }
-            Event::XinputRawKeyRelease(release) if release.detail == u32::from(hold) && down => {
-                down = false;
-                sink(AppEvent::HoldUp);
+            Event::XinputRawKeyRelease(release) => {
+                if release.detail == u32::from(hold) && down {
+                    down = false;
+                    sink(AppEvent::HoldUp);
+                }
+                if let Some(matcher) = &mut paste
+                    && matcher.release(release.detail)
+                {
+                    sink(AppEvent::PasteLast);
+                }
             }
             _ => {}
         }

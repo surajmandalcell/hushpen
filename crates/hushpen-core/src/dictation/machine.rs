@@ -99,6 +99,12 @@ impl DictationMachine {
                 _ => Vec::new(),
             },
             AppEvent::Esc => self.escape(now),
+            AppEvent::PasteLast => match self.state {
+                State::Idle | State::Done | State::Cancelled | State::Failed => {
+                    vec![Effect::PasteLast]
+                }
+                _ => Vec::new(),
+            },
             AppEvent::Tick => self.tick(now),
             AppEvent::CaptureError { code } => {
                 if self.state != State::Listening {
