@@ -3,6 +3,7 @@
 pub mod catalog;
 pub mod cleanup;
 pub mod dictation;
+pub mod dictionary;
 pub mod error;
 pub mod insert;
 pub mod language;
