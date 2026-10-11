@@ -22,13 +22,16 @@ use compare::{Outcome, compare, diff_image};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
+use hushpen_app::about::{About, SystemOpener};
 use hushpen_app::assets::{AppAssets, register_fonts};
 use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
 use hushpen_app::mic::{CpalBackend, Mic};
 use hushpen_app::models::{self, Models};
 use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
+use hushpen_app::settings::{Parts as SettingsParts, Section, Settings};
 use hushpen_app::shell::Shell;
+use hushpen_app::shortcuts::Shortcuts;
 use hushpen_app::storage;
 use hushpen_app::theme::{self, space};
 use hushpen_app::views::View;
@@ -90,18 +93,53 @@ struct Capture {
     image: RgbaImage,
 }
 
-fn capture_every_view() -> Vec<Capture> {
-    let mut cx = headless();
+/// A shell with the Settings and About entities the real app attaches, so
+/// those views render their content, not the placeholder.
+fn open_shell_with_settings(cx: &mut HeadlessAppContext) -> gpui_kit::AnyWindowHandle {
+    let tmp = tempfile::tempdir().expect("a scratch folder");
+    let storage = Rc::new(
+        storage::open(DataDir::open(tmp.path().join("data")).expect("open the data folder"))
+            .expect("open the storage"),
+    );
     let handle = cx
         .open_window(
             size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
             |window, cx| {
                 let shell = cx.new(|cx| Shell::new(window, cx));
+                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(CpalBackend), cx));
+                let shortcuts =
+                    cx.new(|cx| Shortcuts::new(Rc::clone(&storage), Platform::Linux, cx));
+                let settings = cx.new(|cx| {
+                    Settings::new(
+                        SettingsParts {
+                            storage: Rc::clone(&storage),
+                            mic,
+                            login: None,
+                            default_data_dir: None,
+                            restart: None,
+                        },
+                        cx,
+                    )
+                });
+                let about = cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
+                shell.update(cx, |shell, cx| {
+                    shell.attach_shortcuts(shortcuts, cx);
+                    shell.attach_settings(settings, cx);
+                    shell.attach_about(about, cx);
+                });
                 cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
             },
         )
         .expect("open the headless window");
-    let handle = handle.into();
+    // The scratch folder must outlive the capture; the entities hold it open
+    // and the temp folder cleans itself up when the process ends.
+    std::mem::forget(tmp);
+    handle.into()
+}
+
+fn capture_every_view() -> Vec<Capture> {
+    let mut cx = headless();
+    let handle = open_shell_with_settings(&mut cx);
     cx.run_until_parked();
     View::ALL
         .into_iter()
@@ -117,6 +155,45 @@ fn capture_every_view() -> Vec<Capture> {
             Capture { view, image }
         })
         .collect()
+}
+
+/// The Settings view opened on `section`, captured as `settings-<key>.png`.
+fn capture_settings_section(section: Section) -> RgbaImage {
+    let mut cx = headless();
+    let handle = open_shell_with_settings(&mut cx);
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.click("sidebar.settings", cx);
+        if section != Section::General {
+            window.click(
+                Box::leak(format!("settings.section.{}", section.key()).into_boxed_str())
+                    as &'static str,
+                cx,
+            );
+        }
+    })
+    .expect("drive the window");
+    cx.run_until_parked();
+    cx.capture_screenshot(handle).expect("capture the window")
+}
+
+#[test]
+fn every_settings_section_matches_its_approved_baseline() {
+    let mut failures = Vec::new();
+    for section in Section::ALL {
+        let image = capture_settings_section(section);
+        assert_eq!(image.dimensions(), (1560, 1040), "{}", section.key());
+        check_image(
+            &format!("settings-{}", section.key()),
+            &image,
+            &mut failures,
+        );
+    }
+    assert!(
+        failures.is_empty(),
+        "pixel baselines failed:\n{}",
+        failures.join("\n")
+    );
 }
 
 fn check_against_baseline(capture: &Capture, failures: &mut Vec<String>) {
@@ -193,7 +270,9 @@ fn captures_are_780x520_at_scale_two_and_use_the_design_tokens() {
     for capture in &captures {
         let image = &capture.image;
         let name = capture.view.key();
-        assert_eq!(hex_at(image, 500, 300), "#2F2F2F", "{name}: content");
+        // Between the toolbar and the first panel: app background in every view. (500, 300)
+        // reads panel surface on views like About that fill the column with one surface.
+        assert_eq!(hex_at(image, 500, 47), "#2F2F2F", "{name}: content");
         assert_eq!(hex_at(image, 100, 450), "#3C3C3C", "{name}: sidebar");
         assert_eq!(hex_at(image, 26, 24), "#FF5F57", "{name}: close light");
         assert_eq!(hex_at(image, 47, 24), "#FEBC2E", "{name}: minimize light");
