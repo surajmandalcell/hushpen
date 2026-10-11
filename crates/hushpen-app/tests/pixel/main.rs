@@ -93,12 +93,23 @@ struct Capture {
     image: RgbaImage,
 }
 
+/// The data folder of a capture: one fixed path per test, so the folder text
+/// in the Settings and About rows reads the same in every run. A random
+/// tempdir would put its changing suffix into the baselines.
+fn pixel_data_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("hushpen-pixel").join(tag);
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
 /// A shell with the Settings and About entities the real app attaches, so
 /// those views render their content, not the placeholder.
-fn open_shell_with_settings(cx: &mut HeadlessAppContext) -> gpui_kit::AnyWindowHandle {
-    let tmp = tempfile::tempdir().expect("a scratch folder");
+fn open_shell_with_settings(
+    cx: &mut HeadlessAppContext,
+    data: &std::path::Path,
+) -> gpui_kit::AnyWindowHandle {
     let storage = Rc::new(
-        storage::open(DataDir::open(tmp.path().join("data")).expect("open the data folder"))
+        storage::open(DataDir::open(data.join("data")).expect("open the data folder"))
             .expect("open the storage"),
     );
     let handle = cx
@@ -131,15 +142,12 @@ fn open_shell_with_settings(cx: &mut HeadlessAppContext) -> gpui_kit::AnyWindowH
             },
         )
         .expect("open the headless window");
-    // The scratch folder must outlive the capture; the entities hold it open
-    // and the temp folder cleans itself up when the process ends.
-    std::mem::forget(tmp);
     handle.into()
 }
 
 fn capture_every_view() -> Vec<Capture> {
     let mut cx = headless();
-    let handle = open_shell_with_settings(&mut cx);
+    let handle = open_shell_with_settings(&mut cx, &pixel_data_dir("views"));
     cx.run_until_parked();
     View::ALL
         .into_iter()
@@ -160,7 +168,7 @@ fn capture_every_view() -> Vec<Capture> {
 /// The Settings view opened on `section`, captured as `settings-<key>.png`.
 fn capture_settings_section(section: Section) -> RgbaImage {
     let mut cx = headless();
-    let handle = open_shell_with_settings(&mut cx);
+    let handle = open_shell_with_settings(&mut cx, &pixel_data_dir("sections"));
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.click("sidebar.settings", cx);
