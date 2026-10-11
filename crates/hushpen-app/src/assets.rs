@@ -40,9 +40,54 @@ icon_assets!(
         Square,
         SquareCheck,
         Monitor,
-        Download
+        Download,
+        // The kit defaults stop at its own controls; the Settings and About
+        // panels name these too. A named icon that resolves nowhere draws
+        // nothing and fails no check, so the coverage test below loads each.
+        Rocket,
+        Sparkles,
+        Volume,
+        WandSparkles,
+        ArrowDownUp,
+        LifeBuoy,
+        ArrowUpRight
     ]
 );
+
+#[cfg(test)]
+mod icon_coverage_tests {
+    use super::*;
+    use gpui_kit::assets::IconName;
+
+    /// Every icon the Settings and About panels name must resolve through the
+    /// app's asset source; a missing one draws nothing and stays silent.
+    #[test]
+    fn every_settings_and_about_icon_loads() {
+        for icon in [
+            IconName::Rocket,
+            IconName::Sparkles,
+            IconName::Volume,
+            IconName::WandSparkles,
+            IconName::ArrowDownUp,
+            IconName::LifeBuoy,
+            IconName::ArrowUpRight,
+            IconName::EyeOff,
+            IconName::PanelBottom,
+            IconName::HardDrive,
+            IconName::Folder,
+            IconName::FolderOpen,
+            IconName::Github,
+            IconName::BookOpen,
+            IconName::Clock,
+        ] {
+            let path = gpui_kit::assets::IconNamed::path(icon);
+            assert!(
+                AppAssets.load(&path).unwrap().is_some(),
+                "{path} is missing from ShellIcons and the kit defaults"
+            );
+        }
+    }
+}
 
 /// The app's own icons first, then the GPUI Kit defaults its controls use.
 pub struct AppAssets;

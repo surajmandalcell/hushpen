@@ -108,7 +108,8 @@ fn section_bar(
             .flex()
             .items_center()
             .h(px(28.0))
-            .px(px(10.0 - size::FOCUS_RING))
+            // 6px of gutter a side: the seven tabs fit the 520px content column on one row.
+            .px(px(8.0 - size::FOCUS_RING))
             .rounded(px(radius::CONTROL))
             .border_2()
             .border_color(transparent_black())
@@ -803,12 +804,41 @@ fn storage_section(
     }
     let mut panel = surface(hook::id("settings", "storage"))
         .child(div().h(px(space::XS)))
-        .child(row(
-            IconName::HardDrive,
-            "Data folder",
-            folder,
-            change_button,
-        ))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .px(px(space::LG))
+                .py(px(space::MD))
+                .border_t_1()
+                .border_color(theme::rgb_of(color::DIVIDER))
+                .child(icon_tile(IconName::HardDrive))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .text_token(ROW_TITLE)
+                                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+                                .child("Data folder"),
+                        )
+                        .child(
+                            div()
+                                .id(hook::id("settings", "storage.dataFolder"))
+                                .test_support()
+                                .aria_label(folder.clone())
+                                .text_token(BODY_SM)
+                                .text_color(theme::rgb_of(color::TEXT_MUTED))
+                                .truncate()
+                                .child(folder),
+                        ),
+                )
+                .child(change_button),
+        )
         .child(picker_trigger(
             "storage.retention",
             IconName::Clock,

@@ -23,8 +23,8 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
         )
     };
     let surface = surface()
-        .child(fact_row("VERSION", version.to_owned(), false))
-        .child(fact_row("DATA FOLDER", folder, true))
+        .child(fact_row("VERSION", version.to_owned(), "version"))
+        .child(fact_row("DATA FOLDER", folder, "dataFolder"))
         .child(action_row(
             about,
             Target::DataFolder,
@@ -79,16 +79,10 @@ fn surface() -> impl IntoElement + ParentElement + Styled {
         .border_color(theme::rgb_of(color::DIVIDER))
 }
 
-/// A caps label with its value, the About definition-list style.
-fn fact_row(key: &'static str, value: String, is_folder: bool) -> impl IntoElement {
-    let id = if is_folder {
-        hook::id("about", "dataFolder")
-    } else {
-        hook::id("about", "version")
-    };
+/// A caps label with its value, the About definition-list style. The value
+/// carries the tree id so a test reads it exactly.
+fn fact_row(key: &'static str, value: String, id: &'static str) -> impl IntoElement {
     div()
-        .id(id)
-        .test_support()
         .flex()
         .items_center()
         .gap(px(space::MD))
@@ -106,6 +100,9 @@ fn fact_row(key: &'static str, value: String, is_folder: bool) -> impl IntoEleme
         )
         .child(
             div()
+                .id(hook::id("about", id))
+                .test_support()
+                .aria_label(value.clone())
                 .flex_1()
                 .min_w_0()
                 .truncate()
