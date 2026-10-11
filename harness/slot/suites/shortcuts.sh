@@ -52,9 +52,14 @@ slot_error() { sc ".slots.$1.error.code"; }
 recording_is() { [ "$(sc .recording)" = "$1" ]; }
 field_is() { [ "$(field "$1")" = "$2" ]; }
 error_is() { [ "$(slot_error "$1")" = "$2" ]; }
+tree_has() { $HC tree | jq -e --arg id "$1" '.[] | select(.id == $id)' >/dev/null; }
 open_settings() {
   $HC action open-view '{"view":"settings"}' >/dev/null
   wait_until 10 test "$($HC state | jq -r .view)" = settings
+  # The Settings view opens on General; the recorder lives in the Shortcuts section.
+  wait_until 10 tree_has settings.section.shortcuts || return 1
+  $HC click settings.section.shortcuts >/dev/null
+  wait_until 5 test "$($HC state | jq -r .settings_view.section)" = shortcuts
 }
 record_open() { # <slot>
   $HC click "settings.shortcut.$1" >/dev/null
@@ -112,6 +117,9 @@ HELPER=""
 
 echo "== VAL-KEY-006 Linux shows Linux key names"
 failures=""
+# The tree can still be from the previous view right after the section switch; wait for the
+# Shortcuts fields before reading any text.
+wait_until 10 tree_has settings.shortcut.hold || failures+="the Shortcuts fields never rendered; "
 shortcut_texts >"$RUN_OUT/006-fields.txt"
 $HC tree >"$RUN_OUT/006-tree.json"
 shot 006-shortcuts

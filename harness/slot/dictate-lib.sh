@@ -35,6 +35,21 @@ missing_words() { # <text> <words...>
   echo "$missing"
 }
 
+# word_recall_ok <text> <words...>: at least 90% of the words are in the text, with at least one
+# slip always allowed, so a whisper slip like "box" for "fox" does not fail a check. Prints the
+# missing words for the failure line.
+word_recall_ok() {
+  local text=" $1 " word missed="" missed_n=0
+  shift
+  local total=$#
+  for word in "$@"; do
+    case "$text" in *" $word "*) ;; *) missed+="$word "; missed_n=$((missed_n + 1)) ;; esac
+  done
+  local allowed=$((total / 10))
+  [ "$allowed" -lt 1 ] && allowed=1
+  [ "$missed_n" -le "$allowed" ] || { echo "$missed"; return 1; }
+}
+
 start_app() {
   /harness/slot/app.sh start >/dev/null
   wait_until 20 dict_is .state idle
