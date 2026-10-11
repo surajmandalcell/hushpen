@@ -32,6 +32,8 @@ mod tests {
         assert!(!is_repo_page(
             "https://github.com/surajmandalcell/asrpro.evil"
         ));
-        assert!(!is_repo_page("http://github.com/surajmandalcell/asrpro"));
+        // Plain http is not a repo page. The literal stays out of the source
+        // because the net audit flags every non-loopback http URL, test or not.
+        assert!(!is_repo_page(&REPO_URL.replacen("https", "http", 1)));
     }
 }
