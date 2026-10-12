@@ -3,6 +3,7 @@
 //! The file pins every downloadable model by size and sha256. The app trusts a model file only
 //! when it matches its entry here.
 
+use crate::shortcut::Platform;
 use serde_json::Value;
 use std::sync::OnceLock;
 
@@ -34,27 +35,41 @@ pub struct ModelEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalog {
     pub whisper: Vec<ModelEntry>,
+    /// The AI cleanup models. The file name is `<id>.gguf`, which is where the worker looks.
+    pub llm: Vec<ModelEntry>,
 }
+
+/// The cleanup model for Macs with enough memory to hold it.
+pub const LLM_LARGE: &str = "gemma-4-e2b";
+/// The cleanup model for every other machine.
+pub const LLM_SMALL: &str = "qwen3.5-2b";
+/// Memory a Mac needs before it is offered [`LLM_LARGE`].
+pub const LLM_LARGE_MIN_RAM_BYTES: u64 = 16 << 30;
 
 impl Catalog {
     pub fn parse(json: &str) -> Result<Self, String> {
         let root: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
-        let list = root
-            .get("whisper")
-            .and_then(Value::as_array)
-            .ok_or("the catalog has no `whisper` list")?;
-        let mut whisper = Vec::with_capacity(list.len());
-        for item in list {
-            let entry = parse_entry(item)?;
-            if whisper.iter().any(|seen: &ModelEntry| seen.id == entry.id) {
-                return Err(format!("duplicate model id `{}`", entry.id));
-            }
-            whisper.push(entry);
-        }
+        let whisper = parse_list(&root, "whisper", true)?;
         if whisper.iter().filter(|entry| entry.default).count() > 1 {
             return Err("more than one default model".into());
         }
-        Ok(Self { whisper })
+        let llm = parse_list(&root, "llm", false)?;
+        if let Some(entry) = llm
+            .iter()
+            .find(|entry| whisper.iter().any(|w| w.id == entry.id))
+        {
+            return Err(format!("duplicate model id `{}`", entry.id));
+        }
+        if let Some(entry) = llm
+            .iter()
+            .find(|entry| entry.file != format!("{}.gguf", entry.id))
+        {
+            return Err(format!(
+                "model `{}` must be stored as `<id>.gguf`",
+                entry.id
+            ));
+        }
+        Ok(Self { whisper, llm })
     }
 
     pub fn whisper(&self, id: &str) -> Option<&ModelEntry> {
@@ -63,6 +78,27 @@ impl Catalog {
 
     pub fn default_whisper(&self) -> Option<&ModelEntry> {
         self.whisper.iter().find(|entry| entry.default)
+    }
+
+    pub fn llm(&self, id: &str) -> Option<&ModelEntry> {
+        self.llm.iter().find(|entry| entry.id == id)
+    }
+
+    /// The AI cleanup models this machine can run, best first. A Mac with 16 GB or more gets
+    /// [`LLM_LARGE`] ahead of [`LLM_SMALL`]; every other machine gets [`LLM_SMALL`] only. No
+    /// model under 1B parameters is ever listed.
+    pub fn offered_llm(&self, platform: Platform, ram_bytes: u64) -> Vec<&ModelEntry> {
+        let large = platform == Platform::MacOs && ram_bytes >= LLM_LARGE_MIN_RAM_BYTES;
+        [(large, LLM_LARGE), (true, LLM_SMALL)]
+            .into_iter()
+            .filter(|(offered, _)| *offered)
+            .filter_map(|(_, id)| self.llm(id))
+            .collect()
+    }
+
+    /// The model Settings proposes first.
+    pub fn suggested_llm(&self, platform: Platform, ram_bytes: u64) -> Option<&ModelEntry> {
+        self.offered_llm(platform, ram_bytes).into_iter().next()
     }
 }
 
@@ -73,8 +109,28 @@ pub fn embedded() -> &'static Catalog {
     CATALOG.get_or_init(|| {
         Catalog::parse(EMBEDDED).unwrap_or(Catalog {
             whisper: Vec::new(),
+            llm: Vec::new(),
         })
     })
+}
+
+fn parse_list(root: &Value, key: &str, required: bool) -> Result<Vec<ModelEntry>, String> {
+    let Some(list) = root.get(key).and_then(Value::as_array) else {
+        return if required {
+            Err(format!("the catalog has no `{key}` list"))
+        } else {
+            Ok(Vec::new())
+        };
+    };
+    let mut entries: Vec<ModelEntry> = Vec::with_capacity(list.len());
+    for item in list {
+        let entry = parse_entry(item)?;
+        if entries.iter().any(|seen| seen.id == entry.id) {
+            return Err(format!("duplicate model id `{}`", entry.id));
+        }
+        entries.push(entry);
+    }
+    Ok(entries)
 }
 
 fn text(item: &Value, key: &str) -> Result<String, String> {
@@ -187,6 +243,71 @@ mod tests {
         for (id, bytes, sha) in expect {
             let entry = embedded().whisper(id).unwrap();
             assert_eq!((entry.bytes, entry.sha256.as_str()), (bytes, sha), "{id}");
+        }
+    }
+
+    const GIB: u64 = 1 << 30;
+
+    fn offered(platform: Platform, ram: u64) -> Vec<&'static str> {
+        embedded()
+            .offered_llm(platform, ram)
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn the_two_cleanup_models_are_pinned_by_size_and_hash() {
+        let expect = [
+            (
+                LLM_LARGE,
+                3_106_738_272,
+                "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
+            ),
+            (
+                LLM_SMALL,
+                1_280_835_840,
+                "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+            ),
+        ];
+        assert_eq!(embedded().llm.len(), 2);
+        for (id, bytes, sha) in expect {
+            let entry = embedded().llm(id).unwrap();
+            assert_eq!((entry.bytes, entry.sha256.as_str()), (bytes, sha), "{id}");
+            assert_eq!(entry.file, format!("{id}.gguf"));
+            assert!(entry.url.starts_with("https://huggingface.co/"), "{id}");
+            assert_eq!(entry.license, "Apache-2.0");
+        }
+    }
+
+    #[test]
+    fn a_mac_with_16_gb_or_more_gets_gemma_first() {
+        assert_eq!(offered(Platform::MacOs, 16 * GIB), [LLM_LARGE, LLM_SMALL]);
+        assert_eq!(offered(Platform::MacOs, 64 * GIB), [LLM_LARGE, LLM_SMALL]);
+        let suggested = embedded().suggested_llm(Platform::MacOs, 24 * GIB).unwrap();
+        assert_eq!(suggested.id, LLM_LARGE);
+    }
+
+    #[test]
+    fn a_mac_with_8_gb_gets_qwen() {
+        assert_eq!(offered(Platform::MacOs, 8 * GIB), [LLM_SMALL]);
+        assert_eq!(offered(Platform::MacOs, 16 * GIB - 1), [LLM_SMALL]);
+    }
+
+    #[test]
+    fn linux_gets_qwen_at_any_memory_and_never_gemma() {
+        for ram in [4 * GIB, 16 * GIB, 128 * GIB] {
+            assert_eq!(offered(Platform::Linux, ram), [LLM_SMALL], "{ram}");
+        }
+        let suggested = embedded().suggested_llm(Platform::Linux, 64 * GIB).unwrap();
+        assert_eq!(suggested.name, "Qwen3.5 2B");
+    }
+
+    #[test]
+    fn no_model_under_1b_is_in_the_cleanup_list() {
+        for entry in &embedded().llm {
+            assert!(entry.bytes > 1_000_000_000, "{}", entry.id);
+            assert!(!entry.id.contains("0.8b"), "{}", entry.id);
         }
     }
 
