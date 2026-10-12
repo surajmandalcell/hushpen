@@ -26,6 +26,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 const SETTING: &str = "dictation.modelId";
 
+/// How often a ready cleanup model's file is looked for again.
+const PRESENCE_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// Runs slow work off the main thread. Tests queue it and run it on the test thread, because
 /// the test scheduler refuses to be woken from another thread.
 pub type Spawner = Rc<dyn Fn(Box<dyn FnOnce() + Send>) -> std::io::Result<()>>;
@@ -84,6 +87,8 @@ pub struct Notice {
 
 pub struct Row {
     pub entry: ModelEntry,
+    /// A cleanup model (`models/llm/`) rather than a speech model.
+    pub llm: bool,
     pub state: ModelState,
     /// Download or cancel, use, delete.
     pub(crate) focus: [FocusHandle; 3],
@@ -119,7 +124,9 @@ pub struct Models {
     spawn: Spawner,
     engine: Option<Rc<EngineHost>>,
     events: UnboundedSender<ModelEvent>,
+    /// The speech rows come first, then the cleanup rows.
     rows: Vec<Row>,
+    speech_rows: usize,
     notice: Option<Notice>,
     jobs: HashMap<String, Job>,
     /// Downloads the user asked for again while the cancelled worker was still winding down.
@@ -149,11 +156,27 @@ impl Models {
             }
         })
         .detach();
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(PRESENCE_POLL).await;
+                if this
+                    .update(cx, |models, cx| models.refresh_llm_presence(cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        let speech_rows = catalog.whisper.len();
         let rows = catalog
             .whisper
             .iter()
-            .map(|entry| Row {
+            .map(|entry| (entry, false))
+            .chain(catalog.llm.iter().map(|entry| (entry, true)))
+            .map(|(entry, llm)| Row {
                 entry: entry.clone(),
+                llm,
                 state: ModelState::NotDownloaded,
                 focus: [
                     cx.focus_handle().tab_stop(true),
@@ -169,6 +192,7 @@ impl Models {
             engine,
             events,
             rows,
+            speech_rows,
             notice: None,
             jobs: HashMap::new(),
             restart: HashSet::new(),
@@ -179,8 +203,39 @@ impl Models {
         models
     }
 
+    /// The speech models, which the Models view lists.
     pub fn rows(&self) -> &[Row] {
-        &self.rows
+        &self.rows[..self.speech_rows]
+    }
+
+    /// The cleanup models, which Settings > Cleanup offers.
+    pub fn llm_rows(&self) -> &[Row] {
+        &self.rows[self.speech_rows..]
+    }
+
+    /// A cleanup model file that someone deleted while the app runs shows as not downloaded,
+    /// so Settings can offer the download again.
+    fn refresh_llm_presence(&mut self, cx: &mut Context<Self>) {
+        let dir = self.storage.data.llm_models_dir();
+        let mut changed = false;
+        for row in self.rows.iter_mut().skip(self.speech_rows) {
+            if row.state == ModelState::Ready && !dir.join(&row.entry.file).is_file() {
+                row.state = ModelState::NotDownloaded;
+                hook::record_event("models", &format!("missing {}", row.entry.id));
+                changed = true;
+            }
+        }
+        if changed {
+            cx.notify();
+        }
+    }
+
+    /// The state of a cleanup model.
+    pub fn llm_state(&self, id: &str) -> Option<ModelState> {
+        self.llm_rows()
+            .iter()
+            .find(|row| row.entry.id == id)
+            .map(|row| row.state)
     }
 
     pub fn notice(&self) -> Option<&Notice> {
@@ -203,7 +258,7 @@ impl Models {
         if !chosen.trim().is_empty() {
             return chosen;
         }
-        self.rows
+        self.rows()
             .iter()
             .find(|row| row.entry.default)
             .map(|row| row.entry.id.clone())
@@ -214,12 +269,24 @@ impl Models {
     pub fn usable(&self) -> Option<&Row> {
         let id = self.effective();
         self.index_of(&id)
+            .filter(|index| *index < self.speech_rows)
             .map(|index| &self.rows[index])
             .filter(|row| row.state == ModelState::Ready)
     }
 
     fn model_path(&self, entry: &ModelEntry) -> PathBuf {
-        self.storage.data.whisper_models_dir().join(&entry.file)
+        let llm = self
+            .index_of(&entry.id)
+            .is_some_and(|index| index >= self.speech_rows);
+        self.dir_of(llm).join(&entry.file)
+    }
+
+    fn dir_of(&self, llm: bool) -> PathBuf {
+        if llm {
+            self.storage.data.llm_models_dir()
+        } else {
+            self.storage.data.whisper_models_dir()
+        }
     }
 
     fn partial_path(&self, entry: &ModelEntry) -> PathBuf {
@@ -238,11 +305,15 @@ impl Models {
     fn scan(&mut self) {
         let mut to_hash = Vec::new();
         let mut failed = Vec::new();
+        let (speech_dir, llm_dir) = (
+            self.storage.data.whisper_models_dir(),
+            self.storage.data.llm_models_dir(),
+        );
         for row in &mut self.rows {
             if matches!(row.state, ModelState::Downloading { .. }) {
                 continue;
             }
-            let path = self.storage.data.whisper_models_dir().join(&row.entry.file);
+            let path = if row.llm { &llm_dir } else { &speech_dir }.join(&row.entry.file);
             row.state = match model_files::check(&path, row.entry.bytes, &row.entry.sha256) {
                 Check::Missing => ModelState::NotDownloaded,
                 Check::Ready => ModelState::Ready,
@@ -487,7 +558,7 @@ impl Models {
             .index_of(id)
             .ok_or_else(|| format!("no model with id '{id}'"))?;
         let name = self.rows[index].entry.name.clone();
-        if self.active() == id {
+        if !self.rows[index].llm && self.active() == id {
             self.set_notice(
                 MODEL_IN_USE,
                 format!("{name} is in use. Choose another model first."),
@@ -516,6 +587,9 @@ impl Models {
             .index_of(id)
             .ok_or_else(|| format!("no model with id '{id}'"))?;
         let name = self.rows[index].entry.name.clone();
+        if self.rows[index].llm {
+            return Err(format!("{id} is a cleanup model, not a speech model"));
+        }
         match self.rows[index].state {
             ModelState::Ready => {}
             ModelState::Failed => {
@@ -547,7 +621,7 @@ impl Models {
                 "code": notice.code,
                 "message": notice.message,
             })),
-            "models": self.rows.iter().map(|row| json!({
+            "models": self.rows().iter().map(|row| json!({
                 "id": row.entry.id,
                 "name": row.entry.name,
                 "bytes": row.entry.bytes,
@@ -559,6 +633,14 @@ impl Models {
                 "progress": row.state.percent(),
                 "active": row.entry.id == active,
                 "default": row.entry.default,
+            })).collect::<Vec<_>>(),
+            "llm_models": self.llm_rows().iter().map(|row| json!({
+                "id": row.entry.id,
+                "name": row.entry.name,
+                "bytes": row.entry.bytes,
+                "state": row.state.key(),
+                "progress": row.state.percent(),
+                "file": row.entry.file,
             })).collect::<Vec<_>>(),
         })
     }
@@ -604,5 +686,7 @@ pub fn production_transfer() -> Arc<Transfer> {
     Arc::new(move |spec, cancel, progress| downloader.run(spec, cancel, progress))
 }
 
+#[cfg(test)]
+mod llm_tests;
 #[cfg(test)]
 mod tests;

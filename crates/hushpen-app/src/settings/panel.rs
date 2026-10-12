@@ -1,7 +1,7 @@
 //! The Settings view: a section bar on top, then one grouped panel per
 //! section. Every control has a stable hook id: `settings.<section>.<name>`.
 
-use super::{MoveState, Section, Settings, slots};
+use super::{AiStatus, MoveState, Section, Settings, slots};
 use crate::hook;
 use crate::mic;
 use crate::shortcuts::{self, Shortcuts};
@@ -17,8 +17,8 @@ use gpui_kit::{
 };
 
 use slots::{
-    CHANGE_FOLDER, FLOWBAR, FLOWBAR_IDLE, HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION,
-    RETENTION_OPTION, RULES, SOUNDS,
+    AI_CLEANUP, AI_DOWNLOAD, AI_MODEL, AI_MODEL_OPTION, CHANGE_FOLDER, FLOWBAR, FLOWBAR_IDLE,
+    HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION, RETENTION_OPTION, RULES, SOUNDS,
 };
 
 pub fn render(
@@ -606,12 +606,26 @@ fn cleanup(
     focus: &[FocusHandle],
     cx: &mut App,
 ) -> impl IntoElement + use<> {
-    let rules_on = settings.read(cx).stored_bool("cleanup.rules");
+    let (rules_on, ai_on, model, offered, status, picker_open) = {
+        let me = settings.read(cx);
+        (
+            me.stored_bool("cleanup.rules"),
+            me.stored_bool("cleanup.llm.enabled"),
+            me.ai_model(),
+            me.ai_offered(),
+            me.ai_status(cx),
+            me.picker == Some("cleanup.aiModel"),
+        )
+    };
     let flip_rules = {
         let settings = settings.clone();
         move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_rules(cx))
     };
-    surface(hook::id("settings", "cleanup"))
+    let flip_ai = {
+        let settings = settings.clone();
+        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_ai_cleanup(cx))
+    };
+    let mut panel = surface(hook::id("settings", "cleanup"))
         .child(div().h(px(space::XS)))
         .child(toggle_row(
             "cleanup.rules",
@@ -623,12 +637,147 @@ fn cleanup(
             &focus[RULES],
             flip_rules,
         ))
-        .child(muted_row(
+        .child(toggle_row(
+            "cleanup.ai",
             IconName::WandSparkles,
             "AI cleanup",
-            "Rewrite with a local model.",
+            "A model on this computer fixes self-corrections. Off until you turn it on.",
+            ai_on,
+            true,
+            &focus[AI_CLEANUP],
+            flip_ai,
+        ));
+    let Some(model) = model else {
+        return panel.child(div().h(px(space::XS)));
+    };
+    let open_picker = {
+        let settings = settings.clone();
+        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("cleanup.aiModel", cx))
+    };
+    let size = crate::models::panel::format_size(model.bytes);
+    panel = panel.child(picker_trigger(
+        "cleanup.aiModel",
+        IconName::Cpu,
+        "AI model",
+        &format!("{size} download. Chosen for this computer."),
+        model.name.clone(),
+        true,
+        &focus[AI_MODEL],
+        open_picker,
+    ));
+    if picker_open {
+        for (index, entry) in offered.iter().enumerate() {
+            let id = entry.id.clone();
+            let choose = {
+                let settings = settings.clone();
+                move |cx: &mut App| settings.update(cx, |me, cx| me.set_ai_model(&id, cx))
+            };
+            panel = panel.child(picker_option(
+                "cleanup.aiModel",
+                &entry.id,
+                entry.name.clone(),
+                entry.id == model.id,
+                &focus[AI_MODEL_OPTION + index.min(1)],
+                choose,
+            ));
+        }
+    }
+    let text = ai_status_text(status, ai_on);
+    let can_download = ai_on && matches!(status, Some(AiStatus::NotDownloaded | AiStatus::Failed));
+    let download = {
+        let settings = settings.clone();
+        move |cx: &mut App| settings.update(cx, |me, cx| me.download_ai_model(cx))
+    };
+    panel
+        .child(ai_status_row(
+            text,
+            can_download.then_some((&focus[AI_DOWNLOAD], download)),
         ))
         .child(div().h(px(space::XS)))
+}
+
+fn ai_status_text(status: Option<AiStatus>, on: bool) -> String {
+    match status {
+        None => "No AI model is available.".into(),
+        Some(AiStatus::NotDownloaded) if on => {
+            "Not downloaded. Dictations use the rule text until it is ready.".into()
+        }
+        Some(AiStatus::NotDownloaded) => "Downloads when you turn AI cleanup on.".into(),
+        Some(AiStatus::Downloading(Some(percent))) => format!("Downloading {percent}%"),
+        Some(AiStatus::Downloading(None)) => "Downloading".into(),
+        Some(AiStatus::Verifying) => "Checking the download".into(),
+        Some(AiStatus::Failed) => "The file failed its check. Download it again.".into(),
+        Some(AiStatus::Preparing) => "Preparing the AI model".into(),
+        Some(AiStatus::Ready) if on => "Ready".into(),
+        Some(AiStatus::Ready) => "Downloaded".into(),
+    }
+}
+
+/// The words about the AI model's state, and a download button when the file is missing.
+fn ai_status_row(
+    text: String,
+    download: Option<(&FocusHandle, impl Fn(&mut App) + 'static + Clone)>,
+) -> impl IntoElement {
+    let mut line = div()
+        .flex()
+        .items_center()
+        .gap(px(space::MD))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .border_t_1()
+        .border_color(theme::rgb_of(color::DIVIDER))
+        .child(icon_tile(IconName::Info))
+        .child(
+            div()
+                .id(hook::id("settings", "cleanup.aiStatus"))
+                .test_support()
+                .role(Role::Status)
+                .aria_label(text.clone())
+                .flex_1()
+                .min_w_0()
+                .text_token(BODY_SM)
+                .text_color(theme::rgb_of(color::TEXT_MUTED))
+                .truncate()
+                .child(text),
+        );
+    if let Some((focus, start)) = download {
+        let on_click = {
+            let start = start.clone();
+            move |_: &ClickEvent, _: &mut Window, cx: &mut App| start(cx)
+        };
+        let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                start(cx);
+                cx.stop_propagation();
+            }
+        };
+        line = line.child(
+            div()
+                .id(hook::id("settings", "cleanup.aiDownload"))
+                .test_support()
+                .track_focus(focus)
+                .role(Role::Button)
+                .aria_label("Download the AI model")
+                .flex_none()
+                .flex()
+                .items_center()
+                .h(px(32.0))
+                .px(px(10.0 - size::FOCUS_RING))
+                .rounded(px(radius::MD))
+                .border_2()
+                .border_color(transparent_black())
+                .bg(theme::rgb_of(color::SURFACE_CONTROL))
+                .text_token(LABEL_MD)
+                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+                .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+                .on_click(on_click)
+                .on_key_down(on_key)
+                .child("Download"),
+        );
+    }
+    line
 }
 
 fn flow_bar(

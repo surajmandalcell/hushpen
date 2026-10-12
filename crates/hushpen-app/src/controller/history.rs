@@ -99,6 +99,13 @@ impl Controller {
             RowStatus::Cancelled => text.clone().or_else(|| non_empty(&self.pending.raw)),
             _ => non_empty(&self.pending.raw),
         };
+        let ai = self
+            .last_ai
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+            .filter(|(owner, _)| *owner == session)
+            .map(|(_, record)| record);
         let row = Row {
             id: id.clone(),
             created_at,
@@ -112,6 +119,8 @@ impl Controller {
             prompt: self.last_prompt.clone(),
             raw_text,
             rule_text: non_empty(&self.pending.rule),
+            llm_text: ai.as_ref().and_then(|record| record.text.clone()),
+            llm_outcome: ai.as_ref().map(|record| record.outcome.key().to_owned()),
             final_text: match status {
                 RowStatus::Cancelled => None,
                 _ => text.clone(),

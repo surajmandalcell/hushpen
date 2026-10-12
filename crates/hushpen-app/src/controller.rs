@@ -7,6 +7,7 @@
 //! reports back as events that carry the session id, so a late answer from a cancelled run
 //! changes nothing. Transcript text is never logged.
 
+use crate::ai_cleanup::{self, Cleaner};
 use crate::engine_host::{EngineHost, LoadProblem};
 use crate::hook;
 use crate::mic::{CaptureState, Mic};
@@ -24,7 +25,7 @@ use hushpen_core::dictionary;
 use hushpen_core::error::{
     self, CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_LOAD_FAILED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH,
     INSERT_KEYBOARD_GRABBED, INSERT_NO_PERMISSION, INSERT_NO_RECEIPT, INSERT_NO_TRANSCRIPT,
-    INSERT_SECURE_FIELD, INSERT_WAYLAND,
+    INSERT_SECURE_FIELD, INSERT_WAYLAND, LLM_UNAVAILABLE,
 };
 use hushpen_core::insert::flow::Step;
 use hushpen_core::insert::{Outcome, Overrides, Report};
@@ -45,6 +46,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(test)]
+mod ai_tests;
 #[cfg(test)]
 mod gate_tests;
 mod history;
@@ -243,6 +246,21 @@ pub const CUE_VOLUME_SETTING: &str = "audio.cueVolume";
 /// Plays one cue at a volume from 0.0 to 1.0 and returns at once.
 pub type CueSink = Arc<dyn Fn(Cue, f32) + Send + Sync>;
 
+/// Gives the model worker for one dictation, or `None` while AI cleanup has no running worker.
+pub type CleanerSource = Rc<dyn Fn() -> Option<Box<dyn Cleaner>>>;
+
+const AI_ENABLED_SETTING: &str = "cleanup.llm.enabled";
+const AI_PROVIDER_SETTING: &str = "cleanup.llm.provider";
+const AI_TIMEOUT_SETTING: &str = "cleanup.llm.timeoutMs";
+const AI_DEFAULT_TIMEOUT_MS: u64 = if cfg!(target_os = "linux") {
+    8_000
+} else {
+    3_000
+};
+
+/// The AI step of the newest session, written by its worker thread.
+type LastAi = Arc<Mutex<Option<(u64, ai_cleanup::Record)>>>;
+
 pub struct Controller {
     storage: Rc<Storage>,
     mic: Entity<Mic>,
@@ -281,6 +299,13 @@ pub struct Controller {
     last_insert: LastInsert,
     permissions: Option<PermissionWatch>,
     cues: Option<CueSink>,
+    ai: Option<CleanerSource>,
+    /// Stops the AI step of the running session.
+    ai_cancel: Option<Arc<CancelToken>>,
+    ai_progress: Arc<ai_cleanup::Progress>,
+    /// The AI phase the views last drew.
+    shown_ai: Option<ai_cleanup::Phase>,
+    last_ai: LastAi,
     /// The session whose text a "Paste last transcript" is putting in right now. The machine
     /// has no state for it, so the controller keeps the answer.
     pasting_last: Option<u64>,
@@ -391,6 +416,11 @@ impl Controller {
             last_insert: Arc::default(),
             permissions: None,
             cues: None,
+            ai: None,
+            ai_cancel: None,
+            ai_progress: Arc::default(),
+            shown_ai: None,
+            last_ai: Arc::default(),
             pasting_last: None,
             pasting_text: None,
             pending: history::Pending::default(),
@@ -408,6 +438,132 @@ impl Controller {
 
     pub fn attach_cues(&mut self, cues: CueSink) {
         self.cues = Some(cues);
+    }
+
+    /// Tells the pipeline where the cleanup model worker comes from. Without it, AI cleanup
+    /// counts as unavailable and the rule text goes in.
+    pub fn attach_ai(&mut self, source: CleanerSource) {
+        self.ai = Some(source);
+    }
+
+    /// Whether the settings ask for the local cleanup model. The endpoint provider is not run
+    /// here, so it counts as off.
+    fn ai_wanted(&self) -> bool {
+        let settings = &self.storage.settings;
+        let on = settings
+            .get(AI_ENABLED_SETTING)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let local = settings
+            .get(AI_PROVIDER_SETTING)
+            .and_then(|value| value.as_str().map(|provider| provider == "local"))
+            .unwrap_or(true);
+        on && local
+    }
+
+    fn ai_timeout(&self) -> Duration {
+        let ms = self
+            .storage
+            .settings
+            .get(AI_TIMEOUT_SETTING)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(AI_DEFAULT_TIMEOUT_MS);
+        Duration::from_millis(ms)
+    }
+
+    /// The rule text, then the model's rewrite when AI cleanup is on. Every way the model step
+    /// can fail leaves the rule text as the answer; the pipeline hears `Cleaned` either way.
+    fn clean(&mut self, session: u64, raw: String, queue: &mut VecDeque<AppEvent>) {
+        let rule = self.rule_cleanup(&raw);
+        self.pending.raw = raw;
+        self.pending.rule = rule.clone();
+        let store = |last: &LastAi, record: ai_cleanup::Record| {
+            *last.lock().unwrap_or_else(|p| p.into_inner()) = Some((session, record));
+        };
+        if !self.ai_wanted() || rule.trim().is_empty() {
+            store(&self.last_ai, ai_cleanup::Record::off());
+            queue.push_back(AppEvent::Cleaned {
+                session,
+                text: rule,
+            });
+            return;
+        }
+        let cleaner = self.ai.as_ref().and_then(|source| source());
+        let timeout = self.ai_timeout();
+        let token = Arc::new(CancelToken::default());
+        self.ai_cancel = Some(Arc::clone(&token));
+        let progress = Arc::clone(&self.ai_progress);
+        let last = Arc::clone(&self.last_ai);
+        let events = self.events.clone();
+        let for_thread = rule.clone();
+        let spawned = (self.spawn)(Box::new(move || {
+            let rule = for_thread;
+            let Some(record) =
+                ai_cleanup::run(cleaner.as_deref(), &rule, timeout, &token, &progress)
+            else {
+                return;
+            };
+            let text = record.text.clone().unwrap_or_else(|| rule.clone());
+            log::info!(
+                "AI_CLEANUP session={session} outcome={} code={} ms={}",
+                record.outcome.key(),
+                record.code,
+                record.ms
+            );
+            hook::record_event(
+                "cleanup",
+                &format!(
+                    "ai {} {} {}ms",
+                    record.outcome.key(),
+                    record.code,
+                    record.ms
+                ),
+            );
+            {
+                // A step that finished after its session ended must not hide a newer one.
+                let mut slot = last.lock().unwrap_or_else(|p| p.into_inner());
+                if slot.as_ref().is_none_or(|(owner, _)| *owner <= session) {
+                    *slot = Some((session, record));
+                }
+            }
+            let _ = events.unbounded_send((AppEvent::Cleaned { session, text }, None));
+        }));
+        if let Err(error) = spawned {
+            log::warn!("{LLM_UNAVAILABLE} could not start the AI cleanup: {error}");
+            self.ai_cancel = None;
+            store(
+                &self.last_ai,
+                ai_cleanup::Record {
+                    outcome: hushpen_core::cleanup::outcome::Outcome::Unavailable,
+                    code: LLM_UNAVAILABLE.to_owned(),
+                    text: None,
+                    ms: 0,
+                },
+            );
+            queue.push_back(AppEvent::Cleaned {
+                session,
+                text: rule,
+            });
+        }
+    }
+
+    /// What the AI step is doing now, for Home and the hook.
+    pub fn ai_phase(&self) -> Option<ai_cleanup::Phase> {
+        self.ai_progress.get()
+    }
+
+    /// `hookctl state` `pipeline.ai`: the running phase and the newest step's outcome.
+    fn ai_json(&self) -> Value {
+        let last = self.last_ai.lock().unwrap_or_else(|p| p.into_inner());
+        json!({
+            "phase": self.ai_phase().map(ai_cleanup::Phase::key),
+            "last": last.as_ref().map(|(session, record)| json!({
+                "session": session,
+                "outcome": record.outcome.key(),
+                "code": record.code,
+                "ms": record.ms,
+            })),
+        })
     }
 
     /// The rule cleanup, unless `cleanup.rules` is off, and then the dictionary replacements,
@@ -708,6 +864,12 @@ impl Controller {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        // The worker thread moves the AI phase without telling the views.
+        let ai = self.ai_phase();
+        if ai != self.shown_ai {
+            self.shown_ai = ai;
+            cx.notify();
+        }
         if self.machine.state() != State::Idle {
             let _ = self.dispatch(AppEvent::Tick, cx);
         }
@@ -790,13 +952,12 @@ impl Controller {
                     token.cancel();
                 }
             }
-            Effect::Clean { session, raw } => {
-                let text = self.rule_cleanup(&raw);
-                self.pending.raw = raw;
-                self.pending.rule = text.clone();
-                queue.push_back(AppEvent::Cleaned { session, text });
+            Effect::Clean { session, raw } => self.clean(session, raw, queue),
+            Effect::StopLlm => {
+                if let Some(token) = self.ai_cancel.take() {
+                    token.cancel();
+                }
             }
-            Effect::StopLlm => {}
             Effect::Insert {
                 session,
                 text,
@@ -1344,6 +1505,7 @@ impl Controller {
             "warning": self.warned,
             "last_text_chars": self.last_text.as_ref().map(|text| text.chars().count()),
             "prompt": self.last_prompt,
+            "ai": self.ai_json(),
         })
     }
 }

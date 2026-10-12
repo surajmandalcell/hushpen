@@ -21,6 +21,8 @@ const OPTION_LIST_MAX_HEIGHT: f32 = 200.0;
 
 struct Snapshot {
     phase: Phase,
+    /// The cleanup model is loading, so the wait is longer than usual.
+    preparing: bool,
     status: String,
     transcript: String,
     notice: Option<(String, bool)>,
@@ -60,9 +62,15 @@ pub fn render(
             (_, Some(blocker)) if !phase.busy() => Some((blocker.message, blocker.models_link)),
             _ => None,
         };
+        let preparing = phase == Phase::Transcribing && me.preparing_ai(cx);
         Snapshot {
             phase,
-            status: status_text(phase, me.can_record(cx)),
+            preparing,
+            status: if preparing {
+                "Preparing the AI model".into()
+            } else {
+                status_text(phase, me.can_record(cx))
+            },
             transcript: me.transcript(cx).to_owned(),
             notice,
             keys_notice: me.keys_notice(cx).map(str::to_owned),
@@ -269,6 +277,7 @@ fn transcript_row(view: &Snapshot) -> impl IntoElement + use<> {
     let empty = view.transcript.is_empty();
     let placeholder = match view.phase {
         Phase::Listening => "Speak now. Stop when you are done.",
+        Phase::Transcribing if view.preparing => "Preparing the AI model.",
         Phase::Transcribing => "Transcribing your recording.",
         Phase::NoSpeech => "No speech was heard.",
         Phase::Failed => "Nothing was transcribed.",

@@ -8,6 +8,7 @@ compile_error!(
 
 pub mod about;
 pub mod actions;
+pub mod ai_cleanup;
 pub mod app;
 pub mod app_menu;
 pub mod assets;

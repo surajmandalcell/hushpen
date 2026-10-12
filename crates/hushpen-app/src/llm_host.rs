@@ -61,6 +61,12 @@ impl LlmHost {
         self.lock().client.clone()
     }
 
+    /// The running worker with the load it was given, or `None` while none runs.
+    pub fn running(&self) -> Option<(LlmClient, LlmSpec)> {
+        let state = self.lock();
+        Some((state.client.clone()?, state.applied.clone()?))
+    }
+
     pub fn status(&self) -> Option<LlmStatus> {
         self.client().map(|client| client.status())
     }

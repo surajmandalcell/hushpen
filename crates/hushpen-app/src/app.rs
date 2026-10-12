@@ -16,7 +16,7 @@ use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
 use crate::native::native_handle;
 use crate::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
-use crate::settings::{Parts as SettingsParts, Settings};
+use crate::settings::{AiParts, Parts as SettingsParts, Settings};
 use crate::shell::Shell;
 use crate::shortcuts::Shortcuts;
 use crate::storage;
@@ -113,6 +113,7 @@ pub fn run(hidden: bool) -> ExitCode {
             // The logger is a process-wide static, so `Drop` never runs for it.
             let quit_engine = Rc::clone(&engine);
             let quit_llm = Rc::clone(&llm);
+            let ai_llm = Rc::clone(&llm);
             cx.on_app_quit(move |_| {
                 quit_engine.shutdown();
                 quit_llm.shutdown();
@@ -202,6 +203,11 @@ pub fn run(hidden: bool) -> ExitCode {
             start_cues(&controller, cx);
             controller.update(cx, |controller, _| {
                 controller.attach_permissions(hushpen_platform::permissions::system());
+                let ai_llm = Rc::clone(&ai_llm);
+                controller.attach_ai(Rc::new(move || {
+                    crate::ai_cleanup::HostCleaner::of(&ai_llm)
+                        .map(|cleaner| Box::new(cleaner) as Box<dyn crate::ai_cleanup::Cleaner>)
+                }));
             });
             let onboarding = cx.new(|cx| {
                 Onboarding::new(
@@ -232,6 +238,28 @@ pub fn run(hidden: bool) -> ExitCode {
                         login: login_item,
                         default_data_dir: None,
                         restart: None,
+                    },
+                    cx,
+                )
+            });
+            let loading_llm = Rc::clone(&llm);
+            settings_view.update(cx, |settings, cx| {
+                settings.attach_ai(
+                    AiParts {
+                        models: models.clone(),
+                        catalog: hushpen_core::catalog::embedded(),
+                        platform: Platform::current(),
+                        ram_bytes: hushpen_platform::memory::total_ram_bytes().unwrap_or(0),
+                        loading: Rc::new(move || {
+                            loading_llm.status().is_some_and(|status| {
+                                status.model.is_none()
+                                    && matches!(
+                                        status.state,
+                                        hushpen_engine::LlmState::Starting
+                                            | hushpen_engine::LlmState::Loading
+                                    )
+                            })
+                        }),
                     },
                     cx,
                 )

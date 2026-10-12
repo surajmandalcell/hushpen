@@ -66,6 +66,11 @@ impl Dictation {
         self.controller.read(cx).phase()
     }
 
+    /// Whether the cleanup model is loading for the dictation on screen.
+    pub fn preparing_ai(&self, cx: &gpui_kit::App) -> bool {
+        self.controller.read(cx).ai_phase() == Some(crate::ai_cleanup::Phase::Preparing)
+    }
+
     pub fn transcript<'a>(&self, cx: &'a gpui_kit::App) -> &'a str {
         self.controller.read(cx).transcript()
     }
