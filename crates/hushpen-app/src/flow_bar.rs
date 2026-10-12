@@ -423,16 +423,19 @@ impl FlowBar {
 
     /// The "Undo cleanup" button: the app's undo key, then the rule text. A refusal shows on
     /// the bar like a refused start.
-    pub fn undo_cleanup(&mut self, cx: &mut Context<Self>) {
-        hook::record_event("flowbar", "undo cleanup");
-        let result = self
-            .controller
-            .update(cx, |controller, cx| controller.undo_cleanup(cx));
-        if let Err(reason) = result {
+    pub fn press_undo(&mut self, cx: &mut Context<Self>) {
+        if let Err(reason) = self.undo_cleanup(cx) {
             self.refusal = Some(reason);
             self.display.update(BarState::Error, (self.clock)());
         }
         cx.notify();
+    }
+
+    /// The same without a notice on the bar, for the test hook.
+    pub fn undo_cleanup(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        hook::record_event("flowbar", "undo cleanup");
+        self.controller
+            .update(cx, |controller, cx| controller.undo_cleanup(cx))
     }
 
     /// `hookctl state` section `overlay`.

@@ -42,6 +42,20 @@ pub fn attach(cx: &mut App, bar: Entity<FlowBar>, host: SharedHost) {
     });
     let _ = register_action(
         cx,
+        "overlay-undo-cleanup",
+        "Press Undo cleanup on the flow bar. It is rejected, with the reason, when the offer ran \
+         out, the focus changed, or the target is a terminal. State `pipeline.undo` says when \
+         it is on offer.",
+        {
+            let bar = bar.clone();
+            move |cx, _| {
+                bar.update(cx, |bar, cx| bar.undo_cleanup(cx))?;
+                Ok(Value::Null)
+            }
+        },
+    );
+    let _ = register_action(
+        cx,
         "overlay-language",
         "Pick a language in the flow bar list, like clicking its option. Args: \
          {\"code\": \"es\"} or {\"code\": \"auto\"}. The list has about a hundred options, so \

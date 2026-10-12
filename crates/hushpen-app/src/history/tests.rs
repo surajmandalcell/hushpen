@@ -423,6 +423,69 @@ fn copy_puts_the_final_text_on_the_clipboard(cx: &mut TestAppContext) {
     );
 }
 
+fn seed_cleaned(view: &Fixture, id: &str, target: &str) {
+    let mut row = row_of(id, 1_000, "the AI words");
+    row.rule_text = Some("the rule words".into());
+    row.llm_text = Some("the AI words".into());
+    row.llm_outcome = Some("used".into());
+    row.target_app = Some(target.to_owned());
+    history::save(&view.rig.storage.database, &row, &[]).unwrap();
+}
+
+#[gpui_kit::test]
+fn undo_cleanup_in_the_detail_makes_the_rule_text_final_and_sends_nothing(cx: &mut TestAppContext) {
+    let view = open(cx);
+    let inserter = crate::controller::testkit::FakeInserter::pasted_into(
+        "GtkTarget",
+        hushpen_core::insert::Chord::CtrlV,
+    );
+    crate::controller::testkit::attach_inserter(cx, &view.rig, &inserter);
+    seed_cleaned(&view, "A", "GtkTarget");
+    reload(cx, &view);
+
+    click(cx, &view, "history.row.0");
+    assert!(present(cx, &view, "history.undo-cleanup"));
+    click(cx, &view, "history.undo-cleanup");
+
+    let detail = state(cx, &view)["detail"].clone();
+    assert_eq!(detail["final_text"], "the rule words");
+    assert_eq!(detail["llm_outcome"], "undone");
+    assert_eq!(detail["llm_text"], "the AI words");
+    assert!(!present(cx, &view, "history.undo-cleanup"), "only once");
+    assert!(inserter.undos.lock().unwrap().is_empty());
+    assert!(inserter.log.lock().unwrap().is_empty(), "no paste either");
+}
+
+#[gpui_kit::test]
+fn a_row_with_no_ai_text_offers_neither_undo_cleanup_nor_copy_original(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed(&view, "A", 1_000, "plain words");
+    reload(cx, &view);
+
+    click(cx, &view, "history.row.0");
+
+    assert!(present(cx, &view, "history.copy"));
+    assert!(!present(cx, &view, "history.undo-cleanup"));
+    assert!(!present(cx, &view, "history.copy-original"));
+}
+
+#[gpui_kit::test]
+fn a_terminal_row_still_offers_copy_original_and_it_copies_the_rule_text(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_cleaned(&view, "A", "XTerm");
+    reload(cx, &view);
+    crate::controller::testkit::put_on_clipboard(cx, "OLD");
+
+    click(cx, &view, "history.row.0");
+    assert!(present(cx, &view, "history.copy-original"));
+    click(cx, &view, "history.copy-original");
+
+    assert_eq!(
+        crate::controller::testkit::clipboard(cx).as_deref(),
+        Some("the rule words")
+    );
+}
+
 #[gpui_kit::test]
 fn re_paste_hides_the_main_window_so_the_focus_returns_to_the_app_that_had_it(
     cx: &mut TestAppContext,

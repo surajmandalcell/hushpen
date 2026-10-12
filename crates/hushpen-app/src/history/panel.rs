@@ -625,6 +625,8 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
                 view.focus.back.clone(),
                 view.focus.copy.clone(),
                 view.focus.repaste.clone(),
+                view.focus.undo_cleanup.clone(),
+                view.focus.copy_original.clone(),
                 view.focus.reprocess.clone(),
                 view.focus.delete.clone(),
             ],
@@ -649,6 +651,8 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         back_focus,
         copy_focus,
         repaste_focus,
+        undo_cleanup_focus,
+        copy_original_focus,
         reprocess_focus,
         delete_focus,
     ] = focus;
@@ -670,6 +674,8 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         let history = history.clone();
         move |_: &mut Window, cx: &mut App| history.update(cx, |history, cx| history.close(cx))
     };
+    let ai_used = row.llm_outcome.as_deref() == Some("used");
+    let has_ai_text = row.llm_text.is_some();
     let controls = div()
         .flex()
         .flex_wrap()
@@ -696,6 +702,28 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
                 let _ = history.repaste(Some(id), cx);
             }),
         ))
+        .children(ai_used.then(|| {
+            button(
+                hook::id("history", "undo-cleanup"),
+                "Undo cleanup",
+                &undo_cleanup_focus,
+                true,
+                act(|history, id, cx| {
+                    let _ = history.undo_cleanup(Some(id), cx);
+                }),
+            )
+        }))
+        .children(has_ai_text.then(|| {
+            button(
+                hook::id("history", "copy-original"),
+                "Copy original",
+                &copy_original_focus,
+                true,
+                act(|history, id, cx| {
+                    let _ = history.copy_original(Some(id), cx);
+                }),
+            )
+        }))
         .child(button(
             hook::id("history", "reprocess"),
             "Reprocess",

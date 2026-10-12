@@ -462,7 +462,7 @@ fn undo_button(bar: Option<&Entity<FlowBar>>) -> impl IntoElement {
         button = button
             .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
             .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                bar.update(cx, |bar, cx| bar.undo_cleanup(cx));
+                bar.update(cx, |bar, cx| bar.press_undo(cx));
             });
     }
     button

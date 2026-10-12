@@ -126,6 +126,19 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
     );
     action(
         cx,
+        "history-copy-original",
+        "Copy the text from before the AI cleanup, like Copy original. Args as history-copy.",
+        |history, id, cx| history.copy_original(id.as_deref(), cx),
+    );
+    action(
+        cx,
+        "history-undo-cleanup",
+        "Make the rule text the final text of an AI-cleaned transcript, like Undo cleanup in the \
+         detail view. Nothing is pasted. Args as history-copy.",
+        |history, id, cx| history.undo_cleanup(id.as_deref(), cx),
+    );
+    action(
+        cx,
         "history-reprocess",
         "Run the engine again on the audio of a transcript with the current model and \
          dictionary, like Reprocess. Args as history-copy. Progress is in `hookctl state` \

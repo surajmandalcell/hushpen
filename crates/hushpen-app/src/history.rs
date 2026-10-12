@@ -64,6 +64,8 @@ pub struct Focus {
     pub seek: FocusHandle,
     pub copy: FocusHandle,
     pub repaste: FocusHandle,
+    pub undo_cleanup: FocusHandle,
+    pub copy_original: FocusHandle,
     pub reprocess: FocusHandle,
     pub delete: FocusHandle,
     pub select: FocusHandle,
@@ -142,6 +144,8 @@ impl History {
             seek: handle(cx),
             copy: handle(cx),
             repaste: handle(cx),
+            undo_cleanup: handle(cx),
+            copy_original: handle(cx),
             reprocess: handle(cx),
             delete: handle(cx),
             select: handle(cx),
@@ -453,6 +457,63 @@ impl History {
         }
     }
 
+    /// Copies the text from before the AI cleanup: the rule text, or the raw text when the
+    /// rules changed nothing. This is the way to the original words for a row that went into
+    /// a terminal, where the bar offers no undo.
+    pub fn copy_original(
+        &mut self,
+        id: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let text = self.row(id).and_then(|row| Self::original_of(&row));
+        match text {
+            Ok(text) => {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                self.message = None;
+                hook::record_event("history", "copied-original");
+                cx.notify();
+                Ok(())
+            }
+            Err(message) => self.refuse(message, cx),
+        }
+    }
+
+    pub(crate) fn original_of(row: &Row) -> Result<String, String> {
+        if row.llm_text.is_none() {
+            return Err("This transcript has no AI cleanup to look past.".to_owned());
+        }
+        [&row.rule_text, &row.raw_text]
+            .into_iter()
+            .flatten()
+            .find(|text| !text.is_empty())
+            .cloned()
+            .ok_or_else(|| "This transcript has no original text.".to_owned())
+    }
+
+    /// Makes the rule text the final text of a row whose AI text was used. No key and no
+    /// paste goes to another app: this only changes what History and Paste last hold.
+    pub fn undo_cleanup(&mut self, id: Option<&str>, cx: &mut Context<Self>) -> Result<(), String> {
+        let row = match self.row(id) {
+            Ok(row) => row,
+            Err(message) => return self.refuse(message, cx),
+        };
+        match history::undo_cleanup(&self.storage.database, &row.id) {
+            Ok(Some(text)) => {
+                self.message = None;
+                self.controller.update(cx, |controller, cx| {
+                    controller.cleanup_undone(&row.id, text, cx)
+                });
+                self.reload(cx);
+                Ok(())
+            }
+            Ok(None) => self.refuse(
+                "The AI cleanup of this transcript cannot be undone.".into(),
+                cx,
+            ),
+            Err(error) => self.refuse(format!("The cleanup could not be undone: {error}"), cx),
+        }
+    }
+
     /// Puts the text of the row into the app that has the focus, as soon as Hushpen no longer
     /// has it.
     pub fn repaste(&mut self, id: Option<&str>, cx: &mut Context<Self>) -> Result<(), String> {
@@ -663,6 +724,7 @@ impl History {
                 "raw_text": row.raw_text,
                 "rule_text": row.rule_text,
                 "llm_text": row.llm_text,
+                "llm_outcome": row.llm_outcome,
                 "final_text": row.final_text,
                 "target_app": row.target_app,
                 "duration_ms": row.duration_ms,
@@ -682,6 +744,8 @@ impl History {
                 "prompt": row.prompt,
                 "raw_text": row.raw_text,
                 "rule_text": row.rule_text,
+                "llm_text": row.llm_text,
+                "llm_outcome": row.llm_outcome,
                 "final_text": row.final_text,
             })),
             "undo": self.undo.as_ref().map(|undo| json!({"id": undo.stored.row.id})),
