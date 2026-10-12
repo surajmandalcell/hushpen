@@ -20,6 +20,8 @@ mod flow_bar;
 #[cfg(feature = "test-automation")]
 mod history;
 #[cfg(feature = "test-automation")]
+mod llm;
+#[cfg(feature = "test-automation")]
 mod mic;
 #[cfg(feature = "test-automation")]
 mod models;
@@ -50,6 +52,8 @@ pub use engine::attach as attach_engine;
 pub use flow_bar::attach as attach_flow_bar;
 #[cfg(feature = "test-automation")]
 pub use history::attach as attach_history;
+#[cfg(feature = "test-automation")]
+pub use llm::attach as attach_llm;
 #[cfg(feature = "test-automation")]
 pub use mic::attach as attach_mic;
 #[cfg(feature = "test-automation")]

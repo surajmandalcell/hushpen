@@ -212,6 +212,15 @@ impl DataDir {
         self.logs_dir().join("engine.log")
     }
 
+    pub fn llm_log_path(&self) -> PathBuf {
+        self.logs_dir().join("llm.log")
+    }
+
+    /// Where the cleanup model GGUF files live. The folder is created by the model manager.
+    pub fn llm_models_dir(&self) -> PathBuf {
+        self.root.join("models").join("llm")
+    }
+
     /// Where `ggml-<id>.bin` speech models live. The folder is created by the model manager.
     pub fn whisper_models_dir(&self) -> PathBuf {
         self.root.join("models").join("whisper")

@@ -20,6 +20,7 @@ pub mod flow_bar;
 pub mod history;
 pub mod hook;
 pub mod instance;
+pub mod llm_host;
 pub mod main_window;
 pub mod mic;
 pub mod models;

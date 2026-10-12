@@ -10,6 +10,7 @@ use crate::engine_host::EngineHost;
 use crate::flow_bar::{self, FlowBar, OpenHistory, PopUp};
 use crate::history::History;
 use crate::instance::{self, Start};
+use crate::llm_host::LlmHost;
 use crate::main_window;
 use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
@@ -86,6 +87,8 @@ pub fn run(hidden: bool) -> ExitCode {
         .map(|entry| entry.id.clone())
         .unwrap_or_default();
     let engine = Rc::new(EngineHost::start(&storage.data, &default_model));
+    let llm = Rc::new(LlmHost::new(&storage.data));
+    llm.apply_settings(&storage.settings.values());
     let recovered = mic::sweep_orphans(&storage.data);
     let mic_storage = Rc::clone(&storage);
     let models_storage = Rc::clone(&storage);
@@ -109,12 +112,15 @@ pub fn run(hidden: bool) -> ExitCode {
             theme::install(cx);
             // The logger is a process-wide static, so `Drop` never runs for it.
             let quit_engine = Rc::clone(&engine);
+            let quit_llm = Rc::clone(&llm);
             cx.on_app_quit(move |_| {
                 quit_engine.shutdown();
+                quit_llm.shutdown();
                 log::logger().flush();
                 async {}
             })
             .detach();
+            follow_llm_settings(cx, Rc::clone(&llm), Rc::clone(&storage));
             let (handle, shell) = match open_main_window(cx) {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -321,7 +327,8 @@ pub fn run(hidden: bool) -> ExitCode {
                     },
                 );
                 crate::hook::attach_settings(cx, Rc::clone(&hook_storage));
-                crate::hook::attach_engine(cx, Rc::clone(&engine), hook_storage);
+                crate::hook::attach_engine(cx, Rc::clone(&engine), Rc::clone(&hook_storage));
+                crate::hook::attach_llm(cx, Rc::clone(&llm), hook_storage);
                 crate::hook::attach_flow_bar(cx, flow_bar, flow_bar_host);
                 crate::hook::attach_tray(cx, tray_controller, tray.is_some());
                 crate::hook::attach_mic(cx, mic);
@@ -347,6 +354,21 @@ pub fn run(hidden: bool) -> ExitCode {
             .detach();
         });
     ExitCode::SUCCESS
+}
+
+/// Applies a change of the AI cleanup settings to the worker, which starts only while the
+/// feature is on. The settings store has no change events, so this looks once a second; the
+/// call does nothing when the wanted load did not change.
+fn follow_llm_settings(cx: &mut App, llm: Rc<LlmHost>, storage: Rc<storage::Storage>) {
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor()
+                .timer(std::time::Duration::from_secs(1))
+                .await;
+            llm.apply_settings(&storage.settings.values());
+        }
+    })
+    .detach();
 }
 
 /// What the flow bar's "Open history" button does: show the main window on the History view
