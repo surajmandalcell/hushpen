@@ -398,8 +398,13 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
         .collect();
     let mut transcribing = Props::new(BarState::Transcribing);
     transcribing.dot = 1;
+    let mut preparing = Props::new(BarState::Transcribing);
+    preparing.dot = 1;
+    preparing.preparing = true;
     let mut result = Props::new(BarState::Result);
     result.message = "Inserted".into();
+    let mut undo = Props::new(BarState::Undo);
+    undo.message = "Inserted".into();
     let mut error = Props::new(BarState::Error);
     error.message = "No speech heard".into();
     error.open_history = true;
@@ -426,7 +431,9 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
         ("flowbar-idle-spanish", spanish),
         ("flowbar-listening", listening),
         ("flowbar-transcribing", transcribing),
+        ("flowbar-transcribing-preparing", preparing),
         ("flowbar-result", result),
+        ("flowbar-undo", undo),
         ("flowbar-error", error),
         ("flowbar-blocked", blocked),
         ("flowbar-picker", list),
