@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: build-app.sh
-# Builds the debug app (feature test-automation) and hookctl for the harness platform (linux/arm64 unless HUSHPEN_PLATFORM says otherwise) in the hushpen-build
-# container and copies both to $HUSHPEN_ROOT/harness-bin, the folder every slot mounts as /app.
+# Builds the debug app (feature test-automation), hookctl, and the hushpen-llm worker for the harness platform (linux/arm64 unless HUSHPEN_PLATFORM says otherwise) in the hushpen-build
+# container and copies them to $HUSHPEN_ROOT/harness-bin, the folder every slot mounts as /app.
 # The repo mounts read-only. Heavy (4 CPUs): counts as 2 busy slots.
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -18,7 +18,7 @@ docker run --rm --platform "$HARNESS_PLATFORM" --name hushpen-build --cpus 4 --m
   -v "$HARNESS_BIN:/harness-bin" \
   -e CARGO_TARGET_DIR=/target -e TMPDIR=/scratch -e GGML_NATIVE=OFF -e LANG=C.UTF-8 \
   -w /src "$HARNESS_IMAGE" \
-  sh -c 'cargo build --locked -j 4 -p hushpen-app --features test-automation -p hushpen-testhook &&
-         cp /target/debug/hushpen /target/debug/hookctl /harness-bin/' ||
+  sh -c 'cargo build --locked -j 4 -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-llm &&
+         cp /target/debug/hushpen /target/debug/hookctl /target/debug/hushpen-llm /harness-bin/' ||
   die "build failed"
 ls -l "$HARNESS_BIN"
