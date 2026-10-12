@@ -257,6 +257,8 @@ const AI_DEFAULT_TIMEOUT_MS: u64 = if cfg!(target_os = "linux") {
 } else {
     3_000
 };
+const AI_ENDPOINT_TIMEOUT_SETTING: &str = "cleanup.llm.endpointTimeoutMs";
+const AI_ENDPOINT_DEFAULT_TIMEOUT_MS: u64 = 6_000;
 
 /// The AI step of the newest session, written by its worker thread.
 type LastAi = Arc<Mutex<Option<(u64, ai_cleanup::Record)>>>;
@@ -446,28 +448,36 @@ impl Controller {
         self.ai = Some(source);
     }
 
-    /// Whether the settings ask for the local cleanup model. The endpoint provider is not run
-    /// here, so it counts as off.
+    /// Whether the settings ask for AI cleanup. The cleaner source picks the provider.
     fn ai_wanted(&self) -> bool {
-        let settings = &self.storage.settings;
-        let on = settings
+        self.storage
+            .settings
             .get(AI_ENABLED_SETTING)
             .and_then(|value| value.as_bool())
-            .unwrap_or(false);
-        let local = settings
-            .get(AI_PROVIDER_SETTING)
-            .and_then(|value| value.as_str().map(|provider| provider == "local"))
-            .unwrap_or(true);
-        on && local
+            .unwrap_or(false)
     }
 
+    fn ai_uses_endpoint(&self) -> bool {
+        self.storage
+            .settings
+            .get(AI_PROVIDER_SETTING)
+            .is_some_and(|provider| provider.as_str() == Some("endpoint"))
+    }
+
+    /// How long the model step may take: the endpoint has its own limit, because a network
+    /// round trip is not a local generation.
     fn ai_timeout(&self) -> Duration {
+        let (key, default) = if self.ai_uses_endpoint() {
+            (AI_ENDPOINT_TIMEOUT_SETTING, AI_ENDPOINT_DEFAULT_TIMEOUT_MS)
+        } else {
+            (AI_TIMEOUT_SETTING, AI_DEFAULT_TIMEOUT_MS)
+        };
         let ms = self
             .storage
             .settings
-            .get(AI_TIMEOUT_SETTING)
+            .get(key)
             .and_then(|value| value.as_u64())
-            .unwrap_or(AI_DEFAULT_TIMEOUT_MS);
+            .unwrap_or(default);
         Duration::from_millis(ms)
     }
 

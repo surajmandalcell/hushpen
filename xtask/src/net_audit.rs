@@ -41,6 +41,8 @@ const CHILD_CRATES: [&str; 2] = ["hushpen-engine", "hushpen-llm"];
 const HTTP_OWNER: &str = "hushpen-app";
 
 const PURPOSE_LOOKBACK: usize = 15;
+/// The `net::Purpose` whose host the user types.
+const USER_CONFIGURED_PURPOSE: &str = "Endpoint";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Site {
@@ -120,6 +122,21 @@ fn purpose_near(lines: &[&str], index: usize) -> Option<String> {
             .collect();
         (!name.is_empty()).then_some(name)
     })
+}
+
+/// A call site whose host is not in the code: the user types it in Settings.
+fn is_user_configured(site: &Site) -> bool {
+    site.host.is_none()
+        && site.what == "ureq::"
+        && site.purpose.as_deref() == Some(USER_CONFIGURED_PURPOSE)
+}
+
+fn host_label(site: &Site) -> String {
+    match (&site.host, is_user_configured(site)) {
+        (Some(host), _) => host.clone(),
+        (None, true) => "user-configured".to_owned(),
+        (None, false) => "-".to_owned(),
+    }
 }
 
 pub fn scan_source(rel_path: &str, text: &str) -> (Vec<Site>, Vec<Violation>) {
@@ -353,9 +370,13 @@ pub fn run(root: &Path) -> Result<(), String> {
             site.line,
             site.what,
             site.purpose.as_deref().unwrap_or("-"),
-            site.host.as_deref().unwrap_or("-")
+            host_label(site)
         );
     }
+    let configured = sites.iter().filter(|site| is_user_configured(site)).count();
+    println!(
+        "net-audit: {configured} call sites go to a user-configured host (purpose {USER_CONFIGURED_PURPOSE}: the endpoint address from Settings; plain http only for localhost, 127.0.0.1 and ::1)"
+    );
     if violations.is_empty() {
         println!("net-audit: ok");
         return Ok(());
@@ -390,6 +411,22 @@ mod tests {
         assert_eq!(call.purpose.as_deref(), Some("ModelDownload"));
         let url = sites.iter().find(|s| s.host.is_some()).unwrap();
         assert_eq!(url.host.as_deref(), Some("huggingface.co"));
+    }
+
+    #[test]
+    fn the_endpoint_purpose_is_listed_as_user_configured() {
+        let text = "// Purpose::Endpoint\nlet agent = ureq::Agent::new_with_defaults();\nlet other = ureq::get(url);\n";
+        let (sites, bad) = scan_source("crates/hushpen-app/src/net/endpoint.rs", text);
+        assert!(bad.is_empty(), "{bad:?}");
+        assert!(sites.iter().all(is_user_configured), "{sites:?}");
+        assert_eq!(host_label(&sites[0]), "user-configured");
+
+        let (sites, _) = scan_source(
+            "crates/hushpen-app/src/net/download.rs",
+            "// Purpose::ModelDownload\nlet resp = ureq::get(url);\n",
+        );
+        assert!(!is_user_configured(&sites[0]));
+        assert_eq!(host_label(&sites[0]), "-");
     }
 
     #[test]

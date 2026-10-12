@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod cleanup;
 pub mod dictation;
 pub mod dictionary;
+pub mod endpoint;
 pub mod error;
 pub mod export;
 pub mod flow_bar;

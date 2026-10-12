@@ -8,9 +8,22 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct Req {
+    pub method: String,
     pub path: String,
     /// First byte of a `Range: bytes=N-` header.
     pub range_from: Option<u64>,
+    /// Header names in lower case.
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+impl Req {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
 }
 
 pub type Handler = dyn Fn(&Req, &mut TcpStream) + Send + Sync;
@@ -74,24 +87,41 @@ fn serve(stream: TcpStream, handler: &Handler, seen: &Mutex<Vec<Req>>) {
     if reader.read_line(&mut line).unwrap_or(0) == 0 {
         return;
     }
+    let method = line.split_whitespace().next().unwrap_or("GET").to_owned();
     let path = line.split_whitespace().nth(1).unwrap_or("/").to_owned();
     let mut range_from = None;
+    let mut headers = Vec::new();
+    let mut length = 0usize;
     loop {
         line.clear();
         if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
             break;
         }
-        if let Some((name, value)) = line.split_once(':')
-            && name.eq_ignore_ascii_case("range")
-        {
-            range_from = value
-                .trim()
-                .strip_prefix("bytes=")
-                .and_then(|range| range.split('-').next())
-                .and_then(|from| from.parse().ok());
+        if let Some((name, value)) = line.split_once(':') {
+            let (name, value) = (name.trim().to_ascii_lowercase(), value.trim().to_owned());
+            if name == "range" {
+                range_from = value
+                    .strip_prefix("bytes=")
+                    .and_then(|range| range.split('-').next())
+                    .and_then(|from| from.parse().ok());
+            }
+            if name == "content-length" {
+                length = value.parse().unwrap_or(0);
+            }
+            headers.push((name, value));
         }
     }
-    let request = Req { path, range_from };
+    let mut body = vec![0u8; length];
+    if std::io::Read::read_exact(&mut reader, &mut body).is_err() {
+        body.clear();
+    }
+    let request = Req {
+        method,
+        path,
+        range_from,
+        headers,
+        body: String::from_utf8_lossy(&body).into_owned(),
+    };
     seen.lock().expect("request log").push(request.clone());
     let mut stream = stream;
     handler(&request, &mut stream);

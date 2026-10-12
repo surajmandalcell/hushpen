@@ -126,19 +126,48 @@ fn ai_cleanup_is_off_by_default_and_the_rule_text_goes_in(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn the_endpoint_provider_is_not_run_by_the_local_step(cx: &mut TestAppContext) {
+fn the_endpoint_provider_runs_with_its_own_six_second_timeout(cx: &mut TestAppContext) {
     let (rig, inserter) = setup(cx);
-    let calls = ai_answers(cx, &rig, Attempt::Done("never".into()), Ok(()));
+    let corrected = "I think we should meet on Wednesday at 3 PM.";
+    let calls = ai_answers(cx, &rig, Attempt::Done(corrected.into()), Ok(()));
     rig.storage
         .settings
         .set("cleanup.llm.provider", json!("endpoint"))
         .unwrap();
+    rig.storage
+        .settings
+        .set("cleanup.llm.timeoutMs", json!(1_234))
+        .unwrap();
 
     hold_run(cx, &rig, 1_000);
 
-    assert_eq!(pasted(&inserter), [RULE]);
-    assert_eq!(only_row(&rig).llm_outcome.as_deref(), Some("off"));
-    assert_eq!(calls.lock().unwrap().asked, 0);
+    assert_eq!(pasted(&inserter), [corrected]);
+    assert_eq!(only_row(&rig).llm_outcome.as_deref(), Some("used"));
+    let calls = calls.lock().unwrap();
+    assert_eq!(calls.asked, 1);
+    assert_eq!(calls.seen[0].1, Duration::from_secs(6));
+}
+
+#[gpui_kit::test]
+fn the_endpoint_timeout_setting_is_the_one_that_counts(cx: &mut TestAppContext) {
+    let (rig, _inserter) = setup(cx);
+    let calls = ai_answers(cx, &rig, Attempt::TimedOut, Ok(()));
+    rig.storage
+        .settings
+        .set("cleanup.llm.provider", json!("endpoint"))
+        .unwrap();
+    rig.storage
+        .settings
+        .set("cleanup.llm.endpointTimeoutMs", json!(2_500))
+        .unwrap();
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(only_row(&rig).llm_outcome.as_deref(), Some("timeout"));
+    assert_eq!(
+        calls.lock().unwrap().seen[0].1,
+        Duration::from_millis(2_500)
+    );
 }
 
 #[gpui_kit::test]

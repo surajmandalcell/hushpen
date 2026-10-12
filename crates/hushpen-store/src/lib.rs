@@ -10,6 +10,7 @@ pub mod history;
 pub mod log_file;
 pub mod model_files;
 pub mod retention;
+pub mod secrets;
 pub mod settings;
 pub mod time;
 

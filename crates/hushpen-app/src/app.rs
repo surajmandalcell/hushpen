@@ -111,6 +111,8 @@ pub fn run(hidden: bool) -> ExitCode {
             register_fonts(cx);
             theme::install(cx);
             // The logger is a process-wide static, so `Drop` never runs for it.
+            let endpoint_transport: Arc<dyn crate::net::endpoint::Transport> =
+                Arc::new(crate::net::endpoint::UreqTransport);
             let quit_engine = Rc::clone(&engine);
             let quit_llm = Rc::clone(&llm);
             let ai_llm = Rc::clone(&llm);
@@ -204,9 +206,10 @@ pub fn run(hidden: bool) -> ExitCode {
             controller.update(cx, |controller, _| {
                 controller.attach_permissions(hushpen_platform::permissions::system());
                 let ai_llm = Rc::clone(&ai_llm);
+                let ai_storage = Rc::clone(&dictation_storage);
+                let transport = Arc::clone(&endpoint_transport);
                 controller.attach_ai(Rc::new(move || {
-                    crate::ai_cleanup::HostCleaner::of(&ai_llm)
-                        .map(|cleaner| Box::new(cleaner) as Box<dyn crate::ai_cleanup::Cleaner>)
+                    crate::ai_cleanup::cleaner_for(&ai_storage, &ai_llm, &transport)
                 }));
             });
             let onboarding = cx.new(|cx| {
@@ -264,6 +267,18 @@ pub fn run(hidden: bool) -> ExitCode {
                     cx,
                 )
             });
+            let endpoint_form = handle
+                .update(cx, |_, window, cx| {
+                    let storage = Rc::clone(&storage);
+                    let transport = Arc::clone(&endpoint_transport);
+                    cx.new(|cx| {
+                        crate::settings::endpoint::EndpointForm::new(storage, transport, window, cx)
+                    })
+                })
+                .ok();
+            if let Some(form) = endpoint_form {
+                settings_view.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
+            }
             shell.update(cx, |shell, cx| {
                 shell.attach_settings(settings_view.clone(), cx)
             });

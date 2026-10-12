@@ -4,11 +4,13 @@ use hushpen_store::Result;
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::db::Database;
 use hushpen_store::log_file;
+use hushpen_store::secrets::Secrets;
 use hushpen_store::settings::SettingsStore;
 
 pub struct Storage {
     pub data: DataDir,
     pub settings: SettingsStore,
+    pub secrets: Secrets,
     pub database: Database,
 }
 
@@ -16,6 +18,7 @@ pub struct Storage {
 /// The file logger must be installed first, or the line goes nowhere.
 pub fn open(data: DataDir) -> Result<Storage> {
     let settings = SettingsStore::open(&data.config_dir())?;
+    let secrets = Secrets::open(&data.config_dir())?;
     let database = Database::open(&data.database_path())?;
     let report = database.report();
     log::info!(
@@ -32,6 +35,7 @@ pub fn open(data: DataDir) -> Result<Storage> {
     Ok(Storage {
         data,
         settings,
+        secrets,
         database,
     })
 }

@@ -2,13 +2,20 @@
 //! counts only the generation, and checks the answer. Every way it can go wrong ends in the rule
 //! text, never in an error for the user.
 
+mod endpoint;
+
+pub use endpoint::EndpointCleaner;
+
 use crate::controller::CancelToken;
 use crate::llm_host::LlmHost;
+use crate::net::endpoint::Transport;
+use crate::storage::Storage;
 use hushpen_core::cleanup::guard;
 use hushpen_core::cleanup::outcome::Outcome;
 use hushpen_core::error::{LLM_GUARD_REJECTED, LLM_UNAVAILABLE};
 use hushpen_core::llm_prompt::CLEANUP_SYSTEM;
 use hushpen_engine::{LlmClient, LlmLoaded, LlmOutcome, LlmSpec, LlmState, LlmWork};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
@@ -175,6 +182,26 @@ fn max_tokens(text: &str) -> u32 {
     let chars = text.chars().count();
     let tokens = (chars * 3 / 2 + 40) / 2;
     u32::try_from(tokens.clamp(MIN_TOKENS, MAX_TOKENS)).unwrap_or(MAX_TOKENS as u32)
+}
+
+/// The cleaner for the provider that the settings name, read at the start of each dictation so
+/// a change takes effect on the next one. `None` means the local worker is not running.
+pub fn cleaner_for(
+    storage: &Storage,
+    host: &LlmHost,
+    transport: &Arc<dyn Transport>,
+) -> Option<Box<dyn Cleaner>> {
+    let endpoint = storage
+        .settings
+        .get("cleanup.llm.provider")
+        .is_some_and(|provider| provider.as_str() == Some("endpoint"));
+    if endpoint {
+        return Some(Box::new(EndpointCleaner::from_storage(
+            storage,
+            Arc::clone(transport),
+        )));
+    }
+    HostCleaner::of(host).map(|cleaner| Box::new(cleaner) as Box<dyn Cleaner>)
 }
 
 /// The worker behind [`LlmHost`], with the load that brings its model back after an idle unload.
@@ -427,6 +454,29 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn the_provider_setting_picks_the_cleaner() {
+        use crate::net::endpoint::UreqTransport;
+        use serde_json::json;
+        let tmp = tempfile::tempdir().unwrap();
+        let data = hushpen_store::data_dir::DataDir::open(tmp.path().join("data")).unwrap();
+        let storage = crate::storage::open(data).unwrap();
+        let host = LlmHost::with_program(&storage.data, std::path::PathBuf::from("/bin/false"));
+        let transport: Arc<dyn Transport> = Arc::new(UreqTransport);
+
+        assert!(cleaner_for(&storage, &host, &transport).is_none());
+
+        storage
+            .settings
+            .set("cleanup.llm.provider", json!("endpoint"))
+            .unwrap();
+        let cleaner =
+            cleaner_for(&storage, &host, &transport).expect("the endpoint needs no worker");
+        // No URL is set, so the request is refused before any socket opens.
+        let attempt = cleaner.clean("hello", Duration::from_secs(1), &CancelToken::default());
+        assert_eq!(attempt, Attempt::Failed("ENDPOINT_FAILED".into()));
     }
 
     #[test]

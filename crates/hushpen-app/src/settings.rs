@@ -1,6 +1,7 @@
 //! The Settings view: sections, the controls that write the settings store,
 //! launch at login, and the data folder move.
 
+pub mod endpoint;
 mod panel;
 
 use crate::hook;
@@ -9,6 +10,7 @@ use crate::models::{ModelState, Models};
 use crate::storage::Storage;
 use gpui_kit::{App, Context, Entity, FocusHandle};
 use hushpen_core::catalog::{Catalog, ModelEntry};
+use hushpen_core::endpoint::Preset;
 use hushpen_core::error::DATA_FOLDER_MOVE_FAILED;
 use hushpen_core::shortcut::Platform;
 use serde_json::{Value, json};
@@ -35,7 +37,13 @@ pub(crate) mod slots {
     pub const AI_MODEL: usize = 16;
     pub const AI_MODEL_OPTION: usize = 17; // ..=18
     pub const AI_DOWNLOAD: usize = 19;
-    pub const COUNT: usize = 20;
+    pub const AI_PROVIDER: usize = 20;
+    pub const AI_PROVIDER_OPTION: usize = 21; // ..=22
+    pub const ENDPOINT_PRESET: usize = 23;
+    pub const ENDPOINT_PRESET_OPTION: usize = 24; // ..=26
+    pub const ENDPOINT_KEY_CLEAR: usize = 27;
+    pub const ENDPOINT_TEST: usize = 28;
+    pub const COUNT: usize = 29;
 }
 
 /// The sections of the Settings view, in order.
@@ -142,6 +150,7 @@ pub struct Settings {
     pub(crate) control_focus: Vec<FocusHandle>,
     ai: Option<AiParts>,
     ai_loading: bool,
+    pub(crate) endpoint: Option<Entity<endpoint::EndpointForm>>,
 }
 
 /// How the app hands over to a fresh copy after the move.
@@ -224,7 +233,46 @@ impl Settings {
                 .collect(),
             ai: None,
             ai_loading: false,
+            endpoint: None,
         }
+    }
+
+    /// Connects the endpoint rows of Cleanup. Their fields need a window, so the form is built
+    /// by the caller.
+    pub fn attach_endpoint(
+        &mut self,
+        form: Entity<endpoint::EndpointForm>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.observe(&form, |_, _, cx| cx.notify()).detach();
+        self.endpoint = Some(form);
+    }
+
+    /// Where AI cleanup runs: `local` or `endpoint`.
+    pub(crate) fn ai_provider(&self) -> &'static str {
+        match self.stored_str("cleanup.llm.provider").as_str() {
+            "endpoint" => "endpoint",
+            _ => "local",
+        }
+    }
+
+    pub fn set_ai_provider(&mut self, provider: &str, cx: &mut Context<Self>) {
+        if matches!(provider, "local" | "endpoint") {
+            self.set("cleanup.llm.provider", json!(provider), cx);
+            if provider == "local" && self.stored_bool("cleanup.llm.enabled") {
+                self.download_ai_model(cx);
+            }
+        }
+        self.picker = None;
+        cx.notify();
+    }
+
+    pub fn set_endpoint_preset(&mut self, preset: Preset, cx: &mut Context<Self>) {
+        if let Some(form) = self.endpoint.clone() {
+            form.update(cx, |form, cx| form.set_preset(preset, cx));
+        }
+        self.picker = None;
+        cx.notify();
     }
 
     /// Connects Cleanup to the model library and the cleanup worker. Without it the AI rows
@@ -297,6 +345,10 @@ impl Settings {
             self.set("cleanup.llm.enabled", json!(false), cx);
             return;
         }
+        if self.ai_provider() == "endpoint" {
+            self.set("cleanup.llm.enabled", json!(true), cx);
+            return;
+        }
         let Some(model) = self.ai_model() else {
             self.notice = Some("No AI model is available for this computer.".into());
             cx.notify();
@@ -342,6 +394,8 @@ impl Settings {
             "storage.retention" => slots::RETENTION,
             "flowbar.position" => slots::POSITION,
             "cleanup.aiModel" => slots::AI_MODEL,
+            "cleanup.provider" => slots::AI_PROVIDER,
+            "cleanup.endpointPreset" => slots::ENDPOINT_PRESET,
             _ => return None,
         };
         cx.notify();
@@ -555,6 +609,8 @@ impl Settings {
             "section": self.section.key(),
             "ai": {
                 "enabled": self.stored_bool("cleanup.llm.enabled"),
+                "provider": self.ai_provider(),
+                "endpoint": self.endpoint.as_ref().map(|form| form.read(cx).hook_state_json(cx)),
                 "model": self.ai_model().map(|model| model.id),
                 "offered": self.ai_offered().into_iter().map(|model| model.id).collect::<Vec<_>>(),
                 "status": self.ai_status(cx).map(AiStatus::key),
@@ -612,5 +668,7 @@ fn restart_into(cx: &mut App) {
     cx.quit();
 }
 
+#[cfg(test)]
+mod endpoint_tests;
 #[cfg(test)]
 mod tests;

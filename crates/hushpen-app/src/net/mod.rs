@@ -2,6 +2,7 @@
 //! lists every call site here with its purpose and host.
 
 pub mod download;
+pub mod endpoint;
 pub mod fetch;
 pub mod policy;
 #[cfg(test)]
@@ -14,12 +15,16 @@ use crate::hook;
 pub enum Purpose {
     /// A model file that the user asked for. Hosts: `huggingface.co`, then `*.hf.co`.
     ModelDownload,
+    /// The OpenAI-compatible endpoint that the user turned on. The host is whatever the user
+    /// typed: `https` for any host, `http` only for localhost, 127.0.0.1 and ::1.
+    Endpoint,
 }
 
 impl Purpose {
     pub fn as_str(self) -> &'static str {
         match self {
             Purpose::ModelDownload => "model_download",
+            Purpose::Endpoint => "endpoint",
         }
     }
 }

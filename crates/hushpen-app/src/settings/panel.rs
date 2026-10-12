@@ -1,6 +1,7 @@
 //! The Settings view: a section bar on top, then one grouped panel per
 //! section. Every control has a stable hook id: `settings.<section>.<name>`.
 
+use super::endpoint::{EndpointForm, Test};
 use super::{AiStatus, MoveState, Section, Settings, slots};
 use crate::hook;
 use crate::mic;
@@ -10,15 +11,19 @@ use crate::theme::{
 };
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{
     App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, svg,
     transparent_black,
 };
+use hushpen_core::endpoint::Preset;
 
 use slots::{
-    AI_CLEANUP, AI_DOWNLOAD, AI_MODEL, AI_MODEL_OPTION, CHANGE_FOLDER, FLOWBAR, FLOWBAR_IDLE,
-    HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION, RETENTION_OPTION, RULES, SOUNDS,
+    AI_CLEANUP, AI_DOWNLOAD, AI_MODEL, AI_MODEL_OPTION, AI_PROVIDER, AI_PROVIDER_OPTION,
+    CHANGE_FOLDER, ENDPOINT_KEY_CLEAR, ENDPOINT_PRESET, ENDPOINT_PRESET_OPTION, ENDPOINT_TEST,
+    FLOWBAR, FLOWBAR_IDLE, HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION,
+    RETENTION_OPTION, RULES, SOUNDS,
 };
 
 pub fn render(
@@ -606,15 +611,17 @@ fn cleanup(
     focus: &[FocusHandle],
     cx: &mut App,
 ) -> impl IntoElement + use<> {
-    let (rules_on, ai_on, model, offered, status, picker_open) = {
+    let (rules_on, ai_on, provider, model, offered, status, picker_open, provider_open) = {
         let me = settings.read(cx);
         (
             me.stored_bool("cleanup.rules"),
             me.stored_bool("cleanup.llm.enabled"),
+            me.ai_provider(),
             me.ai_model(),
             me.ai_offered(),
             me.ai_status(cx),
             me.picker == Some("cleanup.aiModel"),
+            me.picker == Some("cleanup.provider"),
         )
     };
     let flip_rules = {
@@ -641,12 +648,52 @@ fn cleanup(
             "cleanup.ai",
             IconName::WandSparkles,
             "AI cleanup",
-            "A model on this computer fixes self-corrections. Off until you turn it on.",
+            "A language model fixes self-corrections. Off until you turn it on.",
             ai_on,
             true,
             &focus[AI_CLEANUP],
             flip_ai,
+        ))
+        .child(picker_trigger(
+            "cleanup.provider",
+            IconName::Network,
+            "AI source",
+            "Where the model runs. An endpoint is a server you choose, such as Ollama.",
+            provider_label(provider).to_owned(),
+            true,
+            &focus[AI_PROVIDER],
+            {
+                let settings = settings.clone();
+                move |cx: &mut App| {
+                    settings.update(cx, |me, cx| me.toggle_picker("cleanup.provider", cx))
+                }
+            },
         ));
+    if provider_open {
+        for (index, value) in ["local", "endpoint"].into_iter().enumerate() {
+            let choose = {
+                let settings = settings.clone();
+                move |cx: &mut App| settings.update(cx, |me, cx| me.set_ai_provider(value, cx))
+            };
+            panel = panel.child(picker_option(
+                "cleanup.provider",
+                value,
+                provider_label(value).to_owned(),
+                value == provider,
+                &focus[AI_PROVIDER_OPTION + index],
+                choose,
+            ));
+        }
+    }
+    if provider == "endpoint" {
+        let endpoint = settings.read(cx).endpoint.clone();
+        if let Some(form) = endpoint {
+            for element in endpoint_rows(settings, &form, focus, cx) {
+                panel = panel.child(element);
+            }
+        }
+        return panel.child(div().h(px(space::XS)));
+    }
     let Some(model) = model else {
         return panel.child(div().h(px(space::XS)));
     };
@@ -778,6 +825,234 @@ fn ai_status_row(
         );
     }
     line
+}
+
+fn provider_label(provider: &str) -> &'static str {
+    match provider {
+        "endpoint" => "OpenAI-compatible endpoint",
+        _ => "This computer",
+    }
+}
+
+/// The rows for the endpoint: preset, address, model, key, and the connection test.
+fn endpoint_rows(
+    settings: &Entity<Settings>,
+    form: &Entity<EndpointForm>,
+    focus: &[FocusHandle],
+    cx: &mut App,
+) -> Vec<gpui_kit::AnyElement> {
+    let preset_open = settings.read(cx).picker == Some("cleanup.endpointPreset");
+    let (preset, key_set, test, text, url, model, key) = {
+        let me = form.read(cx);
+        (
+            me.preset(),
+            me.key_is_set(),
+            me.test.clone(),
+            me.test_text(),
+            me.url.clone(),
+            me.model.clone(),
+            me.key.clone(),
+        )
+    };
+    let mut rows = vec![picker_trigger(
+        "cleanup.endpointPreset",
+        IconName::Server,
+        "Endpoint",
+        "Ollama and LM Studio fill in the address for you.",
+        preset.label().to_owned(),
+        true,
+        &focus[ENDPOINT_PRESET],
+        {
+            let settings = settings.clone();
+            move |cx: &mut App| {
+                settings.update(cx, |me, cx| me.toggle_picker("cleanup.endpointPreset", cx))
+            }
+        },
+    )];
+    if preset_open {
+        for (index, choice) in Preset::ALL.into_iter().enumerate() {
+            let choose = {
+                let settings = settings.clone();
+                move |cx: &mut App| settings.update(cx, |me, cx| me.set_endpoint_preset(choice, cx))
+            };
+            rows.push(picker_option(
+                "cleanup.endpointPreset",
+                choice.key(),
+                choice.label().to_owned(),
+                choice == preset,
+                &focus[ENDPOINT_PRESET_OPTION + index],
+                choose,
+            ));
+        }
+    }
+    rows.push(field_row(
+        "cleanup.endpointUrl",
+        IconName::Globe,
+        "Address",
+        "Plain http works only for localhost. Anything else needs https.",
+        &url,
+        None,
+    ));
+    rows.push(field_row(
+        "cleanup.endpointModel",
+        IconName::Bot,
+        "Model",
+        "The model name the endpoint knows.",
+        &model,
+        None,
+    ));
+    let clear = key_set.then(|| {
+        let form = form.clone();
+        action_button(
+            "cleanup.endpointKeyClear",
+            "Remove",
+            "Remove the API key",
+            &focus[ENDPOINT_KEY_CLEAR],
+            true,
+            move |cx: &mut App| form.update(cx, |me, cx| me.clear_key(cx)),
+        )
+    });
+    rows.push(field_row(
+        "cleanup.endpointKey",
+        IconName::EyeOff,
+        "API key",
+        if key_set {
+            "Saved on this computer. Type a new key and press Enter to replace it."
+        } else {
+            "Optional. Press Enter to save it on this computer."
+        },
+        &key,
+        clear,
+    ));
+    let running = test == Test::Running;
+    let failed = matches!(test, Test::Failed(_));
+    let run = {
+        let form = form.clone();
+        move |cx: &mut App| form.update(cx, |me, cx| me.test_connection(cx))
+    };
+    rows.push(test_row(text, failed, &focus[ENDPOINT_TEST], !running, run).into_any_element());
+    rows
+}
+
+/// A row with a text field on the right.
+fn field_row(
+    id: &str,
+    icon: IconName,
+    title: &'static str,
+    detail: &str,
+    state: &Entity<InputState>,
+    extra: Option<gpui_kit::AnyElement>,
+) -> gpui_kit::AnyElement {
+    let input = Input::new(state)
+        .id(hook::id("settings", id))
+        .aria_label(title);
+    let trailing = div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(space::SM))
+        .child(div().w(px(220.0)).child(input))
+        .children(extra);
+    row(icon, title, detail.to_owned(), trailing).into_any_element()
+}
+
+fn action_button(
+    id: &str,
+    label: &'static str,
+    aria: &'static str,
+    focus: &FocusHandle,
+    enabled: bool,
+    run: impl Fn(&mut App) + 'static + Clone,
+) -> gpui_kit::AnyElement {
+    let element_id = hook::id("settings", id);
+    hook::mark_disabled(&element_id, !enabled);
+    let on_click = {
+        let run = run.clone();
+        move |_: &ClickEvent, _: &mut Window, cx: &mut App| run(cx)
+    };
+    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+            run(cx);
+            cx.stop_propagation();
+        }
+    };
+    let mut button = div()
+        .id(element_id)
+        .test_support()
+        .role(Role::Button)
+        .aria_label(aria)
+        .flex_none()
+        .flex()
+        .items_center()
+        .h(px(32.0))
+        .px(px(10.0 - size::FOCUS_RING))
+        .rounded(px(radius::MD))
+        .border_2()
+        .border_color(transparent_black())
+        .bg(theme::rgb_of(color::SURFACE_CONTROL))
+        .text_token(LABEL_MD)
+        .child(label);
+    button = if enabled {
+        button
+            .track_focus(focus)
+            .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+            .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+            .on_click(on_click)
+            .on_key_down(on_key)
+    } else {
+        button.text_color(theme::rgb_of(color::TEXT_DISABLED))
+    };
+    button.into_any_element()
+}
+
+/// The words about the connection test, and the button that runs it.
+fn test_row(
+    text: String,
+    failed: bool,
+    focus: &FocusHandle,
+    enabled: bool,
+    run: impl Fn(&mut App) + 'static + Clone,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(space::MD))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .border_t_1()
+        .border_color(theme::rgb_of(color::DIVIDER))
+        .child(icon_tile(if failed {
+            IconName::CircleAlert
+        } else {
+            IconName::Info
+        }))
+        .child(
+            div()
+                .id(hook::id("settings", "cleanup.endpointStatus"))
+                .test_support()
+                .role(Role::Status)
+                .aria_label(text.clone())
+                .flex_1()
+                .min_w_0()
+                .text_token(BODY_SM)
+                .text_color(theme::rgb_of(if failed {
+                    color::STATUS_ERROR
+                } else {
+                    color::TEXT_MUTED
+                }))
+                .truncate()
+                .child(text),
+        )
+        .child(action_button(
+            "cleanup.endpointTest",
+            "Test connection",
+            "Test the connection to the endpoint",
+            focus,
+            enabled,
+            run,
+        ))
 }
 
 fn flow_bar(
