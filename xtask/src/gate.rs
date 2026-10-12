@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use crate::net_audit;
+use crate::{net_audit, two_binary};
 
 /// Parallelism the gate asks for unless the caller already set it. The
 /// owner's Mac also runs a desktop and test containers while the gate runs.
@@ -14,6 +14,7 @@ const DEFAULT_TEST_THREADS: &str = "4";
 pub enum Step {
     Cargo(&'static [&'static str]),
     NetAudit,
+    TwoBinary,
 }
 
 impl Step {
@@ -21,6 +22,7 @@ impl Step {
         match self {
             Step::Cargo(args) => format!("cargo {}", args.join(" ")),
             Step::NetAudit => "cargo xtask net-audit".to_string(),
+            Step::TwoBinary => "cargo xtask two-binary".to_string(),
         }
     }
 }
@@ -28,6 +30,7 @@ impl Step {
 pub fn steps() -> Vec<Step> {
     vec![
         Step::Cargo(&["fmt", "--all", "--check"]),
+        Step::TwoBinary,
         Step::Cargo(&[
             "clippy",
             "--workspace",
@@ -78,6 +81,7 @@ pub fn run(root: &Path) -> Result<(), String> {
         match step {
             Step::Cargo(args) => run_cargo(&cargo, root, args)?,
             Step::NetAudit => net_audit::run(root)?,
+            Step::TwoBinary => two_binary::run(root)?,
         }
     }
     println!("==> gate passed");
@@ -110,12 +114,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gate_runs_the_four_required_commands_then_net_audit() {
+    fn gate_runs_the_required_commands_with_the_two_binary_check_and_net_audit() {
         let shown: Vec<String> = steps().iter().map(Step::display).collect();
         assert_eq!(
             shown,
             [
                 "cargo fmt --all --check",
+                "cargo xtask two-binary",
                 "cargo clippy --workspace --all-targets --locked -- -D warnings",
                 "cargo test --workspace --locked",
                 "cargo deny check",

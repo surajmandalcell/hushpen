@@ -4,10 +4,12 @@ mod gate;
 mod net_audit;
 mod release_check;
 mod root;
+mod two_binary;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit|release-check [--binary <path>] [--guard]>";
+const USAGE: &str =
+    "usage: cargo xtask <gate|net-audit|two-binary|release-check [--binary <path>] [--guard]>";
 
 fn main() -> ExitCode {
     let root = match root::repo_root() {
@@ -20,6 +22,7 @@ fn main() -> ExitCode {
     let result = match std::env::args().nth(1).as_deref() {
         Some("gate") => gate::run(&root),
         Some("net-audit") => net_audit::run(&root),
+        Some("two-binary") => two_binary::run(&root),
         Some("release-check") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
             release_check::run(&root, &rest)
