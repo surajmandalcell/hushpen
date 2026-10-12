@@ -142,6 +142,30 @@ jobs:
           HUSHPEN_TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
           HUSHPEN_TEST_GPU: "1"
         run: cargo test --release -p hushpen-engine --features heavy --test it --locked transcribes_short_clip_on_gpu -- --nocapture
+      - name: Cache the LLM smoke model
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        id: llm-cache
+        uses: actions/cache@v4
+        with:
+          path: models/Qwen3.5-0.8B-Q4_K_M.gguf
+          key: Qwen3.5-0.8B-Q4_K_M-bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517
+      - name: Download the LLM smoke model
+        if: (inputs.suite == 'engine' || inputs.suite == 'full') && steps.llm-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -fsSL --retry 3 -o models/Qwen3.5-0.8B-Q4_K_M.gguf \
+            https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf
+      # Qwen3.5 0.8B is too small to clean text, so the smoke checks the plumbing: the worker
+      # loads the model, answers, and reuses the cached system prompt on the second job.
+      - name: LLM smoke (CPU, 2 threads)
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        run: |
+          echo "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517  models/Qwen3.5-0.8B-Q4_K_M.gguf" | shasum -a 256 -c -
+          ./target/release/hushpen-llm --smoke models/Qwen3.5-0.8B-Q4_K_M.gguf --threads 2 --plumbing
+      - name: LLM smoke (Metal, best effort)
+        if: (inputs.suite == 'engine' || inputs.suite == 'full') && matrix.target == 'macos-arm64'
+        continue-on-error: true
+        run: ./target/release/hushpen-llm --smoke models/Qwen3.5-0.8B-Q4_K_M.gguf --gpu --plumbing
 
   # The core harness subset on the x64 runner: the same container, suites, and checks as the Mac
   # harness, with the models and the speech clip fetched here. Runs only for linux-x64.
