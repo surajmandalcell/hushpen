@@ -172,7 +172,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("cleanup.llm.modelId", Kind::OptionalText(128), |_| json!(
         ""
     )),
-    spec!("cleanup.llm.timeoutMs", Kind::Int(500, 120_000), |os| {
+    spec!("cleanup.llm.timeoutMs", Kind::Int(100, 120_000), |os| {
         json!(if mac(os) { 3000 } else { 8000 })
     }),
     spec!(
@@ -269,6 +269,14 @@ mod tests {
         let hold = find("shortcut.hold").unwrap();
         assert_eq!(hold.default_value(Os::MacOs), json!("RightOption"));
         assert_eq!(hold.default_value(Os::Linux), json!("RightAlt"));
+    }
+
+    #[test]
+    fn the_cleanup_timeout_accepts_100_ms_for_the_forced_timeout_check() {
+        let timeout = find("cleanup.llm.timeoutMs").unwrap();
+        assert_eq!(timeout.sanitize(&json!(100)), Some(json!(100)));
+        assert_eq!(timeout.sanitize(&json!(99)), None);
+        assert_eq!(timeout.sanitize(&json!(120_001)), None);
     }
 
     #[test]
