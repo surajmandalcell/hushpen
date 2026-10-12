@@ -11,8 +11,27 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Integration tests with a real model (tests/it.rs). Off by default.
+heavy = []
+
 [dependencies]
 hushpen-core.workspace = true
+llama-cpp-2.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+llama-cpp-2 = { workspace = true, features = ["metal"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+llama-cpp-2 = { workspace = true, features = ["openmp"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lib]
+name = "hushpen_llm"
+path = "src/lib.rs"
 
 [[bin]]
 name = "hushpen-llm"
