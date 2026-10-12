@@ -405,7 +405,7 @@ impl Event {
     }
 }
 
-fn parse_payload(frame: &Frame) -> Result<Value, DecodeError> {
+pub(crate) fn parse_payload(frame: &Frame) -> Result<Value, DecodeError> {
     if frame.kind != FrameKind::Json {
         return Err(DecodeError::Invalid("not a JSON frame".into()));
     }
@@ -413,38 +413,38 @@ fn parse_payload(frame: &Frame) -> Result<Value, DecodeError> {
 }
 
 /// Typed access to the fields of a JSON object.
-struct Fields<'a>(&'a Map<String, Value>);
+pub(crate) struct Fields<'a>(&'a Map<String, Value>);
 
 impl<'a> Fields<'a> {
-    fn of(value: &'a Value) -> Result<Self, DecodeError> {
+    pub(crate) fn of(value: &'a Value) -> Result<Self, DecodeError> {
         value
             .as_object()
             .map(Self)
             .ok_or_else(|| DecodeError::Invalid("not an object".into()))
     }
 
-    fn kind(&self) -> Result<String, DecodeError> {
+    pub(crate) fn kind(&self) -> Result<String, DecodeError> {
         self.string("type")
     }
 
-    fn get(&self, name: &str) -> Result<&'a Value, DecodeError> {
+    pub(crate) fn get(&self, name: &str) -> Result<&'a Value, DecodeError> {
         self.0
             .get(name)
             .ok_or_else(|| DecodeError::Invalid(format!("missing field '{name}'")))
     }
 
-    fn wrong(name: &str, expected: &str) -> DecodeError {
+    pub(crate) fn wrong(name: &str, expected: &str) -> DecodeError {
         DecodeError::Invalid(format!("field '{name}' is not {expected}"))
     }
 
-    fn string(&self, name: &str) -> Result<String, DecodeError> {
+    pub(crate) fn string(&self, name: &str) -> Result<String, DecodeError> {
         self.get(name)?
             .as_str()
             .map(str::to_owned)
             .ok_or_else(|| Self::wrong(name, "a string"))
     }
 
-    fn optional_string(&self, name: &str) -> Result<Option<String>, DecodeError> {
+    pub(crate) fn optional_string(&self, name: &str) -> Result<Option<String>, DecodeError> {
         match self.0.get(name) {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(text)) => Ok(Some(text.clone())),
@@ -452,36 +452,36 @@ impl<'a> Fields<'a> {
         }
     }
 
-    fn u64(&self, name: &str) -> Result<u64, DecodeError> {
+    pub(crate) fn u64(&self, name: &str) -> Result<u64, DecodeError> {
         self.get(name)?
             .as_u64()
             .ok_or_else(|| Self::wrong(name, "a whole number"))
     }
 
-    fn optional_u64(&self, name: &str) -> Result<Option<u64>, DecodeError> {
+    pub(crate) fn optional_u64(&self, name: &str) -> Result<Option<u64>, DecodeError> {
         match self.0.get(name) {
             None | Some(Value::Null) => Ok(None),
             Some(_) => self.u64(name).map(Some),
         }
     }
 
-    fn u32(&self, name: &str) -> Result<u32, DecodeError> {
+    pub(crate) fn u32(&self, name: &str) -> Result<u32, DecodeError> {
         u32::try_from(self.u64(name)?).map_err(|_| Self::wrong(name, "a 32-bit number"))
     }
 
-    fn bool(&self, name: &str) -> Result<bool, DecodeError> {
+    pub(crate) fn bool(&self, name: &str) -> Result<bool, DecodeError> {
         self.get(name)?
             .as_bool()
             .ok_or_else(|| Self::wrong(name, "true or false"))
     }
 
-    fn array(&self, name: &str) -> Result<&'a Vec<Value>, DecodeError> {
+    pub(crate) fn array(&self, name: &str) -> Result<&'a Vec<Value>, DecodeError> {
         self.get(name)?
             .as_array()
             .ok_or_else(|| Self::wrong(name, "a list"))
     }
 
-    fn object(&self, name: &str) -> Result<Map<String, Value>, DecodeError> {
+    pub(crate) fn object(&self, name: &str) -> Result<Map<String, Value>, DecodeError> {
         match self.0.get(name) {
             None | Some(Value::Null) => Ok(Map::new()),
             Some(Value::Object(map)) => Ok(map.clone()),

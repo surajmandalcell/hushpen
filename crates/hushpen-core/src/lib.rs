@@ -10,6 +10,8 @@ pub mod flow_bar;
 pub mod insert;
 pub mod language;
 pub mod links;
+pub mod llm_prompt;
+pub mod llm_protocol;
 pub mod onboarding;
 pub mod paths;
 pub mod permission;

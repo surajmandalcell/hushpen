@@ -37,6 +37,18 @@ pub const SHORTCUT_INVALID: &str = "SHORTCUT_INVALID";
 pub const LLM_TIMEOUT: &str = "LLM_TIMEOUT";
 pub const LLM_GUARD_REJECTED: &str = "LLM_GUARD_REJECTED";
 pub const LLM_UNAVAILABLE: &str = "LLM_UNAVAILABLE";
+/// The model file could not be read or is not a model this worker can run.
+pub const LLM_LOAD_FAILED: &str = "LLM_LOAD_FAILED";
+/// A job arrived before any model was loaded.
+pub const LLM_NO_MODEL: &str = "LLM_NO_MODEL";
+/// A request the worker could not read or does not know.
+pub const LLM_PROTOCOL: &str = "LLM_PROTOCOL";
+/// The worker died while a job ran.
+pub const LLM_CRASHED: &str = "LLM_CRASHED";
+/// The prompt and the reply do not fit in the model's context.
+pub const LLM_PROMPT_TOO_LONG: &str = "LLM_PROMPT_TOO_LONG";
+/// The model failed while it read the prompt or wrote the reply.
+pub const LLM_GENERATE_FAILED: &str = "LLM_GENERATE_FAILED";
 pub const ENDPOINT_FAILED: &str = "ENDPOINT_FAILED";
 pub const COMMAND_NO_SELECTION: &str = "COMMAND_NO_SELECTION";
 pub const HISTORY_NEWER_SCHEMA: &str = "HISTORY_NEWER_SCHEMA";
