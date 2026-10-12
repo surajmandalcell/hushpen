@@ -6,6 +6,8 @@ mod client;
 mod cpu;
 mod engine_log;
 mod entry;
+mod llm_client;
+mod llm_manager;
 mod manager;
 mod server;
 mod wav;
@@ -24,5 +26,9 @@ pub use client::{
 pub use cpu::missing_cpu_feature;
 pub use engine_log::{EngineLog, Level};
 pub use entry::{engine_main, gpu_available, gpu_disabled_by_env};
+pub use llm_client::{
+    LlmClient, LlmDone, LlmJobHandle, LlmLoadHandle, LlmLoaded, LlmOutcome, LlmSpec, LlmState,
+    LlmStatus, LlmWork,
+};
 pub use server::model_name;
 pub use whisper::{WhisperEngine, whisper_cpp_version};

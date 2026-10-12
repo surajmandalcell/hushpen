@@ -29,3 +29,9 @@ whisper-rs = { workspace = true, features = ["metal"] }
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
+
+# A scripted stand-in for hushpen-llm that the supervisor tests start as the child.
+[[bin]]
+name = "fake-llm"
+path = "tests/support/fake_llm.rs"
+test = false
