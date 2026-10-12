@@ -1,4 +1,6 @@
 use super::*;
+use crate::ai_cleanup::{Attempt, Phase};
+use crate::controller::ai_tests::{RULE, ai_answers, only_row, pasted, setup};
 use crate::controller::testkit::*;
 use gpui_kit::{AppContext as _, TestAppContext};
 use hushpen_core::dictation::State;
@@ -9,6 +11,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 const SCREEN: (f32, f32) = (1280.0, 800.0);
+const CORRECTED: &str = "I think we should meet on Wednesday at 3 PM.";
 
 struct Bar {
     rig: Rig,
@@ -21,6 +24,10 @@ struct Bar {
 
 fn bar(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Bar {
     let rig = rig(cx, files, chosen);
+    bar_on(cx, rig)
+}
+
+fn bar_on(cx: &mut TestAppContext, rig: Rig) -> Bar {
     let bar = build(cx, &rig);
     let now = Rc::new(Cell::new(10_000));
     let pointer = Rc::new(RefCell::new(None));
@@ -516,6 +523,90 @@ fn the_state_section_reports_the_bar(cx: &mut TestAppContext) {
     assert_eq!(state["position"], "bottom");
 }
 
+/// A push-to-talk run that the AI step answers, pasted through `inserter`.
+fn cleaned_bar(cx: &mut TestAppContext, inserter: Option<&Arc<FakeInserter>>) -> Bar {
+    let (rig, _) = setup(cx);
+    if let Some(inserter) = inserter {
+        attach_inserter(cx, &rig, inserter);
+    }
+    ai_answers(cx, &rig, Attempt::Done(CORRECTED.into()), Ok(()));
+    send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
+    settle(cx, &rig);
+    let bar = bar_on(cx, rig);
+    bar.at(3_100);
+    bar
+}
+
+fn cleaned_target() -> Arc<FakeInserter> {
+    FakeInserter::pasted_into("Target-gtk.py", Chord::CtrlV)
+}
+
+#[gpui_kit::test]
+fn an_ai_cleaned_paste_offers_undo_cleanup_in_place_of_the_flash(cx: &mut TestAppContext) {
+    let bar = cleaned_bar(cx, None);
+
+    assert_eq!(bar.state(cx), BarState::Undo);
+    let props = bar.props(cx);
+    assert_eq!(props.message, "Inserted");
+    assert_eq!(view::size_of(&props), view::UNDO_SIZE);
+    let state = bar.bar.read_with(cx, |bar, _| bar.state_json());
+    assert_eq!(state["state"], "undo");
+    assert_eq!(state["visible"], true);
+
+    bar.at(3_000 + 5_200);
+    assert_ne!(bar.state(cx), BarState::Undo, "gone after five seconds");
+}
+
+#[gpui_kit::test]
+fn a_terminal_never_gets_the_undo_state(cx: &mut TestAppContext) {
+    let terminal = FakeInserter::pasted_into("XTerm", Chord::ShiftInsert);
+    let bar = cleaned_bar(cx, Some(&terminal));
+
+    assert_eq!(bar.state(cx), BarState::Result);
+    assert_eq!(bar.props(cx).message, "Inserted");
+    assert!(terminal.undos.lock().unwrap().is_empty());
+}
+
+#[gpui_kit::test]
+fn a_change_of_focus_takes_undo_off_the_bar(cx: &mut TestAppContext) {
+    let target = cleaned_target();
+    let bar = cleaned_bar(cx, Some(&target));
+    assert_eq!(bar.state(cx), BarState::Undo);
+
+    target.target.lock().unwrap().window = Some(99);
+
+    assert_ne!(bar.state(cx), BarState::Undo);
+}
+
+#[gpui_kit::test]
+fn the_transcribing_pill_says_when_the_ai_model_is_loading(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    say(&bar.rig, outcome_text("hello there", "en"));
+    bar.at(11_000);
+    bar.click(cx);
+    bar.at(14_000);
+    bar.click(cx);
+    assert_eq!(bar.state(cx), BarState::Transcribing);
+    assert!(!bar.props(cx).preparing);
+    assert_eq!(bar.props(cx).working_text(), "Transcribing");
+
+    bar.rig.controller.read_with(cx, |controller, _| {
+        controller.show_ai_phase(Some(Phase::Preparing))
+    });
+    bar.tick(cx);
+    let props = bar.props(cx);
+    assert!(props.preparing);
+    assert_eq!(props.working_text(), "Preparing the AI model");
+    assert_eq!(view::size_of(&props), view::PREPARING_SIZE);
+
+    bar.rig.controller.read_with(cx, |controller, _| {
+        controller.show_ai_phase(Some(Phase::Cleaning))
+    });
+    bar.tick(cx);
+    assert_eq!(bar.props(cx).working_text(), "Transcribing");
+}
+
 mod in_a_window {
     use super::*;
     use gpui_kit::test::TestWindowExt;
@@ -631,5 +722,38 @@ mod in_a_window {
             State::Failed,
             "no new dictation"
         );
+    }
+
+    #[gpui_kit::test]
+    fn the_undo_button_takes_the_cleanup_back_without_starting_a_dictation(
+        cx: &mut TestAppContext,
+    ) {
+        let target = cleaned_target();
+        let bar = cleaned_bar(cx, Some(&target));
+        let handle = open(cx, &bar);
+        assert!(present(cx, handle, "flowbar.undo"));
+
+        click(cx, &bar, handle, "flowbar.undo");
+        settle(cx, &bar.rig);
+
+        assert_eq!(target.undos.lock().unwrap().len(), 1);
+        assert_eq!(
+            pasted(&target),
+            [CORRECTED.to_owned(), RULE.to_owned()],
+            "the rule text replaced the AI text"
+        );
+        assert_eq!(only_row(&bar.rig).llm_outcome.as_deref(), Some("undone"));
+        assert_ne!(machine_state(cx, &bar.rig), State::Listening);
+        frame(cx, &bar, handle);
+        assert!(!present(cx, handle, "flowbar.undo"));
+    }
+
+    #[gpui_kit::test]
+    fn a_terminal_has_no_undo_button(cx: &mut TestAppContext) {
+        let terminal = FakeInserter::pasted_into("XTerm", Chord::ShiftInsert);
+        let bar = cleaned_bar(cx, Some(&terminal));
+        let handle = open(cx, &bar);
+        assert!(!present(cx, handle, "flowbar.undo"));
+        assert!(terminal.undos.lock().unwrap().is_empty());
     }
 }

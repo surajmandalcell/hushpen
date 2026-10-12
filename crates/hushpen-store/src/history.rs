@@ -352,6 +352,29 @@ pub fn reprocess(db: &Database, id: &str, result: &Reprocessed) -> Result<()> {
     })
 }
 
+/// Makes the rule text the final text of a row whose AI text was used, and marks the outcome
+/// `undone`. Returns the rule text, or `None` when the row is missing, was not AI cleaned, or
+/// has no rule text. The AI text stays on the row.
+pub fn undo_cleanup(db: &Database, id: &str) -> Result<Option<String>> {
+    ensure_writable(db)?;
+    in_savepoint(db, |conn| {
+        let changed = conn.execute(
+            "UPDATE transcript SET final_text = rule_text, llm_outcome = 'undone' \
+             WHERE id = ?1 AND llm_outcome = 'used' AND rule_text IS NOT NULL AND rule_text != ''",
+            [id],
+        )?;
+        if changed == 0 {
+            return Ok(None);
+        }
+        conn.query_row(
+            "SELECT final_text FROM transcript WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()
+    })
+}
+
 /// Removes a row and its segments and returns them for an undo. `None` when it is not there.
 pub fn delete(db: &Database, id: &str) -> Result<Option<Stored>> {
     ensure_writable(db)?;

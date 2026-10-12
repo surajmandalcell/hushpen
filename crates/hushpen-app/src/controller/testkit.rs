@@ -15,7 +15,7 @@ use hushpen_core::dictation::{AppEvent, State};
 use hushpen_core::insert::flow::Step;
 use hushpen_core::insert::{Chord, Outcome as InsertOutcome, Overrides, Report, Restore};
 use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
-use hushpen_platform::insert::{Inserter, Target};
+use hushpen_platform::insert::{Inserter, Target, UndoError};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files;
 use serde_json::json;
@@ -307,6 +307,11 @@ pub struct FakeInserter {
     pub script: Mutex<Report>,
     pub calls: Mutex<Vec<(String, Target, Overrides)>>,
     pub panic: std::sync::atomic::AtomicBool,
+    /// The targets that an undo key was pressed in.
+    pub undos: Mutex<Vec<Target>>,
+    pub undo_error: Mutex<Option<UndoError>>,
+    /// `undo` and `insert <text>` in the order they happened.
+    pub log: Mutex<Vec<String>>,
 }
 
 impl FakeInserter {
@@ -329,6 +334,9 @@ impl FakeInserter {
             script: Mutex::new(report),
             calls: Mutex::default(),
             panic: std::sync::atomic::AtomicBool::new(false),
+            undos: Mutex::default(),
+            undo_error: Mutex::new(None),
+            log: Mutex::default(),
         })
     }
 }
@@ -345,6 +353,7 @@ impl Inserter for FakeInserter {
         overrides: &Overrides,
         observe: &mut dyn FnMut(Step<'_>),
     ) -> Report {
+        self.log.lock().unwrap().push(format!("insert {text}"));
         self.calls
             .lock()
             .unwrap()
@@ -359,6 +368,21 @@ impl Inserter for FakeInserter {
         observe(Step::Settled(&report));
         observe(Step::Restored(&report));
         report
+    }
+
+    fn undo(&self, target: &Target) -> Result<(), UndoError> {
+        if hushpen_core::insert::is_terminal(&target.classes) {
+            return Err(UndoError::Terminal);
+        }
+        if target.window != self.target().window {
+            return Err(UndoError::FocusChanged);
+        }
+        if let Some(error) = *self.undo_error.lock().unwrap() {
+            return Err(error);
+        }
+        self.log.lock().unwrap().push("undo".to_owned());
+        self.undos.lock().unwrap().push(target.clone());
+        Ok(())
     }
 }
 

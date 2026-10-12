@@ -12,13 +12,15 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-const SPOKEN: &str = "um so I think we should meet on tuesday no wait wednesday at like three pm";
-const RULE: &str = "So I think we should meet on tuesday no wait wednesday at like three pm.";
+pub(crate) const SPOKEN: &str =
+    "um so I think we should meet on tuesday no wait wednesday at like three pm";
+pub(crate) const RULE: &str =
+    "So I think we should meet on tuesday no wait wednesday at like three pm.";
 
 #[derive(Default)]
-struct Calls {
-    asked: usize,
-    seen: Vec<(String, Duration)>,
+pub(crate) struct Calls {
+    pub(crate) asked: usize,
+    pub(crate) seen: Vec<(String, Duration)>,
 }
 
 struct Scripted {
@@ -43,7 +45,7 @@ impl Cleaner for Scripted {
 }
 
 /// Turns AI cleanup on and answers every dictation with `attempt`.
-fn ai_answers(
+pub(crate) fn ai_answers(
     cx: &mut TestAppContext,
     rig: &Rig,
     attempt: Attempt,
@@ -68,7 +70,7 @@ fn ai_answers(
     calls
 }
 
-fn setup(cx: &mut TestAppContext) -> (Rig, Arc<FakeInserter>) {
+pub(crate) fn setup(cx: &mut TestAppContext) -> (Rig, Arc<FakeInserter>) {
     let rig = rig(cx, &["base"], "base");
     rig.storage
         .settings
@@ -80,7 +82,7 @@ fn setup(cx: &mut TestAppContext) -> (Rig, Arc<FakeInserter>) {
     (rig, inserter)
 }
 
-fn only_row(rig: &Rig) -> Row {
+pub(crate) fn only_row(rig: &Rig) -> Row {
     let rows = history::page(&rig.storage.database, "", None, 50)
         .unwrap()
         .rows;
@@ -88,7 +90,7 @@ fn only_row(rig: &Rig) -> Row {
     rows.into_iter().next().unwrap()
 }
 
-fn pasted(inserter: &FakeInserter) -> Vec<String> {
+pub(crate) fn pasted(inserter: &FakeInserter) -> Vec<String> {
     inserter
         .calls
         .lock()

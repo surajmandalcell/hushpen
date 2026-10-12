@@ -7,6 +7,7 @@
 pub mod view;
 mod window;
 
+use crate::ai_cleanup::Phase;
 use crate::controller::{Controller, monotonic_ms};
 use crate::dictation::Dictation;
 use crate::hook;
@@ -17,7 +18,7 @@ use gpui_kit::{
     AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, Window, point, px,
 };
 use hushpen_core::dictation::AppEvent;
-use hushpen_core::flow_bar::{BarState, Display, Drag, Release, Spot, place, state_for};
+use hushpen_core::flow_bar::{BarState, Display, Drag, Release, Spot, place, state_for, with_undo};
 use hushpen_platform::window::{Pointer, WindowHandle};
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -178,12 +179,14 @@ impl FlowBar {
         self.screen = screen;
         self.follow_pointer(cx);
 
-        let (derived, code, copied) = {
+        let (derived, code, copied, offered, preparing) = {
             let controller = self.controller.read(cx);
             (
                 state_for(controller.state(), controller.failure_code()),
                 controller.failure_code(),
                 controller.copied_only(),
+                controller.undo_offered(),
+                controller.ai_phase() == Some(Phase::Preparing),
             )
         };
         if derived.is_failure() {
@@ -192,7 +195,7 @@ impl FlowBar {
         if derived != BarState::Idle {
             self.refusal = None;
         }
-        let shown = self.display.update(derived, now);
+        let shown = with_undo(self.display.update(derived, now), offered);
         if !shown.is_failure() {
             self.refusal = None;
         }
@@ -223,7 +226,7 @@ impl FlowBar {
             }
         };
         let message = match shown {
-            BarState::Result => view::result_text(copied).to_owned(),
+            BarState::Result | BarState::Undo => view::result_text(copied).to_owned(),
             BarState::Error | BarState::Blocked => self
                 .refusal
                 .clone()
@@ -244,6 +247,7 @@ impl FlowBar {
                 && self.refusal.is_none()
                 && self.controller.read(cx).last_row_id().is_some(),
             message,
+            preparing: shown == BarState::Transcribing && preparing,
         };
         let size = view::size_of(&props);
         if props != self.props {
@@ -413,6 +417,20 @@ impl FlowBar {
         if let Some(open) = self.open_history.clone() {
             // The main window reads state that this update holds, so it runs after the update.
             cx.defer(move |cx| open(&id, cx));
+        }
+        cx.notify();
+    }
+
+    /// The "Undo cleanup" button: the app's undo key, then the rule text. A refusal shows on
+    /// the bar like a refused start.
+    pub fn undo_cleanup(&mut self, cx: &mut Context<Self>) {
+        hook::record_event("flowbar", "undo cleanup");
+        let result = self
+            .controller
+            .update(cx, |controller, cx| controller.undo_cleanup(cx));
+        if let Err(reason) = result {
+            self.refusal = Some(reason);
+            self.display.update(BarState::Error, (self.clock)());
         }
         cx.notify();
     }

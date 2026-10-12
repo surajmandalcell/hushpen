@@ -159,6 +159,16 @@ impl Controller {
         hook::record_event("history", &format!("saved {}", row.status));
     }
 
+    /// The text the model produced for `session` and that went in, if its AI step ended `used`.
+    pub(super) fn ai_text_of(&self, session: u64) -> Option<String> {
+        let slot = self.last_ai.lock().unwrap_or_else(|p| p.into_inner());
+        slot.as_ref()
+            .filter(|(owner, record)| {
+                *owner == session && record.outcome == hushpen_core::cleanup::outcome::Outcome::Used
+            })
+            .and_then(|(_, record)| record.text.clone())
+    }
+
     /// What the insertion of this session did: the outcome key and the app that got the text.
     /// A run with no text inserted nothing.
     fn insert_summary(&self, session: u64, has_text: bool) -> (String, Option<String>) {
@@ -333,7 +343,7 @@ impl Controller {
                 waited += FOCUS_STEP;
             }
             let _ = this.update(cx, |me, cx| {
-                me.paste_text(text, cx);
+                me.paste_text(text, None, cx);
                 cx.notify();
             });
         })

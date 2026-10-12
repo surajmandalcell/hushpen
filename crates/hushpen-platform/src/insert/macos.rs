@@ -12,7 +12,7 @@ mod layout;
 
 pub(crate) use layout::key_code_for;
 
-use super::{Inserter, SystemClock, Target, mono_ms, plan};
+use super::{Inserter, SystemClock, Target, UndoError, mono_ms, plan, undo_guard};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use hushpen_core::insert::flow::{self, Backend, ChordError, Receipts, Request, Step};
@@ -269,6 +269,31 @@ impl Inserter for MacInserter {
             copy_note,
         };
         flow::run(&mut board, &SystemClock, &request, observe)
+    }
+
+    fn undo(&self, target: &Target) -> Result<(), UndoError> {
+        // The lock waits for a paste still in flight, so the focus is read after it.
+        let _guard = self
+            .one_at_a_time
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        undo_guard(target, &self.target())?;
+        if !CGPreflightPostEventAccess() {
+            return Err(UndoError::NoPermission);
+        }
+        let key = layout::key_code_for('z').unwrap_or(layout::ANSI_Z);
+        let post = |down: bool| -> Result<(), UndoError> {
+            let source = CGEventSource::new(CGEventSourceStateID::Private)
+                .map_err(|()| UndoError::Unavailable)?;
+            let event = CGEvent::new_keyboard_event(source, key, down)
+                .map_err(|()| UndoError::Unavailable)?;
+            event.set_flags(CGEventFlags::CGEventFlagCommand);
+            event.post(CGEventTapLocation::HID);
+            Ok(())
+        };
+        post(true)?;
+        std::thread::sleep(std::time::Duration::from_millis(8));
+        post(false)
     }
 }
 

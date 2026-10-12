@@ -9,10 +9,10 @@ mod clipboard;
 mod focus;
 mod grab;
 
-use super::{Inserter, OWN_APP_ID, Target, plan};
+use super::{Inserter, OWN_APP_ID, Target, UndoError, plan, undo_guard};
 use crate::keys::{Reason, Unavailable};
 use clipboard::X11Board;
-use hushpen_core::insert::flow::{self, Request, Step};
+use hushpen_core::insert::flow::{self, ChordError, Request, Step};
 use hushpen_core::insert::{Overrides, Report, choose_x11};
 use std::sync::Mutex;
 use x11rb::atom_manager;
@@ -82,5 +82,18 @@ impl Inserter for X11Inserter {
             copy_note,
         };
         flow::run(&mut *board, &super::SystemClock, &request, observe)
+    }
+
+    fn undo(&self, target: &Target) -> Result<(), UndoError> {
+        // The lock waits for a paste still in flight, so the focus is read after it.
+        let board = self
+            .board
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        undo_guard(target, &self.target())?;
+        board.send_undo().map_err(|error| match error {
+            ChordError::NoPermission => UndoError::NoPermission,
+            ChordError::Unavailable => UndoError::Unavailable,
+        })
     }
 }

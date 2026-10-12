@@ -36,6 +36,17 @@ pub struct Target {
     pub own: bool,
 }
 
+/// Why an undo key was not sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoError {
+    /// Another window has the focus now, or none has.
+    FocusChanged,
+    /// The target is a terminal, where Ctrl+Z stops the running job.
+    Terminal,
+    NoPermission,
+    Unavailable,
+}
+
 pub trait Inserter: Send + Sync {
     /// Reads the focus. Cheap, and called on the app's main thread.
     fn target(&self) -> Target;
@@ -50,6 +61,23 @@ pub trait Inserter: Send + Sync {
         overrides: &Overrides,
         observe: &mut dyn FnMut(Step<'_>),
     ) -> Report;
+
+    /// Presses the app's undo key (Ctrl+Z, Cmd+Z on macOS) in `target`, and nowhere else: the
+    /// key goes out only while `target` still has the focus, and never to a terminal.
+    fn undo(&self, _target: &Target) -> Result<(), UndoError> {
+        Err(UndoError::Unavailable)
+    }
+}
+
+/// The checks before an undo key: the same window still has the focus, and it is no terminal.
+pub(crate) fn undo_guard(target: &Target, now: &Target) -> Result<(), UndoError> {
+    if hushpen_core::insert::is_terminal(&target.classes) {
+        return Err(UndoError::Terminal);
+    }
+    if target.window.is_none() || target.window != now.window || now.own {
+        return Err(UndoError::FocusChanged);
+    }
+    Ok(())
 }
 
 /// The inserter of this system, or why there is none.
@@ -157,6 +185,46 @@ mod tests {
             Method::Paste(Chord::CtrlShiftV)
         });
         assert_eq!((method, note), (Method::Paste(Chord::CtrlShiftV), None));
+    }
+
+    fn app(window: Option<u64>, own: bool) -> Target {
+        Target {
+            window,
+            label: "Gtk-target.py".into(),
+            classes: vec!["gtk-target.py".into(), "Gtk-target.py".into()],
+            own,
+        }
+    }
+
+    #[test]
+    fn an_undo_key_needs_the_same_focused_window() {
+        let at = app(Some(7), false);
+        assert_eq!(undo_guard(&at, &app(Some(7), false)), Ok(()));
+        assert_eq!(
+            undo_guard(&at, &app(Some(8), false)),
+            Err(UndoError::FocusChanged)
+        );
+        assert_eq!(
+            undo_guard(&at, &app(None, false)),
+            Err(UndoError::FocusChanged)
+        );
+        assert_eq!(
+            undo_guard(&at, &app(Some(7), true)),
+            Err(UndoError::FocusChanged)
+        );
+        assert_eq!(
+            undo_guard(&app(None, false), &app(None, false)),
+            Err(UndoError::FocusChanged)
+        );
+    }
+
+    #[test]
+    fn an_undo_key_never_goes_to_a_terminal() {
+        let mut terminal = target(Some(7), false);
+        for classes in [vec!["xterm", "XTerm"], vec!["kitty", "kitty"]] {
+            terminal.classes = classes.into_iter().map(String::from).collect();
+            assert_eq!(undo_guard(&terminal, &terminal), Err(UndoError::Terminal));
+        }
     }
 
     #[test]

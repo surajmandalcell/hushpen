@@ -544,6 +544,10 @@ impl X11Board {
         lock(&self.shared.slots).reader_client = window.map(|window| client_of(window, mask));
     }
 
+    pub(super) fn send_undo(&self) -> Result<(), ChordError> {
+        chord::send_undo(&self.reader.conn, self.reader.root)
+    }
+
     fn own(&self, selection: Selection, offer: Option<Offer>) -> Result<(), String> {
         let atom = self.shared.selection_atom(selection);
         {

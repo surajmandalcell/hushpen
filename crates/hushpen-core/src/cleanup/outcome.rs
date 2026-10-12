@@ -17,6 +17,8 @@ pub enum Outcome {
     /// AI cleanup is on, but no worker could take the job (no model file yet, or the worker is
     /// down).
     Unavailable,
+    /// The model's text was inserted, and the user then took it back for the rule text.
+    Undone,
 }
 
 impl Outcome {
@@ -28,6 +30,7 @@ impl Outcome {
             Outcome::Error => "error",
             Outcome::GuardRejected => "guard_rejected",
             Outcome::Unavailable => "unavailable",
+            Outcome::Undone => "undone",
         }
     }
 
@@ -43,7 +46,7 @@ impl Outcome {
     /// The error code the hook shows next to the outcome, or `OK` for a used text.
     pub fn code(self, failure: Option<&str>) -> String {
         match self {
-            Outcome::Used => "OK".to_owned(),
+            Outcome::Used | Outcome::Undone => "OK".to_owned(),
             Outcome::Off => "OFF".to_owned(),
             Outcome::GuardRejected => LLM_GUARD_REJECTED.to_owned(),
             Outcome::Timeout => LLM_TIMEOUT.to_owned(),
@@ -67,6 +70,7 @@ mod tests {
             Outcome::Error,
             Outcome::GuardRejected,
             Outcome::Unavailable,
+            Outcome::Undone,
         ]
         .map(Outcome::key)
         .to_vec();
@@ -78,7 +82,8 @@ mod tests {
                 "timeout",
                 "error",
                 "guard_rejected",
-                "unavailable"
+                "unavailable",
+                "undone"
             ]
         );
     }

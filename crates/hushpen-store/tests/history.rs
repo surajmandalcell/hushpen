@@ -353,3 +353,62 @@ fn seed(db: &Database, rows: i64) {
     }
     connection.execute_batch("COMMIT").unwrap();
 }
+
+fn ai_cleaned(id: &str) -> Row {
+    let mut row = dictation(id, 5, "ignored");
+    row.raw_text = Some("um the quick fox".to_owned());
+    row.rule_text = Some("The quick fox.".to_owned());
+    row.llm_text = Some("A fast fox.".to_owned());
+    row.llm_outcome = Some("used".to_owned());
+    row.final_text = Some("A fast fox.".to_owned());
+    row
+}
+
+#[test]
+fn undoing_the_cleanup_makes_the_rule_text_final_and_search_follows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = open(tmp.path());
+    history::save(&db, &ai_cleaned("U1"), &[]).unwrap();
+    assert_eq!(found(&db, "fast"), ["U1"]);
+
+    let text = history::undo_cleanup(&db, "U1").unwrap();
+
+    assert_eq!(text.as_deref(), Some("The quick fox."));
+    let row = history::get(&db, "U1").unwrap().unwrap();
+    assert_eq!(row.final_text.as_deref(), Some("The quick fox."));
+    assert_eq!(row.rule_text.as_deref(), Some("The quick fox."));
+    assert_eq!(
+        row.llm_text.as_deref(),
+        Some("A fast fox."),
+        "the AI text stays on the row"
+    );
+    assert_eq!(row.llm_outcome.as_deref(), Some("undone"));
+    assert_eq!(found(&db, "quick"), ["U1"]);
+    assert!(
+        found(&db, "fast").is_empty(),
+        "search follows the final text"
+    );
+}
+
+#[test]
+fn only_a_row_whose_ai_text_was_used_can_be_undone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = open(tmp.path());
+    let mut timed_out = ai_cleaned("T1");
+    timed_out.llm_outcome = Some("timeout".to_owned());
+    timed_out.llm_text = None;
+    history::save(&db, &timed_out, &[]).unwrap();
+    history::save(&db, &ai_cleaned("U2"), &[]).unwrap();
+
+    assert_eq!(history::undo_cleanup(&db, "T1").unwrap(), None);
+    assert_eq!(history::undo_cleanup(&db, "missing").unwrap(), None);
+    assert!(history::undo_cleanup(&db, "U2").unwrap().is_some());
+    assert_eq!(
+        history::undo_cleanup(&db, "U2").unwrap(),
+        None,
+        "a second undo changes nothing"
+    );
+    let row = history::get(&db, "T1").unwrap().unwrap();
+    assert_eq!(row.llm_outcome.as_deref(), Some("timeout"));
+    assert_eq!(row.final_text.as_deref(), Some("A fast fox."));
+}

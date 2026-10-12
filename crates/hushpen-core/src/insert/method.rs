@@ -124,6 +124,28 @@ fn terminal_chord(class: &str) -> Option<Chord> {
     }
 }
 
+/// Bundle ids of the macOS terminal apps, lower case.
+const MAC_TERMINALS: [&str; 9] = [
+    "com.apple.terminal",
+    "com.googlecode.iterm2",
+    "net.kovidgoyal.kitty",
+    "org.alacritty",
+    "io.alacritty",
+    "com.github.wez.wezterm",
+    "dev.warp.warp-stable",
+    "com.mitchellh.ghostty",
+    "co.zeit.hyper",
+];
+
+/// Whether the target is a terminal: the X11 table above, or a macOS terminal bundle id. A
+/// terminal reads Ctrl+Z as a job stop, so nothing sends an undo key to one.
+pub fn is_terminal(classes: &[String]) -> bool {
+    classes.iter().any(|class| {
+        let class = class.to_lowercase();
+        terminal_chord(&class).is_some() || MAC_TERMINALS.contains(&class.as_str())
+    })
+}
+
 /// The method for a target on X11. `classes` are the `WM_CLASS` words (instance and class).
 /// A setting wins over the table.
 pub fn choose_x11(classes: &[String], overrides: &Overrides) -> Method {
@@ -251,6 +273,29 @@ mod tests {
             choose_mac("com.apple.terminal", &overrides),
             Method::CopyOnly
         );
+    }
+
+    #[test]
+    fn every_terminal_of_both_tables_is_a_terminal_and_other_apps_are_not() {
+        for words in [
+            &["xterm", "XTerm"][..],
+            &["uxterm", "UXTerm"],
+            &["gnome-terminal-server", "Gnome-terminal"],
+            &["kitty", "kitty"],
+            &["org.wezfurlong.wezterm", "org.wezfurlong.wezterm"],
+            &["com.apple.Terminal"],
+            &["com.googlecode.iterm2"],
+        ] {
+            assert!(is_terminal(&classes(words)), "{words:?}");
+        }
+        for words in [
+            &["gtk-target.py", "Gtk-target.py"][..],
+            &["firefox", "Firefox"],
+            &["com.apple.TextEdit"],
+            &[],
+        ] {
+            assert!(!is_terminal(&classes(words)), "{words:?}");
+        }
     }
 
     #[test]

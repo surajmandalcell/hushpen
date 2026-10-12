@@ -11,6 +11,7 @@ use x11rb::rust_connection::RustConnection;
 const KEYSYM_CONTROL_L: u32 = 0xffe3;
 const KEYSYM_SHIFT_L: u32 = 0xffe1;
 const KEYSYM_V: u32 = 0x76;
+const KEYSYM_Z: u32 = 0x7a;
 const KEYSYM_INSERT: u32 = 0xff63;
 
 /// The keys of a chord in the order they go down: modifiers first, the letter last.
@@ -39,6 +40,15 @@ pub(super) fn send(conn: &RustConnection, root: Window, chord: Chord) -> Result<
     let Some(syms) = keysyms(chord) else {
         return Err(ChordError::Unavailable);
     };
+    send_keys(conn, root, syms)
+}
+
+/// Presses Ctrl+Z the same way.
+pub(super) fn send_undo(conn: &RustConnection, root: Window) -> Result<(), ChordError> {
+    send_keys(conn, root, &[KEYSYM_CONTROL_L, KEYSYM_Z])
+}
+
+fn send_keys(conn: &RustConnection, root: Window, syms: &[u32]) -> Result<(), ChordError> {
     if conn
         .extension_information(xtest::X11_EXTENSION_NAME)
         .ok()

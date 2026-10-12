@@ -19,6 +19,9 @@ pub const LISTENING_SIZE: (f32, f32) = (160.0, 32.0);
 pub const TRANSCRIBING_SIZE: (f32, f32) = (148.0, 32.0);
 pub const RESULT_SIZE: (f32, f32) = (124.0, 32.0);
 pub const NOTICE_SIZE: (f32, f32) = (380.0, 40.0);
+pub const UNDO_SIZE: (f32, f32) = (236.0, 36.0);
+/// The transcribing pill while the cleanup model loads: its text is longer.
+pub const PREPARING_SIZE: (f32, f32) = (220.0, 32.0);
 const PICKER_WIDTH: f32 = 224.0;
 const OPTION_HEIGHT: f32 = 28.0;
 const LIST_MAX_HEIGHT: f32 = 168.0;
@@ -73,9 +76,11 @@ pub struct Props {
     pub dot: usize,
     pub language: Language,
     pub picker: Picker,
-    /// The text of the result, error, and blocked states.
+    /// The text of the result, undo, error, and blocked states.
     pub message: String,
     pub open_history: bool,
+    /// The cleanup model is loading while the transcribing state shows.
+    pub preparing: bool,
 }
 
 impl Props {
@@ -92,6 +97,16 @@ impl Props {
             picker: Picker::Closed,
             message: String::new(),
             open_history: false,
+            preparing: false,
+        }
+    }
+
+    /// What the transcribing pill says.
+    pub fn working_text(&self) -> &'static str {
+        if self.preparing {
+            "Preparing the AI model"
+        } else {
+            "Transcribing"
         }
     }
 }
@@ -101,8 +116,10 @@ pub fn size_of(props: &Props) -> (f32, f32) {
     let pill = match props.state {
         BarState::Idle => IDLE_SIZE,
         BarState::Listening => LISTENING_SIZE,
+        BarState::Transcribing if props.preparing => PREPARING_SIZE,
         BarState::Transcribing => TRANSCRIBING_SIZE,
         BarState::Result => RESULT_SIZE,
+        BarState::Undo => UNDO_SIZE,
         BarState::Error | BarState::Blocked => NOTICE_SIZE,
     };
     match &props.picker {
@@ -259,12 +276,22 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>, card: bool) -> Div {
                     .gap(px(space::XS))
                     .children((0..3).map(|index| dot(index == props.dot))),
             )
-            .child(status_text("Transcribing", color::TEXT_BODY)),
+            .child(status_text(props.working_text(), color::TEXT_BODY)),
         BarState::Result => base
             .justify_center()
             .gap(px(space::SM))
             .child(icon(IconName::Check, color::TEXT_PRIMARY))
             .child(status_text(&props.message, color::TEXT_PRIMARY)),
+        BarState::Undo => base
+            .gap(px(space::SM))
+            .child(icon(IconName::Check, color::TEXT_PRIMARY))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(status_text(&props.message, color::TEXT_PRIMARY)),
+            )
+            .child(undo_button(bar)),
         BarState::Error | BarState::Blocked => {
             let icon_name = if state == BarState::Error {
                 IconName::CircleAlert
@@ -405,6 +432,37 @@ fn open_history_button(bar: Option<&Entity<FlowBar>>) -> impl IntoElement {
             .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
             .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                 bar.update(cx, |bar, cx| bar.open_history(cx));
+            });
+    }
+    button
+}
+
+fn undo_button(bar: Option<&Entity<FlowBar>>) -> impl IntoElement {
+    let mut button = div()
+        .id(hook::id("flowbar", "undo"))
+        .test_support()
+        .role(Role::Button)
+        .aria_label("Undo cleanup")
+        .flex_none()
+        .flex()
+        .items_center()
+        .h(px(24.0))
+        .px(px(10.0))
+        .rounded(px(radius::FULL))
+        .border_1()
+        .border_color(theme::rgb_of(color::BORDER_CONTROL))
+        .bg(theme::rgb_of(color::SURFACE_CONTROL))
+        .text_token(LABEL_MD)
+        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+        .child("Undo cleanup")
+        // A press on the button is not a press on the bar: no drag and no dictation.
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+    if let Some(bar) = bar {
+        let bar = bar.clone();
+        button = button
+            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+            .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                bar.update(cx, |bar, cx| bar.undo_cleanup(cx));
             });
     }
     button

@@ -23,6 +23,8 @@ pub enum BarState {
     Transcribing,
     /// A short flash after the text went in.
     Result,
+    /// The text went in and the user may still take the AI cleanup back.
+    Undo,
     Error,
     /// The text was not inserted on purpose: a secure field or another app holds the keyboard.
     Blocked,
@@ -35,6 +37,7 @@ impl BarState {
             BarState::Listening => "listening",
             BarState::Transcribing => "transcribing",
             BarState::Result => "result",
+            BarState::Undo => "undo",
             BarState::Error => "error",
             BarState::Blocked => "blocked",
         }
@@ -58,6 +61,15 @@ pub fn state_for(pipeline: State, failure: Option<&str>) -> BarState {
             Some(INSERT_KEYBOARD_GRABBED | INSERT_SECURE_FIELD) => BarState::Blocked,
             _ => BarState::Error,
         },
+    }
+}
+
+/// The bar offers "Undo cleanup" in place of the result flash and the idle pill. Every other
+/// state wins over it: a new dictation or a failure is news.
+pub fn with_undo(shown: BarState, offered: bool) -> BarState {
+    match shown {
+        BarState::Idle | BarState::Result if offered => BarState::Undo,
+        other => other,
     }
 }
 
@@ -242,6 +254,23 @@ mod tests {
             assert_eq!(state_for(state, None), BarState::Transcribing);
         }
         assert_eq!(state_for(State::Done, None), BarState::Result);
+    }
+
+    #[test]
+    fn an_offer_replaces_the_flash_and_the_idle_pill_only() {
+        assert_eq!(with_undo(BarState::Result, true), BarState::Undo);
+        assert_eq!(with_undo(BarState::Idle, true), BarState::Undo);
+        for state in [
+            BarState::Listening,
+            BarState::Transcribing,
+            BarState::Error,
+            BarState::Blocked,
+        ] {
+            assert_eq!(with_undo(state, true), state);
+        }
+        assert_eq!(with_undo(BarState::Result, false), BarState::Result);
+        assert_eq!(BarState::Undo.key(), "undo");
+        assert!(!BarState::Undo.is_failure());
     }
 
     #[test]

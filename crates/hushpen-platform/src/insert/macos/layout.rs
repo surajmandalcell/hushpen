@@ -12,6 +12,8 @@ use std::ffi::c_void;
 
 /// The key code of `v` on an ANSI keyboard, used when the layout cannot be read.
 pub(super) const ANSI_V: u16 = 9;
+/// The key code of `z` on an ANSI keyboard, used when the layout cannot be read.
+pub(super) const ANSI_Z: u16 = 6;
 
 /// Finds the first key code below 128 whose unmodified press types `target`.
 pub(super) fn find_key(target: char, mut typed: impl FnMut(u16) -> Option<char>) -> Option<u16> {

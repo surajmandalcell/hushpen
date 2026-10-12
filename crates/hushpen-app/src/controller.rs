@@ -33,7 +33,7 @@ use hushpen_core::language;
 use hushpen_core::onboarding::{Availability, KeyGate};
 use hushpen_core::permission::{Permissions, Preflight};
 use hushpen_engine::{JobOutcome, TranscribeSpec};
-use hushpen_platform::insert::Inserter;
+use hushpen_platform::insert::{Inserter, Target};
 use hushpen_platform::keys::{Reason, Unavailable};
 use hushpen_store::dictionary as store_dictionary;
 use permissions::PermissionWatch;
@@ -47,7 +47,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
-mod ai_tests;
+pub(crate) mod ai_tests;
 #[cfg(test)]
 mod gate_tests;
 mod history;
@@ -58,6 +58,9 @@ mod permissions;
 pub(crate) mod testkit;
 #[cfg(test)]
 mod tests;
+mod undo;
+#[cfg(test)]
+mod undo_tests;
 
 pub const LANGUAGE_SETTING: &str = "dictation.language";
 const MAX_MINUTES_SETTING: &str = "dictation.maxMinutes";
@@ -313,6 +316,12 @@ pub struct Controller {
     pasting_last: Option<u64>,
     /// The text of the paste that `pasting_last` waits for.
     pasting_text: Option<String>,
+    /// The app that got the newest paste, as read when the text was ready.
+    paste_target: Option<Target>,
+    /// The "Undo cleanup" on offer.
+    undo: Option<undo::Standby>,
+    /// An undo whose paste `pasting_last` waits for.
+    undoing: Option<undo::Undoing>,
     /// What the history row of the running session needs from the steps before the save.
     pending: history::Pending,
     /// Counts the saved and changed history rows, so the History view reloads only when needed.
@@ -425,6 +434,9 @@ impl Controller {
             last_ai: Arc::default(),
             pasting_last: None,
             pasting_text: None,
+            paste_target: None,
+            undo: None,
+            undoing: None,
             pending: history::Pending::default(),
             history_revision: 0,
             last_row: None,
@@ -560,6 +572,11 @@ impl Controller {
     /// What the AI step is doing now, for Home and the hook.
     pub fn ai_phase(&self) -> Option<ai_cleanup::Phase> {
         self.ai_progress.get()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn show_ai_phase(&self, phase: Option<ai_cleanup::Phase>) {
+        self.ai_progress.set(phase);
     }
 
     /// `hookctl state` `pipeline.ai`: the running phase and the newest step's outcome.
@@ -880,6 +897,7 @@ impl Controller {
             self.shown_ai = ai;
             cx.notify();
         }
+        self.watch_undo(cx);
         if self.machine.state() != State::Idle {
             let _ = self.dispatch(AppEvent::Tick, cx);
         }
@@ -1154,7 +1172,7 @@ impl Controller {
             && let InsertSupport::Ready(inserter) = &self.insert
         {
             let inserter = Arc::clone(inserter);
-            if self.paste(session, &text, inserter, ready_unix_ms) {
+            if self.paste(session, &text, inserter, ready_unix_ms, None) {
                 return;
             }
         }
@@ -1199,18 +1217,21 @@ impl Controller {
             return;
         };
         hook::record_event("insert", "paste-last");
-        self.paste_text(text, cx);
+        self.paste_text(text, None, cx);
     }
 
-    /// Puts `text` into the focused app, or copies it when the system cannot paste.
-    fn paste_text(&mut self, text: String, cx: &mut Context<Self>) {
+    /// Puts `text` into the focused app, or copies it when the system cannot paste. With
+    /// `undo`, the app's undo key goes first, and the row changes once the text was taken.
+    fn paste_text(&mut self, text: String, undo: Option<undo::Undoing>, cx: &mut Context<Self>) {
         let session = self.machine.session();
         let ready_unix_ms = unix_ms();
         if let InsertSupport::Ready(inserter) = &self.insert {
             let inserter = Arc::clone(inserter);
-            if self.paste(session, &text, inserter, ready_unix_ms) {
+            let undo_target = undo.as_ref().map(|undoing| undoing.target.clone());
+            if self.paste(session, &text, inserter, ready_unix_ms, undo_target) {
                 self.pasting_last = Some(session);
                 self.pasting_text = Some(text);
+                self.undoing = undo;
                 return;
             }
         }
@@ -1248,6 +1269,12 @@ impl Controller {
             return false;
         }
         self.pasting_last = None;
+        let undoing = self.undoing.take();
+        match (code, undoing) {
+            (None, Some(undoing)) => self.commit_undo(undoing),
+            (Some(_), Some(_)) => hook::record_event("undo", "failed"),
+            _ => {}
+        }
         if let Some(code) = code {
             let (code, message) = failure_for(code);
             self.notice = Some(Notice {
@@ -1274,8 +1301,10 @@ impl Controller {
         text: &str,
         inserter: Arc<dyn Inserter>,
         ready_unix_ms: u64,
+        undo_first: Option<Target>,
     ) -> bool {
         let target = inserter.target();
+        self.paste_target = Some(target.clone());
         let overrides = Overrides::from_value(
             &self
                 .storage
@@ -1301,6 +1330,12 @@ impl Controller {
                 };
                 let _ = events.unbounded_send((event, None));
             };
+            if let Some(undo_target) = &undo_first
+                && let Err(code) = undo::press_undo(inserter.as_ref(), undo_target)
+            {
+                let _ = events.unbounded_send((AppEvent::InsertFailed { session, code }, None));
+                return;
+            }
             let ran = catch_unwind(AssertUnwindSafe(|| {
                 inserter.insert(&text, &target, &overrides, &mut |step| match step {
                     Step::ChordSent(report) => {
@@ -1390,7 +1425,15 @@ impl Controller {
                 let _ = std::fs::remove_file(wav);
             }
         } else {
+            let saved = self.history_revision;
             self.record_history(status, &text, code);
+            if status == RowStatus::Done
+                && self.history_revision != saved
+                && let Some(row_id) = self.last_row.clone()
+            {
+                let ai_text = self.ai_text_of(self.machine.session());
+                self.offer_undo(self.machine.session(), row_id, ai_text.as_deref());
+            }
         }
         match status {
             RowStatus::Done => {
@@ -1516,6 +1559,7 @@ impl Controller {
             "last_text_chars": self.last_text.as_ref().map(|text| text.chars().count()),
             "prompt": self.last_prompt,
             "ai": self.ai_json(),
+            "undo": self.undo_json(),
         })
     }
 }
