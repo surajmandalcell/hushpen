@@ -7,6 +7,7 @@ use crate::backend::{Backend, CancelFlag, JobSpec, LoadSpec, Session, SessionEnd
 use crate::llama::LlamaRuntime;
 use crate::server::{ServerConfig, serve};
 use hushpen_core::llm_prompt::{CLEANUP_SYSTEM, PromptFamily};
+use hushpen_core::llm_protocol::JobStats;
 use hushpen_core::threads::auto_threads;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -56,6 +57,7 @@ struct Smoke {
     model: PathBuf,
     gpu: bool,
     threads: Option<usize>,
+    plumbing: bool,
 }
 
 fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
@@ -65,11 +67,13 @@ fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
     let mut model = None;
     let mut gpu = false;
     let mut threads = None;
+    let mut plumbing = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--smoke" => model = iter.next().map(PathBuf::from),
             "--gpu" => gpu = true,
+            "--plumbing" => plumbing = true,
             "--threads" => {
                 threads = Some(
                     iter.next()
@@ -86,9 +90,12 @@ fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
                 model,
                 gpu,
                 threads,
+                plumbing,
             })
         })
-        .ok_or_else(|| "usage: hushpen-llm [--smoke <model.gguf> [--gpu] [--threads N]]".into())
+        .ok_or_else(|| {
+            "usage: hushpen-llm [--smoke <model.gguf> [--gpu] [--threads N] [--plumbing]]".into()
+        })
 }
 
 fn run_smoke(runtime: &LlamaRuntime, smoke: &Smoke) -> ExitCode {
@@ -140,18 +147,43 @@ fn run_smoke(runtime: &LlamaRuntime, smoke: &Smoke) -> ExitCode {
         first.stats.new_tokens, second.stats.new_tokens, second.stats.reused_tokens
     );
     println!("text: {}", first.text);
-    let fillers = SMOKE_FILLERS.iter().any(|filler| {
-        first
-            .text
-            .to_lowercase()
-            .split_whitespace()
-            .any(|word| word == *filler)
-    });
-    if first.text.is_empty() || fillers || first.text.contains("<think>") {
-        eprintln!("hushpen-llm: the cleaned text still has fillers or reasoning");
-        return ExitCode::FAILURE;
+    let problems = smoke_problems(&first.text, &first.stats, &second.stats, smoke.plumbing);
+    for problem in &problems {
+        eprintln!("hushpen-llm: {problem}");
     }
-    ExitCode::SUCCESS
+    if problems.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// What is wrong with a smoke run. `plumbing` is for a model too small to clean text (the CI
+/// fixture, Qwen3.5 0.8B): it still has to load, answer, and reuse the cached prompt prefix.
+fn smoke_problems(
+    text: &str,
+    first: &JobStats,
+    second: &JobStats,
+    plumbing: bool,
+) -> Vec<&'static str> {
+    let mut problems = Vec::new();
+    if text.trim().is_empty() {
+        problems.push("the model wrote no text");
+    }
+    if text.contains("<think>") {
+        problems.push("the output holds reasoning");
+    }
+    if second.reused_tokens == 0 || second.new_tokens >= first.new_tokens {
+        problems.push("the second job did not reuse the cached prompt prefix");
+    }
+    let lower = text.to_lowercase();
+    let fillers = SMOKE_FILLERS
+        .iter()
+        .any(|filler| lower.split_whitespace().any(|word| word == *filler));
+    if !plumbing && fillers {
+        problems.push("the cleaned text still has fillers");
+    }
+    problems
 }
 
 #[cfg(test)]
@@ -168,18 +200,68 @@ mod tests {
     }
 
     #[test]
-    fn smoke_takes_a_model_and_optional_gpu_and_threads() {
+    fn smoke_takes_a_model_and_optional_gpu_threads_and_plumbing() {
         assert_eq!(
-            parse_args(&strings(&["--smoke", "m.gguf", "--gpu", "--threads", "3"])),
+            parse_args(&strings(&[
+                "--smoke",
+                "m.gguf",
+                "--gpu",
+                "--threads",
+                "3",
+                "--plumbing"
+            ])),
             Ok(Some(Smoke {
                 model: PathBuf::from("m.gguf"),
                 gpu: true,
-                threads: Some(3)
+                threads: Some(3),
+                plumbing: true
             }))
         );
         assert!(parse_args(&strings(&["--smoke"])).is_err());
         assert!(parse_args(&strings(&["--gpu"])).is_err());
         assert!(parse_args(&strings(&["--threads", "x", "--smoke", "m"])).is_err());
         assert!(parse_args(&strings(&["--bogus"])).is_err());
+    }
+
+    fn stats(reused: u32, new: u32) -> JobStats {
+        JobStats {
+            prompt_tokens: reused + new,
+            reused_tokens: reused,
+            new_tokens: new,
+            ..JobStats::default()
+        }
+    }
+
+    #[test]
+    fn a_clean_warm_run_has_no_problems() {
+        let problems = smoke_problems(
+            "So we meet Wednesday.",
+            &stats(0, 97),
+            &stats(61, 36),
+            false,
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+    }
+
+    #[test]
+    fn fillers_fail_a_cleaning_run_but_not_a_plumbing_run() {
+        let (first, second) = (stats(0, 97), stats(61, 36));
+        assert_eq!(
+            smoke_problems("um we meet", &first, &second, false).len(),
+            1
+        );
+        assert!(smoke_problems("um we meet", &first, &second, true).is_empty());
+    }
+
+    #[test]
+    fn empty_text_reasoning_and_a_cold_cache_each_fail() {
+        let (first, second) = (stats(0, 97), stats(61, 36));
+        assert_eq!(smoke_problems("  ", &first, &second, true).len(), 1);
+        assert_eq!(smoke_problems("<think>hm", &first, &second, true).len(), 1);
+        assert_eq!(
+            smoke_problems("ok", &first, &stats(0, 97), true).len(),
+            1,
+            "no reuse"
+        );
     }
 }
