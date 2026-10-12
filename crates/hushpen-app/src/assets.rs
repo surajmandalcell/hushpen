@@ -50,7 +50,12 @@ icon_assets!(
         WandSparkles,
         ArrowDownUp,
         LifeBuoy,
-        ArrowUpRight
+        ArrowUpRight,
+        Server,
+        Globe,
+        Bot,
+        Network,
+        EyeOff
     ]
 );
 
@@ -79,6 +84,10 @@ mod icon_coverage_tests {
             IconName::Github,
             IconName::BookOpen,
             IconName::Clock,
+            IconName::Network,
+            IconName::Server,
+            IconName::Globe,
+            IconName::Bot,
         ] {
             let path = gpui_kit::assets::IconNamed::path(icon);
             assert!(
