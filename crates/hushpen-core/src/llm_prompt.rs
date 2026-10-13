@@ -35,9 +35,9 @@ pub fn cleanup_system_keeping(keep: &[String]) -> String {
 }
 
 /// The fixed prompt of Command Mode.
-pub const COMMAND_SYSTEM: &str = "You edit text. Follow the instruction and change the text \
-only as the instruction says. Keep every other word. Output only the edited text, with no \
-comment and no quotes.";
+pub const COMMAND_SYSTEM: &str = "You edit text. Rewrite the text so that it does what the \
+instruction says. Keep the person, the tense, and the details that the instruction does not \
+change. Output only the edited text, with no comment and no quotes.";
 
 impl PromptFamily {
     pub fn as_str(self) -> &'static str {

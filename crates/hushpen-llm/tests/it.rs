@@ -6,7 +6,8 @@
 //! `HUSHPEN_TEST_THREADS` sets the thread count (default 2).
 #![cfg(feature = "heavy")]
 
-use hushpen_core::llm_prompt::CLEANUP_SYSTEM;
+use hushpen_core::cleanup::guard;
+use hushpen_core::llm_prompt::{CLEANUP_SYSTEM, cleanup_system_keeping};
 use hushpen_core::llm_protocol::{
     JobStats, LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason,
 };
@@ -159,9 +160,13 @@ impl Worker {
     }
 
     fn cleanup(&mut self, job: u64, text: &str, max_tokens: u32) {
+        self.cleanup_with(job, CLEANUP_SYSTEM, text, max_tokens);
+    }
+
+    fn cleanup_with(&mut self, job: u64, system: &str, text: &str, max_tokens: u32) {
         self.send(&LlmRequest::Cleanup {
             job,
-            system: CLEANUP_SYSTEM.to_owned(),
+            system: system.to_owned(),
             user: text.to_owned(),
             max_tokens,
         });
@@ -324,6 +329,40 @@ fn keeps_only_the_correction(model: &std::path::Path) {
             );
         }
         assert!(passes_output_guards(input, &text), "guards reject {text:?}");
+    }
+}
+
+/// An invented dictionary word that a small model is tempted to turn back into a common one.
+/// The prompt names the word, and the app's guard rejects an answer that drops it, so the text
+/// that goes in has the word either way.
+#[test]
+fn a_dictionary_word_inside_a_self_correction_is_never_lost() {
+    let keep = vec!["Wednesbury".to_owned()];
+    let system = cleanup_system_keeping(&keep);
+    let mut worker = Worker::start();
+    worker.load(&default_model(), 300);
+    let inputs = [
+        "So I think we should meet on Tuesday no wait Wednesbury at like 3pm.",
+        "Um so I think we should meet on tuesday, no wait, Wednesbury at like three pm.",
+    ];
+    for (job, input) in inputs.iter().enumerate() {
+        let job = job as u64 + 1;
+        worker.cleanup_with(job, &system, input, 128);
+        let (text, _) = worker.result(job);
+        let inserted = match guard::check_keeping(input, &text, &keep) {
+            Ok(accepted) => {
+                eprintln!("kept: {accepted:?}");
+                accepted
+            }
+            Err(why) => {
+                eprintln!("rule text instead ({}): {text:?}", why.key());
+                (*input).to_owned()
+            }
+        };
+        assert!(
+            inserted.to_lowercase().contains("wednesbury"),
+            "the dictionary word is gone from {inserted:?} (model said {text:?})"
+        );
     }
 }
 
@@ -512,4 +551,59 @@ fn resident_kib(pid: u32) -> Option<u64> {
         .output()
         .ok()?;
     String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
+/// The Command Mode prompt must make the model change the text: an earlier wording that told it
+/// to keep every other word made it hand "hey can you send me the file" back unchanged.
+#[test]
+fn a_command_edit_changes_the_selection_as_told() {
+    let mut worker = Worker::start();
+    worker.load(&default_model(), 300);
+    let cases = [
+        ("Make this formal.", "hey can you send me the file", ""),
+        (
+            "Make this formal.",
+            "hey so I was wondering if you could maybe send me the file for the budget review \
+             whenever you get a chance because I need to look at it before the meeting tomorrow morning",
+            "budget",
+        ),
+        (
+            "Translate to Spanish.",
+            "Good morning, how are you?",
+            "buenos",
+        ),
+        (
+            "Make it shorter.",
+            "I just wanted to reach out and let you know that we are going to be a little bit late \
+             to the meeting this afternoon because of the traffic.",
+            "late",
+        ),
+    ];
+    for (job, (instruction, selection, keeps)) in cases.iter().enumerate() {
+        let job = job as u64 + 1;
+        worker.send(&LlmRequest::Command {
+            job,
+            instruction: (*instruction).to_owned(),
+            selection: (*selection).to_owned(),
+            max_tokens: 256,
+        });
+        let (text, _) = worker.result(job);
+        eprintln!("{instruction} {selection:?} -> {text:?}");
+        let accepted = guard::check_command(selection, &text)
+            .unwrap_or_else(|why| panic!("{instruction}: guard {} on {text:?}", why.key()));
+        assert_ne!(
+            accepted, *selection,
+            "{instruction}: the text came back unchanged"
+        );
+        assert!(
+            accepted.to_lowercase().contains(keeps),
+            "{instruction}: {accepted:?} lacks {keeps:?}"
+        );
+        if instruction.contains("shorter") {
+            assert!(
+                accepted.len() < selection.len(),
+                "{accepted:?} is not shorter"
+            );
+        }
+    }
 }
