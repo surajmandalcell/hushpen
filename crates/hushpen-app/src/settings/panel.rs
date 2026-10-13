@@ -1042,7 +1042,7 @@ fn test_row(
                 } else {
                     color::TEXT_MUTED
                 }))
-                .truncate()
+                .line_clamp(2)
                 .child(text),
         )
         .child(action_button(

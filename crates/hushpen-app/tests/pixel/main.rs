@@ -20,7 +20,7 @@ mod compare;
 
 use compare::{Outcome, compare, diff_image};
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
+use gpui_kit::{AppContext as _, HeadlessAppContext, ScrollDelta, point, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::about::{About, SystemOpener};
 use hushpen_app::assets::{AppAssets, register_fonts};
@@ -28,7 +28,10 @@ use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
 use hushpen_app::mic::{CpalBackend, Mic};
 use hushpen_app::models::{self, Models};
+use hushpen_app::net::endpoint::Transport;
+use hushpen_app::net::endpoint::UreqTransport;
 use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
+use hushpen_app::settings::endpoint::EndpointForm;
 use hushpen_app::settings::{Parts as SettingsParts, Section, Settings};
 use hushpen_app::shell::Shell;
 use hushpen_app::shortcuts::Shortcuts;
@@ -108,6 +111,15 @@ fn open_shell_with_settings(
     cx: &mut HeadlessAppContext,
     data: &std::path::Path,
 ) -> gpui_kit::AnyWindowHandle {
+    open_shell(cx, data, None)
+}
+
+/// The same, with the endpoint rows of Cleanup connected to `transport`.
+fn open_shell(
+    cx: &mut HeadlessAppContext,
+    data: &std::path::Path,
+    transport: Option<Arc<dyn Transport>>,
+) -> gpui_kit::AnyWindowHandle {
     let storage = Rc::new(
         storage::open(DataDir::open(data.join("data")).expect("open the data folder"))
             .expect("open the storage"),
@@ -133,6 +145,11 @@ fn open_shell_with_settings(
                     )
                 });
                 let about = cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
+                if let Some(transport) = transport {
+                    let form =
+                        cx.new(|cx| EndpointForm::new(Rc::clone(&storage), transport, window, cx));
+                    settings.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
+                }
                 shell.update(cx, |shell, cx| {
                     shell.attach_shortcuts(shortcuts, cx);
                     shell.attach_settings(settings, cx);
@@ -183,6 +200,93 @@ fn capture_settings_section(section: Section) -> RgbaImage {
     .expect("drive the window");
     cx.run_until_parked();
     cx.capture_screenshot(handle).expect("capture the window")
+}
+
+/// Cleanup on the endpoint, with a long failure reason in the connection status row. The row
+/// wraps to two lines and keeps its button.
+fn capture_endpoint_failure() -> RgbaImage {
+    let mut cx = headless();
+    let handle = open_shell(
+        &mut cx,
+        &pixel_data_dir("endpoint-failure"),
+        Some(Arc::new(UreqTransport)),
+    );
+    cx.run_until_parked();
+    let other_computer = format!("http://{}:11434/v1", "10.0.0.2");
+    cx.update_window(handle, |_, window, cx| {
+        window.click("sidebar.settings", cx);
+        window.click("settings.section.cleanup", cx);
+    })
+    .expect("open Cleanup");
+    cx.run_until_parked();
+    for step in [
+        "settings.cleanup.provider",
+        "settings.cleanup.provider.option.endpoint",
+    ] {
+        click_scrolled(&mut cx, handle, step);
+    }
+    click_scrolled(&mut cx, handle, "settings.cleanup.endpointUrl");
+    cx.update_window(handle, |_, window, cx| window.input(&other_computer, cx))
+        .expect("type the address");
+    cx.run_until_parked();
+    click_scrolled(&mut cx, handle, "settings.cleanup.endpointTest");
+    cx.update_window(handle, |_, window, cx| {
+        window.scroll(
+            "content.scroll",
+            ScrollDelta::Pixels(point(px(0.0), px(-5_000.0))),
+            cx,
+        )
+    })
+    .expect("scroll to the status row");
+    cx.run_until_parked();
+    cx.capture_screenshot(handle).expect("capture the window")
+}
+
+/// Clicks `id`, scrolling the page first like the mouse wheel does.
+fn click_scrolled(
+    cx: &mut HeadlessAppContext,
+    handle: gpui_kit::AnyWindowHandle,
+    id: &'static str,
+) {
+    let scroll = |cx: &mut HeadlessAppContext, pixels: f32| {
+        cx.update_window(handle, |_, window, cx| {
+            window.scroll(
+                "content.scroll",
+                ScrollDelta::Pixels(point(px(0.0), px(pixels))),
+                cx,
+            )
+        })
+        .expect("scroll the page");
+        cx.run_until_parked();
+    };
+    scroll(cx, 5_000.0);
+    for _ in 0..40 {
+        let shown = cx
+            .update_window(handle, |_, window, _| {
+                window.try_find(id).is_some_and(|found| found.visible())
+            })
+            .expect("look for the control");
+        if shown {
+            break;
+        }
+        scroll(cx, -120.0);
+    }
+    cx.update_window(handle, |_, window, cx| window.click(id, cx))
+        .expect("click the control");
+    cx.run_until_parked();
+}
+
+#[test]
+fn the_endpoint_status_row_wraps_a_long_failure_to_two_lines() {
+    let image = capture_endpoint_failure();
+    assert_eq!(image.dimensions(), (1560, 1040));
+    let mut failures = Vec::new();
+    check_image("settings-cleanup-endpoint-failure", &image, &mut failures);
+    assert!(
+        failures.is_empty(),
+        "pixel baselines failed:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[test]

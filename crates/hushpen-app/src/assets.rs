@@ -41,9 +41,8 @@ icon_assets!(
         SquareCheck,
         Monitor,
         Download,
-        // The kit defaults stop at its own controls; the Settings and About
-        // panels name these too. A named icon that resolves nowhere draws
-        // nothing and fails no check, so the coverage test below loads each.
+        // The views name these too; the coverage test below scans the sources for
+        // every icon a view uses.
         Rocket,
         Sparkles,
         Volume,
@@ -55,7 +54,15 @@ icon_assets!(
         Globe,
         Bot,
         Network,
-        EyeOff
+        EyeOff,
+        BookOpen,
+        ChevronDown,
+        Folder,
+        FolderOpen,
+        Github,
+        HardDrive,
+        PanelBottom,
+        Volume2
     ]
 );
 
@@ -63,38 +70,53 @@ icon_assets!(
 mod icon_coverage_tests {
     use super::*;
     use gpui_kit::assets::IconName;
+    use std::collections::BTreeSet;
+    use std::path::Path;
 
-    /// Every icon the Settings and About panels name must resolve through the
-    /// app's asset source; a missing one draws nothing and stays silent.
-    #[test]
-    fn every_settings_and_about_icon_loads() {
-        for icon in [
-            IconName::Rocket,
-            IconName::Sparkles,
-            IconName::Volume,
-            IconName::WandSparkles,
-            IconName::ArrowDownUp,
-            IconName::LifeBuoy,
-            IconName::ArrowUpRight,
-            IconName::EyeOff,
-            IconName::PanelBottom,
-            IconName::HardDrive,
-            IconName::Folder,
-            IconName::FolderOpen,
-            IconName::Github,
-            IconName::BookOpen,
-            IconName::Clock,
-            IconName::Network,
-            IconName::Server,
-            IconName::Globe,
-            IconName::Bot,
-        ] {
-            let path = gpui_kit::assets::IconNamed::path(icon);
-            assert!(
-                AppAssets.load(&path).unwrap().is_some(),
-                "{path} is missing from ShellIcons and the kit defaults"
-            );
+    fn sources(folder: &Path, found: &mut BTreeSet<String>) {
+        for entry in std::fs::read_dir(folder).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                sources(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                let mut rest = text.as_str();
+                while let Some(at) = rest.find("IconName::") {
+                    rest = &rest[at + "IconName::".len()..];
+                    let name: String = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric())
+                        .collect();
+                    if !name.is_empty() && name.chars().next().is_some_and(char::is_uppercase) {
+                        found.insert(name);
+                    }
+                }
+            }
         }
+    }
+
+    /// An icon that only the kit defaults provide loads but draws nothing, and no check fails.
+    /// Every icon a view names must be in `ShellIcons`.
+    #[test]
+    fn every_icon_a_view_names_is_in_shell_icons() {
+        let mut named = BTreeSet::new();
+        sources(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut named,
+        );
+        named.remove("ALL");
+        assert!(named.len() > 20, "the scan found {named:?}");
+        let missing: Vec<_> = named
+            .iter()
+            .filter(|name| {
+                let icon = IconName::ALL
+                    .iter()
+                    .find(|icon| format!("{icon:?}") == **name)
+                    .unwrap_or_else(|| panic!("IconName::{name} does not exist"));
+                ShellIcons.load(&icon.path()).unwrap().is_none()
+            })
+            .collect();
+        assert!(missing.is_empty(), "missing from ShellIcons: {missing:?}");
     }
 }
 
