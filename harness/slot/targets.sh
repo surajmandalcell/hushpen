@@ -3,11 +3,12 @@
 # Starts the paste targets and prints their window ids:
 #   xterm    `cat > /out/xterm.txt`. Stock xterm has no Ctrl+Shift+V, so a translation override
 #            maps it to the CLIPBOARD; Shift+Insert keeps its stock PRIMARY paste.
-#   gtk      one Entry; Enter writes /out/gtk.txt and prints GTK_ENTRY=<text>.
+#   gtk      one Entry; Enter writes /out/gtk.txt and prints GTK_ENTRY=<text>. Ctrl+Z steps back
+#            (each one is a line in /out/gtk-undo.log); /out/gtk-live.txt holds the live text.
 #   --stock  also starts an xterm without the override (`cat > /out/xterm-stock.txt`), for the
 #            case that expects the Shift+Insert path only.
 # Run through with-env.sh (the host script `xdo.sh` and the suites do).
-rm -f /out/xterm.txt /out/xterm-stock.txt /out/gtk.txt
+rm -f /out/xterm.txt /out/xterm-stock.txt /out/gtk.txt /out/gtk-live.txt /out/gtk-undo.log
 pkill -x xterm 2>/dev/null
 pkill -f target-gtk.py 2>/dev/null
 sleep 0.2

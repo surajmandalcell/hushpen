@@ -49,6 +49,27 @@ win_size() { # <wid> -> "WxH"
 
 app_window() { xdotool search --onlyvisible --class hushpen 2>/dev/null | head -1; }
 
+# hclick <id>: clicks the element once it lies fully inside the content area, wheeling the page
+# toward it first. The hook counts a partly clipped element as visible, and its center can then
+# fall outside the window.
+hclick() {
+  local id=$1 tries=0 ox oy top bottom
+  read -r ox oy <<<"$(win_origin "$(app_window)")"
+  while :; do
+    read -r top bottom <<<"$($HC tree | jq -r --arg id "$id" \
+      '[.[] | select(.id == $id) | "\(.root_bounds.y | floor) \((.root_bounds.y + .root_bounds.height) | floor)"] | first // empty')"
+    if [ -n "$top" ] && [ "$top" -ge $((oy + 50)) ] && [ "$bottom" -le $((oy + 500)) ]; then
+      $HC click "$id" >/dev/null 2>&1 && break
+    fi
+    tries=$((tries + 1))
+    [ $tries -le 30 ] || return 1
+    xdotool mousemove $((ox + 500)) $((oy + 300))
+    if [ -z "$top" ] || [ "$bottom" -gt $((oy + 500)) ]; then xdotool click 5; else xdotool click 4; fi
+    sleep 0.2
+  done
+  sleep 0.2
+}
+
 # wait_until <seconds> <command...>: poll every 100 ms
 wait_until() {
   local deadline=$((SECONDS + $1))

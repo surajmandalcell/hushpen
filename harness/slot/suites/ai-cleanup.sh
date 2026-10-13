@@ -187,13 +187,13 @@ open_settings_cleanup || failures+="Settings > Cleanup did not open; "
 offered=$(sv .ai.offered | jq -c .)
 [ "$offered" = "[\"$MODEL_ID\"]" ] || failures+="offered models are $offered; "
 [ "$(sv .ai.model)" = "$MODEL_ID" ] || failures+="the suggested model is '$(sv .ai.model)'; "
-$HC click settings.cleanup.aiModel >/dev/null
+hclick settings.cleanup.aiModel || failures+="the model picker could not be scrolled into view; "
 sleep 0.5
 options=$($HC tree | jq -r '[.[] | select(.id | startswith("settings.cleanup.aiModel.option.")) | .id | ltrimstr("settings.cleanup.aiModel.option.")] | join(",")')
 shot aic-002-picker
 [ "$options" = "$MODEL_ID" ] || failures+="the picker lists '$options'; "
 case "$options" in *gemma* | *0.8b* | *0.6b*) failures+="the picker lists a model it must not: $options; " ;; esac
-$HC click settings.cleanup.aiModel >/dev/null
+hclick settings.cleanup.aiModel || failures+="the model picker could not be closed; "
 check_failures "VAL-AIC-002 model by RAM and platform" "offered $offered, picker '$options'; the RAM table is cargo test -p hushpen-core catalog and -p hushpen-app settings" "$failures"
 
 echo "== VAL-AIC-003 turning AI cleanup on downloads the model through the library"
