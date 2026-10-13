@@ -3392,6 +3392,7 @@ dependencies = [
 name = "hushpen-platform"
 version = "2.0.0"
 dependencies = [
+ "block2 0.6.2",
  "core-foundation 0.10.1",
  "core-graphics 0.25.0",
  "hushpen-core",

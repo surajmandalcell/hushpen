@@ -12,9 +12,9 @@ use serde_json::{Map, Value, json};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Permission {
     Microphone,
-    /// Posting key events (`CGPreflightPostEventAccess`) and reading the focused field.
+    /// Posting key events and reading the focused field (`AXIsProcessTrusted`).
     Accessibility,
-    /// Listening for the hold key (`CGPreflightListenEventAccess`).
+    /// Listening for the hold key (`IOHIDCheckAccess` for listen events).
     InputMonitoring,
 }
 
@@ -76,12 +76,12 @@ impl Access {
     }
 }
 
-/// Read-only answers. No method here may show a prompt.
+/// Read-only answers, read live on each call. No method here may show a prompt.
 pub trait Preflight: Send + Sync {
     fn microphone(&self) -> Access;
-    /// `CGPreflightPostEventAccess`.
+    /// Accessibility, from `AXIsProcessTrusted`.
     fn post_event(&self) -> Access;
-    /// `CGPreflightListenEventAccess`.
+    /// Input Monitoring, from `IOHIDCheckAccess`.
     fn listen_event(&self) -> Access;
 }
 
@@ -201,18 +201,12 @@ mod tests {
         }
 
         fn post_event(&self) -> Access {
-            self.calls
-                .lock()
-                .unwrap()
-                .push("CGPreflightPostEventAccess");
+            self.calls.lock().unwrap().push("AXIsProcessTrusted");
             self.post
         }
 
         fn listen_event(&self) -> Access {
-            self.calls
-                .lock()
-                .unwrap()
-                .push("CGPreflightListenEventAccess");
+            self.calls.lock().unwrap().push("IOHIDCheckAccess");
             self.listen
         }
     }
@@ -242,11 +236,7 @@ mod tests {
 
         assert_eq!(
             *mock.calls.lock().unwrap(),
-            [
-                "microphone",
-                "CGPreflightPostEventAccess",
-                "CGPreflightListenEventAccess"
-            ]
+            ["microphone", "AXIsProcessTrusted", "IOHIDCheckAccess"]
         );
     }
 

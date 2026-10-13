@@ -21,6 +21,8 @@ struct FakeGuide {
     requested: RefCell<Vec<Permission>>,
     opened: RefCell<Vec<String>>,
     refuse: std::cell::Cell<bool>,
+    relaunched: std::cell::Cell<u32>,
+    refuse_relaunch: std::cell::Cell<bool>,
 }
 
 impl Guide for FakeGuide {
@@ -36,14 +38,29 @@ impl Guide for FakeGuide {
             Ok(())
         }
     }
+
+    fn relaunch(&self) -> Result<(), String> {
+        self.relaunched.set(self.relaunched.get() + 1);
+        if self.refuse_relaunch.get() {
+            Err("no bundle".into())
+        } else {
+            Ok(())
+        }
+    }
 }
 
-/// A permission provider the test changes while the app runs.
-struct FakeSystem(Mutex<[Access; 3]>);
+/// A permission provider the test changes while the app runs. It counts the reads.
+struct FakeSystem {
+    state: Mutex<[Access; 3]>,
+    reads: std::sync::atomic::AtomicUsize,
+}
 
 impl FakeSystem {
     fn all(access: Access) -> Arc<Self> {
-        Arc::new(Self(Mutex::new([access; 3])))
+        Arc::new(Self {
+            state: Mutex::new([access; 3]),
+            reads: std::sync::atomic::AtomicUsize::new(0),
+        })
     }
 
     fn set(&self, permission: Permission, access: Access) {
@@ -51,21 +68,30 @@ impl FakeSystem {
             .iter()
             .position(|each| *each == permission)
             .unwrap();
-        self.0.lock().unwrap()[index] = access;
+        self.state.lock().unwrap()[index] = access;
+    }
+
+    fn reads(&self) -> usize {
+        self.reads.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn read(&self, index: usize) -> Access {
+        self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.state.lock().unwrap()[index]
     }
 }
 
 impl Preflight for FakeSystem {
     fn microphone(&self) -> Access {
-        self.0.lock().unwrap()[0]
+        self.read(0)
     }
 
     fn post_event(&self) -> Access {
-        self.0.lock().unwrap()[1]
+        self.read(1)
     }
 
     fn listen_event(&self) -> Access {
-        self.0.lock().unwrap()[2]
+        self.read(2)
     }
 }
 
@@ -165,10 +191,11 @@ fn device() -> InputDevice {
 /// What the system answers to the list of microphones. The real refresh reads on a thread,
 /// which a test scheduler does not allow.
 fn list_microphones(cx: &mut TestAppContext, fixture: &Fixture, devices: Vec<InputDevice>) {
-    fixture
-        .rig
-        .mic
-        .update(cx, |mic, cx| mic.handle(MicEvent::Devices(Ok(devices)), cx));
+    fixture.rig.mic.update(cx, |mic, cx| {
+        mic.handle(MicEvent::Devices(Ok(devices)), cx);
+        // The timers of the page and of Mic would start a reading thread.
+        mic.hold_listing();
+    });
     cx.run_until_parked();
 }
 
@@ -257,26 +284,72 @@ fn each_mac_button_opens_its_own_privacy_pane(cx: &mut TestAppContext) {
     ];
 
     for (permission, pane) in urls {
-        fixture.act(cx, |me, cx| me.open_permission(permission, cx));
+        fixture.act(cx, |me, cx| me.open_settings(permission, cx));
         let opened = fixture.guide.opened.borrow().last().cloned().unwrap();
         assert!(opened.starts_with("x-apple.systempreferences:"), "{opened}");
         assert!(opened.ends_with(pane), "{permission:?} opened {opened}");
     }
+    assert_eq!(fixture.guide.opened.borrow().len(), 3);
+    assert!(
+        fixture.guide.requested.borrow().is_empty(),
+        "Open Settings calls no request API"
+    );
+}
+
+#[gpui_kit::test]
+fn allow_calls_the_request_once_on_every_click_in_every_state(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::NotDetermined));
+
+    for access in [Access::NotDetermined, Access::Denied, Access::Granted] {
+        for permission in Permission::ALL {
+            fixture.system.set(permission, access);
+            fixture.act(cx, |me, cx| me.refresh(cx));
+            let before = fixture.guide.requested.borrow().len();
+
+            fixture.act(cx, |me, cx| me.allow(permission, cx));
+
+            let requested = fixture.guide.requested.borrow();
+            assert_eq!(
+                requested.len(),
+                before + 1,
+                "{permission:?} when {access:?}"
+            );
+            assert_eq!(requested.last(), Some(&permission));
+        }
+    }
+    assert!(
+        fixture.guide.opened.borrow().is_empty(),
+        "Allow does not open System Settings"
+    );
+}
+
+#[gpui_kit::test]
+fn a_granted_then_lost_permission_is_requested_again_by_allow(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Granted));
+    fixture.act(cx, |me, cx| me.refresh(cx));
+    fixture
+        .system
+        .set(Permission::Accessibility, Access::Denied);
+    fixture.act(cx, |me, cx| me.refresh(cx));
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
+
     assert_eq!(
         *fixture.guide.requested.borrow(),
-        Permission::ALL.to_vec(),
-        "a permission macOS never asked about is requested once before its pane opens"
+        [Permission::Accessibility]
     );
+}
 
-    fixture.system.set(Permission::Microphone, Access::Denied);
-    fixture.act(cx, |me, cx| me.refresh(cx));
-    fixture.act(cx, |me, cx| me.open_permission(Permission::Microphone, cx));
-    assert_eq!(
-        fixture.guide.requested.borrow().len(),
-        3,
-        "a denied permission cannot be asked for again: only its pane opens"
-    );
-    assert_eq!(fixture.guide.opened.borrow().len(), 4);
+#[gpui_kit::test]
+fn each_mac_row_offers_allow_then_open_settings_on_one_line(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    let rows = fixture.read(cx, |me, cx| me.rows(cx));
+
+    let opens: Vec<_> = rows.iter().map(|row| row.opens).collect();
+    assert_eq!(opens, Permission::ALL.map(Some));
+    assert!(rows.iter().all(|row| !row.relaunch));
 }
 
 #[gpui_kit::test]
@@ -284,12 +357,141 @@ fn a_refused_settings_opener_shows_a_notice_and_nothing_else(cx: &mut TestAppCon
     let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
     fixture.guide.refuse.set(true);
 
-    fixture.act(cx, |me, cx| {
-        me.open_permission(Permission::Accessibility, cx)
-    });
+    fixture.act(cx, |me, cx| me.open_settings(Permission::Accessibility, cx));
 
     assert!(fixture.read(cx, |me, _| me.notice().is_some()));
     assert_eq!(fixture.step(cx), Step::Permissions);
+}
+
+#[gpui_kit::test]
+fn the_page_reads_again_every_second_and_shows_a_grant_within_one_tick(cx: &mut TestAppContext) {
+    for flip in Permission::ALL {
+        let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+        let key = match flip {
+            Permission::Microphone => "microphone",
+            Permission::Accessibility => "accessibility",
+            Permission::InputMonitoring => "inputMonitoring",
+        };
+        assert_eq!(row(cx, &fixture, key), RowState::Missing);
+
+        fixture.system.set(flip, Access::Granted);
+        cx.executor().advance_clock(Duration::from_millis(1_100));
+        cx.run_until_parked();
+
+        assert_eq!(row(cx, &fixture, key), RowState::Ready, "{flip:?}");
+    }
+}
+
+#[gpui_kit::test]
+fn the_repair_page_reads_again_every_second_too(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set_internal(COMPLETED, json!(true))
+        .unwrap();
+    rig.storage
+        .settings
+        .set_internal(
+            "permissions.lastGranted",
+            json!({"microphone": true, "accessibility": true, "inputMonitoring": true}),
+        )
+        .unwrap();
+    let system = FakeSystem::all(Access::Granted);
+    system.set(Permission::Accessibility, Access::Denied);
+    let fixture = start(cx, rig, Platform::MacOs, system);
+    list_microphones(cx, &fixture, vec![device()]);
+    assert_eq!(fixture.mode(cx), Mode::Repair);
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+
+    fixture
+        .system
+        .set(Permission::Accessibility, Access::Granted);
+    cx.executor().advance_clock(Duration::from_millis(1_100));
+    cx.run_until_parked();
+
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Ready);
+}
+
+#[gpui_kit::test]
+fn coming_back_to_the_app_reads_the_permissions_at_once(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture
+        .system
+        .set(Permission::InputMonitoring, Access::Granted);
+    assert_eq!(row(cx, &fixture, "inputMonitoring"), RowState::Missing);
+
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert_eq!(row(cx, &fixture, "inputMonitoring"), RowState::Ready);
+}
+
+#[gpui_kit::test]
+fn the_reads_stop_when_the_permissions_page_is_not_shown(cx: &mut TestAppContext) {
+    let fixture = mac(cx, &["base"], "base");
+    cx.executor().advance_clock(Duration::from_millis(1_100));
+    cx.run_until_parked();
+    assert!(fixture.system.reads() > 0, "the page reads while it shows");
+    go_to(cx, &fixture, Step::MicTest);
+    let reads = fixture.system.reads();
+
+    cx.executor().advance_clock(Duration::from_millis(3_000));
+    cx.run_until_parked();
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert!(!fixture.read(cx, |me, _| me.permissions_page_shown()));
+    assert_eq!(
+        fixture.system.reads(),
+        reads,
+        "no tick and no activation reads on another step"
+    );
+}
+
+#[gpui_kit::test]
+fn quit_and_reopen_shows_for_granted_keys_that_cannot_start_and_relaunches(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Granted));
+    fixture.rig.controller.update(cx, |controller, _| {
+        controller.attach_keys(
+            crate::controller::KeysStatus::Unavailable(hushpen_platform::keys::Unavailable::new(
+                hushpen_platform::keys::Reason::Permission,
+                "The tap did not start.",
+            )),
+            Rc::new(|_| {}),
+        );
+        controller.attach_keys_restart(Rc::new(|_| {
+            Err(hushpen_platform::keys::Unavailable::new(
+                hushpen_platform::keys::Reason::Permission,
+                "The tap did not start.",
+            ))
+        }));
+    });
+    assert!(fixture.read(cx, |me, cx| me.rows(cx).iter().all(|row| !row.relaunch)));
+
+    for _ in 0..crate::controller::KEYS_RETRIES {
+        fixture.act(cx, |me, cx| me.refresh(cx));
+    }
+
+    let rows = fixture.read(cx, |me, cx| me.rows(cx));
+    let reopen = rows.iter().find(|row| row.relaunch).unwrap();
+    assert_eq!(reopen.key.key(), "inputMonitoring");
+    assert_eq!(reopen.state, RowState::Missing);
+    assert!(!fixture.read(cx, |me, cx| me.can_continue(cx)));
+
+    fixture.act(cx, |me, cx| me.relaunch(cx));
+
+    assert_eq!(fixture.guide.relaunched.get(), 1);
+}
+
+#[gpui_kit::test]
+fn a_relaunch_that_cannot_start_shows_a_notice_and_the_app_stays(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Granted));
+    fixture.guide.refuse_relaunch.set(true);
+
+    fixture.act(cx, |me, cx| me.relaunch(cx));
+
+    assert_eq!(fixture.guide.relaunched.get(), 1);
+    assert!(fixture.read(cx, |me, _| me.notice().is_some()));
 }
 
 #[gpui_kit::test]

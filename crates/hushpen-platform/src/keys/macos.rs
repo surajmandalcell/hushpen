@@ -19,7 +19,6 @@ use core_graphics::event::{
     CallbackResult, EventField,
 };
 use hushpen_core::shortcut::Bindings;
-use objc2_core_graphics::CGPreflightListenEventAccess;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -152,7 +151,7 @@ impl MacKeys {
     ) -> Result<Self, Unavailable> {
         // Creating a tap without Input Monitoring makes macOS ask. The ask belongs to
         // onboarding, after a click, so here the grant is only read.
-        if !CGPreflightListenEventAccess() {
+        if !crate::permissions::input_monitoring_granted() {
             return Err(Unavailable::new(
                 Reason::Permission,
                 "Input Monitoring is not allowed for Hushpen, so global keys are off.",

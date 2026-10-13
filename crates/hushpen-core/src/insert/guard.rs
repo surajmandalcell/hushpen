@@ -10,7 +10,7 @@ use crate::error::{INSERT_KEYBOARD_GRABBED, INSERT_NO_PERMISSION, INSERT_SECURE_
 
 /// What the platform can see right now. The defaults describe a system with no such limit.
 pub trait Probe {
-    /// macOS may post key events for this app (`CGPreflightPostEventAccess`).
+    /// macOS may post key events for this app (`AXIsProcessTrusted`).
     fn post_event_allowed(&self) -> bool {
         true
     }

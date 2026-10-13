@@ -165,13 +165,23 @@ fn surface(id: SharedString) -> impl IntoElement + ParentElement + Styled {
 }
 
 fn permissions(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
-    let (rows, focus) = {
+    let (rows, focus, relaunch_focus) = {
         let me = onboarding.read(cx);
-        (me.rows(cx), me.permission_focus.clone())
+        (
+            me.rows(cx),
+            me.permission_focus.clone(),
+            me.relaunch_focus.clone(),
+        )
     };
     let mut panel = surface(hook::id("onboarding", "permissions"));
     for (index, row) in rows.into_iter().enumerate() {
-        panel = panel.child(permission_row(onboarding, index, row, &focus));
+        panel = panel.child(permission_row(
+            onboarding,
+            index,
+            row,
+            &focus,
+            &relaunch_focus,
+        ));
     }
     panel
 }
@@ -181,6 +191,7 @@ fn permission_row(
     index: usize,
     row: Row,
     focus: &[FocusHandle],
+    relaunch_focus: &FocusHandle,
 ) -> impl IntoElement + use<> {
     let key = row.key.key();
     let (state_text, tone) = match row.state {
@@ -193,11 +204,20 @@ fn permission_row(
         hushpen_core::onboarding::RowKey::X11Session => IconName::Monitor,
         _ => IconName::Keyboard,
     };
-    let open = row.opens.map(|permission| {
+    let buttons = row.opens.map(|permission| {
+        let allow = {
+            let onboarding = onboarding.clone();
+            move |cx: &mut App| onboarding.update(cx, |me, cx| me.allow(permission, cx))
+        };
+        let open = {
+            let onboarding = onboarding.clone();
+            move |cx: &mut App| onboarding.update(cx, |me, cx| me.open_settings(permission, cx))
+        };
+        (permission, allow, open)
+    });
+    let relaunch = row.relaunch.then(|| {
         let onboarding = onboarding.clone();
-        (permission, move |cx: &mut App| {
-            onboarding.update(cx, |me, cx| me.open_permission(permission, cx));
-        })
+        move |cx: &mut App| onboarding.update(cx, |me, cx| me.relaunch(cx))
     });
     let mut container = div()
         .id(hook::id("onboarding", &format!("permissions.row.{key}")))
@@ -246,15 +266,36 @@ fn permission_row(
                 .text_color(theme::rgb_of(tone))
                 .child(state_text),
         )
-        .children(open.map(|(permission, press)| {
+        .children(buttons.map(|(permission, allow, open)| {
             let slot = Permission::ALL
                 .iter()
                 .position(|candidate| *candidate == permission)
                 .unwrap_or(0);
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .gap(px(space::SM))
+                .child(button(
+                    hook::id("onboarding", &format!("permissions.allow.{key}")),
+                    "Allow",
+                    &focus[slot * 2],
+                    true,
+                    allow,
+                ))
+                .child(button(
+                    hook::id("onboarding", &format!("permissions.open.{key}")),
+                    "Open Settings",
+                    &focus[slot * 2 + 1],
+                    true,
+                    open,
+                ))
+        }))
+        .children(relaunch.map(|press| {
             button(
-                hook::id("onboarding", &format!("permissions.open.{key}")),
-                "Open Settings",
-                &focus[slot],
+                hook::id("onboarding", "permissions.relaunch"),
+                "Quit and Reopen",
+                relaunch_focus,
                 true,
                 press,
             )

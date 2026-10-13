@@ -3,7 +3,9 @@
 use crate::about::{About, SystemOpener};
 use crate::app_menu;
 use crate::assets::{AppAssets, register_fonts};
-use crate::controller::{Controller, Engine, InsertSupport, KeysStatus, monotonic_clock};
+use crate::controller::{
+    Controller, Engine, EventSender, InsertSupport, KeysRestart, KeysStatus, monotonic_clock,
+};
 use crate::dictation::Dictation;
 use crate::dictionary::Dictionary;
 use crate::engine_host::EngineHost;
@@ -229,6 +231,7 @@ pub fn run(hidden: bool) -> ExitCode {
             onboarding.update(cx, |onboarding, cx| {
                 onboarding.attach_shortcuts(shortcuts.clone(), cx)
             });
+            follow_activation(cx, onboarding.clone());
             let login_item = hushpen_platform::login_item::LoginItem::current()
                 .map_err(|error| log::warn!("launch at login is unavailable: {error}"))
                 .ok()
@@ -399,6 +402,27 @@ pub fn run(hidden: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Reads the permissions at once when the user comes back to Hushpen, which is where a visit to
+/// System Settings ends. The one-second refresh of the page covers the time in between.
+fn follow_activation(cx: &mut App, onboarding: Entity<Onboarding>) {
+    let (activated, mut activations) = mpsc::unbounded::<()>();
+    hushpen_platform::permissions::on_app_activation(Arc::new(move || {
+        let _ = activated.unbounded_send(());
+    }));
+    let onboarding = onboarding.downgrade();
+    cx.spawn(async move |cx| {
+        while activations.next().await.is_some() {
+            if onboarding
+                .update(cx, |onboarding, cx| onboarding.app_activated(cx))
+                .is_err()
+            {
+                break;
+            }
+        }
+    })
+    .detach();
+}
+
 /// Applies a change of the AI cleanup settings to the worker, which starts only while the
 /// feature is on. The settings store has no change events, so this looks once a second; the
 /// call does nothing when the wanted load did not change.
@@ -471,23 +495,12 @@ fn display_session() -> hushpen_core::onboarding::Session {
 /// section what they need to run it. A failure is not fatal: the buttons still work, and Home
 /// says why the keys are off.
 fn start_keys(controller: &Entity<Controller>, shortcuts: &Entity<Shortcuts>, cx: &mut App) {
-    let events = controller.read(cx).sender();
-    let sink: hushpen_platform::keys::Sink = Arc::new(move |event| events.send(event));
-    let (bindings, record) = {
-        let shortcuts = shortcuts.read(cx);
-        (shortcuts.bindings(), shortcuts.record_sink())
-    };
-    match GlobalKeys::start(bindings, sink, record) {
-        Ok(keys) => {
-            let keys = Rc::new(keys);
-            let session = Rc::clone(&keys);
+    let start = keys_starter(controller.read(cx).sender(), shortcuts.clone());
+    match start(cx) {
+        Ok(session) => {
             controller.update(cx, |controller, _| {
-                controller.attach_keys(
-                    KeysStatus::Available,
-                    Rc::new(move |active| session.set_session_active(active)),
-                )
+                controller.attach_keys(KeysStatus::Available, session)
             });
-            shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Ok(keys), cx));
         }
         Err(why) => {
             log::warn!("global keys not available: {}", why.reason.key());
@@ -498,6 +511,24 @@ fn start_keys(controller: &Entity<Controller>, shortcuts: &Entity<Shortcuts>, cx
             shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Err(message), cx));
         }
     }
+    controller.update(cx, |controller, _| controller.attach_keys_restart(start));
+}
+
+/// Starts the key listener with the shortcuts as they are now and hands it to the Shortcuts
+/// section. The same call runs again when Input Monitoring is granted after the launch.
+fn keys_starter(events: EventSender, shortcuts: Entity<Shortcuts>) -> KeysRestart {
+    Rc::new(move |cx: &mut App| {
+        let events = events.clone();
+        let sink: hushpen_platform::keys::Sink = Arc::new(move |event| events.send(event));
+        let (bindings, record) = {
+            let shortcuts = shortcuts.read(cx);
+            (shortcuts.bindings(), shortcuts.record_sink())
+        };
+        let keys = Rc::new(GlobalKeys::start(bindings, sink, record)?);
+        let session = Rc::clone(&keys);
+        shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Ok(keys), cx));
+        Ok(Rc::new(move |active| session.set_session_active(active)) as Rc<dyn Fn(bool)>)
+    })
 }
 
 /// Gives the controller the sound player. The player opens the output on its own thread.

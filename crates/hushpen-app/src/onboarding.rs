@@ -40,25 +40,27 @@ const REFRESH: Duration = Duration::from_secs(1);
 /// What a click on a permission button does. The real one asks macOS and opens System
 /// Settings; tests pass a fake.
 pub trait Guide {
-    /// Asks the system to list Hushpen for the permission, which shows its prompt once.
+    /// Calls the request API of the permission, which lists Hushpen in the Privacy pane and
+    /// shows the system prompt. The Allow button calls it on every click.
     fn request(&self, permission: Permission);
     fn open(&self, url: &str) -> Result<(), String>;
+    /// Starts a new copy of the app once this one has ended. The caller quits right after.
+    fn relaunch(&self) -> Result<(), String>;
 }
 
 pub struct SystemGuide;
 
 impl Guide for SystemGuide {
     fn request(&self, permission: Permission) {
-        if permission == Permission::Microphone {
-            // Opening the stream is what makes macOS ask for the microphone.
-            hushpen_audio::warm_microphone(hushpen_audio::DEFAULT_ID);
-        } else {
-            hushpen_platform::permissions::request(permission);
-        }
+        hushpen_platform::permissions::request(permission);
     }
 
     fn open(&self, url: &str) -> Result<(), String> {
         hushpen_platform::permissions::open_url(url).map_err(|error| error.to_string())
+    }
+
+    fn relaunch(&self) -> Result<(), String> {
+        hushpen_platform::permissions::relaunch().map_err(|error| error.to_string())
     }
 }
 
@@ -143,7 +145,9 @@ pub struct Onboarding {
     updates_on: bool,
     notice: Option<String>,
     messages: UnboundedSender<Message>,
+    /// Allow and Open Settings of each permission, in `Permission::ALL` order, two per row.
     pub(crate) permission_focus: Vec<FocusHandle>,
+    pub(crate) relaunch_focus: FocusHandle,
     pub(crate) continue_focus: FocusHandle,
     pub(crate) mic_focus: FocusHandle,
     pub(crate) download_focus: FocusHandle,
@@ -233,10 +237,10 @@ impl Onboarding {
             updates_on,
             notice: None,
             messages,
-            permission_focus: Permission::ALL
-                .iter()
+            permission_focus: (0..Permission::ALL.len() * 2)
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
+            relaunch_focus: cx.focus_handle().tab_stop(true),
             continue_focus: cx.focus_handle().tab_stop(true),
             mic_focus: cx.focus_handle().tab_stop(true),
             download_focus: cx.focus_handle().tab_stop(true),
@@ -314,6 +318,7 @@ impl Onboarding {
             mic_listed: mic.listed(),
             mic_present: !mic.devices().is_empty(),
             mac: controller.access(),
+            relaunch: controller.keys_reopen_needed(),
         }
     }
 
@@ -383,14 +388,25 @@ impl Onboarding {
             .update(cx, |controller, cx| controller.set_gate(gate, cx));
     }
 
-    /// Reads the permissions again, and the page repaints. Reading never prompts.
+    /// The permissions page is on screen: the first step of the setup, or the repair page.
+    pub fn permissions_page_shown(&self) -> bool {
+        self.active() && self.step == Step::Permissions
+    }
+
+    /// Reads the permissions again, and the page repaints. Reading is live and never prompts.
+    /// It does nothing while the permissions page is not on screen.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
-        if !self.active() {
+        if !self.permissions_page_shown() {
             return;
         }
         self.controller
             .update(cx, |controller, cx| controller.refresh_permissions(cx));
         cx.notify();
+    }
+
+    /// The user came back to Hushpen, often from System Settings: the rows show the state now.
+    pub fn app_activated(&mut self, cx: &mut Context<Self>) {
+        self.refresh(cx);
     }
 
     /// The page names the microphone, so it looks for one every second while it is on screen.
@@ -462,18 +478,38 @@ impl Onboarding {
         }
     }
 
-    /// A click on a permission button: ask the system to list Hushpen if it never asked, then
-    /// open the Privacy pane of that permission.
-    pub fn open_permission(&mut self, permission: Permission, cx: &mut Context<Self>) {
-        let access = self.controller.read(cx).access().get(permission);
-        if access == hushpen_core::permission::Access::NotDetermined {
-            self.guide.request(permission);
-        }
+    /// A click on Allow: call the request API of the permission, whatever the state is. macOS
+    /// then lists Hushpen in the Privacy pane and shows its prompt. Reading the state first
+    /// would skip the request for Accessibility and Input Monitoring, which never read as not
+    /// asked, and Hushpen would never reach the list.
+    pub fn allow(&mut self, permission: Permission, cx: &mut Context<Self>) {
+        self.guide.request(permission);
+        hook::record_event("onboarding", &format!("allow {}", permission.key()));
+        self.notice = None;
+        cx.notify();
+    }
+
+    /// A click on Open Settings: open the Privacy pane of the permission and nothing else.
+    pub fn open_settings(&mut self, permission: Permission, cx: &mut Context<Self>) {
         hook::record_event("onboarding", &format!("open {}", permission.key()));
         self.notice = self.guide.open(permission.settings_url()).err().map(|_| {
             "System Settings could not be opened. Open Privacy and Security yourself.".to_owned()
         });
         cx.notify();
+    }
+
+    /// A click on Quit and Reopen: start a new copy once this one ends, then quit.
+    pub fn relaunch(&mut self, cx: &mut Context<Self>) {
+        hook::record_event("onboarding", "relaunch");
+        match self.guide.relaunch() {
+            Ok(()) => cx.quit(),
+            Err(error) => {
+                log::warn!("Hushpen could not reopen itself: {error}");
+                self.notice =
+                    Some("Hushpen could not reopen itself. Quit it and open it again.".to_owned());
+                cx.notify();
+            }
+        }
     }
 
     /// The test button: start a test, or stop the running one.
@@ -731,6 +767,7 @@ impl Onboarding {
                     "key": row.key.key(),
                     "state": row.state.key(),
                     "detail": row.detail,
+                    "relaunch": row.relaunch,
                 })).collect::<Vec<_>>(),
             },
             "mic": {

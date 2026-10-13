@@ -62,6 +62,10 @@ mod gate_tests;
 mod history;
 #[cfg(test)]
 mod history_tests;
+mod keys;
+#[cfg(test)]
+mod keys_tests;
+pub use keys::{KeysRestart, RETRIES as KEYS_RETRIES};
 mod permissions;
 #[cfg(test)]
 pub(crate) mod testkit;
@@ -306,6 +310,7 @@ pub struct Controller {
     start_failed: bool,
     problem: Option<LoadProblem>,
     keys: Option<KeysStatus>,
+    keys_restarter: keys::Restarter,
     session_active: Option<Rc<dyn Fn(bool)>>,
     esc_taken: bool,
     last_phase: Phase,
@@ -437,6 +442,7 @@ impl Controller {
             start_failed: false,
             problem: None,
             keys: None,
+            keys_restarter: keys::Restarter::default(),
             session_active: None,
             esc_taken: false,
             last_phase: Phase::Idle,
@@ -680,6 +686,45 @@ impl Controller {
         {
             cx.notify();
         }
+        self.restart_keys(cx);
+    }
+
+    /// Starts the global keys when Input Monitoring is granted and they are still off, so the
+    /// grant works with no restart. Failed starts add up to [`Controller::keys_reopen_needed`].
+    fn restart_keys(&mut self, cx: &mut Context<Self>) {
+        let input_monitoring = self.access().input_monitoring;
+        let attempt = self
+            .keys_restarter
+            .attempt(cx, input_monitoring, self.keys.as_ref());
+        match attempt {
+            keys::Attempt::Idle => {}
+            keys::Attempt::Started(session_active) => {
+                self.keys = Some(KeysStatus::Available);
+                self.session_active = Some(session_active);
+                hook::record_event("keys", "started after the Input Monitoring grant");
+                cx.notify();
+            }
+            keys::Attempt::Failed(why) => {
+                log::warn!("global keys did not start after the grant: {}", why.message);
+                self.keys = Some(KeysStatus::Unavailable(why));
+                if self.keys_reopen_needed() {
+                    hook::record_event("keys", "reopen needed");
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// How to start the global keys again after a late grant. Without it a grant changes
+    /// nothing for the keys.
+    pub fn attach_keys_restart(&mut self, restart: KeysRestart) {
+        self.keys_restarter.attach(restart);
+    }
+
+    /// Input Monitoring is granted and the keys still do not start: the page offers Quit and
+    /// Reopen, because macOS gives the grant to a new process.
+    pub fn keys_reopen_needed(&self) -> bool {
+        self.keys_restarter.needs_reopen()
     }
 
     /// The permissions that were granted before and are missing now, for onboarding.
@@ -1584,11 +1629,14 @@ impl Controller {
     /// `hookctl state` section `global_keys`.
     pub fn keys_json(&self) -> Value {
         match &self.keys {
-            Some(KeysStatus::Available) => json!({"available": true, "reason": null}),
+            Some(KeysStatus::Available) => {
+                json!({"available": true, "reason": null, "reopen": false})
+            }
             Some(KeysStatus::Unavailable(why)) => json!({
                 "available": false,
                 "reason": why.reason.key(),
                 "message": why.message,
+                "reopen": self.keys_reopen_needed(),
             }),
             None => json!({"available": false, "reason": "not-started"}),
         }

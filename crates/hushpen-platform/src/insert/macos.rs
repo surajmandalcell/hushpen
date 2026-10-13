@@ -24,7 +24,6 @@ use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_app_kit::{
     NSPasteboard, NSPasteboardItem, NSPasteboardType, NSPasteboardTypeString, NSWorkspace,
 };
-use objc2_core_graphics::CGPreflightPostEventAccess;
 use objc2_foundation::{NSArray, NSData, NSObject, NSString};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -165,7 +164,7 @@ impl Backend for MacBoard {
         if chord != Chord::CmdV {
             return Err(ChordError::Unavailable);
         }
-        if !CGPreflightPostEventAccess() {
+        if !crate::permissions::accessibility_trusted() {
             return Err(ChordError::NoPermission);
         }
         let post = |down: bool| -> Result<(), ChordError> {
@@ -333,7 +332,7 @@ impl Inserter for MacInserter {
         if let Some(text) = guard::focused_selected_text() {
             return Some(text);
         }
-        if !CGPreflightPostEventAccess() {
+        if !crate::permissions::accessibility_trusted() {
             return None;
         }
         let _guard = self
@@ -353,7 +352,7 @@ impl Inserter for MacInserter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         undo_guard(target, &self.target())?;
-        if !CGPreflightPostEventAccess() {
+        if !crate::permissions::accessibility_trusted() {
             return Err(UndoError::NoPermission);
         }
         let key = layout::key_code_for('z').unwrap_or(layout::ANSI_Z);

@@ -7,7 +7,6 @@
 use core_foundation::base::{CFType, CFTypeRef, TCFType};
 use core_foundation::string::{CFString, CFStringRef};
 use hushpen_core::insert::guard::Probe;
-use objc2_core_graphics::CGPreflightPostEventAccess;
 
 const FOCUSED_ELEMENT: &str = "AXFocusedUIElement";
 const SUBROLE: &str = "AXSubrole";
@@ -36,7 +35,7 @@ pub(super) struct MacProbe;
 
 impl Probe for MacProbe {
     fn post_event_allowed(&self) -> bool {
-        CGPreflightPostEventAccess()
+        crate::permissions::accessibility_trusted()
     }
 
     fn secure_event_input(&self) -> bool {

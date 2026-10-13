@@ -240,6 +240,13 @@ impl Mic {
         }
     }
 
+    /// Stops every refresh from starting its reading thread, which a test scheduler does not
+    /// allow, until a `MicEvent::Devices` arrives.
+    #[cfg(test)]
+    pub(crate) fn hold_listing(&mut self) {
+        self.refreshing = true;
+    }
+
     fn poll(&mut self, cx: &mut Context<Self>) {
         if self.state != CaptureState::Listening {
             self.refresh(cx);

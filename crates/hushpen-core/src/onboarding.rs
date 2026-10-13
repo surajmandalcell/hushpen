@@ -132,6 +132,9 @@ pub struct Facts {
     pub mic_listed: bool,
     pub mic_present: bool,
     pub mac: Permissions,
+    /// Input Monitoring is granted, yet the key listener still cannot start. macOS gives the
+    /// grant to a new process only, so the page offers Quit and Reopen.
+    pub relaunch: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,9 +186,11 @@ pub struct Row {
     pub title: &'static str,
     pub state: RowState,
     pub detail: String,
-    /// The macOS permission whose System Settings pane the row's button opens. The button stays
-    /// after the grant, so the user can look at the pane again.
+    /// The macOS permission that the row's Allow button asks for and its Open Settings button
+    /// shows. Both buttons stay after the grant, so the user can look at the pane again.
     pub opens: Option<Permission>,
+    /// The row also offers Quit and Reopen.
+    pub relaunch: bool,
 }
 
 pub fn permission_rows(facts: &Facts) -> Vec<Row> {
@@ -222,8 +227,9 @@ pub fn permission_rows(facts: &Facts) -> Vec<Row> {
                 Permission::InputMonitoring,
                 facts,
                 "Hushpen can hear the hold key.",
-                "Allow Input Monitoring so Hushpen can hear the hold key. If the keys stay off after you allow it, quit Hushpen and open it again.",
-            ),
+                "Allow Input Monitoring so Hushpen can hear the hold key.",
+            )
+            .reopen_if(facts.relaunch),
         ],
     }
 }
@@ -235,6 +241,7 @@ fn row(key: RowKey, title: &'static str, state: RowState, detail: &str) -> Row {
         state,
         detail: detail.to_owned(),
         opens: None,
+        relaunch: false,
     }
 }
 
@@ -315,6 +322,23 @@ fn mac_row(
     Row {
         opens: Some(permission),
         ..row(key, title, state, detail)
+    }
+}
+
+impl Row {
+    /// A granted permission whose feature still does not run: the row waits for a reopen.
+    fn reopen_if(self, needed: bool) -> Self {
+        if !needed || self.state != RowState::Ready {
+            return self;
+        }
+        Row {
+            state: RowState::Missing,
+            detail:
+                "Input Monitoring is on, but the hold key works only after Hushpen opens again."
+                    .to_owned(),
+            relaunch: true,
+            ..self
+        }
     }
 }
 

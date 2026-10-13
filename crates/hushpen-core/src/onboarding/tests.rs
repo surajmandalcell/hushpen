@@ -22,6 +22,7 @@ fn linux_facts() -> Facts {
             Access::NotApplicable,
             Access::NotApplicable,
         ),
+        relaunch: false,
     }
 }
 
@@ -34,6 +35,7 @@ fn mac_facts(permissions: Permissions) -> Facts {
         mic_listed: true,
         mic_present: true,
         mac: permissions,
+        relaunch: false,
     }
 }
 
@@ -192,6 +194,36 @@ fn macos_is_ready_when_all_three_are_granted() {
     )));
     assert!(rows.iter().all(|row| row.state == RowState::Ready));
     assert!(rows_ready(&rows));
+}
+
+#[test]
+fn granted_input_monitoring_with_keys_that_cannot_start_asks_for_a_reopen() {
+    let granted = mac(Access::Granted, Access::Granted, Access::Granted);
+    let mut facts = mac_facts(granted);
+    facts.relaunch = true;
+    let rows = permission_rows(&facts);
+    let reopen: Vec<_> = rows
+        .iter()
+        .filter(|row| row.relaunch)
+        .map(|row| row.key)
+        .collect();
+    assert_eq!(reopen, [RowKey::InputMonitoring]);
+    assert_eq!(state_of(&rows, RowKey::InputMonitoring), RowState::Missing);
+    assert!(!rows_ready(&rows), "Continue waits for the keys");
+    let detail = &rows.iter().find(|row| row.relaunch).unwrap().detail;
+    assert!(detail.contains("opens again"), "{detail}");
+
+    facts.relaunch = false;
+    let rows = permission_rows(&facts);
+    assert!(rows.iter().all(|row| !row.relaunch));
+    assert!(rows_ready(&rows));
+}
+
+#[test]
+fn no_reopen_is_asked_while_input_monitoring_is_still_missing() {
+    let mut facts = mac_facts(mac(Access::Granted, Access::Granted, Access::Denied));
+    facts.relaunch = true;
+    assert!(permission_rows(&facts).iter().all(|row| !row.relaunch));
 }
 
 #[test]

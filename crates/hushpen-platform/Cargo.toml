@@ -20,6 +20,7 @@ x11rb.workspace = true
 zbus.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2.workspace = true
 core-foundation.workspace = true
 core-graphics.workspace = true
 objc2.workspace = true
