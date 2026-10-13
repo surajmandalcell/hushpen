@@ -7,7 +7,10 @@ Listens on 127.0.0.1 (11434 by default, the Ollama port). Every request is appen
 one JSON line: method, path, the Authorization header, and the parsed body. The reply to a chat
 completion depends on the first line of /tmp/stub-mode, read on every request:
 
-  default      the transcript from the <transcript> tags, with " [stub]" added
+  default      the transcript from the <transcript> tags, with " [stub]" added; for a Command Mode
+               request ("Instruction: ..." then "Text:" and the selection) the selection with
+               " [edited]" added
+  edited       "EDITED TEXT" for every request
   poem         a 400 character poem
   refuse       "I cannot help with that."
   slow         wait 30 s, then answer like default
@@ -36,6 +39,17 @@ def mode():
             return handle.readline().strip() or "default"
     except OSError:
         return "default"
+
+
+def selection_of(body):
+    """The selection of a Command Mode request, or None for any other request."""
+    for message in reversed(body.get("messages", [])):
+        content = message.get("content", "")
+        if message.get("role") == "user" and isinstance(content, str):
+            if content.startswith("Instruction: ") and "\n\nText:\n" in content:
+                return content.split("\n\nText:\n", 1)[1]
+            return None
+    return None
 
 
 def transcript_of(body):
@@ -98,6 +112,10 @@ class Handler(BaseHTTPRequestHandler):
                 text = POEM
             elif current == "refuse":
                 text = "I cannot help with that."
+            elif current == "edited":
+                text = "EDITED TEXT"
+            elif selection_of(body or {}) is not None:
+                text = selection_of(body) + " [edited]"
             else:
                 text = transcript_of(body or {}) + " [stub]"
             return self.send_json(
