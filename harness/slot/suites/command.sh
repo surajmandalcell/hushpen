@@ -1,7 +1,8 @@
 #!/bin/bash
 # Command Mode: VAL-CMD-001 to 006. The chord is Right Alt plus Right Shift (X11 keycodes 108 and
-# 62), pressed with xdotool the way a person does: Right Alt first (it starts a dictation hold,
-# which the command keys turn into the Command Mode session), then Right Shift. The instruction
+# 62), pressed with xdotool the way a person does: Right Alt first (the app only arms the hold,
+# with no cue and no bar), then Right Shift, which starts the Command Mode session or, when the
+# start is refused, leaves no session, cue, or listening state at all. The instruction
 # is the "make this formal" fixture played into the virtual microphone. The selection is made in
 # the GTK target (target-gtk.py) with Shift+Right, so the entry owns the X11 PRIMARY selection;
 # the app reads PRIMARY, pastes the edit over the selection with Ctrl+V, and puts the sentinel
@@ -136,14 +137,15 @@ set_entry() {
   sleep 0.4
   set_clip "$SENTINEL"
 }
-chord_down() { # Right Alt starts the hold, Right Shift makes it the command keys
+chord_down() { # Right Alt only arms the hold; Right Shift 30 ms later makes it the command keys
   T0=$(now_ms)
-  xdotool keydown 108
-  wait_until 5 pstate_is listening || {
-    xdotool keyup 108
-    return 1
-  }
-  xdotool keydown 62
+  xdotool keydown 108 sleep 0.03 keydown 62
+}
+# visible_start: since the chord went down no start cue (or any cue) played and neither the
+# pipeline nor the dictation showed listening; an empty answer means nothing started
+visible_start() {
+  $HC events | jq -r --argjson t0 "$T0" \
+    '[.[] | select(.t_ms >= $t0 and (.kind == "cue" or ((.kind == "pipeline" or .kind == "dictation") and .detail == "listening"))) | "\(.kind):\(.detail)"] | join(",")'
 }
 chord_up() {
   xdotool keyup 62
@@ -266,8 +268,10 @@ set_entry "$PREFIX_TEXT" "" "$SHORT_MID$SUFFIX_TEXT" || failures+="the entry did
 rows=$(row_count)
 posts=$(stub_posts)
 watch_start
-chord_down || failures+="the hold did not start; "
+chord_down || failures+="the chord keys did not go down; "
 sleep 0.3
+during=$(visible_start)
+[ -z "$during" ] || failures+="the chord showed a start while it was down: $during; "
 paplay --device=vmic "$(pad "$CMD_WAV")"
 wait_until 5 bar_failed
 notice_state=$(bar .state)
@@ -276,6 +280,8 @@ shot cmd-002-notice
 chord_up
 sleep 1
 watch_stop
+after=$(visible_start)
+[ -z "$after" ] || failures+="the chord left a cue or a listening state: $after; "
 [ "$notice_state" = blocked ] || failures+="the bar shows '$notice_state', not the blocked notice; "
 case "$notice" in *"Select text first"*) ;; *) failures+="the bar says '$notice', not 'Select text first'; " ;; esac
 saw_mode command && failures+="a command session started; "
@@ -313,8 +319,10 @@ set_entry "$PREFIX_TEXT" "$SHORT_MID" "$SUFFIX_TEXT" || failures+="the entry did
 rows=$(row_count)
 posts=$(stub_posts)
 watch_start
-chord_down || failures+="the hold did not start; "
+chord_down || failures+="the chord keys did not go down; "
 sleep 0.3
+during=$(visible_start)
+[ -z "$during" ] || failures+="the chord showed a start while it was down: $during; "
 paplay --device=vmic "$(pad "$CMD_WAV")"
 wait_until 5 bar_failed
 notice_state=$(bar .state)
@@ -323,6 +331,8 @@ shot cmd-004-notice
 chord_up
 sleep 1
 watch_stop
+after=$(visible_start)
+[ -z "$after" ] || failures+="the chord left a cue or a listening state: $after; "
 [ "$notice_state" = blocked ] || failures+="the bar shows '$notice_state', not the blocked notice; "
 case "$notice" in *"Command Mode needs AI cleanup or the endpoint"*) ;; *) failures+="the bar says '$notice'; " ;; esac
 saw_mode command && failures+="a command session started; "
@@ -359,7 +369,7 @@ rows=$(row_count)
 # (1) Esc while listening
 set_entry "$PREFIX_TEXT" "$SHORT_MID" "$SUFFIX_TEXT" || failures+="the entry did not take the text; "
 posts=$(stub_posts)
-chord_down || failures+="the hold did not start; "
+chord_down || failures+="the chord keys did not go down; "
 wait_until 3 pmode_is command || failures+="no command session; "
 sleep 0.6
 xdotool key Escape

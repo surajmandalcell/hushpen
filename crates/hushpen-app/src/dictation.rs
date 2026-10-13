@@ -66,6 +66,12 @@ impl Dictation {
         self.controller.read(cx).phase()
     }
 
+    /// Whether the newest session was a Command Mode one: its speech is an instruction, so
+    /// Home has no transcript to show for it.
+    pub fn ran_command(&self, cx: &gpui_kit::App) -> bool {
+        self.controller.read(cx).ran_command()
+    }
+
     /// Whether the cleanup model is loading for the dictation on screen.
     pub fn preparing_ai(&self, cx: &gpui_kit::App) -> bool {
         self.controller.read(cx).ai_phase() == Some(crate::ai_cleanup::Phase::Preparing)

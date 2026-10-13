@@ -78,6 +78,7 @@ fn reach(state: State) -> DictationMachine {
 fn every_event() -> Vec<AppEvent> {
     vec![
         AppEvent::HoldDown,
+        AppEvent::HoldArm,
         AppEvent::HoldUp,
         AppEvent::HandsFreeToggle,
         AppEvent::HomeToggle,
@@ -128,10 +129,11 @@ fn variant_index(event: &AppEvent) -> usize {
         AppEvent::CommandDown => 14,
         AppEvent::CommandUp => 15,
         AppEvent::EditFailed { .. } => 16,
+        AppEvent::HoldArm => 17,
     }
 }
 
-const VARIANTS: usize = 17;
+const VARIANTS: usize = 18;
 
 fn start_effects() -> Vec<Effect> {
     vec![Effect::StartCapture { session: 1 }, Effect::Cue(Cue::Start)]
@@ -347,7 +349,7 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
         }
     }
     assert_eq!(pairs, State::ALL.len() * VARIANTS);
-    assert_eq!(pairs, 136);
+    assert_eq!(pairs, 144);
 }
 
 #[test]

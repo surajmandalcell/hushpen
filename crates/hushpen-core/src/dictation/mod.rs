@@ -16,6 +16,9 @@ pub use machine::DictationMachine;
 pub const MIN_HOLD_MS: u64 = 250;
 /// A second press this soon after the first tap's press starts hands-free.
 pub const DOUBLE_TAP_MS: u64 = 500;
+/// How long an armed hold waits for the rest of the Command Mode chord before it starts as a
+/// plain dictation. The start cue and the flow bar follow within this time of the key press.
+pub const ARM_WINDOW_MS: u64 = 120;
 /// How long the pipeline warns before the maximum duration.
 pub const WARN_BEFORE_MAX_MS: u64 = 60_000;
 
@@ -95,6 +98,10 @@ impl Mode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppEvent {
     HoldDown,
+    /// The hold key went down while the Command Mode chord could still follow. The controller
+    /// holds the start back for [`ARM_WINDOW_MS`] so the chord starts no session; the machine
+    /// itself ignores it.
+    HoldArm,
     HoldUp,
     /// The Command Mode keys went down. A hold that already runs becomes the command.
     CommandDown,

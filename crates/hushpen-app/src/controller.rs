@@ -19,7 +19,8 @@ use gpui_kit::{ClipboardItem, Context, Entity};
 pub use history::ReprocessState;
 use hushpen_core::cleanup;
 use hushpen_core::dictation::{
-    AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus, State,
+    ARM_WINDOW_MS, AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus,
+    State,
 };
 use hushpen_core::dictionary;
 use hushpen_core::error::{
@@ -48,9 +49,12 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
 pub(crate) mod ai_tests;
+mod arm;
 mod command;
 pub use command::Flash;
 use command::edit_failure_code;
+#[cfg(test)]
+mod arm_tests;
 #[cfg(test)]
 mod command_tests;
 #[cfg(test)]
@@ -332,6 +336,9 @@ pub struct Controller {
     /// The newest refused Command Mode start.
     flash: Option<Flash>,
     flash_seq: u64,
+    /// The hold key is down and the command chord may still follow.
+    armed: Option<arm::Armed>,
+    arm_seq: u64,
     /// What the history row of the running session needs from the steps before the save.
     pending: history::Pending,
     /// Counts the saved and changed history rows, so the History view reloads only when needed.
@@ -450,6 +457,8 @@ impl Controller {
             selection: None,
             flash: None,
             flash_seq: 0,
+            armed: None,
+            arm_seq: 0,
             pending: history::Pending::default(),
             history_revision: 0,
             last_row: None,
@@ -867,6 +876,20 @@ impl Controller {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let now = at.unwrap_or_else(|| (self.clock)());
+        if event == AppEvent::HoldArm {
+            let _ = self.promote_armed(cx);
+            return self.arm_hold(now, cx);
+        }
+        // The chord key inside the window takes over the armed hold; anything else means the
+        // hold goes on as a plain dictation first.
+        let mut adopted = None;
+        if let Some(armed) = self.armed {
+            if event == AppEvent::CommandDown && now.saturating_sub(armed.at) < ARM_WINDOW_MS {
+                adopted = self.armed.take();
+            } else {
+                let _ = self.promote_armed(cx);
+            }
+        }
         let mut queue = VecDeque::from([event]);
         let mut outcome = Ok(());
         let mut changed = false;
@@ -897,6 +920,9 @@ impl Controller {
                 }
             }
             self.record(before);
+        }
+        if let Some(armed) = adopted {
+            self.release_unused_capture(armed, cx);
         }
         if changed {
             cx.notify();

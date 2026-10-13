@@ -70,6 +70,7 @@ impl DictationMachine {
                 }
                 _ => Vec::new(),
             },
+            AppEvent::HoldArm => Vec::new(),
             AppEvent::HoldUp => {
                 if self.state != State::Listening || self.mode != Mode::Hold {
                     return Vec::new();

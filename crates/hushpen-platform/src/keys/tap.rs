@@ -416,7 +416,7 @@ mod tests {
                 flags(KEYCODE_RIGHT_OPTION, 0),
             ],
         );
-        assert_eq!(held, [AppEvent::HoldDown, AppEvent::HoldUp]);
+        assert_eq!(held, [AppEvent::HoldArm, AppEvent::HoldUp]);
         let pasted = run(
             &mut engine,
             &mut decoder,

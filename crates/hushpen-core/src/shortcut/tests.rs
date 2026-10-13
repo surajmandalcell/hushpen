@@ -283,7 +283,10 @@ fn chord(engine: &mut Engine, keys: &[Phys]) -> Vec<AppEvent> {
 
 #[test]
 fn the_hold_key_sends_down_and_up_and_ignores_repeats() {
-    let mut engine = Engine::new(defaults());
+    let mut engine = Engine::new(Bindings {
+        command: None,
+        ..defaults()
+    });
     assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
     assert_eq!(app(engine.press(R_ALT)), []);
     assert_eq!(app(engine.press(Phys::Char('a'))), []);
@@ -382,7 +385,7 @@ fn a_chord_can_start_again_after_it_fired() {
 fn the_hold_key_down_keeps_a_chord_from_firing_because_it_belongs_to_the_hold() {
     let mut engine = Engine::new(defaults());
     // Right Alt is the hold key, so it does not count as the Alt of Ctrl+Alt+V.
-    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldArm]);
     assert_eq!(app(engine.press(L_CTRL)), []);
     assert_eq!(app(engine.press(Phys::Char('v'))), []);
     assert_eq!(app(engine.release(Phys::Char('v'))), []);
@@ -401,7 +404,7 @@ fn a_recorded_hands_free_chord_toggles_on_release() {
         [AppEvent::HandsFreeToggle]
     );
     // The built-in Hold+Space is off once a shortcut is recorded.
-    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldArm]);
     assert_eq!(app(engine.press(Phys::Char(' '))), []);
 }
 
@@ -424,7 +427,7 @@ fn hold_with_space_toggles_hands_free_only_with_the_default() {
     let mut engine = Engine::new(defaults());
     assert_eq!(app(engine.press(Phys::Char(' '))), []);
     engine.release(Phys::Char(' '));
-    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldArm]);
     assert_eq!(
         app(engine.press(Phys::Char(' '))),
         [AppEvent::HandsFreeToggle]
@@ -495,7 +498,7 @@ fn the_recorder_blocks_every_live_shortcut_and_esc_closes_it() {
     // Live again.
     assert_eq!(
         chord(&mut engine, &[R_ALT]),
-        [AppEvent::HoldDown, AppEvent::HoldUp]
+        [AppEvent::HoldArm, AppEvent::HoldUp]
     );
 }
 
@@ -650,7 +653,7 @@ fn a_recorded_hands_free_chord_becomes_a_custom_binding() {
 #[test]
 fn the_command_keys_go_down_after_the_hold_and_come_up_before_it() {
     let mut engine = Engine::new(defaults());
-    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldArm]);
     assert_eq!(app(engine.press(R_SHIFT)), [AppEvent::CommandDown]);
     assert_eq!(app(engine.release(R_SHIFT)), [AppEvent::CommandUp]);
     assert_eq!(app(engine.release(R_ALT)), [AppEvent::HoldUp]);
@@ -669,13 +672,35 @@ fn letting_go_of_the_hold_key_first_ends_the_command_and_the_hold_together() {
 }
 
 #[test]
-fn a_command_chord_pressed_in_the_other_order_still_sends_the_hold_first() {
+fn a_command_chord_pressed_in_the_other_order_starts_no_hold() {
     let mut engine = Engine::new(defaults());
     assert_eq!(app(engine.press(R_SHIFT)), []);
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::CommandDown]);
     assert_eq!(
-        app(engine.press(R_ALT)),
-        [AppEvent::HoldDown, AppEvent::CommandDown]
+        app(engine.release(R_ALT)),
+        [AppEvent::CommandUp, AppEvent::HoldUp]
     );
+}
+
+#[test]
+fn a_hold_key_that_the_command_chord_may_join_is_only_armed() {
+    let mut engine = Engine::new(defaults());
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldArm]);
+    assert_eq!(app(engine.release(R_ALT)), [AppEvent::HoldUp]);
+}
+
+#[test]
+fn a_hold_key_pressed_with_a_key_that_cannot_make_the_chord_starts_at_once() {
+    let mut engine = Engine::new(defaults());
+    engine.press(Phys::Char('a'));
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
+    engine.release(R_ALT);
+    engine.release(Phys::Char('a'));
+    let mut engine = Engine::new(Bindings {
+        command: None,
+        ..defaults()
+    });
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
 }
 
 #[test]
@@ -684,7 +709,7 @@ fn right_shift_alone_or_left_shift_with_the_hold_key_is_no_command() {
     assert_eq!(chord(&mut engine, &[R_SHIFT]), []);
     assert_eq!(
         chord(&mut engine, &[R_ALT, L_SHIFT]),
-        [AppEvent::HoldDown, AppEvent::HoldUp]
+        [AppEvent::HoldArm, AppEvent::HoldUp]
     );
 }
 

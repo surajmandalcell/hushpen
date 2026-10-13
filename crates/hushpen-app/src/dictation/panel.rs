@@ -25,6 +25,8 @@ struct Snapshot {
     preparing: bool,
     status: String,
     transcript: String,
+    /// A failed Command Mode edit has no transcript to wait for: the error says it all.
+    show_transcript: bool,
     notice: Option<(String, bool)>,
     /// Why the global keys are off, shown as plain information rather than an error.
     keys_notice: Option<String>,
@@ -72,6 +74,9 @@ pub fn render(
                 status_text(phase, me.can_record(cx))
             },
             transcript: me.transcript(cx).to_owned(),
+            show_transcript: !(phase == Phase::Failed
+                && me.ran_command(cx)
+                && me.transcript(cx).is_empty()),
             notice,
             keys_notice: me.keys_notice(cx).map(str::to_owned),
             can_record: me.can_record(cx),
@@ -111,10 +116,10 @@ pub fn render(
     if let Some(message) = view.keys_notice.clone() {
         panel = panel.child(keys_row(message));
     }
-    panel =
-        panel
-            .child(transcript_row(&view))
-            .child(language_row(dictation, &view, &language_focus));
+    if view.show_transcript {
+        panel = panel.child(transcript_row(&view));
+    }
+    panel = panel.child(language_row(dictation, &view, &language_focus));
     if view.picker_open {
         panel = panel.child(option_list(dictation, &view, &option_focus));
     }

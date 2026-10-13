@@ -277,3 +277,80 @@ fn the_keys_notice_shows_in_the_home_state_only_when_the_keys_are_off(cx: &mut T
     let notice = cx.update(|cx| rig.dictation.read(cx).keys_notice(cx).map(str::to_owned));
     assert!(notice.unwrap().contains("Not available on Wayland"));
 }
+
+fn home_window(cx: &mut TestAppContext, rig: &Rig) -> gpui_kit::AnyWindowHandle {
+    use crate::shell::Shell;
+    use crate::theme::space;
+    use gpui_kit::{AppContext as _, Bounds, Point, WindowBounds, WindowOptions, px, size};
+    cx.update(gpui_kit::init);
+    let (handle, shell) = cx.update(|cx| {
+        gpui_kit::open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point::default(),
+                    size: size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
+                })),
+                ..Default::default()
+            },
+            cx,
+            |window, cx| cx.new(|cx| Shell::new(window, cx)),
+        )
+        .expect("open test window")
+    });
+    shell.update(cx, |shell, cx| {
+        shell.attach_mic(rig.mic.clone(), cx);
+        shell.attach_dictation(rig.dictation.clone(), cx);
+    });
+    cx.run_until_parked();
+    handle
+}
+
+fn shown(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle, id: &'static str) -> bool {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.try_find(id).is_some()
+    })
+    .unwrap()
+}
+
+#[gpui_kit::test]
+fn a_failed_dictation_says_nothing_was_transcribed(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let handle = home_window(cx, &rig);
+    dictate(
+        cx,
+        &rig,
+        JobOutcome::Failed(Failure::new("ENGINE_CRASHED", "the engine died")),
+    );
+    assert_eq!(phase(cx, &rig), Phase::Failed);
+    assert!(shown(cx, handle, "home.notice"));
+    assert!(shown(cx, handle, "home.transcript"));
+}
+
+#[gpui_kit::test]
+fn a_failed_command_shows_only_the_error_line(cx: &mut TestAppContext) {
+    use crate::ai_cleanup::Attempt;
+    use crate::controller::ai_tests::ai_answers;
+    use hushpen_core::insert::Chord;
+    let rig = rig(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("Target-gtk.py", Chord::CtrlV);
+    *inserter.selected.lock().unwrap() = Some("some selected words".into());
+    attach_inserter(cx, &rig, &inserter);
+    ai_answers(cx, &rig, Attempt::TimedOut, Ok(()));
+    say(&rig, outcome_text("make this formal", "en"));
+    let handle = home_window(cx, &rig);
+
+    send_at(cx, &rig, 1_000, AppEvent::HoldArm).unwrap();
+    send_at(cx, &rig, 1_010, AppEvent::CommandDown).unwrap();
+    send_at(cx, &rig, 3_000, AppEvent::CommandUp).unwrap();
+    settle(cx, &rig);
+
+    assert_eq!(phase(cx, &rig), Phase::Failed);
+    assert!(shown(cx, handle, "home.notice"), "the error line stays");
+    assert!(
+        !shown(cx, handle, "home.transcript"),
+        "no empty-transcript line for a command"
+    );
+}

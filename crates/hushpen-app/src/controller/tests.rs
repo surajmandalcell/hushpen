@@ -863,9 +863,9 @@ fn a_failed_paste_last_says_why_and_the_text_stays_available(cx: &mut TestAppCon
     assert_eq!(chars, 10);
 }
 
-type Played = Arc<std::sync::Mutex<Vec<(Cue, f32)>>>;
+pub(super) type Played = Arc<std::sync::Mutex<Vec<(Cue, f32)>>>;
 
-fn listen_for_cues(cx: &mut TestAppContext, rig: &Rig) -> Played {
+pub(super) fn listen_for_cues(cx: &mut TestAppContext, rig: &Rig) -> Played {
     let played = Played::default();
     let log = Arc::clone(&played);
     rig.controller.update(cx, |controller, _| {

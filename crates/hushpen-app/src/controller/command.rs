@@ -195,4 +195,9 @@ impl Controller {
     pub(super) fn is_command(&self) -> bool {
         self.machine.mode() == Mode::Command
     }
+
+    /// The same, for the views.
+    pub fn ran_command(&self) -> bool {
+        self.is_command()
+    }
 }

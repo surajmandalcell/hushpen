@@ -230,9 +230,19 @@ impl Engine {
             .is_some_and(|combo| satisfied(combo, &self.down, &self.claimed))
     }
 
+    /// Whether the keys that are down so far could still grow into the command chord.
+    fn chord_possible(&self) -> bool {
+        self.bindings.command.as_ref().is_some_and(|combo| {
+            self.down
+                .iter()
+                .all(|phys| uses(combo, *phys, &self.claimed))
+        })
+    }
+
     /// The hold and command events for what the last key change switched on or off. The
-    /// command keys contain the hold key, so a press sends the hold first and a release sends
-    /// the command first: the command session is ended by its own event.
+    /// command keys contain the hold key, so a release sends the command first: the command
+    /// session is ended by its own event. A hold key that the command chord may still join is
+    /// only armed, and a chord that goes down in one step starts no hold at all.
     fn follow_hold(&mut self) -> Vec<AppEvent> {
         let mut events = Vec::new();
         let (hold, command) = (self.hold_satisfied(), self.command_satisfied());
@@ -242,8 +252,12 @@ impl Engine {
         if !hold && self.hold_on {
             events.push(AppEvent::HoldUp);
         }
-        if hold && !self.hold_on {
-            events.push(AppEvent::HoldDown);
+        if hold && !self.hold_on && !command {
+            events.push(if self.chord_possible() {
+                AppEvent::HoldArm
+            } else {
+                AppEvent::HoldDown
+            });
         }
         if command && !self.command_on {
             events.push(AppEvent::CommandDown);
