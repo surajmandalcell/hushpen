@@ -86,8 +86,8 @@ pub mod space {
         XXXL = 32.0, "3xl";
         SIDEBAR_WIDTH = 208.0, "sidebar-width";
         CONTENT_MAX_WIDTH = 520.0, "content-max-width";
-        WINDOW_WIDTH = 780.0, "window-width";
-        WINDOW_HEIGHT = 520.0, "window-height";
+        WINDOW_WIDTH = 940.0, "window-width";
+        WINDOW_HEIGHT = 600.0, "window-height";
         TOOLBAR_HEIGHT = 34.0, "toolbar-height";
         SIDEBAR_TITLE_HEIGHT = 48.0, "sidebar-title-height";
     });
@@ -98,8 +98,31 @@ pub mod size {
     pub const NAV_ITEM_HEIGHT: f32 = 36.0;
     pub const NAV_ITEM_PADDING: f32 = 10.0;
     pub const NAV_ICON_TILE: f32 = 20.0;
-    pub const TRAFFIC_LIGHT: f32 = 13.0;
+    pub const TRAFFIC_LIGHT: f32 = 12.0;
+    /// Where the window controls sit, native on macOS and drawn on Linux: the top left corner
+    /// of the first circle.
+    pub const TRAFFIC_LIGHT_INSET: f32 = 20.0;
     pub const FOCUS_RING: f32 = 2.0;
+}
+
+/// Window chrome colors that depend on the platform rather than on a design token.
+pub mod chrome {
+    /// The solid Linux sidebar. macOS has no sidebar fill: the window background is blurred
+    /// and the sidebar shows it.
+    pub const SIDEBAR_SOLID_DARK: u32 = 0x2B2B2D;
+    pub const SIDEBAR_SOLID_LIGHT: u32 = 0xE8E8EA;
+
+    /// Whether the window background is blurred and the sidebar shows it: macOS only.
+    pub const TRANSLUCENT_SIDEBAR: bool = cfg!(target_os = "macos");
+
+    /// The sidebar fill for an appearance, or `None` where the sidebar is see-through.
+    pub fn sidebar_fill(translucent: bool, dark: bool) -> Option<u32> {
+        match (translucent, dark) {
+            (true, _) => None,
+            (false, true) => Some(SIDEBAR_SOLID_DARK),
+            (false, false) => Some(SIDEBAR_SOLID_LIGHT),
+        }
+    }
 }
 
 pub const FONT_FAMILY: &str = "Inter";
@@ -291,8 +314,8 @@ mod tests {
         let design = include_str!("../../../DESIGN.md");
         assert!(design.contains("    height: 36px"), "nav-item height");
         assert_eq!(size::NAV_ITEM_HEIGHT, 36.0);
-        assert!(design.contains("    size: 13px"), "traffic light size");
-        assert_eq!(size::TRAFFIC_LIGHT, 13.0);
+        assert!(design.contains("    size: 12px"), "traffic light size");
+        assert_eq!(size::TRAFFIC_LIGHT, 12.0);
         assert!(design.contains("    size: 2px"), "focus ring size");
         assert_eq!(size::FOCUS_RING, 2.0);
     }

@@ -393,10 +393,10 @@ mod tests {
 
     #[test]
     fn lookup_reads_dotted_paths_and_falls_back_to_the_pipeline() {
-        let state = json!({"view": "models", "window": {"width": 780, "resizable": false},
+        let state = json!({"view": "models", "window": {"width": 940, "resizable": false},
                            "pipeline": {"state": "listening"}, "engine": {"pid": null}});
         assert_eq!(lookup(&state, "view").as_deref(), Some("models"));
-        assert_eq!(lookup(&state, "window.width").as_deref(), Some("780"));
+        assert_eq!(lookup(&state, "window.width").as_deref(), Some("940"));
         assert_eq!(lookup(&state, "window.resizable").as_deref(), Some("false"));
         assert_eq!(lookup(&state, "engine.pid").as_deref(), Some("null"));
         assert_eq!(lookup(&state, "state").as_deref(), Some("listening"));

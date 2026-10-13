@@ -1,27 +1,23 @@
-//! The app window: sidebar, toolbar, traffic lights, and the active view.
+//! The app window: sidebar, toolbar, window controls (drawn on Linux only), and the active view.
 
 use crate::about::{self, About};
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::history::{self, History};
 use crate::hook;
-use crate::main_window;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
 use crate::onboarding::{self, Onboarding};
 use crate::settings::{self, Settings};
 use crate::shortcuts::Shortcuts;
-use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, color, radius, size, space};
+use crate::theme::{self, BODY_MD, StyledType, TITLE_MD, chrome, color, radius, size, space};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::assets::IconName;
 use gpui_kit::{
     App, ClickEvent, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
     StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
-
-const TRAFFIC_GROUP: &str = "traffic-lights";
 
 pub struct Shell {
     active: View,
@@ -181,90 +177,31 @@ impl Shell {
         cx.stop_propagation();
     }
 
-    fn close(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        main_window::close_requested(window, cx);
-    }
-
-    fn minimize(&mut self, _: &ClickEvent, window: &mut Window, _cx: &mut Context<Self>) {
-        window.minimize_window();
-    }
-
-    fn traffic_light(
-        &self,
-        name: &'static str,
-        label: &'static str,
-        fill: u32,
-        glyph: u32,
-        icon: IconName,
-        on_click: impl Fn(&ClickEvent, &mut Window, &mut gpui_kit::App) + 'static,
-    ) -> impl IntoElement {
-        div()
-            .id(hook::id("window", name))
-            .test_support()
-            .role(Role::Button)
-            .aria_label(label)
-            .size(px(size::TRAFFIC_LIGHT))
-            .flex_none()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
-            .bg(theme::rgb_of(fill))
-            .cursor_pointer()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(on_click)
-            .child(
-                svg()
-                    .path(icon.path())
-                    .size(px(9.0))
-                    .text_color(theme::rgb_of(glyph))
-                    .invisible()
-                    .group_hover(TRAFFIC_GROUP, |style| style.visible()),
-            )
-    }
-
     fn sidebar_title(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         self.title_bar(hook::id("sidebar", "title"), cx)
     }
 
-    /// The strip with the traffic lights. The window has no system title bar, so it is also the
-    /// place to drag the window by.
+    /// The strip at the top of the window, over the window controls. It is also the place to
+    /// drag the window by. On macOS it is empty: AppKit draws the traffic lights over it.
+    #[cfg_attr(target_os = "macos", allow(unused_variables))]
     fn title_bar(
         &self,
         id: gpui_kit::SharedString,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        div()
+        let strip = div()
             .id(id)
             .h(px(space::SIDEBAR_TITLE_HEIGHT))
             .w_full()
             .flex_none()
             .flex()
-            .items_center()
-            .pl(px(space::XL))
-            .on_mouse_down(MouseButton::Left, start_move)
-            .child(
-                div()
-                    .group(TRAFFIC_GROUP)
-                    .flex()
-                    .gap(px(space::SM))
-                    .child(self.traffic_light(
-                        "close",
-                        "Close",
-                        color::WINDOW_CLOSE,
-                        color::WINDOW_CLOSE_GLYPH,
-                        IconName::X,
-                        cx.listener(Self::close),
-                    ))
-                    .child(self.traffic_light(
-                        "minimize",
-                        "Minimize",
-                        color::WINDOW_MINIMIZE,
-                        color::WINDOW_MINIMIZE_GLYPH,
-                        IconName::Minus,
-                        cx.listener(Self::minimize),
-                    )),
-            )
+            .items_start()
+            .pl(px(size::TRAFFIC_LIGHT_INSET))
+            .pt(px(size::TRAFFIC_LIGHT_INSET))
+            .on_mouse_down(MouseButton::Left, start_move);
+        #[cfg(not(target_os = "macos"))]
+        let strip = strip.child(crate::window_controls::controls(cx));
+        strip
     }
 
     fn nav_item(&self, view: View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -332,15 +269,20 @@ impl Shell {
             .into_iter()
             .map(|view| self.nav_item(view, cx))
             .collect();
-        div()
+        let panel = div()
             .id(hook::id("sidebar", "panel"))
             .test_support()
             .flex()
             .flex_col()
             .flex_none()
             .w(px(space::SIDEBAR_WIDTH))
-            .h_full()
-            .bg(theme::rgb_of(color::SIDEBAR))
+            .h_full();
+        // No fill on macOS: the blurred window shows through the sidebar.
+        let panel = match chrome::sidebar_fill(chrome::TRANSLUCENT_SIDEBAR, true) {
+            Some(fill) => panel.bg(theme::rgb_of(fill)),
+            None => panel,
+        };
+        panel
             .border_r_1()
             .border_color(theme::rgb_of(color::BORDER_SIDEBAR))
             .child(self.sidebar_title(cx))
@@ -468,7 +410,6 @@ impl Render for Shell {
             .flex()
             .size_full()
             .overflow_hidden()
-            .bg(theme::rgb_of(color::BACKGROUND))
             .text_color(theme::rgb_of(color::TEXT_BODY))
             .font_family(theme::FONT_FAMILY)
             .text_token(BODY_MD);
@@ -487,7 +428,9 @@ impl Render for Shell {
         }
         self.onboarding_shown = onboarding.is_some();
         match onboarding {
+            // Opaque: the window background is blurred on macOS and onboarding has no sidebar.
             Some(onboarding) => frame
+                .bg(theme::rgb_of(color::BACKGROUND))
                 .flex_col()
                 .child(self.title_bar(hook::id("onboarding", "title-bar"), cx))
                 .child(
@@ -641,34 +584,54 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[gpui_kit::test]
     fn only_close_and_minimize_traffic_lights_exist(cx: &mut TestAppContext) {
         let (handle, _) = open(cx);
+        let mut rects = Vec::new();
         for id in ["window.close", "window.minimize"] {
             assert!(present(cx, handle, id), "{id}");
             let bounds = cx
                 .update_window(handle, |_, window, _| window.find(id).bounds())
                 .unwrap();
-            assert_eq!(
-                (f32::from(bounds.size.width), f32::from(bounds.size.height)),
-                (13.0, 13.0),
-                "{id}"
-            );
+            rects.push((
+                f32::from(bounds.origin.x),
+                f32::from(bounds.origin.y),
+                f32::from(bounds.size.width),
+                f32::from(bounds.size.height),
+            ));
         }
         for id in ["window.maximize", "window.zoom", "window.fullscreen"] {
             assert!(!present(cx, handle, id), "{id}");
         }
-        let (close_x, minimize_x) = cx
-            .update_window(handle, |_, window, _| {
-                (
-                    window.find("window.close").bounds().origin.x,
-                    window.find("window.minimize").bounds().origin.x,
-                )
-            })
-            .unwrap();
-        assert!(close_x < minimize_x, "close comes first");
+        assert_eq!(
+            rects[0],
+            (20.0, 20.0, 12.0, 12.0),
+            "close: 12 px circle at 20, 20"
+        );
+        assert_eq!(
+            rects[1],
+            (40.0, 20.0, 12.0, 12.0),
+            "minimize: 8 px after close"
+        );
     }
 
+    #[cfg(target_os = "macos")]
+    #[gpui_kit::test]
+    fn macos_draws_no_window_controls(cx: &mut TestAppContext) {
+        let (handle, _) = open(cx);
+        for id in [
+            "window.close",
+            "window.minimize",
+            "window.maximize",
+            "window.zoom",
+            "window.fullscreen",
+        ] {
+            assert!(!present(cx, handle, id), "{id}");
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
     #[gpui_kit::test]
     fn the_close_light_hides_the_window_to_the_tray(cx: &mut TestAppContext) {
         let (handle, _) = open(cx);
@@ -677,6 +640,7 @@ mod tests {
         assert_eq!((calls.hidden.get(), calls.minimized.get()), (1, 0));
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[gpui_kit::test]
     fn the_close_light_minimizes_when_no_tray_can_bring_the_window_back(cx: &mut TestAppContext) {
         let (handle, _) = open(cx);

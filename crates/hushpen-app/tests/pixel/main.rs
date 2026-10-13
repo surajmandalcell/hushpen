@@ -1,10 +1,10 @@
-//! Offscreen pixel tests: the real window at 780x520 rendered by GPUI's wgpu
+//! Offscreen pixel tests: the real window at 940x600 rendered by GPUI's wgpu
 //! headless renderer (Mesa lavapipe), with no X server and no display.
 //!
 //! Linux containers only: `cargo test -p hushpen-app --features pixel-tests
 //! -- --test-threads=2` (services.yaml `test-pixel`). Captures are at scale 2,
-//! so a 780x520 window is 1560x1040 pixels and sample points scale with
-//! `width / 780`.
+//! so a 940x600 window is 1880x1200 pixels and sample points scale with
+//! `width / 940`.
 //!
 //! Environment:
 //! - `HUSHPEN_PIXEL_BASELINES`: folder with the approved PNGs. Default:
@@ -279,7 +279,7 @@ fn click_scrolled(
 #[test]
 fn the_endpoint_status_row_wraps_a_long_failure_to_two_lines() {
     let image = capture_endpoint_failure();
-    assert_eq!(image.dimensions(), (1560, 1040));
+    assert_eq!(image.dimensions(), (1880, 1200));
     let mut failures = Vec::new();
     check_image("settings-cleanup-endpoint-failure", &image, &mut failures);
     assert!(
@@ -294,7 +294,7 @@ fn every_settings_section_matches_its_approved_baseline() {
     let mut failures = Vec::new();
     for section in Section::ALL {
         let image = capture_settings_section(section);
-        assert_eq!(image.dimensions(), (1560, 1040), "{}", section.key());
+        assert_eq!(image.dimensions(), (1880, 1200), "{}", section.key());
         check_image(
             &format!("settings-{}", section.key()),
             &image,
@@ -369,12 +369,12 @@ fn every_view_matches_its_approved_baseline() {
 }
 
 #[test]
-fn captures_are_780x520_at_scale_two_and_use_the_design_tokens() {
+fn captures_are_940x600_at_scale_two_and_use_the_design_tokens() {
     let captures = capture_every_view();
     for capture in &captures {
         assert_eq!(
             capture.image.dimensions(),
-            (1560, 1040),
+            (1880, 1200),
             "{}",
             capture.view.key()
         );
@@ -385,15 +385,15 @@ fn captures_are_780x520_at_scale_two_and_use_the_design_tokens() {
         // Between the toolbar and the first panel: app background in every view. (500, 300)
         // reads panel surface on views like About that fill the column with one surface.
         assert_eq!(hex_at(image, 500, 47), "#2F2F2F", "{name}: content");
-        assert_eq!(hex_at(image, 100, 450), "#3C3C3C", "{name}: sidebar");
-        assert_eq!(hex_at(image, 26, 24), "#FF5F57", "{name}: close light");
-        assert_eq!(hex_at(image, 47, 24), "#FEBC2E", "{name}: minimize light");
+        assert_eq!(hex_at(image, 100, 450), "#2B2B2D", "{name}: sidebar");
+        assert_eq!(hex_at(image, 26, 26), "#FF5F57", "{name}: close light");
+        assert_eq!(hex_at(image, 46, 26), "#FEBC2E", "{name}: minimize light");
         for (index, view) in View::ALL.into_iter().enumerate() {
             let (x, y) = nav_fill_point(index as u32);
             let want = if view == capture.view {
                 "#686868"
             } else {
-                "#3C3C3C"
+                "#2B2B2D"
             };
             assert_eq!(
                 hex_at(image, x, y),
@@ -477,7 +477,7 @@ fn every_onboarding_step_matches_its_approved_baseline() {
     let mut failures = Vec::new();
     for step in Step::ALL {
         let image = capture_onboarding(step.key());
-        assert_eq!(image.dimensions(), (1560, 1040), "{}", step.key());
+        assert_eq!(image.dimensions(), (1880, 1200), "{}", step.key());
         check_image(&format!("onboarding-{}", step.key()), &image, &mut failures);
     }
     assert!(
@@ -491,8 +491,8 @@ fn every_onboarding_step_matches_its_approved_baseline() {
 fn onboarding_takes_the_whole_window_with_no_sidebar() {
     let image = capture_onboarding("permissions");
     assert_eq!(hex_at(&image, 100, 450), "#2F2F2F", "no sidebar color");
-    assert_eq!(hex_at(&image, 26, 24), "#FF5F57", "close light");
-    assert_eq!(hex_at(&image, 47, 24), "#FEBC2E", "minimize light");
+    assert_eq!(hex_at(&image, 26, 26), "#FF5F57", "close light");
+    assert_eq!(hex_at(&image, 46, 26), "#FEBC2E", "minimize light");
 }
 
 fn flow_bar_states() -> Vec<(&'static str, Props)> {

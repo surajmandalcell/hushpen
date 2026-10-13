@@ -319,6 +319,8 @@ pub fn window_state(window: &Window) -> Value {
         "maximized": window.is_maximized(),
         "fullscreen": window.is_fullscreen(),
         "active": window.is_window_active(),
+        "background": crate::window_chrome::background_name(),
+        "sidebar_fill": crate::window_chrome::sidebar_fill_name(),
     })
 }
 
@@ -628,10 +630,20 @@ mod tests {
                 assert!(item.bounds.y > above.bounds.y);
             }
         }
-        for name in ["window.close", "window.minimize"] {
-            let control = element(&tree, name);
-            assert!(!control.text.is_empty(), "{name} has a name");
-            assert!(control.visible);
+        let controls: Vec<_> = tree
+            .iter()
+            .filter(|element| element.id.starts_with("window."))
+            .map(|element| element.id.as_str())
+            .collect();
+        if cfg!(target_os = "macos") {
+            assert!(controls.is_empty(), "AppKit draws the lights: {controls:?}");
+        } else {
+            assert_eq!(controls, ["window.close", "window.minimize"]);
+            for name in controls {
+                let control = element(&tree, name);
+                assert!(!control.text.is_empty(), "{name} has a name");
+                assert!(control.visible);
+            }
         }
     }
 
@@ -690,8 +702,17 @@ mod tests {
         let fixture = open(cx);
         let state = state(cx, &fixture);
         assert_eq!(state["settings"]["dictation.maxMinutes"], 6);
-        assert_eq!(state["window"]["width"], 780.0);
-        assert_eq!(state["window"]["height"], 520.0);
+        assert_eq!(state["window"]["width"], 940.0);
+        assert_eq!(state["window"]["height"], 600.0);
+        let blurred = cfg!(target_os = "macos");
+        assert_eq!(
+            state["window"]["background"],
+            if blurred { "blurred" } else { "opaque" }
+        );
+        assert_eq!(
+            state["window"]["sidebar_fill"],
+            if blurred { "none" } else { "#2B2B2D" }
+        );
         assert_eq!(state["window"]["resizable"], false);
         assert_eq!(state["window"]["maximized"], false);
         assert_eq!(state["window"]["fullscreen"], false);

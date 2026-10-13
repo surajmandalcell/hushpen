@@ -904,7 +904,7 @@ mod window {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
                         origin: Point::default(),
-                        size: size(px(780.0), px(520.0)),
+                        size: size(px(940.0), px(600.0)),
                     })),
                     ..Default::default()
                 },
@@ -972,9 +972,10 @@ mod window {
         for id in ["onboarding.skip", "onboarding.back", "onboarding.later"] {
             assert!(!present(cx, handle, id), "{id}");
         }
-        assert!(
+        assert_eq!(
             present(cx, handle, "window.close"),
-            "the traffic lights stay"
+            !cfg!(target_os = "macos"),
+            "the drawn lights stay on Linux; AppKit draws them on macOS"
         );
     }
 

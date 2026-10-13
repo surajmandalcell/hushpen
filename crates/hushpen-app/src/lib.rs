@@ -35,3 +35,6 @@ pub mod storage;
 pub mod theme;
 pub mod tray;
 pub mod views;
+pub mod window_chrome;
+#[cfg(not(target_os = "macos"))]
+pub mod window_controls;

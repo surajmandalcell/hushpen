@@ -25,12 +25,10 @@ use crate::storage;
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
 use crate::views::View;
+use crate::window_chrome::main_window_options;
 use futures::StreamExt;
 use futures::channel::mpsc;
-use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Entity, Window, WindowBounds, WindowOptions, px,
-    size,
-};
+use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, Window, WindowOptions};
 use hushpen_core::shortcut::Platform;
 use hushpen_platform::keys::GlobalKeys;
 use hushpen_platform::window::lock_chrome;
@@ -553,20 +551,10 @@ fn start_insert(controller: &Entity<Controller>, cx: &mut App) {
 }
 
 fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
-    let window_size = size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT));
     let (handle, shell) = gpui_kit::open_window(
         WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                window_size,
-                cx,
-            ))),
-            titlebar: None,
-            is_resizable: false,
-            is_minimizable: true,
-            window_min_size: Some(window_size),
             app_id: Some(APP_ID.into()),
-            ..Default::default()
+            ..main_window_options(cx)
         },
         cx,
         |window, cx| cx.new(|cx| Shell::new(window, cx)),

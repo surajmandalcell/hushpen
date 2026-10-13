@@ -391,7 +391,7 @@ mod view {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
                         origin: Point::default(),
-                        size: size(px(780.0), px(520.0)),
+                        size: size(px(940.0), px(600.0)),
                     })),
                     ..Default::default()
                 },

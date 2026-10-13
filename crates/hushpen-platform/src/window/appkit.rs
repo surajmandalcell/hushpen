@@ -1,12 +1,16 @@
-//! macOS window chrome. The Hushpen traffic lights are drawn by the app, so the
-//! native ones are hidden, and the window can neither zoom nor enter full screen.
+//! macOS window chrome. AppKit draws the one set of traffic lights, so nothing here hides or
+//! moves a standard button. The window can neither zoom nor enter full screen.
+//!
+//! GPUI already builds the style mask (titled, closable, miniaturizable, not resizable, full
+//! size content), so this module leaves the mask alone: changing it on a live window makes
+//! AppKit rebuild the title bar and a second row of buttons appears.
 
 // AppKit calls take a raw `NSView` address from the GPUI window handle.
 #![allow(unsafe_code)]
 
 use super::ChromeError;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSView, NSWindowButton, NSWindowCollectionBehavior, NSWindowStyleMask};
+use objc2_app_kit::{NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior};
 
 pub(super) fn lock(view: usize, _width: u16, _height: u16) -> Result<(), ChromeError> {
     MainThreadMarker::new()
@@ -20,21 +24,25 @@ pub(super) fn lock(view: usize, _width: u16, _height: u16) -> Result<(), ChromeE
     let window = view
         .window()
         .ok_or_else(|| ChromeError::new("the view is not in a window yet"))?;
-
-    for button in [
-        NSWindowButton::CloseButton,
-        NSWindowButton::MiniaturizeButton,
-        NSWindowButton::ZoomButton,
-    ] {
-        if let Some(button) = window.standardWindowButton(button) {
-            button.setHidden(true);
-        }
-    }
-
-    // Minimize stays available to the app's own button. Resize and zoom do not.
-    let mask =
-        (window.styleMask() | NSWindowStyleMask::Miniaturizable) & !NSWindowStyleMask::Resizable;
-    window.setStyleMask(mask);
-    window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenNone);
+    apply(&window);
     Ok(())
+}
+
+/// The zoom button stays on screen but cannot be pressed, and the window never goes full screen.
+fn apply(window: &NSWindow) {
+    if let Some(zoom) = window.standardWindowButton(NSWindowButton::ZoomButton) {
+        zoom.setEnabled(false);
+    }
+    window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenNone);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_refuses_a_null_view() {
+        // Off the main thread the call fails before it reads the address.
+        assert!(lock(0, 940, 600).is_err());
+    }
 }

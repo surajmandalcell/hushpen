@@ -1,7 +1,7 @@
 //! Window chrome that GPUI does not control the same way on every OS.
 //!
 //! GPUI 0.3.7 ignores `is_resizable: false` on X11 (it writes a 16384 px
-//! `max_size`) and keeps the native traffic lights on macOS. The app calls
+//! `max_size`) and leaves the zoom button and full screen on macOS. The app calls
 //! [`lock_chrome`] once, right after the window opens, with the native handle.
 
 use std::fmt;
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn unknown_backends_are_left_alone() {
-        assert!(lock_chrome(WindowHandle::Other, 780, 520).is_ok());
+        assert!(lock_chrome(WindowHandle::Other, 940, 600).is_ok());
         let frame = Frame {
             x: 0,
             y: 0,
