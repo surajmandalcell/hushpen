@@ -468,6 +468,7 @@ key_step() { # <step key> <shot name>
   shot "009-$2"
   no_skip_control || failures+="$1: a skip control is in the tree; "
   [ "$(ob .step)" = "$1" ] || failures+="expected step $1, on $(ob .step); "
+  failures+=$(chrome_problems "onboarding $1")
 }
 key_step permissions 1-permissions
 wait_until 10 continue_enabled || failures+="permissions: Continue stayed closed; "

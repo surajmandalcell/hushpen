@@ -56,7 +56,7 @@ items() { python3 /harness/slot/sni-host.py --items; }
 main_wid() {
   local wid
   for wid in $(xdotool search --class hushpen 2>/dev/null); do
-    [ "$(win_size "$wid")" = 780x520 ] && { echo "$wid"; return 0; }
+    [ "$(win_size "$wid")" = 940x600 ] && { echo "$wid"; return 0; }
   done
   return 1
 }
@@ -140,6 +140,7 @@ $HC tree >"$RUN_OUT/001-tree.json"
 for key in $SECTION_KEYS; do
   section "$key" || { failures+="section $key did not open; "; continue; }
   shot "001-section-$key"
+  failures+=$(chrome_problems "settings $key")
 done
 # Keyboard only: from the General section, Tab to each section tab and open it with Enter.
 section general >/dev/null

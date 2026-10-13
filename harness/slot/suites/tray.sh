@@ -2,7 +2,7 @@
 # The tray icon and its menu: VAL-TRAY-001 to 008, VAL-CROSS-009, and the History Re-paste hide
 # (architecture 5.5). The StatusNotifier item is read and clicked over D-Bus like a panel does it
 # (tray-menu.py: the watcher stub's item list, the dbusmenu layout, and the `clicked` event). The
-# main window is the 780x520 window of class hushpen; its map state comes from xwininfo and its
+# main window is the 940x600 window of class hushpen; its map state comes from xwininfo and its
 # minimized state from xprop WM_STATE. The words come from the virtual microphone. Needs
 # speech-short.wav in /assets/fixtures and the base and tiny.en models in /assets/models/whisper.
 # Busy: it transcribes. It empties /data and restarts the app, and the last check stops the
@@ -52,11 +52,11 @@ gtk_clear() {
   sleep 0.2
 }
 
-# The main window is the one that is 780x520; the flow bar is another window of the same class.
+# The main window is the one that is 940x600; the flow bar is another window of the same class.
 main_wid() {
   local wid
   for wid in $(xdotool search --class hushpen 2>/dev/null); do
-    [ "$(win_size "$wid")" = 780x520 ] && { echo "$wid"; return 0; }
+    [ "$(win_size "$wid")" = 940x600 ] && { echo "$wid"; return 0; }
   done
   return 1
 }
@@ -80,6 +80,9 @@ hushpen_any() { pgrep -x hushpen | wc -l; }
 close_click() { # a real pointer click on the close traffic light
   local wid ox oy bx by
   wid=$(main_wid)
+  # The 940x600 window reaches under the paste targets in the top left corner of the screen, so
+  # a click on the light would land in xterm unless the window is on top.
+  xdotool windowraise "$wid"
   read -r ox oy < <(settled_origin "$wid")
   read -r bx by < <($HC tree | jq -r '.[] | select(.id == "window.close") | .bounds | "\(.x + .width / 2 | floor) \(.y + .height / 2 | floor)"')
   [ -n "$bx" ] || return 1
@@ -275,7 +278,7 @@ tray_click "Show Hushpen"
 wait_until 5 is_mapped || failures+="Show Hushpen did not map the window; "
 sleep 0.5
 size=$(win_size "$(main_wid)")
-[ "$size" = 780x520 ] || failures+="the window is $size after Show; "
+[ "$size" = 940x600 ] || failures+="the window is $size after Show; "
 [ "$(win_away)" = null ] || failures+="the hook says away=$(win_away) while shown; "
 shot 004-shown
 close_click
@@ -285,8 +288,8 @@ wait_until 5 is_mapped || failures+="Settings did not map the window; "
 wait_until 5 is view = settings || failures+="the view is $(view), not settings; "
 sleep 0.4
 shot 004-settings
-[ "$(win_size "$(main_wid)")" = 780x520 ] || failures+="the window is $(win_size "$(main_wid)") after Settings; "
-check_failures "VAL-TRAY-004 close hides" "close click unmapped window $wid; UI $ui0 and engine $engine_pid kept running; item still registered; hold dictation typed '$hidden_got' while hidden; Show Hushpen mapped 780x520; Settings opened the settings view" "$failures"
+[ "$(win_size "$(main_wid)")" = 940x600 ] || failures+="the window is $(win_size "$(main_wid)") after Settings; "
+check_failures "VAL-TRAY-004 close hides" "close click unmapped window $wid; UI $ui0 and engine $engine_pid kept running; item still registered; hold dictation typed '$hidden_got' while hidden; Show Hushpen mapped 940x600; Settings opened the settings view" "$failures"
 
 echo "== History Re-paste (architecture 5.5) hides the window and pastes into the app behind it"
 failures=""
@@ -337,8 +340,8 @@ shot 005-shown
 procs_after=$(hushpen_procs)
 [ "$second_ms" -le 2000 ] || failures+="the second start ran $second_ms ms; "
 [ "$procs_before" = 1 ] && [ "$procs_after" = 1 ] || failures+="hushpen processes: $procs_before before, $procs_after after; "
-[ "$(win_size "$(main_wid)")" = 780x520 ] || failures+="the window is $(win_size "$(main_wid)"); "
-check_failures "VAL-TRAY-005 second start" "second process exited ($second_rc) after $second_ms ms; $procs_before then $procs_after hushpen process; the window mapped at 780x520" "$failures"
+[ "$(win_size "$(main_wid)")" = 940x600 ] || failures+="the window is $(win_size "$(main_wid)"); "
+check_failures "VAL-TRAY-005 second start" "second process exited ($second_rc) after $second_ms ms; $procs_before then $procs_after hushpen process; the window mapped at 940x600" "$failures"
 
 echo "== VAL-TRAY-006 Quit exits the app and its children"
 failures=""
@@ -400,8 +403,8 @@ wait_until 5 bash -c "! kill -0 $second 2>/dev/null"
 wait "$second"
 wait_until 5 is_mapped || failures+="the second start did not map the window (WM_STATE '$(wm_state)'); "
 sleep 0.4
-[ "$(win_size "$(main_wid)")" = 780x520 ] || failures+="the window is $(win_size "$(main_wid)"); "
+[ "$(win_size "$(main_wid)")" = 940x600 ] || failures+="the window is $(win_size "$(main_wid)"); "
 [ "$(hushpen_procs)" = "$procs_before" ] || failures+="the second start left a process; "
 shot 008-restored
 python3 /harness/slot/sni-host.py >/logs/sni-host.log 2>&1 &
-check_failures "VAL-TRAY-008 no tray host" "no watcher: one log line, close left UI $ui0 and the engine running with WM_STATE Iconic; the hold run typed '$mini_got'; a second start mapped the window at 780x520" "$failures"
+check_failures "VAL-TRAY-008 no tray host" "no watcher: one log line, close left UI $ui0 and the engine running with WM_STATE Iconic; the hold run typed '$mini_got'; a second start mapped the window at 940x600" "$failures"

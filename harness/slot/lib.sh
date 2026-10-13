@@ -47,6 +47,43 @@ win_size() { # <wid> -> "WxH"
   xwininfo -id "$1" | awk '/Width:/ {w=$2} /Height:/ {h=$2} END {printf "%sx%s", w, h}'
 }
 
+# near <#RRGGBB> <#RRGGBB> [tolerance=2]: true when every channel differs by at most the tolerance
+near() {
+  local a=${1#\#} b=${2#\#} tol=${3:-2} i d
+  [ ${#a} -eq 6 ] && [ ${#b} -eq 6 ] || return 1
+  for i in 0 2 4; do
+    d=$((0x${a:i:2} - 0x${b:i:2}))
+    [ ${d#-} -le "$tol" ] || return 1
+  done
+}
+
+# main_window_id: the visible hushpen window that is wide enough to be the main one (the flow
+# bar is another window of the same class)
+main_window_id() {
+  local wid size
+  for wid in $(xdotool search --onlyvisible --class hushpen 2>/dev/null); do
+    size=$(win_size "$wid")
+    [ "${size%x*}" -gt 400 ] && { echo "$wid"; return 0; }
+  done
+  return 1
+}
+
+# chrome_problems <label>: prints what is wrong with the window chrome, and nothing when it is
+# right: 940x600 on the display, the same size and resizable, maximized, and fullscreen all false
+# in the hook state, and exactly the drawn close and minimize controls (12 px at 20,20 and 40,20).
+chrome_problems() {
+  local label=$1 wid size state controls
+  wid=$(main_window_id) || { printf '%s: no main window; ' "$label"; return; }
+  size=$(win_size "$wid")
+  [ "$size" = 940x600 ] || printf '%s: window is %s; ' "$label" "$size"
+  state=$(/app/hookctl state | jq -r '.window | "\(.width | floor)x\(.height | floor) \(.resizable) \(.maximized) \(.fullscreen)"')
+  [ "$state" = "940x600 false false false" ] || printf '%s: hook state reads %s; ' "$label" "$state"
+  controls=$(/app/hookctl tree | jq -r '[.[] | select(.id | startswith("window."))] | sort_by(.bounds.x)
+    | map("\(.id)@\(.bounds.x | floor),\(.bounds.y | floor) \(.bounds.width | floor)x\(.bounds.height | floor)") | join(" ")')
+  [ "$controls" = "window.close@20,20 12x12 window.minimize@40,20 12x12" ] ||
+    printf '%s: window controls read "%s"; ' "$label" "$controls"
+}
+
 app_window() { xdotool search --onlyvisible --class hushpen 2>/dev/null | head -1; }
 
 # hclick <id>: clicks the element once it lies fully inside the content area, wheeling the page
@@ -58,13 +95,13 @@ hclick() {
   while :; do
     read -r top bottom <<<"$($HC tree | jq -r --arg id "$id" \
       '[.[] | select(.id == $id) | "\(.root_bounds.y | floor) \((.root_bounds.y + .root_bounds.height) | floor)"] | first // empty')"
-    if [ -n "$top" ] && [ "$top" -ge $((oy + 50)) ] && [ "$bottom" -le $((oy + 500)) ]; then
+    if [ -n "$top" ] && [ "$top" -ge $((oy + 50)) ] && [ "$bottom" -le $((oy + 580)) ]; then
       $HC click "$id" >/dev/null 2>&1 && break
     fi
     tries=$((tries + 1))
     [ $tries -le 30 ] || return 1
     xdotool mousemove $((ox + 500)) $((oy + 300))
-    if [ -z "$top" ] || [ "$bottom" -gt $((oy + 500)) ]; then xdotool click 5; else xdotool click 4; fi
+    if [ -z "$top" ] || [ "$bottom" -gt $((oy + 580)) ]; then xdotool click 5; else xdotool click 4; fi
     sleep 0.2
   done
   sleep 0.2
