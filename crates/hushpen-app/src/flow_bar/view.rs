@@ -3,7 +3,8 @@
 
 use super::FlowBar;
 use crate::hook;
-use crate::theme::{self, BODY_SM, LABEL_CAPS, LABEL_MD, StyledType, color, radius, space};
+use crate::theme::hud as theme;
+use crate::theme::{BODY_SM, LABEL_CAPS, LABEL_MD, StyledType, color, radius, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{

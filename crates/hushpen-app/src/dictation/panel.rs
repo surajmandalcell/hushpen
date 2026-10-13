@@ -1,22 +1,21 @@
-//! The dictation panel on the Home view: record button, status, transcript, and language.
+//! The dictation group on the Home view: record button, status, transcript, and language.
 
 use super::{Dictation, Phase};
 use crate::hook;
 use crate::shell::Shell;
-use crate::theme::{
-    self, BODY_MD, BODY_SM, LABEL_MD, ROW_TITLE, StyledType, color, radius, size, space,
-};
+use crate::theme::{self, BODY, Palette, StyledType, radius, size, space};
+use crate::ui::{self, Kind};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, svg,
-    transparent_black,
+    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Rgba, Role, SharedString, StatefulInteractiveElement, Styled,
+    Window, div, px, svg, transparent_black,
 };
 use hushpen_core::language;
 
-const TRANSCRIPT_MIN_HEIGHT: f32 = 72.0;
+const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
 const OPTION_LIST_MAX_HEIGHT: f32 = 200.0;
 
 struct Snapshot {
@@ -98,32 +97,23 @@ pub fn render(
         )
     };
 
-    let mut panel = div()
-        .id(hook::id("home", "dictation"))
-        .test_support()
-        .flex()
-        .flex_col()
-        .w_full()
-        .overflow_hidden()
-        .bg(theme::rgb_of(color::SURFACE))
-        .rounded(px(radius::PANEL))
-        .border_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .child(header(dictation, &view, &record_focus, &copy_focus));
+    let palette = theme::palette(cx);
+    let mut rows: Vec<AnyElement> =
+        vec![header(palette, dictation, &view, &record_focus, &copy_focus).into_any_element()];
     if let Some((message, link)) = view.notice.clone() {
-        panel = panel.child(notice_row(shell, message, link, &models_focus));
+        rows.push(notice_row(palette, shell, message, link, &models_focus).into_any_element());
     }
     if let Some(message) = view.keys_notice.clone() {
-        panel = panel.child(keys_row(message));
+        rows.push(keys_row(palette, message).into_any_element());
     }
     if view.show_transcript {
-        panel = panel.child(transcript_row(&view));
+        rows.push(transcript_row(palette, &view).into_any_element());
     }
-    panel = panel.child(language_row(dictation, &view, &language_focus));
+    rows.push(language_row(palette, dictation, &view, &language_focus).into_any_element());
     if view.picker_open {
-        panel = panel.child(option_list(dictation, &view, &option_focus));
+        rows.push(option_list(palette, dictation, &view, &option_focus).into_any_element());
     }
-    panel
+    ui::group(hook::id("home", "dictation"), palette, rows)
 }
 
 fn status_text(phase: Phase, can_record: bool) -> String {
@@ -139,7 +129,18 @@ fn status_text(phase: Phase, can_record: bool) -> String {
     .into()
 }
 
+/// The color of the status word: a status color for ready, needs help, and failed.
+fn status_tone(palette: Palette, view: &Snapshot) -> Rgba {
+    match view.phase {
+        Phase::Idle if view.can_record => palette.success,
+        Phase::Idle => palette.warning,
+        Phase::Failed => palette.error,
+        _ => palette.label_secondary,
+    }
+}
+
 fn header(
+    palette: Palette,
     dictation: &Entity<Dictation>,
     view: &Snapshot,
     record_focus: &FocusHandle,
@@ -165,50 +166,42 @@ fn header(
         }
     };
     let enabled = view.can_record && view.phase != Phase::Transcribing;
-    div()
-        .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .p(px(space::LG))
-        .child(icon_tile(IconName::Mic))
+    ui::row(palette)
+        .child(ui::icon(palette, IconName::Mic))
+        .child(ui::text_column().child(ui::title(palette).child("Dictation")))
         .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_token(ROW_TITLE)
-                        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                        .child("Dictation"),
-                )
-                .child(
-                    div()
-                        .id(hook::id("home", "status"))
-                        .test_support()
-                        .role(Role::Status)
-                        .aria_label(view.status.clone())
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
-                        .truncate()
-                        .child(view.status.clone()),
-                ),
+            ui::value(palette)
+                .id(hook::id("home", "status"))
+                .test_support()
+                .role(Role::Status)
+                .aria_label(view.status.clone())
+                .text_color(status_tone(palette, view))
+                .child(view.status.clone()),
         )
-        .children(
-            (!view.transcript.is_empty())
-                .then(|| button(hook::id("home", "copy"), "Copy", copy_focus, true, copy)),
-        )
-        .child(button(
+        .children((!view.transcript.is_empty()).then(|| {
+            ui::button(
+                palette,
+                hook::id("home", "copy"),
+                "Copy",
+                Kind::Plain,
+                Some(copy_focus),
+                true,
+                copy,
+            )
+        }))
+        .child(ui::button(
+            palette,
             hook::id("home", "record"),
             label,
-            record_focus,
+            Kind::Default,
+            enabled.then_some(record_focus),
             enabled,
             record,
         ))
 }
 
 fn notice_row(
+    palette: Palette,
     shell: &Entity<Shell>,
     message: String,
     models_link: bool,
@@ -220,65 +213,56 @@ fn notice_row(
             shell.update(cx, |shell, cx| shell.select(View::Models, cx));
         }
     };
-    div()
+    ui::row(palette)
         .id(hook::id("home", "notice"))
         .test_support()
         .role(Role::Alert)
         .aria_label(message.clone())
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::STATUS_ERROR))
+        .text_color(palette.label)
         .child(
             svg()
                 .path(IconName::CircleAlert.path())
-                .size(px(14.0))
+                .size(px(size::NAV_ICON))
                 .flex_none()
-                .text_color(theme::rgb_of(color::STATUS_ERROR)),
+                .text_color(palette.label_secondary),
         )
-        .child(div().flex_1().min_w_0().child(message))
+        .child(
+            ui::title(palette)
+                .flex_1()
+                .min_w_0()
+                .text_color(palette.label)
+                .child(message),
+        )
         .children(models_link.then(|| {
-            button(
+            ui::button(
+                palette,
                 hook::id("home", "notice.models"),
                 "Open Models",
-                focus,
+                Kind::Plain,
+                Some(focus),
                 true,
                 open,
             )
         }))
 }
 
-fn keys_row(message: String) -> impl IntoElement + use<> {
-    div()
+fn keys_row(palette: Palette, message: String) -> impl IntoElement + use<> {
+    ui::row(palette)
         .id(hook::id("home", "keys-notice"))
         .test_support()
         .role(Role::Status)
         .aria_label(message.clone())
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::TEXT_MUTED))
+        .child(ui::icon(palette, IconName::Info))
         .child(
-            svg()
-                .path(IconName::Info.path())
-                .size(px(14.0))
-                .flex_none()
-                .text_color(theme::rgb_of(color::TEXT_MUTED)),
+            ui::title(palette)
+                .flex_1()
+                .min_w_0()
+                .text_color(palette.label_secondary)
+                .child(message),
         )
-        .child(div().flex_1().min_w_0().child(message))
 }
 
-fn transcript_row(view: &Snapshot) -> impl IntoElement + use<> {
+fn transcript_row(palette: Palette, view: &Snapshot) -> impl IntoElement + use<> {
     let empty = view.transcript.is_empty();
     let placeholder = match view.phase {
         Phase::Listening => "Speak now. Stop when you are done.",
@@ -300,20 +284,20 @@ fn transcript_row(view: &Snapshot) -> impl IntoElement + use<> {
         .aria_value(if empty { "" } else { &view.transcript }.to_owned())
         .min_h(px(TRANSCRIPT_MIN_HEIGHT))
         .w_full()
-        .px(px(space::LG))
+        .flex_none()
+        .px(px(size::ROW_PADDING))
         .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(if empty {
-            color::TEXT_SUBTLE
+        .text_token(BODY)
+        .text_color(if empty {
+            palette.label_secondary
         } else {
-            color::TEXT_PRIMARY
-        }))
+            palette.label
+        })
         .child(text)
 }
 
 fn language_row(
+    palette: Palette,
     dictation: &Entity<Dictation>,
     view: &Snapshot,
     focus: &FocusHandle,
@@ -341,9 +325,9 @@ fn language_row(
     };
     let label = language::label(&view.language);
     let tone = if off {
-        color::TEXT_DISABLED
+        palette.label_tertiary
     } else {
-        color::TEXT_PRIMARY
+        palette.label
     };
     let mut trigger = div()
         .id(id)
@@ -353,61 +337,42 @@ fn language_row(
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(space::SM))
-        .h(px(32.0))
-        .px(px(10.0 - size::FOCUS_RING))
-        .rounded(px(radius::MD))
+        .gap(px(space::XS))
+        .h(px(size::BUTTON_HEIGHT))
+        .px(px(size::BUTTON_PADDING - size::FOCUS_RING))
+        .rounded(px(radius::BUTTON))
         .border_2()
         .border_color(transparent_black())
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(tone))
+        .bg(palette.control)
+        .text_token(theme::BUTTON)
+        .text_color(tone)
         .child(label)
         .child(
             svg()
                 .path(IconName::ChevronDown.path())
-                .size(px(14.0))
+                .size(px(12.0))
                 .flex_none()
-                .text_color(theme::rgb_of(tone)),
+                .text_color(tone),
         );
     if !off {
         trigger = trigger
             .track_focus(focus)
             .cursor_pointer()
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-            .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+            .hover(move |style| style.bg(palette.selection))
+            .focus_visible(move |style| style.border_color(palette.accent))
             .on_click(on_click)
             .on_key_down(on_key);
     }
-    div()
-        .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .child(icon_tile(IconName::Globe))
+    ui::row(palette)
+        .child(ui::icon(palette, IconName::Globe))
         .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
+            ui::text_column()
+                .child(ui::title(palette).child("Language"))
                 .child(
-                    div()
-                        .text_token(ROW_TITLE)
-                        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                        .child("Language"),
-                )
-                .child(
-                    div()
+                    ui::secondary(palette)
                         .id(hook::id("home", "language.detail"))
                         .test_support()
                         .aria_label(view.detail.clone())
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
-                        .truncate()
                         .child(view.detail.clone()),
                 ),
         )
@@ -415,12 +380,14 @@ fn language_row(
 }
 
 fn option_list(
+    palette: Palette,
     dictation: &Entity<Dictation>,
     view: &Snapshot,
     focus: &[FocusHandle],
 ) -> impl IntoElement + use<> {
     let rows = view.codes.iter().enumerate().map(|(index, code)| {
         option_row(
+            palette,
             dictation,
             code,
             *code == view.language,
@@ -433,17 +400,18 @@ fn option_list(
         .role(Role::ListBox)
         .flex()
         .flex_col()
+        .w_full()
+        .flex_none()
         .max_h(px(OPTION_LIST_MAX_HEIGHT))
         .overflow_y_scroll()
         // The page behind scrolls on the same wheel event unless the list keeps it.
         .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
         .p(px(space::XS))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
         .children(rows)
 }
 
 fn option_row(
+    palette: Palette,
     dictation: &Entity<Dictation>,
     code: &'static str,
     selected: bool,
@@ -482,94 +450,27 @@ fn option_row(
         .flex_none()
         .items_center()
         .justify_between()
-        .h(px(32.0))
-        .px(px(space::MD - size::FOCUS_RING))
-        .rounded(px(radius::CONTROL))
+        .h(px(size::NAV_ITEM_HEIGHT))
+        .px(px(space::SM - size::FOCUS_RING))
+        .rounded(px(radius::SELECTION))
         .border_2()
         .border_color(transparent_black())
         .cursor_pointer()
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-        .hover(|style| style.bg(theme::rgb_of(color::SURFACE_ROW_HOVER)))
-        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+        .text_token(BODY)
+        .text_color(palette.label)
+        .hover(move |style| style.bg(palette.hover()))
+        .focus_visible(move |style| style.border_color(palette.accent))
         .on_click(on_click)
         .on_key_down(on_key)
         .child(label);
     if selected {
-        row = row.bg(theme::rgb_of(color::SURFACE_SELECTED)).child(
+        row = row.bg(palette.selection).child(
             svg()
                 .path(IconName::Check.path())
                 .size(px(14.0))
                 .flex_none()
-                .text_color(theme::rgb_of(color::FOCUS)),
+                .text_color(palette.label),
         );
     }
     row
-}
-
-fn button<F: Fn(&mut App) + Clone + 'static>(
-    id: SharedString,
-    label: &'static str,
-    focus: &FocusHandle,
-    enabled: bool,
-    press: F,
-) -> impl IntoElement + use<F> {
-    hook::mark_disabled(&id, !enabled);
-    let mut element = div()
-        .id(id)
-        .test_support()
-        .role(Role::Button)
-        .aria_label(label)
-        .flex_none()
-        .flex()
-        .items_center()
-        .h(px(32.0))
-        .px(px(10.0 - size::FOCUS_RING))
-        .rounded(px(radius::MD))
-        .border_2()
-        .border_color(transparent_black())
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(if enabled {
-            color::TEXT_PRIMARY
-        } else {
-            color::TEXT_DISABLED
-        }));
-    if enabled {
-        let on_click = {
-            let press = press.clone();
-            move |_: &ClickEvent, _: &mut Window, cx: &mut App| press(cx)
-        };
-        let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                press(cx);
-                cx.stop_propagation();
-            }
-        };
-        element = element
-            .track_focus(focus)
-            .cursor_pointer()
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-            .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-            .on_click(on_click)
-            .on_key_down(on_key);
-    }
-    element.child(label)
-}
-
-fn icon_tile(icon: IconName) -> impl IntoElement {
-    div()
-        .size(px(28.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius::MD))
-        .bg(theme::rgb_of(color::SURFACE_SOFT))
-        .child(
-            svg()
-                .path(icon.path())
-                .size(px(14.0))
-                .text_color(theme::rgb_of(color::TEXT_BODY)),
-        )
 }

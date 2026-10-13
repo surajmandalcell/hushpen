@@ -1,6 +1,5 @@
 //! The seven main views, in sidebar order.
 
-use crate::theme::color;
 use gpui_kit::assets::IconName;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,15 +66,6 @@ impl View {
         }
     }
 
-    /// Icon tile color. Only Home and History keep a section accent.
-    pub fn tile_color(self) -> u32 {
-        match self {
-            View::Home => color::ACCENT_ORANGE,
-            View::History => color::ACCENT_PURPLE,
-            _ => color::BORDER_SIDEBAR,
-        }
-    }
-
     pub fn index(self) -> usize {
         Self::ALL.iter().position(|view| *view == self).unwrap_or(0)
     }
@@ -111,18 +101,6 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), 7);
-    }
-
-    #[test]
-    fn only_home_and_history_keep_an_accent() {
-        for view in View::ALL {
-            let accent = matches!(view, View::Home | View::History);
-            assert_eq!(
-                view.tile_color() != color::BORDER_SIDEBAR,
-                accent,
-                "{view:?}"
-            );
-        }
     }
 
     #[test]

@@ -25,8 +25,9 @@ use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::about::{About, SystemOpener};
 use hushpen_app::assets::{AppAssets, register_fonts};
 use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
+use hushpen_app::dictation::Dictation;
 use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
-use hushpen_app::mic::{CpalBackend, Mic};
+use hushpen_app::mic::{CpalBackend, Mic, MicBackend, MicSession};
 use hushpen_app::models::{self, Models};
 use hushpen_app::net::endpoint::Transport;
 use hushpen_app::net::endpoint::UreqTransport;
@@ -36,10 +37,12 @@ use hushpen_app::settings::{Parts as SettingsParts, Section, Settings};
 use hushpen_app::shell::Shell;
 use hushpen_app::shortcuts::Shortcuts;
 use hushpen_app::storage;
-use hushpen_app::theme::{self, space};
+use hushpen_app::theme::{self, Appearance, chrome, space};
 use hushpen_app::views::View;
+use hushpen_audio::{CaptureError, EventSink, InputDevice};
 use hushpen_core::flow_bar::BarState;
 use hushpen_core::onboarding::{Session, Step};
+use hushpen_core::permission::{Access, Preflight};
 use hushpen_core::shortcut::Platform;
 use hushpen_engine::JobOutcome;
 use hushpen_store::data_dir::DataDir;
@@ -66,6 +69,11 @@ fn updating() -> bool {
 }
 
 fn headless() -> HeadlessAppContext {
+    headless_in(Appearance::Dark)
+}
+
+/// A headless app with the palette forced, so a capture does not depend on the desktop.
+fn headless_in(appearance: Appearance) -> HeadlessAppContext {
     // The fallback family is only for glyphs Inter lacks; the app embeds Inter.
     let text = Arc::new(CosmicTextSystem::new("DejaVu Sans"));
     let mut cx = HeadlessAppContext::with_platform(text, Arc::new(AppAssets), || {
@@ -75,6 +83,7 @@ fn headless() -> HeadlessAppContext {
         gpui_kit::init(cx);
         register_fonts(cx);
         theme::install(cx);
+        theme::force(Some(appearance), cx);
     });
     cx
 }
@@ -86,9 +95,35 @@ fn hex_at(image: &RgbaImage, x: u32, y: u32) -> String {
     format!("#{r:02X}{g:02X}{b:02X}")
 }
 
-/// Centre of a sidebar item's fill, left of its icon.
+/// A point inside a sidebar row's fill, right of its label. Rows are 28 px high, 2 px apart,
+/// and the first one starts below the title bar strip.
 fn nav_fill_point(index: u32) -> (u32, u32) {
-    (190, 48 + 40 * index + 18)
+    (200, space::SIDEBAR_TOP as u32 + 30 * index + 14)
+}
+
+/// `color` (`0xRRGGBBAA`) laid over the opaque `base`, as `#RRGGBB`.
+fn over(color: u32, base: u32) -> String {
+    let alpha = (color & 0xFF) as f32 / 255.0;
+    let mix = |shift: u32| {
+        let top = ((color >> (24 - shift)) & 0xFF) as f32;
+        let under = ((base >> (16 - shift)) & 0xFF) as f32;
+        (top * alpha + under * (1.0 - alpha)).round() as u32
+    };
+    format!("#{:02X}{:02X}{:02X}", mix(0), mix(8), mix(16))
+}
+
+fn channels(hex: &str) -> [i32; 3] {
+    let value = i32::from_str_radix(hex.trim_start_matches('#'), 16).expect("a hex color");
+    [value >> 16 & 0xFF, value >> 8 & 0xFF, value & 0xFF]
+}
+
+/// Asserts each channel of `actual` is within `tolerance` of `want`.
+fn assert_near(actual: &str, want: &str, tolerance: i32, what: &str) {
+    let (a, w) = (channels(actual), channels(want));
+    assert!(
+        (0..3).all(|index| (a[index] - w[index]).abs() <= tolerance),
+        "{what}: {actual} is not within {tolerance} of {want}"
+    );
 }
 
 struct Capture {
@@ -166,16 +201,15 @@ fn capture_every_view() -> Vec<Capture> {
     let mut cx = headless();
     let handle = open_shell_with_settings(&mut cx, &pixel_data_dir("views"));
     cx.run_until_parked();
+    // Home has its own Light and Dark baselines, taken with the panels the app attaches.
     View::ALL
         .into_iter()
+        .filter(|view| *view != View::Home)
         .map(|view| {
-            if view != View::Home {
-                let id: &'static str =
-                    Box::leak(format!("sidebar.{}", view.key()).into_boxed_str());
-                cx.update_window(handle, |_, window, cx| window.click(id, cx))
-                    .expect("click the sidebar item");
-                cx.run_until_parked();
-            }
+            let id: &'static str = Box::leak(format!("sidebar.{}", view.key()).into_boxed_str());
+            cx.update_window(handle, |_, window, cx| window.click(id, cx))
+                .expect("click the sidebar item");
+            cx.run_until_parked();
             let image = cx.capture_screenshot(handle).expect("capture the window");
             Capture { view, image }
         })
@@ -380,49 +414,187 @@ fn captures_are_940x600_at_scale_two_and_use_the_design_tokens() {
         );
     }
     for capture in &captures {
-        let image = &capture.image;
-        let name = capture.view.key();
-        // Between the toolbar and the first panel: app background in every view. (500, 300)
-        // reads panel surface on views like About that fill the column with one surface.
-        assert_eq!(hex_at(image, 500, 47), "#2F2F2F", "{name}: content");
-        assert_eq!(hex_at(image, 100, 450), "#2B2B2D", "{name}: sidebar");
-        assert_eq!(hex_at(image, 26, 26), "#FF5F57", "{name}: close light");
-        assert_eq!(hex_at(image, 46, 26), "#FEBC2E", "{name}: minimize light");
-        for (index, view) in View::ALL.into_iter().enumerate() {
-            let (x, y) = nav_fill_point(index as u32);
-            let want = if view == capture.view {
-                "#686868"
-            } else {
-                "#2B2B2D"
-            };
-            assert_eq!(
-                hex_at(image, x, y),
-                want,
-                "{name}: sidebar item {}",
-                view.key()
-            );
-        }
+        assert_shell_tokens(
+            &capture.image,
+            Appearance::Dark,
+            Some(capture.view),
+            capture.view.key(),
+        );
     }
 }
 
-/// The main window with onboarding open at `step`, on a data folder with no models.
-fn capture_onboarding(step: &str) -> RgbaImage {
-    let tmp = tempfile::tempdir().expect("a scratch folder");
+/// The window chrome that every shell capture shares: the content and sidebar colors, the
+/// drawn window lights on Linux, a neutral selection fill on the active row only, and a sidebar
+/// with no color anywhere (icons and labels are gray). The toolbar has no line under it.
+fn assert_shell_tokens(
+    image: &RgbaImage,
+    appearance: Appearance,
+    selected: Option<View>,
+    name: &str,
+) {
+    let (content, selection) = match appearance {
+        Appearance::Dark => (theme::dark::CONTENT, theme::dark::SELECTION),
+        Appearance::Light => (theme::light::CONTENT, theme::light::SELECTION),
+    };
+    let content = format!("{:06X}", content >> 8);
+    let sidebar_base = chrome::sidebar_fill(false, appearance.is_dark()).expect("a solid sidebar");
+    // Between the toolbar and the first panel: the content color in every view.
+    assert_eq!(
+        hex_at(image, 500, 47),
+        format!("#{content}"),
+        "{name}: content"
+    );
+    assert_eq!(
+        hex_at(image, 100, 450),
+        format!("#{sidebar_base:06X}"),
+        "{name}: sidebar"
+    );
+    assert_eq!(hex_at(image, 26, 26), "#FF5F57", "{name}: close light");
+    assert_eq!(hex_at(image, 46, 26), "#FEBC2E", "{name}: minimize light");
+    let selection = over(selection, sidebar_base);
+    for (index, view) in View::ALL.into_iter().enumerate() {
+        let (x, y) = nav_fill_point(index as u32);
+        let want = if Some(view) == selected {
+            selection.clone()
+        } else {
+            format!("#{sidebar_base:06X}")
+        };
+        assert_near(
+            &hex_at(image, x, y),
+            &want,
+            1,
+            &format!("{name}: sidebar item {}", view.key()),
+        );
+    }
+    let scale = image.width() / space::WINDOW_WIDTH as u32;
+    for y in (space::SIDEBAR_TOP as u32 * scale)..image.height() {
+        for x in 0..(space::SIDEBAR_WIDTH as u32 * scale) {
+            let [r, g, b, _] = image.get_pixel(x, y).0;
+            let spread = r.max(g).max(b) - r.min(g).min(b);
+            assert!(
+                spread <= 6,
+                "{name}: the sidebar has a colored pixel {r},{g},{b} at ({x}, {y})"
+            );
+        }
+    }
+    // The toolbar title sits on the content color: no line under the toolbar at its bottom edge.
+    let toolbar_bottom = space::TOOLBAR_HEIGHT as u32;
+    for x in (space::SIDEBAR_WIDTH as u32 + 4)..(space::WINDOW_WIDTH as u32 - 4) {
+        assert_eq!(
+            hex_at(image, x, toolbar_bottom),
+            hex_at(image, x, toolbar_bottom - 1),
+            "{name}: a line under the toolbar at x {x}"
+        );
+    }
+}
+
+/// What a Light and Dark baseline shows.
+#[derive(Debug, Clone, Copy)]
+enum Scene {
+    /// The shell with its sidebar and title bar around a placeholder view.
+    Shell,
+    /// Home with the dictation and microphone panels the app attaches.
+    Home,
+    Onboarding(Step),
+    /// Onboarding reopened by a revoked macOS permission.
+    PermissionsChanged,
+}
+
+impl Scene {
+    fn name(self) -> String {
+        match self {
+            Scene::Shell => "shell".into(),
+            Scene::Home => "home".into(),
+            Scene::Onboarding(step) => format!("onboarding-{}", step.key()),
+            Scene::PermissionsChanged => "onboarding-permissions-changed".into(),
+        }
+    }
+
+    fn all() -> Vec<Scene> {
+        let mut scenes = vec![Scene::Shell, Scene::Home];
+        scenes.extend(Step::ALL.into_iter().map(Scene::Onboarding));
+        scenes.push(Scene::PermissionsChanged);
+        scenes
+    }
+}
+
+/// One default microphone, so the capture does not depend on the container's audio devices.
+struct OneMicrophone;
+
+impl MicBackend for OneMicrophone {
+    fn list(&self) -> Result<Vec<InputDevice>, CaptureError> {
+        Ok(vec![InputDevice {
+            id: "built-in".into(),
+            name: "Built-in Microphone".into(),
+            is_default: true,
+        }])
+    }
+
+    fn start(
+        &self,
+        _device: &str,
+        _path: PathBuf,
+        _sink: EventSink,
+    ) -> Result<Box<dyn MicSession>, CaptureError> {
+        Err(CaptureError::unavailable("a pixel test records nothing"))
+    }
+}
+
+/// Microphone granted, Accessibility and Input Monitoring revoked.
+struct Revoked;
+
+impl Preflight for Revoked {
+    fn microphone(&self) -> Access {
+        Access::Granted
+    }
+
+    fn post_event(&self) -> Access {
+        Access::Denied
+    }
+
+    fn listen_event(&self) -> Access {
+        Access::Denied
+    }
+}
+
+/// The main window showing `scene` in `appearance`, on a data folder with no models.
+fn capture_scene(scene: Scene, appearance: Appearance) -> RgbaImage {
+    // Tests run in parallel and each capture needs its own folder; these scenes show no path.
+    static CAPTURES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let serial = CAPTURES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let data = pixel_data_dir(&format!("{}-{}-{serial}", scene.name(), appearance.key()));
     let storage = Rc::new(
-        storage::open(DataDir::open(tmp.path().join("data")).expect("open the data folder"))
+        storage::open(DataDir::open(data.join("data")).expect("open the data folder"))
             .expect("open the storage"),
     );
-    storage
-        .settings
-        .set_internal("onboarding.step", json!(step))
-        .expect("store the step");
-    let mut cx = headless();
+    let mac = matches!(scene, Scene::PermissionsChanged);
+    match scene {
+        Scene::Onboarding(step) => storage
+            .settings
+            .set_internal("onboarding.step", json!(step.key()))
+            .expect("store the step"),
+        Scene::PermissionsChanged => {
+            let settings = &storage.settings;
+            settings
+                .set_internal("onboarding.completed", json!(true))
+                .expect("complete onboarding");
+            settings
+                .set_internal(
+                    "permissions.lastGranted",
+                    json!({"microphone": true, "accessibility": true, "inputMonitoring": true}),
+                )
+                .expect("store the earlier grants");
+        }
+        Scene::Shell | Scene::Home => {}
+    }
+    let mut cx = headless_in(appearance);
     let handle = cx
         .open_window(
             size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
             |window, cx| {
                 let shell = cx.new(|cx| Shell::new(window, cx));
-                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(CpalBackend), cx));
+                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(OneMicrophone), cx));
+                mic.update(cx, |mic, cx| mic.refresh(cx));
                 let models = cx.new(|cx| {
                     Models::new(
                         Rc::clone(&storage),
@@ -446,39 +618,71 @@ fn capture_onboarding(step: &str) -> RgbaImage {
                     )
                 });
                 controller.update(cx, |controller, _| {
+                    if mac {
+                        controller.attach_permissions(Arc::new(Revoked));
+                    }
                     controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
                 });
-                let onboarding = cx.new(|cx| {
-                    Onboarding::new(
-                        OnboardingParts {
-                            storage: Rc::clone(&storage),
-                            mic,
-                            models,
-                            controller,
-                            guide: Rc::new(SystemGuide),
-                            platform: Platform::Linux,
-                            session: Session::X11,
-                        },
-                        cx,
-                    )
-                });
-                shell.update(cx, |shell, cx| shell.attach_onboarding(onboarding, cx));
+                match scene {
+                    Scene::Onboarding(_) | Scene::PermissionsChanged => {
+                        let onboarding = cx.new(|cx| {
+                            Onboarding::new(
+                                OnboardingParts {
+                                    storage: Rc::clone(&storage),
+                                    mic,
+                                    models,
+                                    controller,
+                                    guide: Rc::new(SystemGuide),
+                                    platform: if mac {
+                                        Platform::MacOs
+                                    } else {
+                                        Platform::Linux
+                                    },
+                                    session: Session::X11,
+                                },
+                                cx,
+                            )
+                        });
+                        shell.update(cx, |shell, cx| shell.attach_onboarding(onboarding, cx));
+                    }
+                    Scene::Home => {
+                        let dictation = cx
+                            .new(|cx| Dictation::new(Rc::clone(&storage), models, controller, cx));
+                        shell.update(cx, |shell, cx| {
+                            shell.attach_mic(mic, cx);
+                            shell.attach_dictation(dictation, cx);
+                        });
+                    }
+                    Scene::Shell => {}
+                }
                 cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
             },
         )
         .expect("open the headless window");
+    // The microphone list is read on a thread and arrives through a channel.
+    std::thread::sleep(std::time::Duration::from_millis(300));
     cx.run_until_parked();
+    if matches!(scene, Scene::Shell) {
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("sidebar.history", cx)
+        })
+        .expect("select a view without content");
+        cx.run_until_parked();
+    }
     cx.capture_screenshot(handle.into())
         .expect("capture the window")
 }
 
-#[test]
-fn every_onboarding_step_matches_its_approved_baseline() {
+fn check_scenes(scenes: &[Scene], appearance: Appearance) {
     let mut failures = Vec::new();
-    for step in Step::ALL {
-        let image = capture_onboarding(step.key());
-        assert_eq!(image.dimensions(), (1880, 1200), "{}", step.key());
-        check_image(&format!("onboarding-{}", step.key()), &image, &mut failures);
+    for scene in scenes {
+        let image = capture_scene(*scene, appearance);
+        assert_eq!(image.dimensions(), (1880, 1200), "{}", scene.name());
+        check_image(
+            &format!("{}-{}", scene.name(), appearance.key()),
+            &image,
+            &mut failures,
+        );
     }
     assert!(
         failures.is_empty(),
@@ -488,11 +692,67 @@ fn every_onboarding_step_matches_its_approved_baseline() {
 }
 
 #[test]
+fn the_shell_home_and_onboarding_match_their_approved_dark_baselines() {
+    check_scenes(&Scene::all(), Appearance::Dark);
+}
+
+#[test]
+fn the_shell_home_and_onboarding_match_their_approved_light_baselines() {
+    check_scenes(&Scene::all(), Appearance::Light);
+}
+
+#[test]
+fn light_and_dark_differ_and_follow_the_palette_for_every_scene() {
+    for scene in Scene::all() {
+        let dark = capture_scene(scene, Appearance::Dark);
+        let light = capture_scene(scene, Appearance::Light);
+        assert_ne!(dark, light, "{}", scene.name());
+        let name = scene.name();
+        assert_near(
+            &hex_at(&dark, 900, 580),
+            "#1E1E1E",
+            1,
+            &format!("{name}: dark content"),
+        );
+        assert_near(
+            &hex_at(&light, 900, 580),
+            "#F5F5F5",
+            1,
+            &format!("{name}: light content"),
+        );
+        if matches!(scene, Scene::Shell | Scene::Home) {
+            let selected = if matches!(scene, Scene::Home) {
+                View::Home
+            } else {
+                View::History
+            };
+            assert_shell_tokens(
+                &dark,
+                Appearance::Dark,
+                Some(selected),
+                &format!("{name}-dark"),
+            );
+            assert_shell_tokens(
+                &light,
+                Appearance::Light,
+                Some(selected),
+                &format!("{name}-light"),
+            );
+        }
+    }
+}
+
+#[test]
 fn onboarding_takes_the_whole_window_with_no_sidebar() {
-    let image = capture_onboarding("permissions");
-    assert_eq!(hex_at(&image, 100, 450), "#2F2F2F", "no sidebar color");
-    assert_eq!(hex_at(&image, 26, 26), "#FF5F57", "close light");
-    assert_eq!(hex_at(&image, 46, 26), "#FEBC2E", "minimize light");
+    for (appearance, content) in [
+        (Appearance::Dark, "#1E1E1E"),
+        (Appearance::Light, "#F5F5F5"),
+    ] {
+        let image = capture_scene(Scene::Onboarding(Step::Permissions), appearance);
+        assert_eq!(hex_at(&image, 100, 450), content, "no sidebar color");
+        assert_eq!(hex_at(&image, 26, 26), "#FF5F57", "close light");
+        assert_eq!(hex_at(&image, 46, 26), "#FEBC2E", "minimize light");
+    }
 }
 
 fn flow_bar_states() -> Vec<(&'static str, Props)> {
@@ -546,7 +806,11 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
 }
 
 fn capture_flow_bar(props: Props) -> RgbaImage {
-    let mut cx = headless();
+    capture_flow_bar_in(props, Appearance::Dark)
+}
+
+fn capture_flow_bar_in(props: Props, appearance: Appearance) -> RgbaImage {
+    let mut cx = headless_in(appearance);
     let (width, height) = size_of(&props);
     let handle = cx
         .open_window(size(px(width), px(height)), move |window, cx| {
@@ -570,6 +834,23 @@ fn every_flow_bar_state_matches_its_approved_baseline() {
         "pixel baselines failed:\n{}",
         failures.join("\n")
     );
+}
+
+#[test]
+fn the_flow_bar_pill_stays_dark_in_a_light_appearance() {
+    // The picker windows are taller; the pill is not at this point in them.
+    for (name, props) in flow_bar_states()
+        .into_iter()
+        .filter(|(name, _)| !name.contains("picker"))
+    {
+        let light = capture_flow_bar_in(props, Appearance::Light);
+        let [r, g, b, _] = light.get_pixel(24, 32).0;
+        assert_eq!(
+            format!("#{r:02X}{g:02X}{b:02X}"),
+            "#2B2B2B",
+            "{name}: the pill keeps its dark HUD color in Light"
+        );
+    }
 }
 
 #[test]

@@ -150,6 +150,7 @@ pub fn run(hidden: bool) -> ExitCode {
             }
             let _ = handle.update(cx, |_, window, cx| {
                 main_window::install(cx, handle, native_handle(window), tray_host);
+                theme::observe(window).detach();
                 window.on_window_should_close(cx, |window, cx| {
                     main_window::close_requested(window, cx);
                     false

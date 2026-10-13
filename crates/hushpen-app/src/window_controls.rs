@@ -3,7 +3,7 @@
 
 use crate::hook;
 use crate::main_window;
-use crate::theme::{self, color, size, space};
+use crate::theme::{self, chrome, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
@@ -22,16 +22,16 @@ pub fn controls<V: 'static>(cx: &mut Context<V>) -> impl IntoElement + use<V> {
         .child(light(
             "close",
             "Close",
-            color::WINDOW_CLOSE,
-            color::WINDOW_CLOSE_GLYPH,
+            chrome::WINDOW_CLOSE,
+            chrome::WINDOW_CLOSE_GLYPH,
             IconName::X,
             cx.listener(|_, _: &ClickEvent, window, cx| main_window::close_requested(window, cx)),
         ))
         .child(light(
             "minimize",
             "Minimize",
-            color::WINDOW_MINIMIZE,
-            color::WINDOW_MINIMIZE_GLYPH,
+            chrome::WINDOW_MINIMIZE,
+            chrome::WINDOW_MINIMIZE_GLYPH,
             IconName::Minus,
             cx.listener(|_, _: &ClickEvent, window, _| window.minimize_window()),
         ))
@@ -56,7 +56,7 @@ fn light(
         .items_center()
         .justify_center()
         .rounded_full()
-        .bg(theme::rgb_of(fill))
+        .bg(theme::rgba_of(fill))
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(on_click)
@@ -64,7 +64,7 @@ fn light(
             svg()
                 .path(icon.path())
                 .size(px(9.0))
-                .text_color(theme::rgb_of(glyph))
+                .text_color(theme::rgba_of(glyph))
                 .invisible()
                 .group_hover(GROUP, |style| style.visible()),
         )

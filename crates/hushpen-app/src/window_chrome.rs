@@ -61,8 +61,8 @@ pub fn background_name() -> &'static str {
 
 /// What `hookctl state` reports for the sidebar fill: a color, or `none` when the sidebar
 /// shows the blurred window.
-pub fn sidebar_fill_name() -> String {
-    match chrome::sidebar_fill(chrome::TRANSLUCENT_SIDEBAR, true) {
+pub fn sidebar_fill_name(dark: bool) -> String {
+    match chrome::sidebar_fill(chrome::TRANSLUCENT_SIDEBAR, dark) {
         Some(fill) => format!("#{fill:06X}"),
         None => "none".to_owned(),
     }
@@ -133,14 +133,15 @@ mod tests {
     fn the_hook_names_match_the_platform() {
         if cfg!(target_os = "macos") {
             assert_eq!(
-                (background_name(), sidebar_fill_name().as_str()),
+                (background_name(), sidebar_fill_name(true).as_str()),
                 ("blurred", "none")
             );
         } else {
             assert_eq!(
-                (background_name(), sidebar_fill_name().as_str()),
+                (background_name(), sidebar_fill_name(true).as_str()),
                 ("opaque", "#2B2B2D")
             );
+            assert_eq!(sidebar_fill_name(false), "#E8E8EA");
         }
     }
 }

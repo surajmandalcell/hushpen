@@ -747,7 +747,10 @@ fn the_panel_and_its_controls_fit_the_content_width(cx: &mut TestAppContext) {
         })
         .unwrap();
 
-    assert!(f32::from(list.size.width) <= space::CONTENT_MAX_WIDTH);
+    assert!(
+        f32::from(list.size.width)
+            <= (space::WINDOW_WIDTH - space::SIDEBAR_WIDTH - 2.0 * space::XXL)
+    );
     assert!(clear.right() <= list.right());
     assert!(row.right() <= list.right());
     assert!(

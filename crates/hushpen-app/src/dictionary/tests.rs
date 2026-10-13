@@ -426,7 +426,10 @@ fn the_panel_fits_the_content_width_and_every_control_is_inside_it(cx: &mut Test
             )
         })
         .unwrap();
-    assert!(f32::from(list.size.width) <= space::CONTENT_MAX_WIDTH);
+    assert!(
+        f32::from(list.size.width)
+            <= (space::WINDOW_WIDTH - space::SIDEBAR_WIDTH - 2.0 * space::XXL)
+    );
     for (name, bounds) in [("submit", submit), ("edit", edit), ("delete", delete)] {
         assert!(bounds.right() <= list.right(), "{name} is inside the panel");
         assert!(bounds.left() >= list.left(), "{name} is inside the panel");

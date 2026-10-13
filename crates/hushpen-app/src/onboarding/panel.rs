@@ -6,15 +6,13 @@ use crate::hook;
 use crate::mic::METER_BARS;
 use crate::models::ModelState;
 use crate::models::panel::format_size;
-use crate::theme::{
-    self, BODY_MD, BODY_SM, DISPLAY_MD, LABEL_CAPS, LABEL_MD, ROW_TITLE, StyledType, color, radius,
-    size, space,
-};
+use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, radius, size, space};
+use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Role,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative, svg,
+    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
+    ParentElement, Rgba, Role, StatefulInteractiveElement, Styled, Window, div, px, relative, svg,
     transparent_black,
 };
 use hushpen_core::onboarding::{
@@ -30,6 +28,7 @@ const BAR_MAX: f32 = 28.0;
 const FIELD_MIN_HEIGHT: f32 = 84.0;
 
 pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+    let palette = theme::palette(cx);
     let (step, mode, can_continue, notice) = {
         let me = onboarding.read(cx);
         (
@@ -41,11 +40,11 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
     };
     let continue_focus = onboarding.read(cx).continue_focus.clone();
     let body = match step {
-        Step::Permissions => permissions(onboarding, cx).into_any_element(),
-        Step::MicTest => mic_test(onboarding, cx).into_any_element(),
-        Step::Model => model(onboarding, cx).into_any_element(),
-        Step::Practice => practice(onboarding, cx).into_any_element(),
-        Step::Updates => updates(onboarding, cx).into_any_element(),
+        Step::Permissions => permissions(palette, onboarding, cx).into_any_element(),
+        Step::MicTest => mic_test(palette, onboarding, cx).into_any_element(),
+        Step::Model => model(palette, onboarding, cx).into_any_element(),
+        Step::Practice => practice(palette, onboarding, cx).into_any_element(),
+        Step::Updates => updates(palette, onboarding, cx).into_any_element(),
     };
     let last = step == Step::Updates && mode == Mode::Setup;
     let label = if last { "Finish" } else { "Continue" };
@@ -65,35 +64,37 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
         .flex_col()
         .flex_1()
         .min_h_0()
-        .w_full()
-        .max_w(px(space::CONTENT_MAX_WIDTH))
+        .w(px(space::ONBOARDING_WIDTH))
+        .max_w_full()
         .mx_auto()
-        .px(px(space::XL))
-        .pb(px(space::XL))
+        .pt(px(space::SM))
+        .pb(px(space::XXL))
         .gap(px(space::LG))
-        .child(header(step, mode))
+        .child(header(palette, step, mode))
         .child(body)
-        .children(notice.map(notice_row))
-        .child(div().flex().justify_end().child(button(
+        .children(notice.map(|message| notice_row(palette, message)))
+        .child(div().flex().justify_end().child(ui::button(
+            palette,
             hook::id("onboarding", "continue"),
             label,
-            &continue_focus,
+            Kind::Default,
+            Some(&continue_focus),
             can_continue,
             advance,
         )))
 }
 
-fn header(step: Step, mode: Mode) -> impl IntoElement + use<> {
+fn header(palette: Palette, step: Step, mode: Mode) -> impl IntoElement + use<> {
     let (eyebrow, title, detail) = if mode == Mode::Repair {
         (
-            "PERMISSIONS CHANGED".to_owned(),
+            "Permissions changed".to_owned(),
             "Permissions".to_owned(),
             "Hushpen lost something it was allowed to use before. Allow it again to go on."
                 .to_owned(),
         )
     } else {
         (
-            format!("STEP {} OF {}", step.index() + 1, Step::ALL.len()),
+            format!("Step {} of {}", step.index() + 1, Step::ALL.len()),
             step.title().to_owned(),
             step_detail(step).to_owned(),
         )
@@ -107,8 +108,8 @@ fn header(step: Step, mode: Mode) -> impl IntoElement + use<> {
                 .id(hook::id("onboarding", "progress"))
                 .test_support()
                 .aria_label(eyebrow.clone())
-                .text_token(LABEL_CAPS)
-                .text_color(theme::rgb_of(color::TEXT_SUBTLE))
+                .text_token(SECONDARY)
+                .text_color(palette.label_secondary)
                 .child(eyebrow),
         )
         .child(
@@ -116,16 +117,16 @@ fn header(step: Step, mode: Mode) -> impl IntoElement + use<> {
                 .id(hook::id("onboarding", "title"))
                 .test_support()
                 .aria_label(title.clone())
-                .text_token(DISPLAY_MD)
-                .text_color(theme::rgb_of(color::TEXT_HEADING))
+                .text_token(TITLE)
+                .text_color(palette.label)
                 .child(title),
         )
         .child(
             div()
                 .id(hook::id("onboarding", "detail"))
                 .test_support()
-                .text_token(BODY_MD)
-                .text_color(theme::rgb_of(color::TEXT_MUTED))
+                .text_token(BODY)
+                .text_color(palette.label_secondary)
                 .child(detail),
         )
 }
@@ -150,21 +151,11 @@ fn step_detail(step: Step) -> &'static str {
     }
 }
 
-fn surface(id: SharedString) -> impl IntoElement + ParentElement + Styled {
-    div()
-        .id(id)
-        .test_support()
-        .flex()
-        .flex_col()
-        .w_full()
-        .overflow_hidden()
-        .bg(theme::rgb_of(color::SURFACE))
-        .rounded(px(radius::PANEL))
-        .border_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-}
-
-fn permissions(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+fn permissions(
+    palette: Palette,
+    onboarding: &Entity<Onboarding>,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let (rows, focus, relaunch_focus) = {
         let me = onboarding.read(cx);
         (
@@ -173,31 +164,27 @@ fn permissions(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElemen
             me.relaunch_focus.clone(),
         )
     };
-    let mut panel = surface(hook::id("onboarding", "permissions"));
-    for (index, row) in rows.into_iter().enumerate() {
-        panel = panel.child(permission_row(
-            onboarding,
-            index,
-            row,
-            &focus,
-            &relaunch_focus,
-        ));
-    }
-    panel
+    let rows = rows
+        .into_iter()
+        .map(|row| {
+            permission_row(palette, onboarding, row, &focus, &relaunch_focus).into_any_element()
+        })
+        .collect();
+    ui::group(hook::id("onboarding", "permissions"), palette, rows)
 }
 
 fn permission_row(
+    palette: Palette,
     onboarding: &Entity<Onboarding>,
-    index: usize,
     row: Row,
     focus: &[FocusHandle],
     relaunch_focus: &FocusHandle,
 ) -> impl IntoElement + use<> {
     let key = row.key.key();
     let (state_text, tone) = match row.state {
-        RowState::Ready => ("Ready", color::FOCUS),
-        RowState::Missing => ("Needs your help", color::STATUS_WARNING),
-        RowState::Unavailable => ("Not available", color::TEXT_SUBTLE),
+        RowState::Ready => ("Ready", palette.success),
+        RowState::Missing => ("Needs your help", palette.warning),
+        RowState::Unavailable => ("Not available", palette.label_secondary),
     };
     let icon = match row.key {
         hushpen_core::onboarding::RowKey::Microphone => IconName::Mic,
@@ -219,51 +206,26 @@ fn permission_row(
         let onboarding = onboarding.clone();
         move |cx: &mut App| onboarding.update(cx, |me, cx| me.relaunch(cx))
     });
-    let mut container = div()
+    ui::row(palette)
         .id(hook::id("onboarding", &format!("permissions.row.{key}")))
         .test_support()
         .aria_label(format!("{}: {state_text}", row.title))
-        .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .px(px(space::LG))
-        .py(px(space::MD));
-    if index > 0 {
-        container = container
-            .border_t_1()
-            .border_color(theme::rgb_of(color::DIVIDER));
-    }
-    container
-        .child(icon_tile(icon))
+        .child(ui::icon(palette, icon))
         .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
+            ui::text_column()
+                .child(ui::title(palette).child(row.title))
                 .child(
-                    div()
-                        .text_token(ROW_TITLE)
-                        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                        .child(row.title),
-                )
-                .child(
-                    div()
+                    ui::secondary(palette)
                         .id(hook::id("onboarding", &format!("permissions.detail.{key}")))
                         .test_support()
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
                         .child(row.detail),
                 ),
         )
         .child(
-            div()
+            ui::value(palette)
                 .id(hook::id("onboarding", &format!("permissions.state.{key}")))
                 .test_support()
-                .flex_none()
-                .whitespace_nowrap()
-                .text_token(BODY_SM)
-                .text_color(theme::rgb_of(tone))
+                .text_color(tone)
                 .child(state_text),
         )
         .children(buttons.map(|(permission, allow, open)| {
@@ -276,33 +238,43 @@ fn permission_row(
                 .flex()
                 .items_center()
                 .gap(px(space::SM))
-                .child(button(
+                .child(ui::button(
+                    palette,
                     hook::id("onboarding", &format!("permissions.allow.{key}")),
                     "Allow",
-                    &focus[slot * 2],
+                    Kind::Default,
+                    Some(&focus[slot * 2]),
                     true,
                     allow,
                 ))
-                .child(button(
+                .child(ui::button(
+                    palette,
                     hook::id("onboarding", &format!("permissions.open.{key}")),
                     "Open Settings",
-                    &focus[slot * 2 + 1],
+                    Kind::Plain,
+                    Some(&focus[slot * 2 + 1]),
                     true,
                     open,
                 ))
         }))
         .children(relaunch.map(|press| {
-            button(
+            ui::button(
+                palette,
                 hook::id("onboarding", "permissions.relaunch"),
                 "Quit and Reopen",
-                relaunch_focus,
+                Kind::Default,
+                Some(relaunch_focus),
                 true,
                 press,
             )
         }))
 }
 
-fn mic_test(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+fn mic_test(
+    palette: Palette,
+    onboarding: &Entity<Onboarding>,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let (test, meter, focus, models_ready, default_name) = {
         let me = onboarding.read(cx);
         let mic = me.mic.read(cx);
@@ -335,93 +307,77 @@ fn mic_test(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement +
             });
         }
     };
-    let (result_id, result_text, result_tone) = match &test.verdict {
+    let (result_id, result_text, result_tone): (&str, String, Rgba) = match &test.verdict {
         Some(MicVerdict::Passed {
             transcript: Some(text),
-        }) => ("transcript", text.clone(), color::TEXT_PRIMARY),
+        }) => ("transcript", text.clone(), palette.label),
         Some(MicVerdict::Passed { transcript: None }) => {
-            ("note", NOTE_NO_MODEL.to_owned(), color::TEXT_MUTED)
+            ("note", NOTE_NO_MODEL.to_owned(), palette.label_secondary)
         }
-        Some(MicVerdict::NoSound) => ("hint", HINT_NO_SOUND.to_owned(), color::STATUS_ERROR),
-        Some(MicVerdict::NoSpeech) => ("hint", HINT_NO_SPEECH.to_owned(), color::STATUS_ERROR),
-        Some(MicVerdict::TranscriptFailed) => (
-            "hint",
-            HINT_TRANSCRIPT_FAILED.to_owned(),
-            color::STATUS_ERROR,
-        ),
+        Some(MicVerdict::NoSound) => ("hint", HINT_NO_SOUND.to_owned(), palette.label),
+        Some(MicVerdict::NoSpeech) => ("hint", HINT_NO_SPEECH.to_owned(), palette.label),
+        Some(MicVerdict::TranscriptFailed) => {
+            ("hint", HINT_TRANSCRIPT_FAILED.to_owned(), palette.label)
+        }
         None if models_ready => (
             "idle",
             "Your words will show here.".to_owned(),
-            color::TEXT_SUBTLE,
+            palette.label_secondary,
         ),
         None => (
             "idle",
             "Words show here after the speech model is downloaded. The level works now.".to_owned(),
-            color::TEXT_SUBTLE,
+            palette.label_secondary,
         ),
     };
-    surface(hook::id("onboarding", "mic"))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .p(px(space::LG))
-                .child(icon_tile(IconName::Mic))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .text_token(ROW_TITLE)
-                                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                                .child("Microphone"),
-                        )
-                        .child(
-                            div()
-                                .id(hook::id("onboarding", "mic.status"))
-                                .test_support()
-                                .role(Role::Status)
-                                .aria_label(status.clone())
-                                .text_token(BODY_SM)
-                                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                                .truncate()
-                                .child(status),
-                        ),
-                )
-                .child(button(
-                    hook::id("onboarding", "mic.test"),
-                    label,
-                    &focus,
-                    !checking,
-                    toggle,
-                )),
-        )
-        .child(meter_row(&meter, listening))
-        .child(
-            div()
-                .id(hook::id("onboarding", &format!("mic.{result_id}")))
-                .test_support()
-                .role(Role::Status)
-                .aria_label(result_text.clone())
-                .px(px(space::LG))
-                .py(px(space::MD))
-                .border_t_1()
-                .border_color(theme::rgb_of(color::DIVIDER))
-                .text_token(BODY_MD)
-                .text_color(theme::rgb_of(result_tone))
-                .child(result_text),
-        )
+    let rows: Vec<AnyElement> = vec![
+        ui::row(palette)
+            .child(ui::icon(palette, IconName::Mic))
+            .child(
+                ui::text_column()
+                    .child(ui::title(palette).child("Microphone"))
+                    .child(
+                        ui::secondary(palette)
+                            .id(hook::id("onboarding", "mic.status"))
+                            .test_support()
+                            .role(Role::Status)
+                            .aria_label(status.clone())
+                            .child(status),
+                    ),
+            )
+            .child(ui::button(
+                palette,
+                hook::id("onboarding", "mic.test"),
+                label,
+                Kind::Plain,
+                Some(&focus),
+                !checking,
+                toggle,
+            ))
+            .into_any_element(),
+        meter_row(palette, &meter, listening).into_any_element(),
+        div()
+            .id(hook::id("onboarding", &format!("mic.{result_id}")))
+            .test_support()
+            .role(Role::Status)
+            .aria_label(result_text.clone())
+            .w_full()
+            .flex_none()
+            .px(px(size::ROW_PADDING))
+            .py(px(space::MD))
+            .text_token(BODY)
+            .text_color(result_tone)
+            .child(result_text)
+            .into_any_element(),
+    ];
+    ui::group(hook::id("onboarding", "mic"), palette, rows)
 }
 
-fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {
+fn meter_row(palette: Palette, levels: &[f32], listening: bool) -> impl IntoElement + use<> {
     let bar_color = if listening {
-        color::ACCENT_BLUE
+        palette.label_secondary
     } else {
-        color::BORDER_CONTROL
+        palette.label_tertiary
     };
     let bars = levels
         .iter()
@@ -434,8 +390,8 @@ fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {
                 .flex_none()
                 .w(px(BAR_WIDTH))
                 .h(px(BAR_REST + level.clamp(0.0, 1.0) * (BAR_MAX - BAR_REST)))
-                .rounded(px(radius::XS))
-                .bg(theme::rgb_of(bar_color))
+                .rounded(px(radius::BUTTON))
+                .bg(bar_color)
         });
     div()
         .id(hook::id("onboarding", "mic.meter"))
@@ -443,16 +399,20 @@ fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {
         .flex()
         .items_end()
         .justify_center()
+        .flex_none()
+        .w_full()
         .gap(px(BAR_GAP))
         .h(px(BAR_MAX + 2.0 * space::MD))
-        .px(px(space::LG))
+        .px(px(size::ROW_PADDING))
         .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
         .children(bars)
 }
 
-fn model(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+fn model(
+    palette: Palette,
+    onboarding: &Entity<Onboarding>,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let (info, state, focus, notice) = {
         let me = onboarding.read(cx);
         (
@@ -464,17 +424,17 @@ fn model(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + us
     };
     let (name, bytes) = info.unwrap_or_else(|| ("Speech model".to_owned(), 0));
     let state = state.unwrap_or(ModelState::NotDownloaded);
-    let (status, tone): (String, u32) = match state {
-        ModelState::NotDownloaded => ("Not downloaded".into(), color::TEXT_SUBTLE),
+    let (status, tone): (String, Rgba) = match state {
+        ModelState::NotDownloaded => ("Not downloaded".into(), palette.label_secondary),
         ModelState::Downloading { .. } => (
             state
                 .percent()
                 .map_or_else(|| "Starting".into(), |percent| format!("{percent}%")),
-            color::TEXT_BODY,
+            palette.label,
         ),
-        ModelState::Verifying => ("Checking".into(), color::TEXT_MUTED),
-        ModelState::Ready => ("Ready".into(), color::FOCUS),
-        ModelState::Failed => ("Failed verification".into(), color::STATUS_ERROR),
+        ModelState::Verifying => ("Checking".into(), palette.label_secondary),
+        ModelState::Ready => ("Ready".into(), palette.success),
+        ModelState::Failed => ("Failed verification".into(), palette.error),
     };
     let fraction = state
         .percent()
@@ -498,99 +458,93 @@ fn model(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + us
         _ if downloading => Some(("Cancel", "cancel")),
         _ => Some(("Download", "download")),
     };
-    let mut panel = surface(hook::id("onboarding", "model"));
+    let mut rows: Vec<AnyElement> = Vec::new();
     if let Some(message) = notice {
-        panel = panel.child(
-            div()
+        rows.push(
+            ui::row(palette)
                 .id(hook::id("onboarding", "model.notice"))
                 .test_support()
                 .role(Role::Alert)
-                .px(px(space::LG))
-                .py(px(space::MD))
-                .border_b_1()
-                .border_color(theme::rgb_of(color::DIVIDER))
-                .text_token(BODY_MD)
-                .text_color(theme::rgb_of(color::STATUS_ERROR))
-                .child(message),
+                .text_color(palette.label)
+                .child(message)
+                .into_any_element(),
         );
     }
-    panel
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .p(px(space::LG))
-                .child(icon_tile(IconName::Cpu))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .id(hook::id("onboarding", "model.name"))
-                                .test_support()
-                                .text_token(ROW_TITLE)
-                                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                                .truncate()
-                                .child(name),
-                        )
-                        .child(
-                            div()
-                                .text_token(BODY_SM)
-                                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                                .child(format!("{} · recommended", format_size(bytes))),
-                        ),
-                )
-                .child(
-                    div()
-                        .id(hook::id("onboarding", "model.status"))
-                        .test_support()
-                        .role(Role::Status)
-                        .aria_label(status.clone())
-                        .flex_none()
-                        .whitespace_nowrap()
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(tone))
-                        .child(status),
-                )
-                .children(action.map(|(label, id)| {
-                    button(
-                        hook::id("onboarding", &format!("model.{id}")),
-                        label,
-                        &focus,
-                        true,
-                        press,
+    rows.push(
+        ui::row(palette)
+            .child(ui::icon(palette, IconName::Cpu))
+            .child(
+                ui::text_column()
+                    .child(
+                        ui::title(palette)
+                            .id(hook::id("onboarding", "model.name"))
+                            .test_support()
+                            .child(name),
                     )
-                })),
-        )
-        .child(
-            div()
-                .id(hook::id("onboarding", "model.progress"))
-                .test_support()
-                .role(Role::ProgressIndicator)
-                .h(px(4.0))
-                .mx(px(space::LG))
-                .mb(px(space::LG))
-                .rounded(px(radius::FULL))
-                .bg(theme::rgb_of(color::SURFACE_CONTROL))
-                .child(
-                    div()
-                        .h_full()
-                        .w(relative(if state == ModelState::Ready {
-                            1.0
-                        } else {
-                            fraction
-                        }))
-                        .rounded(px(radius::FULL))
-                        .bg(theme::rgb_of(color::ACCENT_BLUE)),
-                ),
-        )
+                    .child(
+                        ui::secondary(palette)
+                            .child(format!("{} · recommended", format_size(bytes))),
+                    ),
+            )
+            .child(
+                ui::value(palette)
+                    .id(hook::id("onboarding", "model.status"))
+                    .test_support()
+                    .role(Role::Status)
+                    .aria_label(status.clone())
+                    .text_color(tone)
+                    .child(status),
+            )
+            .children(action.map(|(label, id)| {
+                ui::button(
+                    palette,
+                    hook::id("onboarding", &format!("model.{id}")),
+                    label,
+                    Kind::Plain,
+                    Some(&focus),
+                    true,
+                    press,
+                )
+            }))
+            .into_any_element(),
+    );
+    rows.push(
+        div()
+            .w_full()
+            .flex_none()
+            .px(px(size::ROW_PADDING))
+            .py(px(space::MD))
+            .child(
+                div()
+                    .id(hook::id("onboarding", "model.progress"))
+                    .test_support()
+                    .role(Role::ProgressIndicator)
+                    .h(px(4.0))
+                    .w_full()
+                    .rounded(px(radius::FULL))
+                    .bg(palette.control)
+                    .child(
+                        div()
+                            .h_full()
+                            .w(relative(if state == ModelState::Ready {
+                                1.0
+                            } else {
+                                fraction
+                            }))
+                            .rounded(px(radius::FULL))
+                            .bg(palette.label_secondary),
+                    ),
+            )
+            .into_any_element(),
+    );
+    ui::group(hook::id("onboarding", "model"), palette, rows)
 }
 
-fn practice(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+fn practice(
+    palette: Palette,
+    onboarding: &Entity<Onboarding>,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let (text, hold, keys_ready, listening, busy, can_record, field_focus, record_focus) = {
         let me = onboarding.read(cx);
         (
@@ -630,49 +584,41 @@ fn practice(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement +
         }
     };
     let shown = text.clone().unwrap_or_default();
-    surface(hook::id("onboarding", "practice"))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .p(px(space::LG))
-                .child(icon_tile(IconName::Keyboard))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .id(hook::id("onboarding", "practice.instruction"))
-                                .test_support()
-                                .text_token(ROW_TITLE)
-                                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                                .child(instruction),
-                        )
-                        .child(
-                            div()
-                                .id(hook::id("onboarding", "practice.status"))
-                                .test_support()
-                                .role(Role::Status)
-                                .aria_label(status)
-                                .text_token(BODY_SM)
-                                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                                .child(status),
-                        ),
-                )
-                .child(button(
-                    hook::id("onboarding", "practice.record"),
-                    if listening { "Stop" } else { "Record" },
-                    &record_focus,
-                    can_record || listening,
-                    toggle,
-                )),
-        )
-        .child(
-            div().px(px(space::LG)).pb(px(space::LG)).child(
+    let rows: Vec<AnyElement> = vec![
+        ui::row(palette)
+            .child(ui::icon(palette, IconName::Keyboard))
+            .child(
+                ui::text_column()
+                    .child(
+                        ui::title(palette)
+                            .id(hook::id("onboarding", "practice.instruction"))
+                            .test_support()
+                            .child(instruction),
+                    )
+                    .child(
+                        ui::secondary(palette)
+                            .id(hook::id("onboarding", "practice.status"))
+                            .test_support()
+                            .role(Role::Status)
+                            .aria_label(status)
+                            .child(status),
+                    ),
+            )
+            .child(ui::button(
+                palette,
+                hook::id("onboarding", "practice.record"),
+                if listening { "Stop" } else { "Record" },
+                Kind::Plain,
+                Some(&record_focus),
+                can_record || listening,
+                toggle,
+            ))
+            .into_any_element(),
+        div()
+            .w_full()
+            .flex_none()
+            .p(px(size::ROW_PADDING))
+            .child(
                 div()
                     .id(hook::id("onboarding", "practice.field"))
                     .test_support()
@@ -685,28 +631,34 @@ fn practice(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement +
                     })
                     .w_full()
                     .min_h(px(FIELD_MIN_HEIGHT))
-                    .p(px(space::MD - size::FOCUS_RING))
-                    .rounded(px(radius::MD))
+                    .p(px(space::SM - size::FOCUS_RING))
+                    .rounded(px(radius::BUTTON))
                     .border_2()
                     .border_color(transparent_black())
-                    .bg(theme::rgb_of(color::SURFACE_CONTROL))
-                    .text_token(BODY_MD)
-                    .text_color(theme::rgb_of(if passed {
-                        color::TEXT_PRIMARY
+                    .bg(palette.control)
+                    .text_token(BODY)
+                    .text_color(if passed {
+                        palette.label
                     } else {
-                        color::TEXT_SUBTLE
-                    }))
-                    .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+                        palette.label_secondary
+                    })
+                    .focus_visible(move |style| style.border_color(palette.accent))
                     .child(if passed {
                         shown
                     } else {
                         "Your words will show here.".to_owned()
                     }),
-            ),
-        )
+            )
+            .into_any_element(),
+    ];
+    ui::group(hook::id("onboarding", "practice"), palette, rows)
 }
 
-fn updates(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+fn updates(
+    palette: Palette,
+    onboarding: &Entity<Onboarding>,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let (on, focus) = {
         let me = onboarding.read(cx);
         (me.updates_on(), me.updates_focus.clone())
@@ -720,57 +672,33 @@ fn updates(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + 
             });
         }
     };
-    let on_click = {
-        let flip = flip.clone();
-        move |_: &ClickEvent, _: &mut Window, cx: &mut App| flip(cx)
-    };
+    let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| flip(cx);
     let knob = div()
         .size(px(14.0))
         .rounded(px(radius::FULL))
-        .bg(theme::rgb_of(color::TEXT_PRIMARY));
+        .bg(palette.on_accent);
     let track = div()
-        .w(px(36.0))
+        .w(px(34.0))
         .h(px(20.0))
         .flex_none()
         .flex()
         .items_center()
         .px(px(3.0))
         .rounded(px(radius::FULL))
-        .border_1()
-        .border_color(theme::rgb_of(color::BORDER_CONTROL))
-        .bg(theme::rgb_of(if on {
-            color::ACCENT_BLUE
-        } else {
-            color::SURFACE_CONTROL
-        }));
+        .bg(if on { palette.accent } else { palette.control });
     let track = if on {
         track.justify_end().child(knob)
     } else {
         track.justify_start().child(knob)
     };
-    surface(hook::id("onboarding", "updates")).child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(space::MD))
-            .p(px(space::LG))
-            .child(icon_tile(IconName::Download))
+    let rows: Vec<AnyElement> = vec![
+        ui::row(palette)
+            .child(ui::icon(palette, IconName::Download))
             .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
+                ui::text_column()
+                    .child(ui::title(palette).child("Check for updates"))
                     .child(
-                        div()
-                            .text_token(ROW_TITLE)
-                            .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                            .child("Check for updates"),
-                    )
-                    .child(
-                        div()
-                            .text_token(BODY_SM)
-                            .text_color(theme::rgb_of(color::TEXT_MUTED))
+                        ui::secondary(palette)
                             .child("Off unless you turn it on. Hushpen never updates by itself."),
                     ),
             )
@@ -789,23 +717,25 @@ fn updates(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + 
                     .flex()
                     .items_center()
                     .gap(px(space::SM))
-                    .h(px(32.0))
+                    .h(px(size::BUTTON_HEIGHT + space::XXS * 2.0))
                     .px(px(space::SM - size::FOCUS_RING))
-                    .rounded(px(radius::MD))
+                    .rounded(px(radius::BUTTON))
                     .border_2()
                     .border_color(transparent_black())
-                    .text_token(LABEL_MD)
-                    .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+                    .text_token(BODY)
+                    .text_color(palette.label_secondary)
                     .cursor_pointer()
-                    .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+                    .focus_visible(move |style| style.border_color(palette.accent))
                     .on_click(on_click)
                     .child(track)
                     .child(if on { "On" } else { "Off" }),
-            ),
-    )
+            )
+            .into_any_element(),
+    ];
+    ui::group(hook::id("onboarding", "updates"), palette, rows)
 }
 
-fn notice_row(message: String) -> impl IntoElement {
+fn notice_row(palette: Palette, message: String) -> impl IntoElement {
     div()
         .id(hook::id("onboarding", "notice"))
         .test_support()
@@ -813,76 +743,14 @@ fn notice_row(message: String) -> impl IntoElement {
         .flex()
         .items_center()
         .gap(px(space::SM))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::STATUS_ERROR))
+        .text_token(BODY)
+        .text_color(palette.label)
         .child(
             svg()
                 .path(IconName::CircleAlert.path())
-                .size(px(14.0))
+                .size(px(size::NAV_ICON))
                 .flex_none()
-                .text_color(theme::rgb_of(color::STATUS_ERROR)),
+                .text_color(palette.label_secondary),
         )
         .child(div().flex_1().min_w_0().child(message))
-}
-
-fn button<F: Fn(&mut App) + Clone + 'static>(
-    id: SharedString,
-    label: &'static str,
-    focus: &FocusHandle,
-    enabled: bool,
-    press: F,
-) -> impl IntoElement + use<F> {
-    hook::mark_disabled(&id, !enabled);
-    // A disabled button keeps its focus handle. When the step changes or the button turns off
-    // under the user's finger, the focus stays in the page instead of falling out of the window.
-    let mut element = div()
-        .id(id)
-        .test_support()
-        .track_focus(focus)
-        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-        .role(Role::Button)
-        .aria_label(label)
-        .flex_none()
-        .flex()
-        .items_center()
-        .h(px(32.0))
-        .px(px(10.0 - size::FOCUS_RING))
-        .rounded(px(radius::MD))
-        .border_2()
-        .border_color(transparent_black())
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(if enabled {
-            color::TEXT_PRIMARY
-        } else {
-            color::TEXT_DISABLED
-        }));
-    if enabled {
-        let on_click = {
-            let press = press.clone();
-            move |_: &ClickEvent, _: &mut Window, cx: &mut App| press(cx)
-        };
-        element = element
-            .cursor_pointer()
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-            .on_click(on_click);
-    }
-    element.child(label)
-}
-
-fn icon_tile(icon: IconName) -> impl IntoElement {
-    div()
-        .size(px(28.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius::MD))
-        .bg(theme::rgb_of(color::SURFACE_SOFT))
-        .child(
-            svg()
-                .path(icon.path())
-                .size(px(14.0))
-                .text_color(theme::rgb_of(color::TEXT_BODY)),
-        )
 }

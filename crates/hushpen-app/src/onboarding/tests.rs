@@ -893,6 +893,7 @@ fn the_state_section_reports_step_gate_and_rows(cx: &mut TestAppContext) {
 mod window {
     use super::*;
     use crate::shell::Shell;
+    use crate::theme;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{AnyWindowHandle, Bounds, Point, WindowBounds, WindowOptions, px, size};
 
@@ -977,6 +978,125 @@ mod window {
             !cfg!(target_os = "macos"),
             "the drawn lights stay on Linux; AppKit draws them on macOS"
         );
+    }
+
+    /// `(x, y, width, height)` of an element in the window.
+    fn rect(cx: &mut TestAppContext, handle: AnyWindowHandle, id: String) -> (f32, f32, f32, f32) {
+        let id = gpui_kit::SharedString::from(id);
+        let bounds = cx
+            .update_window(handle, |_, window, _| window.find(id).bounds())
+            .unwrap();
+        (
+            f32::from(bounds.origin.x),
+            f32::from(bounds.origin.y),
+            f32::from(bounds.size.width),
+            f32::from(bounds.size.height),
+        )
+    }
+
+    /// Every permission row is icon, name, status word, and buttons on one line, plus one
+    /// secondary line that is cut instead of wrapped.
+    fn assert_permission_rows_are_one_line(
+        cx: &mut TestAppContext,
+        fixture: &Fixture,
+        handle: AnyWindowHandle,
+    ) {
+        let title = rect(cx, handle, "onboarding.title".into());
+        assert!(
+            (title.3 - theme::TITLE.size * theme::TITLE.line_height).abs() < 0.6,
+            "the title is one 22 px line, not {}",
+            title.3
+        );
+        let rows = fixture.read(cx, |me, cx| me.rows(cx));
+        assert!(rows.len() >= 3);
+        let secondary = theme::SECONDARY.size * theme::SECONDARY.line_height;
+        for row in rows {
+            let key = row.key.key();
+            let whole = rect(cx, handle, format!("onboarding.permissions.row.{key}"));
+            let state = rect(cx, handle, format!("onboarding.permissions.state.{key}"));
+            let detail = rect(cx, handle, format!("onboarding.permissions.detail.{key}"));
+            assert!(
+                whole.3 >= theme::size::ROW_MIN_HEIGHT,
+                "{key} row height {}",
+                whole.3
+            );
+            assert!(
+                whole.3 <= theme::size::ROW_MIN_HEIGHT + secondary,
+                "{key} row is one line plus one secondary line, not {}",
+                whole.3
+            );
+            assert!(
+                detail.3 <= secondary + 0.5,
+                "{key} description is one line: {}",
+                detail.3
+            );
+            let middle = |r: (f32, f32, f32, f32)| r.1 + r.3 / 2.0;
+            let mut previous_right = state.0 + state.2;
+            assert!(
+                detail.0 + detail.2 <= state.0,
+                "{key}: the description is cut before the status"
+            );
+            assert!(
+                (middle(state) - middle(whole)).abs() < 1.0,
+                "{key}: status on the row's line"
+            );
+            if row.opens.is_some() {
+                for name in ["allow", "open"] {
+                    let button = rect(cx, handle, format!("onboarding.permissions.{name}.{key}"));
+                    assert!(
+                        (middle(button) - middle(whole)).abs() < 1.0,
+                        "{key} {name} is on the row's line"
+                    );
+                    assert!(
+                        button.0 >= previous_right,
+                        "{key} {name} comes after the previous control"
+                    );
+                    assert_eq!(button.3, theme::size::BUTTON_HEIGHT, "{key} {name}");
+                    previous_right = button.0 + button.2;
+                }
+                assert!(
+                    previous_right <= whole.0 + whole.2,
+                    "{key}: controls stay inside the row"
+                );
+            }
+        }
+    }
+
+    #[gpui_kit::test]
+    fn permission_rows_stay_on_one_line_in_setup(cx: &mut TestAppContext) {
+        let fixture = mac(cx, &["base"], "base");
+        let handle = open(cx, &fixture);
+        assert_permission_rows_are_one_line(cx, &fixture, handle);
+    }
+
+    #[gpui_kit::test]
+    fn permission_rows_stay_on_one_line_on_the_permissions_changed_page(cx: &mut TestAppContext) {
+        let rig = rig(cx, &["base"], "base");
+        rig.storage
+            .settings
+            .set_internal(COMPLETED, json!(true))
+            .unwrap();
+        rig.storage
+            .settings
+            .set_internal(
+                "permissions.lastGranted",
+                json!({"microphone": true, "accessibility": true, "inputMonitoring": true}),
+            )
+            .unwrap();
+        let system = FakeSystem::all(Access::Granted);
+        system.set(Permission::Accessibility, Access::Denied);
+        system.set(Permission::InputMonitoring, Access::Denied);
+        let fixture = start(cx, rig, Platform::MacOs, system);
+        list_microphones(cx, &fixture, vec![device()]);
+        assert_eq!(fixture.mode(cx), Mode::Repair);
+        let handle = open(cx, &fixture);
+        assert_permission_rows_are_one_line(cx, &fixture, handle);
+        let state = rect(
+            cx,
+            handle,
+            "onboarding.permissions.state.accessibility".into(),
+        );
+        assert!(state.2 > 0.0);
     }
 
     #[gpui_kit::test]

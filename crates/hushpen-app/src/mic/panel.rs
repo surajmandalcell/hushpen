@@ -1,16 +1,15 @@
-//! The microphone panel on the Home view: test button, level meter, notice,
-//! and the microphone list.
+//! The microphone group on the Home view: test button, level meter, notice, and the microphone
+//! list.
 
 use super::{CaptureState, CaptureUse, METER_BARS, Mic};
 use crate::hook;
-use crate::theme::{
-    self, BODY_MD, BODY_SM, LABEL_MD, ROW_TITLE, StyledType, color, radius, size, space,
-};
+use crate::theme::{self, BODY, Palette, StyledType, radius, size, space};
+use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, svg,
+    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, svg,
     transparent_black,
 };
 use hushpen_audio::{DEFAULT_ID, Selection};
@@ -71,29 +70,24 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
     };
     let listening = state == CaptureState::Listening && !busy;
 
-    let mut panel = div()
-        .id(hook::id("home", "mic"))
-        .test_support()
-        .flex()
-        .flex_col()
-        .w_full()
-        .overflow_hidden()
-        .bg(theme::rgb_of(color::SURFACE))
-        .rounded(px(radius::PANEL))
-        .border_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .child(header(mic, state, busy, &button_focus, default_name))
-        .child(meter_row(&meter, listening));
+    let palette = theme::palette(cx);
+    let mut group_rows: Vec<AnyElement> = vec![
+        header(palette, mic, state, busy, &button_focus, default_name).into_any_element(),
+        meter_row(palette, &meter, listening).into_any_element(),
+    ];
     if let Some(message) = notice {
-        panel = panel.child(notice_row(message));
+        group_rows.push(notice_row(palette, message).into_any_element());
     }
     for (index, row) in rows.into_iter().enumerate() {
-        panel = panel.child(device_row(mic, index, row, row_focus[index].clone()));
+        group_rows.push(
+            device_row(palette, mic, index, row, row_focus[index].clone()).into_any_element(),
+        );
     }
-    panel
+    ui::group(hook::id("home", "mic"), palette, group_rows)
 }
 
 fn header(
+    palette: Palette,
     mic: &Entity<Mic>,
     state: CaptureState,
     busy: bool,
@@ -112,16 +106,6 @@ fn header(
             });
         }
     };
-    let on_click = {
-        let toggle = toggle.clone();
-        move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx)
-    };
-    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-            toggle(cx);
-            cx.stop_propagation();
-        }
-    };
     let listening = state == CaptureState::Listening && !busy;
     let label = if listening {
         "Stop test"
@@ -138,74 +122,34 @@ fn header(
             |name| format!("Default: {name}"),
         )
     };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .p(px(space::LG))
-        .child(icon_tile(IconName::Mic))
+    ui::row(palette)
+        .child(ui::icon(palette, IconName::Mic))
         .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
+            ui::text_column()
+                .child(ui::title(palette).child("Microphone"))
                 .child(
-                    div()
-                        .text_token(ROW_TITLE)
-                        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                        .child("Microphone"),
-                )
-                .child(
-                    div()
+                    ui::secondary(palette)
                         .id(hook::id("home", "mic.status"))
                         .test_support()
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
-                        .truncate()
                         .child(detail),
                 ),
         )
-        .child({
-            let id = hook::id("home", "mic.record");
-            hook::mark_disabled(&id, busy);
-            let mut button = div()
-                .id(id)
-                .test_support()
-                .role(Role::Button)
-                .aria_label(label)
-                .flex_none()
-                .flex()
-                .items_center()
-                .h(px(32.0))
-                .px(px(10.0 - size::FOCUS_RING))
-                .rounded(px(radius::MD))
-                .border_2()
-                .border_color(transparent_black())
-                .bg(theme::rgb_of(color::SURFACE_CONTROL))
-                .text_token(LABEL_MD)
-                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                .child(label);
-            if busy {
-                button = button.text_color(theme::rgb_of(color::TEXT_DISABLED));
-            } else {
-                button = button
-                    .track_focus(focus)
-                    .cursor_pointer()
-                    .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-                    .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-                    .on_click(on_click)
-                    .on_key_down(on_key);
-            }
-            button
-        })
+        .child(ui::button(
+            palette,
+            hook::id("home", "mic.record"),
+            label,
+            Kind::Plain,
+            (!busy).then_some(focus),
+            !busy,
+            toggle,
+        ))
 }
 
-fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {
+fn meter_row(palette: Palette, levels: &[f32], listening: bool) -> impl IntoElement + use<> {
     let bar_color = if listening {
-        color::ACCENT_BLUE
+        palette.label_secondary
     } else {
-        color::BORDER_CONTROL
+        palette.label_tertiary
     };
     let bars = levels
         .iter()
@@ -218,8 +162,8 @@ fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {
                 .flex_none()
                 .w(px(BAR_WIDTH))
                 .h(px(BAR_REST + level.clamp(0.0, 1.0) * (BAR_MAX - BAR_REST)))
-                .rounded(px(radius::XS))
-                .bg(theme::rgb_of(bar_color))
+                .rounded(px(radius::BUTTON))
+                .bg(bar_color)
         });
     div()
         .id(hook::id("home", "mic.meter"))
@@ -227,40 +171,38 @@ fn meter_row(levels: &[f32], listening: bool) -> impl IntoElement + use<> {
         .flex()
         .items_end()
         .justify_center()
+        .flex_none()
         .gap(px(BAR_GAP))
         .h(px(BAR_MAX + 2.0 * space::MD))
-        .px(px(space::LG))
+        .px(px(size::ROW_PADDING))
         .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
         .children(bars)
 }
 
-fn notice_row(message: String) -> impl IntoElement {
-    div()
+fn notice_row(palette: Palette, message: String) -> impl IntoElement {
+    ui::row(palette)
         .id(hook::id("home", "mic.notice"))
         .test_support()
         .role(Role::Alert)
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::STATUS_ERROR))
+        .text_color(palette.label)
         .child(
             svg()
                 .path(IconName::CircleAlert.path())
-                .size(px(14.0))
+                .size(px(size::NAV_ICON))
                 .flex_none()
-                .text_color(theme::rgb_of(color::STATUS_ERROR)),
+                .text_color(palette.label_secondary),
         )
-        .child(div().flex_1().min_w_0().child(message))
+        .child(
+            ui::title(palette)
+                .flex_1()
+                .min_w_0()
+                .text_color(palette.label)
+                .child(message),
+        )
 }
 
 fn device_row(
+    palette: Palette,
     mic: &Entity<Mic>,
     index: usize,
     row: Row,
@@ -299,54 +241,36 @@ fn device_row(
         .aria_label(row.name.clone())
         .flex()
         .items_center()
-        .gap(px(space::SM))
-        .h(px(size::NAV_ITEM_HEIGHT + space::SM))
-        .px(px(space::LG - size::FOCUS_RING))
+        .gap(px(ui::ROW_GAP))
+        .w_full()
+        .flex_none()
+        .h(px(size::ROW_MIN_HEIGHT))
+        .px(px(size::ROW_PADDING - size::FOCUS_RING))
         .border_2()
         .border_color(transparent_black())
         .cursor_pointer()
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::TEXT_BODY))
-        .hover(|style| style.bg(theme::rgb_of(color::SURFACE_ROW_HOVER)))
-        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+        .text_token(BODY)
+        .text_color(palette.label)
+        .hover(move |style| style.bg(palette.hover()))
+        .focus_visible(move |style| style.border_color(palette.accent))
         .on_click(on_click)
         .on_key_down(on_key)
-        .child(div().flex_none().child(row.name))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .text_token(BODY_SM)
-                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                .children(row.detail),
-        )
         .child(
             svg()
                 .path(IconName::Check.path())
-                .size(px(14.0))
+                .size(px(size::NAV_ICON))
                 .flex_none()
-                .text_color(theme::rgb_of(if row.selected {
-                    color::FOCUS
+                .text_color(if row.selected {
+                    palette.label
                 } else {
-                    color::SURFACE
-                })),
+                    gpui_kit::transparent_black().into()
+                }),
         )
-}
-
-fn icon_tile(icon: IconName) -> impl IntoElement {
-    div()
-        .size(px(28.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius::MD))
-        .bg(theme::rgb_of(color::SURFACE_SOFT))
+        .child(div().flex_none().child(row.name))
         .child(
-            svg()
-                .path(icon.path())
-                .size(px(14.0))
-                .text_color(theme::rgb_of(color::TEXT_BODY)),
+            ui::secondary(palette)
+                .flex_1()
+                .min_w_0()
+                .children(row.detail),
         )
 }

@@ -276,15 +276,54 @@ pub fn install(cx: &mut App, surface: &Surface) {
     hooks
         .state
         .set_section("llm", |_| json!({"pid": null, "state": null}));
+    hooks.state.set_section("appearance", {
+        let shell = shell.clone();
+        move |cx| appearance_section(cx, &shell)
+    });
     hooks.state.set_section("tray_menu", |_| Value::Null);
     hooks.state.set_section("last_insert", |_| Value::Null);
 
     let _ = hooks.actions.register(
         "open-view",
         "Open a main view like a sidebar click. Args: {\"view\": \"home|history|dictionary|import|models|settings|about\"}",
-        move |cx, args| open_view(cx, &shell, &args),
+        {
+            let shell = shell.clone();
+            move |cx, args| open_view(cx, &shell, &args)
+        },
+    );
+    let _ = hooks.actions.register(
+        "set-appearance",
+        "Force the palette of this app without touching the system setting. Args: {\"appearance\": \"light|dark|system\"}",
+        {
+            let shell = shell.clone();
+            move |cx, args| set_appearance(cx, &shell, &args)
+        },
     );
     cx.set_global(hooks);
+}
+
+/// The palette in use, the one of the last frame, what the system says, and the forced palette
+/// if there is one.
+fn appearance_section(cx: &App, shell: &Entity<Shell>) -> Value {
+    let (system, forced) = crate::theme::sources(cx);
+    json!({
+        "resolved": crate::theme::appearance(cx).key(),
+        "rendered": shell.read(cx).rendered_appearance().key(),
+        "system": system.key(),
+        "forced": forced.map(crate::theme::Appearance::key),
+    })
+}
+
+fn set_appearance(cx: &mut App, shell: &Entity<Shell>, args: &Value) -> Result<Value, String> {
+    use crate::theme::Appearance;
+    let forced = match args.get("appearance").and_then(Value::as_str) {
+        Some("light") => Some(Appearance::Light),
+        Some("dark") => Some(Appearance::Dark),
+        Some("system") => None,
+        _ => return Err("needs args like {\"appearance\": \"light|dark|system\"}".to_string()),
+    };
+    crate::theme::force(forced, cx);
+    Ok(appearance_section(cx, shell))
 }
 
 fn open_view(cx: &mut App, shell: &Entity<Shell>, args: &Value) -> Result<Value, String> {
@@ -302,14 +341,16 @@ fn open_view(cx: &mut App, shell: &Entity<Shell>, args: &Value) -> Result<Value,
 
 fn window_section(cx: &mut App, window: AnyWindowHandle) -> Value {
     let mut state = window
-        .update(cx, |_, window, _| window_state(window))
+        .update(cx, |_, window, cx| {
+            window_state(window, crate::theme::appearance(cx).is_dark())
+        })
         .unwrap_or_else(|_| json!({"open": false}));
     // How the window left the screen: "hidden" to the tray, "minimized", or null while it shows.
     state["away"] = json!(crate::main_window::away(cx).map(crate::main_window::Away::key));
     state
 }
 
-pub fn window_state(window: &Window) -> Value {
+pub fn window_state(window: &Window, dark: bool) -> Value {
     let size = window.viewport_size();
     json!({
         "open": true,
@@ -320,7 +361,7 @@ pub fn window_state(window: &Window) -> Value {
         "fullscreen": window.is_fullscreen(),
         "active": window.is_window_active(),
         "background": crate::window_chrome::background_name(),
-        "sidebar_fill": crate::window_chrome::sidebar_fill_name(),
+        "sidebar_fill": crate::window_chrome::sidebar_fill_name(dark),
     })
 }
 
@@ -621,8 +662,8 @@ mod tests {
             let item = element(&tree, &format!("sidebar.{}", view.key()));
             assert_eq!(item.text, view.title());
             assert!(item.enabled && item.visible);
-            assert!(item.bounds.x >= 0.0 && item.bounds.x + item.bounds.width <= 208.0);
-            assert_eq!(item.bounds.height, 36.0);
+            assert!(item.bounds.x >= 0.0 && item.bounds.x + item.bounds.width <= 232.0);
+            assert_eq!(item.bounds.height, 28.0);
             assert_eq!(item.root_bounds.x, item.bounds.x);
             assert!(!item.focused);
             if index > 0 {
@@ -722,6 +763,65 @@ mod tests {
         assert!(state["last_insert"].is_null());
         assert_eq!(state["view"], "home");
         assert_eq!(state["app"]["version"], hushpen_core::BUILD_VERSION);
+    }
+
+    #[gpui_kit::test]
+    fn set_appearance_forces_the_palette_and_state_reports_it(cx: &mut TestAppContext) {
+        let fixture = open(cx);
+        cx.update(crate::theme::install);
+        let run = |cx: &mut TestAppContext, value: &str| {
+            let call = Call::RunAction {
+                name: "set-appearance".into(),
+                args: json!({"appearance": value}),
+            };
+            ask(cx, &fixture, call)
+        };
+        let fill = |light: bool| match (cfg!(target_os = "macos"), light) {
+            (true, _) => "none",
+            (false, true) => "#E8E8EA",
+            (false, false) => "#2B2B2D",
+        };
+
+        let before = state(cx, &fixture);
+        assert_eq!(before["appearance"]["system"], "light");
+        assert_eq!(before["appearance"]["forced"], Value::Null);
+
+        run(cx, "dark").unwrap();
+        let dark = state(cx, &fixture);
+        assert_eq!(dark["appearance"]["resolved"], "dark");
+        assert_eq!(
+            dark["appearance"]["rendered"], "dark",
+            "the window repainted"
+        );
+        assert_eq!(dark["appearance"]["forced"], "dark");
+        assert_eq!(dark["window"]["sidebar_fill"], fill(false));
+
+        run(cx, "light").unwrap();
+        let light = state(cx, &fixture);
+        assert_eq!(light["appearance"]["rendered"], "light");
+        assert_eq!(light["window"]["sidebar_fill"], fill(true));
+
+        run(cx, "dark").unwrap();
+        run(cx, "system").unwrap();
+        let system = state(cx, &fixture);
+        assert_eq!(system["appearance"]["forced"], Value::Null);
+        assert_eq!(
+            system["appearance"]["resolved"], "light",
+            "the test system is light"
+        );
+
+        assert!(run(cx, "sepia").is_err());
+        let Err(error) = ask(
+            cx,
+            &fixture,
+            Call::RunAction {
+                name: "set-appearance".into(),
+                args: Value::Null,
+            },
+        ) else {
+            panic!("expected an error");
+        };
+        assert!(error.contains("light|dark|system"), "{error}");
     }
 
     #[gpui_kit::test]
