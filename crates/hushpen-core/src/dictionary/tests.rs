@@ -257,3 +257,29 @@ fn validate_lets_an_entry_keep_its_own_values_when_edited() {
         Err(Refusal::DuplicatePhrase("zyxtrel".to_owned()))
     );
 }
+
+#[test]
+fn phrases_in_lists_each_phrase_the_text_has_as_whole_words_in_any_case() {
+    let entries = [
+        word(1, "Wednesbury"),
+        replace(2, "kubernetes", "Kubernetes"),
+        word(3, "Zyxtrel"),
+        word(4, "Ann Lee"),
+        word(5, "cat"),
+    ];
+    let text = "Meet on WEDNESBURY with ann   lee, then kubernetes. The category is fine.";
+    assert_eq!(
+        phrases_in(text, &entries),
+        ["Wednesbury", "Kubernetes", "Ann Lee"],
+        "entry order, replacement entries too, and no phrase the text lacks"
+    );
+    assert!(phrases_in("nothing here", &entries).is_empty());
+    assert!(phrases_in("anything", &[]).is_empty());
+}
+
+#[test]
+fn a_phrase_inside_a_longer_word_does_not_count_as_present() {
+    let entries = [word(1, "cat")];
+    assert!(phrases_in("category and bobcat", &entries).is_empty());
+    assert_eq!(phrases_in("the Cat sat", &entries), ["cat"]);
+}

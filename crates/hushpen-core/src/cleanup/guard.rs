@@ -4,11 +4,16 @@
 //! all previous instructions". The text of a dictation must stay the speaker's words, so any
 //! output that looks like something else falls back to the rule text.
 
+use crate::dictionary;
+
 /// Longest output, as a multiple of the input length (in characters), plus [`SLACK_CHARS`].
 const MAX_RATIO_PERCENT: usize = 150;
 const SLACK_CHARS: usize = 40;
 /// The least share of the output's words that must appear in the input.
 const MIN_OVERLAP_PERCENT: usize = 50;
+/// Command Mode edits may grow: longest output is this many times the selection, plus slack.
+const COMMAND_MAX_RATIO: usize = 4;
+const COMMAND_SLACK_CHARS: usize = 400;
 
 const REFUSAL_PREFIXES: [&str; 5] = ["i cannot", "i can't", "i can\u{2019}t", "as an ai", "sorry"];
 
@@ -18,6 +23,8 @@ pub enum Rejection {
     TooLong,
     Refusal,
     LowOverlap,
+    /// A dictionary word that the input had is gone from the output.
+    DroppedPhrase,
 }
 
 impl Rejection {
@@ -27,6 +34,7 @@ impl Rejection {
             Rejection::TooLong => "too_long",
             Rejection::Refusal => "refusal",
             Rejection::LowOverlap => "low_overlap",
+            Rejection::DroppedPhrase => "dropped_phrase",
         }
     }
 }
@@ -50,6 +58,49 @@ pub fn check(input: &str, output: &str) -> Result<String, Rejection> {
     }
     if overlap_percent(input, output) < MIN_OVERLAP_PERCENT {
         return Err(Rejection::LowOverlap);
+    }
+    Ok(output.to_owned())
+}
+
+/// Like [`check`], and the output must also still have every phrase in `keep` (the dictionary
+/// words the input has). A small model turns an invented word back into a common one, and the
+/// speaker's spelling is the point of the dictionary.
+pub fn check_keeping(input: &str, output: &str, keep: &[String]) -> Result<String, Rejection> {
+    let output = check(input, output)?;
+    if keep
+        .iter()
+        .any(|phrase| !dictionary::contains_phrase(&output, phrase))
+    {
+        return Err(Rejection::DroppedPhrase);
+    }
+    Ok(output)
+}
+
+/// The edited text of Command Mode to use in place of `selection`. An edit may translate or
+/// rewrite, so it need not share words with the selection; only an empty answer, a runaway
+/// length, or a refusal is turned down.
+pub fn check_command(selection: &str, output: &str) -> Result<String, Rejection> {
+    let mut output = output.trim();
+    if !selection.trim_start().starts_with('"')
+        && let Some(inner) = output
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"'))
+    {
+        output = inner.trim();
+    }
+    if output.is_empty() {
+        return Err(Rejection::Empty);
+    }
+    let limit = selection.chars().count() * COMMAND_MAX_RATIO + COMMAND_SLACK_CHARS;
+    if output.chars().count() > limit {
+        return Err(Rejection::TooLong);
+    }
+    let lower = output.to_lowercase();
+    if REFUSAL_PREFIXES
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        return Err(Rejection::Refusal);
     }
     Ok(output.to_owned())
 }
@@ -169,6 +220,91 @@ mod tests {
     #[test]
     fn punctuation_and_case_do_not_change_the_overlap() {
         assert!(check("hello world, how are you", "HELLO, world! How are you?").is_ok());
+    }
+
+    #[test]
+    fn a_command_edit_may_share_no_words_with_the_selection() {
+        assert_eq!(
+            check_command("Hello, how are you?", "Hola, ¿cómo estás?"),
+            Ok("Hola, ¿cómo estás?".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_command_edit_is_trimmed_and_loses_quotes_the_selection_did_not_have() {
+        assert_eq!(
+            check_command("hey you", "  \"Hello, you.\"\n"),
+            Ok("Hello, you.".to_owned())
+        );
+        assert_eq!(
+            check_command("\"hey\" you", "\"Hello\" you."),
+            Ok("\"Hello\" you.".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_empty_or_refusing_command_edit_is_rejected() {
+        assert_eq!(check_command("text", "  "), Err(Rejection::Empty));
+        assert_eq!(check_command("text", "\"\""), Err(Rejection::Empty));
+        assert_eq!(
+            check_command("text", "I cannot edit that."),
+            Err(Rejection::Refusal)
+        );
+    }
+
+    #[test]
+    fn a_command_edit_may_grow_but_not_without_end() {
+        let selection = "word ".repeat(10);
+        let long = "word ".repeat(80);
+        assert!(check_command(&selection, &long).is_ok());
+        let silly = "word ".repeat(400);
+        assert_eq!(check_command(&selection, &silly), Err(Rejection::TooLong));
+    }
+
+    #[test]
+    fn an_answer_that_drops_a_dictionary_phrase_is_rejected() {
+        let rule = "Meet on Wednesbury, no wait, Thursday.";
+        let keep = ["Wednesbury".to_owned()];
+        assert_eq!(
+            check_keeping(rule, "Meet on Wednesday.", &keep),
+            Err(Rejection::DroppedPhrase)
+        );
+        assert_eq!(
+            check_keeping(rule, "Meet on Wednesbury, Thursday.", &keep),
+            Ok("Meet on Wednesbury, Thursday.".to_owned())
+        );
+        assert_eq!(
+            check_keeping(rule, "meet on WEDNESBURY thursday", &keep),
+            Ok("meet on WEDNESBURY thursday".to_owned()),
+            "case does not matter"
+        );
+    }
+
+    #[test]
+    fn a_phrase_that_is_part_of_a_longer_word_is_dropped_too() {
+        let keep = ["cat".to_owned()];
+        assert_eq!(
+            check_keeping("feed the cat", "Feed the category.", &keep),
+            Err(Rejection::DroppedPhrase)
+        );
+    }
+
+    #[test]
+    fn no_phrases_to_keep_means_the_plain_checks() {
+        assert_eq!(check_keeping(RULE, "", &[]), Err(Rejection::Empty));
+        assert_eq!(
+            check_keeping("hello there", "Hello there.", &[]),
+            check("hello there", "Hello there.")
+        );
+    }
+
+    #[test]
+    fn the_plain_checks_still_run_when_phrases_are_kept() {
+        let keep = ["Wednesbury".to_owned()];
+        assert_eq!(
+            check_keeping("Wednesbury", "I cannot do that, Wednesbury.", &keep),
+            Err(Rejection::Refusal)
+        );
     }
 
     #[test]

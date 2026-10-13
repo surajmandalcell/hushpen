@@ -75,6 +75,9 @@ pub enum Mode {
     HandsFree,
     /// Started on Home: the text is copied and never pasted.
     Home,
+    /// The Command Mode keys are down; releasing them stops. The speech is an instruction for
+    /// the selected text, not text to insert.
+    Command,
 }
 
 impl Mode {
@@ -83,6 +86,7 @@ impl Mode {
             Mode::Hold => "hold",
             Mode::HandsFree => "handsFree",
             Mode::Home => "home",
+            Mode::Command => "command",
         }
     }
 }
@@ -92,6 +96,9 @@ impl Mode {
 pub enum AppEvent {
     HoldDown,
     HoldUp,
+    /// The Command Mode keys went down. A hold that already runs becomes the command.
+    CommandDown,
+    CommandUp,
     /// The hands-free shortcut: `Hold+Space`.
     HandsFreeToggle,
     /// The record button on Home.
@@ -118,6 +125,11 @@ pub enum AppEvent {
     Cleaned {
         session: u64,
         text: String,
+    },
+    /// The model could not edit the selection (Command Mode). Nothing is pasted.
+    EditFailed {
+        session: u64,
+        code: &'static str,
     },
     Inserted {
         session: u64,
@@ -170,6 +182,12 @@ pub enum Effect {
     Clean {
         session: u64,
         raw: String,
+    },
+    /// Command Mode: the model edits the selection by the spoken `instruction`. The answer is
+    /// `Cleaned` with the edited text, or `EditFailed`.
+    Edit {
+        session: u64,
+        instruction: String,
     },
     StopLlm,
     Insert {

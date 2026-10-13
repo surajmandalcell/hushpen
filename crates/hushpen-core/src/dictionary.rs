@@ -158,6 +158,30 @@ impl Pattern {
     }
 }
 
+/// Whether `text` has `phrase` as whole words, ignoring case and the amount of space.
+pub fn contains_phrase(text: &str, phrase: &str) -> bool {
+    let pattern = Pattern {
+        heard: normalize(phrase).chars().map(fold).collect(),
+        write: String::new(),
+    };
+    if pattern.heard.is_empty() {
+        return false;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    (0..chars.len()).any(|at| pattern.matches(&chars, at).is_some())
+}
+
+/// The phrases of `entries` that `text` has, in entry order and with repeats left out. A cleanup
+/// model may be told to keep these words, and its answer is checked for them.
+pub fn phrases_in(text: &str, entries: &[Entry]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    entries
+        .iter()
+        .map(|entry| normalize(&entry.phrase))
+        .filter(|phrase| contains_phrase(text, phrase) && seen.insert(folded(phrase)))
+        .collect()
+}
+
 /// Replaces each "heard as" text in `text` with its phrase. Matching is on whole words and
 /// ignores case; the phrase is written as stored. One pass over the input, so a written phrase
 /// is never replaced again. Where two entries match at the same place the longer one wins.

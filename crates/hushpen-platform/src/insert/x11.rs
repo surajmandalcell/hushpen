@@ -84,6 +84,17 @@ impl Inserter for X11Inserter {
         flow::run(&mut *board, &super::SystemClock, &request, observe)
     }
 
+    fn selection(&self, target: &Target) -> Option<String> {
+        if target.window.is_none() || target.own {
+            return None;
+        }
+        let board = self
+            .board
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        board.primary_text()
+    }
+
     fn undo(&self, target: &Target) -> Result<(), UndoError> {
         // The lock waits for a paste still in flight, so the focus is read after it.
         let board = self

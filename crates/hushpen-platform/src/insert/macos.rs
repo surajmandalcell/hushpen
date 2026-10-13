@@ -16,7 +16,7 @@ use super::{Inserter, SystemClock, Target, UndoError, mono_ms, plan, undo_guard}
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use hushpen_core::insert::flow::{self, Backend, ChordError, Receipts, Request, Step};
-use hushpen_core::insert::guard::{Block, check};
+use hushpen_core::insert::guard::{Block, Probe as _, check};
 use hushpen_core::insert::{Chord, Overrides, Report, Selection, choose_mac};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
@@ -218,6 +218,57 @@ impl Backend for MacBoard {
     }
 }
 
+/// How long an app may take to answer Cmd+C with a new pasteboard.
+const COPY_WAIT: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// One key press that carries the Command flag, so no modifier key is left down.
+fn post_command_key(key: u16) -> Result<(), ChordError> {
+    let post = |down: bool| -> Result<(), ChordError> {
+        let source = CGEventSource::new(CGEventSourceStateID::Private)
+            .map_err(|()| ChordError::Unavailable)?;
+        let event =
+            CGEvent::new_keyboard_event(source, key, down).map_err(|()| ChordError::Unavailable)?;
+        event.set_flags(CGEventFlags::CGEventFlagCommand);
+        event.post(CGEventTapLocation::HID);
+        Ok(())
+    };
+    post(true)?;
+    std::thread::sleep(std::time::Duration::from_millis(8));
+    post(false)
+}
+
+/// Reads the selection of the focused app the way a user would: copy it. `copy` presses the
+/// copy key. The pasteboard is written back as it was, whether or not the app answered.
+fn copied_selection(
+    board: &mut MacBoard,
+    wait: std::time::Duration,
+    copy: impl FnOnce() -> Result<(), ()>,
+) -> Option<String> {
+    let snapshot = board.snapshot(Selection::Clipboard);
+    let before = board.pasteboard.changeCount();
+    copy().ok()?;
+    let end = std::time::Instant::now() + wait;
+    let mut text = None;
+    let mut changed = false;
+    while std::time::Instant::now() < end {
+        if board.pasteboard.changeCount() != before {
+            changed = true;
+            // SAFETY: a constant of AppKit.
+            let string_type = unsafe { NSPasteboardTypeString };
+            text = board
+                .pasteboard
+                .stringForType(string_type)
+                .map(|text| text.to_string());
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    if changed {
+        board.restore(Selection::Clipboard, snapshot);
+    }
+    text.filter(|text| !text.trim().is_empty())
+}
+
 pub(super) struct MacInserter {
     one_at_a_time: Mutex<()>,
 }
@@ -269,6 +320,30 @@ impl Inserter for MacInserter {
             copy_note,
         };
         flow::run(&mut board, &SystemClock, &request, observe)
+    }
+
+    fn selection(&self, target: &Target) -> Option<String> {
+        if target.window.is_none() || target.own {
+            return None;
+        }
+        let probe = guard::MacProbe;
+        if probe.secure_event_input() || probe.focused_secure_field() {
+            return None;
+        }
+        if let Some(text) = guard::focused_selected_text() {
+            return Some(text);
+        }
+        if !CGPreflightPostEventAccess() {
+            return None;
+        }
+        let _guard = self
+            .one_at_a_time
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let key = layout::key_code_for('c').unwrap_or(layout::ANSI_C);
+        copied_selection(&mut MacBoard::general(), COPY_WAIT, || {
+            post_command_key(key).map_err(|_| ())
+        })
     }
 
     fn undo(&self, target: &Target) -> Result<(), UndoError> {
@@ -360,6 +435,39 @@ mod tests {
         board.write(Selection::Clipboard, "the transcript").unwrap();
         board.restore(Selection::Clipboard, snapshot);
         assert!(board.snapshot(Selection::Clipboard).is_empty());
+    }
+
+    #[test]
+    fn a_copied_selection_is_read_and_the_old_clipboard_comes_back() {
+        let mut board = board();
+        put(&board, &[("public.utf8-plain-text", b"sentinel")]);
+        let app = MacBoard::on(board.pasteboard.clone());
+        let text = copied_selection(&mut board, std::time::Duration::from_secs(1), || {
+            app.pasteboard.clearContents();
+            app.pasteboard
+                .setString_forType(&NSString::from_str("the selection"), unsafe {
+                    NSPasteboardTypeString
+                });
+            Ok(())
+        });
+        assert_eq!(text.as_deref(), Some("the selection"));
+        let back = board.snapshot(Selection::Clipboard);
+        assert_eq!(
+            back,
+            vec![vec![(
+                "public.utf8-plain-text".to_owned(),
+                b"sentinel".to_vec()
+            )]]
+        );
+    }
+
+    #[test]
+    fn an_app_that_does_not_copy_gives_no_selection_and_leaves_the_clipboard() {
+        let mut board = board();
+        put(&board, &[("public.utf8-plain-text", b"sentinel")]);
+        let text = copied_selection(&mut board, std::time::Duration::from_millis(60), || Ok(()));
+        assert_eq!(text, None);
+        assert_eq!(board.snapshot(Selection::Clipboard).len(), 1);
     }
 
     #[test]

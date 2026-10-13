@@ -134,6 +134,7 @@ pub struct Engine {
     claimed: BTreeSet<Phys>,
     down: BTreeSet<Phys>,
     hold_on: bool,
+    command_on: bool,
     hands_free_armed: bool,
     paste_last_armed: bool,
     /// Esc belongs to the pipeline: it is sent on as [`AppEvent::Esc`].
@@ -148,6 +149,7 @@ impl Engine {
             claimed: BTreeSet::new(),
             down: BTreeSet::new(),
             hold_on: false,
+            command_on: false,
             hands_free_armed: false,
             paste_last_armed: false,
             escape: false,
@@ -170,8 +172,17 @@ impl Engine {
     /// down starts nothing.
     pub fn set_bindings(&mut self, bindings: Bindings) -> Vec<Output> {
         let mut out = Vec::new();
-        if std::mem::take(&mut self.hold_on) && self.recorder.is_none() {
-            out.push(Output::App(AppEvent::HoldUp));
+        let (command_was_on, hold_was_on) = (
+            std::mem::take(&mut self.command_on),
+            std::mem::take(&mut self.hold_on),
+        );
+        if self.recorder.is_none() {
+            if command_was_on {
+                out.push(Output::App(AppEvent::CommandUp));
+            }
+            if hold_was_on {
+                out.push(Output::App(AppEvent::HoldUp));
+            }
         }
         self.claimed = [&bindings.hold, &bindings.command]
             .into_iter()
@@ -186,6 +197,7 @@ impl Engine {
         self.hands_free_armed = false;
         self.paste_last_armed = false;
         self.hold_on = self.hold_satisfied();
+        self.command_on = self.command_satisfied();
         out
     }
 
@@ -211,18 +223,34 @@ impl Engine {
             .is_some_and(|combo| satisfied(combo, &self.down, &self.claimed))
     }
 
-    /// The hold event when the hold shortcut just went on or off.
-    fn follow_hold(&mut self) -> Option<AppEvent> {
-        let on = self.hold_satisfied();
-        if on == self.hold_on {
-            return None;
+    fn command_satisfied(&self) -> bool {
+        self.bindings
+            .command
+            .as_ref()
+            .is_some_and(|combo| satisfied(combo, &self.down, &self.claimed))
+    }
+
+    /// The hold and command events for what the last key change switched on or off. The
+    /// command keys contain the hold key, so a press sends the hold first and a release sends
+    /// the command first: the command session is ended by its own event.
+    fn follow_hold(&mut self) -> Vec<AppEvent> {
+        let mut events = Vec::new();
+        let (hold, command) = (self.hold_satisfied(), self.command_satisfied());
+        if !command && self.command_on {
+            events.push(AppEvent::CommandUp);
         }
-        self.hold_on = on;
-        Some(if on {
-            AppEvent::HoldDown
-        } else {
-            AppEvent::HoldUp
-        })
+        if !hold && self.hold_on {
+            events.push(AppEvent::HoldUp);
+        }
+        if hold && !self.hold_on {
+            events.push(AppEvent::HoldDown);
+        }
+        if command && !self.command_on {
+            events.push(AppEvent::CommandDown);
+        }
+        self.hold_on = hold;
+        self.command_on = command;
+        events
     }
 
     pub fn press(&mut self, key: Phys) -> Vec<Output> {
@@ -248,9 +276,10 @@ impl Engine {
         if key == Phys::Esc && self.escape {
             out.push(Output::App(AppEvent::Esc));
         }
-        out.extend(self.follow_hold().map(Output::App));
+        out.extend(self.follow_hold().into_iter().map(Output::App));
         if key == Phys::Char(' ')
             && self.hold_on
+            && !self.command_on
             && self.bindings.hands_free == Some(HandsFree::Default)
         {
             out.push(Output::App(AppEvent::HandsFreeToggle));
@@ -286,7 +315,7 @@ impl Engine {
             self.recorder = None;
             return vec![Output::Record(Recording::Captured(keys))];
         }
-        let mut out: Vec<Output> = self.follow_hold().map(Output::App).into_iter().collect();
+        let mut out: Vec<Output> = self.follow_hold().into_iter().map(Output::App).collect();
         let custom = self.bindings.hands_free.as_ref().and_then(HandsFree::combo);
         if release_toggle(
             custom,
@@ -316,9 +345,19 @@ impl Engine {
         if let Some(recorder) = &mut self.recorder {
             recorder.held.clear();
         }
-        match std::mem::take(&mut self.hold_on) {
-            true if self.recorder.is_none() => vec![Output::App(AppEvent::HoldUp)],
-            _ => Vec::new(),
+        let (command_was_on, hold_was_on) = (
+            std::mem::take(&mut self.command_on),
+            std::mem::take(&mut self.hold_on),
+        );
+        let mut out = Vec::new();
+        if self.recorder.is_none() {
+            if command_was_on {
+                out.push(Output::App(AppEvent::CommandUp));
+            }
+            if hold_was_on {
+                out.push(Output::App(AppEvent::HoldUp));
+            }
         }
+        out
     }
 }

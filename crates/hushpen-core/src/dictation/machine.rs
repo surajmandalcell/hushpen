@@ -65,7 +65,9 @@ impl DictationMachine {
                         .is_some_and(|tap| now.saturating_sub(tap) <= DOUBLE_TAP_MS);
                     self.start(if double { Mode::HandsFree } else { Mode::Hold }, now)
                 }
-                State::Listening if self.mode != Mode::Hold => self.stop_listening(now),
+                State::Listening if !matches!(self.mode, Mode::Hold | Mode::Command) => {
+                    self.stop_listening(now)
+                }
                 _ => Vec::new(),
             },
             AppEvent::HoldUp => {
@@ -79,12 +81,33 @@ impl DictationMachine {
                 }
                 self.stop_listening(now)
             }
+            AppEvent::CommandDown => match (self.state, self.mode) {
+                (State::Idle, _) => self.start(Mode::Command, now),
+                // The command keys contain the hold key, so the hold has already started the
+                // recording; it keeps running as the instruction.
+                (State::Listening, Mode::Hold) => {
+                    self.mode = Mode::Command;
+                    Vec::new()
+                }
+                _ => Vec::new(),
+            },
+            AppEvent::CommandUp => {
+                if self.state != State::Listening || self.mode != Mode::Command {
+                    return Vec::new();
+                }
+                if now.saturating_sub(self.started_at) < MIN_HOLD_MS {
+                    self.enter(State::Idle, now);
+                    return vec![Effect::StopCapture { keep: false }];
+                }
+                self.stop_listening(now)
+            }
             AppEvent::HandsFreeToggle => match self.state {
                 State::Idle => self.start(Mode::HandsFree, now),
                 State::Listening if self.mode == Mode::Hold => {
                     self.mode = Mode::HandsFree;
                     Vec::new()
                 }
+                State::Listening if self.mode == Mode::Command => Vec::new(),
                 State::Listening => self.stop_listening(now),
                 _ => Vec::new(),
             },
@@ -127,7 +150,20 @@ impl DictationMachine {
                 }
                 self.raw = raw.clone();
                 self.enter(State::Cleaning, now);
+                if self.mode == Mode::Command {
+                    return vec![Effect::Edit {
+                        session,
+                        instruction: raw,
+                    }];
+                }
                 vec![Effect::Clean { session, raw }]
+            }
+            AppEvent::EditFailed { session, code } => {
+                if !self.expects(State::Cleaning, session) {
+                    return Vec::new();
+                }
+                self.enter(State::Failed, now);
+                vec![failed_row(None, code), Effect::Notify { code }]
             }
             AppEvent::TranscribeFailed { session, code } => {
                 if !self.expects(State::Transcribing, session) {

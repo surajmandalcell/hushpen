@@ -548,6 +548,34 @@ impl X11Board {
         chord::send_undo(&self.reader.conn, self.reader.root)
     }
 
+    /// The text that is selected in the focused app: the PRIMARY selection, read without a key
+    /// press. Our own PRIMARY (kept for xterm pastes) is the last dictation, not a selection.
+    pub(super) fn primary_text(&self) -> Option<String> {
+        let atoms = &self.shared.atoms;
+        let owner = self.reader.owner(atoms.PRIMARY)?;
+        if owner == NONE || owner == self.shared.window {
+            return None;
+        }
+        let end = Instant::now() + FETCH_TIMEOUT;
+        let fetched = self
+            .reader
+            .fetch(atoms, atoms.PRIMARY, atoms.UTF8_STRING, end)
+            .or_else(|| {
+                self.reader.fetch(
+                    atoms,
+                    atoms.PRIMARY,
+                    atoms.STRING,
+                    Instant::now() + FETCH_TIMEOUT,
+                )
+            })?;
+        let text = if fetched.ptype == atoms.STRING {
+            fetched.data.iter().map(|byte| char::from(*byte)).collect()
+        } else {
+            String::from_utf8(fetched.data).ok()?
+        };
+        (!text.trim().is_empty()).then_some(text)
+    }
+
     fn own(&self, selection: Selection, offer: Option<Offer>) -> Result<(), String> {
         let atom = self.shared.selection_atom(selection);
         {

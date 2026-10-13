@@ -12,6 +12,7 @@ use objc2_core_graphics::CGPreflightPostEventAccess;
 const FOCUSED_ELEMENT: &str = "AXFocusedUIElement";
 const SUBROLE: &str = "AXSubrole";
 const SECURE_TEXT_FIELD: &str = "AXSecureTextField";
+const SELECTED_TEXT: &str = "AXSelectedText";
 /// A hung app must not hold the paste: the default wait is 6 s.
 const AX_TIMEOUT_SECONDS: f32 = 0.25;
 
@@ -68,7 +69,7 @@ fn attribute(element: &CFType, name: &str) -> Option<CFType> {
     Some(unsafe { CFType::wrap_under_create_rule(value) })
 }
 
-fn focused_subrole() -> Option<String> {
+fn focused_element() -> Option<CFType> {
     // SAFETY: "Create" returns a +1 reference that this wrapper now owns.
     let system = unsafe {
         let raw = AXUIElementCreateSystemWide();
@@ -79,11 +80,23 @@ fn focused_subrole() -> Option<String> {
     };
     // SAFETY: `system` is a live accessibility element.
     unsafe { AXUIElementSetMessagingTimeout(system.as_CFTypeRef(), AX_TIMEOUT_SECONDS) };
-    let focused = attribute(&system, FOCUSED_ELEMENT)?;
-    let subrole = attribute(&focused, SUBROLE)?;
+    attribute(&system, FOCUSED_ELEMENT)
+}
+
+fn focused_subrole() -> Option<String> {
+    let subrole = attribute(&focused_element()?, SUBROLE)?;
     subrole
         .downcast_into::<CFString>()
         .map(|text| text.to_string())
+}
+
+/// The text that the focused element reports as selected, when it reports any. Many apps (Chrome,
+/// Electron, terminals) have no such attribute; the caller then copies instead.
+pub(super) fn focused_selected_text() -> Option<String> {
+    let text = attribute(&focused_element()?, SELECTED_TEXT)?
+        .downcast_into::<CFString>()
+        .map(|text| text.to_string())?;
+    (!text.trim().is_empty()).then_some(text)
 }
 
 #[cfg(test)]
@@ -97,5 +110,6 @@ mod tests {
         let _ = probe.post_event_allowed();
         let _ = probe.secure_event_input();
         let _ = probe.focused_secure_field();
+        let _ = focused_selected_text();
     }
 }

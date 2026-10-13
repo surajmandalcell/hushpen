@@ -50,7 +50,10 @@ pub const LLM_PROMPT_TOO_LONG: &str = "LLM_PROMPT_TOO_LONG";
 /// The model failed while it read the prompt or wrote the reply.
 pub const LLM_GENERATE_FAILED: &str = "LLM_GENERATE_FAILED";
 pub const ENDPOINT_FAILED: &str = "ENDPOINT_FAILED";
+/// Command Mode was started with nothing selected.
 pub const COMMAND_NO_SELECTION: &str = "COMMAND_NO_SELECTION";
+/// Command Mode was started while AI cleanup is off, so no model can edit the selection.
+pub const COMMAND_NEEDS_AI: &str = "COMMAND_NEEDS_AI";
 pub const HISTORY_NEWER_SCHEMA: &str = "HISTORY_NEWER_SCHEMA";
 pub const HISTORY_WRITE_FAILED: &str = "HISTORY_WRITE_FAILED";
 pub const SETTINGS_CORRUPT: &str = "SETTINGS_CORRUPT";

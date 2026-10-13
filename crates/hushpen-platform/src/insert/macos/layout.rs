@@ -12,6 +12,8 @@ use std::ffi::c_void;
 
 /// The key code of `v` on an ANSI keyboard, used when the layout cannot be read.
 pub(super) const ANSI_V: u16 = 9;
+/// The key code of `c` on an ANSI keyboard, used when the layout cannot be read.
+pub(super) const ANSI_C: u16 = 8;
 /// The key code of `z` on an ANSI keyboard, used when the layout cannot be read.
 pub(super) const ANSI_Z: u16 = 6;
 

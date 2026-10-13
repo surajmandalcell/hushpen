@@ -1,5 +1,7 @@
 use super::*;
-use crate::error::{CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, INSERT_SECURE_FIELD};
+use crate::error::{
+    CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, INSERT_SECURE_FIELD, LLM_TIMEOUT,
+};
 
 const RAW: &str = "hello world";
 const CLEAN: &str = "Hello world.";
@@ -97,6 +99,12 @@ fn every_event() -> Vec<AppEvent> {
             session: 1,
             code: INSERT_SECURE_FIELD,
         },
+        AppEvent::CommandDown,
+        AppEvent::CommandUp,
+        AppEvent::EditFailed {
+            session: 1,
+            code: LLM_TIMEOUT,
+        },
     ]
 }
 
@@ -117,10 +125,13 @@ fn variant_index(event: &AppEvent) -> usize {
         AppEvent::Inserted { .. } => 11,
         AppEvent::InsertFailed { .. } => 12,
         AppEvent::PasteLast => 13,
+        AppEvent::CommandDown => 14,
+        AppEvent::CommandUp => 15,
+        AppEvent::EditFailed { .. } => 16,
     }
 }
 
-const VARIANTS: usize = 14;
+const VARIANTS: usize = 17;
 
 fn start_effects() -> Vec<Effect> {
     vec![Effect::StartCapture { session: 1 }, Effect::Cue(Cue::Start)]
@@ -154,6 +165,25 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
     ] {
         rows.push((State::Idle, start, State::Listening, start_effects()));
     }
+    rows.push((
+        State::Idle,
+        E::CommandDown,
+        State::Listening,
+        start_effects(),
+    ));
+    rows.push((State::Listening, E::CommandDown, State::Listening, vec![]));
+    rows.push((
+        State::Cleaning,
+        E::EditFailed {
+            session: 1,
+            code: LLM_TIMEOUT,
+        },
+        State::Failed,
+        vec![
+            failed_row(None, LLM_TIMEOUT),
+            Effect::Notify { code: LLM_TIMEOUT },
+        ],
+    ));
     for resting in [State::Idle, State::Done, State::Cancelled, State::Failed] {
         rows.push((resting, E::PasteLast, resting, vec![Effect::PasteLast]));
     }
@@ -317,7 +347,7 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
         }
     }
     assert_eq!(pairs, State::ALL.len() * VARIANTS);
-    assert_eq!(pairs, 112);
+    assert_eq!(pairs, 136);
 }
 
 #[test]
@@ -325,6 +355,7 @@ fn a_start_event_outside_idle_never_begins_a_second_session() {
     for state in State::ALL.into_iter().filter(|s| *s != State::Idle) {
         for start in [
             AppEvent::HoldDown,
+            AppEvent::CommandDown,
             AppEvent::HandsFreeToggle,
             AppEvent::HomeToggle,
             AppEvent::FlowBarClick,
@@ -725,4 +756,143 @@ fn the_raw_text_passed_to_cleanup_has_its_blank_markers_removed() {
             raw: "hello world".into()
         }]
     );
+}
+// Command Mode.
+
+fn command_session() -> DictationMachine {
+    let mut m = machine();
+    handle(&mut m, AppEvent::CommandDown, 0);
+    m
+}
+
+#[test]
+fn the_command_keys_start_a_command_session_that_stops_when_they_come_up() {
+    let mut m = command_session();
+    assert_eq!(m.mode(), Mode::Command);
+    assert_eq!(m.mode().key(), "command");
+    assert_eq!(handle(&mut m, AppEvent::CommandUp, LATER), stop_effects());
+    assert_eq!(m.state(), State::Transcribing);
+}
+
+#[test]
+fn a_hold_that_already_runs_becomes_the_command_session() {
+    let mut m = machine();
+    hold(&mut m);
+    assert_eq!(handle(&mut m, AppEvent::CommandDown, 60), vec![]);
+    assert_eq!(m.mode(), Mode::Command);
+    assert_eq!(m.session(), 1, "the recording goes on, it does not restart");
+    // The hold key coming up before the command keys changes nothing.
+    assert_eq!(handle(&mut m, AppEvent::HoldUp, 700), vec![]);
+    assert_eq!(handle(&mut m, AppEvent::CommandUp, 710), stop_effects());
+}
+
+#[test]
+fn a_hands_free_or_home_session_ignores_the_command_keys() {
+    for start in [AppEvent::HandsFreeToggle, AppEvent::HomeToggle] {
+        let mut m = machine();
+        handle(&mut m, start, 0);
+        let mode = m.mode();
+        assert!(handle(&mut m, AppEvent::CommandDown, 100).is_empty());
+        assert!(handle(&mut m, AppEvent::CommandUp, 200).is_empty());
+        assert_eq!(m.mode(), mode);
+        assert_eq!(m.state(), State::Listening);
+    }
+}
+
+#[test]
+fn a_command_tap_is_discarded_and_is_not_half_of_a_double_tap() {
+    let mut m = command_session();
+    assert_eq!(
+        handle(&mut m, AppEvent::CommandUp, 249),
+        vec![Effect::StopCapture { keep: false }]
+    );
+    assert_eq!(m.state(), State::Idle);
+    let effects = handle(&mut m, AppEvent::HoldDown, 300);
+    assert_eq!(
+        m.mode(),
+        Mode::Hold,
+        "a tap of Command Mode arms no hands-free"
+    );
+    assert_eq!(
+        effects,
+        vec![Effect::StartCapture { session: 2 }, Effect::Cue(Cue::Start),]
+    );
+}
+
+#[test]
+fn the_instruction_goes_to_the_model_as_an_edit_and_never_to_cleanup() {
+    let mut m = command_session();
+    handle(&mut m, AppEvent::CommandUp, LATER);
+    let effects = handle(&mut m, transcribed(1), LATER);
+    assert_eq!(
+        effects,
+        vec![Effect::Edit {
+            session: 1,
+            instruction: RAW.into()
+        }]
+    );
+    assert_eq!(m.state(), State::Cleaning);
+}
+
+#[test]
+fn the_edited_text_is_pasted_and_saved_like_a_dictation() {
+    let mut m = command_session();
+    handle(&mut m, AppEvent::CommandUp, LATER);
+    handle(&mut m, transcribed(1), LATER);
+    let effects = handle(&mut m, cleaned(1), LATER);
+    assert_eq!(
+        effects,
+        vec![Effect::Insert {
+            session: 1,
+            text: CLEAN.into(),
+            delivery: Delivery::Paste
+        }]
+    );
+    let done = handle(&mut m, AppEvent::Inserted { session: 1 }, LATER);
+    assert_eq!(m.state(), State::Done);
+    assert!(done.contains(&Effect::SaveRow {
+        status: RowStatus::Done,
+        text: Some(CLEAN.into()),
+        code: None
+    }));
+}
+
+#[test]
+fn a_failed_edit_pastes_nothing_and_a_late_answer_changes_nothing() {
+    let mut m = command_session();
+    handle(&mut m, AppEvent::CommandUp, LATER);
+    handle(&mut m, transcribed(1), LATER);
+    let failed = AppEvent::EditFailed {
+        session: 1,
+        code: LLM_TIMEOUT,
+    };
+    let effects = handle(&mut m, failed.clone(), LATER);
+    assert_eq!(m.state(), State::Failed);
+    assert!(!effects.iter().any(|e| matches!(e, Effect::Insert { .. })));
+    assert!(handle(&mut m, cleaned(1), LATER).is_empty());
+    assert!(handle(&mut m, failed, LATER).is_empty());
+}
+
+#[test]
+fn an_edit_failure_from_an_older_session_is_ignored() {
+    let mut m = command_session();
+    handle(&mut m, AppEvent::CommandUp, LATER);
+    handle(&mut m, transcribed(1), LATER);
+    let stale = AppEvent::EditFailed {
+        session: 7,
+        code: LLM_TIMEOUT,
+    };
+    assert!(handle(&mut m, stale, LATER).is_empty());
+    assert_eq!(m.state(), State::Cleaning);
+}
+
+#[test]
+fn esc_while_the_model_edits_stops_it_and_pastes_nothing() {
+    let mut m = command_session();
+    handle(&mut m, AppEvent::CommandUp, LATER);
+    handle(&mut m, transcribed(1), LATER);
+    let effects = handle(&mut m, AppEvent::Esc, LATER);
+    assert_eq!(m.state(), State::Cancelled);
+    assert!(effects.contains(&Effect::StopLlm));
+    assert!(handle(&mut m, cleaned(1), LATER).is_empty());
 }

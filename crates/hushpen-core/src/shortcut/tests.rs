@@ -644,3 +644,106 @@ fn a_recorded_hands_free_chord_becomes_a_custom_binding() {
         Some(HandsFree::Custom(ctrl_alt('h')))
     );
 }
+
+// Command Mode events.
+
+#[test]
+fn the_command_keys_go_down_after_the_hold_and_come_up_before_it() {
+    let mut engine = Engine::new(defaults());
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldDown]);
+    assert_eq!(app(engine.press(R_SHIFT)), [AppEvent::CommandDown]);
+    assert_eq!(app(engine.release(R_SHIFT)), [AppEvent::CommandUp]);
+    assert_eq!(app(engine.release(R_ALT)), [AppEvent::HoldUp]);
+}
+
+#[test]
+fn letting_go_of_the_hold_key_first_ends_the_command_and_the_hold_together() {
+    let mut engine = Engine::new(defaults());
+    engine.press(R_ALT);
+    engine.press(R_SHIFT);
+    assert_eq!(
+        app(engine.release(R_ALT)),
+        [AppEvent::CommandUp, AppEvent::HoldUp]
+    );
+    assert_eq!(app(engine.release(R_SHIFT)), []);
+}
+
+#[test]
+fn a_command_chord_pressed_in_the_other_order_still_sends_the_hold_first() {
+    let mut engine = Engine::new(defaults());
+    assert_eq!(app(engine.press(R_SHIFT)), []);
+    assert_eq!(
+        app(engine.press(R_ALT)),
+        [AppEvent::HoldDown, AppEvent::CommandDown]
+    );
+}
+
+#[test]
+fn right_shift_alone_or_left_shift_with_the_hold_key_is_no_command() {
+    let mut engine = Engine::new(defaults());
+    assert_eq!(chord(&mut engine, &[R_SHIFT]), []);
+    assert_eq!(
+        chord(&mut engine, &[R_ALT, L_SHIFT]),
+        [AppEvent::HoldDown, AppEvent::HoldUp]
+    );
+}
+
+#[test]
+fn a_command_shortcut_that_is_not_the_hold_key_plus_more_runs_on_its_own() {
+    let mut engine = Engine::new(Bindings {
+        hold: Some(combo("RightCtrl", LINUX)),
+        ..defaults()
+    });
+    assert_eq!(
+        chord(&mut engine, &[R_ALT, R_SHIFT]),
+        [AppEvent::CommandDown, AppEvent::CommandUp]
+    );
+}
+
+#[test]
+fn no_command_binding_means_no_command_event() {
+    let mut engine = Engine::new(Bindings {
+        command: None,
+        ..defaults()
+    });
+    assert_eq!(
+        chord(&mut engine, &[R_ALT, R_SHIFT]),
+        [AppEvent::HoldDown, AppEvent::HoldUp]
+    );
+}
+
+#[test]
+fn a_command_that_is_on_is_let_go_when_the_bindings_change_or_the_stream_resets() {
+    let mut engine = Engine::new(defaults());
+    engine.press(R_ALT);
+    engine.press(R_SHIFT);
+    assert_eq!(
+        app(engine.set_bindings(Bindings {
+            command: None,
+            ..defaults()
+        })),
+        [AppEvent::CommandUp, AppEvent::HoldUp]
+    );
+    let mut engine = Engine::new(defaults());
+    engine.press(R_ALT);
+    engine.press(R_SHIFT);
+    assert_eq!(app(engine.reset()), [AppEvent::CommandUp, AppEvent::HoldUp]);
+}
+
+#[test]
+fn no_command_event_fires_while_a_shortcut_is_being_recorded() {
+    let mut engine = Engine::new(defaults());
+    engine.start_recording();
+    assert_eq!(app(engine.press(R_ALT)), []);
+    assert_eq!(app(engine.press(R_SHIFT)), []);
+    assert_eq!(app(engine.release(R_SHIFT)), []);
+    assert_eq!(app(engine.release(R_ALT)), []);
+}
+
+#[test]
+fn space_during_a_command_is_not_the_hands_free_toggle() {
+    let mut engine = Engine::new(defaults());
+    engine.press(R_ALT);
+    engine.press(R_SHIFT);
+    assert_eq!(app(engine.press(Phys::Char(' '))), []);
+}

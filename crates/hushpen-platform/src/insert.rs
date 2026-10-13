@@ -62,6 +62,13 @@ pub trait Inserter: Send + Sync {
         observe: &mut dyn FnMut(Step<'_>),
     ) -> Report;
 
+    /// The text that is selected in `target`, or `None` when nothing is, the app is Hushpen
+    /// itself, or the field is secure. Command Mode reads it when its keys go down, before the
+    /// user speaks. The clipboard is the same afterwards.
+    fn selection(&self, _target: &Target) -> Option<String> {
+        None
+    }
+
     /// Presses the app's undo key (Ctrl+Z, Cmd+Z on macOS) in `target`, and nowhere else: the
     /// key goes out only while `target` still has the focus, and never to a terminal.
     fn undo(&self, _target: &Target) -> Result<(), UndoError> {
