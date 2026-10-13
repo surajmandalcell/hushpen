@@ -462,6 +462,14 @@ tab_to() { # <id>: Tab until that element has focus
   done
   [ "$(tree_get "$id" .focused)" = true ]
 }
+accent_on() { # <shot name> <id>: accent pixels (within 2 per channel of #0A84FF) on the focused control
+  local name=$1 id=$2 ox oy w h x y mean
+  read -r ox oy <<<"$(win_origin "$(app_window)")"
+  read -r w h x y <<<"$($HC tree | jq -r --arg id "$id" '[.[] | select(.id == $id) | "\(.bounds.width | floor) \(.bounds.height | floor) \(.bounds.x | floor) \(.bounds.y | floor)"] | first // empty')"
+  [ -n "$w" ] || return 1
+  mean=$(convert "$RUN_OUT/$name.png" -crop "${w}x${h}+$((ox + x))+$((oy + y))" +repage -fuzz 1% -fill white -opaque '#0A84FF' -fill black +opaque white -format '%[fx:mean]' info:)
+  awk -v m="$mean" 'BEGIN {exit !(m > 0)}' || { echo "no #0A84FF pixel on $id in $name" >&2; return 1; }
+}
 key_step() { # <step key> <shot name>
   sleep 0.5
   $HC tree >"$RUN_OUT/009-$2-tree.json"
@@ -474,12 +482,14 @@ key_step permissions 1-permissions
 wait_until 10 continue_enabled || failures+="permissions: Continue stayed closed; "
 tab_to onboarding.continue || failures+="permissions: Tab never reached Continue; "
 shot 009-1-permissions-focus
+accent_on 009-1-permissions-focus onboarding.continue || failures+="permissions: the focused control shows no accent (#0A84FF) pixel; "
 xdotool key Return
 wait_until 5 ob_is .step mic || failures+="permissions: Return did not open the mic test; "
 
 key_step mic 2-mic
 tab_to onboarding.mic.test || failures+="mic: Tab never reached Test; "
 shot 009-2-mic-focus
+accent_on 009-2-mic-focus onboarding.mic.test || failures+="mic: the focused control shows no accent (#0A84FF) pixel; "
 xdotool key space
 wait_until 5 ob_is .mic.phase listening || failures+="mic: Space did not start the test; "
 speech "$SHORT_WAV"
@@ -493,12 +503,14 @@ key_step model 3-model
 wait_until 60 ob_is .model.state ready || failures+="model: the present model is $(ob .model.state); "
 tab_to onboarding.continue || failures+="model: Tab never reached Continue; "
 shot 009-3-model-focus
+accent_on 009-3-model-focus onboarding.continue || failures+="model: the focused control shows no accent (#0A84FF) pixel; "
 xdotool key Return
 wait_until 5 ob_is .step practice || failures+="model: Return did not open the practice step; "
 
 key_step practice 4-practice
 tab_to onboarding.practice.field || failures+="practice: Tab never reached the practice field; "
 shot 009-4-practice-focus
+accent_on 009-4-practice-focus onboarding.practice.field || failures+="practice: the focused control shows no accent (#0A84FF) pixel; "
 ptt "$SHORT_WAV" || failures+="practice: the hold key did not start; "
 wait_until 240 ob_is .practice.passed true || failures+="practice: the field never passed; "
 tab_to onboarding.continue || failures+="practice: Tab never reached Continue; "
@@ -508,6 +520,7 @@ wait_until 5 ob_is .step updates || failures+="practice: Return did not open the
 key_step updates 5-updates
 tab_to onboarding.updates.toggle || failures+="updates: Tab never reached the toggle; "
 shot 009-5-updates-focus
+accent_on 009-5-updates-focus onboarding.updates.toggle || failures+="updates: the focused control shows no accent (#0A84FF) pixel; "
 xdotool key space
 wait_until 3 ob_is .updates.check true || failures+="updates: Space did not turn the choice on; "
 xdotool key space
@@ -516,7 +529,7 @@ tab_to onboarding.continue || failures+="updates: Tab never reached Finish; "
 xdotool key Return
 wait_until 10 ob_is .active false || failures+="updates: Return did not finish onboarding; "
 [ "$(jq -r '.values["onboarding.completed"]' "$SETTINGS")" = true ] || failures+="onboarding.completed is not true; "
-check_failures "VAL-ONB-009 keyboard only" "all five steps completed with Tab, Space, and Return; no skip control in any step; focus shown in the 009-*-focus screenshots" "$failures"
+check_failures "VAL-ONB-009 keyboard only" "all five steps completed with Tab, Space, and Return; no skip control in any step; focus shown in the 009-*-focus screenshots with accent pixels on the focused control" "$failures"
 
 # leave the slot as init.sh made it
 /harness/slot/app.sh stop
