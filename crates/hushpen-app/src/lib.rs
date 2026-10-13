@@ -33,6 +33,8 @@ pub mod shell;
 pub mod shortcuts;
 pub mod storage;
 pub mod theme;
+#[cfg(test)]
+mod token_use;
 pub mod tray;
 pub mod ui;
 pub mod views;

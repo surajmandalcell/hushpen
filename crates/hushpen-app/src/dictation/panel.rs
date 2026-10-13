@@ -150,7 +150,7 @@ fn header(
     let label = if listening { "Stop" } else { "Record" };
     let record = {
         let dictation = dictation.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             dictation.update(cx, |me, cx| {
                 // A refused start shows its reason in the notice row.
                 let _ = me.toggle(cx);
@@ -159,7 +159,7 @@ fn header(
     };
     let copy = {
         let dictation = dictation.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             dictation.update(cx, |me, cx| {
                 let _ = me.copy(cx);
             });
@@ -209,7 +209,7 @@ fn notice_row(
 ) -> impl IntoElement + use<> {
     let open = {
         let shell = shell.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             shell.update(cx, |shell, cx| shell.select(View::Models, cx));
         }
     };

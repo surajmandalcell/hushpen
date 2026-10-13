@@ -3,13 +3,13 @@
 
 use super::FlowBar;
 use crate::hook;
-use crate::theme::hud as theme;
-use crate::theme::{BODY_SM, LABEL_CAPS, LABEL_MD, StyledType, color, radius, space};
+use crate::theme::hud::{BODY_SM, LABEL_CAPS, LABEL_MD, color, radius};
+use crate::theme::{StyledType, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     App, ClickEvent, Div, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, svg,
+    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb, svg,
     transparent_black,
 };
 use hushpen_core::flow_bar::{BarState, bar_heights};
@@ -189,9 +189,9 @@ pub fn content(props: &Props, bar: Option<&Entity<FlowBar>>) -> impl IntoElement
         .flex()
         .flex_col()
         .overflow_hidden()
-        .bg(theme::rgb_of(color::SURFACE_ELEVATED))
+        .bg(rgb(color::SURFACE_ELEVATED))
         .border_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
+        .border_color(rgb(color::DIVIDER))
         .rounded(px(if card { radius::MD } else { radius::FULL }))
         .cursor_pointer();
     if let Some(bar) = bar {
@@ -225,7 +225,7 @@ pub fn content(props: &Props, bar: Option<&Entity<FlowBar>>) -> impl IntoElement
                 .px(px(space::MD))
                 .py(px(space::SM))
                 .text_token(BODY_SM)
-                .text_color(theme::rgb_of(color::TEXT_MUTED))
+                .text_color(rgb(color::TEXT_MUTED))
                 .child(text.clone())
                 .into_any_element(),
         ),
@@ -340,7 +340,7 @@ fn wave_bar(height: f32, tone: u32) -> Div {
         .h(px(height))
         .flex_none()
         .rounded(px(BAR_WIDTH / 2.0))
-        .bg(theme::rgb_of(tone))
+        .bg(rgb(tone))
 }
 
 fn dot(lit: bool) -> Div {
@@ -348,7 +348,7 @@ fn dot(lit: bool) -> Div {
         .size(px(6.0))
         .flex_none()
         .rounded(px(radius::FULL))
-        .bg(theme::rgb_of(if lit {
+        .bg(rgb(if lit {
             color::TEXT_PRIMARY
         } else {
             color::TEXT_SUBTLE
@@ -360,7 +360,7 @@ fn icon(name: IconName, tone: u32) -> impl IntoElement {
         .path(name.path())
         .size(px(14.0))
         .flex_none()
-        .text_color(theme::rgb_of(tone))
+        .text_color(rgb(tone))
 }
 
 fn status_text(text: &str, tone: u32) -> impl IntoElement {
@@ -371,7 +371,7 @@ fn status_text(text: &str, tone: u32) -> impl IntoElement {
         .aria_label(text.to_owned())
         .truncate()
         .text_token(BODY_SM)
-        .text_color(theme::rgb_of(tone))
+        .text_color(rgb(tone))
         .child(text.to_owned())
 }
 
@@ -398,16 +398,16 @@ fn language_chip(language: &Language, bar: Option<&Entity<FlowBar>>) -> impl Int
         .h(px(20.0))
         .px(px(6.0))
         .rounded(px(radius::FULL))
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
+        .bg(rgb(color::SURFACE_CONTROL))
         .text_token(LABEL_CAPS)
-        .text_color(theme::rgb_of(tone))
+        .text_color(rgb(tone))
         .child(language.label.clone())
         // A press on the chip is not a press on the bar: no drag and no dictation.
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     if let Some(bar) = bar {
         let bar = bar.clone();
         chip = chip
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+            .hover(|style| style.bg(rgb(color::SURFACE_CONTROL_HOVER)))
             .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                 bar.update(cx, |bar, cx| bar.toggle_picker(cx));
             });
@@ -428,16 +428,16 @@ fn open_history_button(bar: Option<&Entity<FlowBar>>) -> impl IntoElement {
         .px(px(10.0))
         .rounded(px(radius::FULL))
         .border_1()
-        .border_color(theme::rgb_of(color::BORDER_CONTROL))
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
+        .border_color(rgb(color::BORDER_CONTROL))
+        .bg(rgb(color::SURFACE_CONTROL))
         .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+        .text_color(rgb(color::TEXT_PRIMARY))
         .child("Open history")
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     if let Some(bar) = bar {
         let bar = bar.clone();
         button = button
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+            .hover(|style| style.bg(rgb(color::SURFACE_CONTROL_HOVER)))
             .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                 bar.update(cx, |bar, cx| bar.open_history(cx));
             });
@@ -458,17 +458,17 @@ fn undo_button(bar: Option<&Entity<FlowBar>>) -> impl IntoElement {
         .px(px(10.0))
         .rounded(px(radius::FULL))
         .border_1()
-        .border_color(theme::rgb_of(color::BORDER_CONTROL))
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
+        .border_color(rgb(color::BORDER_CONTROL))
+        .bg(rgb(color::SURFACE_CONTROL))
         .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+        .text_color(rgb(color::TEXT_PRIMARY))
         .child("Undo cleanup")
         // A press on the button is not a press on the bar: no drag and no dictation.
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     if let Some(bar) = bar {
         let bar = bar.clone();
         button = button
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
+            .hover(|style| style.bg(rgb(color::SURFACE_CONTROL_HOVER)))
             .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                 bar.update(cx, |bar, cx| bar.press_undo(cx));
             });
@@ -492,7 +492,7 @@ fn option_list(
         .flex_none()
         .overflow_y_scroll()
         .p(px(space::XS))
-        .border_color(theme::rgb_of(color::DIVIDER));
+        .border_color(rgb(color::DIVIDER));
     let list = if below {
         list.border_t_1()
     } else {
@@ -528,22 +528,22 @@ fn option_row(
         .border_2()
         .border_color(transparent_black())
         .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
+        .text_color(rgb(color::TEXT_PRIMARY))
         .child(name);
     if selected {
-        row = row.bg(theme::rgb_of(color::SURFACE_SELECTED)).child(
+        row = row.bg(rgb(color::SURFACE_SELECTED)).child(
             svg()
                 .path(IconName::Check.path())
                 .size(px(14.0))
                 .flex_none()
-                .text_color(theme::rgb_of(color::FOCUS)),
+                .text_color(rgb(color::FOCUS)),
         );
     }
     if let Some(bar) = bar {
         let bar = bar.clone();
         row = row
             .cursor_pointer()
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_ROW_HOVER)))
+            .hover(|style| style.bg(rgb(color::SURFACE_ROW_HOVER)))
             .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
                 bar.update(cx, |bar, cx| {
                     if let Err(reason) = bar.choose_language(code, cx) {

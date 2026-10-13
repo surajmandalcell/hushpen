@@ -1,17 +1,15 @@
-//! The Shortcuts section of Settings: one row for each shortcut with a recorder field, the
-//! reason a shortcut was refused, and a button that puts all four back to their defaults.
+//! The Shortcuts section of Settings: one group with a row for each shortcut and a recorder
+//! field on its right, the reason a shortcut was refused, and a row that puts all four back
+//! to their defaults.
 
 use super::Shortcuts;
 use crate::hook;
-use crate::theme::{
-    self, BODY_MD, BODY_SM, LABEL_MD, ROW_TITLE, StyledType, color, radius, size, space,
-};
+use crate::theme::{self, BUTTON, Palette, StyledType, radius, size};
+use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, svg,
-    transparent_black,
+    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
+    ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
 };
 use hushpen_core::shortcut::Slot;
 
@@ -36,12 +34,13 @@ fn text_of(slot: Slot) -> (&'static str, &'static str) {
         Slot::PasteLast => ("Paste last transcript", "Pastes your last dictation again."),
         Slot::Command => (
             "Command Mode",
-            "Hold this key to speak an instruction for the selected text.",
+            "Hold to speak an instruction for the selected text.",
         ),
     }
 }
 
 pub fn render(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> impl IntoElement + use<> {
+    let palette = theme::palette(cx);
     let (rows, why_off, reset_focus) = {
         let me = shortcuts.read(cx);
         let rows: Vec<Row> = Slot::ALL
@@ -74,31 +73,47 @@ pub fn render(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> impl IntoElement +
             me.reset_focus.clone(),
         )
     };
-    let mut panel = div()
-        .id(hook::id("settings", "shortcuts"))
-        .test_support()
-        .flex()
-        .flex_col()
-        .w_full()
-        .overflow_hidden()
-        .bg(theme::rgb_of(color::SURFACE))
-        .rounded(px(radius::PANEL))
-        .border_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .child(header(shortcuts, &reset_focus));
+    let mut group_rows: Vec<AnyElement> = Vec::new();
     if let Some(message) = why_off {
-        panel = panel.child(note_row(message));
+        group_rows.push(ui::note_row(
+            palette,
+            hook::id("settings", "shortcut.keys-off"),
+            message,
+            false,
+        ));
     }
     for row in rows {
-        panel = panel.child(shortcut_row(shortcuts, row));
+        let key = row.slot.key();
+        let error = row.error.clone();
+        group_rows.push(shortcut_row(palette, shortcuts, row));
+        if let Some(message) = error {
+            group_rows.push(ui::note_row(
+                palette,
+                hook::id("settings", &format!("shortcut.{key}.error")),
+                message,
+                true,
+            ));
+        }
     }
-    panel
+    group_rows.push(reset_row(palette, shortcuts, &reset_focus));
+    ui::section(
+        palette,
+        ui::plain_group(hook::id("settings", "shortcuts"), palette, group_rows),
+        Some((
+            hook::id("settings", "shortcuts.help"),
+            "Click a shortcut, then press the keys. Esc cancels.".to_owned(),
+        )),
+    )
 }
 
-fn header(shortcuts: &Entity<Shortcuts>, reset_focus: &FocusHandle) -> impl IntoElement + use<> {
+fn reset_row(
+    palette: Palette,
+    shortcuts: &Entity<Shortcuts>,
+    reset_focus: &FocusHandle,
+) -> AnyElement {
     let reset = {
         let shortcuts = shortcuts.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             shortcuts.update(cx, |shortcuts, cx| {
                 if let Err(error) = shortcuts.reset_all(cx) {
                     log::warn!("the shortcuts could not be reset: {error}");
@@ -106,65 +121,24 @@ fn header(shortcuts: &Entity<Shortcuts>, reset_focus: &FocusHandle) -> impl Into
             });
         }
     };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .p(px(space::LG))
-        .child(icon_tile(IconName::Keyboard))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_token(ROW_TITLE)
-                        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                        .child("Shortcuts"),
-                )
-                .child(
-                    div()
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
-                        .child("Click a shortcut, then press the keys. Esc cancels."),
-                ),
-        )
-        .child(button(
+    ui::labeled_row(
+        palette,
+        hook::id("settings", "shortcut.reset.row"),
+        "Default shortcuts",
+        None,
+        ui::button(
+            palette,
             hook::id("settings", "shortcut.reset"),
             "Reset to default",
-            reset_focus,
+            Kind::Plain,
+            Some(reset_focus),
+            true,
             reset,
-        ))
+        ),
+    )
 }
 
-fn note_row(message: String) -> impl IntoElement + use<> {
-    div()
-        .id(hook::id("settings", "shortcut.keys-off"))
-        .test_support()
-        .role(Role::Status)
-        .aria_label(message.clone())
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::TEXT_MUTED))
-        .child(
-            svg()
-                .path(IconName::Info.path())
-                .size(px(14.0))
-                .flex_none()
-                .text_color(theme::rgb_of(color::TEXT_MUTED)),
-        )
-        .child(div().flex_1().min_w_0().child(message))
-}
-
-fn shortcut_row(shortcuts: &Entity<Shortcuts>, row: Row) -> impl IntoElement + use<> {
+fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> AnyElement {
     let key = row.slot.key();
     let toggle = {
         let shortcuts = shortcuts.clone();
@@ -190,161 +164,39 @@ fn shortcut_row(shortcuts: &Entity<Shortcuts>, row: Row) -> impl IntoElement + u
         .justify_center()
         .min_w(px(FIELD_MIN_WIDTH))
         .max_w(px(FIELD_MAX_WIDTH))
-        .h(px(32.0))
-        .px(px(10.0 - size::FOCUS_RING))
-        .rounded(px(radius::MD))
+        .h(px(size::BUTTON_HEIGHT))
+        .px(px(size::BUTTON_PADDING - size::FOCUS_RING))
+        .rounded(px(radius::BUTTON))
         .border_2()
-        .border_color(theme::rgb_of(if row.recording {
-            color::FOCUS
+        .border_color(if row.recording {
+            palette.accent
         } else {
-            color::BORDER_CONTROL
-        }))
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(if !row.enabled {
-            color::TEXT_DISABLED
+            transparent_black().into()
+        })
+        .bg(palette.control)
+        .text_token(BUTTON)
+        .text_color(if !row.enabled {
+            palette.label_tertiary
         } else if row.recording {
-            color::TEXT_MUTED
+            palette.label_secondary
         } else {
-            color::TEXT_PRIMARY
-        }));
+            palette.label
+        });
     hook::mark_disabled(&format!("settings.shortcut.{key}"), !row.enabled);
     if row.enabled {
-        let on_click = {
-            let toggle = toggle.clone();
-            move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx)
-        };
-        let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                toggle(cx);
-                cx.stop_propagation();
-            }
-        };
+        let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx);
         field = field
             .track_focus(&row.focus)
             .cursor_pointer()
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-            .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-            .on_click(on_click)
-            .on_key_down(on_key);
+            .hover(move |style| style.bg(palette.selection))
+            .focus_visible(move |style| style.border_color(palette.accent))
+            .on_click(on_click);
     }
-    let field = field.child(div().truncate().child(row.shown));
-    let mut block = div()
-        .flex()
-        .flex_col()
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .px(px(space::LG))
-                .py(px(space::MD))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .text_token(ROW_TITLE)
-                                .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-                                .child(row.title),
-                        )
-                        .child(
-                            div()
-                                .text_token(BODY_SM)
-                                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                                .child(row.detail),
-                        ),
-                )
-                .child(field),
-        );
-    if let Some(message) = row.error {
-        block = block.child(error_row(key, message));
-    }
-    block
-}
-
-fn error_row(key: &'static str, message: String) -> impl IntoElement + use<> {
-    div()
-        .id(hook::id("settings", &format!("shortcut.{key}.error")))
-        .test_support()
-        .role(Role::Alert)
-        .aria_label(message.clone())
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .pb(px(space::MD))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::STATUS_ERROR))
-        .child(
-            svg()
-                .path(IconName::CircleAlert.path())
-                .size(px(14.0))
-                .flex_none()
-                .text_color(theme::rgb_of(color::STATUS_ERROR)),
-        )
-        .child(div().flex_1().min_w_0().child(message))
-}
-
-fn button<F: Fn(&mut App) + Clone + 'static>(
-    id: gpui_kit::SharedString,
-    label: &'static str,
-    focus: &FocusHandle,
-    press: F,
-) -> impl IntoElement + use<F> {
-    let on_click = {
-        let press = press.clone();
-        move |_: &ClickEvent, _: &mut Window, cx: &mut App| press(cx)
-    };
-    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-            press(cx);
-            cx.stop_propagation();
-        }
-    };
-    div()
-        .id(id)
-        .test_support()
-        .track_focus(focus)
-        .role(Role::Button)
-        .aria_label(label)
-        .flex_none()
-        .flex()
-        .items_center()
-        .h(px(32.0))
-        .px(px(10.0 - size::FOCUS_RING))
-        .rounded(px(radius::MD))
-        .border_2()
-        .border_color(transparent_black())
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(color::TEXT_PRIMARY))
-        .cursor_pointer()
-        .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-        .on_click(on_click)
-        .on_key_down(on_key)
-        .child(label)
-}
-
-fn icon_tile(icon: IconName) -> impl IntoElement {
-    div()
-        .size(px(28.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius::MD))
-        .bg(theme::rgb_of(color::SURFACE_SOFT))
-        .child(
-            svg()
-                .path(icon.path())
-                .size(px(14.0))
-                .text_color(theme::rgb_of(color::TEXT_BODY)),
-        )
+    ui::labeled_row(
+        palette,
+        hook::id("settings", &format!("shortcut.row.{key}")),
+        row.title,
+        Some(row.detail.to_owned()),
+        field.child(div().truncate().child(row.shown)),
+    )
 }

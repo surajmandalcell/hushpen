@@ -930,7 +930,12 @@ mod window {
             .unwrap();
     }
 
-    fn present(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &'static str) -> bool {
+    fn present(
+        cx: &mut TestAppContext,
+        handle: AnyWindowHandle,
+        id: impl Into<gpui_kit::SharedString>,
+    ) -> bool {
+        let id = id.into();
         cx.update_window(handle, |_, window, _| window.try_find(id).is_some())
             .unwrap()
     }
@@ -1041,7 +1046,17 @@ mod window {
                 "{key}: status on the row's line"
             );
             if row.opens.is_some() {
-                for name in ["allow", "open"] {
+                // Allow has nothing left to do once the row is Ready.
+                let names: &[&str] = if row.state == RowState::Ready {
+                    assert!(
+                        !present(cx, handle, format!("onboarding.permissions.allow.{key}")),
+                        "{key}: Allow is hidden when Ready"
+                    );
+                    &["open"]
+                } else {
+                    &["allow", "open"]
+                };
+                for name in names {
                     let button = rect(cx, handle, format!("onboarding.permissions.{name}.{key}"));
                     assert!(
                         (middle(button) - middle(whole)).abs() < 1.0,

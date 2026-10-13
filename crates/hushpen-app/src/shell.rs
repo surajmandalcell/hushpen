@@ -399,7 +399,7 @@ fn start_move(event: &MouseDownEvent, window: &mut Window, _cx: &mut gpui_kit::A
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let shell = cx.entity();
-        theme::sync(window, cx);
+        theme::sync(window);
         let palette = theme::palette(cx);
         self.rendered = palette.appearance;
         let frame = div()

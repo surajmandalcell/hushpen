@@ -96,7 +96,7 @@ fn header(
 ) -> impl IntoElement + use<> {
     let toggle = {
         let mic = mic.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             mic.update(cx, |mic, cx| {
                 if mic.state() == CaptureState::Listening {
                     let _ = mic.stop(cfg!(feature = "test-automation"), cx);

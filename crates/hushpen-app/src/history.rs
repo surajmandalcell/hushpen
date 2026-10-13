@@ -33,10 +33,10 @@ use std::time::{Duration, Instant};
 pub const PAGE: usize = 50;
 /// The height of one list row. Every row has this height, so the list can leave out the rows
 /// that are far from the screen and stand in for them with space.
-pub const ROW_HEIGHT: f32 = 64.0;
+pub const ROW_HEIGHT: f32 = 48.0;
 /// Where the first row starts below the top of the scrolled content, and the most that banners
 /// can add to that.
-const LIST_TOP: f32 = 72.0;
+const LIST_TOP: f32 = 49.0;
 const LIST_TOP_MAX: f32 = 220.0;
 /// Rows kept ready above and below the screen.
 const BUFFER: usize = 3;

@@ -8,7 +8,7 @@
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::{
     App, FontWeight, Global, Rgba, Styled, Subscription, Window, WindowAppearance, px, relative,
-    rgb, rgba,
+    rgba,
 };
 use std::cell::Cell;
 
@@ -97,14 +97,6 @@ pub mod radius {
         APP_ICON = 16.0, "app-icon";
         FULL = 9999.0, "full";
     });
-
-    // Radii of the views that are not restyled yet. They are not in DESIGN.md.
-    pub const XS: f32 = 5.0;
-    pub const SM: f32 = 7.0;
-    pub const NAV: f32 = 9.0;
-    pub const CONTROL: f32 = 10.0;
-    pub const MD: f32 = 12.0;
-    pub const PANEL: f32 = 22.0;
 }
 
 /// Spacing and fixed layout sizes in logical pixels.
@@ -184,43 +176,6 @@ pub const SECONDARY: TextToken = TextToken {
     size: 11.0,
     weight: 400.0,
     line_height: 1.3,
-};
-
-// Type of the views that are not restyled yet. It is not in DESIGN.md.
-pub const DISPLAY_MD: TextToken = TextToken {
-    size: 24.0,
-    weight: 600.0,
-    line_height: 1.17,
-};
-pub const TITLE_MD: TextToken = TextToken {
-    size: 15.0,
-    weight: 600.0,
-    line_height: 1.0,
-};
-pub const ROW_TITLE: TextToken = TextToken {
-    size: 14.0,
-    weight: 600.0,
-    line_height: 1.43,
-};
-pub const BODY_MD: TextToken = TextToken {
-    size: 13.0,
-    weight: 500.0,
-    line_height: 1.54,
-};
-pub const BODY_SM: TextToken = TextToken {
-    size: 12.0,
-    weight: 500.0,
-    line_height: 1.67,
-};
-pub const LABEL_MD: TextToken = TextToken {
-    size: 12.0,
-    weight: 600.0,
-    line_height: 1.0,
-};
-pub const LABEL_CAPS: TextToken = TextToken {
-    size: 11.0,
-    weight: 600.0,
-    line_height: 1.82,
 };
 
 pub trait StyledType: Styled + Sized {
@@ -455,10 +410,9 @@ fn change(cx: &mut App, edit: impl FnOnce(&mut Current)) {
     }
 }
 
-/// Points the Kit controls and the not yet restyled views at the palette in use.
+/// Points the Kit controls at the palette in use.
 fn apply(cx: &mut App) {
     let palette = palette(cx);
-    set_legacy_light(!palette.appearance.is_dark());
     let mode = if palette.appearance.is_dark() {
         ThemeMode::Dark
     } else {
@@ -493,19 +447,12 @@ fn apply(cx: &mut App) {
 }
 
 thread_local! {
-    static LEGACY_LIGHT: Cell<bool> = const { Cell::new(false) };
     static SCALE: Cell<f32> = const { Cell::new(1.0) };
 }
 
-fn set_legacy_light(light: bool) {
-    LEGACY_LIGHT.with(|cell| cell.set(light));
-}
-
-/// Tells the views what the window is drawn with, for the parts that cannot take it as an
-/// argument. The shell calls it on every render: the not yet restyled views read the palette in
-/// use, and the row lines read the pixel density.
-pub fn sync(window: &Window, cx: &App) {
-    set_legacy_light(!appearance(cx).is_dark());
+/// Tells the views the pixel density of the window, for the row lines. The shell calls it on
+/// every render.
+pub fn sync(window: &Window) {
     SCALE.with(|cell| cell.set(window.scale_factor().max(1.0)));
 }
 
@@ -515,96 +462,49 @@ pub fn hairline() -> gpui_kit::Pixels {
     px(1.0 / SCALE.with(Cell::get))
 }
 
-/// A color of a view that is not restyled yet. It was written for Dark, and in Light it maps to
-/// the nearest Light neutral. The restyle of each view moves it to [`palette`], and this goes
-/// with the last one.
-pub fn rgb_of(hex: u32) -> Rgba {
-    let light = LEGACY_LIGHT.with(Cell::get);
-    rgb(if light { legacy::light_of(hex) } else { hex })
-}
-
-/// The colors of the views that are not restyled yet, written for Dark. They are not in
-/// DESIGN.md.
-pub mod color {
-    pub const BACKGROUND: u32 = 0x2F2F2F;
-    pub const BACKGROUND_RAISED: u32 = 0x333333;
-    pub const SIDEBAR: u32 = 0x3C3C3C;
-    pub const SIDEBAR_ACTIVE: u32 = 0x686868;
-    pub const SURFACE: u32 = 0x3A3A3A;
-    pub const SURFACE_SOFT: u32 = 0x383838;
-    pub const SURFACE_CONTROL: u32 = 0x303030;
-    pub const SURFACE_CONTROL_HOVER: u32 = 0x3A3A3A;
-    pub const SURFACE_ROW_HOVER: u32 = 0x424242;
-    pub const SURFACE_SELECTED: u32 = 0x5A5A5A;
-    pub const SURFACE_ELEVATED: u32 = 0x2B2B2B;
-    pub const BORDER: u32 = 0x3F3F3F;
-    pub const BORDER_SIDEBAR: u32 = 0x545454;
-    pub const BORDER_CONTROL: u32 = 0x5C5C5C;
-    pub const DIVIDER: u32 = 0x474747;
-    pub const TEXT_PRIMARY: u32 = 0xEEEEEE;
-    pub const TEXT_HEADING: u32 = 0xF4F4F4;
-    pub const TEXT_BODY: u32 = 0xCFCFCF;
-    pub const TEXT_MUTED: u32 = 0xA8A8A8;
-    pub const TEXT_SUBTLE: u32 = 0x8E8E8E;
-    pub const TEXT_DISABLED: u32 = 0x8A8A8A;
-    pub const FOCUS: u32 = 0x9BCFFF;
-    pub const ACCENT_BLUE: u32 = 0x0A84FF;
-    pub const STATUS_ERROR: u32 = 0xFF9C8F;
-    pub const STATUS_WARNING: u32 = 0xFFB3AA;
-}
-
-mod legacy {
-    use super::color::*;
-
-    /// Each legacy Dark color and the Light color that takes its place.
-    const LIGHT: &[(u32, u32)] = &[
-        (BACKGROUND, 0xF5F5F5),
-        (BACKGROUND_RAISED, 0xEDEDED),
-        (SIDEBAR, 0xE8E8EA),
-        (SIDEBAR_ACTIVE, 0xD4D4D6),
-        (SURFACE, 0xECECEC),
-        (SURFACE_SOFT, 0xE4E4E4),
-        (SURFACE_CONTROL, 0xFFFFFF),
-        (SURFACE_ROW_HOVER, 0xE2E2E2),
-        (SURFACE_SELECTED, 0xD6D6D8),
-        (SURFACE_ELEVATED, 0xE6E6E6),
-        (BORDER, 0xDADADA),
-        (BORDER_SIDEBAR, 0xC8C8CA),
-        (BORDER_CONTROL, 0xC4C4C6),
-        (DIVIDER, 0xD8D8D8),
-        (TEXT_PRIMARY, 0x1A1A1A),
-        (TEXT_HEADING, 0x111111),
-        (TEXT_BODY, 0x333333),
-        (TEXT_MUTED, 0x666666),
-        (TEXT_SUBTLE, 0x808080),
-        (TEXT_DISABLED, 0xA0A0A0),
-        (FOCUS, 0x007AFF),
-        (ACCENT_BLUE, 0x007AFF),
-        (STATUS_ERROR, 0xFF3B30),
-        (STATUS_WARNING, 0xC93400),
-    ];
-
-    pub(super) fn light_of(dark: u32) -> u32 {
-        LIGHT
-            .iter()
-            .find(|(from, _)| *from == dark)
-            .map_or(dark, |(_, to)| *to)
-    }
-
-    #[cfg(test)]
-    pub(super) fn dark_colors() -> impl Iterator<Item = u32> {
-        LIGHT.iter().map(|(from, _)| *from)
-    }
-}
-
-/// Fonts and colors for the flow bar. It stays a dark HUD in both appearances, so it reads the
-/// Dark colors whatever the window around it shows.
+/// Fonts and colors for the flow bar. It stays a dark HUD in both appearances, so it reads these
+/// colors whatever the window around it shows.
 pub mod hud {
-    use gpui_kit::{Rgba, rgb};
-
-    pub fn rgb_of(hex: u32) -> Rgba {
-        rgb(hex)
+    use super::TextToken;
+    pub mod color {
+        pub const SURFACE_CONTROL: u32 = 0x303030;
+        pub const SURFACE_CONTROL_HOVER: u32 = 0x3A3A3A;
+        pub const SURFACE_ROW_HOVER: u32 = 0x424242;
+        pub const SURFACE_SELECTED: u32 = 0x5A5A5A;
+        pub const SURFACE_ELEVATED: u32 = 0x2B2B2B;
+        pub const BORDER_CONTROL: u32 = 0x5C5C5C;
+        pub const DIVIDER: u32 = 0x474747;
+        pub const TEXT_PRIMARY: u32 = 0xEEEEEE;
+        pub const TEXT_BODY: u32 = 0xCFCFCF;
+        pub const TEXT_MUTED: u32 = 0xA8A8A8;
+        pub const TEXT_SUBTLE: u32 = 0x8E8E8E;
+        pub const TEXT_DISABLED: u32 = 0x8A8A8A;
+        pub const FOCUS: u32 = 0x9BCFFF;
+        pub const STATUS_ERROR: u32 = 0xFF9C8F;
+        pub const STATUS_WARNING: u32 = 0xFFB3AA;
     }
+
+    pub mod radius {
+        pub const CONTROL: f32 = 10.0;
+        pub const MD: f32 = 12.0;
+        pub const FULL: f32 = super::super::radius::FULL;
+    }
+
+    pub const BODY_SM: TextToken = TextToken {
+        size: 12.0,
+        weight: 500.0,
+        line_height: 1.67,
+    };
+    pub const LABEL_MD: TextToken = TextToken {
+        size: 12.0,
+        weight: 600.0,
+        line_height: 1.0,
+    };
+    pub const LABEL_CAPS: TextToken = TextToken {
+        size: 11.0,
+        weight: 600.0,
+        line_height: 1.82,
+    };
 }
 
 #[cfg(test)]
@@ -808,16 +708,6 @@ mod tests {
     }
 
     #[test]
-    fn the_legacy_light_map_covers_only_neutrals_and_never_a_new_token() {
-        let mut seen = std::collections::HashSet::new();
-        for dark_color in legacy::dark_colors() {
-            assert!(seen.insert(dark_color), "{dark_color:06X} is listed twice");
-            assert_ne!(legacy::light_of(dark_color), dark_color, "{dark_color:06X}");
-        }
-        assert_eq!(legacy::light_of(0x123456), 0x123456, "unknown colors stay");
-    }
-
-    #[test]
     fn the_system_reading_maps_to_a_system_value() {
         assert_eq!(system_from_window(WindowAppearance::Light), System::Light);
         assert_eq!(
@@ -848,20 +738,8 @@ mod tests {
     }
 
     #[test]
-    fn the_flow_bar_reads_dark_colors_whatever_the_window_shows() {
-        set_legacy_light(true);
-        let in_light = (
-            rgb_of(color::SURFACE_ELEVATED),
-            hud::rgb_of(color::SURFACE_ELEVATED),
-        );
-        set_legacy_light(false);
-        assert_ne!(
-            in_light.0,
-            rgb(color::SURFACE_ELEVATED),
-            "views move to Light"
-        );
-        assert_eq!(in_light.1, rgb(color::SURFACE_ELEVATED), "the HUD does not");
-        assert_eq!(color::SURFACE_ELEVATED, 0x2B2B2B);
+    fn the_flow_bar_is_a_dark_hud_whatever_the_window_shows() {
+        assert_eq!(hud::color::SURFACE_ELEVATED, 0x2B2B2B);
     }
 
     #[test]

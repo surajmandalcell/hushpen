@@ -1,20 +1,20 @@
-//! The History view: one grouped panel with the search box and a row for each transcript, or
-//! the detail of one transcript.
+//! The History view: one group with the search box and a row for each transcript, or the detail
+//! of one transcript.
 
 use super::playback::{self, KEY_STEP_MS, PlaybackInfo};
 use super::{History, ROW_HEIGHT};
 use crate::controller::ReprocessState;
 use crate::hook;
-use crate::theme::{
-    self, BODY_MD, BODY_SM, LABEL_CAPS, LABEL_MD, ROW_TITLE, StyledType, color, radius, size, space,
-};
+use crate::theme::{self, BUTTON, Palette, StyledType, radius, size, space};
+use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::InputState;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    App, Bounds, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Pixels, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
-    relative, svg, transparent_black,
+    AnyElement, App, Bounds, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Pixels, Role, StatefulInteractiveElement, Styled, Window, div, px,
+    relative, transparent_black,
 };
 use hushpen_core::export::Format;
 use hushpen_store::history::Row;
@@ -137,11 +137,29 @@ struct Snapshot {
     format_focus: [FocusHandle; 4],
 }
 
+/// Stacks rows into a group. A row that draws its own line above it, and the spacers that stand
+/// in for rows outside the screen, pass `None` and take no line from here.
+fn assemble(
+    id: &'static str,
+    palette: Palette,
+    rows: Vec<(AnyElement, Option<f32>)>,
+) -> AnyElement {
+    let mut frame = ui::group_frame(hook::id("history", id), palette);
+    for (index, (row, inset)) in rows.into_iter().enumerate() {
+        if let (true, Some(inset)) = (index > 0, inset) {
+            frame = frame.child(ui::line(palette, inset));
+        }
+        frame = frame.child(row);
+    }
+    frame.into_any_element()
+}
+
 fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<> {
     if history.read(cx).page_due() {
         let history = history.clone();
         cx.defer(move |cx| history.update(cx, |history, cx| history.load_more(cx)));
     }
+    let palette = theme::palette(cx);
     let (snap, focus) = {
         let view = history.read(cx);
         let drawn = view.window_rows();
@@ -185,40 +203,57 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
         undo_focus,
         more_focus,
     ] = focus;
-    let mut panel = panel_shell("list").child(toolbar(history, &snap, &clear_focus));
+    let plain = Some(ui::PLAIN_INSET);
+    let mut rows: Vec<(AnyElement, Option<f32>)> =
+        vec![(toolbar(palette, history, &snap, &clear_focus), plain)];
     if snap.selecting {
-        panel = panel.child(select_bar(history, &snap));
+        rows.push((select_bar(palette, history, &snap), plain));
     }
     if let Some(notice) = snap.notice.clone() {
-        panel = panel.child(note_row("notice", notice));
+        rows.push((
+            ui::note_row(palette, hook::id("history", "notice"), notice, false),
+            plain,
+        ));
     }
     if snap.confirming {
-        panel = panel.child(confirm_row(
-            history,
-            snap.total,
-            &confirm_focus,
-            &cancel_focus,
+        rows.push((
+            confirm_row(palette, history, snap.total, &confirm_focus, &cancel_focus),
+            plain,
         ));
     }
     if snap.can_undo {
-        panel = panel.child(undo_row(history, &undo_focus));
+        rows.push((undo_row(palette, history, &undo_focus), plain));
     }
     if let Some(message) = snap.message.clone() {
-        panel = panel.child(message_row(message));
+        rows.push((
+            ui::note_row(palette, hook::id("history", "message"), message, true),
+            plain,
+        ));
     }
     if snap.rows.is_empty() {
         let searching = !snap.query.is_empty();
-        panel = panel.child(note_row(
-            if searching { "no-results" } else { "empty" },
-            if searching {
-                format!("No transcripts match \u{201c}{}\u{201d}.", snap.query)
-            } else {
-                EMPTY_TEXT.to_owned()
-            },
+        rows.push((
+            ui::note_row(
+                palette,
+                hook::id("history", if searching { "no-results" } else { "empty" }),
+                if searching {
+                    format!("No transcripts match \u{201c}{}\u{201d}.", snap.query)
+                } else {
+                    EMPTY_TEXT.to_owned()
+                },
+                false,
+            ),
+            plain,
         ));
     }
     if snap.first > 0 {
-        panel = panel.child(div().flex_none().h(px(snap.first as f32 * ROW_HEIGHT)));
+        rows.push((
+            div()
+                .flex_none()
+                .h(px(snap.first as f32 * ROW_HEIGHT))
+                .into_any_element(),
+            None,
+        ));
     }
     for (offset, ((row, focus), selected)) in snap
         .rows
@@ -228,10 +263,19 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
         .enumerate()
     {
         let mode = snap.selecting.then_some(selected);
-        panel = panel.child(entry_row(history, snap.first + offset, row, focus, mode));
+        rows.push((
+            entry_row(palette, history, snap.first + offset, row, focus, mode),
+            None,
+        ));
     }
     if snap.below > 0 {
-        panel = panel.child(div().flex_none().h(px(snap.below as f32 * ROW_HEIGHT)));
+        rows.push((
+            div()
+                .flex_none()
+                .h(px(snap.below as f32 * ROW_HEIGHT))
+                .into_any_element(),
+            None,
+        ));
     }
     if snap.has_more {
         let more = {
@@ -240,44 +284,31 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
                 history.update(cx, |history, cx| history.load_more(cx));
             }
         };
-        panel = panel.child(
-            div()
-                .flex()
+        rows.push((
+            ui::row(palette)
                 .justify_center()
-                .py(px(space::MD))
-                .border_t_1()
-                .border_color(theme::rgb_of(color::DIVIDER))
-                .child(button(
+                .child(ui::button(
+                    palette,
                     hook::id("history", "more"),
                     "Show more",
-                    &more_focus,
+                    Kind::Plain,
+                    Some(&more_focus),
                     true,
                     more,
-                )),
-        );
+                ))
+                .into_any_element(),
+            plain,
+        ));
     }
-    panel
-}
-
-fn panel_shell(name: &'static str) -> impl ParentElement + Styled + IntoElement {
-    div()
-        .id(hook::id("history", name))
-        .test_support()
-        .flex()
-        .flex_col()
-        .w_full()
-        .overflow_hidden()
-        .bg(theme::rgb_of(color::SURFACE))
-        .rounded(px(radius::PANEL))
-        .border_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
+    assemble("list", palette, rows)
 }
 
 fn toolbar(
+    palette: Palette,
     history: &Entity<History>,
     snap: &Snapshot,
     clear_focus: &FocusHandle,
-) -> impl IntoElement + use<> {
+) -> AnyElement {
     let clear = {
         let history = history.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -294,39 +325,40 @@ fn toolbar(
             });
         }
     };
-    div()
+    let can_select = snap.total > 0 || snap.selecting;
+    let can_clear = snap.total > 0;
+    ui::row(palette)
         .id(hook::id("history", "toolbar"))
         .test_support()
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .child(
-            div().flex_1().min_w_0().child(
-                Input::new(&snap.search)
-                    .id(hook::id("history", "search"))
-                    .aria_label("Search transcripts"),
-            ),
-        )
-        .child(button(
+        .child(div().flex_1().min_w_0().child(ui::field(
+            palette,
+            hook::id("history", "search"),
+            "Search transcripts",
+            &snap.search,
+        )))
+        .child(ui::button(
+            palette,
             hook::id("history", "select"),
             if snap.selecting { "Done" } else { "Select" },
-            &snap.select_focus,
-            snap.total > 0 || snap.selecting,
+            Kind::Plain,
+            can_select.then_some(&snap.select_focus),
+            can_select,
             select,
         ))
-        .child(button(
+        .child(ui::button(
+            palette,
             hook::id("history", "clear"),
             "Clear all",
-            clear_focus,
-            snap.total > 0,
+            Kind::Plain,
+            can_clear.then_some(clear_focus),
+            can_clear,
             clear,
         ))
+        .into_any_element()
 }
 
 /// The line above the list while rows are being chosen: how many, and the four formats.
-fn select_bar(history: &Entity<History>, snap: &Snapshot) -> impl IntoElement + use<> {
+fn select_bar(palette: Palette, history: &Entity<History>, snap: &Snapshot) -> AnyElement {
     let all = {
         let history = history.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -338,26 +370,36 @@ fn select_bar(history: &Entity<History>, snap: &Snapshot) -> impl IntoElement + 
         0 => "Choose transcripts to export.".to_owned(),
         count => format!("{count} selected"),
     };
+    let can_all = !snap.rows.is_empty();
     banner(
+        palette,
         "select-bar",
         text,
         div()
             .flex_none()
             .flex()
             .gap(px(space::SM))
-            .child(button(
+            .child(ui::button(
+                palette,
                 hook::id("history", "select-all"),
                 "All",
-                &snap.select_all_focus,
-                !snap.rows.is_empty(),
+                Kind::Plain,
+                can_all.then_some(&snap.select_all_focus),
+                can_all,
                 all,
             ))
-            .child(format_buttons(history, &snap.format_focus, count > 0)),
+            .child(format_buttons(
+                palette,
+                history,
+                &snap.format_focus,
+                count > 0,
+            )),
     )
 }
 
 /// One button for each export format. They write the rows that are selected, or the open one.
 fn format_buttons(
+    palette: Palette,
     history: &Entity<History>,
     focus: &[FocusHandle; 4],
     enabled: bool,
@@ -371,10 +413,12 @@ fn format_buttons(
                 let _ = history.update(cx, |history, cx| history.export(format, None, cx));
             }
         };
-        group = group.child(button(
+        group = group.child(ui::button(
+            palette,
             hook::id("history", &format!("export-{}", format.extension())),
             format.label(),
-            focus,
+            Kind::Plain,
+            enabled.then_some(focus),
             enabled,
             press,
         ));
@@ -383,11 +427,12 @@ fn format_buttons(
 }
 
 fn confirm_row(
+    palette: Palette,
     history: &Entity<History>,
     total: i64,
     confirm_focus: &FocusHandle,
     cancel_focus: &FocusHandle,
-) -> impl IntoElement + use<> {
+) -> AnyElement {
     let confirm = {
         let history = history.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -406,30 +451,35 @@ fn confirm_row(
         "transcripts"
     };
     banner(
+        palette,
         "confirm",
         format!("Delete all {total} {noun} and their audio? This cannot be undone."),
         div()
             .flex_none()
             .flex()
             .gap(px(space::SM))
-            .child(button(
+            .child(ui::button(
+                palette,
                 hook::id("history", "clear-confirm"),
                 "Delete all",
-                confirm_focus,
+                Kind::Default,
+                Some(confirm_focus),
                 true,
                 confirm,
             ))
-            .child(button(
+            .child(ui::button(
+                palette,
                 hook::id("history", "clear-cancel"),
                 "Keep",
-                cancel_focus,
+                Kind::Plain,
+                Some(cancel_focus),
                 true,
                 cancel,
             )),
     )
 }
 
-fn undo_row(history: &Entity<History>, focus: &FocusHandle) -> impl IntoElement + use<> {
+fn undo_row(palette: Palette, history: &Entity<History>, focus: &FocusHandle) -> AnyElement {
     let undo = {
         let history = history.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -437,76 +487,45 @@ fn undo_row(history: &Entity<History>, focus: &FocusHandle) -> impl IntoElement 
         }
     };
     banner(
+        palette,
         "undo-notice",
         "Transcript deleted.".to_owned(),
-        button(hook::id("history", "undo"), "Undo", focus, true, undo),
+        ui::button(
+            palette,
+            hook::id("history", "undo"),
+            "Undo",
+            Kind::Plain,
+            Some(focus),
+            true,
+            undo,
+        ),
     )
 }
 
-fn banner(name: &'static str, text: String, controls: impl IntoElement) -> impl IntoElement {
-    div()
+/// A row with a sentence and the controls that answer it.
+fn banner(
+    palette: Palette,
+    name: &'static str,
+    text: String,
+    controls: impl IntoElement,
+) -> AnyElement {
+    ui::row(palette)
         .id(hook::id("history", name))
         .test_support()
         .aria_label(text.clone())
-        .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::TEXT_BODY))
-        .child(div().flex_1().min_w_0().child(text))
+        .child(ui::title(palette).flex_1().min_w_0().child(text))
         .child(controls)
-}
-
-fn message_row(message: String) -> impl IntoElement {
-    div()
-        .id(hook::id("history", "message"))
-        .test_support()
-        .role(Role::Alert)
-        .aria_label(message.clone())
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::STATUS_ERROR))
-        .child(
-            svg()
-                .path(IconName::CircleAlert.path())
-                .size(px(14.0))
-                .flex_none()
-                .text_color(theme::rgb_of(color::STATUS_ERROR)),
-        )
-        .child(div().flex_1().min_w_0().child(message))
-}
-
-fn note_row(name: &'static str, text: String) -> impl IntoElement {
-    div()
-        .id(hook::id("history", name))
-        .test_support()
-        .aria_label(text.clone())
-        .px(px(space::LG))
-        .py(px(space::LG))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .text_token(BODY_MD)
-        .text_color(theme::rgb_of(color::TEXT_MUTED))
-        .child(text)
+        .into_any_element()
 }
 
 fn entry_row(
+    palette: Palette,
     history: &Entity<History>,
     index: usize,
     row: Row,
     focus: FocusHandle,
     selection: Option<bool>,
-) -> impl IntoElement + use<> {
+) -> AnyElement {
     let id = row.id.clone();
     let selecting = selection.is_some();
     // While rows are being chosen, a press chooses the row instead of opening it.
@@ -549,75 +568,75 @@ fn entry_row(
     };
     let headline = title(&row);
     let detail = meta(&row);
-    let failed = row.status == "failed";
     let label = match selection {
         Some(true) => format!("{headline}, selected"),
         _ => headline.clone(),
     };
-    div()
+    let glyph = match (selection, row.status.as_str()) {
+        (Some(true), _) => IconName::SquareCheck,
+        (Some(false), _) => IconName::Square,
+        (None, "failed") => IconName::CircleAlert,
+        (None, "cancelled") => IconName::X,
+        (None, _) => IconName::Clock,
+    };
+    let mut element = div()
         .id(hook::indexed("history", "row", index))
         .test_support()
         .track_focus(&focus)
         .role(Role::Button)
         .aria_label(label)
         .h(px(ROW_HEIGHT))
+        .w_full()
         .flex_none()
         .flex()
-        .items_center()
-        .gap(px(space::MD))
-        .px(px(space::LG - size::FOCUS_RING))
-        .py(px(space::MD - size::FOCUS_RING))
+        .flex_col()
         .border_2()
         .border_color(transparent_black())
-        .border_t_1()
         .cursor_pointer()
-        .hover(|style| style.bg(theme::rgb_of(color::SURFACE_ROW_HOVER)))
-        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
+        .hover(move |style| style.bg(palette.hover()))
+        .focus_visible(move |style| style.border_color(palette.accent))
         .on_click(on_click)
-        .on_key_down(on_key)
-        .child(icon_tile(match (selection, row.status.as_str()) {
-            (Some(true), _) => IconName::SquareCheck,
-            (Some(false), _) => IconName::Square,
-            (None, "failed") => IconName::CircleAlert,
-            (None, "cancelled") => IconName::X,
-            (None, _) => IconName::Clock,
-        }))
+        .on_key_down(on_key);
+    if selection == Some(true) {
+        element = element.bg(palette.selection);
+    }
+    element
+        .child(ui::line(palette, ui::LINE_INSET - size::FOCUS_RING))
         .child(
             div()
                 .flex_1()
-                .min_w_0()
+                .min_h_0()
                 .flex()
-                .flex_col()
+                .items_center()
+                .gap(px(ui::ROW_GAP))
+                .px(px(size::ROW_PADDING - size::FOCUS_RING))
+                .child(ui::icon(palette, glyph))
                 .child(
-                    div()
-                        .id(hook::indexed("history", "name", index))
-                        .test_support()
-                        .aria_label(headline.clone())
-                        .text_token(ROW_TITLE)
-                        .text_color(theme::rgb_of(if failed {
-                            color::STATUS_ERROR
-                        } else {
-                            color::TEXT_PRIMARY
-                        }))
-                        .truncate()
-                        .child(headline),
-                )
-                .child(
-                    div()
-                        .id(hook::indexed("history", "meta", index))
-                        .test_support()
-                        .aria_label(detail.clone())
-                        .w_full()
-                        .min_w_0()
-                        .text_token(BODY_SM)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
-                        .truncate()
-                        .child(detail),
+                    ui::text_column()
+                        .child(
+                            ui::title(palette)
+                                .id(hook::indexed("history", "name", index))
+                                .test_support()
+                                .aria_label(headline.clone())
+                                .child(headline),
+                        )
+                        .child(
+                            ui::secondary(palette)
+                                .id(hook::indexed("history", "meta", index))
+                                .test_support()
+                                .aria_label(detail.clone())
+                                .w_full()
+                                .child(detail),
+                        ),
                 ),
         )
+        .into_any_element()
 }
 
+type Press = Box<dyn Fn(&mut Window, &mut App)>;
+
 fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoElement + use<> {
+    let palette = theme::palette(cx);
     let (focus, audio, reprocess, message, playback, export) = {
         let view = history.read(cx);
         (
@@ -676,137 +695,185 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
     };
     let ai_used = row.llm_outcome.as_deref() == Some("used");
     let has_ai_text = row.llm_text.is_some();
-    let controls = div()
+    let button =
+        |id: &str, label: &'static str, focus: &FocusHandle, enabled: bool, press: Press| {
+            ui::button(
+                palette,
+                hook::id("history", id),
+                label,
+                Kind::Plain,
+                enabled.then_some(focus),
+                enabled,
+                move |window, cx| press(window, cx),
+            )
+        };
+    let text_controls = div()
+        .flex_none()
         .flex()
-        .flex_wrap()
         .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
         .child(button(
-            hook::id("history", "copy"),
+            "copy",
             "Copy",
             &copy_focus,
             has_text,
-            act(|history, id, cx| {
+            Box::new(act(|history, id, cx| {
                 let _ = history.copy(Some(id), cx);
-            }),
+            })),
         ))
         .child(button(
-            hook::id("history", "repaste"),
+            "repaste",
             "Re-paste",
             &repaste_focus,
             has_text,
-            act(|history, id, cx| {
+            Box::new(act(|history, id, cx| {
                 let _ = history.repaste(Some(id), cx);
-            }),
+            })),
         ))
         .children(ai_used.then(|| {
             button(
-                hook::id("history", "undo-cleanup"),
+                "undo-cleanup",
                 "Undo cleanup",
                 &undo_cleanup_focus,
                 true,
-                act(|history, id, cx| {
+                Box::new(act(|history, id, cx| {
                     let _ = history.undo_cleanup(Some(id), cx);
-                }),
+                })),
             )
         }))
         .children(has_ai_text.then(|| {
             button(
-                hook::id("history", "copy-original"),
+                "copy-original",
                 "Copy original",
                 &copy_original_focus,
                 true,
-                act(|history, id, cx| {
+                Box::new(act(|history, id, cx| {
                     let _ = history.copy_original(Some(id), cx);
-                }),
+                })),
             )
-        }))
+        }));
+    let file_controls = div()
+        .flex_none()
+        .flex()
+        .gap(px(space::SM))
         .child(button(
-            hook::id("history", "reprocess"),
+            "reprocess",
             "Reprocess",
             &reprocess_focus,
             audio && !running,
-            act(|history, id, cx| {
+            Box::new(act(|history, id, cx| {
                 let _ = history.reprocess(Some(id), cx);
-            }),
+            })),
         ))
         .child(button(
-            hook::id("history", "export"),
+            "export",
             "Export",
             &export.button_focus,
             true,
-            {
+            Box::new({
                 let history = history.clone();
                 move |_: &mut Window, cx: &mut App| {
                     history.update(cx, |history, cx| history.toggle_export_menu(cx));
                 }
-            },
+            }),
         ))
         .child(button(
-            hook::id("history", "delete"),
+            "delete",
             "Delete",
             &delete_focus,
             true,
-            act(|history, id, cx| {
+            Box::new(act(|history, id, cx| {
                 let _ = history.delete(Some(id), cx);
-            }),
+            })),
         ));
 
-    let mut panel = panel_shell("detail").child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(space::MD))
-            .px(px(space::LG))
-            .py(px(space::MD))
-            .child(button(
+    let plain = Some(ui::PLAIN_INSET);
+    let mut rows: Vec<(AnyElement, Option<f32>)> = vec![(
+        ui::row(palette)
+            .id(hook::id("history", "detail-header"))
+            .test_support()
+            .child(ui::button(
+                palette,
                 hook::id("history", "back"),
                 "Back",
-                &back_focus,
+                Kind::Plain,
+                Some(&back_focus),
                 true,
                 back,
             ))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_token(BODY_SM)
-                    .text_color(theme::rgb_of(color::TEXT_MUTED))
-                    .truncate()
-                    .child(meta(&row)),
-            ),
-    );
-    panel = panel.child(controls);
+            .child(ui::secondary(palette).flex_1().min_w_0().child(meta(&row)))
+            .into_any_element(),
+        plain,
+    )];
+    for (name, title, controls) in [
+        ("actions.text", "Text", text_controls.into_any_element()),
+        (
+            "actions.file",
+            "Recording",
+            file_controls.into_any_element(),
+        ),
+    ] {
+        rows.push((
+            ui::row(palette)
+                .id(hook::id("history", name))
+                .test_support()
+                .child(ui::title(palette).flex_1().min_w_0().child(title))
+                .child(controls)
+                .into_any_element(),
+            plain,
+        ));
+    }
     if export.open {
-        panel = panel.child(banner(
-            "export-bar",
-            "Export this transcript as".to_owned(),
-            format_buttons(history, &export.format_focus, has_text),
+        rows.push((
+            banner(
+                palette,
+                "export-bar",
+                "Export this transcript as".to_owned(),
+                format_buttons(palette, history, &export.format_focus, has_text),
+            ),
+            plain,
         ));
     }
     if let Some(notice) = export.notice {
-        panel = panel.child(note_row("notice", notice));
+        rows.push((
+            ui::note_row(palette, hook::id("history", "notice"), notice, false),
+            plain,
+        ));
     }
     if audio {
-        panel = panel.child(player_row(history, &row.id, playback));
+        rows.push((player_row(palette, history, &row.id, playback), plain));
     }
     if let Some(message) = message {
-        panel = panel.child(message_row(message));
+        rows.push((
+            ui::note_row(palette, hook::id("history", "message"), message, true),
+            plain,
+        ));
     }
     match &reprocess {
-        Some(ReprocessState::Running) => {
-            panel = panel.child(note_row("reprocess-status", "Reprocessing\u{2026}".into()));
-        }
-        Some(ReprocessState::Failed(why)) => {
-            panel = panel.child(message_row(format!("Reprocess failed. {why}")));
-        }
+        Some(ReprocessState::Running) => rows.push((
+            ui::note_row(
+                palette,
+                hook::id("history", "reprocess-status"),
+                "Reprocessing\u{2026}".into(),
+                false,
+            ),
+            plain,
+        )),
+        Some(ReprocessState::Failed(why)) => rows.push((
+            ui::note_row(
+                palette,
+                hook::id("history", "message"),
+                format!("Reprocess failed. {why}"),
+                true,
+            ),
+            plain,
+        )),
         None => {}
     }
     if let Some(note) = audio_note(&row, audio) {
-        panel = panel.child(note_row("audio-missing", note));
+        rows.push((
+            ui::note_row(palette, hook::id("history", "audio-missing"), note, false),
+            plain,
+        ));
     }
     let language = row
         .language_detected
@@ -833,9 +900,9 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         if key == "llm" && value.is_none() {
             continue;
         }
-        panel = panel.child(field(key, label, value));
+        rows.push((field(palette, key, label, value), plain));
     }
-    panel
+    assemble("detail", palette, rows)
 }
 
 /// What the export controls of the detail view need from the view.
@@ -854,7 +921,7 @@ struct Player {
     seek_bounds: Rc<Cell<Bounds<Pixels>>>,
 }
 
-fn player_row(history: &Entity<History>, id: &str, player: Player) -> impl IntoElement + use<> {
+fn player_row(palette: Palette, history: &Entity<History>, id: &str, player: Player) -> AnyElement {
     let Player {
         info,
         play_focus,
@@ -917,9 +984,9 @@ fn player_row(history: &Entity<History>, id: &str, player: Player) -> impl IntoE
     let track = div()
         .relative()
         .w_full()
-        .h(px(6.0))
+        .h(px(4.0))
         .rounded(px(radius::FULL))
-        .bg(theme::rgb_of(color::SURFACE_ELEVATED))
+        .bg(palette.control)
         .child(
             div()
                 .absolute()
@@ -928,176 +995,101 @@ fn player_row(history: &Entity<History>, id: &str, player: Player) -> impl IntoE
                 .h_full()
                 .w(relative(fraction))
                 .rounded(px(radius::FULL))
-                .bg(theme::rgb_of(color::ACCENT_BLUE)),
+                .bg(palette.label_secondary),
         );
-    let mut row = div()
-        .flex()
-        .flex_col()
-        .gap(px(space::SM))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
+    let mut row = ui::row(palette)
+        .id(hook::id("history", "player"))
+        .test_support()
+        .child(ui::button(
+            palette,
+            hook::id("history", "play"),
+            if info.playing { "Pause" } else { "Play" },
+            Kind::Plain,
+            Some(&play_focus),
+            true,
+            toggle,
+        ))
         .child(
             div()
+                .on_children_prepainted(move |children, _, _| {
+                    if let Some(bar) = children.first() {
+                        seek_bounds.set(*bar);
+                    }
+                })
+                .id(hook::id("history", "seek"))
+                .test_support()
+                .role(Role::Slider)
+                .aria_label("Seek")
+                .track_focus(&seek_focus)
+                .flex_1()
+                .min_w_0()
+                .h(px(size::BUTTON_HEIGHT))
+                .px(px(size::FOCUS_RING))
                 .flex()
                 .items_center()
-                .gap(px(space::MD))
-                .child(button(
-                    hook::id("history", "play"),
-                    if info.playing { "Pause" } else { "Play" },
-                    &play_focus,
-                    true,
-                    toggle,
-                ))
-                .child(
-                    div()
-                        .on_children_prepainted(move |children, _, _| {
-                            if let Some(bar) = children.first() {
-                                seek_bounds.set(*bar);
-                            }
-                        })
-                        .id(hook::id("history", "seek"))
-                        .test_support()
-                        .role(Role::Slider)
-                        .aria_label("Seek")
-                        .track_focus(&seek_focus)
-                        .flex_1()
-                        .min_w_0()
-                        .h(px(28.0))
-                        .px(px(size::FOCUS_RING))
-                        .flex()
-                        .items_center()
-                        .rounded(px(radius::SM))
-                        .border_2()
-                        .border_color(transparent_black())
-                        .cursor_pointer()
-                        .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-                        .on_click(seek_to)
-                        .on_key_down(seek_by_key)
-                        .child(track),
-                )
-                .child(
-                    div()
-                        .id(hook::id("history", "time"))
-                        .test_support()
-                        .aria_label(time.clone())
-                        .flex_none()
-                        .text_token(LABEL_MD)
-                        .text_color(theme::rgb_of(color::TEXT_MUTED))
-                        .child(time),
-                ),
+                .rounded(px(radius::BUTTON))
+                .border_2()
+                .border_color(transparent_black())
+                .cursor_pointer()
+                .focus_visible(move |style| style.border_color(palette.accent))
+                .on_click(seek_to)
+                .on_key_down(seek_by_key)
+                .child(track),
+        )
+        .child(
+            ui::value(palette)
+                .id(hook::id("history", "time"))
+                .test_support()
+                .aria_label(time.clone())
+                .text_token(BUTTON)
+                .child(time),
         );
     if let Some(error) = info.error {
         row = row.child(
-            div()
+            ui::title(palette)
                 .id(hook::id("history", "player-error"))
                 .test_support()
                 .role(Role::Alert)
                 .aria_label(error.clone())
-                .text_token(BODY_SM)
-                .text_color(theme::rgb_of(color::STATUS_ERROR))
+                .text_color(palette.label_secondary)
                 .child(error),
         );
     }
-    row
+    row.into_any_element()
 }
 
-fn field(key: &'static str, label: &'static str, value: Option<String>) -> impl IntoElement {
-    let shown = value.clone().unwrap_or_else(|| "Not available".to_owned());
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(space::XS))
-        .px(px(space::LG))
-        .py(px(space::MD))
-        .border_t_1()
-        .border_color(theme::rgb_of(color::DIVIDER))
-        .child(
-            div()
-                .text_token(LABEL_CAPS)
-                .text_color(theme::rgb_of(color::TEXT_MUTED))
-                .child(label.to_uppercase()),
-        )
-        .child(
-            div()
-                .id(hook::id("history", &format!("detail.{key}")))
-                .test_support()
-                .aria_label(value.clone().unwrap_or_default())
-                .min_w_0()
-                .text_token(BODY_MD)
-                .text_color(theme::rgb_of(if value.is_some() {
-                    color::TEXT_PRIMARY
-                } else {
-                    color::TEXT_SUBTLE
-                }))
-                .child(shown),
-        )
-}
-
-fn button<F: Fn(&mut Window, &mut App) + Clone + 'static>(
-    id: SharedString,
+/// A row with the name of a field on the left and its text on the right, cut to one line. The
+/// whole text is in the tooltip and in the label for assistive technology.
+fn field(
+    palette: Palette,
+    key: &'static str,
     label: &'static str,
-    focus: &FocusHandle,
-    enabled: bool,
-    press: F,
-) -> impl IntoElement + use<F> {
-    hook::mark_disabled(&id, !enabled);
-    let mut element = div()
-        .id(id)
+    value: Option<String>,
+) -> AnyElement {
+    let shown = value.clone().unwrap_or_else(|| "Not available".to_owned());
+    let full = value.clone().unwrap_or_default();
+    let mut text = div()
+        .id(hook::id("history", &format!("detail.{key}")))
         .test_support()
-        .role(Role::Button)
-        .aria_label(label)
-        .flex_none()
-        .flex()
-        .items_center()
-        .h(px(32.0))
-        .px(px(10.0 - size::FOCUS_RING))
-        .rounded(px(radius::MD))
-        .border_2()
-        .border_color(transparent_black())
-        .bg(theme::rgb_of(color::SURFACE_CONTROL))
-        .text_token(LABEL_MD)
-        .text_color(theme::rgb_of(if enabled {
-            color::TEXT_PRIMARY
+        .aria_label(full.clone())
+        .flex_1()
+        .min_w_0()
+        .truncate()
+        .text_right()
+        .text_color(if value.is_some() {
+            palette.label_secondary
         } else {
-            color::TEXT_DISABLED
-        }));
-    if enabled {
-        let on_click = {
-            let press = press.clone();
-            move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx)
-        };
-        let on_key = move |event: &KeyDownEvent, window: &mut Window, cx: &mut App| {
-            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                press(window, cx);
-                cx.stop_propagation();
-            }
-        };
-        element = element
-            .track_focus(focus)
-            .cursor_pointer()
-            .hover(|style| style.bg(theme::rgb_of(color::SURFACE_CONTROL_HOVER)))
-            .focus_visible(|style| style.border_color(theme::rgb_of(color::FOCUS)))
-            .on_click(on_click)
-            .on_key_down(on_key);
+            palette.label_tertiary
+        })
+        .child(shown);
+    if !full.is_empty() {
+        text = text.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
     }
-    element.child(label)
-}
-
-fn icon_tile(icon: IconName) -> impl IntoElement {
-    div()
-        .size(px(28.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius::MD))
-        .bg(theme::rgb_of(color::SURFACE_SOFT))
-        .child(
-            svg()
-                .path(icon.path())
-                .size(px(14.0))
-                .text_color(theme::rgb_of(color::TEXT_BODY)),
-        )
+    ui::row(palette)
+        .id(hook::id("history", &format!("detail.{key}.row")))
+        .test_support()
+        .gap(px(space::LG))
+        .child(div().flex_none().whitespace_nowrap().child(label))
+        .child(text)
+        .into_any_element()
 }

@@ -43,26 +43,9 @@ icon_assets!(
         Download,
         // The views name these too; the coverage test below scans the sources for
         // every icon a view uses.
-        Rocket,
-        Sparkles,
-        Volume,
-        WandSparkles,
-        ArrowDownUp,
-        LifeBuoy,
         ArrowUpRight,
-        Server,
         Globe,
-        Bot,
-        Network,
-        EyeOff,
-        BookOpen,
-        ChevronDown,
-        Folder,
-        FolderOpen,
-        Github,
-        HardDrive,
-        PanelBottom,
-        Volume2
+        ChevronDown
     ]
 );
 
@@ -105,7 +88,7 @@ mod icon_coverage_tests {
             &mut named,
         );
         named.remove("ALL");
-        assert!(named.len() > 20, "the scan found {named:?}");
+        assert!(named.len() > 15, "the scan found {named:?}");
         let missing: Vec<_> = named
             .iter()
             .filter(|name| {

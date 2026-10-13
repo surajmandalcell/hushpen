@@ -10,6 +10,7 @@ use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, radius, si
 use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
     ParentElement, Rgba, Role, StatefulInteractiveElement, Styled, Window, div, px, relative, svg,
@@ -50,7 +51,7 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
     let label = if last { "Finish" } else { "Continue" };
     let advance = {
         let onboarding = onboarding.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             onboarding.update(cx, |me, cx| {
                 // A refused Continue has nothing to say: the disabled button already did.
                 let _ = me.advance(cx);
@@ -191,20 +192,25 @@ fn permission_row(
         hushpen_core::onboarding::RowKey::X11Session => IconName::Monitor,
         _ => IconName::Keyboard,
     };
+    let ready = row.state == RowState::Ready;
     let buttons = row.opens.map(|permission| {
         let allow = {
             let onboarding = onboarding.clone();
-            move |cx: &mut App| onboarding.update(cx, |me, cx| me.allow(permission, cx))
+            move |_: &mut Window, cx: &mut App| {
+                onboarding.update(cx, |me, cx| me.allow(permission, cx))
+            }
         };
         let open = {
             let onboarding = onboarding.clone();
-            move |cx: &mut App| onboarding.update(cx, |me, cx| me.open_settings(permission, cx))
+            move |_: &mut Window, cx: &mut App| {
+                onboarding.update(cx, |me, cx| me.open_settings(permission, cx))
+            }
         };
         (permission, allow, open)
     });
     let relaunch = row.relaunch.then(|| {
         let onboarding = onboarding.clone();
-        move |cx: &mut App| onboarding.update(cx, |me, cx| me.relaunch(cx))
+        move |_: &mut Window, cx: &mut App| onboarding.update(cx, |me, cx| me.relaunch(cx))
     });
     ui::row(palette)
         .id(hook::id("onboarding", &format!("permissions.row.{key}")))
@@ -238,15 +244,18 @@ fn permission_row(
                 .flex()
                 .items_center()
                 .gap(px(space::SM))
-                .child(ui::button(
-                    palette,
-                    hook::id("onboarding", &format!("permissions.allow.{key}")),
-                    "Allow",
-                    Kind::Default,
-                    Some(&focus[slot * 2]),
-                    true,
-                    allow,
-                ))
+                // Allow asks the system, so it has nothing left to do once the row is Ready.
+                .children((!ready).then(|| {
+                    ui::button(
+                        palette,
+                        hook::id("onboarding", &format!("permissions.allow.{key}")),
+                        "Allow",
+                        Kind::Default,
+                        Some(&focus[slot * 2]),
+                        true,
+                        allow,
+                    )
+                }))
                 .child(ui::button(
                     palette,
                     hook::id("onboarding", &format!("permissions.open.{key}")),
@@ -300,7 +309,7 @@ fn mic_test(
     };
     let toggle = {
         let onboarding = onboarding.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             onboarding.update(cx, |me, cx| {
                 // A refused start shows its reason in the notice row.
                 let _ = me.toggle_mic_test(cx);
@@ -442,7 +451,7 @@ fn model(
     let downloading = matches!(state, ModelState::Downloading { .. });
     let press = {
         let onboarding = onboarding.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             onboarding.update(cx, |me, cx| {
                 // A refused action shows its reason in the notice row.
                 let _ = if downloading {
@@ -577,7 +586,7 @@ fn practice(
     };
     let toggle = {
         let onboarding = onboarding.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             onboarding.update(cx, |me, cx| {
                 let _ = me.toggle_practice_record(cx);
             });
@@ -708,6 +717,7 @@ fn updates(
                     .test_support()
                     .track_focus(&focus)
                     .role(Role::Switch)
+                    .aria_toggled(if on { Toggled::True } else { Toggled::False })
                     .aria_label(if on {
                         "Check for updates, on"
                     } else {

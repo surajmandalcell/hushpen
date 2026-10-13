@@ -9,7 +9,7 @@
 //! Environment:
 //! - `HUSHPEN_PIXEL_BASELINES`: folder with the approved PNGs. Default:
 //!   `tests/pixel/baselines` in the crate.
-//! - `HUSHPEN_PIXEL_OUT`: where actual and diff images go on a failure.
+//! - `HUSHPEN_PIXEL_OUT`: where actual and diff images and the scan reports go.
 //!   Default: the temp folder (the container sets `TMPDIR` to the data drive).
 //! - `HUSHPEN_PIXEL_UPDATE=1`: write the captures into the baselines folder
 //!   instead of comparing. The repo mounts read-only in the container, so an
@@ -17,39 +17,25 @@
 #![cfg(feature = "pixel-tests")]
 
 mod compare;
+mod scan;
+mod scenes;
 
 use compare::{Outcome, compare, diff_image};
-use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, HeadlessAppContext, ScrollDelta, point, px, size};
+use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
-use hushpen_app::about::{About, SystemOpener};
 use hushpen_app::assets::{AppAssets, register_fonts};
-use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
-use hushpen_app::dictation::Dictation;
 use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
-use hushpen_app::mic::{CpalBackend, Mic, MicBackend, MicSession};
-use hushpen_app::models::{self, Models};
-use hushpen_app::net::endpoint::Transport;
-use hushpen_app::net::endpoint::UreqTransport;
-use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
-use hushpen_app::settings::endpoint::EndpointForm;
-use hushpen_app::settings::{Parts as SettingsParts, Section, Settings};
-use hushpen_app::shell::Shell;
-use hushpen_app::shortcuts::Shortcuts;
-use hushpen_app::storage;
+use hushpen_app::mic::{MicBackend, MicSession};
+use hushpen_app::settings::Section;
 use hushpen_app::theme::{self, Appearance, chrome, space};
 use hushpen_app::views::View;
 use hushpen_audio::{CaptureError, EventSink, InputDevice};
 use hushpen_core::flow_bar::BarState;
-use hushpen_core::onboarding::{Session, Step};
+use hushpen_core::onboarding::Step;
 use hushpen_core::permission::{Access, Preflight};
-use hushpen_core::shortcut::Platform;
-use hushpen_engine::JobOutcome;
-use hushpen_store::data_dir::DataDir;
 use image::RgbaImage;
-use serde_json::json;
+use scenes::{Scene, Shot};
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 fn baselines_dir() -> PathBuf {
@@ -66,10 +52,6 @@ fn out_dir() -> PathBuf {
 
 fn updating() -> bool {
     std::env::var_os("HUSHPEN_PIXEL_UPDATE").is_some_and(|value| value == "1")
-}
-
-fn headless() -> HeadlessAppContext {
-    headless_in(Appearance::Dark)
 }
 
 /// A headless app with the palette forced, so a capture does not depend on the desktop.
@@ -126,224 +108,13 @@ fn assert_near(actual: &str, want: &str, tolerance: i32, what: &str) {
     );
 }
 
-struct Capture {
-    view: View,
-    image: RgbaImage,
-}
-
-/// The data folder of a capture: one fixed path per test, so the folder text
-/// in the Settings and About rows reads the same in every run. A random
-/// tempdir would put its changing suffix into the baselines.
+/// The data folder of a capture: one fixed path per tag, so the folder text in the Settings and
+/// About rows reads the same in every run. A random tempdir would put its changing suffix into
+/// the baselines.
 fn pixel_data_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join("hushpen-pixel").join(tag);
     let _ = std::fs::remove_dir_all(&dir);
     dir
-}
-
-/// A shell with the Settings and About entities the real app attaches, so
-/// those views render their content, not the placeholder.
-fn open_shell_with_settings(
-    cx: &mut HeadlessAppContext,
-    data: &std::path::Path,
-) -> gpui_kit::AnyWindowHandle {
-    open_shell(cx, data, None)
-}
-
-/// The same, with the endpoint rows of Cleanup connected to `transport`.
-fn open_shell(
-    cx: &mut HeadlessAppContext,
-    data: &std::path::Path,
-    transport: Option<Arc<dyn Transport>>,
-) -> gpui_kit::AnyWindowHandle {
-    let storage = Rc::new(
-        storage::open(DataDir::open(data.join("data")).expect("open the data folder"))
-            .expect("open the storage"),
-    );
-    let handle = cx
-        .open_window(
-            size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
-            |window, cx| {
-                let shell = cx.new(|cx| Shell::new(window, cx));
-                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(CpalBackend), cx));
-                let shortcuts =
-                    cx.new(|cx| Shortcuts::new(Rc::clone(&storage), Platform::Linux, cx));
-                let settings = cx.new(|cx| {
-                    Settings::new(
-                        SettingsParts {
-                            storage: Rc::clone(&storage),
-                            mic,
-                            login: None,
-                            default_data_dir: None,
-                            restart: None,
-                        },
-                        cx,
-                    )
-                });
-                let about = cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
-                if let Some(transport) = transport {
-                    let form =
-                        cx.new(|cx| EndpointForm::new(Rc::clone(&storage), transport, window, cx));
-                    settings.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
-                }
-                shell.update(cx, |shell, cx| {
-                    shell.attach_shortcuts(shortcuts, cx);
-                    shell.attach_settings(settings, cx);
-                    shell.attach_about(about, cx);
-                });
-                cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
-            },
-        )
-        .expect("open the headless window");
-    handle.into()
-}
-
-fn capture_every_view() -> Vec<Capture> {
-    let mut cx = headless();
-    let handle = open_shell_with_settings(&mut cx, &pixel_data_dir("views"));
-    cx.run_until_parked();
-    // Home has its own Light and Dark baselines, taken with the panels the app attaches.
-    View::ALL
-        .into_iter()
-        .filter(|view| *view != View::Home)
-        .map(|view| {
-            let id: &'static str = Box::leak(format!("sidebar.{}", view.key()).into_boxed_str());
-            cx.update_window(handle, |_, window, cx| window.click(id, cx))
-                .expect("click the sidebar item");
-            cx.run_until_parked();
-            let image = cx.capture_screenshot(handle).expect("capture the window");
-            Capture { view, image }
-        })
-        .collect()
-}
-
-/// The Settings view opened on `section`, captured as `settings-<key>.png`.
-fn capture_settings_section(section: Section) -> RgbaImage {
-    let mut cx = headless();
-    let handle = open_shell_with_settings(&mut cx, &pixel_data_dir("sections"));
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.click("sidebar.settings", cx);
-        if section != Section::General {
-            window.click(
-                Box::leak(format!("settings.section.{}", section.key()).into_boxed_str())
-                    as &'static str,
-                cx,
-            );
-        }
-    })
-    .expect("drive the window");
-    cx.run_until_parked();
-    cx.capture_screenshot(handle).expect("capture the window")
-}
-
-/// Cleanup on the endpoint, with a long failure reason in the connection status row. The row
-/// wraps to two lines and keeps its button.
-fn capture_endpoint_failure() -> RgbaImage {
-    let mut cx = headless();
-    let handle = open_shell(
-        &mut cx,
-        &pixel_data_dir("endpoint-failure"),
-        Some(Arc::new(UreqTransport)),
-    );
-    cx.run_until_parked();
-    let other_computer = format!("http://{}:11434/v1", "10.0.0.2");
-    cx.update_window(handle, |_, window, cx| {
-        window.click("sidebar.settings", cx);
-        window.click("settings.section.cleanup", cx);
-    })
-    .expect("open Cleanup");
-    cx.run_until_parked();
-    for step in [
-        "settings.cleanup.provider",
-        "settings.cleanup.provider.option.endpoint",
-    ] {
-        click_scrolled(&mut cx, handle, step);
-    }
-    click_scrolled(&mut cx, handle, "settings.cleanup.endpointUrl");
-    cx.update_window(handle, |_, window, cx| window.input(&other_computer, cx))
-        .expect("type the address");
-    cx.run_until_parked();
-    click_scrolled(&mut cx, handle, "settings.cleanup.endpointTest");
-    cx.update_window(handle, |_, window, cx| {
-        window.scroll(
-            "content.scroll",
-            ScrollDelta::Pixels(point(px(0.0), px(-5_000.0))),
-            cx,
-        )
-    })
-    .expect("scroll to the status row");
-    cx.run_until_parked();
-    cx.capture_screenshot(handle).expect("capture the window")
-}
-
-/// Clicks `id`, scrolling the page first like the mouse wheel does.
-fn click_scrolled(
-    cx: &mut HeadlessAppContext,
-    handle: gpui_kit::AnyWindowHandle,
-    id: &'static str,
-) {
-    let scroll = |cx: &mut HeadlessAppContext, pixels: f32| {
-        cx.update_window(handle, |_, window, cx| {
-            window.scroll(
-                "content.scroll",
-                ScrollDelta::Pixels(point(px(0.0), px(pixels))),
-                cx,
-            )
-        })
-        .expect("scroll the page");
-        cx.run_until_parked();
-    };
-    scroll(cx, 5_000.0);
-    for _ in 0..40 {
-        let shown = cx
-            .update_window(handle, |_, window, _| {
-                window.try_find(id).is_some_and(|found| found.visible())
-            })
-            .expect("look for the control");
-        if shown {
-            break;
-        }
-        scroll(cx, -120.0);
-    }
-    cx.update_window(handle, |_, window, cx| window.click(id, cx))
-        .expect("click the control");
-    cx.run_until_parked();
-}
-
-#[test]
-fn the_endpoint_status_row_wraps_a_long_failure_to_two_lines() {
-    let image = capture_endpoint_failure();
-    assert_eq!(image.dimensions(), (1880, 1200));
-    let mut failures = Vec::new();
-    check_image("settings-cleanup-endpoint-failure", &image, &mut failures);
-    assert!(
-        failures.is_empty(),
-        "pixel baselines failed:\n{}",
-        failures.join("\n")
-    );
-}
-
-#[test]
-fn every_settings_section_matches_its_approved_baseline() {
-    let mut failures = Vec::new();
-    for section in Section::ALL {
-        let image = capture_settings_section(section);
-        assert_eq!(image.dimensions(), (1880, 1200), "{}", section.key());
-        check_image(
-            &format!("settings-{}", section.key()),
-            &image,
-            &mut failures,
-        );
-    }
-    assert!(
-        failures.is_empty(),
-        "pixel baselines failed:\n{}",
-        failures.join("\n")
-    );
-}
-
-fn check_against_baseline(capture: &Capture, failures: &mut Vec<String>) {
-    check_image(capture.view.key(), &capture.image, failures);
 }
 
 fn check_image(name: &str, image: &RgbaImage, failures: &mut Vec<String>) {
@@ -386,41 +157,6 @@ fn check_image(name: &str, image: &RgbaImage, failures: &mut Vec<String>) {
         Outcome::Same => unreachable!("a passing outcome returned above"),
     };
     failures.push(format!("{name}: {why}; diff {}", diff_path.display()));
-}
-
-#[test]
-fn every_view_matches_its_approved_baseline() {
-    let captures = capture_every_view();
-    let mut failures = Vec::new();
-    for capture in &captures {
-        check_against_baseline(capture, &mut failures);
-    }
-    assert!(
-        failures.is_empty(),
-        "pixel baselines failed:\n{}",
-        failures.join("\n")
-    );
-}
-
-#[test]
-fn captures_are_940x600_at_scale_two_and_use_the_design_tokens() {
-    let captures = capture_every_view();
-    for capture in &captures {
-        assert_eq!(
-            capture.image.dimensions(),
-            (1880, 1200),
-            "{}",
-            capture.view.key()
-        );
-    }
-    for capture in &captures {
-        assert_shell_tokens(
-            &capture.image,
-            Appearance::Dark,
-            Some(capture.view),
-            capture.view.key(),
-        );
-    }
 }
 
 /// The window chrome that every shell capture shares: the content and sidebar colors, the
@@ -488,38 +224,8 @@ fn assert_shell_tokens(
     }
 }
 
-/// What a Light and Dark baseline shows.
-#[derive(Debug, Clone, Copy)]
-enum Scene {
-    /// The shell with its sidebar and title bar around a placeholder view.
-    Shell,
-    /// Home with the dictation and microphone panels the app attaches.
-    Home,
-    Onboarding(Step),
-    /// Onboarding reopened by a revoked macOS permission.
-    PermissionsChanged,
-}
-
-impl Scene {
-    fn name(self) -> String {
-        match self {
-            Scene::Shell => "shell".into(),
-            Scene::Home => "home".into(),
-            Scene::Onboarding(step) => format!("onboarding-{}", step.key()),
-            Scene::PermissionsChanged => "onboarding-permissions-changed".into(),
-        }
-    }
-
-    fn all() -> Vec<Scene> {
-        let mut scenes = vec![Scene::Shell, Scene::Home];
-        scenes.extend(Step::ALL.into_iter().map(Scene::Onboarding));
-        scenes.push(Scene::PermissionsChanged);
-        scenes
-    }
-}
-
 /// One default microphone, so the capture does not depend on the container's audio devices.
-struct OneMicrophone;
+pub struct OneMicrophone;
 
 impl MicBackend for OneMicrophone {
     fn list(&self) -> Result<Vec<InputDevice>, CaptureError> {
@@ -541,7 +247,7 @@ impl MicBackend for OneMicrophone {
 }
 
 /// Microphone granted, Accessibility and Input Monitoring revoked.
-struct Revoked;
+pub struct Revoked;
 
 impl Preflight for Revoked {
     fn microphone(&self) -> Access {
@@ -557,132 +263,62 @@ impl Preflight for Revoked {
     }
 }
 
-/// The main window showing `scene` in `appearance`, on a data folder with no models.
-fn capture_scene(scene: Scene, appearance: Appearance) -> RgbaImage {
-    // Tests run in parallel and each capture needs its own folder; these scenes show no path.
-    static CAPTURES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let serial = CAPTURES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let data = pixel_data_dir(&format!("{}-{}-{serial}", scene.name(), appearance.key()));
-    let storage = Rc::new(
-        storage::open(DataDir::open(data.join("data")).expect("open the data folder"))
-            .expect("open the storage"),
-    );
-    let mac = matches!(scene, Scene::PermissionsChanged);
+/// The sidebar row a scene highlights.
+fn selected_view(scene: Scene) -> Option<View> {
     match scene {
-        Scene::Onboarding(step) => storage
-            .settings
-            .set_internal("onboarding.step", json!(step.key()))
-            .expect("store the step"),
-        Scene::PermissionsChanged => {
-            let settings = &storage.settings;
-            settings
-                .set_internal("onboarding.completed", json!(true))
-                .expect("complete onboarding");
-            settings
-                .set_internal(
-                    "permissions.lastGranted",
-                    json!({"microphone": true, "accessibility": true, "inputMonitoring": true}),
-                )
-                .expect("store the earlier grants");
+        Scene::Shell | Scene::History | Scene::HistoryDetail | Scene::HistorySelect => {
+            Some(View::History)
         }
-        Scene::Shell | Scene::Home => {}
+        Scene::HistoryClear => Some(View::History),
+        Scene::Home => Some(View::Home),
+        Scene::Dictionary => Some(View::Dictionary),
+        Scene::Models => Some(View::Models),
+        Scene::About => Some(View::About),
+        Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
+            Some(View::Settings)
+        }
+        Scene::Onboarding(_) | Scene::PermissionsChanged => None,
     }
-    let mut cx = headless_in(appearance);
-    let handle = cx
-        .open_window(
-            size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
-            |window, cx| {
-                let shell = cx.new(|cx| Shell::new(window, cx));
-                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(OneMicrophone), cx));
-                mic.update(cx, |mic, cx| mic.refresh(cx));
-                let models = cx.new(|cx| {
-                    Models::new(
-                        Rc::clone(&storage),
-                        hushpen_core::catalog::embedded(),
-                        models::production_transfer(),
-                        models::thread_spawner(),
-                        None,
-                        cx,
-                    )
-                });
-                let engine = Engine::new(Arc::new(|_, _| JobOutcome::Cancelled), Rc::new(|| None));
-                let controller = cx.new(|cx| {
-                    Controller::new(
-                        Rc::clone(&storage),
-                        mic.clone(),
-                        models.clone(),
-                        engine,
-                        models::thread_spawner(),
-                        monotonic_clock(),
-                        cx,
-                    )
-                });
-                controller.update(cx, |controller, _| {
-                    if mac {
-                        controller.attach_permissions(Arc::new(Revoked));
-                    }
-                    controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
-                });
-                match scene {
-                    Scene::Onboarding(_) | Scene::PermissionsChanged => {
-                        let onboarding = cx.new(|cx| {
-                            Onboarding::new(
-                                OnboardingParts {
-                                    storage: Rc::clone(&storage),
-                                    mic,
-                                    models,
-                                    controller,
-                                    guide: Rc::new(SystemGuide),
-                                    platform: if mac {
-                                        Platform::MacOs
-                                    } else {
-                                        Platform::Linux
-                                    },
-                                    session: Session::X11,
-                                },
-                                cx,
-                            )
-                        });
-                        shell.update(cx, |shell, cx| shell.attach_onboarding(onboarding, cx));
-                    }
-                    Scene::Home => {
-                        let dictation = cx
-                            .new(|cx| Dictation::new(Rc::clone(&storage), models, controller, cx));
-                        shell.update(cx, |shell, cx| {
-                            shell.attach_mic(mic, cx);
-                            shell.attach_dictation(dictation, cx);
-                        });
-                    }
-                    Scene::Shell => {}
-                }
-                cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
-            },
-        )
-        .expect("open the headless window");
-    // The microphone list is read on a thread and arrives through a channel.
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    cx.run_until_parked();
-    if matches!(scene, Scene::Shell) {
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.click("sidebar.history", cx)
-        })
-        .expect("select a view without content");
-        cx.run_until_parked();
+}
+
+/// Runs the three scans over a capture: color only inside the controls and words that may
+/// have it, only the lines a group draws, and rows of one line plus at most one secondary line.
+/// The reports go to the output folder. Returns what broke a rule.
+fn scan_shot(scene: Scene, name: &str, shot: &Shot, failures: &mut Vec<String>) {
+    let (colors, color_problems) = scan::colored_regions(&shot.image, &shot.nodes);
+    let (lines, line_problems) = scan::line_report(&shot.image, &shot.nodes);
+    let (rows, row_problems) = if scene.has_rows() {
+        scan::row_report(&shot.nodes)
+    } else {
+        (String::new(), Vec::new())
+    };
+    let out = out_dir();
+    std::fs::create_dir_all(&out).expect("create the output folder");
+    std::fs::write(
+        out.join(format!("{name}-scan.txt")),
+        format!("{colors}{lines}{rows}"),
+    )
+    .expect("write the scan report");
+    for problem in color_problems
+        .into_iter()
+        .chain(line_problems)
+        .chain(row_problems)
+    {
+        failures.push(format!("{name}: {problem}"));
     }
-    cx.capture_screenshot(handle.into())
-        .expect("capture the window")
 }
 
 fn check_scenes(scenes: &[Scene], appearance: Appearance) {
     let mut failures = Vec::new();
     for scene in scenes {
-        let image = capture_scene(*scene, appearance);
-        assert_eq!(image.dimensions(), (1880, 1200), "{}", scene.name());
-        check_image(
-            &format!("{}-{}", scene.name(), appearance.key()),
-            &image,
-            &mut failures,
-        );
+        let shot = scenes::capture(*scene, appearance);
+        let name = format!("{}-{}", scene.name(), appearance.key());
+        assert_eq!(shot.image.dimensions(), (1880, 1200), "{name}");
+        check_image(&name, &shot.image, &mut failures);
+        scan_shot(*scene, &name, &shot, &mut failures);
+        if let Some(view) = selected_view(*scene) {
+            assert_shell_tokens(&shot.image, appearance, Some(view), &name);
+        }
     }
     assert!(
         failures.is_empty(),
@@ -693,21 +329,44 @@ fn check_scenes(scenes: &[Scene], appearance: Appearance) {
 
 #[test]
 fn the_shell_home_and_onboarding_match_their_approved_dark_baselines() {
-    check_scenes(&Scene::all(), Appearance::Dark);
+    check_scenes(&Scene::shell_and_onboarding(), Appearance::Dark);
 }
 
 #[test]
 fn the_shell_home_and_onboarding_match_their_approved_light_baselines() {
-    check_scenes(&Scene::all(), Appearance::Light);
+    check_scenes(&Scene::shell_and_onboarding(), Appearance::Light);
 }
 
 #[test]
-fn light_and_dark_differ_and_follow_the_palette_for_every_scene() {
+fn every_view_and_dialog_matches_its_approved_dark_baseline() {
+    check_scenes(&Scene::views(), Appearance::Dark);
+}
+
+#[test]
+fn every_view_and_dialog_matches_its_approved_light_baseline() {
+    check_scenes(&Scene::views(), Appearance::Light);
+}
+
+/// Every scene has one Light and one Dark baseline, at 940x600 at scale two, that differ and
+/// follow the palette; no baseline of the old window size or of a scene that is gone is left.
+#[test]
+fn the_light_and_dark_baselines_differ_and_follow_the_palette_for_every_scene() {
+    if updating() {
+        return;
+    }
+    let load = |name: String| {
+        image::open(baselines_dir().join(format!("{name}.png")))
+            .unwrap_or_else(|error| panic!("{name}: {error}"))
+            .to_rgba8()
+    };
+    let mut known = Vec::new();
     for scene in Scene::all() {
-        let dark = capture_scene(scene, Appearance::Dark);
-        let light = capture_scene(scene, Appearance::Light);
-        assert_ne!(dark, light, "{}", scene.name());
         let name = scene.name();
+        let dark = load(format!("{name}-dark"));
+        let light = load(format!("{name}-light"));
+        assert_eq!(dark.dimensions(), (1880, 1200), "{name}: dark size");
+        assert_eq!(light.dimensions(), (1880, 1200), "{name}: light size");
+        assert_ne!(dark, light, "{name}");
         assert_near(
             &hex_at(&dark, 900, 580),
             "#1E1E1E",
@@ -720,25 +379,20 @@ fn light_and_dark_differ_and_follow_the_palette_for_every_scene() {
             1,
             &format!("{name}: light content"),
         );
-        if matches!(scene, Scene::Shell | Scene::Home) {
-            let selected = if matches!(scene, Scene::Home) {
-                View::Home
-            } else {
-                View::History
-            };
-            assert_shell_tokens(
-                &dark,
-                Appearance::Dark,
-                Some(selected),
-                &format!("{name}-dark"),
-            );
-            assert_shell_tokens(
-                &light,
-                Appearance::Light,
-                Some(selected),
-                &format!("{name}-light"),
-            );
-        }
+        known.push(format!("{name}-dark.png"));
+        known.push(format!("{name}-light.png"));
+    }
+    let flow_bars: Vec<String> = flow_bar_states()
+        .into_iter()
+        .map(|(name, _)| format!("{name}.png"))
+        .collect();
+    for entry in std::fs::read_dir(baselines_dir()).expect("read the baselines folder") {
+        let file = entry.expect("a folder entry").file_name();
+        let file = file.to_string_lossy();
+        assert!(
+            known.iter().any(|name| *name == file) || flow_bars.iter().any(|name| *name == file),
+            "{file} is a baseline no scene or flow bar state takes"
+        );
     }
 }
 
@@ -748,10 +402,23 @@ fn onboarding_takes_the_whole_window_with_no_sidebar() {
         (Appearance::Dark, "#1E1E1E"),
         (Appearance::Light, "#F5F5F5"),
     ] {
-        let image = capture_scene(Scene::Onboarding(Step::Permissions), appearance);
-        assert_eq!(hex_at(&image, 100, 450), content, "no sidebar color");
-        assert_eq!(hex_at(&image, 26, 26), "#FF5F57", "close light");
-        assert_eq!(hex_at(&image, 46, 26), "#FEBC2E", "minimize light");
+        let shot = scenes::capture(Scene::Onboarding(Step::Permissions), appearance);
+        assert_eq!(hex_at(&shot.image, 100, 450), content, "no sidebar color");
+        assert_eq!(hex_at(&shot.image, 26, 26), "#FF5F57", "close light");
+        assert_eq!(hex_at(&shot.image, 46, 26), "#FEBC2E", "minimize light");
+    }
+}
+
+/// The seven Settings sections each have a baseline of their own.
+#[test]
+fn every_settings_section_has_a_scene() {
+    let names: Vec<String> = Scene::views().into_iter().map(Scene::name).collect();
+    for section in Section::ALL {
+        assert!(
+            names.contains(&format!("settings-{}", section.key())),
+            "{}",
+            section.key()
+        );
     }
 }
 
