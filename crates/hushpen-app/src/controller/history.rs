@@ -30,6 +30,8 @@ pub(super) struct Pending {
     pub duration_ms: i64,
     pub model_id: Option<String>,
     pub language_requested: Option<String>,
+    /// What the user said to do with the selection, in Command Mode.
+    pub instruction: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,10 +108,11 @@ impl Controller {
             .clone()
             .filter(|(owner, _)| *owner == session)
             .map(|(_, record)| record);
+        let command = self.is_command();
         let row = Row {
             id: id.clone(),
             created_at,
-            kind: "dictation".to_owned(),
+            kind: if command { "command" } else { "dictation" }.to_owned(),
             status: status_key.to_owned(),
             error_code: code.map(str::to_owned),
             duration_ms: self.pending.duration_ms,
@@ -117,9 +120,15 @@ impl Controller {
             language_requested: self.pending.language_requested.clone(),
             language_detected: detected,
             prompt: self.last_prompt.clone(),
-            raw_text,
-            rule_text: non_empty(&self.pending.rule),
-            llm_text: ai.as_ref().and_then(|record| record.text.clone()),
+            // A command row keeps the instruction and the edited text only: the selection is
+            // never saved, and the model's text is the final text.
+            raw_text: raw_text.filter(|_| !command),
+            rule_text: non_empty(&self.pending.rule).filter(|_| !command),
+            llm_text: ai
+                .as_ref()
+                .and_then(|record| record.text.clone())
+                .filter(|_| !command),
+            instruction: self.pending.instruction.clone().filter(|_| command),
             llm_outcome: ai.as_ref().map(|record| record.outcome.key().to_owned()),
             final_text: match status {
                 RowStatus::Cancelled => None,

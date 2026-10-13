@@ -312,6 +312,9 @@ pub struct FakeInserter {
     pub undo_error: Mutex<Option<UndoError>>,
     /// `undo` and `insert <text>` in the order they happened.
     pub log: Mutex<Vec<String>>,
+    /// What the focused app has selected, and how often Command Mode read it.
+    pub selected: Mutex<Option<String>>,
+    pub selection_reads: std::sync::atomic::AtomicUsize,
 }
 
 impl FakeInserter {
@@ -337,6 +340,8 @@ impl FakeInserter {
             undos: Mutex::default(),
             undo_error: Mutex::new(None),
             log: Mutex::default(),
+            selected: Mutex::new(None),
+            selection_reads: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 }
@@ -368,6 +373,12 @@ impl Inserter for FakeInserter {
         observe(Step::Settled(&report));
         observe(Step::Restored(&report));
         report
+    }
+
+    fn selection(&self, _target: &Target) -> Option<String> {
+        self.selection_reads
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.selected.lock().unwrap().clone()
     }
 
     fn undo(&self, target: &Target) -> Result<(), UndoError> {

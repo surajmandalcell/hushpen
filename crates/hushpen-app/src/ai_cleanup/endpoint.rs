@@ -1,11 +1,12 @@
 //! The cleanup step that asks the user's OpenAI-compatible endpoint instead of the local model.
 
-use super::{Attempt, Cleaner, Progress, max_tokens};
+use super::{Attempt, Cleaner, Progress, edit_max_tokens, max_tokens};
 use crate::controller::CancelToken;
 use crate::net::endpoint::{Config, Kind, Transport};
 use crate::storage::Storage;
 use hushpen_core::endpoint::{cleanup_system, transcript_user};
 use hushpen_core::error::ENDPOINT_FAILED;
+use hushpen_core::llm_prompt::{COMMAND_SYSTEM, command_user};
 use std::sync::Arc;
 use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::time::{Duration, Instant};
@@ -52,20 +53,59 @@ impl Cleaner for EndpointCleaner {
         Ok(())
     }
 
-    fn clean(&self, text: &str, timeout: Duration, token: &CancelToken) -> Attempt {
+    fn clean(
+        &self,
+        text: &str,
+        keep: &[String],
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
+        self.ask(
+            cleanup_system(keep),
+            transcript_user(text),
+            max_tokens(text),
+            timeout,
+            token,
+        )
+    }
+
+    fn edit(
+        &self,
+        instruction: &str,
+        selection: &str,
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
+        self.ask(
+            COMMAND_SYSTEM.to_owned(),
+            command_user(instruction, selection),
+            edit_max_tokens(selection),
+            timeout,
+            token,
+        )
+    }
+}
+
+impl EndpointCleaner {
+    fn ask(
+        &self,
+        system: String,
+        user: String,
+        tokens: u32,
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
         let (sender, receiver) = channel();
         let transport = Arc::clone(&self.transport);
         let config = Config {
             timeout,
             ..self.config.clone()
         };
-        let user = transcript_user(text);
-        let tokens = max_tokens(text);
         let began = Instant::now();
         let spawned = std::thread::Builder::new()
             .name("endpoint-cleanup".into())
             .spawn(move || {
-                let _ = sender.send(transport.complete(&config, &cleanup_system(), &user, tokens));
+                let _ = sender.send(transport.complete(&config, &system, &user, tokens));
             });
         if spawned.is_err() {
             return Attempt::Failed(ENDPOINT_FAILED.to_owned());
@@ -159,6 +199,7 @@ mod tests {
         let transport = Scripted::new(Ok("Hello.".into()), Duration::ZERO);
         let attempt = cleaner(&transport).clean(
             "a <b> c",
+            &[],
             Duration::from_millis(6_000),
             &CancelToken::default(),
         );
@@ -168,16 +209,50 @@ mod tests {
         assert_eq!(config.model, "stub-model");
         assert_eq!(config.key.as_deref(), Some("sk-test-123"));
         assert_eq!(config.timeout, Duration::from_millis(6_000));
-        assert_eq!(system, &cleanup_system());
+        assert_eq!(system, &cleanup_system(&[]));
         assert_eq!(user, "<transcript>a &lt;b&gt; c</transcript>");
         assert_eq!(*tokens, max_tokens("a <b> c"));
+    }
+
+    #[test]
+    fn the_keep_words_go_to_the_endpoint_in_the_system_prompt() {
+        let transport = Scripted::new(Ok("Hello.".into()), Duration::ZERO);
+        cleaner(&transport).clean(
+            "hello",
+            &["Wednesbury".to_owned()],
+            Duration::from_secs(6),
+            &CancelToken::default(),
+        );
+        let seen = transport.seen.lock().unwrap();
+        assert_eq!(seen[0].1, cleanup_system(&["Wednesbury".to_owned()]));
+    }
+
+    #[test]
+    fn an_edit_sends_the_instruction_and_the_selection_with_the_command_prompt() {
+        let transport = Scripted::new(Ok("EDITED TEXT".into()), Duration::ZERO);
+        let attempt = cleaner(&transport).edit(
+            "make this formal",
+            "hey can you send me the file",
+            Duration::from_secs(6),
+            &CancelToken::default(),
+        );
+        assert_eq!(attempt, Attempt::Done("EDITED TEXT".into()));
+        let seen = transport.seen.lock().unwrap();
+        let (config, system, user, tokens) = &seen[0];
+        assert_eq!(config.timeout, Duration::from_secs(6));
+        assert_eq!(system, COMMAND_SYSTEM);
+        assert_eq!(
+            user,
+            &command_user("make this formal", "hey can you send me the file")
+        );
+        assert_eq!(*tokens, edit_max_tokens("hey can you send me the file"));
     }
 
     #[test]
     fn a_timeout_from_the_transport_is_a_timeout() {
         let transport = Scripted::new(Err(failure(Kind::Timeout)), Duration::ZERO);
         let attempt =
-            cleaner(&transport).clean("text", Duration::from_secs(6), &CancelToken::default());
+            cleaner(&transport).clean("text", &[], Duration::from_secs(6), &CancelToken::default());
         assert_eq!(attempt, Attempt::TimedOut);
     }
 
@@ -185,8 +260,12 @@ mod tests {
     fn every_other_failure_carries_the_endpoint_code() {
         for kind in [Kind::Down, Kind::Status(500), Kind::BadReply] {
             let transport = Scripted::new(Err(failure(kind)), Duration::ZERO);
-            let attempt =
-                cleaner(&transport).clean("text", Duration::from_secs(6), &CancelToken::default());
+            let attempt = cleaner(&transport).clean(
+                "text",
+                &[],
+                Duration::from_secs(6),
+                &CancelToken::default(),
+            );
             assert_eq!(
                 attempt,
                 Attempt::Failed("ENDPOINT_FAILED".into()),
@@ -199,8 +278,12 @@ mod tests {
     fn a_transport_that_ignores_its_timeout_is_given_up_on() {
         let transport = Scripted::new(Ok("late".into()), Duration::from_secs(3));
         let began = Instant::now();
-        let attempt =
-            cleaner(&transport).clean("text", Duration::from_millis(200), &CancelToken::default());
+        let attempt = cleaner(&transport).clean(
+            "text",
+            &[],
+            Duration::from_millis(200),
+            &CancelToken::default(),
+        );
         assert_eq!(attempt, Attempt::TimedOut);
         assert!(began.elapsed() < Duration::from_secs(2));
     }
@@ -211,7 +294,7 @@ mod tests {
         let token = CancelToken::default();
         token.cancel();
         let began = Instant::now();
-        let attempt = cleaner(&transport).clean("text", Duration::from_secs(6), &token);
+        let attempt = cleaner(&transport).clean("text", &[], Duration::from_secs(6), &token);
         assert_eq!(attempt, Attempt::Cancelled);
         assert!(began.elapsed() < Duration::from_secs(1));
     }

@@ -15,6 +15,8 @@ fn event_named(name: &str) -> Option<AppEvent> {
     Some(match name {
         "hold-down" => AppEvent::HoldDown,
         "hold-up" => AppEvent::HoldUp,
+        "command-down" => AppEvent::CommandDown,
+        "command-up" => AppEvent::CommandUp,
         "hands-free" => AppEvent::HandsFreeToggle,
         "home" => AppEvent::HomeToggle,
         "flow-bar" => AppEvent::FlowBarClick,
@@ -61,7 +63,7 @@ pub fn attach(cx: &mut App, dictation: Entity<Dictation>) {
         cx,
         "pipeline-event",
         "Send one event to the dictation pipeline, the same one the hold key feeds. \
-         Args: {\"event\": \"hold-down\" | \"hold-up\" | \"hands-free\" | \"home\" | \"flow-bar\" | \"esc\"}.",
+         Args: {\"event\": \"hold-down\" | \"hold-up\" | \"command-down\" | \"command-up\" | \"hands-free\" | \"home\" | \"flow-bar\" | \"esc\"}.",
         move |cx, args| {
             let name = args
                 .get("event")

@@ -13,7 +13,7 @@ use crate::storage::Storage;
 use hushpen_core::cleanup::guard;
 use hushpen_core::cleanup::outcome::Outcome;
 use hushpen_core::error::{LLM_GUARD_REJECTED, LLM_UNAVAILABLE};
-use hushpen_core::llm_prompt::CLEANUP_SYSTEM;
+use hushpen_core::llm_prompt::cleanup_system_keeping;
 use hushpen_engine::{LlmClient, LlmLoaded, LlmOutcome, LlmSpec, LlmState, LlmWork};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -81,8 +81,19 @@ pub trait Cleaner: Send + Sync {
     /// Gets the model into memory and returns the code of the failure when it cannot.
     fn prepare(&self, token: &CancelToken, progress: &Progress) -> Result<(), String>;
 
-    /// Runs one job. `timeout` counts from the moment the job is sent.
-    fn clean(&self, text: &str, timeout: Duration, token: &CancelToken) -> Attempt;
+    /// Cleans `text`. `keep` are dictionary words in it that the model must not change. The
+    /// `timeout` counts from the moment the job is sent.
+    fn clean(&self, text: &str, keep: &[String], timeout: Duration, token: &CancelToken)
+    -> Attempt;
+
+    /// Command Mode: edits `selection` as the spoken `instruction` says.
+    fn edit(
+        &self,
+        instruction: &str,
+        selection: &str,
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt;
 }
 
 /// How one AI step ended: the outcome, the text to use, and what the history row keeps.
@@ -116,14 +127,51 @@ impl Record {
     }
 }
 
-/// Runs the AI step for `rule`, the text the rules produced. A `None` result means the user
+/// Runs the AI step for `rule`, the text the rules produced. `keep` are the dictionary words
+/// that the rule text has: an answer that drops one is rejected. A `None` result means the user
 /// cancelled and nothing should be inserted.
 pub fn run(
     cleaner: Option<&dyn Cleaner>,
     rule: &str,
+    keep: &[String],
     timeout: Duration,
     token: &CancelToken,
     progress: &Progress,
+) -> Option<Record> {
+    step(
+        cleaner,
+        token,
+        progress,
+        |cleaner| cleaner.clean(rule, keep, timeout, token),
+        |text| guard::check_keeping(rule, text, keep),
+    )
+}
+
+/// Runs the model on a selection for Command Mode. The answer is checked against the selection,
+/// and every outcome but `Used` means the selection stays as it is.
+pub fn run_edit(
+    cleaner: Option<&dyn Cleaner>,
+    instruction: &str,
+    selection: &str,
+    timeout: Duration,
+    token: &CancelToken,
+    progress: &Progress,
+) -> Option<Record> {
+    step(
+        cleaner,
+        token,
+        progress,
+        |cleaner| cleaner.edit(instruction, selection, timeout, token),
+        |text| guard::check_command(selection, text),
+    )
+}
+
+fn step(
+    cleaner: Option<&dyn Cleaner>,
+    token: &CancelToken,
+    progress: &Progress,
+    job: impl FnOnce(&dyn Cleaner) -> Attempt,
+    check: impl FnOnce(&str) -> Result<String, guard::Rejection>,
 ) -> Option<Record> {
     let began = Instant::now();
     let Some(cleaner) = cleaner else {
@@ -150,7 +198,7 @@ pub fn run(
     progress.set(Some(Phase::Cleaning));
     // The clock of the job starts here: the load above is not part of it.
     let began = Instant::now();
-    let attempt = cleaner.clean(rule, timeout, token);
+    let attempt = job(cleaner);
     progress.set(None);
     match attempt {
         Attempt::Cancelled => None,
@@ -160,7 +208,7 @@ pub fn run(
             Some(&code),
             began,
         )),
-        Attempt::Done(text) => Some(match guard::check(rule, &text) {
+        Attempt::Done(text) => Some(match check(&text) {
             Ok(text) => Record {
                 outcome: Outcome::Used,
                 code: Outcome::Used.code(None),
@@ -182,6 +230,14 @@ fn max_tokens(text: &str) -> u32 {
     let chars = text.chars().count();
     let tokens = (chars * 3 / 2 + 40) / 2;
     u32::try_from(tokens.clamp(MIN_TOKENS, MAX_TOKENS)).unwrap_or(MAX_TOKENS as u32)
+}
+
+/// How many tokens an edit of `selection` may take: the edit can be longer than the text, so
+/// the limit is twice that of a cleanup, up to the same ceiling.
+fn edit_max_tokens(selection: &str) -> u32 {
+    max_tokens(selection)
+        .saturating_mul(2)
+        .min(MAX_TOKENS as u32)
 }
 
 /// The cleaner for the provider that the settings name, read at the start of each dictation so
@@ -255,12 +311,46 @@ impl Cleaner for HostCleaner {
         }
     }
 
-    fn clean(&self, text: &str, timeout: Duration, token: &CancelToken) -> Attempt {
-        let handle = self.client.run(LlmWork::Cleanup {
-            system: CLEANUP_SYSTEM.to_owned(),
-            user: text.to_owned(),
-            max_tokens: max_tokens(text),
-        });
+    fn clean(
+        &self,
+        text: &str,
+        keep: &[String],
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
+        self.work(
+            LlmWork::Cleanup {
+                system: cleanup_system_keeping(keep),
+                user: text.to_owned(),
+                max_tokens: max_tokens(text),
+            },
+            timeout,
+            token,
+        )
+    }
+
+    fn edit(
+        &self,
+        instruction: &str,
+        selection: &str,
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
+        self.work(
+            LlmWork::Command {
+                instruction: instruction.to_owned(),
+                selection: selection.to_owned(),
+                max_tokens: edit_max_tokens(selection),
+            },
+            timeout,
+            token,
+        )
+    }
+}
+
+impl HostCleaner {
+    fn work(&self, work: LlmWork, timeout: Duration, token: &CancelToken) -> Attempt {
+        let handle = self.client.run(work);
         let id = handle.id();
         let client = self.client.clone();
         token.on_cancel(move || client.cancel(id));
@@ -269,7 +359,7 @@ impl Cleaner for HostCleaner {
             Some(LlmOutcome::Cancelled) => Attempt::Cancelled,
             Some(LlmOutcome::Failed(failure)) => Attempt::Failed(failure.code),
             None => {
-                // The rule text goes in now; the worker settles the cancel on its own time.
+                // The old text stays now; the worker settles the cancel on its own time.
                 handle.cancel();
                 if token.is_cancelled() {
                     Attempt::Cancelled
@@ -291,6 +381,8 @@ mod tests {
         prepare: Result<(), String>,
         attempt: Attempt,
         seen: Mutex<Vec<String>>,
+        kept: Mutex<Vec<String>>,
+        edits: Mutex<Vec<(String, String)>>,
         phase_during_clean: Mutex<Option<Phase>>,
         progress: Mutex<Option<std::sync::Arc<Progress>>>,
     }
@@ -301,6 +393,8 @@ mod tests {
                 prepare: Ok(()),
                 attempt,
                 seen: Mutex::default(),
+                kept: Mutex::default(),
+                edits: Mutex::default(),
                 phase_during_clean: Mutex::default(),
                 progress: Mutex::default(),
             }
@@ -313,11 +407,26 @@ mod tests {
             self.prepare.clone()
         }
 
-        fn clean(&self, text: &str, _: Duration, _: &CancelToken) -> Attempt {
+        fn clean(&self, text: &str, keep: &[String], _: Duration, _: &CancelToken) -> Attempt {
             self.seen.lock().unwrap().push(text.to_owned());
+            *self.kept.lock().unwrap() = keep.to_vec();
             if let Some(progress) = &*self.progress.lock().unwrap() {
                 *self.phase_during_clean.lock().unwrap() = progress.get();
             }
+            self.attempt.clone()
+        }
+
+        fn edit(
+            &self,
+            instruction: &str,
+            selection: &str,
+            _: Duration,
+            _: &CancelToken,
+        ) -> Attempt {
+            self.edits
+                .lock()
+                .unwrap()
+                .push((instruction.to_owned(), selection.to_owned()));
             self.attempt.clone()
         }
     }
@@ -328,6 +437,7 @@ mod tests {
         run(
             Some(fake),
             RULE,
+            &[],
             Duration::from_secs(3),
             &CancelToken::default(),
             &Progress::default(),
@@ -359,6 +469,7 @@ mod tests {
         run(
             Some(&fake),
             RULE,
+            &[],
             Duration::from_secs(3),
             &CancelToken::default(),
             &progress,
@@ -423,6 +534,7 @@ mod tests {
         let record = run(
             None,
             RULE,
+            &[],
             Duration::from_secs(3),
             &CancelToken::default(),
             &Progress::default(),
@@ -439,7 +551,14 @@ mod tests {
         let fake = Fake::answering(Attempt::Done("never".into()));
         let progress = Progress::default();
         assert_eq!(
-            run(Some(&fake), RULE, Duration::from_secs(3), &token, &progress),
+            run(
+                Some(&fake),
+                RULE,
+                &[],
+                Duration::from_secs(3),
+                &token,
+                &progress
+            ),
             None
         );
         assert!(fake.seen.lock().unwrap().is_empty());
@@ -448,6 +567,7 @@ mod tests {
             run(
                 Some(&Fake::answering(Attempt::Cancelled)),
                 RULE,
+                &[],
                 Duration::from_secs(3),
                 &CancelToken::default(),
                 &progress
@@ -475,8 +595,100 @@ mod tests {
         let cleaner =
             cleaner_for(&storage, &host, &transport).expect("the endpoint needs no worker");
         // No URL is set, so the request is refused before any socket opens.
-        let attempt = cleaner.clean("hello", Duration::from_secs(1), &CancelToken::default());
+        let attempt = cleaner.clean(
+            "hello",
+            &[],
+            Duration::from_secs(1),
+            &CancelToken::default(),
+        );
         assert_eq!(attempt, Attempt::Failed("ENDPOINT_FAILED".into()));
+    }
+
+    #[test]
+    fn an_answer_that_drops_a_dictionary_word_is_rejected_and_the_word_reaches_the_model() {
+        let fake = Fake::answering(Attempt::Done("Meet on Wednesday at three.".into()));
+        let rule = "Meet on Wednesbury at three.";
+        let keep = ["Wednesbury".to_owned()];
+        let record = run(
+            Some(&fake),
+            rule,
+            &keep,
+            Duration::from_secs(3),
+            &CancelToken::default(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(record.outcome, Outcome::GuardRejected);
+        assert_eq!(record.text, None);
+        assert_eq!(*fake.kept.lock().unwrap(), keep);
+        let kept = Fake::answering(Attempt::Done("Meet on Wednesbury at 3.".into()));
+        let record = run(
+            Some(&kept),
+            rule,
+            &keep,
+            Duration::from_secs(3),
+            &CancelToken::default(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(record.outcome, Outcome::Used);
+    }
+
+    fn edit(fake: &Fake) -> Option<Record> {
+        run_edit(
+            Some(fake),
+            "make this formal",
+            "hey can you send me the file",
+            Duration::from_secs(3),
+            &CancelToken::default(),
+            &Progress::default(),
+        )
+    }
+
+    #[test]
+    fn an_edit_gives_the_instruction_and_the_selection_to_the_model() {
+        let fake = Fake::answering(Attempt::Done("Could you please send me the file?".into()));
+        let record = edit(&fake).unwrap();
+        assert_eq!(record.outcome, Outcome::Used);
+        assert_eq!(
+            record.text.as_deref(),
+            Some("Could you please send me the file?")
+        );
+        assert_eq!(
+            *fake.edits.lock().unwrap(),
+            [(
+                "make this formal".to_owned(),
+                "hey can you send me the file".to_owned()
+            )]
+        );
+    }
+
+    #[test]
+    fn an_edit_that_fails_or_is_refused_has_no_text() {
+        for (attempt, outcome) in [
+            (Attempt::TimedOut, Outcome::Timeout),
+            (Attempt::Failed(LLM_CRASHED.into()), Outcome::Error),
+            (Attempt::Done("  ".into()), Outcome::GuardRejected),
+            (
+                Attempt::Done("I can't help with that.".into()),
+                Outcome::GuardRejected,
+            ),
+        ] {
+            let record = edit(&Fake::answering(attempt)).unwrap();
+            assert_eq!(record.outcome, outcome);
+            assert_eq!(record.text, None);
+        }
+    }
+
+    #[test]
+    fn a_cancelled_edit_gives_no_record() {
+        assert_eq!(edit(&Fake::answering(Attempt::Cancelled)), None);
+    }
+
+    #[test]
+    fn the_edit_budget_is_twice_the_cleanup_budget_up_to_the_ceiling() {
+        assert_eq!(edit_max_tokens("hi"), 64);
+        assert_eq!(edit_max_tokens(&"a".repeat(100_000)), 1024);
     }
 
     #[test]

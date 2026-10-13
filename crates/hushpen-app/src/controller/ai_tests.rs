@@ -21,6 +21,10 @@ pub(crate) const RULE: &str =
 pub(crate) struct Calls {
     pub(crate) asked: usize,
     pub(crate) seen: Vec<(String, Duration)>,
+    /// The dictionary words each cleanup was told to keep.
+    pub(crate) kept: Vec<Vec<String>>,
+    /// The instruction, the selection, and the timeout of each edit.
+    pub(crate) edits: Vec<(String, String, Duration)>,
 }
 
 struct Scripted {
@@ -34,12 +38,25 @@ impl Cleaner for Scripted {
         self.prepare.clone()
     }
 
-    fn clean(&self, text: &str, timeout: Duration, _: &CancelToken) -> Attempt {
-        self.calls
-            .lock()
-            .unwrap()
-            .seen
-            .push((text.to_owned(), timeout));
+    fn clean(&self, text: &str, keep: &[String], timeout: Duration, _: &CancelToken) -> Attempt {
+        let mut calls = self.calls.lock().unwrap();
+        calls.seen.push((text.to_owned(), timeout));
+        calls.kept.push(keep.to_vec());
+        self.attempt.clone()
+    }
+
+    fn edit(
+        &self,
+        instruction: &str,
+        selection: &str,
+        timeout: Duration,
+        _: &CancelToken,
+    ) -> Attempt {
+        self.calls.lock().unwrap().edits.push((
+            instruction.to_owned(),
+            selection.to_owned(),
+            timeout,
+        ));
         self.attempt.clone()
     }
 }
@@ -361,4 +378,49 @@ fn the_phase_reads_cleaning_text_state_while_the_ai_job_is_queued(cx: &mut TestA
     assert_eq!(state["state"], "cleaning");
     settle(cx, &rig);
     assert_eq!(machine_state(cx, &rig), State::Done);
+}
+
+#[gpui_kit::test]
+fn a_dictionary_word_in_the_rule_text_is_sent_to_the_model_as_a_word_to_keep(
+    cx: &mut TestAppContext,
+) {
+    let (rig, inserter) = setup(cx);
+    hushpen_store::dictionary::add(&rig.storage.database, "Wednesbury", Some("wednesday")).unwrap();
+    hushpen_store::dictionary::add(&rig.storage.database, "Kubernetes", None).unwrap();
+    let kept = "I think we should meet on Wednesbury at 3 PM.";
+    let calls = ai_answers(cx, &rig, Attempt::Done(kept.into()), Ok(()));
+
+    hold_run(cx, &rig, 1_000);
+
+    assert_eq!(pasted(&inserter), [kept]);
+    let calls = calls.lock().unwrap();
+    assert_eq!(
+        calls.kept,
+        [vec!["Wednesbury".to_owned()]],
+        "only the words the rule text has"
+    );
+    assert!(calls.seen[0].0.contains("Wednesbury"));
+}
+
+#[gpui_kit::test]
+fn ai_text_that_drops_a_dictionary_word_is_rejected_and_the_rule_text_goes_in(
+    cx: &mut TestAppContext,
+) {
+    let (rig, inserter) = setup(cx);
+    hushpen_store::dictionary::add(&rig.storage.database, "Wednesbury", Some("wednesday")).unwrap();
+    ai_answers(
+        cx,
+        &rig,
+        Attempt::Done("I think we should meet on Wednesday at 3 PM.".into()),
+        Ok(()),
+    );
+
+    hold_run(cx, &rig, 1_000);
+
+    let rule = RULE.replace("wednesday", "Wednesbury");
+    assert_eq!(pasted(&inserter), [rule.as_str()]);
+    let row = only_row(&rig);
+    assert_eq!(row.llm_outcome.as_deref(), Some("guard_rejected"));
+    assert_eq!(row.llm_text, None);
+    assert_eq!(row.final_text.as_deref(), Some(rule.as_str()));
 }

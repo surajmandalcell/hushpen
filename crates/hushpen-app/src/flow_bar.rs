@@ -68,6 +68,8 @@ pub struct FlowBar {
     last_failure: Option<&'static str>,
     /// Why a click could not start a dictation. It shows like a failure, with no history row.
     refusal: Option<String>,
+    /// The newest refused Command Mode start the bar has shown.
+    seen_flash: u64,
     /// When the language list opened.
     picker: Option<u64>,
     props: Props,
@@ -102,6 +104,7 @@ impl FlowBar {
             display: Display::default(),
             last_failure: None,
             refusal: None,
+            seen_flash: 0,
             picker: None,
             props: Props::new(BarState::Idle),
             visible: false,
@@ -179,7 +182,7 @@ impl FlowBar {
         self.screen = screen;
         self.follow_pointer(cx);
 
-        let (derived, code, copied, offered, preparing) = {
+        let (derived, code, copied, offered, preparing, flash) = {
             let controller = self.controller.read(cx);
             (
                 state_for(controller.state(), controller.failure_code()),
@@ -187,6 +190,9 @@ impl FlowBar {
                 controller.copied_only(),
                 controller.undo_offered(),
                 controller.ai_phase() == Some(Phase::Preparing),
+                controller
+                    .flash()
+                    .map(|flash| (flash.seq, flash.message.clone())),
             )
         };
         if derived.is_failure() {
@@ -194,6 +200,13 @@ impl FlowBar {
         }
         if derived != BarState::Idle {
             self.refusal = None;
+        }
+        if let Some((seq, message)) = flash
+            && seq != self.seen_flash
+        {
+            self.seen_flash = seq;
+            self.refusal = Some(message);
+            self.display.update(BarState::Blocked, now);
         }
         let shown = with_undo(self.display.update(derived, now), offered);
         if !shown.is_failure() {

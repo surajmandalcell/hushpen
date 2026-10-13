@@ -757,3 +757,67 @@ mod in_a_window {
         assert!(terminal.undos.lock().unwrap().is_empty());
     }
 }
+
+fn command_bar(cx: &mut TestAppContext, selection: Option<&str>) -> (Bar, Arc<FakeInserter>) {
+    let bar = bar(cx, &["base"], "base");
+    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+    *inserter.selected.lock().unwrap() = selection.map(str::to_owned);
+    attach_inserter(cx, &bar.rig, &inserter);
+    say(&bar.rig, outcome_text("make this formal", "en"));
+    (bar, inserter)
+}
+
+/// The command keys as the shortcut engine sends them: the hold key, then the rest.
+fn command_chord(cx: &mut TestAppContext, bar: &Bar, at: u64) {
+    bar.at(at);
+    let _ = send_at(cx, &bar.rig, at, AppEvent::HoldDown);
+    let _ = send_at(cx, &bar.rig, at + 10, AppEvent::CommandDown);
+}
+
+#[gpui_kit::test]
+fn a_command_with_nothing_selected_says_so_and_has_no_history_button(cx: &mut TestAppContext) {
+    let (bar, inserter) = command_bar(cx, None);
+    ai_answers(cx, &bar.rig, Attempt::Done(CORRECTED.into()), Ok(()));
+    command_chord(cx, &bar, 11_000);
+    let _ = send_at(cx, &bar.rig, 11_500, AppEvent::CommandUp);
+    let _ = send_at(cx, &bar.rig, 11_500, AppEvent::HoldUp);
+    settle(cx, &bar.rig);
+
+    assert_eq!(bar.state(cx), BarState::Blocked);
+    let props = bar.props(cx);
+    assert_eq!(props.message, "Select text first");
+    assert!(!props.open_history);
+    assert!(pasted(&inserter).is_empty());
+
+    bar.at(11_000 + ERROR_HOLD_MS + 100);
+    assert_eq!(bar.state(cx), BarState::Idle);
+}
+
+#[gpui_kit::test]
+fn a_command_with_ai_off_says_what_it_needs(cx: &mut TestAppContext) {
+    let (bar, _inserter) = command_bar(cx, Some("some selected words"));
+    command_chord(cx, &bar, 11_000);
+
+    assert_eq!(bar.state(cx), BarState::Blocked);
+    assert_eq!(
+        bar.props(cx).message,
+        "Command Mode needs AI cleanup or the endpoint"
+    );
+}
+
+#[gpui_kit::test]
+fn a_command_that_the_model_cannot_finish_shows_an_error_and_pastes_nothing(
+    cx: &mut TestAppContext,
+) {
+    let (bar, inserter) = command_bar(cx, Some("some selected words"));
+    ai_answers(cx, &bar.rig, Attempt::TimedOut, Ok(()));
+    command_chord(cx, &bar, 11_000);
+    let _ = send_at(cx, &bar.rig, 13_000, AppEvent::CommandUp);
+    let _ = send_at(cx, &bar.rig, 13_000, AppEvent::HoldUp);
+    settle(cx, &bar.rig);
+
+    bar.at(13_100);
+    assert_eq!(bar.state(cx), BarState::Error);
+    assert_eq!(bar.props(cx).message, "AI edit timed out. Text unchanged");
+    assert!(pasted(&inserter).is_empty());
+}

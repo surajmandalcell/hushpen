@@ -48,6 +48,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
 pub(crate) mod ai_tests;
+mod command;
+pub use command::Flash;
+use command::edit_failure_code;
+#[cfg(test)]
+mod command_tests;
 #[cfg(test)]
 mod gate_tests;
 mod history;
@@ -322,6 +327,11 @@ pub struct Controller {
     undo: Option<undo::Standby>,
     /// An undo whose paste `pasting_last` waits for.
     undoing: Option<undo::Undoing>,
+    /// The text Command Mode edits: in memory for the one session, never logged or saved.
+    selection: Option<String>,
+    /// The newest refused Command Mode start.
+    flash: Option<Flash>,
+    flash_seq: u64,
     /// What the history row of the running session needs from the steps before the save.
     pending: history::Pending,
     /// Counts the saved and changed history rows, so the History view reloads only when needed.
@@ -437,6 +447,9 @@ impl Controller {
             paste_target: None,
             undo: None,
             undoing: None,
+            selection: None,
+            flash: None,
+            flash_seq: 0,
             pending: history::Pending::default(),
             history_revision: 0,
             last_row: None,
@@ -518,10 +531,11 @@ impl Controller {
         let last = Arc::clone(&self.last_ai);
         let events = self.events.clone();
         let for_thread = rule.clone();
+        let keep = dictionary::phrases_in(&rule, &self.dictionary());
         let spawned = (self.spawn)(Box::new(move || {
             let rule = for_thread;
             let Some(record) =
-                ai_cleanup::run(cleaner.as_deref(), &rule, timeout, &token, &progress)
+                ai_cleanup::run(cleaner.as_deref(), &rule, &keep, timeout, &token, &progress)
             else {
                 return;
             };
@@ -918,14 +932,18 @@ impl Controller {
                 | AppEvent::HomeToggle
                 | AppEvent::FlowBarClick
         );
+        let command = matches!(event, AppEvent::CommandDown);
         let refused = match self.gate {
             KeyGate::Open => false,
-            KeyGate::Closed => starts || matches!(event, AppEvent::PasteLast),
-            KeyGate::Practice => matches!(event, AppEvent::PasteLast),
+            KeyGate::Closed => starts || command || matches!(event, AppEvent::PasteLast),
+            KeyGate::Practice => command || matches!(event, AppEvent::PasteLast),
         };
         if refused {
             hook::record_event("onboarding", "key-blocked");
             return Err("onboarding is not finished: no dictation can start yet".into());
+        }
+        if command {
+            return self.command_preflight(now, cx);
         }
         if !starts {
             return Ok(());
@@ -950,6 +968,7 @@ impl Controller {
             return Err(format!("{}: {}", blocker.code, blocker.message));
         }
         self.refused = None;
+        self.selection = None;
         self.machine.set_config(config_from(&self.storage));
         Ok(())
     }
@@ -981,6 +1000,10 @@ impl Controller {
                 }
             }
             Effect::Clean { session, raw } => self.clean(session, raw, queue),
+            Effect::Edit {
+                session,
+                instruction,
+            } => self.edit(session, instruction, queue),
             Effect::StopLlm => {
                 if let Some(token) = self.ai_cancel.take() {
                     token.cancel();
@@ -1428,6 +1451,7 @@ impl Controller {
             let saved = self.history_revision;
             self.record_history(status, &text, code);
             if status == RowStatus::Done
+                && !self.is_command()
                 && self.history_revision != saved
                 && let Some(row_id) = self.last_row.clone()
             {
@@ -1488,6 +1512,12 @@ impl Controller {
                 _ => phase.key().to_owned(),
             };
             hook::record_event("dictation", &detail);
+        }
+        if matches!(
+            state,
+            State::Idle | State::Done | State::Failed | State::Cancelled
+        ) {
+            self.selection = None;
         }
         let take_escape = state.takes_escape();
         if take_escape != self.esc_taken {
@@ -1651,6 +1681,30 @@ pub(crate) fn failure_for(code: &str) -> (&'static str, &'static str) {
         INSERT_NO_TRANSCRIPT => (
             INSERT_NO_TRANSCRIPT,
             "No transcript is available yet. Dictate something first.",
+        ),
+        error::COMMAND_NO_SELECTION => (error::COMMAND_NO_SELECTION, "Select text first"),
+        error::COMMAND_NEEDS_AI => (
+            error::COMMAND_NEEDS_AI,
+            "Command Mode needs AI cleanup or the endpoint",
+        ),
+        error::LLM_TIMEOUT => (
+            error::LLM_TIMEOUT,
+            "The AI edit took too long. Your text was not changed.",
+        ),
+        error::LLM_GUARD_REJECTED => (
+            error::LLM_GUARD_REJECTED,
+            "The AI answer could not be used. Your text was not changed.",
+        ),
+        error::LLM_UNAVAILABLE
+        | error::LLM_LOAD_FAILED
+        | error::LLM_NO_MODEL
+        | error::LLM_PROTOCOL
+        | error::LLM_CRASHED
+        | error::LLM_PROMPT_TOO_LONG
+        | error::LLM_GENERATE_FAILED
+        | error::ENDPOINT_FAILED => (
+            edit_failure_code(code),
+            "The AI edit failed. Your text was not changed.",
         ),
         _ => (
             ENGINE_CRASHED,
