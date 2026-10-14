@@ -23,11 +23,16 @@ struct FakeGuide {
     refuse: std::cell::Cell<bool>,
     relaunched: std::cell::Cell<u32>,
     refuse_relaunch: std::cell::Cell<bool>,
+    /// The permission source that a request changes, and what it turns into.
+    answers: RefCell<Option<(Arc<FakeSystem>, Access)>>,
 }
 
 impl Guide for FakeGuide {
     fn request(&self, permission: Permission) {
         self.requested.borrow_mut().push(permission);
+        if let Some((system, access)) = &*self.answers.borrow() {
+            system.set(permission, *access);
+        }
     }
 
     fn open(&self, url: &str) -> Result<(), String> {
@@ -317,10 +322,193 @@ fn allow_calls_the_request_once_on_every_click_in_every_state(cx: &mut TestAppCo
             assert_eq!(requested.last(), Some(&permission));
         }
     }
+    assert_eq!(
+        *fixture.guide.opened.borrow(),
+        [Permission::InputMonitoring.settings_url()],
+        "only Input Monitoring that stayed denied after its request opens a pane"
+    );
+}
+
+fn im_url() -> &'static str {
+    Permission::InputMonitoring.settings_url()
+}
+
+fn ax_url() -> &'static str {
+    Permission::Accessibility.settings_url()
+}
+
+fn hint(
+    cx: &mut TestAppContext,
+    fixture: &Fixture,
+    permission: Permission,
+) -> Option<&'static str> {
+    fixture.read(cx, |me, _| me.stale_hint(permission))
+}
+
+#[gpui_kit::test]
+fn allow_on_input_monitoring_that_stays_denied_opens_its_pane_and_shows_the_remove_line(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+
+    assert_eq!(
+        *fixture.guide.requested.borrow(),
+        [Permission::InputMonitoring],
+        "the request API is still called once"
+    );
+    assert_eq!(
+        *fixture.guide.opened.borrow(),
+        [im_url()],
+        "one pane, opened once"
+    );
+    assert_eq!(
+        hint(cx, &fixture, Permission::InputMonitoring),
+        Some(
+            "If Hushpen is already in the list, remove it with the minus button, then click Allow again."
+        )
+    );
+    assert_eq!(hint(cx, &fixture, Permission::Accessibility), None);
+    assert_eq!(hint(cx, &fixture, Permission::Microphone), None);
+}
+
+#[gpui_kit::test]
+fn allow_on_input_monitoring_that_turns_granted_opens_no_pane_and_the_row_is_ready(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    *fixture.guide.answers.borrow_mut() = Some((fixture.system.clone(), Access::Granted));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+
+    assert!(fixture.guide.opened.borrow().is_empty());
+    assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
+    assert_eq!(row(cx, &fixture, "inputMonitoring"), RowState::Ready);
+}
+
+#[gpui_kit::test]
+fn allow_on_input_monitoring_that_waits_for_the_prompt_opens_no_pane(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::NotDetermined));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+
+    assert!(fixture.guide.opened.borrow().is_empty());
+    assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
+}
+
+#[gpui_kit::test]
+fn the_remove_line_goes_when_the_grant_arrives(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+    assert!(hint(cx, &fixture, Permission::InputMonitoring).is_some());
+
+    fixture
+        .system
+        .set(Permission::InputMonitoring, Access::Granted);
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
+}
+
+#[gpui_kit::test]
+fn accessibility_that_stays_false_after_the_wait_and_a_return_opens_its_pane_and_shows_the_line(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
     assert!(
         fixture.guide.opened.borrow().is_empty(),
-        "Allow does not open System Settings"
+        "the alert of macOS gets its time first"
     );
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+    assert!(
+        fixture.guide.opened.borrow().is_empty(),
+        "a return before the wait is over opens nothing"
+    );
+    cx.executor().advance_clock(Duration::from_millis(2_100));
+    cx.run_until_parked();
+
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
+    assert_eq!(
+        *fixture.guide.requested.borrow(),
+        [Permission::Accessibility]
+    );
+    assert!(hint(cx, &fixture, Permission::Accessibility).is_some());
+    assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
+
+    cx.executor().advance_clock(Duration::from_millis(3_000));
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+    assert_eq!(
+        fixture.guide.opened.borrow().len(),
+        1,
+        "one Allow click opens the pane once"
+    );
+}
+
+#[gpui_kit::test]
+fn accessibility_opens_its_pane_when_the_return_comes_after_the_wait(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
+    cx.executor().advance_clock(Duration::from_millis(2_100));
+    cx.run_until_parked();
+    assert!(
+        fixture.guide.opened.borrow().is_empty(),
+        "the user has not come back yet"
+    );
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
+    assert!(hint(cx, &fixture, Permission::Accessibility).is_some());
+}
+
+#[gpui_kit::test]
+fn accessibility_that_turns_trusted_opens_no_pane(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
+    fixture
+        .system
+        .set(Permission::Accessibility, Access::Granted);
+    cx.executor().advance_clock(Duration::from_millis(2_100));
+    cx.run_until_parked();
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert!(fixture.guide.opened.borrow().is_empty());
+    assert_eq!(hint(cx, &fixture, Permission::Accessibility), None);
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Ready);
+}
+
+#[gpui_kit::test]
+fn a_return_without_an_accessibility_click_opens_nothing(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    cx.executor().advance_clock(Duration::from_millis(5_000));
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert!(fixture.guide.opened.borrow().is_empty());
+    assert_eq!(hint(cx, &fixture, Permission::Accessibility), None);
+}
+
+#[gpui_kit::test]
+fn the_state_shows_the_remove_line_on_its_row(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+
+    let state = fixture.read(cx, |me, cx| me.state_json(cx));
+
+    let rows = state["permissions"]["rows"].as_array().unwrap();
+    let hints: Vec<_> = rows
+        .iter()
+        .map(|row| (row["key"].as_str().unwrap(), row["hint"].as_str()))
+        .collect();
+    assert!(
+        hints.contains(&("inputMonitoring", Some(STALE_HINT))),
+        "{hints:?}"
+    );
+    assert!(hints.contains(&("accessibility", None)), "{hints:?}");
 }
 
 #[gpui_kit::test]

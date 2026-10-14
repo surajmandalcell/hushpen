@@ -117,6 +117,7 @@ pub fn run(hidden: bool) -> ExitCode {
             let quit_llm = Rc::clone(&llm);
             let ai_llm = Rc::clone(&llm);
             cx.on_app_quit(move |_| {
+                hushpen_store::log_file::begin_quit();
                 quit_engine.shutdown();
                 quit_llm.shutdown();
                 log::logger().flush();
@@ -230,11 +231,10 @@ pub fn run(hidden: bool) -> ExitCode {
             onboarding.update(cx, |onboarding, cx| {
                 onboarding.attach_shortcuts(shortcuts.clone(), cx)
             });
-            follow_activation(cx, onboarding.clone());
             let login_item = hushpen_platform::login_item::LoginItem::current()
                 .map_err(|error| log::warn!("launch at login is unavailable: {error}"))
                 .ok()
-                .map(|item| Rc::new(item) as Rc<dyn crate::settings::LoginToggle>);
+                .map(|item| Arc::new(item) as Arc<dyn crate::settings::LoginToggle>);
             let settings_view = cx.new(|cx| {
                 Settings::new(
                     SettingsParts {
@@ -247,6 +247,7 @@ pub fn run(hidden: bool) -> ExitCode {
                     cx,
                 )
             });
+            follow_activation(cx, onboarding.clone(), settings_view.clone());
             let loading_llm = Rc::clone(&llm);
             settings_view.update(cx, |settings, cx| {
                 settings.attach_ai(
@@ -402,19 +403,24 @@ pub fn run(hidden: bool) -> ExitCode {
 }
 
 /// Reads the permissions at once when the user comes back to Hushpen, which is where a visit to
-/// System Settings ends. The one-second refresh of the page covers the time in between.
-fn follow_activation(cx: &mut App, onboarding: Entity<Onboarding>) {
+/// System Settings ends. The one-second refresh of the page covers the time in between. Launch
+/// at login is read again too, because the same trip may have changed it.
+fn follow_activation(cx: &mut App, onboarding: Entity<Onboarding>, settings: Entity<Settings>) {
     let (activated, mut activations) = mpsc::unbounded::<()>();
     hushpen_platform::permissions::on_app_activation(Arc::new(move || {
         let _ = activated.unbounded_send(());
     }));
     let onboarding = onboarding.downgrade();
+    let settings = settings.downgrade();
     cx.spawn(async move |cx| {
         while activations.next().await.is_some() {
-            if onboarding
+            let onboarding_alive = onboarding
                 .update(cx, |onboarding, cx| onboarding.app_activated(cx))
-                .is_err()
-            {
+                .is_ok();
+            let settings_alive = settings
+                .update(cx, |settings, cx| settings.app_activated(cx))
+                .is_ok();
+            if !(onboarding_alive || settings_alive) {
                 break;
             }
         }

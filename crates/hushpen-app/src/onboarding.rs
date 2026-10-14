@@ -21,7 +21,7 @@ use hushpen_core::error::ENGINE_NO_SPEECH;
 use hushpen_core::onboarding::{
     self as rules, Facts, Heard, KeyGate, MicVerdict, Row, Session, Start, Step,
 };
-use hushpen_core::permission::Permission;
+use hushpen_core::permission::{Access, Permission};
 use hushpen_core::shortcut::{Platform, Slot};
 use hushpen_engine::{JobOutcome, TranscribeSpec};
 use serde_json::{Value, json};
@@ -36,6 +36,15 @@ const UPDATES: &str = "updates.check";
 
 /// How often the permissions are read again while onboarding is on screen.
 const REFRESH: Duration = Duration::from_secs(1);
+
+/// How long Accessibility gets after its prompt before a still-false trust counts as a stale
+/// record. The prompt is an alert of another process, so the answer comes later than the click.
+const ACCESSIBILITY_PROMPT_WAIT: Duration = Duration::from_secs(2);
+
+/// The line under a row whose Allow click got no prompt from macOS. A record from an older
+/// build stays in the Privacy pane and counts as decided, so only a fresh entry helps.
+pub const STALE_HINT: &str =
+    "If Hushpen is already in the list, remove it with the minus button, then click Allow again.";
 
 /// What a click on a permission button does. The real one asks macOS and opens System
 /// Settings; tests pass a fake.
@@ -116,6 +125,15 @@ enum Message {
     Heard(Heard),
 }
 
+/// One Allow click on Accessibility whose answer has not shown yet. Trust that is still false
+/// once the wait is over and the user is back in Hushpen means macOS holds a stale record.
+struct AccessibilityWait {
+    /// Tells the timer of this click from the timer of an earlier one.
+    click: u64,
+    waited: bool,
+    returned: bool,
+}
+
 /// What onboarding reads and changes.
 pub struct Parts {
     pub storage: Rc<Storage>,
@@ -144,6 +162,11 @@ pub struct Onboarding {
     practice: Option<String>,
     updates_on: bool,
     notice: Option<String>,
+    /// The permissions whose row shows [`STALE_HINT`].
+    stale: Vec<Permission>,
+    /// The Accessibility prompt that is still being waited for.
+    accessibility_wait: Option<AccessibilityWait>,
+    allow_clicks: u64,
     messages: UnboundedSender<Message>,
     /// Allow and Open Settings of each permission, in `Permission::ALL` order, two per row.
     pub(crate) permission_focus: Vec<FocusHandle>,
@@ -236,6 +259,9 @@ impl Onboarding {
             practice: None,
             updates_on,
             notice: None,
+            stale: Vec::new(),
+            accessibility_wait: None,
+            allow_clicks: 0,
             messages,
             permission_focus: (0..Permission::ALL.len() * 2)
                 .map(|_| cx.focus_handle().tab_stop(true))
@@ -293,6 +319,11 @@ impl Onboarding {
 
     pub fn platform(&self) -> Platform {
         self.platform
+    }
+
+    /// The line under the row of `permission` when macOS gave no prompt for its Allow click.
+    pub fn stale_hint(&self, permission: Permission) -> Option<&'static str> {
+        self.stale.contains(&permission).then_some(STALE_HINT)
     }
 
     /// The shortcut the practice step tells the user to hold, in this system's key names.
@@ -401,12 +432,19 @@ impl Onboarding {
         }
         self.controller
             .update(cx, |controller, cx| controller.refresh_permissions(cx));
+        let access = self.controller.read(cx).access();
+        self.stale
+            .retain(|permission| access.get(*permission) != Access::Granted);
         cx.notify();
     }
 
     /// The user came back to Hushpen, often from System Settings: the rows show the state now.
     pub fn app_activated(&mut self, cx: &mut Context<Self>) {
         self.refresh(cx);
+        if let Some(wait) = self.accessibility_wait.as_mut() {
+            wait.returned = true;
+        }
+        self.settle_accessibility_wait(cx);
     }
 
     /// The page names the microphone, so it looks for one every second while it is on screen.
@@ -482,10 +520,82 @@ impl Onboarding {
     /// then lists Hushpen in the Privacy pane and shows its prompt. Reading the state first
     /// would skip the request for Accessibility and Input Monitoring, which never read as not
     /// asked, and Hushpen would never reach the list.
+    ///
+    /// macOS shows no prompt to a client it already decided on. Input Monitoring then still
+    /// reads Denied right after the request, so the Privacy pane opens with a line about the
+    /// old entry. Accessibility always shows its alert, so it waits for the answer instead.
     pub fn allow(&mut self, permission: Permission, cx: &mut Context<Self>) {
         self.guide.request(permission);
         hook::record_event("onboarding", &format!("allow {}", permission.key()));
         self.notice = None;
+        self.stale.retain(|stale| *stale != permission);
+        match permission {
+            Permission::InputMonitoring => {
+                if self.read_access(permission, cx) == Access::Denied {
+                    self.open_stale_pane(permission);
+                }
+            }
+            Permission::Accessibility => self.wait_for_accessibility(cx),
+            Permission::Microphone => {}
+        }
+        cx.notify();
+    }
+
+    /// What the system says about `permission` now. It runs only after an Allow click.
+    fn read_access(&mut self, permission: Permission, cx: &mut Context<Self>) -> Access {
+        self.controller
+            .update(cx, |controller, cx| controller.refresh_permissions(cx));
+        self.controller.read(cx).access().get(permission)
+    }
+
+    fn open_stale_pane(&mut self, permission: Permission) {
+        hook::record_event("onboarding", &format!("stale {}", permission.key()));
+        if let Err(error) = self.guide.open(permission.settings_url()) {
+            log::warn!("System Settings could not be opened: {error}");
+        }
+        self.stale.push(permission);
+    }
+
+    fn wait_for_accessibility(&mut self, cx: &mut Context<Self>) {
+        self.allow_clicks += 1;
+        let click = self.allow_clicks;
+        self.accessibility_wait = Some(AccessibilityWait {
+            click,
+            waited: false,
+            returned: false,
+        });
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(ACCESSIBILITY_PROMPT_WAIT)
+                .await;
+            let _ = this.update(cx, |me, cx| {
+                if let Some(wait) = me.accessibility_wait.as_mut()
+                    && wait.click == click
+                {
+                    wait.waited = true;
+                    me.settle_accessibility_wait(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Decides the pending Accessibility click once the wait is over and the user is back: a
+    /// grant ends it, trust that is still false means a stale record.
+    fn settle_accessibility_wait(&mut self, cx: &mut Context<Self>) {
+        let Some(wait) = &self.accessibility_wait else {
+            return;
+        };
+        if !(wait.waited && wait.returned) {
+            return;
+        }
+        self.accessibility_wait = None;
+        if !self.permissions_page_shown() {
+            return;
+        }
+        if self.read_access(Permission::Accessibility, cx) != Access::Granted {
+            self.open_stale_pane(Permission::Accessibility);
+        }
         cx.notify();
     }
 
@@ -768,6 +878,7 @@ impl Onboarding {
                     "state": row.state.key(),
                     "detail": row.detail,
                     "relaunch": row.relaunch,
+                    "hint": row.opens.and_then(|permission| self.stale_hint(permission)),
                 })).collect::<Vec<_>>(),
             },
             "mic": {

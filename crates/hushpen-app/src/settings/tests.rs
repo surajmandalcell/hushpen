@@ -46,15 +46,35 @@ impl MicSession for FakeSession {
     }
 }
 
+/// A login item that records which thread asked for its status, and can answer slowly.
 #[derive(Default)]
 struct FakeLogin {
     enabled: Mutex<Option<bool>>,
     writes: Mutex<Vec<bool>>,
     fail: Mutex<bool>,
+    read_threads: Mutex<Vec<std::thread::ThreadId>>,
+    read_delay: Mutex<std::time::Duration>,
+}
+
+impl FakeLogin {
+    fn reads(&self) -> usize {
+        self.read_threads.lock().unwrap().len()
+    }
+
+    fn read_on_ui_thread(&self) -> bool {
+        let ui = std::thread::current().id();
+        self.read_threads.lock().unwrap().contains(&ui)
+    }
 }
 
 impl LoginToggle for FakeLogin {
     fn is_enabled(&self) -> bool {
+        self.read_threads
+            .lock()
+            .unwrap()
+            .push(std::thread::current().id());
+        let delay = *self.read_delay.lock().unwrap();
+        std::thread::sleep(delay);
         self.enabled.lock().unwrap().unwrap_or(false)
     }
 
@@ -72,17 +92,24 @@ struct Rig {
     settings: Entity<Settings>,
     storage: Rc<storage::Storage>,
     mic: Entity<Mic>,
-    login: Rc<FakeLogin>,
+    login: Arc<FakeLogin>,
     restarts: Rc<Mutex<u32>>,
     default_dir: std::path::PathBuf,
     _tmp: tempfile::TempDir,
 }
 
 fn rig(cx: &mut TestAppContext) -> Rig {
+    let rig = rig_with(cx, FakeLogin::default());
+    settle_login(cx, &rig);
+    rig
+}
+
+/// Builds Settings around `login`. The first status read is still on its way when this returns.
+fn rig_with(cx: &mut TestAppContext, login: FakeLogin) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
     let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), std::sync::Arc::new(FakeMic), cx));
-    let login = Rc::new(FakeLogin::default());
+    let login = Arc::new(login);
     let restarts = Rc::new(Mutex::new(0));
     let recorded = Rc::clone(&restarts);
     let default_dir = tmp.path().join("default");
@@ -113,6 +140,26 @@ fn rig(cx: &mut TestAppContext) -> Rig {
 
 fn read<T>(cx: &TestAppContext, rig: &Rig, f: impl FnOnce(&Settings) -> T) -> T {
     cx.read(|app| f(rig.settings.read(app)))
+}
+
+/// Waits for the reading thread of the launch at login status to answer and for the answer to
+/// reach the view. The thread is a real one, so this steps the test clock and the wall clock
+/// together. The Mic poll (2 s of test time) must not come due, so a test keeps its reads short.
+fn settle_login(cx: &mut TestAppContext, rig: &Rig) {
+    let step = std::time::Duration::from_millis(20);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        cx.executor().advance_clock(step);
+        cx.run_until_parked();
+        if !read(cx, rig, |me| me.login_cache.reading) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the login status read never landed"
+        );
+        std::thread::sleep(step);
+    }
 }
 
 fn value(rig: &Rig, key: &str) -> Value {
@@ -175,8 +222,151 @@ fn a_login_item_removed_by_hand_reads_as_off_on_open(cx: &mut TestAppContext) {
     // The user removes the login item in the system settings.
     *rig.login.enabled.lock().unwrap() = Some(false);
     rig.settings.update(cx, |me, cx| me.opened(cx));
+    settle_login(cx, &rig);
     assert!(!read(cx, &rig, Settings::launch_at_login));
     assert_eq!(value(&rig, "startup.launchAtLogin"), json!(false));
+}
+
+/// What the Settings > General rows ask of the model each time the window draws them.
+fn render_general(cx: &mut TestAppContext, rig: &Rig) {
+    read(cx, rig, Settings::launch_at_login);
+    read(cx, rig, |me| me.stored_bool("startup.startHidden"));
+}
+
+#[gpui_kit::test]
+fn hook_state_and_the_general_section_never_ask_the_login_item_on_the_ui_thread(
+    cx: &mut TestAppContext,
+) {
+    let login = FakeLogin::default();
+    *login.enabled.lock().unwrap() = Some(true);
+    *login.read_delay.lock().unwrap() = std::time::Duration::from_millis(800);
+    let rig = rig_with(cx, login);
+
+    let started = std::time::Instant::now();
+    let state = cx.read(|app| rig.settings.read(app).hook_state_json(app));
+    render_general(cx, &rig);
+    let shown = read(cx, &rig, Settings::launch_at_login);
+    let took = started.elapsed();
+
+    assert!(
+        took < std::time::Duration::from_millis(50),
+        "the views waited {took:?} for a slow login item"
+    );
+    assert!(
+        !rig.login.read_on_ui_thread(),
+        "the status query ran on the UI thread"
+    );
+    assert_eq!(
+        state["launch_at_login"],
+        json!(false),
+        "the stored intent shows until the answer"
+    );
+    assert!(!shown);
+
+    settle_login(cx, &rig);
+
+    assert!(
+        read(cx, &rig, Settings::launch_at_login),
+        "the answer lands in the cache"
+    );
+    let state = cx.read(|app| rig.settings.read(app).hook_state_json(app));
+    assert_eq!(state["launch_at_login"], json!(true));
+    assert!(!rig.login.read_on_ui_thread());
+    assert_eq!(
+        rig.login.reads(),
+        1,
+        "views read the cache and nothing else"
+    );
+}
+
+#[gpui_kit::test]
+fn repeated_views_and_hook_reads_leave_the_login_item_alone(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let reads = rig.login.reads();
+
+    for _ in 0..20 {
+        cx.read(|app| rig.settings.read(app).hook_state_json(app));
+        render_general(cx, &rig);
+    }
+
+    assert_eq!(rig.login.reads(), reads);
+}
+
+#[gpui_kit::test]
+fn the_login_cache_refreshes_on_activation_on_open_and_after_a_toggle(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    assert!(!read(cx, &rig, Settings::launch_at_login));
+
+    // System Settings turned launch at login on, and the user came back.
+    *rig.login.enabled.lock().unwrap() = Some(true);
+    let before = rig.login.reads();
+    rig.settings.update(cx, |me, cx| me.app_activated(cx));
+    settle_login(cx, &rig);
+    assert_eq!(rig.login.reads(), before + 1);
+    assert!(
+        read(cx, &rig, Settings::launch_at_login),
+        "activation refreshes"
+    );
+
+    // It was turned off there, and Settings opens.
+    *rig.login.enabled.lock().unwrap() = Some(false);
+    let before = rig.login.reads();
+    rig.settings.update(cx, |me, cx| me.opened(cx));
+    settle_login(cx, &rig);
+    assert_eq!(rig.login.reads(), before + 1);
+    assert!(
+        !read(cx, &rig, Settings::launch_at_login),
+        "opening Settings refreshes"
+    );
+
+    // A toggle writes the item and reads it back.
+    let before = rig.login.reads();
+    rig.settings
+        .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    assert!(
+        read(cx, &rig, Settings::launch_at_login),
+        "the row follows the click at once"
+    );
+    settle_login(cx, &rig);
+    assert_eq!(
+        rig.login.reads(),
+        before + 1,
+        "a toggle reads the status again"
+    );
+    assert!(read(cx, &rig, Settings::launch_at_login));
+    assert!(!rig.login.read_on_ui_thread());
+}
+
+#[gpui_kit::test]
+fn a_read_that_started_before_a_toggle_does_not_overwrite_it(cx: &mut TestAppContext) {
+    let login = FakeLogin::default();
+    *login.read_delay.lock().unwrap() = std::time::Duration::from_millis(100);
+    let rig = rig_with(cx, login);
+
+    // The first read (the item is off) is still running when the user clicks.
+    rig.settings
+        .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    settle_login(cx, &rig);
+    settle_login(cx, &rig);
+
+    assert!(read(cx, &rig, Settings::launch_at_login));
+    assert_eq!(value(&rig, "startup.launchAtLogin"), json!(true));
+}
+
+#[gpui_kit::test]
+fn a_refresh_asked_for_during_a_read_runs_after_it(cx: &mut TestAppContext) {
+    let login = FakeLogin::default();
+    *login.read_delay.lock().unwrap() = std::time::Duration::from_millis(50);
+    let rig = rig_with(cx, login);
+
+    // Asked for while the first read runs, with a newer answer waiting at the system.
+    *rig.login.enabled.lock().unwrap() = Some(true);
+    rig.settings.update(cx, |me, cx| me.app_activated(cx));
+    settle_login(cx, &rig);
+    settle_login(cx, &rig);
+
+    assert_eq!(rig.login.reads(), 2);
+    assert!(read(cx, &rig, Settings::launch_at_login));
 }
 
 #[gpui_kit::test]

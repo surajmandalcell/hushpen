@@ -15,6 +15,20 @@ mod reader;
 #[cfg(target_os = "macos")]
 mod macos;
 
+/// Starts `command` and returns at once. A thread waits for the child, so it never lingers as a
+/// zombie and its end never blocks the caller. `Command::status` would hold the UI thread until
+/// `/usr/bin/open` answers, which stalls a frame or more.
+#[cfg(any(target_os = "macos", test))]
+fn spawn_and_reap(mut command: std::process::Command) -> std::io::Result<()> {
+    let mut child = command.spawn()?;
+    std::thread::Builder::new()
+        .name("hushpen-open".into())
+        .spawn(move || {
+            let _ = child.wait();
+        })
+        .map(|_| ())
+}
+
 #[cfg(target_os = "macos")]
 pub fn system() -> Arc<dyn Preflight> {
     Arc::new(macos::preflight())
@@ -126,6 +140,27 @@ pub fn relaunch() -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn a_spawned_open_returns_before_its_child_ends() {
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("2");
+        let started = std::time::Instant::now();
+
+        spawn_and_reap(command).unwrap();
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "the call waited for the child: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_missing_program_is_still_an_error_at_once() {
+        let command = std::process::Command::new("/nonexistent/open");
+        assert!(spawn_and_reap(command).is_err());
+    }
 
     #[test]
     fn the_bundle_is_the_app_folder_above_the_executable() {

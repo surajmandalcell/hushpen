@@ -168,7 +168,30 @@ fn permissions(
     let rows = rows
         .into_iter()
         .map(|row| {
-            permission_row(palette, onboarding, row, &focus, &relaunch_focus).into_any_element()
+            let key = row.key.key();
+            let hint = row
+                .opens
+                .filter(|_| row.state != RowState::Ready)
+                .and_then(|permission| onboarding.read(cx).stale_hint(permission));
+            let line = permission_row(palette, onboarding, row, &focus, &relaunch_focus);
+            match hint {
+                Some(text) => div()
+                    .w_full()
+                    .flex_none()
+                    .flex()
+                    .flex_col()
+                    .child(line)
+                    .child(
+                        ui::secondary(palette)
+                            .id(hook::id("onboarding", &format!("permissions.hint.{key}")))
+                            .test_support()
+                            .px(px(size::ROW_PADDING))
+                            .pb(px(space::SM))
+                            .child(text),
+                    )
+                    .into_any_element(),
+                None => line.into_any_element(),
+            }
         })
         .collect();
     ui::group(hook::id("onboarding", "permissions"), palette, rows)

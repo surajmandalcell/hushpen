@@ -11,6 +11,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const LOG_MAX_BYTES: u64 = 2_000_000;
 /// The live file plus `.1` and `.2`.
@@ -195,6 +196,23 @@ impl FileLogger {
     }
 }
 
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+/// Marks the start of the app's shutdown. GPUI keeps the whole app borrowed while it quits, and
+/// native window events that arrive in that time fail to reach their window and log
+/// `RefCell already borrowed` with no scope. The windows are about to close, so the lost update
+/// is harmless and the line is only noise.
+pub fn begin_quit() {
+    QUITTING.store(true, Ordering::Relaxed);
+}
+
+fn is_quit_noise(record: &Record, message: &str) -> bool {
+    QUITTING.load(Ordering::Relaxed)
+        && record.level() == Level::Error
+        && record.target().is_empty()
+        && message == "RefCell already borrowed"
+}
+
 impl Log for FileLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= self.filter.level_for(metadata.target())
@@ -205,6 +223,9 @@ impl Log for FileLogger {
             return;
         }
         let message = record.args().to_string();
+        if is_quit_noise(record, &message) {
+            return;
+        }
         let line = format_line(
             time::now_unix_ms(),
             record.level(),
@@ -294,6 +315,32 @@ mod tests {
         assert_eq!(syncs(&logger), 2);
         emit(&logger, Level::Info, "STARTUP version=1");
         assert_eq!(syncs(&logger), 3);
+    }
+
+    #[test]
+    fn the_borrow_error_of_a_window_event_during_quit_is_not_logged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (logger, path) = logger_in(tmp.path());
+        let borrowed = |target: &str, message: &str| {
+            logger.log(
+                &Record::builder()
+                    .level(Level::Error)
+                    .target(target)
+                    .args(format_args!("{message}"))
+                    .build(),
+            );
+        };
+
+        borrowed("", "RefCell already borrowed");
+        begin_quit();
+        borrowed("", "RefCell already borrowed");
+        borrowed("hushpen_app::tray", "RefCell already borrowed");
+        borrowed("", "some other failure");
+
+        let text = fs::read_to_string(path).unwrap();
+        assert_eq!(text.matches("RefCell already borrowed").count(), 2);
+        assert!(text.contains("hushpen_app::tray RefCell already borrowed"));
+        assert!(text.contains("some other failure"));
     }
 
     #[test]

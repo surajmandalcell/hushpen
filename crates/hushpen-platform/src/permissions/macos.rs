@@ -125,17 +125,15 @@ pub(super) fn request(permission: Permission) {
 }
 
 pub(super) fn open_url(url: &str) -> std::io::Result<()> {
-    std::process::Command::new("/usr/bin/open")
-        .arg(url)
-        .status()
-        .map(|_| ())
+    let mut command = std::process::Command::new("/usr/bin/open");
+    command.arg(url);
+    super::spawn_and_reap(command)
 }
 
 pub(super) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
-    std::process::Command::new("/usr/bin/open")
-        .arg(path)
-        .status()
-        .map(|_| ())
+    let mut command = std::process::Command::new("/usr/bin/open");
+    command.arg(path);
+    super::spawn_and_reap(command)
 }
 
 /// Calls `callback` each time the user brings Hushpen to the front, on the main thread.

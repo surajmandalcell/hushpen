@@ -16,6 +16,7 @@ use hushpen_core::shortcut::Platform;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) use panel::render;
 
@@ -96,7 +97,11 @@ impl Section {
 
 /// Launch at login, behind a trait so tests never touch the login items of
 /// the machine. The platform impl is [`hushpen_platform::login_item`].
-pub trait LoginToggle {
+///
+/// `is_enabled` can take over a second on macOS (an XPC call to the background task
+/// manager), so only a reading thread calls it. The views read [`Settings::launch_at_login`],
+/// which answers from a cache.
+pub trait LoginToggle: Send + Sync {
     fn is_enabled(&self) -> bool;
     fn set(&self, enabled: bool) -> Result<(), String>;
 }
@@ -134,10 +139,33 @@ impl MoveState {
     }
 }
 
+/// How often the view looks for the answer of a running status read.
+const LOGIN_POLL: std::time::Duration = std::time::Duration::from_millis(20);
+
+/// What the system last said about launch at login. A read starts on a thread and its answer
+/// comes back as a `LoginRead`.
+#[derive(Default)]
+struct LoginCache {
+    /// `None` until the first read lands.
+    value: Option<bool>,
+    /// Counts the toggles, so a read that started before one never overwrites its result.
+    generation: u64,
+    reading: bool,
+    /// A refresh was asked for while a read ran; one more read follows it.
+    again: bool,
+}
+
+/// The answer of one reading thread, and the generation it started in.
+struct LoginRead {
+    generation: u64,
+    enabled: bool,
+}
+
 pub struct Settings {
     pub(crate) storage: Rc<Storage>,
     pub(crate) mic: Entity<Mic>,
-    login: Option<Rc<dyn LoginToggle>>,
+    login: Option<Arc<dyn LoginToggle>>,
+    login_cache: LoginCache,
     default_data_dir: PathBuf,
     pub(crate) section: Section,
     /// The open picker, if any: `audio.mic`, `storage.retention`, `flowbar.position`.
@@ -195,7 +223,7 @@ const AI_LOADING_POLL: std::time::Duration = std::time::Duration::from_millis(50
 pub struct Parts {
     pub storage: Rc<Storage>,
     pub mic: Entity<Mic>,
-    pub login: Option<Rc<dyn LoginToggle>>,
+    pub login: Option<Arc<dyn LoginToggle>>,
     /// Where the pointer file lives. Defaults to the system's default data
     /// folder; tests pass a folder of their own.
     pub default_data_dir: Option<PathBuf>,
@@ -213,10 +241,11 @@ impl Settings {
             restart,
         } = parts;
         cx.observe(&mic, |_, _, cx| cx.notify()).detach();
-        Self {
+        let mut me = Self {
             storage,
             mic,
             login,
+            login_cache: LoginCache::default(),
             default_data_dir: default_data_dir
                 .unwrap_or_else(hushpen_store::data_dir::resolve_from_env),
             section: Section::General,
@@ -234,7 +263,9 @@ impl Settings {
             ai: None,
             ai_loading: false,
             endpoint: None,
-        }
+        };
+        me.refresh_login(cx);
+        me
     }
 
     /// Connects the endpoint rows of Cleanup. Their fields need a window, so the form is built
@@ -405,8 +436,14 @@ impl Settings {
     /// The Settings view opened: re-read launch at login from the system, so
     /// a login item removed by hand shows as off.
     pub fn opened(&mut self, cx: &mut Context<Self>) {
-        self.resync_login(cx);
+        self.refresh_login(cx);
         cx.notify();
+    }
+
+    /// The user came back to Hushpen, often from System Settings > Login Items: read launch at
+    /// login again.
+    pub fn app_activated(&mut self, cx: &mut Context<Self>) {
+        self.refresh_login(cx);
     }
 
     pub fn select_section(&mut self, section: Section, cx: &mut Context<Self>) {
@@ -418,34 +455,90 @@ impl Settings {
         }
     }
 
-    /// Launch at login as the system has it, or the stored intent when the
-    /// platform has no login items.
+    /// Launch at login as the system last said it, or the stored intent until the first answer
+    /// and on a platform with no login items. It never asks the system.
     pub fn launch_at_login(&self) -> bool {
-        match &self.login {
-            Some(login) => login.is_enabled(),
-            None => self.stored_bool("startup.launchAtLogin"),
-        }
+        self.login_cache
+            .value
+            .unwrap_or_else(|| self.stored_bool("startup.launchAtLogin"))
     }
 
-    fn resync_login(&self, _cx: &mut Context<Self>) {
+    /// Starts a read of the system's answer on a thread. A read already running gets one more
+    /// after it, so the newest request is never lost.
+    fn refresh_login(&mut self, cx: &mut Context<Self>) {
         let Some(login) = &self.login else { return };
-        let actual = login.is_enabled();
-        if actual != self.stored_bool("startup.launchAtLogin") {
-            let _ = self
-                .storage
-                .settings
-                .set("startup.launchAtLogin", json!(actual));
+        if self.login_cache.reading {
+            self.login_cache.again = true;
+            return;
+        }
+        let login = Arc::clone(login);
+        let (answer, answered) = std::sync::mpsc::channel();
+        let generation = self.login_cache.generation;
+        let spawned = std::thread::Builder::new()
+            .name("hushpen-login-status".into())
+            .spawn(move || {
+                let enabled = login.is_enabled();
+                let _ = answer.send(LoginRead {
+                    generation,
+                    enabled,
+                });
+            });
+        if spawned.is_err() {
+            return;
+        }
+        self.login_cache.reading = true;
+        // The thread cannot wake this task, so the task looks for the answer on a short timer.
+        // A task woken from another thread would also break the test scheduler.
+        cx.spawn(async move |this, cx| {
+            loop {
+                match answered.try_recv() {
+                    Ok(read) => {
+                        let _ = this.update(cx, |me, cx| me.login_read(read, cx));
+                        return;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        cx.background_executor().timer(LOGIN_POLL).await;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        let _ = this.update(cx, |me, _| me.login_cache.reading = false);
+                        return;
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn login_read(&mut self, read: LoginRead, cx: &mut Context<Self>) {
+        self.login_cache.reading = false;
+        if read.generation == self.login_cache.generation {
+            self.login_cache.value = Some(read.enabled);
+            // A login item removed by hand in System Settings shows as off, and stays off.
+            if read.enabled != self.stored_bool("startup.launchAtLogin") {
+                let _ = self
+                    .storage
+                    .settings
+                    .set("startup.launchAtLogin", json!(read.enabled));
+            }
+            cx.notify();
+        }
+        if std::mem::take(&mut self.login_cache.again) {
+            self.refresh_login(cx);
         }
     }
 
     pub fn toggle_launch_at_login(&mut self, cx: &mut Context<Self>) {
         let on = !self.launch_at_login();
-        if let Some(login) = &self.login
-            && let Err(error) = login.set(on)
-        {
-            self.notice = Some(format!("Launch at login could not be changed: {error}"));
-            cx.notify();
-            return;
+        if let Some(login) = &self.login {
+            if let Err(error) = login.set(on) {
+                self.notice = Some(format!("Launch at login could not be changed: {error}"));
+                cx.notify();
+                return;
+            }
+            // The row follows the click at once. The system's own answer replaces it.
+            self.login_cache.generation += 1;
+            self.login_cache.value = Some(on);
+            self.refresh_login(cx);
         }
         self.set("startup.launchAtLogin", json!(on), cx);
         hook::record_event("settings", &format!("launch-at-login {on}"));
