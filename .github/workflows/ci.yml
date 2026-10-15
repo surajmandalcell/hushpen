@@ -18,6 +18,7 @@ on:
           - package
           - package-smoke
           - e2e
+          - updater
           - full
         default: gate
 
@@ -53,7 +54,7 @@ jobs:
         run: cargo xtask gate
 
   plan:
-    if: inputs.suite != 'gate' && inputs.suite != 'e2e'
+    if: inputs.suite != 'gate' && inputs.suite != 'e2e' && inputs.suite != 'updater'
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -77,7 +78,7 @@ jobs:
 
   build:
     # The package jobs build the release binaries themselves.
-    if: inputs.suite != 'package' && inputs.suite != 'package-smoke'
+    if: inputs.suite != 'package' && inputs.suite != 'package-smoke' && inputs.suite != 'updater'
     needs: plan
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -324,4 +325,79 @@ jobs:
         with:
           name: e2e-x64
           path: ${{ runner.temp }}/hushpen/slots/1/out
+          if-no-files-found: ignore
+
+  # The self-update check from a test feed, on the x64 runner: two release builds with the
+  # update-test-feed feature (rc.1 and rc.2), a signed local feed made with a fresh test key, the
+  # AppImage updating itself in the harness container, and the deb and rpm showing the notice only.
+  updater-x64:
+    if: inputs.suite == 'updater' && contains(format(',{0},', inputs.targets), ',linux-x64,')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      HUSHPEN_PLATFORM: linux/amd64
+      HUSHPEN_ROOT: /home/runner/work/_temp/hushpen
+      HUSHPEN_TEST_ASSETS: /home/runner/work/_temp/assets
+      HUSHPEN_UPDATE_TEST: /home/runner/work/_temp/update-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space for the builds and the image
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: updater-x64
+      - name: Install the GPUI build libraries and the packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libfontconfig-dev libfreetype-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev \
+            libxi-dev libxrandr-dev libasound2-dev libvulkan-dev libdbus-1-dev \
+            rpm cpio squashfs-tools file desktop-file-utils binutils
+      - name: Cache the packager binaries
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-generate-rpm
+          key: packaging-tools-${{ runner.os }}-${{ runner.arch }}-packager-0.11.8-rpm-0.21.0
+      - name: Install cargo-packager and cargo-generate-rpm
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked cargo-packager@0.11.8
+          cargo install --locked cargo-generate-rpm@0.21.0
+      - name: Build rc.1 (all installers) and rc.2 (AppImage) with the test feed
+        run: |
+          HUSHPEN_BUILD_VERSION=2.0.0-rc.1 cargo xtask package --target linux-x64 --test-feed \
+            --formats appimage,deb,rpm,tar.gz --out "$RUNNER_TEMP/rc1"
+          HUSHPEN_BUILD_VERSION=2.0.0-rc.2 cargo xtask package --target linux-x64 --test-feed \
+            --formats appimage --out "$RUNNER_TEMP/rc2"
+          ls -l "$RUNNER_TEMP/rc1" "$RUNNER_TEMP/rc2"
+      - name: Sign the feeds with a fresh test key
+        run: harness/update-fixtures.sh "$RUNNER_TEMP/rc1" "$RUNNER_TEMP/rc2" "$HUSHPEN_UPDATE_TEST"
+      - name: Fetch the speech clip
+        run: |
+          mkdir -p "$HUSHPEN_TEST_ASSETS/models/whisper" "$HUSHPEN_TEST_ASSETS/fixtures"
+          cp crates/hushpen-engine/tests/fixtures/speech-short.wav "$HUSHPEN_TEST_ASSETS/fixtures/"
+      - name: Build the harness image
+        run: docker build --platform linux/amd64 -t hushpen-val:noble -f harness/Dockerfile harness
+      - name: AppImage updates itself (self-update suite)
+        # Root, because the container writes the slot folders as root and the scripts then clean them.
+        run: sudo -E harness/run-suite.sh self-update --slots 1 --build
+      - name: deb in ubuntu:22.04 shows the notice only
+        run: packaging/smoke/update-notice-in-container.sh "$HUSHPEN_UPDATE_TEST" ubuntu:22.04 "$RUNNER_TEMP/notice"
+      - name: rpm in fedora:40 shows the notice only
+        run: packaging/smoke/update-notice-in-container.sh "$HUSHPEN_UPDATE_TEST" fedora:40 "$RUNNER_TEMP/notice"
+      - name: Keep the suite output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-x64
+          path: |
+            ${{ runner.temp }}/hushpen/slots/1/out
+            ${{ runner.temp }}/notice
           if-no-files-found: ignore

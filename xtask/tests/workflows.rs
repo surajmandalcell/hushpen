@@ -113,3 +113,31 @@ fn the_dmg_mount_script_refuses_to_run_off_the_ci_runner() {
     assert!(text.contains(r#"[ "${CI:-}" != "true" ]"#));
     assert!(text.contains(r#"[ "${GITHUB_ACTIONS:-}" != "true" ]"#));
 }
+
+#[test]
+fn ci_yml_has_an_updater_suite_that_checks_the_update_from_a_test_feed() {
+    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    assert!(text.contains("- updater"));
+    assert!(text.contains("\n  updater-x64:\n"));
+    assert!(text.contains("inputs.suite == 'updater'"));
+    for step in [
+        "--test-feed",
+        "harness/update-fixtures.sh",
+        "harness/run-suite.sh self-update",
+        "update-notice-in-container.sh",
+    ] {
+        assert!(text.contains(step), "{step} missing");
+    }
+    for image in ["ubuntu:22.04", "fedora:40"] {
+        assert!(text.contains(image), "{image} notice step missing");
+    }
+}
+
+#[test]
+fn the_other_suites_skip_the_updater_job_and_the_updater_skips_theirs() {
+    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    assert!(text.contains("inputs.suite != 'gate' && inputs.suite != 'e2e' && inputs.suite != 'updater'"));
+    assert!(text.contains(
+        "inputs.suite != 'package' && inputs.suite != 'package-smoke' && inputs.suite != 'updater'"
+    ));
+}
