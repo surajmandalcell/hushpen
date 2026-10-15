@@ -9,6 +9,7 @@
 use super::hub::Hub;
 use super::tap::{Decoder, HEALTH_INTERVAL, Health, Tap, TapAction, TapEvent, TapGuard};
 use super::{Reason, RecordSink, Sink, Unavailable};
+use crate::keyboard_layout::{self, LayoutCache};
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortIsValid;
 use core_foundation::runloop::{
@@ -35,14 +36,20 @@ pub(super) struct MacKeys {
     hub: Arc<Hub>,
 }
 
-/// The letter, digit, and Space keys on the layout in use, by key code.
-fn layout_chars() -> HashMap<i64, char> {
-    let mut chars: HashMap<i64, char> = ('a'..='z')
-        .chain('0'..='9')
-        .filter_map(|c| Some((i64::from(crate::insert::key_code_for(c)?), c)))
-        .collect();
-    chars.insert(SPACE_KEYCODE, ' ');
-    chars
+/// The letter, digit, and Space keys on the layout in use, by key code. The table is the copy
+/// that the main thread keeps; this thread never asks the system.
+fn layout_chars(layout: &LayoutCache) -> HashMap<i64, char> {
+    layout.snapshot().1.chars(SPACE_KEYCODE)
+}
+
+/// The key map again, when the main thread published another layout since `seen`.
+fn changed_chars(layout: &LayoutCache, seen: &mut u64) -> Option<HashMap<i64, char>> {
+    let (generation, table) = layout.snapshot();
+    if generation == *seen {
+        return None;
+    }
+    *seen = generation;
+    Some(table.chars(SPACE_KEYCODE))
 }
 
 struct InstalledTap {
@@ -157,12 +164,15 @@ impl MacKeys {
                 "Input Monitoring is not allowed for Hushpen, so global keys are off.",
             ));
         }
+        // The layout is read here, on the main thread; the tap thread only reads the copy.
+        keyboard_layout::follow_system();
         let hub = Arc::new(Hub::new(bindings, sink, record));
         let (ready, started) = mpsc::channel();
         let thread_hub = Arc::clone(&hub);
+        let layout = Arc::clone(keyboard_layout::shared());
         thread::Builder::new()
             .name("hushpen-keys".into())
-            .spawn(move || run(&thread_hub, ready))
+            .spawn(move || run(&thread_hub, &layout, ready))
             .map_err(|error| {
                 Unavailable::new(
                     Reason::Failed,
@@ -179,8 +189,9 @@ impl MacKeys {
     }
 }
 
-fn run(hub: &Arc<Hub>, ready: mpsc::Sender<bool>) {
-    let decoder = Arc::new(Mutex::new(Decoder::new(layout_chars())));
+fn run(hub: &Arc<Hub>, layout: &LayoutCache, ready: mpsc::Sender<bool>) {
+    let (mut seen, _) = layout.snapshot();
+    let decoder = Arc::new(Mutex::new(Decoder::new(layout_chars(layout))));
     let reenable = Arc::new(AtomicBool::new(false));
     let Some(first) = install(&decoder, hub, &reenable) else {
         let _ = ready.send(false);
@@ -201,10 +212,10 @@ fn run(hub: &Arc<Hub>, ready: mpsc::Sender<bool>) {
             hub.reset();
             install(&decoder, hub, &reenable)
         });
-        if health.is_some()
+        if let Some(chars) = changed_chars(layout, &mut seen)
             && let Ok(mut decoder) = decoder.lock()
         {
-            decoder.set_chars(layout_chars());
+            decoder.set_chars(chars);
         }
         match health {
             Some(Health::Reinstalled) => log::warn!("the key tap was dead and was installed again"),
@@ -214,5 +225,46 @@ fn run(hub: &Arc<Hub>, ready: mpsc::Sender<bool>) {
             ),
             Some(Health::Fine) | None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keyboard_layout::{Table, layouts};
+
+    /// The tap thread is never the main thread, so a TIS call there would trip the debug
+    /// assertion of the layout read. It gets and follows its key map from the shared table.
+    #[test]
+    fn the_tap_thread_gets_and_follows_its_keys_from_the_shared_table() {
+        let layout = Arc::new(LayoutCache::new());
+        layout.publish(Table::from_typed(layouts::qwerty));
+        let thread_layout = Arc::clone(&layout);
+        let (ready, published) = mpsc::channel::<()>();
+        let (answer, answers) = mpsc::channel();
+        let tap = thread::Builder::new()
+            .name("hushpen-keys-test".into())
+            .spawn(move || {
+                assert!(!keyboard_layout::is_main_thread());
+                let mut seen = thread_layout.snapshot().0;
+                let first = layout_chars(&thread_layout);
+                assert_eq!(changed_chars(&thread_layout, &mut seen), None);
+                let _ = answer.send(first);
+                published.recv().unwrap();
+                let _ = answer.send(changed_chars(&thread_layout, &mut seen).unwrap_or_default());
+                assert_eq!(changed_chars(&thread_layout, &mut seen), None);
+            })
+            .unwrap();
+        let first = answers.recv().unwrap();
+        assert_eq!(first.get(&9), Some(&'v'));
+        assert_eq!(first.get(&SPACE_KEYCODE), Some(&' '));
+        // The main thread saw a layout change and published the new table.
+        layout.publish(Table::from_typed(layouts::dvorak));
+        ready.send(()).unwrap();
+        let second = answers.recv().unwrap();
+        assert_eq!(second.get(&40), Some(&'v'));
+        assert_eq!(second.get(&9), None);
+        tap.join()
+            .expect("the tap thread reads the table and calls no TIS function");
     }
 }

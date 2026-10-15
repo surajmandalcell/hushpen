@@ -149,6 +149,51 @@ fn the_top_preset_puts_the_bar_at_the_top_center(cx: &mut TestAppContext) {
     assert_eq!((x + width / 2.0, y), (640.0, 40.0));
 }
 
+/// A host whose native window work updates the App, as GPUI does when AppKit reports a move.
+struct Reentrant {
+    app: gpui_kit::AsyncApp,
+    native_calls: Rc<Cell<u32>>,
+}
+
+impl Host for Reentrant {
+    fn screen(&self, _: &App) -> (f32, f32) {
+        SCREEN
+    }
+
+    fn show(&mut self, _: Bounds<Pixels>, _: &mut App) -> Option<Native> {
+        let app = self.app.clone();
+        let calls = Rc::clone(&self.native_calls);
+        Some(Box::new(move || {
+            // Panics with `already borrowed` when the loop still holds the App.
+            app.update(|_| ());
+            calls.set(calls.get() + 1);
+        }))
+    }
+
+    fn hide(&mut self, _: &mut App) {}
+
+    fn window(&self) -> Option<AnyWindowHandle> {
+        None
+    }
+}
+
+#[gpui_kit::test]
+fn the_native_window_work_runs_after_the_app_is_free(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    let native_calls = Rc::new(Cell::new(0));
+    let host = Reentrant {
+        app: cx.to_async(),
+        native_calls: Rc::clone(&native_calls),
+    };
+    let entity = bar.bar.clone();
+    cx.update(|cx| run(cx, entity, Box::new(host)));
+    cx.run_until_parked();
+    assert_eq!(native_calls.get(), 1);
+    cx.executor().advance_clock(TICK);
+    cx.run_until_parked();
+    assert_eq!(native_calls.get(), 2);
+}
+
 #[gpui_kit::test]
 fn a_click_starts_and_stops_a_dictation_and_the_bar_follows_each_step(cx: &mut TestAppContext) {
     let bar = bar(cx, &["base"], "base");

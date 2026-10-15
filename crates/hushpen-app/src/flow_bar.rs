@@ -15,7 +15,8 @@ use crate::mic::Mic;
 use crate::native::native_handle;
 use crate::storage::Storage;
 use gpui_kit::{
-    AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, Window, point, px,
+    AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, WeakEntity, Window,
+    point, px,
 };
 use hushpen_core::dictation::AppEvent;
 use hushpen_core::flow_bar::{BarState, Display, Drag, Release, Spot, place, state_for, with_undo};
@@ -42,11 +43,17 @@ const FALLBACK_SCREEN: (f32, f32) = (1280.0, 800.0);
 pub trait Host {
     /// The size of the primary screen in logical pixels.
     fn screen(&self, cx: &App) -> (f32, f32);
-    /// Opens the window on first use, then moves and sizes it to `bounds`.
-    fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App);
+    /// Opens the window on first use, and plans the move and resize to `bounds`. The native
+    /// call that moves the window is not made here but returned: AppKit reports a move or a
+    /// resize while the call runs, and GPUI answers with an update of the App, which fails when
+    /// the App is still borrowed (it logs `RefCell already borrowed` and loses the update).
+    fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native>;
     fn hide(&mut self, cx: &mut App);
     fn window(&self) -> Option<AnyWindowHandle>;
 }
+
+/// Native window work that [`run`] does after the App is free again.
+pub type Native = Box<dyn FnOnce()>;
 
 pub type SharedHost = Rc<RefCell<Box<dyn Host>>>;
 
@@ -494,25 +501,38 @@ pub fn run(cx: &mut App, bar: Entity<FlowBar>, host: Box<dyn Host>) -> SharedHos
     let bar = bar.downgrade();
     cx.spawn(async move |cx| {
         loop {
-            let wait = cx.update(|cx| {
-                let screen = driver.borrow().screen(cx);
-                let Ok((plan, pressed)) =
-                    bar.update(cx, |bar, cx| (bar.tick(screen, cx), bar.is_pressed()))
-                else {
-                    return None;
-                };
-                match plan {
-                    Some(bounds) => driver.borrow_mut().show(bounds, cx),
-                    None => driver.borrow_mut().hide(cx),
-                }
-                Some(if pressed { DRAG_TICK } else { TICK })
-            });
-            let Some(wait) = wait else { break };
+            let step = cx.update(|cx| drive(cx, &driver, &bar));
+            let Some((wait, native)) = step else { break };
+            if let Some(native) = native {
+                native();
+            }
             cx.background_executor().timer(wait).await;
         }
     })
     .detach();
     host
+}
+
+/// One tick: reads the bar and opens, plans, or closes the window. Returns how long to wait and
+/// the native work to do once the App is no longer borrowed, or `None` when the bar is gone.
+fn drive(
+    cx: &mut App,
+    driver: &SharedHost,
+    bar: &WeakEntity<FlowBar>,
+) -> Option<(Duration, Option<Native>)> {
+    let screen = driver.borrow().screen(cx);
+    let Ok((plan, pressed)) = bar.update(cx, |bar, cx| (bar.tick(screen, cx), bar.is_pressed()))
+    else {
+        return None;
+    };
+    let native = match plan {
+        Some(bounds) => driver.borrow_mut().show(bounds, cx),
+        None => {
+            driver.borrow_mut().hide(cx);
+            None
+        }
+    };
+    Some((if pressed { DRAG_TICK } else { TICK }, native))
 }
 
 #[cfg(test)]

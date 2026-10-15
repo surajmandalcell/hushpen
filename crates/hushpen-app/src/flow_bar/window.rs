@@ -1,6 +1,6 @@
 //! The flow bar's native window: a GPUI pop-up that the app places itself.
 
-use super::{FlowBar, Host};
+use super::{FlowBar, Host, Native};
 use crate::native::native_handle;
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, Entity, Pixels, WeakEntity, WindowBackgroundAppearance,
@@ -29,10 +29,8 @@ impl PopUp {
         }
     }
 
-    fn open(&mut self, bounds: Bounds<Pixels>, cx: &mut App) {
-        let Some(view) = self.view.upgrade() else {
-            return;
-        };
+    fn open(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native> {
+        let view = self.view.upgrade()?;
         let opened = gpui_kit::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -53,14 +51,20 @@ impl PopUp {
         );
         match opened {
             Ok((handle, _)) => {
-                let _ = handle.update(cx, |_, window, _| {
-                    if let Err(error) = pin_overlay(native_handle(window)) {
+                self.handle = Some(handle);
+                let native = handle
+                    .update(cx, |_, window, _| native_handle(window))
+                    .ok()?;
+                Some(Box::new(move || {
+                    if let Err(error) = pin_overlay(native) {
                         log::warn!("the flow bar could not be pinned on top: {error}");
                     }
-                });
-                self.handle = Some(handle);
+                }))
             }
-            Err(error) => log::warn!("the flow bar window could not open: {error:#}"),
+            Err(error) => {
+                log::warn!("the flow bar window could not open: {error:#}");
+                None
+            }
         }
     }
 }
@@ -75,7 +79,7 @@ impl Host for PopUp {
             .unwrap_or((1280.0, 800.0))
     }
 
-    fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App) {
+    fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native> {
         if let Some(handle) = self.handle {
             let placed = handle.update(cx, |_, window, _| {
                 // X11 takes device pixels, AppKit takes points.
@@ -91,17 +95,20 @@ impl Host for PopUp {
                     width: device(bounds.size.width).round() as u32,
                     height: device(bounds.size.height).round() as u32,
                 };
-                if let Err(error) = place_overlay(native_handle(window), frame) {
-                    log::warn!("the flow bar could not move: {error}");
-                }
+                let native = native_handle(window);
+                Box::new(move || {
+                    if let Err(error) = place_overlay(native, frame) {
+                        log::warn!("the flow bar could not move: {error}");
+                    }
+                }) as Native
             });
-            if placed.is_ok() {
-                return;
+            if let Ok(native) = placed {
+                return Some(native);
             }
             // The window is gone, for example because the display server dropped it.
             self.handle = None;
         }
-        self.open(bounds, cx);
+        self.open(bounds, cx)
     }
 
     fn hide(&mut self, cx: &mut App) {

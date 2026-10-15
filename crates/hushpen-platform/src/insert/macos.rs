@@ -8,11 +8,9 @@
 #![allow(unsafe_code)]
 
 mod guard;
-mod layout;
-
-pub(crate) use layout::key_code_for;
 
 use super::{Inserter, SystemClock, Target, UndoError, mono_ms, plan, undo_guard};
+use crate::keyboard_layout::{self, LayoutCache};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use hushpen_core::insert::flow::{self, Backend, ChordError, Receipts, Request, Step};
@@ -25,8 +23,8 @@ use objc2_app_kit::{
     NSPasteboard, NSPasteboardItem, NSPasteboardType, NSPasteboardTypeString, NSWorkspace,
 };
 use objc2_foundation::{NSArray, NSData, NSObject, NSString};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// Clipboard managers that honor this type skip the entry.
 const TRANSIENT_TYPE: &str = "org.nspasteboard.TransientType";
@@ -96,18 +94,22 @@ struct MacBoard {
     owner: Option<Retained<Owner>>,
     /// The change count right after our write.
     count: isize,
+    /// The keys of the layout in use. The insert worker only reads this copy; the main thread
+    /// refreshes it.
+    layout: Arc<LayoutCache>,
 }
 
 impl MacBoard {
-    fn general() -> Self {
-        Self::on(NSPasteboard::generalPasteboard())
+    fn general(layout: Arc<LayoutCache>) -> Self {
+        Self::on(NSPasteboard::generalPasteboard(), layout)
     }
 
-    fn on(pasteboard: Retained<NSPasteboard>) -> Self {
+    fn on(pasteboard: Retained<NSPasteboard>, layout: Arc<LayoutCache>) -> Self {
         Self {
             pasteboard,
             owner: None,
             count: -1,
+            layout,
         }
     }
 }
@@ -167,18 +169,7 @@ impl Backend for MacBoard {
         if !crate::permissions::accessibility_trusted() {
             return Err(ChordError::NoPermission);
         }
-        let post = |down: bool| -> Result<(), ChordError> {
-            let source = CGEventSource::new(CGEventSourceStateID::Private)
-                .map_err(|()| ChordError::Unavailable)?;
-            let event = CGEvent::new_keyboard_event(source, layout::v_key_code(), down)
-                .map_err(|()| ChordError::Unavailable)?;
-            event.set_flags(CGEventFlags::CGEventFlagCommand);
-            event.post(CGEventTapLocation::HID);
-            Ok(())
-        };
-        post(true)?;
-        std::thread::sleep(std::time::Duration::from_millis(8));
-        post(false)
+        post_command_key(self.layout.v_key_code())
     }
 
     fn receipts(&mut self) -> Receipts {
@@ -270,18 +261,25 @@ fn copied_selection(
 
 pub(super) struct MacInserter {
     one_at_a_time: Mutex<()>,
+    layout: Arc<LayoutCache>,
 }
 
 impl MacInserter {
+    /// Reads the layout and starts following its changes. Main thread only.
     pub(super) fn new() -> Self {
+        keyboard_layout::follow_system();
+        Self::with_layout(Arc::clone(keyboard_layout::shared()))
+    }
+
+    fn with_layout(layout: Arc<LayoutCache>) -> Self {
         Self {
             one_at_a_time: Mutex::new(()),
+            layout,
         }
     }
-}
 
-impl Inserter for MacInserter {
-    fn target(&self) -> Target {
+    /// The app in front. It reads no layout, so a worker thread may call it.
+    fn frontmost(&self) -> Target {
         let app = NSWorkspace::sharedWorkspace().frontmostApplication();
         let Some(app) = app else {
             return Target::default();
@@ -298,6 +296,15 @@ impl Inserter for MacInserter {
             own: u32::try_from(pid).is_ok_and(|pid| pid == std::process::id()),
         }
     }
+}
+
+impl Inserter for MacInserter {
+    /// Called on the main thread when the text is ready, which is also where the layout is read
+    /// again, so the paste that follows on the worker thread uses the keys now in use.
+    fn target(&self) -> Target {
+        self.layout.refresh_from_system();
+        self.frontmost()
+    }
 
     fn insert(
         &self,
@@ -311,7 +318,7 @@ impl Inserter for MacInserter {
             .one_at_a_time
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let mut board = MacBoard::general();
+        let mut board = MacBoard::general(Arc::clone(&self.layout));
         let request = Request {
             text,
             target: &target.label,
@@ -339,10 +346,12 @@ impl Inserter for MacInserter {
             .one_at_a_time
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let key = layout::key_code_for('c').unwrap_or(layout::ANSI_C);
-        copied_selection(&mut MacBoard::general(), COPY_WAIT, || {
-            post_command_key(key).map_err(|_| ())
-        })
+        let key = self.layout.c_key_code();
+        copied_selection(
+            &mut MacBoard::general(Arc::clone(&self.layout)),
+            COPY_WAIT,
+            || post_command_key(key).map_err(|_| ()),
+        )
     }
 
     fn undo(&self, target: &Target) -> Result<(), UndoError> {
@@ -351,23 +360,14 @@ impl Inserter for MacInserter {
             .one_at_a_time
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        undo_guard(target, &self.target())?;
+        undo_guard(target, &self.frontmost())?;
         if !crate::permissions::accessibility_trusted() {
             return Err(UndoError::NoPermission);
         }
-        let key = layout::key_code_for('z').unwrap_or(layout::ANSI_Z);
-        let post = |down: bool| -> Result<(), UndoError> {
-            let source = CGEventSource::new(CGEventSourceStateID::Private)
-                .map_err(|()| UndoError::Unavailable)?;
-            let event = CGEvent::new_keyboard_event(source, key, down)
-                .map_err(|()| UndoError::Unavailable)?;
-            event.set_flags(CGEventFlags::CGEventFlagCommand);
-            event.post(CGEventTapLocation::HID);
-            Ok(())
-        };
-        post(true)?;
-        std::thread::sleep(std::time::Duration::from_millis(8));
-        post(false)
+        post_command_key(self.layout.z_key_code()).map_err(|error| match error {
+            ChordError::NoPermission => UndoError::NoPermission,
+            _ => UndoError::Unavailable,
+        })
     }
 }
 
@@ -377,7 +377,10 @@ mod tests {
 
     /// A private pasteboard, so no test touches the user's clipboard.
     fn board() -> MacBoard {
-        MacBoard::on(NSPasteboard::pasteboardWithUniqueName())
+        MacBoard::on(
+            NSPasteboard::pasteboardWithUniqueName(),
+            Arc::new(LayoutCache::new()),
+        )
     }
 
     fn put(board: &MacBoard, formats: &[(&str, &[u8])]) {
@@ -440,7 +443,7 @@ mod tests {
     fn a_copied_selection_is_read_and_the_old_clipboard_comes_back() {
         let mut board = board();
         put(&board, &[("public.utf8-plain-text", b"sentinel")]);
-        let app = MacBoard::on(board.pasteboard.clone());
+        let app = MacBoard::on(board.pasteboard.clone(), Arc::clone(&board.layout));
         let text = copied_selection(&mut board, std::time::Duration::from_secs(1), || {
             app.pasteboard.clearContents();
             app.pasteboard
@@ -467,6 +470,33 @@ mod tests {
         let text = copied_selection(&mut board, std::time::Duration::from_millis(60), || Ok(()));
         assert_eq!(text, None);
         assert_eq!(board.snapshot(Selection::Clipboard).len(), 1);
+    }
+
+    /// A worker thread is never the main thread, so a TIS call there would trip the debug
+    /// assertion of the layout read. The keys for paste, copy, and undo come from the table.
+    #[test]
+    fn the_insert_worker_gets_its_keys_from_the_shared_table() {
+        let layout = Arc::new(LayoutCache::new());
+        layout.publish(keyboard_layout::Table::from_typed(
+            keyboard_layout::layouts::dvorak,
+        ));
+        let inserter = MacInserter::with_layout(layout);
+        let layout = Arc::clone(&inserter.layout);
+        let keys = std::thread::Builder::new()
+            .name("insert-worker".into())
+            .spawn(move || {
+                assert!(!keyboard_layout::is_main_thread());
+                let board = MacBoard::on(NSPasteboard::pasteboardWithUniqueName(), layout);
+                (
+                    board.layout.v_key_code(),
+                    board.layout.c_key_code(),
+                    board.layout.z_key_code(),
+                )
+            })
+            .unwrap()
+            .join()
+            .expect("the worker reads the shared table and calls no TIS function");
+        assert_eq!(keys, (40, keyboard_layout::ANSI_C, keyboard_layout::ANSI_Z));
     }
 
     #[test]

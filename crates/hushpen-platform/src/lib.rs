@@ -9,5 +9,7 @@ pub mod permissions;
 pub mod tray_host;
 pub mod window;
 
+#[cfg(target_os = "macos")]
+mod keyboard_layout;
 #[cfg(target_os = "linux")]
 mod x11util;

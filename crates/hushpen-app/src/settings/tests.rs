@@ -466,7 +466,8 @@ fn a_finished_move_restarts_into_the_new_folder(cx: &mut TestAppContext) {
     assert!(target.join("history/history.db").is_file());
     assert_eq!(
         hushpen_store::data_dir::read_location(&rig.default_dir).unwrap(),
-        Some(target.clone())
+        // The pointer holds the real path; macOS temp folders sit behind the /var symlink.
+        Some(target.canonicalize().unwrap())
     );
     let left: Vec<_> = std::fs::read_dir(rig.storage.data.root())
         .unwrap()
