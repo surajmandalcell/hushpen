@@ -14,6 +14,27 @@ if [ -z "$wid" ]; then
   check "window maps" fail "no hushpen window: $app_out"
   exit 1
 fi
+hint_state() {
+  xprop -id "$wid" WM_NORMAL_HINTS _MOTIF_WM_HINTS _NET_FRAME_EXTENTS 2>/dev/null
+}
+no_frame() {
+  local got
+  got=$(xprop -id "$wid" _NET_FRAME_EXTENTS 2>/dev/null | sed -n 's/.*= *//p')
+  case "$got" in "" | "0, 0, 0, 0") return 0 ;; *) return 1 ;; esac
+}
+hints_locked() {
+  local now
+  now=$(hint_state)
+  grep -q "program specified minimum size: 940 by 600" <<<"$now" &&
+    grep -q "program specified maximum size: 940 by 600" <<<"$now" &&
+    grep -Eq "_MOTIF_WM_HINTS\(_MOTIF_WM_HINTS\) = (0x3, 0x2c|3, 44), 0x?0, 0x?0, 0x?0" <<<"$now" &&
+    no_frame
+}
+# GPUI maps the window with its own hints (maximum 16384, a server frame) and the lock writes ours
+# a moment later, so give the lock up to 2 s to land before the hints are judged.
+lock_start=$(date +%s%3N)
+wait_until 2 hints_locked
+lock_ms=$(($(date +%s%3N) - lock_start))
 size=$(win_size "$wid")
 map_ms=$(sed -n 's/.*map_ms=\([0-9]*\).*/\1/p' <<<"$app_out")
 extents=$(xprop -id "$wid" _NET_FRAME_EXTENTS 2>/dev/null | sed -n 's/.*= *//p')
@@ -23,7 +44,23 @@ failures=""
 case "$extents" in "" | "0, 0, 0, 0") ;; *) failures+="_NET_FRAME_EXTENTS is $extents; " ;; esac
 grep -q "program specified minimum size: 940 by 600" <<<"$hints" || failures+="no program minimum of 940 by 600 in WM_NORMAL_HINTS; "
 grep -q "program specified maximum size: 940 by 600" <<<"$hints" || failures+="no program maximum of 940 by 600 in WM_NORMAL_HINTS; "
-check_failures "window maps" "wid=$wid size=$size mapped in ${map_ms} ms, frame extents '${extents:-absent}', min and max 940 by 600" "$failures"
+check_failures "window maps" "wid=$wid size=$size mapped in ${map_ms} ms, lock settled ${lock_ms} ms later, frame extents '${extents:-absent}', min and max 940 by 600" "$failures"
+
+echo "== hint lock restores"
+# A later write of the hints, as GPUI does, must not win: overwrite both properties and expect
+# the lock to write ours back.
+failures=""
+# flags = PMinSize | PMaxSize, max 16384 x 16384, the 18 WM_SIZE_HINTS fields.
+xprop -id "$wid" -format WM_NORMAL_HINTS 32i -set WM_NORMAL_HINTS "48, 0, 0, 0, 0, 1, 1, 16384, 16384, 0, 0, 0, 0, 0, 0, 0, 0, 0" ||
+  failures+="could not rewrite WM_NORMAL_HINTS; "
+xprop -id "$wid" -format _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS "2, 0, 1, 0, 0" ||
+  failures+="could not rewrite _MOTIF_WM_HINTS; "
+restore_start=$(date +%s%3N)
+wait_until 2 hints_locked
+restore_ms=$(($(date +%s%3N) - restore_start))
+[ "$restore_ms" -le 1000 ] && hints_locked ||
+  failures+="the lock did not restore both hints and the no-frame state within 1 s ($restore_ms ms): $(hint_state | tr '\n' ' '); "
+check_failures "hint lock restores" "an overwritten WM_NORMAL_HINTS (max 16384) and _MOTIF_WM_HINTS (server frame) were written back in ${restore_ms} ms and the window kept no frame" "$failures"
 
 echo "== token colors"
 read -r ox oy < <(settled_origin "$wid")

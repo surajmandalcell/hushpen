@@ -2,7 +2,8 @@
 //!
 //! GPUI 0.3.7 ignores `is_resizable: false` on X11 (it writes a 16384 px
 //! `max_size`) and leaves the zoom button and full screen on macOS. The app calls
-//! [`lock_chrome`] once, right after the window opens, with the native handle.
+//! [`lock_chrome`] once, right after the window opens, with the native handle. On X11 the lock
+//! stays on watch and writes the hints back if a later write replaces them.
 
 use std::fmt;
 
@@ -66,6 +67,26 @@ pub const MOTIF_FRAMELESS_FIXED: [u32; 5] = [
     0,
     0,
 ];
+
+/// Whether a `WM_NORMAL_HINTS` read still pins the window: the program minimum and maximum both
+/// equal the fixed size. GPUI writes its own hints (maximum 16384) and any later write replaces ours.
+#[cfg(any(target_os = "linux", test))]
+fn size_hints_pinned(
+    min: Option<(i32, i32)>,
+    max: Option<(i32, i32)>,
+    width: u16,
+    height: u16,
+) -> bool {
+    let size = Some((i32::from(width), i32::from(height)));
+    min == size && max == size
+}
+
+/// Whether a `_MOTIF_WM_HINTS` read still carries [`MOTIF_FRAMELESS_FIXED`]. GPUI writes
+/// `[2, 0, 0|1, 0, 0]` when it applies its decoration request, which brings the frame back.
+#[cfg(any(target_os = "linux", test))]
+fn motif_hints_locked(value: Option<&[u32]>) -> bool {
+    value == Some(MOTIF_FRAMELESS_FIXED.as_slice())
+}
 
 /// Make the window frameless and fixed at `width` x `height`: no maximize, no
 /// full screen, no resize. Safe to call on any backend; backends it does not
@@ -206,6 +227,27 @@ mod tests {
         assert_eq!(functions & MWM_FUNC_MAXIMIZE, 0);
         assert_ne!(functions & MWM_FUNC_MINIMIZE, 0);
         assert_ne!(functions & MWM_FUNC_CLOSE, 0);
+    }
+
+    #[test]
+    fn size_hints_are_pinned_only_when_min_and_max_equal_the_window_size() {
+        let size = Some((940, 600));
+        assert!(size_hints_pinned(size, size, 940, 600));
+        // What GPUI writes after the window is created.
+        assert!(!size_hints_pinned(None, Some((16384, 16384)), 940, 600));
+        assert!(!size_hints_pinned(size, Some((16384, 16384)), 940, 600));
+        assert!(!size_hints_pinned(size, None, 940, 600));
+        assert!(!size_hints_pinned(None, None, 940, 600));
+        assert!(!size_hints_pinned(Some((1, 1)), size, 940, 600));
+    }
+
+    #[test]
+    fn motif_hints_are_locked_only_when_they_match_the_fixed_payload() {
+        assert!(motif_hints_locked(Some(&MOTIF_FRAMELESS_FIXED)));
+        assert!(!motif_hints_locked(None));
+        assert!(!motif_hints_locked(Some(&[1 << 1, 0, 1, 0, 0])));
+        assert!(!motif_hints_locked(Some(&[1 << 1, 0, 0, 0, 0])));
+        assert!(!motif_hints_locked(Some(&[])));
     }
 
     #[test]
