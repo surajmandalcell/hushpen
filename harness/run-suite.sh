@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|updates|update-session|core|full> --slots N [--build]
+# usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|updates|update-session|self-update|core|full> --slots N [--build]
 # Starts slots 1..N, runs the suite in every slot at once, prints each slot's checks, keeps only
 # the newest run per suite under slots/<n>/out/, and removes the slots again (also on failure).
 # smoke and env are UI-only, so N may be up to 6; any other suite is limited to 3 busy slots.
@@ -26,9 +26,10 @@ while [ $# -gt 0 ]; do
 done
 case "$suite" in
   smoke | env) ui_only=1 ;;
-  mic | models | home | tail | hotkey | insert | guards | paste-last | engine | cleanup | ai-cleanup | endpoint | undo | command | dictionary | history | import | audio | export | flowbar | tray | shortcuts | onboarding | settings | updates | update-session | core | full) ui_only=0 ;;
-  *) die "usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|updates|update-session|core|full> --slots N [--build]" ;;
+  mic | models | home | tail | hotkey | insert | guards | paste-last | engine | cleanup | ai-cleanup | endpoint | undo | command | dictionary | history | import | audio | export | flowbar | tray | shortcuts | onboarding | settings | updates | update-session | self-update | core | full) ui_only=0 ;;
+  *) die "usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|updates|update-session|self-update|core|full> --slots N [--build]" ;;
 esac
+[ "$suite" != self-update ] || export HUSHPEN_UPDATE_TEST=${HUSHPEN_UPDATE_TEST:-$HUSHPEN_ROOT/update-test}
 [[ $slots =~ ^[1-6]$ ]] || die "--slots must be 1 to 6, got '$slots'"
 if [ "$slots" -gt 3 ] && [ "$ui_only" != 1 ]; then
   die "$suite is not UI-only: at most 3 busy slots (an LLM slot counts as 2)"

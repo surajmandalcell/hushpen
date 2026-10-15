@@ -302,14 +302,20 @@ impl Updater {
     }
 
     fn set_state(&mut self, state: State, cx: &mut Context<Self>) {
-        if self.state.key() != state.key() {
-            hook::record_event("updates", &format!("state {}", state.key()));
-            match &state {
+        let changed = self.state.key() != state.key();
+        self.state = state;
+        if changed {
+            hook::record_event("updates", &format!("state {}", self.state.key()));
+            match &self.state {
                 State::Error(error) => log::info!("updates: state error {}", error.code),
+                State::Available(_) => log::info!(
+                    "updates: state available install_kind={} delivery={}",
+                    self.installer.kind().key(),
+                    self.delivery_key().unwrap_or("none")
+                ),
                 other => log::info!("updates: state {}", other.key()),
             }
         }
-        self.state = state;
         cx.notify();
     }
 
@@ -346,6 +352,14 @@ impl Updater {
         self.state
             .manifest()
             .map(|manifest| self.delivery_of(manifest))
+    }
+
+    fn delivery_key(&self) -> Option<&'static str> {
+        self.delivery_now().map(|delivery| match delivery {
+            Delivery::Artifact(_) => "artifact",
+            Delivery::Notice => "notice",
+            Delivery::Unpackaged => "unpackaged",
+        })
     }
 
     /// "Download and install", or the automatic install. Only an offered version can start, and
@@ -561,11 +575,7 @@ impl Updater {
             "banner": self.banner_visible(),
             "install_requests": self.installs,
             "install_kind": self.installer.kind().key(),
-            "delivery": self.delivery_now().map(|delivery| match delivery {
-                Delivery::Artifact(_) => "artifact",
-                Delivery::Notice => "notice",
-                Delivery::Unpackaged => "unpackaged",
-            }),
+            "delivery": self.delivery_key(),
             "staged": self.staged.is_some(),
             "last_open": self.last_open,
         })

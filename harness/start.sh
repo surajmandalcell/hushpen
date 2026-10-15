@@ -41,13 +41,17 @@ start_one() {
   fi
   local fixtures=()
   [ -d "$HUSHPEN_TEST_FIXTURES" ] && fixtures=(-v "$HUSHPEN_TEST_FIXTURES:/fixtures:ro")
+  # The self-update suite reads the test-feed builds and signed manifests that
+  # harness/update-fixtures.sh wrote.
+  local update_test=()
+  [ -z "${HUSHPEN_UPDATE_TEST:-}" ] || update_test=(-v "$HUSHPEN_UPDATE_TEST:/update-test:ro")
   docker run -d --init --platform "$HARNESS_PLATFORM" --name "$name" \
     --cpus "${VAL_CPUS:-2}" --memory "${VAL_MEM:-2g}" \
     -e SLOT="$slot" \
     -v "$HARNESS_DIR:/harness:ro" \
     -v "$HARNESS_BIN:/app:ro" \
     -v "$dir/data:/data" -v "$dir/out:/out" -v "$dir/logs:/logs" \
-    -v "$HUSHPEN_TEST_ASSETS:/assets:ro" "${fixtures[@]}" \
+    -v "$HUSHPEN_TEST_ASSETS:/assets:ro" "${fixtures[@]}" "${update_test[@]}" \
     "$HARNESS_IMAGE" /harness/slot/init.sh >/dev/null || return 1
   for _ in $(seq 300); do
     docker exec "$name" test -f /tmp/slot-ready 2>/dev/null && break

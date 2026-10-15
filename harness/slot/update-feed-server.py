@@ -12,6 +12,10 @@ asked for. Every request is one line in the log: time, method, path, and every r
 The folders hold signed copies of test manifests: the secret keys were thrown away after signing,
 so the files are fixed. `same` is the version the debug app reports (2.0.0-dev); `newer` is 2.1.0;
 `wrongkey` is signed by a key that test.pub does not match; `tampered` changed after signing.
+The self-update suite adds /update-test (harness/update-fixtures.sh): a mode may also name a folder
+under /update-test/feed (good, badsha), and a path that names a file in /update-test/rc2 is served
+from there, in 64 KiB steps 50 ms apart while /tmp/feed-slow exists. Without /update-test every
+other path is still a 404.
 """
 import json
 import os
@@ -23,6 +27,17 @@ LOG = sys.argv[1]
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
 MODE_FILE = "/tmp/feed-mode"
 ROOT = "/harness/slot/update-feed"
+TEST_FEEDS = "/update-test/feed"
+TEST_FILES = "/update-test/rc2"
+SLOW_FILE = "/tmp/feed-slow"
+
+
+def read(path):
+    try:
+        with open(path, "rb") as handle:
+            return handle.read()
+    except OSError:
+        return None
 
 
 def mode():
@@ -54,12 +69,14 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(30)
             current = "newer"
         body = None
+        name = self.path.lstrip("/")
         if current != "404" and self.path in ("/latest.json", "/latest.json.minisig"):
-            try:
-                with open(os.path.join(ROOT, current, self.path.lstrip("/")), "rb") as handle:
-                    body = handle.read()
-            except OSError:
-                body = None
+            for root in (ROOT, TEST_FEEDS):
+                body = read(os.path.join(root, current, name))
+                if body is not None:
+                    break
+        elif current != "404" and name and "/" not in name and not name.startswith("."):
+            body = read(os.path.join(TEST_FILES, name))
         if body is None:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -68,7 +85,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if os.path.exists(SLOW_FILE):
+            for start in range(0, len(body), 65536):
+                self.wfile.write(body[start : start + 65536])
+                self.wfile.flush()
+                time.sleep(0.05)
+        else:
+            self.wfile.write(body)
 
 
 ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
