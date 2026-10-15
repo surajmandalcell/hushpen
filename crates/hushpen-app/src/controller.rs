@@ -828,6 +828,15 @@ impl Controller {
         self.machine.mode()
     }
 
+    /// True from the moment the microphone stops until the row of the run is saved: the one
+    /// stretch in which a data folder move would lose the result.
+    pub fn in_flight(&self) -> bool {
+        matches!(
+            self.machine.state(),
+            State::Transcribing | State::Cleaning | State::Inserting
+        ) || matches!(self.reprocess, Some((_, ReprocessState::Running)))
+    }
+
     pub fn phase(&self) -> Phase {
         match self.machine.state() {
             State::Listening => Phase::Listening,

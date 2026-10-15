@@ -179,10 +179,16 @@ pub struct Settings {
     ai: Option<AiParts>,
     ai_loading: bool,
     pub(crate) endpoint: Option<Entity<endpoint::EndpointForm>>,
+    in_flight: Option<InFlight>,
 }
 
 /// How the app hands over to a fresh copy after the move.
 pub type Restart = Rc<dyn Fn(&mut App)>;
+
+/// Whether a transcription is running: a dictation after the microphone stopped, or a file
+/// import. A data folder move waits for it, so no history row lands after the old
+/// `history.db` is gone.
+pub type InFlight = Rc<dyn Fn(&App) -> bool>;
 
 /// What Settings > Cleanup needs to offer, download, and report the cleanup model.
 pub struct AiParts {
@@ -263,9 +269,15 @@ impl Settings {
             ai: None,
             ai_loading: false,
             endpoint: None,
+            in_flight: None,
         };
         me.refresh_login(cx);
         me
+    }
+
+    /// Tells Settings how to see a running transcription.
+    pub fn attach_in_flight(&mut self, in_flight: InFlight) {
+        self.in_flight = Some(in_flight);
     }
 
     /// Connects the endpoint rows of Cleanup. Their fields need a window, so the form is built
@@ -628,6 +640,13 @@ impl Settings {
         }
         if self.mic.read(cx).state() == crate::mic::CaptureState::Listening {
             self.notice = Some("The microphone is recording. Stop the dictation first.".into());
+            cx.notify();
+            return;
+        }
+        if self.in_flight.as_ref().is_some_and(|busy| busy(cx)) {
+            self.notice = Some(
+                "A transcription is running. Wait for it to finish, then move the folder.".into(),
+            );
             cx.notify();
             return;
         }

@@ -55,6 +55,25 @@ fn the_hold_key_listens_while_down_and_transcribes_after_a_two_second_hold(
 }
 
 #[gpui_kit::test]
+fn a_dictation_after_the_microphone_stopped_is_a_transcription_in_flight(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    say(&rig, outcome_text("in flight", "en"));
+    let in_flight = |cx: &mut TestAppContext| rig.controller.read_with(cx, |c, _| c.in_flight());
+    assert!(!in_flight(cx), "idle");
+
+    send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
+    assert!(!in_flight(cx), "listening has nothing to lose yet");
+
+    send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
+    assert_eq!(machine_state(cx, &rig), State::Transcribing);
+    assert!(in_flight(cx), "the result still has to land in the history");
+
+    settle(cx, &rig);
+    send_at(cx, &rig, 5_000, AppEvent::Tick).unwrap();
+    assert!(!in_flight(cx), "done");
+}
+
+#[gpui_kit::test]
 fn the_machine_goes_back_to_idle_by_ticks_and_the_home_result_stays_on_screen(
     cx: &mut TestAppContext,
 ) {

@@ -191,6 +191,31 @@ fn each_toggle_writes_its_key(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_data_folder_does_not_move_while_a_transcription_is_in_flight(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let busy = Rc::new(std::cell::Cell::new(true));
+    let source = Rc::clone(&busy);
+    rig.settings.update(cx, |me, _| {
+        me.attach_in_flight(Rc::new(move |_| source.get()));
+    });
+    rig.settings.update(cx, |me, cx| me.change_data_folder(cx));
+    assert_eq!(read(cx, &rig, |me| me.move_state.clone()), MoveState::Idle);
+    assert!(
+        read(cx, &rig, |me| me.notice.clone())
+            .is_some_and(|notice| notice.contains("transcription")),
+        "the refusal says why"
+    );
+
+    busy.set(false);
+    rig.settings.update(cx, |me, cx| me.change_data_folder(cx));
+    assert_eq!(
+        read(cx, &rig, |me| me.move_state.clone()),
+        MoveState::Choosing,
+        "the pick starts once nothing is in flight"
+    );
+}
+
+#[gpui_kit::test]
 fn launch_at_login_writes_the_login_item_and_the_key(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.settings
