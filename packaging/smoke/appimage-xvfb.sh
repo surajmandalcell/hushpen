@@ -51,4 +51,6 @@ if [ -n "$shot" ] && command -v import >/dev/null 2>&1; then
   import -window root "$shot"
 fi
 kill "$pid"
+echo "--- app log (last 30 lines)"
+tail -n 30 "$home/app.log"
 echo "appimage ok"
