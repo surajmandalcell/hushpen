@@ -62,5 +62,9 @@ pub const DATA_FOLDER_MOVE_FAILED: &str = "DATA_FOLDER_MOVE_FAILED";
 /// that is not the expected JSON.
 pub const UPDATE_CHECK_FAILED: &str = "UPDATE_CHECK_FAILED";
 pub const UPDATE_SIGNATURE_INVALID: &str = "UPDATE_SIGNATURE_INVALID";
+/// The new version could not be downloaded: no answer, a refused host, or a write error.
+pub const UPDATE_DOWNLOAD_FAILED: &str = "UPDATE_DOWNLOAD_FAILED";
+/// The downloaded file is not the one the signed manifest names.
 pub const UPDATE_HASH_MISMATCH: &str = "UPDATE_HASH_MISMATCH";
+/// The new version could not be put in place. The old version still runs.
 pub const UPDATE_SWAP_FAILED: &str = "UPDATE_SWAP_FAILED";

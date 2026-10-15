@@ -1,5 +1,6 @@
 use super::*;
 use crate::net::test_server::{Req, TestServer, respond};
+use hushpen_core::error::{UPDATE_DOWNLOAD_FAILED, UPDATE_HASH_MISMATCH};
 use std::net::TcpStream;
 use std::sync::Arc;
 
@@ -142,6 +143,116 @@ fn an_oversized_answer_is_refused() {
     });
     let error = check(&server, KEY_A, "2.0.0").unwrap_err();
     assert_eq!(error.code, UPDATE_CHECK_FAILED);
+}
+
+fn artifact_for(server: &TestServer, body: &[u8], sha256: Option<String>) -> Artifact {
+    use sha2::{Digest, Sha256};
+    Artifact {
+        url: server.url("/Hushpen.AppImage"),
+        sha256: sha256.unwrap_or_else(|| {
+            Sha256::digest(body)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect()
+        }),
+        size: body.len() as u64,
+    }
+}
+
+fn download(
+    server: &TestServer,
+    artifact: &Artifact,
+    folder: &Path,
+) -> Result<Outcome, CheckError> {
+    let feed = feed_at(server, KEY_A);
+    feed.download(
+        artifact,
+        &folder.join("Hushpen.part"),
+        &folder.join("Hushpen.staged"),
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+}
+
+fn serve_file(body: &'static [u8]) -> TestServer {
+    TestServer::start(
+        move |request: &Req, stream: &mut TcpStream| match request.path.as_str() {
+            "/Hushpen.AppImage" => respond(stream, "200 OK", &[], body),
+            _ => respond(stream, "404 Not Found", &[], b""),
+        },
+    )
+}
+
+#[test]
+fn a_release_file_is_downloaded_checked_and_renamed_into_place() {
+    let body: &'static [u8] = b"an appimage, more or less";
+    let server = serve_file(body);
+    let folder = tempfile::tempdir().unwrap();
+    let artifact = artifact_for(&server, body, None);
+    assert_eq!(
+        download(&server, &artifact, folder.path()).unwrap(),
+        Outcome::Done
+    );
+    assert_eq!(
+        std::fs::read(folder.path().join("Hushpen.staged")).unwrap(),
+        body
+    );
+    assert!(!folder.path().join("Hushpen.part").exists());
+    assert!(
+        !folder.path().join("Hushpen.staged.verified").exists(),
+        "only models get a stamp"
+    );
+    let asked: Vec<String> = server.seen().into_iter().map(|r| r.path).collect();
+    assert_eq!(asked, ["/Hushpen.AppImage"]);
+}
+
+#[test]
+fn a_file_that_does_not_match_the_manifest_hash_ends_in_the_update_hash_code() {
+    let body: &'static [u8] = b"the served bytes";
+    let server = serve_file(body);
+    let folder = tempfile::tempdir().unwrap();
+    let wrong = artifact_for(&server, body, Some("0".repeat(64)));
+    let error = download(&server, &wrong, folder.path()).unwrap_err();
+    assert_eq!(error.code, UPDATE_HASH_MISMATCH);
+    assert!(!folder.path().join("Hushpen.staged").exists());
+    assert!(
+        !folder.path().join("Hushpen.part").exists(),
+        "the bad file is not kept"
+    );
+}
+
+#[test]
+fn a_file_of_another_size_than_the_manifest_says_is_a_hash_mismatch() {
+    let body: &'static [u8] = b"the served bytes";
+    let server = serve_file(body);
+    let folder = tempfile::tempdir().unwrap();
+    let mut artifact = artifact_for(&server, body, None);
+    artifact.size += 5;
+    let error = download(&server, &artifact, folder.path()).unwrap_err();
+    assert_eq!(error.code, UPDATE_HASH_MISMATCH);
+}
+
+#[test]
+fn a_download_from_a_host_off_the_feed_address_is_refused_with_the_download_code() {
+    let body: &'static [u8] = b"x";
+    let server = serve_file(body);
+    let folder = tempfile::tempdir().unwrap();
+    let mut artifact = artifact_for(&server, body, None);
+    artifact.url = "https://github.com/other/Hushpen.AppImage".into();
+    let error = download(&server, &artifact, folder.path()).unwrap_err();
+    assert_eq!(error.code, UPDATE_DOWNLOAD_FAILED);
+    assert!(server.seen().is_empty());
+}
+
+#[test]
+fn a_server_error_is_a_download_failure() {
+    let server = TestServer::start(|_: &Req, stream: &mut TcpStream| {
+        respond(stream, "500 Internal Server Error", &[], b"");
+    });
+    let folder = tempfile::tempdir().unwrap();
+    let artifact = artifact_for(&server, b"abc", None);
+    let error = download(&server, &artifact, folder.path()).unwrap_err();
+    assert_eq!(error.code, UPDATE_DOWNLOAD_FAILED);
 }
 
 #[test]

@@ -4,13 +4,16 @@
 //! machine or this install. The manifest counts only after its signature matches the public
 //! key that ships inside the app (`assets/update-key.pub`).
 
+use super::download::{Downloader, Outcome, Progress, Spec};
 use super::fetch::{FetchError, Fetcher, UreqFetcher};
 use super::policy::{Blocked, MAX_REDIRECTS, UpdatePolicy, resolve};
 use super::{Purpose, record};
 use hushpen_core::error::{UPDATE_CHECK_FAILED, UPDATE_SIGNATURE_INVALID};
-use hushpen_core::update::{Offer, Version, offer, parse_manifest};
+use hushpen_core::update::{Artifact, Offer, Version, offer, parse_manifest};
 use minisign_verify::{PublicKey, Signature};
 use std::io::Read;
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// The release feed. GitHub answers it with a redirect to the newest release asset.
 pub const FEED_URL: &str =
@@ -30,6 +33,13 @@ pub struct CheckError {
 }
 
 impl CheckError {
+    pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+
     fn failed(detail: impl Into<String>) -> Self {
         Self {
             code: UPDATE_CHECK_FAILED,
@@ -110,6 +120,47 @@ impl UpdateFeed {
 
     pub fn fetcher(&self) -> UreqFetcher {
         UreqFetcher::with_https_only(self.policy.https_only())
+    }
+
+    /// Downloads the release file of the signed manifest into `dest` through `partial`, and
+    /// checks its size and sha256 before the rename. The same hosts as the check are allowed.
+    pub fn download(
+        &self,
+        artifact: &Artifact,
+        partial: &Path,
+        dest: &Path,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<Outcome, CheckError> {
+        self.download_with(
+            Box::new(self.fetcher()),
+            artifact,
+            partial,
+            dest,
+            cancel,
+            progress,
+        )
+    }
+
+    fn download_with(
+        &self,
+        fetcher: Box<dyn Fetcher>,
+        artifact: &Artifact,
+        partial: &Path,
+        dest: &Path,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<Outcome, CheckError> {
+        let spec = Spec {
+            url: artifact.url.clone(),
+            bytes: artifact.size,
+            sha256: artifact.sha256.clone(),
+            partial: partial.to_path_buf(),
+            dest: dest.to_path_buf(),
+        };
+        Downloader::for_update(self.policy.clone(), fetcher)
+            .run(&spec, cancel, progress)
+            .map_err(|failure| CheckError::new(failure.code, failure.detail))
     }
 
     /// Asks the feed and compares with `current`. At most two requests, plus their redirects.

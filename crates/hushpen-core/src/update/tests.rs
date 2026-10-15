@@ -198,3 +198,94 @@ fn a_platform_entry_with_a_bad_hash_size_or_url_is_refused() {
         ManifestError::Invalid("platforms")
     );
 }
+
+fn manifest_with(targets: &[&str]) -> Manifest {
+    let entries: Vec<String> = targets
+        .iter()
+        .map(|target| {
+            format!(
+                r#""{target}":{{"url":"https://github.com/f/{target}","sha256":"{}","size":9}}"#,
+                "c".repeat(64)
+            )
+        })
+        .collect();
+    let json = format!(
+        r#"{{"version":"2.0.1","notes_url":"https://github.com/n","platforms":{{{}}}}}"#,
+        entries.join(",")
+    );
+    parse_manifest(json.as_bytes()).unwrap()
+}
+
+#[test]
+fn an_install_kind_file_names_one_of_the_package_kinds() {
+    for (text, kind) in [
+        ("app\n", InstallKind::App),
+        ("appimage\n", InstallKind::AppImage),
+        ("deb", InstallKind::Deb),
+        (" rpm \n", InstallKind::Rpm),
+        ("tar\n", InstallKind::Tar),
+        ("", InstallKind::Unknown),
+        ("flatpak", InstallKind::Unknown),
+    ] {
+        assert_eq!(InstallKind::parse(text), kind, "{text:?}");
+    }
+    assert_eq!(InstallKind::parse("appimage").key(), "appimage");
+    assert_eq!(InstallKind::Unknown.key(), "unknown");
+}
+
+#[test]
+fn the_manifest_key_follows_the_system_and_the_cpu() {
+    assert_eq!(target_key("macos", "aarch64"), Some("macos-arm64"));
+    assert_eq!(target_key("linux", "x86_64"), Some("linux-x64"));
+    assert_eq!(target_key("linux", "aarch64"), Some("linux-arm64"));
+    assert_eq!(target_key("macos", "x86_64"), None);
+    assert_eq!(target_key("windows", "x86_64"), None);
+}
+
+#[test]
+fn a_zip_or_an_appimage_with_a_file_for_this_target_installs_itself() {
+    let manifest = manifest_with(&["linux-arm64", "macos-arm64"]);
+    for (kind, target) in [
+        (InstallKind::AppImage, "linux-arm64"),
+        (InstallKind::App, "macos-arm64"),
+    ] {
+        let Delivery::Artifact(artifact) = delivery(kind, Some(target), &manifest) else {
+            panic!("{kind:?} should install itself");
+        };
+        assert!(artifact.url.ends_with(target));
+    }
+}
+
+#[test]
+fn deb_rpm_and_tar_only_get_a_notice_even_when_the_manifest_has_their_file() {
+    let manifest = manifest_with(&["linux-x64"]);
+    for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Tar] {
+        assert_eq!(
+            delivery(kind, Some("linux-x64"), &manifest),
+            Delivery::Notice,
+            "{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn a_release_without_a_file_for_this_target_is_a_notice() {
+    let manifest = manifest_with(&["macos-arm64"]);
+    assert_eq!(
+        delivery(InstallKind::AppImage, Some("linux-x64"), &manifest),
+        Delivery::Notice
+    );
+    assert_eq!(
+        delivery(InstallKind::AppImage, None, &manifest),
+        Delivery::Notice
+    );
+}
+
+#[test]
+fn a_source_tree_build_offers_the_install_and_refuses_it_later() {
+    let manifest = manifest_with(&[]);
+    assert_eq!(
+        delivery(InstallKind::Unknown, Some("linux-x64"), &manifest),
+        Delivery::Unpackaged
+    );
+}

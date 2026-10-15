@@ -6,9 +6,12 @@
 //! resume.
 
 use super::fetch::{FetchError, Fetcher, Response};
-use super::policy::{Blocked, Checked, MAX_REDIRECTS, Policy, resolve};
+use super::policy::{Blocked, Checked, HostPolicy, MAX_REDIRECTS, Policy, UpdatePolicy, resolve};
 use super::{Purpose, record};
-use hushpen_core::error::{DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED};
+use hushpen_core::error::{
+    DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, UPDATE_DOWNLOAD_FAILED,
+    UPDATE_HASH_MISMATCH,
+};
 use hushpen_store::model_files::{self, hex};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -76,9 +79,10 @@ pub enum Outcome {
 }
 
 pub struct Downloader {
-    policy: Policy,
+    policy: Box<dyn HostPolicy>,
     fetcher: Box<dyn Fetcher>,
     idle: Duration,
+    purpose: Purpose,
 }
 
 enum Message {
@@ -96,10 +100,26 @@ enum Opened {
 impl Downloader {
     pub fn new(policy: Policy, fetcher: Box<dyn Fetcher>) -> Self {
         Self {
-            policy,
+            policy: Box::new(policy),
             fetcher,
             idle: IDLE_TIMEOUT,
+            purpose: Purpose::ModelDownload,
         }
+    }
+
+    /// A release file of the signed manifest. The failures carry `UPDATE_*` codes, and no
+    /// `.verified` stamp is written.
+    pub fn for_update(policy: UpdatePolicy, fetcher: Box<dyn Fetcher>) -> Self {
+        Self {
+            policy: Box::new(policy),
+            fetcher,
+            idle: IDLE_TIMEOUT,
+            purpose: Purpose::UpdateDownload,
+        }
+    }
+
+    fn is_update(&self) -> bool {
+        self.purpose == Purpose::UpdateDownload
     }
 
     #[cfg(test)]
@@ -123,11 +143,24 @@ impl Downloader {
         if discard {
             let _ = fs::remove_file(&spec.partial);
         }
+        let result = result.map_err(|failure| self.own_code(failure));
         match &result {
+            Ok(outcome) if self.is_update() => log::info!("UPDATE_DOWNLOAD_END {outcome:?}"),
             Ok(outcome) => log::info!("MODEL_DOWNLOAD_END {outcome:?}"),
             Err(failure) => log::warn!("{} {}", failure.code, failure.detail),
         }
         result
+    }
+
+    /// The loop reports every failure with the model codes; an update download says its own.
+    fn own_code(&self, mut failure: Failure) -> Failure {
+        if self.is_update() {
+            failure.code = match failure.code {
+                MODEL_HASH_MISMATCH => UPDATE_HASH_MISMATCH,
+                _ => UPDATE_DOWNLOAD_FAILED,
+            };
+        }
+        failure
     }
 
     fn attempt(
@@ -139,7 +172,7 @@ impl Downloader {
         let start = self
             .policy
             .check_start(&spec.url)
-            .map_err(|blocked| refused(&blocked))?;
+            .map_err(|blocked| refused(self.purpose, &blocked))?;
         let mut existing = fs::metadata(&spec.partial).map_or(0, |meta| meta.len());
         if existing > spec.bytes {
             let _ = fs::remove_file(&spec.partial);
@@ -150,7 +183,7 @@ impl Downloader {
             if !hash_prefix(&spec.partial, existing, &mut hasher, cancel)? {
                 return Ok(Outcome::Cancelled);
             }
-            return finish(spec, hasher, progress).map(|()| Outcome::Done);
+            return finish(spec, hasher, progress, self.stamps()).map(|()| Outcome::Done);
         }
 
         let mut range = (existing > 0).then_some(existing);
@@ -305,7 +338,12 @@ impl Downloader {
         if done < spec.bytes {
             return Err(Failure::failed("the connection ended early"));
         }
-        finish(spec, hasher, progress).map(|()| Outcome::Done)
+        finish(spec, hasher, progress, self.stamps()).map(|()| Outcome::Done)
+    }
+
+    /// Only a model gets the `.verified` stamp next to it.
+    fn stamps(&self) -> bool {
+        !self.is_update()
     }
 
     /// Follows redirects by hand. Every hop passes the policy before a connection opens.
@@ -324,28 +362,27 @@ impl Downloader {
             let response = match self.fetcher.get(&current.url, range) {
                 Ok(response) => response,
                 Err(FetchError(error)) => {
-                    record(Purpose::ModelDownload, &current.host, "error");
+                    record(self.purpose, &current.host, "error");
                     return Err(Failure::failed(format!(
                         "cannot reach {}: {error}",
                         current.host
                     )));
                 }
             };
-            record(
-                Purpose::ModelDownload,
-                &current.host,
-                &response.status.to_string(),
-            );
+            record(self.purpose, &current.host, &response.status.to_string());
             match response.status {
                 200 | 206 => return Ok(Some(Opened::Body(response))),
                 416 => return Ok(Some(Opened::RangeRejected)),
                 301 | 302 | 303 | 307 | 308 => {
                     hops += 1;
                     if hops > MAX_REDIRECTS {
-                        return Err(refused(&Blocked::new(
-                            current.host,
-                            format!("more than {MAX_REDIRECTS} redirects"),
-                        )));
+                        return Err(refused(
+                            self.purpose,
+                            &Blocked::new(
+                                current.host,
+                                format!("more than {MAX_REDIRECTS} redirects"),
+                            ),
+                        ));
                     }
                     let target = response
                         .location
@@ -355,7 +392,7 @@ impl Downloader {
                     current = self
                         .policy
                         .check_redirect(&target)
-                        .map_err(|blocked| refused(&blocked))?;
+                        .map_err(|blocked| refused(self.purpose, &blocked))?;
                 }
                 status => {
                     return Err(Failure::failed(format!(
@@ -368,8 +405,8 @@ impl Downloader {
     }
 }
 
-fn refused(blocked: &Blocked) -> Failure {
-    record(Purpose::ModelDownload, &blocked.host, "blocked");
+fn refused(purpose: Purpose, blocked: &Blocked) -> Failure {
+    record(purpose, &blocked.host, "blocked");
     Failure::from(blocked.clone())
 }
 
@@ -406,8 +443,13 @@ fn hash_prefix(
 #[cfg(test)]
 mod tests;
 
-/// Compares the hash, moves the file into place, and writes the stamp.
-fn finish(spec: &Spec, hasher: Sha256, progress: &mut dyn FnMut(Progress)) -> Result<(), Failure> {
+/// Compares the hash, moves the file into place, and writes the stamp when `stamp` is set.
+fn finish(
+    spec: &Spec,
+    hasher: Sha256,
+    progress: &mut dyn FnMut(Progress),
+    stamp: bool,
+) -> Result<(), Failure> {
     progress(Progress::Verifying);
     let digest = hex(&hasher.finalize());
     if digest != spec.sha256 {
@@ -423,7 +465,7 @@ fn finish(spec: &Spec, hasher: Sha256, progress: &mut dyn FnMut(Progress)) -> Re
     }
     fs::rename(&spec.partial, &spec.dest)
         .map_err(|error| Failure::failed(format!("cannot move the model into place: {error}")))?;
-    if let Err(error) = model_files::write_stamp(&spec.dest, &digest) {
+    if stamp && let Err(error) = model_files::write_stamp(&spec.dest, &digest) {
         log::warn!("MODEL_STAMP_FAILED {error}");
     }
     Ok(())

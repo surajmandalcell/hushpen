@@ -265,5 +265,84 @@ pub fn offer(current: &Version, manifest: Manifest) -> Offer {
     }
 }
 
+/// How this copy of the app was installed. Every package carries an `install-kind` file with
+/// one of these words; a build that runs from a source tree has none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallKind {
+    /// The macOS `.app` from the zip or the dmg.
+    App,
+    AppImage,
+    Deb,
+    Rpm,
+    /// The Linux tar.gz.
+    Tar,
+    /// No `install-kind` file: a build that runs from a source tree.
+    Unknown,
+}
+
+impl InstallKind {
+    /// Reads the text of an `install-kind` file. Anything else is [`InstallKind::Unknown`].
+    pub fn parse(text: &str) -> Self {
+        match text.trim() {
+            "app" => Self::App,
+            "appimage" => Self::AppImage,
+            "deb" => Self::Deb,
+            "rpm" => Self::Rpm,
+            "tar" => Self::Tar,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::App => "app",
+            Self::AppImage => "appimage",
+            Self::Deb => "deb",
+            Self::Rpm => "rpm",
+            Self::Tar => "tar",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// The manifest key of an operating system and CPU, as `std::env::consts` names them.
+pub fn target_key(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
+        ("macos", "aarch64") => Some("macos-arm64"),
+        ("linux", "x86_64") => Some("linux-x64"),
+        ("linux", "aarch64") => Some("linux-arm64"),
+        _ => None,
+    }
+}
+
+/// The manifest key of the running build.
+pub fn current_target() -> Option<&'static str> {
+    target_key(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// What the app does with an offered version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Delivery {
+    /// Download this file, check its sha256, stage it beside the install, and swap it in.
+    Artifact(Artifact),
+    /// A package manager or the user owns this install: show the release link and nothing else.
+    Notice,
+    /// A build that runs from a source tree. It offers the install like the others, and
+    /// refuses it because there is nothing to replace.
+    Unpackaged,
+}
+
+pub fn delivery(kind: InstallKind, target: Option<&str>, manifest: &Manifest) -> Delivery {
+    match kind {
+        InstallKind::Deb | InstallKind::Rpm | InstallKind::Tar => Delivery::Notice,
+        InstallKind::Unknown => Delivery::Unpackaged,
+        InstallKind::App | InstallKind::AppImage => target
+            .and_then(|target| manifest.platforms.get(target))
+            .map_or(Delivery::Notice, |artifact| {
+                Delivery::Artifact(artifact.clone())
+            }),
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -136,6 +136,33 @@ impl Policy {
     }
 }
 
+/// The two checks a download makes before any connection opens: one for the first URL and one
+/// for every redirect target.
+pub trait HostPolicy: Send + Sync {
+    fn check_start(&self, url: &str) -> Result<Checked, Blocked>;
+    fn check_redirect(&self, url: &str) -> Result<Checked, Blocked>;
+}
+
+impl HostPolicy for Policy {
+    fn check_start(&self, url: &str) -> Result<Checked, Blocked> {
+        Policy::check_start(self, url)
+    }
+
+    fn check_redirect(&self, url: &str) -> Result<Checked, Blocked> {
+        Policy::check_redirect(self, url)
+    }
+}
+
+impl HostPolicy for UpdatePolicy {
+    fn check_start(&self, url: &str) -> Result<Checked, Blocked> {
+        UpdatePolicy::check_start(self, url)
+    }
+
+    fn check_redirect(&self, url: &str) -> Result<Checked, Blocked> {
+        UpdatePolicy::check_redirect(self, url)
+    }
+}
+
 const UPDATE_START_HOST: &str = "github.com";
 const UPDATE_CDN_SUFFIX: &str = ".githubusercontent.com";
 

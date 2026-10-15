@@ -22,6 +22,9 @@ pub enum Purpose {
     /// The signed `latest.json` of the opt-in update check. Hosts: `github.com`, then
     /// `*.githubusercontent.com`.
     UpdateCheck,
+    /// The release file that the signed manifest names, after the user asked for it or turned
+    /// on automatic installs. Same hosts as the check.
+    UpdateDownload,
 }
 
 impl Purpose {
@@ -30,6 +33,7 @@ impl Purpose {
             Purpose::ModelDownload => "model_download",
             Purpose::Endpoint => "endpoint",
             Purpose::UpdateCheck => "update_check",
+            Purpose::UpdateDownload => "update_download",
         }
     }
 }
