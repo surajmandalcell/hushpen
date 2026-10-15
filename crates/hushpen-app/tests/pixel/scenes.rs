@@ -23,7 +23,7 @@ use hushpen_app::shell::Shell;
 use hushpen_app::shortcuts::{KeyControl, Shortcuts};
 use hushpen_app::storage::{self, Storage};
 use hushpen_app::theme::{Appearance, space};
-use hushpen_app::updater::{Checker, Parts as UpdaterParts, Updater, wall_clock};
+use hushpen_app::updater::{Checker, Parts as UpdaterParts, SystemInstaller, Updater, wall_clock};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
 use hushpen_core::shortcut::{Bindings, Combo, Platform};
@@ -505,6 +505,10 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                     storage: Rc::clone(&storage),
                                     checker: Arc::new(NoFeed),
                                     opener: Rc::new(SystemOpener),
+                                    installer: Arc::new(SystemInstaller::detect(
+                                        storage.data.logs_dir(),
+                                    )),
+                                    quit: Rc::new(|cx| cx.quit()),
                                     clock: wall_clock(),
                                     current: Version::parse("2.0.0").expect("a version"),
                                 },

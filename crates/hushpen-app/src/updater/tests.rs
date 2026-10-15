@@ -1,4 +1,5 @@
 use super::*;
+use crate::net::download::Progress;
 use crate::settings::{Parts as SettingsParts, Section, Settings};
 use crate::shell::Shell;
 use crate::storage;
@@ -9,8 +10,8 @@ use gpui_kit::{
     AnyWindowHandle, AppContext as _, Bounds, Entity, Point, TestAppContext, WindowBounds,
     WindowOptions, px, size,
 };
-use hushpen_core::error::UPDATE_CHECK_FAILED;
-use hushpen_core::update::{CHECK_INTERVAL_MS, parse_manifest};
+use hushpen_core::error::{UPDATE_CHECK_FAILED, UPDATE_HASH_MISMATCH, UPDATE_SWAP_FAILED};
+use hushpen_core::update::{Artifact, CHECK_INTERVAL_MS, InstallKind, parse_manifest};
 use hushpen_store::data_dir::DataDir;
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -67,11 +68,79 @@ impl Opener for FakeOpener {
     }
 }
 
+struct FakeInstaller {
+    kind: Mutex<InstallKind>,
+    stages: Mutex<Vec<String>>,
+    stage_error: Mutex<Option<CheckError>>,
+    restart_error: Mutex<Option<CheckError>>,
+    restarts: Mutex<Vec<std::path::PathBuf>>,
+}
+
+impl FakeInstaller {
+    fn new() -> Self {
+        Self {
+            kind: Mutex::new(InstallKind::Unknown),
+            stages: Mutex::default(),
+            stage_error: Mutex::default(),
+            restart_error: Mutex::default(),
+            restarts: Mutex::default(),
+        }
+    }
+
+    fn is(&self, kind: InstallKind) {
+        *self.kind.lock().unwrap() = kind;
+    }
+
+    fn stages(&self) -> Vec<String> {
+        self.stages.lock().unwrap().clone()
+    }
+
+    fn restarts(&self) -> usize {
+        self.restarts.lock().unwrap().len()
+    }
+}
+
+impl Installer for FakeInstaller {
+    fn kind(&self) -> InstallKind {
+        *self.kind.lock().unwrap()
+    }
+
+    fn stage(
+        &self,
+        artifact: &Artifact,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<Staged, CheckError> {
+        self.stages.lock().unwrap().push(artifact.url.clone());
+        progress(Progress::Bytes {
+            done: 50,
+            total: 100,
+        });
+        progress(Progress::Verifying);
+        match self.stage_error.lock().unwrap().take() {
+            Some(error) => Err(error),
+            None => Ok(Staged {
+                path: "/stage/new".into(),
+                cleanup: vec!["/stage".into()],
+            }),
+        }
+    }
+
+    fn restart(&self, staged: &Staged) -> Result<(), CheckError> {
+        if let Some(error) = self.restart_error.lock().unwrap().take() {
+            return Err(error);
+        }
+        self.restarts.lock().unwrap().push(staged.path.clone());
+        Ok(())
+    }
+}
+
 struct Rig {
     updater: Entity<Updater>,
     storage: Rc<storage::Storage>,
     checker: Arc<FakeChecker>,
     opener: Rc<FakeOpener>,
+    installer: Arc<FakeInstaller>,
+    quits: Rc<Cell<u32>>,
     now: Rc<Cell<u64>>,
     _tmp: tempfile::TempDir,
 }
@@ -81,14 +150,19 @@ fn rig(cx: &mut TestAppContext) -> Rig {
     let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
     let checker = Arc::new(FakeChecker::default());
     let opener = Rc::new(FakeOpener::default());
+    let installer = Arc::new(FakeInstaller::new());
+    let quits = Rc::new(Cell::new(0));
     let now = Rc::new(Cell::new(1_000 * HOUR_MS));
     let clock = Rc::clone(&now);
+    let quit = Rc::clone(&quits);
     let updater = cx.new(|cx| {
         Updater::new(
             Parts {
                 storage: Rc::clone(&storage),
                 checker: checker.clone(),
                 opener: opener.clone(),
+                installer: installer.clone(),
+                quit: Rc::new(move |_| quit.set(quit.get() + 1)),
                 clock: Rc::new(move || clock.get()),
                 current: Version::parse("2.0.0").unwrap(),
             },
@@ -100,9 +174,23 @@ fn rig(cx: &mut TestAppContext) -> Rig {
         storage,
         checker,
         opener,
+        installer,
+        quits,
         now,
         _tmp: tmp,
     }
+}
+
+const ARTIFACT_URL: &str = "http://127.0.0.1:8765/Hushpen.AppImage";
+
+/// A signed manifest that lists a file for the build running this test.
+fn offered_with_file(version: &str) -> Offer {
+    let target = hushpen_core::update::current_target().expect("a supported test host");
+    let json = format!(
+        r#"{{"version":"{version}","notes_url":"{NOTES}","platforms":{{"{target}":{{"url":"{ARTIFACT_URL}","sha256":"{}","size":100}}}}}}"#,
+        "ab".repeat(32)
+    );
+    Offer::Available(parse_manifest(json.as_bytes()).unwrap())
 }
 
 impl Rig {
@@ -448,4 +536,209 @@ fn the_switches_write_the_settings_and_check_now_reaches_the_banner(cx: &mut Tes
         rig.storage.settings.get("updates.autoInstall"),
         Some(json!(true))
     );
+}
+
+// ---- Installing ----
+
+fn check_in(rig: &Rig, cx: &mut TestAppContext, offer: Offer) {
+    rig.set("updates.check", json!(true));
+    rig.checker.answer(Ok(offer));
+    rig.check_now(cx);
+}
+
+#[gpui_kit::test]
+fn by_hand_nothing_downloads_until_download_and_install_is_pressed(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    assert_eq!(rig.state(cx).key(), "available");
+    assert!(
+        rig.installer.stages().is_empty(),
+        "the offer downloads nothing"
+    );
+
+    rig.updater.update(cx, |me, cx| me.install(cx));
+    assert_eq!(
+        rig.state(cx).key(),
+        "downloading",
+        "the press starts at once"
+    );
+    cx.run_until_parked();
+    assert_eq!(rig.installer.stages(), [ARTIFACT_URL]);
+    assert_eq!(rig.state(cx).key(), "ready");
+    assert_eq!(rig.installer.restarts(), 0, "the swap waits for a restart");
+    assert_eq!(rig.quits.get(), 0);
+}
+
+#[gpui_kit::test]
+fn with_automatic_installs_on_the_download_starts_by_itself_and_the_swap_waits(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    rig.set("updates.autoInstall", json!(true));
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    assert_eq!(rig.installer.stages(), [ARTIFACT_URL]);
+    assert_eq!(rig.state(cx).key(), "ready");
+    assert_eq!(
+        rig.hook(cx)["banner"],
+        true,
+        "the ready banner asks for a restart"
+    );
+    assert_eq!(rig.installer.restarts(), 0);
+    assert_eq!(rig.quits.get(), 0);
+
+    rig.updater.update(cx, |me, cx| me.restart_to_update(cx));
+    assert_eq!(rig.installer.restarts(), 1);
+    assert_eq!(rig.quits.get(), 1, "the app quits so the helper can swap");
+}
+
+#[gpui_kit::test]
+fn turning_automatic_installs_on_stages_an_offer_that_is_waiting(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    assert!(rig.installer.stages().is_empty());
+    rig.set("updates.autoInstall", json!(true));
+    rig.updater.update(cx, |me, cx| me.settings_changed(cx));
+    cx.run_until_parked();
+    assert_eq!(rig.state(cx).key(), "ready");
+}
+
+#[gpui_kit::test]
+fn restart_does_nothing_before_the_new_version_is_ready(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    rig.updater.update(cx, |me, cx| me.restart_to_update(cx));
+    assert_eq!(rig.installer.restarts(), 0);
+    assert_eq!(rig.quits.get(), 0);
+}
+
+#[gpui_kit::test]
+fn a_failed_download_ends_in_the_error_state_with_the_code_and_keeps_running(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    *rig.installer.stage_error.lock().unwrap() = Some(CheckError {
+        code: UPDATE_HASH_MISMATCH,
+        detail: "the file does not match the manifest".into(),
+    });
+    rig.set("updates.autoInstall", json!(true));
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    let hook = rig.hook(cx);
+    assert_eq!(hook["state"], "error");
+    assert_eq!(hook["error"]["code"], "UPDATE_HASH_MISMATCH");
+    assert_eq!(hook["version"], Value::Null);
+    assert_eq!(rig.installer.restarts(), 0);
+    assert_eq!(rig.quits.get(), 0, "the old version keeps running");
+    let text = cx.read(|app| rig.updater.read(app).status_text());
+    assert_eq!(text, "The downloaded update did not match its checksum");
+}
+
+#[gpui_kit::test]
+fn a_helper_that_cannot_start_leaves_the_app_running_with_an_error(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    rig.set("updates.autoInstall", json!(true));
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    *rig.installer.restart_error.lock().unwrap() = Some(CheckError {
+        code: UPDATE_SWAP_FAILED,
+        detail: "cannot start the update helper".into(),
+    });
+    rig.updater.update(cx, |me, cx| me.restart_to_update(cx));
+    assert_eq!(rig.hook(cx)["error"]["code"], "UPDATE_SWAP_FAILED");
+    assert_eq!(rig.quits.get(), 0);
+    let text = cx.read(|app| rig.updater.read(app).status_text());
+    assert_eq!(text, "The update could not be installed");
+}
+
+#[gpui_kit::test]
+fn deb_rpm_and_tar_installs_get_a_notice_and_never_download(cx: &mut TestAppContext) {
+    for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Tar] {
+        let rig = rig(cx);
+        rig.installer.is(kind);
+        rig.set("updates.autoInstall", json!(true));
+        check_in(&rig, cx, offered_with_file("2.1.0"));
+        let hook = rig.hook(cx);
+        assert_eq!(hook["state"], "available", "{kind:?} keeps the offer");
+        assert_eq!(hook["delivery"], "notice", "{kind:?}");
+        assert_eq!(hook["install_kind"], kind.key());
+        assert_eq!(
+            hook["banner"], true,
+            "{kind:?}: the notice shows even with auto install on"
+        );
+        rig.updater.update(cx, |me, cx| me.install(cx));
+        rig.updater.update(cx, |me, cx| me.settings_changed(cx));
+        cx.run_until_parked();
+        assert!(
+            rig.installer.stages().is_empty(),
+            "{kind:?} asks for no file"
+        );
+        assert_eq!(rig.hook(cx)["install_requests"], 0);
+        assert_eq!(rig.state(cx).key(), "available");
+    }
+}
+
+#[gpui_kit::test]
+fn an_appimage_without_a_file_for_this_platform_gets_the_notice(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    check_in(&rig, cx, offered("2.1.0"));
+    assert_eq!(rig.hook(cx)["delivery"], "notice");
+    rig.updater.update(cx, |me, cx| me.install(cx));
+    cx.run_until_parked();
+    assert!(rig.installer.stages().is_empty());
+}
+
+#[gpui_kit::test]
+fn a_source_tree_build_keeps_the_by_hand_offer_and_replaces_nothing(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    assert_eq!(rig.hook(cx)["delivery"], "unpackaged");
+    rig.updater.update(cx, |me, cx| me.install(cx));
+    cx.run_until_parked();
+    assert!(rig.installer.stages().is_empty());
+    assert_eq!(rig.hook(cx)["install_requests"], 1);
+    assert_eq!(rig.state(cx).key(), "available");
+}
+
+#[gpui_kit::test]
+fn the_notice_banner_links_the_release_and_has_no_install_button(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::Deb);
+    let window = open_settings(cx, &rig);
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    frame(cx, &window);
+    assert!(present(cx, &window, "update.banner"));
+    assert!(!present(cx, &window, "update.banner.install"));
+    assert!(present(cx, &window, "update.banner.notes"));
+    click(cx, &window, "update.banner.notes");
+    assert_eq!(*rig.opener.urls.lock().unwrap(), [NOTES]);
+}
+
+#[gpui_kit::test]
+fn the_banner_follows_the_download_and_asks_for_a_restart_when_ready(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    let window = open_settings(cx, &rig);
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    frame(cx, &window);
+    assert!(present(cx, &window, "update.banner.install"));
+
+    click(cx, &window, "update.banner.install");
+    assert_eq!(rig.state(cx).key(), "ready");
+    assert!(!present(cx, &window, "update.banner.install"));
+    assert_eq!(
+        label(cx, &window, "update.banner.restart").as_deref(),
+        Some("Restart to update")
+    );
+    assert_eq!(
+        label(cx, &window, "settings.updates.restart").as_deref(),
+        Some("Restart to update")
+    );
+    click(cx, &window, "update.banner.restart");
+    assert_eq!(rig.installer.restarts(), 1);
+    assert_eq!(rig.quits.get(), 1);
 }

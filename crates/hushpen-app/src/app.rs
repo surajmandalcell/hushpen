@@ -25,7 +25,7 @@ use crate::shortcuts::Shortcuts;
 use crate::storage;
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
-use crate::updater::{self, FeedChecker, Parts as UpdaterParts, Updater};
+use crate::updater::{self, FeedChecker, Parts as UpdaterParts, SystemInstaller, Updater};
 use crate::views::View;
 use crate::window_chrome::main_window_options;
 use futures::StreamExt;
@@ -320,6 +320,8 @@ pub fn run(hidden: bool) -> ExitCode {
                             storage: Rc::clone(&storage),
                             checker: Arc::new(FeedChecker),
                             opener: Rc::new(SystemOpener),
+                            installer: Arc::new(SystemInstaller::detect(storage.data.logs_dir())),
+                            quit: Rc::new(|cx| cx.quit()),
                             clock: updater::wall_clock(),
                             current,
                         },

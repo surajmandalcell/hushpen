@@ -1,23 +1,38 @@
 //! The opt-in update check: when it runs, what it found, and what the views show about it.
 //!
 //! A check runs only while `updates.check` is on, at most once every 24 hours on its own, and
-//! at once when the user presses Check now. It sends no identifier. The download and the swap
-//! of a new version start from [`Updater::install`].
+//! at once when the user presses Check now. It sends no identifier.
+//!
+//! What an offered version leads to depends on how this copy was installed. A macOS app or an
+//! AppImage downloads the file of the signed manifest, checks its sha256, stages it beside the
+//! install, and waits; [`Updater::restart_to_update`] then hands the swap to a helper and quits.
+//! A deb, rpm, or tar.gz install only shows a notice with the release link. With "Install
+//! updates automatically" on, [`Updater::install`] runs by itself and the swap still waits for the
+//! restart.
 
+mod install;
 mod panel;
 
 use crate::about::Opener;
 use crate::hook;
+use crate::net::download::Progress;
 use crate::net::update::{CheckError, UpdateFeed};
 use crate::storage::Storage;
-use gpui_kit::{Context, FocusHandle};
-use hushpen_core::error::UPDATE_SIGNATURE_INVALID;
-use hushpen_core::update::{Manifest, Offer, Version, check_due};
+use futures::StreamExt as _;
+use futures::channel::mpsc;
+use gpui_kit::{App, Context, FocusHandle};
+use hushpen_core::error::{
+    UPDATE_DOWNLOAD_FAILED, UPDATE_HASH_MISMATCH, UPDATE_SIGNATURE_INVALID, UPDATE_SWAP_FAILED,
+};
+use hushpen_core::update::{
+    Delivery, Manifest, Offer, Version, check_due, current_target, delivery,
+};
 use serde_json::{Value, json};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use install::{Installer, Staged, SystemInstaller};
 pub(crate) use panel::{banner, rows};
 
 const CHECK: &str = "updates.check";
@@ -44,6 +59,17 @@ impl Checker for FeedChecker {
         let feed = UpdateFeed::current()?;
         feed.check(&feed.fetcher(), current)
     }
+}
+
+/// What the banner above the content pane says and offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BannerKind {
+    /// "Download and install", for a version this install replaces itself with.
+    Install,
+    /// The release link, for an install that a package manager or the user owns.
+    Notice,
+    Downloading(Option<u8>),
+    Restart,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +112,9 @@ pub struct Parts {
     pub storage: Rc<Storage>,
     pub checker: Arc<dyn Checker>,
     pub opener: Rc<dyn Opener>,
+    pub installer: Arc<dyn Installer>,
+    /// Ends the app once the helper that swaps the new version in has started.
+    pub quit: Rc<dyn Fn(&mut App)>,
     /// Milliseconds since 1970.
     pub clock: Rc<dyn Fn() -> u64>,
     /// The running version.
@@ -104,12 +133,18 @@ pub struct Updater {
     storage: Rc<Storage>,
     checker: Arc<dyn Checker>,
     opener: Rc<dyn Opener>,
+    installer: Arc<dyn Installer>,
+    quit: Rc<dyn Fn(&mut App)>,
     clock: Rc<dyn Fn() -> u64>,
     current: Version,
     state: State,
     /// Counts the checks, so the answer to an older one is ignored.
     runs: u64,
     installs: u32,
+    /// The new version that is downloaded, checked, and staged, once the state is `Ready`.
+    staged: Option<Staged>,
+    /// "Not now" on the restart banner, for this session only.
+    restart_dismissed: bool,
     /// The last release notes open, for `hookctl state`.
     last_open: Option<Value>,
     /// The banner buttons, keyboard reachable.
@@ -122,11 +157,15 @@ impl Updater {
             storage: parts.storage,
             checker: parts.checker,
             opener: parts.opener,
+            installer: parts.installer,
+            quit: parts.quit,
             clock: parts.clock,
             current: parts.current,
             state: State::Idle,
             runs: 0,
             installs: 0,
+            staged: None,
+            restart_dismissed: false,
             last_open: None,
             focus: (0..2).map(|_| cx.focus_handle().tab_stop(true)).collect(),
         }
@@ -208,7 +247,11 @@ impl Updater {
     }
 
     pub fn can_check_now(&self) -> bool {
-        self.checks_on() && !matches!(self.state, State::Checking | State::Downloading(..))
+        self.checks_on()
+            && !matches!(
+                self.state,
+                State::Checking | State::Downloading(..) | State::Ready(_)
+            )
     }
 
     fn begin_check(&mut self, cx: &mut Context<Self>) {
@@ -259,43 +302,144 @@ impl Updater {
     }
 
     fn set_state(&mut self, state: State, cx: &mut Context<Self>) {
-        if self.state != state {
+        if self.state.key() != state.key() {
             hook::record_event("updates", &format!("state {}", state.key()));
+            match &state {
+                State::Error(error) => log::info!("updates: state error {}", error.code),
+                other => log::info!("updates: state {}", other.key()),
+            }
         }
         self.state = state;
         cx.notify();
     }
 
-    /// The download has begun. Called by the code that downloads the new version.
-    pub fn downloading(&mut self, percent: Option<u8>, cx: &mut Context<Self>) {
-        if let Some(manifest) = self.state.manifest().cloned() {
+    /// The download has begun.
+    fn downloading(&mut self, percent: Option<u8>, cx: &mut Context<Self>) {
+        if let State::Downloading(manifest, _) = &self.state {
+            let manifest = manifest.clone();
             self.set_state(State::Downloading(manifest, percent), cx);
         }
     }
 
     /// The new version is downloaded, checked, and staged. It starts after a restart.
-    pub fn ready(&mut self, cx: &mut Context<Self>) {
+    fn ready(&mut self, cx: &mut Context<Self>) {
         if let Some(manifest) = self.state.manifest().cloned() {
+            self.restart_dismissed = false;
             self.set_state(State::Ready(manifest), cx);
         }
     }
 
     /// The download or the swap failed. The old version keeps running.
-    pub fn failed(&mut self, error: CheckError, cx: &mut Context<Self>) {
+    fn failed(&mut self, error: CheckError, cx: &mut Context<Self>) {
+        log::warn!("update failed: {} {}", error.code, error.detail);
+        self.staged = None;
         self.set_state(State::Error(error), cx);
     }
 
-    /// "Download and install", or the automatic install. Only an offered version can start.
+    /// What an offered version leads to on this install.
+    fn delivery_of(&self, manifest: &Manifest) -> Delivery {
+        delivery(self.installer.kind(), current_target(), manifest)
+    }
+
+    /// What the offered version leads to, if one is offered.
+    fn delivery_now(&self) -> Option<Delivery> {
+        self.state
+            .manifest()
+            .map(|manifest| self.delivery_of(manifest))
+    }
+
+    /// "Download and install", or the automatic install. Only an offered version can start, and
+    /// only where the app replaces itself: a package manager or the user owns the other
+    /// installs, which show the release link instead.
     pub fn install(&mut self, cx: &mut Context<Self>) {
         let State::Available(manifest) = &self.state else {
             return;
+        };
+        let manifest = manifest.clone();
+        let artifact = match self.delivery_of(&manifest) {
+            Delivery::Notice => return,
+            Delivery::Unpackaged => None,
+            Delivery::Artifact(artifact) => Some(artifact),
         };
         self.installs += 1;
         hook::record_event(
             "updates",
             &format!("install requested {}", manifest.version.as_str()),
         );
-        cx.notify();
+        let Some(artifact) = artifact else {
+            log::info!(
+                "updates: this build runs from a source tree, so there is nothing to replace"
+            );
+            cx.notify();
+            return;
+        };
+        self.set_state(State::Downloading(manifest, None), cx);
+        let installer = Arc::clone(&self.installer);
+        let (sender, mut receiver) = mpsc::unbounded::<Progress>();
+        cx.spawn(async move |this, cx| {
+            while let Some(progress) = receiver.next().await {
+                if this
+                    .update(cx, |me, cx| me.stage_progress(progress, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    installer.stage(&artifact, &mut |progress| {
+                        let _ = sender.unbounded_send(progress);
+                    })
+                })
+                .await;
+            let _ = this.update(cx, |me, cx| me.finish_stage(result, cx));
+        })
+        .detach();
+    }
+
+    fn stage_progress(&mut self, progress: Progress, cx: &mut Context<Self>) {
+        let percent = match progress {
+            Progress::Bytes { done, total } if total > 0 => {
+                u8::try_from((done.min(total) * 100 / total).min(100)).ok()
+            }
+            Progress::Bytes { .. } => None,
+            Progress::Verifying => Some(100),
+        };
+        self.downloading(percent, cx);
+    }
+
+    fn finish_stage(&mut self, result: Result<Staged, CheckError>, cx: &mut Context<Self>) {
+        if !matches!(self.state, State::Downloading(..)) {
+            return;
+        }
+        match result {
+            Ok(staged) => {
+                self.staged = Some(staged);
+                self.ready(cx);
+            }
+            Err(error) => self.failed(error, cx),
+        }
+    }
+
+    /// "Restart to update": a helper swaps the staged version in after this app quits, and starts
+    /// it. If the helper cannot start, the app keeps running with an error.
+    pub fn restart_to_update(&mut self, cx: &mut Context<Self>) {
+        let (State::Ready(_), Some(staged)) = (&self.state, self.staged.clone()) else {
+            return;
+        };
+        match self.installer.restart(&staged) {
+            Ok(()) => {
+                hook::record_event("updates", "restart to update");
+                log::info!("updates: restarting to update");
+                let app: &mut App = cx;
+                (self.quit)(app);
+            }
+            Err(error) => self.failed(error, cx),
+        }
     }
 
     /// "Not now" on the banner: the banner stays away for this version.
@@ -303,6 +447,11 @@ impl Updater {
         let Some(manifest) = self.state.manifest() else {
             return;
         };
+        if matches!(self.state, State::Ready(_)) {
+            self.restart_dismissed = true;
+            cx.notify();
+            return;
+        }
         let version = manifest.version.as_str().to_owned();
         let stored = json!(version);
         if let Err(error) = self.storage.settings.set_internal(DISMISSED, stored) {
@@ -312,18 +461,33 @@ impl Updater {
         cx.notify();
     }
 
-    /// Whether the banner is on screen: a version is offered, the person chose to install by
-    /// hand, and has not sent it away.
-    pub fn banner_visible(&self) -> bool {
-        let State::Available(manifest) = &self.state else {
-            return false;
+    /// What the banner shows, if it is on screen. An offer waits for a person who installs by
+    /// hand and has not sent it away; a notice shows whatever the switch says, because nothing
+    /// installs by itself there; a finished download asks for the restart.
+    pub(crate) fn banner_kind(&self) -> Option<BannerKind> {
+        let dismissed = |manifest: &Manifest| {
+            self.storage
+                .settings
+                .get(DISMISSED)
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .as_deref()
+                == Some(manifest.version.as_str())
         };
-        let dismissed = self
-            .storage
-            .settings
-            .get(DISMISSED)
-            .and_then(|value| value.as_str().map(str::to_owned));
-        !self.auto_install() && dismissed.as_deref() != Some(manifest.version.as_str())
+        match &self.state {
+            State::Available(manifest) => match self.delivery_of(manifest) {
+                Delivery::Notice => (!dismissed(manifest)).then_some(BannerKind::Notice),
+                _ => (!self.auto_install() && !dismissed(manifest)).then_some(BannerKind::Install),
+            },
+            State::Downloading(_, percent) => {
+                (!self.auto_install()).then_some(BannerKind::Downloading(*percent))
+            }
+            State::Ready(_) => (!self.restart_dismissed).then_some(BannerKind::Restart),
+            _ => None,
+        }
+    }
+
+    pub fn banner_visible(&self) -> bool {
+        self.banner_kind().is_some()
     }
 
     /// Opens the release notes of the offered version in the browser.
@@ -366,6 +530,15 @@ impl Updater {
             State::Error(error) if error.code == UPDATE_SIGNATURE_INVALID => {
                 "The update could not be verified".to_owned()
             }
+            State::Error(error) if error.code == UPDATE_HASH_MISMATCH => {
+                "The downloaded update did not match its checksum".to_owned()
+            }
+            State::Error(error) if error.code == UPDATE_DOWNLOAD_FAILED => {
+                "The update could not be downloaded".to_owned()
+            }
+            State::Error(error) if error.code == UPDATE_SWAP_FAILED => {
+                "The update could not be installed".to_owned()
+            }
             State::Error(_) => "The update check failed".to_owned(),
         }
     }
@@ -387,6 +560,13 @@ impl Updater {
             "last_check_at": self.last_check(),
             "banner": self.banner_visible(),
             "install_requests": self.installs,
+            "install_kind": self.installer.kind().key(),
+            "delivery": self.delivery_now().map(|delivery| match delivery {
+                Delivery::Artifact(_) => "artifact",
+                Delivery::Notice => "notice",
+                Delivery::Unpackaged => "unpackaged",
+            }),
+            "staged": self.staged.is_some(),
             "last_open": self.last_open,
         })
     }
