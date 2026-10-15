@@ -15,10 +15,13 @@ mod reader;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(any(target_os = "linux", test))]
+mod xdg;
+
 /// Starts `command` and returns at once. A thread waits for the child, so it never lingers as a
 /// zombie and its end never blocks the caller. `Command::status` would hold the UI thread until
-/// `/usr/bin/open` answers, which stalls a frame or more.
-#[cfg(any(target_os = "macos", test))]
+/// `/usr/bin/open` or `xdg-open` answers, which stalls a frame or more.
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 fn spawn_and_reap(mut command: std::process::Command) -> std::io::Result<()> {
     let mut child = command.spawn()?;
     std::thread::Builder::new()
@@ -61,25 +64,32 @@ pub fn request(permission: Permission) {
     let _ = permission;
 }
 
-/// Opens a System Settings link (`Permission::settings_url`) on macOS. Linux has no such
-/// settings. Call this only after a click.
+/// Opens a link: a System Settings link (`Permission::settings_url`) on macOS, or a web page
+/// in the default browser through `xdg-open` on Linux, where any other scheme is refused. It
+/// returns before the program answers. Call this only after a click.
 pub fn open_url(url: &str) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
     return macos::open_url(url);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        xdg::check_url(url)?;
+        xdg::open(std::ffi::OsStr::new(url), spawn_and_reap)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = url;
         Ok(())
     }
 }
 
-/// Opens a folder in the file manager (Finder on macOS). Linux has no
-/// managed file manager call yet, so this is a no-op there. Call this only
-/// after a click.
+/// Opens a folder or a file with the system: Finder on macOS, `xdg-open` on Linux. It returns
+/// before the program answers. Call this only after a click.
 pub fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
     return macos::open_path(path);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    return xdg::open(path.as_os_str(), spawn_and_reap);
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = path;
         Ok(())
