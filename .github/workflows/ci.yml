@@ -260,7 +260,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends xvfb x11-utils mesa-vulkan-drivers \
-            imagemagick dbus
+            imagemagick dbus libvulkan1 libxkbcommon0 libxkbcommon-x11-0 libasound2 \
+            libfontconfig1 libwayland-client0 libwayland-egl1 libdbus-1-3
           packaging/smoke/appimage-xvfb.sh "$(ls dist/Hushpen-*.AppImage)" "$RUNNER_TEMP/appimage-${{ matrix.target }}.png"
       - name: Keep the AppImage screenshot
         if: matrix.target != 'macos-arm64' && always()
