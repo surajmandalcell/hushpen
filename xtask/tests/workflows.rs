@@ -92,3 +92,24 @@ fn trigger_parser_reads_block_form() {
         "name: x\non:\n  workflow_dispatch:\n    inputs:\n      a:\n  push:\njobs:\n  a: {}\n";
     assert_eq!(triggers(text), ["workflow_dispatch", "push"]);
 }
+
+#[test]
+fn ci_yml_packages_each_target_and_smokes_the_installers() {
+    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    assert!(text.contains("\n  package:\n"));
+    assert!(text.contains("\n  smoke:\n"));
+    assert!(text.contains("- package-smoke"));
+    for stock in ["debian:12", "ubuntu:22.04", "fedora:40"] {
+        assert!(text.contains(stock), "{stock} install step missing");
+    }
+    assert!(text.contains("appimage-xvfb.sh"));
+    assert!(text.contains("cargo xtask package-verify"));
+}
+
+#[test]
+fn the_dmg_mount_script_refuses_to_run_off_the_ci_runner() {
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packaging/smoke/mac.sh");
+    let text = fs::read_to_string(script).unwrap();
+    assert!(text.contains(r#"[ "${CI:-}" != "true" ]"#));
+    assert!(text.contains(r#"[ "${GITHUB_ACTIONS:-}" != "true" ]"#));
+}

@@ -55,3 +55,10 @@ rfd.workspace = true
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
+
+# `cargo xtask package` replaces these keys through `--metadata-overwrite`: the
+# assets, the dependency lines, and the version come from one place there.
+[package.metadata.generate-rpm]
+name = "hushpen"
+license = "AGPL-3.0-or-later"
+assets = []

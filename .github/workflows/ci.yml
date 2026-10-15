@@ -16,6 +16,7 @@ on:
           - gate
           - engine
           - package
+          - package-smoke
           - e2e
           - full
         default: gate
@@ -75,6 +76,8 @@ jobs:
           echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
 
   build:
+    # The package jobs build the release binaries themselves.
+    if: inputs.suite != 'package' && inputs.suite != 'package-smoke'
     needs: plan
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -166,6 +169,109 @@ jobs:
         if: (inputs.suite == 'engine' || inputs.suite == 'full') && matrix.target == 'macos-arm64'
         continue-on-error: true
         run: ./target/release/hushpen-llm --smoke models/Qwen3.5-0.8B-Q4_K_M.gguf --gpu --plumbing
+
+  # The installers for each target, named as in the mission's release notes, checked one by one
+  # by `xtask package-verify`. On macos-15 CI=true lets cargo-packager build the dmg; the dmg
+  # layout step drives Finder and never runs anywhere else.
+  package:
+    if: inputs.suite == 'package' || inputs.suite == 'package-smoke'
+    needs: plan
+    name: package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package-${{ matrix.target }}
+      - name: Install the GPUI build libraries and the packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libfontconfig-dev libfreetype-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev \
+            libxi-dev libxrandr-dev libasound2-dev libvulkan-dev libdbus-1-dev \
+            rpm cpio squashfs-tools file desktop-file-utils binutils
+      - name: Cache the packager binaries
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-generate-rpm
+          key: packaging-tools-${{ runner.os }}-${{ runner.arch }}-packager-0.11.8-rpm-0.21.0
+      - name: Install cargo-packager and cargo-generate-rpm
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked cargo-packager@0.11.8
+          if [ "$RUNNER_OS" = Linux ]; then cargo install --locked cargo-generate-rpm@0.21.0; fi
+      - name: Package
+        run: cargo xtask package --target ${{ matrix.target }}
+      - name: Verify every artifact
+        run: |
+          cargo xtask package-verify --target ${{ matrix.target }}
+          ls -l target/dist/${{ matrix.target }}
+          cat target/dist/${{ matrix.target }}/SHA256SUMS
+      - name: Keep the artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            target/dist/${{ matrix.target }}/Hushpen-*
+            target/dist/${{ matrix.target }}/SHA256SUMS
+          if-no-files-found: error
+
+  # Linux: the deb and rpm in stock distro containers, and the AppImage under xvfb-run.
+  # macOS: the zip, and the dmg mounted on the runner.
+  smoke:
+    if: inputs.suite == 'package-smoke'
+    needs: [plan, package]
+    name: package smoke (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: ${{ github.workspace }}/dist
+      - name: deb in debian:12
+        if: matrix.target != 'macos-arm64'
+        run: packaging/smoke/install-in-container.sh "$GITHUB_WORKSPACE/dist" debian:12
+      - name: deb in ubuntu:22.04
+        if: matrix.target != 'macos-arm64'
+        run: packaging/smoke/install-in-container.sh "$GITHUB_WORKSPACE/dist" ubuntu:22.04
+      - name: rpm in fedora:40
+        if: matrix.target != 'macos-arm64'
+        run: packaging/smoke/install-in-container.sh "$GITHUB_WORKSPACE/dist" fedora:40
+      - name: AppImage under xvfb-run
+        if: matrix.target != 'macos-arm64'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb x11-utils mesa-vulkan-drivers \
+            imagemagick dbus
+          packaging/smoke/appimage-xvfb.sh "$(ls dist/Hushpen-*.AppImage)" "$RUNNER_TEMP/appimage-${{ matrix.target }}.png"
+      - name: Keep the AppImage screenshot
+        if: matrix.target != 'macos-arm64' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.target }}
+          path: ${{ runner.temp }}/appimage-${{ matrix.target }}.png
+          if-no-files-found: ignore
+      - name: zip and dmg
+        if: matrix.target == 'macos-arm64'
+        run: packaging/smoke/mac.sh "$GITHUB_WORKSPACE/dist"
 
   # The core harness subset on the x64 runner: the same container, suites, and checks as the Mac
   # harness, with the models and the speech clip fetched here. Runs only for linux-x64.

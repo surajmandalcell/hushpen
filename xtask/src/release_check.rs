@@ -18,6 +18,8 @@ const HOOK_MARKERS: &[&str] = &[
     "hookctl",
     "hook.sock",
     "HUSHPEN_TESTHOOK",
+    "HUSHPEN_UPDATE_FEED",
+    "HUSHPEN_UPDATE_PUBKEY",
 ];
 
 /// Engine symbols that must stay in their own binary.
@@ -139,6 +141,16 @@ fn scan_file(path: &Path) -> Result<Vec<Finding>, String> {
     Ok(scan_bytes(&bytes, &markers_for(&name)))
 }
 
+/// Scans one built binary; `hushpen-llm` and `hushpen` each get their own markers.
+pub fn check_binary(path: &Path) -> Result<(), String> {
+    let findings = scan_file(path)?;
+    if report(path, &findings) {
+        Ok(())
+    } else {
+        Err(format!("{} contains hook code", path.display()))
+    }
+}
+
 fn report(path: &Path, findings: &[Finding]) -> bool {
     if findings.is_empty() {
         println!("clean: {}", path.display());
@@ -228,12 +240,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let options = parse_args(args)?;
 
     if let Some(binary) = &options.binary {
-        let findings = scan_file(binary)?;
-        return if report(binary, &findings) {
-            Ok(())
-        } else {
-            Err(format!("{} contains hook code", binary.display()))
-        };
+        return check_binary(binary);
     }
 
     check_tree(root)?;

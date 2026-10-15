@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Hushpen repo tasks: gate, net-audit, two-binary, release-check"
+description = "Hushpen repo tasks: gate, net-audit, two-binary, release-check, package"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,6 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+sha2.workspace = true
