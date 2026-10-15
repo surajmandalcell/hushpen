@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|audio|export|flowbar|tray|shortcuts|onboarding|settings|core|full>
+# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|core|full>
 # Runs the suite scripts in order and writes result.json. core and full are smoke plus env today;
 # a feature that adds end-to-end checks adds a script to suites/ and to the lists below.
 case "${1:-}" in
@@ -21,6 +21,7 @@ case "${1:-}" in
   command) scripts=(command) ;;
   dictionary) scripts=(dictionary) ;;
   history) scripts=(history) ;;
+  import) scripts=(import) ;;
   audio) scripts=(audio) ;;
   export) scripts=(export) ;;
   flowbar) scripts=(flowbar) ;;
