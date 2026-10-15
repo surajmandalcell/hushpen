@@ -77,7 +77,29 @@ pub(super) fn pointer() -> Result<Pointer, ChromeError> {
     })
 }
 
-/// Raises the window now, and again whenever another window is stacked above it.
+/// What the watcher does with one root window event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Watch {
+    /// Another window moved in the stack: raise ours if it is covered.
+    Check,
+    /// Our window is gone; the watcher and its connection end here.
+    Stop,
+    Ignore,
+}
+
+fn classify(event: &Event, window: Window) -> Watch {
+    match event {
+        Event::DestroyNotify(gone) if gone.window == window => Watch::Stop,
+        Event::ConfigureNotify(change) if change.window != window => Watch::Check,
+        Event::CirculateNotify(change) if change.window != window => Watch::Check,
+        Event::MapNotify(change) if change.window != window => Watch::Check,
+        _ => Watch::Ignore,
+    }
+}
+
+/// Raises the window now, and again whenever another window is stacked above it. The watcher
+/// thread ends when the window is destroyed: the flow bar opens a new window after each hide,
+/// so a watcher that outlived its window would leak a thread and a connection every cycle.
 pub(super) fn pin(window: Window) -> Result<(), ChromeError> {
     let (conn, screen) = x11rb::connect(None).map_err(|e| fail("x11 connect", e))?;
     let root = conn.setup().roots[screen].root;
@@ -88,19 +110,24 @@ pub(super) fn pin(window: Window) -> Result<(), ChromeError> {
     .map_err(|e| fail("watch the root window", e))?
     .check()
     .map_err(|e| fail("watch the root window", e))?;
+    // A window destroyed before the mask was set sends no notice, so ask for it once.
+    if conn
+        .get_window_attributes(window)
+        .map_err(|e| fail("look up the flow bar window", e))?
+        .reply()
+        .is_err()
+    {
+        return Ok(());
+    }
     raise_if_covered(&conn, root, window);
     std::thread::Builder::new()
         .name("x11-flow-bar-top".into())
         .spawn(move || {
             while let Ok(event) = conn.wait_for_event() {
-                let other = match event {
-                    Event::ConfigureNotify(change) => change.window != window,
-                    Event::CirculateNotify(change) => change.window != window,
-                    Event::MapNotify(change) => change.window != window,
-                    _ => false,
-                };
-                if other {
-                    raise_if_covered(&conn, root, window);
+                match classify(&event, window) {
+                    Watch::Stop => return,
+                    Watch::Check => raise_if_covered(&conn, root, window),
+                    Watch::Ignore => {}
                 }
             }
         })
@@ -125,4 +152,53 @@ fn raise_if_covered(conn: &RustConnection, root: Window, window: Window) {
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
     let _ = conn.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use x11rb::protocol::xproto::{ConfigureNotifyEvent, DestroyNotifyEvent, MapNotifyEvent};
+
+    const OURS: Window = 0x40;
+    const OTHER: Window = 0x41;
+
+    fn destroyed(window: Window) -> Event {
+        Event::DestroyNotify(DestroyNotifyEvent {
+            window,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn the_watcher_stops_when_its_own_window_is_destroyed() {
+        assert_eq!(classify(&destroyed(OURS), OURS), Watch::Stop);
+    }
+
+    #[test]
+    fn another_window_going_away_does_not_stop_it() {
+        assert_eq!(classify(&destroyed(OTHER), OURS), Watch::Ignore);
+    }
+
+    #[test]
+    fn a_change_to_another_window_is_a_reason_to_look_at_the_stack() {
+        let configured = Event::ConfigureNotify(ConfigureNotifyEvent {
+            window: OTHER,
+            ..Default::default()
+        });
+        let mapped = Event::MapNotify(MapNotifyEvent {
+            window: OTHER,
+            ..Default::default()
+        });
+        assert_eq!(classify(&configured, OURS), Watch::Check);
+        assert_eq!(classify(&mapped, OURS), Watch::Check);
+    }
+
+    #[test]
+    fn a_change_to_our_own_window_is_not() {
+        let configured = Event::ConfigureNotify(ConfigureNotifyEvent {
+            window: OURS,
+            ..Default::default()
+        });
+        assert_eq!(classify(&configured, OURS), Watch::Ignore);
+    }
 }
