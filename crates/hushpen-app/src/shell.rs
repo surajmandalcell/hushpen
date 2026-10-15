@@ -12,6 +12,7 @@ use crate::onboarding::{self, Onboarding};
 use crate::settings::{self, Settings};
 use crate::shortcuts::Shortcuts;
 use crate::theme::{self, BODY, Palette, StyledType, TOOLBAR_TITLE, chrome, radius, size, space};
+use crate::updater::{self, Updater};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
@@ -35,6 +36,7 @@ pub struct Shell {
     shortcuts: Option<Entity<Shortcuts>>,
     settings: Option<Entity<Settings>>,
     about: Option<Entity<About>>,
+    updater: Option<Entity<Updater>>,
     /// While it is active, the window shows onboarding instead of the sidebar and the views.
     onboarding: Option<Entity<Onboarding>>,
     /// Onboarding was on screen in the last frame.
@@ -66,6 +68,7 @@ impl Shell {
             shortcuts: None,
             settings: None,
             about: None,
+            updater: None,
             onboarding: None,
             onboarding_shown: false,
             content_scroll: ScrollHandle::new(),
@@ -96,6 +99,13 @@ impl Shell {
     pub fn attach_about(&mut self, about: Entity<About>, cx: &mut Context<Self>) {
         cx.observe(&about, |_, _, cx| cx.notify()).detach();
         self.about = Some(about);
+        cx.notify();
+    }
+
+    /// Shows the update banner above every view while a version waits for the person.
+    pub fn attach_updater(&mut self, updater: Entity<Updater>, cx: &mut Context<Self>) {
+        cx.observe(&updater, |_, _, cx| cx.notify()).detach();
+        self.updater = Some(updater);
         cx.notify();
     }
 
@@ -375,6 +385,11 @@ impl Shell {
             .h_full()
             .bg(palette.content)
             .child(self.toolbar(palette))
+            .children(
+                self.updater
+                    .as_ref()
+                    .and_then(|updater| updater::banner(updater, cx)),
+            )
             .child(
                 div()
                     .id(hook::id("content", "scroll"))

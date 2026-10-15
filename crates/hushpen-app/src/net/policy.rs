@@ -136,6 +136,106 @@ impl Policy {
     }
 }
 
+const UPDATE_START_HOST: &str = "github.com";
+const UPDATE_CDN_SUFFIX: &str = ".githubusercontent.com";
+
+/// Which hosts the update check may talk to.
+///
+/// The release feed starts on `github.com` over HTTPS, and GitHub answers a release asset with a
+/// redirect to `*.githubusercontent.com`, again over HTTPS. A test build can swap all of that for
+/// one address, which then is the only one allowed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct UpdatePolicy {
+    #[cfg(any(test, feature = "update-test-feed"))]
+    feed: Option<Parsed>,
+}
+
+impl UpdatePolicy {
+    pub fn release() -> Self {
+        Self::default()
+    }
+
+    /// Only the host and port of `url` are allowed, over `http` for 127.0.0.1 and localhost and
+    /// over `https` for any host.
+    #[cfg(any(test, feature = "update-test-feed"))]
+    pub fn only(url: &str) -> Result<Self, Blocked> {
+        let parsed = parse(url).ok_or_else(|| Blocked::invalid("update feed"))?;
+        if parsed.scheme == Scheme::Http
+            && !matches!(parsed.host.as_str(), "127.0.0.1" | "localhost")
+        {
+            return Err(Blocked::new(
+                parsed.host.clone(),
+                format!("http to host {} is not allowed", parsed.host),
+            ));
+        }
+        Ok(Self { feed: Some(parsed) })
+    }
+
+    /// Whether the HTTP client must refuse plain HTTP by itself.
+    pub fn https_only(&self) -> bool {
+        #[cfg(any(test, feature = "update-test-feed"))]
+        if let Some(feed) = &self.feed {
+            return feed.scheme == Scheme::Https;
+        }
+        true
+    }
+
+    pub fn check_start(&self, url: &str) -> Result<Checked, Blocked> {
+        self.check(url, false)
+    }
+
+    pub fn check_redirect(&self, url: &str) -> Result<Checked, Blocked> {
+        self.check(url, true)
+    }
+
+    fn check(&self, url: &str, redirect: bool) -> Result<Checked, Blocked> {
+        let parsed = parse(url).ok_or_else(|| Blocked::invalid("update"))?;
+        let allowed = match self.only_feed() {
+            Some(feed) => {
+                parsed.scheme == feed.scheme && parsed.host == feed.host && parsed.port == feed.port
+            }
+            None => {
+                parsed.scheme == Scheme::Https
+                    && parsed.port.is_none_or(|port| port == 443)
+                    && (parsed.host == UPDATE_START_HOST
+                        || (redirect
+                            && parsed.host.len() > UPDATE_CDN_SUFFIX.len()
+                            && parsed.host.ends_with(UPDATE_CDN_SUFFIX)))
+            }
+        };
+        if allowed {
+            return Ok(Checked {
+                url: url.to_owned(),
+                host: parsed.host,
+            });
+        }
+        Err(Blocked::new(
+            parsed.host.clone(),
+            format!(
+                "{} to host {} is not allowed",
+                parsed.scheme.name(),
+                parsed.host
+            ),
+        ))
+    }
+
+    fn only_feed(&self) -> Option<&Parsed> {
+        #[cfg(any(test, feature = "update-test-feed"))]
+        return self.feed.as_ref();
+        #[cfg(not(any(test, feature = "update-test-feed")))]
+        None
+    }
+}
+
+impl Scheme {
+    fn name(self) -> &'static str {
+        match self {
+            Scheme::Https => "https",
+            Scheme::Http => "http",
+        }
+    }
+}
+
 fn parse(url: &str) -> Option<Parsed> {
     if !url.is_ascii()
         || url
@@ -334,6 +434,83 @@ mod tests {
         }
         let url = resolve(&base, "/ok").unwrap();
         assert!(redirect(&url).is_ok());
+    }
+
+    #[test]
+    fn the_update_feed_starts_on_github_and_follows_to_its_cdn_only_in_a_redirect() {
+        let policy = UpdatePolicy::release();
+        assert!(
+            policy
+                .check_start(&https(
+                    "github.com",
+                    "/o/r/releases/latest/download/latest.json"
+                ))
+                .is_ok()
+        );
+        for host in [
+            "objects.githubusercontent.com",
+            "release-assets.githubusercontent.com",
+            "github.com",
+        ] {
+            assert!(
+                policy.check_redirect(&https(host, "/a?sig=1")).is_ok(),
+                "{host}"
+            );
+        }
+        assert!(
+            policy
+                .check_start(&https("objects.githubusercontent.com", "/a"))
+                .is_err()
+        );
+        assert!(policy.https_only());
+    }
+
+    #[test]
+    fn the_update_feed_refuses_http_look_alikes_odd_ports_and_user_names() {
+        let policy = UpdatePolicy::release();
+        for url in [
+            http("github.com", "/x"),
+            https("github.com.evil.example", "/x"),
+            https("evilgithub.com", "/x"),
+            https("githubusercontent.com", "/x"),
+            https("evil.githubusercontent.com.example", "/x"),
+            https("github.com:8443", "/x"),
+            https("github.com@evil.example", "/x"),
+            https("huggingface.co", "/x"),
+            https("127.0.0.1", "/x"),
+        ] {
+            assert!(policy.check_redirect(&url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_test_feed_allows_exactly_its_own_address() {
+        let policy = UpdatePolicy::only(&http("127.0.0.1:4343", "/latest.json")).unwrap();
+        assert!(!policy.https_only());
+        assert!(
+            policy
+                .check_start(&http("127.0.0.1:4343", "/latest.json.minisig"))
+                .is_ok()
+        );
+        assert!(
+            policy
+                .check_redirect(&http("127.0.0.1:4343", "/asset"))
+                .is_ok()
+        );
+        for url in [
+            http("127.0.0.1:4344", "/x"),
+            http("localhost:4343", "/x"),
+            https("127.0.0.1:4343", "/x"),
+            https("github.com", "/x"),
+        ] {
+            assert!(policy.check_start(&url).is_err(), "{url}");
+        }
+        assert!(UpdatePolicy::only(&http("example.com", "/latest.json")).is_err());
+        assert!(
+            UpdatePolicy::only(&https("example.com", "/latest.json"))
+                .unwrap()
+                .https_only()
+        );
     }
 
     #[test]

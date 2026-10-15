@@ -15,6 +15,7 @@ use hushpen_app::import::{Import, ImportRunner, Parts as ImportParts};
 use hushpen_app::mic::Mic;
 use hushpen_app::models::{self, Models};
 use hushpen_app::net::endpoint::UreqTransport;
+use hushpen_app::net::update::CheckError;
 use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
 use hushpen_app::settings::endpoint::EndpointForm;
 use hushpen_app::settings::{Parts as SettingsParts, Section, Settings};
@@ -22,9 +23,11 @@ use hushpen_app::shell::Shell;
 use hushpen_app::shortcuts::{KeyControl, Shortcuts};
 use hushpen_app::storage::{self, Storage};
 use hushpen_app::theme::{Appearance, space};
+use hushpen_app::updater::{Checker, Parts as UpdaterParts, Updater, wall_clock};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
 use hushpen_core::shortcut::{Bindings, Combo, Platform};
+use hushpen_core::update::{Offer, Version};
 use hushpen_engine::{Failure, JobOutcome, Segment as EngineSegment, Transcription};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::history::{self, Row};
@@ -36,6 +39,15 @@ use std::sync::{Arc, Mutex};
 
 /// A key listener that holds nothing and hears nothing, so the shortcut fields can open.
 struct QuietKeys;
+
+/// The Updates view of a fresh folder never asks: the check is off.
+struct NoFeed;
+
+impl Checker for NoFeed {
+    fn check(&self, _: &Version) -> Result<Offer, CheckError> {
+        Ok(Offer::UpToDate)
+    }
+}
 
 impl KeyControl for QuietKeys {
     fn set_bindings(&self, _: Bindings) {}
@@ -487,6 +499,19 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                 cx,
                             )
                         });
+                        let updater = cx.new(|cx| {
+                            Updater::new(
+                                UpdaterParts {
+                                    storage: Rc::clone(&storage),
+                                    checker: Arc::new(NoFeed),
+                                    opener: Rc::new(SystemOpener),
+                                    clock: wall_clock(),
+                                    current: Version::parse("2.0.0").expect("a version"),
+                                },
+                                cx,
+                            )
+                        });
+                        settings.update(cx, |settings, cx| settings.attach_updater(updater, cx));
                         if matches!(scene, Scene::EndpointFailure) {
                             let form = cx.new(|cx| {
                                 EndpointForm::new(

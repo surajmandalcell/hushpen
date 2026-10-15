@@ -374,7 +374,8 @@ fn test_connection_reports_success_and_failure_with_the_code(cx: &mut TestAppCon
     click(cx, &rig, "settings.cleanup.endpointTest");
 
     let text = label(cx, &rig, "settings.cleanup.endpointStatus").unwrap();
-    assert!(text.starts_with("ENDPOINT_FAILED: "), "{text}");
+    assert_eq!(text, "The endpoint could not be reached.");
+    assert!(!text.contains("ENDPOINT_FAILED"), "{text}");
     let test = state(cx, &rig)["ai"]["endpoint"]["test"].clone();
     assert_eq!(test["state"], "failed");
     assert_eq!(test["code"], "ENDPOINT_FAILED");
@@ -392,8 +393,13 @@ fn an_http_address_to_another_computer_is_refused_before_any_request(cx: &mut Te
     click(cx, &rig, "settings.cleanup.endpointTest");
 
     let text = label(cx, &rig, "settings.cleanup.endpointStatus").unwrap();
-    assert!(text.starts_with("ENDPOINT_FAILED: "), "{text}");
-    assert!(text.contains("Use https"), "{text}");
+    assert_eq!(text, "Use https. Plain http works only for this computer.");
+    assert!(!text.contains("ENDPOINT_FAILED"), "{text}");
+    let test = state(cx, &rig)["ai"]["endpoint"]["test"].clone();
+    assert_eq!(
+        test["code"], "ENDPOINT_FAILED",
+        "the code stays in the hook state"
+    );
     assert!(
         !text.contains("10.0.0.2"),
         "the reason never repeats the address"

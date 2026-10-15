@@ -20,6 +20,7 @@ pub mod protocol;
 pub mod shortcut;
 pub mod threads;
 pub mod transcript;
+pub mod update;
 
 /// Product version, shared by the app, the children, and the packagers.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

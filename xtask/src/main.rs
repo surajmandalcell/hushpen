@@ -7,10 +7,11 @@ mod package;
 mod release_check;
 mod root;
 mod two_binary;
+mod update_feed;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|release-check [--binary <path>] [--guard]|package [...]|package-verify [...]>";
+const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper]>";
 
 fn main() -> ExitCode {
     let root = match root::repo_root() {
@@ -36,6 +37,14 @@ fn main() -> ExitCode {
         Some("package-verify") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
             package::run_verify(&root, &rest)
+        }
+        Some("update-test-keygen") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            update_feed::run_keygen(&rest)
+        }
+        Some("update-feed") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            update_feed::run_feed(&rest)
         }
         _ => Err(USAGE.to_string()),
     };

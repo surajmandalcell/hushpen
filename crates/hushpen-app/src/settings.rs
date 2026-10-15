@@ -8,6 +8,7 @@ use crate::hook;
 use crate::mic::Mic;
 use crate::models::{ModelState, Models};
 use crate::storage::Storage;
+use crate::updater::Updater;
 use gpui_kit::{App, Context, Entity, FocusHandle};
 use hushpen_core::catalog::{Catalog, ModelEntry};
 use hushpen_core::endpoint::Preset;
@@ -44,7 +45,11 @@ pub(crate) mod slots {
     pub const ENDPOINT_PRESET_OPTION: usize = 24; // ..=26
     pub const ENDPOINT_KEY_CLEAR: usize = 27;
     pub const ENDPOINT_TEST: usize = 28;
-    pub const COUNT: usize = 29;
+    pub const UPDATES_CHECK: usize = 29;
+    pub const UPDATES_AUTO: usize = 30;
+    pub const UPDATES_NOW: usize = 31;
+    pub const UPDATES_NOTES: usize = 32;
+    pub const COUNT: usize = 33;
 }
 
 /// The sections of the Settings view, in order.
@@ -179,6 +184,7 @@ pub struct Settings {
     ai: Option<AiParts>,
     ai_loading: bool,
     pub(crate) endpoint: Option<Entity<endpoint::EndpointForm>>,
+    pub(crate) updater: Option<Entity<Updater>>,
     in_flight: Option<InFlight>,
 }
 
@@ -269,10 +275,35 @@ impl Settings {
             ai: None,
             ai_loading: false,
             endpoint: None,
+            updater: None,
             in_flight: None,
         };
         me.refresh_login(cx);
         me
+    }
+
+    /// Shows the update check in Settings > Updates and repaints when it changes.
+    pub fn attach_updater(&mut self, updater: Entity<Updater>, cx: &mut Context<Self>) {
+        cx.observe(&updater, |_, _, cx| cx.notify()).detach();
+        self.updater = Some(updater);
+    }
+
+    pub fn toggle_update_check(&mut self, cx: &mut Context<Self>) {
+        let on = !self.stored_bool("updates.check");
+        self.set("updates.check", json!(on), cx);
+        self.updates_changed(cx);
+    }
+
+    pub fn toggle_auto_install(&mut self, cx: &mut Context<Self>) {
+        let on = !self.stored_bool("updates.autoInstall");
+        self.set("updates.autoInstall", json!(on), cx);
+        self.updates_changed(cx);
+    }
+
+    fn updates_changed(&mut self, cx: &mut Context<Self>) {
+        if let Some(updater) = self.updater.clone() {
+            updater.update(cx, |updater, cx| updater.settings_changed(cx));
+        }
     }
 
     /// Tells Settings how to see a running transcription.

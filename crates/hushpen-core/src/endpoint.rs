@@ -75,9 +75,7 @@ impl UrlError {
         match self {
             UrlError::Empty => "Enter the address of the endpoint.",
             UrlError::Invalid => "The address is not a valid http or https URL.",
-            UrlError::NeedsHttps => {
-                "Use https. Plain http is only allowed for localhost, 127.0.0.1 and ::1."
-            }
+            UrlError::NeedsHttps => "Use https. Plain http works only for this computer.",
         }
     }
 }

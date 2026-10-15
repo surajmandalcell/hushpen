@@ -42,12 +42,14 @@ pub struct Finding {
 struct Options {
     binary: Option<PathBuf>,
     guard: bool,
+    features: Option<String>,
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         binary: None,
         guard: false,
+        features: None,
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -55,6 +57,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--binary" => {
                 let path = iter.next().ok_or("--binary needs a path")?;
                 options.binary = Some(PathBuf::from(path));
+            }
+            "--features" => {
+                let list = iter.next().ok_or("--features needs a list")?;
+                options.features = Some(list.clone());
             }
             "--guard" => options.guard = true,
             other => return Err(format!("unknown release-check argument {other:?}")),
@@ -181,10 +187,26 @@ fn target_dir(root: &Path) -> PathBuf {
     }
 }
 
-fn check_tree(root: &Path) -> Result<(), String> {
+fn check_tree(root: &Path, features: Option<&str>) -> Result<(), String> {
     let mut violations = Vec::new();
     for package in ["hushpen-app", "hushpen-llm"] {
-        let output = cargo(root, &["tree", "-e", "features", "--locked", "-p", package])
+        // The format puts the features of the package itself on its first line: `-e features`
+        // alone prints a feature node only for a dependency, never for the root.
+        let mut args = vec![
+            "tree",
+            "-e",
+            "features",
+            "--locked",
+            "-p",
+            package,
+            "-f",
+            "{p} [{f}]",
+        ];
+        // `--features` on a tree of another package is an error, so only the app takes it.
+        if let (Some(list), "hushpen-app") = (features, package) {
+            args.extend(["--features", list]);
+        }
+        let output = cargo(root, &args)
             .output()
             .map_err(|e| format!("cannot run cargo tree: {e}"))?;
         if !output.status.success() {
@@ -243,22 +265,23 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         return check_binary(binary);
     }
 
-    check_tree(root)?;
+    check_tree(root, options.features.as_deref())?;
 
-    let status = cargo(
-        root,
-        &[
-            "build",
-            "--release",
-            "--locked",
-            "-p",
-            "hushpen-app",
-            "-p",
-            "hushpen-llm",
-        ],
-    )
-    .status()
-    .map_err(|e| format!("cannot run cargo build: {e}"))?;
+    let mut build = vec![
+        "build",
+        "--release",
+        "--locked",
+        "-p",
+        "hushpen-app",
+        "-p",
+        "hushpen-llm",
+    ];
+    if let Some(list) = &options.features {
+        build.extend(["--features", list]);
+    }
+    let status = cargo(root, &build)
+        .status()
+        .map_err(|e| format!("cannot run cargo build: {e}"))?;
     if !status.success() {
         return Err("release build failed".into());
     }
@@ -297,6 +320,15 @@ mod tests {
     }
 
     #[test]
+    fn the_root_features_on_the_first_line_are_read() {
+        let tree = "hushpen-app v2.0.0 (/src/crates/hushpen-app) [update-test-feed]\n├── futures feature \"std\"\n";
+        assert_eq!(tree_violations(tree), ["update-test-feed"]);
+        let plain =
+            "hushpen-app v2.0.0 (/src/crates/hushpen-app) []\n├── futures feature \"std\"\n";
+        assert!(tree_violations(plain).is_empty());
+    }
+
+    #[test]
     fn a_tree_without_them_is_clean_even_with_similar_names() {
         let tree = "hushpen-app v2.0.0\n├── hushpen-store v2.0.0\n└── hushpen-testhook-docs-not-a-crate-name-here\n";
         assert!(tree_violations(tree).is_empty());
@@ -311,6 +343,16 @@ mod tests {
         assert_eq!(markers, ["hushpen_testhook", "testhook", "hook.sock"]);
         assert_eq!(findings[2].count, 2);
         assert!(findings[0].sample.contains("_ZN15hushpen_testhook6server"));
+    }
+
+    #[test]
+    fn a_binary_with_the_update_feed_override_is_flagged() {
+        let bytes = b"\0HUSHPEN_UPDATE_FEED\0HUSHPEN_UPDATE_PUBKEY\0";
+        let markers: Vec<String> = scan_bytes(bytes, HOOK_MARKERS)
+            .into_iter()
+            .map(|f| f.marker)
+            .collect();
+        assert_eq!(markers, ["HUSHPEN_UPDATE_FEED", "HUSHPEN_UPDATE_PUBKEY"]);
     }
 
     #[test]
@@ -368,9 +410,18 @@ mod tests {
             parse_args(&args(&["--guard"])).unwrap(),
             Options {
                 binary: None,
-                guard: true
+                guard: true,
+                features: None
             }
         );
+        assert_eq!(
+            parse_args(&args(&["--features", "update-test-feed"]))
+                .unwrap()
+                .features
+                .as_deref(),
+            Some("update-test-feed")
+        );
+        assert!(parse_args(&args(&["--features"])).is_err());
         assert_eq!(
             parse_args(&args(&["--binary", "/x/hushpen"]))
                 .unwrap()

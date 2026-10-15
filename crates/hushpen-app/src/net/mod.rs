@@ -7,6 +7,7 @@ pub mod fetch;
 pub mod policy;
 #[cfg(test)]
 mod test_server;
+pub mod update;
 
 use crate::hook;
 
@@ -18,6 +19,9 @@ pub enum Purpose {
     /// The OpenAI-compatible endpoint that the user turned on. The host is whatever the user
     /// typed: `https` for any host, `http` only for localhost, 127.0.0.1 and ::1.
     Endpoint,
+    /// The signed `latest.json` of the opt-in update check. Hosts: `github.com`, then
+    /// `*.githubusercontent.com`.
+    UpdateCheck,
 }
 
 impl Purpose {
@@ -25,6 +29,7 @@ impl Purpose {
         match self {
             Purpose::ModelDownload => "model_download",
             Purpose::Endpoint => "endpoint",
+            Purpose::UpdateCheck => "update_check",
         }
     }
 }

@@ -21,7 +21,7 @@ use slots::{
     AI_CLEANUP, AI_DOWNLOAD, AI_MODEL, AI_MODEL_OPTION, AI_PROVIDER, AI_PROVIDER_OPTION,
     CHANGE_FOLDER, ENDPOINT_KEY_CLEAR, ENDPOINT_PRESET, ENDPOINT_PRESET_OPTION, ENDPOINT_TEST,
     FLOWBAR, FLOWBAR_IDLE, HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION,
-    RETENTION_OPTION, RULES, SOUNDS,
+    RETENTION_OPTION, RULES, SOUNDS, UPDATES_AUTO, UPDATES_CHECK, UPDATES_NOTES, UPDATES_NOW,
 };
 
 /// The rows of a section and the one line of help under them.
@@ -62,7 +62,7 @@ pub fn render(
         Section::Cleanup => section_of(palette, section, cleanup(palette, settings, &focus, cx)),
         Section::FlowBar => section_of(palette, section, flow_bar(palette, settings, &focus, cx)),
         Section::Storage => section_of(palette, section, storage(palette, settings, &focus, cx)),
-        Section::Updates => section_of(palette, section, updates(palette)),
+        Section::Updates => section_of(palette, section, updates(palette, settings, &focus, cx)),
     };
     // Esc with an open picker closes it and focuses the trigger again.
     let on_escape = {
@@ -913,14 +913,55 @@ fn storage(
     Body { rows, footer: None }
 }
 
-fn updates(palette: Palette) -> Body {
-    Body {
-        rows: vec![later_row(
+fn updates(
+    palette: Palette,
+    settings: &Entity<Settings>,
+    focus: &[FocusHandle],
+    cx: &mut App,
+) -> Body {
+    let (check_on, auto_on, updater) = {
+        let me = settings.read(cx);
+        (
+            me.stored_bool("updates.check"),
+            me.stored_bool("updates.autoInstall"),
+            me.updater.clone(),
+        )
+    };
+    let flip_check = {
+        let settings = settings.clone();
+        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_update_check(cx))
+    };
+    let flip_auto = {
+        let settings = settings.clone();
+        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_auto_install(cx))
+    };
+    let mut rows = vec![
+        toggle_row(
             palette,
-            "updates",
-            "Automatic updates",
-            "Update checks and installs land in a later release.",
-        )],
-        footer: None,
+            "updates.check",
+            "Check for updates",
+            "Asks GitHub for a newer version at most once a day. Nothing identifies you.",
+            check_on,
+            &focus[UPDATES_CHECK],
+            flip_check,
+        ),
+        toggle_row(
+            palette,
+            "updates.autoInstall",
+            "Install updates automatically",
+            "Downloads a new version for you. It starts after you restart.",
+            auto_on,
+            &focus[UPDATES_AUTO],
+            flip_auto,
+        ),
+    ];
+    if let Some(updater) = updater {
+        rows.extend(crate::updater::rows(
+            &updater,
+            &focus[UPDATES_NOW],
+            &focus[UPDATES_NOTES],
+            cx,
+        ));
     }
+    Body { rows, footer: None }
 }

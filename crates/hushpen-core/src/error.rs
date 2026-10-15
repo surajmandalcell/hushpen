@@ -58,6 +58,9 @@ pub const HISTORY_NEWER_SCHEMA: &str = "HISTORY_NEWER_SCHEMA";
 pub const HISTORY_WRITE_FAILED: &str = "HISTORY_WRITE_FAILED";
 pub const SETTINGS_CORRUPT: &str = "SETTINGS_CORRUPT";
 pub const DATA_FOLDER_MOVE_FAILED: &str = "DATA_FOLDER_MOVE_FAILED";
+/// The update feed could not be read: no answer, an HTTP error, a refused host, or a manifest
+/// that is not the expected JSON.
+pub const UPDATE_CHECK_FAILED: &str = "UPDATE_CHECK_FAILED";
 pub const UPDATE_SIGNATURE_INVALID: &str = "UPDATE_SIGNATURE_INVALID";
 pub const UPDATE_HASH_MISMATCH: &str = "UPDATE_HASH_MISMATCH";
 pub const UPDATE_SWAP_FAILED: &str = "UPDATE_SWAP_FAILED";

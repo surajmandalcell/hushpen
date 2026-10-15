@@ -293,7 +293,8 @@ impl EndpointForm {
             Test::Idle => "Checks that the endpoint answers.".to_owned(),
             Test::Running => "Testing the connection".to_owned(),
             Test::Connected => "Connected".to_owned(),
-            Test::Failed(reason) => format!("{ENDPOINT_FAILED}: {reason}"),
+            // The code stays in the hook state and the log; a person reads the sentence.
+            Test::Failed(reason) => reason.clone(),
         }
     }
 

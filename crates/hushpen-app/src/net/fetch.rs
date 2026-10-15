@@ -31,11 +31,17 @@ pub struct UreqFetcher {
 
 impl UreqFetcher {
     pub fn new(policy: &Policy) -> Self {
-        // Purpose::ModelDownload is the only caller. Hosts: huggingface.co, then *.hf.co.
+        // Purpose::ModelDownload. Hosts: huggingface.co, then *.hf.co.
+        Self::with_https_only(policy.https_only())
+    }
+
+    /// For the update check: GitHub over HTTPS, or one address that a test build was given.
+    pub fn with_https_only(https_only: bool) -> Self {
+        // Purpose::UpdateCheck. Hosts: github.com, then *.githubusercontent.com.
         let config = ureq::Agent::config_builder()
             .max_redirects(0)
             .http_status_as_error(false)
-            .https_only(policy.https_only())
+            .https_only(https_only)
             .timeout_connect(Some(CONNECT_TIMEOUT))
             .timeout_recv_response(Some(RESPONSE_TIMEOUT))
             .user_agent(format!("Hushpen/{}", hushpen_core::BUILD_VERSION))

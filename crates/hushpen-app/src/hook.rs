@@ -38,6 +38,8 @@ mod shortcuts;
 #[cfg(feature = "test-automation")]
 mod tray;
 #[cfg(feature = "test-automation")]
+mod updates;
+#[cfg(feature = "test-automation")]
 pub use about::attach as attach_about;
 #[cfg(feature = "test-automation")]
 pub use automation::{
@@ -72,6 +74,8 @@ pub use settings_view::attach as attach_settings_view;
 pub use shortcuts::attach as attach_shortcuts;
 #[cfg(feature = "test-automation")]
 pub use tray::attach as attach_tray;
+#[cfg(feature = "test-automation")]
+pub use updates::attach as attach_updates;
 
 /// Records a timestamped event for `hookctl events`. Does nothing in a build
 /// without the test hook.

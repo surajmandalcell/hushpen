@@ -25,12 +25,14 @@ use crate::shortcuts::Shortcuts;
 use crate::storage;
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
+use crate::updater::{self, FeedChecker, Parts as UpdaterParts, Updater};
 use crate::views::View;
 use crate::window_chrome::main_window_options;
 use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, Window, WindowOptions};
 use hushpen_core::shortcut::Platform;
+use hushpen_core::update::Version;
 use hushpen_platform::keys::GlobalKeys;
 use hushpen_platform::window::lock_chrome;
 use hushpen_store::data_dir::DataDir;
@@ -311,6 +313,28 @@ pub fn run(hidden: bool) -> ExitCode {
             });
             let about = cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
             shell.update(cx, |shell, cx| shell.attach_about(about.clone(), cx));
+            let updater = Version::parse(hushpen_core::BUILD_VERSION).map(|current| {
+                cx.new(|cx| {
+                    Updater::new(
+                        UpdaterParts {
+                            storage: Rc::clone(&storage),
+                            checker: Arc::new(FeedChecker),
+                            opener: Rc::new(SystemOpener),
+                            clock: updater::wall_clock(),
+                            current,
+                        },
+                        cx,
+                    )
+                })
+            });
+            if let Some(updater) = &updater {
+                settings_view.update(cx, |settings, cx| {
+                    settings.attach_updater(updater.clone(), cx)
+                });
+                shell.update(cx, |shell, cx| shell.attach_updater(updater.clone(), cx));
+            } else {
+                log::warn!("the build version is not a version, so updates stay off");
+            }
             shell.update(cx, |shell, cx| {
                 shell.attach_onboarding(onboarding.clone(), cx)
             });
@@ -405,6 +429,9 @@ pub fn run(hidden: bool) -> ExitCode {
                 crate::hook::attach_shortcuts(cx, shortcuts);
                 crate::hook::attach_settings_view(cx, settings_view);
                 crate::hook::attach_about(cx, about);
+                if let Some(updater) = &updater {
+                    crate::hook::attach_updates(cx, updater.clone());
+                }
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_onboarding(cx, onboarding);
                 crate::hook::attach_dictation(cx, dictation);
@@ -415,6 +442,9 @@ pub fn run(hidden: bool) -> ExitCode {
                 if let Some(history) = history {
                     crate::hook::attach_history(cx, history, handle);
                 }
+            }
+            if let Some(updater) = updater {
+                updater.update(cx, |updater, cx| updater.start(cx));
             }
             serve_show_requests(cx, shown);
         });

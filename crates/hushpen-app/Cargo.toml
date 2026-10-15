@@ -31,6 +31,10 @@ pixel-tests = [
     "gpui-kit/test-support",
 ]
 
+# Lets HUSHPEN_UPDATE_FEED and HUSHPEN_UPDATE_PUBKEY replace the feed and the key. Test builds
+# only; `xtask release-check` proves it is absent from shipped binaries.
+update-test-feed = []
+
 [dependencies]
 hushpen-audio.workspace = true
 hushpen-core.workspace = true
@@ -44,6 +48,7 @@ gpui-tray.workspace = true
 gpui-pre-wgpu = { workspace = true, features = ["test-support"], optional = true }
 image = { workspace = true, optional = true }
 log.workspace = true
+minisign-verify.workspace = true
 raw-window-handle.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
