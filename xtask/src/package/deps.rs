@@ -63,19 +63,20 @@ const BASE: &[&str] = &[
     "ld-linux-x86-64.so.2",
 ];
 
-/// The graphics, input, and audio libraries the app cannot start without. The
-/// binary must link or name each one: if a refactor drops a loader string,
-/// the package list would silently shrink, so the build stops.
-const REQUIRED: &[&str] = &[
+/// The graphics, input, audio, and font libraries the app cannot start
+/// without, listed on every install. The binary does not always name them:
+/// an x86-64 release build turns the short loader names (`libvulkan.so.1`)
+/// into immediate values in the code, so no string is left to find, and
+/// text layout reads fontconfig through a library it never names.
+const BASELINE: &[&str] = &[
     "libvulkan.so.1",
     "libxkbcommon.so.0",
     "libxkbcommon-x11.so.0",
     "libasound.so.2",
+    "libfontconfig.so.1",
+    "libwayland-client.so.0",
+    "libwayland-egl.so.1",
 ];
-
-/// Needed on every install although the binary never names it: text layout
-/// reads the fontconfig configuration and font folders the package brings.
-const BASELINE: &[&str] = &["libfontconfig.so.1"];
 
 /// The Vulkan loader finds no device without a driver package. The binary
 /// cannot name one, so it is part of the Vulkan line.
@@ -152,13 +153,6 @@ pub fn derive(needed: &[String], bytes: &[u8]) -> Result<Deps, String> {
         wanted.insert(lib.soname);
     }
     wanted.extend(named);
-    for required in REQUIRED {
-        if !wanted.contains(required) {
-            return Err(format!(
-                "the binary neither links nor names {required}; the package would miss its dependency"
-            ));
-        }
-    }
     wanted.extend(BASELINE);
 
     let mut deb_depends: Vec<String> = wanted
@@ -274,9 +268,18 @@ mod tests {
     }
 
     #[test]
-    fn a_binary_that_loses_a_required_library_fails() {
-        let error = derive(&[], b"\0libvulkan.so.1\0").unwrap_err();
-        assert!(error.contains("libxkbcommon"), "{error}");
+    fn the_core_libraries_are_listed_when_the_binary_names_none() {
+        let deps = derive(&[], b"nothing to see").unwrap();
+        for deb in [
+            "libvulkan1",
+            "libxkbcommon0",
+            "libxkbcommon-x11-0",
+            "libasound2t64 | libasound2",
+            "libwayland-client0",
+            "libwayland-egl1",
+        ] {
+            assert!(deps.deb_depends.iter().any(|d| d == deb), "deb {deb}");
+        }
     }
 
     #[test]
