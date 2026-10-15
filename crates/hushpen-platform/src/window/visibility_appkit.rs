@@ -6,7 +6,7 @@
 use super::ChromeError;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSWindow};
+use objc2_app_kit::{NSApplication, NSView, NSWindow};
 
 fn window_of(view: usize) -> Result<Retained<NSWindow>, ChromeError> {
     MainThreadMarker::new().ok_or_else(|| ChromeError::new("the window needs the main thread"))?;
@@ -31,5 +31,27 @@ pub(super) fn show(view: usize) -> Result<(), ChromeError> {
         window.deminiaturize(None);
     }
     window.makeKeyAndOrderFront(None);
+    Ok(())
+}
+
+pub(super) fn minimize(view: usize) -> Result<(), ChromeError> {
+    window_of(view)?.miniaturize(None);
+    Ok(())
+}
+
+/// Brings the app to the front, as a click on its Dock icon would.
+pub(super) fn activate_app() -> Result<(), ChromeError> {
+    let mtm =
+        MainThreadMarker::new().ok_or_else(|| ChromeError::new("the app needs the main thread"))?;
+    #[allow(deprecated)]
+    NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+    Ok(())
+}
+
+/// Hides every window of the app, like Hide Hushpen in the app menu.
+pub(super) fn hide_app() -> Result<(), ChromeError> {
+    let mtm =
+        MainThreadMarker::new().ok_or_else(|| ChromeError::new("the app needs the main thread"))?;
+    NSApplication::sharedApplication(mtm).hide(None);
     Ok(())
 }

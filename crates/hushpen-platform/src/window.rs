@@ -106,6 +106,34 @@ pub fn show(handle: WindowHandle) -> Result<(), ChromeError> {
     }
 }
 
+/// Sends a window to the Dock on macOS. Other backends minimize through GPUI, which keeps the
+/// window manager's own request.
+pub fn minimize(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => visibility_appkit::minimize(view),
+        _ => Err(ChromeError::new(
+            "this window backend minimizes through GPUI",
+        )),
+    }
+}
+
+/// Brings the whole app to the front on macOS; other systems have no app-level front.
+pub fn activate_app() -> Result<(), ChromeError> {
+    #[cfg(target_os = "macos")]
+    return visibility_appkit::activate_app();
+    #[cfg(not(target_os = "macos"))]
+    Ok(())
+}
+
+/// Hides every window of the app on macOS (the app menu's Hide); a no-op elsewhere.
+pub fn hide_app() -> Result<(), ChromeError> {
+    #[cfg(target_os = "macos")]
+    return visibility_appkit::hide_app();
+    #[cfg(not(target_os = "macos"))]
+    Ok(())
+}
+
 /// A window rectangle in screen pixels, origin at the top left of the primary screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Frame {

@@ -1,7 +1,7 @@
 use super::*;
 use crate::actions::*;
 use crate::controller::testkit::*;
-use crate::main_window::testkit::install_fake;
+use crate::main_window::testkit::{install_fake, install_reentrant};
 use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext, WindowOptions};
 use hushpen_core::dictation::State;
 use std::rc::Rc;
@@ -194,4 +194,26 @@ fn the_show_entry_brings_the_window_back_on_the_view_it_had(cx: &mut TestAppCont
         View::Models
     );
     let _ = fixture.window;
+}
+
+#[gpui_kit::test]
+fn the_show_and_settings_entries_make_their_native_calls_after_the_app_is_free(
+    cx: &mut TestAppContext,
+) {
+    let fixture = fixture(cx, &["base"]);
+    let native = cx.update(|cx| install_reentrant(cx, fixture.window, true, cx.to_async()));
+    click(cx, &ShowHushpen);
+    assert_eq!(native.calls.get(), 2, "the order front and the activation");
+    click(cx, &ShowSettings);
+    assert_eq!(native.calls.get(), 4);
+}
+
+#[gpui_kit::test]
+fn the_hide_entry_hides_the_app_after_the_app_is_free(cx: &mut TestAppContext) {
+    let fixture = fixture(cx, &["base"]);
+    click(cx, &HideHushpen);
+    assert_eq!(fixture.calls.app_hidden.get(), 1);
+    let native = cx.update(|cx| install_reentrant(cx, fixture.window, true, cx.to_async()));
+    click(cx, &HideHushpen);
+    assert_eq!(native.calls.get(), 1);
 }

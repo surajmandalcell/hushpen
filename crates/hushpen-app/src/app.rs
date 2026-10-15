@@ -152,8 +152,8 @@ pub fn run(hidden: bool) -> ExitCode {
             let _ = handle.update(cx, |_, window, cx| {
                 main_window::install(cx, handle, native_handle(window), tray_host);
                 theme::observe(window).detach();
-                window.on_window_should_close(cx, |window, cx| {
-                    main_window::close_requested(window, cx);
+                window.on_window_should_close(cx, |_, cx| {
+                    main_window::close_requested(cx);
                     false
                 });
             });
@@ -391,15 +391,19 @@ pub fn run(hidden: bool) -> ExitCode {
                     crate::hook::attach_history(cx, history, handle);
                 }
             }
-            cx.spawn(async move |cx| {
-                let mut shown = shown;
-                while shown.next().await.is_some() {
-                    cx.update(main_window::show);
-                }
-            })
-            .detach();
+            serve_show_requests(cx, shown);
         });
     ExitCode::SUCCESS
+}
+
+/// Shows the main window each time a second start of the app asks for it.
+fn serve_show_requests(cx: &mut App, mut shown: mpsc::UnboundedReceiver<()>) {
+    cx.spawn(async move |cx| {
+        while shown.next().await.is_some() {
+            cx.update(main_window::show);
+        }
+    })
+    .detach();
 }
 
 /// Reads the permissions at once when the user comes back to Hushpen, which is where a visit to
@@ -579,3 +583,6 @@ fn lock_native_chrome(window: &Window) {
         log::warn!("could not lock the window chrome: {error}");
     }
 }
+
+#[cfg(test)]
+mod tests;

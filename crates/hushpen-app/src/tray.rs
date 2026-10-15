@@ -177,7 +177,7 @@ pub fn register_actions(cx: &mut App, surfaces: &Surfaces) {
     });
     let shell = surfaces.shell.downgrade();
     cx.on_action(move |_: &ShowAbout, cx| open_view(&shell, View::About, cx));
-    cx.on_action(|_: &HideHushpen, cx| cx.hide());
+    cx.on_action(|_: &HideHushpen, cx| main_window::hide_app(cx));
     cx.on_action(|_: &QuitHushpen, cx| {
         hook::record_event("tray", "quit");
         cx.quit();

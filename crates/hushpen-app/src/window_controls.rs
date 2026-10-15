@@ -25,7 +25,7 @@ pub fn controls<V: 'static>(cx: &mut Context<V>) -> impl IntoElement + use<V> {
             chrome::WINDOW_CLOSE,
             chrome::WINDOW_CLOSE_GLYPH,
             IconName::X,
-            cx.listener(|_, _: &ClickEvent, window, cx| main_window::close_requested(window, cx)),
+            cx.listener(|_, _: &ClickEvent, _, cx| main_window::close_requested(cx)),
         ))
         .child(light(
             "minimize",
