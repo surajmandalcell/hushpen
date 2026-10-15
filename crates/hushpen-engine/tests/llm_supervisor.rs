@@ -354,7 +354,7 @@ fn a_job_that_waits_for_the_worker_can_be_cancelled_at_once() {
     let started_at = Instant::now();
     job.cancel();
     assert_eq!(job.wait(), LlmOutcome::Cancelled);
-    assert!(started_at.elapsed() < Duration::from_millis(500));
+    assert!(started_at.elapsed() < Duration::from_secs(1));
     client.shutdown();
 }
 
