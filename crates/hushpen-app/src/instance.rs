@@ -180,15 +180,13 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn scratch(name: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+    /// The folder goes away when the returned value drops, so declare it before any guard
+    /// that holds the socket inside it.
+    fn scratch(name: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("hp-inst-{name}-"))
+            .tempdir()
             .unwrap()
-            .as_nanos();
-        let dir =
-            std::env::temp_dir().join(format!("hp-inst-{name}-{}-{nanos}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        dir
     }
 
     fn first(data: &Path) -> Instance {
@@ -200,50 +198,68 @@ mod tests {
 
     #[test]
     fn a_second_start_asks_the_first_to_show_and_does_not_become_an_instance() {
-        let data = scratch("second");
+        let dir = scratch("second");
+        let data = dir.path();
         let shown = Arc::new(AtomicUsize::new(0));
         let counter = shown.clone();
-        let _guard = first(&data).serve(move || {
+        let _guard = first(data).serve(move || {
             counter.fetch_add(1, Ordering::SeqCst);
         });
 
-        assert!(matches!(start(&data).unwrap(), Start::AlreadyRunning));
+        assert!(matches!(start(data).unwrap(), Start::AlreadyRunning));
         assert_eq!(
             shown.load(Ordering::SeqCst),
             1,
             "the reply comes after the show request ran"
         );
-        assert!(matches!(start(&data).unwrap(), Start::AlreadyRunning));
+        assert!(matches!(start(data).unwrap(), Start::AlreadyRunning));
         assert_eq!(shown.load(Ordering::SeqCst), 2);
     }
 
     #[test]
     fn a_leftover_socket_and_lock_file_do_not_block_a_start() {
-        let data = scratch("stale");
-        let socket = socket_path(&data);
+        let dir = scratch("stale");
+        let data = dir.path();
+        let socket = socket_path(data);
         fs::create_dir_all(socket.parent().unwrap()).unwrap();
         fs::write(&socket, b"left by a crashed instance").unwrap();
         fs::write(lock_path(&socket), b"").unwrap();
 
-        let _guard = first(&data).serve(|| {});
-        assert!(matches!(start(&data).unwrap(), Start::AlreadyRunning));
+        let _guard = first(data).serve(|| {});
+        assert!(matches!(start(data).unwrap(), Start::AlreadyRunning));
     }
 
     #[test]
     fn releasing_the_guard_lets_the_next_start_become_first() {
-        let data = scratch("release");
-        let guard = first(&data).serve(|| {});
+        let dir = scratch("release");
+        let data = dir.path();
+        let guard = first(data).serve(|| {});
         drop(guard);
-        assert!(!socket_path(&data).exists(), "the socket file is removed");
+        assert!(!socket_path(data).exists(), "the socket file is removed");
 
-        let _again = first(&data).serve(|| {});
+        let _again = first(data).serve(|| {});
     }
 
     #[test]
     fn different_data_folders_run_side_by_side() {
         let (a, b) = (scratch("side-a"), scratch("side-b"));
-        let _a = first(&a).serve(|| {});
-        let _b = first(&b).serve(|| {});
+        let _a = first(a.path()).serve(|| {});
+        let _b = first(b.path()).serve(|| {});
+    }
+
+    #[test]
+    fn a_scratch_folder_is_removed_when_it_drops() {
+        let dir = scratch("gone");
+        let path = dir.path().to_path_buf();
+        assert!(path.is_dir());
+        assert!(
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("hp-inst-gone-")
+        );
+        drop(dir);
+        assert!(!path.exists());
     }
 
     #[test]
