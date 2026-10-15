@@ -1,0 +1,16 @@
+<ul class="crates">
+{{#each overview}}
+<li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+{{/each}}
+</ul>
+{{#each licenses}}
+<section class="license" id="{{id}}">
+<h3>{{name}}</h3>
+<ul>
+{{#each used_by}}
+<li>{{crate.name}} {{crate.version}}{{#if crate.repository}} (<a href="{{crate.repository}}">{{crate.repository}}</a>){{/if}}</li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+</section>
+{{/each}}

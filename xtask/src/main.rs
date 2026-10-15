@@ -1,6 +1,7 @@
 //! Repo tasks, run as `cargo xtask <task>`.
 
 mod gate;
+mod licenses;
 mod net_audit;
 mod package;
 mod release_check;
@@ -9,7 +10,7 @@ mod two_binary;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit|two-binary|release-check [--binary <path>] [--guard]|package [...]|package-verify [...]>";
+const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|release-check [--binary <path>] [--guard]|package [...]|package-verify [...]>";
 
 fn main() -> ExitCode {
     let root = match root::repo_root() {
@@ -22,6 +23,7 @@ fn main() -> ExitCode {
     let result = match std::env::args().nth(1).as_deref() {
         Some("gate") => gate::run(&root),
         Some("net-audit") => net_audit::run(&root),
+        Some("licenses") => licenses::run(&root),
         Some("two-binary") => two_binary::run(&root),
         Some("release-check") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();

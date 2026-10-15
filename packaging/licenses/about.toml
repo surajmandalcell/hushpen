@@ -1,0 +1,36 @@
+# The licenses cargo-about may accept. Keep it equal to [licenses] allow in deny.toml.
+accepted = [
+    "AGPL-3.0",
+    "GPL-3.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "MPL-2.0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",
+    "bzip2-1.0.6",
+    "OFL-1.1",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+]
+ignore-dev-dependencies = true
+ignore-build-dependencies = false
+
+# The workspace crates are AGPL-3.0-or-later themselves; the LICENSE file covers them.
+[private]
+ignore = true
