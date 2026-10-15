@@ -379,9 +379,12 @@ jobs:
           ls -l "$RUNNER_TEMP/rc1" "$RUNNER_TEMP/rc2"
       - name: Sign the feeds with a fresh test key
         run: harness/update-fixtures.sh "$RUNNER_TEMP/rc1" "$RUNNER_TEMP/rc2" "$HUSHPEN_UPDATE_TEST"
-      - name: Fetch the speech clip
+      - name: Fetch the tiny.en model and the speech clip
         run: |
           mkdir -p "$HUSHPEN_TEST_ASSETS/models/whisper" "$HUSHPEN_TEST_ASSETS/fixtures"
+          curl -fsSL --retry 3 -o "$HUSHPEN_TEST_ASSETS/models/whisper/ggml-tiny.en.bin" \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
+          echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  $HUSHPEN_TEST_ASSETS/models/whisper/ggml-tiny.en.bin" | sha256sum -c -
           cp crates/hushpen-engine/tests/fixtures/speech-short.wav "$HUSHPEN_TEST_ASSETS/fixtures/"
       - name: Build the harness image
         run: docker build --platform linux/amd64 -t hushpen-val:noble -f harness/Dockerfile harness
