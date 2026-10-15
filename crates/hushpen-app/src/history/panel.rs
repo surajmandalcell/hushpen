@@ -920,6 +920,10 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         if key == "llm" && value.is_none() {
             continue;
         }
+        // An import has no target app and no rule pass to show.
+        if is_import(&row) && matches!(key, "app" | "rule") && value.is_none() {
+            continue;
+        }
         rows.push((field(palette, key, label, value), plain));
     }
     if is_import(&row) {

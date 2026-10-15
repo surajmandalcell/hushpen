@@ -101,6 +101,8 @@ fn the_detail_lists_the_segments_with_their_times(cx: &mut TestAppContext) {
     assert!(present(cx, &view, "history.detail.segment.1"));
     assert!(!present(cx, &view, "history.detail.segment.2"));
     assert!(present(cx, &view, "history.detail.file"));
+    assert!(!present(cx, &view, "history.detail.app"));
+    assert!(!present(cx, &view, "history.detail.rule"));
 }
 
 #[gpui_kit::test]
@@ -113,6 +115,7 @@ fn a_dictation_detail_has_no_segment_rows_and_no_file_row(cx: &mut TestAppContex
 
     assert!(!present(cx, &view, "history.detail.segment.0"));
     assert!(!present(cx, &view, "history.detail.file"));
+    assert!(present(cx, &view, "history.detail.app"));
 }
 
 #[gpui_kit::test]
