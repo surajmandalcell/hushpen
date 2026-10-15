@@ -5,6 +5,7 @@ use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::history::{self, History};
 use crate::hook;
+use crate::import::{self, Import};
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
 use crate::onboarding::{self, Onboarding};
@@ -30,6 +31,7 @@ pub struct Shell {
     dictation: Option<Entity<Dictation>>,
     dictionary: Option<Entity<Dictionary>>,
     history: Option<Entity<History>>,
+    import: Option<Entity<Import>>,
     shortcuts: Option<Entity<Shortcuts>>,
     settings: Option<Entity<Settings>>,
     about: Option<Entity<About>>,
@@ -60,6 +62,7 @@ impl Shell {
             dictation: None,
             dictionary: None,
             history: None,
+            import: None,
             shortcuts: None,
             settings: None,
             about: None,
@@ -116,6 +119,13 @@ impl Shell {
         let scroll = self.content_scroll.clone();
         history.update(cx, |history, _| history.use_scroll(scroll));
         self.history = Some(history);
+        cx.notify();
+    }
+
+    /// Shows the file queue in the Import view and repaints when it changes.
+    pub fn attach_import(&mut self, import: Entity<Import>, cx: &mut Context<Self>) {
+        cx.observe(&import, |_, _, cx| cx.notify()).detach();
+        self.import = Some(import);
         cx.notify();
     }
 
@@ -340,6 +350,10 @@ impl Shell {
             (_, _, Some(dictionary), _, View::Dictionary) => {
                 dictionary::panel::render(dictionary, cx).into_any_element()
             }
+            (_, _, _, _, View::Import) => match &self.import {
+                Some(import) => import::panel::render(import, cx).into_any_element(),
+                None => placeholder(view, palette).into_any_element(),
+            },
             (_, _, _, _, View::Settings) => match &self.settings {
                 Some(settings) => {
                     settings::render(settings, self.shortcuts.as_ref(), cx).into_any_element()

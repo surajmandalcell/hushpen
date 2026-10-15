@@ -20,6 +20,7 @@ pub mod engine_host;
 pub mod flow_bar;
 pub mod history;
 pub mod hook;
+pub mod import;
 pub mod instance;
 pub mod llm_host;
 pub mod main_window;

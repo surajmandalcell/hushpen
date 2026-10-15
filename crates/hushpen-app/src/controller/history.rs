@@ -52,6 +52,13 @@ impl Controller {
         self.history_revision
     }
 
+    /// Tells the History view that a row came from somewhere other than a dictation, such as an
+    /// import, so it reads the list again.
+    pub fn history_changed(&mut self, cx: &mut Context<Self>) {
+        self.history_revision += 1;
+        cx.notify();
+    }
+
     /// The audio retention setting, read each time so a change applies to the next run.
     pub fn retention(&self) -> Retention {
         self.storage
@@ -361,7 +368,7 @@ impl Controller {
 }
 
 /// The timed pieces of a transcription, in the shape of the `segment` table.
-pub(super) fn segments_of(done: &Transcription) -> Vec<Segment> {
+pub(crate) fn segments_of(done: &Transcription) -> Vec<Segment> {
     done.segments
         .iter()
         .enumerate()

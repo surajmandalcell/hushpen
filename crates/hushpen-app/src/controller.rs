@@ -17,6 +17,7 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{ClipboardItem, Context, Entity};
 pub use history::ReprocessState;
+pub(crate) use history::segments_of;
 use hushpen_core::cleanup;
 use hushpen_core::dictation::{
     ARM_WINDOW_MS, AppEvent, Config, Cue, Delivery, DictationMachine, Effect, Mode, RowStatus,
