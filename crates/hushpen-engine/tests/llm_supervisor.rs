@@ -375,6 +375,67 @@ fn a_worker_that_never_says_ready_is_killed_and_replaced() {
     client.shutdown();
 }
 
+/// The production LLM timing with only the backoff shortened, so a restart shows up quickly.
+fn llm_timing() -> Timing {
+    Timing {
+        backoff: millis(&[100, 300, 600]),
+        ..Timing::llm()
+    }
+}
+
+#[test]
+fn the_llm_ready_timeout_covers_a_model_load_and_the_speech_engine_keeps_its_own() {
+    assert!(Timing::llm().ready_timeout >= Duration::from_secs(60));
+    assert_eq!(Timing::default().ready_timeout, Duration::from_secs(10));
+    let (llm, speech) = (Timing::llm(), Timing::default());
+    assert_eq!(llm.pong_timeout, speech.pong_timeout);
+    assert_eq!(llm.cancel_grace, speech.cancel_grace);
+    assert_eq!(llm.backoff, speech.backoff);
+}
+
+#[test]
+fn a_worker_that_says_ready_after_25_seconds_is_not_killed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (log, path) = log_in(dir.path());
+    let started_at = Instant::now();
+    let client = LlmClient::start(fake("slow-ready:25000"), llm_timing(), log);
+    assert!(client.wait_for(Duration::from_secs(5), |s| s.pid.is_some()));
+    let pid = client.status().pid;
+    assert!(client.wait_for(Duration::from_secs(40), |s| s.state == LlmState::Ready));
+    assert!(started_at.elapsed() >= Duration::from_secs(24));
+    let status = client.status();
+    assert_eq!((status.restarts, status.pid), (0, pid));
+    client.shutdown();
+    assert!(!std::fs::read_to_string(path).unwrap().contains(" CRASH "));
+}
+
+#[test]
+fn a_worker_that_never_says_ready_is_killed_only_after_the_llm_ready_timeout() {
+    let dir = tempfile::tempdir().unwrap();
+    let (log, path) = log_in(dir.path());
+    let started_at = Instant::now();
+    let client = LlmClient::start(sh("cat >/dev/null"), llm_timing(), log);
+    assert!(client.wait_for(Duration::from_secs(5), |s| s.pid.is_some()));
+    let first = client.status().pid;
+
+    std::thread::sleep(Duration::from_secs(12));
+    let status = client.status();
+    assert_eq!(
+        (status.state, status.restarts, status.pid),
+        (LlmState::Starting, 0, first),
+        "the speech engine's 10 s must not apply here"
+    );
+
+    assert!(client.wait_for(Duration::from_secs(70), |s| s.restarts >= 1));
+    assert!(started_at.elapsed() >= Duration::from_secs(60));
+    assert!(client.wait_for(Duration::from_secs(5), |s| s.pid.is_some()
+        && s.pid != first));
+    client.shutdown();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("reason=no ready message"), "{text}");
+    assert_eq!(restart_delays(&path), vec![100]);
+}
+
 #[test]
 fn a_deaf_worker_is_replaced_by_the_watchdog() {
     let dir = tempfile::tempdir().unwrap();

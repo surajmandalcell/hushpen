@@ -121,7 +121,7 @@ impl LlmHost {
             program: self.program.clone(),
             args: Vec::<OsString>::new(),
         };
-        LlmClient::start(spec, Timing::default(), log)
+        LlmClient::start(spec, Timing::llm(), log)
     }
 
     /// Stops the worker. Safe to call twice.

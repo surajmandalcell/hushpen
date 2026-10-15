@@ -1,7 +1,9 @@
 //! A scripted stand-in for `hushpen-llm`, used only by the supervisor tests. It speaks the real
 //! frame protocol and answers `Cleanup` with the upper-cased user text. Odd input steers it:
 //! a user text with `hang` gets no answer, and with `stubborn` the job also ignores `Cancel`.
-//! The first argument `deaf` makes it say `Ready` and then ignore everything.
+//! The first argument `deaf` makes it say `Ready` and then ignore everything. The argument
+//! `slow-ready:<ms>` waits that long before it reads the first frame, like a worker that
+//! compiles its GPU backend before it can say `Ready`.
 
 use hushpen_core::llm_protocol::{
     JobStats, LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason,
@@ -16,7 +18,15 @@ fn send(out: &mut impl Write, event: &LlmEvent) {
 }
 
 fn main() {
-    let deaf = std::env::args().nth(1).as_deref() == Some("deaf");
+    let mode = std::env::args().nth(1);
+    let deaf = mode.as_deref() == Some("deaf");
+    if let Some(ms) = mode
+        .as_deref()
+        .and_then(|mode| mode.strip_prefix("slow-ready:"))
+        .and_then(|ms| ms.parse::<u64>().ok())
+    {
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    }
     let mut input = io::stdin().lock();
     let mut out = io::stdout().lock();
     let mut model: Option<(String, bool)> = None;

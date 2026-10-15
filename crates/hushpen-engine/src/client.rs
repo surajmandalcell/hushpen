@@ -56,6 +56,18 @@ impl Default for Timing {
     }
 }
 
+impl Timing {
+    /// The AI worker says `Ready` only after it has set up its GPU backend, and on the first
+    /// Metal start that took longer than the speech engine's 10 s. Everything else stays as
+    /// for the speech engine.
+    pub fn llm() -> Self {
+        Self {
+            ready_timeout: Duration::from_secs(60),
+            ..Self::default()
+        }
+    }
+}
+
 /// A model to keep loaded. After a restart the supervisor loads the last good one again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadSpec {
