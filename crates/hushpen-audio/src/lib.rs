@@ -2,6 +2,7 @@
 
 pub mod capture;
 pub mod cue;
+pub mod decode;
 pub mod devices;
 pub mod error;
 pub mod feed;

@@ -1,11 +1,12 @@
 //! The engine child: reads requests from one pipe, writes events to another.
 //!
 //! The reading thread never blocks on a model. It answers `Ping`, handles `Cancel`, and queues
-//! `LoadModel` and `Transcribe` for one worker thread that owns the loaded model. That is why a
+//! `LoadModel`, `Transcribe`, and `ImportFile` for one worker thread that owns the loaded model. That is why a
 //! ping still gets its pong during a load or a long job, and why a cancel can settle a job that
 //! has not started yet without waiting for the job in front of it.
 
 use crate::asr::{AsrEngine, CancelFlag, EngineError, LoadOptions, TranscribeOptions};
+use crate::child;
 use crate::wav;
 use hushpen_core::error;
 use hushpen_core::protocol::{
@@ -59,6 +60,11 @@ enum Work {
     Transcribe {
         job: u64,
         wav_path: PathBuf,
+        options: TranscribeOptions,
+    },
+    Import {
+        job: u64,
+        path: PathBuf,
         options: TranscribeOptions,
     },
 }
@@ -160,27 +166,26 @@ fn read_requests(
                 language,
                 prompt,
             } => {
-                let fresh = match lock(jobs).entry(job) {
-                    Entry::Occupied(_) => false,
-                    Entry::Vacant(slot) => {
-                        slot.insert(JobEntry {
-                            cancel: CancelFlag::new(),
-                            started: false,
-                        });
-                        true
-                    }
-                };
-                if fresh {
+                if register(jobs, job, output) {
                     let _ = work.send(Work::Transcribe {
                         job,
                         wav_path: PathBuf::from(wav_path),
                         options: TranscribeOptions { language, prompt },
                     });
-                } else {
-                    send(
-                        output,
-                        &Event::error(Some(job), error::ENGINE_PROTOCOL, "job id is in use"),
-                    );
+                }
+            }
+            Request::ImportFile {
+                job,
+                path,
+                language,
+                prompt,
+            } => {
+                if register(jobs, job, output) {
+                    let _ = work.send(Work::Import {
+                        job,
+                        path: PathBuf::from(path),
+                        options: TranscribeOptions { language, prompt },
+                    });
                 }
             }
             Request::Cancel { job } => cancel(job, jobs, output),
@@ -188,6 +193,27 @@ fn read_requests(
             Request::Shutdown => return 0,
         }
     }
+}
+
+/// Records a new job. A job id that is already in use is answered with an error and `false`.
+fn register(jobs: &Jobs, job: u64, output: &Output) -> bool {
+    let fresh = match lock(jobs).entry(job) {
+        Entry::Occupied(_) => false,
+        Entry::Vacant(slot) => {
+            slot.insert(JobEntry {
+                cancel: CancelFlag::new(),
+                started: false,
+            });
+            true
+        }
+    };
+    if !fresh {
+        send(
+            output,
+            &Event::error(Some(job), error::ENGINE_PROTOCOL, "job id is in use"),
+        );
+    }
+    fresh
 }
 
 fn decode(frame: &Frame) -> Result<Request, DecodeError> {
@@ -234,8 +260,28 @@ impl Worker {
                     wav_path,
                     options,
                 } => self.transcribe(engine.as_deref_mut(), job, &wav_path, &options),
+                Work::Import { job, path, options } => {
+                    self.import(engine.as_deref_mut(), job, &path, &options);
+                }
             }
         }
+    }
+
+    fn import(
+        &self,
+        engine: Option<&mut (dyn AsrEngine + 'static)>,
+        job: u64,
+        path: &Path,
+        options: &TranscribeOptions,
+    ) {
+        let Some(cancel) = self.start(job) else {
+            return;
+        };
+        let event = child::import::run(engine, job, path, options, &cancel, &mut |event| {
+            send(&self.output, &event);
+        });
+        lock(&self.jobs).remove(&job);
+        send(&self.output, &event);
     }
 
     /// A failed load leaves the old model in place.
@@ -396,6 +442,18 @@ mod tests {
     impl AsrEngine for Fake {
         fn gpu_in_use(&self) -> bool {
             false
+        }
+
+        fn transcribe_with_progress(
+            &mut self,
+            pcm: &[f32],
+            options: &TranscribeOptions,
+            cancel: &CancelFlag,
+            progress: &mut dyn FnMut(f32),
+        ) -> Result<Transcript, EngineError> {
+            let done = self.transcribe(pcm, options, cancel)?;
+            progress(1.0);
+            Ok(done)
         }
 
         fn transcribe(
@@ -726,6 +784,173 @@ mod tests {
             Event::Pong,
             "the cancelled job must not answer a second time"
         );
+        assert_eq!(session.finish(), 0);
+    }
+
+    impl Session {
+        fn import(&mut self, job: u64, path: &str) {
+            self.send(&Request::ImportFile {
+                job,
+                path: path.to_owned(),
+                language: None,
+                prompt: None,
+            });
+        }
+
+        /// The events up to the one that ends job `job`, progress and segments included.
+        fn until_done(&mut self, job: u64) -> Vec<Event> {
+            let mut seen = Vec::new();
+            loop {
+                let event = self.next();
+                let done = matches!(
+                    &event,
+                    Event::Result { job: id, .. }
+                        | Event::Cancelled { job: id }
+                        | Event::Error { job: Some(id), .. } if *id == job
+                );
+                seen.push(event);
+                if done {
+                    return seen;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_import_reports_progress_then_segments_then_a_result() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        let path = session.wav();
+        session.import(1, &path);
+        let events = session.until_done(1);
+        let fractions: Vec<f64> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Progress { job: 1, fraction } => Some(*fraction),
+                _ => None,
+            })
+            .collect();
+        assert!(fractions.len() >= 2, "{events:?}");
+        assert!(fractions.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert!(
+            fractions
+                .iter()
+                .all(|fraction| (0.0..=1.0).contains(fraction))
+        );
+        let segments = events
+            .iter()
+            .filter(|event| matches!(event, Event::Segment { .. }))
+            .count();
+        assert_eq!(segments, 2);
+        assert!(matches!(
+            events.last(),
+            Some(Event::Result { job: 1, audio_ms: 100, language, .. }) if language == "en"
+        ));
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn an_import_before_any_model_gets_a_coded_error() {
+        let mut session = Session::start(0);
+        let path = session.wav();
+        session.import(4, &path);
+        assert!(matches!(
+            session.next(),
+            Event::Error { job: Some(4), code, .. } if code == error::ENGINE_NO_MODEL
+        ));
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn an_import_of_opus_is_unsupported_and_the_child_keeps_answering() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        let path = session.dir.path().join("a.opus");
+        std::fs::write(
+            &path,
+            [&b"OggS"[..], &[0; 24], b"OpusHead", &[0; 16]].concat(),
+        )
+        .unwrap();
+        session.import(1, &path.to_string_lossy());
+        let events = session.until_done(1);
+        assert!(matches!(
+            events.last(),
+            Some(Event::Error { job: Some(1), code, params })
+                if code == error::IMPORT_UNSUPPORTED_CODEC
+                    && hushpen_core::protocol::error_texts(params).0.contains("Opus")
+        ));
+        session.send(&Request::Ping);
+        assert_eq!(session.next(), Event::Pong);
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn a_corrupt_or_empty_import_is_a_decode_failure_and_the_next_import_works() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        let corrupt = session.dir.path().join("corrupt.wav");
+        std::fs::write(&corrupt, "this is not audio\n".repeat(30)).unwrap();
+        let empty = session.dir.path().join("empty.wav");
+        std::fs::write(&empty, b"").unwrap();
+        for (job, path) in [(1, corrupt), (2, empty)] {
+            session.import(job, &path.to_string_lossy());
+            assert!(matches!(
+                session.until_done(job).last(),
+                Some(Event::Error { code, .. }) if code == error::IMPORT_DECODE_FAILED
+            ));
+        }
+        let path = session.wav();
+        session.import(3, &path);
+        assert!(matches!(
+            session.until_done(3).last(),
+            Some(Event::Result { job: 3, .. })
+        ));
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn an_import_of_a_missing_file_is_a_decode_failure() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        session.import(1, "/does/not/exist.mp3");
+        assert!(matches!(
+            session.until_done(1).last(),
+            Some(Event::Error { code, .. }) if code == error::IMPORT_DECODE_FAILED
+        ));
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn a_cancel_stops_a_running_import_in_well_under_a_second() {
+        let mut session = Session::start(10_000);
+        session.load("ggml-tiny.en.bin");
+        let path = session.wav();
+        session.import(1, &path);
+        thread::sleep(Duration::from_millis(100));
+        let asked = Instant::now();
+        session.send(&Request::Cancel { job: 1 });
+        let events = session.until_done(1);
+        assert_eq!(events.last(), Some(&Event::Cancelled { job: 1 }));
+        assert!(asked.elapsed() < Duration::from_millis(500));
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn a_cancel_settles_a_queued_import_without_running_it() {
+        let mut session = Session::start(0);
+        session.send(&Request::LoadModel {
+            path: "/models/ggml-slow.bin".into(),
+            gpu: false,
+            threads: 2,
+        });
+        assert!(matches!(session.next(), Event::Loading { .. }));
+        let path = session.wav();
+        session.import(1, &path);
+        session.send(&Request::Cancel { job: 1 });
+        assert_eq!(session.next(), Event::Cancelled { job: 1 });
+        assert!(matches!(session.next(), Event::Loaded { .. }));
+        session.send(&Request::Ping);
+        assert_eq!(session.next(), Event::Pong);
         assert_eq!(session.finish(), 0);
     }
 

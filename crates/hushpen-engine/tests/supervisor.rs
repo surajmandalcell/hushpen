@@ -4,7 +4,7 @@
 use hushpen_core::error;
 use hushpen_core::protocol::{Event, PROTOCOL_VERSION, write_json};
 use hushpen_engine::{
-    ChildSpec, EngineClient, EngineLog, EngineState, JobOutcome, Timing, TranscribeSpec,
+    ChildSpec, EngineClient, EngineLog, EngineState, ImportSpec, JobOutcome, Timing, TranscribeSpec,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -247,6 +247,82 @@ fn a_cancel_the_child_ignores_kills_it_within_the_grace_and_restarts_it_at_once(
     let text = std::fs::read_to_string(log_path).unwrap();
     assert!(text.contains(" CANCEL_KILL "), "{text}");
     assert!(text.contains("code=CANCELLED"), "{text}");
+}
+
+#[test]
+fn an_import_sends_its_request_and_hears_progress_until_the_result() {
+    let dir = tempfile::tempdir().unwrap();
+    let (log, _) = log_in(dir.path());
+    let frames = |events: &[Event]| {
+        let mut bytes = Vec::new();
+        for event in events {
+            write_json(&mut bytes, &event.to_json()).unwrap();
+        }
+        bytes
+    };
+    let ready = dir.path().join("ready.bin");
+    std::fs::write(
+        &ready,
+        frames(&[Event::Ready {
+            version: "test".into(),
+            protocol: PROTOCOL_VERSION,
+            gpu: false,
+        }]),
+    )
+    .unwrap();
+    // The job is the first this client submits, so it has id 1. The answers come late enough
+    // for the request to be in flight.
+    let answers = dir.path().join("answers.bin");
+    std::fs::write(
+        &answers,
+        frames(&[
+            Event::Progress {
+                job: 1,
+                fraction: 0.25,
+            },
+            Event::Progress {
+                job: 1,
+                fraction: 0.75,
+            },
+            Event::Result {
+                job: 1,
+                text: "hi".into(),
+                language: "en".into(),
+                segments: Vec::new(),
+                audio_ms: 1000,
+                ms: 5,
+            },
+        ]),
+    )
+    .unwrap();
+    let client = EngineClient::start(
+        sh(&format!(
+            "cat '{}'; sleep 0.5; cat '{}'; cat >/dev/null",
+            ready.display(),
+            answers.display()
+        )),
+        Timing {
+            pong_timeout: Duration::from_secs(30),
+            ..fast()
+        },
+        log,
+    );
+    assert!(client.wait_for(Duration::from_secs(5), |s| s.state == EngineState::Ready));
+    let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = Arc::clone(&heard);
+    let job = client.import(
+        ImportSpec {
+            path: dir.path().join("talk.mp3"),
+            language: None,
+            prompt: None,
+        },
+        Some(Arc::new(move |fraction| {
+            sink.lock().unwrap().push(fraction)
+        })),
+    );
+    assert!(matches!(job.wait(), JobOutcome::Done(done) if done.text == "hi"));
+    assert_eq!(*heard.lock().unwrap(), vec![0.25, 0.75]);
+    client.shutdown();
 }
 
 #[test]

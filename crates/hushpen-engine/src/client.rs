@@ -84,6 +84,26 @@ pub struct TranscribeSpec {
     pub prompt: Option<String>,
 }
 
+/// A media file for the engine child to decode and transcribe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportSpec {
+    pub path: PathBuf,
+    /// `None` or `auto` detects the language.
+    pub language: Option<String>,
+    pub prompt: Option<String>,
+}
+
+/// Receives how far an import is, from 0 to 1. It runs on the supervisor thread, so it must
+/// return at once.
+pub type ProgressSink = Arc<dyn Fn(f32) + Send + Sync>;
+
+/// What a job asks the child to read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Work {
+    Wav(TranscribeSpec),
+    Import(ImportSpec),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineState {
     /// The child is starting and has not said `Ready`.
@@ -176,7 +196,8 @@ pub(crate) enum Cmd {
     },
     Transcribe {
         job: u64,
-        spec: TranscribeSpec,
+        work: Work,
+        progress: Option<ProgressSink>,
         reply: Sender<JobOutcome>,
     },
     Cancel {
@@ -299,12 +320,27 @@ impl EngineClient {
 
     /// Starts a job. The audio file is only read, never changed or deleted.
     pub fn transcribe(&self, spec: TranscribeSpec) -> JobHandle {
+        self.submit(Work::Wav(spec), None)
+    }
+
+    /// Starts an import: the child decodes the file, then transcribes it in windows. `progress`
+    /// hears how far it is. The file is only read.
+    pub fn import(&self, spec: ImportSpec, progress: Option<ProgressSink>) -> JobHandle {
+        self.submit(Work::Import(spec), progress)
+    }
+
+    fn submit(&self, work: Work, progress: Option<ProgressSink>) -> JobHandle {
         let job = self.inner.next_job.fetch_add(1, Ordering::Relaxed);
         let (reply, answer) = mpsc::channel();
         let sent = self
             .inner
             .commands
-            .send(manager::Msg::Cmd(Cmd::Transcribe { job, spec, reply }))
+            .send(manager::Msg::Cmd(Cmd::Transcribe {
+                job,
+                work,
+                progress,
+                reply,
+            }))
             .is_ok();
         JobHandle {
             job,

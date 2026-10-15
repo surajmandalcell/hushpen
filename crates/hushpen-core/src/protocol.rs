@@ -177,6 +177,15 @@ pub enum Request {
         language: Option<String>,
         prompt: Option<String>,
     },
+    /// Decode a media file in the engine child and transcribe it. The child decodes untrusted
+    /// files, so a decoder fault costs this job and not the app.
+    ImportFile {
+        job: u64,
+        path: String,
+        /// `None` or `auto` detects the language.
+        language: Option<String>,
+        prompt: Option<String>,
+    },
     Cancel {
         job: u64,
     },
@@ -200,6 +209,15 @@ impl Request {
                 "type": "transcribe", "job": job, "wav_path": wav_path,
                 "language": language, "prompt": prompt,
             }),
+            Self::ImportFile {
+                job,
+                path,
+                language,
+                prompt,
+            } => json!({
+                "type": "import_file", "job": job, "path": path,
+                "language": language, "prompt": prompt,
+            }),
             Self::Cancel { job } => json!({"type": "cancel", "job": job}),
             Self::Ping => json!({"type": "ping"}),
             Self::Shutdown => json!({"type": "shutdown"}),
@@ -220,6 +238,12 @@ impl Request {
             "transcribe" => Ok(Self::Transcribe {
                 job: fields.u64("job")?,
                 wav_path: fields.string("wav_path")?,
+                language: fields.optional_string("language")?,
+                prompt: fields.optional_string("prompt")?,
+            }),
+            "import_file" => Ok(Self::ImportFile {
+                job: fields.u64("job")?,
+                path: fields.string("path")?,
                 language: fields.optional_string("language")?,
                 prompt: fields.optional_string("prompt")?,
             }),
@@ -255,6 +279,11 @@ pub enum Event {
         ms: u64,
         /// True when the model runs on the GPU.
         gpu: bool,
+    },
+    /// How far a long job is, from 0 to 1. Only imports send it.
+    Progress {
+        job: u64,
+        fraction: f64,
     },
     Segment {
         job: u64,
@@ -329,6 +358,9 @@ impl Event {
             Self::Loaded { model, ms, gpu } => {
                 json!({"type": "loaded", "model": model, "ms": ms, "gpu": gpu})
             }
+            Self::Progress { job, fraction } => {
+                json!({"type": "progress", "job": job, "fraction": fraction})
+            }
             Self::Segment { job, segment } => {
                 let mut value = segment.to_json();
                 value["type"] = json!("segment");
@@ -370,6 +402,10 @@ impl Event {
                 model: fields.string("model")?,
                 ms: fields.u64("ms")?,
                 gpu: fields.bool("gpu")?,
+            }),
+            "progress" => Ok(Self::Progress {
+                job: fields.u64("job")?,
+                fraction: fields.f64("fraction")?,
             }),
             "segment" => Ok(Self::Segment {
                 job: fields.u64("job")?,
@@ -456,6 +492,12 @@ impl<'a> Fields<'a> {
         self.get(name)?
             .as_u64()
             .ok_or_else(|| Self::wrong(name, "a whole number"))
+    }
+
+    pub(crate) fn f64(&self, name: &str) -> Result<f64, DecodeError> {
+        self.get(name)?
+            .as_f64()
+            .ok_or_else(|| Self::wrong(name, "a number"))
     }
 
     pub(crate) fn optional_u64(&self, name: &str) -> Result<Option<u64>, DecodeError> {
@@ -588,6 +630,12 @@ mod tests {
                 language: Some("en".into()),
                 prompt: None,
             },
+            Request::ImportFile {
+                job: 8,
+                path: "/talks/a.mp3".into(),
+                language: None,
+                prompt: Some("Hushpen".into()),
+            },
             Request::Cancel { job: 7 },
             Request::Ping,
             Request::Shutdown,
@@ -629,6 +677,10 @@ mod tests {
                 segments: vec![segment],
                 audio_ms: 1000,
                 ms: 300,
+            },
+            Event::Progress {
+                job: 3,
+                fraction: 0.25,
             },
             Event::Cancelled { job: 3 },
             Event::error(Some(3), "ENGINE_BAD_LANGUAGE", "xx"),
@@ -698,6 +750,27 @@ mod tests {
                 prompt: None,
             })
         );
+    }
+
+    #[test]
+    fn an_import_request_needs_a_path_and_a_progress_event_needs_a_number() {
+        assert!(matches!(
+            Request::from_json(&json!({"type": "import_file", "job": 1})),
+            Err(DecodeError::Invalid(_))
+        ));
+        assert_eq!(
+            Request::from_json(&json!({"type": "import_file", "job": 1, "path": "/a.flac"})),
+            Ok(Request::ImportFile {
+                job: 1,
+                path: "/a.flac".into(),
+                language: None,
+                prompt: None,
+            })
+        );
+        assert!(matches!(
+            Event::from_json(&json!({"type": "progress", "job": 1, "fraction": "half"})),
+            Err(DecodeError::Invalid(_))
+        ));
     }
 
     #[test]

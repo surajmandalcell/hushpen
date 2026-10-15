@@ -108,6 +108,16 @@ impl AsrEngine for WhisperEngine {
         options: &TranscribeOptions,
         cancel: &CancelFlag,
     ) -> Result<Transcript, EngineError> {
+        self.transcribe_with_progress(pcm, options, cancel, &mut |_| {})
+    }
+
+    fn transcribe_with_progress(
+        &mut self,
+        pcm: &[f32],
+        options: &TranscribeOptions,
+        cancel: &CancelFlag,
+        progress: &mut dyn FnMut(f32),
+    ) -> Result<Transcript, EngineError> {
         if pcm.is_empty() {
             return Err(EngineError::NoAudio);
         }
@@ -134,9 +144,20 @@ impl AsrEngine for WhisperEngine {
         let mut segments = Vec::new();
         let mut detected = language.map(str::to_owned);
         let padded = windows::with_tail_pad(pcm);
-        for window in windows::plan(padded.len()) {
+        let plan = windows::plan(padded.len());
+        let count = plan.len();
+        for (index, window) in plan.into_iter().enumerate() {
             if cancel.is_cancelled() {
                 return Err(EngineError::Cancelled);
+            }
+            if count > 1 {
+                eprintln!(
+                    "engine: window {}/{count} {}..{} s, overlap {} s",
+                    index + 1,
+                    window.start / windows::SAMPLE_RATE,
+                    window.end / windows::SAMPLE_RATE,
+                    windows::OVERLAP / windows::SAMPLE_RATE,
+                );
             }
             let (found, language_used) = self.run_window(
                 &padded[window.start..window.end],
@@ -147,6 +168,7 @@ impl AsrEngine for WhisperEngine {
             // Later windows reuse the language of the first one instead of detecting again.
             detected.get_or_insert(language_used);
             segments.extend(windows::own_segments(&window, found));
+            progress((index + 1) as f32 / count as f32);
         }
         let segments = windows::clip_to_audio(segments, pcm.len());
         let text = segments

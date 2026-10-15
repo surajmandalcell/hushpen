@@ -2,6 +2,7 @@
 
 mod asr;
 mod backoff;
+mod child;
 mod client;
 mod cpu;
 mod engine_log;
@@ -20,8 +21,8 @@ pub use asr::{
     AsrEngine, CancelFlag, EngineError, LoadOptions, Segment, TranscribeOptions, Transcript,
 };
 pub use client::{
-    ChildSpec, EngineClient, EngineState, Failure, JobHandle, JobOutcome, LoadHandle, LoadSpec,
-    Loaded, Status, Timing, TranscribeSpec, Transcription,
+    ChildSpec, EngineClient, EngineState, Failure, ImportSpec, JobHandle, JobOutcome, LoadHandle,
+    LoadSpec, Loaded, ProgressSink, Status, Timing, TranscribeSpec, Transcription,
 };
 pub use cpu::missing_cpu_feature;
 pub use engine_log::{EngineLog, Level};

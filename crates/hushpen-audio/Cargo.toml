@@ -17,6 +17,7 @@ cpal.workspace = true
 hound.workspace = true
 log.workspace = true
 rubato.workspace = true
+symphonia.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 cpal = { workspace = true, features = ["pulseaudio"] }

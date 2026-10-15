@@ -55,6 +55,8 @@ hound = "=3.5.1"
 rubato = "=5.0.1"
 symphonia = { version = "=0.6.1", default-features = false, features = [
     "aac", "isomp4", "mp3", "flac", "wav", "ogg", "vorbis", "alac", "aiff",
+    # PCM decodes WAV and AIFF samples; the tag readers let a probe step over ID3 headers.
+    "pcm", "id3v2", "id3v1",
 ] }
 
 # Platform.

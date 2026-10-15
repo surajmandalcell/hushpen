@@ -4,8 +4,8 @@
 
 use crate::backoff::Backoff;
 use crate::client::{
-    ChildSpec, Cmd, EngineState, Failure, JobOutcome, LoadSpec, Loaded, Shared, Timing,
-    TranscribeSpec, Transcription,
+    ChildSpec, Cmd, EngineState, Failure, JobOutcome, LoadSpec, Loaded, ProgressSink, Shared,
+    Timing, Transcription, Work,
 };
 use crate::engine_log::{EngineLog, Level};
 use crate::server::model_name;
@@ -72,13 +72,15 @@ struct LoadEntry {
 
 struct Pending {
     job: u64,
-    spec: TranscribeSpec,
+    work: Work,
+    progress: Option<ProgressSink>,
     reply: Sender<JobOutcome>,
     deadline: Instant,
 }
 
 struct Inflight {
     reply: Sender<JobOutcome>,
+    progress: Option<ProgressSink>,
     sent: Instant,
     cancel_deadline: Option<Instant>,
     model: String,
@@ -183,13 +185,19 @@ impl Manager {
                     self.publish();
                 }
             }
-            Cmd::Transcribe { job, spec, reply } => {
+            Cmd::Transcribe {
+                job,
+                work,
+                progress,
+                reply,
+            } => {
                 if self.is_ready() {
-                    self.send_job(job, &spec, reply);
+                    self.send_job(job, &work, progress, reply);
                 } else {
                     self.pending.push_back(Pending {
                         job,
-                        spec,
+                        work,
+                        progress,
                         reply,
                         deadline: Instant::now() + self.timing.submit_wait,
                     });
@@ -233,7 +241,13 @@ impl Manager {
         self.publish();
     }
 
-    fn send_job(&mut self, job: u64, spec: &TranscribeSpec, reply: Sender<JobOutcome>) {
+    fn send_job(
+        &mut self,
+        job: u64,
+        work: &Work,
+        progress: Option<ProgressSink>,
+        reply: Sender<JobOutcome>,
+    ) {
         let (model, threads) = self
             .sent_loads
             .back()
@@ -247,18 +261,28 @@ impl Manager {
             job,
             Inflight {
                 reply,
+                progress,
                 sent: Instant::now(),
                 cancel_deadline: None,
                 model,
                 threads,
             },
         );
-        self.write(&Request::Transcribe {
-            job,
-            wav_path: spec.wav_path.to_string_lossy().into_owned(),
-            language: spec.language.clone(),
-            prompt: spec.prompt.clone(),
-        });
+        let request = match work {
+            Work::Wav(spec) => Request::Transcribe {
+                job,
+                wav_path: spec.wav_path.to_string_lossy().into_owned(),
+                language: spec.language.clone(),
+                prompt: spec.prompt.clone(),
+            },
+            Work::Import(spec) => Request::ImportFile {
+                job,
+                path: spec.path.to_string_lossy().into_owned(),
+                language: spec.language.clone(),
+                prompt: spec.prompt.clone(),
+            },
+        };
+        self.write(&request);
     }
 
     // ---- events from the child ----
@@ -275,6 +299,14 @@ impl Manager {
                 }
             }
             Event::Loading { .. } | Event::Segment { .. } => {}
+            Event::Progress { job, fraction } => {
+                if let Some(inflight) = self.inflight.get(&job)
+                    && inflight.cancel_deadline.is_none()
+                    && let Some(progress) = &inflight.progress
+                {
+                    progress(fraction.clamp(0.0, 1.0) as f32);
+                }
+            }
             Event::Loaded { model, ms, gpu } => {
                 let Some(entry) = self.sent_loads.pop_front() else {
                     return;
@@ -376,7 +408,7 @@ impl Manager {
             self.send_load(entry);
         }
         while let Some(pending) = self.pending.pop_front() {
-            self.send_job(pending.job, &pending.spec, pending.reply);
+            self.send_job(pending.job, &pending.work, pending.progress, pending.reply);
         }
         self.publish();
     }

@@ -61,7 +61,7 @@ fn fast_timing() -> Timing {
     }
 }
 
-fn load_spec(path: &Path) -> LoadSpec {
+pub(super) fn load_spec(path: &Path) -> LoadSpec {
     LoadSpec {
         path: path.to_path_buf(),
         gpu: false,
@@ -77,13 +77,13 @@ fn english(wav: &Path) -> TranscribeSpec {
     }
 }
 
-struct Started {
-    client: EngineClient,
-    dir: tempfile::TempDir,
-    log_path: PathBuf,
+pub(super) struct Started {
+    pub(super) client: EngineClient,
+    pub(super) dir: tempfile::TempDir,
+    pub(super) log_path: PathBuf,
 }
 
-fn start_client(timing: Timing) -> Started {
+pub(super) fn start_client(timing: Timing) -> Started {
     let dir = tempfile::tempdir().expect("temp dir");
     let log_path = dir.path().join("logs/engine.log");
     let client = EngineClient::start(engine_spec(), timing, EngineLog::open(&log_path).unwrap());
@@ -105,7 +105,7 @@ fn expect_done(outcome: JobOutcome) -> String {
     }
 }
 
-fn job_lines(log_path: &Path) -> Vec<String> {
+pub(super) fn job_lines(log_path: &Path) -> Vec<String> {
     std::fs::read_to_string(log_path)
         .unwrap()
         .lines()

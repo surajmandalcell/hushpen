@@ -123,6 +123,19 @@ pub trait AsrEngine {
         options: &TranscribeOptions,
         cancel: &CancelFlag,
     ) -> Result<Transcript, EngineError>;
+
+    /// Like [`AsrEngine::transcribe`], and tells `progress` how far the job is (0 to 1) each
+    /// time a window of a long input is done. An engine with no windows reports nothing.
+    fn transcribe_with_progress(
+        &mut self,
+        pcm: &[f32],
+        options: &TranscribeOptions,
+        cancel: &CancelFlag,
+        progress: &mut dyn FnMut(f32),
+    ) -> Result<Transcript, EngineError> {
+        let _ = progress;
+        self.transcribe(pcm, options, cancel)
+    }
 }
 
 #[cfg(test)]
