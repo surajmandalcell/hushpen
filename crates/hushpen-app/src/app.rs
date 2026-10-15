@@ -11,6 +11,7 @@ use crate::dictionary::Dictionary;
 use crate::engine_host::EngineHost;
 use crate::flow_bar::{self, FlowBar, OpenHistory, PopUp};
 use crate::history::History;
+use crate::import::{self, Import, Parts as ImportParts};
 use crate::instance::{self, Start};
 use crate::llm_host::LlmHost;
 use crate::main_window;
@@ -198,6 +199,19 @@ pub fn run(hidden: bool) -> ExitCode {
                     cx,
                 )
             });
+            let import = cx.new(|cx| {
+                Import::new(
+                    ImportParts {
+                        storage: Rc::clone(&dictation_storage),
+                        models: models.clone(),
+                        controller: controller.clone(),
+                        run: import::host_runner(&engine),
+                        spawn: models::thread_spawner(),
+                    },
+                    cx,
+                )
+            });
+            shell.update(cx, |shell, cx| shell.attach_import(import.clone(), cx));
             let shortcuts =
                 cx.new(|cx| Shortcuts::new(Rc::clone(&dictation_storage), Platform::current(), cx));
             shell.update(cx, |shell, cx| {
@@ -250,6 +264,15 @@ pub fn run(hidden: bool) -> ExitCode {
             });
             follow_activation(cx, onboarding.clone(), settings_view.clone());
             let loading_llm = Rc::clone(&llm);
+            {
+                let dictating = controller.clone();
+                let importing = import.clone();
+                settings_view.update(cx, |settings, _| {
+                    settings.attach_in_flight(Rc::new(move |cx| {
+                        dictating.read(cx).in_flight() || importing.read(cx).busy()
+                    }))
+                });
+            }
             settings_view.update(cx, |settings, cx| {
                 settings.attach_ai(
                     AiParts {
@@ -385,6 +408,7 @@ pub fn run(hidden: bool) -> ExitCode {
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_onboarding(cx, onboarding);
                 crate::hook::attach_dictation(cx, dictation);
+                crate::hook::attach_import(cx, import);
                 if let Some(dictionary) = dictionary {
                     crate::hook::attach_dictionary(cx, dictionary);
                 }
