@@ -4,6 +4,7 @@
 //! signs the real manifest with it.
 
 use minisign::{KeyPair, SecretKeyBox};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,9 @@ const PUB_DATE: &str = "2026-01-01T00:00:00Z";
 const MANIFEST: &str = "latest.json";
 const SIGNATURE: &str = "latest.json.minisig";
 
+/// Where the local feed server answers when `--base-url` is not given.
+const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8765";
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct FeedOptions {
     out: PathBuf,
@@ -21,6 +25,20 @@ pub struct FeedOptions {
     version: String,
     notes_url: String,
     tamper: bool,
+    /// `target=file` pairs: each file is listed under that target of the manifest.
+    artifacts: Vec<(String, PathBuf)>,
+    base_url: String,
+    /// Lists every artifact with a hash the file does not have.
+    wrong_sha: bool,
+}
+
+/// One entry of `platforms`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Platform {
+    pub target: String,
+    pub url: String,
+    pub sha256: String,
+    pub size: u64,
 }
 
 fn value(iter: &mut std::slice::Iter<'_, String>, flag: &str) -> Result<String, String> {
@@ -32,6 +50,7 @@ fn value(iter: &mut std::slice::Iter<'_, String>, flag: &str) -> Result<String, 
 pub fn parse_feed_args(args: &[String]) -> Result<FeedOptions, String> {
     let (mut out, mut key, mut version, mut notes_url, mut tamper) =
         (None, None, None, None, false);
+    let (mut artifacts, mut base_url, mut wrong_sha) = (Vec::new(), None, false);
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -40,6 +59,16 @@ pub fn parse_feed_args(args: &[String]) -> Result<FeedOptions, String> {
             "--version" => version = Some(value(&mut iter, "--version")?),
             "--notes-url" => notes_url = Some(value(&mut iter, "--notes-url")?),
             "--tamper" => tamper = true,
+            "--artifact" => {
+                let pair = value(&mut iter, "--artifact")?;
+                let (target, file) = pair
+                    .split_once('=')
+                    .filter(|(target, file)| !target.is_empty() && !file.is_empty())
+                    .ok_or("--artifact is <target>=<file>, for example linux-arm64=./a.AppImage")?;
+                artifacts.push((target.to_owned(), PathBuf::from(file)));
+            }
+            "--base-url" => base_url = Some(value(&mut iter, "--base-url")?),
+            "--wrong-sha" => wrong_sha = true,
             other => return Err(format!("unknown update-feed argument {other:?}")),
         }
     }
@@ -51,14 +80,64 @@ pub fn parse_feed_args(args: &[String]) -> Result<FeedOptions, String> {
             .unwrap_or_else(|| format!("https://example.com/hushpen/releases/{version}")),
         version,
         tamper,
+        artifacts,
+        base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
+        wrong_sha,
     })
 }
 
 /// The manifest text for `version`. The date is fixed so a test can change one byte of it.
-pub fn manifest_text(version: &str, notes_url: &str) -> String {
-    format!(
-        "{{\n  \"version\": \"{version}\",\n  \"pub_date\": \"{PUB_DATE}\",\n  \"notes_url\": \"{notes_url}\"\n}}\n"
-    )
+pub fn manifest_text(version: &str, notes_url: &str, platforms: &[Platform]) -> String {
+    let mut text = format!(
+        "{{\n  \"version\": \"{version}\",\n  \"pub_date\": \"{PUB_DATE}\",\n  \"notes_url\": \"{notes_url}\""
+    );
+    if !platforms.is_empty() {
+        let entries: Vec<String> = platforms
+            .iter()
+            .map(|p| {
+                format!(
+                    "    \"{}\": {{\"url\": \"{}\", \"sha256\": \"{}\", \"size\": {}}}",
+                    p.target, p.url, p.sha256, p.size
+                )
+            })
+            .collect();
+        text.push_str(&format!(
+            ",\n  \"platforms\": {{\n{}\n  }}",
+            entries.join(",\n")
+        ));
+    }
+    text.push_str("\n}\n");
+    text
+}
+
+/// The `platforms` entries for the artifact files: each is served at `<base_url>/<file name>`.
+fn platforms(options: &FeedOptions) -> Result<Vec<Platform>, String> {
+    options
+        .artifacts
+        .iter()
+        .map(|(target, file)| {
+            let bytes = fs::read(file)
+                .map_err(|error| format!("cannot read {}: {error}", file.display()))?;
+            let name = file
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| format!("{} has no usable name", file.display()))?;
+            let sha256 = if options.wrong_sha {
+                "0".repeat(64)
+            } else {
+                Sha256::digest(&bytes)
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect()
+            };
+            Ok(Platform {
+                target: target.clone(),
+                url: format!("{}/{name}", options.base_url.trim_end_matches('/')),
+                sha256,
+                size: bytes.len() as u64,
+            })
+        })
+        .collect()
 }
 
 fn read_secret(path: &Path) -> Result<minisign::SecretKey, String> {
@@ -73,7 +152,7 @@ fn read_secret(path: &Path) -> Result<minisign::SecretKey, String> {
 /// the manifest changes after it was signed.
 pub fn write_feed(options: &FeedOptions) -> Result<(), String> {
     let secret = read_secret(&options.key)?;
-    let manifest = manifest_text(&options.version, &options.notes_url);
+    let manifest = manifest_text(&options.version, &options.notes_url, &platforms(options)?);
     let signature = minisign::sign(
         None,
         &secret,
@@ -177,6 +256,55 @@ mod tests {
         assert!(options.notes_url.contains("9.9.9"));
         assert!(parse_feed_args(&args(&["--out", "o", "--key", "k"])).is_err());
         assert!(parse_feed_args(&args(&["--bogus"])).is_err());
+    }
+
+    #[test]
+    fn artifacts_are_listed_with_their_real_hash_size_and_a_url_under_the_base() {
+        let dir = scratch("artifacts");
+        let file = dir.join("Hushpen.AppImage");
+        fs::write(&file, b"abc").unwrap();
+        let spec = format!("linux-arm64={}", file.display());
+        let mut list = vec![
+            "--out",
+            "o",
+            "--key",
+            "k",
+            "--version",
+            "9.9.9",
+            "--artifact",
+            &spec,
+            "--base-url",
+            "http://127.0.0.1:9/",
+        ];
+        let options = parse_feed_args(&args(&list)).unwrap();
+        let listed = platforms(&options).unwrap();
+        assert_eq!(
+            listed,
+            [Platform {
+                target: "linux-arm64".into(),
+                url: "http://127.0.0.1:9/Hushpen.AppImage".into(),
+                sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+                size: 3,
+            }]
+        );
+        let text = manifest_text("9.9.9", "https://example.com/n", &listed);
+        assert!(text.contains(r#""linux-arm64": {"url": "http://127.0.0.1:9/Hushpen.AppImage""#));
+        assert!(text.ends_with("}\n}\n"));
+
+        list.push("--wrong-sha");
+        let wrong = platforms(&parse_feed_args(&args(&list)).unwrap()).unwrap();
+        assert_eq!(wrong[0].sha256, "0".repeat(64));
+        assert_eq!(wrong[0].size, 3);
+
+        assert!(parse_feed_args(&args(&["--artifact", "nofile"])).is_err());
+        assert!(parse_feed_args(&args(&["--artifact", "=x"])).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_manifest_without_artifacts_has_no_platforms_key() {
+        let text = manifest_text("9.9.9", "https://example.com/n", &[]);
+        assert!(!text.contains("platforms"));
     }
 
     #[test]

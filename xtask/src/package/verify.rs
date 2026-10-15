@@ -221,7 +221,11 @@ fn verify_rpm(
         )
     };
     let info = query(&["--qf", "%{NAME}|%{VERSION}|%{LICENSE}|%{ARCH}"])?;
-    let want = format!("hushpen|{version}|AGPL-3.0-or-later|{}", target.rpm_arch());
+    let want = format!(
+        "hushpen|{}|AGPL-3.0-or-later|{}",
+        super::config::rpm_version(version),
+        target.rpm_arch()
+    );
     need(
         &mut problems,
         info.trim() == want,

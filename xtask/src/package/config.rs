@@ -118,12 +118,17 @@ pub fn shell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 
+/// An rpm version cannot hold `-`; `~` sorts a pre-release before the release.
+pub fn rpm_version(version: &str) -> String {
+    version.replace('-', "~")
+}
+
 /// `[package.metadata.generate-rpm]` overrides for `--metadata-overwrite`.
 pub fn rpm_metadata(version: &str, assets: &[(PathBuf, String, &str)], deps: &Deps) -> String {
     let mut text = format!(
         "name = \"hushpen\"\nversion = {}\nlicense = \"AGPL-3.0-or-later\"\nsummary = {}\n\
          description = {}\nurl = {}\nvendor = {}\n",
-        quote(version),
+        quote(&rpm_version(version)),
         quote(DESCRIPTION),
         quote(DESCRIPTION),
         quote(HOMEPAGE),
@@ -225,6 +230,14 @@ mod tests {
         assert!(text.contains(
             "{ source = \"/s/hushpen\", dest = \"/usr/lib/hushpen/hushpen\", mode = \"755\" }"
         ));
+    }
+
+    #[test]
+    fn a_prerelease_version_becomes_an_rpm_tilde_version() {
+        assert_eq!(rpm_version("2.0.0"), "2.0.0");
+        assert_eq!(rpm_version("2.0.0-rc.1"), "2.0.0~rc.1");
+        let text = rpm_metadata("2.0.0-rc.1", &[], &deps());
+        assert!(text.contains("version = \"2.0.0~rc.1\""));
     }
 
     #[test]

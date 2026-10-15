@@ -28,7 +28,7 @@ const APP_BINARY: &str = "hushpen";
 const LLM_BINARY: &str = "hushpen-llm";
 const NOTICES: &str = "THIRD-PARTY-NOTICES.html";
 const USAGE: &str = "usage: cargo xtask package [--target macos-arm64|linux-x64|linux-arm64] \
-[--formats app,zip,dmg,appimage,deb,rpm,tar.gz] [--out <dir>] [--skip-build]";
+[--formats app,zip,dmg,appimage,deb,rpm,tar.gz] [--out <dir>] [--skip-build] [--test-feed]";
 
 #[derive(Debug, PartialEq, Eq)]
 struct Options {
@@ -36,6 +36,9 @@ struct Options {
     formats: Option<Vec<Format>>,
     out: Option<PathBuf>,
     skip_build: bool,
+    /// Packages the app built with the `update-test-feed` feature, for the self-update tests.
+    /// Such a build never ships, so it needs its own `--out` folder.
+    test_feed: bool,
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
@@ -44,6 +47,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         formats: None,
         out: None,
         skip_build: false,
+        test_feed: false,
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -59,8 +63,14 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             }
             "--out" => options.out = Some(PathBuf::from(value("--out")?)),
             "--skip-build" => options.skip_build = true,
+            "--test-feed" => options.test_feed = true,
             other => return Err(format!("unknown package argument {other:?}\n{USAGE}")),
         }
+    }
+    if options.test_feed && options.out.is_none() {
+        return Err(format!(
+            "--test-feed needs --out <dir>: a test-feed build never goes in the dist folder\n{USAGE}"
+        ));
     }
     Ok(options)
 }
@@ -188,23 +198,22 @@ pub fn first_file_with_extension(dir: &Path, extension: &str) -> Result<PathBuf,
         .ok_or_else(|| format!("no *{extension} file in {}", dir.display()))
 }
 
-fn build_binaries(root: &Path) -> Result<(), String> {
+fn build_binaries(root: &Path, test_feed: bool) -> Result<(), String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    run_tool(
-        Command::new(cargo)
-            .current_dir(root)
-            .args([
-                "build",
-                "--release",
-                "--locked",
-                "-p",
-                "hushpen-app",
-                "-p",
-                "hushpen-llm",
-            ])
-            .env("GGML_NATIVE", "OFF"),
-        "cargo build --release",
-    )
+    let mut command = Command::new(cargo);
+    command.current_dir(root).args([
+        "build",
+        "--release",
+        "--locked",
+        "-p",
+        "hushpen-app",
+        "-p",
+        "hushpen-llm",
+    ]);
+    if test_feed {
+        command.args(["--features", "hushpen-app/update-test-feed"]);
+    }
+    run_tool(command.env("GGML_NATIVE", "OFF"), "cargo build --release")
 }
 
 pub fn sha256_hex(path: &Path) -> Result<String, String> {
@@ -263,7 +272,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     formats.dedup();
 
     if !options.skip_build {
-        build_binaries(root)?;
+        build_binaries(root, options.test_feed)?;
     }
     let binaries = target_dir(root).join("release");
     let ctx = Ctx {
@@ -276,7 +285,15 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         binaries,
     };
     fs::create_dir_all(&ctx.dist).map_err(|e| format!("cannot create dist: {e}"))?;
-    for binary in [APP_BINARY, LLM_BINARY] {
+    // The app of a test-feed build carries the feed override on purpose. The other binary and
+    // the packaging steps are held to the release rules as usual.
+    let checked: &[&str] = if options.test_feed {
+        println!("test-feed build: never publish these files");
+        &[LLM_BINARY]
+    } else {
+        &[APP_BINARY, LLM_BINARY]
+    };
+    for binary in checked {
         crate::release_check::check_binary(&ctx.binaries.join(binary))?;
     }
 
@@ -331,6 +348,14 @@ mod tests {
         assert!(parse_args(&args(&["--target"])).is_err());
         assert!(parse_args(&args(&["--formats", "msi"])).is_err());
         assert!(parse_args(&args(&["--bogus"])).is_err());
+    }
+
+    #[test]
+    fn a_test_feed_build_must_name_its_own_out_folder() {
+        assert!(parse_args(&args(&["--test-feed"])).is_err());
+        let options = parse_args(&args(&["--test-feed", "--out", "/x/feed-test"])).unwrap();
+        assert!(options.test_feed);
+        assert!(!parse_args(&args(&[])).unwrap().test_feed);
     }
 
     #[test]
