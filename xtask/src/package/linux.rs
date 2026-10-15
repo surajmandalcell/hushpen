@@ -29,9 +29,9 @@ fn icon_paths(ctx: &Ctx) -> Vec<PathBuf> {
 }
 
 fn derive_deps(ctx: &Ctx) -> Result<Deps, String> {
-    let binary = ctx.binaries.join(APP_BINARY);
-    let bytes = fs::read(&binary).map_err(|e| format!("cannot read {}: {e}", binary.display()))?;
-    let deps = deps::derive(&deps::needed_of(&binary)?, &bytes)?;
+    let app = ctx.binaries.join(APP_BINARY);
+    let worker = ctx.binaries.join(LLM_BINARY);
+    let deps = deps::derive_from_binaries(&[&app, &worker])?;
     println!("deb Depends: {}", deps.deb_depends.join(", "));
     println!("rpm Requires: {}", deps.rpm_requires.join(", "));
     Ok(deps)

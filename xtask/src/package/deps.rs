@@ -137,8 +137,22 @@ pub fn needed_of(binary: &Path) -> Result<Vec<String>, String> {
     Ok(parse_needed(&String::from_utf8_lossy(&output.stdout)))
 }
 
+/// The lists for a package that ships all of these binaries: a library that
+/// only the AI worker links (OpenMP, from llama.cpp) must be installed too.
+pub fn derive_from_binaries(binaries: &[&Path]) -> Result<Deps, String> {
+    let mut needed = Vec::new();
+    let mut bytes = Vec::new();
+    for binary in binaries {
+        needed.extend(needed_of(binary)?);
+        bytes.extend(
+            std::fs::read(binary).map_err(|e| format!("cannot read {}: {e}", binary.display()))?,
+        );
+    }
+    derive(&needed, &bytes)
+}
+
 /// Builds the package dependency lists from the linked and the named
-/// libraries of one binary.
+/// libraries of the binaries.
 pub fn derive(needed: &[String], bytes: &[u8]) -> Result<Deps, String> {
     let named = named_sonames(bytes);
     let mut wanted: BTreeSet<&'static str> = BTreeSet::new();
@@ -280,6 +294,13 @@ mod tests {
         ] {
             assert!(deps.deb_depends.iter().any(|d| d == deb), "deb {deb}");
         }
+    }
+
+    #[test]
+    fn a_library_only_the_worker_links_is_listed() {
+        let deps = derive(&strings(&["libgomp.so.1", "libc.so.6"]), b"").unwrap();
+        assert!(deps.deb_depends.iter().any(|d| d == "libgomp1"));
+        assert!(deps.rpm_requires.iter().any(|d| d == "libgomp"));
     }
 
     #[test]
