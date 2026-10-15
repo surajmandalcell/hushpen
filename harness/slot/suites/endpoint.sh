@@ -251,7 +251,7 @@ press_test || failures+="no answer from Test connection with the stub stopped; "
 down_ms=$TEST_MS
 [ "$(ep .test.state)" = failed ] || failures+="the test state is '$(ep .test.state)' with the stub stopped; "
 [ "$(ep .test.code)" = ENDPOINT_FAILED ] || failures+="the test code is '$(ep .test.code)'; "
-case "$(tree_text settings.cleanup.endpointStatus)" in ENDPOINT_FAILED*) ;; *) failures+="the status row says '$(tree_text settings.cleanup.endpointStatus)'; " ;; esac
+[ "$(tree_text settings.cleanup.endpointStatus)" = "The endpoint could not be reached." ] || failures+="the status row says '$(tree_text settings.cleanup.endpointStatus)', not the plain sentence; "
 [ "$down_ms" -le 6000 ] || failures+="the failure took $down_ms ms; "
 shot ep-002-failed
 s0=$(now_ms)
@@ -397,7 +397,7 @@ press_test || failures+="no answer from Test connection for the http address; "
 [ "$(ep .test.state)" = failed ] || failures+="the test state is '$(ep .test.state)'; "
 [ "$(ep .test.code)" = ENDPOINT_FAILED ] || failures+="the test code is '$(ep .test.code)'; "
 case "$(ep .test.reason)" in *https*) ;; *) failures+="the reason '$(ep .test.reason)' does not say https is needed; " ;; esac
-case "$(tree_text settings.cleanup.endpointStatus)" in *ENDPOINT_FAILED*https*) ;; *) failures+="the status row says '$(tree_text settings.cleanup.endpointStatus)'; " ;; esac
+[ "$(tree_text settings.cleanup.endpointStatus)" = "Use https. Plain http works only for this computer." ] || failures+="the status row says '$(tree_text settings.cleanup.endpointStatus)', not the plain sentence; "
 shot ep-009-refused
 refused_ms=$TEST_MS
 ai_dictate ep-009-dictation "$FILLER_WAV" || failures+="the dictation did not end; "

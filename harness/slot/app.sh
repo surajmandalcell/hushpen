@@ -6,6 +6,9 @@
 #   APP_DATA_DIR=/some/dir  - HUSHPEN_DATA_DIR points there instead of /data
 #   APP_NO_DATA_DIR=1       - HUSHPEN_DATA_DIR is unset, so the app uses its default folder
 #   APP_NO_WINDOW=1         - do not wait for a mapped window (start hidden)
+#   APP_BIN=/app/hushpen-release - run another binary (the release build has no hook socket, so
+#                             use it with APP_NO_WINDOW unset)
+#   APP_STRACE=<file>       - log the app's connect calls to the file from the first instruction
 # A Change-data-folder restart replaces the process without app.sh; `adopt` writes the new
 # process id into the pidfile so the next stop finds it.
 pidfile=/tmp/app.pid
@@ -46,16 +49,31 @@ start() {
   stop
   [ -x /app/hushpen ] || { echo "app: /app/hushpen is missing; run harness/build-app.sh" >&2; return 1; }
   seed_onboarding_done
-  local begin
+  local begin bin=${APP_BIN:-/app/hushpen}
+  [ -x "$bin" ] || { echo "app: $bin is missing" >&2; return 1; }
   begin=$(date +%s%3N)
+  # APP_STRACE=<file> starts the app under strace so its connect calls are logged from the first
+  # instruction. strace stays in front, so the pidfile gets the app's own pid afterwards.
+  local launch=("$bin")
+  [ -z "${APP_STRACE:-}" ] || launch=(strace -f -qq -e trace=connect -o "$APP_STRACE" "$bin")
   if [ "${APP_NO_DATA_DIR:-}" = 1 ]; then
-    env -u HUSHPEN_DATA_DIR /app/hushpen >/logs/app.log 2>&1 &
+    env -u HUSHPEN_DATA_DIR "${launch[@]}" >/logs/app.log 2>&1 &
   elif [ -n "${APP_DATA_DIR:-}" ]; then
-    env HUSHPEN_DATA_DIR="$APP_DATA_DIR" /app/hushpen >/logs/app.log 2>&1 &
+    env HUSHPEN_DATA_DIR="$APP_DATA_DIR" "${launch[@]}" >/logs/app.log 2>&1 &
   else
-    /app/hushpen >/logs/app.log 2>&1 &
+    "${launch[@]}" >/logs/app.log 2>&1 &
   fi
   echo $! >"$pidfile"
+  if [ -n "${APP_STRACE:-}" ]; then
+    local app_pid=""
+    for _ in $(seq 100); do
+      app_pid=$(pgrep -P "$(cat "$pidfile")" -x "$(basename "$bin")" | head -1)
+      [ -n "$app_pid" ] && break
+      sleep 0.1
+    done
+    [ -n "$app_pid" ] || { echo "app: no process under strace" >&2; return 1; }
+    echo "$app_pid" >"$pidfile"
+  fi
   if [ "${APP_NO_WINDOW:-}" = 1 ]; then
     for _ in $(seq 100); do
       [ -S /run/hook.sock ] && break
