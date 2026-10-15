@@ -21,6 +21,7 @@ pub enum Target {
     LogFolder,
     Github,
     Issues,
+    Licenses,
 }
 
 impl Target {
@@ -30,8 +31,24 @@ impl Target {
             Target::LogFolder => "log-folder",
             Target::Github => "github",
             Target::Issues => "issues",
+            Target::Licenses => "licenses",
         }
     }
+}
+
+const NOTICES_FILE: &str = "THIRD-PARTY-NOTICES.html";
+
+/// The notices file of this install, given the folder of the running binary. Packages put it
+/// beside the binary (tar.gz, deb, rpm), in `Contents/Resources` (.app), or in `usr/lib/hushpen`
+/// (AppImage, whose binary is in `usr/bin`).
+fn locate_notices(exe_dir: &std::path::Path) -> Option<PathBuf> {
+    [
+        exe_dir.join(NOTICES_FILE),
+        exe_dir.join("../Resources").join(NOTICES_FILE),
+        exe_dir.join("../lib/hushpen").join(NOTICES_FILE),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
 }
 
 /// Opening a folder or a URL, behind a trait so tests watch the calls.
@@ -58,8 +75,9 @@ pub struct About {
     pub(crate) notice: Option<String>,
     /// Every open request, for `hookctl state` section `about`.
     requests: Rc<RefCell<Vec<Value>>>,
-    /// The four row controls, keyboard reachable.
+    /// The five row controls, keyboard reachable.
     pub(crate) focus: Vec<gpui_kit::FocusHandle>,
+    notices: Option<PathBuf>,
 }
 
 impl About {
@@ -69,8 +87,17 @@ impl About {
             opener,
             notice: None,
             requests: Rc::new(RefCell::new(Vec::new())),
-            focus: (0..4).map(|_| cx.focus_handle().tab_stop(true)).collect(),
+            focus: (0..5).map(|_| cx.focus_handle().tab_stop(true)).collect(),
+            notices: std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.canonicalize().ok())
+                .and_then(|exe| locate_notices(exe.parent()?)),
         }
+    }
+
+    #[cfg(test)]
+    fn set_notices(&mut self, path: Option<PathBuf>) {
+        self.notices = path;
     }
 
     pub fn version(&self) -> &'static str {
@@ -96,12 +123,21 @@ impl About {
             }
             Target::Github => hushpen_core::links::REPO_URL.to_owned(),
             Target::Issues => hushpen_core::links::ISSUES_URL.to_owned(),
+            Target::Licenses => self
+                .notices
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
         };
         let result = match target {
             Target::DataFolder | Target::LogFolder => {
                 self.opener.open_path(std::path::Path::new(&url))
             }
             Target::Github | Target::Issues => self.opener.open_url(&url),
+            Target::Licenses if url.is_empty() => {
+                Err("the notices file is not part of this install".to_owned())
+            }
+            Target::Licenses => self.opener.open_path(std::path::Path::new(&url)),
         };
         self.requests.borrow_mut().push(json!({
             "target": target.key(),
@@ -113,6 +149,7 @@ impl About {
             Target::Github | Target::Issues => {
                 format!("The browser could not be opened: {error}")
             }
+            Target::Licenses => format!("The licenses could not be opened: {error}"),
             _ => format!("The folder could not be opened: {error}"),
         });
         cx.notify();

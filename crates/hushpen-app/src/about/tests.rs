@@ -135,3 +135,68 @@ fn opening_the_log_folder_recreates_it(cx: &mut TestAppContext) {
         .update(cx, |me, cx| me.open(Target::LogFolder, cx));
     assert!(logs.is_dir(), "logs/ came back for the file manager");
 }
+
+fn write_notices(path: &std::path::Path) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, "<html></html>").unwrap();
+}
+
+#[test]
+fn the_notices_are_found_beside_the_binary_in_every_package_layout() {
+    let tmp = tempfile::tempdir().unwrap();
+    // tar.gz, deb, rpm, and the harness: the file sits next to the binary.
+    let flat = tmp.path().join("flat");
+    write_notices(&flat.join(NOTICES_FILE));
+    assert_eq!(locate_notices(&flat), Some(flat.join(NOTICES_FILE)));
+    // .app: Contents/MacOS/hushpen with Contents/Resources.
+    let mac = tmp.path().join("Hushpen.app/Contents");
+    write_notices(&mac.join("Resources").join(NOTICES_FILE));
+    std::fs::create_dir_all(mac.join("MacOS")).unwrap();
+    assert_eq!(
+        locate_notices(&mac.join("MacOS")),
+        Some(mac.join("MacOS/../Resources").join(NOTICES_FILE))
+    );
+    // AppImage: usr/bin/hushpen with usr/lib/hushpen.
+    let usr = tmp.path().join("squashfs-root/usr");
+    write_notices(&usr.join("lib/hushpen").join(NOTICES_FILE));
+    std::fs::create_dir_all(usr.join("bin")).unwrap();
+    assert_eq!(
+        locate_notices(&usr.join("bin")),
+        Some(usr.join("bin/../lib/hushpen").join(NOTICES_FILE))
+    );
+    assert_eq!(locate_notices(&tmp.path().join("empty")), None);
+}
+
+#[gpui_kit::test]
+fn the_licenses_row_opens_the_notices_file_and_logs_the_request(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let notices = rig._tmp.path().join(NOTICES_FILE);
+    write_notices(&notices);
+    rig.about
+        .update(cx, |me, _| me.set_notices(Some(notices.clone())));
+    rig.about.update(cx, |me, cx| me.open(Target::Licenses, cx));
+
+    assert_eq!(*rig.opener.paths.lock().unwrap(), vec![notices.clone()]);
+    let requests = read(cx, &rig, |me| me.requests.borrow().clone());
+    assert_eq!(
+        requests[0],
+        json!({"target": "licenses", "url": notices.display().to_string(), "ok": true})
+    );
+}
+
+#[gpui_kit::test]
+fn a_missing_notices_file_is_logged_and_shown(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.about.update(cx, |me, _| me.set_notices(None));
+    rig.about.update(cx, |me, cx| me.open(Target::Licenses, cx));
+
+    assert!(rig.opener.paths.lock().unwrap().is_empty());
+    let requests = read(cx, &rig, |me| {
+        assert!(me.notice.as_deref().unwrap().contains("licenses"));
+        me.requests.borrow().clone()
+    });
+    assert_eq!(
+        requests[0],
+        json!({"target": "licenses", "url": "", "ok": false})
+    );
+}

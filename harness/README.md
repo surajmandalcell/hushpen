@@ -38,8 +38,8 @@ StatusNotifier watcher/host stub (slot/sni-host.py) -> xdg-desktop-portal on dem
 hushpen (debug, test-automation)  HUSHPEN_DATA_DIR=/data  HUSHPEN_TESTHOOK_SOCKET=/run/hook.sock
 ```
 
-Mounts: `harness/` at `/harness` (read-only), `$HUSHPEN_ROOT/harness-bin` at `/app` (the app and
-`hookctl`, from `build-app.sh`), `slots/<n>/{data,out,logs}` at `/data`, `/out`, `/logs`, and the
+Mounts: `harness/` at `/harness` (read-only), `$HUSHPEN_ROOT/harness-bin` at `/app` (the app,
+`hookctl`, and `THIRD-PARTY-NOTICES.html` for the About licenses row, from `build-app.sh`), `slots/<n>/{data,out,logs}` at `/data`, `/out`, `/logs`, and the
 test assets at `/assets` and `/fixtures` (read-only). A slot has 2 CPUs and 2 GB.
 
 ## Slot scripts

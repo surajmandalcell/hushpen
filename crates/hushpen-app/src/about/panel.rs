@@ -8,7 +8,7 @@ use crate::ui;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Role,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
@@ -60,7 +60,14 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
             "Something is wrong? Tell us.",
             &focus[3],
         ),
-        licenses_row(palette),
+        action_row(
+            palette,
+            about,
+            Target::Licenses,
+            "Open-source licenses",
+            "The notices of the libraries Hushpen builds on.",
+            &focus[4],
+        ),
     ];
     let mut page = div().flex().flex_col().gap(px(space::LG)).w_full();
     if let Some(message) = notice {
@@ -128,34 +135,4 @@ fn action_row(
     )
     .child(ui::glyph(palette, IconName::ArrowUpRight))
     .into_any_element()
-}
-
-/// The licenses row ships with m6-licenses; until then it is visibly off.
-fn licenses_row(palette: Palette) -> AnyElement {
-    let id = hook::id("about", "open.licenses");
-    hook::mark_disabled(&id, true);
-    ui::row(palette)
-        .id(id)
-        .test_support()
-        .role(Role::Button)
-        .aria_label("Open-source licenses, later")
-        .child(
-            ui::text_column()
-                .child(
-                    ui::title(palette)
-                        .text_color(palette.label_tertiary)
-                        .child("Open-source licenses"),
-                )
-                .child(
-                    ui::secondary(palette)
-                        .text_color(palette.label_tertiary)
-                        .child("The notices of the libraries Hushpen builds on."),
-                ),
-        )
-        .child(
-            ui::value(palette)
-                .text_color(palette.label_tertiary)
-                .child("Later"),
-        )
-        .into_any_element()
 }

@@ -19,6 +19,6 @@ docker run --rm --platform "$HARNESS_PLATFORM" --name hushpen-build --cpus 4 --m
   -e CARGO_TARGET_DIR=/target -e TMPDIR=/scratch -e GGML_NATIVE=OFF -e LANG=C.UTF-8 \
   -w /src "$HARNESS_IMAGE" \
   sh -c 'cargo build --locked -j 4 -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-llm &&
-         cp /target/debug/hushpen /target/debug/hookctl /target/debug/hushpen-llm /harness-bin/' ||
+         cp /target/debug/hushpen /target/debug/hookctl /target/debug/hushpen-llm /src/assets/THIRD-PARTY-NOTICES.html /harness-bin/' ||
   die "build failed"
 ls -l "$HARNESS_BIN"

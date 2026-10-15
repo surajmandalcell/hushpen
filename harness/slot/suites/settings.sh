@@ -1,5 +1,5 @@
 #!/bin/bash
-# The Settings sections and the About view: VAL-SET-001 to 009. Sections and controls are
+# The Settings sections and the About view: VAL-SET-001 to 009 and VAL-LIC-004. Sections and controls are
 # clicked through their hook ids, like a user; the keyboard reachability checks use real Tabs
 # from xdotool. Launch at login is read from $XDG_CONFIG_HOME/autostart, which the suite points
 # at a scratch folder before the first start. The Change data folder target is queued with
@@ -453,3 +453,39 @@ check_req 2 github github.com
 check_req 3 issues issues
 [ -d "$NEW/logs" ] || failures+="logs/ did not come back in the data folder; "
 check_failures "VAL-SET-009 about opens" "one request per row: data folder $NEW, logs $NEW/logs (recreated), the repository URL, the issues URL" "$failures"
+
+echo "== VAL-LIC-004 the About licenses row opens the notices file"
+failures=""
+open_view about >/dev/null
+wait_until 10 tree_has about.open.licenses || failures+="no licenses row; "
+[ -f /app/THIRD-PARTY-NOTICES.html ] || failures+="/app has no THIRD-PARTY-NOTICES.html; "
+last_licenses_url() {
+  about '["open-requests"]' | jq -r '[.[] | select(.target == "licenses")] | last | .url // ""'
+}
+licenses_count() {
+  about '["open-requests"]' | jq '[.[] | select(.target == "licenses")] | length'
+}
+$HC click about.open.licenses >/dev/null
+sleep 0.3
+[ "$(licenses_count)" = 1 ] || failures+="the click logged $(licenses_count) licenses requests; "
+[ "$(last_licenses_url)" = /app/THIRD-PARTY-NOTICES.html ] || failures+="the click opened '$(last_licenses_url)'; "
+shot 010-licenses-click
+# The click above left the focus on the licenses row; move it away so the Tabs prove the way.
+licenses_unfocused() { [ "$(tree_get about.open.licenses focused)" != true ]; }
+$HC click sidebar.about >/dev/null
+wait_until 5 licenses_unfocused || failures+="the focus stayed on the licenses row; "
+focus "$(app_window)"
+reached=0
+for _ in $(seq 1 25); do
+  [ "$(tree_get about.open.licenses focused)" = true ] && { reached=1; break; }
+  xdotool key Tab
+  sleep 0.25
+done
+[ $reached = 1 ] || failures+="Tab never reached the licenses row; "
+xdotool key Return
+licenses_requested_twice() { [ "$(licenses_count)" = 2 ]; }
+wait_until 5 licenses_requested_twice
+[ "$(licenses_count)" = 2 ] || failures+="Enter left $(licenses_count) licenses requests, want 2; "
+[ "$(last_licenses_url)" = /app/THIRD-PARTY-NOTICES.html ] || failures+="Enter opened '$(last_licenses_url)'; "
+shot 011-licenses-keyboard
+check_failures "VAL-LIC-004 about licenses" "click and Tab then Enter each logged target licenses with $(last_licenses_url)" "$failures"
