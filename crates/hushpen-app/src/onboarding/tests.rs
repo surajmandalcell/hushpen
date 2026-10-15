@@ -58,6 +58,9 @@ impl Guide for FakeGuide {
 struct FakeSystem {
     state: Mutex<[Access; 3]>,
     reads: std::sync::atomic::AtomicUsize,
+    /// Virtual time since the app started, and how long every answer stays Denied.
+    clock: Mutex<Duration>,
+    late: Mutex<Duration>,
 }
 
 impl FakeSystem {
@@ -65,7 +68,18 @@ impl FakeSystem {
         Arc::new(Self {
             state: Mutex::new([access; 3]),
             reads: std::sync::atomic::AtomicUsize::new(0),
+            clock: Mutex::new(Duration::ZERO),
+            late: Mutex::new(Duration::ZERO),
         })
+    }
+
+    /// The system answers Denied until `wait` of virtual time has passed (see [`Self::pass`]).
+    fn answer_denied_for(&self, wait: Duration) {
+        *self.late.lock().unwrap() = wait;
+    }
+
+    fn pass(&self, wait: Duration) {
+        *self.clock.lock().unwrap() += wait;
     }
 
     fn set(&self, permission: Permission, access: Access) {
@@ -82,6 +96,9 @@ impl FakeSystem {
 
     fn read(&self, index: usize) -> Access {
         self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if *self.clock.lock().unwrap() < *self.late.lock().unwrap() {
+            return Access::Denied;
+        }
         self.state.lock().unwrap()[index]
     }
 }
@@ -145,8 +162,20 @@ fn start(
     platform: Platform,
     system: Arc<FakeSystem>,
 ) -> Fixture {
+    start_pausing(cx, rig, platform, system, &|_| {})
+}
+
+/// Like [`start`], with the pause the start check makes between its reads. The default pause
+/// does nothing, so a start with a lost grant does not sleep for the whole wait.
+fn start_pausing(
+    cx: &mut TestAppContext,
+    rig: Rig,
+    platform: Platform,
+    system: Arc<FakeSystem>,
+    pause: &dyn Fn(Duration),
+) -> Fixture {
     rig.controller.update(cx, |controller, _| {
-        controller.attach_permissions(system.clone());
+        controller.attach_permissions_with(system.clone(), pause);
         controller.attach_keys(crate::controller::KeysStatus::Available, Rc::new(|_| {}));
     });
     if platform == Platform::Linux {
@@ -568,6 +597,63 @@ fn the_page_reads_again_every_second_and_shows_a_grant_within_one_tick(cx: &mut 
 
         assert_eq!(row(cx, &fixture, key), RowState::Ready, "{flip:?}");
     }
+}
+
+fn finished_with_every_grant_stored(rig: &Rig) {
+    let settings = &rig.storage.settings;
+    settings.set_internal(COMPLETED, json!(true)).unwrap();
+    settings
+        .set_internal(
+            "permissions.lastGranted",
+            json!({"microphone": true, "accessibility": true, "inputMonitoring": true}),
+        )
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_start_whose_grants_answer_only_after_500_ms_never_shows_the_permissions_page(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    finished_with_every_grant_stored(&rig);
+    let system = FakeSystem::all(Access::Granted);
+    system.answer_denied_for(Duration::from_millis(500));
+    let clock = system.clone();
+    let fixture = start_pausing(cx, rig, Platform::MacOs, system, &move |wait| {
+        clock.pass(wait)
+    });
+    list_microphones(cx, &fixture, vec![device()]);
+    cx.executor().advance_clock(Duration::from_millis(3_000));
+    cx.run_until_parked();
+
+    assert_eq!(fixture.mode(cx), Mode::Hidden, "Home, not the repair page");
+    assert!(!fixture.read(cx, |me, _| me.permissions_page_shown()));
+    let lost = fixture
+        .rig
+        .controller
+        .read_with(cx, |c, _| c.lost_permissions().to_vec());
+    assert!(lost.is_empty(), "{lost:?}");
+}
+
+#[gpui_kit::test]
+fn a_start_whose_grant_stays_denied_for_two_seconds_still_opens_the_repair_page(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    finished_with_every_grant_stored(&rig);
+    let system = FakeSystem::all(Access::Granted);
+    system.set(Permission::Accessibility, Access::Denied);
+    let waited = Rc::new(std::cell::Cell::new(Duration::ZERO));
+    let counted = waited.clone();
+    let fixture = start_pausing(cx, rig, Platform::MacOs, system, &move |wait| {
+        counted.set(counted.get() + wait);
+    });
+    list_microphones(cx, &fixture, vec![device()]);
+
+    assert!(waited.get() >= Duration::from_secs(2), "{:?}", waited.get());
+    assert_eq!(fixture.mode(cx), Mode::Repair);
+    assert_eq!(fixture.step(cx), Step::Permissions);
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
 }
 
 #[gpui_kit::test]
@@ -1300,6 +1386,80 @@ mod window {
             "onboarding.permissions.state.accessibility".into(),
         );
         assert!(state.2 > 0.0);
+    }
+
+    /// What the hook tree says about an element: its label.
+    fn label(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) -> Option<String> {
+        let id = gpui_kit::SharedString::from(id.to_owned());
+        cx.update_window(handle, |_, window, _| {
+            window.find(id).label().map(str::to_owned)
+        })
+        .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_row_that_needs_attention_shows_an_icon_and_ready_stays_a_word(cx: &mut TestAppContext) {
+        let system = FakeSystem::all(Access::Granted);
+        system.set(Permission::Accessibility, Access::Denied);
+        let fixture = mac_with(cx, system);
+        let handle = open(cx, &fixture);
+
+        assert_eq!(
+            label(cx, handle, "onboarding.permissions.state.accessibility").as_deref(),
+            Some("Needs attention")
+        );
+        assert_eq!(
+            label(cx, handle, "onboarding.permissions.row.accessibility").as_deref(),
+            Some("Accessibility: Needs attention")
+        );
+        assert_eq!(
+            label(cx, handle, "onboarding.permissions.state.microphone").as_deref(),
+            Some("Ready")
+        );
+        let icon = rect(
+            cx,
+            handle,
+            "onboarding.permissions.state.accessibility".into(),
+        );
+        assert_eq!((icon.2, icon.3), (16.0, 16.0), "a 16 px icon, no word");
+    }
+
+    #[gpui_kit::test]
+    fn the_permissions_changed_page_shows_the_attention_icon_too(cx: &mut TestAppContext) {
+        let rig = rig(cx, &["base"], "base");
+        finished_with_every_grant_stored(&rig);
+        let system = FakeSystem::all(Access::Granted);
+        system.set(Permission::InputMonitoring, Access::Denied);
+        let fixture = start(cx, rig, Platform::MacOs, system);
+        list_microphones(cx, &fixture, vec![device()]);
+        assert_eq!(fixture.mode(cx), Mode::Repair);
+        let handle = open(cx, &fixture);
+
+        assert_eq!(
+            label(cx, handle, "onboarding.permissions.state.inputMonitoring").as_deref(),
+            Some("Needs attention")
+        );
+    }
+
+    #[test]
+    fn no_source_file_says_needs_your_help() {
+        fn scan(folder: &std::path::Path, found: &mut Vec<String>) {
+            let phrase = ["Needs your", " help"].concat();
+            for entry in std::fs::read_dir(folder).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan(&path, found);
+                } else if std::fs::read_to_string(&path).is_ok_and(|text| text.contains(&phrase)) {
+                    found.push(path.display().to_string());
+                }
+            }
+        }
+        let mut found = Vec::new();
+        scan(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut found,
+        );
+        assert!(found.is_empty(), "{found:?}");
     }
 
     #[gpui_kit::test]

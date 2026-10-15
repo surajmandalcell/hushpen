@@ -10,6 +10,7 @@ use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, radius, si
 use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
@@ -197,6 +198,45 @@ fn permissions(
     ui::group(hook::id("onboarding", "permissions"), palette, rows)
 }
 
+/// What the status mark of a row that needs the user says as a tooltip and to a screen reader.
+const ATTENTION: &str = "Needs attention";
+
+/// The status of a row: a word, or for a row that needs attention a warning icon with a
+/// tooltip and no word. The hook tree and screen readers get the same text.
+fn status(
+    palette: Palette,
+    id: gpui_kit::SharedString,
+    text: &'static str,
+    tone: Rgba,
+    attention: bool,
+) -> impl IntoElement + use<> {
+    if attention {
+        div()
+            .id(id)
+            .test_support()
+            .role(Role::Image)
+            .aria_label(text)
+            .flex_none()
+            .child(
+                svg()
+                    .path(IconName::CircleAlert.path())
+                    .size(px(size::NAV_ICON))
+                    .flex_none()
+                    .text_color(tone),
+            )
+            .tooltip(move |window, cx| Tooltip::new(text).build(window, cx))
+            .into_any_element()
+    } else {
+        ui::value(palette)
+            .id(id)
+            .test_support()
+            .aria_label(text)
+            .text_color(tone)
+            .child(text)
+            .into_any_element()
+    }
+}
+
 fn permission_row(
     palette: Palette,
     onboarding: &Entity<Onboarding>,
@@ -207,7 +247,7 @@ fn permission_row(
     let key = row.key.key();
     let (state_text, tone) = match row.state {
         RowState::Ready => ("Ready", palette.success),
-        RowState::Missing => ("Needs your help", palette.warning),
+        RowState::Missing => (ATTENTION, palette.warning),
         RowState::Unavailable => ("Not available", palette.label_secondary),
     };
     let icon = match row.key {
@@ -250,13 +290,13 @@ fn permission_row(
                         .child(row.detail),
                 ),
         )
-        .child(
-            ui::value(palette)
-                .id(hook::id("onboarding", &format!("permissions.state.{key}")))
-                .test_support()
-                .text_color(tone)
-                .child(state_text),
-        )
+        .child(status(
+            palette,
+            hook::id("onboarding", &format!("permissions.state.{key}")),
+            state_text,
+            tone,
+            row.state == RowState::Missing,
+        ))
         .children(buttons.map(|(permission, allow, open)| {
             let slot = Permission::ALL
                 .iter()

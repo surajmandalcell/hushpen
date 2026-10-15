@@ -680,6 +680,21 @@ impl Controller {
         self.permissions = Some(PermissionWatch::start(preflight, &self.storage.settings));
     }
 
+    /// [`Self::attach_permissions`] with the pause between the start reads supplied, so a test
+    /// does not sleep.
+    #[cfg(test)]
+    pub fn attach_permissions_with(
+        &mut self,
+        preflight: Arc<dyn Preflight>,
+        pause: &dyn Fn(std::time::Duration),
+    ) {
+        self.permissions = Some(PermissionWatch::start_with(
+            preflight,
+            &self.storage.settings,
+            pause,
+        ));
+    }
+
     pub fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
         if let Some(watch) = &mut self.permissions
             && watch.refresh(&self.storage.settings)

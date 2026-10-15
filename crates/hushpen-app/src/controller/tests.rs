@@ -735,8 +735,9 @@ fn the_permissions_state_lists_every_key_and_the_grants_lost_since_the_last_star
         accessibility: Access::Denied,
         input_monitoring: Access::Granted,
     }));
-    rig.controller
-        .update(cx, |controller, _| controller.attach_permissions(preflight));
+    rig.controller.update(cx, |controller, _| {
+        controller.attach_permissions_with(preflight, &|_| {})
+    });
 
     let state = rig.controller.read_with(cx, |c, _| c.permissions_json());
     assert_eq!(state["microphone"], "granted");

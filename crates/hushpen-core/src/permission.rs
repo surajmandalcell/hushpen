@@ -8,6 +8,7 @@
 //! drops its grants. [`lost`] finds a grant that was held and now reads denied.
 
 use serde_json::{Map, Value, json};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Permission {
@@ -154,6 +155,31 @@ pub fn lost(last_granted: &Map<String, Value>, now: &Permissions) -> Vec<Permiss
         .collect()
 }
 
+/// How long a grant that reads missing gets to show up again before it counts as lost.
+pub const SETTLE_FOR: Duration = Duration::from_secs(2);
+/// How long the reader waits between two reads while it settles.
+pub const SETTLE_EVERY: Duration = Duration::from_millis(100);
+
+/// Reads the permissions at start. At login the system can answer late or wrongly for a
+/// moment, so a stored grant that reads missing is read again until it shows, for at most
+/// [`SETTLE_FOR`]. A grant that is really gone never shows, so it costs the whole wait. A
+/// permission that was never granted is not waited for. `pause` sleeps.
+pub fn read_settled(
+    preflight: &dyn Preflight,
+    last_granted: &Map<String, Value>,
+    pause: &dyn Fn(Duration),
+) -> Permissions {
+    let mut waited = Duration::ZERO;
+    loop {
+        let now = Permissions::read(preflight);
+        if waited >= SETTLE_FOR || lost(last_granted, &now).is_empty() {
+            return now;
+        }
+        pause(SETTLE_EVERY);
+        waited += SETTLE_EVERY;
+    }
+}
+
 /// The value to store as `permissions.lastGranted`: everything granted before or now. A lost
 /// grant stays in it until macOS grants it again, so the loss is not forgotten at the next
 /// start.
@@ -174,6 +200,7 @@ pub fn remember_granted(
 mod tests {
     use super::*;
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     /// Answers like macOS and records every call. It has no request method to call.
     struct Mock {
@@ -334,6 +361,106 @@ mod tests {
         ));
 
         assert_eq!(lost(&remembered, &again), []);
+    }
+
+    /// Answers denied until `after` of virtual time has passed, then granted. The pause the
+    /// reader makes moves the clock, so no test sleeps.
+    struct Late {
+        after: Duration,
+        now: Mutex<Duration>,
+        reads: AtomicU32,
+    }
+
+    impl Late {
+        fn new(after: Duration) -> Self {
+            Self {
+                after,
+                now: Mutex::new(Duration::ZERO),
+                reads: AtomicU32::new(0),
+            }
+        }
+
+        fn answer(&self) -> Access {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            if self.elapsed() >= self.after {
+                Access::Granted
+            } else {
+                Access::Denied
+            }
+        }
+
+        fn elapsed(&self) -> Duration {
+            *self.now.lock().unwrap()
+        }
+
+        fn pause(&self, wait: Duration) {
+            *self.now.lock().unwrap() += wait;
+        }
+    }
+
+    struct LateRead<'a>(&'a Late);
+
+    impl Preflight for LateRead<'_> {
+        fn microphone(&self) -> Access {
+            self.0.answer()
+        }
+
+        fn post_event(&self) -> Access {
+            Access::Granted
+        }
+
+        fn listen_event(&self) -> Access {
+            Access::Granted
+        }
+    }
+
+    const ALL_STORED: [&str; 3] = ["microphone", "accessibility", "inputMonitoring"];
+
+    #[test]
+    fn a_late_first_read_is_read_again_until_the_grant_shows() {
+        let late = Late::new(Duration::from_millis(500));
+
+        let read = read_settled(&LateRead(&late), &stored(&ALL_STORED), &|wait| {
+            late.pause(wait)
+        });
+
+        assert_eq!(read.microphone, Access::Granted);
+        assert!(lost(&stored(&ALL_STORED), &read).is_empty());
+    }
+
+    #[test]
+    fn a_grant_that_stays_missing_for_two_seconds_is_still_missing() {
+        let late = Late::new(Duration::from_secs(60));
+
+        let read = read_settled(&LateRead(&late), &stored(&ALL_STORED), &|wait| {
+            late.pause(wait)
+        });
+
+        assert_eq!(read.microphone, Access::Denied);
+        assert_eq!(lost(&stored(&ALL_STORED), &read), [Permission::Microphone]);
+        assert!(late.elapsed() >= SETTLE_FOR && late.elapsed() <= SETTLE_FOR + SETTLE_EVERY);
+    }
+
+    #[test]
+    fn granted_grants_are_read_once_with_no_pause() {
+        let late = Late::new(Duration::ZERO);
+
+        read_settled(&LateRead(&late), &stored(&ALL_STORED), &|_| {
+            panic!("no pause needed")
+        });
+
+        assert_eq!(late.reads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_permission_that_was_never_granted_is_not_waited_for() {
+        let late = Late::new(Duration::from_secs(60));
+
+        let read = read_settled(&LateRead(&late), &Map::new(), &|_| {
+            panic!("a first run waits for nobody")
+        });
+
+        assert_eq!(read.microphone, Access::Denied);
     }
 
     #[test]

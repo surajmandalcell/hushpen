@@ -17,7 +17,7 @@ const ALLOWED: [(&str, &str, &str); 14] = [
     ("shortcuts/panel.rs", "shortcut_row", "accent"),
     // The switch of the updates step.
     ("onboarding/panel.rs", "updates", "accent"),
-    // Status words: Ready, Needs your help, Active, Failed.
+    // Status words: Ready, Active, Failed. The warning token also colors the attention icon.
     ("ui.rs", "status_row", "error"),
     ("dictation/panel.rs", "status_tone", "success"),
     ("dictation/panel.rs", "status_tone", "warning"),

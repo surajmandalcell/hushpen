@@ -6,8 +6,9 @@
 
 use hushpen_core::permission::{self, Permission, Permissions, Preflight};
 use hushpen_store::settings::SettingsStore;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::sync::Arc;
+use std::time::Duration;
 
 const LAST_GRANTED: &str = "permissions.lastGranted";
 
@@ -18,9 +19,20 @@ pub struct PermissionWatch {
 }
 
 impl PermissionWatch {
-    /// Reads the permissions once against the stored grants.
+    /// Reads the permissions against the stored grants. A stored grant that reads missing is
+    /// read again for up to 2 s before it counts as lost, so a late first answer is no loss.
     pub fn start(preflight: Arc<dyn Preflight>, settings: &SettingsStore) -> Self {
-        let current = Permissions::read(&*preflight);
+        Self::start_with(preflight, settings, &std::thread::sleep)
+    }
+
+    /// [`Self::start`] with the sleep between two reads supplied by the caller.
+    pub fn start_with(
+        preflight: Arc<dyn Preflight>,
+        settings: &SettingsStore,
+        pause: &dyn Fn(Duration),
+    ) -> Self {
+        let stored = Self::stored_grants(settings);
+        let current = permission::read_settled(&*preflight, &stored, pause);
         let mut watch = Self {
             preflight,
             current,
@@ -38,11 +50,15 @@ impl PermissionWatch {
         before != (self.current, self.lost.clone())
     }
 
-    fn compare(&mut self, settings: &SettingsStore) {
-        let stored = settings
+    fn stored_grants(settings: &SettingsStore) -> Map<String, Value> {
+        settings
             .get(LAST_GRANTED)
             .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default();
+            .unwrap_or_default()
+    }
+
+    fn compare(&mut self, settings: &SettingsStore) {
+        let stored = Self::stored_grants(settings);
         self.lost = permission::lost(&stored, &self.current);
         let remembered = permission::remember_granted(&stored, &self.current);
         if remembered != stored
@@ -147,7 +163,7 @@ mod tests {
         PermissionWatch::start(first, &settings);
 
         let rebuilt = Scripted::new(Access::Granted, Access::Denied, Access::Granted);
-        let mut watch = PermissionWatch::start(rebuilt, &settings);
+        let mut watch = PermissionWatch::start_with(rebuilt, &settings, &|_| {});
 
         assert_eq!(watch.lost(), [Permission::Accessibility]);
         assert!(!watch.refresh(&settings), "nothing changed since the start");
@@ -171,7 +187,7 @@ mod tests {
             &settings,
         );
         let preflight = Scripted::new(Access::Granted, Access::Denied, Access::Granted);
-        let mut watch = PermissionWatch::start(preflight.clone(), &settings);
+        let mut watch = PermissionWatch::start_with(preflight.clone(), &settings, &|_| {});
         assert_eq!(watch.lost().len(), 1);
 
         preflight.set_accessibility(Access::Granted);
