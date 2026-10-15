@@ -11,6 +11,7 @@ use gpui_kit::{
 use hushpen_store::history::Segment;
 
 mod export;
+mod import;
 
 struct Fixture {
     handle: AnyWindowHandle,

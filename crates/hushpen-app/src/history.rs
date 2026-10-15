@@ -85,6 +85,8 @@ pub struct History {
     total: i64,
     search_ms: f64,
     detail: Option<Row>,
+    /// The timed pieces of the open row, for the detail view of an import.
+    detail_segments: Vec<history::Segment>,
     undo: Option<Undo>,
     undo_generation: u64,
     undo_window: Duration,
@@ -165,6 +167,7 @@ impl History {
             total: 0,
             search_ms: 0.0,
             detail: None,
+            detail_segments: Vec::new(),
             undo: None,
             undo_generation: 0,
             undo_window: UNDO_WINDOW,
@@ -346,11 +349,25 @@ impl History {
         }
         self.row_focus.truncate(self.rows.len());
         if let Some(open) = &self.detail {
-            self.detail = history::get(&self.storage.database, &open.id)
+            let row = history::get(&self.storage.database, &open.id)
                 .ok()
                 .flatten();
+            self.detail_segments = self.segments_of(row.as_ref());
+            self.detail = row;
         }
         cx.notify();
+    }
+
+    /// The timed pieces of an import. A dictation has no use for them in the detail view.
+    fn segments_of(&self, row: Option<&Row>) -> Vec<history::Segment> {
+        let Some(row) = row.filter(|row| row.kind == "import") else {
+            return Vec::new();
+        };
+        history::segments(&self.storage.database, &row.id).unwrap_or_default()
+    }
+
+    pub fn detail_segments(&self) -> &[history::Segment] {
+        &self.detail_segments
     }
 
     fn set_query(&mut self, query: String, cx: &mut Context<Self>) {
@@ -401,6 +418,7 @@ impl History {
         if self.detail.as_ref().is_none_or(|open| open.id != row.id) {
             self.playback = None;
         }
+        self.detail_segments = self.segments_of(Some(&row));
         self.detail = Some(row);
         self.message = None;
         self.notice = None;
@@ -413,6 +431,7 @@ impl History {
     pub fn close(&mut self, cx: &mut Context<Self>) {
         self.playback = None;
         self.export_menu = false;
+        self.detail_segments.clear();
         if self.detail.take().is_some() {
             cx.notify();
         }
@@ -713,12 +732,22 @@ impl History {
                 "created_at": row.created_at,
                 "status": row.status,
                 "title": panel::title(row),
+                "kind": row.kind,
+                "source_name": row.source_name,
+                "meta": panel::meta(row),
                 "insert_outcome": row.insert_outcome,
                 "audio_removed": row.audio_removed_at.is_some(),
                 "selected": self.is_selected(&row.id),
             })).collect::<Vec<_>>(),
             "detail": self.detail.as_ref().map(|row| json!({
                 "id": row.id,
+                "kind": row.kind,
+                "source_name": row.source_name,
+                "segments": self.detail_segments.iter().map(|segment| json!({
+                    "start_ms": segment.start_ms,
+                    "end_ms": segment.end_ms,
+                    "text": segment.text,
+                })).collect::<Vec<_>>(),
                 "status": row.status,
                 "error_code": row.error_code,
                 "raw_text": row.raw_text,

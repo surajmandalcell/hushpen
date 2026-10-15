@@ -76,9 +76,12 @@ pub fn seconds(duration_ms: i64) -> String {
     format!("{:.1} s", duration_ms as f64 / 1000.0)
 }
 
-fn meta(row: &Row) -> String {
+pub fn meta(row: &Row) -> String {
     let mut parts = vec![when(row.created_at)];
-    if let Some(app) = &row.target_app {
+    if is_import(row) {
+        parts.push("Import".to_owned());
+        parts.extend(row.source_name.clone());
+    } else if let Some(app) = &row.target_app {
         parts.push(app.clone());
     }
     if row.duration_ms > 0 {
@@ -93,12 +96,28 @@ fn meta(row: &Row) -> String {
 
 pub const AUDIO_REMOVED: &str = "Audio removed";
 
+fn is_import(row: &Row) -> bool {
+    row.kind == "import"
+}
+
+/// `m:ss`, or `h:mm:ss` past an hour, for the start and end of a segment.
+fn clock(ms: i64) -> String {
+    let total = ms.max(0) / 1000;
+    match total / 3600 {
+        0 => format!("{}:{:02}", total / 60, total % 60),
+        hours => format!("{hours}:{:02}:{:02}", total / 60 % 60, total % 60),
+    }
+}
+
 /// What the detail view says in place of the player, or `None` when the audio plays.
 pub fn audio_note(row: &Row, available: bool) -> Option<String> {
     if available {
         return None;
     }
-    Some(if row.audio_removed_at.is_some() {
+    Some(if is_import(row) {
+        "The audio of an imported file is not kept, so it cannot be played or reprocessed."
+            .to_owned()
+    } else if row.audio_removed_at.is_some() {
         format!("{AUDIO_REMOVED}. This transcript cannot be played or reprocessed.")
     } else {
         "The audio of this transcript is not available, so it cannot be played or reprocessed."
@@ -637,7 +656,7 @@ type Press = Box<dyn Fn(&mut Window, &mut App)>;
 
 fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
-    let (focus, audio, reprocess, message, playback, export) = {
+    let (focus, audio, reprocess, message, playback, export, segments) = {
         let view = history.read(cx);
         (
             [
@@ -664,6 +683,7 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
                 button_focus: view.focus.export.clone(),
                 format_focus: view.focus.export_format.clone(),
             },
+            view.detail_segments().to_vec(),
         )
     };
     let [
@@ -902,6 +922,28 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         }
         rows.push((field(palette, key, label, value), plain));
     }
+    if is_import(&row) {
+        rows.push((
+            field(palette, "file", "File", row.source_name.clone()),
+            plain,
+        ));
+        for (index, segment) in segments.iter().enumerate() {
+            let label = format!(
+                "{} \u{2013} {}",
+                clock(segment.start_ms),
+                clock(segment.end_ms)
+            );
+            rows.push((
+                field(
+                    palette,
+                    &format!("segment.{index}"),
+                    &label,
+                    Some(segment.text.clone()),
+                ),
+                plain,
+            ));
+        }
+    }
     assemble("detail", palette, rows)
 }
 
@@ -1060,12 +1102,7 @@ fn player_row(palette: Palette, history: &Entity<History>, id: &str, player: Pla
 
 /// A row with the name of a field on the left and its text on the right, cut to one line. The
 /// whole text is in the tooltip and in the label for assistive technology.
-fn field(
-    palette: Palette,
-    key: &'static str,
-    label: &'static str,
-    value: Option<String>,
-) -> AnyElement {
+fn field(palette: Palette, key: &str, label: &str, value: Option<String>) -> AnyElement {
     let shown = value.clone().unwrap_or_else(|| "Not available".to_owned());
     let full = value.clone().unwrap_or_default();
     let mut text = div()
@@ -1089,7 +1126,12 @@ fn field(
         .id(hook::id("history", &format!("detail.{key}.row")))
         .test_support()
         .gap(px(space::LG))
-        .child(div().flex_none().whitespace_nowrap().child(label))
+        .child(
+            div()
+                .flex_none()
+                .whitespace_nowrap()
+                .child(label.to_owned()),
+        )
         .child(text)
         .into_any_element()
 }
