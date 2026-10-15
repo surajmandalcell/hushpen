@@ -104,8 +104,9 @@ pub fn run(hidden: bool) -> ExitCode {
         let _ = show_requests.unbounded_send(());
     });
 
-    gpui_kit::application()
-        .with_assets(AppAssets)
+    let application = gpui_kit::application().with_assets(AppAssets);
+    application.on_reopen(main_window::reopened);
+    application
         .run(move |cx| {
             gpui_kit::init(cx);
             register_fonts(cx);

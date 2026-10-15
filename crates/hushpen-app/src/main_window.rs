@@ -190,6 +190,12 @@ pub fn show(cx: &mut App) {
     });
 }
 
+/// A click on the Dock icon while the app runs. The platform calls this with the App borrowed,
+/// so the native calls stay deferred, as in [`show`].
+pub fn reopened(cx: &mut App) {
+    show(cx);
+}
+
 /// Hides every window of the app, from the app menu. Does nothing when no main window is
 /// registered.
 pub fn hide_app(cx: &mut App) {
@@ -396,6 +402,30 @@ mod tests {
         assert_eq!(calls.shown.get(), 1);
         assert_eq!(calls.activated.get(), 1);
         assert_eq!(*calls.log.borrow(), ["hide", "show", "activate"]);
+    }
+
+    #[gpui_kit::test]
+    fn a_reopen_with_the_window_hidden_shows_it_once(cx: &mut TestAppContext) {
+        let handle = window(cx);
+        let calls = cx.update(|cx| install_fake(cx, handle, true));
+        cx.update(step_aside);
+        cx.run_until_parked();
+        assert_eq!(calls.hidden.get(), 1);
+        cx.update(reopened);
+        assert_eq!(cx.update(|cx| away(cx)), None);
+        cx.run_until_parked();
+        assert_eq!(calls.shown.get(), 1);
+        assert_eq!(calls.activated.get(), 1);
+        assert_eq!(*calls.log.borrow(), ["hide", "show", "activate"]);
+    }
+
+    #[gpui_kit::test]
+    fn a_reopen_makes_its_native_calls_after_the_app_is_free(cx: &mut TestAppContext) {
+        let handle = window(cx);
+        let native = cx.update(|cx| install_reentrant(cx, handle, true, cx.to_async()));
+        cx.update(reopened);
+        cx.run_until_parked();
+        assert_eq!(native.calls.get(), 2, "the order front and the activation");
     }
 
     #[gpui_kit::test]
