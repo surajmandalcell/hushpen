@@ -272,6 +272,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::HistoryClear => Some(View::History),
         Scene::Home => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
+        Scene::Import => Some(View::Import),
         Scene::Models => Some(View::Models),
         Scene::About => Some(View::About),
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {

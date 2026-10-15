@@ -11,6 +11,7 @@ use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::dictation::Dictation;
 use hushpen_app::dictionary::Dictionary;
 use hushpen_app::history::History;
+use hushpen_app::import::{Import, ImportRunner, Parts as ImportParts};
 use hushpen_app::mic::Mic;
 use hushpen_app::models::{self, Models};
 use hushpen_app::net::endpoint::UreqTransport;
@@ -24,7 +25,7 @@ use hushpen_app::theme::{Appearance, space};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
 use hushpen_core::shortcut::{Bindings, Combo, Platform};
-use hushpen_engine::JobOutcome;
+use hushpen_engine::{Failure, JobOutcome, Segment as EngineSegment, Transcription};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::history::{self, Row};
 use image::RgbaImage;
@@ -71,6 +72,8 @@ pub enum Scene {
     /// The "Delete all N transcripts and their audio?" dialog.
     HistoryClear,
     Dictionary,
+    /// A queue with a finished, a failed, a cancelled, a running, and a waiting file.
+    Import,
     Models,
     About,
     Settings(Section),
@@ -92,6 +95,7 @@ impl Scene {
             Scene::HistorySelect => "history-select".into(),
             Scene::HistoryClear => "history-clear".into(),
             Scene::Dictionary => "dictionary".into(),
+            Scene::Import => "import".into(),
             Scene::Models => "models".into(),
             Scene::About => "about".into(),
             Scene::Settings(section) => format!("settings-{}", section.key()),
@@ -114,6 +118,7 @@ impl Scene {
             Scene::HistorySelect,
             Scene::HistoryClear,
             Scene::Dictionary,
+            Scene::Import,
             Scene::Models,
             Scene::About,
         ];
@@ -229,6 +234,64 @@ fn seed_dictionary(storage: &Storage) {
     }
 }
 
+/// The files of the Import scene, in the order they are added. The runner gives them, in turn,
+/// a result, a refusal, a cancel, a job that stays at 40%, and one that waits behind it.
+const QUEUE_NAMES: [&str; 5] = [
+    "Planning call.m4a",
+    "Voice memo.opus",
+    "Lecture 4.mp3",
+    "Interview.wav",
+    "Podcast episode.flac",
+];
+
+fn queue_runner() -> ImportRunner {
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    Arc::new(move |_, progress, _| {
+        match calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+            0 => JobOutcome::Done(Transcription {
+                text: "Let us start with the budget and then go through the hiring plan.".into(),
+                language: "en".into(),
+                segments: vec![EngineSegment {
+                    start_ms: 0,
+                    end_ms: 4_000,
+                    text: "Let us start with the budget and then go through the hiring plan."
+                        .into(),
+                }],
+                audio_ms: 4_000,
+                decode_ms: 10,
+            }),
+            1 => JobOutcome::Failed(Failure {
+                code: hushpen_core::error::IMPORT_UNSUPPORTED_CODEC.into(),
+                detail: "Opus is not supported yet.".into(),
+                reason: None,
+            }),
+            2 => JobOutcome::Cancelled,
+            _ => {
+                progress(0.4);
+                // The scene is captured long before this ends.
+                std::thread::sleep(std::time::Duration::from_secs(120));
+                JobOutcome::Cancelled
+            }
+        }
+    })
+}
+
+/// A model file that the app takes as downloaded and checked, so the Import view has no
+/// "get a model" line: the right size, and the stamp a hash check leaves.
+fn seed_model(storage: &Storage) {
+    let entry = hushpen_core::catalog::embedded()
+        .default_whisper()
+        .expect("a default model")
+        .clone();
+    let dir = storage.data.whisper_models_dir();
+    std::fs::create_dir_all(&dir).expect("create the models folder");
+    let path = dir.join(&entry.file);
+    std::fs::File::create(&path)
+        .and_then(|file| file.set_len(entry.bytes))
+        .expect("write the model file");
+    hushpen_store::model_files::write_stamp(&path, &entry.sha256).expect("stamp the model");
+}
+
 fn focused(snapshot: &gpui_kit::base::test_support::ElementSnapshot) -> bool {
     panic::catch_unwind(AssertUnwindSafe(|| snapshot.focused()))
         .ok()
@@ -336,6 +399,7 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
             seed_history(&storage);
         }
         Scene::Dictionary => seed_dictionary(&storage),
+        Scene::Import => seed_model(&storage),
         _ => {}
     }
     let mut cx = headless_in(appearance);
@@ -441,6 +505,32 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                         });
                         let dictionary =
                             cx.new(|cx| Dictionary::new(Rc::clone(&storage), window, cx));
+                        let import = matches!(scene, Scene::Import).then(|| {
+                            let import = cx.new(|cx| {
+                                Import::new(
+                                    ImportParts {
+                                        storage: Rc::clone(&storage),
+                                        models: models.clone(),
+                                        controller: controller.clone(),
+                                        run: queue_runner(),
+                                        spawn: models::thread_spawner(),
+                                    },
+                                    cx,
+                                )
+                            });
+                            let folder = data.join("files");
+                            std::fs::create_dir_all(&folder).expect("create the files folder");
+                            let paths = QUEUE_NAMES
+                                .iter()
+                                .map(|name| {
+                                    let path = folder.join(name);
+                                    std::fs::write(&path, b"audio").expect("write a file");
+                                    path
+                                })
+                                .collect();
+                            import.update(cx, |import, cx| import.add_paths(paths, cx));
+                            import
+                        });
                         shell.update(cx, |shell, cx| {
                             shell.attach_mic(mic, cx);
                             shell.attach_dictation(dictation, cx);
@@ -449,6 +539,9 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                             shell.attach_about(about, cx);
                             shell.attach_history(history, cx);
                             shell.attach_dictionary(dictionary, cx);
+                            if let Some(import) = import {
+                                shell.attach_import(import, cx);
+                            }
                             shell.attach_models(models, cx);
                         });
                     }
@@ -489,6 +582,27 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "history.clear");
         }
         Scene::Dictionary => click(cx, handle, "sidebar.dictionary"),
+        Scene::Import => {
+            click(cx, handle, "sidebar.import");
+            // The jobs run on threads and report through a channel: wait for the third file
+            // to end, then give the running one time to report its 40%.
+            for _ in 0..50 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                cx.run_until_parked();
+                let ready = cx
+                    .update_window(handle, |_, window, _| {
+                        window
+                            .try_find(SharedString::from("import.remove.2"))
+                            .is_some()
+                    })
+                    .expect("look for the third line");
+                if ready {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            cx.run_until_parked();
+        }
         Scene::Models => click(cx, handle, "sidebar.models"),
         Scene::About => click(cx, handle, "sidebar.about"),
         Scene::Settings(section) => {
