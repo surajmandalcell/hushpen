@@ -11,6 +11,8 @@ pub enum Command {
     Version,
     /// The speech engine child, with the arguments after `engine`.
     Engine(Vec<String>),
+    /// The update helper that swaps a staged version in after the app quit.
+    UpdateApply(Vec<String>),
     Unknown(String),
 }
 
@@ -24,6 +26,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Command {
         },
         Some("--version" | "-V") => Command::Version,
         Some("engine") => Command::Engine(args.collect()),
+        Some("update-apply") => Command::UpdateApply(args.collect()),
         Some(other) => Command::Unknown(other.to_string()),
     }
 }
@@ -66,6 +69,14 @@ mod tests {
         assert_eq!(
             parse_args(&["engine", "--smoke", "a.wav"]),
             Command::Engine(vec!["--smoke".into(), "a.wav".into()])
+        );
+    }
+
+    #[test]
+    fn the_update_apply_subcommand_keeps_its_own_arguments() {
+        assert_eq!(
+            parse_args(&["update-apply", "--pid", "7"]),
+            Command::UpdateApply(vec!["--pid".into(), "7".into()])
         );
     }
 

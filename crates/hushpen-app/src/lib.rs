@@ -40,6 +40,7 @@ pub mod theme;
 mod token_use;
 pub mod tray;
 pub mod ui;
+pub mod update_apply;
 pub mod updater;
 pub mod views;
 pub mod window_chrome;
