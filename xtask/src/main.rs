@@ -4,6 +4,7 @@ mod gate;
 mod licenses;
 mod net_audit;
 mod package;
+mod release;
 mod release_check;
 mod root;
 mod two_binary;
@@ -11,7 +12,7 @@ mod update_feed;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper] [--artifact <target>=<file>]... [--base-url <url>] [--wrong-sha]>";
+const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper] [--artifact <target>=<file>]... [--base-url <url>] [--wrong-sha]|release-manifest --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file> --pub-date <time>|release-verify --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file>>";
 
 fn main() -> ExitCode {
     let root = match root::repo_root() {
@@ -45,6 +46,14 @@ fn main() -> ExitCode {
         Some("update-feed") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
             update_feed::run_feed(&rest)
+        }
+        Some("release-manifest") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            release::run_manifest(&rest)
+        }
+        Some("release-verify") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            release::run_verify(&rest)
         }
         _ => Err(USAGE.to_string()),
     };

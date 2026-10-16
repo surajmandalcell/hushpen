@@ -1,0 +1,213 @@
+name: Release
+
+# Manual only. A tag push starts nothing; the owner pushes the tag first, then dispatches this
+# workflow with that tag. Every dispatch counts against the CI budget in the mission library.
+# The result is a DRAFT release. Publishing it is a separate, manual step.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and draft, for example v2.0.0-rc.1
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  GGML_NATIVE: "OFF"
+
+jobs:
+  # Every job checks out the tag, never a branch, so the assets come from the tagged source.
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Check the tag and the signing secret
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+          HUSHPEN_UPDATE_KEY: ${{ secrets.HUSHPEN_UPDATE_KEY }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::tag '$TAG' is not vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
+            exit 1
+          fi
+          if [ -z "$HUSHPEN_UPDATE_KEY" ]; then
+            echo "::error::the repository secret HUSHPEN_UPDATE_KEY is not set"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          case "$TAG" in *-rc.*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
+
+  # Linux packages are built on the 22.04 runners (glibc 2.35) so they install on debian:12 and
+  # ubuntu:22.04. Never in a newer container. On macos-15 CI=true lets cargo-packager build the dmg.
+  package:
+    needs: plan
+    name: package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-15
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: linux-arm64
+            os: ubuntu-22.04-arm
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      HUSHPEN_BUILD_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Install the GPUI build libraries and the packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libfontconfig-dev libfreetype-dev libwayland-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev \
+            libxi-dev libxrandr-dev libasound2-dev libvulkan-dev libdbus-1-dev \
+            rpm cpio squashfs-tools file desktop-file-utils binutils
+      - name: Cache the packager binaries
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-generate-rpm
+          key: packaging-tools-${{ runner.os }}-${{ runner.arch }}-packager-0.11.8-rpm-0.21.0
+      - name: Install cargo-packager and cargo-generate-rpm
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked cargo-packager@0.11.8
+          if [ "$RUNNER_OS" = Linux ]; then cargo install --locked cargo-generate-rpm@0.21.0; fi
+      - name: Package
+        run: cargo xtask package --target ${{ matrix.target }}
+      - name: Verify every artifact
+        run: |
+          cargo xtask package-verify --target ${{ matrix.target }}
+          ls -l target/dist/${{ matrix.target }}
+          ./target/release/hushpen --version | grep -F "$HUSHPEN_BUILD_VERSION"
+      - name: Keep the artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: target/dist/${{ matrix.target }}/Hushpen-*
+          if-no-files-found: error
+          retention-days: 7
+
+  # Signs latest.json and makes the draft. This is the only job that reads the secret key.
+  release:
+    needs: [plan, package]
+    name: draft release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-manifest
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: release
+      - name: Write SHA256SUMS and sign latest.json
+        env:
+          TAG: ${{ inputs.tag }}
+          HUSHPEN_UPDATE_KEY: ${{ secrets.HUSHPEN_UPDATE_KEY }}
+          HUSHPEN_UPDATE_KEY_PASSWORD: ${{ secrets.HUSHPEN_UPDATE_KEY_PASSWORD }}
+        run: |
+          cargo xtask release-manifest --dir release --tag "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pubkey assets/update-key.pub --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ls -l release
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        run: |
+          # A draft left by an earlier dispatch is replaced. A published release is never touched.
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq '.[] | select(.tag_name == env.TAG) | "\(.id) \(.draft)"')
+          if [ -n "$existing" ]; then
+            read -r id draft <<<"$existing"
+            if [ "$draft" != true ]; then
+              echo "::error::release $TAG is already published"
+              exit 1
+            fi
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          fi
+          flags=(--draft --verify-tag --title "Hushpen $VERSION" --notes "Draft built by the release workflow from tag $TAG.")
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" release/* "${flags[@]}"
+
+  # Downloads the draft as a user would and checks it against the plan, with no secret.
+  verify:
+    needs: [plan, release]
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Install the pinned toolchain and minisign
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends minisign
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-manifest
+      - name: Download the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: packaging/release/download-draft.sh "$TAG" "$RUNNER_TEMP/draft"
+      - name: Check asset names, sha256 hashes, sizes, and the manifest
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          cargo xtask release-verify --dir "$RUNNER_TEMP/draft" --tag "$TAG" \
+            --repo "$GITHUB_REPOSITORY" --pubkey assets/update-key.pub
+      - name: Check the signature with the minisign tool
+        run: |
+          minisign -V -p assets/update-key.pub -m "$RUNNER_TEMP/draft/latest.json" \
+            -x "$RUNNER_TEMP/draft/latest.json.minisig"
+      - name: List what the draft holds
+        run: |
+          cat "$RUNNER_TEMP/draft/SHA256SUMS"
+          {
+            echo '### Draft release assets'
+            echo '```'
+            cat "$RUNNER_TEMP/draft/SHA256SUMS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

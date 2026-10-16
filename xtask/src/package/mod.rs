@@ -11,7 +11,7 @@ mod config;
 mod deps;
 mod linux;
 mod mac;
-mod names;
+pub mod names;
 mod verify;
 
 use std::fs;

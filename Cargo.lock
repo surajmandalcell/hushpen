@@ -9646,6 +9646,7 @@ version = "2.0.0"
 dependencies = [
  "minisign",
  "minisign-verify",
+ "serde_json",
  "sha2 0.11.0",
 ]
 

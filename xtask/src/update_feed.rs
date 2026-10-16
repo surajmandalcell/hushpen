@@ -1,7 +1,7 @@
 //! Test feeds for the update check: `cargo xtask update-test-keygen` makes a minisign key pair
 //! with no password, and `cargo xtask update-feed` writes a signed `latest.json` for a local
-//! feed. Both are for tests. The release key has a password and never touches the disk; CI
-//! signs the real manifest with it.
+//! feed. Both are for tests. The release manifest is signed by `release.rs` with the secret key
+//! from the environment, which never touches the disk.
 
 use minisign::{KeyPair, SecretKeyBox};
 use sha2::{Digest, Sha256};
@@ -88,8 +88,18 @@ pub fn parse_feed_args(args: &[String]) -> Result<FeedOptions, String> {
 
 /// The manifest text for `version`. The date is fixed so a test can change one byte of it.
 pub fn manifest_text(version: &str, notes_url: &str, platforms: &[Platform]) -> String {
+    manifest_text_at(version, PUB_DATE, notes_url, platforms)
+}
+
+/// Like [`manifest_text`], with the publication time of a real release.
+pub fn manifest_text_at(
+    version: &str,
+    pub_date: &str,
+    notes_url: &str,
+    platforms: &[Platform],
+) -> String {
     let mut text = format!(
-        "{{\n  \"version\": \"{version}\",\n  \"pub_date\": \"{PUB_DATE}\",\n  \"notes_url\": \"{notes_url}\""
+        "{{\n  \"version\": \"{version}\",\n  \"pub_date\": \"{pub_date}\",\n  \"notes_url\": \"{notes_url}\""
     );
     if !platforms.is_empty() {
         let entries: Vec<String> = platforms
