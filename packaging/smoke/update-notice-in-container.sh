@@ -26,7 +26,8 @@ label=$kind-$(echo "$image" | tr ':' '-')
 mkdir -p "$out"
 echo "==> $image installs $(basename "$file") and gets a newer version offered"
 docker rm -f hushpen-notice >/dev/null 2>&1 || true
-docker run --rm --name hushpen-notice --platform "$platform" --cpus 2 --memory 3g \
+# --init: xvfb-run as PID 1 never sees the SIGUSR1 that Xvfb sends when it is ready (hangs on ubuntu:22.04).
+docker run --rm --init --name hushpen-notice --platform "$platform" --cpus 2 --memory 3g \
   -e KIND="$kind" -e LABEL="$label" \
   -v "$repo/harness:/harness:ro" -v "$ut:/update-test:ro" -v "$out:/out" \
   "$image" bash /harness/slot/notice-container.sh
