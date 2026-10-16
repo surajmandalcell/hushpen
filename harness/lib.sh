@@ -2,11 +2,11 @@
 # Sourced by the host-side harness scripts. Everything the harness writes lives under
 # $HUSHPEN_ROOT on the data drive; nothing is written into the repo.
 
-HUSHPEN_ROOT=${HUSHPEN_ROOT:-/Volumes/External1TB/data/_custom/hushpen}
+HUSHPEN_ROOT=${HUSHPEN_ROOT:-/Volumes/External1TB/data/_custom/Droid/hushpen}
 HARNESS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 HUSHPEN_REPO=${HUSHPEN_REPO:-$(dirname "$HARNESS_DIR")}
-HUSHPEN_TEST_ASSETS=${HUSHPEN_TEST_ASSETS:-/Volumes/External1TB/data/_custom/asrpro-test-assets}
-HUSHPEN_TEST_FIXTURES=${HUSHPEN_TEST_FIXTURES:-/Volumes/External1TB/data/_custom/hushpen-test-assets}
+HUSHPEN_TEST_ASSETS=${HUSHPEN_TEST_ASSETS:-/Volumes/External1TB/data/_custom/Droid/asrpro-test-assets}
+HUSHPEN_TEST_FIXTURES=${HUSHPEN_TEST_FIXTURES:-/Volumes/External1TB/data/_custom/Droid/hushpen-test-assets}
 HARNESS_IMAGE=${HUSHPEN_IMAGE:-hushpen-val:noble}
 # linux/arm64 on the Mac; the x64 CI runner sets linux/amd64.
 HARNESS_PLATFORM=${HUSHPEN_PLATFORM:-linux/arm64}

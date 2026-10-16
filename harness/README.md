@@ -3,7 +3,7 @@
 Each slot is a Docker container (`hushpen-val-1` to `hushpen-val-6`, linux/arm64) with its own
 Xvfb desktop, D-Bus, PulseAudio, and the debug app. Scripts here start slots, drive the app, and
 check the result. Everything the harness writes lives under
-`/Volumes/External1TB/data/_custom/hushpen/` (`$HUSHPEN_ROOT`), never in the repo.
+`/Volumes/External1TB/data/_custom/Droid/hushpen/` (`$HUSHPEN_ROOT`), never in the repo.
 `library/user-testing.md` in the mission folder points here.
 
 ## The image
@@ -11,7 +11,7 @@ check the result. Everything the harness writes lives under
 `harness/Dockerfile` builds `hushpen-val:noble` from `ubuntu:24.04`:
 
 ```
-. /Volumes/External1TB/data/_custom/hushpen/env.sh
+. /Volumes/External1TB/data/_custom/Droid/hushpen/env.sh
 docker build --platform linux/arm64 -t hushpen-val:noble -f harness/Dockerfile harness   # services.yaml: harness-image
 ```
 
