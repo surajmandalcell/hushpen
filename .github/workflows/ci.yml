@@ -138,7 +138,9 @@ jobs:
           HUSHPEN_TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
         run: |
           echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  models/ggml-tiny.en.bin" | shasum -a 256 -c -
-          cargo test --release -p hushpen-engine --features heavy --test it --locked -- --test-threads=1 --nocapture
+          # The import tests read the AIFF, ALAC, and long-clip fixtures and ggml-base.en from the
+          # owner's test-assets folders, which a runner does not have.
+          cargo test --release -p hushpen-engine --features heavy --test it --locked -- --test-threads=1 --nocapture --skip import::
       - name: Engine smoke (Metal, best effort)
         if: (inputs.suite == 'engine' || inputs.suite == 'full') && matrix.target == 'macos-arm64'
         continue-on-error: true
