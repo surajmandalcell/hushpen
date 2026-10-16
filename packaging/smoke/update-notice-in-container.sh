@@ -4,7 +4,7 @@
 # app shows the notice only (no artifact request, the installed binary unchanged).
 #
 # usage: update-notice-in-container.sh <update-test dir> <image> <out dir>
-#   <update-test dir> is what harness/update-fixtures.sh wrote. image ubuntu:22.04 or debian:12
+#   <update-test dir> is what harness/update-fixtures.sh wrote. image ubuntu:24.04 or debian:12
 #   installs the deb; fedora:40 installs the rpm. Results and screenshots land in <out dir>/<label>.
 set -eu
 ut=$1
@@ -26,7 +26,7 @@ label=$kind-$(echo "$image" | tr ':' '-')
 mkdir -p "$out"
 echo "==> $image installs $(basename "$file") and gets a newer version offered"
 docker rm -f hushpen-notice >/dev/null 2>&1 || true
-# --init: xvfb-run as PID 1 never sees the SIGUSR1 that Xvfb sends when it is ready (hangs on ubuntu:22.04).
+# --init: xvfb-run as PID 1 never sees the SIGUSR1 that Xvfb sends when it is ready (it hung on ubuntu).
 docker run --rm --init --name hushpen-notice --platform "$platform" --cpus 2 --memory 3g \
   -e KIND="$kind" -e LABEL="$label" \
   -v "$repo/harness:/harness:ro" -v "$ut:/update-test:ro" -v "$out:/out" \

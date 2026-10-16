@@ -128,7 +128,7 @@ fn ci_yml_has_an_updater_suite_that_checks_the_update_from_a_test_feed() {
     ] {
         assert!(text.contains(step), "{step} missing");
     }
-    for image in ["ubuntu:22.04", "fedora:40"] {
+    for image in ["ubuntu:24.04", "fedora:40"] {
         assert!(text.contains(image), "{image} notice step missing");
     }
 }
