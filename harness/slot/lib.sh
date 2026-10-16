@@ -119,8 +119,10 @@ finish() { # <suite>
   local passed
   jq -s --arg suite "$1" --arg run "${HUSHPEN_RUN_ID:-adhoc}" --arg slot "${SLOT:-}" \
     --arg commit "${HUSHPEN_COMMIT:-unknown}" \
-    '{suite: $suite, run_id: $run, slot: $slot, commit: $commit,
-      passed: (length > 0 and all(.[]; .status == "pass")), checks: .}' \
+    --arg appimage "${HUSHPEN_APPIMAGE_NAME:-}" --arg appimage_sha "${HUSHPEN_APPIMAGE_SHA256:-}" \
+    '{suite: $suite, run_id: $run, slot: $slot, commit: $commit}
+      + (if $appimage_sha == "" then {} else {appimage: $appimage, appimage_sha256: $appimage_sha} end)
+      + {passed: (length > 0 and all(.[]; .status == "pass")), checks: .}' \
     "$CHECKS" >"$RUN_OUT/result.json"
   passed=$(jq -r .passed "$RUN_OUT/result.json")
   echo "result: $RUN_OUT/result.json passed=$passed"

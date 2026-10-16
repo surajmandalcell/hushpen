@@ -91,6 +91,16 @@ commit=$(git -C "$HUSHPEN_REPO" rev-parse --short HEAD 2>/dev/null || echo unkno
 [ -z "$(git -C "$HUSHPEN_REPO" status --porcelain 2>/dev/null)" ] || commit+="-dirty"
 export HUSHPEN_UI_ONLY=$ui_only
 ids=$(seq 1 "$slots")
+# HUSHPEN_APPIMAGE names the packaged AppImage that this run is held against: result.json records
+# its file name and sha256. The slots still drive the hook build of the same commit, because a
+# shipped AppImage has no hook; packaging/smoke/slot-checks.sh runs the AppImage itself.
+appimage_name=""
+appimage_sha=""
+if [ -n "${HUSHPEN_APPIMAGE:-}" ]; then
+  [ -f "$HUSHPEN_APPIMAGE" ] || die "HUSHPEN_APPIMAGE is not a file: $HUSHPEN_APPIMAGE"
+  appimage_name=$(basename "$HUSHPEN_APPIMAGE")
+  appimage_sha=$( (sha256sum "$HUSHPEN_APPIMAGE" 2>/dev/null || shasum -a 256 "$HUSHPEN_APPIMAGE") | cut -d' ' -f1)
+fi
 
 echo "run $HUSHPEN_RUN_ID on $slots slot(s), commit $commit"
 "$HARNESS_DIR/start.sh" $ids || exit 1
@@ -101,6 +111,7 @@ for slot in $ids; do
   mkdir -p "$(slot_run_dir "$slot")"
   (
     docker exec -e HUSHPEN_RUN_ID="$HUSHPEN_RUN_ID" -e HUSHPEN_COMMIT="$commit" -e SLOT="$slot" \
+      -e HUSHPEN_APPIMAGE_NAME="$appimage_name" -e HUSHPEN_APPIMAGE_SHA256="$appimage_sha" \
       "$(slot_name "$slot")" /harness/slot/with-env.sh /harness/slot/run-suite.sh "$suite" \
       >"$(slot_run_dir "$slot")/suite.log" 2>&1
     echo $? >"$(slot_run_dir "$slot")/exec.status"
