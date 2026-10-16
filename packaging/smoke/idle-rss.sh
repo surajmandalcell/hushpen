@@ -50,6 +50,9 @@ ui_rss=$(kb "$ui" VmRSS)
 ui_anon=$(kb "$ui" RssAnon)
 ui_pss=$(pss "$ui")
 echo "ui process $ui: VmRSS ${ui_rss} kB, RssAnon ${ui_anon} kB, PSS ${ui_pss} kB"
+echo "largest resident mappings of the UI process (kB):"
+awk '/^[0-9a-f]+-[0-9a-f]+ / {name = ($6 == "" ? "[anonymous]" : $6)} /^Rss:/ {rss[name] += $2}
+  END {for (n in rss) print rss[n], n}' "/proc/$ui/smaps" | sort -rn | head -8 | tee "$out/idle-rss-maps.txt"
 children_rss=0
 for child in $(pgrep -P "$ui"); do
   r=$(kb "$child" VmRSS)
