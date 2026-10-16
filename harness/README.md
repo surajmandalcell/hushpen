@@ -62,6 +62,18 @@ Also here: `build-app.sh` (builds the debug app and `hookctl` in the `hushpen-bu
 copies them to `harness-bin`), `run-suite.sh` (below), and `lib.sh` (shared helpers). `slot/` holds
 the scripts that run inside a slot.
 
+Release candidate checks:
+
+- `HUSHPEN_APPIMAGE=<file> harness/run-suite.sh full --slots N` writes that AppImage's name and
+  sha256 into every `result.json`. The slots still drive the debug hook build of the same commit,
+  because a shipped AppImage has no hook. `packaging/smoke/slot-checks.sh <dist dir> <slot>` runs
+  the AppImage itself (window, idle memory with `idle-rss.sh`, tar.gz, release deb push-to-talk)
+  and writes `packaged-result.json` with the same sha256.
+- `HUSHPEN_BUILD_HOOKREL=1 harness/build-app.sh` also builds `harness-bin/hushpen-hookrel`: the
+  release profile with debug assertions on, which the hook's compile guard allows. Run
+  `packaging/smoke/start-latency.sh` in a slot with `APP_BIN=/app/hushpen-hookrel` to measure key
+  down to listening and the UI stalls on an optimized build.
+
 Set `HUSHPEN_RUN_ID=<name>` to send `shot.sh` and `play-wav.sh` output to a named folder
 (`slots/<n>/out/<name>/`); the default is `adhoc`.
 
