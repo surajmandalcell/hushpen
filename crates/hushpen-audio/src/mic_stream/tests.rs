@@ -198,12 +198,15 @@ fn a_failed_open_reaches_the_session_and_the_next_start_opens_again() {
         CaptureEvent::StartFailed(CaptureError::unavailable("no microphone"))
     );
     handle.shut_down();
+    // A fast host can fail the first open before `attach` looks, and `attach` then opens a
+    // second time on its own, so count only the open that the next start causes.
+    let failed_opens = world.opens.load(Ordering::SeqCst);
 
     *lock(&world.fail) = None;
     let again = self::session();
     let handle = hub.attach("default", &again.tx, &again.sink).unwrap();
     assert_eq!(next_event(&again), CaptureEvent::Started);
-    assert_eq!(world.opens.load(Ordering::SeqCst), 2);
+    assert_eq!(world.opens.load(Ordering::SeqCst), failed_opens + 1);
     handle.shut_down();
 }
 
