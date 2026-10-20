@@ -63,14 +63,33 @@ fn a_dark_panel_gets_the_white_glyph_and_a_light_panel_the_black_one() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn macos_always_gets_the_black_glyph_that_the_system_tints() {
+fn macos_always_gets_the_menu_bar_glyph_that_the_system_tints() {
     for appearance in [WindowAppearance::Dark, WindowAppearance::Light] {
-        assert_eq!(glyph_for(appearance), GLYPH_BLACK);
+        assert_eq!(glyph_for(appearance), MENU_BAR_GLYPH);
     }
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn the_menu_bar_shows_the_glyph_with_no_name_beside_it() {
+    assert_eq!(panel_title(), None);
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn a_linux_panel_item_is_named_hushpen() {
+    assert_eq!(panel_title(), Some("Hushpen"));
+}
+
+#[test]
+fn the_menu_bar_glyph_is_drawn_at_twice_its_point_size() {
+    let be = |at: usize| u32::from_be_bytes(MENU_BAR_GLYPH[at..at + 4].try_into().unwrap());
+    assert_eq!(&MENU_BAR_GLYPH[12..16], b"IHDR");
+    assert_eq!((be(16), be(20)), (44, 32));
+}
+
 #[gpui_kit::test]
-fn both_glyphs_become_32_px_icons(cx: &mut TestAppContext) {
+fn every_glyph_becomes_an_icon(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
     for appearance in [WindowAppearance::Dark, WindowAppearance::Light] {
         let icon = cx.update(|cx| icon_for(appearance, cx));

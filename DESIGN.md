@@ -163,6 +163,8 @@ The app follows the system appearance, Light or Dark, and changes live when the 
 
 The flow bar pill is the one exception. It stays a dark HUD (`#2B2B2B`, light text) in both appearances, because it floats over other apps.
 
+The macOS menu bar item is the glyph alone, with no name beside it. It is a template image (`assets/hushpen-menubar.png`, 22 by 16 points at 2x), so macOS tints it for Light, Dark, and a highlighted menu bar. Linux panels get the black or the white tray glyph for their appearance.
+
 ## Colors
 
 All colors are neutral grays plus one accent. Tokens come in a Dark and a Light set.
