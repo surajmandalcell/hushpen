@@ -30,12 +30,15 @@ Resume the mission run. The pending feature order in `features.json` is: m5-mac-
 
 When S2 completes, the system injects scrutiny-validator and user-testing-validator for milestone hp5-llm. Triage any failures per the orchestrator rules; do not create validator features by hand.
 
-### Step 4: S3 Mac session on rc.2 (feature m7-mac-session-s3)
+### Step 4: S3 Mac session on rc.3 (feature m7-mac-session-s3)
 
-Full release-candidate session on the rc.2 zip and dmg: install, permissions, real-key and speech steps, update from rc.1 to rc.2 from a local signed feed (test-feed builds with the update-test-feed feature and a test minisign key). Same driver and rules as S2: Codex computer use (yolo flag) in the background; release builds have no test hook, so verify from app logs and Codex captures. Flow: part A, owner checklist round 1, part B, round 2 if needed. Also folded in:
+The flow bar redesign (round cross and tick, no language chip, hidden at rest unless Show when idle is on, spring motion) landed after rc.2. Build rc.3 first: add a row to `library/ci-runs.md`, then dispatch release.yml with `tag=v2.0.0-rc.3` (one CI run). S2 still runs on its old test build; its flow bar step tests the old pill.
+
+Full release-candidate session on the rc.3 zip and dmg: install, permissions, real-key and speech steps, update from rc.2 to rc.3 from a local signed feed (test-feed builds with the update-test-feed feature and a test minisign key). Same driver and rules as S2: Codex computer use (yolo flag) in the background; release builds have no test hook, so verify from app logs and Codex captures. Flow: part A, owner checklist round 1, part B, round 2 if needed. Also folded in:
 - VAL-MACS2-009 and VAL-MACS2-010: AI cleanup (Gemma 4 E2B on Metal; first load is slow, not a timeout) and Undo cleanup in TextEdit.
 - At launch-at-login start and at one cold start with all grants: no permission or repair page may appear, including the no-microphone reason. If it does, report a defect (CoreAudio may list devices late at login).
-- Measure the macOS .app idle RSS (rc.2 zip, no model loaded, 60 s after Home shows, `ps -o rss`) and record it in `library/release.md` next to the Linux value (179-239 MB), against the 150 MB target with a reason if over.
+- The new flow bar on the Mac: shows only while a dictation runs, the round cross cancels, the round tick finishes, no language control, TextEdit keeps focus.
+- Measure the macOS .app idle RSS (rc.3 zip, no model loaded, 60 s after Home shows, `ps -o rss`) and record it in `library/release.md` next to the Linux value (179-239 MB), against the 150 MB target with a reason if over.
 - Mac look of the permission status icon (orange exclamation, "Needs attention" tooltip); a start with all grants opens Home.
 
 ### Step 5: hp7 validators (automatic)
@@ -46,10 +49,10 @@ Same as step 3, for milestone hp7-release.
 
 Only after every assertion is passed (end-of-mission gate: all 380 assertions "passed" in `validation-state.json`):
 1. Fix the DESIGN.md App Icon paragraph paths: `src/assets/` becomes `assets/`, and drop the sentence about Windows .ico tray glyphs. This is the approved baseline that VAL-REL-002 compares against; change nothing else in DESIGN.md.
-2. Delete the draft releases v2.0.0-rc.1 and v2.0.0-rc.2 (`gh release delete`, drafts only; keep the tags).
-3. Tag v2.0.0 on master HEAD (only if the tree differs from rc.2 in version strings and harness files only), push the tag (starts no workflow).
-4. Dispatch release.yml with `tag=v2.0.0` (CI run 30), verify job passes, confirm every assertion passed, then publish the draft (`gh release edit --draft=false`).
-5. Update `docs/` for Hushpen in one push (CI run 31, starts the docs deploy) and check the site.
+2. Delete the draft releases v2.0.0-rc.1, rc.2, and rc.3 (`gh release delete`, drafts only; keep the tags).
+3. Tag v2.0.0 on master HEAD (only if the tree differs from rc.3 in version strings and harness files only), push the tag (starts no workflow).
+4. Dispatch release.yml with `tag=v2.0.0` (CI run 31), verify job passes, confirm every assertion passed, then publish the draft (`gh release edit --draft=false`).
+5. Update `docs/` for Hushpen in one push (CI run 32, starts the docs deploy) and check the site.
 6. The GitHub repo rename stays a later owner-confirmed step. Not part of this mission.
 
 ### Step 7: README gate and final report
@@ -61,7 +64,7 @@ Create or update the repo-root `README.md` for the final state (what Hushpen is,
 - Never steal focus on the Mac. No osascript, JXA, System Events, CGEvent tools, cua-driver, VMs, or notifications. GUI driving is Codex computer use through `codex exec --dangerously-bypass-approvals-and-sandbox` only, in the background, plus hookctl on debug builds. Verify the frontmost app before and after every step; stop at the first change.
 - Standing go-ahead for all Mac sessions: never ask permission to proceed, never return only to ask. Owner-performed steps go on a written checklist.
 - Game rule: nothing synthetic while a full-screen game is in front. Wait it out.
-- CI budget: 29 of 35 runs used (hard limit 50). Every new run needs a row in `library/ci-runs.md` before it starts. Planned remaining: 2. apt DNS flakes in e2e-x64 get exactly one failed-job re-run.
+- CI budget: 29 of 35 runs used (hard limit 50). Every new run needs a row in `library/ci-runs.md` before it starts. Planned remaining: 3 (rc.3, v2.0.0, docs). apt DNS flakes in e2e-x64 get exactly one failed-job re-run.
 - Publish only artifacts built on CI ubuntu-22.04 runners.
 - Rerun the license check after any Cargo.lock change.
 - Data, models, caches, and build output stay on `/Volumes/External1TB`; agent scratch under `/Volumes/External1TB/data/_custom/droid/hushpen`. The jq temp file for feature edits is `.../droid/hushpen/tmp/f.json`.

@@ -27,12 +27,19 @@ fn bar(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Bar {
     bar_on(cx, rig)
 }
 
+/// The idle pill is on, so the geometry tests have a bar to measure, and every change shows at
+/// once.
 fn bar_on(cx: &mut TestAppContext, rig: Rig) -> Bar {
+    rig.storage
+        .settings
+        .set("overlay.idleVisible", json!(true))
+        .unwrap();
     let bar = build(cx, &rig);
     let now = Rc::new(Cell::new(10_000));
     let pointer = Rc::new(RefCell::new(None));
     let opened: Rc<RefCell<Vec<String>>> = Rc::default();
     bar.update(cx, |bar, _| {
+        bar.animate = false;
         let clock = Rc::clone(&now);
         bar.clock = Rc::new(move || clock.get());
         let source = Rc::clone(&pointer);
@@ -54,7 +61,6 @@ fn build(cx: &mut TestAppContext, rig: &Rig) -> Entity<FlowBar> {
         FlowBar::new(
             Rc::clone(&rig.storage),
             rig.controller.clone(),
-            rig.dictation.clone(),
             rig.mic.clone(),
         )
     })
@@ -235,7 +241,87 @@ fn the_waveform_follows_the_meter_only_while_listening(cx: &mut TestAppContext) 
     bar.at(11_000);
     bar.click(cx);
     bar.tick(cx);
-    assert_eq!(bar.props(cx).levels.len(), 32);
+    assert_eq!(bar.props(cx).levels.len(), view::WAVE_BARS);
+}
+
+#[gpui_kit::test]
+fn a_fresh_install_shows_no_bar_until_a_dictation_starts(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let bar = build(cx, &rig);
+    bar.update(cx, |bar, _| bar.animate = false);
+    assert_eq!(
+        rig.storage.settings.get("overlay.idleVisible"),
+        Some(json!(false))
+    );
+    let tick = |cx: &mut TestAppContext| bar.update(cx, |bar, cx| bar.tick(SCREEN, cx));
+    assert!(tick(cx).is_none());
+    send_at(cx, &rig, 11_000, AppEvent::FlowBarClick).unwrap();
+    assert!(tick(cx).is_some(), "the listening bar shows");
+    send_at(cx, &rig, 11_500, AppEvent::Esc).unwrap();
+    assert!(tick(cx).is_none(), "gone again after a cancel");
+}
+
+#[gpui_kit::test]
+fn a_bar_that_goes_away_fades_out_before_its_window_closes(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    bar.bar.update(cx, |bar, _| bar.animate = true);
+    bar.at(11_000);
+    bar.click(cx);
+    for step in 1..=40 {
+        bar.at(11_000 + step * 16);
+        bar.tick(cx);
+    }
+    let (_, (width, _)) = bar.bar.read_with(cx, |bar, _| bar.frame());
+    assert!(
+        (width - view::LISTENING_SIZE.0).abs() < 1.0,
+        "settled at {width}"
+    );
+
+    bar.bar.update(cx, |bar, cx| bar.cancel(cx));
+    bar.rig
+        .storage
+        .settings
+        .set("overlay.idleVisible", json!(false))
+        .unwrap();
+    bar.at(11_700);
+    assert!(bar.tick(cx).is_some(), "still fading on the first frame");
+    assert_eq!(
+        bar.props(cx).state,
+        BarState::Listening,
+        "it keeps its last look while it goes"
+    );
+    let mut now = 11_700;
+    while bar.tick(cx).is_some() {
+        now += 16;
+        bar.at(now);
+        assert!(now < 12_300, "the window is still open after 600 ms");
+    }
+}
+
+#[gpui_kit::test]
+fn the_cross_cancels_and_the_tick_finishes(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    say(&bar.rig, outcome_text("hello there", "en"));
+    bar.at(11_000);
+    bar.click(cx);
+    assert_eq!(machine_state(cx, &bar.rig), State::Listening);
+    bar.bar.update(cx, |bar, cx| bar.cancel(cx));
+    assert_ne!(machine_state(cx, &bar.rig), State::Listening);
+    assert!(
+        bar.rig.specs.lock().unwrap().is_empty(),
+        "nothing transcribed"
+    );
+
+    send_at(cx, &bar.rig, 13_000, AppEvent::Tick).unwrap();
+    bar.at(13_000);
+    bar.click(cx);
+    assert_eq!(machine_state(cx, &bar.rig), State::Listening);
+    bar.at(15_000);
+    bar.bar.update(cx, |bar, cx| bar.finish(cx));
+    assert_eq!(machine_state(cx, &bar.rig), State::Transcribing);
+    // A tick with nothing listening must not start a new dictation.
+    bar.bar.update(cx, |bar, cx| bar.finish(cx));
+    assert_eq!(machine_state(cx, &bar.rig), State::Transcribing);
 }
 
 #[gpui_kit::test]
@@ -344,117 +430,6 @@ fn turning_the_overlay_off_hides_every_state(cx: &mut TestAppContext) {
     assert!(bar.tick(cx).is_none());
 }
 
-#[gpui_kit::test]
-fn the_language_chip_opens_the_list_and_a_choice_sets_the_language(cx: &mut TestAppContext) {
-    let bar = bar(cx, &["base"], "base");
-    bar.tick(cx);
-    assert_eq!(bar.props(cx).language.label, "AUTO");
-    assert!(bar.props(cx).language.enabled);
-
-    bar.bar.update(cx, |bar, cx| bar.toggle_picker(cx));
-    bar.tick(cx);
-    let Picker::List {
-        codes, selected, ..
-    } = bar.props(cx).picker
-    else {
-        panic!("the list is open");
-    };
-    assert_eq!(codes.first(), Some(&"auto"));
-    assert!(codes.contains(&"es"));
-    assert_eq!(selected, "auto");
-
-    bar.bar
-        .update(cx, |bar, cx| bar.choose_language("es", cx).unwrap());
-    assert_eq!(bar.setting("dictation.language"), Some(json!("es")));
-    assert_eq!(
-        bar.setting("dictation.recentLanguages").unwrap()[0],
-        json!("es")
-    );
-    bar.tick(cx);
-    assert_eq!(bar.props(cx).picker, Picker::Closed);
-    assert_eq!(bar.props(cx).language.label, "ES");
-}
-
-#[gpui_kit::test]
-fn the_next_job_carries_the_language_chosen_on_the_bar(cx: &mut TestAppContext) {
-    let bar = bar(cx, &["base"], "base");
-    bar.bar
-        .update(cx, |bar, cx| bar.choose_language("es", cx).unwrap());
-    dictate(cx, &bar, outcome_text("hola", "es"));
-    assert_eq!(
-        bar.rig
-            .specs
-            .lock()
-            .unwrap()
-            .last()
-            .unwrap()
-            .language
-            .as_deref(),
-        Some("es")
-    );
-}
-
-#[gpui_kit::test]
-fn an_english_only_model_turns_the_picker_off_and_says_why(cx: &mut TestAppContext) {
-    let bar = bar(cx, &["tiny.en"], "tiny.en");
-    bar.tick(cx);
-    let language = bar.props(cx).language;
-    assert!(!language.enabled);
-    let reason = language.reason.expect("a reason");
-    assert!(reason.contains("English only"), "{reason}");
-
-    bar.bar.update(cx, |bar, cx| bar.toggle_picker(cx));
-    bar.tick(cx);
-    assert!(matches!(
-        bar.props(cx).picker,
-        Picker::Reason { ref text, .. } if *text == reason
-    ));
-    bar.bar
-        .update(cx, |bar, cx| bar.choose_language("es", cx).unwrap_err());
-    assert_eq!(bar.setting("dictation.language"), Some(json!("auto")));
-}
-
-#[gpui_kit::test]
-fn the_list_opens_toward_the_middle_of_the_screen(cx: &mut TestAppContext) {
-    let bar = bar(cx, &["base"], "base");
-    bar.bar.update(cx, |bar, cx| bar.toggle_picker(cx));
-    bar.tick(cx);
-    let Picker::List { below, .. } = bar.props(cx).picker else {
-        panic!("open");
-    };
-    assert!(!below, "a bar at the bottom opens upward");
-    let (_, y, _, height) = rect(bar.tick(cx).unwrap());
-    assert_eq!(y + height, 768.0, "the bottom edge stays where it was");
-
-    bar.rig
-        .storage
-        .settings
-        .set("overlay.position", json!("top"))
-        .unwrap();
-    bar.tick(cx);
-    let Picker::List { below, .. } = bar.props(cx).picker else {
-        panic!("open");
-    };
-    assert!(below);
-    assert_eq!(rect(bar.tick(cx).unwrap()).1, 40.0);
-}
-
-#[gpui_kit::test]
-fn the_open_list_closes_by_itself_and_when_a_dictation_starts(cx: &mut TestAppContext) {
-    let bar = bar(cx, &["base"], "base");
-    bar.bar.update(cx, |bar, cx| bar.toggle_picker(cx));
-    bar.tick(cx);
-    assert_ne!(bar.props(cx).picker, Picker::Closed);
-    bar.at(10_000 + PICKER_HOLD_MS + 1);
-    bar.tick(cx);
-    assert_eq!(bar.props(cx).picker, Picker::Closed);
-
-    bar.bar.update(cx, |bar, cx| bar.toggle_picker(cx));
-    bar.click(cx);
-    assert_eq!(bar.state(cx), BarState::Listening);
-    assert_eq!(bar.props(cx).picker, Picker::Closed);
-}
-
 fn pointer_at(bar: &Bar, x: f32, y: f32, left: bool) {
     *bar.pointer.borrow_mut() = Some(Pointer { x, y, left });
 }
@@ -478,8 +453,8 @@ fn dragging_moves_the_bar_by_the_pointer_offset_and_does_not_start_a_dictation(
 
     assert_eq!(machine_state(cx, &bar.rig), State::Idle);
     let spot = bar.setting("overlay.customPos").unwrap();
-    assert_eq!(spot["x"], json!(x0 - 300.0 + 64.0));
-    assert_eq!(spot["y"], json!(y0 - 200.0 + 28.0));
+    assert_eq!(spot["x"], json!(x0 - 300.0 + view::IDLE_SIZE.0 / 2.0));
+    assert_eq!(spot["y"], json!(y0 - 200.0 + view::IDLE_SIZE.1));
     assert_eq!(bar.origin(cx), (x0 - 300.0, y0 - 200.0));
 }
 
@@ -497,6 +472,7 @@ fn a_dragged_position_survives_a_restart_and_a_preset_clears_it(cx: &mut TestApp
     assert_eq!(moved, (x0 - 100.0, y0 - 50.0));
 
     let restarted = build(cx, &first.rig);
+    restarted.update(cx, |bar, _| bar.animate = false);
     let again = restarted
         .update(cx, |bar, cx| bar.tick(SCREEN, cx))
         .unwrap();
@@ -563,8 +539,8 @@ fn the_state_section_reports_the_bar(cx: &mut TestAppContext) {
     let state = bar.bar.read_with(cx, |bar, _| bar.state_json());
     assert_eq!(state["state"], "idle");
     assert_eq!(state["visible"], true);
-    assert_eq!(state["bounds"]["width"], 128.0);
-    assert_eq!(state["picker"], "closed");
+    assert_eq!(state["bounds"]["width"], view::IDLE_SIZE.0);
+    assert_eq!(state["settled"], true);
     assert_eq!(state["position"], "bottom");
 }
 
@@ -717,34 +693,29 @@ mod in_a_window {
     }
 
     #[gpui_kit::test]
-    fn the_language_chip_and_an_option_work_without_starting_a_dictation(cx: &mut TestAppContext) {
+    fn the_listening_pill_has_a_cross_and_a_tick_that_work_on_a_click(cx: &mut TestAppContext) {
         let bar = bar(cx, &["base"], "base");
         let handle = open(cx, &bar);
-        assert!(present(cx, handle, "flowbar.language"));
-        assert!(!present(cx, handle, "flowbar.language.list"));
+        say(&bar.rig, outcome_text("hello", "en"));
+        assert!(!present(cx, handle, "flowbar.cancel"));
 
-        click(cx, &bar, handle, "flowbar.language");
-        assert!(present(cx, handle, "flowbar.language.list"));
-        assert!(present(cx, handle, "flowbar.language.option.en"));
-        assert_eq!(machine_state(cx, &bar.rig), State::Idle);
+        bar.at(11_000);
+        click(cx, &bar, handle, "flowbar.bar");
+        assert!(present(cx, handle, "flowbar.cancel"));
+        assert!(present(cx, handle, "flowbar.finish"));
+        click(cx, &bar, handle, "flowbar.cancel");
+        assert_ne!(machine_state(cx, &bar.rig), State::Listening);
+        assert!(
+            bar.rig.specs.lock().unwrap().is_empty(),
+            "nothing transcribed"
+        );
 
-        click(cx, &bar, handle, "flowbar.language.option.en");
-        assert_eq!(bar.setting("dictation.language"), Some(json!("en")));
-        assert!(!present(cx, handle, "flowbar.language.list"));
-        assert_eq!(machine_state(cx, &bar.rig), State::Idle);
-    }
-
-    #[gpui_kit::test]
-    fn an_english_only_model_shows_a_reason_on_a_disabled_chip(cx: &mut TestAppContext) {
-        let bar = bar(cx, &["tiny.en"], "tiny.en");
-        let handle = open(cx, &bar);
-        assert!(present(cx, handle, "flowbar.language"));
-        assert!(!bar.props(cx).language.enabled);
-
-        click(cx, &bar, handle, "flowbar.language");
-        assert!(present(cx, handle, "flowbar.language.reason"));
-        assert!(!present(cx, handle, "flowbar.language.list"));
-        assert_eq!(machine_state(cx, &bar.rig), State::Idle);
+        send_at(cx, &bar.rig, 13_000, AppEvent::Tick).unwrap();
+        bar.at(13_000);
+        click(cx, &bar, handle, "flowbar.bar");
+        bar.at(15_000);
+        click(cx, &bar, handle, "flowbar.finish");
+        assert_eq!(machine_state(cx, &bar.rig), State::Transcribing);
     }
 
     #[gpui_kit::test]

@@ -239,7 +239,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 **Switches, sliders, and selection focus:** use the accent.
 
-**Recording overlay (flow bar):** a compact dark pill in both appearances. Its motion is functional and stable.
+**Recording overlay (flow bar):** a compact dark pill in both appearances. It shows only while a dictation runs and while its result or notice is up. At rest nothing shows, unless the user turns on Show when idle. While listening it holds a round cross on the left (cancel), the waveform, and a round white tick on the right (finish). It has no language control: the language is set on Home. It grows out of a circle and fades in when it appears, eases between the sizes of its states, and shrinks and fades when it goes. With Reduce Motion every change shows at once.
 
 ## Do's and Don'ts
 

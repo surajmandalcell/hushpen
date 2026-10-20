@@ -101,7 +101,6 @@ fn fixture(cx: &mut TestAppContext, files: &[&str]) -> Fixture {
         FlowBar::new(
             Rc::clone(&rig.storage),
             rig.controller.clone(),
-            rig.dictation.clone(),
             rig.mic.clone(),
         )
     });

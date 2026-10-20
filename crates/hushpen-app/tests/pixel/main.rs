@@ -24,7 +24,7 @@ use compare::{Outcome, compare, diff_image};
 use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
-use hushpen_app::flow_bar::view::{Picker, Preview, Props, size_of};
+use hushpen_app::flow_bar::view::{Preview, Props, WAVE_BARS, size_of};
 use hushpen_app::mic::{MicBackend, MicSession};
 use hushpen_app::settings::Section;
 use hushpen_app::theme::{self, Appearance, chrome, space};
@@ -425,13 +425,13 @@ fn every_settings_section_has_a_scene() {
 
 fn flow_bar_states() -> Vec<(&'static str, Props)> {
     let mut listening = Props::new(BarState::Listening);
-    listening.levels = (0..32)
-        .map(|n| (0.5 + 0.5 * (n as f32 * 0.55).sin()) * (n as f32 / 31.0))
+    listening.levels = (0..WAVE_BARS)
+        .map(|n| 0.35 + 0.35 * (n as f32 * 1.3).sin().abs())
         .collect();
     let mut transcribing = Props::new(BarState::Transcribing);
-    transcribing.dot = 1;
+    transcribing.phase = 0.4;
     let mut preparing = Props::new(BarState::Transcribing);
-    preparing.dot = 1;
+    preparing.phase = 0.4;
     preparing.preparing = true;
     let mut result = Props::new(BarState::Result);
     result.message = "Inserted".into();
@@ -443,24 +443,8 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
     let mut blocked = Props::new(BarState::Blocked);
     blocked.message = "Another app holds the keyboard".into();
     blocked.open_history = true;
-    let mut spanish = Props::new(BarState::Idle);
-    spanish.language.label = "ES".into();
-    let mut list = Props::new(BarState::Idle);
-    list.picker = Picker::List {
-        codes: vec!["auto", "es", "en", "de", "fr", "it"],
-        selected: "es".into(),
-        below: false,
-    };
-    let mut off = Props::new(BarState::Idle);
-    off.language.enabled = false;
-    off.language.reason = Some("This model understands English only.".into());
-    off.picker = Picker::Reason {
-        text: "This model understands English only.".into(),
-        below: true,
-    };
     vec![
         ("flowbar-idle", Props::new(BarState::Idle)),
-        ("flowbar-idle-spanish", spanish),
         ("flowbar-listening", listening),
         ("flowbar-transcribing", transcribing),
         ("flowbar-transcribing-preparing", preparing),
@@ -468,8 +452,6 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
         ("flowbar-undo", undo),
         ("flowbar-error", error),
         ("flowbar-blocked", blocked),
-        ("flowbar-picker", list),
-        ("flowbar-picker-off", off),
     ]
 }
 
@@ -506,13 +488,10 @@ fn every_flow_bar_state_matches_its_approved_baseline() {
 
 #[test]
 fn the_flow_bar_pill_stays_dark_in_a_light_appearance() {
-    // The picker windows are taller; the pill is not at this point in them.
-    for (name, props) in flow_bar_states()
-        .into_iter()
-        .filter(|(name, _)| !name.contains("picker"))
-    {
+    for (name, props) in flow_bar_states() {
         let light = capture_flow_bar_in(props, Appearance::Light);
-        let [r, g, b, _] = light.get_pixel(24, 32).0;
+        // Inside the round left end, clear of the content.
+        let [r, g, b, _] = light.get_pixel(8, light.height() / 2).0;
         assert_eq!(
             format!("#{r:02X}{g:02X}{b:02X}"),
             "#2B2B2B",
@@ -524,8 +503,8 @@ fn the_flow_bar_pill_stays_dark_in_a_light_appearance() {
 #[test]
 fn the_flow_bar_is_a_compact_dark_pill_at_scale_two() {
     let image = capture_flow_bar(Props::new(BarState::Listening));
-    assert_eq!(image.dimensions(), (320, 64), "160x32 at scale two");
-    let [r, g, b, a] = image.get_pixel(24, 32).0;
+    assert_eq!(image.dimensions(), (224, 64), "112x32 at scale two");
+    let [r, g, b, a] = image.get_pixel(8, 32).0;
     assert_eq!(
         format!("#{r:02X}{g:02X}{b:02X}"),
         "#2B2B2B",

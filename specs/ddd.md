@@ -54,7 +54,8 @@ Hushpen
 - **model**: a Whisper model (ggml `.bin`) or an LLM model (GGUF). Every
   model has a pinned sha256 and downloads only when the user asks.
 - **flow bar**: the always-on-top pill that never takes focus. It stays dark
-  in Light and Dark appearance.
+  in Light and Dark appearance. It shows only while a dictation is active
+  (or with Show when idle on), with a cross to cancel and a tick to finish.
 - **appearance**: the system Light or Dark setting. Views follow it live.
 - **settings registry**: the owner of `config/settings.json`. It validates
   values, writes atomically, and keeps unknown keys.

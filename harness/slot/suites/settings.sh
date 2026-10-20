@@ -210,7 +210,8 @@ sleep 1
 is_mapped && failures+="the main window is mapped after a hidden start; "
 shot 003-hidden
 [ "$(items | wc -l)" = 1 ] || failures+="the watcher lists $(items | wc -l) items; "
-wait_until 10 bar_visible || failures+="the idle bar does not show; "
+sleep 1
+bar_hidden || failures+="a bar shows at rest with overlay.idleVisible off, the default; "
 gtk_clear
 focus "$GT"
 ptt_run "$SHORT_WAV" || failures+="the push-to-talk run did not end: $(pevents); "
@@ -227,7 +228,7 @@ wait_until 5 setting_is startup.startHidden false || failures+="startHidden did 
 /harness/slot/app.sh restart >/dev/null
 wait_until 20 dict_is .state idle
 wait_until 10 is_mapped || failures+="the window is not mapped after the normal restart; "
-check_failures "VAL-SET-003 start hidden" "no window mapped, tray item on D-Bus, idle bar shown, push-to-talk typed '$got', Show Hushpen mapped the window" "$failures"
+check_failures "VAL-SET-003 start hidden" "no window mapped, tray item on D-Bus, no bar at rest, push-to-talk typed '$got', Show Hushpen mapped the window" "$failures"
 
 echo "== VAL-SET-004 the five controls write their keys and take effect"
 failures=""
@@ -239,7 +240,7 @@ section storage >/dev/null && {
   wait_until 5 tree_has settings.storage.retention.option.never
   $HC click settings.storage.retention.option.never >/dev/null
 }
-for pair in "cleanup.rules:false" "audio.cueSounds:false" "overlay.enabled:false" "overlay.idleVisible:false" "history.audioRetention:never"; do
+for pair in "cleanup.rules:false" "audio.cueSounds:false" "overlay.enabled:false" "overlay.idleVisible:true" "history.audioRetention:never"; do
   key=${pair%%:*}
   want=${pair##*:}
   setting_is "$key" "$want" || failures+="$key is $(sget "$key"), want $want; "
@@ -247,7 +248,7 @@ done
 shot 004-controls
 /harness/slot/app.sh restart >/dev/null
 wait_until 20 dict_is .state idle
-for pair in "cleanup.rules:false" "audio.cueSounds:false" "overlay.enabled:false" "overlay.idleVisible:false" "history.audioRetention:never"; do
+for pair in "cleanup.rules:false" "audio.cueSounds:false" "overlay.enabled:false" "overlay.idleVisible:true" "history.audioRetention:never"; do
   key=${pair%%:*}
   want=${pair##*:}
   setting_is "$key" "$want" || failures+="after the restart $key is $(sget "$key"), want $want; "
@@ -271,9 +272,10 @@ xdotool keyup $HOLD
 wait_until 240 run_ended || failures+="the bar-off run did not end; "
 bar_visible && failures+="the bar shows after the run with overlay.enabled off; "
 gtk_commit >/dev/null
-# Only "show when idle" off: the bar maps during listening and unmaps after the result.
-section flowbar >/dev/null && $HC click settings.flowbar.enabled >/dev/null
+# Only "show when idle" off again: the bar maps during listening and unmaps after the result.
+section flowbar >/dev/null && { $HC click settings.flowbar.enabled >/dev/null; $HC click settings.flowbar.idle >/dev/null; }
 wait_until 5 setting_is overlay.enabled true || failures+="overlay.enabled did not turn back on; "
+wait_until 5 setting_is overlay.idleVisible false || failures+="overlay.idleVisible did not turn back off; "
 gtk_clear
 T0=$(now_ms)
 xdotool keydown $HOLD
@@ -284,7 +286,7 @@ xdotool keyup $HOLD
 wait_until 240 run_ended || failures+="the idle-off run did not end; "
 wait_until 10 bar_hidden || failures+="the bar stays mapped after the result with idleVisible off; "
 gtk_commit >/dev/null
-check_failures "VAL-SET-004 controls take effect" "the 5 keys written and kept across a restart; the filler dictation inserted raw ('$got'); no bar with overlay.enabled off; bar only while listening with idleVisible off" "$failures"
+check_failures "VAL-SET-004 controls take effect" "the 5 keys written (show when idle turned on, from its default off) and kept across a restart; the filler dictation inserted raw ('$got'); no bar with overlay.enabled off; bar only while listening with idleVisible off" "$failures"
 
 echo "== VAL-SET-005 the data folder shows as ~/... under home and in full outside it"
 failures=""
