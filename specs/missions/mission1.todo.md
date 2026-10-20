@@ -20,7 +20,7 @@ The mission is PAUSED at S2 part B, waiting for the owner. Do not start new mile
 
 The owner runs the 23-step checklist at `/Volumes/External1TB/data/_custom/droid/hushpen/evidence/m5-mac-session-s2/owner-checklist.md` (about 16 minutes) and says "done", with the numbers of any failed steps. Do not continue until then. If the owner already said done, go to step 2.
 
-If the processes died (app or watcher gone): relaunch with `bin/launch.sh` and `bin/watch.sh` in the S2 evidence `bin/` folder, confirm the lock file and the 940x600 window, then hand the checklist to the owner again. Never rebuild Hushpen.app and never run tccutil; the owner grants for CDHash 5b3655dda3aebe1a79da6e587e875a61c1ce29bf are current.
+If the processes died (app or watcher gone): relaunch with `bin/launch.sh` and `bin/watch.sh` in the S2 evidence `bin/` folder, confirm the lock file and the 940x600 window, then hand the checklist to the owner again. After an app code change, rebuild Hushpen.app with `harness/mac-test-app.sh` (signed with the Apple Development identity, so the grants stay). Never run tccutil.
 
 ### Step 2: S2 part B (feature m5-mac-session-s2)
 

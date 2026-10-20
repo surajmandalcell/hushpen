@@ -69,5 +69,5 @@ Hushpen 2.0.0 is a local-first, AGPL-3.0-or-later Wispr Flow clone, rewritten in
 - Repo: `/Volumes/External1TB/dev/personal/asrpro`, branch master, HEAD bd5ab58, clean tree. Tags v2.0.0-rc.1 (9521ee8) and v2.0.0-rc.2 (5805b02).
 - Data root: `/Volumes/External1TB/data/_custom/droid/hushpen` (env.sh, evidence/, tmp/f.json for jq edits).
 - S2 evidence: `.../droid/hushpen/evidence/m5-mac-session-s2/` — `session.json` (runs 1-3), `owner-checklist.md`, `bin/cx.sh` (Codex wrapper with the yolo flag), `bin/launch.sh`, `bin/watch.sh`, `scratch.txt`, `feed-queue.txt`, watcher logs (front.log, hook.jsonl, events.log, clip.log, guard.log, frontmost.log).
-- Test build under test: `.../droid/hushpen/mac-check/Hushpen.app` (HEAD 46b7dc9, CDHash 5b3655dda3aebe1a79da6e587e875a61c1ce29bf, owner TCC grants current). Never rebuild it, never run tccutil.
+- Test build under test: `.../droid/hushpen/mac-check/Hushpen.app`, rebuilt from HEAD by `harness/mac-test-app.sh` and signed with the Apple Development identity, so owner grants survive rebuilds. Never run tccutil.
 - Older evidence and the reports 01-18 live under the evidence root and `specs/`; reports 01-14 and decisions D-01..D-40 belong to the replaced Electron mission and no longer matter.

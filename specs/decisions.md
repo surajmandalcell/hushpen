@@ -71,7 +71,10 @@ new decision, add it here in the same change (D-21).
 - **D-18 Signing.** macOS builds are ad-hoc signed only: no identity, no
   Keychain, no notarization. Each ad-hoc build and each update resets the
   Microphone, Accessibility, and Input Monitoring grants. The app detects a
-  lost grant at start and reopens the onboarding permission step.
+  lost grant at start and reopens the onboarding permission step. The local
+  Mac test build (`harness/mac-test-app.sh`) is the one exception: it is
+  signed with the owner's Apple Development identity, so its grants survive
+  rebuilds.
 - **D-19 Engine build.** Metal on macOS and CPU on Linux. Release builds use
   `GGML_NATIVE=OFF` so one build runs on older CPUs. Cancel finishes in under
   1 s, and an engine crash keeps the audio.
