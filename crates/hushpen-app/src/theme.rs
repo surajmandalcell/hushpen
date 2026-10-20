@@ -480,6 +480,12 @@ pub mod hud {
         pub const TEXT_SUBTLE: u32 = 0x8E8E8E;
         pub const TEXT_DISABLED: u32 = 0x8A8A8A;
         pub const FOCUS: u32 = 0x9BCFFF;
+        /// The round cross and tick of the listening pill.
+        pub const ROUND_CANCEL: u32 = 0x4A4A4A;
+        pub const ROUND_CANCEL_HOVER: u32 = 0x5A5A5A;
+        pub const ROUND_FINISH: u32 = 0xEEEEEE;
+        pub const ROUND_FINISH_HOVER: u32 = 0xFFFFFF;
+        pub const ON_ROUND_FINISH: u32 = 0x1A1A1A;
         pub const STATUS_ERROR: u32 = 0xFF9C8F;
         pub const STATUS_WARNING: u32 = 0xFFB3AA;
     }

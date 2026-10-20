@@ -1,6 +1,6 @@
 //! Test hook for the flow bar: the `overlay` state section, the bar's elements in the tree
-//! (so a test can click them), and an action that picks a language without scrolling the
-//! list. Compiled only with the `test-automation` feature.
+//! (so a test can click them), and the Undo cleanup action. Compiled only with the
+//! `test-automation` feature.
 
 use super::{ExtraWindow, record_event, register_action, register_window, set_state_section};
 use crate::flow_bar::{FlowBar, SharedHost};
@@ -46,27 +46,8 @@ pub fn attach(cx: &mut App, bar: Entity<FlowBar>, host: SharedHost) {
         "Press Undo cleanup on the flow bar. It is rejected, with the reason, when the offer ran \
          out, the focus changed, or the target is a terminal. State `pipeline.undo` says when \
          it is on offer.",
-        {
-            let bar = bar.clone();
-            move |cx, _| {
-                bar.update(cx, |bar, cx| bar.undo_cleanup(cx))?;
-                Ok(Value::Null)
-            }
-        },
-    );
-    let _ = register_action(
-        cx,
-        "overlay-language",
-        "Pick a language in the flow bar list, like clicking its option. Args: \
-         {\"code\": \"es\"} or {\"code\": \"auto\"}. The list has about a hundred options, so \
-         this saves scrolling it.",
-        move |cx, args| {
-            let code = args
-                .get("code")
-                .and_then(Value::as_str)
-                .ok_or("needs args like {\"code\": \"es\"}")?
-                .to_owned();
-            bar.update(cx, |bar, cx| bar.choose_language(&code, cx))?;
+        move |cx, _| {
+            bar.update(cx, |bar, cx| bar.undo_cleanup(cx))?;
             Ok(Value::Null)
         },
     );

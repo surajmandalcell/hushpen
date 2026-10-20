@@ -6,8 +6,8 @@
 # real X pointer input from xdotool. Screenshots are cropped to the bar's bounds and checked
 # for the dark pill and the colors of each state; the pixel baselines at scale 2 are held by the
 # `test-pixel` gate. The words come from the virtual microphone. Needs speech-short.wav,
-# speech-es.wav, dictation-45s.wav, and silence-5s.wav in /assets/fixtures and the base and
-# tiny.en models in /assets/models/whisper. Busy: it transcribes. It empties /data and restarts
+# dictation-45s.wav, and silence-5s.wav in /assets/fixtures and the base model in
+# /assets/models/whisper. Busy: it transcribes. It empties /data and restarts
 # the app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -18,7 +18,6 @@ DB=/data/history/history.db
 SHORT_WAV=$FIX/speech-short.wav
 LONG_WAV=$FIX/dictation-45s.wav
 SILENCE_WAV=$FIX/silence-5s.wav
-SPANISH_WAV=$FIX/speech-es.wav
 SCREEN_W=1280
 SCREEN_H=800
 
@@ -62,10 +61,12 @@ gtk_clear() {
 bar() { $HC state | jq -r ".overlay$1"; }
 bar_is() { [ "$(bar .state)" = "$1" ]; }
 bar_visible() { [ "$(bar .visible)" = "$1" ]; }
-bar_box() { $HC state | jq -r '.overlay.bounds | "\(.width | floor) \(.height | floor) \(.x | floor) \(.y | floor)"'; }
-bar_x() { $HC state | jq -r '.overlay.bounds | (.x + .width / 2) | floor'; }
-bar_top() { $HC state | jq -r '.overlay.bounds.y | floor'; }
-bar_bottom() { $HC state | jq -r '.overlay.bounds | (.y + .height) | floor'; }
+# settle: the bar's spring and fade have stopped, so its bounds and pixels are final
+settle() { wait_until 2 is 'bar .settled' = true || true; }
+bar_box() { settle; $HC state | jq -r '.overlay.bounds | "\(.width | floor) \(.height | floor) \(.x | floor) \(.y | floor)"'; }
+bar_x() { settle; $HC state | jq -r '.overlay.bounds | (.x + .width / 2) | floor'; }
+bar_top() { settle; $HC state | jq -r '.overlay.bounds.y | floor'; }
+bar_bottom() { settle; $HC state | jq -r '.overlay.bounds | (.y + .height) | floor'; }
 el_center() { # <tree id> -> "x y": the middle of the element on the screen
   $HC tree | jq -r ".[] | select(.id == \"$1\") | .root_bounds | \"\\((.x + .width / 2) | floor) \\((.y + .height / 2) | floor)\""
 }
@@ -113,11 +114,11 @@ lit() {
     sed -n 's/^[0-9]*,[0-9]*: (\([0-9]*\),\([0-9]*\),\([0-9]*\).*/\1 \2 \3/p' |
     awk '$1 + $2 + $3 > 450 { n++ } END { print n + 0 }'
 }
-inner_extent() { # <png> -> the height of everything lit inside the bar, edges cut off
+inner_extent() { # <png> -> the height of the waveform: the middle 48 px, clear of the cross and the tick
   local w h
   w=$(identify -format %w "$1")
   h=$(identify -format %h "$1")
-  convert "$1" -crop "$((w - 24))x$((h - 16))+12+8" +repage -trim -format '%h' info:
+  convert "$1" -crop "48x$((h - 8))+$((w / 2 - 24))+4" +repage -trim -format '%h' info:
 }
 differ() { # <png> <png>: true when they differ in at least one pixel
   local n
@@ -174,12 +175,17 @@ focus_watch_stop() {
   wait "$WATCH" 2>/dev/null
 }
 
-echo "== setup: base and tiny.en models, the paste targets"
-fresh base tiny.en
+echo "== setup: the base model, the paste targets"
+fresh base
 use_model base
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
+# By default no bar shows at rest. The suite turns the idle pill on to measure and drag it.
+sleep 1
+bar_visible false || fail_note="a bar shows at rest with the default settings ($(bar_box)); "
+[ "$(setting overlay.idleVisible)" = false ] || fail_note+="overlay.idleVisible is $(setting overlay.idleVisible) on a fresh start; "
+set_setting overlay.idleVisible true
 wait_until 10 bar_visible true
 park
 
@@ -202,7 +208,8 @@ bottom2=$(bar_bottom)
 shot_bar bar-006-top
 set_setting overlay.position '"bottom"'
 wait_until 5 is 'bar_box' = "$bottom_box" || failures+="the bar did not return to bottom: $(bar_box) instead of $bottom_box; "
-check_failures "VAL-BAR-006 default position" "bottom bar $bottom_box (x center $cx, $top to $bottom of $SCREEN_H); top bar center $cx2, $top2 to $bottom2" "$failures"
+failures+=${fail_note:-}
+check_failures "VAL-BAR-006 default position" "no bar at rest by default; bottom bar $bottom_box (x center $cx, $top to $bottom of $SCREEN_H); top bar center $cx2, $top2 to $bottom2" "$failures"
 
 echo "== VAL-BAR-001 the bar never takes the focus"
 failures=""
@@ -399,72 +406,61 @@ got=$(gtk_commit)
 [ -z "$(missing_words "$(norm <<<"$got")" "${SHORT_WORDS[@]}")" ] || failures+="the entry holds '$got'; "
 click_events=$($HC events | jq -r --argjson t0 "$T0" '[.[] | select(.t_ms >= $t0 and (.kind == "pipeline" or .kind == "overlay")) | "\(.kind):\(.detail)"] | join(",")')
 shot bar-004-after
-check_failures "VAL-BAR-004 click to dictate" "click one gave listening, click two ended it, the entry holds '$got', focus stayed $F0 ($click_events)" "$failures"
+# The cross throws the recording away; the tick puts the words in.
+park
+wait_until 10 bar_is idle
+gtk_clear
+rows0=$(count)
+T0=$(now_ms)
+click_el flowbar.bar || failures+="no bar to click for the cross run; "
+wait_until 5 bar_is listening || failures+="the cross run did not start ($(bar .state)); "
+speech "$SHORT_WAV"
+shot_bar bar-004-cross
+click_el flowbar.cancel || failures+="no cross to click; "
+wait_until 10 run_ended || failures+="the cross did not end the run ($(pevents)); "
+case ",$(pevents)," in *,cancelled,*) ;; *) failures+="the cross gave '$(pevents)', not cancelled; " ;; esac
+[ "$(count)" = "$rows0" ] || failures+="the cross saved $(($(count) - rows0)) rows; "
+[ "$(fid)" = "$F0" ] || failures+="focus moved to $(fid) after the cross; "
+crossed=$(gtk_commit)
+[ -z "$crossed" ] || failures+="the entry holds '$crossed' after the cross; "
+park
+wait_until 10 bar_is idle
+T0=$(now_ms)
+click_el flowbar.bar || failures+="no bar to click for the tick run; "
+wait_until 5 bar_is listening || failures+="the tick run did not start ($(bar .state)); "
+speech "$SHORT_WAV"
+click_el flowbar.finish || failures+="no tick to click; "
+wait_until 120 run_ended || failures+="the tick run did not end; "
+[ "$(fid)" = "$F0" ] || failures+="focus moved to $(fid) after the tick; "
+ticked=$(gtk_commit)
+[ -z "$(missing_words "$(norm <<<"$ticked")" "${SHORT_WORDS[@]}")" ] || failures+="the entry holds '$ticked' after the tick; "
+check_failures "VAL-BAR-004 click to dictate" "click one gave listening, click two ended it, the entry holds '$got', focus stayed $F0 ($click_events); the cross cancelled with no row and an empty entry; the tick inserted '$ticked'" "$failures"
 park
 wait_until 10 bar_is idle
 
-echo "== VAL-BAR-005 the language picker sets the dictation language"
+echo "== VAL-BAR-005 the bar has no language control"
 failures=""
 gtk_clear
-F0=$(fid)
-[ "$(bar .language.enabled)" = true ] || failures+="the picker is disabled with base ($(bar .language)); "
-click_el flowbar.language || failures+="no language control to click; "
-wait_until 5 is 'bar .picker' = list || failures+="the picker did not open ($(bar .picker)); "
-shot bar-005-open
-[ "$(fid)" = "$F0" ] || failures+="focus moved to $(fid) when the picker opened; "
-es_visible() {
-  $HC tree | jq -e '
-    (.[] | select(.id == "flowbar.language.list") | .root_bounds) as $l
-    | .[] | select(.id == "flowbar.language.option.es") | .root_bounds
-    | .y >= $l.y and (.y + .height) <= ($l.y + $l.height)' >/dev/null
-}
-read -r lx ly < <(el_center flowbar.language.list)
-for _ in $(seq 80); do
-  es_visible && break
-  xdotool mousemove "$lx" "$ly" click 5
-  sleep 0.1
+for state in idle listening; do
+  if [ "$state" = listening ]; then
+    hold_start || failures+="the run did not reach listening; "
+    wait_until 5 bar_is listening
+  fi
+  langs=$($HC tree | jq '[.[] | select(.id | startswith("flowbar.language"))] | length')
+  [ "$langs" = 0 ] || failures+="the $state bar has $langs language elements; "
+  [ "$(bar .language)" = null ] || failures+="the overlay state still reports a language; "
 done
-picked_by=click
-if ! es_visible; then
-  picked_by=hook
-  hook_action overlay-language '{"code":"es"}' >/dev/null || failures+="the hook could not pick es; "
-else
-  click_el flowbar.language.option.es || failures+="no Spanish option to click; "
-fi
-wait_until 5 is 'setting dictation.language' = '"es"' || failures+="dictation.language is $(setting dictation.language); "
-[ "$(jq -r '.values["dictation.recentLanguages"][0]' "$SETTINGS")" = es ] || failures+="recentLanguages is $(setting dictation.recentLanguages); "
-wait_until 5 is 'bar .picker' = closed || failures+="the picker stayed open; "
-shot_bar bar-005-spanish
-[ "$(bar .language.label)" != "" ] || failures+="the bar shows no language label; "
-[ "$(fid)" = "$F0" ] || failures+="focus is $(fid) after the pick, not $F0; "
-park
-ptt_run "$SPANISH_WAV" || failures+="the Spanish run did not end; "
-[ "$(dict .language)" = es ] || failures+="the engine reported language '$(dict .language)'; "
-es_text=$(dict .transcript)
-[ -z "$(missing_words "$(norm <<<"$es_text")" hola paulina)" ] || failures+="the Spanish text is '$es_text'; "
-[ "$(newest language_requested)" = es ] || failures+="the row's requested language is '$(newest language_requested)'; "
-gtk_clear
-hook_action dictation-language '{"code":"auto"}' >/dev/null
-use_model tiny.en || failures+="tiny.en did not load; "
-wait_until 5 is 'bar .language.enabled' = false || failures+="the picker stays enabled with tiny.en; "
-reason=$(bar .language.reason)
-[ -n "$reason" ] && [ "$reason" != null ] || failures+="the disabled picker has no reason; "
-click_el flowbar.language || failures+="no language control to click with tiny.en; "
-wait_until 5 is 'bar .picker' = reason || failures+="the disabled picker shows '$(bar .picker)' instead of its reason; "
-tree_reason=$(el_text flowbar.language.reason)
-case "$tree_reason" in *nglish*) ;; *) failures+="the tree reason reads '$tree_reason'; " ;; esac
-shot_bar bar-005-english-only
-[ "$(fid)" = "$F0" ] || failures+="focus is $(fid) with the reason shown; "
-park
-use_model base || failures+="base did not load again; "
-check_failures "VAL-BAR-005 language picker" "Spanish picked by $picked_by: dictation.language es, recent first, engine reported es, '$es_text'; focus stayed $F0; tiny.en disables it ('$tree_reason')" "$failures"
+shot_bar bar-005-listening
+hold_stop
+wait_until 120 run_ended
+check_failures "VAL-BAR-005 no language control" "no flowbar.language element at idle or while listening; the language is set on Home (VAL-HOME-006)" "$failures"
 wait_until 20 bar_is idle
+gtk_clear
 
 echo "== VAL-BAR-007 drag, restart, and the Settings position"
 failures=""
 gtk_clear
 F0=$(fid)
-wait_until 15 is 'bar .picker' = closed
 wait_until 5 bar_is idle
 read -r bw bh bx by < <(bar_box)
 read -r px py < <(el_center flowbar.bar)

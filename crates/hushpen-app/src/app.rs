@@ -381,7 +381,6 @@ pub fn run(hidden: bool) -> ExitCode {
                 FlowBar::new(
                     dictation_storage,
                     controller.clone(),
-                    dictation.clone(),
                     mic.clone(),
                 )
             });

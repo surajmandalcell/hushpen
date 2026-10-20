@@ -200,7 +200,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     ),
     spec!("insert.appChords", Kind::TextMap, |_| json!({})),
     spec!("overlay.enabled", Kind::Bool, |_| json!(true)),
-    spec!("overlay.idleVisible", Kind::Bool, |_| json!(true)),
+    spec!("overlay.idleVisible", Kind::Bool, |_| json!(false)),
     spec!("overlay.position", Kind::Choice(&["top", "bottom"]), |_| {
         json!("bottom")
     }),

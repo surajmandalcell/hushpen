@@ -1,15 +1,17 @@
-//! The flow bar: a small always-on-top pill that shows the dictation state, starts and stops a
-//! dictation with a click, picks the language, and can be dragged.
+//! The flow bar: a small always-on-top pill that shows the dictation state, starts, finishes,
+//! and cancels a dictation with a click, and can be dragged. It shows only while a dictation
+//! runs or a result or notice is up, unless the user asks for the idle pill.
 //!
 //! [`FlowBar`] is the model and the view. It never owns a window: a [`Host`] opens, moves, and
-//! closes the native pop-up, and [`run`] feeds the host from the bar twenty times a second.
+//! closes the native pop-up, and [`run`] feeds the host from the bar: every frame while the bar
+//! moves, twenty times a second while it rests.
 
+mod motion;
 pub mod view;
 mod window;
 
 use crate::ai_cleanup::Phase;
 use crate::controller::{Controller, monotonic_ms};
-use crate::dictation::Dictation;
 use crate::hook;
 use crate::mic::Mic;
 use crate::native::native_handle;
@@ -18,24 +20,22 @@ use gpui_kit::{
     AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, WeakEntity, Window,
     point, px,
 };
-use hushpen_core::dictation::AppEvent;
+use hushpen_core::dictation::{AppEvent, State};
 use hushpen_core::flow_bar::{BarState, Display, Drag, Release, Spot, place, state_for, with_undo};
 use hushpen_platform::window::{Pointer, WindowHandle};
+use motion::{Goal, Motion};
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
-use view::{Language, Picker, Props};
+use view::Props;
 
 pub use window::PopUp;
 
 const SPOT_KEY: &str = "overlay.customPos";
-/// How often the bar reads the pipeline, and how often while a press is down.
+/// How often the bar reads the pipeline while it rests, and while it moves or a press is down.
 const TICK: Duration = Duration::from_millis(50);
-const DRAG_TICK: Duration = Duration::from_millis(16);
-/// An open language list closes by itself: the bar takes no keys, so it cannot close on Esc.
-const PICKER_HOLD_MS: u64 = 10_000;
-const DOT_STEP_MS: u64 = 280;
+const FRAME: Duration = Duration::from_millis(16);
 /// The size of the screen when the display server will not say.
 const FALLBACK_SCREEN: (f32, f32) = (1280.0, 800.0);
 
@@ -65,11 +65,13 @@ type PointerSource = Rc<dyn Fn(WindowHandle) -> Option<Pointer>>;
 pub struct FlowBar {
     storage: Rc<Storage>,
     controller: Entity<Controller>,
-    dictation: Entity<Dictation>,
     mic: Entity<Mic>,
     clock: Rc<dyn Fn() -> u64>,
     pointer: PointerSource,
     open_history: Option<OpenHistory>,
+    /// Off in tests and with Reduce Motion: every change shows at once.
+    animate: bool,
+    motion: Motion,
 
     display: Display,
     last_failure: Option<&'static str>,
@@ -77,8 +79,6 @@ pub struct FlowBar {
     refusal: Option<String>,
     /// The newest refused Command Mode start the bar has shown.
     seen_flash: u64,
-    /// When the language list opened.
-    picker: Option<u64>,
     props: Props,
     visible: bool,
     origin: (f32, f32),
@@ -94,25 +94,20 @@ pub struct FlowBar {
 }
 
 impl FlowBar {
-    pub fn new(
-        storage: Rc<Storage>,
-        controller: Entity<Controller>,
-        dictation: Entity<Dictation>,
-        mic: Entity<Mic>,
-    ) -> Self {
+    pub fn new(storage: Rc<Storage>, controller: Entity<Controller>, mic: Entity<Mic>) -> Self {
         Self {
             storage,
             controller,
-            dictation,
             mic,
             clock: Rc::new(monotonic_ms),
             pointer: Rc::new(hushpen_platform::window::pointer),
             open_history: None,
+            animate: true,
+            motion: Motion::default(),
             display: Display::default(),
             last_failure: None,
             refusal: None,
             seen_flash: 0,
-            picker: None,
             props: Props::new(BarState::Idle),
             visible: false,
             origin: (0.0, 0.0),
@@ -141,19 +136,30 @@ impl FlowBar {
 
     /// Where the bar is: the top left corner and the size, in logical pixels.
     pub fn frame(&self) -> ((f32, f32), (f32, f32)) {
-        (self.origin, view::size_of(&self.props))
+        (self.origin, self.motion.size())
     }
 
     pub fn is_pressed(&self) -> bool {
         self.pressed
     }
 
-    fn flag(&self, key: &str) -> bool {
+    /// The bar moves on its own: it changes size, fades, or draws a live waveform or dots.
+    fn needs_frames(&self) -> bool {
+        self.animate
+            && self.visible
+            && (!self.motion.is_settled()
+                || matches!(
+                    self.props.state,
+                    BarState::Listening | BarState::Transcribing
+                ))
+    }
+
+    fn flag(&self, key: &str, default: bool) -> bool {
         self.storage
             .settings
             .get(key)
             .and_then(|value| value.as_bool())
-            .unwrap_or(true)
+            .unwrap_or(default)
     }
 
     fn spot(&self) -> Spot {
@@ -170,16 +176,6 @@ impl FlowBar {
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_default();
         Spot::from_settings(&position, custom)
-    }
-
-    fn language(&self, cx: &App) -> Language {
-        let code = self.dictation.read(cx).language(cx);
-        let reason = self.dictation.read(cx).picker_off_reason(cx);
-        Language {
-            label: code.to_uppercase(),
-            enabled: reason.is_none(),
-            reason: reason.map(str::to_owned),
-        }
     }
 
     /// Reads the pipeline, the settings, and the pointer, and works out what to draw and where.
@@ -219,70 +215,71 @@ impl FlowBar {
         if !shown.is_failure() {
             self.refusal = None;
         }
-        if shown != BarState::Idle
-            || self
-                .picker
-                .is_some_and(|since| now.saturating_sub(since) > PICKER_HOLD_MS)
-        {
-            self.picker = None;
-        }
 
-        let spot = self.spot();
-        let below = spot.opens_downward(screen);
-        let language = self.language(cx);
-        let picker = match (self.picker, &language.reason) {
-            (None, _) => Picker::Closed,
-            (Some(_), Some(reason)) => Picker::Reason {
-                text: reason.clone(),
-                below,
-            },
-            (Some(_), None) => {
-                let dictation = self.dictation.read(cx);
-                Picker::List {
-                    codes: dictation.picker_codes(),
-                    selected: dictation.language(cx),
-                    below,
-                }
+        let wanted = self.flag("overlay.enabled", true)
+            && (shown != BarState::Idle || self.pressed || self.flag("overlay.idleVisible", false));
+        // A bar on its way out keeps what it showed last: the idle pill must not flash up as
+        // a result fades.
+        let mut props = if wanted {
+            let message = match shown {
+                BarState::Result | BarState::Undo => view::result_text(copied).to_owned(),
+                BarState::Error | BarState::Blocked => self
+                    .refusal
+                    .clone()
+                    .unwrap_or_else(|| view::failure_text(self.last_failure).to_owned()),
+                _ => String::new(),
+            };
+            Props {
+                state: shown,
+                message,
+                open_history: shown.is_failure()
+                    && self.refusal.is_none()
+                    && self.controller.read(cx).last_row_id().is_some(),
+                preparing: shown == BarState::Transcribing && preparing,
+                ..Props::new(shown)
             }
+        } else {
+            self.props.clone()
         };
-        let message = match shown {
-            BarState::Result | BarState::Undo => view::result_text(copied).to_owned(),
-            BarState::Error | BarState::Blocked => self
-                .refusal
-                .clone()
-                .unwrap_or_else(|| view::failure_text(self.last_failure).to_owned()),
-            _ => String::new(),
+        let wave = if props.state == BarState::Listening {
+            view::wave_goal(&self.mic.read(cx).meter())
+        } else {
+            Vec::new()
         };
-        let props = Props {
-            state: shown,
-            levels: if shown == BarState::Listening {
-                self.mic.read(cx).meter()
-            } else {
-                Vec::new()
+        let goal_size = view::size_of(&props);
+        self.motion.update(
+            now,
+            Goal {
+                size: goal_size,
+                shown: wanted,
+                new_state: wanted && props.state != self.props.state,
+                wave: &wave,
             },
-            dot: ((now / DOT_STEP_MS) % 3) as usize,
-            language,
-            picker,
-            open_history: shown.is_failure()
-                && self.refusal.is_none()
-                && self.controller.read(cx).last_row_id().is_some(),
-            message,
-            preparing: shown == BarState::Transcribing && preparing,
-        };
-        let size = view::size_of(&props);
+            self.animate && !cx.reduce_motion(),
+        );
+        let size = self.motion.size();
+        props.levels = self.motion.wave().to_vec();
+        props.phase = (now % view::DOT_CYCLE_MS) as f32 / view::DOT_CYCLE_MS as f32;
+        props.frame = Some(size);
+        props.presence = self.motion.presence();
+        props.fade = self.motion.fade();
         if props != self.props {
             self.props = props;
             cx.notify();
         }
 
-        self.visible = self.flag("overlay.enabled")
-            && (self.props.state != BarState::Idle
-                || self.picker.is_some()
-                || self.pressed
-                || self.flag("overlay.idleVisible"));
+        self.visible = wanted || !self.motion.is_gone();
+        // The spot comes from the goal size, so the bar grows and shrinks around a still
+        // center and lands on the same pixels every time.
         let at = match self.drag_origin {
             Some(origin) => origin,
-            None => place(screen, size, spot),
+            None => {
+                let (x, y) = place(screen, goal_size, self.spot());
+                (
+                    x + (goal_size.0 - size.0) / 2.0,
+                    y + (goal_size.1 - size.1) / 2.0,
+                )
+            }
         };
         self.origin = at;
         self.visible.then(|| {
@@ -300,7 +297,7 @@ impl FlowBar {
 
     fn apply(&mut self, at: (f32, f32)) {
         if let Some(delta) = self.drag.moved(at) {
-            let (width, height) = view::size_of(&self.props);
+            let (width, height) = self.motion.size();
             let x = (self.drag_anchor.0 + delta.0).clamp(0.0, (self.screen.0 - width).max(0.0));
             let y = (self.drag_anchor.1 + delta.1).clamp(0.0, (self.screen.1 - height).max(0.0));
             self.drag_origin = Some((x, y));
@@ -388,42 +385,32 @@ impl FlowBar {
     /// Starts a dictation, or stops the one that runs: a click on the bar, or the tray entry. A
     /// start that preflight refuses shows its reason on the bar.
     pub fn toggle(&mut self, cx: &mut Context<Self>) {
-        self.picker = None;
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.dispatch(AppEvent::FlowBarClick, cx)
-        });
+        self.send(AppEvent::FlowBarClick, cx);
+    }
+
+    /// The tick: the words go in, as when the hold key comes up.
+    pub fn finish(&mut self, cx: &mut Context<Self>) {
+        hook::record_event("flowbar", "finish");
+        if self.controller.read(cx).state() == State::Listening {
+            self.send(AppEvent::FlowBarClick, cx);
+        }
+    }
+
+    /// The cross: the recording is thrown away, as with Esc.
+    pub fn cancel(&mut self, cx: &mut Context<Self>) {
+        hook::record_event("flowbar", "cancel");
+        self.send(AppEvent::Esc, cx);
+    }
+
+    fn send(&mut self, event: AppEvent, cx: &mut Context<Self>) {
+        let result = self
+            .controller
+            .update(cx, |controller, cx| controller.dispatch(event, cx));
         if let Err(reason) = result {
             self.refusal = Some(reason);
             self.display.update(BarState::Error, (self.clock)());
         }
         cx.notify();
-    }
-
-    /// The language chip: opens the list, or the reason the list is off, and closes it again.
-    pub fn toggle_picker(&mut self, cx: &mut Context<Self>) {
-        self.picker = match self.picker {
-            Some(_) => None,
-            None => Some((self.clock)()),
-        };
-        hook::record_event(
-            "flowbar",
-            if self.picker.is_some() {
-                "picker open"
-            } else {
-                "picker closed"
-            },
-        );
-        cx.notify();
-    }
-
-    /// An option of the list: `auto` or a whisper code.
-    pub fn choose_language(&mut self, code: &str, cx: &mut Context<Self>) -> Result<(), String> {
-        let result = self
-            .dictation
-            .update(cx, |dictation, cx| dictation.set_language(code, cx));
-        self.picker = None;
-        cx.notify();
-        result
     }
 
     /// The "Open history" button of a failure.
@@ -461,22 +448,12 @@ impl FlowBar {
     /// `hookctl state` section `overlay`.
     pub fn state_json(&self) -> Value {
         let ((x, y), (width, height)) = self.frame();
-        let picker = match &self.props.picker {
-            Picker::Closed => "closed",
-            Picker::List { .. } => "list",
-            Picker::Reason { .. } => "reason",
-        };
         json!({
             "state": self.props.state.key(),
             "visible": self.visible,
             "bounds": {"x": x, "y": y, "width": width, "height": height},
+            "settled": self.motion.is_settled(),
             "message": self.props.message,
-            "language": {
-                "label": self.props.language.label,
-                "enabled": self.props.language.enabled,
-                "reason": self.props.language.reason,
-            },
-            "picker": picker,
             "open_history": self.props.open_history,
             "dragging": self.drag.is_dragging(),
             "position": self.storage.settings.get("overlay.position"),
@@ -521,8 +498,10 @@ fn drive(
     bar: &WeakEntity<FlowBar>,
 ) -> Option<(Duration, Option<Native>)> {
     let screen = driver.borrow().screen(cx);
-    let Ok((plan, pressed)) = bar.update(cx, |bar, cx| (bar.tick(screen, cx), bar.is_pressed()))
-    else {
+    let Ok((plan, fast)) = bar.update(cx, |bar, cx| {
+        let plan = bar.tick(screen, cx);
+        (plan, bar.is_pressed() || bar.needs_frames())
+    }) else {
         return None;
     };
     let native = match plan {
@@ -532,7 +511,7 @@ fn drive(
             None
         }
     };
-    Some((if pressed { DRAG_TICK } else { TICK }, native))
+    Some((if fast { FRAME } else { TICK }, native))
 }
 
 #[cfg(test)]
