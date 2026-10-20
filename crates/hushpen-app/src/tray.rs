@@ -32,6 +32,8 @@ const TITLE: &str = "Hushpen";
 const GLYPH_BLACK: &[u8] = include_bytes!("../../../assets/asrpro-tray-dark.png");
 /// White glyph, for a dark panel.
 const GLYPH_WHITE: &[u8] = include_bytes!("../../../assets/asrpro-tray-light.png");
+/// The macOS menu bar glyph: black on clear at 2x (22 by 16 points), shown as a template image.
+const MENU_BAR_GLYPH: &[u8] = include_bytes!("../../../assets/hushpen-menubar.png");
 
 /// One entry of the menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,16 +118,22 @@ pub fn listening(controller: &Entity<Controller>, cx: &App) -> bool {
     controller.read(cx).state() == State::Listening
 }
 
-/// Which glyph reads on the panel. macOS gets the black one as a template image, which the
-/// system tints; Linux panels do not tint, so a dark panel gets the white glyph.
+/// Which glyph reads on the panel. macOS gets the menu bar glyph as a template image, which the
+/// system tints for Light and Dark; Linux panels do not tint, so a dark panel gets the white glyph.
 pub fn glyph_for(appearance: WindowAppearance) -> &'static [u8] {
     if cfg!(target_os = "macos") {
-        return GLYPH_BLACK;
+        return MENU_BAR_GLYPH;
     }
     match appearance {
         WindowAppearance::Dark | WindowAppearance::VibrantDark => GLYPH_WHITE,
         WindowAppearance::Light | WindowAppearance::VibrantLight => GLYPH_BLACK,
     }
+}
+
+/// The text next to the icon. macOS draws a status item title beside the glyph, so the menu bar
+/// gets none; a Linux StatusNotifier item uses it only as its name.
+pub fn panel_title() -> Option<&'static str> {
+    cfg!(not(target_os = "macos")).then_some(TITLE)
 }
 
 fn icon_for(appearance: WindowAppearance, cx: &App) -> Option<Icon> {
@@ -200,7 +208,7 @@ impl gpui_kit::Global for Held {}
 /// the main window minimizes on close.
 pub fn install(cx: &mut App, controller: &Entity<Controller>) -> Option<Tray> {
     let appearance = cx.window_appearance();
-    let mut builder = Tray::builder().title(TITLE).tooltip(TITLE).menu({
+    let mut builder = Tray::builder().tooltip(TITLE).menu({
         let controller = controller.downgrade();
         move |cx| {
             let listening = controller
@@ -209,6 +217,9 @@ pub fn install(cx: &mut App, controller: &Entity<Controller>) -> Option<Tray> {
             menu_items(listening)
         }
     });
+    if let Some(title) = panel_title() {
+        builder = builder.title(title);
+    }
     if let Some(icon) = icon_for(appearance, cx) {
         builder = builder.icon(icon);
     }
@@ -238,24 +249,28 @@ pub fn install(cx: &mut App, controller: &Entity<Controller>) -> Option<Tray> {
 
     #[cfg(target_os = "macos")]
     cx.spawn(async move |cx| {
-        // The status item gets its button a moment after it is made.
-        cx.background_executor()
-            .timer(std::time::Duration::from_millis(300))
-            .await;
-        cx.update(|_| {
-            let styled = hushpen_platform::tray_host::style_status_icon();
-            if styled == 0 {
-                log::warn!("the menu bar icon was not found, so it is not a template image");
+        // The status item gets its button a moment after it is made, so look again for a while.
+        for _ in 0..30 {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(100))
+                .await;
+            if cx.update(|_| hushpen_platform::tray_host::style_status_icon()) > 0 {
+                return;
             }
-        });
+        }
+        log::warn!("the menu bar icon was not found, so it is not a template image");
     })
     .detach();
     Some(tray)
 }
 
 /// Swaps the Linux glyph when the panel goes from light to dark. The window reports the
-/// system appearance.
+/// system appearance. macOS tints the template glyph itself, and a new image would drop the
+/// template flag and draw black on a dark menu bar.
 pub fn follow_appearance(cx: &mut App, window: AnyWindowHandle, tray: &Tray) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
     let tray = tray.clone();
     let _ = window.update(cx, |_, window, _| {
         window

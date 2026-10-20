@@ -51,8 +51,8 @@ mod imp {
     use objc2_app_kit::{NSApplication, NSStatusBarButton, NSView};
     use objc2_foundation::NSSize;
 
-    /// Points: the height of the menu bar icons that macOS draws itself.
-    const ICON_POINTS: f64 = 18.0;
+    /// Points: the menu bar glyph asset is 44 by 32 pixels, drawn at 2x.
+    const ICON_POINTS: NSSize = NSSize::new(22.0, 16.0);
 
     pub(super) fn available() -> bool {
         true
@@ -78,7 +78,7 @@ mod imp {
             && let Some(image) = button.image()
         {
             image.setTemplate(true);
-            image.setSize(NSSize::new(ICON_POINTS, ICON_POINTS));
+            image.setSize(ICON_POINTS);
             styled += 1;
         }
         for child in view.subviews() {
