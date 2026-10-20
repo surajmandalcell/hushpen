@@ -59,14 +59,14 @@ impl PermissionWatch {
 
     fn compare(&mut self, settings: &SettingsStore) {
         let stored = Self::stored_grants(settings);
-        self.lost = permission::lost(&stored, &self.current);
+        let before = std::mem::replace(&mut self.lost, permission::lost(&stored, &self.current));
         let remembered = permission::remember_granted(&stored, &self.current);
         if remembered != stored
             && let Err(error) = settings.set_internal(LAST_GRANTED, Value::Object(remembered))
         {
             log::warn!("the granted permissions could not be saved: {error}");
         }
-        for permission in &self.lost {
+        for permission in newly_lost(&before, &self.lost) {
             log::warn!("PERMISSION_LOST {} was granted before", permission.key());
         }
     }
@@ -82,6 +82,10 @@ impl PermissionWatch {
     pub fn to_json(&self) -> Value {
         self.current.to_json(&self.lost)
     }
+}
+
+fn newly_lost<'a>(before: &[Permission], now: &'a [Permission]) -> Vec<&'a Permission> {
+    now.iter().filter(|permission| !before.contains(permission)).collect()
 }
 
 /// The section for a system that has no permission preflight attached.
@@ -194,6 +198,18 @@ mod tests {
 
         assert!(watch.refresh(&settings));
         assert!(watch.lost().is_empty());
+    }
+
+    #[test]
+    fn a_loss_is_logged_once_when_it_starts_and_not_on_each_refresh() {
+        let lost = [Permission::Accessibility];
+
+        assert_eq!(newly_lost(&[], &lost), [&Permission::Accessibility]);
+        assert!(newly_lost(&lost, &lost).is_empty());
+        assert_eq!(
+            newly_lost(&lost, &[Permission::Accessibility, Permission::Microphone]),
+            [&Permission::Microphone]
+        );
     }
 
     #[test]
