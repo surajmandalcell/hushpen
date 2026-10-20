@@ -60,7 +60,9 @@ Run them from the repo root after sourcing `env.sh`. `<slot>` is 1 to 6.
 
 Also here: `build-app.sh` (builds the debug app and `hookctl` in the `hushpen-build` container and
 copies them to `harness-bin`), `run-suite.sh` (below), and `lib.sh` (shared helpers). `slot/` holds
-the scripts that run inside a slot.
+the scripts that run inside a slot. `mac-test-app.sh` runs on the Mac: it rebuilds the Mac test app
+(`mac-check/Hushpen.app`) from this checkout and signs it with the owner's Apple Development
+identity, so its privacy grants survive rebuilds.
 
 Release candidate checks:
 
