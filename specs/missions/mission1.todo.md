@@ -1,18 +1,19 @@
 # Mission 1 (Hushpen 2.0.0): remaining work and resume guide
 
-State as of 2026-10-17. Read `specs/missions/mission1.completed.md` first. This file is written so a fresh agent can resume with one prompt: "Resume the Hushpen mission. Read `specs/missions/mission1.todo.md` and `specs/missions/mission1.completed.md` in the repo, then continue."
+State as of 2026-10-21. Read `specs/missions/mission1.completed.md` first. This file is written so a fresh agent can resume with one prompt: "Resume the Hushpen mission. Read `specs/missions/mission1.todo.md` and `specs/missions/mission1.completed.md` in the repo, then continue."
 
 ## Resume in one prompt
 
 The mission runs in Factory Droid as orchestrator mission `f0a389f7-d034-46ca-9118-308ed631c4b8`, state in `/Users/surajmandal/.factory/missions/f0a389f7-d034-46ca-9118-308ed631c4b8`. To resume inside Factory: open that mission and call `start_mission_run` when this file says so. To resume outside Factory (plain agent): follow the "Remaining work" steps below by hand; `features.json` in the mission dir holds the exact feature descriptions, preconditions, and expected behavior for each step.
 
-The mission is PAUSED at S2 part B, waiting for the owner. Do not start new milestone or feature work until step 1 below is unblocked.
+The mission is PAUSED at S2 part B, waiting for the owner: the Accessibility and Input Monitoring grants (Touch ID), then the real-key checklist. Do not start new milestone or feature work until step 1 below is unblocked.
 
 ## Current live state
 
-- Hushpen test build (instance d2) is running: pids 70145 and 70160 (check with `ps -axo pid,etime,comm | grep -i hushpen | grep -v grep`). Window 940x600 visible, flow bar on, AI cleanup off.
-- The S2 watcher is running: `watch.sh` pid 13289, armed with the paste guard and the WAV feeder. Lock file: `/Volumes/External1TB/data/_custom/droid/hushpen/evidence/mac-session.lock`. Deadline 8 h from 2026-10-17 05:07 IST; if the deadline passed, relaunch per "If the processes died" below.
-- Nothing else runs. No `start_mission_run` call is in flight.
+- The test app `mac-check/Hushpen.app` is signed with the Apple Development identity (designated requirement: bundle id `app.hushpen.test` plus the certificate). The new signature dropped the old ad-hoc grants once.
+- Grants for the new signature: Removable Volumes on (set through Codex in System Settings > Files & Folders), Microphone granted. Accessibility (System Settings name: Device Control and Data Access) and Input Monitoring read denied. A denied app's request is ignored, so Hushpen never adds itself to those lists. The owner removes the old "Hushpen.app" row and adds `mac-check/Hushpen.app` with + in both lists (Touch ID).
+- Hushpen d2 runs from the build before 16e1b7c (check with `pgrep -x hushpen`), on the repair permission page. The compiled 16e1b7c build is in the target folder; after the grants, quit Hushpen and rerun `harness/mac-test-app.sh` to copy and sign it.
+- The S2 watcher is not running; the lock file holds a dead pid. Relaunch `bin/watch.sh` (fireAndForget, 8 h deadline) after Hushpen restarts.
 
 ## Remaining work, in order
 

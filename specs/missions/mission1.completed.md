@@ -1,6 +1,6 @@
 # Mission 1 (Hushpen 2.0.0): completed work
 
-State as of 2026-10-17. Read this file together with `specs/missions/mission1.todo.md`.
+State as of 2026-10-21. Read this file together with `specs/missions/mission1.todo.md`.
 
 ## What the mission is
 
@@ -44,7 +44,8 @@ Hushpen 2.0.0 is a local-first, AGPL-3.0-or-later Wispr Flow clone, rewritten in
 - Done in the background through Codex computer use plus hookctl: window look and pixel checks (content pane exactly #1E1E1E, neutral selection), appearance switch light/dark/system, launch-at-login toggle, History playback (position moved, no error), TXT export content (byte-equal), tray menu model, first-launch look on an empty data folder, clean quits (0 "already borrowed"/"panicked", 0 SIGTRAP).
 - One exit-90 stop: the owner switched the front app to Pumble during a window-locked Codex call; all further Codex calls were stopped per the skill. Remaining captures ride on owner checklist lines and part B capture-only calls.
 - Written for the owner: 23-step checklist, about 16 minutes, at `/Volumes/External1TB/data/_custom/droid/hushpen/evidence/m5-mac-session-s2/owner-checklist.md`.
-- Running right now: Hushpen test build (instance d2, pids 70145 and 70160, 940x600 window, flow bar on, AI cleanup off) and the watcher `watch.sh` (pid 13289, 8 h deadline from 05:07, paste guard and WAV feeder armed, lock at `evidence/mac-session.lock`). Feed queue `feed-queue.txt` holds 11 lines for checklist steps 2,4,5,6,7,8,10,12,14,16,16.
+- Live process state and grants: see "Current live state" in `mission1.todo.md`. Feed queue `feed-queue.txt` holds 11 lines for checklist steps 2,4,5,6,7,8,10,12,14,16,16.
+- After rc.2: flow bar redesign (ccd53e3), glyph-only menu bar icon (4192ee1), signed test app (213b348), PERMISSION_LOST logged once per loss instead of every second (16e1b7c).
 
 ## CI budget
 
@@ -66,7 +67,7 @@ Hushpen 2.0.0 is a local-first, AGPL-3.0-or-later Wispr Flow clone, rewritten in
 ## Key paths
 
 - Mission dir (all mission state): `/Users/surajmandal/.factory/missions/f0a389f7-d034-46ca-9118-308ed631c4b8` — `features.json`, `mission.md`, `validation-contract.md`, `validation-state.json`, `architecture.md`, `AGENTS.md`, `services.yaml`, `init.sh`, `skills/` (app-worker, rust-worker, platform-worker, refactor-worker, mac-session-worker), `library/`, `research/`, `validation/`, `handoffs/`.
-- Repo: `/Volumes/External1TB/dev/personal/asrpro`, branch master, HEAD bd5ab58, clean tree. Tags v2.0.0-rc.1 (9521ee8) and v2.0.0-rc.2 (5805b02).
+- Repo: `/Volumes/External1TB/dev/personal/hushpen`, branch master, HEAD 16e1b7c, clean tree. Tags v2.0.0-rc.1 (9521ee8) and v2.0.0-rc.2 (5805b02).
 - Data root: `/Volumes/External1TB/data/_custom/droid/hushpen` (env.sh, evidence/, tmp/f.json for jq edits).
 - S2 evidence: `.../droid/hushpen/evidence/m5-mac-session-s2/` — `session.json` (runs 1-3), `owner-checklist.md`, `bin/cx.sh` (Codex wrapper with the yolo flag), `bin/launch.sh`, `bin/watch.sh`, `scratch.txt`, `feed-queue.txt`, watcher logs (front.log, hook.jsonl, events.log, clip.log, guard.log, frontmost.log).
 - Test build under test: `.../droid/hushpen/mac-check/Hushpen.app`, rebuilt from HEAD by `harness/mac-test-app.sh` and signed with the Apple Development identity, so owner grants survive rebuilds. Never run tccutil.
