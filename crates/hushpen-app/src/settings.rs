@@ -510,9 +510,13 @@ impl Settings {
     }
 
     /// Starts a read of the system's answer on a thread. A read already running gets one more
-    /// after it, so the newest request is never lost.
+    /// after it, so the newest request is never lost. During a write the system still has the
+    /// old value, so the read waits for the write, which refreshes when it lands.
     fn refresh_login(&mut self, cx: &mut Context<Self>) {
         let Some(login) = &self.login else { return };
+        if self.login_cache.writing {
+            return;
+        }
         if self.login_cache.reading {
             self.login_cache.again = true;
             return;

@@ -326,6 +326,34 @@ fn a_click_during_a_write_is_written_after_it(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_refresh_during_a_write_never_shows_the_old_value(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    *rig.login.write_delay.lock().unwrap() = std::time::Duration::from_millis(200);
+    rig.settings
+        .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    rig.settings.update(cx, |me, cx| me.app_activated(cx));
+
+    let step = std::time::Duration::from_millis(20);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while read(cx, &rig, |me| me.login_cache.writing) {
+        cx.executor().advance_clock(step);
+        cx.run_until_parked();
+        assert!(
+            read(cx, &rig, Settings::launch_at_login),
+            "the row went back during the write"
+        );
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the write never landed"
+        );
+        std::thread::sleep(step);
+    }
+    settle_login(cx, &rig);
+    assert!(read(cx, &rig, Settings::launch_at_login));
+    assert_eq!(*rig.login.writes.lock().unwrap(), vec![true]);
+}
+
+#[gpui_kit::test]
 fn a_login_item_removed_by_hand_reads_as_off_on_open(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.settings
