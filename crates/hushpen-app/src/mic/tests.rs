@@ -297,6 +297,30 @@ fn the_selected_microphone_is_opened_ahead_of_a_start_and_again_when_it_changes(
 }
 
 #[gpui_kit::test]
+fn the_microphone_is_opened_again_when_a_session_ends(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    devices(cx, &rig, virtual_mics());
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    assert_eq!(
+        rig.backend.warmed(),
+        ["default"],
+        "a session keeps its stream"
+    );
+
+    rig.mic
+        .update(cx, |mic, cx| mic.stop(true, cx))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        rig.backend.warmed(),
+        ["default", "default"],
+        "the next start finds a stream that is ready"
+    );
+}
+
+#[gpui_kit::test]
 fn a_session_collects_levels_and_stop_keeps_or_deletes_the_file(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
     devices(cx, &rig, virtual_mics());
