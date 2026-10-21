@@ -18,6 +18,8 @@ pub mod dictation;
 pub mod dictionary;
 pub mod engine_host;
 pub mod flow_bar;
+#[cfg(test)]
+mod focus_roles;
 pub mod history;
 pub mod hook;
 pub mod import;

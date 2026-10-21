@@ -487,6 +487,8 @@ impl Render for Shell {
         self.rendered = palette.appearance;
         let frame = div()
             .id("shell")
+            .role(Role::Group)
+            .aria_label("Hushpen")
             .track_focus(&self.shell_focus)
             .flex()
             .size_full()
