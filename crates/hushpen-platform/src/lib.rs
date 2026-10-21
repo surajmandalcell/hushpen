@@ -3,6 +3,7 @@
 pub mod appearance;
 pub mod insert;
 pub mod keys;
+pub mod local_time;
 pub mod login_item;
 pub mod memory;
 pub mod permissions;

@@ -367,6 +367,42 @@ fn an_unsupported_format_fails_the_item_with_its_code_and_saves_no_row(cx: &mut 
 }
 
 #[gpui_kit::test]
+fn a_failed_file_says_why_in_words_with_no_error_code(cx: &mut TestAppContext) {
+    let fixture = open(cx);
+    say(
+        &fixture,
+        failed(
+            error::IMPORT_UNSUPPORTED_CODEC,
+            "Opus is not supported yet.",
+        ),
+    );
+    say(
+        &fixture,
+        failed(error::ENGINE_CRASHED, "the engine stopped"),
+    );
+    add(
+        cx,
+        &fixture,
+        vec![file(&fixture, "a.opus"), file(&fixture, "b.wav")],
+    );
+    run_one(cx, &fixture);
+    run_one(cx, &fixture);
+
+    let lines: Vec<String> = fixture.import.read_with(cx, |import, _| {
+        import
+            .items()
+            .iter()
+            .map(|item| panel::detail_of(item, None))
+            .collect()
+    });
+    assert_eq!(lines[0], "Opus is not supported yet.");
+    assert_eq!(
+        lines[1],
+        "The speech engine stopped while reading this file. Try again."
+    );
+}
+
+#[gpui_kit::test]
 fn a_file_that_cannot_be_read_fails_with_its_own_code(cx: &mut TestAppContext) {
     let fixture = open(cx);
     say(

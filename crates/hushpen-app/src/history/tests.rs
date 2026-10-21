@@ -370,8 +370,58 @@ fn a_cancelled_row_is_labelled_not_transcribed_and_a_failed_row_shows_as_failed(
     reload(cx, &view);
 
     let titles = names(cx, &view);
-    assert!(titles[0].starts_with("Failed"), "{titles:?}");
+    assert_eq!(titles[0], "No speech was heard");
     assert_eq!(titles[1], "Not transcribed");
+    let metas = metas(cx, &view);
+    assert!(metas[0].ends_with(" \u{b7} Failed"), "{metas:?}");
+    assert!(metas[1].ends_with(" \u{b7} Canceled"), "{metas:?}");
+}
+
+fn metas(cx: &mut TestAppContext, view: &Fixture) -> Vec<String> {
+    state(cx, view)["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["meta"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn a_failure_shows_in_words_and_never_as_an_error_code() {
+    for code in [
+        "ENGINE_BAD_AUDIO",
+        "ENGINE_NO_SPEECH",
+        "ENGINE_CRASHED",
+        "SOMETHING_NEW",
+    ] {
+        let row = Row {
+            kind: "dictation".into(),
+            status: "failed".into(),
+            error_code: Some(code.into()),
+            ..Row::default()
+        };
+        for text in [panel::title(&row), panel::outcome(&row), panel::meta(&row)] {
+            assert!(!text.contains(code), "{text}");
+        }
+        assert_eq!(panel::outcome(&row), "Failed");
+    }
+    let bare = Row {
+        status: "failed".into(),
+        ..Row::default()
+    };
+    assert_eq!(panel::title(&bare), "Transcription failed");
+}
+
+#[test]
+fn times_show_in_the_offset_given_with_no_zone_name() {
+    // 2025-06-01 09:15:00 UTC
+    let created_at = 1_748_769_300_000;
+
+    assert_eq!(panel::when_at(created_at, 0), "2025-06-01 09:15");
+    assert_eq!(panel::when_at(created_at, 19_800), "2025-06-01 14:45");
+    assert_eq!(panel::when_at(created_at, -10 * 3600), "2025-05-31 23:15");
+    assert!(!panel::when(created_at).contains("UTC"));
+    assert_eq!(panel::when(created_at).len(), "2025-06-01 09:15".len());
 }
 
 #[gpui_kit::test]
@@ -403,6 +453,26 @@ fn the_detail_view_shows_the_fields_of_the_row_and_back_returns_to_the_list(
         );
     }
     assert!(!present(cx, &view, "history.detail.llm"));
+    let shown = cx
+        .update_window(view.handle, |_, window, _| {
+            ["model", "language", "status"].map(|field| {
+                window
+                    .find(gpui_kit::SharedString::from(format!(
+                        "history.detail.{field}"
+                    )))
+                    .label()
+                    .map(str::to_owned)
+            })
+        })
+        .unwrap();
+    assert_eq!(
+        shown,
+        [
+            Some("Base".to_owned()),
+            Some("English".to_owned()),
+            Some("Pasted".to_owned())
+        ]
+    );
 
     click(cx, &view, "history.back");
     assert!(present(cx, &view, "history.row.0"));
@@ -676,6 +746,25 @@ fn clear_all_asks_first_declining_keeps_everything_and_confirming_removes_rows_a
     assert_eq!(history::count(&view.rig.storage.database).unwrap(), 0);
     assert!(!wav.exists());
     assert!(present(cx, &view, "history.empty"));
+}
+
+#[gpui_kit::test]
+fn the_clear_all_question_puts_keep_before_delete_all(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed(&view, "A", 1_000, "one");
+    reload(cx, &view);
+    click(cx, &view, "history.clear");
+
+    let (keep, delete) = cx
+        .update_window(view.handle, |_, window, _| {
+            (
+                window.find("history.clear-cancel").bounds(),
+                window.find("history.clear-confirm").bounds(),
+            )
+        })
+        .unwrap();
+
+    assert!(keep.right() <= delete.left(), "{keep:?} then {delete:?}");
 }
 
 #[gpui_kit::test]

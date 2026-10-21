@@ -17,6 +17,7 @@ use gpui_kit::{
     relative, transparent_black,
 };
 use hushpen_core::export::Format;
+use hushpen_core::{catalog, language};
 use hushpen_store::history::Row;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -44,21 +45,18 @@ pub fn title(row: &Row) -> String {
         ("failed", Some(code)) => {
             let message = History::failure_message(code);
             let first = message.split(". ").next().unwrap_or(message);
-            format!("Failed: {}", first.trim_end_matches('.'))
+            first.trim_end_matches('.').to_owned()
         }
-        ("failed", None) => "Failed".to_owned(),
+        ("failed", None) => "Transcription failed".to_owned(),
         _ => "No text".to_owned(),
     }
 }
 
-/// How the run ended, in words.
+/// How the run ended, in words. The error code stays in the row, the log, and the export.
 pub fn outcome(row: &Row) -> String {
     match row.status.as_str() {
-        "cancelled" => "Cancelled".to_owned(),
-        "failed" => match &row.error_code {
-            Some(code) => format!("Failed ({code})"),
-            None => "Failed".to_owned(),
-        },
+        "cancelled" => "Canceled".to_owned(),
+        "failed" => "Failed".to_owned(),
         _ => match row.insert_outcome.as_deref() {
             Some("pasted") => "Pasted".to_owned(),
             Some("copied_only") => "Copied only".to_owned(),
@@ -67,9 +65,33 @@ pub fn outcome(row: &Row) -> String {
     }
 }
 
+/// `2025-06-01 09:15` in the time zone the system is set to.
 pub fn when(created_at: i64) -> String {
-    let stamp = hushpen_store::time::iso_seconds(u64::try_from(created_at).unwrap_or(0));
-    format!("{} UTC", stamp[..16].replace('T', " "))
+    let offset = hushpen_platform::local_time::utc_offset_seconds(created_at.div_euclid(1000));
+    when_at(created_at, offset)
+}
+
+/// The same for a given offset from UTC, in seconds.
+pub fn when_at(created_at: i64, offset_seconds: i64) -> String {
+    let local = u64::try_from(created_at.saturating_add(offset_seconds * 1000)).unwrap_or(0);
+    let stamp = hushpen_store::time::iso_seconds(local);
+    stamp[..16].replace('T', " ")
+}
+
+/// The name the Models view gives a speech model, or the id when the catalog lacks it.
+fn model_name(id: &str) -> String {
+    catalog::embedded()
+        .whisper(id)
+        .map_or_else(|| id.to_owned(), |entry| entry.name.clone())
+}
+
+/// The name of a language code, as Home shows it.
+fn language_name(code: &str) -> String {
+    match language::name(code) {
+        Some(name) => name.to_owned(),
+        None if code == language::AUTO => language::label(code).to_owned(),
+        None => code.to_owned(),
+    }
 }
 
 pub fn seconds(duration_ms: i64) -> String {
@@ -479,21 +501,21 @@ fn confirm_row(
             .gap(px(space::SM))
             .child(ui::button(
                 palette,
-                hook::id("history", "clear-confirm"),
-                "Delete all",
-                Kind::Default,
-                Some(confirm_focus),
-                true,
-                confirm,
-            ))
-            .child(ui::button(
-                palette,
                 hook::id("history", "clear-cancel"),
                 "Keep",
                 Kind::Plain,
                 Some(cancel_focus),
                 true,
                 cancel,
+            ))
+            .child(ui::button(
+                palette,
+                hook::id("history", "clear-confirm"),
+                "Delete all",
+                Kind::Plain,
+                Some(confirm_focus),
+                true,
+                confirm,
             )),
     )
 }
@@ -897,10 +919,11 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
     }
     let language = row
         .language_detected
-        .clone()
-        .or_else(|| row.language_requested.clone());
+        .as_deref()
+        .or(row.language_requested.as_deref())
+        .map(language_name);
     let status = match (&row.status[..], &row.error_code) {
-        ("failed", Some(code)) => format!("Failed ({code}): {}", History::failure_message(code)),
+        ("failed", Some(code)) => format!("Failed: {}", History::failure_message(code)),
         _ => outcome(&row),
     };
     let fields: [(&'static str, &'static str, Option<String>); 10] = [
@@ -910,7 +933,7 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         ("final", "Final text", row.final_text.clone()),
         ("app", "App", row.target_app.clone()),
         ("duration", "Duration", Some(seconds(row.duration_ms))),
-        ("model", "Model", row.model_id.clone()),
+        ("model", "Model", row.model_id.as_deref().map(model_name)),
         ("language", "Language", language),
         ("status", "Result", Some(status)),
         ("when", "When", Some(when(row.created_at))),
