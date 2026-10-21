@@ -103,20 +103,7 @@ fn form(
             dictionary.update(cx, |dictionary, cx| dictionary.cancel_edit(window, cx));
         }
     };
-    let mut buttons = div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .child(ui::button(
-            palette,
-            hook::id("dictionary", "submit"),
-            if editing { "Save" } else { "Add" },
-            Kind::Default,
-            Some(submit_focus),
-            true,
-            submit,
-        ));
+    let mut buttons = div().flex_none().flex().items_center().gap(px(space::SM));
     if editing {
         buttons = buttons.child(ui::button(
             palette,
@@ -128,6 +115,15 @@ fn form(
             cancel,
         ));
     }
+    let buttons = buttons.child(ui::button(
+        palette,
+        hook::id("dictionary", "submit"),
+        if editing { "Save" } else { "Add" },
+        Kind::Default,
+        Some(submit_focus),
+        true,
+        submit,
+    ));
     ui::row(palette)
         .id(hook::id("dictionary", "form"))
         .test_support()
