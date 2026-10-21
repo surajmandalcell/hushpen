@@ -8,6 +8,8 @@
 #![allow(unsafe_code)]
 
 mod guard;
+#[cfg(feature = "test-automation")]
+mod menu;
 
 use super::{Inserter, SystemClock, Target, UndoError, mono_ms, plan, undo_guard};
 use crate::keyboard_layout::{self, LayoutCache};
@@ -173,7 +175,7 @@ impl Backend for MacBoard {
         if !crate::permissions::accessibility_trusted() {
             return Err(ChordError::NoPermission);
         }
-        post_command_key(self.layout.v_key_code(), self.pid)
+        command_key(self.layout.v_key_code(), 'V', self.pid)
     }
 
     fn receipts(&mut self) -> Receipts {
@@ -343,6 +345,27 @@ fn key_pid(_target: &Target) -> Option<i32> {
     None
 }
 
+/// Command and `letter` (the key `key` of the layout in use). An app in the background gets
+/// its menu item pressed, because it ignores a key posted to its process.
+#[cfg(feature = "test-automation")]
+fn command_key(key: u16, letter: char, pid: Option<i32>) -> Result<(), ChordError> {
+    if let Some(pid) = pid {
+        match menu::press_command(pid, letter) {
+            Ok(()) => return Ok(()),
+            Err(miss) => log::warn!(
+                "the Command-{letter} menu item of process {pid} was not pressed ({miss}), \
+                 so the key goes to the process"
+            ),
+        }
+    }
+    post_command_key(key, pid)
+}
+
+#[cfg(not(feature = "test-automation"))]
+fn command_key(key: u16, _letter: char, pid: Option<i32>) -> Result<(), ChordError> {
+    post_command_key(key, pid)
+}
+
 impl Inserter for MacInserter {
     /// Called on the main thread when the text is ready, which is also where the layout is read
     /// again, so the paste that follows on the worker thread uses the keys now in use.
@@ -401,7 +424,7 @@ impl Inserter for MacInserter {
         copied_selection(
             &mut MacBoard::general(Arc::clone(&self.layout)),
             COPY_WAIT,
-            || post_command_key(key, pid).map_err(|_| ()),
+            || command_key(key, 'C', pid).map_err(|_| ()),
         )
     }
 
@@ -415,7 +438,7 @@ impl Inserter for MacInserter {
         if !crate::permissions::accessibility_trusted() {
             return Err(UndoError::NoPermission);
         }
-        post_command_key(self.layout.z_key_code(), key_pid(target)).map_err(|error| match error {
+        command_key(self.layout.z_key_code(), 'Z', key_pid(target)).map_err(|error| match error {
             ChordError::NoPermission => UndoError::NoPermission,
             _ => UndoError::Unavailable,
         })
