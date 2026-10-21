@@ -15,6 +15,9 @@ fn main() -> ExitCode {
             eprintln!("hushpen: unknown argument '{argument}'. Try --version.");
             ExitCode::from(2)
         }
-        Command::Run { hidden } => hushpen_app::app::run(hidden),
+        Command::Run {
+            hidden,
+            show_window,
+        } => hushpen_app::app::run(hidden, show_window),
     }
 }

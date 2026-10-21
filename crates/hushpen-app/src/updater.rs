@@ -440,12 +440,14 @@ impl Updater {
     }
 
     /// "Restart to update": a helper swaps the staged version in after this app quits, and starts
-    /// it. If the helper cannot start, the app keeps running with an error.
+    /// it. The new copy stays behind the front app; it puts its window back up only when the
+    /// window was on screen. If the helper cannot start, the app keeps running with an error.
     pub fn restart_to_update(&mut self, cx: &mut Context<Self>) {
         let (State::Ready(_), Some(staged)) = (&self.state, self.staged.clone()) else {
             return;
         };
-        match self.installer.restart(&staged) {
+        let show_window = crate::main_window::away(cx).is_none();
+        match self.installer.restart(&staged, show_window) {
             Ok(()) => {
                 hook::record_event("updates", "restart to update");
                 log::info!("updates: restarting to update");

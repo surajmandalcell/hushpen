@@ -37,6 +37,22 @@ fn open_history_makes_its_native_calls_after_the_app_is_free(cx: &mut TestAppCon
     assert_eq!(native.calls.get(), 2, "the order front and the activation");
 }
 
+#[test]
+fn a_normal_start_shows_the_window_in_front() {
+    assert_eq!(Launch::decide(false, false), Launch::Shown);
+    assert_eq!(
+        Launch::decide(false, true),
+        Launch::Shown,
+        "--show-window alone does not change a normal start"
+    );
+}
+
+#[test]
+fn a_background_start_hides_the_window_unless_it_was_showing() {
+    assert_eq!(Launch::decide(true, false), Launch::Hidden);
+    assert_eq!(Launch::decide(true, true), Launch::Behind);
+}
+
 #[gpui_kit::test]
 fn a_second_start_shows_the_window_after_the_app_is_free(cx: &mut TestAppContext) {
     let (handle, _shell) = shell(cx);

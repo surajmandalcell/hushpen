@@ -42,7 +42,32 @@ use std::sync::Arc;
 
 const APP_ID: &str = "hushpen";
 
-pub fn run(hidden: bool) -> ExitCode {
+/// How the main window starts, from how the process was launched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Launch {
+    /// A normal start: the window shows and takes the focus.
+    Shown,
+    /// A background start that puts its window up (`open -g` with `--show-window`, the update
+    /// relaunch after the window was on screen): on screen, but the app stays behind the
+    /// front app.
+    Behind,
+    /// A background start with no window (`open -g`, a login item).
+    Hidden,
+}
+
+impl Launch {
+    /// `background`: the launch left the app behind the front app (macOS `open -g`).
+    /// `show_window`: the launcher asked for the window anyway.
+    pub fn decide(background: bool, show_window: bool) -> Self {
+        match (background, show_window) {
+            (false, _) => Launch::Shown,
+            (true, true) => Launch::Behind,
+            (true, false) => Launch::Hidden,
+        }
+    }
+}
+
+pub fn run(hidden: bool, show_window: bool) -> ExitCode {
     let root = match hushpen_store::data_dir::resolve_effective_from_env() {
         Ok(root) => root,
         Err(error) => {
@@ -129,7 +154,13 @@ pub fn run(hidden: bool) -> ExitCode {
             })
             .detach();
             follow_llm_settings(cx, Rc::clone(&llm), Rc::clone(&storage));
-            let (handle, shell) = match open_main_window(cx) {
+            // Read inside the running app: the platform answer exists only then. A launch
+            // behind the front app (`open -g`, a login item) must not activate the app.
+            let launch = Launch::decide(
+                hushpen_platform::window::launched_in_background(),
+                show_window,
+            );
+            let (handle, shell) = match open_main_window(cx, launch) {
                 Ok(opened) => opened,
                 Err(error) => {
                     eprintln!("hushpen: could not open the window: {error:#}");
@@ -335,16 +366,21 @@ pub fn run(hidden: bool) -> ExitCode {
             shell.update(cx, |shell, cx| {
                 shell.attach_onboarding(onboarding.clone(), cx)
             });
-            // A login start (`--hidden`) or the Start hidden setting puts the
-            // window away before the first paint; a pending onboarding always
-            // shows it.
+            // A login start (`--hidden`), the Start hidden setting, or a background launch
+            // with no `--show-window` puts the window away before the first paint; a pending
+            // onboarding always shows it. On a background launch the show stays behind the
+            // front app: a launch must never activate the app on its own.
             let start_hidden = storage
                 .settings
                 .get("startup.startHidden")
                 .and_then(|value| value.as_bool())
                 .unwrap_or(false);
-            if (hidden || start_hidden) && !onboarding.read(cx).active() {
+            if (hidden || start_hidden || launch == Launch::Hidden)
+                && !onboarding.read(cx).active()
+            {
                 main_window::step_aside(cx);
+            } else if launch == Launch::Hidden && onboarding.read(cx).active() {
+                main_window::show_unfocused(cx);
             }
             let history = handle
                 .update(cx, |_, window, cx| {
@@ -613,10 +649,18 @@ fn start_insert(controller: &Entity<Controller>, cx: &mut App) {
     controller.update(cx, |controller, _| controller.attach_insert(support));
 }
 
-fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
+fn open_main_window(
+    cx: &mut App,
+    launch: Launch,
+) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
+    // The window options follow the launch: only a normal start may take the focus, and a
+    // hidden start does not put the window on the screen. Creating a key window would
+    // activate the app even on `open -g`.
     let (handle, shell) = gpui_kit::open_window(
         WindowOptions {
             app_id: Some(APP_ID.into()),
+            focus: launch == Launch::Shown,
+            show: launch != Launch::Hidden,
             ..main_window_options(cx)
         },
         cx,

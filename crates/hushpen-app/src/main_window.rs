@@ -19,6 +19,8 @@ use std::rc::Rc;
 pub trait Native {
     fn hide(&self) -> Result<(), String>;
     fn show(&self) -> Result<(), String>;
+    /// Shows the window without making it key or bringing the app forward.
+    fn show_unfocused(&self) -> Result<(), String>;
     fn minimize(&self, window: AnyWindowHandle, cx: &AsyncApp);
     /// Brings the whole app to the front.
     fn activate_app(&self);
@@ -63,6 +65,10 @@ impl Native for Platform {
 
     fn show(&self) -> Result<(), String> {
         window::show(self.0).map_err(|error| error.to_string())
+    }
+
+    fn show_unfocused(&self) -> Result<(), String> {
+        window::show_unfocused(self.0).map_err(|error| error.to_string())
     }
 
     fn minimize(&self, window: AnyWindowHandle, cx: &AsyncApp) {
@@ -190,6 +196,21 @@ pub fn show(cx: &mut App) {
     });
 }
 
+/// Puts the window back on the screen without bringing the app to the front, for a background
+/// start that puts its window up anyway (the update relaunch with `--show-window`).
+pub fn show_unfocused(cx: &mut App) {
+    let Some(main) = cx.try_global::<MainWindow>() else {
+        return;
+    };
+    let native = Rc::clone(&main.native);
+    cx.global_mut::<MainWindow>().away = None;
+    after_update(cx, move |_cx| {
+        if let Err(reason) = native.show_unfocused() {
+            log::warn!("the window could not be shown by the platform: {reason}");
+        }
+    });
+}
+
 /// A click on the Dock icon while the app runs. The platform calls this with the App borrowed,
 /// so the native calls stay deferred, as in [`show`].
 pub fn reopened(cx: &mut App) {
@@ -216,6 +237,7 @@ pub(crate) mod testkit {
     pub struct Calls {
         pub hidden: Cell<u32>,
         pub shown: Cell<u32>,
+        pub shown_unfocused: Cell<u32>,
         pub minimized: Cell<u32>,
         pub activated: Cell<u32>,
         pub app_hidden: Cell<u32>,
@@ -236,6 +258,12 @@ pub(crate) mod testkit {
         fn show(&self) -> Result<(), String> {
             self.shown.set(self.shown.get() + 1);
             self.log.borrow_mut().push("show");
+            Ok(())
+        }
+
+        fn show_unfocused(&self) -> Result<(), String> {
+            self.shown_unfocused.set(self.shown_unfocused.get() + 1);
+            self.log.borrow_mut().push("show-unfocused");
             Ok(())
         }
 
@@ -276,6 +304,11 @@ pub(crate) mod testkit {
         }
 
         fn show(&self) -> Result<(), String> {
+            self.touch();
+            Ok(())
+        }
+
+        fn show_unfocused(&self) -> Result<(), String> {
             self.touch();
             Ok(())
         }
@@ -417,6 +450,29 @@ mod tests {
         assert_eq!(calls.shown.get(), 1);
         assert_eq!(calls.activated.get(), 1);
         assert_eq!(*calls.log.borrow(), ["hide", "show", "activate"]);
+    }
+
+    #[gpui_kit::test]
+    fn an_unfocused_show_puts_the_window_up_without_taking_the_front(cx: &mut TestAppContext) {
+        let handle = window(cx);
+        let calls = cx.update(|cx| install_fake(cx, handle, true));
+        cx.update(step_aside);
+        cx.update(show_unfocused);
+        assert_eq!(cx.update(|cx| away(cx)), None);
+        cx.run_until_parked();
+        assert_eq!(*calls.log.borrow(), ["hide", "show-unfocused"]);
+        assert_eq!(calls.activated.get(), 0, "no app activation");
+        assert_eq!(calls.shown.get(), 0, "no front show");
+    }
+
+    #[gpui_kit::test]
+    fn an_unfocused_show_runs_after_the_app_is_free(cx: &mut TestAppContext) {
+        let handle = window(cx);
+        let native = cx.update(|cx| install_reentrant(cx, handle, true, cx.to_async()));
+        cx.update(show_unfocused);
+        cx.run_until_parked();
+        assert_eq!(native.calls.get(), 1, "only the order front");
+        assert_eq!(cx.update(|cx| away(cx)), None);
     }
 
     #[gpui_kit::test]

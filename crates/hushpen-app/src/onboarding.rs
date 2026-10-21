@@ -526,7 +526,8 @@ impl Onboarding {
     }
 
     /// The start reads of the permissions are over. A grant lost then opens the repair page,
-    /// and the window comes back, as a start with the loss read at once never hid it.
+    /// and the window comes back, as a start with the loss read at once never hid it. The show
+    /// stays behind the front app: a start must never take the front on its own.
     fn grants_settled(&mut self, cx: &mut Context<Self>) {
         if !self.waiting_for_grants || self.controller.read(cx).permissions_settling() {
             return;
@@ -537,7 +538,7 @@ impl Onboarding {
         }
         self.repair("permission-lost", cx);
         if crate::main_window::away(cx).is_some() {
-            crate::main_window::show(cx);
+            crate::main_window::show_unfocused(cx);
         }
     }
 

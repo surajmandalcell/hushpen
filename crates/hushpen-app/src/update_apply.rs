@@ -14,7 +14,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 const USAGE: &str = "usage: hushpen update-apply --pid <pid> --kind <appimage|app> --target <path> \
---staged <path> [--no-relaunch] [--cleanup <path>]...";
+--staged <path> [--no-relaunch] [--show-window] [--cleanup <path>]...";
 
 /// How long the helper waits for the app to quit before it gives up and swaps nothing.
 const QUIT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -32,6 +32,9 @@ pub struct Job {
     /// The complete new file or bundle, on the same volume as `target`.
     pub staged: PathBuf,
     pub relaunch: bool,
+    /// The app's window was on screen when the update began, so the new copy puts its window
+    /// up again (behind the front app, never in front of it).
+    pub show_window: bool,
     /// Files and folders to remove at the end, whatever the result.
     pub cleanup: Vec<PathBuf>,
 }
@@ -52,6 +55,9 @@ impl Job {
         if !self.relaunch {
             args.push("--no-relaunch".to_owned());
         }
+        if self.show_window {
+            args.push("--show-window".to_owned());
+        }
         for path in &self.cleanup {
             args.push("--cleanup".to_owned());
             args.push(path.display().to_string());
@@ -62,7 +68,7 @@ impl Job {
 
 pub fn parse_args(args: &[String]) -> Result<Job, String> {
     let (mut pid, mut kind, mut target, mut staged) = (None, None, None, None);
-    let (mut relaunch, mut cleanup) = (true, Vec::new());
+    let (mut relaunch, mut show_window, mut cleanup) = (true, false, Vec::new());
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let mut value = |name: &str| {
@@ -88,6 +94,7 @@ pub fn parse_args(args: &[String]) -> Result<Job, String> {
             "--staged" => staged = Some(PathBuf::from(value("--staged")?)),
             "--cleanup" => cleanup.push(PathBuf::from(value("--cleanup")?)),
             "--no-relaunch" => relaunch = false,
+            "--show-window" => show_window = true,
             other => return Err(format!("unknown argument {other:?}\n{USAGE}")),
         }
     }
@@ -98,6 +105,7 @@ pub fn parse_args(args: &[String]) -> Result<Job, String> {
         target: target.ok_or_else(|| missing("--target"))?,
         staged: staged.ok_or_else(|| missing("--staged"))?,
         relaunch,
+        show_window,
         cleanup,
     })
 }
@@ -234,10 +242,32 @@ fn wait_for_exit(pid: u32, timeout: Duration) -> bool {
     true
 }
 
-fn relaunch(kind: InstallKind, target: &Path) -> Result<(), String> {
+/// The command that starts the new version of the app. `-g` keeps it behind the front app: an
+/// update never activates Hushpen by itself. `--show-window` (through `--args`) tells the new
+/// copy to put its window up, which it does without coming to the front.
+fn relaunch_command(kind: InstallKind, target: &Path, show_window: bool) -> Command {
     match kind {
-        InstallKind::App => Command::new("/usr/bin/open")
-            .arg(target)
+        InstallKind::App => {
+            let mut command = Command::new("/usr/bin/open");
+            command.arg("-g").arg(target);
+            if show_window {
+                command.args(["--args", "--show-window"]);
+            }
+            command
+        }
+        _ => {
+            let mut command = Command::new(target);
+            for name in APPIMAGE_ENV {
+                command.env_remove(name);
+            }
+            command
+        }
+    }
+}
+
+fn relaunch(kind: InstallKind, target: &Path, show_window: bool) -> Result<(), String> {
+    match kind {
+        InstallKind::App => relaunch_command(kind, target, show_window)
             .status()
             .map_err(|error| error.to_string())
             .and_then(|status| {
@@ -297,7 +327,7 @@ pub fn run(job: &Job) -> Result<(), SwapError> {
     // The old version keeps working after a failed swap, so it starts again. An app that is
     // still running is not started a second time.
     if job.relaunch && quit {
-        match relaunch(job.kind, &job.target) {
+        match relaunch(job.kind, &job.target, job.show_window) {
             Ok(()) => say("UPDATE_RELAUNCH started"),
             Err(error) => say(&format!("UPDATE_RELAUNCH failed {error}")),
         }
