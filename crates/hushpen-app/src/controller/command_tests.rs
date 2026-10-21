@@ -476,6 +476,45 @@ fn a_selection_that_arrives_after_a_new_start_is_ignored(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
+fn a_hold_released_while_the_selection_is_read_still_ends(cx: &mut TestAppContext) {
+    let (rig, inserter) = setup(cx);
+    answered(cx, &rig, Attempt::Done(EDITED.into()));
+
+    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap();
+    send_at(cx, &rig, 1_050, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
+    read_selection(cx, &rig);
+    settle(cx, &rig);
+
+    assert_eq!(machine_state(cx, &rig), State::Done, "the hold ended");
+    assert_eq!(pasted(&inserter).len(), 1);
+}
+
+#[gpui_kit::test]
+fn a_selection_read_that_never_answers_counts_as_no_selection(cx: &mut TestAppContext) {
+    let (rig, inserter) = setup(cx);
+    answered(cx, &rig, Attempt::Done(EDITED.into()));
+
+    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap();
+    send_at(cx, &rig, 1_500, AppEvent::CommandUp).unwrap();
+    // The read job never runs, as when the read hangs or panics.
+    let _hung = rig.work.borrow_mut().pop_front().unwrap();
+    cx.executor()
+        .advance_clock(super::command::SELECTION_WAIT + std::time::Duration::from_millis(100));
+    cx.run_until_parked();
+
+    assert_eq!(flash(cx, &rig).unwrap().0, "COMMAND_NO_SELECTION");
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    assert_eq!(
+        rig.mic.read_with(cx, |mic, _| mic.state()),
+        crate::mic::CaptureState::Idle
+    );
+    hold_run(cx, &rig, 10_000);
+    assert_eq!(machine_state(cx, &rig), State::Done, "the next hold ends");
+    assert_eq!(pasted(&inserter).len(), 1);
+}
+
+#[gpui_kit::test]
 fn a_chord_released_before_the_selection_arrives_still_runs_the_command(cx: &mut TestAppContext) {
     let (rig, inserter) = setup(cx);
     answered(cx, &rig, Attempt::Done(EDITED.into()));

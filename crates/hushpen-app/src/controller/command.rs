@@ -17,6 +17,11 @@ use hushpen_core::error::{
 };
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
+
+/// How long a Command Mode start waits for the selection read before it counts as no
+/// selection.
+pub(super) const SELECTION_WAIT: Duration = Duration::from_secs(2);
 
 /// Whether preflight lets an event reach the machine now.
 pub(super) enum Pass {
@@ -128,6 +133,13 @@ impl Controller {
             log::warn!("{COMMAND_NO_SELECTION} could not start the selection read: {error}");
             return Err(self.refuse_command(COMMAND_NO_SELECTION, now, cx));
         }
+        // A read that hangs or panics sends nothing, and the key releases would wait for Esc.
+        let deadline = self.selections.clone();
+        cx.spawn(async move |_, cx| {
+            cx.background_executor().timer(SELECTION_WAIT).await;
+            let _ = deadline.unbounded_send((seq, None));
+        })
+        .detach();
         let armed = match adopted.take() {
             Some(armed) => Some(armed),
             None if starting => Some(self.open_early(now, cx)),
@@ -170,9 +182,10 @@ impl Controller {
         }
     }
 
-    /// The answer of the selection read. The waiting command starts, dated at its key press,
-    /// and the key releases kept since then follow; with no selection it is refused. An answer
-    /// for a start that was cancelled, or for a hold that ended, changes nothing.
+    /// The answer of the selection read, or `None` once [`SELECTION_WAIT`] passed. The waiting
+    /// command starts, dated at its key press; with no selection it is refused. The key
+    /// releases kept since then follow either way. An answer for a start that was cancelled or
+    /// already answered changes nothing.
     pub(super) fn selection_read(&mut self, (seq, text): SelectionRead, cx: &mut Context<Self>) {
         if self
             .selecting
@@ -210,6 +223,10 @@ impl Controller {
                 }
                 if let Some(armed) = selecting.armed {
                     self.release_unused_capture(armed, cx);
+                }
+                // A hold that began during the read still ends on its own key release.
+                for (event, at) in selecting.held {
+                    let _ = self.dispatch_at(event, Some(at), cx);
                 }
                 cx.notify();
             }
