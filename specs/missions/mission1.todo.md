@@ -6,24 +6,20 @@ State as of 2026-10-21. Read `specs/missions/mission1.completed.md` first. This 
 
 The mission runs in Factory Droid as orchestrator mission `f0a389f7-d034-46ca-9118-308ed631c4b8`, state in `/Users/surajmandal/.factory/missions/f0a389f7-d034-46ca-9118-308ed631c4b8`. To resume inside Factory: open that mission and call `start_mission_run` when this file says so. To resume outside Factory (plain agent): follow the "Remaining work" steps below by hand; `features.json` in the mission dir holds the exact feature descriptions, preconditions, and expected behavior for each step.
 
-The mission is at S2 part B. All grants are in place and the agent ran the S2 checklist (step 1).
+The mission is at the hp5-llm validators (step 3). S2 is complete: every S2 assertion passed from app-recorded evidence (`partb-results.md` in the S2 evidence folder), 299 of 380 assertions passed.
 
 ## Current live state
 
 - The test app `mac-check/Hushpen.app` is signed with the Apple Development identity (designated requirement: bundle id `app.hushpen.test` plus the certificate). The new signature dropped the old ad-hoc grants once.
 - Grants for the new signature: all three granted (Microphone, Accessibility, Input Monitoring) plus Removable Volumes. On this macOS, Input Monitoring is composed from Accessibility: tccd answers ListenEvent from the Accessibility record, so a stale Accessibility record also denies Input Monitoring. Allow on a permission that is not granted first runs `tccutil reset <Service> <own bundle id>` (logged as `PERMISSION_RESET <key>`), then requests it. Allow on Accessibility fixed both rows; the running app saw the grants only after a relaunch.
-- The test app is built at 9a5f81f. Hushpen was quit at step 22; start it with `bin/launch.sh`. The S2 watcher is stopped: its guard cancels any run while TextEdit is not in front and it overwrites the clipboard, so it does not fit agent runs.
+- The test app is built at c48784e (native sidebar material: the Kit root paints no fill, the window is transparent, and an NSVisualEffectView with the Sidebar material sits behind the sidebar column). Start it with `bin/launch.sh`. The S2 watcher is stopped: its guard cancels any run while TextEdit is not in front and it overwrites the clipboard, so it does not fit agent runs.
 
 
 ## Remaining work, in order
 
-### Step 1: S2 checklist, agent-run (DONE except physical-key items)
+### Steps 1 and 2: S2 (DONE)
 
-The owner will not run the checklist. The agent ran it on 9a5f81f: dictation through the test hook (`pipeline-event`, `feed-wav`, `tray-click`), pasted into a background TextEdit through the test-only insert target (`hookctl action insert-target '{"bundle":"com.apple.TextEdit"}'`, AX selected text, logged `TEST_INSERT`), GUI steps through Codex in the background. Results are in `agent-run.log` in the S2 evidence folder. Passed: steps 2-15, 17, 18 (real save panel), 20, 22; step 21 from the tccd log and `step-21-permissions.json`. Not driveable without a physical key or a forbidden driver: the real Right Option hold through the key tap (the hook sends the same pipeline events), Fn and Right Ctrl recording (Codex rejects modifier-only keys), Terminal Secure Keyboard Entry (replaced by `EnableSecureEventInput` in `bin/secure.swift`), the real menu bar icon click (Codex cannot reach the status item), and the Dock restore in step 19. Opening Settings from the app menu activates Hushpen by design; give the front back to the owner's app after it.
-### Step 2: S2 part B (feature m5-mac-session-s2)
-
-Resume the mission run. The pending feature order in `features.json` is: m5-mac-session-s2, m7-mac-session-s3, m7-publish. Part B marks each checklist line from app-recorded evidence only (History store, hushpen.log, watcher logs, the saved scratch.txt, owner screenshots on the Desktop), never from the owner's word. Remaining assertions are listed in the feature: VAL-MACS1-001, 003-010; VAL-MACS2-001, 003-008, 011-013; VAL-NAT-001, 003, 005, 006, 008, 013 (some partly pre-proven in `session.json` runs 1-3; keep those results). End checks: no "already borrowed" or "panicked" in hushpen.log, no SIGTRAP, front app unchanged from start.
-
+The agent ran every S2 step itself (the owner runs no checklist): hook dictation into a background TextEdit through the test-only insert target, GUI steps through Codex in the background, pixel checks on per-window captures. Results per assertion: `partb-results.md` in the S2 evidence folder. The contract now states the 2026-10-21 rule: modifier-only key holds go through the hook pipeline events, "TextEdit frontmost" reads as "front app unchanged", and steps that make macOS activate Hushpen are left out. S2 found and fixed one defect: the macOS sidebar was opaque (c48784e).
 ### Step 3: hp5-llm validators (automatic)
 
 When S2 completes, the system injects scrutiny-validator and user-testing-validator for milestone hp5-llm. Triage any failures per the orchestrator rules; do not create validator features by hand.
