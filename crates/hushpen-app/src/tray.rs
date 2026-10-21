@@ -102,6 +102,21 @@ pub fn menu_items(listening: bool) -> Vec<MenuItem> {
         .collect()
 }
 
+/// Runs the entry with this hook id the way a click on it in the tray menu does: its action goes
+/// through GPUI's dispatch, as the tray host sends it.
+#[cfg(any(test, feature = "test-automation"))]
+pub fn click(id: &str, cx: &mut App) -> Result<(), String> {
+    let item = Item::ALL
+        .into_iter()
+        .find(|item| item.name() == id)
+        .ok_or_else(|| {
+            let ids: Vec<&str> = Item::ALL.iter().map(|item| item.name()).collect();
+            format!("'{id}' is not a tray entry; use one of: {}", ids.join(", "))
+        })?;
+    cx.dispatch_action(item.action().as_ref());
+    Ok(())
+}
+
 /// The menu as the test hook reports it.
 pub fn menu_json(listening: bool, created: bool) -> Value {
     json!({

@@ -186,6 +186,34 @@ fn the_paste_entry_sends_paste_last_into_the_pipeline(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_click_by_hook_id_runs_the_entry_and_an_unknown_id_names_the_valid_ones(
+    cx: &mut TestAppContext,
+) {
+    let fixture = fixture(cx, &["base"]);
+    cx.update(|cx| super::click("paste-last", cx)).unwrap();
+    cx.run_until_parked();
+    settle(cx, &fixture.rig);
+    let code = fixture
+        .rig
+        .controller
+        .read_with(cx, |c, _| c.notice().map(|notice| notice.code));
+    assert_eq!(code, Some("INSERT_NO_TRANSCRIPT"));
+
+    cx.update(|cx| super::click("settings", cx)).unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        fixture.shell.read_with(cx, |shell, _| shell.active()),
+        View::Settings
+    );
+
+    let error = cx.update(|cx| super::click("nope", cx)).unwrap_err();
+    assert_eq!(
+        error,
+        "'nope' is not a tray entry; use one of: toggle-dictation, paste-last, show, settings, quit"
+    );
+}
+
+#[gpui_kit::test]
 fn the_settings_entry_opens_settings_and_shows_the_window(cx: &mut TestAppContext) {
     let fixture = fixture(cx, &["base"]);
     cx.update(crate::main_window::step_aside);
