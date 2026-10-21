@@ -382,6 +382,7 @@ pub fn run(hidden: bool) -> ExitCode {
             flow_bar.update(cx, |bar, _| {
                 bar.on_open_history(open_history(shell.clone(), history.clone()))
             });
+            shell.update(cx, |shell, _| shell.attach_flow_bar(flow_bar.clone()));
             tray::register_actions(
                 cx,
                 &Surfaces {
