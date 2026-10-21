@@ -156,8 +156,8 @@ impl MacKeys {
         sink: Sink,
         record: RecordSink,
     ) -> Result<Self, Unavailable> {
-        // Creating a tap without Input Monitoring makes macOS ask. The ask belongs to
-        // onboarding, after a click, so here the grant is only read.
+        // Creating a tap with neither Input Monitoring nor Accessibility can make macOS ask. The
+        // ask belongs to onboarding, after a click, so here the grants are only read.
         if !crate::permissions::input_monitoring_granted() {
             return Err(Unavailable::new(
                 Reason::Permission,

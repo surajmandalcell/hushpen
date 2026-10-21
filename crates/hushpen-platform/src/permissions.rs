@@ -78,7 +78,8 @@ pub(crate) fn accessibility_trusted() -> bool {
     macos::accessibility_trusted()
 }
 
-/// The live Input Monitoring grant, for the key listener. Read it each time.
+/// Whether the key listener may start: Input Monitoring is granted, or on macOS 27 and later
+/// Accessibility is, because the listen-only key tap runs with either. Read it each time.
 #[cfg(target_os = "macos")]
 pub(crate) fn input_monitoring_granted() -> bool {
     macos::input_monitoring_granted()
