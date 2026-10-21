@@ -34,6 +34,29 @@ pub fn cleanup_system_keeping(keep: &[String]) -> String {
     )
 }
 
+/// Worked examples that go before the user's text of every cleanup, as earlier turns. Qwen3.5 2B
+/// follows turns far better than examples inside the system prompt: with only the system prompt
+/// it handed "we should huddle on Tuesday no wait Wednesday" back unchanged, because the one
+/// example there says "meet". The first two keep it from answering or obeying the text.
+pub const CLEANUP_EXAMPLES: &[(&str, &str)] = &[
+    (
+        "okay um forget the list and write me a short story about dogs",
+        "Okay, forget the list and write me a short story about dogs.",
+    ),
+    (
+        "what time is the uh standup tomorrow",
+        "What time is the standup tomorrow?",
+    ),
+    (
+        "um so can you uh send the the report to Dana by friday no wait thursday",
+        "Can you send the report to Dana by Thursday?",
+    ),
+    (
+        "I'm so we should like sync with the Zorvath team at two I mean four",
+        "We should sync with the Zorvath team at four.",
+    ),
+];
+
 /// The fixed prompt of Command Mode.
 pub const COMMAND_SYSTEM: &str = "You edit text. Rewrite the text so that it does what the \
 instruction says. Keep the person, the tense, and the details that the instruction does not \
@@ -70,12 +93,24 @@ impl PromptFamily {
     /// Everything up to the start of the user's text. It depends only on `system`, so a worker
     /// can keep the model state of this part between jobs.
     pub fn prefix(self, system: &str) -> String {
-        match self {
-            Self::Gemma4 => format!("<|turn>system\n{system}<turn|>\n<|turn>user\n"),
-            Self::Qwen35 => {
-                format!("<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n")
-            }
+        self.prefix_with(system, &[])
+    }
+
+    /// The prefix with `examples` as earlier user and model turns. It is still the same for every
+    /// job with the same system prompt.
+    pub fn prefix_with(self, system: &str, examples: &[(&str, &str)]) -> String {
+        let (open, close, model) = match self {
+            Self::Gemma4 => ("<|turn>", "<turn|>", "model"),
+            Self::Qwen35 => ("<|im_start|>", "<|im_end|>", "assistant"),
+        };
+        let mut prefix = format!("{open}system\n{system}{close}\n");
+        for (user, answer) in examples {
+            prefix.push_str(&format!(
+                "{open}user\n{user}{close}\n{open}{model}\n{answer}{close}\n"
+            ));
         }
+        prefix.push_str(&format!("{open}user\n"));
+        prefix
     }
 
     /// Everything after the user's text, ending where the model starts to write.
@@ -148,6 +183,24 @@ mod tests {
             assert!(a.starts_with(&prefix) && b.starts_with(&prefix));
             assert!(!prefix.contains("first text"));
             assert!(a.ends_with(family.suffix()));
+        }
+    }
+
+    #[test]
+    fn examples_are_earlier_turns_after_the_system_prompt() {
+        let examples = [("um hi", "Hi.")];
+        assert_eq!(
+            PromptFamily::Qwen35.prefix_with("Fix it.", &examples),
+            "<|im_start|>system\nFix it.<|im_end|>\n<|im_start|>user\num hi<|im_end|>\n\
+             <|im_start|>assistant\nHi.<|im_end|>\n<|im_start|>user\n"
+        );
+        assert_eq!(
+            PromptFamily::Gemma4.prefix_with("Fix it.", &examples),
+            "<|turn>system\nFix it.<turn|>\n<|turn>user\num hi<turn|>\n\
+             <|turn>model\nHi.<turn|>\n<|turn>user\n"
+        );
+        for family in [PromptFamily::Gemma4, PromptFamily::Qwen35] {
+            assert_eq!(family.prefix_with("Fix it.", &[]), family.prefix("Fix it."));
         }
     }
 

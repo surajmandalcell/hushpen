@@ -426,7 +426,9 @@ wait_until 180 llm_is .loaded true || failures+="the Qwen3.5 2B worker never loa
 REPLACEMENT=huddle
 hook_action dictionary-add "{\"phrase\":\"$REPLACEMENT\",\"heard_as\":\"meet\"}" >/dev/null || failures+="the dictionary entry was not saved; "
 set_setting cleanup.rules true
-ai_run "$SELF_WAV" || failures+="no offer after the dictation; "
+# With no offer, ai_run returns before read_row; read this row so the message quotes it, not
+# the stub texts of the earlier checks.
+ai_run "$SELF_WAV" || { wait_until 90 run_ended; read_row; failures+="no offer after the dictation; "; }
 AI_TEXT=$(live)
 RULE_TEXT=$ROW_RULE
 shot cross-002-before

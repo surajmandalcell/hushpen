@@ -366,6 +366,41 @@ fn a_dictionary_word_inside_a_self_correction_is_never_lost() {
     }
 }
 
+/// A dictionary word must not make the model copy its input: with the words to keep named in
+/// the prompt, Qwen3.5 2B once handed this rule text back unchanged.
+#[test]
+fn a_dictionary_word_does_not_stop_the_cleanup() {
+    let mut worker = Worker::start();
+    worker.load(&default_model(), 300);
+    let cases = [
+        (
+            "I'm so I think we should huddle on Tuesday no wait Wednesday at like 3pm.",
+            "huddle",
+        ),
+        (
+            "Um so I think we should meet on tuesday, no wait, wednesday with Kubernetes at like three pm.",
+            "Kubernetes",
+        ),
+    ];
+    for (job, (input, word)) in cases.iter().enumerate() {
+        let job = job as u64 + 1;
+        let keep = vec![(*word).to_owned()];
+        worker.cleanup_with(job, &cleanup_system_keeping(&keep), input, 128);
+        let (text, _) = worker.result(job);
+        eprintln!("{input:?} -> {text:?}");
+        let accepted = guard::check_keeping(input, &text, &keep)
+            .unwrap_or_else(|why| panic!("guard {} on {text:?}", why.key()));
+        let found = words(&accepted);
+        for gone in ["tuesday", "wait", "um"] {
+            assert!(
+                !found.iter().any(|w| w == gone),
+                "'{gone}' is still in {accepted:?} (from {input:?})"
+            );
+        }
+        assert!(found.contains(&"wednesday".to_owned()), "{accepted:?}");
+    }
+}
+
 #[test]
 fn a_question_is_kept_and_an_instruction_is_not_followed() {
     let mut worker = Worker::start();

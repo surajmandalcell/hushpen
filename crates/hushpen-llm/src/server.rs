@@ -11,7 +11,7 @@ use crate::backend::{
     Backend, CancelFlag, JobError, JobSpec, LoadError, LoadSpec, Session, SessionEnd,
 };
 use hushpen_core::error;
-use hushpen_core::llm_prompt::{COMMAND_SYSTEM, PromptFamily, command_user};
+use hushpen_core::llm_prompt::{CLEANUP_EXAMPLES, COMMAND_SYSTEM, PromptFamily, command_user};
 use hushpen_core::llm_protocol::{LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason};
 use hushpen_core::protocol::{DecodeError, Frame, FrameError, FrameKind, read_frame, write_json};
 use std::collections::HashMap;
@@ -161,6 +161,7 @@ fn read_requests(
                 job,
                 JobSpec {
                     system,
+                    examples: CLEANUP_EXAMPLES,
                     user,
                     max_tokens,
                 },
@@ -177,6 +178,7 @@ fn read_requests(
                 job,
                 JobSpec {
                     system: COMMAND_SYSTEM.to_owned(),
+                    examples: &[],
                     user: command_user(&instruction, &selection),
                     max_tokens,
                 },

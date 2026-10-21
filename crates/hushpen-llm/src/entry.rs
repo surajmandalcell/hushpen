@@ -6,7 +6,7 @@
 use crate::backend::{Backend, CancelFlag, JobSpec, LoadSpec, Session, SessionEnd};
 use crate::llama::LlamaRuntime;
 use crate::server::{ServerConfig, serve};
-use hushpen_core::llm_prompt::{CLEANUP_SYSTEM, PromptFamily};
+use hushpen_core::llm_prompt::{CLEANUP_EXAMPLES, CLEANUP_SYSTEM, PromptFamily};
 use hushpen_core::llm_protocol::JobStats;
 use hushpen_core::threads::auto_threads;
 use std::path::PathBuf;
@@ -120,6 +120,7 @@ fn run_smoke(runtime: &LlamaRuntime, smoke: &Smoke) -> ExitCode {
     let loaded = runtime.with_session(&spec, &mut |session: &mut dyn Session, info| {
         let job = JobSpec {
             system: CLEANUP_SYSTEM.to_owned(),
+            examples: CLEANUP_EXAMPLES,
             user: SMOKE_SENTENCE.to_owned(),
             max_tokens: 128,
         };
