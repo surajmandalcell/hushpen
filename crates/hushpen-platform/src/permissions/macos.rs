@@ -30,7 +30,7 @@ const HID_ACCESS_UNKNOWN: u32 = 2;
 
 const APP_ACTIVE: &str = "NSApplicationDidBecomeActiveNotification";
 
-/// A hung `tccutil` is killed after this, so a click on Allow never stalls the window for long.
+/// A hung `tccutil` is killed after this, so the request of an Allow click always follows.
 const RESET_LIMIT: Duration = Duration::from_secs(2);
 
 #[link(name = "AVFoundation", kind = "framework")]

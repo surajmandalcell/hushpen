@@ -11,7 +11,8 @@ use std::process::Command;
 /// Crates and features that must not appear in the release feature tree.
 const FORBIDDEN_TREE: &[&str] = &["hushpen-testhook", "update-test-feed"];
 
-/// Byte strings that only a hook build contains (symbols, socket name, env var).
+/// Byte strings that only a hook build contains (symbols, socket name, env var, and the log
+/// line and action name of the background insert target and its Accessibility paste).
 const HOOK_MARKERS: &[&str] = &[
     "hushpen_testhook",
     "testhook",
@@ -20,6 +21,8 @@ const HOOK_MARKERS: &[&str] = &[
     "HUSHPEN_TESTHOOK",
     "HUSHPEN_UPDATE_FEED",
     "HUSHPEN_UPDATE_PUBKEY",
+    "TEST_INSERT",
+    "insert-target",
 ];
 
 /// Engine symbols that must stay in their own binary.
@@ -353,6 +356,16 @@ mod tests {
             .map(|f| f.marker)
             .collect();
         assert_eq!(markers, ["HUSHPEN_UPDATE_FEED", "HUSHPEN_UPDATE_PUBKEY"]);
+    }
+
+    #[test]
+    fn a_binary_with_the_test_insert_target_is_flagged() {
+        let bytes = b"\0TEST_INSERT ax-selected-text pid=\0insert-target-clear\0";
+        let markers: Vec<String> = scan_bytes(bytes, HOOK_MARKERS)
+            .into_iter()
+            .map(|f| f.marker)
+            .collect();
+        assert_eq!(markers, ["TEST_INSERT", "insert-target"]);
     }
 
     #[test]

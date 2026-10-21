@@ -315,6 +315,8 @@ pub struct FakeInserter {
     /// What the focused app has selected, and how often Command Mode read it.
     pub selected: Mutex<Option<String>>,
     pub selection_reads: std::sync::atomic::AtomicUsize,
+    /// How long a selection read takes, as a Cmd+C copy can on macOS.
+    pub selection_delay: Mutex<std::time::Duration>,
 }
 
 impl FakeInserter {
@@ -342,6 +344,7 @@ impl FakeInserter {
             log: Mutex::default(),
             selected: Mutex::new(None),
             selection_reads: std::sync::atomic::AtomicUsize::new(0),
+            selection_delay: Mutex::new(std::time::Duration::ZERO),
         })
     }
 }
@@ -378,6 +381,7 @@ impl Inserter for FakeInserter {
     fn selection(&self, _target: &Target) -> Option<String> {
         self.selection_reads
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(*self.selection_delay.lock().unwrap());
         self.selected.lock().unwrap().clone()
     }
 

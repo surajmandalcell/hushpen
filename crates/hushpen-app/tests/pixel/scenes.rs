@@ -444,9 +444,9 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                         cx,
                     )
                 });
-                controller.update(cx, |controller, _| {
+                controller.update(cx, |controller, cx| {
                     if mac {
-                        controller.attach_permissions(Arc::new(Revoked));
+                        controller.attach_permissions(Arc::new(Revoked), cx);
                     }
                     controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
                 });
@@ -595,7 +595,25 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
 fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: Scene) {
     match scene {
         Scene::Shell => click(cx, handle, "sidebar.history"),
-        Scene::Home | Scene::Onboarding(_) | Scene::PermissionsChanged => {}
+        Scene::Home | Scene::Onboarding(_) => {}
+        Scene::PermissionsChanged => {
+            // A stored grant that reads missing counts as lost only after the start reads
+            // settle for 2 s on a timer; the repair page opens then.
+            for _ in 0..50 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                cx.run_until_parked();
+                let repair = cx
+                    .update_window(handle, |_, window, _| {
+                        window
+                            .try_find(SharedString::from("onboarding.page"))
+                            .is_some()
+                    })
+                    .expect("look for the repair page");
+                if repair {
+                    break;
+                }
+            }
+        }
         Scene::History => click(cx, handle, "sidebar.history"),
         Scene::HistoryDetail => {
             click(cx, handle, "sidebar.history");

@@ -88,7 +88,7 @@ pub(crate) fn input_monitoring_granted() -> bool {
 /// shows the system prompt. It runs on every call, whatever the state is. When the permission is
 /// not granted, Hushpen's own record is reset first, because macOS ignores a request from an app
 /// it holds a denied or stale record for. Linux has nothing to ask. Call this only after a click
-/// on Allow.
+/// on Allow, and off the UI thread: the reset can take up to 2 s.
 pub fn request(permission: Permission) {
     #[cfg(target_os = "macos")]
     macos::request(permission);

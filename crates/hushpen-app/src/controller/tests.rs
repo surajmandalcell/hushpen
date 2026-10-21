@@ -754,9 +754,21 @@ fn the_permissions_state_lists_every_key_and_the_grants_lost_since_the_last_star
         accessibility: Access::Denied,
         input_monitoring: Access::Granted,
     }));
-    rig.controller.update(cx, |controller, _| {
-        controller.attach_permissions_with(preflight, &|_| {})
+    rig.controller.update(cx, |controller, cx| {
+        controller.attach_permissions(preflight, cx)
     });
+    let settling = rig.controller.read_with(cx, |c, _| c.permissions_json());
+    assert_eq!(
+        settling["lost"],
+        json!([]),
+        "not lost while the start reads settle"
+    );
+    // The settle reads the timer makes; advancing the clock would also start the Mic list
+    // thread, which the test scheduler refuses.
+    while rig
+        .controller
+        .update(cx, |controller, cx| controller.settle_permissions(cx))
+    {}
 
     let state = rig.controller.read_with(cx, |c, _| c.permissions_json());
     assert_eq!(state["microphone"], "granted");

@@ -12,7 +12,7 @@ use hushpen_audio::{CaptureEvent, InputDevice};
 use hushpen_core::dictation::AppEvent;
 use hushpen_core::insert::Chord;
 use hushpen_core::onboarding::RowState;
-use hushpen_core::permission::{Access, Preflight};
+use hushpen_core::permission::{Access, Preflight, SETTLE_EVERY, SETTLE_FOR};
 use std::cell::RefCell;
 use std::sync::Mutex;
 
@@ -25,14 +25,31 @@ struct FakeGuide {
     refuse_relaunch: std::cell::Cell<bool>,
     /// The permission source that a request changes, and what it turns into.
     answers: RefCell<Option<(Arc<FakeSystem>, Access)>>,
+    /// Requests stay open until the test ends them, like a request whose reset is still running.
+    slow: std::cell::Cell<bool>,
+    open_requests: RefCell<Vec<futures::channel::oneshot::Sender<()>>>,
+}
+
+impl FakeGuide {
+    fn finish_requests(&self) {
+        for done in self.open_requests.borrow_mut().drain(..) {
+            done.send(()).unwrap();
+        }
+    }
 }
 
 impl Guide for FakeGuide {
-    fn request(&self, permission: Permission) {
+    fn request(&self, permission: Permission) -> Option<futures::channel::oneshot::Receiver<()>> {
         self.requested.borrow_mut().push(permission);
         if let Some((system, access)) = &*self.answers.borrow() {
             system.set(permission, *access);
         }
+        if !self.slow.get() {
+            return None;
+        }
+        let (done, finished) = futures::channel::oneshot::channel();
+        self.open_requests.borrow_mut().push(done);
+        Some(finished)
     }
 
     fn open(&self, url: &str) -> Result<(), String> {
@@ -162,20 +179,8 @@ fn start(
     platform: Platform,
     system: Arc<FakeSystem>,
 ) -> Fixture {
-    start_pausing(cx, rig, platform, system, &|_| {})
-}
-
-/// Like [`start`], with the pause the start check makes between its reads. The default pause
-/// does nothing, so a start with a lost grant does not sleep for the whole wait.
-fn start_pausing(
-    cx: &mut TestAppContext,
-    rig: Rig,
-    platform: Platform,
-    system: Arc<FakeSystem>,
-    pause: &dyn Fn(Duration),
-) -> Fixture {
-    rig.controller.update(cx, |controller, _| {
-        controller.attach_permissions_with(system.clone(), pause);
+    rig.controller.update(cx, |controller, cx| {
+        controller.attach_permissions(system.clone(), cx);
         controller.attach_keys(crate::controller::KeysStatus::Available, Rc::new(|_| {}));
     });
     if platform == Platform::Linux {
@@ -212,6 +217,13 @@ fn mac_with(cx: &mut TestAppContext, system: Arc<FakeSystem>) -> Fixture {
     let fixture = start(cx, rig, Platform::MacOs, system);
     list_microphones(cx, &fixture, vec![device()]);
     fixture
+}
+
+/// Lets the start reads of the permissions settle: a stored grant that reads missing counts
+/// as lost only once [`SETTLE_FOR`] has passed.
+fn settle_start(cx: &mut TestAppContext) {
+    cx.executor().advance_clock(SETTLE_FOR);
+    cx.run_until_parked();
 }
 
 fn device() -> InputDevice {
@@ -400,6 +412,75 @@ fn allow_on_input_monitoring_that_stays_denied_opens_its_pane_and_shows_the_remo
     );
     assert_eq!(hint(cx, &fixture, Permission::Accessibility), None);
     assert_eq!(hint(cx, &fixture, Permission::Microphone), None);
+}
+
+#[gpui_kit::test]
+fn the_input_monitoring_pane_opens_only_once_a_slow_request_is_over(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture.guide.slow.set(true);
+
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+    cx.run_until_parked();
+
+    assert_eq!(
+        *fixture.guide.requested.borrow(),
+        [Permission::InputMonitoring]
+    );
+    assert!(
+        fixture.guide.opened.borrow().is_empty(),
+        "the pane waits for the request"
+    );
+    assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
+
+    fixture.guide.finish_requests();
+    cx.run_until_parked();
+
+    assert_eq!(*fixture.guide.opened.borrow(), [im_url()]);
+    assert!(hint(cx, &fixture, Permission::InputMonitoring).is_some());
+    assert_eq!(fixture.guide.requested.borrow().len(), 1, "one request");
+}
+
+#[gpui_kit::test]
+fn the_accessibility_wait_starts_once_a_slow_request_is_over(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture.guide.slow.set(true);
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
+    cx.executor().advance_clock(ACCESSIBILITY_PROMPT_WAIT);
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+    cx.run_until_parked();
+    assert!(
+        fixture.guide.opened.borrow().is_empty(),
+        "no wait ran before the request was over"
+    );
+
+    fixture.guide.finish_requests();
+    cx.run_until_parked();
+    cx.executor().advance_clock(ACCESSIBILITY_PROMPT_WAIT);
+    cx.run_until_parked();
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
+}
+
+#[test]
+fn a_permission_request_runs_on_its_own_thread_and_the_caller_does_not_wait() {
+    let (seen, thread) = std::sync::mpsc::channel();
+    let started = std::time::Instant::now();
+
+    on_permission_thread(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        let _ = seen.send(std::thread::current().name().map(str::to_owned));
+    })
+    .unwrap();
+
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "the caller waited {:?}",
+        started.elapsed()
+    );
+    let name = thread.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(name.as_deref(), Some("hushpen-permission"));
 }
 
 #[gpui_kit::test]
@@ -618,13 +699,19 @@ fn a_start_whose_grants_answer_only_after_500_ms_never_shows_the_permissions_pag
     finished_with_every_grant_stored(&rig);
     let system = FakeSystem::all(Access::Granted);
     system.answer_denied_for(Duration::from_millis(500));
-    let clock = system.clone();
-    let fixture = start_pausing(cx, rig, Platform::MacOs, system, &move |wait| {
-        clock.pass(wait)
-    });
+    let fixture = start(cx, rig, Platform::MacOs, system.clone());
+    assert_eq!(
+        system.reads(),
+        3,
+        "the start reads each permission once and does not wait"
+    );
+    assert_eq!(fixture.mode(cx), Mode::Hidden);
     list_microphones(cx, &fixture, vec![device()]);
-    cx.executor().advance_clock(Duration::from_millis(3_000));
-    cx.run_until_parked();
+    for _ in 0..30 {
+        system.pass(SETTLE_EVERY);
+        cx.executor().advance_clock(SETTLE_EVERY);
+        cx.run_until_parked();
+    }
 
     assert_eq!(fixture.mode(cx), Mode::Hidden, "Home, not the repair page");
     assert!(!fixture.read(cx, |me, _| me.permissions_page_shown()));
@@ -643,17 +730,51 @@ fn a_start_whose_grant_stays_denied_for_two_seconds_still_opens_the_repair_page(
     finished_with_every_grant_stored(&rig);
     let system = FakeSystem::all(Access::Granted);
     system.set(Permission::Accessibility, Access::Denied);
-    let waited = Rc::new(std::cell::Cell::new(Duration::ZERO));
-    let counted = waited.clone();
-    let fixture = start_pausing(cx, rig, Platform::MacOs, system, &move |wait| {
-        counted.set(counted.get() + wait);
-    });
+    let fixture = start(cx, rig, Platform::MacOs, system);
     list_microphones(cx, &fixture, vec![device()]);
+    cx.executor().advance_clock(SETTLE_FOR - SETTLE_EVERY);
+    cx.run_until_parked();
+    assert_eq!(
+        fixture.mode(cx),
+        Mode::Hidden,
+        "not lost before the 2 s are over"
+    );
 
-    assert!(waited.get() >= Duration::from_secs(2), "{:?}", waited.get());
+    cx.executor().advance_clock(SETTLE_EVERY);
+    cx.run_until_parked();
+
     assert_eq!(fixture.mode(cx), Mode::Repair);
     assert_eq!(fixture.step(cx), Step::Permissions);
     assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+}
+
+#[gpui_kit::test]
+fn a_hidden_start_whose_grant_is_lost_after_the_settle_window_shows_the_window_again(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    finished_with_every_grant_stored(&rig);
+    let system = FakeSystem::all(Access::Granted);
+    system.set(Permission::InputMonitoring, Access::Denied);
+    let fixture = start(cx, rig, Platform::MacOs, system);
+    list_microphones(cx, &fixture, vec![device()]);
+    let (window, _shell) = cx.update(|cx| {
+        gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| crate::shell::Shell::new(window, cx))
+        })
+        .expect("open test window")
+    });
+    let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, window, true));
+    cx.update(crate::main_window::step_aside);
+    cx.run_until_parked();
+    assert_eq!(fixture.mode(cx), Mode::Hidden);
+    assert_eq!(calls.shown.get(), 0);
+
+    settle_start(cx);
+
+    assert_eq!(fixture.mode(cx), Mode::Repair);
+    assert_eq!(calls.shown.get(), 1);
+    assert_eq!(cx.update(|cx| crate::main_window::away(cx)), None);
 }
 
 #[gpui_kit::test]
@@ -674,6 +795,7 @@ fn the_repair_page_reads_again_every_second_too(cx: &mut TestAppContext) {
     system.set(Permission::Accessibility, Access::Denied);
     let fixture = start(cx, rig, Platform::MacOs, system);
     list_microphones(cx, &fixture, vec![device()]);
+    settle_start(cx);
     assert_eq!(fixture.mode(cx), Mode::Repair);
     assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
 
@@ -1063,6 +1185,7 @@ fn a_lost_mac_grant_reopens_the_permissions_step_and_nothing_else_changes(cx: &m
     let before = settings.values();
     let fixture = start(cx, rig, Platform::MacOs, system);
     list_microphones(cx, &fixture, vec![device()]);
+    settle_start(cx);
 
     assert_eq!(fixture.mode(cx), Mode::Repair);
     assert_eq!(fixture.step(cx), Step::Permissions);
@@ -1377,6 +1500,7 @@ mod window {
         system.set(Permission::InputMonitoring, Access::Denied);
         let fixture = start(cx, rig, Platform::MacOs, system);
         list_microphones(cx, &fixture, vec![device()]);
+        settle_start(cx);
         assert_eq!(fixture.mode(cx), Mode::Repair);
         let handle = open(cx, &fixture);
         assert_permission_rows_are_one_line(cx, &fixture, handle);
@@ -1432,6 +1556,7 @@ mod window {
         system.set(Permission::InputMonitoring, Access::Denied);
         let fixture = start(cx, rig, Platform::MacOs, system);
         list_microphones(cx, &fixture, vec![device()]);
+        settle_start(cx);
         assert_eq!(fixture.mode(cx), Mode::Repair);
         let handle = open(cx, &fixture);
 

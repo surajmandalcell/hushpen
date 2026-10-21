@@ -222,8 +222,8 @@ pub fn run(hidden: bool) -> ExitCode {
             start_keys(&controller, &shortcuts, cx);
             start_insert(&controller, cx);
             start_cues(&controller, cx);
-            controller.update(cx, |controller, _| {
-                controller.attach_permissions(hushpen_platform::permissions::system());
+            controller.update(cx, |controller, cx| {
+                controller.attach_permissions(hushpen_platform::permissions::system(), cx);
                 let ai_llm = Rc::clone(&ai_llm);
                 let ai_storage = Rc::clone(&dictation_storage);
                 let transport = Arc::clone(&endpoint_transport);

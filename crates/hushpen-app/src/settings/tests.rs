@@ -46,7 +46,8 @@ impl MicSession for FakeSession {
     }
 }
 
-/// A login item that records which thread asked for its status, and can answer slowly.
+/// A login item that records which threads asked for its status and wrote it, and can answer
+/// slowly.
 #[derive(Default)]
 struct FakeLogin {
     enabled: Mutex<Option<bool>>,
@@ -54,6 +55,8 @@ struct FakeLogin {
     fail: Mutex<bool>,
     read_threads: Mutex<Vec<std::thread::ThreadId>>,
     read_delay: Mutex<std::time::Duration>,
+    write_threads: Mutex<Vec<std::thread::ThreadId>>,
+    write_delay: Mutex<std::time::Duration>,
 }
 
 impl FakeLogin {
@@ -64,6 +67,11 @@ impl FakeLogin {
     fn read_on_ui_thread(&self) -> bool {
         let ui = std::thread::current().id();
         self.read_threads.lock().unwrap().contains(&ui)
+    }
+
+    fn written_on_ui_thread(&self) -> bool {
+        let ui = std::thread::current().id();
+        self.write_threads.lock().unwrap().contains(&ui)
     }
 }
 
@@ -79,6 +87,12 @@ impl LoginToggle for FakeLogin {
     }
 
     fn set(&self, enabled: bool) -> Result<(), String> {
+        self.write_threads
+            .lock()
+            .unwrap()
+            .push(std::thread::current().id());
+        let delay = *self.write_delay.lock().unwrap();
+        std::thread::sleep(delay);
         if *self.fail.lock().unwrap() {
             return Err("the system refused".into());
         }
@@ -142,16 +156,19 @@ fn read<T>(cx: &TestAppContext, rig: &Rig, f: impl FnOnce(&Settings) -> T) -> T 
     cx.read(|app| f(rig.settings.read(app)))
 }
 
-/// Waits for the reading thread of the launch at login status to answer and for the answer to
-/// reach the view. The thread is a real one, so this steps the test clock and the wall clock
-/// together. The Mic poll (2 s of test time) must not come due, so a test keeps its reads short.
+/// Waits for the reading and writing threads of launch at login to answer and for the answers
+/// to reach the view. The threads are real ones, so this steps the test clock and the wall
+/// clock together. The Mic poll (2 s of test time) must not come due, so a test keeps its reads
+/// short.
 fn settle_login(cx: &mut TestAppContext, rig: &Rig) {
     let step = std::time::Duration::from_millis(20);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         cx.executor().advance_clock(step);
         cx.run_until_parked();
-        if !read(cx, rig, |me| me.login_cache.reading) {
+        if !read(cx, rig, |me| {
+            me.login_cache.reading || me.login_cache.writing
+        }) {
             return;
         }
         assert!(
@@ -220,10 +237,12 @@ fn launch_at_login_writes_the_login_item_and_the_key(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.settings
         .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    settle_login(cx, &rig);
     assert_eq!(value(&rig, "startup.launchAtLogin"), json!(true));
     assert_eq!(*rig.login.writes.lock().unwrap(), vec![true]);
     rig.settings
         .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    settle_login(cx, &rig);
     assert_eq!(value(&rig, "startup.launchAtLogin"), json!(false));
     assert_eq!(*rig.login.writes.lock().unwrap(), vec![true, false]);
 }
@@ -234,8 +253,76 @@ fn a_refused_login_item_keeps_the_setting_off_and_says_why(cx: &mut TestAppConte
     *rig.login.fail.lock().unwrap() = true;
     rig.settings
         .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    settle_login(cx, &rig);
     assert_eq!(value(&rig, "startup.launchAtLogin"), json!(false));
     assert!(read(cx, &rig, |me| me.notice.is_some()));
+    assert!(
+        !read(cx, &rig, Settings::launch_at_login),
+        "the row went back"
+    );
+}
+
+#[gpui_kit::test]
+fn a_slow_login_item_write_never_holds_the_ui_thread(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    *rig.login.write_delay.lock().unwrap() = std::time::Duration::from_millis(800);
+
+    let started = std::time::Instant::now();
+    rig.settings
+        .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    let took = started.elapsed();
+
+    assert!(
+        took < std::time::Duration::from_millis(100),
+        "the click waited {took:?} for the login item"
+    );
+    assert!(
+        read(cx, &rig, Settings::launch_at_login),
+        "the row follows the click at once"
+    );
+    settle_login(cx, &rig);
+    assert!(
+        !rig.login.written_on_ui_thread(),
+        "the write ran on the UI thread"
+    );
+    assert_eq!(*rig.login.writes.lock().unwrap(), vec![true]);
+    assert_eq!(value(&rig, "startup.launchAtLogin"), json!(true));
+    assert!(read(cx, &rig, Settings::launch_at_login));
+}
+
+#[gpui_kit::test]
+fn a_slow_refused_write_shows_the_click_then_puts_the_row_back(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    *rig.login.fail.lock().unwrap() = true;
+    *rig.login.write_delay.lock().unwrap() = std::time::Duration::from_millis(100);
+
+    rig.settings
+        .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    assert!(read(cx, &rig, Settings::launch_at_login));
+    assert!(read(cx, &rig, |me| me.notice.is_none()));
+
+    settle_login(cx, &rig);
+    assert!(!read(cx, &rig, Settings::launch_at_login));
+    assert_eq!(value(&rig, "startup.launchAtLogin"), json!(false));
+    let notice = read(cx, &rig, |me| me.notice.clone()).unwrap();
+    assert!(notice.contains("Launch at login"), "{notice}");
+}
+
+#[gpui_kit::test]
+fn a_click_during_a_write_is_written_after_it(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    *rig.login.write_delay.lock().unwrap() = std::time::Duration::from_millis(100);
+
+    for _ in 0..2 {
+        rig.settings
+            .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    }
+    assert!(!read(cx, &rig, Settings::launch_at_login));
+    settle_login(cx, &rig);
+
+    assert_eq!(*rig.login.writes.lock().unwrap(), vec![true, false]);
+    assert!(!read(cx, &rig, Settings::launch_at_login));
+    assert_eq!(value(&rig, "startup.launchAtLogin"), json!(false));
 }
 
 #[gpui_kit::test]
@@ -243,6 +330,7 @@ fn a_login_item_removed_by_hand_reads_as_off_on_open(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.settings
         .update(cx, |me, cx| me.toggle_launch_at_login(cx));
+    settle_login(cx, &rig);
     assert_eq!(value(&rig, "startup.launchAtLogin"), json!(true));
     // The user removes the login item in the system settings.
     *rig.login.enabled.lock().unwrap() = Some(false);
