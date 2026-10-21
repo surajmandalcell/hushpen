@@ -3,6 +3,7 @@
 use crate::about::{self, About};
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
+use crate::flow_bar::FlowBar;
 use crate::history::{self, History};
 use crate::hook;
 use crate::import::{self, Import};
@@ -30,6 +31,9 @@ pub struct Shell {
     mic: Option<Entity<Mic>>,
     models: Option<Entity<Models>>,
     dictation: Option<Entity<Dictation>>,
+    /// The shell owns the bar: its pop-up window and the tray actions hold it weakly, so
+    /// without this handle the bar would be released at the end of start-up.
+    flow_bar: Option<Entity<FlowBar>>,
     dictionary: Option<Entity<Dictionary>>,
     history: Option<Entity<History>>,
     import: Option<Entity<Import>>,
@@ -66,6 +70,7 @@ impl Shell {
             mic: None,
             models: None,
             dictation: None,
+            flow_bar: None,
             dictionary: None,
             history: None,
             import: None,
@@ -141,6 +146,12 @@ impl Shell {
         cx.observe(&import, |_, _, cx| cx.notify()).detach();
         self.import = Some(import);
         cx.notify();
+    }
+
+    /// Keeps the flow bar alive for the app's lifetime. The bar paints in its own window, so
+    /// the shell only owns the handle and does not observe or render it.
+    pub fn attach_flow_bar(&mut self, flow_bar: Entity<FlowBar>) {
+        self.flow_bar = Some(flow_bar);
     }
 
     /// Shows dictation on Home and repaints when it changes.
@@ -569,6 +580,31 @@ mod tests {
             window.find(id).focused() == Some(true)
         })
         .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn the_shell_owns_the_flow_bar_for_its_whole_run(cx: &mut TestAppContext) {
+        // The bar's window and the tray actions hold the bar weakly, and start-up drops its
+        // own handle. Only the test hook kept the bar alive, so a build without the hook never
+        // opened the flow bar.
+        let (_window, shell) = open(cx);
+        let rig = crate::controller::testkit::rig(cx, &[], "");
+        let weak = cx.update(|cx| {
+            let bar = cx.new(|_| {
+                crate::flow_bar::FlowBar::new(
+                    std::rc::Rc::clone(&rig.storage),
+                    rig.controller.clone(),
+                    rig.mic.clone(),
+                )
+            });
+            shell.update(cx, |shell, _| shell.attach_flow_bar(bar.clone()));
+            bar.downgrade()
+        });
+        cx.run_until_parked();
+        assert!(
+            weak.upgrade().is_some(),
+            "the flow bar must outlive start-up without the test hook"
+        );
     }
 
     #[gpui_kit::test]
