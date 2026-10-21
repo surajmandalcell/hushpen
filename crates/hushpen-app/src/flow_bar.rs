@@ -269,6 +269,12 @@ impl FlowBar {
         }
 
         self.visible = wanted || !self.motion.is_gone();
+        // The last look is only kept while the bar fades: a gone bar is idle, so the state
+        // section and its change event do not keep reporting a result or an expired offer.
+        if !self.visible && self.props.state != BarState::Idle {
+            self.props = Props::new(BarState::Idle);
+            cx.notify();
+        }
         // The spot comes from the goal size, so the bar grows and shrinks around a still
         // center and lands on the same pixels every time.
         let at = match self.drag_origin {

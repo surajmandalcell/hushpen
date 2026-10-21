@@ -580,6 +580,34 @@ fn an_ai_cleaned_paste_offers_undo_cleanup_in_place_of_the_flash(cx: &mut TestAp
 }
 
 #[gpui_kit::test]
+fn an_expired_undo_offer_leaves_the_hidden_bar_idle(cx: &mut TestAppContext) {
+    let bar = cleaned_bar(cx, None);
+    bar.rig
+        .storage
+        .settings
+        .set("overlay.idleVisible", json!(false))
+        .unwrap();
+    assert_eq!(bar.state(cx), BarState::Undo);
+    bar.at(3_000 + 2_500);
+    send_at(cx, &bar.rig, 3_000 + 2_500, AppEvent::Tick).unwrap();
+    assert_eq!(machine_state(cx, &bar.rig), State::Idle);
+    assert_eq!(
+        bar.state(cx),
+        BarState::Undo,
+        "the offer outlives the done state"
+    );
+
+    bar.at(3_000 + 5_200);
+    assert!(
+        bar.tick(cx).is_none(),
+        "the bar is hidden after the offer ran out"
+    );
+    let state = bar.bar.read_with(cx, |bar, _| bar.state_json());
+    assert_eq!(state["state"], "idle");
+    assert_eq!(state["visible"], false);
+}
+
+#[gpui_kit::test]
 fn a_terminal_never_gets_the_undo_state(cx: &mut TestAppContext) {
     let terminal = FakeInserter::pasted_into("XTerm", Chord::ShiftInsert);
     let bar = cleaned_bar(cx, Some(&terminal));
