@@ -342,7 +342,9 @@ fn open_view(cx: &mut App, shell: &Entity<Shell>, args: &Value) -> Result<Value,
 fn window_section(cx: &mut App, window: AnyWindowHandle) -> Value {
     let mut state = window
         .update(cx, |_, window, cx| {
-            window_state(window, crate::theme::appearance(cx).is_dark())
+            let mut state = window_state(window, crate::theme::appearance(cx).is_dark());
+            state["root_fill"] = json!(crate::window_chrome::root_fill_name(window, cx));
+            state
         })
         .unwrap_or_else(|_| json!({"open": false}));
     // How the window left the screen: "hidden" to the tray, "minimized", or null while it shows.
@@ -362,6 +364,10 @@ pub fn window_state(window: &Window, dark: bool) -> Value {
         "active": window.is_window_active(),
         "background": crate::window_chrome::background_name(),
         "sidebar_fill": crate::window_chrome::sidebar_fill_name(dark),
+        "sidebar_material": hushpen_platform::window::sidebar_material(
+            crate::native::native_handle(window)
+        )
+        .unwrap_or("none"),
     })
 }
 
@@ -745,15 +751,28 @@ mod tests {
         assert_eq!(state["settings"]["dictation.maxMinutes"], 6);
         assert_eq!(state["window"]["width"], 940.0);
         assert_eq!(state["window"]["height"], 600.0);
-        let blurred = cfg!(target_os = "macos");
+        let translucent = cfg!(target_os = "macos");
         assert_eq!(
             state["window"]["background"],
-            if blurred { "blurred" } else { "opaque" }
+            if translucent { "transparent" } else { "opaque" }
         );
+        // The test window has no native view, so it has no material on any system.
+        assert_eq!(state["window"]["sidebar_material"], "none");
         assert_eq!(
             state["window"]["sidebar_fill"],
-            if blurred { "none" } else { "#2B2B2D" }
+            if translucent { "none" } else { "#2B2B2D" }
         );
+        if translucent {
+            assert_eq!(state["window"]["root_fill"], "none");
+        } else {
+            assert!(
+                state["window"]["root_fill"]
+                    .as_str()
+                    .is_some_and(|fill| fill.starts_with('#')),
+                "{}",
+                state["window"]["root_fill"]
+            );
+        }
         assert_eq!(state["window"]["resizable"], false);
         assert_eq!(state["window"]["maximized"], false);
         assert_eq!(state["window"]["fullscreen"], false);
@@ -781,6 +800,11 @@ mod tests {
             (false, true) => "#E8E8EA",
             (false, false) => "#2B2B2D",
         };
+        let root_fill = |light: bool| match (cfg!(target_os = "macos"), light) {
+            (true, _) => "none",
+            (false, true) => "#F5F5F5",
+            (false, false) => "#1E1E1E",
+        };
 
         let before = state(cx, &fixture);
         assert_eq!(before["appearance"]["system"], "light");
@@ -795,11 +819,13 @@ mod tests {
         );
         assert_eq!(dark["appearance"]["forced"], "dark");
         assert_eq!(dark["window"]["sidebar_fill"], fill(false));
+        assert_eq!(dark["window"]["root_fill"], root_fill(false));
 
         run(cx, "light").unwrap();
         let light = state(cx, &fixture);
         assert_eq!(light["appearance"]["rendered"], "light");
         assert_eq!(light["window"]["sidebar_fill"], fill(true));
+        assert_eq!(light["window"]["root_fill"], root_fill(true));
 
         run(cx, "dark").unwrap();
         run(cx, "system").unwrap();

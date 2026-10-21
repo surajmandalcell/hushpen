@@ -17,6 +17,8 @@ mod overlay_appkit;
 #[cfg(target_os = "linux")]
 mod overlay_x11;
 #[cfg(target_os = "macos")]
+mod sidebar_appkit;
+#[cfg(target_os = "macos")]
 mod visibility_appkit;
 #[cfg(target_os = "linux")]
 mod visibility_x11;
@@ -101,6 +103,29 @@ pub fn lock_chrome(handle: WindowHandle, width: u16, height: u16) -> Result<(), 
             let _ = (width, height);
             Ok(())
         }
+    }
+}
+
+/// Puts the native sidebar material behind the first `width` points of the window, full height,
+/// on macOS. The window must be transparent there. Backends it does not know are left alone.
+pub fn add_sidebar_material(handle: WindowHandle, width: f64) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => sidebar_appkit::add(view, width),
+        _ => {
+            let _ = width;
+            Ok(())
+        }
+    }
+}
+
+/// The native material behind the window content: `sidebar`, `other`, or `None` when there
+/// is none or the backend has no such thing.
+pub fn sidebar_material(handle: WindowHandle) -> Option<&'static str> {
+    match handle {
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => sidebar_appkit::material(view),
+        _ => None,
     }
 }
 
@@ -253,6 +278,8 @@ mod tests {
     #[test]
     fn unknown_backends_are_left_alone() {
         assert!(lock_chrome(WindowHandle::Other, 940, 600).is_ok());
+        assert!(add_sidebar_material(WindowHandle::Other, 232.0).is_ok());
+        assert_eq!(sidebar_material(WindowHandle::Other), None);
         let frame = Frame {
             x: 0,
             y: 0,

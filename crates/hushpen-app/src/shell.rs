@@ -52,6 +52,10 @@ impl Shell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let shell_focus = cx.focus_handle();
         window.focus(&shell_focus, cx);
+        // The Kit root does not exist yet: it wraps this view once it is built.
+        window.defer(cx, |window, cx| {
+            crate::window_chrome::clear_root_fill(chrome::TRANSLUCENT_SIDEBAR, window, cx)
+        });
         Self {
             active: View::Home,
             shell_focus,
@@ -296,7 +300,7 @@ impl Shell {
             .flex_none()
             .w(px(space::SIDEBAR_WIDTH))
             .h_full();
-        // No fill on macOS: the blurred window shows through the sidebar.
+        // No fill on macOS: the native sidebar material shows through.
         let panel =
             match chrome::sidebar_fill(chrome::TRANSLUCENT_SIDEBAR, palette.appearance.is_dark()) {
                 Some(fill) => panel.bg(rgb(fill)),
@@ -455,7 +459,7 @@ impl Render for Shell {
         }
         self.onboarding_shown = onboarding.is_some();
         match onboarding {
-            // Opaque: the window background is blurred on macOS and onboarding has no sidebar.
+            // Opaque: the window is transparent on macOS and onboarding has no sidebar.
             Some(onboarding) => frame
                 .bg(palette.content)
                 .flex_col()

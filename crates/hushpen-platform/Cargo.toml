@@ -35,3 +35,8 @@ objc2-foundation.workspace = true
 objc2-service-management.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
+
+# AppKit views need the main thread, which the default test harness does not give.
+[[test]]
+name = "sidebar_material"
+harness = false

@@ -626,8 +626,22 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<(AnyWindowHandle, Entity<S
         cx,
         |window, cx| cx.new(|cx| Shell::new(window, cx)),
     )?;
-    let _ = handle.update(cx, |_, window, _| lock_native_chrome(window));
+    let _ = handle.update(cx, |_, window, _| {
+        lock_native_chrome(window);
+        add_sidebar_material(window);
+    });
     Ok((handle, shell))
+}
+
+fn add_sidebar_material(window: &Window) {
+    if !theme::chrome::TRANSLUCENT_SIDEBAR {
+        return;
+    }
+    let width = f64::from(space::SIDEBAR_WIDTH);
+    if let Err(error) = hushpen_platform::window::add_sidebar_material(native_handle(window), width)
+    {
+        log::warn!("could not add the sidebar material: {error}");
+    }
 }
 
 fn lock_native_chrome(window: &Window) {

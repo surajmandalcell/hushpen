@@ -69,12 +69,12 @@ pub mod chrome {
         WINDOW_MINIMIZE_GLYPH = 0x8F5B00FF, "window-minimize-glyph";
     });
 
-    /// The solid Linux sidebar as `0xRRGGBB`. macOS has no sidebar fill: the window background
-    /// is blurred and the sidebar shows it.
+    /// The solid Linux sidebar as `0xRRGGBB`. macOS has no sidebar fill: the native sidebar
+    /// material behind the window content shows through.
     pub const SIDEBAR_SOLID_DARK: u32 = super::dark::SIDEBAR >> 8;
     pub const SIDEBAR_SOLID_LIGHT: u32 = super::light::SIDEBAR >> 8;
 
-    /// Whether the window background is blurred and the sidebar shows it: macOS only.
+    /// Whether the sidebar shows the native sidebar material instead of a fill: macOS only.
     pub const TRANSLUCENT_SIDEBAR: bool = cfg!(target_os = "macos");
 
     /// The sidebar fill for an appearance, or `None` where the sidebar is see-through.
