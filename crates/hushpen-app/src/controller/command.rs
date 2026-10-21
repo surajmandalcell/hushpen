@@ -2,6 +2,7 @@
 //! and the model's edit takes the selection's place. The selection lives in memory for the one
 //! session; no log line, hook event, or history column gets it.
 
+use super::arm::Armed;
 use super::{Controller, InsertSupport, Queued, failure_for};
 use crate::ai_cleanup;
 use crate::controller::CancelToken;
@@ -16,6 +17,30 @@ use hushpen_core::error::{
 };
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+/// Whether preflight lets an event reach the machine now.
+pub(super) enum Pass {
+    Go,
+    /// Not yet: the machine hears it once the selection is read.
+    Later,
+}
+
+/// A Command Mode start that waits for the selection read on a worker thread.
+pub(super) struct Selecting {
+    seq: u64,
+    /// When the command keys went down, on the controller's clock.
+    at: u64,
+    /// The hold session that becomes the command, or `None` for a start from idle.
+    hold: Option<u64>,
+    /// The open microphone that the command takes over, so no speech is lost while it waits.
+    armed: Option<Armed>,
+    /// Key releases that came while it waited, with their times.
+    held: Vec<(AppEvent, u64)>,
+}
+
+/// The selection a worker thread read, for the start that the number names. It stays in
+/// memory like the selection itself.
+pub(super) type SelectionRead = (u64, Option<String>);
 
 /// A short notice for a Command Mode start that was refused. The flow bar shows each one once.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,46 +78,146 @@ impl Controller {
     /// The checks of the command keys, before the machine hears them: AI cleanup must be on,
     /// and the focused app must have a selection. A refused start leaves no session and no
     /// history row; a hold that already began is cancelled.
+    ///
+    /// The selection is read on a worker thread, because on macOS and X11 the read can wait
+    /// for a copy. The machine hears the keys only once [`Self::selection_read`] has the
+    /// answer, so this returns [`Pass::Later`] for a read that started.
     pub(super) fn command_preflight(
         &mut self,
         now: u64,
+        adopted: &mut Option<Armed>,
         cx: &mut Context<Self>,
-    ) -> Result<(), String> {
+    ) -> Result<Pass, String> {
         let starting = match self.machine.state() {
             State::Idle => true,
             State::Listening if self.machine.mode() == Mode::Hold => false,
-            _ => return Ok(()),
+            _ => return Ok(Pass::Go),
         };
+        if let Some(selection) = self.selection_ready.take() {
+            self.selection = Some(selection);
+            self.refused = None;
+            if starting {
+                self.machine.set_config(super::config_from(&self.storage));
+            }
+            return Ok(Pass::Go);
+        }
+        if self.selecting.is_some() {
+            return Ok(Pass::Later);
+        }
         if !self.ai_wanted() {
-            return self.refuse_command(COMMAND_NEEDS_AI, now, cx);
+            return Err(self.refuse_command(COMMAND_NEEDS_AI, now, cx));
         }
         if starting && let Some(blocker) = self.blocker(cx) {
             self.refused = Some(blocker.code);
             hook::record_event("dictation", &format!("blocked {}", blocker.code));
             return Err(format!("{}: {}", blocker.code, blocker.message));
         }
-        let selection = match &self.insert {
-            InsertSupport::Ready(inserter) => inserter.selection(&inserter.target()),
-            _ => None,
-        }
-        .filter(|text| !text.trim().is_empty());
-        let Some(selection) = selection else {
-            return self.refuse_command(COMMAND_NO_SELECTION, now, cx);
+        let InsertSupport::Ready(inserter) = &self.insert else {
+            return Err(self.refuse_command(COMMAND_NO_SELECTION, now, cx));
         };
-        self.selection = Some(selection);
-        self.refused = None;
-        if starting {
-            self.machine.set_config(super::config_from(&self.storage));
+        let inserter = Arc::clone(inserter);
+        let target = inserter.target();
+        self.selection_seq += 1;
+        let seq = self.selection_seq;
+        let answers = self.selections.clone();
+        let spawned = (self.spawn)(Box::new(move || {
+            let text = inserter.selection(&target);
+            let _ = answers.unbounded_send((seq, text));
+        }));
+        if let Err(error) = spawned {
+            log::warn!("{COMMAND_NO_SELECTION} could not start the selection read: {error}");
+            return Err(self.refuse_command(COMMAND_NO_SELECTION, now, cx));
         }
-        Ok(())
+        let armed = match adopted.take() {
+            Some(armed) => Some(armed),
+            None if starting => Some(self.open_early(now, cx)),
+            None => None,
+        };
+        self.selecting = Some(Selecting {
+            seq,
+            at: now,
+            hold: (!starting).then(|| self.machine.session()),
+            armed,
+            held: Vec::new(),
+        });
+        Ok(Pass::Later)
     }
 
-    fn refuse_command(
+    /// Keeps the key releases that come while the selection is read, so they reach the
+    /// machine after the command started, and drops the waiting start on Esc. Returns
+    /// whether the event was kept back.
+    pub(super) fn while_selecting(
         &mut self,
-        code: &'static str,
+        event: &AppEvent,
         now: u64,
         cx: &mut Context<Self>,
-    ) -> Result<(), String> {
+    ) -> bool {
+        let Some(selecting) = &mut self.selecting else {
+            return false;
+        };
+        match event {
+            AppEvent::CommandUp | AppEvent::HoldUp => {
+                selecting.held.push((event.clone(), now));
+                true
+            }
+            AppEvent::Esc => {
+                if let Some(armed) = self.selecting.take().and_then(|selecting| selecting.armed) {
+                    self.release_unused_capture(armed, cx);
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// The answer of the selection read. The waiting command starts, dated at its key press,
+    /// and the key releases kept since then follow; with no selection it is refused. An answer
+    /// for a start that was cancelled, or for a hold that ended, changes nothing.
+    pub(super) fn selection_read(&mut self, (seq, text): SelectionRead, cx: &mut Context<Self>) {
+        if self
+            .selecting
+            .as_ref()
+            .is_none_or(|selecting| selecting.seq != seq)
+        {
+            return;
+        }
+        let Some(selecting) = self.selecting.take() else {
+            return;
+        };
+        let still = self.armed.is_none()
+            && match selecting.hold {
+                None => self.machine.state() == State::Idle,
+                Some(session) => {
+                    self.machine.state() == State::Listening
+                        && self.machine.mode() == Mode::Hold
+                        && self.machine.session() == session
+                }
+            };
+        match text.filter(|text| !text.trim().is_empty()) {
+            Some(text) if still => {
+                self.selection_ready = Some(text);
+                self.armed = selecting.armed;
+                let _ = self.dispatch_at(AppEvent::CommandDown, Some(selecting.at), cx);
+                self.selection_ready = None;
+                for (event, at) in selecting.held {
+                    let _ = self.dispatch_at(event, Some(at), cx);
+                }
+            }
+            _ => {
+                if still {
+                    let now = (self.clock)();
+                    self.refuse_command(COMMAND_NO_SELECTION, now, cx);
+                }
+                if let Some(armed) = selecting.armed {
+                    self.release_unused_capture(armed, cx);
+                }
+                cx.notify();
+            }
+        }
+    }
+
+    /// Records a refused start, cancels a hold that already began, and returns the reason.
+    fn refuse_command(&mut self, code: &'static str, now: u64, cx: &mut Context<Self>) -> String {
         let message = failure_for(code).1;
         self.refused = Some(code);
         self.selection = None;
@@ -112,7 +237,7 @@ impl Controller {
             }
             self.record(before);
         }
-        Err(format!("{code}: {message}"))
+        format!("{code}: {message}")
     }
 
     /// Hands the instruction and the selection to the model on a worker thread. The machine

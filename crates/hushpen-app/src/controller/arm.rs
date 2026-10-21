@@ -30,14 +30,9 @@ impl Controller {
         if !arm {
             return self.dispatch_at(AppEvent::HoldDown, Some(at), cx);
         }
-        let mic = self.mic.read(cx).session_use().is_none()
-            && self
-                .mic
-                .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
-                .is_ok();
-        self.arm_seq += 1;
-        let seq = self.arm_seq;
-        self.armed = Some(Armed { at, seq, mic });
+        let armed = self.open_early(at, cx);
+        let seq = armed.seq;
+        self.armed = Some(armed);
         let wait = ARM_WINDOW_MS.saturating_sub((self.clock)().saturating_sub(at));
         cx.spawn(async move |this, cx| {
             cx.background_executor()
@@ -47,6 +42,23 @@ impl Controller {
         })
         .detach();
         Ok(())
+    }
+
+    /// Opens the microphone before the machine hears the key that went down at `at`, so no
+    /// speech is lost while the start waits. [`Self::release_unused_capture`] closes it if no
+    /// session takes it over.
+    pub(super) fn open_early(&mut self, at: u64, cx: &mut Context<Self>) -> Armed {
+        let mic = self.mic.read(cx).session_use().is_none()
+            && self
+                .mic
+                .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+                .is_ok();
+        self.arm_seq += 1;
+        Armed {
+            at,
+            seq: self.arm_seq,
+            mic,
+        }
     }
 
     fn settle_arm(&mut self, seq: u64, cx: &mut Context<Self>) {

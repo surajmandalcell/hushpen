@@ -100,8 +100,8 @@ fn setup(cx: &mut TestAppContext, status: KeysStatus, starts: bool) -> Setup {
     let starts = Rc::new(Cell::new(starts));
     let restart = restart(&calls, &starts);
     let attached = source.clone();
-    rig.controller.update(cx, |controller, _| {
-        controller.attach_permissions(attached);
+    rig.controller.update(cx, |controller, cx| {
+        controller.attach_permissions(attached, cx);
         controller.attach_keys(status, Rc::new(|_| {}));
         controller.attach_keys_restart(restart);
     });
@@ -199,8 +199,8 @@ fn keys_that_are_off_for_another_reason_are_left_alone(cx: &mut TestAppContext) 
 fn a_system_with_no_restart_attached_changes_nothing(cx: &mut TestAppContext) {
     let rig = rig(cx, &["base"], "base");
     let source = Source::input_monitoring(Access::Granted);
-    rig.controller.update(cx, |controller, _| {
-        controller.attach_permissions(source);
+    rig.controller.update(cx, |controller, cx| {
+        controller.attach_permissions(source, cx);
         controller.attach_keys(permission_off(), Rc::new(|_| {}));
     });
 

@@ -339,6 +339,12 @@ pub struct Controller {
     undoing: Option<undo::Undoing>,
     /// The text Command Mode edits: in memory for the one session, never logged or saved.
     selection: Option<String>,
+    /// The Command Mode start that waits for its selection read.
+    selecting: Option<command::Selecting>,
+    selection_seq: u64,
+    /// The selection read for the start that is reaching the machine now.
+    selection_ready: Option<String>,
+    selections: UnboundedSender<command::SelectionRead>,
     /// The newest refused Command Mode start.
     flash: Option<Flash>,
     flash_seq: u64,
@@ -377,6 +383,19 @@ impl Controller {
                         // A refusal shows in the notice; nothing else to tell a worker.
                         let _ = me.dispatch_at(event, at, cx);
                     })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        let (selections, answers) = unbounded();
+        cx.spawn(async move |this, cx| {
+            let mut answers = answers;
+            while let Some(read) = answers.next().await {
+                if this
+                    .update(cx, |me, cx| me.selection_read(read, cx))
                     .is_err()
                 {
                     break;
@@ -462,6 +481,10 @@ impl Controller {
             undo: None,
             undoing: None,
             selection: None,
+            selecting: None,
+            selection_seq: 0,
+            selection_ready: None,
+            selections,
             flash: None,
             flash_seq: 0,
             armed: None,
@@ -676,24 +699,46 @@ impl Controller {
     }
 
     /// Reads the permissions now and again every few seconds, and records which grants are
-    /// lost since the last start.
-    pub fn attach_permissions(&mut self, preflight: Arc<dyn Preflight>) {
-        self.permissions = Some(PermissionWatch::start(preflight, &self.storage.settings));
+    /// lost since the last start. A stored grant that reads missing at start is read again on
+    /// a timer, so the start never waits for it on the UI thread.
+    pub fn attach_permissions(&mut self, preflight: Arc<dyn Preflight>, cx: &mut Context<Self>) {
+        let watch = PermissionWatch::start(preflight, &self.storage.settings);
+        let settling = watch.settling();
+        self.permissions = Some(watch);
+        if !settling {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(hushpen_core::permission::SETTLE_EVERY)
+                    .await;
+                let more = this.update(cx, |me, cx| me.settle_permissions(cx));
+                if !matches!(more, Ok(true)) {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
-    /// [`Self::attach_permissions`] with the pause between the start reads supplied, so a test
-    /// does not sleep.
-    #[cfg(test)]
-    pub fn attach_permissions_with(
-        &mut self,
-        preflight: Arc<dyn Preflight>,
-        pause: &dyn Fn(std::time::Duration),
-    ) {
-        self.permissions = Some(PermissionWatch::start_with(
-            preflight,
-            &self.storage.settings,
-            pause,
-        ));
+    /// One more start read. Returns whether the start reads still settle.
+    fn settle_permissions(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(watch) = &mut self.permissions else {
+            return false;
+        };
+        if watch.settle(&self.storage.settings) {
+            cx.notify();
+        }
+        watch.settling()
+    }
+
+    /// A stored grant read missing at start, and the reads that decide whether it is lost are
+    /// not over yet.
+    pub fn permissions_settling(&self) -> bool {
+        self.permissions
+            .as_ref()
+            .is_some_and(PermissionWatch::settling)
     }
 
     pub fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
@@ -946,6 +991,9 @@ impl Controller {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let now = at.unwrap_or_else(|| (self.clock)());
+        if self.while_selecting(&event, now, cx) {
+            return Ok(());
+        }
         if event == AppEvent::HoldArm {
             let _ = self.promote_armed(cx);
             return self.arm_hold(now, cx);
@@ -968,10 +1016,17 @@ impl Controller {
                 changed = true;
                 continue;
             }
-            if let Err(reason) = self.preflight(&event, now, cx) {
-                outcome = Err(reason);
-                changed = true;
-                continue;
+            match self.preflight(&event, now, &mut adopted, cx) {
+                Ok(command::Pass::Go) => {}
+                Ok(command::Pass::Later) => {
+                    changed = true;
+                    continue;
+                }
+                Err(reason) => {
+                    outcome = Err(reason);
+                    changed = true;
+                    continue;
+                }
             }
             let mut before = self.machine.state();
             let effects = self.machine.handle(event, now);
@@ -1019,8 +1074,9 @@ impl Controller {
         &mut self,
         event: &AppEvent,
         now: u64,
+        adopted: &mut Option<arm::Armed>,
         cx: &mut Context<Self>,
-    ) -> Result<(), String> {
+    ) -> Result<command::Pass, String> {
         let starts = matches!(
             event,
             AppEvent::HoldDown
@@ -1039,10 +1095,10 @@ impl Controller {
             return Err("onboarding is not finished: no dictation can start yet".into());
         }
         if command {
-            return self.command_preflight(now, cx);
+            return self.command_preflight(now, adopted, cx);
         }
         if !starts {
-            return Ok(());
+            return Ok(command::Pass::Go);
         }
         if matches!(event, AppEvent::HomeToggle)
             && matches!(
@@ -1056,7 +1112,7 @@ impl Controller {
             self.record(before);
         }
         if self.machine.state() != State::Idle {
-            return Ok(());
+            return Ok(command::Pass::Go);
         }
         if let Some(blocker) = self.blocker(cx) {
             self.refused = Some(blocker.code);
@@ -1066,7 +1122,7 @@ impl Controller {
         self.refused = None;
         self.selection = None;
         self.machine.set_config(config_from(&self.storage));
-        Ok(())
+        Ok(command::Pass::Go)
     }
 
     fn apply(

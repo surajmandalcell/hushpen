@@ -15,6 +15,7 @@ use crate::shortcuts::Shortcuts;
 use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
+use futures::channel::oneshot;
 use gpui_kit::{App, Context, Entity, FocusHandle};
 use hushpen_core::dictation::AppEvent;
 use hushpen_core::error::ENGINE_NO_SPEECH;
@@ -50,8 +51,9 @@ pub const STALE_HINT: &str =
 /// Settings; tests pass a fake.
 pub trait Guide {
     /// Calls the request API of the permission, which lists Hushpen in the Privacy pane and
-    /// shows the system prompt. The Allow button calls it on every click.
-    fn request(&self, permission: Permission);
+    /// shows the system prompt. The Allow button calls it on every click. Returns `None` when
+    /// the request is over, or a receiver that answers once it is.
+    fn request(&self, permission: Permission) -> Option<oneshot::Receiver<()>>;
     fn open(&self, url: &str) -> Result<(), String>;
     /// Starts a new copy of the app once this one has ended. The caller quits right after.
     fn relaunch(&self) -> Result<(), String>;
@@ -60,8 +62,20 @@ pub trait Guide {
 pub struct SystemGuide;
 
 impl Guide for SystemGuide {
-    fn request(&self, permission: Permission) {
-        hushpen_platform::permissions::request(permission);
+    fn request(&self, permission: Permission) -> Option<oneshot::Receiver<()>> {
+        let (done, finished) = oneshot::channel();
+        let started = on_permission_thread(move || {
+            hushpen_platform::permissions::request(permission);
+            let _ = done.send(());
+        });
+        match started {
+            Ok(()) => Some(finished),
+            Err(error) => {
+                log::warn!("the permission request thread did not start: {error}");
+                hushpen_platform::permissions::request(permission);
+                None
+            }
+        }
     }
 
     fn open(&self, url: &str) -> Result<(), String> {
@@ -71,6 +85,15 @@ impl Guide for SystemGuide {
     fn relaunch(&self) -> Result<(), String> {
         hushpen_platform::permissions::relaunch().map_err(|error| error.to_string())
     }
+}
+
+/// Runs `job` on its own thread. A permission request first reads the grant and can run
+/// `tccutil reset`, which may take up to 2 s, so it never runs on the UI thread.
+fn on_permission_thread(job: impl FnOnce() + Send + 'static) -> std::io::Result<()> {
+    std::thread::Builder::new()
+        .name("hushpen-permission".into())
+        .spawn(job)
+        .map(|_| ())
 }
 
 /// What the window shows.
@@ -158,6 +181,9 @@ pub struct Onboarding {
     step: Step,
     /// The microphone list is not read yet, and a finished onboarding checks it once.
     waiting_for_mic: bool,
+    /// The start reads of the permissions still settle, and a finished onboarding opens the
+    /// repair page if they end with a lost grant.
+    waiting_for_grants: bool,
     mic_test: MicTest,
     practice: Option<String>,
     updates_on: bool,
@@ -228,6 +254,7 @@ impl Onboarding {
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_default();
         let gone = !controller.read(cx).lost_permissions().is_empty();
+        let settling = controller.read(cx).permissions_settling();
         let (mode, step) = match rules::start(completed, &stored, gone) {
             Start::Main => (Mode::Hidden, Step::Permissions),
             Start::Setup(step) => (Mode::Setup, step),
@@ -250,6 +277,7 @@ impl Onboarding {
             mode,
             step,
             waiting_for_mic: completed && mode == Mode::Hidden,
+            waiting_for_grants: completed && mode == Mode::Hidden && settling,
             mic_test: MicTest {
                 phase: MicPhase::Idle,
                 peak: 0.0,
@@ -484,16 +512,37 @@ impl Onboarding {
     }
 
     fn reopen_for_repair(&mut self, cx: &mut Context<Self>) {
+        self.repair("no-microphone", cx);
+    }
+
+    fn repair(&mut self, reason: &str, cx: &mut Context<Self>) {
         if self.mode != Mode::Hidden {
             return;
         }
         self.mode = Mode::Repair;
         self.step = Step::Permissions;
-        hook::record_event("onboarding", "repair no-microphone");
+        hook::record_event("onboarding", &format!("repair {reason}"));
         self.sync_gate(cx);
     }
 
+    /// The start reads of the permissions are over. A grant lost then opens the repair page,
+    /// and the window comes back, as a start with the loss read at once never hid it.
+    fn grants_settled(&mut self, cx: &mut Context<Self>) {
+        if !self.waiting_for_grants || self.controller.read(cx).permissions_settling() {
+            return;
+        }
+        self.waiting_for_grants = false;
+        if self.controller.read(cx).lost_permissions().is_empty() {
+            return;
+        }
+        self.repair("permission-lost", cx);
+        if crate::main_window::away(cx).is_some() {
+            crate::main_window::show(cx);
+        }
+    }
+
     fn controller_changed(&mut self, cx: &mut Context<Self>) {
+        self.grants_settled(cx);
         let words = self
             .controller
             .update(cx, |controller, _| controller.take_practice());
@@ -524,11 +573,25 @@ impl Onboarding {
     /// macOS shows no prompt to a client it already decided on. Input Monitoring then still
     /// reads Denied right after the request, so the Privacy pane opens with a line about the
     /// old entry. Accessibility always shows its alert, so it waits for the answer instead.
+    /// Both checks run once the request is over, which can be after the click returned.
     pub fn allow(&mut self, permission: Permission, cx: &mut Context<Self>) {
-        self.guide.request(permission);
+        let pending = self.guide.request(permission);
         hook::record_event("onboarding", &format!("allow {}", permission.key()));
         self.notice = None;
         self.stale.retain(|stale| *stale != permission);
+        match pending {
+            None => self.requested(permission, cx),
+            Some(finished) => cx
+                .spawn(async move |this, cx| {
+                    let _ = finished.await;
+                    let _ = this.update(cx, |me, cx| me.requested(permission, cx));
+                })
+                .detach(),
+        }
+        cx.notify();
+    }
+
+    fn requested(&mut self, permission: Permission, cx: &mut Context<Self>) {
         match permission {
             Permission::InputMonitoring => {
                 if self.read_access(permission, cx) == Access::Denied {

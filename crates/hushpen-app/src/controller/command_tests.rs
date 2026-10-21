@@ -28,10 +28,22 @@ fn answered(cx: &mut TestAppContext, rig: &Rig, attempt: Attempt) -> Arc<Mutex<C
 }
 
 /// The Command Mode keys: the hold key goes down first and is only armed, then the rest of the
-/// chord.
+/// chord. The selection read they start runs before this returns.
 fn chord_down(cx: &mut TestAppContext, rig: &Rig, at: u64) -> Result<(), String> {
     send_at(cx, rig, at, AppEvent::HoldArm)?;
-    send_at(cx, rig, at + 10, AppEvent::CommandDown)
+    let sent = send_at(cx, rig, at + 10, AppEvent::CommandDown);
+    read_selection(cx, rig);
+    sent
+}
+
+/// Runs the selection read that the command keys queued for a worker thread, if any, and
+/// hands its answer to the controller.
+fn read_selection(cx: &mut TestAppContext, rig: &Rig) {
+    let job = rig.work.borrow_mut().pop_front();
+    if let Some(job) = job {
+        job();
+    }
+    cx.run_until_parked();
 }
 
 fn chord_up(cx: &mut TestAppContext, rig: &Rig, at: u64) {
@@ -123,6 +135,7 @@ fn the_command_keys_alone_start_a_command_session(cx: &mut TestAppContext) {
     let (rig, inserter) = setup(cx);
     answered(cx, &rig, Attempt::Done(EDITED.into()));
     send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap();
+    read_selection(cx, &rig);
     assert_eq!(machine_state(cx, &rig), State::Listening);
     send_at(cx, &rig, 3_000, AppEvent::CommandUp).unwrap();
     settle(cx, &rig);
@@ -135,14 +148,20 @@ fn no_selection_shows_the_notice_and_starts_nothing(cx: &mut TestAppContext) {
     *inserter.selected.lock().unwrap() = None;
     let calls = answered(cx, &rig, Attempt::Done(EDITED.into()));
 
-    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap_err();
+    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap();
+    read_selection(cx, &rig);
 
     assert_eq!(
         flash(cx, &rig),
         Some(("COMMAND_NO_SELECTION", "Select text first".to_owned()))
     );
     assert_eq!(machine_state(cx, &rig), State::Idle);
-    assert!(session_wavs(&rig).is_empty(), "the microphone never opened");
+    assert!(session_wavs(&rig).is_empty(), "no audio was kept");
+    assert_eq!(
+        rig.mic.read_with(cx, |mic, _| mic.state()),
+        crate::mic::CaptureState::Idle,
+        "the microphone opened for the wait is closed again"
+    );
     settle(cx, &rig);
     assert_eq!(calls.lock().unwrap().asked, 0, "no model job");
     assert!(rows(&rig).is_empty());
@@ -158,7 +177,8 @@ fn a_blank_selection_counts_as_none(cx: &mut TestAppContext) {
     let (rig, inserter) = setup(cx);
     *inserter.selected.lock().unwrap() = Some("  \n ".into());
     answered(cx, &rig, Attempt::Done(EDITED.into()));
-    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap_err();
+    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap();
+    read_selection(cx, &rig);
     assert_eq!(flash(cx, &rig).unwrap().0, "COMMAND_NO_SELECTION");
 }
 
@@ -169,7 +189,8 @@ fn a_hold_that_ran_before_the_missing_selection_was_found_is_cancelled(cx: &mut 
     answered(cx, &rig, Attempt::Done(EDITED.into()));
 
     send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
-    send_at(cx, &rig, 1_010, AppEvent::CommandDown).unwrap_err();
+    send_at(cx, &rig, 1_010, AppEvent::CommandDown).unwrap();
+    read_selection(cx, &rig);
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
     send_at(cx, &rig, 1_020, AppEvent::CommandUp).unwrap();
     send_at(cx, &rig, 1_020, AppEvent::HoldUp).unwrap();
@@ -191,7 +212,7 @@ fn a_chord_without_a_selection_starts_no_session_and_plays_no_cue(cx: &mut TestA
     answered(cx, &rig, Attempt::Done(EDITED.into()));
     let played = listen_for_cues(cx, &rig);
 
-    chord_down(cx, &rig, 1_000).unwrap_err();
+    chord_down(cx, &rig, 1_000).unwrap();
     chord_up(cx, &rig, 1_500);
     settle(cx, &rig);
 
@@ -212,6 +233,7 @@ fn a_chord_key_that_comes_after_the_window_turns_the_running_hold_into_the_comma
 
     send_at(cx, &rig, 1_000, AppEvent::HoldArm).unwrap();
     send_at(cx, &rig, 1_000 + ARM_WINDOW_MS + 5, AppEvent::CommandDown).unwrap();
+    read_selection(cx, &rig);
 
     assert_eq!(machine_state(cx, &rig), State::Listening);
     assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Command);
@@ -369,4 +391,101 @@ fn a_plain_dictation_after_a_command_is_a_dictation_again(cx: &mut TestAppContex
     let kinds: Vec<String> = rows(&rig).into_iter().map(|row| row.kind).collect();
     assert_eq!(kinds.iter().filter(|kind| *kind == "command").count(), 1);
     assert_eq!(kinds.iter().filter(|kind| *kind == "dictation").count(), 1);
+}
+
+#[gpui_kit::test]
+fn a_slow_selection_read_never_holds_the_command_keys(cx: &mut TestAppContext) {
+    let (rig, inserter) = setup(cx);
+    answered(cx, &rig, Attempt::Done(EDITED.into()));
+    let delay = std::time::Duration::from_millis(300);
+    *inserter.selection_delay.lock().unwrap() = delay;
+    let played = listen_for_cues(cx, &rig);
+
+    send_at(cx, &rig, 1_000, AppEvent::HoldArm).unwrap();
+    let started = std::time::Instant::now();
+    send_at(cx, &rig, 1_010, AppEvent::CommandDown).unwrap();
+    let took = started.elapsed();
+
+    assert!(took < delay / 3, "the key handler waited {took:?}");
+    assert_eq!(inserter.selection_reads.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        machine_state(cx, &rig),
+        State::Idle,
+        "no session before the answer"
+    );
+    assert!(
+        played.lock().unwrap().is_empty(),
+        "no cue before the answer"
+    );
+    assert_eq!(
+        rig.mic_backend.starts.load(Ordering::SeqCst),
+        1,
+        "the microphone is open while the read runs"
+    );
+
+    read_selection(cx, &rig);
+
+    assert_eq!(inserter.selection_reads.load(Ordering::SeqCst), 1);
+    assert_eq!(machine_state(cx, &rig), State::Listening);
+    assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Command);
+    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.5)]);
+    assert_eq!(rig.mic_backend.starts.load(Ordering::SeqCst), 1);
+}
+
+#[gpui_kit::test]
+fn a_selection_that_arrives_after_esc_starts_nothing(cx: &mut TestAppContext) {
+    let (rig, inserter) = setup(cx);
+    let calls = answered(cx, &rig, Attempt::Done(EDITED.into()));
+    let played = listen_for_cues(cx, &rig);
+
+    send_at(cx, &rig, 1_000, AppEvent::HoldArm).unwrap();
+    send_at(cx, &rig, 1_010, AppEvent::CommandDown).unwrap();
+    send_at(cx, &rig, 1_100, AppEvent::Esc).unwrap();
+    read_selection(cx, &rig);
+    chord_up(cx, &rig, 3_000);
+    settle(cx, &rig);
+
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    assert!(played.lock().unwrap().is_empty(), "no start or cancel cue");
+    assert_eq!(flash(cx, &rig), None, "nothing was refused either");
+    assert!(session_wavs(&rig).is_empty(), "the early audio was dropped");
+    assert_eq!(
+        rig.mic.read_with(cx, |mic, _| mic.state()),
+        crate::mic::CaptureState::Idle
+    );
+    assert!(rows(&rig).is_empty());
+    assert!(pasted(&inserter).is_empty());
+    assert_eq!(calls.lock().unwrap().asked, 0);
+}
+
+#[gpui_kit::test]
+fn a_selection_that_arrives_after_a_new_start_is_ignored(cx: &mut TestAppContext) {
+    let (rig, _inserter) = setup(cx);
+    answered(cx, &rig, Attempt::Done(EDITED.into()));
+
+    send_at(cx, &rig, 1_000, AppEvent::CommandDown).unwrap();
+    send_at(cx, &rig, 1_050, AppEvent::HandsFreeToggle).unwrap();
+    read_selection(cx, &rig);
+
+    assert_eq!(machine_state(cx, &rig), State::Listening);
+    assert_eq!(
+        rig.controller.read_with(cx, |c, _| c.mode()),
+        Mode::HandsFree,
+        "the late answer did not take the session over"
+    );
+}
+
+#[gpui_kit::test]
+fn a_chord_released_before_the_selection_arrives_still_runs_the_command(cx: &mut TestAppContext) {
+    let (rig, inserter) = setup(cx);
+    answered(cx, &rig, Attempt::Done(EDITED.into()));
+
+    send_at(cx, &rig, 1_000, AppEvent::HoldArm).unwrap();
+    send_at(cx, &rig, 1_010, AppEvent::CommandDown).unwrap();
+    chord_up(cx, &rig, 3_000);
+    settle(cx, &rig);
+
+    assert_eq!(pasted(&inserter), [EDITED]);
+    assert_eq!(machine_state(cx, &rig), State::Done);
+    assert_eq!(only_row(&rig).kind, "command");
 }

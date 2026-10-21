@@ -160,24 +160,13 @@ pub const SETTLE_FOR: Duration = Duration::from_secs(2);
 /// How long the reader waits between two reads while it settles.
 pub const SETTLE_EVERY: Duration = Duration::from_millis(100);
 
-/// Reads the permissions at start. At login the system can answer late or wrongly for a
-/// moment, so a stored grant that reads missing is read again until it shows, for at most
-/// [`SETTLE_FOR`]. A grant that is really gone never shows, so it costs the whole wait. A
-/// permission that was never granted is not waited for. `pause` sleeps.
-pub fn read_settled(
-    preflight: &dyn Preflight,
-    last_granted: &Map<String, Value>,
-    pause: &dyn Fn(Duration),
-) -> Permissions {
-    let mut waited = Duration::ZERO;
-    loop {
-        let now = Permissions::read(preflight);
-        if waited >= SETTLE_FOR || lost(last_granted, &now).is_empty() {
-            return now;
-        }
-        pause(SETTLE_EVERY);
-        waited += SETTLE_EVERY;
-    }
+/// Whether a start read, made `waited` after the first one, is final. At login the system can
+/// answer late or wrongly for a moment, so a stored grant that reads missing is read again
+/// every [`SETTLE_EVERY`] until it shows, for at most [`SETTLE_FOR`]. A grant that is really
+/// gone never shows, so it costs the whole wait. A permission that was never granted is not
+/// waited for.
+pub fn settled(last_granted: &Map<String, Value>, now: &Permissions, waited: Duration) -> bool {
+    waited >= SETTLE_FOR || lost(last_granted, now).is_empty()
 }
 
 /// The value to store as `permissions.lastGranted`: everything granted before or now. A lost
@@ -415,6 +404,23 @@ mod tests {
     }
 
     const ALL_STORED: [&str; 3] = ["microphone", "accessibility", "inputMonitoring"];
+
+    /// Reads until [`settled`] says the read is final, as the start check does on its timer.
+    fn read_settled(
+        preflight: &dyn Preflight,
+        last_granted: &Map<String, Value>,
+        pause: &dyn Fn(Duration),
+    ) -> Permissions {
+        let mut waited = Duration::ZERO;
+        loop {
+            let now = Permissions::read(preflight);
+            if settled(last_granted, &now, waited) {
+                return now;
+            }
+            pause(SETTLE_EVERY);
+            waited += SETTLE_EVERY;
+        }
+    }
 
     #[test]
     fn a_late_first_read_is_read_again_until_the_grant_shows() {

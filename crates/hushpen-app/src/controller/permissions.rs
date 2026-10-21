@@ -16,38 +16,48 @@ pub struct PermissionWatch {
     preflight: Arc<dyn Preflight>,
     current: Permissions,
     lost: Vec<Permission>,
+    /// How long the start reads have settled so far, while a stored grant still reads missing.
+    /// `None` once they are final.
+    settling: Option<Duration>,
 }
 
 impl PermissionWatch {
-    /// Reads the permissions against the stored grants. A stored grant that reads missing is
-    /// read again for up to 2 s before it counts as lost, so a late first answer is no loss.
+    /// Reads the permissions once against the stored grants, with no wait. A stored grant that
+    /// reads missing is not lost yet: [`Self::settle`] reads it again until it shows, for up to
+    /// [`permission::SETTLE_FOR`], so a late first answer is no loss.
     pub fn start(preflight: Arc<dyn Preflight>, settings: &SettingsStore) -> Self {
-        Self::start_with(preflight, settings, &std::thread::sleep)
-    }
-
-    /// [`Self::start`] with the sleep between two reads supplied by the caller.
-    pub fn start_with(
-        preflight: Arc<dyn Preflight>,
-        settings: &SettingsStore,
-        pause: &dyn Fn(Duration),
-    ) -> Self {
-        let stored = Self::stored_grants(settings);
-        let current = permission::read_settled(&*preflight, &stored, pause);
+        let current = Permissions::read(&*preflight);
         let mut watch = Self {
             preflight,
             current,
             lost: Vec::new(),
+            settling: Some(Duration::ZERO),
         };
         watch.compare(settings);
         watch
     }
 
+    /// The start reads are not final yet; the caller calls [`Self::settle`] every
+    /// [`permission::SETTLE_EVERY`] until this is false.
+    pub fn settling(&self) -> bool {
+        self.settling.is_some()
+    }
+
+    /// One more start read, [`permission::SETTLE_EVERY`] after the last one. Returns whether
+    /// anything changed.
+    pub fn settle(&mut self, settings: &SettingsStore) -> bool {
+        if let Some(waited) = &mut self.settling {
+            *waited += permission::SETTLE_EVERY;
+        }
+        self.refresh(settings)
+    }
+
     /// Reads again. Returns whether anything changed.
     pub fn refresh(&mut self, settings: &SettingsStore) -> bool {
-        let before = (self.current, self.lost.clone());
+        let before = (self.current, self.lost.clone(), self.settling());
         self.current = Permissions::read(&*self.preflight);
         self.compare(settings);
-        before != (self.current, self.lost.clone())
+        before != (self.current, self.lost.clone(), self.settling())
     }
 
     fn stored_grants(settings: &SettingsStore) -> Map<String, Value> {
@@ -59,7 +69,17 @@ impl PermissionWatch {
 
     fn compare(&mut self, settings: &SettingsStore) {
         let stored = Self::stored_grants(settings);
-        let before = std::mem::replace(&mut self.lost, permission::lost(&stored, &self.current));
+        if let Some(waited) = self.settling
+            && permission::settled(&stored, &self.current, waited)
+        {
+            self.settling = None;
+        }
+        let lost = if self.settling() {
+            Vec::new()
+        } else {
+            permission::lost(&stored, &self.current)
+        };
+        let before = std::mem::replace(&mut self.lost, lost);
         let remembered = permission::remember_granted(&stored, &self.current);
         if remembered != stored
             && let Err(error) = settings.set_internal(LAST_GRANTED, Value::Object(remembered))
@@ -169,7 +189,12 @@ mod tests {
         PermissionWatch::start(first, &settings);
 
         let rebuilt = Scripted::new(Access::Granted, Access::Denied, Access::Granted);
-        let mut watch = PermissionWatch::start_with(rebuilt, &settings, &|_| {});
+        let mut watch = PermissionWatch::start(rebuilt, &settings);
+        assert!(
+            watch.lost().is_empty(),
+            "not lost before the settle window ends"
+        );
+        settle_fully(&mut watch, &settings);
 
         assert_eq!(watch.lost(), [Permission::Accessibility]);
         assert!(!watch.refresh(&settings), "nothing changed since the start");
@@ -193,13 +218,80 @@ mod tests {
             &settings,
         );
         let preflight = Scripted::new(Access::Granted, Access::Denied, Access::Granted);
-        let mut watch = PermissionWatch::start_with(preflight.clone(), &settings, &|_| {});
+        let mut watch = PermissionWatch::start(preflight.clone(), &settings);
+        settle_fully(&mut watch, &settings);
         assert_eq!(watch.lost().len(), 1);
 
         preflight.set_accessibility(Access::Granted);
 
         assert!(watch.refresh(&settings));
         assert!(watch.lost().is_empty());
+    }
+
+    /// Makes the settle reads the controller makes on its timer, and counts them.
+    fn settle_fully(watch: &mut PermissionWatch, settings: &SettingsStore) -> u32 {
+        let mut reads = 0;
+        while watch.settling() {
+            watch.settle(settings);
+            reads += 1;
+        }
+        reads
+    }
+
+    #[test]
+    fn a_missing_grant_settles_for_the_whole_window_before_it_counts_as_lost() {
+        let (_dir, settings) = settings();
+        PermissionWatch::start(
+            Scripted::new(Access::Granted, Access::Granted, Access::Granted),
+            &settings,
+        );
+        let mut watch = PermissionWatch::start(
+            Scripted::new(Access::Granted, Access::Denied, Access::Granted),
+            &settings,
+        );
+
+        let reads = settle_fully(&mut watch, &settings);
+
+        let window = permission::SETTLE_FOR.as_millis() / permission::SETTLE_EVERY.as_millis();
+        assert_eq!(u128::from(reads), window);
+        assert_eq!(watch.lost(), [Permission::Accessibility]);
+    }
+
+    #[test]
+    fn a_start_reads_once_and_a_grant_that_shows_while_it_settles_is_not_lost() {
+        let (_dir, settings) = settings();
+        PermissionWatch::start(
+            Scripted::new(Access::Granted, Access::Granted, Access::Granted),
+            &settings,
+        );
+        let late = Scripted::new(Access::Granted, Access::Denied, Access::Granted);
+        let mut watch = PermissionWatch::start(late.clone(), &settings);
+        assert!(watch.settling());
+        for _ in 0..4 {
+            watch.settle(&settings);
+        }
+        assert!(watch.lost().is_empty(), "400 ms in, still settling");
+
+        late.set_accessibility(Access::Granted);
+        assert!(watch.settle(&settings), "the grant shows and settling ends");
+
+        assert!(!watch.settling());
+        assert!(watch.lost().is_empty());
+        assert_eq!(
+            Value::Object(stored(&settings)),
+            json!({"microphone": true, "accessibility": true, "inputMonitoring": true})
+        );
+    }
+
+    #[test]
+    fn a_start_with_every_grant_there_is_final_at_once() {
+        let (_dir, settings) = settings();
+        let preflight = Scripted::new(Access::Granted, Access::Granted, Access::Granted);
+        PermissionWatch::start(preflight.clone(), &settings);
+
+        let watch = PermissionWatch::start(preflight, &settings);
+
+        assert!(!watch.settling());
     }
 
     #[test]
