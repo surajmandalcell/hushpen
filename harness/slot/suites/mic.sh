@@ -3,6 +3,8 @@
 # transcribes with tiny.en. Runs in one slot through with-env.sh; it restarts the app, empties
 # /data, and loads and unloads PulseAudio modules, so the slot must not be shared.
 . /harness/slot/lib.sh
+# Sourced before the helpers below, which replace its hook_action, now_ms, start_app, and missing_words.
+. /harness/slot/dictate-lib.sh
 
 HC=/app/hookctl
 SPEECH=/assets/fixtures/speech-short.wav
