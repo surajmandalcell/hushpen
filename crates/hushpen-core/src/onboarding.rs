@@ -223,7 +223,7 @@ pub fn permission_rows(facts: &Facts) -> Vec<Row> {
             ),
             mac_row(
                 RowKey::InputMonitoring,
-                "Input monitoring",
+                "Input Monitoring",
                 Permission::InputMonitoring,
                 facts,
                 "Hushpen can hear the hold key.",

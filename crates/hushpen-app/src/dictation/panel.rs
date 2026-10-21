@@ -129,11 +129,11 @@ fn status_text(phase: Phase, can_record: bool) -> String {
     .into()
 }
 
-/// The color of the status word: a status color for ready, needs help, and failed.
+/// The color of the status word: a status color for ready and failed. Not ready stays neutral;
+/// the notice row under it says why.
 fn status_tone(palette: Palette, view: &Snapshot) -> Rgba {
     match view.phase {
         Phase::Idle if view.can_record => palette.success,
-        Phase::Idle => palette.warning,
         Phase::Failed => palette.error,
         _ => palette.label_secondary,
     }
