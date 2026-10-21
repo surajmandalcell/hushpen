@@ -48,6 +48,7 @@ Same as step 3, for milestone hp7-release.
 Only after every assertion is passed (end-of-mission gate: all 380 assertions "passed" in `validation-state.json`):
 1. Tag v2.0.0 on d40493c (the commit run 33 checked) and push it: DONE 2026-10-21; the tag push started no workflow.
 2. release.yml with `tag=v2.0.0` = CI run 34 (39650173203): DONE/dispatched; the draft it makes is the final candidate. When it passes, run step 4's checks on the draft artifacts.
+2b. 2026-10-21 (owner complaint: permissions re-asked every build): the CI macOS artifacts were ad-hoc signed, so every build was a new app to TCC. The draft's mac zip + dmg were re-signed locally with the stable cert "Apple Development: SURAJ MANDAL (H25U2GA43B)" and SHA256SUMS + latest.json + latest.json.minisig were regenerated with the local key and uploaded (release-verify green). Every later draft check uses the re-signed files. Grants reset once on the rc.4 (ad-hoc) to 2.0.0 (cert) update, then survive. CI still signs ad-hoc; stable CI signing needs an owner-approved key export (gate in library/release.md).
 3. Delete the draft releases v2.0.0-rc.1 through rc.4 (`gh release delete`, drafts only; keep the tags).
 4. Confirm every assertion passed in validation-state.json, then publish (`gh release edit v2.0.0 --draft=false`).
 5. Update `docs/` for Hushpen in one push (CI run 35, starts the docs deploy) and check the site. The repo rename to hushpen is done (owner); docs links must use surajmandalcell/hushpen.
