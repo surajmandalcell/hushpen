@@ -3,7 +3,9 @@
 //! The calls sit behind [`Api`] so tests can swap in a mock that records which one ran. Every
 //! read uses a live call. The `CGPreflight*EventAccess` calls answer from a per-process cache,
 //! so a grant made in System Settings would not show until a restart.
-//! A read never prompts. Only [`Reader::request`] asks macOS, and only after a click.
+//! A read never prompts and never resets. Only [`Reader::request`] asks macOS, and only after a
+//! click. When the live read says the permission is not granted, it first resets Hushpen's own
+//! record, because macOS ignores a request from an app it holds a denied or stale record for.
 
 use hushpen_core::permission::{Access, Permission, Preflight};
 
@@ -28,6 +30,17 @@ pub(super) trait Api: Send + Sync {
     fn request_listen_event(&self);
     /// `AVCaptureDevice requestAccessForMediaType:completionHandler:` for audio.
     fn request_microphone(&self);
+    /// `tccutil reset <service> <own bundle id>`, so macOS treats Hushpen as never asked.
+    fn reset(&self, permission: Permission);
+}
+
+/// The `tccutil` service name of `permission`.
+pub(super) fn tcc_service(permission: Permission) -> &'static str {
+    match permission {
+        Permission::Accessibility => "Accessibility",
+        Permission::InputMonitoring => "ListenEvent",
+        Permission::Microphone => "Microphone",
+    }
 }
 
 pub(super) struct Reader<A>(pub(super) A);
@@ -52,9 +65,18 @@ impl<A: Api> Preflight for Reader<A> {
 
 impl<A: Api> Reader<A> {
     /// Calls the request API of `permission` once, whatever the state is. The request is what
-    /// makes macOS list Hushpen in the Privacy pane and show its prompt. Call it only after a
-    /// click on Allow.
+    /// makes macOS list Hushpen in the Privacy pane and show its prompt. When the live read says
+    /// the permission is not granted, Hushpen's own record is reset first, so a denied or stale
+    /// record cannot swallow the request. Call it only after a click on Allow.
     pub(super) fn request(&self, permission: Permission) {
+        let access = match permission {
+            Permission::Accessibility => self.post_event(),
+            Permission::InputMonitoring => self.listen_event(),
+            Permission::Microphone => self.microphone(),
+        };
+        if access != Access::Granted {
+            self.0.reset(permission);
+        }
         match permission {
             Permission::Accessibility => self.0.prompt_accessibility(),
             Permission::InputMonitoring => self.0.request_listen_event(),
@@ -145,6 +167,15 @@ mod tests {
                 .unwrap()
                 .push("AVCaptureDevice requestAccess");
         }
+
+        fn reset(&self, permission: Permission) {
+            let call = match permission {
+                Permission::Accessibility => "tccutil reset Accessibility",
+                Permission::InputMonitoring => "tccutil reset ListenEvent",
+                Permission::Microphone => "tccutil reset Microphone",
+            };
+            self.calls.lock().unwrap().push(call);
+        }
     }
 
     const REQUESTS: [&str; 3] = [
@@ -197,14 +228,25 @@ mod tests {
         assert!(reader.microphone().missing());
     }
 
+    /// The read, reset, and request calls of each permission, in `Permission::ALL` order.
+    const ALLOW_CALLS: [(&str, &str, &str); 3] = [
+        (
+            "AVCaptureDevice authorizationStatus",
+            "tccutil reset Microphone",
+            REQUESTS[2],
+        ),
+        (
+            "AXIsProcessTrusted",
+            "tccutil reset Accessibility",
+            REQUESTS[0],
+        ),
+        ("IOHIDCheckAccess", "tccutil reset ListenEvent", REQUESTS[1]),
+    ];
+
     #[test]
-    fn allow_calls_its_own_request_once_in_every_state() {
-        let states = [(false, 2, 0), (false, 1, 2), (true, 0, 3)];
-        for (trusted, listen, microphone) in states {
-            for (permission, expected) in
-                Permission::ALL
-                    .into_iter()
-                    .zip([REQUESTS[2], REQUESTS[0], REQUESTS[1]])
+    fn allow_on_a_missing_permission_resets_its_own_record_and_then_requests_once() {
+        for (trusted, listen, microphone) in [(false, 2, 0), (false, 1, 2)] {
+            for (permission, (read, reset, request)) in Permission::ALL.into_iter().zip(ALLOW_CALLS)
             {
                 let reader = Mock::new(trusted, listen, microphone);
 
@@ -212,10 +254,28 @@ mod tests {
 
                 assert_eq!(
                     reader.calls(),
-                    [expected],
+                    [read, reset, request],
                     "{permission:?} with {trusted} {listen} {microphone}"
                 );
             }
         }
+    }
+
+    #[test]
+    fn allow_on_a_granted_permission_requests_once_and_never_resets() {
+        for (permission, (read, _, request)) in Permission::ALL.into_iter().zip(ALLOW_CALLS) {
+            let reader = Mock::new(true, 0, 3);
+
+            reader.request(permission);
+
+            assert_eq!(reader.calls(), [read, request], "{permission:?}");
+        }
+    }
+
+    #[test]
+    fn each_permission_resets_its_own_tcc_service() {
+        assert_eq!(tcc_service(Permission::Accessibility), "Accessibility");
+        assert_eq!(tcc_service(Permission::InputMonitoring), "ListenEvent");
+        assert_eq!(tcc_service(Permission::Microphone), "Microphone");
     }
 }

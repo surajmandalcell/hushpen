@@ -32,6 +32,36 @@ fn spawn_and_reap(mut command: std::process::Command) -> std::io::Result<()> {
         .map(|_| ())
 }
 
+/// Runs `command` with no input or output and waits at most `limit` for it to end. A child that
+/// runs longer is killed and the answer is a `TimedOut` error.
+#[cfg(any(target_os = "macos", test))]
+fn run_bounded(
+    mut command: std::process::Command,
+    limit: std::time::Duration,
+) -> std::io::Result<std::process::ExitStatus> {
+    use std::process::Stdio;
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("still running after {limit:?}"),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub fn system() -> Arc<dyn Preflight> {
     Arc::new(macos::preflight())
@@ -55,8 +85,10 @@ pub(crate) fn input_monitoring_granted() -> bool {
 }
 
 /// Calls the request API of a macOS permission, which lists Hushpen in the Privacy pane and
-/// shows the system prompt. It runs on every call, whatever the state is. Linux has nothing to
-/// ask. Call this only after a click on Allow.
+/// shows the system prompt. It runs on every call, whatever the state is. When the permission is
+/// not granted, Hushpen's own record is reset first, because macOS ignores a request from an app
+/// it holds a denied or stale record for. Linux has nothing to ask. Call this only after a click
+/// on Allow.
 pub fn request(permission: Permission) {
     #[cfg(target_os = "macos")]
     macos::request(permission);
@@ -162,6 +194,32 @@ mod tests {
         assert!(
             started.elapsed() < std::time::Duration::from_millis(500),
             "the call waited for the child: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_bounded_run_returns_the_exit_status_of_a_quick_child() {
+        let mut command = std::process::Command::new("/bin/sh");
+        command.args(["-c", "exit 3"]);
+
+        let status = run_bounded(command, std::time::Duration::from_secs(2)).unwrap();
+
+        assert_eq!(status.code(), Some(3));
+    }
+
+    #[test]
+    fn a_bounded_run_kills_a_child_that_outlives_the_limit() {
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("5");
+        let started = std::time::Instant::now();
+
+        let error = run_bounded(command, std::time::Duration::from_millis(200)).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "the run outlived its limit: {:?}",
             started.elapsed()
         );
     }
