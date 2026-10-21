@@ -126,6 +126,11 @@ components:
   button-default:
     backgroundColor: "{colors.dark-accent}"
     textColor: "{colors.on-accent}"
+  text-input:
+    backgroundColor: "{colors.dark-control}"
+    textColor: "{colors.dark-label}"
+    rounded: "{rounded.button}"
+    height: 22px
   focus-ring:
     borderColor: "{colors.dark-accent}"
     size: 2px
@@ -200,9 +205,11 @@ Letter spacing stays at `0em`. Weights are 400, 500, 600, and 700 for the title 
 
 ## Layout
 
-The window is fixed at 940px by 600px. It is not resizable, has no zoom, and has no full screen. On macOS the title bar is transparent with full-size content, and the native traffic lights sit at (20, 20). On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) at the same place, and no maximize button.
+The window is fixed at 940px by 600px. It is not resizable, has no zoom, and has no full screen. On macOS the title bar is transparent with full-size content, and the native traffic lights sit at (20, 20). On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) at the same left inset, vertically centered in the 48px band, and no maximize button.
 
-The sidebar is 232px wide. The first 48px (`sidebar-top`) hold the window buttons and stay clear. Rows start below it: 28px high, 2px apart, with 8px of padding at the sides. The title bar area above the content is 52px high and holds the view title.
+The sidebar is 232px wide. The first 48px (`sidebar-top`) hold the window buttons and the word "Hushpen" beside them. Rows start below it: 28px high, 2px apart, with 8px of padding at the sides. The title bar area above the content is 52px high and holds the view title.
+
+The window buttons and the app name share one center line inside the 48px band. On Linux the drawn circles are centered in the band (18px above and below); on macOS the native traffic lights stay at (20, 20) and the name sits on their center line. The name starts 16px right of the last circle, uses the toolbar-title style (13px semibold, label color), and truncates inside the band.
 
 The content pane has a 24px margin. Groups fill the pane width. Onboarding is one centered column, at most 640px wide.
 
@@ -238,6 +245,8 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 **Groups and rows:** as in Layout. A row that is a control stays one line: the label on the left, the control on the right.
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
+
+**Text inputs:** the button height (22px) and radius (5px), with the control fill, so an input in one row with buttons aligns with them. The inner padding keeps the 13px text clear of the edges.
 
 **Switches, sliders, and selection focus:** use the accent.
 

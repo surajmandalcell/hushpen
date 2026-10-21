@@ -220,31 +220,70 @@ impl Shell {
         cx.stop_propagation();
     }
 
-    fn sidebar_title(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        self.title_bar(hook::id("sidebar", "title"), cx)
+    fn sidebar_title(&self, palette: Palette, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        self.title_bar(hook::id("sidebar", "top"), palette, cx)
     }
 
-    /// The strip at the top of the window, over the window controls. It is also the place to
-    /// drag the window by. On macOS it is empty: AppKit draws the traffic lights over it.
+    /// The strip at the top of the window: the window controls and the word "Hushpen" beside
+    /// them, on one center line. It is also the place to drag the window by. On macOS AppKit
+    /// draws the traffic lights over it, fixed at (20, 20); the spacer keeps their width clear
+    /// and the title sits on their center line. On Linux the app draws the circles itself,
+    /// centered in the 48 px band with 18 px above and below.
     #[cfg_attr(target_os = "macos", allow(unused_variables))]
     fn title_bar(
         &self,
         id: gpui_kit::SharedString,
+        palette: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        // The title's top offset: centered in the band on Linux; on the native lights' center
+        // line (26 px from the top) on macOS.
+        #[cfg(not(target_os = "macos"))]
+        const TITLE_TOP: f32 = (space::SIDEBAR_TOP - TOOLBAR_TITLE.size) / 2.0;
+        #[cfg(target_os = "macos")]
+        const TITLE_TOP: f32 =
+            size::TRAFFIC_LIGHT_INSET + (size::TRAFFIC_LIGHT - TOOLBAR_TITLE.size) / 2.0;
         let strip = div()
             .id(id)
+            .test_support()
             .h(px(space::SIDEBAR_TOP))
             .w_full()
             .flex_none()
             .flex()
             .items_start()
             .pl(px(size::TRAFFIC_LIGHT_INSET))
-            .pt(px(size::TRAFFIC_LIGHT_INSET))
+            .pr(px(space::SM))
             .on_mouse_down(MouseButton::Left, start_move);
         #[cfg(not(target_os = "macos"))]
-        let strip = strip.child(crate::window_controls::controls(cx));
-        strip
+        let strip = strip.child(
+            div()
+                .h_full()
+                .flex_none()
+                .flex()
+                .items_center()
+                .child(crate::window_controls::controls(cx)),
+        );
+        // The width of the two native lights and their gap, kept clear under AppKit's drawing.
+        #[cfg(target_os = "macos")]
+        let strip = strip.child(
+            div()
+                .w(px(2.0 * size::TRAFFIC_LIGHT + space::SM))
+                .flex_none(),
+        );
+        strip.child(
+            div()
+                .id(hook::id("sidebar", "name"))
+                .test_support()
+                .aria_label("Hushpen")
+                .flex_1()
+                .min_w_0()
+                .ml(px(space::LG))
+                .mt(px(TITLE_TOP))
+                .truncate()
+                .text_token(TOOLBAR_TITLE)
+                .text_color(palette.label)
+                .child("Hushpen"),
+        )
     }
 
     fn nav_item(
@@ -317,7 +356,7 @@ impl Shell {
                 Some(fill) => panel.bg(rgb(fill)),
                 None => panel,
             };
-        panel.child(self.sidebar_title(cx)).child(
+        panel.child(self.sidebar_title(palette, cx)).child(
             div()
                 .flex()
                 .flex_col()
@@ -474,7 +513,7 @@ impl Render for Shell {
             Some(onboarding) => frame
                 .bg(palette.content)
                 .flex_col()
-                .child(self.title_bar(hook::id("onboarding", "title-bar"), cx))
+                .child(self.title_bar(hook::id("onboarding", "title-bar"), palette, cx))
                 .child(
                     div()
                         .id(hook::id("onboarding", "scroll"))
@@ -701,14 +740,15 @@ mod tests {
         for id in ["window.maximize", "window.zoom", "window.fullscreen"] {
             assert!(!present(cx, handle, id), "{id}");
         }
+        // The 48 px band keeps 18 px above and below the 12 px circles.
         assert_eq!(
             rects[0],
-            (20.0, 20.0, 12.0, 12.0),
-            "close: 12 px circle at 20, 20"
+            (20.0, 18.0, 12.0, 12.0),
+            "close: 12 px circle, centered in the band"
         );
         assert_eq!(
             rects[1],
-            (40.0, 20.0, 12.0, 12.0),
+            (40.0, 18.0, 12.0, 12.0),
             "minimize: 8 px after close"
         );
     }
@@ -802,6 +842,45 @@ mod tests {
             }
             last_bottom = Some(y + height);
         }
+    }
+
+    #[gpui_kit::test]
+    fn the_sidebar_names_the_app_beside_the_window_buttons(cx: &mut TestAppContext) {
+        let (handle, _) = open(cx);
+        let band = rect(cx, handle, "sidebar.top");
+        assert_eq!(band.3, space::SIDEBAR_TOP, "the band stays 48 px");
+        let (label, x, y, w, h) = cx
+            .update_window(handle, |_, window, _| {
+                let name = window.find("sidebar.name");
+                (
+                    name.label().map(str::to_owned),
+                    f32::from(name.bounds().origin.x),
+                    f32::from(name.bounds().origin.y),
+                    f32::from(name.bounds().size.width),
+                    f32::from(name.bounds().size.height),
+                )
+            })
+            .unwrap();
+        assert_eq!(label.as_deref(), Some("Hushpen"));
+        // 20 + 12 + 8 + 12 for the two circles, then 16 px of clear space.
+        let lights_end = size::TRAFFIC_LIGHT_INSET + 2.0 * size::TRAFFIC_LIGHT + space::SM;
+        assert_eq!(x, lights_end + space::LG, "16 px right of the last circle");
+        // One center line with the circles: the band's own center on Linux, where the app
+        // draws the circles centered; the native lights' center on macOS, fixed at (20, 20).
+        let want = if cfg!(target_os = "macos") {
+            size::TRAFFIC_LIGHT_INSET + size::TRAFFIC_LIGHT / 2.0
+        } else {
+            space::SIDEBAR_TOP / 2.0
+        };
+        let center = y + h / 2.0;
+        assert!(
+            (center - want).abs() <= 0.5,
+            "the title centers at {center}, the circles at {want}"
+        );
+        assert!(
+            x + w <= space::SIDEBAR_WIDTH - space::SM,
+            "the word stays inside the band"
+        );
     }
 
     #[gpui_kit::test]
