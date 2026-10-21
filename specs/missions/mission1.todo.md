@@ -59,7 +59,7 @@ Create or update the repo-root `README.md` for the final state (what Hushpen is,
 
 ## Hard rules for whoever resumes
 
-- Never steal focus on the Mac. No osascript, JXA, System Events, CGEvent tools, cua-driver, VMs, or notifications. GUI driving is Codex computer use through `codex exec --dangerously-bypass-approvals-and-sandbox` only, in the background, plus hookctl on debug builds. Verify the frontmost app before and after every step; stop at the first change.
+- Never steal focus on the Mac. No osascript, JXA, System Events, CGEvent tools, cua-driver, Orca, VMs, or notifications. All computer control (GUI driving, screenshots, app launches and quits for a check) is Codex through `codex exec --dangerously-bypass-approvals-and-sandbox` only, in the background, plus hookctl on debug builds. The orchestrator never launches an app from its own shell. Verify the frontmost app before and after every step; stop at the first change.
 - Standing go-ahead for all Mac sessions: never ask permission to proceed, never return only to ask. The owner performs no step; a step no allowed driver can do is named as a gap.
 - Game rule: nothing synthetic while a full-screen game is in front. Wait it out.
 - CI budget: 34 of 35 runs used (hard limit 35). Every new run needs a row in `library/ci-runs.md` before it starts. Remaining: 1 (the docs push). No re-runs are affordable; investigate a failure locally first.
