@@ -50,7 +50,7 @@ impl Probe for MacProbe {
 
 /// The value of one accessibility attribute, or `None` when it has none, or the process may not
 /// use the accessibility API (the call then fails with `kAXErrorAPIDisabled`).
-fn attribute(element: &CFType, name: &str) -> Option<CFType> {
+pub(super) fn attribute(element: &CFType, name: &str) -> Option<CFType> {
     let name = CFString::new(name);
     let mut value: CFTypeRef = std::ptr::null();
     // SAFETY: `element` and `name` are live CF objects; `value` is a valid out pointer.
@@ -77,9 +77,14 @@ fn focused_element() -> Option<CFType> {
         }
         CFType::wrap_under_create_rule(raw)
     };
-    // SAFETY: `system` is a live accessibility element.
-    unsafe { AXUIElementSetMessagingTimeout(system.as_CFTypeRef(), AX_TIMEOUT_SECONDS) };
+    with_timeout(&system, AX_TIMEOUT_SECONDS);
     attribute(&system, FOCUSED_ELEMENT)
+}
+
+/// Sets how long calls on `element` wait for its app to answer.
+pub(super) fn with_timeout(element: &CFType, seconds: f32) {
+    // SAFETY: `element` is a live accessibility element.
+    unsafe { AXUIElementSetMessagingTimeout(element.as_CFTypeRef(), seconds) };
 }
 
 fn focused_subrole() -> Option<String> {
