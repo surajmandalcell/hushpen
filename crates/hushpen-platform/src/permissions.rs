@@ -84,16 +84,25 @@ pub(crate) fn input_monitoring_granted() -> bool {
     macos::input_monitoring_granted()
 }
 
-/// Calls the request API of a macOS permission, which lists Hushpen in the Privacy pane and
-/// shows the system prompt. It runs on every call, whatever the state is. When the permission is
-/// not granted, Hushpen's own record is reset first, because macOS ignores a request from an app
-/// it holds a denied or stale record for. Linux has nothing to ask. Call this only after a click
-/// on Allow, and off the UI thread: the reset can take up to 2 s.
-pub fn request(permission: Permission) {
+/// Lists Hushpen in the Privacy panes of macOS as early as the launch, so the user finds a row
+/// to switch on with no click on Allow. It only reads, so it never prompts, never resets, and
+/// never takes the front. Call it before anything else reads a permission.
+pub fn register() {
     #[cfg(target_os = "macos")]
-    macos::request(permission);
+    macos::register();
+}
+
+/// Calls the request API of a macOS permission, which lists Hushpen in the Privacy pane and
+/// shows the system prompt. It runs on every call, whatever the state is. With `repair`, for a
+/// grant that was held and is gone, Hushpen's own record is reset first, because an update that
+/// changed the code hash leaves a record that macOS keeps but ignores. Without it nothing is
+/// reset, so a denied row stays in the list. Linux has nothing to ask. Call this only after a
+/// click on Allow, and off the UI thread: the reset can take up to 2 s.
+pub fn request(permission: Permission, repair: bool) {
+    #[cfg(target_os = "macos")]
+    macos::request(permission, repair);
     #[cfg(not(target_os = "macos"))]
-    let _ = permission;
+    let _ = (permission, repair);
 }
 
 /// Opens a link: a System Settings link (`Permission::settings_url`) on macOS, or a web page

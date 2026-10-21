@@ -3,9 +3,11 @@
 //! The calls sit behind [`Api`] so tests can swap in a mock that records which one ran. Every
 //! read uses a live call. The `CGPreflight*EventAccess` calls answer from a per-process cache,
 //! so a grant made in System Settings would not show until a restart.
-//! A read never prompts and never resets. Only [`Reader::request`] asks macOS, and only after a
-//! click. When the live read says the permission is not granted, it first resets Hushpen's own
-//! record, because macOS ignores a request from an app it holds a denied or stale record for.
+//! A read never prompts and never resets. [`Reader::register`] only reads, at launch, so macOS
+//! lists Hushpen without asking. Only [`Reader::request`] asks macOS, and only after a click. A
+//! request resets Hushpen's own record first only to repair a lost grant, because an update
+//! leaves a record that macOS keeps and ignores. A denied row is never reset: that would delete
+//! the row the user has to switch on.
 
 use hushpen_core::permission::{Access, Permission, Preflight};
 
@@ -64,17 +66,35 @@ impl<A: Api> Preflight for Reader<A> {
 }
 
 impl<A: Api> Reader<A> {
-    /// Calls the request API of `permission` once, whatever the state is. The request is what
-    /// makes macOS list Hushpen in the Privacy pane and show its prompt. When the live read says
-    /// the permission is not granted, Hushpen's own record is reset first, so a denied or stale
-    /// record cannot swallow the request. Call it only after a click on Allow.
-    pub(super) fn request(&self, permission: Permission) {
-        let access = match permission {
+    fn access(&self, permission: Permission) -> Access {
+        match permission {
             Permission::Accessibility => self.post_event(),
             Permission::InputMonitoring => self.listen_event(),
             Permission::Microphone => self.microphone(),
-        };
-        if access != Access::Granted {
+        }
+    }
+
+    /// Lists Hushpen in the Privacy panes at launch, with no prompt and no click. tccd writes
+    /// the Accessibility record (denied, off) once a process has read both its Input
+    /// Monitoring and its Accessibility state, and on macOS 27 that record is what the
+    /// Input Monitoring answer comes from. A listen-event request adds no row there and a
+    /// microphone request always shows an alert, so neither runs here. Reading is all this does.
+    pub(super) fn register(&self) {
+        let listen = self.listen_event();
+        let accessibility = self.post_event();
+        log::info!(
+            "PERMISSION_REGISTER inputMonitoring={listen:?} accessibility={accessibility:?}"
+        );
+    }
+
+    /// Calls the request API of `permission` once, whatever the state is. The request is what
+    /// makes macOS list Hushpen in the Privacy pane and show its prompt. With `repair`, which is
+    /// for a grant that was held and is gone, Hushpen's own record is reset first, because an
+    /// update that changed the code hash leaves a record that macOS keeps but ignores. Without
+    /// `repair` nothing is reset: a denied row stays in the list for the user to switch on, and
+    /// a reset would delete it. Call it only after a click on Allow.
+    pub(super) fn request(&self, permission: Permission, repair: bool) {
+        if repair && self.access(permission) != Access::Granted {
             self.0.reset(permission);
         }
         match permission {
@@ -244,13 +264,13 @@ mod tests {
     ];
 
     #[test]
-    fn allow_on_a_missing_permission_resets_its_own_record_and_then_requests_once() {
+    fn a_repair_of_a_missing_permission_resets_its_own_record_and_then_requests_once() {
         for (trusted, listen, microphone) in [(false, 2, 0), (false, 1, 2)] {
             for (permission, (read, reset, request)) in Permission::ALL.into_iter().zip(ALLOW_CALLS)
             {
                 let reader = Mock::new(trusted, listen, microphone);
 
-                reader.request(permission);
+                reader.request(permission, true);
 
                 assert_eq!(
                     reader.calls(),
@@ -262,13 +282,45 @@ mod tests {
     }
 
     #[test]
-    fn allow_on_a_granted_permission_requests_once_and_never_resets() {
+    fn a_repair_of_a_granted_permission_requests_once_and_never_resets() {
         for (permission, (read, _, request)) in Permission::ALL.into_iter().zip(ALLOW_CALLS) {
             let reader = Mock::new(true, 0, 3);
 
-            reader.request(permission);
+            reader.request(permission, true);
 
             assert_eq!(reader.calls(), [read, request], "{permission:?}");
+        }
+    }
+
+    #[test]
+    fn allow_without_a_repair_requests_once_and_never_resets_a_denied_or_unasked_row() {
+        for (trusted, listen, microphone) in [(false, 2, 0), (false, 1, 2), (true, 0, 3)] {
+            for (permission, (_, _, request)) in Permission::ALL.into_iter().zip(ALLOW_CALLS) {
+                let reader = Mock::new(trusted, listen, microphone);
+
+                reader.request(permission, false);
+
+                assert_eq!(
+                    reader.calls(),
+                    [request],
+                    "{permission:?} with {trusted} {listen} {microphone}: a reset would delete the row"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_launch_registration_reads_both_states_and_asks_nothing() {
+        for (trusted, listen, microphone) in [(false, 2, 0), (false, 1, 2), (true, 0, 3)] {
+            let reader = Mock::new(trusted, listen, microphone);
+
+            reader.register();
+
+            assert_eq!(
+                reader.calls(),
+                ["IOHIDCheckAccess", "AXIsProcessTrusted"],
+                "no prompt, no request, and no reset with {trusted} {listen} {microphone}"
+            );
         }
     }
 

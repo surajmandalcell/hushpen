@@ -136,6 +136,8 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
     application.on_reopen(main_window::reopened);
     application
         .run(move |cx| {
+            // Reads only: macOS lists Hushpen in the Privacy panes at the launch, with no prompt.
+            hushpen_platform::permissions::register();
             gpui_kit::init(cx);
             register_fonts(cx);
             theme::install(cx);

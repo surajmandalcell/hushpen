@@ -173,7 +173,7 @@ fn permissions(
             let hint = row
                 .opens
                 .filter(|_| row.state != RowState::Ready)
-                .and_then(|permission| onboarding.read(cx).stale_hint(permission));
+                .and_then(|permission| onboarding.read(cx).hint(permission));
             let line = permission_row(palette, onboarding, row, &focus, &relaunch_focus);
             match hint {
                 Some(text) => div()

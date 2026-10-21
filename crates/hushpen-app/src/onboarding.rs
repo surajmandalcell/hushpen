@@ -42,18 +42,24 @@ const REFRESH: Duration = Duration::from_secs(1);
 /// record. The prompt is an alert of another process, so the answer comes later than the click.
 const ACCESSIBILITY_PROMPT_WAIT: Duration = Duration::from_secs(2);
 
-/// The line under a row whose Allow click got no prompt from macOS. A record from an older
-/// build stays in the Privacy pane and counts as decided, so only a fresh entry helps.
+/// The line under a row of a lost grant whose repair got no prompt from macOS. A record from
+/// an older build stays in the Privacy pane and counts as decided, so only a fresh entry helps.
 pub const STALE_HINT: &str =
     "If Hushpen is already in the list, remove it with the minus button, then click Allow again.";
+
+/// The line under the Input Monitoring row when its button opened the Accessibility pane.
+pub const FOLLOWS_HINT: &str =
+    "Input Monitoring comes with Accessibility. Turn Hushpen on in the list that opened.";
 
 /// What a click on a permission button does. The real one asks macOS and opens System
 /// Settings; tests pass a fake.
 pub trait Guide {
     /// Calls the request API of the permission, which lists Hushpen in the Privacy pane and
-    /// shows the system prompt. The Allow button calls it on every click. Returns `None` when
-    /// the request is over, or a receiver that answers once it is.
-    fn request(&self, permission: Permission) -> Option<oneshot::Receiver<()>>;
+    /// shows the system prompt. The Allow button calls it on every click. With `repair` the
+    /// record of Hushpen is reset first: the grant was held and is gone, so the record is a
+    /// stale one from an older build. Without it a denied row stays in the list. Returns `None`
+    /// when the request is over, or a receiver that answers once it is.
+    fn request(&self, permission: Permission, repair: bool) -> Option<oneshot::Receiver<()>>;
     fn open(&self, url: &str) -> Result<(), String>;
     /// Starts a new copy of the app once this one has ended. The caller quits right after.
     fn relaunch(&self) -> Result<(), String>;
@@ -62,17 +68,17 @@ pub trait Guide {
 pub struct SystemGuide;
 
 impl Guide for SystemGuide {
-    fn request(&self, permission: Permission) -> Option<oneshot::Receiver<()>> {
+    fn request(&self, permission: Permission, repair: bool) -> Option<oneshot::Receiver<()>> {
         let (done, finished) = oneshot::channel();
         let started = on_permission_thread(move || {
-            hushpen_platform::permissions::request(permission);
+            hushpen_platform::permissions::request(permission, repair);
             let _ = done.send(());
         });
         match started {
             Ok(()) => Some(finished),
             Err(error) => {
                 log::warn!("the permission request thread did not start: {error}");
-                hushpen_platform::permissions::request(permission);
+                hushpen_platform::permissions::request(permission, repair);
                 None
             }
         }
@@ -149,10 +155,12 @@ enum Message {
 }
 
 /// One Allow click on Accessibility whose answer has not shown yet. Trust that is still false
-/// once the wait is over and the user is back in Hushpen means macOS holds a stale record.
+/// once the wait is over and the user is back in Hushpen sends the user to the Privacy pane.
 struct AccessibilityWait {
     /// Tells the timer of this click from the timer of an earlier one.
     click: u64,
+    /// The click reset a stale record of a lost grant before its request.
+    repair: bool,
     waited: bool,
     returned: bool,
 }
@@ -190,6 +198,9 @@ pub struct Onboarding {
     notice: Option<String>,
     /// The permissions whose row shows [`STALE_HINT`].
     stale: Vec<Permission>,
+    /// The permissions whose pane click opened the Accessibility pane instead, so the row shows
+    /// [`FOLLOWS_HINT`].
+    follows: Vec<Permission>,
     /// The Accessibility prompt that is still being waited for.
     accessibility_wait: Option<AccessibilityWait>,
     allow_clicks: u64,
@@ -288,6 +299,7 @@ impl Onboarding {
             updates_on,
             notice: None,
             stale: Vec::new(),
+            follows: Vec::new(),
             accessibility_wait: None,
             allow_clicks: 0,
             messages,
@@ -349,9 +361,15 @@ impl Onboarding {
         self.platform
     }
 
-    /// The line under the row of `permission` when macOS gave no prompt for its Allow click.
+    /// The line under the row of `permission` when macOS gave no prompt for its repair.
     pub fn stale_hint(&self, permission: Permission) -> Option<&'static str> {
         self.stale.contains(&permission).then_some(STALE_HINT)
+    }
+
+    /// The line under the row of `permission`, if it has one.
+    pub fn hint(&self, permission: Permission) -> Option<&'static str> {
+        self.stale_hint(permission)
+            .or_else(|| self.follows.contains(&permission).then_some(FOLLOWS_HINT))
     }
 
     /// The shortcut the practice step tells the user to hold, in this system's key names.
@@ -463,6 +481,10 @@ impl Onboarding {
         let access = self.controller.read(cx).access();
         self.stale
             .retain(|permission| access.get(*permission) != Access::Granted);
+        let accessibility_missing = access.get(Permission::Accessibility) != Access::Granted;
+        self.follows.retain(|permission| {
+            accessibility_missing && access.get(*permission) != Access::Granted
+        });
         cx.notify();
     }
 
@@ -572,37 +594,70 @@ impl Onboarding {
     /// asked, and Hushpen would never reach the list.
     ///
     /// macOS shows no prompt to a client it already decided on. Input Monitoring then still
-    /// reads Denied right after the request, so the Privacy pane opens with a line about the
-    /// old entry. Accessibility always shows its alert, so it waits for the answer instead.
-    /// Both checks run once the request is over, which can be after the click returned.
+    /// reads Denied right after the request, so the Privacy pane opens, where the denied row
+    /// waits for the user's switch. Accessibility always shows its alert, so it waits for the
+    /// answer instead. Both checks run once the request is over, which can be after the click
+    /// returned.
+    ///
+    /// A grant that was held and is gone is a stale record from an older build. Its first Allow
+    /// click resets Hushpen's record before the request, and the row shows [`STALE_HINT`] if the
+    /// permission is still missing. Any other click never resets: a reset would delete the
+    /// denied row that the user has to switch on.
     pub fn allow(&mut self, permission: Permission, cx: &mut Context<Self>) {
-        let pending = self.guide.request(permission);
+        let repair = self.repair_needed(permission, cx);
+        let pending = self.guide.request(permission, repair);
         hook::record_event("onboarding", &format!("allow {}", permission.key()));
         self.notice = None;
-        self.stale.retain(|stale| *stale != permission);
+        if repair {
+            self.stale.retain(|stale| *stale != permission);
+        }
         match pending {
-            None => self.requested(permission, cx),
+            None => self.requested(permission, repair, cx),
             Some(finished) => cx
                 .spawn(async move |this, cx| {
                     let _ = finished.await;
-                    let _ = this.update(cx, |me, cx| me.requested(permission, cx));
+                    let _ = this.update(cx, |me, cx| me.requested(permission, repair, cx));
                 })
                 .detach(),
         }
         cx.notify();
     }
 
-    fn requested(&mut self, permission: Permission, cx: &mut Context<Self>) {
+    /// The permission was granted before, reads missing now, and no repair has run for it yet.
+    fn repair_needed(&self, permission: Permission, cx: &Context<Self>) -> bool {
+        self.controller
+            .read(cx)
+            .lost_permissions()
+            .contains(&permission)
+            && !self.stale.contains(&permission)
+    }
+
+    fn requested(&mut self, permission: Permission, repair: bool, cx: &mut Context<Self>) {
         match permission {
-            Permission::InputMonitoring => {
+            Permission::InputMonitoring | Permission::Microphone => {
                 if self.read_access(permission, cx) == Access::Denied {
-                    self.open_stale_pane(permission);
+                    self.open_pane(permission, repair, cx);
                 }
             }
-            Permission::Accessibility => self.wait_for_accessibility(cx),
-            Permission::Microphone => {}
+            Permission::Accessibility => self.wait_for_accessibility(repair, cx),
         }
         cx.notify();
+    }
+
+    /// The permission whose Privacy pane lists the switch for `permission`. On macOS 27 tccd
+    /// answers a listen-event request from the Accessibility record, so no request lists Hushpen
+    /// under Input Monitoring while Accessibility is missing, and the Accessibility switch
+    /// grants both. Input Monitoring that is denied sends the user to that pane first.
+    fn pane_of(&self, permission: Permission, cx: &App) -> Permission {
+        let access = self.controller.read(cx).access();
+        let follows = permission == Permission::InputMonitoring
+            && access.get(permission) == Access::Denied
+            && access.get(Permission::Accessibility) != Access::Granted;
+        if follows {
+            Permission::Accessibility
+        } else {
+            permission
+        }
     }
 
     /// What the system says about `permission` now. It runs only after an Allow click.
@@ -612,19 +667,33 @@ impl Onboarding {
         self.controller.read(cx).access().get(permission)
     }
 
-    fn open_stale_pane(&mut self, permission: Permission) {
-        hook::record_event("onboarding", &format!("stale {}", permission.key()));
-        if let Err(error) = self.guide.open(permission.settings_url()) {
+    /// Opens the Privacy pane of a permission that stayed missing after its request. After a
+    /// repair the row also shows [`STALE_HINT`], for a record that the reset could not clear.
+    fn open_pane(&mut self, permission: Permission, repaired: bool, cx: &App) {
+        let pane = self.pane_of(permission, cx);
+        hook::record_event("onboarding", &format!("pane {}", pane.key()));
+        if let Err(error) = self.guide.open(pane.settings_url()) {
             log::warn!("System Settings could not be opened: {error}");
         }
-        self.stale.push(permission);
+        self.note_pane(permission, pane);
+        if repaired && !self.stale.contains(&permission) {
+            self.stale.push(permission);
+        }
     }
 
-    fn wait_for_accessibility(&mut self, cx: &mut Context<Self>) {
+    fn note_pane(&mut self, permission: Permission, pane: Permission) {
+        self.follows.retain(|each| *each != permission);
+        if pane != permission {
+            self.follows.push(permission);
+        }
+    }
+
+    fn wait_for_accessibility(&mut self, repair: bool, cx: &mut Context<Self>) {
         self.allow_clicks += 1;
         let click = self.allow_clicks;
         self.accessibility_wait = Some(AccessibilityWait {
             click,
+            repair,
             waited: false,
             returned: false,
         });
@@ -645,7 +714,7 @@ impl Onboarding {
     }
 
     /// Decides the pending Accessibility click once the wait is over and the user is back: a
-    /// grant ends it, trust that is still false means a stale record.
+    /// grant ends it, trust that is still false opens the pane for the row to switch on.
     fn settle_accessibility_wait(&mut self, cx: &mut Context<Self>) {
         let Some(wait) = &self.accessibility_wait else {
             return;
@@ -653,20 +722,24 @@ impl Onboarding {
         if !(wait.waited && wait.returned) {
             return;
         }
+        let repair = wait.repair;
         self.accessibility_wait = None;
         if !self.permissions_page_shown() {
             return;
         }
         if self.read_access(Permission::Accessibility, cx) != Access::Granted {
-            self.open_stale_pane(Permission::Accessibility);
+            self.open_pane(Permission::Accessibility, repair, cx);
         }
         cx.notify();
     }
 
-    /// A click on Open Settings: open the Privacy pane of the permission and nothing else.
+    /// A click on Open Settings: open the Privacy pane that lists the switch of the permission
+    /// and nothing else.
     pub fn open_settings(&mut self, permission: Permission, cx: &mut Context<Self>) {
         hook::record_event("onboarding", &format!("open {}", permission.key()));
-        self.notice = self.guide.open(permission.settings_url()).err().map(|_| {
+        let pane = self.pane_of(permission, cx);
+        self.note_pane(permission, pane);
+        self.notice = self.guide.open(pane.settings_url()).err().map(|_| {
             "System Settings could not be opened. Open Privacy and Security yourself.".to_owned()
         });
         cx.notify();
@@ -942,7 +1015,7 @@ impl Onboarding {
                     "state": row.state.key(),
                     "detail": row.detail,
                     "relaunch": row.relaunch,
-                    "hint": row.opens.and_then(|permission| self.stale_hint(permission)),
+                    "hint": row.opens.and_then(|permission| self.hint(permission)),
                 })).collect::<Vec<_>>(),
             },
             "mic": {

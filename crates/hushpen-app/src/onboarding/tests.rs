@@ -19,6 +19,8 @@ use std::sync::Mutex;
 #[derive(Default)]
 struct FakeGuide {
     requested: RefCell<Vec<Permission>>,
+    /// Whether each request in `requested` reset the record of Hushpen first.
+    repairs: RefCell<Vec<bool>>,
     opened: RefCell<Vec<String>>,
     refuse: std::cell::Cell<bool>,
     relaunched: std::cell::Cell<u32>,
@@ -39,8 +41,13 @@ impl FakeGuide {
 }
 
 impl Guide for FakeGuide {
-    fn request(&self, permission: Permission) -> Option<futures::channel::oneshot::Receiver<()>> {
+    fn request(
+        &self,
+        permission: Permission,
+        repair: bool,
+    ) -> Option<futures::channel::oneshot::Receiver<()>> {
         self.requested.borrow_mut().push(permission);
+        self.repairs.borrow_mut().push(repair);
         if let Some((system, access)) = &*self.answers.borrow() {
             system.set(permission, *access);
         }
@@ -365,9 +372,18 @@ fn allow_calls_the_request_once_on_every_click_in_every_state(cx: &mut TestAppCo
     }
     assert_eq!(
         *fixture.guide.opened.borrow(),
-        [Permission::InputMonitoring.settings_url()],
-        "only Input Monitoring that stayed denied after its request opens a pane"
+        [mic_url(), ax_url()],
+        "a denied microphone opens its pane, and a denied Input Monitoring opens the \
+         Accessibility pane while Accessibility is missing"
     );
+    assert!(
+        fixture.guide.repairs.borrow().iter().all(|repair| !repair),
+        "no click on a permission that was never granted resets its record"
+    );
+}
+
+fn mic_url() -> &'static str {
+    Permission::Microphone.settings_url()
 }
 
 fn im_url() -> &'static str {
@@ -383,11 +399,11 @@ fn hint(
     fixture: &Fixture,
     permission: Permission,
 ) -> Option<&'static str> {
-    fixture.read(cx, |me, _| me.stale_hint(permission))
+    fixture.read(cx, |me, _| me.hint(permission))
 }
 
 #[gpui_kit::test]
-fn allow_on_input_monitoring_that_stays_denied_opens_its_pane_and_shows_the_remove_line(
+fn allow_on_input_monitoring_that_stays_denied_with_accessibility_missing_opens_the_accessibility_pane(
     cx: &mut TestAppContext,
 ) {
     let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
@@ -400,18 +416,96 @@ fn allow_on_input_monitoring_that_stays_denied_opens_its_pane_and_shows_the_remo
         "the request API is still called once"
     );
     assert_eq!(
+        *fixture.guide.repairs.borrow(),
+        [false],
+        "and resets nothing"
+    );
+    assert_eq!(
         *fixture.guide.opened.borrow(),
-        [im_url()],
-        "one pane, opened once"
+        [ax_url()],
+        "macOS 27 lists Hushpen under Accessibility only, and that switch grants both"
     );
     assert_eq!(
         hint(cx, &fixture, Permission::InputMonitoring),
-        Some(
-            "If Hushpen is already in the list, remove it with the minus button, then click Allow again."
-        )
+        Some(FOLLOWS_HINT)
     );
     assert_eq!(hint(cx, &fixture, Permission::Accessibility), None);
     assert_eq!(hint(cx, &fixture, Permission::Microphone), None);
+}
+
+#[gpui_kit::test]
+fn allow_on_input_monitoring_that_stays_denied_with_accessibility_granted_opens_its_own_pane(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture
+        .system
+        .set(Permission::Accessibility, Access::Granted);
+
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+
+    assert_eq!(*fixture.guide.opened.borrow(), [im_url()]);
+    assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
+    assert_eq!(*fixture.guide.repairs.borrow(), [false]);
+}
+
+#[gpui_kit::test]
+fn open_settings_on_a_denied_input_monitoring_follows_accessibility_while_it_is_missing(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture.act(cx, |me, cx| me.refresh(cx));
+
+    fixture.act(cx, |me, cx| {
+        me.open_settings(Permission::InputMonitoring, cx)
+    });
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
+    assert_eq!(
+        hint(cx, &fixture, Permission::InputMonitoring),
+        Some(FOLLOWS_HINT)
+    );
+
+    fixture
+        .system
+        .set(Permission::Accessibility, Access::Granted);
+    fixture.act(cx, |me, cx| me.refresh(cx));
+    fixture.act(cx, |me, cx| {
+        me.open_settings(Permission::InputMonitoring, cx)
+    });
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url(), im_url()]);
+    assert!(
+        fixture.guide.requested.borrow().is_empty(),
+        "Open Settings calls no request API"
+    );
+}
+
+#[gpui_kit::test]
+fn allow_on_a_denied_microphone_keeps_its_row_and_opens_its_pane(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Microphone, cx));
+
+    assert_eq!(*fixture.guide.requested.borrow(), [Permission::Microphone]);
+    assert_eq!(
+        *fixture.guide.repairs.borrow(),
+        [false],
+        "no reset, no lost row"
+    );
+    assert_eq!(*fixture.guide.opened.borrow(), [mic_url()]);
+    assert_eq!(hint(cx, &fixture, Permission::Microphone), None);
+}
+
+#[gpui_kit::test]
+fn allow_on_a_microphone_that_was_never_asked_opens_no_pane(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::NotDetermined));
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Microphone, cx));
+
+    assert_eq!(*fixture.guide.requested.borrow(), [Permission::Microphone]);
+    assert!(
+        fixture.guide.opened.borrow().is_empty(),
+        "the prompt of macOS is the answer"
+    );
 }
 
 #[gpui_kit::test]
@@ -435,7 +529,7 @@ fn the_input_monitoring_pane_opens_only_once_a_slow_request_is_over(cx: &mut Tes
     fixture.guide.finish_requests();
     cx.run_until_parked();
 
-    assert_eq!(*fixture.guide.opened.borrow(), [im_url()]);
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
     assert!(hint(cx, &fixture, Permission::InputMonitoring).is_some());
     assert_eq!(fixture.guide.requested.borrow().len(), 1, "one request");
 }
@@ -508,7 +602,7 @@ fn allow_on_input_monitoring_that_waits_for_the_prompt_opens_no_pane(cx: &mut Te
 }
 
 #[gpui_kit::test]
-fn the_remove_line_goes_when_the_grant_arrives(cx: &mut TestAppContext) {
+fn the_hint_line_goes_when_the_grant_arrives(cx: &mut TestAppContext) {
     let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
     fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
     assert!(hint(cx, &fixture, Permission::InputMonitoring).is_some());
@@ -522,7 +616,27 @@ fn the_remove_line_goes_when_the_grant_arrives(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn accessibility_that_stays_false_after_the_wait_and_a_return_opens_its_pane_and_shows_the_line(
+fn the_hint_line_goes_when_accessibility_is_switched_on_even_if_input_monitoring_waits(
+    cx: &mut TestAppContext,
+) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+    assert!(hint(cx, &fixture, Permission::InputMonitoring).is_some());
+
+    fixture
+        .system
+        .set(Permission::Accessibility, Access::Granted);
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert_eq!(
+        hint(cx, &fixture, Permission::InputMonitoring),
+        None,
+        "the Accessibility list is no longer where the switch is missing"
+    );
+}
+
+#[gpui_kit::test]
+fn accessibility_that_stays_false_after_the_wait_and_a_return_opens_its_pane_with_no_reset(
     cx: &mut TestAppContext,
 ) {
     let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
@@ -545,7 +659,12 @@ fn accessibility_that_stays_false_after_the_wait_and_a_return_opens_its_pane_and
         *fixture.guide.requested.borrow(),
         [Permission::Accessibility]
     );
-    assert!(hint(cx, &fixture, Permission::Accessibility).is_some());
+    assert_eq!(*fixture.guide.repairs.borrow(), [false]);
+    assert_eq!(
+        hint(cx, &fixture, Permission::Accessibility),
+        None,
+        "a denied row waits for the switch; nothing in it is stale"
+    );
     assert_eq!(hint(cx, &fixture, Permission::InputMonitoring), None);
 
     cx.executor().advance_clock(Duration::from_millis(3_000));
@@ -571,7 +690,7 @@ fn accessibility_opens_its_pane_when_the_return_comes_after_the_wait(cx: &mut Te
     fixture.act(cx, |me, cx| me.app_activated(cx));
 
     assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
-    assert!(hint(cx, &fixture, Permission::Accessibility).is_some());
+    assert_eq!(hint(cx, &fixture, Permission::Accessibility), None);
 }
 
 #[gpui_kit::test]
@@ -603,7 +722,7 @@ fn a_return_without_an_accessibility_click_opens_nothing(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
-fn the_state_shows_the_remove_line_on_its_row(cx: &mut TestAppContext) {
+fn the_state_shows_the_hint_line_on_its_row(cx: &mut TestAppContext) {
     let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
     fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
 
@@ -615,28 +734,88 @@ fn the_state_shows_the_remove_line_on_its_row(cx: &mut TestAppContext) {
         .map(|row| (row["key"].as_str().unwrap(), row["hint"].as_str()))
         .collect();
     assert!(
-        hints.contains(&("inputMonitoring", Some(STALE_HINT))),
+        hints.contains(&("inputMonitoring", Some(FOLLOWS_HINT))),
         "{hints:?}"
     );
     assert!(hints.contains(&("accessibility", None)), "{hints:?}");
 }
 
-#[gpui_kit::test]
-fn a_granted_then_lost_permission_is_requested_again_by_allow(cx: &mut TestAppContext) {
-    let fixture = mac_with(cx, FakeSystem::all(Access::Granted));
-    fixture.act(cx, |me, cx| me.refresh(cx));
+/// A finished setup that stored every grant, with `lost` reading missing for longer than the
+/// settle window, so it counts as a grant that was held and is gone.
+fn lost_grant(cx: &mut TestAppContext, lost: Permission) -> Fixture {
+    let rig = rig(cx, &["base"], "base");
+    finished_with_every_grant_stored(&rig);
+    let system = FakeSystem::all(Access::Granted);
+    system.set(lost, Access::Denied);
+    let fixture = start(cx, rig, Platform::MacOs, system);
+    list_microphones(cx, &fixture, vec![device()]);
+    settle_start(cx);
+    assert_eq!(fixture.mode(cx), Mode::Repair);
     fixture
-        .system
-        .set(Permission::Accessibility, Access::Denied);
-    fixture.act(cx, |me, cx| me.refresh(cx));
+}
+
+#[gpui_kit::test]
+fn a_granted_then_lost_permission_is_repaired_by_its_first_allow_only(cx: &mut TestAppContext) {
+    let fixture = lost_grant(cx, Permission::Accessibility);
     assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+
+    fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
+    cx.executor().advance_clock(ACCESSIBILITY_PROMPT_WAIT);
+    cx.run_until_parked();
+    fixture.act(cx, |me, cx| me.app_activated(cx));
+
+    assert_eq!(
+        *fixture.guide.repairs.borrow(),
+        [true],
+        "the stale record is reset"
+    );
+    assert_eq!(*fixture.guide.opened.borrow(), [ax_url()]);
+    assert_eq!(
+        hint(cx, &fixture, Permission::Accessibility),
+        Some(STALE_HINT),
+        "the reset left a record, so the user gets the manual line"
+    );
 
     fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
 
     assert_eq!(
-        *fixture.guide.requested.borrow(),
-        [Permission::Accessibility]
+        *fixture.guide.repairs.borrow(),
+        [true, false],
+        "a second click never resets the fresh row again"
     );
+    assert_eq!(
+        hint(cx, &fixture, Permission::Accessibility),
+        Some(STALE_HINT)
+    );
+}
+
+#[gpui_kit::test]
+fn a_lost_input_monitoring_is_repaired_by_its_first_allow_and_its_pane_opens(
+    cx: &mut TestAppContext,
+) {
+    let fixture = lost_grant(cx, Permission::InputMonitoring);
+
+    fixture.act(cx, |me, cx| me.allow(Permission::InputMonitoring, cx));
+
+    assert_eq!(*fixture.guide.repairs.borrow(), [true]);
+    assert_eq!(*fixture.guide.opened.borrow(), [im_url()]);
+    assert_eq!(
+        hint(cx, &fixture, Permission::InputMonitoring),
+        Some(STALE_HINT)
+    );
+}
+
+#[gpui_kit::test]
+fn a_permission_that_was_never_granted_is_never_repaired(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+
+    for permission in Permission::ALL {
+        fixture.act(cx, |me, cx| me.allow(permission, cx));
+        fixture.act(cx, |me, cx| me.allow(permission, cx));
+    }
+
+    assert_eq!(fixture.guide.repairs.borrow().len(), 6);
+    assert!(fixture.guide.repairs.borrow().iter().all(|repair| !repair));
 }
 
 #[gpui_kit::test]
