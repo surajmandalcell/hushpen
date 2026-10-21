@@ -29,9 +29,9 @@ mod tests;
 const TITLE: &str = "Hushpen";
 
 /// Black glyph, for a light panel.
-const GLYPH_BLACK: &[u8] = include_bytes!("../../../assets/asrpro-tray-dark.png");
+const GLYPH_BLACK: &[u8] = include_bytes!("../../../assets/hushpen-tray-dark.png");
 /// White glyph, for a dark panel.
-const GLYPH_WHITE: &[u8] = include_bytes!("../../../assets/asrpro-tray-light.png");
+const GLYPH_WHITE: &[u8] = include_bytes!("../../../assets/hushpen-tray-light.png");
 /// The macOS menu bar glyph: black on clear at 2x (22 by 16 points), shown as a template image.
 const MENU_BAR_GLYPH: &[u8] = include_bytes!("../../../assets/hushpen-menubar.png");
 

@@ -42,7 +42,7 @@ fn make_zip(app: &Path, zip: &Path) -> Result<(), String> {
 pub fn build(ctx: &Ctx, formats: &[Format]) -> Result<Vec<PathBuf>, String> {
     let work = ctx.work_dir("mac")?;
     let resources = ctx.resources(&work, "app")?;
-    let icons = [ctx.root.join("assets/asrpro-app-icon.icns")];
+    let icons = [ctx.root.join("assets/hushpen-app-icon.icns")];
     let info_plist = ctx.root.join("packaging/Info.plist");
     let sign_script = work.join("sign-before-dmg.sh");
     fs::write(&sign_script, config::sign_script(&work.join(APP_NAME)))
