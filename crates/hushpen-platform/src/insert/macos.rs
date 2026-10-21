@@ -20,7 +20,8 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_app_kit::{
-    NSPasteboard, NSPasteboardItem, NSPasteboardType, NSPasteboardTypeString, NSWorkspace,
+    NSPasteboard, NSPasteboardItem, NSPasteboardType, NSPasteboardTypeString, NSRunningApplication,
+    NSWorkspace,
 };
 use objc2_foundation::{NSArray, NSData, NSObject, NSString};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -97,6 +98,8 @@ struct MacBoard {
     /// The keys of the layout in use. The insert worker only reads this copy; the main thread
     /// refreshes it.
     layout: Arc<LayoutCache>,
+    /// The process that gets the paste key, or `None` for the whole session.
+    pid: Option<i32>,
 }
 
 impl MacBoard {
@@ -110,6 +113,7 @@ impl MacBoard {
             owner: None,
             count: -1,
             layout,
+            pid: None,
         }
     }
 }
@@ -169,7 +173,7 @@ impl Backend for MacBoard {
         if !crate::permissions::accessibility_trusted() {
             return Err(ChordError::NoPermission);
         }
-        post_command_key(self.layout.v_key_code())
+        post_command_key(self.layout.v_key_code(), self.pid)
     }
 
     fn receipts(&mut self) -> Receipts {
@@ -211,15 +215,19 @@ impl Backend for MacBoard {
 /// How long an app may take to answer Cmd+C with a new pasteboard.
 const COPY_WAIT: std::time::Duration = std::time::Duration::from_millis(400);
 
-/// One key press that carries the Command flag, so no modifier key is left down.
-fn post_command_key(key: u16) -> Result<(), ChordError> {
+/// One key press that carries the Command flag, so no modifier key is left down. With `pid` the
+/// event goes to that process only, which works while the app is in the background.
+fn post_command_key(key: u16, pid: Option<i32>) -> Result<(), ChordError> {
     let post = |down: bool| -> Result<(), ChordError> {
         let source = CGEventSource::new(CGEventSourceStateID::Private)
             .map_err(|()| ChordError::Unavailable)?;
         let event =
             CGEvent::new_keyboard_event(source, key, down).map_err(|()| ChordError::Unavailable)?;
         event.set_flags(CGEventFlags::CGEventFlagCommand);
-        event.post(CGEventTapLocation::HID);
+        match pid {
+            Some(pid) => event.post_to_pid(pid),
+            None => event.post(CGEventTapLocation::HID),
+        }
         Ok(())
     };
     post(true)?;
@@ -280,22 +288,59 @@ impl MacInserter {
 
     /// The app in front. It reads no layout, so a worker thread may call it.
     fn frontmost(&self) -> Target {
-        let app = NSWorkspace::sharedWorkspace().frontmostApplication();
-        let Some(app) = app else {
-            return Target::default();
-        };
-        let pid = app.processIdentifier();
-        let bundle = app
-            .bundleIdentifier()
-            .map(|id| id.to_string())
-            .unwrap_or_default();
-        Target {
-            window: u64::try_from(pid).ok(),
-            classes: vec![bundle.clone()],
-            label: bundle,
-            own: u32::try_from(pid).is_ok_and(|pid| pid == std::process::id()),
-        }
+        NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map_or_else(Target::default, |app| app_target(&app))
     }
+
+    /// The app that gets the text: the app in front, or in a test build the app that the test
+    /// hook names.
+    #[cfg(feature = "test-automation")]
+    fn focus(&self) -> Target {
+        super::test_target::choose(super::test_target::bundle().as_deref(), running, || {
+            self.frontmost()
+        })
+    }
+
+    #[cfg(not(feature = "test-automation"))]
+    fn focus(&self) -> Target {
+        self.frontmost()
+    }
+}
+
+fn app_target(app: &NSRunningApplication) -> Target {
+    let pid = app.processIdentifier();
+    let bundle = app
+        .bundleIdentifier()
+        .map(|id| id.to_string())
+        .unwrap_or_default();
+    Target {
+        window: u64::try_from(pid).ok(),
+        classes: vec![bundle.clone()],
+        label: bundle,
+        own: u32::try_from(pid).is_ok_and(|pid| pid == std::process::id()),
+    }
+}
+
+/// A running app with this bundle id.
+#[cfg(feature = "test-automation")]
+pub(super) fn running(bundle: &str) -> Option<Target> {
+    NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(bundle))
+        .iter()
+        .find(|app| !app.isTerminated())
+        .map(|app| app_target(&app))
+}
+
+/// The process that gets the copy, paste, and undo keys for `target`, or `None` for the whole
+/// session.
+#[cfg(feature = "test-automation")]
+fn key_pid(target: &Target) -> Option<i32> {
+    super::test_target::key_pid(super::test_target::bundle().as_deref(), target)
+}
+
+#[cfg(not(feature = "test-automation"))]
+fn key_pid(_target: &Target) -> Option<i32> {
+    None
 }
 
 impl Inserter for MacInserter {
@@ -303,7 +348,7 @@ impl Inserter for MacInserter {
     /// again, so the paste that follows on the worker thread uses the keys now in use.
     fn target(&self) -> Target {
         self.layout.refresh_from_system();
-        self.frontmost()
+        self.focus()
     }
 
     fn insert(
@@ -319,6 +364,7 @@ impl Inserter for MacInserter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut board = MacBoard::general(Arc::clone(&self.layout));
+        board.pid = key_pid(target);
         let request = Request {
             text,
             target: &target.label,
@@ -336,7 +382,12 @@ impl Inserter for MacInserter {
         if probe.secure_event_input() || probe.focused_secure_field() {
             return None;
         }
-        if let Some(text) = guard::focused_selected_text() {
+        let pid = key_pid(target);
+        // The focused element is the one of the app in front, so an app in the background is
+        // only ever copied from.
+        if pid.is_none()
+            && let Some(text) = guard::focused_selected_text()
+        {
             return Some(text);
         }
         if !crate::permissions::accessibility_trusted() {
@@ -350,7 +401,7 @@ impl Inserter for MacInserter {
         copied_selection(
             &mut MacBoard::general(Arc::clone(&self.layout)),
             COPY_WAIT,
-            || post_command_key(key).map_err(|_| ()),
+            || post_command_key(key, pid).map_err(|_| ()),
         )
     }
 
@@ -360,11 +411,11 @@ impl Inserter for MacInserter {
             .one_at_a_time
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        undo_guard(target, &self.frontmost())?;
+        undo_guard(target, &self.focus())?;
         if !crate::permissions::accessibility_trusted() {
             return Err(UndoError::NoPermission);
         }
-        post_command_key(self.layout.z_key_code()).map_err(|error| match error {
+        post_command_key(self.layout.z_key_code(), key_pid(target)).map_err(|error| match error {
             ChordError::NoPermission => UndoError::NoPermission,
             _ => UndoError::Unavailable,
         })
