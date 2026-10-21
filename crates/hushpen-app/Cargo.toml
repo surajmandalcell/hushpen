@@ -20,6 +20,7 @@ path = "src/main.rs"
 test-automation = [
     "dep:hushpen-testhook",
     "hushpen-testhook/guard",
+    "hushpen-platform/test-automation",
     "gpui-kit/test-support",
 ]
 # Offscreen pixel baselines (tests/pixel.rs). Linux containers only: the

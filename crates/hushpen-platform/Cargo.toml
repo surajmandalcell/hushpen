@@ -11,6 +11,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Debug test builds only, through hushpen-app's test-automation feature.
+test-automation = []
+
 [dependencies]
 hushpen-core.workspace = true
 log.workspace = true
@@ -22,7 +26,8 @@ zbus.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 block2.workspace = true
 core-foundation.workspace = true
-core-graphics.workspace = true
+# `elcapitan` adds CGEventPostToPid, for keys sent to one app's process.
+core-graphics = { workspace = true, features = ["elcapitan"] }
 objc2.workspace = true
 objc2-app-kit.workspace = true
 objc2-core-graphics.workspace = true

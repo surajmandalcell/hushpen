@@ -1,5 +1,6 @@
-//! Test hook for dictation: the `dictation`, `pipeline`, `global_keys`, `last_insert`, and
-//! `permissions` state sections, and the actions that record, feed the pipeline, copy, and choose the language.
+//! Test hook for dictation: the `dictation`, `pipeline`, `global_keys`, `last_insert`,
+//! `insert_target`, and `permissions` state sections, and the actions that record, feed the
+//! pipeline, choose the language, and send the text to a background app.
 //! Compiled only with the `test-automation` feature.
 
 use super::{register_action, set_state_section};
@@ -7,7 +8,14 @@ use crate::controller::Controller;
 use crate::dictation::Dictation;
 use gpui_kit::{App, Entity};
 use hushpen_core::dictation::AppEvent;
+use hushpen_platform::insert::test_target;
 use serde_json::{Value, json};
+
+fn insert_target_json() -> Value {
+    let bundle = test_target::bundle();
+    let pid = bundle.as_deref().and_then(test_target::running_pid);
+    json!({"bundle": bundle, "pid": pid})
+}
 
 /// The pipeline events a test can send. The hold key itself is driven with `xdotool`; these
 /// are for the surfaces that have no key, such as the tray and the flow bar.
@@ -43,6 +51,7 @@ pub fn attach(cx: &mut App, dictation: Entity<Dictation>) {
         let controller = controller.clone();
         move |cx| controller.read(cx).last_insert_json()
     });
+    set_state_section(cx, "insert_target", |_| insert_target_json());
     set_state_section(cx, "permissions", {
         let controller = controller.clone();
         move |cx| controller.read(cx).permissions_json()
@@ -75,6 +84,33 @@ pub fn attach(cx: &mut App, dictation: Entity<Dictation>) {
                 controller.dispatch(event, cx)
             })?;
             Ok(json!({"event": name}))
+        },
+    );
+    let _ = register_action(
+        cx,
+        "insert-target",
+        "Send the paste, copy, and undo keys of a dictation to the running app with this bundle id \
+         in place of the app in front, without activating it (macOS). \
+         Args: {\"bundle\": \"com.apple.TextEdit\"}.",
+        |_, args| {
+            let bundle = args
+                .get("bundle")
+                .and_then(Value::as_str)
+                .filter(|bundle| !bundle.trim().is_empty())
+                .ok_or_else(|| {
+                    "needs args like {\"bundle\": \"com.apple.TextEdit\"}".to_string()
+                })?;
+            test_target::set(Some(bundle));
+            Ok(insert_target_json())
+        },
+    );
+    let _ = register_action(
+        cx,
+        "insert-target-clear",
+        "Send the keys of a dictation to the app in front again.",
+        |_, _| {
+            test_target::set(None);
+            Ok(insert_target_json())
         },
     );
     let _ = register_action(

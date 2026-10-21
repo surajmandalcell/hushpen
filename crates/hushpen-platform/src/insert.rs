@@ -18,6 +18,9 @@ mod x11;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(feature = "test-automation")]
+pub mod test_target;
+
 /// The window name of Hushpen's own windows (`WM_CLASS`).
 pub const OWN_APP_ID: &str = "hushpen";
 
