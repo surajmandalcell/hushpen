@@ -34,6 +34,25 @@ pub(super) fn show(view: usize) -> Result<(), ChromeError> {
     Ok(())
 }
 
+/// Puts the window on the screen without making it key and without bringing the app forward.
+pub(super) fn show_unfocused(view: usize) -> Result<(), ChromeError> {
+    let window = window_of(view)?;
+    if window.isMiniaturized() {
+        window.deminiaturize(None);
+    }
+    window.orderFront(None);
+    Ok(())
+}
+
+/// Whether this launch left the app behind the front app (`open -g`, a login item). Such a
+/// start must not show or activate anything on its own.
+pub(super) fn launched_in_background() -> bool {
+    match MainThreadMarker::new() {
+        Some(mtm) => !NSApplication::sharedApplication(mtm).isActive(),
+        None => false,
+    }
+}
+
 pub(super) fn minimize(view: usize) -> Result<(), ChromeError> {
     window_of(view)?.miniaturize(None);
     Ok(())

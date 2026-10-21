@@ -14,13 +14,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Calls that reach AppKit (or X11) for a window or for the whole app.
-const NATIVE: [&str; 13] = [
+const NATIVE: [&str; 15] = [
     "window::show(",
+    "window::show_unfocused(",
     "window::hide(",
     "window::minimize(",
     "window::activate_app(",
     "window::hide_app(",
     "native.show()",
+    "native.show_unfocused()",
     "native.hide()",
     "native.minimize(",
     "native.activate_app()",

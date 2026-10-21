@@ -52,6 +52,19 @@ pub(super) fn hide(window: Window) -> Result<(), ChromeError> {
     Ok(())
 }
 
+/// Maps the window without asking for the focus.
+pub(super) fn show_unfocused(window: Window) -> Result<(), ChromeError> {
+    let (conn, _root) = connect()?;
+    conn.map_window(window)
+        .map_err(|e| fail("map the window", e))?;
+    conn.flush().map_err(|e| fail("flush", e))?;
+    conn.get_input_focus()
+        .map_err(|e| fail("sync", e))?
+        .reply()
+        .map_err(|e| fail("sync", e))?;
+    Ok(())
+}
+
 /// Maps the window and asks the window manager to focus it.
 pub(super) fn show(window: Window) -> Result<(), ChromeError> {
     let (conn, root) = connect()?;

@@ -4,9 +4,12 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     /// `hidden` comes from `--hidden`, the flag the login item carries: the
-    /// app starts in the tray without a window.
+    /// app starts in the tray without a window. `show_window` comes from
+    /// `--show-window`, which the update helper adds when the window was on screen before the
+    /// update: the new copy puts it up again, behind the front app.
     Run {
         hidden: bool,
+        show_window: bool,
     },
     Version,
     /// The speech engine child, with the arguments after `engine`.
@@ -18,16 +21,22 @@ pub enum Command {
 
 pub fn parse(args: impl IntoIterator<Item = String>) -> Command {
     let mut args = args.into_iter();
-    match args.next().as_deref() {
-        None => Command::Run { hidden: false },
-        Some("--hidden") => match args.next() {
-            None => Command::Run { hidden: true },
-            Some(other) => Command::Unknown(other),
-        },
-        Some("--version" | "-V") => Command::Version,
-        Some("engine") => Command::Engine(args.collect()),
-        Some("update-apply") => Command::UpdateApply(args.collect()),
-        Some(other) => Command::Unknown(other.to_string()),
+    let (mut hidden, mut show_window) = (false, false);
+    loop {
+        match args.next().as_deref() {
+            None => {
+                return Command::Run {
+                    hidden,
+                    show_window,
+                };
+            }
+            Some("--hidden") => hidden = true,
+            Some("--show-window") => show_window = true,
+            Some("--version" | "-V") => return Command::Version,
+            Some("engine") => return Command::Engine(args.collect()),
+            Some("update-apply") => return Command::UpdateApply(args.collect()),
+            Some(other) => return Command::Unknown(other.to_owned()),
+        }
     }
 }
 
@@ -43,18 +52,31 @@ mod tests {
         parse(args.iter().map(|a| a.to_string()))
     }
 
+    fn run(hidden: bool, show_window: bool) -> Command {
+        Command::Run {
+            hidden,
+            show_window,
+        }
+    }
+
     #[test]
     fn no_arguments_start_the_app() {
-        assert_eq!(parse_args(&[]), Command::Run { hidden: false });
+        assert_eq!(parse_args(&[]), run(false, false));
     }
 
     #[test]
     fn the_hidden_flag_starts_the_app_without_a_window() {
-        assert_eq!(parse_args(&["--hidden"]), Command::Run { hidden: true });
+        assert_eq!(parse_args(&["--hidden"]), run(true, false));
         assert_eq!(
             parse_args(&["--hidden", "extra"]),
             Command::Unknown("extra".into())
         );
+    }
+
+    #[test]
+    fn the_show_window_flag_puts_the_window_up_on_a_background_start() {
+        assert_eq!(parse_args(&["--show-window"]), run(false, true));
+        assert_eq!(parse_args(&["--show-window", "--hidden"]), run(true, true));
     }
 
     #[test]

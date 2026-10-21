@@ -164,6 +164,27 @@ pub fn minimize(handle: WindowHandle) -> Result<(), ChromeError> {
     }
 }
 
+/// Puts a hidden window back on the screen without taking the focus or the front app. For
+/// starts that must stay in the background.
+pub fn show_unfocused(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => visibility_x11::show_unfocused(window),
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => visibility_appkit::show_unfocused(view),
+        _ => Err(ChromeError::new("this window backend cannot be shown")),
+    }
+}
+
+/// Whether this process was launched behind the front app (macOS `open -g`, a login item).
+/// Always false where a launch has no background form.
+pub fn launched_in_background() -> bool {
+    #[cfg(target_os = "macos")]
+    return visibility_appkit::launched_in_background();
+    #[cfg(not(target_os = "macos"))]
+    return false;
+}
+
 /// Brings the whole app to the front on macOS; other systems have no app-level front.
 pub fn activate_app() -> Result<(), ChromeError> {
     #[cfg(target_os = "macos")]

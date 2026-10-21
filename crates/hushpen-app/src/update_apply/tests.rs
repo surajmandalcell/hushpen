@@ -8,6 +8,7 @@ fn job() -> Job {
         target: "/opt/Hushpen.AppImage".into(),
         staged: "/opt/.Hushpen.AppImage.update".into(),
         relaunch: true,
+        show_window: true,
         cleanup: vec!["/opt/.stage".into(), "/opt/.helper".into()],
     }
 }
@@ -32,6 +33,23 @@ fn a_job_survives_the_trip_through_the_command_line() {
         ..job
     };
     assert_eq!(parse_args(&args(&plain)).unwrap(), plain);
+}
+
+#[test]
+fn the_show_window_flag_survives_the_command_line() {
+    let job = Job {
+        kind: InstallKind::App,
+        target: "/Applications/Hushpen.app".into(),
+        staged: "/Applications/.Hushpen.app.update".into(),
+        show_window: true,
+        ..job()
+    };
+    assert_eq!(parse_args(&args(&job)).unwrap(), job);
+    let hidden = Job {
+        show_window: false,
+        ..job
+    };
+    assert_eq!(parse_args(&args(&hidden)).unwrap(), hidden);
 }
 
 #[test]
@@ -188,6 +206,52 @@ fn a_child_nobody_collected_counts_as_gone() {
     child.wait().unwrap();
 }
 
+fn command_words(command: &Command) -> Vec<String> {
+    std::iter::once(command.get_program().to_os_string())
+        .chain(command.get_args().map(|arg| arg.to_os_string()))
+        .map(|word| word.to_string_lossy().into_owned())
+        .collect()
+}
+
+#[test]
+fn a_relaunched_app_stays_in_the_background() {
+    let command = relaunch_command(
+        InstallKind::App,
+        Path::new("/Applications/Hushpen.app"),
+        false,
+    );
+    let words = command_words(&command);
+    assert_eq!(words[0], "/usr/bin/open");
+    assert!(
+        words.iter().any(|word| word == "-g"),
+        "open without -g brings the app to the front: {words:?}"
+    );
+    assert!(
+        !words.iter().any(|word| word == "--show-window"),
+        "the window stays down when it was down: {words:?}"
+    );
+}
+
+#[test]
+fn a_relaunch_restores_the_window_only_when_it_was_showing() {
+    let command = relaunch_command(
+        InstallKind::App,
+        Path::new("/Applications/Hushpen.app"),
+        true,
+    );
+    let words = command_words(&command);
+    let flag = words.iter().position(|word| word == "--args");
+    assert_eq!(
+        flag.and_then(|at| words.get(at + 1)).map(String::as_str),
+        Some("--show-window"),
+        "the new copy is told to put its window up: {words:?}"
+    );
+    assert!(
+        words.iter().any(|word| word == "-g"),
+        "still behind the front app: {words:?}"
+    );
+}
+
 fn exited_pid() -> u32 {
     let mut child = Command::new("true").spawn().unwrap();
     let pid = child.id();
@@ -209,6 +273,7 @@ fn a_job_swaps_after_the_app_quit_and_removes_what_it_was_told_to() {
         target: target.clone(),
         staged,
         relaunch: false,
+        show_window: false,
         cleanup: vec![extra.clone()],
     })
     .unwrap();
@@ -229,6 +294,7 @@ fn a_job_that_cannot_swap_reports_the_error_keeps_the_old_file_and_still_cleans_
         target: target.clone(),
         staged: dir.path().join("not-there"),
         relaunch: false,
+        show_window: false,
         cleanup: vec![extra.clone()],
     });
     assert!(result.is_err());

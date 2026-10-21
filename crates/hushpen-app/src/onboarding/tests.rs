@@ -773,7 +773,12 @@ fn a_hidden_start_whose_grant_is_lost_after_the_settle_window_shows_the_window_a
     settle_start(cx);
 
     assert_eq!(fixture.mode(cx), Mode::Repair);
-    assert_eq!(calls.shown.get(), 1);
+    assert_eq!(calls.shown_unfocused.get(), 1);
+    assert_eq!(
+        calls.activated.get(),
+        0,
+        "a start never takes the front on its own"
+    );
     assert_eq!(cx.update(|cx| crate::main_window::away(cx)), None);
 }
 

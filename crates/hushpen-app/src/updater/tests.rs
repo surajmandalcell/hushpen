@@ -74,6 +74,7 @@ struct FakeInstaller {
     stage_error: Mutex<Option<CheckError>>,
     restart_error: Mutex<Option<CheckError>>,
     restarts: Mutex<Vec<std::path::PathBuf>>,
+    restart_shows: Mutex<Vec<bool>>,
 }
 
 impl FakeInstaller {
@@ -84,6 +85,7 @@ impl FakeInstaller {
             stage_error: Mutex::default(),
             restart_error: Mutex::default(),
             restarts: Mutex::default(),
+            restart_shows: Mutex::default(),
         }
     }
 
@@ -97,6 +99,11 @@ impl FakeInstaller {
 
     fn restarts(&self) -> usize {
         self.restarts.lock().unwrap().len()
+    }
+
+    /// The `show_window` flag of each restart, in order.
+    fn restart_shows(&self) -> Vec<bool> {
+        self.restart_shows.lock().unwrap().clone()
     }
 }
 
@@ -125,11 +132,12 @@ impl Installer for FakeInstaller {
         }
     }
 
-    fn restart(&self, staged: &Staged) -> Result<(), CheckError> {
+    fn restart(&self, staged: &Staged, show_window: bool) -> Result<(), CheckError> {
         if let Some(error) = self.restart_error.lock().unwrap().take() {
             return Err(error);
         }
         self.restarts.lock().unwrap().push(staged.path.clone());
+        self.restart_shows.lock().unwrap().push(show_window);
         Ok(())
     }
 }
@@ -603,6 +611,37 @@ fn turning_automatic_installs_on_stages_an_offer_that_is_waiting(cx: &mut TestAp
     rig.updater.update(cx, |me, cx| me.settings_changed(cx));
     cx.run_until_parked();
     assert_eq!(rig.state(cx).key(), "ready");
+}
+
+#[gpui_kit::test]
+fn the_relaunch_puts_the_window_back_only_when_it_was_showing(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    rig.set("updates.autoInstall", json!(true));
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    assert_eq!(rig.state(cx).key(), "ready");
+
+    // With no window away, the new copy shows its window (behind the front app).
+    rig.updater.update(cx, |me, cx| me.restart_to_update(cx));
+    assert_eq!(rig.installer.restart_shows(), [true]);
+}
+
+#[gpui_kit::test]
+fn a_restart_with_the_window_in_the_tray_keeps_the_new_copy_hidden(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.installer.is(InstallKind::AppImage);
+    rig.set("updates.autoInstall", json!(true));
+    check_in(&rig, cx, offered_with_file("2.1.0"));
+    assert_eq!(rig.state(cx).key(), "ready");
+
+    let window = open_settings(cx, &rig);
+    cx.update(|cx| {
+        crate::main_window::testkit::install_fake(cx, window.handle, true);
+    });
+    cx.update(crate::main_window::step_aside);
+    cx.run_until_parked();
+    rig.updater.update(cx, |me, cx| me.restart_to_update(cx));
+    assert_eq!(rig.installer.restart_shows(), [false]);
 }
 
 #[gpui_kit::test]

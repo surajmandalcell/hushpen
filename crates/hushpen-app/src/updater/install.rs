@@ -34,8 +34,10 @@ pub trait Installer: Send + Sync {
         progress: &mut dyn FnMut(Progress),
     ) -> Result<Staged, CheckError>;
 
-    /// Starts the helper that swaps `staged` in once this process has quit.
-    fn restart(&self, staged: &Staged) -> Result<(), CheckError>;
+    /// Starts the helper that swaps `staged` in once this process has quit. `show_window` is
+    /// whether the window was on screen: the relaunched copy puts it back, behind the front
+    /// app either way.
+    fn restart(&self, staged: &Staged, show_window: bool) -> Result<(), CheckError>;
 }
 
 pub struct SystemInstaller {
@@ -161,7 +163,7 @@ impl Installer for SystemInstaller {
         }
     }
 
-    fn restart(&self, staged: &Staged) -> Result<(), CheckError> {
+    fn restart(&self, staged: &Staged, show_window: bool) -> Result<(), CheckError> {
         let target = self.target()?;
         let exe = std::env::current_exe()
             .map_err(|error| swap_failed(format!("cannot find this program: {error}")))?;
@@ -175,6 +177,7 @@ impl Installer for SystemInstaller {
             target: target.to_path_buf(),
             staged: staged.path.clone(),
             relaunch: true,
+            show_window,
             cleanup,
         };
         let log = OpenOptions::new()
@@ -410,7 +413,7 @@ mod tests {
             cleanup: vec![],
         };
         assert_eq!(
-            installer.restart(&staged).unwrap_err().code,
+            installer.restart(&staged, true).unwrap_err().code,
             UPDATE_SWAP_FAILED
         );
     }
