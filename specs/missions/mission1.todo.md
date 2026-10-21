@@ -6,7 +6,7 @@ State as of 2026-10-21. Read `specs/missions/mission1.completed.md` first. This 
 
 The mission runs in Factory Droid as orchestrator mission `f0a389f7-d034-46ca-9118-308ed631c4b8`, state in `/Users/surajmandal/.factory/missions/f0a389f7-d034-46ca-9118-308ed631c4b8`. To resume inside Factory: open that mission and call `start_mission_run` when this file says so. To resume outside Factory (plain agent): follow the "Remaining work" steps below by hand; `features.json` in the mission dir holds the exact feature descriptions, preconditions, and expected behavior for each step.
 
-The mission is at the hp5-llm user-testing validator (step 3). S2 is complete (`partb-results.md` in the S2 evidence folder), 299 of 380 assertions passed. hp5-llm scrutiny passed in round 2 after 99b5c4b and dcb8911 moved every blocking call off the UI thread (selection read, permission settle, Allow, launch-at-login write).
+The mission is at S3 (step 4): the rc.3 build is dispatched (run 39555285074, tag v2.0.0-rc.3 on 48dfb14). hp5-llm validators are done: scrutiny passed in round 2, user testing passed in round 2, 350 of 380 assertions passed. The fixes: 99b5c4b and dcb8911 (blocking calls off the UI thread), 9942b46 (hidden flow bar goes idle; pixel scene clock), ce34c41 (no wait during the model load), aba3c74 (cleanup prompt examples), 48dfb14 (adaptive LLM prefill chunk, cancel under 1 s).
 
 ## Current live state
 
@@ -20,9 +20,9 @@ The mission is at the hp5-llm user-testing validator (step 3). S2 is complete (`
 ### Steps 1 and 2: S2 (DONE)
 
 The agent ran every S2 step itself (the owner runs no checklist): hook dictation into a background TextEdit through the test-only insert target, GUI steps through Codex in the background, pixel checks on per-window captures. Results per assertion: `partb-results.md` in the S2 evidence folder. The contract now states the 2026-10-21 rule: modifier-only key holds go through the hook pipeline events, "TextEdit frontmost" reads as "front app unchanged", and steps that make macOS activate Hushpen are left out. S2 found and fixed one defect: the macOS sidebar was opaque (c48784e).
-### Step 3: hp5-llm validators (automatic)
+### Step 3: hp5-llm validators (DONE)
 
-Scrutiny passed (round 2). The user-testing validator writes `validation/hp5-llm/user-testing/` in the mission dir and marks its assertions. Triage failures with fix workers, then re-run the affected assertions.
+Scrutiny passed in round 2, user testing in round 2 (`validation/hp5-llm/` in the mission dir).
 
 ### Step 4: S3 Mac session on rc.3 (feature m7-mac-session-s3)
 
