@@ -442,6 +442,9 @@ impl Mic {
         };
         self.levels.clear();
         let result = session.inner.stop();
+        // A stream that ended its session on dead input is gone; open the next one now, so a
+        // recording that follows starts with a ready stream.
+        self.warm();
         match &result {
             Ok(finished) => {
                 self.state = CaptureState::Idle;

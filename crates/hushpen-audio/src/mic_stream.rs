@@ -7,7 +7,9 @@
 //! waits, and a failed open is reported through the session's event sink.
 //!
 //! A stream that reports a failure (an error callback, a stall, a removed device) is torn
-//! down, so the next recording opens a fresh one instead of reusing a dead audio unit.
+//! down, so the next recording opens a fresh one instead of reusing a dead audio unit. A
+//! stream that only delivered exact zeros is not reported (a muted microphone does the same,
+//! and that run ends as "no speech"), but it is not reused either.
 //!
 //! One thread owns each stream, because streams are not `Send` on every host.
 
@@ -31,9 +33,9 @@ use std::time::{Duration, Instant};
 const STALL_LIMIT: Duration = Duration::from_secs(10);
 /// How often the thread checks that the device it opened still exists.
 const DEVICE_POLL: Duration = Duration::from_secs(1);
-/// How long the input may deliver nothing but exact zeros before it counts as dead. A wedged
-/// audio unit delivers zeros; a working microphone always has some noise, even in a quiet
-/// room.
+/// How long the input may deliver nothing but exact zeros before the stream is not trusted
+/// for another recording. A wedged audio unit delivers zeros, and so does a muted microphone;
+/// the two cannot be told apart from the samples, so the run itself is never failed.
 const DEAD_SILENCE_LIMIT: Duration = Duration::from_secs(4);
 const MIC_STOP_TIMEOUT: Duration = Duration::from_millis(1500);
 /// How often the thread looks for a command.
@@ -55,6 +57,9 @@ pub(crate) struct Route {
     broken: AtomicBool,
     /// The current run of exact-zero input, in milliseconds.
     zero_ms: AtomicU64,
+    /// Set while the current zero run is past `DEAD_SILENCE_LIMIT`. Real audio clears it, so a
+    /// microphone that was muted and then spoke into stays in use.
+    dead_input: AtomicBool,
 }
 
 impl Route {
@@ -63,6 +68,7 @@ impl Route {
         self.failed.store(false, Ordering::SeqCst);
         self.broken.store(false, Ordering::SeqCst);
         self.zero_ms.store(0, Ordering::SeqCst);
+        self.dead_input.store(false, Ordering::SeqCst);
     }
 
     fn detach(&self) {
@@ -78,12 +84,11 @@ impl Route {
             if self.zero_ms.fetch_add(ms, Ordering::SeqCst) + ms
                 >= DEAD_SILENCE_LIMIT.as_millis() as u64
             {
-                self.report(CaptureError::unavailable(
-                    "the microphone is sending only silence",
-                ));
+                self.dead_input.store(true, Ordering::SeqCst);
             }
         } else {
             self.zero_ms.store(0, Ordering::SeqCst);
+            self.dead_input.store(false, Ordering::SeqCst);
         }
         if let Some((tx, _)) = &*lock(&self.session) {
             let _ = tx.send(Msg::Frames {
@@ -99,6 +104,11 @@ impl Route {
     /// Whether the stream reported a failure. The mic thread tears such a stream down.
     pub(crate) fn broken(&self) -> bool {
         self.broken.load(Ordering::SeqCst)
+    }
+
+    /// Whether the input ended the session in a run of nothing but exact zeros.
+    fn ended_on_dead_input(&self) -> bool {
+        self.dead_input.load(Ordering::SeqCst)
     }
 
     /// Reports one failure per session, and marks the stream broken: a stream whose audio
@@ -344,13 +354,30 @@ fn run(selection: &str, queue: &Receiver<Command>, phase: &Mutex<Phase>, factory
             }
             Ok(Command::Detach) => {
                 if let Some(attachment) = attached.take() {
-                    if let Err(error) = stream.pause() {
-                        log::warn!("{error}");
-                        route.detach();
-                        let _ = attachment.done.send(());
-                        return retire(phase, queue, &error);
-                    }
+                    let paused = stream.pause();
                     route.detach();
+                    let unfit = match paused {
+                        Err(error) => {
+                            log::warn!("{error}");
+                            Some(error)
+                        }
+                        Ok(()) if route.ended_on_dead_input() => {
+                            log::warn!(
+                                "the microphone sent only silence; it opens again for the next recording"
+                            );
+                            Some(CaptureError::unavailable(
+                                "the microphone sent only silence",
+                            ))
+                        }
+                        Ok(()) => None,
+                    };
+                    if let Some(error) = unfit {
+                        // Dead before the caller hears `done`, so a start that follows opens a
+                        // fresh stream.
+                        retire(phase, queue, &error);
+                        let _ = attachment.done.send(());
+                        return;
+                    }
                     let _ = attachment.done.send(());
                 }
             }
@@ -362,19 +389,19 @@ fn run(selection: &str, queue: &Receiver<Command>, phase: &Mutex<Phase>, factory
         }
         next_poll = Instant::now() + DEVICE_POLL;
         if route.broken() {
-            // The stream reported a failure (an error callback, a stall, a removed device,
-            // dead input): it is broken for good, so stop it and let the next recording open
-            // a fresh one.
+            // The stream reported a failure (an error callback, a stall, a removed device): it
+            // is broken for good, so stop it and let the next recording open a fresh one.
             let _ = stream.pause();
             route.detach();
-            if let Some(attachment) = attached.take() {
-                let _ = attachment.done.send(());
-            }
-            return retire(
+            retire(
                 phase,
                 queue,
                 &CaptureError::unavailable("the microphone stream failed"),
             );
+            if let Some(attachment) = attached.take() {
+                let _ = attachment.done.send(());
+            }
+            return;
         }
         if attached.is_some() {
             let silent_for = epoch

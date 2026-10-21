@@ -250,30 +250,59 @@ fn a_stream_that_reports_a_failure_is_retired_and_the_next_start_opens_again() {
 }
 
 #[test]
-fn a_stream_of_exact_zeros_is_reported_as_dead_input_and_retired() {
+fn a_silent_run_is_not_failed_and_its_audio_reaches_the_session() {
     let world = World::default();
     let hub = hub(&world);
     let session = session();
     let handle = hub.attach("default", &session.tx, &session.sink).unwrap();
     assert_eq!(next_event(&session), CaptureEvent::Started);
 
-    // A wedged audio unit keeps delivering buffers, all zeros (2 s per buffer here).
+    // A muted microphone or a silent virtual source delivers buffers of exact zeros (2 s per
+    // buffer here). The run must end as "no speech", never as a capture failure.
     let route = lock(&world.route).clone().expect("an open stream");
     for _ in 0..3 {
         route.frames(16_000, 1, vec![0.0; 32_000]);
     }
-    assert_eq!(
-        next_event(&session),
-        CaptureEvent::Error(CaptureError::unavailable(
-            "the microphone is sending only silence"
-        ))
+    assert!(
+        session
+            .events
+            .recv_timeout(Duration::from_millis(300))
+            .is_err(),
+        "a silent run raises no capture event"
     );
+    let delivered = session
+        .frames
+        .try_iter()
+        .filter(|message| matches!(message, Msg::Frames { data, .. } if data.len() == 32_000))
+        .count();
+    assert_eq!(delivered, 3, "every silent buffer reaches the session");
     handle.shut_down();
-    wait_for("the dead stream to retire", || {
-        lock(&hub.slot)
-            .as_ref()
-            .is_some_and(|warm| *lock(&warm.phase) == Phase::Dead)
-    });
+}
+
+#[test]
+fn a_stream_that_ends_a_session_on_exact_zeros_is_retired_and_the_next_start_opens_again() {
+    let world = World::default();
+    let hub = hub(&world);
+    let session = session();
+    let handle = hub.attach("default", &session.tx, &session.sink).unwrap();
+    assert_eq!(next_event(&session), CaptureEvent::Started);
+
+    // A wedged audio unit keeps delivering buffers, all zeros. Nothing is raised during the
+    // run, but the stream is not trusted for the next one.
+    let route = lock(&world.route).clone().expect("an open stream");
+    for _ in 0..3 {
+        route.frames(16_000, 1, vec![0.0; 32_000]);
+    }
+    handle.shut_down();
+    assert_eq!(
+        lock(&hub.slot).as_ref().map(|warm| *lock(&warm.phase)),
+        Some(Phase::Dead),
+        "the stream is dead before the end of the session is announced"
+    );
+    assert!(
+        lock(&world.log).contains(&"pause"),
+        "the dead stream is stopped"
+    );
 
     let again = self::session();
     let handle = hub.attach("default", &again.tx, &again.sink).unwrap();
@@ -308,6 +337,43 @@ fn quiet_audio_above_exact_zeros_is_not_dead_input() {
             .recv_timeout(Duration::from_millis(300))
             .is_err(),
         "quiet audio is not a dead input"
+    );
+    handle.shut_down();
+
+    let again = self::session();
+    let handle = hub.attach("default", &again.tx, &again.sink).unwrap();
+    assert_eq!(next_event(&again), CaptureEvent::Started);
+    assert_eq!(
+        world.opens.load(Ordering::SeqCst),
+        1,
+        "the working stream is reused"
+    );
+    handle.shut_down();
+}
+
+#[test]
+fn a_microphone_that_was_muted_and_then_spoke_is_kept() {
+    let world = World::default();
+    let hub = hub(&world);
+    let session = session();
+    let handle = hub.attach("default", &session.tx, &session.sink).unwrap();
+    assert_eq!(next_event(&session), CaptureEvent::Started);
+
+    // 6 s of zeros pass the limit; real audio after them clears it.
+    let route = lock(&world.route).clone().expect("an open stream");
+    for _ in 0..3 {
+        route.frames(16_000, 1, vec![0.0; 32_000]);
+    }
+    push(&world);
+    handle.shut_down();
+
+    let again = self::session();
+    let handle = hub.attach("default", &again.tx, &again.sink).unwrap();
+    assert_eq!(next_event(&again), CaptureEvent::Started);
+    assert_eq!(
+        world.opens.load(Ordering::SeqCst),
+        1,
+        "the stream that carried real audio is reused"
     );
     handle.shut_down();
 }
