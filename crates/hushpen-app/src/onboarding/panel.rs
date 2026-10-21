@@ -11,11 +11,9 @@ use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Rgba, Role, StatefulInteractiveElement, Styled, Window, div, px, relative, svg,
-    transparent_black,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba,
+    Role, StatefulInteractiveElement, Styled, Window, div, px, relative, svg, transparent_black,
 };
 use hushpen_core::onboarding::{
     HINT_NO_SOUND, HINT_NO_SPEECH, HINT_TRANSCRIPT_FAILED, MicVerdict, NOTE_NO_MODEL, Row,
@@ -555,7 +553,7 @@ fn model(
                     )
                     .child(
                         ui::secondary(palette)
-                            .child(format!("{} · recommended", format_size(bytes))),
+                            .child(format!("{} · Recommended", format_size(bytes))),
                     ),
             )
             .child(
@@ -737,31 +735,12 @@ fn updates(
     };
     let flip = {
         let onboarding = onboarding.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             onboarding.update(cx, |me, cx| {
                 let on = !me.updates_on();
                 me.set_updates(on, cx);
             });
         }
-    };
-    let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| flip(cx);
-    let knob = div()
-        .size(px(14.0))
-        .rounded(px(radius::FULL))
-        .bg(palette.on_accent);
-    let track = div()
-        .w(px(34.0))
-        .h(px(20.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .px(px(3.0))
-        .rounded(px(radius::FULL))
-        .bg(if on { palette.accent } else { palette.control });
-    let track = if on {
-        track.justify_end().child(knob)
-    } else {
-        track.justify_start().child(knob)
     };
     let rows: Vec<AnyElement> = vec![
         ui::row(palette)
@@ -774,35 +753,15 @@ fn updates(
                             .child("Off unless you turn it on. Hushpen never updates by itself."),
                     ),
             )
-            .child(
-                div()
-                    .id(hook::id("onboarding", "updates.toggle"))
-                    .test_support()
-                    .track_focus(&focus)
-                    .role(Role::Switch)
-                    .aria_toggled(if on { Toggled::True } else { Toggled::False })
-                    .aria_label(if on {
-                        "Check for updates, on"
-                    } else {
-                        "Check for updates, off"
-                    })
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(space::SM))
-                    .h(px(size::BUTTON_HEIGHT + space::XXS * 2.0))
-                    .px(px(space::SM - size::FOCUS_RING))
-                    .rounded(px(radius::BUTTON))
-                    .border_2()
-                    .border_color(transparent_black())
-                    .text_token(BODY)
-                    .text_color(palette.label_secondary)
-                    .cursor_pointer()
-                    .focus_visible(move |style| style.border_color(palette.accent))
-                    .on_click(on_click)
-                    .child(track)
-                    .child(if on { "On" } else { "Off" }),
-            )
+            .child(ui::switch(
+                palette,
+                hook::id("onboarding", "updates.toggle"),
+                "Check for updates",
+                on,
+                true,
+                &focus,
+                flip,
+            ))
             .into_any_element(),
     ];
     ui::group(hook::id("onboarding", "updates"), palette, rows)

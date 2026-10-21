@@ -8,19 +8,16 @@ use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 16] = [
+const ALLOWED: [(&str, &str, &str); 14] = [
     // The default button fills with it; the plain button is a link and takes it for text.
     ("ui.rs", "button", "accent"),
     // The track of a switch that is on.
     ("ui.rs", "switch", "accent"),
     // The recorder that waits for keys has the focus ring while it waits.
     ("shortcuts/panel.rs", "shortcut_row", "accent"),
-    // The switch of the updates step.
-    ("onboarding/panel.rs", "updates", "accent"),
     // Status words: Ready, Active, Failed. The warning token also colors the attention icon.
     ("ui.rs", "status_row", "error"),
     ("dictation/panel.rs", "status_tone", "success"),
-    ("dictation/panel.rs", "status_tone", "warning"),
     ("dictation/panel.rs", "status_tone", "error"),
     ("import/panel.rs", "status_of", "success"),
     ("import/panel.rs", "status_of", "error"),
@@ -34,7 +31,7 @@ const ALLOWED: [(&str, &str, &str); 16] = [
 
 const TOKENS: [&str; 4] = ["accent", "success", "warning", "error"];
 
-fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
+pub(crate) fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("read the source folder").flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -48,7 +45,7 @@ fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-fn function_name(line: &str) -> Option<String> {
+pub(crate) fn function_name(line: &str) -> Option<String> {
     let rest = line.trim_start();
     let rest = rest.strip_prefix("pub ").unwrap_or(rest);
     let rest = rest

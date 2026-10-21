@@ -1818,4 +1818,31 @@ mod window {
         );
         assert!(!present(cx, handle, "onboarding.page"));
     }
+
+    #[gpui_kit::test]
+    fn the_updates_switch_is_the_settings_switch_with_no_word_beside_it(cx: &mut TestAppContext) {
+        let fixture = mac(cx, &["base"], "base");
+        go_to_unchecked(cx, &fixture, Step::Updates);
+        let handle = open(cx, &fixture);
+
+        assert_eq!(
+            label(cx, handle, "onboarding.updates.toggle").as_deref(),
+            Some("Check for updates, off")
+        );
+        let off = rect(cx, handle, "onboarding.updates.toggle".into());
+        assert_eq!(
+            (off.2, off.3),
+            (42.0, 28.0),
+            "the track, its padding, and the ring: no room for On or Off"
+        );
+
+        tab_to(cx, handle, "onboarding.updates.toggle");
+        press(cx, handle, "space");
+        assert_eq!(
+            label(cx, handle, "onboarding.updates.toggle").as_deref(),
+            Some("Check for updates, on")
+        );
+        let on = rect(cx, handle, "onboarding.updates.toggle".into());
+        assert_eq!((on.2, on.3), (off.2, off.3));
+    }
 }
