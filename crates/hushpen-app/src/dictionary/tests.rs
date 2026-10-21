@@ -296,6 +296,24 @@ fn cancel_leaves_the_entry_and_empties_the_form(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_edit_row_puts_cancel_before_save(cx: &mut TestAppContext) {
+    let rig = open(cx);
+    add_by_keyboard(cx, &rig, "Foxtrel", "fox");
+    click(cx, &rig, "dictionary.edit.0");
+
+    let (cancel, save) = cx
+        .update_window(rig.handle, |_, window, _| {
+            (
+                window.find("dictionary.cancel").bounds(),
+                window.find("dictionary.submit").bounds(),
+            )
+        })
+        .unwrap();
+
+    assert!(cancel.right() <= save.left(), "{cancel:?} then {save:?}");
+}
+
+#[gpui_kit::test]
 fn an_edit_may_not_take_the_phrase_of_another_entry(cx: &mut TestAppContext) {
     let rig = open(cx);
     add_by_keyboard(cx, &rig, "Alpha", "");
