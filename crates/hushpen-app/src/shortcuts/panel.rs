@@ -7,6 +7,7 @@ use crate::hook;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size};
 use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
     ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
@@ -15,6 +16,12 @@ use hushpen_core::shortcut::Slot;
 
 const FIELD_MIN_WIDTH: f32 = 128.0;
 const FIELD_MAX_WIDTH: f32 = 236.0;
+/// A binding this long may be cut by the field, so its whole text shows as a tooltip.
+const TOOLTIP_FROM_CHARS: usize = 24;
+
+pub(super) fn needs_tooltip(shown: &str) -> bool {
+    shown.chars().count() > TOOLTIP_FROM_CHARS
+}
 
 struct Row {
     slot: Slot,
@@ -33,7 +40,7 @@ fn text_of(slot: Slot) -> (&'static str, &'static str) {
         Slot::HandsFree => ("Hands-free", "Starts a session. Use it again to stop."),
         Slot::PasteLast => ("Paste last transcript", "Pastes your last dictation again."),
         Slot::Command => (
-            "Command Mode",
+            "Command mode",
             "Hold to speak an instruction for the selected text.",
         ),
     }
@@ -183,6 +190,10 @@ fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> An
             palette.label
         });
     hook::mark_disabled(&format!("settings.shortcut.{key}"), !row.enabled);
+    if !row.recording && needs_tooltip(&row.shown) {
+        let full = row.shown.clone();
+        field = field.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
+    }
     if row.enabled {
         let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx);
         field = field

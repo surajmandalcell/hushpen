@@ -221,7 +221,7 @@ fn a_click_starts_and_stops_a_dictation_and_the_bar_follows_each_step(cx: &mut T
 }
 
 #[gpui_kit::test]
-fn a_paste_says_inserted(cx: &mut TestAppContext) {
+fn a_paste_says_pasted(cx: &mut TestAppContext) {
     let bar = bar(cx, &["base"], "base");
     attach_inserter(
         cx,
@@ -230,7 +230,7 @@ fn a_paste_says_inserted(cx: &mut TestAppContext) {
     );
     dictate(cx, &bar, outcome_text("hello there", "en"));
     assert_eq!(bar.state(cx), BarState::Result);
-    assert_eq!(bar.props(cx).message, "Inserted");
+    assert_eq!(bar.props(cx).message, "Pasted");
 }
 
 #[gpui_kit::test]
@@ -569,7 +569,7 @@ fn an_ai_cleaned_paste_offers_undo_cleanup_in_place_of_the_flash(cx: &mut TestAp
 
     assert_eq!(bar.state(cx), BarState::Undo);
     let props = bar.props(cx);
-    assert_eq!(props.message, "Inserted");
+    assert_eq!(props.message, "Pasted");
     assert_eq!(view::size_of(&props), view::UNDO_SIZE);
     let state = bar.bar.read_with(cx, |bar, _| bar.state_json());
     assert_eq!(state["state"], "undo");
@@ -613,7 +613,7 @@ fn a_terminal_never_gets_the_undo_state(cx: &mut TestAppContext) {
     let bar = cleaned_bar(cx, Some(&terminal));
 
     assert_eq!(bar.state(cx), BarState::Result);
-    assert_eq!(bar.props(cx).message, "Inserted");
+    assert_eq!(bar.props(cx).message, "Pasted");
     assert!(terminal.undos.lock().unwrap().is_empty());
 }
 
@@ -845,7 +845,7 @@ fn a_command_with_ai_off_says_what_it_needs(cx: &mut TestAppContext) {
     assert_eq!(bar.state(cx), BarState::Blocked);
     assert_eq!(
         bar.props(cx).message,
-        "Command Mode needs AI cleanup or the endpoint"
+        "Command mode needs AI cleanup or the endpoint"
     );
 }
 

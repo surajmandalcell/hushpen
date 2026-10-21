@@ -78,7 +78,7 @@ fn slot_name(slot: Slot) -> &'static str {
         Slot::Hold => "the hold key",
         Slot::HandsFree => "hands-free",
         Slot::PasteLast => "paste last",
-        Slot::Command => "Command Mode",
+        Slot::Command => "command mode",
     }
 }
 

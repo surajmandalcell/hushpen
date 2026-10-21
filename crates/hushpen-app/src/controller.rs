@@ -1855,7 +1855,7 @@ pub(crate) fn failure_for(code: &str) -> (&'static str, &'static str) {
         error::COMMAND_NO_SELECTION => (error::COMMAND_NO_SELECTION, "Select text first"),
         error::COMMAND_NEEDS_AI => (
             error::COMMAND_NEEDS_AI,
-            "Command Mode needs AI cleanup or the endpoint",
+            "Command mode needs AI cleanup or the endpoint",
         ),
         error::LLM_TIMEOUT => (
             error::LLM_TIMEOUT,
