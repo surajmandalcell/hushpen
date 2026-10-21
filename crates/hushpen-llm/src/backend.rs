@@ -66,6 +66,8 @@ pub struct LoadInfo {
 pub struct JobSpec {
     /// The fixed part. The session keeps the model state of its prompt for the next job.
     pub system: String,
+    /// Worked examples, as turns between the system prompt and the user's text.
+    pub examples: &'static [(&'static str, &'static str)],
     pub user: String,
     pub max_tokens: u32,
 }
