@@ -1,10 +1,11 @@
-//! The live macOS permission calls. Reads never prompt; `request`, `open_url`, and
-//! `open_path` run only after a click on an onboarding button.
+//! The live macOS permission calls. Reads never prompt and never reset; `request`, `open_url`,
+//! and `open_path` run only after a click on an onboarding button. A `request` for a permission
+//! that is not granted first runs `tccutil reset` for Hushpen's own bundle id only.
 
 // Calls into frameworks that the objc2 bindings of this workspace do not wrap.
 #![allow(unsafe_code)]
 
-use super::reader::{Api, Reader};
+use super::reader::{Api, Reader, tcc_service};
 use block2::RcBlock;
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -14,9 +15,10 @@ use hushpen_core::permission::{Permission, Preflight};
 use objc2::msg_send;
 use objc2::runtime::{AnyClass, Bool};
 use objc2_core_graphics::CGRequestListenEventAccess;
-use objc2_foundation::{NSNotification, NSNotificationCenter, NSString};
+use objc2_foundation::{NSBundle, NSNotification, NSNotificationCenter, NSString};
 use std::ptr::NonNull;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// `AVMediaTypeAudio`.
 const AUDIO_MEDIA_TYPE: &str = "soun";
@@ -27,6 +29,9 @@ const HID_REQUEST_LISTEN_EVENT: u32 = 1;
 const HID_ACCESS_UNKNOWN: u32 = 2;
 
 const APP_ACTIVE: &str = "NSApplicationDidBecomeActiveNotification";
+
+/// A hung `tccutil` is killed after this, so a click on Allow never stalls the window for long.
+const RESET_LIMIT: Duration = Duration::from_secs(2);
 
 #[link(name = "AVFoundation", kind = "framework")]
 unsafe extern "C" {}
@@ -108,6 +113,27 @@ impl Api for Live {
             ];
         }
     }
+
+    fn reset(&self, permission: Permission) {
+        let Some(bundle) = own_bundle_id() else {
+            return;
+        };
+        let service = tcc_service(permission);
+        let mut command = std::process::Command::new("/usr/bin/tccutil");
+        command.args(["reset", service, &bundle]);
+        match super::run_bounded(command, RESET_LIMIT) {
+            Ok(status) if status.success() => log::info!("PERMISSION_RESET {}", permission.key()),
+            Ok(status) => log::warn!("tccutil reset {service} {bundle} failed: {status}"),
+            Err(error) => log::warn!("tccutil reset {service} {bundle} failed: {error}"),
+        }
+    }
+}
+
+/// The bundle id of the running app. A bare binary has none, and then nothing is reset: a
+/// `tccutil reset` without a bundle id would reset every app.
+fn own_bundle_id() -> Option<String> {
+    let id = NSBundle::mainBundle().bundleIdentifier()?.to_string();
+    (!id.trim().is_empty()).then_some(id)
 }
 
 /// `AXIsProcessTrusted`: read live, not cached per process.

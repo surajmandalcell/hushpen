@@ -11,7 +11,7 @@ The mission is PAUSED at S2 part B, waiting for the owner: the Accessibility and
 ## Current live state
 
 - The test app `mac-check/Hushpen.app` is signed with the Apple Development identity (designated requirement: bundle id `app.hushpen.test` plus the certificate). The new signature dropped the old ad-hoc grants once.
-- Grants for the new signature: Removable Volumes on (set through Codex in System Settings > Files & Folders), Microphone granted. Accessibility (System Settings name: Device Control and Data Access) and Input Monitoring read denied. A denied app's request is ignored, so Hushpen never adds itself to those lists. The owner removes the old "Hushpen.app" row and adds `mac-check/Hushpen.app` with + in both lists (Touch ID).
+- Grants for the new signature: Removable Volumes on (set through Codex in System Settings > Files & Folders), Microphone granted. Accessibility (System Settings name: Device Control and Data Access) and Input Monitoring read denied. macOS ignores a request from an app it holds a denied or stale record for, so Allow on a permission that is not granted first runs `tccutil reset <Service> <own bundle id>` (logged as `PERMISSION_RESET <key>`) and then requests it. macOS then shows the prompt and adds a fresh Hushpen row, which the owner turns on (Touch ID).
 - Hushpen d2 runs from the build before 16e1b7c (check with `pgrep -x hushpen`), on the repair permission page. The compiled 16e1b7c build is in the target folder; after the grants, quit Hushpen and rerun `harness/mac-test-app.sh` to copy and sign it.
 - The S2 watcher is not running; the lock file holds a dead pid. Relaunch `bin/watch.sh` (fireAndForget, 8 h deadline) after Hushpen restarts.
 
