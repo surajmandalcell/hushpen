@@ -158,7 +158,7 @@ The look is neutral and uses very few colors. Gray fills, one blue accent, and a
 
 ## App Icon
 
-The app icon follows the selected Ink Slate direction while staying recognizable as Hushpen: a centered speech-loop mark, a simple `#20272d` to `#10171d` to `#04070a` background, and no text. The production source is `assets/asrpro-app-icon.svg`, with raster exports in `assets/asrpro-app-icon.png`, `assets/asrpro-app-icon.icns`, and `assets/linux-icons/*.png`. The macOS menu bar and the Linux tray glyphs use PNG assets.
+The app icon follows the selected Ink Slate direction while staying recognizable as Hushpen: a centered speech-loop mark, a simple `#20272d` to `#10171d` to `#04070a` background, and no text. The production source is `assets/hushpen-app-icon.svg`, with raster exports in `assets/hushpen-app-icon.png`, `assets/hushpen-app-icon.icns`, and `assets/linux-icons/*.png`. The macOS menu bar and the Linux tray glyphs use PNG assets.
 
 Use a 1024x1024 source canvas and keep the rounded tile inset inside the canvas so the Dock footprint matches standard macOS icon sizing. The visual construction stays layer-friendly: simple background plane, foreground ribbon mark, subtle glass rim, and appearance variants that still read in light or dark contexts.
 

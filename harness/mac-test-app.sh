@@ -18,7 +18,7 @@ cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -
 ps -axo command | grep -q "^$APP/Contents/MacOS/hushpen" && die "built; Hushpen is running, quit it and run again"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$CARGO_TARGET_DIR/debug/hushpen" "$CARGO_TARGET_DIR/debug/hushpen-llm" "$APP/Contents/MacOS/"
-cp assets/asrpro-app-icon.icns "$APP/Contents/Resources/Hushpen.icns"
+cp assets/hushpen-app-icon.icns "$APP/Contents/Resources/Hushpen.icns"
 cat >"$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
