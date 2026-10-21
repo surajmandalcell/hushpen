@@ -6,14 +6,15 @@ State as of 2026-10-21. Read `specs/missions/mission1.completed.md` first. This 
 
 The mission runs in Factory Droid as orchestrator mission `f0a389f7-d034-46ca-9118-308ed631c4b8`, state in `/Users/surajmandal/.factory/missions/f0a389f7-d034-46ca-9118-308ed631c4b8`. To resume inside Factory: open that mission and call `start_mission_run` when this file says so. To resume outside Factory (plain agent): follow the "Remaining work" steps below by hand; `features.json` in the mission dir holds the exact feature descriptions, preconditions, and expected behavior for each step.
 
-The mission is PAUSED at S2 part B, waiting for the owner: the Accessibility and Input Monitoring grants (Touch ID), then the real-key checklist. Do not start new milestone or feature work until step 1 below is unblocked.
+The mission is PAUSED at S2 part B, waiting for the owner to run the real-key checklist. All grants are in place. Do not start new milestone or feature work until step 1 below is unblocked.
 
 ## Current live state
 
 - The test app `mac-check/Hushpen.app` is signed with the Apple Development identity (designated requirement: bundle id `app.hushpen.test` plus the certificate). The new signature dropped the old ad-hoc grants once.
-- Grants for the new signature: Removable Volumes on (set through Codex in System Settings > Files & Folders), Microphone granted. Accessibility (System Settings name: Device Control and Data Access) and Input Monitoring read denied. macOS ignores a request from an app it holds a denied or stale record for, so Allow on a permission that is not granted first runs `tccutil reset <Service> <own bundle id>` (logged as `PERMISSION_RESET <key>`) and then requests it. macOS then shows the prompt and adds a fresh Hushpen row, which the owner turns on (Touch ID).
-- Hushpen d2 runs from the build before 16e1b7c (check with `pgrep -x hushpen`), on the repair permission page. The compiled 16e1b7c build is in the target folder; after the grants, quit Hushpen and rerun `harness/mac-test-app.sh` to copy and sign it.
-- The S2 watcher is not running; the lock file holds a dead pid. Relaunch `bin/watch.sh` (fireAndForget, 8 h deadline) after Hushpen restarts.
+- Grants for the new signature: all three granted (Microphone, Accessibility, Input Monitoring) plus Removable Volumes. On this macOS, Input Monitoring is composed from Accessibility: tccd answers ListenEvent from the Accessibility record, so a stale Accessibility record also denies Input Monitoring. Allow on a permission that is not granted first runs `tccutil reset <Service> <own bundle id>` (logged as `PERMISSION_RESET <key>`), then requests it. Allow on Accessibility fixed both rows; the running app saw the grants only after a relaunch.
+- Hushpen d2 runs the c5ad3f8 build (check with `pgrep -x hushpen`), onboarding hidden, permissions ready.
+- The S2 watcher runs (pid in the lock file, 8 h deadline from 06:32 IST 2026-10-21). Relaunch `bin/watch.sh` (fireAndForget) if it died.
+
 
 ## Remaining work, in order
 
@@ -21,7 +22,7 @@ The mission is PAUSED at S2 part B, waiting for the owner: the Accessibility and
 
 The owner runs the 23-step checklist at `/Volumes/External1TB/data/_custom/droid/hushpen/evidence/m5-mac-session-s2/owner-checklist.md` (about 16 minutes) and says "done", with the numbers of any failed steps. Do not continue until then. If the owner already said done, go to step 2.
 
-If the processes died (app or watcher gone): relaunch with `bin/launch.sh` and `bin/watch.sh` in the S2 evidence `bin/` folder, confirm the lock file and the 940x600 window, then hand the checklist to the owner again. After an app code change, rebuild Hushpen.app with `harness/mac-test-app.sh` (signed with the Apple Development identity, so the grants stay). Never run tccutil.
+If the processes died (app or watcher gone): relaunch with `bin/launch.sh` and `bin/watch.sh` in the S2 evidence `bin/` folder, confirm the lock file and the 940x600 window, then hand the checklist to the owner again. After an app code change, rebuild Hushpen.app with `harness/mac-test-app.sh` (signed with the Apple Development identity, so the grants stay). Agents never run tccutil; only the app resets its own record on Allow.
 
 ### Step 2: S2 part B (feature m5-mac-session-s2)
 
