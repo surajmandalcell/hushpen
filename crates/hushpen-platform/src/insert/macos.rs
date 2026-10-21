@@ -7,9 +7,9 @@
 // The pasteboard owner class and the AppKit constants need objc2's `unsafe` calls.
 #![allow(unsafe_code)]
 
-mod guard;
 #[cfg(feature = "test-automation")]
-mod menu;
+mod background;
+mod guard;
 
 use super::{Inserter, SystemClock, Target, UndoError, mono_ms, plan, undo_guard};
 use crate::keyboard_layout::{self, LayoutCache};
@@ -88,6 +88,17 @@ impl Owner {
             last: load(&reads.last),
         }
     }
+
+    /// Test builds only: counts a read that the pasteboard did not report to the owner.
+    #[cfg(feature = "test-automation")]
+    fn mark_read(&self) {
+        let reads = self.ivars();
+        let now = mono_ms() + 1;
+        let _ = reads
+            .first
+            .compare_exchange(0, now, Ordering::AcqRel, Ordering::Acquire);
+        reads.last.store(now, Ordering::Release);
+    }
 }
 
 type Item = Vec<(String, Vec<u8>)>;
@@ -116,6 +127,47 @@ impl MacBoard {
             count: -1,
             layout,
             pid: None,
+        }
+    }
+
+    /// Test builds only: pastes into the focused element of the app `pid` by setting its
+    /// selected text, which an app in the background takes. The text comes from a normal read of
+    /// the pasteboard, which is also the read that the receipt counts.
+    #[cfg(feature = "test-automation")]
+    fn ax_paste(&mut self, pid: i32) -> bool {
+        // SAFETY: a constant of AppKit.
+        let string_type = unsafe { NSPasteboardTypeString };
+        let Some(text) = self
+            .pasteboard
+            .stringForType(string_type)
+            .map(|text| text.to_string())
+        else {
+            log::info!(
+                "TEST_INSERT ax-selected-text pid={pid} failed (the pasteboard has no text)"
+            );
+            return false;
+        };
+        match background::set_selected_text(pid, &text) {
+            Ok(()) => {
+                if let Some(owner) = &self.owner
+                    && owner.receipts().first.is_none()
+                {
+                    // AppKit may answer a read in the owner's own process without asking the
+                    // owner. The target took the text, so the receipt is counted here.
+                    owner.mark_read();
+                }
+                log::info!("TEST_INSERT ax-selected-text pid={pid} ok");
+                true
+            }
+            Err(miss) => {
+                log::info!("TEST_INSERT ax-selected-text pid={pid} failed ({miss})");
+                // The read above used up the promise and counted a receipt. A fresh promise lets
+                // the key paths that follow earn their own.
+                if let Err(error) = self.write(Selection::Clipboard, &text) {
+                    log::warn!("TEST_INSERT the text was not put back on the pasteboard: {error}");
+                }
+                false
+            }
         }
     }
 }
@@ -174,6 +226,12 @@ impl Backend for MacBoard {
         }
         if !crate::permissions::accessibility_trusted() {
             return Err(ChordError::NoPermission);
+        }
+        #[cfg(feature = "test-automation")]
+        if let Some(pid) = self.pid
+            && self.ax_paste(pid)
+        {
+            return Ok(());
         }
         command_key(self.layout.v_key_code(), 'V', self.pid)
     }
@@ -349,16 +407,51 @@ fn key_pid(_target: &Target) -> Option<i32> {
 /// its menu item pressed, because it ignores a key posted to its process.
 #[cfg(feature = "test-automation")]
 fn command_key(key: u16, letter: char, pid: Option<i32>) -> Result<(), ChordError> {
-    if let Some(pid) = pid {
-        match menu::press_command(pid, letter) {
-            Ok(()) => return Ok(()),
-            Err(miss) => log::warn!(
-                "the Command-{letter} menu item of process {pid} was not pressed ({miss}), \
-                 so the key goes to the process"
-            ),
+    let Some(pid) = pid else {
+        return post_command_key(key, None);
+    };
+    match background::press_command(pid, letter) {
+        Ok(()) => {
+            log::info!("TEST_INSERT menu-press cmd+{letter} pid={pid} ok");
+            return Ok(());
+        }
+        Err(miss) => log::warn!(
+            "TEST_INSERT menu-press cmd+{letter} pid={pid} failed ({miss}), \
+             so the key goes to the process"
+        ),
+    }
+    let result = post_command_key(key, Some(pid));
+    log::info!(
+        "TEST_INSERT pid-post cmd+{letter} pid={pid} {}",
+        if result.is_ok() { "sent" } else { "failed" }
+    );
+    result
+}
+
+/// The text selected in the focused element: of the app in front, or of the app `pid`.
+#[cfg(feature = "test-automation")]
+fn selected_text(pid: Option<i32>) -> Option<String> {
+    let Some(pid) = pid else {
+        return guard::focused_selected_text();
+    };
+    match background::selected_text(pid) {
+        Ok(text) => {
+            log::info!(
+                "TEST_INSERT ax-selected-text-read pid={pid} {}",
+                if text.is_some() { "ok" } else { "empty" }
+            );
+            text
+        }
+        Err(miss) => {
+            log::info!("TEST_INSERT ax-selected-text-read pid={pid} failed ({miss})");
+            None
         }
     }
-    post_command_key(key, pid)
+}
+
+#[cfg(not(feature = "test-automation"))]
+fn selected_text(_pid: Option<i32>) -> Option<String> {
+    guard::focused_selected_text()
 }
 
 #[cfg(not(feature = "test-automation"))]
@@ -406,11 +499,7 @@ impl Inserter for MacInserter {
             return None;
         }
         let pid = key_pid(target);
-        // The focused element is the one of the app in front, so an app in the background is
-        // only ever copied from.
-        if pid.is_none()
-            && let Some(text) = guard::focused_selected_text()
-        {
+        if let Some(text) = selected_text(pid) {
             return Some(text);
         }
         if !crate::permissions::accessibility_trusted() {
@@ -571,6 +660,36 @@ mod tests {
             .join()
             .expect("the worker reads the shared table and calls no TIS function");
         assert_eq!(keys, (40, keyboard_layout::ANSI_C, keyboard_layout::ANSI_Z));
+    }
+
+    /// The background paste of a test build relies on this: AppKit asks the owner even when the
+    /// read comes from Hushpen itself.
+    #[cfg(feature = "test-automation")]
+    #[test]
+    fn a_read_in_this_process_is_a_receipt() {
+        let mut board = board();
+        board.write(Selection::Clipboard, "the transcript").unwrap();
+        let text = board
+            .pasteboard
+            .stringForType(unsafe { NSPasteboardTypeString })
+            .map(|text| text.to_string());
+        assert_eq!(text.as_deref(), Some("the transcript"));
+        assert!(board.receipts().first.is_some());
+    }
+
+    #[cfg(feature = "test-automation")]
+    #[test]
+    fn a_failed_background_paste_leaves_a_fresh_promise_with_no_receipt() {
+        let mut board = board();
+        board.write(Selection::Clipboard, "the transcript").unwrap();
+        assert!(!board.ax_paste(i32::MAX));
+        assert_eq!(board.receipts(), Receipts::default());
+        assert!(board.still_ours(Selection::Clipboard));
+        let text = board
+            .pasteboard
+            .stringForType(unsafe { NSPasteboardTypeString })
+            .map(|text| text.to_string());
+        assert_eq!(text.as_deref(), Some("the transcript"));
     }
 
     #[test]

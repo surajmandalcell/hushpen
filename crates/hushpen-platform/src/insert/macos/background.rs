@@ -1,6 +1,7 @@
-//! Test builds only: presses a menu item of an app in the background through the accessibility
-//! API. An inactive app such as TextEdit ignores a key event posted to its process, but it runs
-//! a menu item that is pressed this way.
+//! Test builds only: puts text into, reads text from, and presses menu items of an app in the
+//! background through the accessibility API. An inactive app such as TextEdit ignores a key event
+//! posted to its process and shows its Edit menu items as disabled, but its focused text area
+//! takes a new selected text.
 
 // Plain C calls on memory this module owns.
 #![allow(unsafe_code)]
@@ -19,6 +20,8 @@ const ENABLED: &str = "AXEnabled";
 const CMD_CHAR: &str = "AXMenuItemCmdChar";
 const CMD_MODIFIERS: &str = "AXMenuItemCmdModifiers";
 const PRESS: &str = "AXPress";
+const FOCUSED_ELEMENT: &str = "AXFocusedUIElement";
+const SELECTED_TEXT: &str = "AXSelectedText";
 /// An app that does not answer must not hold the paste for long.
 const AX_TIMEOUT_SECONDS: f32 = 1.0;
 /// The menu bar, its items, their menus, and the items of those menus.
@@ -30,6 +33,11 @@ const MAX_ITEMS: usize = 2000;
 unsafe extern "C" {
     fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
     fn AXUIElementPerformAction(element: CFTypeRef, action: CFStringRef) -> i32;
+    fn AXUIElementSetAttributeValue(
+        element: CFTypeRef,
+        attribute: CFStringRef,
+        value: CFTypeRef,
+    ) -> i32;
 }
 
 /// What a menu item says about its key equivalent.
@@ -43,19 +51,27 @@ pub(super) struct Keys {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Miss {
+    NoApp,
     NoMenuBar,
     NoItem,
     Disabled,
     PressFailed(i32),
+    NoFocusedElement,
+    SetFailed(i32),
 }
 
 impl std::fmt::Display for Miss {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Miss::NoApp => f.write_str("the process has no accessibility element"),
             Miss::NoMenuBar => f.write_str("the app shows no menu bar"),
             Miss::NoItem => f.write_str("no menu item has this key"),
             Miss::Disabled => f.write_str("the menu item with this key is disabled"),
             Miss::PressFailed(code) => write!(f, "the press failed with AX error {code}"),
+            Miss::NoFocusedElement => f.write_str("the app has no focused element"),
+            Miss::SetFailed(code) => {
+                write!(f, "the selected text was refused with AX error {code}")
+            }
         }
     }
 }
@@ -138,15 +154,7 @@ fn menu_items(bar: &CFType) -> Vec<CFType> {
 
 /// Presses the menu item of `pid` whose key is Command and `letter`, the way a click does.
 pub(super) fn press_command(pid: i32, letter: char) -> Result<(), Miss> {
-    // SAFETY: "Create" returns a +1 reference that this wrapper now owns.
-    let app = unsafe {
-        let raw = AXUIElementCreateApplication(pid);
-        if raw.is_null() {
-            return Err(Miss::NoMenuBar);
-        }
-        CFType::wrap_under_create_rule(raw)
-    };
-    with_timeout(&app, AX_TIMEOUT_SECONDS);
+    let app = app(pid)?;
     let bar = attribute(&app, MENU_BAR).ok_or(Miss::NoMenuBar)?;
     let items = menu_items(&bar).into_iter().map(|item| {
         let keys = keys(&item);
@@ -162,6 +170,55 @@ pub(super) fn press_command(pid: i32, letter: char) -> Result<(), Miss> {
     } else {
         Err(Miss::PressFailed(status))
     }
+}
+
+/// The accessibility element of the app `pid`, with the short timeout.
+fn app(pid: i32) -> Result<CFType, Miss> {
+    // SAFETY: "Create" returns a +1 reference that this wrapper now owns.
+    let app = unsafe {
+        let raw = AXUIElementCreateApplication(pid);
+        if raw.is_null() {
+            return Err(Miss::NoApp);
+        }
+        CFType::wrap_under_create_rule(raw)
+    };
+    with_timeout(&app, AX_TIMEOUT_SECONDS);
+    Ok(app)
+}
+
+/// The focused element of the app `pid`, which the app keeps while it is in the background.
+fn focused(pid: i32) -> Result<CFType, Miss> {
+    let focused = attribute(&app(pid)?, FOCUSED_ELEMENT).ok_or(Miss::NoFocusedElement)?;
+    with_timeout(&focused, AX_TIMEOUT_SECONDS);
+    Ok(focused)
+}
+
+/// Replaces the selection of the focused element of `pid` with `text`, as a paste does.
+pub(super) fn set_selected_text(pid: i32, text: &str) -> Result<(), Miss> {
+    let focused = focused(pid)?;
+    let name = CFString::new(SELECTED_TEXT);
+    let value = CFString::new(text);
+    // SAFETY: `focused`, `name`, and `value` are live CF objects.
+    let status = unsafe {
+        AXUIElementSetAttributeValue(
+            focused.as_CFTypeRef(),
+            name.as_concrete_TypeRef(),
+            value.as_CFTypeRef(),
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(Miss::SetFailed(status))
+    }
+}
+
+/// The selected text of the focused element of `pid`, when it has any.
+pub(super) fn selected_text(pid: i32) -> Result<Option<String>, Miss> {
+    let text = attribute(&focused(pid)?, SELECTED_TEXT)
+        .and_then(|value| value.downcast_into::<CFString>())
+        .map(|text| text.to_string());
+    Ok(text.filter(|text| !text.trim().is_empty()))
 }
 
 #[cfg(test)]
@@ -215,9 +272,14 @@ mod tests {
         assert_eq!(pick(Vec::<(&str, Keys)>::new(), 'Z'), Err(Miss::NoItem));
     }
 
-    /// Asking a process that does not exist answers at once and presses nothing.
+    /// Asking a process that does not exist answers at once and changes nothing.
     #[test]
-    fn a_missing_process_has_no_menu_bar() {
+    fn a_missing_process_has_no_menu_bar_and_no_focused_element() {
         assert_eq!(press_command(i32::MAX, 'V'), Err(Miss::NoMenuBar));
+        assert_eq!(
+            set_selected_text(i32::MAX, "x"),
+            Err(Miss::NoFocusedElement)
+        );
+        assert_eq!(selected_text(i32::MAX), Err(Miss::NoFocusedElement));
     }
 }
