@@ -307,7 +307,7 @@ impl Controller {
                 }
             }
             Some(JobOutcome::Failed(failed)) => failure(failure_for(&failed.code).1),
-            Some(JobOutcome::Cancelled) | None => failure("Reprocessing was cancelled."),
+            Some(JobOutcome::Cancelled) | None => failure("Reprocessing was canceled."),
         };
         hook::record_event("history", &format!("reprocess failed {id}"));
         self.reprocess = Some((id.to_owned(), state));

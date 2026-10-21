@@ -159,12 +159,14 @@ pub fn render(import: &Entity<Import>, cx: &mut App) -> impl IntoElement + use<>
         .drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(selection))
 }
 
-fn detail_of(item: &super::Item, home: Option<&std::path::Path>) -> String {
+/// The second line of a file: why it failed, in words (the code stays in the log), its words
+/// when it is done, or the folder it came from.
+pub(super) fn detail_of(item: &super::Item, home: Option<&std::path::Path>) -> String {
     match item.state {
         State::Failed => item
             .failure
             .as_ref()
-            .map(|(code, message)| format!("{message} ({code})"))
+            .map(|(_, message)| message.clone())
             .unwrap_or_default(),
         State::Done => snippet(item.text.as_deref().unwrap_or("")),
         _ => item
@@ -187,10 +189,10 @@ fn status_of(palette: Palette, line: &Line) -> (String, gpui_kit::Rgba) {
     match line.state {
         State::Queued => ("Waiting".to_owned(), palette.label_secondary),
         State::Running => (format!("{}%", line.percent), palette.label),
-        State::Cancelling => ("Cancelling".to_owned(), palette.label_secondary),
+        State::Cancelling => ("Canceling".to_owned(), palette.label_secondary),
         State::Done => ("Done".to_owned(), palette.success),
         State::Failed => ("Failed".to_owned(), palette.error),
-        State::Cancelled => ("Cancelled".to_owned(), palette.label_secondary),
+        State::Cancelled => ("Canceled".to_owned(), palette.label_secondary),
     }
 }
 
