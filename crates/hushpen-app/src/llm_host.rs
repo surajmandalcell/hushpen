@@ -5,7 +5,7 @@
 //! A worker crash, hang, or missing model never reaches the user as an error. A job ends in an
 //! outcome the cleanup provider turns into the rule text.
 
-use hushpen_engine::{ChildSpec, EngineLog, LlmClient, LlmSpec, LlmStatus, Timing};
+use hushpen_engine::{ChildSpec, EngineLog, LlmClient, LlmSpec, LlmState, LlmStatus, Timing};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files;
 use serde_json::{Map, Value};
@@ -69,6 +69,13 @@ impl LlmHost {
 
     pub fn status(&self) -> Option<LlmStatus> {
         self.client().map(|client| client.status())
+    }
+
+    /// A worker runs but has no model yet: it is starting or loading one.
+    pub fn loading(&self) -> bool {
+        self.status().is_some_and(|status| {
+            status.model.is_none() && matches!(status.state, LlmState::Starting | LlmState::Loading)
+        })
     }
 
     /// Starts, reloads, or stops the worker to match the settings. Safe to call often: it

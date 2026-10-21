@@ -320,6 +320,8 @@ pub struct Controller {
     permissions: Option<PermissionWatch>,
     cues: Option<CueSink>,
     ai: Option<CleanerSource>,
+    /// Whether the local cleanup model is loading right now.
+    ai_loading: Option<Rc<dyn Fn() -> bool>>,
     /// Stops the AI step of the running session.
     ai_cancel: Option<Arc<CancelToken>>,
     ai_progress: Arc<ai_cleanup::Progress>,
@@ -471,6 +473,7 @@ impl Controller {
             permissions: None,
             cues: None,
             ai: None,
+            ai_loading: None,
             ai_cancel: None,
             ai_progress: Arc::default(),
             shown_ai: None,
@@ -510,6 +513,12 @@ impl Controller {
     /// counts as unavailable and the rule text goes in.
     pub fn attach_ai(&mut self, source: CleanerSource) {
         self.ai = Some(source);
+    }
+
+    /// Tells the pipeline how to see that the local model is still loading, so a dictation in
+    /// that time says so while the rule text goes in.
+    pub fn attach_ai_loading(&mut self, loading: Rc<dyn Fn() -> bool>) {
+        self.ai_loading = Some(loading);
     }
 
     /// Whether the settings ask for AI cleanup. The cleaner source picks the provider.
@@ -622,9 +631,15 @@ impl Controller {
         }
     }
 
-    /// What the AI step is doing now, for Home and the hook.
+    /// What the AI step is doing now, for Home and the hook. A dictation that runs while the
+    /// local model loads reads `Preparing` too, although its AI step does not wait for the load.
     pub fn ai_phase(&self) -> Option<ai_cleanup::Phase> {
-        self.ai_progress.get()
+        self.ai_progress.get().or_else(|| {
+            let busy = matches!(self.machine.state(), State::Transcribing | State::Cleaning);
+            let loading = self.ai_loading.as_ref().is_some_and(|loading| loading());
+            (busy && loading && self.ai_wanted() && !self.ai_uses_endpoint())
+                .then_some(ai_cleanup::Phase::Preparing)
+        })
     }
 
     #[cfg(test)]
