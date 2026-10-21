@@ -110,9 +110,10 @@ pub fn wave_goal(meter: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-/// The text of the result flash: what happened to the words.
+/// The text of the result flash: what happened to the words. History names the same outcomes
+/// "Pasted" and "Copied only".
 pub fn result_text(copied: bool) -> &'static str {
-    if copied { "Copied" } else { "Inserted" }
+    if copied { "Copied" } else { "Pasted" }
 }
 
 /// A short line for a failure code; the full text is in History.
@@ -127,7 +128,7 @@ pub fn failure_text(code: Option<&str>) -> &'static str {
         Some(CAPTURE_FAILED) => "Recording stopped",
         Some(ENGINE_NO_MODEL | ENGINE_LOAD_FAILED) => "Speech model not ready",
         Some(COMMAND_NO_SELECTION) => "Select text first",
-        Some(COMMAND_NEEDS_AI) => "Command Mode needs AI cleanup or the endpoint",
+        Some(COMMAND_NEEDS_AI) => "Command mode needs AI cleanup or the endpoint",
         Some(LLM_TIMEOUT) => "AI edit timed out. Text unchanged",
         Some(
             LLM_GUARD_REJECTED | LLM_UNAVAILABLE | LLM_LOAD_FAILED | LLM_NO_MODEL | LLM_PROTOCOL
@@ -257,15 +258,10 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
                 bar.press_undo(cx)
             })),
         BarState::Error | BarState::Blocked => {
-            let icon_name = if props.state == BarState::Error {
-                IconName::CircleAlert
-            } else {
-                IconName::Info
-            };
             let mut notice = base
                 .pr(px(4.0))
                 .gap(px(space::SM))
-                .child(icon(icon_name, tone(props.state)))
+                .child(icon(IconName::CircleAlert, tone(props.state)))
                 .child(
                     div()
                         .flex_1()
@@ -514,6 +510,6 @@ mod tests {
         assert_eq!(failure_text(Some("ENGINE_CRASHED")), "Transcription failed");
         assert_eq!(failure_text(None), "Transcription failed");
         assert_eq!(result_text(true), "Copied");
-        assert_eq!(result_text(false), "Inserted");
+        assert_eq!(result_text(false), "Pasted");
     }
 }

@@ -137,6 +137,21 @@ fn the_defaults_read_with_linux_names_and_no_mac_words(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
+fn a_binding_the_field_may_cut_shows_whole_in_a_tooltip(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let state = state(cx, &rig);
+    let shown = |slot: &str| state["slots"][slot]["display"].as_str().unwrap().to_owned();
+    assert_eq!(
+        shown("handsFree"),
+        "Double tap Right Alt, or Right Alt+Space"
+    );
+    assert!(panel::needs_tooltip(&shown("handsFree")));
+    for short in ["hold", "pasteLast", "command"] {
+        assert!(!panel::needs_tooltip(&shown(short)), "{short}");
+    }
+}
+
+#[gpui_kit::test]
 fn a_recorded_hold_key_is_saved_shown_and_made_live(cx: &mut TestAppContext) {
     let rig = rig(cx);
     record(cx, &rig, Slot::Hold, &[RIGHT_CTRL]);

@@ -334,7 +334,7 @@ watch_stop
 after=$(visible_start)
 [ -z "$after" ] || failures+="the chord left a cue or a listening state: $after; "
 [ "$notice_state" = blocked ] || failures+="the bar shows '$notice_state', not the blocked notice; "
-case "$notice" in *"Command Mode needs AI cleanup or the endpoint"*) ;; *) failures+="the bar says '$notice'; " ;; esac
+case "$notice" in *"Command mode needs AI cleanup or the endpoint"*) ;; *) failures+="the bar says '$notice'; " ;; esac
 saw_mode command && failures+="a command session started; "
 saw_pstate cleaning && failures+="the run reached cleaning; "
 unchanged || failures+="the entry is '$(live)' with the selection '$(primary)'; "
