@@ -40,3 +40,7 @@ tempfile.workspace = true
 [[test]]
 name = "sidebar_material"
 harness = false
+
+[[test]]
+name = "window_chrome"
+harness = false

@@ -1,5 +1,6 @@
-//! macOS window chrome. AppKit draws the one set of traffic lights, so nothing here hides or
-//! moves a standard button. The window can neither zoom nor enter full screen.
+//! macOS window chrome. AppKit draws the one set of traffic lights, so nothing here moves a
+//! standard button; only the zoom button is hidden. The window can neither zoom nor enter full
+//! screen.
 //!
 //! GPUI already builds the style mask (titled, closable, miniaturizable, not resizable, full
 //! size content), so this module leaves the mask alone: changing it on a live window makes
@@ -28,10 +29,12 @@ pub(super) fn lock(view: usize, _width: u16, _height: u16) -> Result<(), ChromeE
     Ok(())
 }
 
-/// The zoom button stays on screen but cannot be pressed, and the window never goes full screen.
+/// The zoom button cannot be pressed and is hidden, so VoiceOver does not announce a disabled
+/// control the window does not have. The window never goes full screen.
 fn apply(window: &NSWindow) {
     if let Some(zoom) = window.standardWindowButton(NSWindowButton::ZoomButton) {
         zoom.setEnabled(false);
+        zoom.setHidden(true);
     }
     window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenNone);
 }
