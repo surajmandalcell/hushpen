@@ -6,24 +6,20 @@ State as of 2026-10-21. Read `specs/missions/mission1.completed.md` first. This 
 
 The mission runs in Factory Droid as orchestrator mission `f0a389f7-d034-46ca-9118-308ed631c4b8`, state in `/Users/surajmandal/.factory/missions/f0a389f7-d034-46ca-9118-308ed631c4b8`. To resume inside Factory: open that mission and call `start_mission_run` when this file says so. To resume outside Factory (plain agent): follow the "Remaining work" steps below by hand; `features.json` in the mission dir holds the exact feature descriptions, preconditions, and expected behavior for each step.
 
-The mission is PAUSED at S2 part B, waiting for the owner to run the real-key checklist. All grants are in place. Do not start new milestone or feature work until step 1 below is unblocked.
+The mission is at S2 part B. All grants are in place and the agent ran the S2 checklist (step 1).
 
 ## Current live state
 
 - The test app `mac-check/Hushpen.app` is signed with the Apple Development identity (designated requirement: bundle id `app.hushpen.test` plus the certificate). The new signature dropped the old ad-hoc grants once.
 - Grants for the new signature: all three granted (Microphone, Accessibility, Input Monitoring) plus Removable Volumes. On this macOS, Input Monitoring is composed from Accessibility: tccd answers ListenEvent from the Accessibility record, so a stale Accessibility record also denies Input Monitoring. Allow on a permission that is not granted first runs `tccutil reset <Service> <own bundle id>` (logged as `PERMISSION_RESET <key>`), then requests it. Allow on Accessibility fixed both rows; the running app saw the grants only after a relaunch.
-- Hushpen d2 runs the c5ad3f8 build (check with `pgrep -x hushpen`), onboarding hidden, permissions ready.
-- The S2 watcher runs (pid in the lock file, 8 h deadline from 06:32 IST 2026-10-21). Relaunch `bin/watch.sh` (fireAndForget) if it died.
+- The test app is built at 9a5f81f. Hushpen was quit at step 22; start it with `bin/launch.sh`. The S2 watcher is stopped: its guard cancels any run while TextEdit is not in front and it overwrites the clipboard, so it does not fit agent runs.
 
 
 ## Remaining work, in order
 
-### Step 1: owner finishes the S2 checklist (BLOCKED ON OWNER)
+### Step 1: S2 checklist, agent-run (DONE except physical-key items)
 
-The owner runs the 23-step checklist at `/Volumes/External1TB/data/_custom/droid/hushpen/evidence/m5-mac-session-s2/owner-checklist.md` (about 16 minutes) and says "done", with the numbers of any failed steps. Do not continue until then. If the owner already said done, go to step 2.
-
-If the processes died (app or watcher gone): relaunch with `bin/launch.sh` and `bin/watch.sh` in the S2 evidence `bin/` folder, confirm the lock file and the 940x600 window, then hand the checklist to the owner again. After an app code change, rebuild Hushpen.app with `harness/mac-test-app.sh` (signed with the Apple Development identity, so the grants stay). Agents never run tccutil; only the app resets its own record on Allow.
-
+The owner will not run the checklist. The agent ran it on 9a5f81f: dictation through the test hook (`pipeline-event`, `feed-wav`, `tray-click`), pasted into a background TextEdit through the test-only insert target (`hookctl action insert-target '{"bundle":"com.apple.TextEdit"}'`, AX selected text, logged `TEST_INSERT`), GUI steps through Codex in the background. Results are in `agent-run.log` in the S2 evidence folder. Passed: steps 2-15, 17, 18 (real save panel), 20, 22; step 21 from the tccd log and `step-21-permissions.json`. Not driveable without a physical key or a forbidden driver: the real Right Option hold through the key tap (the hook sends the same pipeline events), Fn and Right Ctrl recording (Codex rejects modifier-only keys), Terminal Secure Keyboard Entry (replaced by `EnableSecureEventInput` in `bin/secure.swift`), the real menu bar icon click (Codex cannot reach the status item), and the Dock restore in step 19. Opening Settings from the app menu activates Hushpen by design; give the front back to the owner's app after it.
 ### Step 2: S2 part B (feature m5-mac-session-s2)
 
 Resume the mission run. The pending feature order in `features.json` is: m5-mac-session-s2, m7-mac-session-s3, m7-publish. Part B marks each checklist line from app-recorded evidence only (History store, hushpen.log, watcher logs, the saved scratch.txt, owner screenshots on the Desktop), never from the owner's word. Remaining assertions are listed in the feature: VAL-MACS1-001, 003-010; VAL-MACS2-001, 003-008, 011-013; VAL-NAT-001, 003, 005, 006, 008, 013 (some partly pre-proven in `session.json` runs 1-3; keep those results). End checks: no "already borrowed" or "panicked" in hushpen.log, no SIGTRAP, front app unchanged from start.
