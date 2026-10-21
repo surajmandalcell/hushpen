@@ -2,10 +2,10 @@
 //! build on these; nothing else in the app hard-codes a GitHub URL.
 
 /// The repository. External links open only this URL and pages below it.
-pub const REPO_URL: &str = "https://github.com/surajmandalcell/asrpro";
+pub const REPO_URL: &str = "https://github.com/surajmandalcell/hushpen";
 
 /// Where "Report issue" goes.
-pub const ISSUES_URL: &str = "https://github.com/surajmandalcell/asrpro/issues";
+pub const ISSUES_URL: &str = "https://github.com/surajmandalcell/hushpen/issues";
 
 /// True when `url` is the repository or a page below it. About refuses to open
 /// anything else.
@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn the_repo_url_is_the_one_constant() {
-        assert_eq!(REPO_URL, "https://github.com/surajmandalcell/asrpro");
+        assert_eq!(REPO_URL, "https://github.com/surajmandalcell/hushpen");
         assert_eq!(ISSUES_URL, format!("{REPO_URL}/issues"));
     }
 
@@ -30,7 +30,7 @@ mod tests {
         assert!(is_repo_page(&format!("{REPO_URL}/releases")));
         assert!(!is_repo_page("https://github.com/surajmandalcell"));
         assert!(!is_repo_page(
-            "https://github.com/surajmandalcell/asrpro.evil"
+            "https://github.com/surajmandalcell/hushpen.evil"
         ));
         // Plain http is not a repo page. The literal stays out of the source
         // because the net audit flags every non-loopback http URL, test or not.

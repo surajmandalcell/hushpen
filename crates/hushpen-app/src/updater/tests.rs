@@ -17,7 +17,7 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-const NOTES: &str = "https://github.com/surajmandalcell/asrpro/releases/tag/v2.1.0";
+const NOTES: &str = "https://github.com/surajmandalcell/hushpen/releases/tag/v2.1.0";
 const HOUR_MS: u64 = 60 * 60 * 1000;
 
 fn offered(version: &str) -> Offer {
