@@ -17,7 +17,7 @@ use std::sync::atomic::AtomicBool;
 
 /// The release feed. GitHub answers it with a redirect to the newest release asset.
 pub const FEED_URL: &str =
-    "https://github.com/surajmandalcell/asrpro/releases/latest/download/latest.json";
+    "https://github.com/surajmandalcell/hushpen/releases/latest/download/latest.json";
 
 const SIGNATURE_SUFFIX: &str = ".minisig";
 const EMBEDDED_KEY: &str = include_str!("../../../../assets/update-key.pub");

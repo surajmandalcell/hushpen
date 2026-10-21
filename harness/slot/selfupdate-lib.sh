@@ -118,7 +118,7 @@ notice_check() {
   wait_until 10 test -s "$XDG_LOG"
   open=$(head -1 "$XDG_LOG")
   case "$open" in
-    https://github.com/surajmandalcell/asrpro/releases/tag/*) ;;
+    https://github.com/surajmandalcell/hushpen/releases/tag/*) ;;
     *) failures+="the banner button opened '$open', not the release page; " ;;
   esac
   sleep 5

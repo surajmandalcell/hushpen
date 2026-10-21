@@ -29,7 +29,7 @@ version=$(basename "$file" | sed -E 's/^Hushpen-(.*)-linux-(x64|arm64)\.AppImage
 xtask() { (cd "$repo" && cargo run -q -p xtask --locked -- "$@"); }
 xtask update-test-keygen --out "$keys" --name test
 cp "$keys/test.pub" "$out/test.pub"
-notes=https://github.com/surajmandalcell/asrpro/releases/tag/v$version
+notes=https://github.com/surajmandalcell/hushpen/releases/tag/v$version
 for kind in good badsha; do
   xtask update-feed --out "$out/feed/$kind" --key "$keys/test.key" --version "$version" \
     --notes-url "$notes" --artifact "$target=$file" --base-url http://127.0.0.1:8765 \

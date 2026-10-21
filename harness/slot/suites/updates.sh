@@ -21,7 +21,7 @@ FEED_LOG=$RUN_OUT/feed-requests.jsonl
 FEED_PID=/tmp/feed.pid
 FEED_MODE=/tmp/feed-mode
 SETTINGS_FILE=/data/config/settings.json
-NOTES_NEWER=https://github.com/surajmandalcell/asrpro/releases/tag/v2.1.0
+NOTES_NEWER=https://github.com/surajmandalcell/hushpen/releases/tag/v2.1.0
 STUB_BIN=/tmp/stubbin
 XDG_LOG=/tmp/xdg-open.log
 
@@ -298,7 +298,7 @@ cp "$XDG_LOG" "$RUN_OUT/xdg-open-calls.txt" 2>/dev/null
 [ "$(wc -l <"$XDG_LOG" | tr -d ' ')" = 5 ] || failures+="xdg-open was called $(wc -l <"$XDG_LOG" | tr -d ' ') times for 5 rows: $(tr '\n' ' ' <"$XDG_LOG"); "
 grep -qxF /data "$XDG_LOG" || failures+="no xdg-open call for the data folder; "
 grep -qxF /data/logs "$XDG_LOG" || failures+="no xdg-open call for the log folder; "
-grep -q 'github.com/.*asrpro$' "$XDG_LOG" || failures+="no xdg-open call for the repository; "
+grep -q 'github.com/.*hushpen$' "$XDG_LOG" || failures+="no xdg-open call for the repository; "
 grep -q '/issues$' "$XDG_LOG" || failures+="no xdg-open call for the issues page; "
 grep -qxF /app/THIRD-PARTY-NOTICES.html "$XDG_LOG" || failures+="no xdg-open call for the licenses file; "
 alive() { kill -0 "$(ui_pid)" 2>/dev/null; }

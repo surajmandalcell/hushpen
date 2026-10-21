@@ -8,7 +8,7 @@ use super::deps::Deps;
 pub const PRODUCT: &str = "Hushpen";
 pub const BUNDLE_ID: &str = "io.github.surajmandalcell.hushpen";
 const DESCRIPTION: &str = "Private speech recognition and dictation that runs on your computer";
-const HOMEPAGE: &str = "https://github.com/surajmandalcell/asrpro";
+const HOMEPAGE: &str = "https://github.com/surajmandalcell/hushpen";
 const PUBLISHER: &str = "Suraj Mandal";
 pub const MIN_MACOS: &str = "13.0";
 

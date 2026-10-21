@@ -472,7 +472,11 @@ mod tests {
     fn hosts_must_be_on_the_allow_list() {
         let path = "crates/hushpen-app/src/ui/about.rs";
         assert!(
-            violations(path, r#"open("https://github.com/surajmandalcell/asrpro")"#).is_empty()
+            violations(
+                path,
+                r#"open("https://github.com/surajmandalcell/hushpen")"#
+            )
+            .is_empty()
         );
         assert!(violations(path, r#"u("https://us.aws.cdn.hf.co/f")"#).is_empty());
         assert!(violations(path, r#"u("https://objects.githubusercontent.com/f")"#).is_empty());

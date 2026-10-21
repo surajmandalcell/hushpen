@@ -94,10 +94,10 @@ fn a_clock_that_went_back_makes_the_check_due() {
 const FULL: &str = r#"{
   "version": "2.0.1",
   "pub_date": "2026-10-20T10:00:00Z",
-  "notes_url": "https://github.com/surajmandalcell/asrpro/releases/tag/v2.0.1",
+  "notes_url": "https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.1",
   "platforms": {
     "macos-arm64": {
-      "url": "https://github.com/surajmandalcell/asrpro/releases/download/v2.0.1/Hushpen-2.0.1-macos-arm64.zip",
+      "url": "https://github.com/surajmandalcell/hushpen/releases/download/v2.0.1/Hushpen-2.0.1-macos-arm64.zip",
       "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       "size": 17500000
     }
@@ -110,7 +110,7 @@ fn a_full_manifest_is_read() {
     assert_eq!(manifest.version.as_str(), "2.0.1");
     assert_eq!(
         manifest.notes_url,
-        "https://github.com/surajmandalcell/asrpro/releases/tag/v2.0.1"
+        "https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.1"
     );
     assert_eq!(manifest.pub_date.as_deref(), Some("2026-10-20T10:00:00Z"));
     let artifact = &manifest.platforms["macos-arm64"];

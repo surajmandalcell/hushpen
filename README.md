@@ -1,7 +1,7 @@
 # Hushpen
 
 <p align="center">
-  <img src="./assets/asrpro-app-icon.png" alt="Hushpen app icon" width="128" height="128" />
+  <img src="./assets/hushpen-app-icon.png" alt="Hushpen app icon" width="128" height="128" />
 </p>
 
 ## What Hushpen is
@@ -43,7 +43,7 @@ Platforms: macOS 13 or later on Apple silicon, and Linux x64 and arm64 on X11.
 
 ## Install
 
-Download a file from the [releases page](https://github.com/surajmandalcell/asrpro/releases).
+Download a file from the [releases page](https://github.com/surajmandalcell/hushpen/releases).
 Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 ### macOS (Apple silicon)
@@ -128,7 +128,7 @@ Clone and build both programs. The whisper.cpp source is vendored, so there are
 no submodules:
 
 ```sh
-git clone https://github.com/surajmandalcell/asrpro.git hushpen
+git clone https://github.com/surajmandalcell/hushpen.git
 cd hushpen
 cargo build --release --locked -p hushpen-app -p hushpen-llm
 ```

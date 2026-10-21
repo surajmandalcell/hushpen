@@ -5,11 +5,11 @@ use std::net::TcpStream;
 use std::sync::Arc;
 
 // Made with `cargo xtask update-test-keygen` and `cargo xtask update-feed --version 2.1.0`.
-const KEY_A: &str = "RWRNyoIuV/8LntIc6od0cNlA8PZaKbAMI9KR235+sNVUPyHDnoRxzul4";
-const KEY_B: &str = "RWRc1jaPHj5VZqAo95bedIDtYnW++ZxaC/Y8NxB9mUeJNu2Q8cbJVHkl";
-const NOTES: &str = "https://github.com/surajmandalcell/asrpro/releases/tag/v2.1.0";
-const MANIFEST: &str = "{\n  \"version\": \"2.1.0\",\n  \"pub_date\": \"2026-01-01T00:00:00Z\",\n  \"notes_url\": \"https://github.com/surajmandalcell/asrpro/releases/tag/v2.1.0\"\n}\n";
-const SIGNATURE: &str = "untrusted comment: signature from a hushpen test key\nRURNyoIuV/8LnnjLVwaM72JSEbMuioUHzDeHH0nJsdI6fh2ts+wSk2V7Tj11SXy/QyzlEEF0j3dLBicJxn1yqWOB6gV5OY95qQs=\ntrusted comment: hushpen test feed\n5eY0xjda9BkkV8nug/vgc3Mww+XeTG1qz01MxSqlVoWOSPoC0rg01LNlh499+E97aVytcBjLUAWqonouOp0gCQ==\n";
+const KEY_A: &str = "RWRcQOa0MZGe8XyFZ22DcdcdAqScEaZb1EAGkXQwJREjj9T8NGK3Kk6v";
+const KEY_B: &str = "RWStWFfwmzEECrli3fJ5qxu/ekgemnpx5JNMdIEPjqPqsygvGFZ7c5sf";
+const NOTES: &str = "https://github.com/surajmandalcell/hushpen/releases/tag/v2.1.0";
+const MANIFEST: &str = "{\n  \"version\": \"2.1.0\",\n  \"pub_date\": \"2026-01-01T00:00:00Z\",\n  \"notes_url\": \"https://github.com/surajmandalcell/hushpen/releases/tag/v2.1.0\"\n}\n";
+const SIGNATURE: &str = "untrusted comment: signature from a hushpen test key\nRURcQOa0MZGe8Ve3Cxs2yZnkhhrzLt4eBZSrOauTTMZY7r0qRxdgeUzgfBF2aZJGdeoirJxvKLrX4Fm5LxLDwjBVECfsSIfXWgM=\ntrusted comment: hushpen test feed\nZkF8KwWS6nBEnpFLDCJ48zrEH1L3KLiKj6QBxdmzjYDjv1ZnxtOt3DeQZ/4gGYZaRETDbpjbCCoIfNdW3f15Dw==\n";
 
 fn version(text: &str) -> Version {
     Version::parse(text).unwrap()

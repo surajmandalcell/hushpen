@@ -128,7 +128,7 @@ pub fn assemble(about: &str, texts: &[Vec<String>]) -> String {
          </style>\n</head>\n<body>\n\
          <h1>Hushpen third-party notices</h1>\n\
          <p>Hushpen is free software under the GNU Affero General Public License, version 3 or \
-         later. The source is at https://github.com/surajmandalcell/asrpro. Hushpen builds on \
+         later. The source is at https://github.com/surajmandalcell/hushpen. Hushpen builds on \
          the software below. Each part keeps its own license.</p>\n\
          <h2>Libraries, fonts, and models</h2>\n",
     );
