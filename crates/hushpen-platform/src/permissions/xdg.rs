@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn only_web_addresses_pass_the_url_check() {
-        assert!(check_url("https://github.com/surajmandalcell/asrpro").is_ok());
+        assert!(check_url("https://github.com/surajmandalcell/hushpen").is_ok());
         assert!(check_url("HTTP://localhost:8080/x").is_ok());
         for refused in [
             "file:///etc/passwd",
