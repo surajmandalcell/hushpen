@@ -10,14 +10,6 @@ pub fn available() -> bool {
     imp::available()
 }
 
-/// Makes the menu bar icon a template image at menu bar size, so macOS tints it for a light or
-/// dark menu bar. The tray library does not mark its image, and it keeps no handle to the status
-/// item, so this walks the app's windows for the status bar button. Returns how many buttons it
-/// styled; `0` where there is nothing to style.
-pub fn style_status_icon() -> usize {
-    imp::style_status_icon()
-}
-
 #[cfg(target_os = "linux")]
 mod imp {
     use zbus::blocking::{Connection, fdo::DBusProxy};
@@ -38,64 +30,12 @@ mod imp {
         let name = BusName::try_from(WATCHER)?;
         Ok(bus.name_has_owner(name)?)
     }
-
-    pub(super) fn style_status_icon() -> usize {
-        0
-    }
 }
 
-#[cfg(target_os = "macos")]
-mod imp {
-    use objc2::MainThreadMarker;
-    use objc2::runtime::AnyObject;
-    use objc2_app_kit::{NSApplication, NSStatusBarButton, NSView};
-    use objc2_foundation::NSSize;
-
-    /// Points: the menu bar glyph asset is 44 by 32 pixels, drawn at 2x.
-    const ICON_POINTS: NSSize = NSSize::new(22.0, 16.0);
-
-    pub(super) fn available() -> bool {
-        true
-    }
-
-    pub(super) fn style_status_icon() -> usize {
-        let Some(mtm) = MainThreadMarker::new() else {
-            return 0;
-        };
-        let mut styled = 0;
-        for window in NSApplication::sharedApplication(mtm).windows() {
-            if let Some(content) = window.contentView() {
-                styled += style_in(&content);
-            }
-        }
-        styled
-    }
-
-    fn style_in(view: &NSView) -> usize {
-        let object: &AnyObject = view;
-        let mut styled = 0;
-        if let Some(button) = object.downcast_ref::<NSStatusBarButton>()
-            && let Some(image) = button.image()
-        {
-            image.setTemplate(true);
-            image.setSize(ICON_POINTS);
-            styled += 1;
-        }
-        for child in view.subviews() {
-            styled += style_in(&child);
-        }
-        styled
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(target_os = "linux"))]
 mod imp {
     pub(super) fn available() -> bool {
         true
-    }
-
-    pub(super) fn style_status_icon() -> usize {
-        0
     }
 }
 

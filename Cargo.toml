@@ -35,7 +35,7 @@ hushpen-testhook = { path = "crates/hushpen-testhook" }
 gpui-pre = "=0.3.7"
 gpui-pre-wgpu = "=0.3.7"
 gpui-kit = "=0.7.0"
-gpui-tray = { version = "=0.1.4", default-features = false, features = ["gpui-kit"] }
+gpui-tray = { version = "=0.2.0", default-features = false, features = ["gpui-kit"] }
 
 # Window handles, logging facade, and channels (versions already locked by GPUI).
 futures = { version = "=0.3.34", default-features = false, features = ["std"] }
@@ -76,7 +76,7 @@ objc2-foundation = "=0.3.2"
 objc2-service-management = "=0.3.2"
 sys-locale = "=0.3.2"
 x11rb = { version = "=0.14.0", features = ["xinput", "xtest"] }
-# The StatusNotifier watcher check; the same zbus and features gpui-tray uses.
+# The StatusNotifier watcher check and the appearance read. gpui-tray brings its own zbus 6.
 zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
 # Save dialog fallback on Linux: the portal through a libdbus loaded at run time, then zenity.
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }

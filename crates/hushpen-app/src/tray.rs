@@ -153,7 +153,12 @@ pub fn panel_title() -> Option<&'static str> {
 
 fn icon_for(appearance: WindowAppearance, cx: &App) -> Option<Icon> {
     let image = Image::from_bytes(ImageFormat::Png, glyph_for(appearance).to_vec());
-    match Icon::from_gpui(&image, cx) {
+    let builder = Icon::from_gpui(&image, cx);
+    // The glyph is 44 by 32 pixels, drawn at 2x (22 by 16 points). The template flag lets macOS
+    // tint it for a Light or Dark menu bar; without it the glyph stays black.
+    #[cfg(target_os = "macos")]
+    let builder = builder.scale_factor(2.0).template(true);
+    match builder.build() {
         Ok(icon) => Some(icon),
         Err(error) => {
             log::warn!("the tray icon could not be read: {error}");
@@ -261,27 +266,11 @@ pub fn install(cx: &mut App, controller: &Entity<Controller>) -> Option<Tray> {
         }
     })
     .detach();
-
-    #[cfg(target_os = "macos")]
-    cx.spawn(async move |cx| {
-        // The status item gets its button a moment after it is made, so look again for a while.
-        for _ in 0..30 {
-            cx.background_executor()
-                .timer(std::time::Duration::from_millis(100))
-                .await;
-            if cx.update(|_| hushpen_platform::tray_host::style_status_icon()) > 0 {
-                return;
-            }
-        }
-        log::warn!("the menu bar icon was not found, so it is not a template image");
-    })
-    .detach();
     Some(tray)
 }
 
 /// Swaps the Linux glyph when the panel goes from light to dark. The window reports the
-/// system appearance. macOS tints the template glyph itself, and a new image would drop the
-/// template flag and draw black on a dark menu bar.
+/// system appearance. macOS tints the template glyph itself, so it needs no swap.
 pub fn follow_appearance(cx: &mut App, window: AnyWindowHandle, tray: &Tray) {
     if cfg!(target_os = "macos") {
         return;
@@ -291,7 +280,7 @@ pub fn follow_appearance(cx: &mut App, window: AnyWindowHandle, tray: &Tray) {
         window
             .observe_window_appearance(move |window, cx| {
                 if let Some(icon) = icon_for(window.appearance(), cx)
-                    && let Err(error) = tray.set_icon(Some(icon), cx)
+                    && let Err(error) = tray.set_icon(icon, cx)
                 {
                     log::warn!("the tray icon could not be swapped: {error}");
                 }

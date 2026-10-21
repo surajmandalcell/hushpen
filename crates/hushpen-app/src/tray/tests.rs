@@ -97,6 +97,23 @@ fn every_glyph_becomes_an_icon(cx: &mut TestAppContext) {
     }
 }
 
+/// The status item gets this image as it is; a macOS menu bar tints only a template image, and
+/// draws a 1x image of this pixel size twice as big as the 22 by 16 points of a menu bar glyph.
+#[cfg(target_os = "macos")]
+#[gpui_kit::test]
+fn the_macos_icon_is_a_template_image_of_22_by_16_points(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    for appearance in [WindowAppearance::Dark, WindowAppearance::Light] {
+        let icon = cx
+            .update(|cx| icon_for(appearance, cx))
+            .expect("the glyph becomes an icon");
+        let image = icon.to_ns_image().expect("the icon becomes an NSImage");
+        assert!(image.isTemplate(), "{appearance:?}");
+        let size = image.size();
+        assert_eq!((size.width, size.height), (22.0, 16.0), "{appearance:?}");
+    }
+}
+
 struct Fixture {
     rig: Rig,
     shell: Entity<Shell>,
