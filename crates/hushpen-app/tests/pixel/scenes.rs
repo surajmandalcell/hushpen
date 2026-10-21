@@ -598,9 +598,10 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
         Scene::Home | Scene::Onboarding(_) => {}
         Scene::PermissionsChanged => {
             // A stored grant that reads missing counts as lost only after the start reads
-            // settle for 2 s on a timer; the repair page opens then.
+            // settle for 2 s on a timer; the repair page opens then. The headless executor
+            // runs on a fake clock, so a sleep never fires that timer.
             for _ in 0..50 {
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                cx.advance_clock(hushpen_core::permission::SETTLE_EVERY);
                 cx.run_until_parked();
                 let repair = cx
                     .update_window(handle, |_, window, _| {
