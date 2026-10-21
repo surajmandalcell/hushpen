@@ -6,6 +6,9 @@
 //! resumes it. A start that finds no ready stream queues behind the open: the caller never
 //! waits, and a failed open is reported through the session's event sink.
 //!
+//! A stream that reports a failure (an error callback, a stall, a removed device) is torn
+//! down, so the next recording opens a fresh one instead of reusing a dead audio unit.
+//!
 //! One thread owns each stream, because streams are not `Send` on every host.
 
 use crate::capture::{CaptureEvent, EventSink, Msg, Source};
@@ -28,6 +31,10 @@ use std::time::{Duration, Instant};
 const STALL_LIMIT: Duration = Duration::from_secs(10);
 /// How often the thread checks that the device it opened still exists.
 const DEVICE_POLL: Duration = Duration::from_secs(1);
+/// How long the input may deliver nothing but exact zeros before it counts as dead. A wedged
+/// audio unit delivers zeros; a working microphone always has some noise, even in a quiet
+/// room.
+const DEAD_SILENCE_LIMIT: Duration = Duration::from_secs(4);
 const MIC_STOP_TIMEOUT: Duration = Duration::from_millis(1500);
 /// How often the thread looks for a command.
 const COMMAND_WAIT: Duration = Duration::from_millis(250);
@@ -43,12 +50,19 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 pub(crate) struct Route {
     session: Mutex<Option<(Sender<Msg>, EventSink)>>,
     failed: AtomicBool,
+    /// Set when the stream reported a failure: the mic thread then tears the stream down, so
+    /// the next recording opens a fresh one instead of reusing a dead one.
+    broken: AtomicBool,
+    /// The current run of exact-zero input, in milliseconds.
+    zero_ms: AtomicU64,
 }
 
 impl Route {
     fn attach(&self, attachment: &Attachment) {
         *lock(&self.session) = Some((attachment.tx.clone(), Arc::clone(&attachment.sink)));
         self.failed.store(false, Ordering::SeqCst);
+        self.broken.store(false, Ordering::SeqCst);
+        self.zero_ms.store(0, Ordering::SeqCst);
     }
 
     fn detach(&self) {
@@ -56,6 +70,21 @@ impl Route {
     }
 
     pub(crate) fn frames(&self, rate: u32, channels: u16, data: Vec<f32>) {
+        if data.is_empty() {
+            return;
+        }
+        if data.iter().all(|sample| *sample == 0.0) {
+            let ms = data.len() as u64 * 1000 / (u64::from(rate) * u64::from(channels)).max(1);
+            if self.zero_ms.fetch_add(ms, Ordering::SeqCst) + ms
+                >= DEAD_SILENCE_LIMIT.as_millis() as u64
+            {
+                self.report(CaptureError::unavailable(
+                    "the microphone is sending only silence",
+                ));
+            }
+        } else {
+            self.zero_ms.store(0, Ordering::SeqCst);
+        }
         if let Some((tx, _)) = &*lock(&self.session) {
             let _ = tx.send(Msg::Frames {
                 source: Source::Mic,
@@ -67,7 +96,13 @@ impl Route {
         }
     }
 
-    /// Reports one failure per session.
+    /// Whether the stream reported a failure. The mic thread tears such a stream down.
+    pub(crate) fn broken(&self) -> bool {
+        self.broken.load(Ordering::SeqCst)
+    }
+
+    /// Reports one failure per session, and marks the stream broken: a stream whose audio
+    /// unit failed is never reused.
     pub(crate) fn report(&self, error: CaptureError) {
         let sink = lock(&self.session)
             .as_ref()
@@ -78,6 +113,7 @@ impl Route {
             log::warn!("{error}");
             sink(CaptureEvent::Error(error));
         }
+        self.broken.store(true, Ordering::SeqCst);
     }
 }
 
@@ -325,6 +361,21 @@ fn run(selection: &str, queue: &Receiver<Command>, phase: &Mutex<Phase>, factory
             continue;
         }
         next_poll = Instant::now() + DEVICE_POLL;
+        if route.broken() {
+            // The stream reported a failure (an error callback, a stall, a removed device,
+            // dead input): it is broken for good, so stop it and let the next recording open
+            // a fresh one.
+            let _ = stream.pause();
+            route.detach();
+            if let Some(attachment) = attached.take() {
+                let _ = attachment.done.send(());
+            }
+            return retire(
+                phase,
+                queue,
+                &CaptureError::unavailable("the microphone stream failed"),
+            );
+        }
         if attached.is_some() {
             let silent_for = epoch
                 .elapsed()

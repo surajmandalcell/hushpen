@@ -211,6 +211,108 @@ fn a_failed_open_reaches_the_session_and_the_next_start_opens_again() {
 }
 
 #[test]
+fn a_stream_that_reports_a_failure_is_retired_and_the_next_start_opens_again() {
+    let world = World::default();
+    let hub = hub(&world);
+    let session = session();
+    let handle = hub.attach("default", &session.tx, &session.sink).unwrap();
+    assert_eq!(next_event(&session), CaptureEvent::Started);
+
+    // The stream fails while recording, as a wedged audio unit does through its error
+    // callback.
+    let route = lock(&world.route).clone().expect("an open stream");
+    route.report(CaptureError::failed("audio unit died"));
+    assert_eq!(
+        next_event(&session),
+        CaptureEvent::Error(CaptureError::failed("audio unit died"))
+    );
+    handle.shut_down();
+
+    wait_for("the broken stream to retire", || {
+        lock(&hub.slot)
+            .as_ref()
+            .is_some_and(|warm| *lock(&warm.phase) == Phase::Dead)
+    });
+    assert!(
+        lock(&world.log).contains(&"pause"),
+        "the broken stream is stopped"
+    );
+
+    let again = self::session();
+    let handle = hub.attach("default", &again.tx, &again.sink).unwrap();
+    assert_eq!(next_event(&again), CaptureEvent::Started);
+    assert_eq!(
+        world.opens.load(Ordering::SeqCst),
+        2,
+        "a fresh stream opens"
+    );
+    handle.shut_down();
+}
+
+#[test]
+fn a_stream_of_exact_zeros_is_reported_as_dead_input_and_retired() {
+    let world = World::default();
+    let hub = hub(&world);
+    let session = session();
+    let handle = hub.attach("default", &session.tx, &session.sink).unwrap();
+    assert_eq!(next_event(&session), CaptureEvent::Started);
+
+    // A wedged audio unit keeps delivering buffers, all zeros (2 s per buffer here).
+    let route = lock(&world.route).clone().expect("an open stream");
+    for _ in 0..3 {
+        route.frames(16_000, 1, vec![0.0; 32_000]);
+    }
+    assert_eq!(
+        next_event(&session),
+        CaptureEvent::Error(CaptureError::unavailable(
+            "the microphone is sending only silence"
+        ))
+    );
+    handle.shut_down();
+    wait_for("the dead stream to retire", || {
+        lock(&hub.slot)
+            .as_ref()
+            .is_some_and(|warm| *lock(&warm.phase) == Phase::Dead)
+    });
+
+    let again = self::session();
+    let handle = hub.attach("default", &again.tx, &again.sink).unwrap();
+    assert_eq!(next_event(&again), CaptureEvent::Started);
+    assert_eq!(
+        world.opens.load(Ordering::SeqCst),
+        2,
+        "a fresh stream opens"
+    );
+    handle.shut_down();
+}
+
+#[test]
+fn quiet_audio_above_exact_zeros_is_not_dead_input() {
+    let world = World::default();
+    let hub = hub(&world);
+    let session = session();
+    let handle = hub.attach("default", &session.tx, &session.sink).unwrap();
+    assert_eq!(next_event(&session), CaptureEvent::Started);
+
+    // 6 s of the faintest nonzero noise (a real microphone's noise floor), plus 3 s of zeros
+    // that reset before the limit.
+    let route = lock(&world.route).clone().expect("an open stream");
+    route.frames(16_000, 1, vec![0.0; 32_000]);
+    for _ in 0..3 {
+        route.frames(16_000, 1, vec![f32::MIN_POSITIVE; 32_000]);
+    }
+    route.frames(16_000, 1, vec![0.0; 32_000]);
+    assert!(
+        session
+            .events
+            .recv_timeout(Duration::from_millis(300))
+            .is_err(),
+        "quiet audio is not a dead input"
+    );
+    handle.shut_down();
+}
+
+#[test]
 fn another_microphone_opens_another_stream() {
     let world = World::default();
     let hub = hub(&world);
