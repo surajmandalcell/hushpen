@@ -1,6 +1,6 @@
 //! The live macOS permission calls. Reads never prompt and never reset; `request`, `open_url`,
-//! and `open_path` run only after a click on an onboarding button. A `request` for a permission
-//! that is not granted first runs `tccutil reset` for Hushpen's own bundle id only.
+//! and `open_path` run only after a click on an onboarding button. A `request` that repairs a
+//! lost grant first runs `tccutil reset` for Hushpen's own bundle id only.
 
 // Calls into frameworks that the objc2 bindings of this workspace do not wrap.
 #![allow(unsafe_code)]
@@ -146,8 +146,12 @@ pub(super) fn input_monitoring_granted() -> bool {
     MacPreflight::listen_event(&preflight()) == hushpen_core::permission::Access::Granted
 }
 
-pub(super) fn request(permission: Permission) {
-    preflight().request(permission);
+pub(super) fn register() {
+    preflight().register();
+}
+
+pub(super) fn request(permission: Permission, repair: bool) {
+    preflight().request(permission, repair);
 }
 
 pub(super) fn open_url(url: &str) -> std::io::Result<()> {
