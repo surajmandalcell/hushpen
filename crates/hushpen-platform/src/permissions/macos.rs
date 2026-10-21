@@ -15,7 +15,7 @@ use hushpen_core::permission::{Permission, Preflight};
 use objc2::msg_send;
 use objc2::runtime::{AnyClass, Bool};
 use objc2_core_graphics::CGRequestListenEventAccess;
-use objc2_foundation::{NSBundle, NSNotification, NSNotificationCenter, NSString};
+use objc2_foundation::{NSBundle, NSNotification, NSNotificationCenter, NSProcessInfo, NSString};
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::time::Duration;
@@ -74,6 +74,11 @@ impl Api for Live {
         // SAFETY: `authorizationStatusForMediaType:` takes an NSString and returns an
         // NSInteger. It reads the status and does not prompt.
         unsafe { msg_send![class, authorizationStatusForMediaType: &*media] }
+    }
+
+    fn os_major(&self) -> u32 {
+        let version = NSProcessInfo::processInfo().operatingSystemVersion();
+        u32::try_from(version.majorVersion).unwrap_or(0)
     }
 
     fn prompt_accessibility(&self) {
@@ -141,7 +146,8 @@ pub(super) fn accessibility_trusted() -> bool {
     AXIsProcessTrusted() != 0
 }
 
-/// `IOHIDCheckAccess` for listen events: read live, not cached per process.
+/// `IOHIDCheckAccess` for listen events, or on macOS 27 and later `AXIsProcessTrusted` too: read
+/// live, not cached per process.
 pub(super) fn input_monitoring_granted() -> bool {
     MacPreflight::listen_event(&preflight()) == hushpen_core::permission::Access::Granted
 }

@@ -15,7 +15,8 @@ pub enum Permission {
     Microphone,
     /// Posting key events and reading the focused field (`AXIsProcessTrusted`).
     Accessibility,
-    /// Listening for the hold key (`IOHIDCheckAccess` for listen events).
+    /// Listening for the hold key (`IOHIDCheckAccess` for listen events). Accessibility lets the
+    /// key tap run too, so on macOS 27 and later it reads granted while Accessibility is granted.
     InputMonitoring,
 }
 
@@ -82,7 +83,8 @@ pub trait Preflight: Send + Sync {
     fn microphone(&self) -> Access;
     /// Accessibility, from `AXIsProcessTrusted`.
     fn post_event(&self) -> Access;
-    /// Input Monitoring, from `IOHIDCheckAccess`.
+    /// Whether the hold key can be heard: Input Monitoring, from `IOHIDCheckAccess`, or on
+    /// macOS 27 and later the Accessibility grant, which lets the listen-only key tap run too.
     fn listen_event(&self) -> Access;
 }
 

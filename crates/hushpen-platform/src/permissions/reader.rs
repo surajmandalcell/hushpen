@@ -8,8 +8,18 @@
 //! request resets Hushpen's own record first only to repair a lost grant, because an update
 //! leaves a record that macOS keeps and ignores. A denied row is never reset: that would delete
 //! the row the user has to switch on.
+//!
+//! On macOS 27 and later, Input Monitoring reads as granted while Accessibility is granted. The
+//! listen-only key tap starts for a process that has either one (`CGEventTapCreate`: root,
+//! Accessibility, or Input Monitoring), and tccd on macOS 27 answers an Input Monitoring check
+//! from the Accessibility record when it holds none of its own. So the keys never wait on the
+//! one `IOHIDCheckAccess` answer. Older systems were not measured, and there a tap that
+//! Accessibility alone does not start would show a row that lies, so they keep the raw answer.
 
 use hushpen_core::permission::{Access, Permission, Preflight};
+
+/// The first macOS major version where Accessibility alone starts the listen-only key tap.
+const LISTEN_FROM_ACCESSIBILITY: u32 = 27;
 
 /// `IOHIDAccessType`: granted, denied, or not asked yet.
 const HID_GRANTED: u32 = 0;
@@ -26,6 +36,8 @@ pub(super) trait Api: Send + Sync {
     fn listen_event_status(&self) -> u32;
     /// `AVCaptureDevice authorizationStatusForMediaType:` for audio.
     fn microphone_status(&self) -> isize;
+    /// The major version of macOS.
+    fn os_major(&self) -> u32;
     /// `AXIsProcessTrustedWithOptions` with the prompt option.
     fn prompt_accessibility(&self);
     /// `IOHIDRequestAccess` for listen events, with `CGRequestListenEventAccess` as the fallback.
@@ -61,11 +73,21 @@ impl<A: Api> Preflight for Reader<A> {
     }
 
     fn listen_event(&self) -> Access {
-        listen_event_access(self.0.listen_event_status())
+        let hid = self.hid_listen();
+        let composed = self.0.os_major() >= LISTEN_FROM_ACCESSIBILITY;
+        if hid != Access::Granted && composed && self.post_event() == Access::Granted {
+            return Access::Granted;
+        }
+        hid
     }
 }
 
 impl<A: Api> Reader<A> {
+    /// The `IOHIDCheckAccess` answer as it is, without the Accessibility rule.
+    fn hid_listen(&self) -> Access {
+        listen_event_access(self.0.listen_event_status())
+    }
+
     fn access(&self, permission: Permission) -> Access {
         match permission {
             Permission::Accessibility => self.post_event(),
@@ -80,11 +102,9 @@ impl<A: Api> Reader<A> {
     /// Input Monitoring answer comes from. A listen-event request adds no row there and a
     /// microphone request always shows an alert, so neither runs here. Reading is all this does.
     pub(super) fn register(&self) {
-        let listen = self.listen_event();
+        let hid = self.hid_listen();
         let accessibility = self.post_event();
-        log::info!(
-            "PERMISSION_REGISTER inputMonitoring={listen:?} accessibility={accessibility:?}"
-        );
+        log::info!("PERMISSION_REGISTER iohid={hid:?} accessibility={accessibility:?}");
     }
 
     /// Calls the request API of `permission` once, whatever the state is. The request is what
@@ -131,15 +151,21 @@ mod tests {
         trusted: bool,
         listen: u32,
         microphone: isize,
+        os_major: u32,
         calls: Mutex<Vec<&'static str>>,
     }
 
     impl Mock {
         fn new(trusted: bool, listen: u32, microphone: isize) -> Reader<Self> {
+            Self::on(27, trusted, listen, microphone)
+        }
+
+        fn on(os_major: u32, trusted: bool, listen: u32, microphone: isize) -> Reader<Self> {
             Reader(Self {
                 trusted,
                 listen,
                 microphone,
+                os_major,
                 calls: Mutex::default(),
             })
         }
@@ -168,6 +194,10 @@ mod tests {
                 .unwrap()
                 .push("AVCaptureDevice authorizationStatus");
             self.microphone
+        }
+
+        fn os_major(&self) -> u32 {
+            self.os_major
         }
 
         fn prompt_accessibility(&self) {
@@ -241,6 +271,76 @@ mod tests {
     }
 
     #[test]
+    fn accessibility_alone_counts_as_input_monitoring() {
+        for listen in [1, 2] {
+            let reader = Mock::new(true, listen, 3);
+
+            assert_eq!(
+                reader.listen_event(),
+                Access::Granted,
+                "IOHIDCheckAccess {listen}"
+            );
+            assert_eq!(reader.calls(), ["IOHIDCheckAccess", "AXIsProcessTrusted"]);
+        }
+    }
+
+    #[test]
+    fn a_granted_input_monitoring_is_read_without_asking_accessibility() {
+        let reader = Mock::new(false, 0, 3);
+
+        assert_eq!(reader.listen_event(), Access::Granted);
+        assert_eq!(reader.calls(), ["IOHIDCheckAccess"]);
+    }
+
+    #[test]
+    fn without_either_grant_input_monitoring_keeps_its_own_answer() {
+        assert_eq!(Mock::new(false, 1, 3).listen_event(), Access::Denied);
+        assert_eq!(Mock::new(false, 2, 3).listen_event(), Access::NotDetermined);
+    }
+
+    #[test]
+    fn an_older_system_keeps_input_monitoring_as_its_own_permission() {
+        let denied = Mock::on(26, true, 1, 3);
+        assert_eq!(denied.listen_event(), Access::Denied);
+        assert_eq!(denied.calls(), ["IOHIDCheckAccess"]);
+        assert_eq!(
+            Mock::on(15, true, 2, 3).listen_event(),
+            Access::NotDetermined
+        );
+        assert_eq!(Mock::on(26, false, 0, 3).listen_event(), Access::Granted);
+    }
+
+    #[test]
+    fn accessibility_with_a_denied_input_monitoring_keeps_the_keys_ready_and_repairs_nothing() {
+        use hushpen_core::onboarding::{
+            Availability, Facts, RowKey, RowState, Session, permission_rows,
+        };
+        use hushpen_core::permission::Permissions;
+        use hushpen_core::shortcut::Platform;
+        let reader = Mock::new(true, 1, 3);
+
+        let now = Permissions::read(&reader);
+
+        assert_eq!(now.input_monitoring, Access::Granted);
+        assert!(
+            !now.input_monitoring.missing(),
+            "a grant that reads there is never lost"
+        );
+        let rows = permission_rows(&Facts {
+            platform: Platform::MacOs,
+            session: Session::X11,
+            keys: Availability::Ready,
+            paste: Availability::Ready,
+            mic_listed: true,
+            mic_present: true,
+            mac: now,
+            relaunch: false,
+        });
+        let row = rows.iter().find(|row| row.key == RowKey::InputMonitoring);
+        assert_eq!(row.map(|row| row.state), Some(RowState::Ready));
+    }
+
+    #[test]
     fn a_grant_that_is_gone_reads_as_missing() {
         let reader = Mock::new(false, 1, 2);
         assert!(reader.post_event().missing());
@@ -272,9 +372,14 @@ mod tests {
 
                 reader.request(permission, true);
 
+                let mut expected = vec![read];
+                if permission == Permission::InputMonitoring {
+                    expected.push("AXIsProcessTrusted");
+                }
+                expected.extend([reset, request]);
                 assert_eq!(
                     reader.calls(),
-                    [read, reset, request],
+                    expected,
                     "{permission:?} with {trusted} {listen} {microphone}"
                 );
             }
