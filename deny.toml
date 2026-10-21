@@ -14,6 +14,9 @@ ignore = [
     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in by the GPUI pin" },
     { id = "RUSTSEC-2026-0192", reason = "rustybuzz is unmaintained; pulled in by the GPUI pin" },
     { id = "RUSTSEC-2026-0206", reason = "ttf-parser is unmaintained; pulled in by the GPUI pin" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained (merged into zbus 6); the GPUI pin's zbus 5 stack uses it" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained (merged into zbus 6); the GPUI pin's zbus 5 stack uses it" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained (merged into zbus 6); the GPUI pin's zbus 5 stack uses it" },
 ]
 
 # Hushpen is AGPL-3.0-or-later. Every license below can be combined with it.
