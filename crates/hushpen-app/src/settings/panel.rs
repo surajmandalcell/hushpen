@@ -15,7 +15,7 @@ use gpui_kit::{
     KeyDownEvent, ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px,
     transparent_black,
 };
-use hushpen_core::endpoint::Preset;
+use hushpen_core::endpoint::{Preset, UrlError};
 
 use slots::{
     AI_CLEANUP, AI_DOWNLOAD, AI_MODEL, AI_MODEL_OPTION, AI_PROVIDER, AI_PROVIDER_OPTION,
@@ -662,7 +662,7 @@ fn endpoint_rows(
         palette,
         "cleanup.endpointUrl",
         "Address",
-        "Use https. Plain http works only for localhost.",
+        UrlError::NeedsHttps.reason(),
         &url,
         None,
     ));
