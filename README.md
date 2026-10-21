@@ -51,9 +51,10 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 1. Download `Hushpen-2.0.0-macos-arm64.dmg` and drag Hushpen to Applications,
    or unzip `Hushpen-2.0.0-macos-arm64.zip` and move `Hushpen.app` to
    Applications.
-2. The app is ad-hoc signed, not notarized, so macOS blocks the first start.
-   Control-click Hushpen, choose Open, and confirm. On macOS 15, open System
-   Settings > Privacy & Security and choose Open Anyway. You can also run
+2. The app is signed with an Apple Development certificate, not notarized, so
+   macOS blocks the first start. Control-click Hushpen, choose Open, and
+   confirm. On macOS 15, open System Settings > Privacy & Security and choose
+   Open Anyway. You can also run
    `xattr -dr com.apple.quarantine /Applications/Hushpen.app`.
 
 ### Linux
@@ -89,9 +90,12 @@ Allow button, and the status updates live.
 | Input Monitoring | Seeing the hold key while you use other apps |
 | Accessibility    | Pasting the text into the focused app  |
 
-Because the app is signed ad hoc, macOS forgets these grants every time you
-install a new build or update. Hushpen notices at start and opens the setup
-step again. To grant them again:
+Hushpen adds itself to the matching lists in System Settings when it starts,
+and the stable signature keeps your grants across updates and reinstalls.
+On macOS 27, the Accessibility switch also covers Input Monitoring. macOS
+forgets the grants only when the signing certificate changes, or when you
+remove them yourself. Hushpen notices at start and opens the setup step
+again. To grant them again:
 
 1. Open the setup step (it opens by itself), or System Settings > Privacy &
    Security.
