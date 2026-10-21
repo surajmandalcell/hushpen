@@ -53,7 +53,6 @@ col() { q "select coalesce($2, '') from transcript where id = '$1'"; }
 segs() { q "select count(*) from segment where transcript_id = '$1'"; }
 hs() { $HC state | jq -r ".history$1"; }
 row_ids() { $HC state | jq -r '[.history.rows[].id] | join(",")'; }
-row_titles() { $HC state | jq -r '[.history.rows[].title] | join("|")'; }
 rendered() { $HC tree | jq -e "any(.[]; .id == \"$1\")" >/dev/null; }
 row_elements() { $HC tree | jq '[.[] | select(.id | test("^history\\.row\\.[0-9]+$"))] | length'; }
 count_is() { [ "$(count)" = "$1" ]; }
@@ -184,8 +183,9 @@ shot hist-011-detail
 [ "$(tree_text history.detail.rule)" = "$(newest rule_text)" ] || failures+="rule shows '$(tree_text history.detail.rule)'; "
 [ "$(tree_text history.detail.final)" = "$(newest final_text)" ] || failures+="final shows '$(tree_text history.detail.final)'; "
 [ "$(tree_text history.detail.app)" = "$(newest target_app)" ] || failures+="app shows '$(tree_text history.detail.app)'; "
-[ "$(tree_text history.detail.model)" = "$(newest model_id)" ] || failures+="model shows '$(tree_text history.detail.model)'; "
-[ "$(tree_text history.detail.language)" = "$(newest language_detected)" ] || failures+="language shows '$(tree_text history.detail.language)'; "
+# The detail view names the model and the language (assets/models.json, language.rs), not the ids.
+[ "$(tree_text history.detail.model)" = "Tiny English" ] || failures+="model shows '$(tree_text history.detail.model)'; "
+[ "$(tree_text history.detail.language)" = "English" ] || failures+="language shows '$(tree_text history.detail.language)'; "
 [ "$(tree_text history.detail.duration)" = "$(secs_of "$(newest duration_ms)")" ] || failures+="duration shows '$(tree_text history.detail.duration)'; "
 $HC tree >"$RUN_OUT/hist-011-tree.json"
 check_failures "VAL-HIST-011 detail fields" "raw, rule, final, app, model, language, and duration equal the SQLite row" "$failures"
@@ -268,8 +268,9 @@ kill_audio=/data/$(newest audio_path)
 [ -f "$kill_audio" ] || failures+="the kill row has no audio file; "
 open_history
 sleep 0.4
-titles=$(row_titles)
-case "$titles" in Failed*) ;; *) failures+="the newest row is not listed as failed: $titles; " ;; esac
+# A failed row's title is the failure message; the outcome word sits at the end of its meta line.
+meta=$($HC state | jq -r '.history.rows[0].meta')
+case "$meta" in *Failed*) ;; *) failures+="the newest row is not listed as failed: $meta; " ;; esac
 [ "$($HC state | jq -r '[.history.rows[] | select(.status == "failed")] | length')" -ge 2 ] || failures+="the list does not show two failed rows; "
 shot hist-004-failed
 engine_up tiny.en || failures+="the engine did not come back; "
