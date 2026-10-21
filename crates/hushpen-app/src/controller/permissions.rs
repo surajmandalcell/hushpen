@@ -85,7 +85,9 @@ impl PermissionWatch {
 }
 
 fn newly_lost<'a>(before: &[Permission], now: &'a [Permission]) -> Vec<&'a Permission> {
-    now.iter().filter(|permission| !before.contains(permission)).collect()
+    now.iter()
+        .filter(|permission| !before.contains(permission))
+        .collect()
 }
 
 /// The section for a system that has no permission preflight attached.
