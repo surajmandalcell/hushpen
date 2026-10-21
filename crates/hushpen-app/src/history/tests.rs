@@ -733,6 +733,32 @@ fn reprocess_of_a_row_without_audio_is_refused_with_a_reason(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
+fn the_search_field_stands_as_high_as_the_buttons(cx: &mut TestAppContext) {
+    let view = open(cx);
+    let (search, select, clear) = cx
+        .update_window(view.handle, |_, window, _| {
+            (
+                window.find("history.search").bounds(),
+                window.find("history.select").bounds(),
+                window.find("history.clear").bounds(),
+            )
+        })
+        .unwrap();
+    for (name, bounds) in [("search", search), ("select", select), ("clear", clear)] {
+        assert_eq!(
+            f32::from(bounds.size.height),
+            crate::theme::size::BUTTON_HEIGHT,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        f32::from(search.origin.y),
+        f32::from(select.origin.y),
+        "the field and the buttons share one line"
+    );
+}
+
+#[gpui_kit::test]
 fn the_panel_and_its_controls_fit_the_content_width(cx: &mut TestAppContext) {
     let view = open(cx);
     seed(&view, "A", 1_000, &"a long line of words ".repeat(30));

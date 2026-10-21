@@ -6,7 +6,9 @@ use crate::hook;
 use crate::theme::{self, BODY, BUTTON, Palette, SECONDARY, StyledType, radius, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::{Sizable, Size};
 use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
     AbsoluteLength, AnyElement, App, ClickEvent, Div, Entity, FocusHandle, InteractiveElement,
@@ -523,16 +525,24 @@ pub fn press_row<F: Fn(&mut Window, &mut App) + 'static>(
     }
 }
 
-/// A text field on the control fill. Its stroke shows only under keyboard focus, as the ring.
+/// A text field on the control fill, as high as a push button so one row of both aligns. Its
+/// stroke shows only under keyboard focus, as the ring. The small kit padding (2 px) leaves the
+/// 13 px text 18 px inside the 22 px.
 pub fn field(
     palette: Palette,
     id: SharedString,
     label: &'static str,
     state: &Entity<InputState>,
 ) -> Input {
+    // Input's own `h` method sets a height that only a multi-line field reads, so the
+    // single-line height goes in through the style, where it wins over the size default.
+    let mut height = gpui_kit::StyleRefinement::default();
+    height.size.height = Some(px(size::BUTTON_HEIGHT).into());
     Input::new(state)
         .id(id)
         .aria_label(label)
+        .with_size(Size::Small)
+        .refine_style(&height)
         .bg(palette.control)
         .rounded(px(radius::BUTTON))
         .border_color(gpui_kit::transparent_black())

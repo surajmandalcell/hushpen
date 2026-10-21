@@ -413,6 +413,32 @@ fn hook_style_calls_without_a_window_add_edit_and_delete(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
+fn the_form_fields_stand_as_high_as_the_buttons(cx: &mut TestAppContext) {
+    let rig = open(cx);
+    let (phrase, heard, add) = cx
+        .update_window(rig.handle, |_, window, _| {
+            (
+                window.find("dictionary.phrase").bounds(),
+                window.find("dictionary.heard").bounds(),
+                window.find("dictionary.submit").bounds(),
+            )
+        })
+        .unwrap();
+    for (name, bounds) in [("phrase", phrase), ("heard", heard), ("add", add)] {
+        assert_eq!(
+            f32::from(bounds.size.height),
+            crate::theme::size::BUTTON_HEIGHT,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        f32::from(phrase.origin.y),
+        f32::from(add.origin.y),
+        "a field and a button share one line"
+    );
+}
+
+#[gpui_kit::test]
 fn the_panel_fits_the_content_width_and_every_control_is_inside_it(cx: &mut TestAppContext) {
     let rig = open(cx);
     add_by_keyboard(cx, &rig, "Foxtrel", "fox");
