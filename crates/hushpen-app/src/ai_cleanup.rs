@@ -19,10 +19,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
-/// The longest the first dictation waits for the model to load. A first Metal load compiles
-/// shaders for 12 to 16 s, so this is far above the cleanup timeout, which starts only after.
-pub const LOAD_WAIT: Duration = Duration::from_secs(60);
-const POLL: Duration = Duration::from_millis(100);
 const MIN_TOKENS: usize = 32;
 const MAX_TOKENS: usize = 1024;
 
@@ -283,34 +279,24 @@ impl HostCleaner {
 
 impl Cleaner for HostCleaner {
     fn prepare(&self, token: &CancelToken, _progress: &Progress) -> Result<(), String> {
-        let deadline = Instant::now() + LOAD_WAIT;
-        loop {
-            if token.is_cancelled() {
-                return Ok(());
+        if token.is_cancelled() {
+            return Ok(());
+        }
+        let status = self.client.status();
+        if status.model.is_some() {
+            return Ok(());
+        }
+        match status.state {
+            // The worker dropped the model after the idle time. Loading it here keeps the load
+            // out of the cleanup timeout.
+            LlmState::Ready => self.load().map(drop),
+            // A first load can take a minute (a Metal shader compile). The dictation takes the
+            // rule text now; the supervisor keeps loading, and the next dictation uses the model.
+            LlmState::Starting | LlmState::Loading | LlmState::Backoff | LlmState::Stopped => {
+                Err(LLM_UNAVAILABLE.to_owned())
             }
-            let status = self.client.status();
-            if status.model.is_some() {
-                return Ok(());
-            }
-            match status.state {
-                LlmState::Backoff | LlmState::Stopped => return Err(LLM_UNAVAILABLE.to_owned()),
-                LlmState::Ready => {
-                    // The worker dropped the model after the idle time. Loading it here keeps
-                    // the load out of the cleanup timeout.
-                    return self.load().map(drop);
-                }
-                LlmState::Starting | LlmState::Loading => {}
-            }
-            if Instant::now() >= deadline {
-                return Err(LLM_UNAVAILABLE.to_owned());
-            }
-            self.client.wait_for(POLL, |status| {
-                status.model.is_some()
-                    || !matches!(status.state, LlmState::Starting | LlmState::Loading)
-            });
         }
     }
-
     fn clean(
         &self,
         text: &str,
@@ -689,6 +675,35 @@ mod tests {
     fn the_edit_budget_is_twice_the_cleanup_budget_up_to_the_ceiling() {
         assert_eq!(edit_max_tokens("hi"), 64);
         assert_eq!(edit_max_tokens(&"a".repeat(100_000)), 1024);
+    }
+
+    #[test]
+    fn a_dictation_during_the_model_load_does_not_wait_for_it() {
+        use hushpen_engine::{ChildSpec, EngineLog, Timing};
+        // A worker that never says ready stays in the starting state for the whole test.
+        let client = LlmClient::start(
+            ChildSpec {
+                program: "/bin/sh".into(),
+                args: vec!["-c".into(), "sleep 30".into()],
+            },
+            Timing::llm(),
+            EngineLog::discard(),
+        );
+        assert!(client.wait_for(Duration::from_secs(5), |s| s.pid.is_some()));
+        let cleaner = HostCleaner {
+            client: client.clone(),
+            spec: LlmSpec::new("/nonexistent/model.gguf".into()),
+        };
+        let (done, answer) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = done.send(cleaner.prepare(&CancelToken::default(), &Progress::default()));
+        });
+        let prepared = answer.recv_timeout(Duration::from_secs(2));
+        client.shutdown();
+        assert_eq!(
+            prepared.expect("prepare returns at once while the model loads"),
+            Err(LLM_UNAVAILABLE.to_owned())
+        );
     }
 
     #[test]

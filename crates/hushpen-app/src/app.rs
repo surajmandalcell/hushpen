@@ -222,8 +222,13 @@ pub fn run(hidden: bool) -> ExitCode {
             start_keys(&controller, &shortcuts, cx);
             start_insert(&controller, cx);
             start_cues(&controller, cx);
+            let llm_loading: Rc<dyn Fn() -> bool> = {
+                let llm = Rc::clone(&llm);
+                Rc::new(move || llm.loading())
+            };
             controller.update(cx, |controller, cx| {
                 controller.attach_permissions(hushpen_platform::permissions::system(), cx);
+                controller.attach_ai_loading(Rc::clone(&llm_loading));
                 let ai_llm = Rc::clone(&ai_llm);
                 let ai_storage = Rc::clone(&dictation_storage);
                 let transport = Arc::clone(&endpoint_transport);
@@ -265,7 +270,6 @@ pub fn run(hidden: bool) -> ExitCode {
                 )
             });
             follow_activation(cx, onboarding.clone(), settings_view.clone());
-            let loading_llm = Rc::clone(&llm);
             {
                 let dictating = controller.clone();
                 let importing = import.clone();
@@ -282,16 +286,7 @@ pub fn run(hidden: bool) -> ExitCode {
                         catalog: hushpen_core::catalog::embedded(),
                         platform: Platform::current(),
                         ram_bytes: hushpen_platform::memory::total_ram_bytes().unwrap_or(0),
-                        loading: Rc::new(move || {
-                            loading_llm.status().is_some_and(|status| {
-                                status.model.is_none()
-                                    && matches!(
-                                        status.state,
-                                        hushpen_engine::LlmState::Starting
-                                            | hushpen_engine::LlmState::Loading
-                                    )
-                            })
-                        }),
+                        loading: Rc::clone(&llm_loading),
                     },
                     cx,
                 )

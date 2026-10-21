@@ -424,3 +424,30 @@ fn ai_text_that_drops_a_dictionary_word_is_rejected_and_the_rule_text_goes_in(
     assert_eq!(row.llm_text, None);
     assert_eq!(row.final_text.as_deref(), Some(rule.as_str()));
 }
+
+#[gpui_kit::test]
+fn while_the_model_loads_a_dictation_says_preparing_and_the_rule_text_goes_in(
+    cx: &mut TestAppContext,
+) {
+    let (rig, inserter) = setup(cx);
+    ai_answers(
+        cx,
+        &rig,
+        Attempt::Done("never".into()),
+        Err(hushpen_core::error::LLM_UNAVAILABLE.into()),
+    );
+    rig.controller.update(cx, |controller, _| {
+        controller.attach_ai_loading(Rc::new(|| true))
+    });
+    assert_eq!(ai_state(cx, &rig)["phase"], serde_json::Value::Null);
+    send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
+    assert_eq!(machine_state(cx, &rig), State::Transcribing);
+    assert_eq!(ai_state(cx, &rig)["phase"], "preparing");
+
+    settle(cx, &rig);
+
+    assert_eq!(pasted(&inserter), [RULE]);
+    assert_eq!(only_row(&rig).llm_outcome.as_deref(), Some("unavailable"));
+    assert_eq!(ai_state(cx, &rig)["phase"], serde_json::Value::Null);
+}
