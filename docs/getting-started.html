@@ -3,122 +3,209 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ASR Pro | Getting started</title>
+    <title>Hushpen | Getting started</title>
     <meta
       name="description"
-      content="Install ASR Pro, choose an input and local Whisper model, record a first clip, and keep portable data behavior predictable."
+      content="Install Hushpen on macOS or Linux, grant the macOS permissions, make a first dictation, and find where Hushpen keeps its data."
     />
     <meta name="theme-color" content="#050705" />
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./assets/hushpen-app-icon.png" />
     <link rel="stylesheet" href="./assets/docs.css" />
   </head>
   <body class="page-doc">
     <header class="site-nav">
       <div class="site-nav-inner">
-        <a class="brand" href="./index.html">ASR Pro</a>
+        <a class="brand" href="./index.html"><img src="./assets/hushpen-app-icon.png" alt="" width="28" height="28" />Hushpen</a>
         <nav class="nav-links" aria-label="Primary">
-          <a href="./portable-data.html">Portable data</a>
           <a class="is-active" href="./getting-started.html">Getting started</a>
-          <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a>
-          <a class="nav-cta" href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.0" target="_blank" rel="noreferrer">Releases</a>
+          <a class="nav-cta" href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </div>
     </header>
 
     <main class="shell">
       <section class="doc-hero">
-        <p class="prompt-line">First run guide</p>
+        <p class="prompt-line">Hushpen 2.0.0</p>
         <h1>Getting started</h1>
         <p class="lead">
-          Install ASR Pro, pick a microphone, choose a local Whisper model, and record a short clip. The app keeps speech,
-          transcripts, and settings local unless you move them yourself.
+          Install Hushpen, allow it to hear and paste, and make your first dictation. Everything stays on your computer.
         </p>
         <div class="doc-jump">
           <a href="#install">Install</a>
-          <a href="#first-run">First run</a>
-          <a href="#record">Record and review</a>
-          <a href="#keep">Keep it working</a>
+          <a href="#permissions">macOS permissions</a>
+          <a href="#first-dictation">First dictation</a>
+          <a href="#data">Your data</a>
         </div>
       </section>
 
       <div class="doc-grid">
         <section id="install" class="doc-section">
           <h2>Install</h2>
-          <p>Start with a packaged release for the machine you are actually using.</p>
+          <p>
+            Download a file from the
+            <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.0" target="_blank" rel="noreferrer">release page</a>.
+            Hushpen runs on macOS 13 or later on Apple silicon, and on Linux x64 and arm64 with an X11 session.
+          </p>
           <div class="doc-table-wrap">
             <table class="doc-table">
               <thead>
                 <tr>
-                  <th>step</th>
+                  <th>platform</th>
                   <th>what to do</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td><strong>Download</strong></td>
-                  <td>Open <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a> and grab the package for your platform.</td>
+                  <td><strong>macOS</strong></td>
+                  <td>
+                    Open <code>Hushpen-2.0.0-macos-arm64.dmg</code> and drag Hushpen to Applications. Or unzip
+                    <code>Hushpen-2.0.0-macos-arm64.zip</code> and move <code>Hushpen.app</code> to Applications.
+                  </td>
                 </tr>
                 <tr>
-                  <td><strong>Place it</strong></td>
-                  <td>Keep portable Windows and Linux builds in a folder you can move later with their sibling <code>asrpro-data/</code> folder.</td>
+                  <td><strong>Linux AppImage</strong></td>
+                  <td>Run <code>chmod +x Hushpen-2.0.0-linux-x64.AppImage</code>, then run the file.</td>
                 </tr>
                 <tr>
-                  <td><strong>Open it</strong></td>
-                  <td>Launch ASR Pro, then let the app create its local config, history, and model folders.</td>
+                  <td><strong>Debian, Ubuntu</strong></td>
+                  <td><code>sudo apt install ./Hushpen-2.0.0-linux-x64.deb</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Fedora, openSUSE</strong></td>
+                  <td><code>sudo dnf install ./Hushpen-2.0.0-linux-x64.rpm</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Linux tar.gz</strong></td>
+                  <td>Run <code>tar xzf Hushpen-2.0.0-linux-x64.tar.gz</code>, then run <code>hushpen</code> from the new folder.</td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </section>
+          <p>On an Arm machine, replace <code>x64</code> with <code>arm64</code> in the Linux file names.</p>
 
-        <section id="first-run" class="doc-section">
-          <h2>First run</h2>
+          <h3>macOS first start</h3>
+          <p>
+            The app is signed with an Apple Development certificate and is not notarized, so macOS blocks the first start.
+            Control-click Hushpen, choose Open, and confirm. On macOS 15, open System Settings &gt; Privacy &amp; Security and
+            choose Open Anyway. You can also remove the quarantine flag in Terminal:
+          </p>
+          <pre>xattr -dr com.apple.quarantine /Applications/Hushpen.app</pre>
+
+          <h3>Linux requirements</h3>
           <ul>
-            <li>open <strong>Sound</strong> and pick the microphone you want ASR Pro to use</li>
-            <li>open <strong>Models library</strong> and choose a Whisper model for local transcription</li>
-            <li>open <strong>Configuration</strong> for shortcuts, auto-copy, editor handoff, overlay placement, and launch on sign-in</li>
-            <li>return to <strong>Home</strong> when the input and model look right</li>
+            <li>An X11 session. On Wayland the global key and paste show "not available".</li>
+            <li>
+              A Vulkan or OpenGL driver. On Debian and Ubuntu, <code>mesa-vulkan-drivers</code> or <code>libgl1-mesa-dri</code>
+              is enough. A machine with no driver cannot open the window.
+            </li>
+            <li>A system tray host if you want the tray icon (StatusNotifier, which most desktops include).</li>
           </ul>
+          <p>
+            You can also build Hushpen from source. The steps are in the
+            <a href="https://github.com/surajmandalcell/hushpen#build-from-source" target="_blank" rel="noreferrer">README</a>.
+          </p>
         </section>
 
-        <section id="record" class="doc-section">
-          <h2>Record and review</h2>
-          <ul>
-            <li>start recording from Home, the tray, or the keyboard shortcut</li>
-            <li>stop after a short sample so the first transcription finishes quickly</li>
-            <li>copy the transcript, open it in your editor, or send it through the history workflow</li>
-            <li>use <strong>History</strong> to search, reopen, delete, or reprocess saved clips</li>
-          </ul>
-        </section>
-
-        <section id="keep" class="doc-section">
-          <h2>Keep it working</h2>
-          <p>ASR Pro is designed for local, movable installs. The only maintenance step that usually matters is keeping the app and its data together.</p>
+        <section id="permissions" class="doc-section">
+          <h2>macOS permissions</h2>
+          <p>
+            Hushpen asks for three permissions in its first-run setup. Each row has an Allow button, and the status updates live.
+          </p>
           <div class="doc-table-wrap">
             <table class="doc-table">
               <thead>
                 <tr>
-                  <th>case</th>
-                  <th>fix</th>
+                  <th>permission</th>
+                  <th>used for</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td><strong>Moving the app</strong></td>
-                  <td>Move the executable or app bundle together with <code>asrpro-data/</code>. See <a href="./portable-data.html">Portable data</a>.</td>
+                  <td><strong>Microphone</strong></td>
+                  <td>Recording your voice</td>
                 </tr>
                 <tr>
-                  <td><strong>Open on sign-in</strong></td>
-                  <td>Turn on <strong>Launch at startup</strong> from Configuration. If the app moves later, toggle it off and on again from the new location.</td>
+                  <td><strong>Input Monitoring</strong></td>
+                  <td>Seeing the hold key while you use other apps</td>
                 </tr>
                 <tr>
-                  <td><strong>Wrong microphone</strong></td>
-                  <td>Refresh devices from Sound and pick the intended input again.</td>
+                  <td><strong>Accessibility</strong></td>
+                  <td>Pasting the text into the focused app</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <p>
+            Hushpen adds itself to the matching lists in System Settings when it starts, and its stable signature keeps your
+            grants across updates and reinstalls. On macOS 27, the Accessibility switch also covers Input Monitoring.
+          </p>
+
+          <h3>Grant them again</h3>
+          <p>
+            macOS forgets the grants only when the signing certificate changes, or when you remove them yourself. Hushpen
+            notices at start and opens the setup step again.
+          </p>
+          <ul>
+            <li>Open the setup step (it opens by itself), or System Settings &gt; Privacy &amp; Security.</li>
+            <li>For each of the three permissions, select Hushpen and remove it with the minus button if it is listed. Then press Allow in Hushpen.</li>
+            <li>If a row stays stuck, reset it in Terminal and press Allow again:</li>
+          </ul>
+          <pre>tccutil reset Microphone io.github.surajmandalcell.hushpen
+tccutil reset ListenEvent io.github.surajmandalcell.hushpen
+tccutil reset Accessibility io.github.surajmandalcell.hushpen</pre>
+        </section>
+
+        <section id="first-dictation" class="doc-section">
+          <h2>First dictation</h2>
+          <p>The first start opens a five-step setup:</p>
+          <ul>
+            <li><strong>Permissions</strong>: each line shows where a system need stands</li>
+            <li><strong>Microphone test</strong>: press Test, say a sentence, then press Stop to see the level move</li>
+            <li><strong>Speech model</strong>: download one Whisper model. Hushpen checks the file before it uses it.</li>
+            <li><strong>Shortcut practice</strong>: hold the hold key, say a sentence, then let go</li>
+            <li><strong>Updates</strong>: the update check is off unless you turn it on, and you can change it later in Settings</li>
+          </ul>
+          <p>After setup, dictate into any app:</p>
+          <ul>
+            <li>click where you want the text</li>
+            <li>hold Right Option on macOS or Right Alt on Linux, and speak</li>
+            <li>let go to finish. Hushpen cleans up the text and pastes it. Press Esc to cancel.</li>
+          </ul>
+          <p>
+            The flow bar shows the dictation state without taking focus. To use another key, record it in Settings &gt; Shortcuts.
+            Home also has a Record button and a language choice.
+          </p>
+        </section>
+
+        <section id="data" class="doc-section">
+          <h2>Your data</h2>
+          <p>
+            Hushpen keeps its settings, history database, downloaded models, saved dictation audio, and logs in one data
+            folder. Move it in Settings &gt; Storage.
+          </p>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>system</th>
+                  <th>data folder</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>macOS</strong></td>
+                  <td><code>~/Library/Application Support/Hushpen</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Linux</strong></td>
+                  <td><code>$XDG_DATA_HOME/hushpen</code>, or <code>~/.local/share/hushpen</code> when <code>XDG_DATA_HOME</code> is not set</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Hushpen sends no telemetry. It uses the network only for model downloads you start, the update check if you turn it on, and an AI cleanup endpoint if you set one.</p>
         </section>
       </div>
     </main>
