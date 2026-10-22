@@ -169,6 +169,9 @@ impl Installer for SystemInstaller {
             .map_err(|error| swap_failed(format!("cannot find this program: {error}")))?;
         let helper_dir = Self::work_dir(target)?.join(format!("helper-{}", std::process::id()));
         let helper = copy_helper(self.kind, &exe, &helper_dir)?;
+        if self.kind == InstallKind::App {
+            adhoc_sign(&helper)?;
+        }
         let mut cleanup = staged.cleanup.clone();
         cleanup.push(helper_dir);
         let job = Job {
@@ -298,6 +301,17 @@ fn copy_helper(kind: InstallKind, exe: &Path, dir: &Path) -> Result<PathBuf, Che
     Ok(helper)
 }
 
+/// A bundle executable signed with a certificate seals the bundle's Info.plist, so its copy
+/// outside the bundle is invalid and arm64 kills it at exec. An ad-hoc signature has no seal.
+fn adhoc_sign(helper: &Path) -> Result<(), CheckError> {
+    run(
+        Command::new("/usr/bin/codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(helper),
+        "codesign",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,6 +394,24 @@ mod tests {
         let bundle_helper = dir.path().join("bundle-helper");
         copy_helper(InstallKind::App, &exe, &bundle_helper).unwrap();
         assert!(!bundle_helper.join("lib").exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_helper_copy_of_a_bundle_binary_is_signed_ad_hoc() {
+        let dir = tempfile::tempdir().unwrap();
+        let helper = dir.path().join("hushpen");
+        fs::copy("/usr/bin/true", &helper).unwrap();
+        adhoc_sign(&helper).unwrap();
+        let shown = Command::new("/usr/bin/codesign")
+            .arg("-dv")
+            .arg(&helper)
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&shown.stderr).contains("Signature=adhoc"));
+
+        let error = adhoc_sign(&dir.path().join("missing")).unwrap_err();
+        assert_eq!(error.code, UPDATE_SWAP_FAILED);
     }
 
     #[test]
