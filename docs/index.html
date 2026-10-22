@@ -3,28 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ASR Pro | Private speech to text for win/mac/linux</title>
+    <title>Hushpen | Private dictation for macOS and Linux</title>
     <meta
       name="description"
-      content="ASR Pro is a local-first desktop transcription app with private Whisper inference, searchable clips, and portable installs."
+      content="Hushpen is a private, local dictation app. Hold a key and speak. It transcribes on your own computer and pastes the text into the app you are using."
     />
     <meta name="theme-color" content="#050705" />
-    <meta property="og:title" content="ASR Pro" />
-    <meta property="og:description" content="Private Win/Mac/Linux speech transcription with local Whisper models." />
+    <meta property="og:title" content="Hushpen" />
+    <meta property="og:description" content="Private, local push-to-talk dictation for macOS and Linux." />
     <meta property="og:type" content="website" />
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./assets/hushpen-app-icon.png" />
     <link rel="stylesheet" href="./assets/docs.css" />
   </head>
   <body class="page-home">
     <header class="site-nav">
       <div class="site-nav-inner">
-        <a class="brand" href="./index.html">ASR Pro</a>
+        <a class="brand" href="./index.html"><img src="./assets/hushpen-app-icon.png" alt="" width="28" height="28" />Hushpen</a>
         <nav class="nav-links" aria-label="Primary">
-          <a href="./portable-data.html">Portable data</a>
           <a href="./getting-started.html">Getting started</a>
-          <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Releases</a>
-          <a class="nav-cta" href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.0" target="_blank" rel="noreferrer">Releases</a>
+          <a class="nav-cta" href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </div>
     </header>
@@ -32,46 +31,94 @@
     <main class="shell">
       <section class="hero-grid">
         <div class="hero-copy">
-          <p class="prompt-line">Local desktop transcription</p>
-          <h1>Private speech to text for win/mac/linux<span class="cursor" aria-hidden="true"></span></h1>
+          <p class="prompt-line">Hushpen 2.0.0</p>
+          <h1>Private dictation on your own computer<span class="cursor" aria-hidden="true"></span></h1>
           <p class="lead">
-            Local Whisper. Searchable clips. Reprocessing without a cloud round-trip. Portable installs that keep their own data.
+            Hold a key and speak. Hushpen transcribes your speech locally, cleans up the text, and pastes it into the app
+            you are using. Your audio and text never leave the machine unless you choose an endpoint yourself.
           </p>
 
           <div class="terminal-list" aria-label="Core capabilities">
             <div class="terminal-row">
-              <span class="terminal-key">capture</span>
-              <span>start from the app, the tray, or a keyboard shortcut</span>
+              <span class="terminal-key">hold to talk</span>
+              <span>Right Option on macOS, Right Alt on Linux by default. You can record your own key.</span>
             </div>
             <div class="terminal-row">
-              <span class="terminal-key">history</span>
-              <span>search, copy, reopen, delete, or reprocess saved clips locally</span>
+              <span class="terminal-key">local models</span>
+              <span>Whisper models from tiny to large-v3-turbo. They download only when you ask, with a checked hash.</span>
             </div>
             <div class="terminal-row">
-              <span class="terminal-key">input</span>
-              <span>refresh devices and keep the right microphone selected</span>
+              <span class="terminal-key">paste</span>
+              <span>Hushpen saves your clipboard and restores it. It never types into a secure field.</span>
             </div>
             <div class="terminal-row">
-              <span class="terminal-key">control</span>
-              <span>set launch on sign-in, auto-copy, editor handoff, and overlay placement once</span>
+              <span class="terminal-key">cleanup</span>
+              <span>Rule-based cleanup is on by default. AI cleanup is off until you turn it on.</span>
             </div>
           </div>
 
           <div class="link-strip">
-            <a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">Download</a>
+            <a href="#download">Download</a>
             <a href="./getting-started.html">Getting started</a>
-            <a href="./portable-data.html">Portable data</a>
-            <a href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">Source</a>
+            <a href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noreferrer">Source</a>
           </div>
         </div>
-
       </section>
+
+      <div class="doc-grid">
+        <section id="download" class="doc-section">
+          <h2>Download</h2>
+          <p>
+            Get Hushpen 2.0.0 from the
+            <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.0" target="_blank" rel="noreferrer">release page</a>.
+            Each file is named <code>Hushpen-2.0.0-&lt;target&gt;.&lt;ext&gt;</code>.
+          </p>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>platform</th>
+                  <th>files</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>macOS 13 or later</strong><br />Apple silicon</td>
+                  <td>
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-macos-arm64.dmg" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-macos-arm64.dmg</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-macos-arm64.zip" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-macos-arm64.zip</code></a>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Linux x64</strong><br />X11 session</td>
+                  <td>
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-x64.AppImage" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-x64.AppImage</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-x64.deb" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-x64.deb</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-x64.rpm" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-x64.rpm</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-x64.tar.gz" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-x64.tar.gz</code></a>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Linux arm64</strong><br />X11 session</td>
+                  <td>
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-arm64.AppImage" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-arm64.AppImage</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-arm64.deb" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-arm64.deb</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-arm64.rpm" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-arm64.rpm</code></a><br />
+                    <a href="https://github.com/surajmandalcell/hushpen/releases/download/v2.0.0/Hushpen-2.0.0-linux-arm64.tar.gz" target="_blank" rel="noreferrer"><code>Hushpen-2.0.0-linux-arm64.tar.gz</code></a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>The macOS app is not notarized, so macOS blocks the first start. <a href="./getting-started.html#install">Getting started</a> shows how to open it.</p>
+        </section>
+      </div>
 
       <section class="screenshot-showcase" aria-labelledby="screenshots-title" data-carousel>
         <div class="showcase-head">
           <div>
             <p class="eyebrow">screenshots</p>
-            <h2 id="screenshots-title">Local workflow views</h2>
+            <h2 id="screenshots-title">The app</h2>
           </div>
           <div class="carousel-controls" aria-label="Screenshot carousel controls">
             <button class="carousel-control" type="button" aria-label="Previous screenshot" data-carousel-prev>&lsaquo;</button>
@@ -82,85 +129,70 @@
         <div class="screenshot-track" tabindex="0" data-carousel-track>
           <figure class="screenshot-slide is-active">
             <div class="screenshot-frame">
-              <img src="./screenshots/asrpro-home.png" alt="ASR Pro home screen with recording controls and recent clips" />
+              <img src="./screenshots/hushpen-home.png" alt="Hushpen Home view with the dictation row, language choice, and microphone test" />
             </div>
-            <figcaption><strong>Home</strong><span>capture, copy, and reopen recent clips</span></figcaption>
+            <figcaption><strong>Home</strong><span>dictation, language, and microphone</span></figcaption>
           </figure>
 
           <figure class="screenshot-slide" aria-hidden="true">
             <div class="screenshot-frame">
-              <img src="./screenshots/asrpro-configuration.png" alt="ASR Pro configuration screen for shortcuts, launch behavior, and preferences" />
+              <img src="./screenshots/hushpen-history.png" alt="Hushpen History view with a search field and a list of saved transcripts" />
             </div>
-            <figcaption><strong>Configuration</strong><span>shortcuts, editor handoff, launch behavior, and overlay placement</span></figcaption>
+            <figcaption><strong>History</strong><span>search, re-paste, reprocess, and export saved transcripts</span></figcaption>
           </figure>
 
           <figure class="screenshot-slide" aria-hidden="true">
             <div class="screenshot-frame">
-              <img src="./screenshots/asrpro-sound.png" alt="ASR Pro sound settings screen with microphone selection" />
+              <img src="./screenshots/hushpen-models.png" alt="Hushpen Models view listing Whisper models from Tiny to Large v3 Turbo" />
             </div>
-            <figcaption><strong>Sound</strong><span>device refresh and microphone selection</span></figcaption>
+            <figcaption><strong>Models</strong><span>Whisper models, downloaded only when you ask</span></figcaption>
           </figure>
 
           <figure class="screenshot-slide" aria-hidden="true">
             <div class="screenshot-frame">
-              <img src="./screenshots/asrpro-models.png" alt="ASR Pro local model library with Whisper model options" />
+              <img src="./screenshots/hushpen-cleanup.png" alt="Hushpen Settings Cleanup tab with text cleanup on and AI cleanup off" />
             </div>
-            <figcaption><strong>Models</strong><span>local Whisper models and runtime checks</span></figcaption>
-          </figure>
-
-          <figure class="screenshot-slide" aria-hidden="true">
-            <div class="screenshot-frame">
-              <img src="./screenshots/asrpro-history.png" alt="ASR Pro transcript history screen with saved clips" />
-            </div>
-            <figcaption><strong>History</strong><span>searchable transcripts with local reprocessing</span></figcaption>
-          </figure>
-
-          <figure class="screenshot-slide" aria-hidden="true">
-            <div class="screenshot-frame">
-              <img src="./screenshots/asrpro-about.png" alt="ASR Pro about screen with app runtime details" />
-            </div>
-            <figcaption><strong>About</strong><span>runtime status and app identity</span></figcaption>
+            <figcaption><strong>Cleanup</strong><span>text cleanup is on, AI cleanup is off until you turn it on</span></figcaption>
           </figure>
         </div>
 
         <div class="carousel-dots" aria-label="Choose screenshot">
-          <button type="button" aria-label="Show home screenshot" aria-current="true" data-carousel-dot></button>
-          <button type="button" aria-label="Show configuration screenshot" data-carousel-dot></button>
-          <button type="button" aria-label="Show sound screenshot" data-carousel-dot></button>
-          <button type="button" aria-label="Show models screenshot" data-carousel-dot></button>
-          <button type="button" aria-label="Show history screenshot" data-carousel-dot></button>
-          <button type="button" aria-label="Show about screenshot" data-carousel-dot></button>
+          <button type="button" aria-label="Show Home screenshot" aria-current="true" data-carousel-dot></button>
+          <button type="button" aria-label="Show History screenshot" data-carousel-dot></button>
+          <button type="button" aria-label="Show Models screenshot" data-carousel-dot></button>
+          <button type="button" aria-label="Show Cleanup screenshot" data-carousel-dot></button>
         </div>
       </section>
 
       <section class="home-sections">
         <article class="doc-panel">
-          <p class="eyebrow">workflow</p>
-          <h2>Local loop</h2>
+          <p class="eyebrow">features</p>
+          <h2>What it does</h2>
           <ul class="plain-list">
-            <li><strong>record</strong>: capture short speech without switching context</li>
-            <li><strong>transcribe</strong>: run Whisper on-device and keep the output local</li>
-            <li><strong>search</strong>: pull older clips back into the workflow without hunting through folders</li>
-            <li><strong>reprocess</strong>: run a different model later if the first pass was not enough</li>
+            <li><strong>Command Mode</strong>: hold a key, speak an instruction, and the model edits the selected text</li>
+            <li><strong>Dictionary</strong>: your own words and replacements</li>
+            <li><strong>History</strong>: search, re-paste, reprocess, delete with undo, and export to TXT, SRT, VTT, and JSON</li>
+            <li><strong>Import</strong>: transcribe audio files with a queue and cancel</li>
+            <li><strong>AI cleanup</strong>: a local model, or an OpenAI-compatible endpoint such as Ollama or LM Studio</li>
           </ul>
         </article>
 
         <article class="doc-panel">
-          <p class="eyebrow">support</p>
-          <h2>Practical docs</h2>
+          <p class="eyebrow">links</p>
+          <h2>More</h2>
           <ul class="plain-list">
-            <li><strong><a href="./getting-started.html">getting started</a></strong>: install, pick an input, choose a model, and record the first clip</li>
-            <li><strong><a href="./portable-data.html">portable data</a></strong>: where installs keep models, transcripts, config, and history</li>
-            <li><strong><a href="https://github.com/surajmandalcell/asrpro/releases" target="_blank" rel="noreferrer">releases</a></strong>: packaged downloads for real machines</li>
-            <li><strong><a href="https://github.com/surajmandalcell/asrpro" target="_blank" rel="noreferrer">source</a></strong>: repository, issues, and release history</li>
+            <li><strong><a href="./getting-started.html">getting started</a></strong>: install, permissions, first dictation, and where data lives</li>
+            <li><strong><a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.0.0" target="_blank" rel="noreferrer">releases</a></strong>: Hushpen 2.0.0 downloads</li>
+            <li><strong><a href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noreferrer">source</a></strong>: code, build steps, and issues</li>
           </ul>
         </article>
       </section>
 
       <div class="footer-line">
-        <span>Local Whisper runtime</span>
-        <span>Portable storage where possible</span>
-        <span>Static docs, direct-file compatible</span>
+        <span>macOS 13+ on Apple silicon, Linux x64 and arm64 on X11</span>
+        <span>No telemetry</span>
+        <span>AGPL-3.0-or-later</span>
+        <span>Screenshots show the Linux build in Dark</span>
       </div>
     </main>
 
