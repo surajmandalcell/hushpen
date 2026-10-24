@@ -70,3 +70,15 @@ pub const UPDATE_DOWNLOAD_FAILED: &str = "UPDATE_DOWNLOAD_FAILED";
 pub const UPDATE_HASH_MISMATCH: &str = "UPDATE_HASH_MISMATCH";
 /// The new version could not be put in place. The old version still runs.
 pub const UPDATE_SWAP_FAILED: &str = "UPDATE_SWAP_FAILED";
+/// No voice can read aloud here, such as Linux without espeak-ng. The detail names the fix.
+pub const SPEECH_UNAVAILABLE: &str = "SPEECH_UNAVAILABLE";
+/// The text to read aloud is over the size limit.
+pub const SPEECH_TEXT_TOO_LONG: &str = "SPEECH_TEXT_TOO_LONG";
+/// The text to read aloud has no words once the Markdown syntax is removed.
+pub const SPEECH_NO_TEXT: &str = "SPEECH_NO_TEXT";
+/// The text file could not be read or is not UTF-8 text.
+pub const SPEECH_TEXT_UNREADABLE: &str = "SPEECH_TEXT_UNREADABLE";
+/// The chosen voice is no longer installed.
+pub const SPEECH_VOICE_MISSING: &str = "SPEECH_VOICE_MISSING";
+/// The speech engine failed while it spoke.
+pub const SPEECH_FAILED: &str = "SPEECH_FAILED";

@@ -104,6 +104,22 @@ new decision, add it here in the same change (D-21).
   frame is read after the window opens and placed so its center is on the line.
   A line between rows spans the full group width on every page. Views build
   their rows from the shared builders in `ui/` (group, rows, controls).
+- **D-25 Read aloud engines.** The crate `hushpen-speech` holds the speech
+  engine seam, the text preparation, and the system voice. It is its own
+  crate, not part of `hushpen-platform`, because it needs `hushpen-audio` to
+  resample and because the Kokoro host implements the same `SpeechEngine`
+  trait. An engine lists its voices and speaks one chunk of plain text;
+  `synthesize` runs any engine on its own thread, resamples each chunk to
+  24 kHz mono (Kokoro's rate), streams it with progress, and cancels between
+  chunks. Text is plain or Markdown (syntax removed), at most 1 MiB, in
+  chunks of whole sentences up to 300 bytes. The system voice is
+  AVSpeechSynthesizer in process on macOS: its buffers arrive on the main
+  queue, so a chunk is never spoken on the main thread. On Linux it is
+  espeak-ng, started once per chunk, found at run time and never linked;
+  without it the engine reports `SPEECH_UNAVAILABLE` with an install hint,
+  and the UI hides or explains the engine. speech-dispatcher is not used:
+  `spd-say` cannot hand back audio, so pause, seek, and export would not
+  work.
 
 ## History notes
 

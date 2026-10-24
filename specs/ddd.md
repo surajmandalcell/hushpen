@@ -14,6 +14,8 @@ Hushpen
 │   ├── tray                        menu with the same actions
 │   ├── dictation                   one hold-to-talk run of the state machine
 │   │   └── recording               microphone audio in a session WAV
+│   ├── read aloud                  text to speech with a speech engine
+│   │   └── voice                   one voice of the speech engine
 │   ├── updater                     opt-in check and install
 │   └── test hook                   debug builds only
 ├── hushpen engine (child)          whisper.cpp, started as `hushpen engine`
@@ -56,6 +58,15 @@ Hushpen
 - **flow bar**: the always-on-top pill that never takes focus. It stays dark
   in Light and Dark appearance. It shows only while a dictation is active
   (or with Show when idle on), with a cross to cancel and a tick to finish.
+- **read aloud**: text to speech. Typed text or a `.txt` or `.md` file
+  (Markdown syntax removed, at most 1 MiB) is spoken in chunks of whole
+  sentences, so audio and progress arrive while the rest is still spoken. The
+  result can be played, paused, and exported as a WAV.
+- **speech engine**: what turns text into speech. The system voice is
+  AVSpeechSynthesizer on macOS and espeak-ng on Linux (unavailable when
+  espeak-ng is not installed). Kokoro is a downloaded model.
+- **voice**: one voice of a speech engine, with an id, a name, a language,
+  and a quality (default, enhanced, or premium).
 - **appearance**: the system Light or Dark setting. Views follow it live.
 - **settings registry**: the owner of `config/settings.json`. It validates
   values, writes atomically, and keeps unknown keys.

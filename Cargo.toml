@@ -7,6 +7,7 @@ members = [
     "crates/hushpen-engine",
     "crates/hushpen-llm",
     "crates/hushpen-platform",
+    "crates/hushpen-speech",
     "crates/hushpen-store",
     "crates/hushpen-testhook",
     "xtask",
@@ -28,6 +29,7 @@ hushpen-audio = { path = "crates/hushpen-audio" }
 hushpen-core = { path = "crates/hushpen-core" }
 hushpen-engine = { path = "crates/hushpen-engine" }
 hushpen-platform = { path = "crates/hushpen-platform" }
+hushpen-speech = { path = "crates/hushpen-speech" }
 hushpen-store = { path = "crates/hushpen-store" }
 hushpen-testhook = { path = "crates/hushpen-testhook" }
 
@@ -43,6 +45,9 @@ log = "=0.4.34"
 serde_json = "=1.0.151"
 raw-window-handle = "=0.6.2"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
+# Read aloud text: Markdown syntax removal and sentence bounds (versions already locked by GPUI).
+markdown = "=1.0.0"
+unicode-segmentation = "=1.13.3"
 
 # Speech and language models.
 whisper-rs = "=0.16.0"
@@ -71,6 +76,7 @@ global-hotkey = "=0.8.0"
 objc2 = "=0.6.4"
 objc2-app-kit = "=0.3.2"
 objc2-application-services = "=0.3.2"
+objc2-avf-audio = { version = "=0.3.2", default-features = false }
 objc2-core-graphics = "=0.3.2"
 objc2-foundation = "=0.3.2"
 objc2-service-management = "=0.3.2"
