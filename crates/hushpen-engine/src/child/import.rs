@@ -32,7 +32,7 @@ pub(crate) fn run(
             decoder,
             samples: 0,
         },
-        Err(failure) => return failed(job, &EngineError::Decode(failure)),
+        Err(failure) => return failed(job, &decode_error(failure)),
     };
     emit(progress(job, 0.0));
     let started = Instant::now();
@@ -70,7 +70,7 @@ struct FileSource {
 impl PcmSource for FileSource {
     fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, EngineError> {
         let before = out.len();
-        let more = guarded(|| self.decoder.read(out)).map_err(EngineError::Decode)?;
+        let more = guarded(|| self.decoder.read(out)).map_err(decode_error)?;
         self.samples += (out.len() - before) as u64;
         Ok(more)
     }
@@ -87,6 +87,19 @@ fn guarded<T>(step: impl FnOnce() -> Result<T, DecodeError>) -> Result<T, Decode
             "The file could not be decoded.".to_owned(),
         ))
     })
+}
+
+fn decode_error(failure: DecodeError) -> EngineError {
+    match failure {
+        DecodeError::Unsupported(text) => EngineError::Decode {
+            code: error::IMPORT_UNSUPPORTED_CODEC,
+            text,
+        },
+        DecodeError::Failed(text) => EngineError::Decode {
+            code: error::IMPORT_DECODE_FAILED,
+            text,
+        },
+    }
 }
 
 fn failed(job: u64, failure: &EngineError) -> Event {

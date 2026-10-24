@@ -4,7 +4,6 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use hushpen_audio::decode::DecodeError;
 use hushpen_core::error;
 pub use hushpen_core::protocol::Segment;
 
@@ -112,8 +111,9 @@ pub enum EngineError {
     NoAudio,
     /// Translate was asked of an English-only model.
     TranslateUnsupported,
-    /// The imported file could not be decoded while it was transcribed.
-    Decode(DecodeError),
+    /// The imported file could not be decoded while it was transcribed. `code` is an `IMPORT_`
+    /// code and `text` a sentence for the user.
+    Decode { code: &'static str, text: String },
     /// whisper failed while running the job.
     Failed(String),
 }
@@ -127,8 +127,7 @@ impl EngineError {
             Self::BadLanguage(_) => Some("ENGINE_BAD_LANGUAGE"),
             Self::NoAudio => Some("ENGINE_NO_SPEECH"),
             Self::TranslateUnsupported => Some(error::ENGINE_TRANSLATE_UNSUPPORTED),
-            Self::Decode(DecodeError::Unsupported(_)) => Some(error::IMPORT_UNSUPPORTED_CODEC),
-            Self::Decode(DecodeError::Failed(_)) => Some(error::IMPORT_DECODE_FAILED),
+            Self::Decode { code, .. } => Some(code),
             Self::Failed(_) => Some("ENGINE_CRASHED"),
         }
     }
@@ -155,7 +154,7 @@ impl fmt::Display for EngineError {
             Self::TranslateUnsupported => {
                 f.write_str("this model knows only English, so it cannot translate")
             }
-            Self::Decode(failure) => failure.fmt(f),
+            Self::Decode { text, .. } => f.write_str(text),
             Self::Failed(detail) => write!(f, "transcription failed: {detail}"),
         }
     }
