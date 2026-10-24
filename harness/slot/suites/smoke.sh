@@ -109,7 +109,7 @@ for point in "5 100" "5 200" "100 350" "100 450" "100 550"; do
   got=$(pixel "$RUN_OUT/first.png" $(at "$px_x" "$px_y"))
   near "$got" "$SIDEBAR" || failures+="sidebar at ($px_x,$px_y) is $got, want $SIDEBAR within 2; "
 done
-check_failures "window controls and solid sidebar" "hook tree lists only window.close and window.minimize (12 px at 20,18 and 40,18), no circle at 66,26, 5 sidebar samples are $SIDEBAR" "$failures"
+check_failures "window controls and solid sidebar" "hook tree lists only window.close and window.minimize (12 px at 20,20 and 40,20), no circle at 66,26, 5 sidebar samples are $SIDEBAR" "$failures"
 
 echo "== every main view keeps 940x600"
 failures=""

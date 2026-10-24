@@ -87,6 +87,18 @@ open_view() { # <view key>
   $HC action open-view "{\"view\":\"$1\"}" >/dev/null
   wait_until 10 view_is "$1"
 }
+headings() { # the section headings of the last frame, top to bottom (the tree is sorted by id)
+  $HC tree | jq -r \
+    '[.[] | select(.id | test("^settings\\.[a-z]+\\.heading$"))] | sort_by(.bounds.y) | .[].id | ltrimstr("settings.") | rtrimstr(".heading")' \
+    | paste -sd' ' -
+}
+# The tree is the last frame, which can still be the one before the query: wait until it shows
+# the sections the query keeps.
+list_drawn() { [ "$(headings)" = "$(sv '.sections | join(" ")')" ]; }
+search() { # <query>: the Settings search set to the query, the list drawn for it
+  $HC action settings-search "$(jq -nc --arg query "$1" '{query: $query}')" >/dev/null || return 1
+  wait_until 10 list_drawn
+}
 section() { # <section key>: the Settings view searched down to that section, its group rendered
   local query=$1
   case "$1" in
@@ -94,8 +106,8 @@ section() { # <section key>: the Settings view searched down to that section, it
     flowbar) query="flow bar" ;;
   esac
   open_view settings || return 1
-  $HC action settings-search "{\"query\":\"$query\"}" >/dev/null || return 1
-  wait_until 10 tree_has "settings.$1" || return 1
+  search "$query" || return 1
+  tree_has "settings.$1.heading"
 }
 tab_to() { # <id>: Tab until that element has focus
   local id=$1
@@ -132,11 +144,8 @@ GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
 echo "== VAL-SET-001 one list of 8 sections with headings, the search, the keyboard, Esc closes a dropdown"
 failures=""
 section general || failures+="Settings did not open; "
-$HC action settings-search '{"query":""}' >/dev/null
-# The hook tree is sorted by id, so the page order is read from the y bounds.
-heading_ids=$($HC tree | jq -r \
-  '[.[] | select(.id | test("^settings\\.[a-z]+\\.heading$"))] | sort_by(.bounds.y) | .[].id | ltrimstr("settings.") | rtrimstr(".heading")' \
-  | paste -sd' ' -)
+search "" || failures+="the empty search drew '$(headings)' for '$(sv '.sections | join(" ")')'; "
+heading_ids=$(headings)
 [ "$heading_ids" = "$SECTION_KEYS" ] || failures+="the headings top to bottom read '$heading_ids'; "
 tree_has settings.section.general && failures+="a tab bar is still there; "
 width=$(tree_get settings.search bounds.width)
@@ -149,7 +158,7 @@ for key in $SECTION_KEYS; do
 done
 # Keyboard only: Ctrl+F puts the caret in the search, typing filters, Esc clears, then leaves.
 section general >/dev/null
-$HC action settings-search '{"query":""}' >/dev/null
+search "" >/dev/null
 focus "$(app_window)"
 xdotool key Escape # no picker open: a no-op that settles the focus
 xdotool key ctrl+f
@@ -208,6 +217,7 @@ wait_until 5 test -f "$AUTOSTART" || failures+="no autostart file after the seco
 rm -f "$AUTOSTART"
 open_view home >/dev/null
 open_view settings >/dev/null
+wait_until 10 tree_has settings.general.launchAtLogin || failures+="Settings did not draw General again; "
 wait_until 5 sv_is .launch_at_login false || failures+="after the file was removed by hand the toggle still reads on; "
 setting_is startup.launchAtLogin false || failures+="the key is $(sget startup.launchAtLogin) after the hand removal; "
 $HC click settings.general.launchAtLogin >/dev/null
