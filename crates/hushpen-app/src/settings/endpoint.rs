@@ -11,13 +11,11 @@ use hushpen_core::error::ENDPOINT_FAILED;
 use serde_json::{Value, json};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 const URL_SETTING: &str = "cleanup.llm.endpointUrl";
 const MODEL_SETTING: &str = "cleanup.llm.endpointModel";
 const PRESET_SETTING: &str = "cleanup.llm.endpointPreset";
 const TIMEOUT_SETTING: &str = "cleanup.llm.endpointTimeoutMs";
-const DEFAULT_TIMEOUT_MS: u64 = 6_000;
 
 /// Where the Test connection button stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,17 +229,11 @@ impl EndpointForm {
                 .and_then(|value| value.as_str().map(str::to_owned))
                 .unwrap_or_default()
         };
-        let ms = self
-            .storage
-            .settings
-            .get(TIMEOUT_SETTING)
-            .and_then(|value| value.as_u64())
-            .unwrap_or(DEFAULT_TIMEOUT_MS);
         Config {
             url: stored(URL_SETTING),
             model: stored(MODEL_SETTING),
             key: self.storage.secrets.endpoint_api_key(),
-            timeout: Duration::from_millis(ms),
+            timeout: self.storage.settings.millis(TIMEOUT_SETTING),
         }
     }
 

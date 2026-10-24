@@ -452,9 +452,11 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 })
                 .detach();
             }
-            #[cfg_attr(not(feature = "test-automation"), allow(unused_variables))]
             let flow_bar_host =
                 flow_bar::run(cx, flow_bar.clone(), Box::new(PopUp::new(&flow_bar)));
+            // Only the test hook drives the bar from outside; the bar's own task holds it too.
+            #[cfg(not(feature = "test-automation"))]
+            let _ = flow_bar_host;
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);

@@ -13,7 +13,7 @@ pub fn total_ram_bytes() -> Option<u64> {
 }
 
 /// The `MemTotal` line of `/proc/meminfo`, which counts kibibytes.
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[cfg(any(not(target_os = "macos"), test))]
 fn parse_meminfo(text: &str) -> Option<u64> {
     let line = text.lines().find(|line| line.starts_with("MemTotal:"))?;
     let kib: u64 = line
