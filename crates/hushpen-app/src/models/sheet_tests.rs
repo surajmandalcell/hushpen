@@ -471,3 +471,55 @@ fn tab_stays_in_the_sheet_and_esc_gives_focus_back_to_the_info_button(cx: &mut T
     assert!(!present(cx, handle, "models.sheet"));
     assert!(focused(cx, handle, "models.info.0"));
 }
+
+fn hover(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) {
+    let id = gpui_kit::SharedString::from(id.to_owned());
+    cx.update_window(handle, |_, window, cx| window.hover(id, cx))
+        .unwrap();
+    render(cx, handle);
+}
+
+/// Waits out the tooltip delay, then draws a frame.
+fn wait_for_tooltip(cx: &mut TestAppContext, handle: AnyWindowHandle) {
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    render(cx, handle);
+}
+
+const TOOLTIP: &str = "tooltip.text";
+
+#[gpui_kit::test]
+fn no_tooltip_shows_over_the_details_sheet(cx: &mut TestAppContext) {
+    let (rig, _) = rig(cx);
+    let handle = window(cx, &rig);
+    hover(cx, handle, "models.info.0");
+    wait_for_tooltip(cx, handle);
+    assert_eq!(label(cx, handle, TOOLTIP), "Details");
+
+    // A click before the delay is over opens the sheet; the delay runs out under it.
+    hover(cx, handle, "models.info.1");
+    click(cx, handle, "models.info.1");
+    assert!(present(cx, handle, "models.sheet"));
+    wait_for_tooltip(cx, handle);
+    assert!(
+        !present(cx, handle, TOOLTIP),
+        "a tooltip shows over the sheet"
+    );
+    press(cx, handle, "escape");
+
+    // A tooltip that is up when the sheet opens goes away.
+    hover(cx, handle, "models.info.0");
+    wait_for_tooltip(cx, handle);
+    assert!(present(cx, handle, TOOLTIP));
+    cx.update_window(handle, |_, window, cx| {
+        rig.models
+            .update(cx, |models, cx| models.open_details(0, window, cx));
+    })
+    .unwrap();
+    render(cx, handle);
+    assert!(present(cx, handle, "models.sheet"));
+    assert!(
+        !present(cx, handle, TOOLTIP),
+        "the tooltip stays over the sheet"
+    );
+}
