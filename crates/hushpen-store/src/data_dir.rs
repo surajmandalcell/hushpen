@@ -216,9 +216,19 @@ impl DataDir {
         self.logs_dir().join("llm.log")
     }
 
+    pub fn tts_log_path(&self) -> PathBuf {
+        self.logs_dir().join("tts.log")
+    }
+
     /// Where the cleanup model GGUF files live. The folder is created by the model manager.
     pub fn llm_models_dir(&self) -> PathBuf {
         self.root.join("models").join("llm")
+    }
+
+    /// Where voice models live, one folder of files each, such as `kokoro-82m-int8/`. The
+    /// folder is created by the model manager.
+    pub fn tts_models_dir(&self) -> PathBuf {
+        self.root.join("models").join("tts")
     }
 
     /// Where `ggml-<id>.bin` speech models live. The folder is created by the model manager.

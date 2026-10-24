@@ -41,6 +41,7 @@ hushpen-audio.workspace = true
 hushpen-core.workspace = true
 hushpen-engine.workspace = true
 hushpen-platform.workspace = true
+hushpen-speech.workspace = true
 hushpen-store.workspace = true
 hushpen-testhook = { workspace = true, optional = true }
 futures.workspace = true

@@ -105,6 +105,16 @@ pub fn check(model: &Path, bytes: u64, sha256: &str) -> Check {
     }
 }
 
+/// The file has a stamp that still matches its size and modification time, so it holds the
+/// stamped hash without being read again.
+pub fn is_verified(model: &Path) -> bool {
+    let Some(stamp) = read_stamp(model) else {
+        return false;
+    };
+    let size = fs::metadata(model).map_or(0, |meta| meta.len());
+    size > 0 && check(model, size, &stamp.hash) == Check::Ready
+}
+
 /// sha256 of a whole file, as lower-case hex. `on_chunk` gets the byte count so far and returns
 /// `false` to stop; the result is then `ErrorKind::Interrupted`.
 pub fn hash_file(path: &Path, mut on_chunk: impl FnMut(u64) -> bool) -> io::Result<String> {

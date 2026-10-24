@@ -41,6 +41,7 @@ pub mod theme;
 #[cfg(test)]
 mod token_use;
 pub mod tray;
+pub mod tts_host;
 pub mod ui;
 pub mod update_apply;
 pub mod updater;
@@ -48,3 +49,4 @@ pub mod views;
 pub mod window_chrome;
 #[cfg(not(target_os = "macos"))]
 pub mod window_controls;
+mod worker_bin;

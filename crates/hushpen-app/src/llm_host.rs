@@ -5,6 +5,7 @@
 //! A worker crash, hang, or missing model never reaches the user as an error. A job ends in an
 //! outcome the cleanup provider turns into the rule text.
 
+use crate::worker_bin::worker_path;
 use hushpen_engine::{ChildSpec, EngineLog, LlmClient, LlmSpec, LlmState, LlmStatus, Timing};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files;
@@ -12,12 +13,6 @@ use serde_json::{Map, Value};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-
-/// The worker binary's file name, beside the app's own executable.
-#[cfg(not(windows))]
-const WORKER_NAME: &str = "hushpen-llm";
-#[cfg(windows)]
-const WORKER_NAME: &str = "hushpen-llm.exe";
 
 struct State {
     client: Option<LlmClient>,
@@ -35,7 +30,7 @@ pub struct LlmHost {
 impl LlmHost {
     /// Starts nothing. [`LlmHost::apply_settings`] starts the worker when the settings ask for it.
     pub fn new(data: &DataDir) -> Self {
-        Self::with_program(data, worker_path())
+        Self::with_program(data, worker_path("hushpen-llm", "HUSHPEN_LLM_BIN"))
     }
 
     pub(crate) fn with_program(data: &DataDir, program: PathBuf) -> Self {
@@ -144,18 +139,6 @@ impl LlmHost {
     }
 }
 
-/// The worker binary: beside the app's resolved executable. Debug builds also honor
-/// `HUSHPEN_LLM_BIN`, so a test build can point at a freshly built worker.
-fn worker_path() -> PathBuf {
-    #[cfg(debug_assertions)]
-    if let Some(path) = std::env::var_os("HUSHPEN_LLM_BIN").filter(|path| !path.is_empty()) {
-        return PathBuf::from(path);
-    }
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hushpen"));
-    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
-    exe.with_file_name(WORKER_NAME)
-}
-
 /// The load the settings ask for, or `None` while AI cleanup is off, uses the endpoint, names no
 /// model, or the model file is not there with a matching `.verified` stamp.
 pub fn wanted_load(
@@ -182,7 +165,7 @@ pub fn wanted_load(
         return None;
     }
     let path = models_dir.join(format!("{id}.gguf"));
-    if !is_verified(&path) {
+    if !model_files::is_verified(&path) {
         return None;
     }
     let minutes = settings
@@ -200,15 +183,6 @@ pub fn wanted_load(
         threads: cpus.clamp(1, 8),
         idle_secs: minutes.saturating_mul(60),
     })
-}
-
-/// A stamp exists and still matches the file's size and modification time.
-fn is_verified(path: &Path) -> bool {
-    let Some(stamp) = model_files::read_stamp(path) else {
-        return false;
-    };
-    let size = std::fs::metadata(path).map_or(0, |meta| meta.len());
-    size > 0 && model_files::check(path, size, &stamp.hash) == model_files::Check::Ready
 }
 
 #[cfg(test)]
