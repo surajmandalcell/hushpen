@@ -219,6 +219,30 @@ pub(super) static REGISTRY: &[Spec] = &[
         Kind::Choice(&["never", "30d", "forever"]),
         |_| json!("30d")
     ),
+    spec!(
+        "files.mode",
+        Kind::Choice(&["transcribe", "readAloud"]),
+        |_| json!("transcribe")
+    ),
+    spec!("files.language", Kind::Language, |_| json!("auto")),
+    spec!("files.translate", Kind::Bool, |_| json!(false)),
+    spec!(
+        "readAloud.engine",
+        Kind::Choice(&["system", "kokoro"]),
+        |_| json!("system")
+    ),
+    spec!(
+        "readAloud.voice.system",
+        Kind::OptionalText(256),
+        |_| json!("")
+    ),
+    spec!(
+        "readAloud.voice.kokoro",
+        Kind::OptionalText(256),
+        |_| json!("")
+    ),
+    spec!("readAloud.speed", Kind::Float(0.5, 2.0), |_| json!(1.0)),
+    spec!("readAloud.format", Kind::Choice(&["wav"]), |_| json!("wav")),
     spec!("engine.useGpu", Kind::Bool, |os| json!(mac(os))),
     spec!("engine.threads", Kind::AutoOrInt(1, 64), |_| json!("auto")),
     spec!("startup.launchAtLogin", Kind::Bool, |_| json!(false)),
@@ -296,6 +320,22 @@ mod tests {
         assert_eq!(range("audio.cueVolume"), Some(0.0..=1.0));
         assert_eq!(range("engine.threads"), Some(1.0..=64.0));
         assert_eq!(range("audio.cueSounds"), None);
+    }
+
+    #[test]
+    fn the_files_view_keys_refuse_values_outside_their_rule() {
+        let sanitize = |key, value| find(key).unwrap().sanitize(&value);
+        assert_eq!(
+            sanitize("files.mode", json!("readAloud")),
+            Some(json!("readAloud"))
+        );
+        assert_eq!(sanitize("files.mode", json!("import")), None);
+        assert_eq!(sanitize("files.language", json!("es")), Some(json!("es")));
+        assert_eq!(sanitize("files.language", json!("xx")), None);
+        assert_eq!(sanitize("readAloud.engine", json!("piper")), None);
+        assert_eq!(sanitize("readAloud.speed", json!(2.5)), None);
+        assert_eq!(sanitize("readAloud.speed", json!(0.5)), Some(json!(0.5)));
+        assert_eq!(sanitize("readAloud.format", json!("mp3")), None);
     }
 
     #[test]
