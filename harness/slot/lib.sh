@@ -1,13 +1,14 @@
 #!/bin/bash
 # Helpers for the in-slot suite scripts. Source it after with-env.sh set RUN_OUT.
-# A check is one named pass or fail with a detail line; finish() turns the list into result.json.
+# A check is one named pass, fail, or skip with a detail line; finish() turns the list into
+# result.json, which passes when no check failed. A skip is for a check whose tool cannot run here.
 
 CHECKS=$RUN_OUT/checks.jsonl
 
-check() { # <name> <pass|fail> <detail>
+check() { # <name> <pass|fail|skip> <detail>
   jq -nc --arg name "$1" --arg status "$2" --arg detail "$3" \
     '{name: $name, status: $status, detail: $detail}' >>"$CHECKS"
-  printf '%s %s: %s\n' "$([ "$2" = pass ] && echo PASS || echo FAIL)" "$1" "$3"
+  printf '%s %s: %s\n' "$(tr '[:lower:]' '[:upper:]' <<<"$2")" "$1" "$3"
 }
 
 # check_failures <name> <ok detail> <failure lines...>: pass when no failure lines were collected
@@ -122,7 +123,7 @@ finish() { # <suite>
     --arg appimage "${HUSHPEN_APPIMAGE_NAME:-}" --arg appimage_sha "${HUSHPEN_APPIMAGE_SHA256:-}" \
     '{suite: $suite, run_id: $run, slot: $slot, commit: $commit}
       + (if $appimage_sha == "" then {} else {appimage: $appimage, appimage_sha256: $appimage_sha} end)
-      + {passed: (length > 0 and all(.[]; .status == "pass")), checks: .}' \
+      + {passed: (length > 0 and all(.[]; .status == "pass" or .status == "skip")), checks: .}' \
     "$CHECKS" >"$RUN_OUT/result.json"
   passed=$(jq -r .passed "$RUN_OUT/result.json")
   echo "result: $RUN_OUT/result.json passed=$passed"
