@@ -10,6 +10,7 @@ members = [
     "crates/hushpen-speech",
     "crates/hushpen-store",
     "crates/hushpen-testhook",
+    "crates/hushpen-tts",
     "xtask",
 ]
 # The vendored fork is a plain path package, not a member: the gate lints only our code.
@@ -53,6 +54,8 @@ unicode-segmentation = "=1.13.3"
 whisper-rs = "=0.16.0"
 whisper-rs-sys = "=0.15.0"
 llama-cpp-2 = { version = "=0.1.158", default-features = false }
+# The voice worker opens the sherpa-onnx C library at run time (version already locked).
+libloading = "=0.8.9"
 
 # Audio.
 cpal = "=0.18.2"
