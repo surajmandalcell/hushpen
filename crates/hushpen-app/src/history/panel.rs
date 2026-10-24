@@ -6,15 +6,14 @@ use super::{History, ROW_HEIGHT};
 use crate::controller::ReprocessState;
 use crate::hook;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size, space};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, Bounds, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Pixels, Role, StatefulInteractiveElement, Styled, Window, div, px,
-    relative, transparent_black,
+    transparent_black,
 };
 use hushpen_core::export::Format;
 use hushpen_core::{catalog, language};
@@ -178,17 +177,14 @@ struct Snapshot {
     format_focus: [FocusHandle; 4],
 }
 
-/// Stacks rows into a group. A row that draws its own line above it, and the spacers that stand
-/// in for rows outside the screen, pass `None` and take no line from here.
-fn assemble(
-    id: &'static str,
-    palette: Palette,
-    rows: Vec<(AnyElement, Option<f32>)>,
-) -> AnyElement {
-    let mut frame = ui::group_frame(hook::id("history", id), palette);
-    for (index, (row, inset)) in rows.into_iter().enumerate() {
-        if let (true, Some(inset)) = (index > 0, inset) {
-            frame = frame.child(ui::line(palette, inset));
+/// Stacks the rows of the list into a group. A transcript row draws its own line above it, so
+/// every row is the same height, and the spacers that stand in for rows outside the screen take
+/// no line: both pass `false`.
+fn list_group(palette: Palette, rows: Vec<(AnyElement, bool)>) -> AnyElement {
+    let mut frame = ui::group_frame(hook::id("history", "list"), palette);
+    for (index, (row, lined)) in rows.into_iter().enumerate() {
+        if index > 0 && lined {
+            frame = frame.child(ui::line(palette));
         }
         frame = frame.child(row);
     }
@@ -244,47 +240,40 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
         undo_focus,
         more_focus,
     ] = focus;
-    let plain = Some(ui::PLAIN_INSET);
-    let mut rows: Vec<(AnyElement, Option<f32>)> =
-        vec![(toolbar(palette, history, &snap, &clear_focus), plain)];
+    let mut rows: Vec<(AnyElement, bool)> =
+        vec![(toolbar(palette, history, &snap, &clear_focus), true)];
     if snap.selecting {
-        rows.push((select_bar(palette, history, &snap), plain));
+        rows.push((select_bar(palette, history, &snap), true));
     }
     if let Some(notice) = snap.notice.clone() {
-        rows.push((
-            ui::note_row(palette, hook::id("history", "notice"), notice, false),
-            plain,
-        ));
+        rows.push((notice_row(palette, "notice", notice, Notice::Info), true));
     }
     if snap.confirming {
         rows.push((
             confirm_row(palette, history, snap.total, &confirm_focus, &cancel_focus),
-            plain,
+            true,
         ));
     }
     if snap.can_undo {
-        rows.push((undo_row(palette, history, &undo_focus), plain));
+        rows.push((undo_row(palette, history, &undo_focus), true));
     }
     if let Some(message) = snap.message.clone() {
-        rows.push((
-            ui::note_row(palette, hook::id("history", "message"), message, true),
-            plain,
-        ));
+        rows.push((notice_row(palette, "message", message, Notice::Alert), true));
     }
     if snap.rows.is_empty() {
         let searching = !snap.query.is_empty();
         rows.push((
-            ui::note_row(
+            notice_row(
                 palette,
-                hook::id("history", if searching { "no-results" } else { "empty" }),
+                if searching { "no-results" } else { "empty" },
                 if searching {
                     format!("No transcripts match \u{201c}{}\u{201d}.", snap.query)
                 } else {
                     EMPTY_TEXT.to_owned()
                 },
-                false,
+                Notice::Info,
             ),
-            plain,
+            true,
         ));
     }
     if snap.first > 0 {
@@ -293,7 +282,7 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
                 .flex_none()
                 .h(px(snap.first as f32 * ROW_HEIGHT))
                 .into_any_element(),
-            None,
+            false,
         ));
     }
     for (offset, ((row, focus), selected)) in snap
@@ -306,7 +295,7 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
         let mode = snap.selecting.then_some(selected);
         rows.push((
             entry_row(palette, history, snap.first + offset, row, focus, mode),
-            None,
+            false,
         ));
     }
     if snap.below > 0 {
@@ -315,7 +304,7 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
                 .flex_none()
                 .h(px(snap.below as f32 * ROW_HEIGHT))
                 .into_any_element(),
-            None,
+            false,
         ));
     }
     if snap.has_more {
@@ -338,10 +327,15 @@ fn list_view(history: &Entity<History>, cx: &mut App) -> impl IntoElement + use<
                     more,
                 ))
                 .into_any_element(),
-            plain,
+            true,
         ));
     }
-    assemble("list", palette, rows)
+    list_group(palette, rows)
+}
+
+/// A notice row of the History view, under the id `history.<name>`.
+fn notice_row(palette: Palette, name: &str, text: String, notice: Notice) -> AnyElement {
+    ui::notice_row(palette, hook::id("history", name), text, notice, None)
 }
 
 fn toolbar(
@@ -626,11 +620,13 @@ fn entry_row(
         .track_focus(&focus)
         .role(Role::Button)
         .aria_label(label)
-        .h(px(ROW_HEIGHT))
+        .flex_1()
+        .min_h_0()
         .w_full()
-        .flex_none()
         .flex()
-        .flex_col()
+        .items_center()
+        .gap(px(ui::ROW_GAP))
+        .px(px(size::ROW_PADDING - size::FOCUS_RING))
         .border_2()
         .border_color(transparent_black())
         .cursor_pointer()
@@ -641,36 +637,21 @@ fn entry_row(
     if selection == Some(true) {
         element = element.bg(palette.selection);
     }
-    element
-        .child(ui::line(palette, ui::LINE_INSET - size::FOCUS_RING))
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .items_center()
-                .gap(px(ui::ROW_GAP))
-                .px(px(size::ROW_PADDING - size::FOCUS_RING))
-                .child(ui::icon(palette, glyph))
-                .child(
-                    ui::text_column()
-                        .child(
-                            ui::title(palette)
-                                .id(hook::indexed("history", "name", index))
-                                .test_support()
-                                .aria_label(headline.clone())
-                                .child(headline),
-                        )
-                        .child(
-                            ui::secondary(palette)
-                                .id(hook::indexed("history", "meta", index))
-                                .test_support()
-                                .aria_label(detail.clone())
-                                .w_full()
-                                .child(detail),
-                        ),
-                ),
-        )
+    let text = ui::named_lines(
+        palette,
+        hook::indexed("history", "name", index),
+        headline,
+        Some((hook::indexed("history", "meta", index), detail)),
+    );
+    // The line sits outside the focus ring, so it spans the group like every other line.
+    div()
+        .h(px(ROW_HEIGHT))
+        .w_full()
+        .flex_none()
+        .flex()
+        .flex_col()
+        .child(ui::line(palette))
+        .child(element.child(ui::icon(palette, glyph)).child(text))
         .into_any_element()
 }
 
@@ -828,8 +809,7 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             })),
         ));
 
-    let plain = Some(ui::PLAIN_INSET);
-    let mut rows: Vec<(AnyElement, Option<f32>)> = vec![(
+    let mut rows: Vec<AnyElement> = vec![
         ui::row(palette)
             .id(hook::id("history", "detail-header"))
             .test_support()
@@ -844,8 +824,7 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             ))
             .child(ui::secondary(palette).flex_1().min_w_0().child(meta(&row)))
             .into_any_element(),
-        plain,
-    )];
+    ];
     for (name, title, controls) in [
         ("actions.text", "Text", text_controls.into_any_element()),
         (
@@ -854,68 +833,49 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
             file_controls.into_any_element(),
         ),
     ] {
-        rows.push((
+        rows.push(
             ui::row(palette)
                 .id(hook::id("history", name))
                 .test_support()
                 .child(ui::title(palette).flex_1().min_w_0().child(title))
                 .child(controls)
                 .into_any_element(),
-            plain,
-        ));
+        );
     }
     if export.open {
-        rows.push((
-            banner(
-                palette,
-                "export-bar",
-                "Export this transcript as".to_owned(),
-                format_buttons(palette, history, &export.format_focus, has_text),
-            ),
-            plain,
+        rows.push(banner(
+            palette,
+            "export-bar",
+            "Export this transcript as".to_owned(),
+            format_buttons(palette, history, &export.format_focus, has_text),
         ));
     }
     if let Some(notice) = export.notice {
-        rows.push((
-            ui::note_row(palette, hook::id("history", "notice"), notice, false),
-            plain,
-        ));
+        rows.push(notice_row(palette, "notice", notice, Notice::Info));
     }
     if audio {
-        rows.push((player_row(palette, history, &row.id, playback), plain));
+        rows.push(player_row(palette, history, &row.id, playback));
     }
     if let Some(message) = message {
-        rows.push((
-            ui::note_row(palette, hook::id("history", "message"), message, true),
-            plain,
-        ));
+        rows.push(notice_row(palette, "message", message, Notice::Alert));
     }
     match &reprocess {
-        Some(ReprocessState::Running) => rows.push((
-            ui::note_row(
-                palette,
-                hook::id("history", "reprocess-status"),
-                "Reprocessing\u{2026}".into(),
-                false,
-            ),
-            plain,
+        Some(ReprocessState::Running) => rows.push(notice_row(
+            palette,
+            "reprocess-status",
+            "Reprocessing\u{2026}".into(),
+            Notice::Info,
         )),
-        Some(ReprocessState::Failed(why)) => rows.push((
-            ui::note_row(
-                palette,
-                hook::id("history", "message"),
-                format!("Reprocess failed. {why}"),
-                true,
-            ),
-            plain,
+        Some(ReprocessState::Failed(why)) => rows.push(notice_row(
+            palette,
+            "message",
+            format!("Reprocess failed. {why}"),
+            Notice::Alert,
         )),
         None => {}
     }
     if let Some(note) = audio_note(&row, audio) {
-        rows.push((
-            ui::note_row(palette, hook::id("history", "audio-missing"), note, false),
-            plain,
-        ));
+        rows.push(notice_row(palette, "audio-missing", note, Notice::Info));
     }
     let language = row
         .language_detected
@@ -947,31 +907,25 @@ fn detail_view(history: &Entity<History>, row: Row, cx: &mut App) -> impl IntoEl
         if is_import(&row) && matches!(key, "app" | "rule") && value.is_none() {
             continue;
         }
-        rows.push((field(palette, key, label, value), plain));
+        rows.push(field(palette, key, label, value));
     }
     if is_import(&row) {
-        rows.push((
-            field(palette, "file", "File", row.source_name.clone()),
-            plain,
-        ));
+        rows.push(field(palette, "file", "File", row.source_name.clone()));
         for (index, segment) in segments.iter().enumerate() {
             let label = format!(
                 "{} \u{2013} {}",
                 clock(segment.start_ms),
                 clock(segment.end_ms)
             );
-            rows.push((
-                field(
-                    palette,
-                    &format!("segment.{index}"),
-                    &label,
-                    Some(segment.text.clone()),
-                ),
-                plain,
+            rows.push(field(
+                palette,
+                &format!("segment.{index}"),
+                &label,
+                Some(segment.text.clone()),
             ));
         }
     }
-    assemble("detail", palette, rows)
+    ui::group(hook::id("history", "detail"), palette, rows).into_any_element()
 }
 
 /// What the export controls of the detail view need from the view.
@@ -1050,22 +1004,7 @@ fn player_row(palette: Palette, history: &Entity<History>, id: &str, player: Pla
         playback::clock(info.position_ms),
         playback::clock(info.duration_ms)
     );
-    let track = div()
-        .relative()
-        .w_full()
-        .h(px(4.0))
-        .rounded(px(radius::FULL))
-        .bg(palette.control)
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .h_full()
-                .w(relative(fraction))
-                .rounded(px(radius::FULL))
-                .bg(palette.label_secondary),
-        );
+    let track = ui::track(palette, fraction);
     let mut row = ui::row(palette)
         .id(hook::id("history", "player"))
         .test_support()
@@ -1127,38 +1066,13 @@ fn player_row(palette: Palette, history: &Entity<History>, id: &str, player: Pla
     row.into_any_element()
 }
 
-/// A row with the name of a field on the left and its text on the right, cut to one line. The
-/// whole text is in the tooltip and in the label for assistive technology.
+/// The fact row of one field of the transcript, under `history.detail.<key>`.
 fn field(palette: Palette, key: &str, label: &str, value: Option<String>) -> AnyElement {
-    let shown = value.clone().unwrap_or_else(|| "Not available".to_owned());
-    let full = value.clone().unwrap_or_default();
-    let mut text = div()
-        .id(hook::id("history", &format!("detail.{key}")))
-        .test_support()
-        .aria_label(full.clone())
-        .flex_1()
-        .min_w_0()
-        .truncate()
-        .text_right()
-        .text_color(if value.is_some() {
-            palette.label_secondary
-        } else {
-            palette.label_tertiary
-        })
-        .child(shown);
-    if !full.is_empty() {
-        text = text.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
-    }
-    ui::row(palette)
-        .id(hook::id("history", &format!("detail.{key}.row")))
-        .test_support()
-        .gap(px(space::LG))
-        .child(
-            div()
-                .flex_none()
-                .whitespace_nowrap()
-                .child(label.to_owned()),
-        )
-        .child(text)
-        .into_any_element()
+    ui::fact_row(
+        palette,
+        hook::id("history", &format!("detail.{key}.row")),
+        hook::id("history", &format!("detail.{key}")),
+        label,
+        value,
+    )
 }

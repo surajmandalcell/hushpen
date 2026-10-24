@@ -10,13 +10,13 @@ use std::path::{Path, PathBuf};
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
 const ALLOWED: [(&str, &str, &str); 14] = [
     // The default button fills with it; the plain button is a link and takes it for text.
-    ("ui.rs", "button", "accent"),
+    ("ui/controls.rs", "button", "accent"),
     // The track of a switch that is on.
-    ("ui.rs", "switch", "accent"),
+    ("ui/controls.rs", "switch", "accent"),
     // The recorder that waits for keys has the focus ring while it waits.
     ("shortcuts/panel.rs", "shortcut_row", "accent"),
     // Status words: Ready, Active, Failed. The warning token also colors the attention icon.
-    ("ui.rs", "status_row", "error"),
+    ("ui/rows.rs", "notice_row", "error"),
     ("dictation/panel.rs", "status_tone", "success"),
     ("dictation/panel.rs", "status_tone", "error"),
     ("import/panel.rs", "status_of", "success"),

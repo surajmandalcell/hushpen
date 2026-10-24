@@ -5,7 +5,7 @@
 use super::Shortcuts;
 use crate::hook;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
@@ -82,11 +82,12 @@ pub fn render(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> impl IntoElement +
     };
     let mut group_rows: Vec<AnyElement> = Vec::new();
     if let Some(message) = why_off {
-        group_rows.push(ui::note_row(
+        group_rows.push(ui::notice_row(
             palette,
             hook::id("settings", "shortcut.keys-off"),
             message,
-            false,
+            Notice::Info,
+            None,
         ));
     }
     for row in rows {
@@ -94,18 +95,19 @@ pub fn render(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> impl IntoElement +
         let error = row.error.clone();
         group_rows.push(shortcut_row(palette, shortcuts, row));
         if let Some(message) = error {
-            group_rows.push(ui::note_row(
+            group_rows.push(ui::notice_row(
                 palette,
                 hook::id("settings", &format!("shortcut.{key}.error")),
                 message,
-                true,
+                Notice::Alert,
+                None,
             ));
         }
     }
     group_rows.push(reset_row(palette, shortcuts, &reset_focus));
     ui::section(
         palette,
-        ui::plain_group(hook::id("settings", "shortcuts"), palette, group_rows),
+        ui::group(hook::id("settings", "shortcuts"), palette, group_rows),
         Some((
             hook::id("settings", "shortcuts.help"),
             "Click a shortcut, then press the keys. Esc cancels.".to_owned(),

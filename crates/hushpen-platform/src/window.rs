@@ -106,6 +106,16 @@ pub fn lock_chrome(handle: WindowHandle, width: u16, height: u16) -> Result<(), 
     }
 }
 
+/// The height in points of the standard close button frame on macOS, which is taller than the
+/// circle it draws. `None` on other backends or before AppKit made the button.
+pub fn close_button_height(handle: WindowHandle) -> Option<f64> {
+    match handle {
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => appkit::close_button_height(view),
+        _ => None,
+    }
+}
+
 /// Puts the native sidebar material behind the first `width` points of the window, full height,
 /// on macOS. The window must be transparent there. Backends it does not know are left alone.
 pub fn add_sidebar_material(handle: WindowHandle, width: f64) -> Result<(), ChromeError> {

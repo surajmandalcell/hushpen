@@ -1,6 +1,6 @@
-//! macOS window chrome. AppKit draws the one set of traffic lights, so nothing here moves a
-//! standard button; only the zoom button is hidden. The window can neither zoom nor enter full
-//! screen.
+//! macOS window chrome. AppKit draws the one set of traffic lights and GPUI places them, so
+//! nothing here moves a standard button; it only reads the close button frame, and hides the
+//! zoom button. The window can neither zoom nor enter full screen.
 //!
 //! GPUI already builds the style mask (titled, closable, miniaturizable, not resizable, full
 //! size content), so this module leaves the mask alone: changing it on a live window makes
@@ -11,9 +11,24 @@
 
 use super::ChromeError;
 use objc2::MainThreadMarker;
+use objc2::rc::Retained;
 use objc2_app_kit::{NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior};
 
 pub(super) fn lock(view: usize, _width: u16, _height: u16) -> Result<(), ChromeError> {
+    let window = window_of(view)?;
+    apply(&window);
+    Ok(())
+}
+
+/// The height of the close button frame; GPUI places the traffic lights by this frame.
+pub(super) fn close_button_height(view: usize) -> Option<f64> {
+    let button = window_of(view)
+        .ok()?
+        .standardWindowButton(NSWindowButton::CloseButton)?;
+    Some(button.frame().size.height)
+}
+
+fn window_of(view: usize) -> Result<Retained<NSWindow>, ChromeError> {
     MainThreadMarker::new()
         .ok_or_else(|| ChromeError::new("window chrome needs the main thread"))?;
     if view == 0 {
@@ -22,11 +37,8 @@ pub(super) fn lock(view: usize, _width: u16, _height: u16) -> Result<(), ChromeE
     // SAFETY: GPUI hands out the address of its live `NSView`, and the caller
     // runs on the main thread while the window is open.
     let view = unsafe { &*(view as *const NSView) };
-    let window = view
-        .window()
-        .ok_or_else(|| ChromeError::new("the view is not in a window yet"))?;
-    apply(&window);
-    Ok(())
+    view.window()
+        .ok_or_else(|| ChromeError::new("the view is not in a window yet"))
 }
 
 /// The zoom button cannot be pressed and is hidden, so VoiceOver does not announce a disabled

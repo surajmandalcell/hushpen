@@ -3,7 +3,7 @@
 
 use super::FlowBar;
 use crate::hook;
-use crate::theme::hud::{BODY_SM, LABEL_MD, color, radius};
+use crate::theme::hud::{BODY_SM, LABEL_MD, color, radius, size};
 use crate::theme::{StyledType, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
@@ -200,7 +200,7 @@ pub fn content(props: &Props, bar: Option<&Entity<FlowBar>>) -> impl IntoElement
 }
 
 fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
-    let base = div().flex().items_center().px(px(space::LG - 4.0));
+    let base = div().flex().items_center().px(px(size::INSET));
     match props.state {
         BarState::Idle => base
             .justify_center()
@@ -208,7 +208,7 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
             .children((0..IDLE_BARS).map(|_| wave_bar(WAVE_REST, color::TEXT_SUBTLE))),
         BarState::Listening => {
             let heights = bar_heights(&props.levels_padded(), WAVE_REST, WAVE_MAX);
-            base.px(px(5.0))
+            base.px(px(size::LISTENING_INSET))
                 .justify_between()
                 .child(round_button(Round::Cancel, bar))
                 .child(
@@ -245,7 +245,7 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
             .child(icon(IconName::Check, color::TEXT_PRIMARY))
             .child(status_text(&props.message, color::TEXT_PRIMARY)),
         BarState::Undo => base
-            .pr(px(4.0))
+            .pr(px(size::BUTTON_INSET))
             .gap(px(space::SM))
             .child(icon(IconName::Check, color::TEXT_PRIMARY))
             .child(
@@ -259,7 +259,7 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
             })),
         BarState::Error | BarState::Blocked => {
             let mut notice = base
-                .pr(px(4.0))
+                .pr(px(size::BUTTON_INSET))
                 .gap(px(space::SM))
                 .child(icon(IconName::CircleAlert, tone(props.state)))
                 .child(
@@ -308,7 +308,7 @@ fn wave_bar(height: f32, tone: u32) -> Div {
 
 fn dot(glow: f32) -> Div {
     div()
-        .size(px(6.0))
+        .size(px(size::DOT))
         .flex_none()
         .rounded(px(radius::FULL))
         .bg(rgb(color::TEXT_PRIMARY))
@@ -318,7 +318,7 @@ fn dot(glow: f32) -> Div {
 fn icon(name: IconName, tone: u32) -> impl IntoElement {
     svg()
         .path(name.path())
-        .size(px(14.0))
+        .size(px(size::ICON))
         .flex_none()
         .text_color(rgb(tone))
 }
@@ -376,7 +376,7 @@ fn round_button(kind: Round, bar: Option<&Entity<FlowBar>>) -> impl IntoElement 
         .child(
             svg()
                 .path(name.path())
-                .size(px(12.0))
+                .size(px(size::ROUND_GLYPH))
                 .flex_none()
                 .text_color(rgb(glyph)),
         )
@@ -410,8 +410,8 @@ fn text_button(
         .flex_none()
         .flex()
         .items_center()
-        .h(px(24.0))
-        .px(px(10.0))
+        .h(px(size::TEXT_BUTTON_HEIGHT))
+        .px(px(size::TEXT_BUTTON_PADDING))
         .rounded(px(radius::FULL))
         .border_1()
         .border_color(rgb(color::BORDER_CONTROL))

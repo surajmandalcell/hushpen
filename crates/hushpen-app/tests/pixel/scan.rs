@@ -230,8 +230,10 @@ fn reason(line: Line, nodes: &[Node]) -> Option<&'static str> {
                 return Some("group outline");
             }
             if line.at > rect.y && line.at < rect.bottom() {
-                // The inset is at least the side padding of a row.
-                return (line.from >= rect.x + 9.0).then_some("hairline between rows, inset");
+                // A line between rows spans the whole group, edge to edge.
+                let full = (line.from - rect.x).abs() <= TOLERANCE
+                    && (line.to - rect.right()).abs() <= TOLERANCE;
+                return full.then_some("hairline between rows, full width");
             }
         } else {
             if line.from < rect.y - TOLERANCE || line.to > rect.bottom() + TOLERANCE {

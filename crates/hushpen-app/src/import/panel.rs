@@ -4,7 +4,7 @@
 use super::{Import, SUPPORTED, State};
 use crate::hook;
 use crate::theme::{self, Palette, radius, space};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
     AnyElement, App, Entity, ExternalPaths, FocusHandle, InteractiveElement, IntoElement,
@@ -94,19 +94,21 @@ pub fn render(import: &Entity<Import>, cx: &mut App) -> impl IntoElement + use<>
         controls,
     )];
     if let Some(why) = blocker {
-        add_rows.push(ui::note_row(
+        add_rows.push(ui::notice_row(
             palette,
             hook::id("import", "blocker"),
             why,
-            true,
+            Notice::Alert,
+            None,
         ));
     }
     if let Some(notice) = notice {
-        add_rows.push(ui::note_row(
+        add_rows.push(ui::notice_row(
             palette,
             hook::id("import", "notice"),
             notice,
-            true,
+            Notice::Alert,
+            None,
         ));
     }
     let footer = (
@@ -119,18 +121,19 @@ pub fn render(import: &Entity<Import>, cx: &mut App) -> impl IntoElement + use<>
         .gap(px(space::XL))
         .child(ui::section(
             palette,
-            ui::plain_group(hook::id("import", "files"), palette, add_rows),
+            ui::group(hook::id("import", "files"), palette, add_rows),
             Some(footer),
         ));
     if lines.is_empty() {
-        view = view.child(ui::plain_group(
+        view = view.child(ui::group(
             hook::id("import", "queue"),
             palette,
-            vec![ui::note_row(
+            vec![ui::notice_row(
                 palette,
                 hook::id("import", "empty"),
                 EMPTY_TEXT.to_owned(),
-                false,
+                Notice::Info,
+                None,
             )],
         ));
     } else {
@@ -139,7 +142,7 @@ pub fn render(import: &Entity<Import>, cx: &mut App) -> impl IntoElement + use<>
             .enumerate()
             .map(|(index, line)| item_row(palette, import, index, line))
             .collect();
-        view = view.child(ui::plain_group(hook::id("import", "queue"), palette, rows));
+        view = view.child(ui::group(hook::id("import", "queue"), palette, rows));
     }
 
     let dropped = {

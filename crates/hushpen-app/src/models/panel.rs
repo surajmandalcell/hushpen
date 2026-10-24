@@ -3,7 +3,7 @@
 use super::{ModelState, Models};
 use crate::hook;
 use crate::theme::{self, Palette, SECONDARY, StyledType};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
@@ -67,17 +67,18 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
 
     let mut group_rows: Vec<AnyElement> = Vec::new();
     if let Some(message) = notice {
-        group_rows.push(ui::note_row(
+        group_rows.push(ui::notice_row(
             palette,
             hook::id("models", "notice"),
             message,
-            true,
+            Notice::Alert,
+            None,
         ));
     }
     for (index, (row, focus)) in rows.into_iter().zip(focus).enumerate() {
         group_rows.push(model_row(palette, models, index, row, focus));
     }
-    ui::plain_group(hook::id("models", "list"), palette, group_rows)
+    ui::group(hook::id("models", "list"), palette, group_rows)
 }
 
 fn model_row(
