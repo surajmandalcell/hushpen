@@ -79,7 +79,7 @@ fn text_group(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> impl Into
     let area = div()
         .id(hook::id("read", "text"))
         .test_support()
-        .p(px(space::XS))
+        .p(px(size::ROW_PADDING))
         .child(
             Textarea::new(&view.text)
                 .aria_label("Text to read aloud")

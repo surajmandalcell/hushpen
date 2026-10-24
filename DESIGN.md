@@ -233,7 +233,7 @@ The content pane has a 24px margin. Groups fill the pane width. Onboarding is on
 
 A group holds rows. A row is one line, at least 36px high, with 10px of side padding. The title is on the left. The value or the control is on the right, on the same line. A row may have one short secondary line under the title. It is truncated, never wrapped. Longer help goes in one group footer line (secondary, 11px) or in a tooltip.
 
-Onboarding uses the same groups and rows. Each permission row has its icon, name, status (the word Ready, or the attention icon), and buttons on one line. On macOS the buttons are Allow (the default button), then Open Settings. The description is one short secondary line.
+Onboarding uses the same groups and rows. The model step shows its progress bar only while the model downloads. Each permission row has its icon, name, status (the word Ready, or the attention icon), and buttons on one line. On macOS the buttons are Allow (the default button), then Open Settings. The description is one short secondary line.
 
 Long local paths show as `~/...` when they are under the user home directory.
 
@@ -244,7 +244,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 - Hairlines (one device pixel, separator color) sit only between rows inside a group, and span the full width of the group on every page.
 - A group has a 0.5px stroke in the separator color. There is no toolbar line and no other stray border.
 - Hover and selection use the neutral selection fill.
-- The focus ring is 2px in the accent color.
+- The focus ring is 2px in the accent color, inside the bounds of a button, a pop-up button, or a row. A focused text field has a 1px accent border and no glow.
 - A sheet floats centered over the scrim: 460px wide (`sheet-width`), the content color, the window radius, and a hairline edge. It has no shadow.
 
 ## Shapes
@@ -266,7 +266,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 **Groups and rows:** as in Layout. A row that is a control stays one line: the label on the left, the control on the right. A notice row has a 16px icon in the secondary label color (info, or the exclamation for something the user has to act on) and one line of text; a failed check shows its text in the error color. Every view builds its rows from the shared row builders, so one row kind looks the same on every page.
 
-**Home:** the Dictation group (status, Record, the transcript, language) above the Microphone group (test, level meter, microphone list). The transcript, or the placeholder before it, is centered in its block with 24px at the sides and 16px above and below; a long transcript keeps every line centered.
+**Home:** the Dictation group (status, Record, the transcript, language) above the Microphone group. The Microphone group is one row: the microphone pop-up (Default with the system microphone in brackets, then each microphone) and Test microphone. The level meter row shows only while a test runs; its bars grow up and down from the middle of the row. The transcript, or the placeholder before it, is centered in its block with 24px at the sides and 16px above and below; a long transcript keeps every line centered.
 
 **About:** a centered header, a facts group, a links group, and a footer line. The header holds the app icon (96px, 16px radius), "Hushpen" in the title style, the line "Private dictation that stays on this Mac" ("on this computer" on Linux), the build line in the secondary style (`Version 2.0.0 (1a2b3c4, 2026-05-15)`, with `-dev` after the version in a debug build), and a Check for Updates button with what the check found on one secondary line under it. The facts are Version, Engine (whisper.cpp and the model in use), and Data folder (`~/...`, with a Show button). The links are Website, GitHub, Report an issue, Open-source licenses, and Open log folder, each with the external-link glyph on the right. The footer is one centered secondary line: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." The Engine fact is the one place the UI names a component of the stack.
 
@@ -276,7 +276,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 - Transcribe starts with the drop zone: 152px high, the group fill, a dashed hairline in the tertiary label color, the 8px group radius, a 28px lucide `audio-lines` icon, "Drop audio files here", "Choose Files…", and the formats on one secondary line. Files dragged anywhere over the window turn it to the selection fill with an accent outline. A drop anywhere on the window opens Files: text files go to Read aloud, the rest to the queue.
 - The Options group holds Model, Language, and Translate to English. Translate is off with a tooltip that says why for English-only and turbo models.
-- The Queue group has one row per file: the name, then size · length · the folder, the time left, the snippet, or the error on the secondary line. On the right are a 120px progress bar, a 96px status column, then the buttons. A waiting or running file has Cancel. A done file has Copy, Export (TXT, SRT, VTT, JSON), Show in History, and Remove. A failed file has Retry and Remove. Clear Finished sits at the right end of the Queue heading.
+- The Queue group has one row per file: the name, then size · length · the folder, the time left, the snippet, or the error on the secondary line. On the right are a 120px progress bar, a 96px status column, then the buttons. A waiting or running file has Cancel. A done file has Copy, Export (TXT, SRT, VTT, JSON), Show in History, and Remove. A failed file has Retry and Remove. Clear Finished sits at the right end of the Queue heading, on the same line as the buttons in the rows.
 - Read aloud has a Text group (a 132px text area, the character count, and "Open Text File…" for `.txt` and `.md`), a Voice group (Engine, Language, Voice, Speed, Format), and an actions row with the status, the progress, Export Audio…, and Play or Stop. When Kokoro has no model, a notice row with "Download in Models" takes the place of the voice rows.
 
 **Segmented control:** 22px high, 5px radius, on the control fill. Each segment is 120px wide; the selected one has the segment fill and the label color, the others the secondary label color. Left and Right move the choice.
@@ -285,9 +285,11 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
 
-**Text inputs:** the button height (22px) and radius (5px), with the control fill, so an input in one row with buttons aligns with them. The inner padding keeps the 13px text clear of the edges.
+**Text inputs:** the button height (22px) and radius (5px), with the control fill, so an input in one row with buttons aligns with them. The inner padding keeps the 13px text clear of the edges. A search field (Settings, History) leads with the search glyph.
 
-**Switches, sliders, and selection focus:** use the accent.
+**Switches, sliders, and selection focus:** use the accent. The focus ring of a switch or a slider sits outside its track, and the control moves right by the ring, so the track ends on the same line as the buttons in the rows around it.
+
+**Shortcut fields:** in Settings, every shortcut field is 220px wide (the text field width), so the column lines up. The default hands-free reads `Right Alt ×2 or Right Alt+Space`; a binding that may be cut shows whole in a tooltip.
 
 **Recording overlay (flow bar):** a compact dark pill in both appearances. It shows only while a dictation runs and while its result or notice is up. At rest nothing shows, unless the user turns on Show when idle. While listening it holds a round cross on the left (cancel), the waveform, and a round white tick on the right (finish). It has no language control: the language is set on Home. It grows out of a circle and fades in when it appears, eases between the sizes of its states, and shrinks and fades when it goes. With Reduce Motion every change shows at once.
 

@@ -171,7 +171,7 @@ fn header(
     let enabled = view.can_record && view.phase != Phase::Transcribing;
     ui::icon_row(
         palette,
-        IconName::Mic,
+        IconName::AudioLines,
         ui::title(palette).child("Dictation"),
         None,
     )

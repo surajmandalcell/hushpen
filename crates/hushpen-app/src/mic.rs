@@ -115,7 +115,10 @@ pub struct Mic {
     last_session: Option<PathBuf>,
     recovered: Vec<RecoveredSession>,
     pub(crate) button_focus: FocusHandle,
+    pub(crate) picker_focus: FocusHandle,
     pub(crate) row_focus: Vec<FocusHandle>,
+    /// The microphone list under the Home picker is open.
+    pub(crate) picker_open: bool,
 }
 
 impl Mic {
@@ -162,9 +165,11 @@ impl Mic {
             last_session: None,
             recovered: Vec::new(),
             button_focus: cx.focus_handle().tab_stop(true),
+            picker_focus: cx.focus_handle().tab_stop(true),
             row_focus: (0..=MAX_DEVICE_ROWS)
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
+            picker_open: false,
         }
     }
 
@@ -221,6 +226,34 @@ impl Mic {
             .iter()
             .find(|device| device.is_default)
             .map(|device| device.name.as_str())
+    }
+
+    /// The microphones a picker offers, Default first, as `(id, label, chosen)`. The chosen one
+    /// is the saved choice, also while it is missing and the default stands in for it.
+    pub fn choices(&self) -> Vec<(String, String, bool)> {
+        let default = self
+            .default_name()
+            .map_or_else(|| "Default".to_owned(), |name| format!("Default ({name})"));
+        std::iter::once((DEFAULT_ID.to_owned(), default))
+            .chain(
+                self.devices
+                    .iter()
+                    .take(MAX_DEVICE_ROWS)
+                    .map(|device| (device.id.clone(), device.name.clone())),
+            )
+            .map(|(id, label)| {
+                let chosen = id == self.saved;
+                (id, label, chosen)
+            })
+            .collect()
+    }
+
+    /// The label of the saved choice for a picker button; a missing microphone shows its id.
+    pub fn saved_label(&self) -> String {
+        self.choices()
+            .into_iter()
+            .find_map(|(_, label, chosen)| chosen.then_some(label))
+            .unwrap_or_else(|| self.saved.clone())
     }
 
     pub fn refresh(&mut self, _cx: &mut Context<Self>) {
@@ -336,6 +369,7 @@ impl Mic {
             .set(SETTING, json!(id))
             .map_err(|error| error.to_string())?;
         self.saved = id.to_string();
+        self.picker_open = false;
         self.selection = resolve_selection(&self.saved, &self.devices);
         self.warm();
         if self.gone_notice {

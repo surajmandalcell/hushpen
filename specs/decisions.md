@@ -204,6 +204,15 @@ new decision, add it here in the same change (D-21).
   are `files.mode`, `files.language`, `files.translate`, `readAloud.engine`,
   `readAloud.voice.system`, `readAloud.voice.kokoro`, `readAloud.speed`
   (0.5 to 2, in steps of 0.05), and `readAloud.format`.
+- **D-32 Focus and control edges.** A focused text field has a 1px accent
+  border and no glow (the kit theme's `focus_ring` is off). Buttons, pop-up
+  buttons, and rows keep the 2px accent ring inside their bounds. A switch or
+  a slider draws its ring outside its track and is offset by that ring, so
+  its track ends on the same line as the buttons above and below. Shortcut
+  fields have one fixed width; the default hands-free reads `Right Alt ×2 or
+  Right Alt+Space` (`Right ⌥ ×2 or Right ⌥+Space` on macOS). Home picks the
+  microphone with one pop-up row like Language, shared with Settings
+  through `Mic::choices`, and shows the level meter only while a test runs.
 
 ## History notes
 

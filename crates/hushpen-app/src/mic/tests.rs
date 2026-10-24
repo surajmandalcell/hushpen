@@ -162,6 +162,39 @@ fn the_selected_mic_is_saved_and_survives_a_restart(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_picker_offers_default_first_and_marks_the_saved_choice(cx: &mut TestAppContext) {
+    let rig = rig(cx, Some("pulseaudio:gone_src"));
+    devices(cx, &rig, virtual_mics());
+    let (choices, label) = rig
+        .mic
+        .read_with(cx, |mic, _| (mic.choices(), mic.saved_label()));
+    let labels: Vec<_> = choices.iter().map(|(_, label, _)| label.as_str()).collect();
+    assert_eq!(
+        labels,
+        ["Default (Virtual mic)", "Virtual mic", "Second mic"]
+    );
+    assert!(choices.iter().all(|(_, _, chosen)| !chosen));
+    assert_eq!(label, "pulseaudio:gone_src", "a missing mic shows its id");
+
+    rig.mic.update(cx, |mic, cx| {
+        mic.picker_open = true;
+        mic.select("pulseaudio:vmic2_src", cx).unwrap();
+    });
+    let (chosen, label, open) = rig.mic.read_with(cx, |mic, _| {
+        let chosen: Vec<_> = mic
+            .choices()
+            .into_iter()
+            .filter(|(_, _, chosen)| *chosen)
+            .map(|(id, _, _)| id)
+            .collect();
+        (chosen, mic.saved_label(), mic.picker_open)
+    });
+    assert_eq!(chosen, ["pulseaudio:vmic2_src"]);
+    assert_eq!(label, "Second mic");
+    assert!(!open, "a choice closes the picker");
+}
+
+#[gpui_kit::test]
 fn an_unknown_microphone_cannot_be_selected(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
     devices(cx, &rig, virtual_mics());

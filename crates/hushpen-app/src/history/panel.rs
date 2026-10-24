@@ -345,12 +345,17 @@ fn toolbar(
     ui::row(palette)
         .id(hook::id("history", "toolbar"))
         .test_support()
-        .child(div().flex_1().min_w_0().child(ui::field(
-            palette,
-            hook::id("history", "search"),
-            "Search transcripts",
-            &snap.search,
-        )))
+        .child(
+            div().flex_1().min_w_0().child(
+                ui::field(
+                    palette,
+                    hook::id("history", "search"),
+                    "Search transcripts",
+                    &snap.search,
+                )
+                .prefix(ui::glyph(palette, IconName::Search)),
+            ),
+        )
         .child(ui::button(
             palette,
             hook::id("history", "select"),

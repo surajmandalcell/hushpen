@@ -1,75 +1,62 @@
-//! The microphone group on the Home view: test button, level meter, notice, and the microphone
-//! list.
+//! The microphone group on the Home view: one row with the microphone picker and the test
+//! button, the open picker list, the level meter while a test runs, and the notice.
 
-use super::{CaptureState, CaptureUse, METER_BARS, Mic};
+use super::{CaptureState, CaptureUse, Mic};
 use crate::hook;
-use crate::theme::{self, Palette};
+use crate::theme::{self, Palette, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Window,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
+    Window, div, px,
 };
-use hushpen_audio::{DEFAULT_ID, Selection};
+use hushpen_audio::DEFAULT_ID;
 
-struct Row {
-    id: String,
-    name: String,
-    detail: Option<String>,
-    selected: bool,
+struct Snapshot {
+    /// A test is listening, so the meter shows.
+    testing: bool,
+    /// A dictation owns the stream, so the test button rests.
+    busy: bool,
+    meter: Vec<f32>,
+    notice: Option<String>,
+    current: String,
+    choices: Vec<(String, String, bool)>,
+    picker_open: bool,
+    button_focus: FocusHandle,
+    picker_focus: FocusHandle,
+    row_focus: Vec<FocusHandle>,
 }
 
 pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
-    let (state, busy, meter, notice, rows, button_focus, row_focus, default_name) = {
+    let view = {
         let mic = mic.read(cx);
-        let default_selected = !matches!(mic.selection(), Selection::Device(_));
-        let rows: Vec<Row> = std::iter::once(Row {
-            id: DEFAULT_ID.to_string(),
-            name: "Default".into(),
-            detail: mic.default_name().map(str::to_string),
-            selected: default_selected,
-        })
-        .chain(
-            mic.devices()
-                .iter()
-                .take(super::MAX_DEVICE_ROWS)
-                .map(|device| Row {
-                    id: device.id.clone(),
-                    name: device.name.clone(),
-                    detail: None,
-                    selected: matches!(mic.selection(), Selection::Device(id) if *id == device.id),
-                }),
-        )
-        .collect();
-        // While a dictation owns the stream the panel shows a busy note and
-        // rests the meter: the levels on screen belong to a test only.
-        let busy = mic.state() == CaptureState::Listening
-            && mic.session_use() == Some(CaptureUse::Dictation);
-        let meter = if busy {
-            vec![0.0; METER_BARS]
-        } else {
-            mic.meter()
-        };
-        (
-            mic.state(),
+        let listening = mic.state() == CaptureState::Listening;
+        let busy = listening && mic.session_use() == Some(CaptureUse::Dictation);
+        Snapshot {
+            testing: listening && !busy,
             busy,
-            meter,
-            mic.notice().map(|notice| notice.message.clone()),
-            rows,
-            mic.button_focus.clone(),
-            mic.row_focus.clone(),
-            mic.default_name().map(str::to_string),
-        )
+            meter: mic.meter(),
+            notice: mic.notice().map(|notice| notice.message.clone()),
+            current: mic.saved_label(),
+            choices: mic.choices(),
+            picker_open: mic.picker_open,
+            button_focus: mic.button_focus.clone(),
+            picker_focus: mic.picker_focus.clone(),
+            row_focus: mic.row_focus.clone(),
+        }
     };
-    let listening = state == CaptureState::Listening && !busy;
 
     let palette = theme::palette(cx);
-    let mut group_rows: Vec<AnyElement> = vec![
-        header(palette, mic, state, busy, &button_focus, default_name).into_any_element(),
-        ui::meter_row(palette, "home", &meter, listening),
-    ];
-    if let Some(message) = notice {
-        group_rows.push(ui::notice_row(
+    let mut rows = vec![header(palette, mic, &view).into_any_element()];
+    if view.picker_open {
+        rows.push(option_list(palette, mic, &view));
+    }
+    if view.testing {
+        rows.push(ui::meter_row(palette, "home", &view.meter, true));
+    }
+    if let Some(message) = view.notice {
+        rows.push(ui::notice_row(
             palette,
             hook::id("home", "mic.notice"),
             message,
@@ -77,21 +64,11 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
             None,
         ));
     }
-    for (index, row) in rows.into_iter().enumerate() {
-        group_rows.push(device_row(palette, mic, index, row, &row_focus[index]));
-    }
-    ui::group(hook::id("home", "mic"), palette, group_rows)
+    ui::group(hook::id("home", "mic"), palette, rows)
 }
 
-fn header(
-    palette: Palette,
-    mic: &Entity<Mic>,
-    state: CaptureState,
-    busy: bool,
-    focus: &FocusHandle,
-    default_name: Option<String>,
-) -> impl IntoElement + use<> {
-    let toggle = {
+fn header(palette: Palette, mic: &Entity<Mic>, view: &Snapshot) -> impl IntoElement + use<> {
+    let test = {
         let mic = mic.clone();
         move |_: &mut Window, cx: &mut App| {
             mic.update(cx, |mic, cx| {
@@ -103,71 +80,98 @@ fn header(
             });
         }
     };
-    let listening = state == CaptureState::Listening && !busy;
-    let label = if listening {
-        "Stop test"
-    } else {
-        "Test microphone"
+    let toggle = {
+        let mic = mic.clone();
+        move |_: &mut Window, cx: &mut App| {
+            mic.update(cx, |mic, cx| {
+                mic.picker_open = !mic.picker_open;
+                cx.notify();
+            });
+        }
     };
-    let detail = if busy {
-        "Mic in use by dictation".to_string()
-    } else if listening {
-        "Listening".to_string()
+    let detail = if view.busy {
+        "Mic in use by dictation"
+    } else if view.testing {
+        "Listening"
     } else {
-        default_name.map_or_else(
-            || "Default microphone".to_string(),
-            |name| format!("Default: {name}"),
-        )
+        "Dictation listens on this microphone"
     };
     let detail = ui::secondary(palette)
         .id(hook::id("home", "mic.status"))
         .test_support()
         .child(detail);
+    let label = if view.testing {
+        "Stop test"
+    } else {
+        "Test microphone"
+    };
     ui::icon_row(
         palette,
         IconName::Mic,
         ui::title(palette).child("Microphone"),
         Some(detail.into_any_element()),
     )
-    .child(ui::button(
-        palette,
-        hook::id("home", "mic.record"),
-        label,
-        Kind::Plain,
-        (!busy).then_some(focus),
-        !busy,
-        toggle,
-    ))
+    .child(
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            .child(ui::menu_button(
+                palette,
+                hook::id("home", "mic.picker"),
+                "Microphone",
+                view.current.clone(),
+                true,
+                &view.picker_focus,
+                toggle,
+            ))
+            .child(ui::button(
+                palette,
+                hook::id("home", "mic.record"),
+                label,
+                Kind::Plain,
+                (!view.busy).then_some(&view.button_focus),
+                !view.busy,
+                test,
+            )),
+    )
 }
 
-fn device_row(
-    palette: Palette,
-    mic: &Entity<Mic>,
-    index: usize,
-    row: Row,
-    focus: &FocusHandle,
-) -> AnyElement {
-    let id = row.id;
-    let choose = {
-        let mic = mic.clone();
-        move |_: &mut Window, cx: &mut App| {
-            mic.update(cx, |mic, cx| {
-                let _ = mic.select(&id, cx);
-            });
-        }
-    };
-    let element_id = if index == 0 {
-        hook::id("home", "mic.device.default")
-    } else {
-        hook::indexed("home", "mic.device", index)
-    };
-    ui::option_row(
-        palette,
-        element_id,
-        row.name,
-        row.detail,
-        row.selected,
-        focus,
-        choose,
-    )
+/// The open picker: Default under `home.mic.device.default`, then each microphone under
+/// `home.mic.device.<n>` from 1.
+fn option_list(palette: Palette, mic: &Entity<Mic>, view: &Snapshot) -> AnyElement {
+    let rows = view.choices.iter().zip(&view.row_focus).enumerate().map(
+        |(index, ((id, label, chosen), focus))| {
+            let choose = {
+                let (mic, id) = (mic.clone(), id.clone());
+                move |_: &mut Window, cx: &mut App| {
+                    mic.update(cx, |mic, cx| {
+                        let _ = mic.select(&id, cx);
+                    });
+                }
+            };
+            let element_id = if id == DEFAULT_ID {
+                hook::id("home", "mic.device.default")
+            } else {
+                hook::indexed("home", "mic.device", index)
+            };
+            ui::option_row(
+                palette,
+                element_id,
+                label.clone(),
+                None,
+                *chosen,
+                focus,
+                choose,
+            )
+        },
+    );
+    let close = mic.clone();
+    ui::option_list(hook::id("home", "mic.list"), rows.collect(), move |cx| {
+        close.update(cx, |mic, cx| {
+            mic.picker_open = false;
+            cx.notify();
+        })
+    })
 }

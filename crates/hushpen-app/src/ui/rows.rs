@@ -277,8 +277,9 @@ pub fn notice_row(
         .into_any_element()
 }
 
-/// The microphone level meter: one bar for each level, from 0 to 1, centered in its row. The
-/// bars are dim while nothing listens. Ids are `<view>.mic.meter` and `<view>.mic.bar.<n>`.
+/// The microphone level meter: one bar for each level, from 0 to 1, centered in its row and
+/// growing up and down from its middle. The bars are dim while nothing listens. Ids are
+/// `<view>.mic.meter` and `<view>.mic.bar.<n>`.
 pub fn meter_row(palette: Palette, view: &str, levels: &[f32], listening: bool) -> AnyElement {
     let tone = if listening {
         palette.label_secondary
@@ -300,7 +301,7 @@ pub fn meter_row(palette: Palette, view: &str, levels: &[f32], listening: bool) 
         .id(hook::id(view, "mic.meter"))
         .test_support()
         .flex()
-        .items_end()
+        .items_center()
         .justify_center()
         .flex_none()
         .w_full()

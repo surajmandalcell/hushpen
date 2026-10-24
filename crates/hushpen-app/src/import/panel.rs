@@ -327,6 +327,7 @@ fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl Into
         .flex()
         .items_center()
         .justify_between()
+        .pr(px(size::ROW_PADDING))
         .child(ui::heading(
             palette,
             hook::id("import", "queue.heading"),

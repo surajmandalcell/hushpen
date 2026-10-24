@@ -575,6 +575,8 @@ fn apply(cx: &mut App) {
         theme.font_family = FONT_FAMILY.into();
         theme.radius = px(radius::BUTTON);
         theme.radius_lg = px(radius::GROUP);
+        // A focused field keeps a thin accent border and no glow around it.
+        theme.focus_ring = false;
         theme.colors.background = palette.content.into();
         theme.colors.foreground = palette.label.into();
         theme.colors.muted_foreground = palette.label_secondary.into();

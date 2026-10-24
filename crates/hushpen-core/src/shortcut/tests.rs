@@ -85,9 +85,9 @@ fn linux_names_use_words_and_no_mac_symbols_or_option_and_command() {
 #[test]
 fn the_default_hands_free_names_the_hold_key_of_each_system() {
     let linux = HandsFree::Default.display(&combo("RightAlt", LINUX), LINUX);
-    assert_eq!(linux, "Double tap Right Alt, or Right Alt+Space");
+    assert_eq!(linux, "Right Alt ×2 or Right Alt+Space");
     let mac = HandsFree::Default.display(&combo("RightOption", MAC), MAC);
-    assert_eq!(mac, "Double tap Right ⌥, or Right ⌥+Space");
+    assert_eq!(mac, "Right ⌥ ×2 or Right ⌥+Space");
 }
 
 #[test]

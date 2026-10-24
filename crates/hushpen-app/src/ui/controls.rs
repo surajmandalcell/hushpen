@@ -121,6 +121,11 @@ pub fn icon_button<F: Fn(&mut Window, &mut App) + 'static>(
         .child(icon(palette, name))
 }
 
+/// The ring of a switch or a slider and its gap sit this far outside the track. The control is
+/// drawn this far right of its place, so its track ends on the same line as the buttons in the
+/// rows around it.
+const RING_OUTSET: f32 = size::FOCUS_RING + space::XXS;
+
 /// A switch with its label for the accessibility tree. The whole control, ring included, is the
 /// element with `id`. The track is the accent while it is on.
 pub fn switch<F: Fn(&mut Window, &mut App) + 'static>(
@@ -166,6 +171,8 @@ pub fn switch<F: Fn(&mut Window, &mut App) + 'static>(
         .flex()
         .items_center()
         .p(px(space::XXS))
+        .relative()
+        .left(px(RING_OUTSET))
         .rounded(px(radius::FULL))
         .border_2()
         .border_color(gpui_kit::transparent_black())
@@ -255,6 +262,8 @@ pub fn slider<F: Fn(f32, &mut App) + 'static>(
         .track_focus(focus)
         .flex_none()
         .p(px(space::XXS))
+        .relative()
+        .left(px(RING_OUTSET))
         .rounded(px(radius::BUTTON))
         .border_2()
         .border_color(gpui_kit::transparent_black())

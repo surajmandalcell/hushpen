@@ -143,7 +143,7 @@ fn step_detail(step: Step) -> &'static str {
             "Press Test, say a sentence, then press Stop. You will see the level move and then your words."
         }
         Step::Model => {
-            "Hushpen turns speech into text on this computer. It needs one model file. The file is checked before it is used."
+            "Hushpen turns speech into text on this computer with one model file, checked before use."
         }
         Step::Practice => {
             "Try your dictation shortcut here. The shortcuts turn on for other apps once this works."
