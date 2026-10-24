@@ -28,7 +28,7 @@ impl std::error::Error for PlaybackError {}
 /// one of these.
 struct Track {
     /// Mono samples at `rate`.
-    samples: Arc<[f32]>,
+    samples: Vec<f32>,
     rate: u32,
     /// The next sample to play, in `samples`, with a fraction.
     position: f64,
@@ -98,7 +98,7 @@ impl Player {
         }
         let duration_ms = (samples.len() as u64 * 1000) / u64::from(rate);
         let track = Arc::new(Mutex::new(Track {
-            samples: samples.into(),
+            samples,
             rate,
             position: 0.0,
             playing: false,
@@ -117,9 +117,19 @@ impl Player {
     /// A player for tests of the code around it: it opens no device and its position stays
     /// where `seek_ms` puts it.
     pub fn silent(path: &Path) -> Result<Self, PlaybackError> {
-        let mut player = Self::open(path)?;
-        player.silent = true;
-        Ok(player)
+        Self::open(path).map(Self::silenced)
+    }
+
+    /// The same player with no output device, for tests of the code around it.
+    pub fn silenced(mut self) -> Self {
+        self.silent = true;
+        self
+    }
+
+    /// Writes the audio so far as a WAV (see [`write_wav`]).
+    pub fn write_wav(&self, path: &Path) -> Result<(), PlaybackError> {
+        let track = lock(&self.track);
+        write_wav(path, track.rate, &track.samples)
     }
 
     pub fn duration_ms(&self) -> u64 {
@@ -161,6 +171,14 @@ impl Player {
                 Err(error) => self.fail(format!("the playback thread did not start: {error}")),
             }
         }
+    }
+
+    /// Adds samples at the end, such as the next chunk of speech while the first plays. A
+    /// player that ran out of audio stays stopped; `play` then goes on from where it stopped.
+    pub fn append(&mut self, samples: &[f32]) {
+        let mut track = lock(&self.track);
+        track.samples.extend_from_slice(samples);
+        self.duration_ms = (track.samples.len() as u64 * 1000) / u64::from(track.rate);
     }
 
     pub fn pause(&mut self) {
@@ -341,7 +359,7 @@ mod tests {
 
     fn track(samples: Vec<f32>, rate: u32, out_rate: u32) -> Track {
         Track {
-            samples: samples.into(),
+            samples,
             rate,
             position: 0.0,
             playing: true,
@@ -452,6 +470,30 @@ mod tests {
         player.play();
         assert!(player.is_playing());
         assert!(Player::from_samples(0, vec![0.1]).is_err());
+    }
+
+    #[test]
+    fn appended_audio_plays_on_from_where_the_track_ran_out() {
+        let mut player = Player::from_samples(1_000, vec![0.1; 500]).unwrap();
+        player.silent = true;
+        {
+            let mut track = lock(&player.track);
+            track.out_rate = 1_000;
+            track.playing = true;
+            track.fill(&mut [0.0; 600], 1);
+            assert!(!track.playing, "the track ran out");
+        }
+        player.append(&[0.2; 1_500]);
+        assert_eq!(player.duration_ms(), 2_000);
+        player.play();
+        assert_eq!(
+            player.position_ms(),
+            500,
+            "play goes on, not from the start"
+        );
+        let mut out = [0.0; 4];
+        lock(&player.track).fill(&mut out, 1);
+        assert_eq!(out, [0.2; 4]);
     }
 
     #[test]

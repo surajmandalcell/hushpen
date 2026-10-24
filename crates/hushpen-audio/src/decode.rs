@@ -1,9 +1,11 @@
 //! Reads a media file the user picked and turns it into 16 kHz mono samples, one packet at a
 //! time.
 //!
-//! The files come from outside, so only the engine child calls this: a decoder fault then costs
-//! one job and not the app. WAV, MP3, FLAC, Ogg Vorbis, M4A (AAC-LC and ALAC), and AIFF decode.
-//! Opus, WebM, and video are named in the error instead of being tried.
+//! The files come from outside, so only the engine child decodes: a decoder fault then costs
+//! one job and not the app. The app opens a file only to read its length from the headers
+//! ([`FileDecoder::duration_ms`]), on the thread of the job. WAV, MP3, FLAC, Ogg Vorbis, M4A
+//! (AAC-LC and ALAC), and AIFF decode. Opus, WebM, and video are named in the error instead of
+//! being tried.
 
 use crate::resample::{MonoResampler, TARGET_RATE, downmix};
 use std::fmt;
@@ -65,6 +67,8 @@ pub struct FileDecoder {
     mono: Vec<f32>,
     consumed: Arc<AtomicU64>,
     length: u64,
+    /// The length of the audio as the container states it, when it does.
+    duration_ms: Option<u64>,
     produced: u64,
     bad_packets: u32,
     ended: bool,
@@ -123,6 +127,11 @@ impl FileDecoder {
             return Err(failed("The file has no audio track."));
         };
         let track_id = track.id;
+        let duration_ms = track
+            .time_base
+            .zip(track.duration)
+            .and_then(|(base, duration)| base.calc_duration(duration))
+            .and_then(|time| u64::try_from(time.as_millis()).ok());
         let Some(params) = track.codec_params.as_ref().and_then(CodecParameters::audio) else {
             return Err(failed("The file has no audio track."));
         };
@@ -146,6 +155,7 @@ impl FileDecoder {
             mono: Vec::new(),
             consumed,
             length,
+            duration_ms,
             produced: 0,
             bad_packets: 0,
             ended: false,
@@ -177,6 +187,12 @@ impl FileDecoder {
             return Err(failed("The file has no audio."));
         }
         Ok(more)
+    }
+
+    /// The length of the audio from the file's headers, or `None` when they do not say, as in
+    /// an MP3 with no Xing header.
+    pub fn duration_ms(&self) -> Option<u64> {
+        self.duration_ms
     }
 
     /// How much of the file has been read, from 0 to 1.
@@ -380,6 +396,15 @@ mod tests {
         let samples = run(&path).unwrap();
         assert_eq!(samples.len(), 16_000);
         assert!(samples.iter().any(|sample| sample.abs() > 0.1));
+    }
+
+    #[test]
+    fn the_headers_give_the_length_before_any_packet_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two-seconds.wav");
+        write_wav(&path, 44_100, 2, 88_200);
+        let decoder = FileDecoder::open(&path).unwrap();
+        assert_eq!(decoder.duration_ms(), Some(2_000));
     }
 
     #[test]
