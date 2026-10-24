@@ -68,13 +68,15 @@ new decision, add it here in the same change (D-21).
   The manifest `latest.json` is signed with minisign and the public key is in
   the app. The macOS zip and the AppImage replace themselves; deb, rpm, and
   tar.gz show a notice with the release link. No install id.
-- **D-18 Signing.** macOS builds are ad-hoc signed only: no identity, no
-  Keychain, no notarization. Each ad-hoc build and each update resets the
+- **D-18 Signing.** Shipped macOS files are signed with the owner's
+  Developer ID Application certificate (team GF57JXJF5A), with the hardened
+  runtime and the microphone entitlement, then notarized and stapled. The
+  signing runs on the owner's Mac with rcodesign and a key file, never the
+  Keychain. CI builds stay ad-hoc and never ship: a new signature resets the
   Microphone, Accessibility, and Input Monitoring grants. The app detects a
   lost grant at start and reopens the onboarding permission step. The local
-  Mac test build (`harness/mac-test-app.sh`) is the one exception: it is
-  signed with the owner's Apple Development identity, so its grants survive
-  rebuilds.
+  Mac test build (`harness/mac-test-app.sh`) is signed with the owner's
+  Apple Development identity, so its grants survive rebuilds.
 - **D-19 Engine build.** Metal on macOS and CPU on Linux. Release builds use
   `GGML_NATIVE=OFF` so one build runs on older CPUs. Cancel finishes in under
   1 s, and an engine crash keeps the audio.
