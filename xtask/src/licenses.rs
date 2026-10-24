@@ -44,6 +44,27 @@ pub const SECTIONS: &[Section] = &[
         texts: &[MIT_GGML],
     },
     Section {
+        id: "sherpa-onnx",
+        title: "sherpa-onnx",
+        note: "Speech toolkit the hushpen-tts voice worker loads as a shared library (the k2-fsa project, https://github.com/k2-fsa/sherpa-onnx). Apache License 2.0. The library statically contains kaldi-native-fbank, kaldifst, OpenFst, and simple-sentencepiece (Apache License 2.0), nlohmann/json (MIT), fastcluster (BSD-2-Clause), kissfft (BSD-3-Clause), and utf8proc (MIT); their texts follow.",
+        texts: &[
+            APACHE,
+            "packaging/licenses/manual/mit-nlohmann-json.txt",
+            "packaging/licenses/manual/bsd-fastcluster.txt",
+            "packaging/licenses/manual/bsd-kissfft.txt",
+            "packaging/licenses/manual/utf8proc.txt",
+        ],
+    },
+    Section {
+        id: "onnxruntime",
+        title: "ONNX Runtime",
+        note: "Model runtime the hushpen-tts voice worker loads together with sherpa-onnx (Microsoft, https://github.com/microsoft/onnxruntime, version 1.28.2). MIT license. The third-party notices of the library follow its own license.",
+        texts: &[
+            "packaging/licenses/manual/mit-onnxruntime.txt",
+            "packaging/licenses/manual/onnxruntime-notices.txt",
+        ],
+    },
+    Section {
         id: "gpui",
         title: "GPUI",
         note: "User interface framework (the gpui-pre crates), Copyright 2022 - 2025 Zed Industries, Inc. Apache License 2.0. https://github.com/zed-industries/zed",
@@ -83,6 +104,12 @@ pub const SECTIONS: &[Section] = &[
         id: "llm-models",
         title: "LLM models",
         note: "The cleanup models Hushpen downloads on request: Gemma 4 E2B (Google, from https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF) and Qwen3.5 2B (Alibaba Cloud Qwen team, from https://huggingface.co/unsloth/Qwen3.5-2B-GGUF). Both are published under the Apache License 2.0.",
+        texts: &[APACHE],
+    },
+    Section {
+        id: "kokoro-model",
+        title: "Kokoro voice model",
+        note: "The voice model Hushpen downloads on request for Read aloud: Kokoro 82M, int8 build (by hexgrad, from https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0). Apache License 2.0.",
         texts: &[APACHE],
     },
 ];
@@ -208,7 +235,7 @@ mod tests {
     fn section_ids_are_unique() {
         let ids: BTreeSet<_> = SECTIONS.iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), SECTIONS.len());
-        assert_eq!(SECTIONS.len(), 10);
+        assert_eq!(SECTIONS.len(), 13);
     }
 
     #[test]

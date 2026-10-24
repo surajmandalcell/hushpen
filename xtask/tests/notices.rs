@@ -1,5 +1,5 @@
-//! The shipped THIRD-PARTY-NOTICES.html: the manual sections are there, and every crate the two
-//! binaries link is listed with its version.
+//! The shipped THIRD-PARTY-NOTICES.html: the manual sections are there, and every crate the
+//! three programs link is listed with its version.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -15,10 +15,12 @@ fn notices() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
-const SECTIONS: [(&str, &str); 10] = [
+const SECTIONS: [(&str, &str); 13] = [
     ("whisper-cpp", "whisper.cpp"),
     ("llama-cpp", "llama.cpp"),
     ("ggml", "ggml"),
+    ("sherpa-onnx", "sherpa-onnx"),
+    ("onnxruntime", "ONNX Runtime"),
     ("gpui", "GPUI"),
     ("gpui-kit", "GPUI Kit"),
     ("symphonia", "symphonia"),
@@ -26,10 +28,11 @@ const SECTIONS: [(&str, &str); 10] = [
     ("inter", "Inter"),
     ("whisper-models", "Whisper models"),
     ("llm-models", "LLM models"),
+    ("kokoro-model", "Kokoro voice model"),
 ];
 
 #[test]
-fn the_notices_hold_the_ten_manual_sections() {
+fn the_notices_hold_the_thirteen_manual_sections() {
     let html = notices();
     for (id, title) in SECTIONS {
         assert!(
@@ -54,6 +57,8 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
         "May you do good and not evil",
         "Gemma 4 E2B",
         "Qwen3.5 2B",
+        "Kokoro 82M",
+        "Mark Borgerding",
     ] {
         assert!(html.contains(needle), "the notices lack {needle:?}");
     }
@@ -63,13 +68,20 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
     );
 }
 
-/// `name version` of every third-party crate in the normal dependency tree of the two binaries,
-/// for the three release targets.
+/// `name version` of every third-party crate in the normal dependency tree of the three
+/// programs, for the three release targets.
 fn linked_crates() -> BTreeSet<String> {
     let output = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
         .current_dir(root())
         .args(["tree", "--locked", "--offline", "-e", "normal"])
-        .args(["-p", "hushpen-app", "-p", "hushpen-llm"])
+        .args([
+            "-p",
+            "hushpen-app",
+            "-p",
+            "hushpen-llm",
+            "-p",
+            "hushpen-tts",
+        ])
         .args(["--prefix", "none", "--format", "{p}"])
         .args(["--target", "aarch64-apple-darwin"])
         .args(["--target", "x86_64-unknown-linux-gnu"])
