@@ -87,11 +87,9 @@
 
           <h3>macOS first start</h3>
           <p>
-            The app is signed with an Apple Development certificate and is not notarized, so macOS blocks the first start.
-            Control-click Hushpen, choose Open, and confirm. On macOS 15, open System Settings &gt; Privacy &amp; Security and
-            choose Open Anyway. You can also remove the quarantine flag in Terminal:
+            The app is signed with a Developer ID certificate and notarized by Apple, so macOS opens it after one standard
+            confirmation.
           </p>
-          <pre>xattr -dr com.apple.quarantine /Applications/Hushpen.app</pre>
 
           <h3>Linux requirements</h3>
           <ul>

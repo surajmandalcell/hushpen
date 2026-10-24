@@ -51,11 +51,8 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 1. Download `Hushpen-2.0.0-macos-arm64.dmg` and drag Hushpen to Applications,
    or unzip `Hushpen-2.0.0-macos-arm64.zip` and move `Hushpen.app` to
    Applications.
-2. The app is signed with an Apple Development certificate, not notarized, so
-   macOS blocks the first start. Control-click Hushpen, choose Open, and
-   confirm. On macOS 15, open System Settings > Privacy & Security and choose
-   Open Anyway. You can also run
-   `xattr -dr com.apple.quarantine /Applications/Hushpen.app`.
+2. Open Hushpen. The app is signed with a Developer ID certificate and
+   notarized by Apple, so macOS opens it after one standard confirmation.
 
 ### Linux
 
