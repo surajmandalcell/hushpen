@@ -188,7 +188,7 @@ impl UnloadReason {
         }
     }
 
-    fn parse(text: &str) -> Result<Self, DecodeError> {
+    pub(crate) fn parse(text: &str) -> Result<Self, DecodeError> {
         match text {
             "idle" => Ok(Self::Idle),
             "requested" => Ok(Self::Requested),

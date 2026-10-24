@@ -1,9 +1,8 @@
 //! The speech recognition seam: a trait the engine child and the tests share.
 
 use std::fmt;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
+pub use hushpen_core::cancel::CancelFlag;
 use hushpen_core::error;
 pub use hushpen_core::protocol::Segment;
 
@@ -71,28 +70,6 @@ impl PcmSource for SliceSource<'_> {
 
     fn fraction_read(&self) -> f32 {
         if self.read { 1.0 } else { 0.0 }
-    }
-}
-
-/// A flag that stops a running job. Clones share one flag.
-#[derive(Debug, Clone, Default)]
-pub struct CancelFlag(Arc<AtomicBool>);
-
-impl CancelFlag {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-
-    pub(crate) fn as_atomic(&self) -> &Arc<AtomicBool> {
-        &self.0
     }
 }
 

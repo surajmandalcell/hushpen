@@ -82,3 +82,13 @@ pub const SPEECH_TEXT_UNREADABLE: &str = "SPEECH_TEXT_UNREADABLE";
 pub const SPEECH_VOICE_MISSING: &str = "SPEECH_VOICE_MISSING";
 /// The speech engine failed while it spoke.
 pub const SPEECH_FAILED: &str = "SPEECH_FAILED";
+/// The voice worker is not up, or did not come back in time after a crash.
+pub const TTS_UNAVAILABLE: &str = "TTS_UNAVAILABLE";
+/// The voice model or the voice runtime library could not be loaded.
+pub const TTS_LOAD_FAILED: &str = "TTS_LOAD_FAILED";
+/// A job arrived before any voice model was loaded.
+pub const TTS_NO_MODEL: &str = "TTS_NO_MODEL";
+/// A request the voice worker could not read or does not know.
+pub const TTS_PROTOCOL: &str = "TTS_PROTOCOL";
+/// The voice worker died while a job ran.
+pub const TTS_CRASHED: &str = "TTS_CRASHED";
