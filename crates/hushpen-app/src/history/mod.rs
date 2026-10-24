@@ -12,7 +12,7 @@ pub mod export;
 mod list;
 pub mod panel;
 pub mod playback;
-mod save_dialog;
+pub(crate) mod save_dialog;
 mod sweep;
 
 use crate::controller::{Controller, ReprocessState, failure_for};

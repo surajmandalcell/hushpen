@@ -1,14 +1,16 @@
 //! The few-colors rule, enforced on the view code: the accent token reaches the screen only
 //! through the default button (and the link-style plain button), a switch that is on, a slider,
-//! the focus ring, and the recorder that waits for keys; the status tokens reach it only through
-//! a status word.
+//! the focus ring, the recorder that waits for keys, and a drop target under a drag; the status
+//! tokens reach it only through a status word.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 16] = [
+const ALLOWED: [(&str, &str, &str); 17] = [
+    // The drop zone outlines in it while files are dragged over the window, as a drop target.
+    ("import/panel.rs", "drop_zone", "accent"),
     // The default button fills with it; the plain button is a link and takes it for text.
     ("ui/controls.rs", "button", "accent"),
     // The track of a switch that is on, and the filled part of a slider.

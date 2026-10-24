@@ -17,6 +17,7 @@ pub mod controller;
 pub mod dictation;
 pub mod dictionary;
 pub mod engine_host;
+pub mod files;
 pub mod flow_bar;
 #[cfg(test)]
 mod focus_roles;
@@ -33,6 +34,7 @@ pub mod native;
 mod native_window_calls;
 pub mod net;
 pub mod onboarding;
+pub mod read_aloud;
 pub mod settings;
 pub mod shell;
 pub mod shortcuts;

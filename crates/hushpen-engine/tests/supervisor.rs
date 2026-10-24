@@ -4,7 +4,8 @@
 use hushpen_core::error;
 use hushpen_core::protocol::{Event, PROTOCOL_VERSION, write_json};
 use hushpen_engine::{
-    ChildSpec, EngineClient, EngineLog, EngineState, ImportSpec, JobOutcome, Timing, TranscribeSpec,
+    ChildSpec, EngineClient, EngineLog, EngineState, ImportProgress, ImportSpec, JobOutcome,
+    Timing, TranscribeSpec,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -279,10 +280,12 @@ fn an_import_sends_its_request_and_hears_progress_until_the_result() {
             Event::Progress {
                 job: 1,
                 fraction: 0.25,
+                audio_ms: Some(90_000),
             },
             Event::Progress {
                 job: 1,
                 fraction: 0.75,
+                audio_ms: None,
             },
             Event::Result {
                 job: 1,
@@ -317,12 +320,17 @@ fn an_import_sends_its_request_and_hears_progress_until_the_result() {
             prompt: None,
             translate: false,
         },
-        Some(Arc::new(move |fraction| {
-            sink.lock().unwrap().push(fraction)
+        Some(Arc::new(move |progress: ImportProgress| {
+            sink.lock()
+                .unwrap()
+                .push((progress.fraction, progress.audio_ms))
         })),
     );
     assert!(matches!(job.wait(), JobOutcome::Done(done) if done.text == "hi"));
-    assert_eq!(*heard.lock().unwrap(), vec![0.25, 0.75]);
+    assert_eq!(
+        *heard.lock().unwrap(),
+        vec![(0.25, Some(90_000)), (0.75, None)]
+    );
     client.shutdown();
 }
 

@@ -113,7 +113,7 @@ check_failures "window controls and solid sidebar" "hook tree lists only window.
 
 echo "== every main view keeps 940x600"
 failures=""
-for view in home history dictionary import models settings about; do
+for view in home history dictionary files models settings about; do
   /app/hookctl action open-view "{\"view\":\"$view\"}" >/dev/null
   /app/hookctl wait "view=$view" 5000 >/dev/null 2>&1 || failures+="$view did not open; "
   sleep 0.3
@@ -130,7 +130,7 @@ echo "== sidebar tree and hookctl click"
 failures=""
 /app/hookctl tree >"$RUN_OUT/tree-sidebar.json"
 index=0
-for view in home history dictionary import models settings about; do
+for view in home history dictionary files models settings about; do
   row=$(jq -c --arg id "sidebar.$view" '[.[] | select(.id == $id)] | first // empty' "$RUN_OUT/tree-sidebar.json")
   if [ -z "$row" ]; then
     failures+="sidebar.$view is not in the tree; "
@@ -163,7 +163,7 @@ done
 # A hookctl click leaves the focus on its item; Home moves it to the first row by key.
 xdotool key Home
 sleep 0.3
-for view in home history dictionary import models settings about; do
+for view in home history dictionary files models settings about; do
   [ "$(focused_item)" = "sidebar.$view" ] || failures+="focus is on '$(focused_item)', not sidebar.$view; "
   box=$(/app/hookctl tree | jq -r --arg id "sidebar.$view" '[.[] | select(.id == $id) | "\(.bounds.x | floor) \(.bounds.y | floor)"] | first // empty')
   if [ -n "$box" ]; then

@@ -30,6 +30,8 @@ mod models;
 #[cfg(feature = "test-automation")]
 mod onboarding;
 #[cfg(feature = "test-automation")]
+mod read_aloud;
+#[cfg(feature = "test-automation")]
 mod settings;
 #[cfg(feature = "test-automation")]
 mod settings_view;
@@ -57,7 +59,7 @@ pub use flow_bar::attach as attach_flow_bar;
 #[cfg(feature = "test-automation")]
 pub use history::attach as attach_history;
 #[cfg(feature = "test-automation")]
-pub use import::attach as attach_import;
+pub use import::attach as attach_files;
 #[cfg(feature = "test-automation")]
 pub use llm::attach as attach_llm;
 #[cfg(feature = "test-automation")]
@@ -66,6 +68,8 @@ pub use mic::attach as attach_mic;
 pub use models::attach as attach_models;
 #[cfg(feature = "test-automation")]
 pub use onboarding::attach as attach_onboarding;
+#[cfg(feature = "test-automation")]
+pub use read_aloud::attach as attach_read_aloud;
 #[cfg(feature = "test-automation")]
 pub use settings::attach as attach_settings;
 #[cfg(feature = "test-automation")]

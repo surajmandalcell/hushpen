@@ -9,6 +9,7 @@ use crate::controller::{
 use crate::dictation::Dictation;
 use crate::dictionary::Dictionary;
 use crate::engine_host::EngineHost;
+use crate::files::Files;
 use crate::flow_bar::{self, FlowBar, OpenHistory, PopUp};
 use crate::history::History;
 use crate::import::{self, Import, Parts as ImportParts};
@@ -19,12 +20,14 @@ use crate::mic::{self, CpalBackend, Mic};
 use crate::models::{self, Models};
 use crate::native::native_handle;
 use crate::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
+use crate::read_aloud::{Parts as ReadParts, ReadAloud};
 use crate::settings::{AiParts, Parts as SettingsParts, Settings};
 use crate::shell::Shell;
 use crate::shortcuts::Shortcuts;
 use crate::storage;
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
+use crate::tts_host::TtsHost;
 use crate::updater::{self, FeedChecker, Parts as UpdaterParts, SystemInstaller, Updater};
 use crate::views::View;
 use crate::window_chrome::main_window_options;
@@ -116,6 +119,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
         .unwrap_or_default();
     let engine = Rc::new(EngineHost::start(&storage.data, &default_model));
     let llm = Rc::new(LlmHost::new(&storage.data));
+    let kokoro = Arc::new(TtsHost::new(&storage.data));
     llm.apply_settings(&storage.settings.values());
     let recovered = mic::sweep_orphans(&storage.data);
     let mic_storage = Rc::clone(&storage);
@@ -147,10 +151,12 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             let quit_engine = Rc::clone(&engine);
             let quit_llm = Rc::clone(&llm);
             let ai_llm = Rc::clone(&llm);
+            let quit_kokoro = Arc::clone(&kokoro);
             cx.on_app_quit(move |_| {
                 hushpen_store::log_file::begin_quit();
                 quit_engine.shutdown();
                 quit_llm.shutdown();
+                quit_kokoro.shutdown();
                 log::logger().flush();
                 async {}
             })
@@ -250,11 +256,37 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                         controller: controller.clone(),
                         run: import::host_runner(&engine),
                         spawn: models::thread_spawner(),
+                        clock: monotonic_clock(),
                     },
                     cx,
                 )
             });
-            shell.update(cx, |shell, cx| shell.attach_import(import.clone(), cx));
+            let read_aloud = handle
+                .update(cx, |_, window, cx| {
+                    cx.new(|cx| {
+                        ReadAloud::new(
+                            ReadParts {
+                                storage: Rc::clone(&dictation_storage),
+                                system: Arc::from(hushpen_speech::system_engine()),
+                                kokoro,
+                                spawn: models::thread_spawner(),
+                                silent: false,
+                            },
+                            window,
+                            cx,
+                        )
+                    })
+                })
+                .ok();
+            let files = cx.new(|cx| {
+                Files::new(
+                    Rc::clone(&dictation_storage),
+                    import.clone(),
+                    read_aloud.clone(),
+                    cx,
+                )
+            });
+            shell.update(cx, |shell, cx| shell.attach_files(files.clone(), cx));
             let shortcuts =
                 cx.new(|cx| Shortcuts::new(Rc::clone(&dictation_storage), Platform::current(), cx));
             shell.update(cx, |shell, cx| {
@@ -492,7 +524,10 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 crate::hook::attach_models(cx, models);
                 crate::hook::attach_onboarding(cx, onboarding);
                 crate::hook::attach_dictation(cx, dictation);
-                crate::hook::attach_import(cx, import);
+                crate::hook::attach_files(cx, files, import);
+                if let Some(read_aloud) = read_aloud {
+                    crate::hook::attach_read_aloud(cx, read_aloud);
+                }
                 if let Some(dictionary) = dictionary {
                     crate::hook::attach_dictionary(cx, dictionary);
                 }

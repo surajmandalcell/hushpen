@@ -14,8 +14,12 @@ Hushpen
 │   ├── tray                        menu with the same actions
 │   ├── dictation                   one hold-to-talk run of the state machine
 │   │   └── recording               microphone audio in a session WAV
-│   ├── read aloud                  text to speech with a speech engine
-│   │   └── voice                   one voice of the speech engine
+│   ├── Files view                  the sidebar view for audio files and text
+│   │   ├── drop zone               where audio files are dropped or chosen
+│   │   ├── queue                   the imports, one at a time
+│   │   │   └── import              one audio file transcribed into a history row
+│   │   └── read aloud              text to speech with a speech engine
+│   │       └── voice               one voice of the speech engine
 │   ├── updater                     opt-in check and install
 │   ├── about                       build stamp, facts, and links
 │   └── test hook                   debug builds only
@@ -74,6 +78,17 @@ Hushpen
 - **flow bar**: the always-on-top pill that never takes focus. It stays dark
   in Light and Dark appearance. It shows only while a dictation is active
   (or with Show when idle on), with a cross to cancel and a tick to finish.
+- **Files view**: the sidebar view for files (D-31). Its mode is Transcribe
+  or Read aloud, and the app opens it on the mode picked last. The view was
+  called Import; Files names both modes, and Import stays the name of one
+  transcribed file.
+- **import**: one audio file in the queue of the Files view, transcribed by
+  the engine child into a history row of kind `import`. It is queued,
+  running, done, failed, or cancelled.
+- **drop zone**: the dashed area at the top of Transcribe. A drop anywhere on
+  the main window counts as a drop on it.
+- **queue**: the imports of this launch, in the order they were added. One
+  runs at a time.
 - **read aloud**: text to speech. Typed text or a `.txt` or `.md` file
   (Markdown syntax removed, at most 1 MiB) is spoken in chunks of whole
   sentences, so audio and progress arrive while the rest is still spoken. The

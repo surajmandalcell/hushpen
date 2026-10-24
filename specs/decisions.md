@@ -185,6 +185,25 @@ new decision, add it here in the same change (D-21).
   the app reads the free space of the downloads folder (statvfs) and refuses
   when it is less than the bytes still to fetch plus 10%. At start it deletes
   partial downloads older than 7 days.
+- **D-31 Files view.** The sidebar view that was Import is Files: one place
+  for audio files and text, with a segmented control for Transcribe (the
+  import queue) and Read aloud. "Import" stays the name of one transcribed
+  file (the history kind, the `import.*` hook ids). A drop anywhere on the
+  main window opens Files: when every dropped file is `.txt` or `.md` the
+  first opens in Read aloud, else all go to the queue, which refuses what is
+  not a regular file without opening it. The engine child reads the length
+  from the headers and sends it as `audio_ms` on the first `progress` event
+  of the import, so the UI process never parses an outside file (D-23) and
+  adding a 12 hour file never blocks it; the time left is the pace so far,
+  shown from 5% on. The import language (`files.language`) is separate from
+  the dictation language. Translate is refused for English-only models and
+  for turbo models, which were trained without the translate task. Read
+  aloud streams: each chunk is appended to the player as it arrives and the
+  first plays while the rest is spoken. Export Audio writes the samples the
+  player holds as a 16-bit WAV, the only format for now. The settings keys
+  are `files.mode`, `files.language`, `files.translate`, `readAloud.engine`,
+  `readAloud.voice.system`, `readAloud.voice.kokoro`, `readAloud.speed`
+  (0.5 to 2, in steps of 0.05), and `readAloud.format`.
 
 ## History notes
 

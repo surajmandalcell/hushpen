@@ -328,11 +328,14 @@ fn button(
     .into_any_element()
 }
 
-/// Sizes in the units whisper.cpp uses on its model page: MB below 1 GB, then GB.
+/// Sizes in the units whisper.cpp uses on its model page: KB below 1 MB, MB below 1 GB, then
+/// GB.
 pub fn format_size(bytes: u64) -> String {
     const MB: f64 = 1_000_000.0;
     let value = bytes as f64;
-    if value < 1_000.0 * MB {
+    if value < MB {
+        format!("{:.0} KB", value / 1_000.0)
+    } else if value < 1_000.0 * MB {
         format!("{:.0} MB", value / MB)
     } else {
         format!("{:.1} GB", value / (1_000.0 * MB))
@@ -348,5 +351,6 @@ mod tests {
         assert_eq!(format_size(77_704_715), "78 MB");
         assert_eq!(format_size(1_624_555_275), "1.6 GB");
         assert_eq!(format_size(999_000_000), "999 MB");
+        assert_eq!(format_size(48_200), "48 KB");
     }
 }

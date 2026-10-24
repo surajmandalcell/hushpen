@@ -32,7 +32,7 @@ icon_assets!(
         House,
         Clock,
         BookA,
-        Import,
+        Files,
         Cpu,
         Settings,
         Info,
@@ -51,7 +51,8 @@ icon_assets!(
         ExternalLink,
         Globe,
         ChevronDown,
-        Search
+        Search,
+        AudioLines
     ]
 );
 

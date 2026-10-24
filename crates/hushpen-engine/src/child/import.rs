@@ -34,7 +34,12 @@ pub(crate) fn run(
         },
         Err(failure) => return failed(job, &decode_error(failure)),
     };
-    emit(progress(job, 0.0));
+    // The first report carries the length from the headers, so the app never parses the file.
+    emit(Event::Progress {
+        job,
+        fraction: 0.0,
+        audio_ms: source.decoder.duration_ms(),
+    });
     let started = Instant::now();
     let transcribed = engine.transcribe_stream(&mut source, options, cancel, &mut |fraction| {
         emit(progress(job, f64::from(fraction)));
@@ -114,5 +119,6 @@ fn progress(job: u64, fraction: f64) -> Event {
     Event::Progress {
         job,
         fraction: fraction.clamp(0.0, 1.0),
+        audio_ms: None,
     }
 }

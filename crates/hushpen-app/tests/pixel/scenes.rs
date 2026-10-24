@@ -5,11 +5,15 @@ use crate::scan::{Node, Rect};
 use crate::{OneMicrophone, Revoked, headless_in, pixel_data_dir};
 use gpui_kit::base::test_support::snapshots;
 use gpui_kit::test::TestWindowExt as _;
-use gpui_kit::{AppContext as _, HeadlessAppContext, ScrollDelta, SharedString, point, px, size};
+use gpui_kit::{
+    AppContext as _, ExternalPaths, FileDropEvent, HeadlessAppContext, InputEvent as _,
+    ScrollDelta, SharedString, point, px, size,
+};
 use hushpen_app::about::{About, Build, SystemOpener};
 use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::dictation::Dictation;
 use hushpen_app::dictionary::Dictionary;
+use hushpen_app::files::Files;
 use hushpen_app::history::History;
 use hushpen_app::import::{Import, ImportRunner, Parts as ImportParts};
 use hushpen_app::mic::Mic;
@@ -17,6 +21,7 @@ use hushpen_app::models::{self, Models};
 use hushpen_app::net::endpoint::UreqTransport;
 use hushpen_app::net::update::CheckError;
 use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
+use hushpen_app::read_aloud::{Parts as ReadParts, ReadAloud};
 use hushpen_app::settings::endpoint::EndpointForm;
 use hushpen_app::settings::{Parts as SettingsParts, Settings};
 use hushpen_app::shell::Shell;
@@ -28,7 +33,10 @@ use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
 use hushpen_core::shortcut::{Bindings, Combo, Platform};
 use hushpen_core::update::{Offer, Version};
-use hushpen_engine::{Failure, JobOutcome, Segment as EngineSegment, Transcription};
+use hushpen_engine::{
+    Failure, ImportProgress, JobOutcome, Segment as EngineSegment, Transcription,
+};
+use hushpen_speech::{Pcm, SpeechEngine, SpeechError, Voice, VoiceQuality};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::history::{self, Row};
 use image::RgbaImage;
@@ -85,8 +93,7 @@ pub enum Scene {
     /// The "Delete all N transcripts and their audio?" dialog.
     HistoryClear,
     Dictionary,
-    /// A queue with a finished, a failed, a cancelled, a running, and a waiting file.
-    Import,
+    Files(FilesShot),
     /// The speech models, with the default one downloaded and active.
     Models,
     /// Models scrolled to the end: the cleanup and voice sections.
@@ -118,6 +125,37 @@ pub enum SettingsShot {
     Search,
     /// A query no row matches.
     NoMatch,
+}
+
+/// What a Files baseline shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilesShot {
+    /// Transcribe with no files: the drop zone and the options.
+    Empty,
+    /// A file dragged over the window lights up the drop zone.
+    DragOver,
+    /// A queue with a finished, a failed, a cancelled, a running, and a waiting file.
+    Queue,
+    /// Read aloud with text in the text area, opened in the mode the user last picked.
+    ReadAloud,
+}
+
+impl FilesShot {
+    pub const ALL: [FilesShot; 4] = [
+        FilesShot::Empty,
+        FilesShot::DragOver,
+        FilesShot::Queue,
+        FilesShot::ReadAloud,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            FilesShot::Empty => "files",
+            FilesShot::DragOver => "files-drag-over",
+            FilesShot::Queue => "files-queue",
+            FilesShot::ReadAloud => "files-read-aloud",
+        }
+    }
 }
 
 impl SettingsShot {
@@ -152,7 +190,7 @@ impl Scene {
             Scene::HistorySelect => "history-select".into(),
             Scene::HistoryClear => "history-clear".into(),
             Scene::Dictionary => "dictionary".into(),
-            Scene::Import => "import".into(),
+            Scene::Files(shot) => shot.name().into(),
             Scene::Models => "models".into(),
             Scene::ModelsBottom => "models-bottom".into(),
             Scene::ModelsDetails => "models-details".into(),
@@ -179,7 +217,6 @@ impl Scene {
             Scene::HistorySelect,
             Scene::HistoryClear,
             Scene::Dictionary,
-            Scene::Import,
             Scene::Models,
             Scene::ModelsBottom,
             Scene::ModelsDetails,
@@ -187,6 +224,7 @@ impl Scene {
             Scene::AboutBottom,
             Scene::AboutChecked,
         ];
+        scenes.extend(FilesShot::ALL.into_iter().map(Scene::Files));
         scenes.extend(SettingsShot::ALL.into_iter().map(Scene::Settings));
         scenes.push(Scene::EndpointFailure);
         scenes.push(Scene::ShortcutRecorder);
@@ -299,15 +337,51 @@ fn seed_dictionary(storage: &Storage) {
     }
 }
 
-/// The files of the Import scene, in the order they are added. The runner gives them, in turn,
-/// a result, a refusal, a cancel, a job that stays at 40%, and one that waits behind it.
-const QUEUE_NAMES: [&str; 5] = [
-    "Planning call.m4a",
-    "Voice memo.opus",
-    "Lecture 4.mp3",
-    "Interview.wav",
-    "Podcast episode.flac",
+/// The files of the queue scene and their sizes, in the order they are added. The runner gives
+/// them, in turn, a result, a refusal, a cancel, a job that stays at 40%, and one that waits
+/// behind it.
+const QUEUE_FILES: [(&str, u64); 5] = [
+    ("Planning call.m4a", 3_400_000),
+    ("Voice memo.opus", 820_000),
+    ("Lecture 4.mp3", 48_200_000),
+    ("Interview.wav", 212_000_000),
+    ("Podcast episode.flac", 1_340_000_000),
 ];
+
+/// The first report of a job the engine child opened: the length from the headers.
+fn length_report() -> ImportProgress {
+    ImportProgress {
+        fraction: 0.0,
+        audio_ms: Some(47 * 60_000 + 12_000),
+    }
+}
+
+/// The text the Read aloud scene types.
+const READ_TEXT: &str = "Hushpen reads this text aloud with the voice you pick. Long texts are \
+                         read in parts, and the first part plays while the rest is made.";
+
+/// A speech engine with a fixed list of voices, so the voice menus read the same everywhere.
+struct FixedVoices;
+
+impl SpeechEngine for FixedVoices {
+    fn voices(&self) -> Result<Vec<Voice>, SpeechError> {
+        let voice = |id: &str, name: &str, language: &str, quality| Voice {
+            id: id.into(),
+            name: name.into(),
+            language: language.into(),
+            quality,
+        };
+        Ok(vec![
+            voice("samantha", "Samantha", "en-US", VoiceQuality::Enhanced),
+            voice("daniel", "Daniel", "en-GB", VoiceQuality::Default),
+            voice("anna", "Anna", "de-DE", VoiceQuality::Default),
+        ])
+    }
+
+    fn speak(&self, _: &str, _: Option<&str>, _: f32) -> Result<Pcm, SpeechError> {
+        Err(SpeechError::failed("the scenes play no sound"))
+    }
+}
 
 fn queue_runner() -> ImportRunner {
     let calls = std::sync::atomic::AtomicUsize::new(0);
@@ -330,9 +404,16 @@ fn queue_runner() -> ImportRunner {
                 detail: "Opus is not supported yet.".into(),
                 reason: None,
             }),
-            2 => JobOutcome::Cancelled,
+            2 => {
+                progress(length_report());
+                JobOutcome::Cancelled
+            }
             _ => {
-                progress(0.4);
+                progress(length_report());
+                progress(ImportProgress {
+                    fraction: 0.4,
+                    audio_ms: None,
+                });
                 // The scene is captured long before this ends.
                 std::thread::sleep(std::time::Duration::from_secs(120));
                 JobOutcome::Cancelled
@@ -476,9 +557,16 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
             seed_history(&storage);
         }
         Scene::Dictionary => seed_dictionary(&storage),
-        Scene::Import | Scene::Models | Scene::ModelsBottom | Scene::ModelsDetails => {
-            seed_model(&storage)
+        Scene::Files(shot) => {
+            seed_model(&storage);
+            if shot == FilesShot::ReadAloud {
+                storage
+                    .settings
+                    .set("files.mode", json!("readAloud"))
+                    .expect("store the mode");
+            }
         }
+        Scene::Models | Scene::ModelsBottom | Scene::ModelsDetails => seed_model(&storage),
         // Automatic names the CPU count, which differs between machines.
         Scene::Settings(_) => storage
             .settings
@@ -625,7 +713,7 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                         });
                         let dictionary =
                             cx.new(|cx| Dictionary::new(Rc::clone(&storage), window, cx));
-                        let import = matches!(scene, Scene::Import).then(|| {
+                        let files = matches!(scene, Scene::Files(_)).then(|| {
                             let import = cx.new(|cx| {
                                 Import::new(
                                     ImportParts {
@@ -634,22 +722,42 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                         controller: controller.clone(),
                                         run: queue_runner(),
                                         spawn: models::thread_spawner(),
+                                        // A still clock: the time left reads the same each run.
+                                        clock: Rc::new(|| 0),
                                     },
                                     cx,
                                 )
                             });
-                            let folder = data.join("files");
-                            std::fs::create_dir_all(&folder).expect("create the files folder");
-                            let paths = QUEUE_NAMES
-                                .iter()
-                                .map(|name| {
-                                    let path = folder.join(name);
-                                    std::fs::write(&path, b"audio").expect("write a file");
-                                    path
-                                })
-                                .collect();
-                            import.update(cx, |import, cx| import.add_paths(paths, cx));
-                            import
+                            if matches!(scene, Scene::Files(FilesShot::Queue)) {
+                                let folder = data.join("files");
+                                std::fs::create_dir_all(&folder).expect("create the files folder");
+                                let paths = QUEUE_FILES
+                                    .iter()
+                                    .map(|(name, bytes)| {
+                                        let path = folder.join(name);
+                                        std::fs::File::create(&path)
+                                            .and_then(|file| file.set_len(*bytes))
+                                            .expect("write a file");
+                                        path
+                                    })
+                                    .collect();
+                                import.update(cx, |import, cx| import.add_paths(paths, cx));
+                            }
+                            let voices: Arc<dyn SpeechEngine> = Arc::new(FixedVoices);
+                            let read = cx.new(|cx| {
+                                ReadAloud::new(
+                                    ReadParts {
+                                        storage: Rc::clone(&storage),
+                                        system: Arc::clone(&voices),
+                                        kokoro: voices,
+                                        spawn: models::thread_spawner(),
+                                        silent: true,
+                                    },
+                                    window,
+                                    cx,
+                                )
+                            });
+                            cx.new(|cx| Files::new(Rc::clone(&storage), import, Some(read), cx))
                         });
                         shell.update(cx, |shell, cx| {
                             shell.attach_mic(mic, cx);
@@ -659,8 +767,8 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                             shell.attach_about(about, cx);
                             shell.attach_history(history, cx);
                             shell.attach_dictionary(dictionary, cx);
-                            if let Some(import) = import {
-                                shell.attach_import(import, cx);
+                            if let Some(files) = files {
+                                shell.attach_files(files, cx);
                             }
                             shell.attach_models(models, cx);
                         });
@@ -721,8 +829,36 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "history.clear");
         }
         Scene::Dictionary => click(cx, handle, "sidebar.dictionary"),
-        Scene::Import => {
-            click(cx, handle, "sidebar.import");
+        Scene::Files(FilesShot::Empty) => click(cx, handle, "sidebar.files"),
+        Scene::Files(FilesShot::DragOver) => {
+            click(cx, handle, "sidebar.files");
+            let event = FileDropEvent::Entered {
+                position: point(
+                    px(space::WINDOW_WIDTH / 2.0),
+                    px(space::WINDOW_HEIGHT / 2.0),
+                ),
+                paths: ExternalPaths(vec![std::path::PathBuf::from("/Talks/Keynote.m4a")].into()),
+            };
+            cx.update_window(handle, |_, window, cx| {
+                window.dispatch_event(event.to_platform_input(), cx);
+                window.refresh();
+            })
+            .expect("drag a file over the window");
+            cx.run_until_parked();
+        }
+        Scene::Files(FilesShot::ReadAloud) => {
+            click(cx, handle, "sidebar.files");
+            click(cx, handle, "read.text");
+            // The text area lets go of the focus, so the baseline shows it at rest.
+            cx.update_window(handle, |_, window, cx| {
+                window.input(READ_TEXT, cx);
+                window.blur(cx);
+            })
+            .expect("type the text");
+            cx.run_until_parked();
+        }
+        Scene::Files(FilesShot::Queue) => {
+            click(cx, handle, "sidebar.files");
             // The jobs run on threads and report through a channel: wait for the third file
             // to end, then give the running one time to report its 40%.
             for _ in 0..50 {
@@ -741,6 +877,8 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             }
             std::thread::sleep(std::time::Duration::from_millis(500));
             cx.run_until_parked();
+            // The queue sits under the drop zone and the options.
+            scroll_by(cx, handle, -5_000.0);
         }
         Scene::Models => click(cx, handle, "sidebar.models"),
         Scene::ModelsBottom => {

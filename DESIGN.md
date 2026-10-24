@@ -18,6 +18,7 @@ colors:
   dark-warning: "#FF9F0A"
   dark-error: "#FF453A"
   dark-scrim: "#00000066"
+  dark-segment: "#FFFFFF38"
   light-content: "#F5F5F5"
   light-sidebar: "#E8E8EA"
   light-sidebar-blur: "#E8E8EACC"
@@ -33,6 +34,7 @@ colors:
   light-warning: "#FF9500"
   light-error: "#FF3B30"
   light-scrim: "#00000033"
+  light-segment: "#FFFFFF"
   on-accent: "#FFFFFF"
   window-close: "#FF5F57"
   window-close-glyph: "#6E140F"
@@ -196,7 +198,8 @@ All colors are neutral grays plus one accent. Tokens come in a Dark and a Light 
 - **Label secondary (white 55% Dark, black 50% Light):** secondary lines, sidebar icons, and group footers.
 - **Label tertiary (white 25% Dark, black 26% Light):** placeholders and disabled text.
 - **Separator (white 10% Dark, black 10% Light):** hairlines and the group stroke.
-- **Accent (`#0A84FF` Dark, `#007AFF` Light):** the default button, a switch that is on, the focus ring, the selection focus, and links. It is the only accent.
+- **Segment (white 22% Dark, white Light):** the selected segment of a segmented control, raised above the control fill.
+- **Accent (`#0A84FF` Dark, `#007AFF` Light):** the default button, a switch that is on, the focus ring, the selection focus, links, and the outline of a drop zone while files are dragged over the window. It is the only accent.
 - **Status colors, on status words only:** success (`#30D158` Dark, `#34C759` Light) for ready, error (`#FF453A` Dark, `#FF3B30` Light) for a failure.
 - **Status icon, for a row that needs the user:** warning (`#FF9F0A` Dark, `#FF9500` Light) on an exclamation icon (lucide `circle-alert`, 16px) with the tooltip "Needs attention" and no word. The icon is the only place the warning color appears. Its label in the accessibility tree is "Needs attention".
 - **Scrim (black 40% Dark, black 20% Light):** dims the window behind a sheet.
@@ -255,7 +258,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 ## Components
 
-**Sidebar:** 7 rows in this order: Home, History, Dictionary, Import, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. There are no colored tiles. A focused row shows the accent focus ring.
+**Sidebar:** 7 rows in this order: Home, History, Dictionary, Files, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. There are no colored tiles. A focused row shows the accent focus ring.
 
 **Toolbar:** the view title (13px semibold, label color) on the left of the title bar area. On Settings the search field sits at the right end, 300px wide, 24px from the window edge, centered on the chrome line. It has no bottom line.
 
@@ -268,6 +271,15 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 **About:** a centered header, a facts group, a links group, and a footer line. The header holds the app icon (96px, 16px radius), "Hushpen" in the title style, the line "Private dictation that stays on this Mac" ("on this computer" on Linux), the build line in the secondary style (`Version 2.0.0 (1a2b3c4, 2026-05-15)`, with `-dev` after the version in a debug build), and a Check for Updates button with what the check found on one secondary line under it. The facts are Version, Engine (whisper.cpp and the model in use), and Data folder (`~/...`, with a Show button). The links are Website, GitHub, Report an issue, Open-source licenses, and Open log folder, each with the external-link glyph on the right. The footer is one centered secondary line: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." The Engine fact is the one place the UI names a component of the stack.
 
 **Models:** one section for each model kind, in this order: Speech recognition, Text cleanup, Voices. Each section is a heading above its group, with one footer line. Text cleanup lists only the models this machine is offered. A row holds the name, then the word "Recommended" in the secondary style for the suggested model of its kind, and one secondary line that says what the model is for. On the right, lightest to heaviest: the size, the status word, the details button (lucide `info`, 16px, in the secondary label color, tooltip "Details"), then Download or Cancel, Use (speech models only), and Delete. The size, status, and button columns keep fixed widths, so they line up from row to row.
+
+**Files:** a centered segmented control at the top picks Transcribe or Read aloud, and the view opens on the mode the user picked last.
+
+- Transcribe starts with the drop zone: 152px high, the group fill, a dashed hairline in the tertiary label color, the 8px group radius, a 28px lucide `audio-lines` icon, "Drop audio files here", "Choose Files…", and the formats on one secondary line. Files dragged anywhere over the window turn it to the selection fill with an accent outline. A drop anywhere on the window opens Files: text files go to Read aloud, the rest to the queue.
+- The Options group holds Model, Language, and Translate to English. Translate is off with a tooltip that says why for English-only and turbo models.
+- The Queue group has one row per file: the name, then size · length · the folder, the time left, the snippet, or the error on the secondary line. On the right are a 120px progress bar, a 96px status column, then the buttons. A waiting or running file has Cancel. A done file has Copy, Export (TXT, SRT, VTT, JSON), Show in History, and Remove. A failed file has Retry and Remove. Clear Finished sits at the right end of the Queue heading.
+- Read aloud has a Text group (a 132px text area, the character count, and "Open Text File…" for `.txt` and `.md`), a Voice group (Engine, Language, Voice, Speed, Format), and an actions row with the status, the progress, Export Audio…, and Play or Stop. When Kokoro has no model, a notice row with "Download in Models" takes the place of the voice rows.
+
+**Segmented control:** 22px high, 5px radius, on the control fill. Each segment is 120px wide; the selected one has the segment fill and the label color, the others the secondary label color. Left and Right move the choice.
 
 **Details sheet:** the details button opens a sheet for that model. It shows the name, the description, and what the model is good for; a facts group (languages, speed and accuracy as a word with "N of 5", memory, size on disk, license, status); and a files group (the source page as a link row, the folder as a `~/...` path with Show in Finder or Show in Files, and the SHA-256 with Copy). Done closes it, and so does Esc. Tab stays inside the sheet, and closing it returns focus to the details button.
 

@@ -1,28 +1,38 @@
-//! The Import view: audio files go into a queue, the speech engine reads them one at a time,
-//! and each result becomes a History row of type Import.
+//! The import queue of the Files view: audio files go into a queue, the speech engine reads
+//! them one at a time, and each result becomes a History row of type Import.
 //!
 //! The engine child decodes the file, so a damaged file can only fail its own item. The
 //! queue lives here: one job runs, the rest wait in the order they were added, and a cancel
-//! never touches the items behind it.
+//! never touches the items behind it. A finished item can be copied, exported, opened in
+//! History, or, when it failed, tried again.
 
+mod item;
 pub mod panel;
 
-use crate::controller::{CancelToken, Controller, segments_of};
+pub use item::{Item, Progress, State};
+
+use item::Started;
+
+use crate::controller::{CancelToken, Clock, Controller, segments_of};
 use crate::engine_host::EngineHost;
+use crate::history::export::{ExportFile, default_directory};
 use crate::hook;
 use crate::models::{Models, Spawner};
 use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
-use gpui_kit::{App, Context, Entity, FocusHandle};
+use gpui_kit::{App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle};
+use hushpen_core::catalog::Languages;
 use hushpen_core::dictionary;
 use hushpen_core::error::{
-    ENGINE_BAD_LANGUAGE, ENGINE_CRASHED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH, ENGINE_UNAVAILABLE,
-    HISTORY_WRITE_FAILED, IMPORT_DECODE_FAILED, IMPORT_UNSUPPORTED_CODEC,
+    ENGINE_BAD_LANGUAGE, ENGINE_CRASHED, ENGINE_NO_MODEL, ENGINE_NO_SPEECH,
+    ENGINE_TRANSLATE_UNSUPPORTED, ENGINE_UNAVAILABLE, HISTORY_WRITE_FAILED, IMPORT_DECODE_FAILED,
+    IMPORT_UNSUPPORTED_CODEC,
 };
+use hushpen_core::export::Format;
 use hushpen_core::language;
 use hushpen_core::transcript::strip_blank_markers;
-use hushpen_engine::{ImportSpec, JobOutcome, ProgressSink, Transcription};
+use hushpen_engine::{ImportProgress, ImportSpec, JobOutcome, ProgressSink, Transcription};
 use hushpen_store::dictionary as store_dictionary;
 use hushpen_store::history::{self, Row, Segment};
 use serde_json::{Value, json};
@@ -33,6 +43,10 @@ use std::sync::Arc;
 /// What the picker offers. The engine reads these; a file that is none of them still gets a
 /// try, because the decoder looks at the bytes and not at the name.
 pub const SUPPORTED: &str = "WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF";
+
+/// The settings the transcribe options keep.
+pub const LANGUAGE_SETTING: &str = "files.language";
+pub const TRANSLATE_SETTING: &str = "files.translate";
 
 /// Runs one import and waits for it. Tests pass a fake.
 pub type ImportRunner =
@@ -50,85 +64,23 @@ pub fn host_runner(host: &Rc<EngineHost>) -> ImportRunner {
     })
 }
 
-/// How far a job is. It only goes up, and a report outside 0 to 1 is cut to it.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct Progress(f32);
-
-impl Progress {
-    /// Takes a report. Returns whether the percent that shows changed.
-    pub fn raise(&mut self, report: f32) -> bool {
-        if report.is_nan() {
-            return false;
-        }
-        let before = self.percent();
-        self.0 = self.0.max(report.clamp(0.0, 1.0));
-        self.percent() != before
-    }
-
-    pub fn fraction(self) -> f32 {
-        self.0
-    }
-
-    pub fn percent(self) -> u32 {
-        (self.0 * 100.0).floor() as u32
-    }
+/// What the queue asks of the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportRequest {
+    /// Open History on this row.
+    ShowInHistory(String),
 }
 
+/// The pop-up list that is open under a row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum State {
-    Queued,
-    Running,
-    /// The cancel is sent; the engine has not answered yet.
-    Cancelling,
-    Done,
-    Failed,
-    Cancelled,
-}
-
-impl State {
-    pub fn key(self) -> &'static str {
-        match self {
-            State::Queued => "queued",
-            State::Running => "running",
-            State::Cancelling => "cancelling",
-            State::Done => "done",
-            State::Failed => "failed",
-            State::Cancelled => "cancelled",
-        }
-    }
-
-    pub fn finished(self) -> bool {
-        matches!(self, State::Done | State::Failed | State::Cancelled)
-    }
-}
-
-pub struct Item {
-    pub id: u64,
-    pub path: PathBuf,
-    pub name: String,
-    pub state: State,
-    pub progress: Progress,
-    /// The code and the words of a failure.
-    pub failure: Option<(String, String)>,
-    /// The History row of a finished item.
-    pub row_id: Option<String>,
-    pub text: Option<String>,
-    /// What the item was started with, kept for its History row.
-    started: Option<Started>,
-    /// Cancel or Remove, whichever the item shows.
-    pub(crate) focus: FocusHandle,
-}
-
-#[derive(Clone)]
-struct Started {
-    model: String,
-    language: Option<String>,
-    prompt: Option<String>,
-    token: Arc<CancelToken>,
+pub enum Menu {
+    Language,
+    /// The formats of the Export button of this item.
+    Export(u64),
 }
 
 enum ImportEvent {
-    Progress { item: u64, fraction: f32 },
+    Progress { item: u64, progress: ImportProgress },
     Finished { item: u64, outcome: JobOutcome },
 }
 
@@ -138,6 +90,7 @@ pub struct Parts {
     pub controller: Entity<Controller>,
     pub run: ImportRunner,
     pub spawn: Spawner,
+    pub clock: Clock,
 }
 
 pub struct Import {
@@ -146,15 +99,26 @@ pub struct Import {
     controller: Entity<Controller>,
     run: ImportRunner,
     spawn: Spawner,
+    clock: Clock,
     events: UnboundedSender<ImportEvent>,
     items: Vec<Item>,
     next_id: u64,
     /// Why the last add added nothing, or what it left out.
     notice: Option<String>,
+    /// What the last Copy or Export did.
+    info: Option<String>,
+    menu: Option<Menu>,
     choosing: bool,
+    exporting: bool,
     pub(crate) choose_focus: FocusHandle,
     pub(crate) clear_focus: FocusHandle,
+    pub(crate) language_focus: FocusHandle,
+    pub(crate) translate_focus: FocusHandle,
+    /// The rows of the open menu: every language, or the export formats.
+    pub(crate) option_focus: Vec<FocusHandle>,
 }
+
+impl EventEmitter<ImportRequest> for Import {}
 
 impl Import {
     pub fn new(parts: Parts, cx: &mut Context<Self>) -> Self {
@@ -177,13 +141,22 @@ impl Import {
             controller: parts.controller,
             run: parts.run,
             spawn: parts.spawn,
+            clock: parts.clock,
             events,
             items: Vec::new(),
             next_id: 1,
             notice: None,
+            info: None,
+            menu: None,
             choosing: false,
+            exporting: false,
             choose_focus: cx.focus_handle().tab_stop(true),
             clear_focus: cx.focus_handle().tab_stop(true),
+            language_focus: cx.focus_handle().tab_stop(true),
+            translate_focus: cx.focus_handle().tab_stop(true),
+            option_focus: (0..=language::LANGUAGES.len())
+                .map(|_| cx.focus_handle().tab_stop(true))
+                .collect(),
         }
     }
 
@@ -195,8 +168,20 @@ impl Import {
         self.notice.as_deref()
     }
 
+    pub fn info(&self) -> Option<&str> {
+        self.info.as_deref()
+    }
+
+    pub fn menu(&self) -> Option<Menu> {
+        self.menu
+    }
+
     pub fn choosing(&self) -> bool {
         self.choosing
+    }
+
+    pub fn now_ms(&self) -> u64 {
+        (self.clock)()
     }
 
     /// True from the add of a file until its result is saved. A data folder move would lose the
@@ -219,10 +204,104 @@ impl Import {
         let blocker = self.controller.read(cx).blocker(cx)?;
         Some(match blocker.code {
             ENGINE_NO_MODEL => {
-                "A speech model is needed before you can import. Get one in Models.".to_owned()
+                "A speech model is needed before you can transcribe. Get one in Models.".to_owned()
             }
             _ => blocker.message,
         })
+    }
+
+    /// The name of the speech model the next file uses.
+    pub fn model_name(&self, cx: &App) -> String {
+        let models = self.models.read(cx);
+        let id = models.effective();
+        models
+            .rows()
+            .iter()
+            .find(|row| row.entry.id == id)
+            .map_or(id, |row| row.entry.name.clone())
+    }
+
+    /// `auto` or the code of the spoken language of the next file.
+    pub fn language(&self) -> String {
+        self.storage
+            .settings
+            .get(LANGUAGE_SETTING)
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .filter(|code| language::is_setting_value(code))
+            .unwrap_or_else(|| language::AUTO.to_owned())
+    }
+
+    /// Why the language cannot be chosen, or `None` while it can.
+    pub fn language_off_reason(&self, cx: &App) -> Option<&'static str> {
+        self.english_only(cx)
+            .then_some("This model understands English only.")
+    }
+
+    /// Whether the next file is translated to English, as the user last chose.
+    pub fn translate(&self) -> bool {
+        self.storage
+            .settings
+            .get(TRANSLATE_SETTING)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    }
+
+    /// Why the model cannot translate, or `None` while it can. Whisper's English-only models
+    /// have no translate task, and the turbo models were trained without it.
+    pub fn translate_off_reason(&self, cx: &App) -> Option<&'static str> {
+        if self.english_only(cx) {
+            Some("English-only models cannot translate. Choose a multilingual model in Models.")
+        } else if self.models.read(cx).effective().contains("turbo") {
+            Some("Turbo models cannot translate. Choose another model in Models.")
+        } else {
+            None
+        }
+    }
+
+    fn english_only(&self, cx: &App) -> bool {
+        let models = self.models.read(cx);
+        let id = models.effective();
+        models
+            .rows()
+            .iter()
+            .find(|row| row.entry.id == id)
+            .is_some_and(|row| row.entry.languages == Languages::English)
+    }
+
+    pub fn set_language(&mut self, code: &str, cx: &mut Context<Self>) -> Result<(), String> {
+        if !language::is_setting_value(code) {
+            return Err(format!("`{code}` is not a language Hushpen knows."));
+        }
+        self.storage
+            .settings
+            .set(LANGUAGE_SETTING, json!(code))
+            .map_err(|error| error.to_string())?;
+        self.menu = None;
+        cx.notify();
+        Ok(())
+    }
+
+    pub fn set_translate(&mut self, on: bool, cx: &mut Context<Self>) -> Result<(), String> {
+        if on && let Some(why) = self.translate_off_reason(cx) {
+            return Err(why.to_owned());
+        }
+        self.storage
+            .settings
+            .set(TRANSLATE_SETTING, json!(on))
+            .map_err(|error| error.to_string())?;
+        cx.notify();
+        Ok(())
+    }
+
+    /// Opens `menu`, or closes it when it is the one open.
+    pub fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
+        self.menu = (self.menu != Some(menu)).then_some(menu);
+        cx.notify();
+    }
+
+    pub fn close_menu(&mut self, cx: &mut Context<Self>) {
+        self.menu = None;
+        cx.notify();
     }
 
     /// Adds files to the queue. A path that is not a regular file (a device, a pipe, a folder,
@@ -242,44 +321,34 @@ impl Import {
         let mut queued = 0;
         for path in paths {
             let name = file_name(&path);
-            if !is_regular_file(&path) {
+            let Some(size_bytes) = regular_file_size(&path) else {
                 hook::record_event("import", &format!("refused {name}"));
                 refused.push(name);
                 continue;
-            }
+            };
             let id = self.next_id;
             self.next_id += 1;
             hook::record_event("import", &format!("queued {name}"));
-            self.items.push(Item {
-                id,
-                path,
-                name,
-                state: State::Queued,
-                progress: Progress::default(),
-                failure: None,
-                row_id: None,
-                text: None,
-                started: None,
-                focus: cx.focus_handle().tab_stop(true),
-            });
+            self.items.push(Item::new(id, path, name, size_bytes, cx));
             queued += 1;
         }
         self.notice = match refused.as_slice() {
             [] => None,
             [only] => Some(format!(
-                "\u{201c}{only}\u{201d} cannot be opened. Only audio files can be imported."
+                "\u{201c}{only}\u{201d} cannot be opened. Only audio files can be transcribed."
             )),
             [first, rest @ ..] => Some(format!(
-                "\u{201c}{first}\u{201d} and {} more cannot be opened. Only audio files can be imported.",
+                "\u{201c}{first}\u{201d} and {} more cannot be opened. Only audio files can be transcribed.",
                 rest.len()
             )),
         };
+        self.info = None;
         self.start_next(cx);
         cx.notify();
         queued
     }
 
-    /// Opens the file picker, like the Choose files button.
+    /// Opens the file picker, like the Choose Files button.
     pub fn choose(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         if self.choosing {
             return Err("The file picker is already open.".into());
@@ -303,11 +372,7 @@ impl Import {
     /// Stops a queued item at once, or tells the engine to stop the running one. A running item
     /// shows Cancelled when the engine answers, which takes under a second.
     pub fn cancel(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
-        let item = self
-            .items
-            .iter_mut()
-            .find(|item| item.id == id)
-            .ok_or("That file is not in the queue.")?;
+        let item = self.item_mut(id)?;
         match item.state {
             State::Queued => {
                 item.state = State::Cancelled;
@@ -329,15 +394,14 @@ impl Import {
 
     /// Takes one finished item off the list. Its History row stays.
     pub fn remove(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
-        let index = self
-            .items
-            .iter()
-            .position(|item| item.id == id)
-            .ok_or("That file is not in the queue.")?;
+        let index = self.index_of(id)?;
         if !self.items[index].state.finished() {
             return Err("Cancel the file first.".into());
         }
         self.items.remove(index);
+        if self.menu == Some(Menu::Export(id)) {
+            self.menu = None;
+        }
         cx.notify();
         Ok(())
     }
@@ -346,10 +410,113 @@ impl Import {
     pub fn clear_finished(&mut self, cx: &mut Context<Self>) {
         self.items.retain(|item| !item.state.finished());
         self.notice = None;
+        self.info = None;
+        self.menu = None;
         cx.notify();
     }
 
-    /// The pointer to the item that has its own handle for Cancel and Remove.
+    /// Puts a failed item back in the queue, behind the files that wait.
+    pub fn retry(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
+        let index = self.index_of(id)?;
+        if self.items[index].state != State::Failed {
+            return Err("Only a file that failed can be tried again.".into());
+        }
+        let mut item = self.items.remove(index);
+        item.reset();
+        hook::record_event("import", &format!("retry {}", item.name));
+        self.items.push(item);
+        self.start_next(cx);
+        cx.notify();
+        Ok(())
+    }
+
+    /// Copies the transcript of a finished item.
+    pub fn copy(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
+        let item = self.item(id)?;
+        let text = item
+            .text
+            .clone()
+            .ok_or("Only a finished file has a transcript to copy.")?;
+        self.info = Some(format!(
+            "Copied the transcript of \u{201c}{}\u{201d}.",
+            item.name
+        ));
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        hook::record_event("import", "copied");
+        cx.notify();
+        Ok(())
+    }
+
+    /// Writes the transcript of a finished item to a file, through the save dialog.
+    pub fn export(
+        &mut self,
+        id: u64,
+        format: Format,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if self.exporting {
+            return Err("A save dialog is already open.".into());
+        }
+        let row = self.row_of(id)?;
+        let file = ExportFile::of(&self.storage.database, format, &[row])?;
+        self.exporting = true;
+        self.menu = None;
+        self.info = None;
+        hook::record_event("import", &format!("export-dialog {}", format.extension()));
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let saved = file.save(cx, default_directory()).await;
+            let _ = this.update(cx, |import, cx| {
+                import.exporting = false;
+                import.info = match saved {
+                    Ok(Some(exported)) => {
+                        hook::record_event(
+                            "import",
+                            &format!("export-written {}", exported.path.display()),
+                        );
+                        Some(exported.notice())
+                    }
+                    Ok(None) => None,
+                    Err(message) => Some(message),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+        Ok(())
+    }
+
+    /// Asks the window to open History on the row of a finished item.
+    pub fn show_in_history(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
+        let row = self.row_of(id)?;
+        cx.emit(ImportRequest::ShowInHistory(row));
+        Ok(())
+    }
+
+    fn row_of(&self, id: u64) -> Result<String, String> {
+        self.item(id)?
+            .row_id
+            .clone()
+            .ok_or_else(|| "Only a finished file has a transcript in History.".to_owned())
+    }
+
+    fn index_of(&self, id: u64) -> Result<usize, String> {
+        self.items
+            .iter()
+            .position(|item| item.id == id)
+            .ok_or_else(|| "That file is not in the queue.".to_owned())
+    }
+
+    fn item(&self, id: u64) -> Result<&Item, String> {
+        Ok(&self.items[self.index_of(id)?])
+    }
+
+    fn item_mut(&mut self, id: u64) -> Result<&mut Item, String> {
+        let index = self.index_of(id)?;
+        Ok(&mut self.items[index])
+    }
+
+    /// The pointer to the item that has its own handles for its buttons.
     pub fn id_at(&self, index: usize) -> Option<u64> {
         self.items.get(index).map(|item| item.id)
     }
@@ -374,14 +541,16 @@ impl Import {
                 self.fail(index, ENGINE_NO_MODEL, why);
                 continue;
             }
-            let language = self.controller.read(cx).language();
+            let language = self.language();
             let language = (language != language::AUTO).then_some(language);
+            let translate = self.translate() && self.translate_off_reason(cx).is_none();
             let prompt =
                 Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
             let model = self.models.read(cx).effective();
             let token = Arc::new(CancelToken::default());
+            let now = self.now_ms();
             let item = &mut self.items[index];
-            item.state = State::Running;
+            item.start(now);
             item.started = Some(Started {
                 model,
                 language: language.clone(),
@@ -394,14 +563,14 @@ impl Import {
                 path: item.path.clone(),
                 language,
                 prompt,
-                translate: false,
+                translate,
             };
             let run = Arc::clone(&self.run);
             let events = self.events.clone();
             let sink: ProgressSink = {
                 let events = events.clone();
-                Arc::new(move |fraction| {
-                    let _ = events.unbounded_send(ImportEvent::Progress { item: id, fraction });
+                Arc::new(move |progress| {
+                    let _ = events.unbounded_send(ImportEvent::Progress { item: id, progress });
                 })
             };
             let spawned = (self.spawn)(Box::new(move || {
@@ -413,7 +582,7 @@ impl Import {
                 self.fail(
                     index,
                     ENGINE_CRASHED,
-                    "The import could not start. Try again.".to_owned(),
+                    "The file could not start. Try again.".to_owned(),
                 );
             }
         }
@@ -435,11 +604,15 @@ impl Import {
 
     fn handle(&mut self, event: ImportEvent, cx: &mut Context<Self>) {
         match event {
-            ImportEvent::Progress { item, fraction } => {
+            ImportEvent::Progress { item, progress } => {
                 let Some(item) = self.items.iter_mut().find(|found| found.id == item) else {
                     return;
                 };
-                if item.state == State::Running && item.progress.raise(fraction) {
+                if let Some(ms) = progress.audio_ms {
+                    item.duration_ms = Some(ms);
+                    cx.notify();
+                }
+                if item.state == State::Running && item.progress.raise(progress.fraction) {
                     hook::record_event(
                         "import",
                         &format!("progress {} {}", item.name, item.progress.percent()),
@@ -507,6 +680,7 @@ impl Import {
         let item = &mut self.items[index];
         item.state = State::Done;
         item.progress.raise(1.0);
+        item.duration_ms = Some(done.audio_ms);
         item.row_id = Some(row.id.clone());
         item.text = Some(text);
         hook::record_event("import", &format!("done {}", item.name));
@@ -516,18 +690,34 @@ impl Import {
     }
 
     pub fn state_json(&self, cx: &App) -> Value {
+        let now = self.now_ms();
         json!({
             "busy": self.busy(),
             "choosing": self.choosing,
+            "exporting": self.exporting,
             "notice": self.notice,
+            "info": self.info,
             "blocker": self.blocker(cx),
             "supported": SUPPORTED,
+            "model": self.model_name(cx),
+            "language": self.language(),
+            "language_off": self.language_off_reason(cx),
+            "translate": self.translate(),
+            "translate_off": self.translate_off_reason(cx),
+            "menu": match self.menu {
+                Some(Menu::Language) => json!("language"),
+                Some(Menu::Export(id)) => json!({"export": id}),
+                None => Value::Null,
+            },
             "items": self.items.iter().map(|item| json!({
                 "id": item.id,
                 "name": item.name,
                 "path": item.path.to_string_lossy(),
                 "state": item.state.key(),
                 "progress": item.progress.percent(),
+                "size_bytes": item.size_bytes,
+                "duration_ms": item.duration_ms,
+                "left_ms": item.time_left_ms(now),
                 "code": item.failure.as_ref().map(|(code, _)| code),
                 "message": item.failure.as_ref().map(|(_, message)| message),
                 "row_id": item.row_id,
@@ -572,9 +762,13 @@ fn file_name(path: &Path) -> String {
     )
 }
 
-/// A `stat` and nothing else: a pipe is never opened, so nothing can block on it.
-fn is_regular_file(path: &Path) -> bool {
-    std::fs::metadata(path).is_ok_and(|meta| meta.is_file())
+/// The size of a regular file, from a `stat` and nothing else: a pipe is never opened, so
+/// nothing can block on it. `None` for anything that is not a regular file.
+fn regular_file_size(path: &Path) -> Option<u64> {
+    std::fs::metadata(path)
+        .ok()
+        .filter(std::fs::Metadata::is_file)
+        .map(|meta| meta.len())
 }
 
 /// What an item says when its job failed. The code stays on the item for the log and the hook.
@@ -590,16 +784,17 @@ pub fn failure_message(code: &str, detail: &str) -> String {
         ENGINE_UNAVAILABLE => {
             "The speech engine is not available. Try again in a moment.".to_owned()
         }
-        ENGINE_BAD_LANGUAGE => {
-            "That language is not supported. Choose another one in Home.".to_owned()
-        }
+        ENGINE_BAD_LANGUAGE => "That language is not supported. Choose another one.".to_owned(),
+        ENGINE_TRANSLATE_UNSUPPORTED => "This model cannot translate. Turn Translate off, \
+             or choose a multilingual model in Models."
+            .to_owned(),
         HISTORY_WRITE_FAILED => "The transcript could not be saved to the history.".to_owned(),
         _ => "The speech engine stopped while reading this file. Try again.".to_owned(),
     }
 }
 
 /// The files the user picks: the path the test hook queued, or the system's picker.
-async fn pick_files(cx: &mut gpui_kit::AsyncApp) -> Option<Vec<PathBuf>> {
+pub(crate) async fn pick_files(cx: &mut gpui_kit::AsyncApp) -> Option<Vec<PathBuf>> {
     #[cfg(feature = "test-automation")]
     if let Some(paths) = hushpen_testhook::dialogs::take_answer() {
         return Some(paths);
