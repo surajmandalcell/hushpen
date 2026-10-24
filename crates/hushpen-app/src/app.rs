@@ -162,6 +162,8 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 hushpen_platform::window::launched_in_background(),
                 show_window,
             );
+            // Read before the window opens: its options follow the compositor.
+            theme::chrome::set_compositor(hushpen_platform::window::compositor_running(), cx);
             let (handle, shell) = match open_main_window(cx, launch) {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -170,6 +172,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     return;
                 }
             };
+            crate::window_chrome::follow_compositor(handle, cx);
             // Close hides the window to the tray, or minimizes it when no tray can bring it
             // back; only the tray's Quit ends the app. If the window is ever closed for real,
             // the app ends with it. The flow bar opens and closes its own window, which must
@@ -692,9 +695,6 @@ fn open_main_window(
 }
 
 fn add_sidebar_material(window: &Window) {
-    if !theme::chrome::TRANSLUCENT_SIDEBAR {
-        return;
-    }
     let width = f64::from(space::SIDEBAR_WIDTH);
     if let Err(error) = hushpen_platform::window::add_sidebar_material(native_handle(window), width)
     {

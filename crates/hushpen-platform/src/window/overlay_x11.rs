@@ -3,7 +3,7 @@
 //! above every other window.
 
 use super::{ChromeError, Frame, Pointer};
-use std::cell::RefCell;
+use crate::x11util::{fail, with_x11};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
@@ -12,40 +12,8 @@ use x11rb::protocol::xproto::{
 };
 use x11rb::rust_connection::RustConnection;
 
-fn fail(what: &str, error: impl std::fmt::Display) -> ChromeError {
-    ChromeError::new(format!("{what}: {error}"))
-}
-
-thread_local! {
-    /// GPUI calls from its main thread, once for each pointer move while the bar is dragged.
-    static CONNECTION: RefCell<Option<(RustConnection, Window)>> = const { RefCell::new(None) };
-}
-
-/// Runs `call` on the main thread's connection, which it opens on first use. A broken
-/// connection is dropped so the next call reconnects.
-fn with_connection<T>(
-    call: impl FnOnce(&RustConnection, Window) -> Result<T, ChromeError>,
-) -> Result<T, ChromeError> {
-    CONNECTION.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        if slot.is_none() {
-            let (conn, screen) = x11rb::connect(None).map_err(|e| fail("x11 connect", e))?;
-            let root = conn.setup().roots[screen].root;
-            *slot = Some((conn, root));
-        }
-        let (conn, root) = slot
-            .as_ref()
-            .ok_or_else(|| ChromeError::new("no x11 connection"))?;
-        let result = call(conn, *root);
-        if result.is_err() {
-            *slot = None;
-        }
-        result
-    })
-}
-
 pub(super) fn place(window: Window, frame: Frame) -> Result<(), ChromeError> {
-    with_connection(|conn, _| {
+    with_x11(|conn, _, _| {
         conn.configure_window(
             window,
             &ConfigureWindowAux::new()
@@ -63,7 +31,7 @@ pub(super) fn place(window: Window, frame: Frame) -> Result<(), ChromeError> {
 /// reads it while it is dragged: the bar moves under the pointer, so the positions that the
 /// window receives lag behind.
 pub(super) fn pointer() -> Result<Pointer, ChromeError> {
-    with_connection(|conn, root| {
+    with_x11(|conn, _, root| {
         let reply = conn
             .query_pointer(root)
             .map_err(|e| fail("query the pointer", e))?

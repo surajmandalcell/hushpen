@@ -63,5 +63,11 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends --fix-m
  && espeak-ng --version \
  && rm -rf /var/lib/apt/lists/*
 
+# picom, the compositor that `slot/compositor.sh` starts and stops, so the transparent window
+# with rounded corners can be checked with and without one. Its own layer, like espeak-ng.
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends --fix-missing picom \
+ && picom --version \
+ && rm -rf /var/lib/apt/lists/*
+
 # Registry and git caches, the target dir, and the repo are bind-mounted at run time.
 WORKDIR /work

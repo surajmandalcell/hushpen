@@ -1,4 +1,5 @@
 use super::{ChromeError, MOTIF_FRAMELESS_FIXED, motif_hints_locked, size_hints_pinned};
+use crate::x11util::{fail, intern};
 use x11rb::connection::Connection;
 use x11rb::properties::WmSizeHints;
 use x11rb::protocol::Event;
@@ -12,20 +13,6 @@ use x11rb::wrapper::ConnectionExt as _;
 const NET_WM_STATE_REMOVE: u32 = 0;
 /// The sender is an application, not a pager (EWMH source indication).
 const SOURCE_APPLICATION: u32 = 1;
-
-fn fail(what: &str, error: impl std::fmt::Display) -> ChromeError {
-    ChromeError::new(format!("{what}: {error}"))
-}
-
-fn intern(conn: &RustConnection, name: &[u8]) -> Result<Atom, ChromeError> {
-    let text = String::from_utf8_lossy(name);
-    Ok(conn
-        .intern_atom(false, name)
-        .map_err(|e| fail(&format!("intern {text}"), e))?
-        .reply()
-        .map_err(|e| fail(&format!("intern {text}"), e))?
-        .atom)
-}
 
 /// Set min = max = `width` x `height` in `WM_NORMAL_HINTS`, remove the frame
 /// and the resize functions through `_MOTIF_WM_HINTS`, and keep the window out

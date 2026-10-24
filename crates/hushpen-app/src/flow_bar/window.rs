@@ -53,7 +53,12 @@ impl PopUp {
             Ok((handle, _)) => {
                 self.handle = Some(handle);
                 let native = handle
-                    .update(cx, |_, window, _| native_handle(window))
+                    .update(cx, |_, window, cx| {
+                        // The Kit root paints the theme background under the pill, and GPUI's
+                        // X11 renderer starts opaque until the background is set again.
+                        crate::window_chrome::apply_see_through(true, window, cx);
+                        native_handle(window)
+                    })
                     .ok()?;
                 Some(Box::new(move || {
                     if let Err(error) = pin_overlay(native) {

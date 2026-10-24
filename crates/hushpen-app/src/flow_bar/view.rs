@@ -147,7 +147,11 @@ fn tone(state: BarState) -> u32 {
 }
 
 /// The whole bar. `bar` is the live entity the controls call; the pixel tests pass `None`.
-pub fn content(props: &Props, bar: Option<&Entity<FlowBar>>) -> impl IntoElement + use<> {
+pub fn content(
+    props: &Props,
+    bar: Option<&Entity<FlowBar>>,
+    composited: bool,
+) -> impl IntoElement + use<> {
     let (width, height) = props.frame.unwrap_or_else(|| size_of(props));
     let label: SharedString = match props.state {
         BarState::Idle => "Start dictation".into(),
@@ -170,8 +174,14 @@ pub fn content(props: &Props, bar: Option<&Entity<FlowBar>>) -> impl IntoElement
         .bg(rgb(color::SURFACE_ELEVATED))
         .border_1()
         .border_color(rgb(color::DIVIDER))
-        .rounded(px(radius::FULL))
         .cursor_pointer();
+    // Without a compositor the window cannot be see-through and pill corners would render
+    // black, so the bar fills its window as a rectangle.
+    root = if composited {
+        root.rounded(px(radius::FULL))
+    } else {
+        root.rounded_none()
+    };
     if let Some(bar) = bar {
         // The bar tells a click from a drag itself, from the pointer on the screen: a pop-up
         // that moves under the pointer cannot rely on the positions it is sent.
@@ -439,7 +449,7 @@ pub struct Preview(pub Props);
 #[cfg(any(test, feature = "pixel-tests"))]
 impl gpui_kit::Render for Preview {
     fn render(&mut self, _: &mut Window, _: &mut gpui_kit::Context<Self>) -> impl IntoElement {
-        content(&self.0, None)
+        content(&self.0, None, true)
     }
 }
 

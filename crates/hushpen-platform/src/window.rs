@@ -10,6 +10,9 @@ use std::fmt;
 #[cfg(target_os = "linux")]
 mod x11;
 
+#[cfg(target_os = "linux")]
+mod compositor_x11;
+
 #[cfg(target_os = "macos")]
 mod appkit;
 #[cfg(target_os = "macos")]
@@ -126,6 +129,49 @@ pub fn add_sidebar_material(handle: WindowHandle, width: f64) -> Result<(), Chro
             let _ = width;
             Ok(())
         }
+    }
+}
+
+/// Whether a compositor draws the screen, so a transparent window shows what is behind it
+/// instead of black. macOS and Wayland always composite; on X11 a compositor owns the
+/// `_NET_WM_CM_S<screen>` selection.
+pub fn compositor_running() -> bool {
+    #[cfg(target_os = "macos")]
+    return true;
+    #[cfg(target_os = "linux")]
+    {
+        use crate::keys::session::{Session, detect};
+        match detect() {
+            Session::X11 => compositor_x11::running(),
+            // A Wayland session is composited by design.
+            Session::Wayland => true,
+            Session::NoDisplay => false,
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    return false;
+}
+
+/// Asks the compositor to blur what shows through `region` of the window: KWin reads
+/// `_KDE_NET_WM_BLUR_BEHIND_REGION`; picom blurs ARGB windows from its own configuration and
+/// needs no property. Backends it does not know are left alone.
+pub fn blur_behind(handle: WindowHandle, region: Frame) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => compositor_x11::blur_behind(window, region),
+        _ => {
+            let _ = region;
+            Ok(())
+        }
+    }
+}
+
+/// Takes the blur request back, for a compositor that went away.
+pub fn clear_blur_behind(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "linux")]
+        WindowHandle::X11(window) => compositor_x11::clear_blur_behind(window),
+        _ => Ok(()),
     }
 }
 
@@ -318,7 +364,16 @@ mod tests {
             height: 10,
         };
         assert!(place_overlay(WindowHandle::Other, frame).is_ok());
+        assert!(blur_behind(WindowHandle::Other, frame).is_ok());
+        assert!(clear_blur_behind(WindowHandle::Other).is_ok());
         assert!(pin_overlay(WindowHandle::Other).is_ok());
         assert!(pointer(WindowHandle::Other).is_none());
+    }
+
+    #[test]
+    fn macos_always_has_a_compositor() {
+        if cfg!(target_os = "macos") {
+            assert!(compositor_running());
+        }
     }
 }

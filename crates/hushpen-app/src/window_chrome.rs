@@ -4,15 +4,24 @@
 //! The native sidebar material sits behind the sidebar column (see `add_sidebar_material`), so the
 //! sidebar shows a blur of what is behind the window. GPUI's own blurred background shows no blur
 //! on current macOS. Linux has no system chrome to keep: the window is frameless and the app
-//! draws close and minimize itself (see `window_controls`).
+//! draws close and minimize itself (see `window_controls`). With a compositor the Linux window is
+//! transparent too, with rounded corners, a translucent sidebar, and the KDE blur property (see
+//! `apply_look`). Without one it stays opaque and square, because a transparent
+//! window on a bare X server renders black.
 
+use crate::native::native_handle;
 use crate::theme::{self, chrome, size as sizes, space};
 use gpui_kit::base::Root;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    App, Bounds, Hsla, Point, Rgba, Styled as _, TitlebarOptions, Window,
+    AnyWindowHandle, App, Bounds, Hsla, Point, Rgba, Styled as _, TitlebarOptions, Window,
     WindowBackgroundAppearance, WindowBounds, WindowOptions, point, px, size, transparent_black,
 };
+use hushpen_platform::window::Frame;
+use std::time::Duration;
+
+/// How often the app reads whether a compositor runs. One selection-owner query, so cheap.
+const COMPOSITOR_POLL: Duration = Duration::from_secs(1);
 
 /// The options for the main window. The caller adds the app id.
 pub fn main_window_options(cx: &App) -> WindowOptions {
@@ -20,10 +29,15 @@ pub fn main_window_options(cx: &App) -> WindowOptions {
     options(
         Bounds::centered(None, window_size, cx),
         cfg!(target_os = "macos"),
+        chrome::sidebar(cx).see_through(),
     )
 }
 
-fn options(bounds: Bounds<gpui_kit::Pixels>, native_chrome: bool) -> WindowOptions {
+fn options(
+    bounds: Bounds<gpui_kit::Pixels>,
+    native_chrome: bool,
+    see_through: bool,
+) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: native_chrome.then(|| TitlebarOptions {
@@ -32,7 +46,7 @@ fn options(bounds: Bounds<gpui_kit::Pixels>, native_chrome: bool) -> WindowOptio
             // The real button frame is read once the window is open (see `app.rs`).
             traffic_light_position: Some(traffic_light_position(sizes::TRAFFIC_LIGHT)),
         }),
-        window_background: background(native_chrome),
+        window_background: background(see_through),
         is_resizable: false,
         is_minimizable: true,
         window_min_size: Some(bounds.size),
@@ -50,8 +64,8 @@ pub fn traffic_light_position(button_height: f32) -> Point<gpui_kit::Pixels> {
     )
 }
 
-fn background(native_chrome: bool) -> WindowBackgroundAppearance {
-    if native_chrome {
+fn background(see_through: bool) -> WindowBackgroundAppearance {
+    if see_through {
         WindowBackgroundAppearance::Transparent
     } else {
         WindowBackgroundAppearance::Opaque
@@ -59,37 +73,100 @@ fn background(native_chrome: bool) -> WindowBackgroundAppearance {
 }
 
 /// What `hookctl state` reports for the window background.
-pub fn background_name() -> &'static str {
-    match background(chrome::TRANSLUCENT_SIDEBAR) {
+pub fn background_name(see_through: bool) -> &'static str {
+    match background(see_through) {
         WindowBackgroundAppearance::Transparent => "transparent",
         WindowBackgroundAppearance::Blurred => "blurred",
         _ => "opaque",
     }
 }
 
-/// What `hookctl state` reports for the sidebar fill: a color, or `none` when the sidebar
-/// shows the native sidebar material.
-pub fn sidebar_fill_name(dark: bool) -> String {
-    match chrome::sidebar_fill(chrome::TRANSLUCENT_SIDEBAR, dark) {
-        Some(fill) => format!("#{fill:06X}"),
+/// What `hookctl state` reports for the sidebar fill: a color (with its alpha when the fill is
+/// translucent), or `none` when the sidebar shows the native sidebar material.
+pub fn sidebar_fill_name(look: chrome::Sidebar, dark: bool) -> String {
+    match look.fill(dark) {
+        Some(fill) => {
+            let Rgba { r, g, b, a } = fill;
+            let byte = |channel: f32| (channel * 255.0).round() as u8;
+            if a >= 1.0 {
+                format!("#{:02X}{:02X}{:02X}", byte(r), byte(g), byte(b))
+            } else {
+                format!(
+                    "#{:02X}{:02X}{:02X}{:02X}",
+                    byte(r),
+                    byte(g),
+                    byte(b),
+                    byte(a)
+                )
+            }
+        }
         None => "none".to_owned(),
     }
 }
 
-/// Lets the native sidebar material show through where no view paints. The Kit root
-/// paints the theme background under the whole window by default, and the root's own style wins
-/// over that default. A window without a Kit root is left alone.
-pub fn clear_root_fill(translucent: bool, window: &mut Window, cx: &mut App) {
-    if !translucent {
-        return;
-    }
+/// What the Kit root paints under the whole window: `fill`, or the theme background with
+/// `None` (its default). A see-through window paints nothing there, so what is behind the
+/// window shows where no view paints. A window without a Kit root is left alone.
+pub fn set_root_fill(fill: Option<Hsla>, window: &mut Window, cx: &mut App) {
     let Some(root) = window.root::<Root>().flatten() else {
         return;
     };
     root.update(cx, |root, cx| {
-        root.style().background = Some(transparent_black().into());
+        root.style().background = fill.map(Into::into);
         cx.notify();
     });
+}
+
+/// The see-through parts that live outside the views: the window background and the root fill.
+/// Called when the window opens and when a compositor comes or goes.
+pub fn apply_see_through(see_through: bool, window: &mut Window, cx: &mut App) {
+    window.set_background_appearance(background(see_through));
+    set_root_fill(see_through.then(transparent_black), window, cx);
+}
+
+/// The whole see-through look for the current compositor reading: the window background, the
+/// root fill, and on Linux the blur behind the sidebar. Called when the window opens and when
+/// a compositor comes or goes.
+pub fn apply_look(window: &mut Window, cx: &mut App) {
+    let look = chrome::sidebar(cx);
+    apply_see_through(look.see_through(), window, cx);
+    let handle = native_handle(window);
+    let blur = if look == chrome::Sidebar::Blurred {
+        let scale = window.scale_factor();
+        let device = |length: f32| (length * scale).round() as u32;
+        let sidebar = Frame {
+            x: 0,
+            y: 0,
+            width: device(space::SIDEBAR_WIDTH),
+            height: device(space::WINDOW_HEIGHT),
+        };
+        hushpen_platform::window::blur_behind(handle, sidebar)
+    } else {
+        hushpen_platform::window::clear_blur_behind(handle)
+    };
+    if let Err(error) = blur {
+        log::warn!("could not set the sidebar blur: {error}");
+    }
+}
+
+/// Follows a compositor that starts or stops while the app runs, with one read a second, and
+/// repaints the main window in its new look. macOS always composites, so nothing runs there.
+pub fn follow_compositor(main: AnyWindowHandle, cx: &mut App) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(COMPOSITOR_POLL).await;
+            let running = hushpen_platform::window::compositor_running();
+            cx.update(|cx| {
+                if chrome::set_compositor(running, cx) {
+                    let _ = main.update(cx, |_, window, cx| apply_look(window, cx));
+                }
+            });
+        }
+    })
+    .detach();
 }
 
 /// The fill the Kit root paints under the whole window: its own fill, else the theme
@@ -134,7 +211,7 @@ mod tests {
 
     #[test]
     fn the_window_is_940_by_600_and_cannot_be_resized() {
-        let options = options(bounds(), true);
+        let options = options(bounds(), true, true);
         assert_eq!((space::WINDOW_WIDTH, space::WINDOW_HEIGHT), (940.0, 600.0));
         assert!(!options.is_resizable);
         assert!(options.is_minimizable);
@@ -147,7 +224,7 @@ mod tests {
 
     #[test]
     fn macos_asks_for_a_transparent_title_bar_with_the_lights_at_20_20() {
-        let options = options(bounds(), true);
+        let options = options(bounds(), true, true);
         let titlebar = options.titlebar.expect("a native title bar on macOS");
         assert!(titlebar.appears_transparent);
         assert_eq!(
@@ -175,14 +252,14 @@ mod tests {
     #[test]
     fn macos_makes_the_window_transparent_so_the_sidebar_material_shows() {
         assert_eq!(
-            options(bounds(), true).window_background,
+            options(bounds(), true, true).window_background,
             WindowBackgroundAppearance::Transparent
         );
     }
 
     #[test]
-    fn linux_is_frameless_and_opaque() {
-        let options = options(bounds(), false);
+    fn linux_is_frameless_and_opaque_without_a_compositor() {
+        let options = options(bounds(), false, false);
         assert!(options.titlebar.is_none());
         assert_eq!(
             options.window_background,
@@ -190,28 +267,34 @@ mod tests {
         );
     }
 
+    /// With a compositor the Linux window gets the ARGB visual and what is behind it shows
+    /// through; without one a transparent window would render black, so it stays opaque.
     #[test]
-    fn the_sidebar_is_solid_on_linux_and_see_through_on_macos() {
-        assert_eq!(chrome::sidebar_fill(false, true), Some(0x2B2B2D));
-        assert_eq!(chrome::sidebar_fill(false, false), Some(0xE8E8EA));
-        assert_eq!(chrome::sidebar_fill(true, true), None);
-        assert_eq!(chrome::sidebar_fill(true, false), None);
+    fn linux_with_a_compositor_is_frameless_and_transparent() {
+        let options = options(bounds(), false, true);
+        assert!(options.titlebar.is_none());
+        assert_eq!(
+            options.window_background,
+            WindowBackgroundAppearance::Transparent
+        );
     }
 
     #[test]
-    fn the_hook_names_match_the_platform() {
-        if cfg!(target_os = "macos") {
-            assert_eq!(
-                (background_name(), sidebar_fill_name(true).as_str()),
-                ("transparent", "none")
-            );
-        } else {
-            assert_eq!(
-                (background_name(), sidebar_fill_name(true).as_str()),
-                ("opaque", "#2B2B2D")
-            );
-            assert_eq!(sidebar_fill_name(false), "#E8E8EA");
-        }
+    fn the_hook_names_follow_the_sidebar_look() {
+        assert_eq!(background_name(true), "transparent");
+        assert_eq!(background_name(false), "opaque");
+        assert_eq!(sidebar_fill_name(chrome::Sidebar::Native, true), "none");
+        assert_eq!(sidebar_fill_name(chrome::Sidebar::Native, false), "none");
+        assert_eq!(sidebar_fill_name(chrome::Sidebar::Solid, true), "#2B2B2D");
+        assert_eq!(sidebar_fill_name(chrome::Sidebar::Solid, false), "#E8E8EA");
+        assert_eq!(
+            sidebar_fill_name(chrome::Sidebar::Blurred, true),
+            "#2B2B2DCC"
+        );
+        assert_eq!(
+            sidebar_fill_name(chrome::Sidebar::Blurred, false),
+            "#E8E8EACC"
+        );
     }
 
     fn open_shell(cx: &mut gpui_kit::TestAppContext) -> gpui_kit::AnyWindowHandle {
@@ -241,7 +324,7 @@ mod tests {
             if let Some(root) = window.root::<Root>().flatten() {
                 root.update(cx, |root, _| root.style().background = None);
             }
-            clear_root_fill(translucent, window, cx);
+            set_root_fill(translucent.then(transparent_black), window, cx);
             window.render_frame(cx);
             root_fill(window, cx)
         })
@@ -273,7 +356,8 @@ mod tests {
             .update_window(handle, |_, window, cx| root_fill(window, cx))
             .unwrap();
         let content = cx.update(|cx| crate::theme::palette(cx).content);
-        if chrome::TRANSLUCENT_SIDEBAR {
+        let see_through = cx.update(|cx| chrome::sidebar(cx).see_through());
+        if see_through {
             assert_eq!(fill, None);
         } else {
             assert_eq!(fill, Some(content.into()));
