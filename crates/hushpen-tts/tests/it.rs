@@ -124,8 +124,13 @@ impl Worker {
         });
     }
 
+    /// What the library wrote to stderr, apart from the notice ONNX Runtime prints for an ARM
+    /// CPU it does not know, such as a Linux VM on Apple silicon.
     fn stderr_lines(&self) -> Vec<String> {
-        self.stderr.try_iter().collect()
+        self.stderr
+            .try_iter()
+            .filter(|line| !line.starts_with("onnxruntime cpuid_info warning"))
+            .collect()
     }
 
     fn finish(mut self) {
