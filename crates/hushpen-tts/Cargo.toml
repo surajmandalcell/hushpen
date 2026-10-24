@@ -1,0 +1,32 @@
+[package]
+name = "hushpen-tts"
+description = "Hushpen local voice worker process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Integration tests with the real voice model and runtime library (tests/it.rs). Off by default.
+heavy = []
+
+[dependencies]
+hound.workspace = true
+hushpen-core.workspace = true
+libloading.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lib]
+name = "hushpen_tts"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hushpen-tts"
+path = "src/main.rs"
