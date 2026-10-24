@@ -173,7 +173,7 @@ type GenerateFn = unsafe extern "C" fn(
 ) -> *const GeneratedAudio;
 type DestroyAudioFn = unsafe extern "C" fn(*const GeneratedAudio);
 
-/// The functions the worker calls. The library stays open as long as any copy of them.
+/// The functions the worker calls. The library they come from is never closed (see `open`).
 pub struct Api {
     create: CreateFn,
     destroy: DestroyFn,
@@ -182,7 +182,6 @@ pub struct Api {
     generate: GenerateFn,
     destroy_audio: DestroyAudioFn,
     version: String,
-    _library: Library,
 }
 
 impl Api {
@@ -196,8 +195,8 @@ impl Api {
         };
         // SAFETY: every symbol is read with the signature that c-api.h of sherpa-onnx 2.0.0
         // gives it, and the version check below runs before any other call. The pointers stay
-        // valid because `Api` keeps the library open.
-        unsafe {
+        // valid because the library is never closed.
+        let api = unsafe {
             let version = *library
                 .get::<VersionFn>(b"SherpaOnnxGetVersionStr\0")
                 .map_err(|error| symbol_error("SherpaOnnxGetVersionStr", error))?;
@@ -215,7 +214,7 @@ impl Api {
                         .map_err(|error| symbol_error($name, error))?
                 };
             }
-            Ok(Self {
+            Self {
                 create: symbol!("SherpaOnnxCreateOfflineTts"),
                 destroy: symbol!("SherpaOnnxDestroyOfflineTts"),
                 sample_rate: symbol!("SherpaOnnxOfflineTtsSampleRate"),
@@ -223,9 +222,12 @@ impl Api {
                 generate: symbol!("SherpaOnnxOfflineTtsGenerateWithConfig"),
                 destroy_audio: symbol!("SherpaOnnxDestroyOfflineTtsGeneratedAudio"),
                 version,
-                _library: library,
-            })
-        }
+            }
+        };
+        // ONNX Runtime is not safe to unload: on Linux a dlclose on one thread while exit runs
+        // its static destructors on another crashed the worker after a clean shutdown.
+        std::mem::forget(library);
+        Ok(api)
     }
 
     pub fn version(&self) -> &str {
