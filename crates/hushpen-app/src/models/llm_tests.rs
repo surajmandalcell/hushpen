@@ -1,15 +1,10 @@
+use super::testkit::{self, Rig, settle};
 use super::*;
-use crate::storage;
-use gpui_kit::{AppContext, Entity, TestAppContext};
-use hushpen_store::data_dir::DataDir;
+use gpui_kit::TestAppContext;
 use sha2::{Digest, Sha256};
-use std::cell::RefCell;
-use std::collections::VecDeque;
 
 const SPEECH: &[u8] = b"speech model bytes";
 const CLEANUP: &[u8] = b"cleanup model bytes, a little longer";
-
-type Work = Rc<RefCell<VecDeque<Box<dyn FnOnce() + Send>>>>;
 
 fn catalog() -> &'static Catalog {
     let entry = |id: &str, file: &str, body: &[u8]| {
@@ -25,48 +20,14 @@ fn catalog() -> &'static Catalog {
             "default": id == "speech",
         })
     };
-    let text = json!({
+    testkit::leak(json!({
         "whisper": [entry("speech", "ggml-speech.bin", SPEECH)],
         "llm": [entry("qwen3.5-2b", "qwen3.5-2b.gguf", CLEANUP)],
-    })
-    .to_string();
-    Box::leak(Box::new(Catalog::parse(&text).unwrap()))
-}
-
-struct Rig {
-    models: Entity<Models>,
-    storage: Rc<storage::Storage>,
-    work: Work,
-    _tmp: tempfile::TempDir,
+    }))
 }
 
 fn rig(cx: &mut TestAppContext, transfer: Arc<Transfer>) -> Rig {
-    let tmp = tempfile::tempdir().unwrap();
-    let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
-    let work: Work = Rc::default();
-    let queue = Rc::clone(&work);
-    let spawn: Spawner = Rc::new(move |job| {
-        queue.borrow_mut().push_back(job);
-        Ok(())
-    });
-    let models =
-        cx.new(|cx| Models::new(Rc::clone(&storage), catalog(), transfer, spawn, None, cx));
-    Rig {
-        models,
-        storage,
-        work,
-        _tmp: tmp,
-    }
-}
-
-fn settle(cx: &mut TestAppContext, rig: &Rig) {
-    loop {
-        cx.run_until_parked();
-        let Some(job) = rig.work.borrow_mut().pop_front() else {
-            return;
-        };
-        job();
-    }
+    testkit::rig(cx, catalog(), transfer, |_| {})
 }
 
 fn downloads_the_file() -> Arc<Transfer> {
@@ -174,36 +135,11 @@ fn a_deleted_cleanup_file_shows_as_not_downloaded_again(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn a_present_cleanup_file_is_hashed_at_start_and_ready(cx: &mut TestAppContext) {
-    let tmp = tempfile::tempdir().unwrap();
-    let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
-    std::fs::create_dir_all(storage.data.llm_models_dir()).unwrap();
-    std::fs::write(
-        storage.data.llm_models_dir().join("qwen3.5-2b.gguf"),
-        CLEANUP,
-    )
-    .unwrap();
-    let work: Work = Rc::default();
-    let queue = Rc::clone(&work);
-    let spawn: Spawner = Rc::new(move |job| {
-        queue.borrow_mut().push_back(job);
-        Ok(())
+    let rig = testkit::rig(cx, catalog(), downloads_the_file(), |storage| {
+        let dir = storage.data.llm_models_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("qwen3.5-2b.gguf"), CLEANUP).unwrap();
     });
-    let models = cx.new(|cx| {
-        Models::new(
-            Rc::clone(&storage),
-            catalog(),
-            downloads_the_file(),
-            spawn,
-            None,
-            cx,
-        )
-    });
-    let rig = Rig {
-        models,
-        storage,
-        work,
-        _tmp: tmp,
-    };
     assert_eq!(llm_state(cx, &rig), ModelState::Verifying);
     settle(cx, &rig);
     assert_eq!(llm_state(cx, &rig), ModelState::Ready);

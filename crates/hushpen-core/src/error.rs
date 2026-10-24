@@ -24,6 +24,10 @@ pub const MIC_BUSY: &str = "MIC_BUSY";
 pub const MODEL_IN_USE: &str = "MODEL_IN_USE";
 pub const MODEL_HASH_MISMATCH: &str = "MODEL_HASH_MISMATCH";
 pub const MODEL_HOST_BLOCKED: &str = "MODEL_HOST_BLOCKED";
+/// The disk has less free space than a model download needs, plus 10%.
+pub const MODEL_NO_SPACE: &str = "MODEL_NO_SPACE";
+/// The system refused to open a model's source page or its folder.
+pub const MODEL_OPEN_FAILED: &str = "MODEL_OPEN_FAILED";
 pub const DOWNLOAD_FAILED: &str = "DOWNLOAD_FAILED";
 pub const INSERT_SECURE_FIELD: &str = "INSERT_SECURE_FIELD";
 pub const INSERT_KEYBOARD_GRABBED: &str = "INSERT_KEYBOARD_GRABBED";

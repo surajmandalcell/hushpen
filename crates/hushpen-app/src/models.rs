@@ -1,33 +1,44 @@
-//! The model library: which speech models are on disk, which one is active, and the
-//! downloads, deletes, and hash checks behind the Models view.
+//! The model library: which speech, cleanup, and voice models are on disk, which speech model is
+//! active, and the downloads, deletes, and hash checks behind the Models view.
 //!
-//! A model counts as downloaded only when its file matches the pinned size and sha256. Slow
-//! work (downloads, hashing) runs on worker threads. They send [`ModelEvent`]s into a channel
-//! and one task on the main thread applies them, so the UI never waits on a download.
+//! A model counts as downloaded only when every one of its files matches the pinned size and
+//! sha256. Slow work (downloads, hashing) runs on worker threads. They send [`ModelEvent`]s into
+//! a channel and one task on the main thread applies them, so the UI never waits on a download.
 
+mod details;
+mod files;
 pub mod panel;
+pub mod sheet;
 
+use crate::about::Opener;
 use crate::engine_host::EngineHost;
 use crate::hook;
 use crate::net::download::{Failure, Outcome, Progress, Spec};
 use crate::storage::Storage;
+pub use details::SheetFocus;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{Context, FocusHandle};
-use hushpen_core::catalog::{Catalog, Languages, ModelEntry};
-use hushpen_core::error::{DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, MODEL_IN_USE};
-use hushpen_store::model_files::{self, Check, Verdict};
+use hushpen_core::catalog::{Catalog, Languages, ModelEntry, ModelKind};
+use hushpen_core::error::{
+    DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, MODEL_IN_USE, MODEL_NO_SPACE,
+};
+use hushpen_core::shortcut::Platform;
+use hushpen_store::model_files;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 const SETTING: &str = "dictation.modelId";
 
 /// How often a ready cleanup model's file is looked for again.
-const PRESENCE_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+const PRESENCE_POLL: Duration = Duration::from_secs(1);
+
+/// A partial download that nothing wrote to for this long is deleted at start-up.
+const STALE_PARTIAL: Duration = Duration::from_secs(7 * 24 * 3600);
 
 /// Runs slow work off the main thread. Tests queue it and run it on the test thread, because
 /// the test scheduler refuses to be woken from another thread.
@@ -53,10 +64,10 @@ pub enum ModelState {
         done: u64,
         total: u64,
     },
-    /// The file is being hashed: at start-up, or the last step of a download.
+    /// The files are being hashed: at start-up, or the last step of a download.
     Verifying,
     Ready,
-    /// The file on disk is not the pinned file. It is never used.
+    /// A file on disk is not the pinned file. The model is never used.
     Failed,
 }
 
@@ -85,13 +96,28 @@ pub struct Notice {
     pub message: String,
 }
 
+/// What the library needs to know about the computer it runs on.
+pub struct Machine {
+    pub platform: Platform,
+    pub ram_bytes: u64,
+    /// Opens a model's source page and its folder.
+    pub opener: Rc<dyn Opener>,
+}
+
+/// The slots of [`Row::focus`].
+pub(crate) const PRIMARY: usize = 0;
+pub(crate) const USE: usize = 1;
+pub(crate) const DELETE: usize = 2;
+pub(crate) const INFO: usize = 3;
+
 pub struct Row {
     pub entry: ModelEntry,
-    /// A cleanup model (`models/llm/`) rather than a speech model.
-    pub llm: bool,
     pub state: ModelState,
-    /// Download or cancel, use, delete.
-    pub(crate) focus: [FocusHandle; 3],
+    /// The Recommended badge: the default speech or voice model, and the cleanup model this
+    /// computer is offered first.
+    pub recommended: bool,
+    /// Download or Cancel, Use, Delete, and the details button: see [`PRIMARY`] and the others.
+    pub(crate) focus: [FocusHandle; 4],
 }
 
 pub enum ModelEvent {
@@ -120,24 +146,28 @@ struct Job {
 
 pub struct Models {
     storage: Rc<Storage>,
+    opener: Rc<dyn Opener>,
     transfer: Arc<Transfer>,
     spawn: Spawner,
     engine: Option<Rc<EngineHost>>,
     events: UnboundedSender<ModelEvent>,
-    /// The speech rows come first, then the cleanup rows.
+    /// In [`ModelKind`] order: speech, then cleanup, then voice.
     rows: Vec<Row>,
-    speech_rows: usize,
     notice: Option<Notice>,
     jobs: HashMap<String, Job>,
     /// Downloads the user asked for again while the cancelled worker was still winding down.
     restart: HashSet<String>,
     next_job: u64,
+    /// The row whose details sheet is open.
+    details: Option<usize>,
+    pub(crate) sheet_focus: SheetFocus,
 }
 
 impl Models {
     pub fn new(
         storage: Rc<Storage>,
         catalog: &'static Catalog,
+        machine: Machine,
         transfer: Arc<Transfer>,
         spawn: Spawner,
         engine: Option<Rc<EngineHost>>,
@@ -168,58 +198,78 @@ impl Models {
             }
         })
         .detach();
-        let speech_rows = catalog.whisper.len();
+        let swept = model_files::sweep_partials(&storage.data.downloads_dir(), STALE_PARTIAL);
+        if swept > 0 {
+            log::info!("MODELS_SWEPT removed {swept} partial downloads older than 7 days");
+        }
+        let offered = catalog.offered_llm(machine.platform, machine.ram_bytes);
+        let suggested = offered.first().map(|entry| entry.id.clone());
         let rows = catalog
             .whisper
             .iter()
-            .map(|entry| (entry, false))
-            .chain(catalog.llm.iter().map(|entry| (entry, true)))
-            .map(|(entry, llm)| Row {
+            .chain(offered)
+            .chain(&catalog.voice)
+            .map(|entry| Row {
                 entry: entry.clone(),
-                llm,
                 state: ModelState::NotDownloaded,
-                focus: [
-                    cx.focus_handle().tab_stop(true),
-                    cx.focus_handle().tab_stop(true),
-                    cx.focus_handle().tab_stop(true),
-                ],
+                recommended: match entry.kind {
+                    ModelKind::Cleanup => suggested.as_ref() == Some(&entry.id),
+                    ModelKind::Speech | ModelKind::Voice => entry.default,
+                },
+                focus: std::array::from_fn(|_| cx.focus_handle().tab_stop(true)),
             })
             .collect();
         let mut models = Self {
             storage,
+            opener: machine.opener,
             transfer,
             spawn,
             engine,
             events,
             rows,
-            speech_rows,
             notice: None,
             jobs: HashMap::new(),
             restart: HashSet::new(),
             next_job: 0,
+            details: None,
+            sheet_focus: SheetFocus::new(cx),
         };
         models.scan();
         models.load_active();
         models
     }
 
-    /// The speech models, which the Models view lists.
-    pub fn rows(&self) -> &[Row] {
-        &self.rows[..self.speech_rows]
+    /// Every model, in the order of the Models view.
+    pub fn all_rows(&self) -> &[Row] {
+        &self.rows
     }
 
-    /// The cleanup models, which Settings > Cleanup offers.
+    /// The models of one kind. Their place in [`Self::all_rows`] starts at the first index.
+    pub fn of_kind(&self, kind: ModelKind) -> (usize, &[Row]) {
+        let start = self.rows.partition_point(|row| row.entry.kind < kind);
+        let end = self.rows.partition_point(|row| row.entry.kind <= kind);
+        (start, &self.rows[start..end])
+    }
+
+    /// The speech models.
+    pub fn rows(&self) -> &[Row] {
+        self.of_kind(ModelKind::Speech).1
+    }
+
+    /// The cleanup models this computer is offered, which Settings > Cleanup also lists.
     pub fn llm_rows(&self) -> &[Row] {
-        &self.rows[self.speech_rows..]
+        self.of_kind(ModelKind::Cleanup).1
     }
 
     /// A cleanup model file that someone deleted while the app runs shows as not downloaded,
     /// so Settings can offer the download again.
     fn refresh_llm_presence(&mut self, cx: &mut Context<Self>) {
-        let dir = self.storage.data.llm_models_dir();
         let mut changed = false;
-        for row in self.rows.iter_mut().skip(self.speech_rows) {
-            if row.state == ModelState::Ready && !dir.join(&row.entry.file).is_file() {
+        for row in &mut self.rows {
+            if row.entry.kind == ModelKind::Cleanup
+                && row.state == ModelState::Ready
+                && !files::paths(&self.storage.data, &row.entry).all(|(_, path)| path.is_file())
+            {
                 row.state = ModelState::NotDownloaded;
                 hook::record_event("models", &format!("missing {}", row.entry.id));
                 changed = true;
@@ -268,98 +318,19 @@ impl Models {
     /// The effective model, once its file is verified. Home records only with this.
     pub fn usable(&self) -> Option<&Row> {
         let id = self.effective();
-        self.index_of(&id)
-            .filter(|index| *index < self.speech_rows)
-            .map(|index| &self.rows[index])
+        self.rows()
+            .iter()
+            .find(|row| row.entry.id == id)
             .filter(|row| row.state == ModelState::Ready)
-    }
-
-    fn model_path(&self, entry: &ModelEntry) -> PathBuf {
-        let llm = self
-            .index_of(&entry.id)
-            .is_some_and(|index| index >= self.speech_rows);
-        self.dir_of(llm).join(&entry.file)
-    }
-
-    fn dir_of(&self, llm: bool) -> PathBuf {
-        if llm {
-            self.storage.data.llm_models_dir()
-        } else {
-            self.storage.data.whisper_models_dir()
-        }
-    }
-
-    fn partial_path(&self, entry: &ModelEntry) -> PathBuf {
-        self.storage
-            .data
-            .downloads_dir()
-            .join(format!("{}.download", entry.file))
     }
 
     fn index_of(&self, id: &str) -> Option<usize> {
         self.rows.iter().position(|row| row.entry.id == id)
     }
 
-    /// Reads every file's state. A file with a stamp that still matches is ready at once; any
-    /// other file is hashed on a worker thread and stays `Verifying` until the hash is known.
-    fn scan(&mut self) {
-        let mut to_hash = Vec::new();
-        let mut failed = Vec::new();
-        let (speech_dir, llm_dir) = (
-            self.storage.data.whisper_models_dir(),
-            self.storage.data.llm_models_dir(),
-        );
-        for row in &mut self.rows {
-            if matches!(row.state, ModelState::Downloading { .. }) {
-                continue;
-            }
-            let path = if row.llm { &llm_dir } else { &speech_dir }.join(&row.entry.file);
-            row.state = match model_files::check(&path, row.entry.bytes, &row.entry.sha256) {
-                Check::Missing => ModelState::NotDownloaded,
-                Check::Ready => ModelState::Ready,
-                Check::WrongSize => {
-                    failed.push(failure_text(&row.entry));
-                    ModelState::Failed
-                }
-                Check::NeedsHash => {
-                    to_hash.push((row.entry.clone(), path));
-                    ModelState::Verifying
-                }
-            };
-        }
-        if let Some(message) = failed.pop() {
-            self.set_notice(MODEL_HASH_MISMATCH, message);
-        }
-        if to_hash.is_empty() {
-            return;
-        }
-        let events = self.events.clone();
-        let spawned = (self.spawn)(Box::new(move || {
-            for (entry, path) in to_hash {
-                let ready = matches!(
-                    model_files::verify(&path, entry.bytes, &entry.sha256, |_| true),
-                    Ok(Verdict::Ready { .. })
-                );
-                if !ready {
-                    log::warn!(
-                        "{MODEL_HASH_MISMATCH} model={} failed the hash check",
-                        entry.id
-                    );
-                }
-                let _ = events.unbounded_send(ModelEvent::Verified {
-                    id: entry.id,
-                    ready,
-                });
-            }
-        }));
-        if let Err(error) = spawned {
-            log::warn!("{DOWNLOAD_FAILED} could not start the hash check: {error}");
-            for row in &mut self.rows {
-                if row.state == ModelState::Verifying {
-                    row.state = ModelState::Failed;
-                }
-            }
-        }
+    fn index_or_err(&self, id: &str) -> Result<usize, String> {
+        self.index_of(id)
+            .ok_or_else(|| format!("no model with id '{id}'"))
     }
 
     pub fn handle(&mut self, event: ModelEvent, cx: &mut Context<Self>) {
@@ -424,7 +395,7 @@ impl Models {
             // The state already says "not downloaded". A late success is dropped, so the
             // user's cancel wins.
             if matches!(result, Ok(Outcome::Done)) {
-                let _ = model_files::remove(&self.model_path(&self.rows[index].entry));
+                let _ = files::remove(&self.storage.data, &self.rows[index].entry);
             }
         } else {
             match result {
@@ -461,11 +432,10 @@ impl Models {
         }
     }
 
-    /// Starts a download, or resumes the partial file of an earlier try.
+    /// Starts a download, or resumes the partial files of an earlier try. Refused when the disk
+    /// has less room than the files still to fetch, plus 10%.
     pub fn download(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
-        let index = self
-            .index_of(id)
-            .ok_or_else(|| format!("no model with id '{id}'"))?;
+        let index = self.index_or_err(id)?;
         match self.rows[index].state {
             ModelState::NotDownloaded | ModelState::Failed => {}
             ModelState::Downloading { .. } | ModelState::Verifying => {
@@ -473,23 +443,26 @@ impl Models {
             }
             ModelState::Ready => return Err(format!("{id} is already downloaded")),
         }
+        let entry = self.rows[index].entry.clone();
         if self.jobs.get(id).is_some_and(|job| job.cancelled) {
             self.restart.insert(id.to_owned());
             self.rows[index].state = ModelState::Downloading {
                 done: 0,
-                total: self.rows[index].entry.bytes,
+                total: entry.bytes(),
             };
             cx.notify();
             return Ok(());
         }
-        let entry = self.rows[index].entry.clone();
-        let spec = Spec {
-            url: entry.url.clone(),
-            bytes: entry.bytes,
-            sha256: entry.sha256.clone(),
-            partial: self.partial_path(&entry),
-            dest: self.model_path(&entry),
-        };
+        let specs = files::missing_specs(&self.storage.data, &entry);
+        let needed = files::bytes_to_fetch(&specs);
+        if let Ok(free) = model_files::free_bytes(self.storage.data.root())
+            && !model_files::has_room(free, needed)
+        {
+            self.set_notice(MODEL_NO_SPACE, no_space_text(&entry.name, needed, free));
+            hook::record_event("models", &format!("no space {id}"));
+            cx.notify();
+            return Err(format!("{MODEL_NO_SPACE}: {id} needs {needed} bytes"));
+        }
         self.next_job += 1;
         let number = self.next_job;
         let cancel = Arc::new(AtomicBool::new(false));
@@ -499,6 +472,7 @@ impl Models {
             Arc::clone(&cancel),
         );
         let model = id.to_owned();
+        let total = specs.iter().map(|spec| spec.bytes).sum();
         (self.spawn)(Box::new(move || {
             let mut report = |step| {
                 let _ = events.unbounded_send(ModelEvent::Progress {
@@ -507,7 +481,7 @@ impl Models {
                     step,
                 });
             };
-            let result = transfer(&spec, &flag, &mut report);
+            let result = files::run_download(&specs, &*transfer, &flag, &mut report);
             let _ = events.unbounded_send(ModelEvent::Finished {
                 id: model,
                 job: number,
@@ -523,10 +497,7 @@ impl Models {
                 cancelled: false,
             },
         );
-        self.rows[index].state = ModelState::Downloading {
-            done: 0,
-            total: entry.bytes,
-        };
+        self.rows[index].state = ModelState::Downloading { done: 0, total };
         self.notice = None;
         hook::record_event("models", &format!("download {id}"));
         cx.notify();
@@ -536,9 +507,7 @@ impl Models {
     /// Stops a download. The model shows as not downloaded at once; the worker removes the
     /// partial file as soon as it sees the flag.
     pub fn cancel(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
-        let index = self
-            .index_of(id)
-            .ok_or_else(|| format!("no model with id '{id}'"))?;
+        let index = self.index_or_err(id)?;
         self.restart.remove(id);
         let Some(job) = self.jobs.get_mut(id) else {
             return Err(format!("{id} is not being downloaded"));
@@ -552,13 +521,11 @@ impl Models {
         Ok(())
     }
 
-    /// Deletes the file and its stamp. The active model stays (`MODEL_IN_USE`).
+    /// Deletes the files and their stamps. The active speech model stays (`MODEL_IN_USE`).
     pub fn delete(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
-        let index = self
-            .index_of(id)
-            .ok_or_else(|| format!("no model with id '{id}'"))?;
+        let index = self.index_or_err(id)?;
         let name = self.rows[index].entry.name.clone();
-        if !self.rows[index].llm && self.active() == id {
+        if self.rows[index].entry.kind == ModelKind::Speech && self.active() == id {
             self.set_notice(
                 MODEL_IN_USE,
                 format!("{name} is in use. Choose another model first."),
@@ -572,7 +539,7 @@ impl Models {
         ) {
             return Err(format!("{id} is busy; cancel the download first"));
         }
-        model_files::remove(&self.model_path(&self.rows[index].entry))
+        files::remove(&self.storage.data, &self.rows[index].entry)
             .map_err(|error| format!("could not delete {id}: {error}"))?;
         self.rows[index].state = ModelState::NotDownloaded;
         self.notice = None;
@@ -581,14 +548,12 @@ impl Models {
         Ok(())
     }
 
-    /// Makes `id` the model of the next dictation. Only a verified model can be chosen.
+    /// Makes `id` the model of the next dictation. Only a verified speech model can be chosen.
     pub fn select(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
-        let index = self
-            .index_of(id)
-            .ok_or_else(|| format!("no model with id '{id}'"))?;
+        let index = self.index_or_err(id)?;
         let name = self.rows[index].entry.name.clone();
-        if self.rows[index].llm {
-            return Err(format!("{id} is a cleanup model, not a speech model"));
+        if self.rows[index].entry.kind != ModelKind::Speech {
+            return Err(format!("{id} is not a speech model"));
         }
         match self.rows[index].state {
             ModelState::Ready => {}
@@ -615,33 +580,39 @@ impl Models {
 
     pub fn state_json(&self) -> Value {
         let active = self.active();
+        let list = |kind: ModelKind| {
+            self.of_kind(kind)
+                .1
+                .iter()
+                .map(|row| {
+                    json!({
+                        "id": row.entry.id,
+                        "name": row.entry.name,
+                        "bytes": row.entry.bytes(),
+                        "languages": match row.entry.languages {
+                            Languages::Multilingual => "multilingual",
+                            Languages::English => "english",
+                        },
+                        "state": row.state.key(),
+                        "progress": row.state.percent(),
+                        "active": kind == ModelKind::Speech && row.entry.id == active,
+                        "default": row.entry.default,
+                        "recommended": row.recommended,
+                        "files": row.entry.files.iter().map(|f| &f.file).collect::<Vec<_>>(),
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
         json!({
             "active": active,
             "notice": self.notice.as_ref().map(|notice| json!({
                 "code": notice.code,
                 "message": notice.message,
             })),
-            "models": self.rows().iter().map(|row| json!({
-                "id": row.entry.id,
-                "name": row.entry.name,
-                "bytes": row.entry.bytes,
-                "languages": match row.entry.languages {
-                    Languages::Multilingual => "multilingual",
-                    Languages::English => "english",
-                },
-                "state": row.state.key(),
-                "progress": row.state.percent(),
-                "active": row.entry.id == active,
-                "default": row.entry.default,
-            })).collect::<Vec<_>>(),
-            "llm_models": self.llm_rows().iter().map(|row| json!({
-                "id": row.entry.id,
-                "name": row.entry.name,
-                "bytes": row.entry.bytes,
-                "state": row.state.key(),
-                "progress": row.state.percent(),
-                "file": row.entry.file,
-            })).collect::<Vec<_>>(),
+            "details": self.details().map(|row| row.entry.id.clone()),
+            "models": list(ModelKind::Speech),
+            "llm_models": list(ModelKind::Cleanup),
+            "voice_models": list(ModelKind::Voice),
         })
     }
 }
@@ -650,9 +621,17 @@ impl Models {
 /// notice shows all of it.
 pub fn failure_text(entry: &ModelEntry) -> String {
     format!(
-        "{} failed verification: the file on disk is not the pinned {} file, so it is never used. Download it again to replace it.",
+        "{} failed verification: what is on disk is not the pinned {} download, so it is never used. Download it again to replace it.",
         entry.name,
-        panel::format_size(entry.bytes)
+        panel::format_size(entry.bytes())
+    )
+}
+
+fn no_space_text(name: &str, needed: u64, free: u64) -> String {
+    format!(
+        "{name} needs {} of free disk space, plus 10% to spare. Only {} is free.",
+        panel::format_size(needed),
+        panel::format_size(free)
     )
 }
 
@@ -686,7 +665,41 @@ pub fn production_transfer() -> Arc<Transfer> {
     Arc::new(move |spec, cancel, progress| downloader.run(spec, cancel, progress))
 }
 
+/// What a test's library asked to open.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct Opened(pub std::cell::RefCell<Vec<String>>);
+
+#[cfg(test)]
+impl Opener for Opened {
+    fn open_url(&self, url: &str) -> Result<(), String> {
+        self.0.borrow_mut().push(url.to_owned());
+        Ok(())
+    }
+
+    fn open_path(&self, path: &std::path::Path) -> Result<(), String> {
+        self.0.borrow_mut().push(path.display().to_string());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Machine {
+    /// A computer whose opener only records.
+    pub(crate) fn test(platform: Platform, ram_bytes: u64) -> Self {
+        Self {
+            platform,
+            ram_bytes,
+            opener: Rc::new(Opened::default()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod llm_tests;
+#[cfg(test)]
+mod sheet_tests;
+#[cfg(test)]
+mod testkit;
 #[cfg(test)]
 mod tests;

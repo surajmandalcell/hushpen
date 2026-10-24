@@ -16,6 +16,7 @@ hushpen-core.workspace = true
 directories.workspace = true
 log = { workspace = true, features = ["std"] }
 rusqlite.workspace = true
+rustix.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 

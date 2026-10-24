@@ -174,6 +174,18 @@ new decision, add it here in the same change (D-21).
   reads the selection owner at start and once a second, and switches live
   (`window_chrome::follow_compositor`).
 
+- **D-30 Model catalog and details.** The catalog is schema 2: every model
+  has a kind (`speech`, `cleanup`, `voice`), a description, speed and
+  accuracy from 1 to 5, an approximate RAM need, what it is good for, and a
+  `https://huggingface.co/` source page. A schema 1 catalog (no kind, no
+  details) still parses, and its models take the kind of their list. Only
+  variants whose size and sha256 come from the Hugging Face API are listed
+  (the q5 variants, `medium.en`, and `large-v3`). The Models page groups the
+  models by kind and opens a details sheet from each row. Before a download
+  the app reads the free space of the downloads folder (statvfs) and refuses
+  when it is less than the bytes still to fetch plus 10%. At start it deletes
+  partial downloads older than 7 days.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

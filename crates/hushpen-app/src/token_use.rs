@@ -22,8 +22,8 @@ const ALLOWED: [(&str, &str, &str); 16] = [
     ("dictation/panel.rs", "status_tone", "error"),
     ("import/panel.rs", "status_of", "success"),
     ("import/panel.rs", "status_of", "error"),
-    ("models/panel.rs", "status", "success"),
-    ("models/panel.rs", "status", "error"),
+    ("models/panel.rs", "status_text", "success"),
+    ("models/panel.rs", "status_text", "error"),
     (
         "onboarding/panel/permissions.rs",
         "permission_row",

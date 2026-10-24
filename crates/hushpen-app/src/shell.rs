@@ -190,6 +190,10 @@ impl Shell {
             self.active = view;
             self.content_scroll.set_offset(Point::default());
             hook::record_event("view", view.key());
+            // A tray action can leave Models while a details sheet is open.
+            if let Some(models) = &self.models {
+                models.update(cx, |models, cx| models.dismiss_details(cx));
+            }
             // The Settings view re-reads launch at login from the system.
             if view == View::Settings
                 && let Some(settings) = &self.settings
@@ -593,9 +597,18 @@ impl Render for Shell {
                         .overflow_y_scroll()
                         .child(onboarding::panel::render(&onboarding, cx)),
                 ),
-            None => frame
-                .child(self.sidebar(palette, cx))
-                .child(self.content(&shell, palette, cx)),
+            None => {
+                let sheet = self
+                    .models
+                    .as_ref()
+                    .filter(|_| self.active == View::Models)
+                    .and_then(|models| models::sheet::render(models, cx));
+                frame
+                    .relative()
+                    .child(self.sidebar(palette, cx))
+                    .child(self.content(&shell, palette, cx))
+                    .children(sheet)
+            }
         }
     }
 }

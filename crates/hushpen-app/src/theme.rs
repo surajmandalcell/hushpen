@@ -38,6 +38,7 @@ pub mod dark {
         SUCCESS = 0x30D158FF, "dark-success";
         WARNING = 0xFF9F0AFF, "dark-warning";
         ERROR = 0xFF453AFF, "dark-error";
+        SCRIM = 0x00000066, "dark-scrim";
     });
 }
 
@@ -58,6 +59,7 @@ pub mod light {
         SUCCESS = 0x34C759FF, "light-success";
         WARNING = 0xFF9500FF, "light-warning";
         ERROR = 0xFF3B30FF, "light-error";
+        SCRIM = 0x00000033, "light-scrim";
     });
 }
 
@@ -202,6 +204,7 @@ pub mod space {
         ONBOARDING_WIDTH = 640.0, "onboarding-width";
         WINDOW_WIDTH = 940.0, "window-width";
         WINDOW_HEIGHT = 600.0, "window-height";
+        SHEET_WIDTH = 460.0, "sheet-width";
     });
 }
 
@@ -250,6 +253,11 @@ pub mod size {
     pub const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
     /// The app icon at the top of About.
     pub const APP_ICON: f32 = 96.0;
+    /// The size, status, and button columns of a Models row, so their right edges line up. The
+    /// status column fits "Not downloaded", and the button column fits Use and Delete.
+    pub const MODEL_SIZE_WIDTH: f32 = 56.0;
+    pub const MODEL_STATUS_WIDTH: f32 = 108.0;
+    pub const MODEL_ACTIONS_WIDTH: f32 = 124.0;
 }
 
 /// The top of an element `height` high that centers on the chrome center line.
@@ -408,6 +416,8 @@ pub struct Palette {
     pub success: Rgba,
     pub warning: Rgba,
     pub error: Rgba,
+    /// The dim layer behind a sheet.
+    pub scrim: Rgba,
     pub on_accent: Rgba,
 }
 
@@ -430,6 +440,7 @@ impl Palette {
                     success: rgba($set::SUCCESS),
                     warning: rgba($set::WARNING),
                     error: rgba($set::ERROR),
+                    scrim: rgba($set::SCRIM),
                     on_accent: rgba(chrome::ON_ACCENT),
                 }
             };

@@ -209,6 +209,11 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 Models::new(
                     models_storage,
                     hushpen_core::catalog::embedded(),
+                    models::Machine {
+                        platform: Platform::current(),
+                        ram_bytes: hushpen_platform::memory::total_ram_bytes().unwrap_or(0),
+                        opener: Rc::new(SystemOpener),
+                    },
                     models::production_transfer(),
                     models::thread_spawner(),
                     Some(models_engine),

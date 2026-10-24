@@ -17,6 +17,7 @@ colors:
   dark-success: "#30D158"
   dark-warning: "#FF9F0A"
   dark-error: "#FF453A"
+  dark-scrim: "#00000066"
   light-content: "#F5F5F5"
   light-sidebar: "#E8E8EA"
   light-sidebar-blur: "#E8E8EACC"
@@ -31,6 +32,7 @@ colors:
   light-success: "#34C759"
   light-warning: "#FF9500"
   light-error: "#FF3B30"
+  light-scrim: "#00000033"
   on-accent: "#FFFFFF"
   window-close: "#FF5F57"
   window-close-glyph: "#6E140F"
@@ -97,6 +99,7 @@ spacing:
   onboarding-width: 640px
   window-width: 940px
   window-height: 600px
+  sheet-width: 460px
 components:
   app-window:
     backgroundColor: "{colors.dark-content}"
@@ -196,6 +199,7 @@ All colors are neutral grays plus one accent. Tokens come in a Dark and a Light 
 - **Accent (`#0A84FF` Dark, `#007AFF` Light):** the default button, a switch that is on, the focus ring, the selection focus, and links. It is the only accent.
 - **Status colors, on status words only:** success (`#30D158` Dark, `#34C759` Light) for ready, error (`#FF453A` Dark, `#FF3B30` Light) for a failure.
 - **Status icon, for a row that needs the user:** warning (`#FF9F0A` Dark, `#FF9500` Light) on an exclamation icon (lucide `circle-alert`, 16px) with the tooltip "Needs attention" and no word. The icon is the only place the warning color appears. Its label in the accessibility tree is "Needs attention".
+- **Scrim (black 40% Dark, black 20% Light):** dims the window behind a sheet.
 - **On accent (`#FFFFFF`):** text on the default button.
 - **Linux window buttons:** close `#FF5F57` and minimize `#FEBC2E`, with dark glyphs on hover.
 
@@ -238,6 +242,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 - A group has a 0.5px stroke in the separator color. There is no toolbar line and no other stray border.
 - Hover and selection use the neutral selection fill.
 - The focus ring is 2px in the accent color.
+- A sheet floats centered over the scrim: 460px wide (`sheet-width`), the content color, the window radius, and a hairline edge. It has no shadow.
 
 ## Shapes
 
@@ -261,6 +266,10 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 **Home:** the Dictation group (status, Record, the transcript, language) above the Microphone group (test, level meter, microphone list). The transcript, or the placeholder before it, is centered in its block with 24px at the sides and 16px above and below; a long transcript keeps every line centered.
 
 **About:** a centered header, a facts group, a links group, and a footer line. The header holds the app icon (96px, 16px radius), "Hushpen" in the title style, the line "Private dictation that stays on this Mac" ("on this computer" on Linux), the build line in the secondary style (`Version 2.0.0 (1a2b3c4, 2026-05-15)`, with `-dev` after the version in a debug build), and a Check for Updates button with what the check found on one secondary line under it. The facts are Version, Engine (whisper.cpp and the model in use), and Data folder (`~/...`, with a Show button). The links are Website, GitHub, Report an issue, Open-source licenses, and Open log folder, each with the external-link glyph on the right. The footer is one centered secondary line: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." The Engine fact is the one place the UI names a component of the stack.
+
+**Models:** one section for each model kind, in this order: Speech recognition, Text cleanup, Voices. Each section is a heading above its group, with one footer line. Text cleanup lists only the models this machine is offered. A row holds the name, then the word "Recommended" in the secondary style for the suggested model of its kind, and one secondary line that says what the model is for. On the right, lightest to heaviest: the size, the status word, the details button (lucide `info`, 16px, in the secondary label color, tooltip "Details"), then Download or Cancel, Use (speech models only), and Delete. The size, status, and button columns keep fixed widths, so they line up from row to row.
+
+**Details sheet:** the details button opens a sheet for that model. It shows the name, the description, and what the model is good for; a facts group (languages, speed and accuracy as a word with "N of 5", memory, size on disk, license, status); and a files group (the source page as a link row, the folder as a `~/...` path with Show in Finder or Show in Files, and the SHA-256 with Copy). Done closes it, and so does Esc. Tab stays inside the sheet, and closing it returns focus to the details button.
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
 

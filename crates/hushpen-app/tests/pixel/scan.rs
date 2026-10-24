@@ -237,6 +237,26 @@ fn reason(line: Line, nodes: &[Node]) -> Option<&'static str> {
     {
         return Some("the edge of an image");
     }
+    // A sheet has a hairline edge. The page around it is dimmed under the scrim, and its own
+    // scene scans it undimmed.
+    for sheet in visible().filter(|node| node.is("Dialog")) {
+        let rect = sheet.rect;
+        let (low, high, start, end) = if line.horizontal {
+            (rect.y, rect.bottom(), rect.x, rect.right())
+        } else {
+            (rect.x, rect.right(), rect.y, rect.bottom())
+        };
+        if (line.at - low).abs() <= TOLERANCE || (line.at - high).abs() <= TOLERANCE {
+            return Some("the edge of a sheet");
+        }
+        if line.at < low
+            || line.at > high
+            || line.to <= start + TOLERANCE
+            || line.from >= end - TOLERANCE
+        {
+            return Some("the page under the scrim of a sheet");
+        }
+    }
     for group in visible().filter(|node| node.is("Group")) {
         let rect = group.rect;
         if line.horizontal {
@@ -247,11 +267,14 @@ fn reason(line: Line, nodes: &[Node]) -> Option<&'static str> {
             {
                 return Some("group outline");
             }
-            if line.at > rect.y && line.at < rect.bottom() {
-                // A line between rows spans the whole group, edge to edge.
-                let full = (line.from - rect.x).abs() <= TOLERANCE
-                    && (line.to - rect.right()).abs() <= TOLERANCE;
-                return full.then_some("hairline between rows, full width");
+            // A line between rows spans the whole group, edge to edge. A group in a sheet sits
+            // over a group of the page, so a line that fits neither tries the next group.
+            if line.at > rect.y
+                && line.at < rect.bottom()
+                && (line.from - rect.x).abs() <= TOLERANCE
+                && (line.to - rect.right()).abs() <= TOLERANCE
+            {
+                return Some("hairline between rows, full width");
             }
         } else {
             if line.from < rect.y - TOLERANCE || line.to > rect.bottom() + TOLERANCE {
@@ -305,8 +328,10 @@ pub fn rows_of(nodes: &[Node]) -> Vec<(String, String, f32)> {
         let mut spanning: Vec<&Node> = nodes
             .iter()
             .filter(|node| {
+                // The toolbar floats over a group that scrolls under it; it is not one of its rows.
                 node.visible
                     && !node.is("Group")
+                    && !node.id.starts_with("toolbar.")
                     && node.rect.x <= rect.x + 1.5
                     && node.rect.w >= rect.w - 3.0
                     && node.rect.y >= rect.y - 0.5

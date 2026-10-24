@@ -1,13 +1,18 @@
 //! The model catalog: `assets/models.json`, embedded at build time.
 //!
 //! The file pins every downloadable model by size and sha256. The app trusts a model file only
-//! when it matches its entry here.
+//! when it matches its entry here. Schema 2 adds each model's kind and the details the Models view
+//! shows; a schema 1 file, without them, still parses.
 
 use crate::shortcut::Platform;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 const EMBEDDED: &str = include_str!("../../../assets/models.json");
+
+/// The first schema that requires `kind` and the details on every entry.
+const DETAILS_SCHEMA: u64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Languages {
@@ -15,24 +20,40 @@ pub enum Languages {
     English,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModelEntry {
-    /// Short id, also the value of `dictation.modelId`: `tiny.en`, `base`.
-    pub id: String,
-    pub name: String,
-    /// File name in `models/whisper/`.
-    pub file: String,
-    pub bytes: u64,
-    /// Lower-case hex.
-    pub sha256: String,
-    pub url: String,
-    pub license: String,
-    pub languages: Languages,
-    /// The model the app proposes first.
-    pub default: bool,
+/// What a model does. The order is the order of the Models view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModelKind {
+    /// A Whisper model (`models/whisper/<file>`).
+    Speech,
+    /// An AI cleanup model (`models/llm/<id>.gguf`).
+    Cleanup,
+    /// A voice model for Read aloud (`models/tts/<id>/`).
+    Voice,
 }
 
-/// One file of a model that is a folder of files.
+impl ModelKind {
+    pub const ALL: [ModelKind; 3] = [ModelKind::Speech, ModelKind::Cleanup, ModelKind::Voice];
+
+    /// The value of the entry's `kind` field.
+    pub fn key(self) -> &'static str {
+        match self {
+            ModelKind::Speech => "speech",
+            ModelKind::Cleanup => "cleanup",
+            ModelKind::Voice => "voice",
+        }
+    }
+
+    /// The catalog list that holds this kind.
+    fn list(self) -> &'static str {
+        match self {
+            ModelKind::Speech => "whisper",
+            ModelKind::Cleanup => "llm",
+            ModelKind::Voice => "voice",
+        }
+    }
+}
+
+/// One pinned file of a model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelFile {
     pub file: String,
@@ -42,19 +63,43 @@ pub struct ModelFile {
     pub url: String,
 }
 
-/// A voice model for Read aloud: the folder `models/tts/<id>/` with every file of `files`.
+/// What the Models view tells about a model beyond its files.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VoiceEntry {
-    pub id: String,
-    pub name: String,
-    pub license: String,
-    pub languages: Languages,
-    pub default: bool,
-    pub files: Vec<ModelFile>,
+pub struct ModelInfo {
+    /// One line: what the model is.
+    pub description: String,
+    /// From 1, the slowest, to 5, the fastest, against the other models of its kind.
+    pub speed: u8,
+    /// From 1 to 5, the most accurate, against the other models of its kind.
+    pub accuracy: u8,
+    /// About the most memory the model takes while it runs.
+    pub ram_bytes: u64,
+    /// Who or what the model suits, as one short line.
+    pub recommended_for: String,
+    /// The model's page on Hugging Face.
+    pub source_page: String,
 }
 
-impl VoiceEntry {
-    /// The size of the whole folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelEntry {
+    /// Short id: `tiny.en`, `qwen3.5-2b`, `kokoro-82m-int8`. A speech model's id is also the
+    /// value of `dictation.modelId`.
+    pub id: String,
+    pub kind: ModelKind,
+    pub name: String,
+    /// One file for a speech or a cleanup model, every file of the folder for a voice model.
+    /// Never empty. File names are unique across the catalog, so partial downloads never clash.
+    pub files: Vec<ModelFile>,
+    pub license: String,
+    pub languages: Languages,
+    /// The model the app proposes first among its kind.
+    pub default: bool,
+    /// `None` in a schema 1 catalog.
+    pub info: Option<ModelInfo>,
+}
+
+impl ModelEntry {
+    /// The size of every file together.
     pub fn bytes(&self) -> u64 {
         self.files.iter().map(|file| file.bytes).sum()
     }
@@ -65,7 +110,7 @@ pub struct Catalog {
     pub whisper: Vec<ModelEntry>,
     /// The AI cleanup models. The file name is `<id>.gguf`, which is where the worker looks.
     pub llm: Vec<ModelEntry>,
-    pub voice: Vec<VoiceEntry>,
+    pub voice: Vec<ModelEntry>,
 }
 
 /// The cleanup model for Macs with enough memory to hold it.
@@ -78,38 +123,38 @@ pub const LLM_LARGE_MIN_RAM_BYTES: u64 = 16 << 30;
 impl Catalog {
     pub fn parse(json: &str) -> Result<Self, String> {
         let root: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
-        let whisper = parse_list(&root, "whisper", true)?;
-        if whisper.iter().filter(|entry| entry.default).count() > 1 {
-            return Err("more than one default model".into());
-        }
-        let llm = parse_list(&root, "llm", false)?;
-        if let Some(entry) = llm
-            .iter()
-            .find(|entry| whisper.iter().any(|w| w.id == entry.id))
-        {
-            return Err(format!("duplicate model id `{}`", entry.id));
-        }
-        if let Some(entry) = llm
-            .iter()
-            .find(|entry| entry.file != format!("{}.gguf", entry.id))
-        {
+        let schema = root.get("schema").and_then(Value::as_u64).unwrap_or(1);
+        let catalog = Self {
+            whisper: parse_list(&root, ModelKind::Speech, schema)?,
+            llm: parse_list(&root, ModelKind::Cleanup, schema)?,
+            voice: parse_list(&root, ModelKind::Voice, schema)?,
+        };
+        if let Some(entry) = catalog.llm.iter().find(|entry| {
+            entry
+                .files
+                .iter()
+                .any(|f| f.file != format!("{}.gguf", entry.id))
+        }) {
             return Err(format!(
                 "model `{}` must be stored as `<id>.gguf`",
                 entry.id
             ));
         }
-        let voice = parse_voices(&root)?;
-        if let Some(entry) = voice
-            .iter()
-            .find(|entry| whisper.iter().chain(&llm).any(|other| other.id == entry.id))
-        {
-            return Err(format!("duplicate model id `{}`", entry.id));
+        let (mut ids, mut files) = (HashSet::new(), HashSet::new());
+        for entry in catalog.models() {
+            if !ids.insert(entry.id.as_str()) {
+                return Err(format!("duplicate model id `{}`", entry.id));
+            }
+            if let Some(file) = entry.files.iter().find(|f| !files.insert(f.file.as_str())) {
+                return Err(format!("the file `{}` is listed twice", file.file));
+            }
         }
-        Ok(Self {
-            whisper,
-            llm,
-            voice,
-        })
+        Ok(catalog)
+    }
+
+    /// Every model, speech first, then cleanup, then voice.
+    pub fn models(&self) -> impl Iterator<Item = &ModelEntry> {
+        self.whisper.iter().chain(&self.llm).chain(&self.voice)
     }
 
     pub fn whisper(&self, id: &str) -> Option<&ModelEntry> {
@@ -124,7 +169,7 @@ impl Catalog {
         self.llm.iter().find(|entry| entry.id == id)
     }
 
-    pub fn voice(&self, id: &str) -> Option<&VoiceEntry> {
+    pub fn voice(&self, id: &str) -> Option<&ModelEntry> {
         self.voice.iter().find(|entry| entry.id == id)
     }
 
@@ -159,21 +204,22 @@ pub fn embedded() -> &'static Catalog {
     })
 }
 
-fn parse_list(root: &Value, key: &str, required: bool) -> Result<Vec<ModelEntry>, String> {
-    let Some(list) = root.get(key).and_then(Value::as_array) else {
-        return if required {
-            Err(format!("the catalog has no `{key}` list"))
+/// The list of `kind`. Only the speech list is required, so a catalog from before cleanup or
+/// voice models still parses.
+fn parse_list(root: &Value, kind: ModelKind, schema: u64) -> Result<Vec<ModelEntry>, String> {
+    let Some(list) = root.get(kind.list()).and_then(Value::as_array) else {
+        return if kind == ModelKind::Speech {
+            Err(format!("the catalog has no `{}` list", kind.list()))
         } else {
             Ok(Vec::new())
         };
     };
-    let mut entries: Vec<ModelEntry> = Vec::with_capacity(list.len());
-    for item in list {
-        let entry = parse_entry(item)?;
-        if entries.iter().any(|seen| seen.id == entry.id) {
-            return Err(format!("duplicate model id `{}`", entry.id));
-        }
-        entries.push(entry);
+    let entries = list
+        .iter()
+        .map(|item| parse_entry(item, kind, schema))
+        .collect::<Result<Vec<_>, _>>()?;
+    if entries.iter().filter(|entry| entry.default).count() > 1 {
+        return Err(format!("more than one default {} model", kind.key()));
     }
     Ok(entries)
 }
@@ -186,73 +232,57 @@ fn text(item: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("model entry needs a text `{key}`"))
 }
 
-fn parse_entry(item: &Value) -> Result<ModelEntry, String> {
+fn parse_entry(item: &Value, kind: ModelKind, schema: u64) -> Result<ModelEntry, String> {
     let id = text(item, "id")?;
-    let ModelFile {
-        file,
-        bytes,
-        sha256,
-        url,
-    } = parse_file(item, &id)?;
+    if !is_safe_name(&id) {
+        return Err(format!("model `{id}` has an unsafe id"));
+    }
+    match item.get("kind") {
+        Some(_) if text(item, "kind")? != kind.key() => {
+            return Err(format!("model `{id}` must be of kind `{}`", kind.key()));
+        }
+        None if schema >= DETAILS_SCHEMA => return Err(format!("model `{id}` needs a `kind`")),
+        _ => {}
+    }
+    let files = if kind == ModelKind::Voice {
+        parse_files(item, &id)?
+    } else {
+        vec![parse_file(item, &id)?]
+    };
     Ok(ModelEntry {
+        kind,
         name: text(item, "name")?,
-        file,
-        bytes,
-        sha256,
-        url,
+        files,
         license: text(item, "license")?,
         languages: parse_languages(item, &id)?,
-        default: is_default(item),
+        default: item
+            .get("default")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        info: if schema >= DETAILS_SCHEMA {
+            Some(parse_info(item, &id)?)
+        } else {
+            None
+        },
         id,
     })
 }
 
-/// The `voice` list. It is optional, so a catalog from before voice models still parses.
-fn parse_voices(root: &Value) -> Result<Vec<VoiceEntry>, String> {
-    let Some(list) = root.get("voice").and_then(Value::as_array) else {
-        return Ok(Vec::new());
-    };
-    let mut entries: Vec<VoiceEntry> = Vec::with_capacity(list.len());
-    for item in list {
-        let id = text(item, "id")?;
-        if id.contains(['/', '\\']) || id.starts_with('.') {
-            return Err(format!("voice model `{id}` has an unsafe folder name"));
-        }
-        if text(item, "kind")? != "voice" {
-            return Err(format!("voice model `{id}` must be of kind `voice`"));
-        }
-        let mut files: Vec<ModelFile> = Vec::new();
-        for file in item
-            .get("files")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let file = parse_file(file, &id)?;
-            if files.iter().any(|seen| seen.file == file.file) {
-                return Err(format!("voice model `{id}` lists `{}` twice", file.file));
-            }
-            files.push(file);
-        }
-        if files.is_empty() {
-            return Err(format!("voice model `{id}` needs a list of files"));
-        }
-        if entries.iter().any(|seen| seen.id == id) {
-            return Err(format!("duplicate model id `{id}`"));
-        }
-        entries.push(VoiceEntry {
-            name: text(item, "name")?,
-            license: text(item, "license")?,
-            languages: parse_languages(item, &id)?,
-            default: is_default(item),
-            files,
-            id,
-        });
+/// The `files` list of a model that is a folder of files.
+fn parse_files(item: &Value, id: &str) -> Result<Vec<ModelFile>, String> {
+    let mut files: Vec<ModelFile> = Vec::new();
+    for file in item
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        files.push(parse_file(file, id)?);
     }
-    if entries.iter().filter(|entry| entry.default).count() > 1 {
-        return Err("more than one default voice model".into());
+    if files.is_empty() {
+        return Err(format!("model `{id}` needs a list of files"));
     }
-    Ok(entries)
+    Ok(files)
 }
 
 /// The pinned file fields of model `id`: a safe name, a size, a sha256, and a URL.
@@ -271,7 +301,7 @@ fn parse_file(item: &Value, id: &str) -> Result<ModelFile, String> {
         .filter(|bytes| *bytes > 0)
         .ok_or_else(|| format!("model `{id}` needs a byte size"))?;
     let file = text(item, "file")?;
-    if file.contains(['/', '\\']) || file.starts_with('.') {
+    if !is_safe_name(&file) {
         return Err(format!("model `{id}` has an unsafe file name"));
     }
     Ok(ModelFile {
@@ -282,6 +312,37 @@ fn parse_file(item: &Value, id: &str) -> Result<ModelFile, String> {
     })
 }
 
+fn parse_info(item: &Value, id: &str) -> Result<ModelInfo, String> {
+    let scale = |key: &str| {
+        item.get(key)
+            .and_then(Value::as_u64)
+            .filter(|value| (1..=5).contains(value))
+            .map(|value| value as u8)
+            .ok_or_else(|| format!("model `{id}` needs a `{key}` from 1 to 5"))
+    };
+    let source_page = text(item, "source_page")?;
+    if !source_page.starts_with("https://huggingface.co/") {
+        return Err(format!("model `{id}` needs a Hugging Face `source_page`"));
+    }
+    Ok(ModelInfo {
+        description: text(item, "description")?,
+        speed: scale("speed")?,
+        accuracy: scale("accuracy")?,
+        ram_bytes: item
+            .get("ram_bytes")
+            .and_then(Value::as_u64)
+            .filter(|bytes| *bytes > 0)
+            .ok_or_else(|| format!("model `{id}` needs `ram_bytes`"))?,
+        recommended_for: text(item, "recommended_for")?,
+        source_page,
+    })
+}
+
+/// A name that stays inside its folder.
+fn is_safe_name(name: &str) -> bool {
+    !name.contains(['/', '\\']) && !name.starts_with('.')
+}
+
 fn parse_languages(item: &Value, id: &str) -> Result<Languages, String> {
     match text(item, "languages")?.as_str() {
         "multilingual" => Ok(Languages::Multilingual),
@@ -290,238 +351,5 @@ fn parse_languages(item: &Value, id: &str) -> Result<Languages, String> {
     }
 }
 
-fn is_default(item: &Value) -> bool {
-    item.get("default")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const IDS: [&str; 8] = [
-        "tiny",
-        "tiny.en",
-        "base",
-        "base.en",
-        "small",
-        "small.en",
-        "medium",
-        "large-v3-turbo",
-    ];
-
-    #[test]
-    fn the_embedded_catalog_lists_the_eight_whisper_models_in_order() {
-        let ids: Vec<_> = embedded().whisper.iter().map(|e| e.id.as_str()).collect();
-        assert_eq!(ids, IDS);
-    }
-
-    #[test]
-    fn every_entry_has_a_hash_a_size_a_language_field_and_a_huggingface_url() {
-        for entry in &embedded().whisper {
-            assert_eq!(entry.sha256.len(), 64, "{}", entry.id);
-            assert!(entry.bytes > 50_000_000, "{}", entry.id);
-            assert_eq!(entry.file, format!("ggml-{}.bin", entry.id));
-            let prefix = format!("https://{}/", "huggingface.co");
-            assert!(entry.url.starts_with(&prefix), "{}", entry.id);
-            assert!(entry.url.ends_with(&entry.file), "{}", entry.id);
-            let english = entry.id.ends_with(".en");
-            assert_eq!(
-                entry.languages == Languages::English,
-                english,
-                "{}",
-                entry.id
-            );
-        }
-    }
-
-    #[test]
-    fn the_three_local_models_match_the_known_hashes_and_sizes() {
-        let expect = [
-            (
-                "tiny.en",
-                77_704_715,
-                "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
-            ),
-            (
-                "base.en",
-                147_964_211,
-                "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
-            ),
-            (
-                "base",
-                147_951_465,
-                "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
-            ),
-        ];
-        for (id, bytes, sha) in expect {
-            let entry = embedded().whisper(id).unwrap();
-            assert_eq!((entry.bytes, entry.sha256.as_str()), (bytes, sha), "{id}");
-        }
-    }
-
-    const GIB: u64 = 1 << 30;
-
-    fn offered(platform: Platform, ram: u64) -> Vec<&'static str> {
-        embedded()
-            .offered_llm(platform, ram)
-            .iter()
-            .map(|entry| entry.id.as_str())
-            .collect()
-    }
-
-    #[test]
-    fn the_two_cleanup_models_are_pinned_by_size_and_hash() {
-        let expect = [
-            (
-                LLM_LARGE,
-                3_106_738_272,
-                "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
-            ),
-            (
-                LLM_SMALL,
-                1_280_835_840,
-                "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
-            ),
-        ];
-        assert_eq!(embedded().llm.len(), 2);
-        for (id, bytes, sha) in expect {
-            let entry = embedded().llm(id).unwrap();
-            assert_eq!((entry.bytes, entry.sha256.as_str()), (bytes, sha), "{id}");
-            assert_eq!(entry.file, format!("{id}.gguf"));
-            assert!(entry.url.starts_with("https://huggingface.co/"), "{id}");
-            assert_eq!(entry.license, "Apache-2.0");
-        }
-    }
-
-    #[test]
-    fn a_mac_with_16_gb_or_more_gets_gemma_first() {
-        assert_eq!(offered(Platform::MacOs, 16 * GIB), [LLM_LARGE, LLM_SMALL]);
-        assert_eq!(offered(Platform::MacOs, 64 * GIB), [LLM_LARGE, LLM_SMALL]);
-        let suggested = embedded().suggested_llm(Platform::MacOs, 24 * GIB).unwrap();
-        assert_eq!(suggested.id, LLM_LARGE);
-    }
-
-    #[test]
-    fn a_mac_with_8_gb_gets_qwen() {
-        assert_eq!(offered(Platform::MacOs, 8 * GIB), [LLM_SMALL]);
-        assert_eq!(offered(Platform::MacOs, 16 * GIB - 1), [LLM_SMALL]);
-    }
-
-    #[test]
-    fn linux_gets_qwen_at_any_memory_and_never_gemma() {
-        for ram in [4 * GIB, 16 * GIB, 128 * GIB] {
-            assert_eq!(offered(Platform::Linux, ram), [LLM_SMALL], "{ram}");
-        }
-        let suggested = embedded().suggested_llm(Platform::Linux, 64 * GIB).unwrap();
-        assert_eq!(suggested.name, "Qwen3.5 2B");
-    }
-
-    #[test]
-    fn no_model_under_1b_is_in_the_cleanup_list() {
-        for entry in &embedded().llm {
-            assert!(entry.bytes > 1_000_000_000, "{}", entry.id);
-            assert!(!entry.id.contains("0.8b"), "{}", entry.id);
-        }
-    }
-
-    #[test]
-    fn exactly_one_model_is_the_default() {
-        let defaults: Vec<_> = embedded().whisper.iter().filter(|e| e.default).collect();
-        assert_eq!(defaults.len(), 1);
-        assert_eq!(embedded().default_whisper(), Some(defaults[0]));
-        // Chosen from the latency table in library/engine.md; change both together.
-        assert_eq!(defaults[0].id, "base");
-    }
-
-    #[test]
-    fn a_bad_hash_a_duplicate_or_a_path_in_the_file_name_is_refused() {
-        let entry = |id: &str, sha: &str, file: &str| {
-            format!(
-                r#"{{"whisper":[{{"id":"{id}","name":"N","file":"{file}","bytes":5,"sha256":"{sha}","url":"u","license":"MIT","languages":"english"}}]}}"#
-            )
-        };
-        let good = "a".repeat(64);
-        assert!(Catalog::parse(&entry("x", &good, "ggml-x.bin")).is_ok());
-        assert!(Catalog::parse(&entry("x", "abc", "ggml-x.bin")).is_err());
-        assert!(Catalog::parse(&entry("x", &"A".repeat(64), "ggml-x.bin")).is_err());
-        assert!(Catalog::parse(&entry("x", &good, "../ggml-x.bin")).is_err());
-        let twice = format!(
-            r#"{{"whisper":[{0},{0}]}}"#,
-            format!(
-                r#"{{"id":"x","name":"N","file":"f","bytes":5,"sha256":"{good}","url":"u","license":"MIT","languages":"english"}}"#
-            )
-        );
-        assert!(Catalog::parse(&twice).is_err());
-    }
-
-    #[test]
-    fn the_kokoro_voice_is_pinned_file_by_file_with_every_file_the_worker_opens() {
-        let entry = embedded().voice(crate::kokoro::MODEL_ID).unwrap();
-        let files: Vec<_> = entry.files.iter().map(|f| f.file.as_str()).collect();
-        assert_eq!(files, crate::kokoro::FILES);
-        let expect = [
-            (
-                114_203_756,
-                "4b86207ef680e394d8343bee22dfc4c512e5c707c6d9578e3f35ab09bffd6b36",
-            ),
-            (
-                28_200_960,
-                "1c5a5b983d3d50d8586d437a51f3faa2da7919ce76a013c081e65671a3447c29",
-            ),
-            (
-                687,
-                "6ebb6bb288f20f3ae8d004d3c2ca27697da27c037d75e81a60e2a6a663f95425",
-            ),
-            (
-                5_956_885,
-                "7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14",
-            ),
-        ];
-        let repo = "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0/resolve/";
-        for (file, (bytes, sha)) in entry.files.iter().zip(expect) {
-            assert_eq!(
-                (file.bytes, file.sha256.as_str()),
-                (bytes, sha),
-                "{}",
-                file.file
-            );
-            assert!(file.url.starts_with(repo), "{}", file.url);
-            assert!(
-                file.url.ends_with(&format!("/{}", file.file)),
-                "{}",
-                file.url
-            );
-        }
-        assert_eq!(entry.bytes(), 148_362_288);
-        assert_eq!(entry.license, "Apache-2.0");
-        assert_eq!(entry.languages, Languages::English);
-        assert!(entry.default);
-    }
-
-    #[test]
-    fn a_voice_model_needs_its_kind_its_files_and_a_safe_folder() {
-        let good = "a".repeat(64);
-        let voice = |id: &str, kind: &str, files: &str| {
-            format!(
-                r#"{{"whisper":[],"voice":[{{"id":"{id}","kind":"{kind}","name":"N","license":"MIT","languages":"english","files":[{files}]}}]}}"#
-            )
-        };
-        let file =
-            |name: &str| format!(r#"{{"file":"{name}","bytes":5,"sha256":"{good}","url":"u"}}"#);
-        let parsed = Catalog::parse(&voice("v", "voice", &file("a.onnx"))).unwrap();
-        assert_eq!(parsed.voice[0].bytes(), 5);
-        assert!(Catalog::parse(&voice("v", "speech", &file("a.onnx"))).is_err());
-        assert!(Catalog::parse(&voice("../v", "voice", &file("a.onnx"))).is_err());
-        assert!(Catalog::parse(&voice("v", "voice", "")).is_err());
-        assert!(Catalog::parse(&voice("v", "voice", &file("../a.onnx"))).is_err());
-        let twice = format!("{},{}", file("a.onnx"), file("a.onnx"));
-        assert!(Catalog::parse(&voice("v", "voice", &twice)).is_err());
-        let old = Catalog::parse(r#"{"whisper":[]}"#).unwrap();
-        assert!(
-            old.voice.is_empty(),
-            "a catalog from before voice models parses"
-        );
-    }
-}
+mod tests;
