@@ -3345,6 +3345,7 @@ dependencies = [
  "hushpen-core",
  "hushpen-engine",
  "hushpen-platform",
+ "hushpen-speech",
  "hushpen-store",
  "hushpen-testhook",
  "image",
