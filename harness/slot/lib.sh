@@ -70,7 +70,7 @@ main_window_id() {
 
 # chrome_problems <label>: prints what is wrong with the window chrome, and nothing when it is
 # right: 940x600 on the display, the same size and resizable, maximized, and fullscreen all false
-# in the hook state, and exactly the drawn close and minimize controls (12 px at 20,18 and 40,18).
+# in the hook state, and exactly the drawn close and minimize controls (12 px at 20,20 and 40,20).
 chrome_problems() {
   local label=$1 wid size state controls
   wid=$(main_window_id) || { printf '%s: no main window; ' "$label"; return; }
@@ -80,7 +80,7 @@ chrome_problems() {
   [ "$state" = "940x600 false false false" ] || printf '%s: hook state reads %s; ' "$label" "$state"
   controls=$(/app/hookctl tree | jq -r '[.[] | select(.id | startswith("window."))] | sort_by(.bounds.x)
     | map("\(.id)@\(.bounds.x | floor),\(.bounds.y | floor) \(.bounds.width | floor)x\(.bounds.height | floor)") | join(" ")')
-  [ "$controls" = "window.close@20,18 12x12 window.minimize@40,18 12x12" ] ||
+  [ "$controls" = "window.close@20,20 12x12 window.minimize@40,20 12x12" ] ||
     printf '%s: window controls read "%s"; ' "$label" "$controls"
 }
 
