@@ -20,9 +20,13 @@ runs whisper.cpp in a child process.
 - Hold-to-talk dictation with a global key (Right Option on macOS, Right Alt
   on Linux by default; you can record your own). Tap, double-tap, and Esc to
   cancel.
-- Local transcription with Whisper models (tiny to large-v3-turbo). Models
-  download only when you ask, with a checked hash. Metal on macOS, CPU on
-  Linux.
+- Local transcription with Whisper models from Tiny to Large v3, with
+  English-only and compact variants. Metal on macOS, CPU on Linux.
+- Models view in three sections: speech recognition, text cleanup, and
+  voices. It marks the recommended model of each kind, and a details sheet
+  shows what a model is for, its languages, speed, accuracy, memory, license,
+  source page, folder, and checksum. Models download only when you ask,
+  after a free-disk check, and Hushpen checks the hash of every file.
 - Paste into the focused app. Hushpen saves your clipboard and restores it,
   and never types into a secure field.
 - Rule-based cleanup, on by default: fillers, repeats, spoken punctuation,
@@ -35,10 +39,12 @@ runs whisper.cpp in a child process.
 - History with search, re-paste, reprocess, delete with undo, and export to
   TXT, SRT, VTT, and JSON.
 - Files: drop audio files anywhere on the window to transcribe or translate
-  them in a queue (formats that symphonia decodes, up to 12 hours each),
-  with the time left, Copy, Export, and Retry.
+  them in a queue (WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF, up to 12 hours
+  each), with the time left, Copy, Export, Show in History, and Retry.
 - Read aloud: typed text or a `.txt` or `.md` file, spoken by the system
   voice or by Kokoro, with Play and Export Audio to WAV.
+- Settings in one list with a search field (Cmd+F on macOS, Ctrl+F on
+  Linux).
 - Flow bar that shows the dictation state without taking focus, a tray menu,
   and a fixed 940x600 window that follows the system Light or Dark setting.
 - Opt-in update check with signed updates. No telemetry.
@@ -83,8 +89,8 @@ Kokoro voice for Read aloud.
 
 ## macOS permissions
 
-Hushpen asks for three permissions in its first-run setup. Each row has an
-Allow button, and the status updates live.
+Hushpen asks for three permissions in its first-run setup. Each row has
+Allow and Open Settings buttons, and the status updates live.
 
 | Permission       | Used for                               |
 | ---------------- | -------------------------------------- |
