@@ -47,7 +47,7 @@ slot_exec "$slot" sh -ec "
   [ \"\$(echo \"\$tops\" | wc -l)\" = 1 ] || { echo \"more than one top entry: \$tops\"; exit 1; }
   cd \"\$tops\"
   ls -R | head -40
-  for f in hushpen hushpen-llm THIRD-PARTY-NOTICES.html icons install-kind; do
+  for f in hushpen hushpen-llm hushpen-tts libsherpa-onnx-c-api.so libonnxruntime.so THIRD-PARTY-NOTICES.html icons install-kind; do
     [ -e \"\$f\" ] || { echo \"missing \$f\"; exit 1; }
   done
   [ \"\$(cat install-kind)\" = tar ]
