@@ -102,11 +102,12 @@ jobs:
             libxkbcommon-x11-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev \
             libxi-dev libxrandr-dev libasound2-dev libvulkan-dev libdbus-1-dev
       - name: Release build
-        run: cargo build --release --locked -p hushpen-app -p hushpen-llm
-      - name: Run both binaries
+        run: cargo build --release --locked -p hushpen-app -p hushpen-llm -p hushpen-tts
+      - name: Run the three programs
         run: |
           ./target/release/hushpen --version
           ./target/release/hushpen-llm --version
+          ./target/release/hushpen-tts --version
       - name: Show the whisper.cpp build settings
         if: inputs.suite == 'engine' || inputs.suite == 'full'
         run: |

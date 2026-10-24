@@ -14,10 +14,10 @@ export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/macos-arm64}
 die() { echo "mac-test-app: $*" >&2; exit 1; }
 
 cd "$REPO"
-cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-llm
+cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-llm -p hushpen-tts
 ps -axo command | grep -q "^$APP/Contents/MacOS/hushpen" && die "built; Hushpen is running, quit it and run again"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$CARGO_TARGET_DIR/debug/hushpen" "$CARGO_TARGET_DIR/debug/hushpen-llm" "$APP/Contents/MacOS/"
+cp "$CARGO_TARGET_DIR/debug/hushpen" "$CARGO_TARGET_DIR/debug/hushpen-llm" "$CARGO_TARGET_DIR/debug/hushpen-tts" "$APP/Contents/MacOS/"
 cp assets/hushpen-app-icon.icns "$APP/Contents/Resources/Hushpen.icns"
 cat >"$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -38,8 +38,9 @@ cat >"$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-# The helper first: a bundle signature covers its nested code but does not sign it.
+# The helpers first: a bundle signature covers its nested code but does not sign it.
 codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-llm"
+codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-tts"
 codesign --force --timestamp=none --sign "$IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 codesign -d -r- "$APP" 2>&1 | grep designated

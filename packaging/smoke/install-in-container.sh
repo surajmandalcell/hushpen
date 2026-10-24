@@ -40,7 +40,8 @@ docker run --rm --name "${HUSHPEN_PKG_CONTAINER:-hushpen-build}" --platform "$pl
       files=$(rpm -ql hushpen)
     fi
     echo "$files"
-    for want in /usr/lib/hushpen/hushpen /usr/lib/hushpen/hushpen-llm /usr/bin/hushpen \
+    for want in /usr/lib/hushpen/hushpen /usr/lib/hushpen/hushpen-llm /usr/lib/hushpen/hushpen-tts \
+      /usr/lib/hushpen/libsherpa-onnx-c-api.so /usr/lib/hushpen/libonnxruntime.so /usr/bin/hushpen \
       /usr/share/applications/hushpen.desktop /usr/share/icons/hicolor/512x512/apps/hushpen.png \
       /usr/lib/hushpen/THIRD-PARTY-NOTICES.html; do
       echo "$files" | grep -qx "$want" || { echo "package lists no $want" >&2; exit 1; }
@@ -50,5 +51,7 @@ docker run --rm --name "${HUSHPEN_PKG_CONTAINER:-hushpen-build}" --platform "$pl
     echo "hushpen --version: $got"
     [ "$got" = "hushpen $VERSION" ]
     [ "$(/usr/lib/hushpen/hushpen-llm --version)" = "hushpen-llm $VERSION" ]
+    [ "$(/usr/lib/hushpen/hushpen-tts --version)" = "hushpen-tts $VERSION" ]
+    [ "$(/usr/lib/hushpen/hushpen-tts --check-runtime)" = "sherpa-onnx 2.0.0" ]
     echo "install ok"
   '

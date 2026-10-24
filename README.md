@@ -64,8 +64,9 @@ Replace `x64` with `arm64` on an Arm machine.
 - tar.gz: `tar xzf Hushpen-2.0.0-linux-x64.tar.gz`, then run `hushpen` from
   the new folder.
 
-Every package holds two programs: `hushpen` and `hushpen-llm`, the helper that
-runs the local AI cleanup model.
+Every package holds three programs: `hushpen`, the `hushpen-llm` helper that
+runs the local AI cleanup model, and the `hushpen-tts` helper that runs the
+Kokoro voice for Read aloud.
 
 ### Linux requirements
 
@@ -125,18 +126,23 @@ and C++ toolchain, CMake, and Clang with libclang.
     libpulse-dev
   ```
 
-Clone and build both programs. The whisper.cpp source is vendored, so there are
-no submodules:
+Clone and build the three programs. The whisper.cpp source is vendored, so
+there are no submodules:
 
 ```sh
 git clone https://github.com/surajmandalcell/hushpen.git
 cd hushpen
-cargo build --release --locked -p hushpen-app -p hushpen-llm
+cargo build --release --locked -p hushpen-app -p hushpen-llm -p hushpen-tts
 ```
 
-The programs are `target/release/hushpen` and `target/release/hushpen-llm`.
-Keep them in the same folder; `hushpen` starts `hushpen-llm` from there. The
-first build compiles whisper.cpp and llama.cpp and takes several minutes.
+The programs are `target/release/hushpen`, `target/release/hushpen-llm`, and
+`target/release/hushpen-tts`. Keep them in the same folder; `hushpen` starts
+the two workers from there. The first build compiles whisper.cpp and llama.cpp
+and takes several minutes.
+
+Read aloud with the Kokoro voice also needs the sherpa-onnx libraries next to
+`hushpen-tts` (in `Contents/Frameworks` of an `.app`). Fetch the pinned,
+checksummed copies with `cargo xtask tts-runtime --dir target/release`.
 
 To keep build output out of the clone, set `CARGO_TARGET_DIR` to a folder
 outside it, for example `export CARGO_TARGET_DIR="$HOME/.cache/hushpen-target"`.
