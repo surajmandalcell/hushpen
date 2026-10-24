@@ -72,14 +72,16 @@ failures=""
 rows=$(jq '[.[] | select(.id | test("^models\\.row\\.[0-9]+$"))] | length' "$RUN_OUT/002-tree.json")
 buttons=$(jq '[.[] | select(.id | test("^models\\.download\\.[0-9]+$"))] | length' "$RUN_OUT/002-tree.json")
 listed=$(jq -r '[.models[].id] | join(",")' "$RUN_OUT/002-state.json")
-[ "$rows" = 8 ] || failures+="$rows rows in the tree, want 8; "
-[ "$listed" = "tiny,tiny.en,base,base.en,small,small.en,medium,large-v3-turbo" ] || failures+="catalog order is $listed; "
-[ "$buttons" = 7 ] || failures+="$buttons Download buttons, want 7; "
+# Speech rows come first; the cleanup rows this machine is offered and the voice rows follow.
+others=$(jq '(.llm_models | length) + (.voice_models | length)' "$RUN_OUT/002-state.json")
+[ "$rows" = $((13 + others)) ] || failures+="$rows rows in the tree, want $((13 + others)); "
+[ "$listed" = "tiny,tiny.en,base,base.en,base-q5_1,small,small.en,small-q5_1,medium,medium.en,large-v3-turbo,large-v3-turbo-q5_0,large-v3" ] || failures+="catalog order is $listed; "
+[ "$buttons" = $((12 + others)) ] || failures+="$buttons Download buttons, want $((12 + others)); "
 [ "$(jq -r '.models[] | select(.id == "tiny.en") | "\(.state) \(.active)"' "$RUN_OUT/002-state.json")" = "ready true" ] || failures+="tiny.en is not ready and active; "
-[ "$(jq '[.models[] | select(.state == "not_downloaded")] | length' "$RUN_OUT/002-state.json")" = 7 ] || failures+="not 7 models are not_downloaded; "
-[ "$(jq '[.models[] | select(.bytes > 0)] | length' "$RUN_OUT/002-state.json")" = 8 ] || failures+="a model has no size; "
+[ "$(jq '[.models[] | select(.state == "not_downloaded")] | length' "$RUN_OUT/002-state.json")" = 12 ] || failures+="not 12 speech models are not_downloaded; "
+[ "$(jq '[.models[] | select(.bytes > 0)] | length' "$RUN_OUT/002-state.json")" = 13 ] || failures+="a model has no size; "
 [ "$(jq '[.[] | select(.id == "models.download.1")] | length' "$RUN_OUT/002-tree.json")" = 0 ] || failures+="tiny.en has a Download button; "
-check_failures "VAL-MOD-002 catalog view" "8 rows in catalog order, tiny.en ready and active, 7 not downloaded with a Download button" "$failures"
+check_failures "VAL-MOD-002 catalog view" "13 speech rows in catalog order plus $others cleanup and voice rows, tiny.en ready and active, the rest not downloaded with a Download button" "$failures"
 
 echo "== VAL-MOD-003 download with progress, verified stamp, responsive UI"
 fresh tiny.en
