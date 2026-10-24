@@ -24,8 +24,16 @@ const ALLOWED: [(&str, &str, &str); 16] = [
     ("import/panel.rs", "status_of", "error"),
     ("models/panel.rs", "status", "success"),
     ("models/panel.rs", "status", "error"),
-    ("onboarding/panel/permissions.rs", "permission_row", "success"),
-    ("onboarding/panel/permissions.rs", "permission_row", "warning"),
+    (
+        "onboarding/panel/permissions.rs",
+        "permission_row",
+        "success",
+    ),
+    (
+        "onboarding/panel/permissions.rs",
+        "permission_row",
+        "warning",
+    ),
     ("onboarding/panel/model.rs", "view", "success"),
     ("onboarding/panel/model.rs", "view", "error"),
     // What the last update check found on About; a failed check is a status word.

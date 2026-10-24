@@ -6,8 +6,10 @@
 //! database at once and keeps it, with its audio, for the undo window. When the window ends,
 //! or the app quits, or the app starts again, the audio file goes too.
 
+mod delete;
 mod detail;
 pub mod export;
+mod list;
 pub mod panel;
 pub mod playback;
 mod save_dialog;
@@ -16,43 +18,26 @@ mod sweep;
 use crate::controller::{Controller, ReprocessState, failure_for};
 use crate::hook;
 use crate::storage::Storage;
+use delete::{Undo, sweep_trash};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FocusHandle, Pixels, Point,
-    ScrollHandle, Window, px,
+    App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FocusHandle, Pixels,
+    ScrollHandle, Window,
 };
-use hushpen_store::history::{self, Cursor, Row, Stored};
+use hushpen_store::history::{self, Cursor, Row};
 use serde_json::{Value, json};
 use std::cell::Cell;
-use std::fs;
-use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Rows in one page.
 pub const PAGE: usize = 50;
 /// The height of one list row. Every row has this height, so the list can leave out the rows
 /// that are far from the screen and stand in for them with space.
 pub const ROW_HEIGHT: f32 = 48.0;
-/// Where the first row starts below the top of the scrolled content, and the most that banners
-/// can add to that.
-const LIST_TOP: f32 = 49.0;
-const LIST_TOP_MAX: f32 = 220.0;
-/// Rows kept ready above and below the screen.
-const BUFFER: usize = 3;
-/// How close to the end of the list, in pixels, the next page is asked for.
-const NEXT_PAGE_REACH: f32 = 160.0;
-const FALLBACK_VIEWPORT: f32 = 486.0;
 /// How long a deleted transcript can come back.
 pub const UNDO_WINDOW: Duration = Duration::from_secs(8);
-
-/// A deleted row that can still come back.
-struct Undo {
-    stored: Stored,
-    /// Where the audio file was, and where it waits while the undo window is open.
-    audio: Option<(PathBuf, PathBuf)>,
-}
 
 pub struct Focus {
     pub clear: FocusHandle,
@@ -201,65 +186,6 @@ impl History {
         self.scroll = scroll;
     }
 
-    fn scrolled(&self) -> f32 {
-        f32::from(-self.scroll.offset().y).max(0.0)
-    }
-
-    fn viewport(&self) -> f32 {
-        match f32::from(self.scroll.bounds().size.height) {
-            height if height > 0.0 => height,
-            _ => FALLBACK_VIEWPORT,
-        }
-    }
-
-    /// The rows that are drawn: the ones on the screen and a few around them. A list of
-    /// hundreds of rows would take a whole frame to lay out.
-    pub fn window_rows(&self) -> Range<usize> {
-        let scrolled = self.scrolled();
-        let first = ((scrolled - LIST_TOP_MAX) / ROW_HEIGHT).floor().max(0.0) as usize;
-        let last = ((scrolled + self.viewport()) / ROW_HEIGHT).ceil().max(0.0) as usize;
-        let end = (last + BUFFER).min(self.rows.len());
-        first.saturating_sub(BUFFER).min(end)..end
-    }
-
-    /// True when the end of the loaded rows is on the screen and there are more to load. The
-    /// scroll range is the one of the last painted frame, so a page that was just asked for
-    /// is not asked for again until the range has grown.
-    pub fn page_due(&self) -> bool {
-        let max = f32::from(self.scroll.max_offset().y);
-        let due = self.next.is_some()
-            && self.detail.is_none()
-            && max > 0.0
-            && self.scrolled() > 0.0
-            && self.scrolled() >= max - NEXT_PAGE_REACH
-            && (max - self.asked_at.get()).abs() > 1.0;
-        if due {
-            self.asked_at.set(max);
-        }
-        due
-    }
-
-    /// Scrolls so that the row shows, and gives its focus handle.
-    pub fn reveal_row(&self, index: usize) -> Option<FocusHandle> {
-        let handle = self.row_focus.get(index)?.clone();
-        let top = LIST_TOP + index as f32 * ROW_HEIGHT;
-        let bottom = top + ROW_HEIGHT;
-        let (scrolled, viewport) = (self.scrolled(), self.viewport());
-        let target = if top < scrolled {
-            Some(top - ROW_HEIGHT / 2.0)
-        } else if bottom > scrolled + viewport {
-            Some(bottom - viewport + ROW_HEIGHT / 2.0)
-        } else {
-            None
-        };
-        if let Some(target) = target {
-            let offset = self.scroll.offset();
-            self.scroll
-                .set_offset(Point::new(offset.x, px(-target.max(0.0))));
-        }
-        Some(handle)
-    }
-
     #[cfg(test)]
     fn set_undo_window(&mut self, window: Duration) {
         self.undo_window = window;
@@ -326,90 +252,6 @@ impl History {
         } else {
             cx.notify();
         }
-    }
-
-    /// Reads the first page again, with the search that is typed.
-    fn reload(&mut self, cx: &mut Context<Self>) {
-        let started = Instant::now();
-        match history::page(&self.storage.database, &self.query, None, PAGE) {
-            Ok(page) => {
-                self.rows = page.rows;
-                self.next = page.next;
-            }
-            Err(error) => {
-                self.rows.clear();
-                self.next = None;
-                self.message = Some(format!("The history could not be read: {error}"));
-            }
-        }
-        self.search_ms = started.elapsed().as_secs_f64() * 1000.0;
-        self.asked_at.set(0.0);
-        self.total = history::count(&self.storage.database).unwrap_or(0);
-        while self.row_focus.len() < self.rows.len() {
-            self.row_focus.push(cx.focus_handle().tab_stop(true));
-        }
-        self.row_focus.truncate(self.rows.len());
-        if let Some(open) = &self.detail {
-            let row = history::get(&self.storage.database, &open.id)
-                .ok()
-                .flatten();
-            self.detail_segments = self.segments_of(row.as_ref());
-            self.detail = row;
-        }
-        cx.notify();
-    }
-
-    /// The timed pieces of an import. A dictation has no use for them in the detail view.
-    fn segments_of(&self, row: Option<&Row>) -> Vec<history::Segment> {
-        let Some(row) = row.filter(|row| row.kind == "import") else {
-            return Vec::new();
-        };
-        history::segments(&self.storage.database, &row.id).unwrap_or_default()
-    }
-
-    pub fn detail_segments(&self) -> &[history::Segment] {
-        &self.detail_segments
-    }
-
-    fn set_query(&mut self, query: String, cx: &mut Context<Self>) {
-        if query == self.query {
-            return;
-        }
-        self.query = query;
-        self.message = None;
-        self.scroll.set_offset(Point::default());
-        self.reload(cx);
-        hook::record_event("history", "search");
-    }
-
-    /// Types `query` into the search box like a user does.
-    pub fn search_for(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.search.update(cx, |input, cx| {
-            input.set_value(query.to_owned(), window, cx)
-        });
-        self.set_query(query.to_owned(), cx);
-    }
-
-    /// Adds the next page below the rows that show.
-    pub fn load_more(&mut self, cx: &mut Context<Self>) {
-        let Some(cursor) = self.next.clone() else {
-            return;
-        };
-        match history::page(&self.storage.database, &self.query, Some(&cursor), PAGE) {
-            Ok(page) => {
-                self.rows.extend(page.rows);
-                self.next = page.next;
-            }
-            Err(error) => {
-                self.next = None;
-                self.message = Some(format!("The history could not be read: {error}"));
-            }
-        }
-        while self.row_focus.len() < self.rows.len() {
-            self.row_focus.push(cx.focus_handle().tab_stop(true));
-        }
-        hook::record_event("history", "more");
-        cx.notify();
     }
 
     pub fn open(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
@@ -568,147 +410,6 @@ impl History {
         }
     }
 
-    /// Takes the row out of the list and the database and starts the undo window.
-    pub fn delete(&mut self, id: Option<&str>, cx: &mut Context<Self>) -> Result<(), String> {
-        let row = match self.row(id) {
-            Ok(row) => row,
-            Err(message) => return self.refuse(message, cx),
-        };
-        self.finish_undo();
-        if self.playback.as_ref().is_some_and(|open| open.id == row.id) {
-            self.playback = None;
-        }
-        let stored = match history::delete(&self.storage.database, &row.id) {
-            Ok(Some(stored)) => stored,
-            Ok(None) => return self.refuse("That transcript is already gone.".into(), cx),
-            Err(error) => {
-                return self.refuse(format!("The transcript could not be deleted: {error}"), cx);
-            }
-        };
-        let audio = self.park_audio(&stored.row);
-        self.forget_selected(&stored.row.id);
-        self.undo = Some(Undo { stored, audio });
-        self.undo_generation += 1;
-        let generation = self.undo_generation;
-        let window = self.undo_window;
-        self.detail = None;
-        self.message = None;
-        self.reload(cx);
-        hook::record_event("history", "deleted");
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(window).await;
-            let _ = this.update(cx, |me, cx| {
-                if me.undo_generation == generation && me.undo.is_some() {
-                    me.finish_undo();
-                    hook::record_event("history", "undo-closed");
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-        Ok(())
-    }
-
-    /// Brings the last deleted row back with its segments and its audio.
-    pub fn undo(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        let Some(undo) = self.undo.take() else {
-            return self.refuse("There is nothing to undo.".into(), cx);
-        };
-        if let Err(error) = history::restore(&self.storage.database, &undo.stored) {
-            let message = format!("The transcript could not be restored: {error}");
-            self.undo = Some(undo);
-            return self.refuse(message, cx);
-        }
-        if let Some((original, parked)) = &undo.audio
-            && let Err(error) = fs::rename(parked, original)
-        {
-            log::warn!("the audio of a restored transcript could not be moved back: {error}");
-        }
-        self.undo_generation += 1;
-        self.message = None;
-        self.reload(cx);
-        hook::record_event("history", "restored");
-        Ok(())
-    }
-
-    /// Ends the undo window now: the audio of the deleted row goes. Called when the window
-    /// closes, and at quit.
-    pub fn finish_undo(&mut self) {
-        if let Some(undo) = self.undo.take()
-            && let Some((_, parked)) = undo.audio
-            && let Err(error) = fs::remove_file(&parked)
-        {
-            log::warn!("the audio of a deleted transcript was not removed: {error}");
-        }
-    }
-
-    fn park_audio(&self, row: &Row) -> Option<(PathBuf, PathBuf)> {
-        let original = self.storage.data.root().join(row.audio_path.as_deref()?);
-        if !original.is_file() {
-            return None;
-        }
-        let folder = self.storage.data.trash_dir();
-        let parked = folder.join(original.file_name()?);
-        match fs::create_dir_all(&folder).and_then(|()| fs::rename(&original, &parked)) {
-            Ok(()) => Some((original, parked)),
-            Err(error) => {
-                log::warn!("the audio of a deleted transcript could not be set aside: {error}");
-                // The row is gone from the database, so the file is only an orphan.
-                let _ = fs::remove_file(&original);
-                None
-            }
-        }
-    }
-
-    pub fn ask_clear(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        if self.total == 0 {
-            return self.refuse("There are no transcripts to clear.".into(), cx);
-        }
-        self.confirm_clear = true;
-        self.message = None;
-        cx.notify();
-        Ok(())
-    }
-
-    pub fn cancel_clear(&mut self, cx: &mut Context<Self>) {
-        if std::mem::take(&mut self.confirm_clear) {
-            cx.notify();
-        }
-    }
-
-    /// Removes every row and every audio file. Only after the confirmation.
-    pub fn confirm_clear(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        if !self.confirm_clear {
-            return self.refuse("Choose Clear all first.".into(), cx);
-        }
-        self.confirm_clear = false;
-        self.playback = None;
-        self.finish_undo();
-        self.undo_generation += 1;
-        match history::clear(&self.storage.database) {
-            Ok(paths) => {
-                for path in paths {
-                    let file = self.storage.data.root().join(path);
-                    if let Err(error) = fs::remove_file(&file)
-                        && file.exists()
-                    {
-                        log::warn!("an audio file of the history was not removed: {error}");
-                    }
-                }
-                sweep_trash(&self.storage);
-            }
-            Err(error) => {
-                return self.refuse(format!("The history could not be cleared: {error}"), cx);
-            }
-        }
-        self.detail = None;
-        self.message = None;
-        self.selection.clear();
-        self.reload(cx);
-        hook::record_event("history", "cleared");
-        Ok(())
-    }
-
     pub fn state_json(&self, cx: &App) -> Value {
         let reprocess = self
             .controller
@@ -795,18 +496,6 @@ impl History {
     /// The message that explains a failed run, for rows that show it.
     pub fn failure_message(code: &str) -> &'static str {
         failure_for(code).1
-    }
-}
-
-/// Removes audio that a delete set aside in an earlier run of the app.
-fn sweep_trash(storage: &Storage) {
-    let Ok(entries) = fs::read_dir(storage.data.trash_dir()) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        if let Err(error) = fs::remove_file(entry.path()) {
-            log::warn!("a set-aside audio file was not removed: {error}");
-        }
     }
 }
 
