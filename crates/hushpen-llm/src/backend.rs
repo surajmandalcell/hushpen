@@ -4,30 +4,11 @@
 //! value. [`Backend::with_session`] loads the model, calls the body while the model is alive, and
 //! drops the model when the body returns. The server loop runs inside that body.
 
+pub use hushpen_core::cancel::CancelFlag;
 use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::llm_protocol::JobStats;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-
-/// A flag that a running job reads between tokens.
-#[derive(Debug, Clone, Default)]
-pub struct CancelFlag(Arc<AtomicBool>);
-
-impl CancelFlag {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Relaxed);
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
-}
 
 /// A model to hold. The server keeps it after an idle unload and loads it again for the next job.
 #[derive(Debug, Clone, PartialEq, Eq)]
