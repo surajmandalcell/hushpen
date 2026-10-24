@@ -280,6 +280,7 @@ impl Manager {
                 path: spec.path.to_string_lossy().into_owned(),
                 language: spec.language.clone(),
                 prompt: spec.prompt.clone(),
+                translate: spec.translate,
             },
         };
         self.write(&request);

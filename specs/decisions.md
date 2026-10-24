@@ -89,6 +89,15 @@ new decision, add it here in the same change (D-21).
 - **D-22 Linux test harness.** Linux end-to-end tests run the debug app in
   containers with Xvfb, openbox, PulseAudio, and Mesa lavapipe. At most 3
   slots run engine work at once.
+- **D-23 Import limits.** The engine child decodes an imported file one
+  packet at a time while it transcribes it in 120 s windows with 10 s of
+  overlap, so memory does not grow with the length of the file (tiny.en:
+  about 470 MB peak for 2 min, 10 min, and 1 h). Files up to 12 hours are
+  accepted; the limit only bounds how long one job runs. Translate writes
+  English from any spoken language with a multilingual model; an
+  English-only (`.en`) model refuses it with
+  `ENGINE_TRANSLATE_UNSUPPORTED`. An `import_file` frame without `translate`
+  does not translate.
 
 ## History notes
 

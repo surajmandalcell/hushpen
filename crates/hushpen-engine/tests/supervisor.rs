@@ -315,6 +315,7 @@ fn an_import_sends_its_request_and_hears_progress_until_the_result() {
             path: dir.path().join("talk.mp3"),
             language: None,
             prompt: None,
+            translate: false,
         },
         Some(Arc::new(move |fraction| {
             sink.lock().unwrap().push(fraction)

@@ -185,6 +185,8 @@ pub enum Request {
         /// `None` or `auto` detects the language.
         language: Option<String>,
         prompt: Option<String>,
+        /// Write the transcript in English. A frame without the field does not translate.
+        translate: bool,
     },
     Cancel {
         job: u64,
@@ -214,9 +216,10 @@ impl Request {
                 path,
                 language,
                 prompt,
+                translate,
             } => json!({
                 "type": "import_file", "job": job, "path": path,
-                "language": language, "prompt": prompt,
+                "language": language, "prompt": prompt, "translate": translate,
             }),
             Self::Cancel { job } => json!({"type": "cancel", "job": job}),
             Self::Ping => json!({"type": "ping"}),
@@ -246,6 +249,7 @@ impl Request {
                 path: fields.string("path")?,
                 language: fields.optional_string("language")?,
                 prompt: fields.optional_string("prompt")?,
+                translate: fields.optional_bool("translate")?.unwrap_or(false),
             }),
             "cancel" => Ok(Self::Cancel {
                 job: fields.u64("job")?,
@@ -517,6 +521,13 @@ impl<'a> Fields<'a> {
             .ok_or_else(|| Self::wrong(name, "true or false"))
     }
 
+    pub(crate) fn optional_bool(&self, name: &str) -> Result<Option<bool>, DecodeError> {
+        match self.0.get(name) {
+            None | Some(Value::Null) => Ok(None),
+            Some(_) => self.bool(name).map(Some),
+        }
+    }
+
     pub(crate) fn array(&self, name: &str) -> Result<&'a Vec<Value>, DecodeError> {
         self.get(name)?
             .as_array()
@@ -635,6 +646,7 @@ mod tests {
                 path: "/talks/a.mp3".into(),
                 language: None,
                 prompt: Some("Hushpen".into()),
+                translate: true,
             },
             Request::Cancel { job: 7 },
             Request::Ping,
@@ -765,8 +777,15 @@ mod tests {
                 path: "/a.flac".into(),
                 language: None,
                 prompt: None,
+                translate: false,
             })
         );
+        assert!(matches!(
+            Request::from_json(
+                &json!({"type": "import_file", "job": 1, "path": "/a.flac", "translate": "yes"})
+            ),
+            Err(DecodeError::Invalid(_))
+        ));
         assert!(matches!(
             Event::from_json(&json!({"type": "progress", "job": 1, "fraction": "half"})),
             Err(DecodeError::Invalid(_))

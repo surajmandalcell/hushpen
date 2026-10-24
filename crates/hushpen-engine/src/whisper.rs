@@ -14,9 +14,10 @@ use whisper_rs::{
 };
 
 use crate::asr::{
-    AsrEngine, CancelFlag, EngineError, LoadOptions, Segment, TranscribeOptions, Transcript,
+    AsrEngine, CancelFlag, EngineError, LoadOptions, PcmSource, Segment, TranscribeOptions,
+    Transcript,
 };
-use crate::windows;
+use crate::windows::{self, Windows};
 
 extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
     // SAFETY: `user_data` is the `AtomicBool` of a `CancelFlag` that outlives the `full()` call.
@@ -102,25 +103,13 @@ impl AsrEngine for WhisperEngine {
         self.gpu
     }
 
-    fn transcribe(
+    fn transcribe_stream(
         &mut self,
-        pcm: &[f32],
-        options: &TranscribeOptions,
-        cancel: &CancelFlag,
-    ) -> Result<Transcript, EngineError> {
-        self.transcribe_with_progress(pcm, options, cancel, &mut |_| {})
-    }
-
-    fn transcribe_with_progress(
-        &mut self,
-        pcm: &[f32],
+        source: &mut dyn PcmSource,
         options: &TranscribeOptions,
         cancel: &CancelFlag,
         progress: &mut dyn FnMut(f32),
     ) -> Result<Transcript, EngineError> {
-        if pcm.is_empty() {
-            return Err(EngineError::NoAudio);
-        }
         // whisper checks the abort callback only between graph nodes, after the mel spectrogram
         // and the first encoder convolution. That is up to a second on a slow CPU, so a flag
         // that is already set must not reach it.
@@ -133,6 +122,9 @@ impl AsrEngine for WhisperEngine {
         {
             return Err(EngineError::BadLanguage(code.to_owned()));
         }
+        if options.translate && !self.multilingual {
+            return Err(EngineError::TranslateUnsupported);
+        }
 
         // An English-only model always decodes English and reports no usable language id.
         let language = if self.multilingual {
@@ -143,34 +135,30 @@ impl AsrEngine for WhisperEngine {
 
         let mut segments = Vec::new();
         let mut detected = language.map(str::to_owned);
-        let padded = windows::with_tail_pad(pcm);
-        let plan = windows::plan(padded.len());
-        let count = plan.len();
-        for (index, window) in plan.into_iter().enumerate() {
+        let mut input = Windows::new(source);
+        let mut number = 0;
+        while let Some((window, pcm)) = input.next(cancel)? {
             if cancel.is_cancelled() {
                 return Err(EngineError::Cancelled);
             }
-            if count > 1 {
+            number += 1;
+            if !(window.start == 0 && window.keep_to == usize::MAX) {
                 eprintln!(
-                    "engine: window {}/{count} {}..{} s, overlap {} s",
-                    index + 1,
+                    "engine: window {number} {}..{} s, overlap {} s",
                     window.start / windows::SAMPLE_RATE,
                     window.end / windows::SAMPLE_RATE,
                     windows::OVERLAP / windows::SAMPLE_RATE,
                 );
             }
-            let (found, language_used) = self.run_window(
-                &padded[window.start..window.end],
-                detected.as_deref(),
-                options.prompt.as_deref(),
-                cancel,
-            )?;
+            let (found, language_used) =
+                self.run_window(pcm, detected.as_deref(), options, cancel)?;
             // Later windows reuse the language of the first one instead of detecting again.
             detected.get_or_insert(language_used);
+            let last = window.keep_to == usize::MAX;
             segments.extend(windows::own_segments(&window, found));
-            progress((index + 1) as f32 / count as f32);
+            progress(if last { 1.0 } else { input.fraction_read() });
         }
-        let segments = windows::clip_to_audio(segments, pcm.len());
+        let segments = windows::clip_to_audio(segments, input.audio_len());
         let text = segments
             .iter()
             .map(|s| s.text.as_str())
@@ -191,17 +179,18 @@ impl WhisperEngine {
         &mut self,
         pcm: &[f32],
         language: Option<&str>,
-        prompt: Option<&str>,
+        options: &TranscribeOptions,
         cancel: &CancelFlag,
     ) -> Result<(Vec<Segment>, String), EngineError> {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(i32::try_from(self.threads).unwrap_or(i32::MAX));
         params.set_language(language);
+        params.set_translate(options.translate);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_print_timestamps(false);
-        if let Some(prompt) = prompt.filter(|p| !p.is_empty()) {
+        if let Some(prompt) = options.prompt.as_deref().filter(|p| !p.is_empty()) {
             params.set_initial_prompt(prompt);
         }
         // SAFETY: the pointer is the flag inside `cancel`, which this call borrows until

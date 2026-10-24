@@ -170,7 +170,11 @@ fn read_requests(
                     let _ = work.send(Work::Transcribe {
                         job,
                         wav_path: PathBuf::from(wav_path),
-                        options: TranscribeOptions { language, prompt },
+                        options: TranscribeOptions {
+                            language,
+                            prompt,
+                            translate: false,
+                        },
                     });
                 }
             }
@@ -179,12 +183,17 @@ fn read_requests(
                 path,
                 language,
                 prompt,
+                translate,
             } => {
                 if register(jobs, job, output) {
                     let _ = work.send(Work::Import {
                         job,
                         path: PathBuf::from(path),
-                        options: TranscribeOptions { language, prompt },
+                        options: TranscribeOptions {
+                            language,
+                            prompt,
+                            translate,
+                        },
                     });
                 }
             }
@@ -428,7 +437,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asr::Transcript;
+    use crate::asr::{PcmSource, Transcript};
     use hushpen_core::protocol::{Segment, write_frame};
     use serde_json::json;
     use std::io::PipeReader;
@@ -444,27 +453,18 @@ mod tests {
             false
         }
 
-        fn transcribe_with_progress(
+        fn transcribe_stream(
             &mut self,
-            pcm: &[f32],
+            source: &mut dyn PcmSource,
             options: &TranscribeOptions,
             cancel: &CancelFlag,
             progress: &mut dyn FnMut(f32),
         ) -> Result<Transcript, EngineError> {
-            let done = self.transcribe(pcm, options, cancel)?;
-            progress(1.0);
-            Ok(done)
-        }
-
-        fn transcribe(
-            &mut self,
-            pcm: &[f32],
-            options: &TranscribeOptions,
-            cancel: &CancelFlag,
-        ) -> Result<Transcript, EngineError> {
             if options.language.as_deref() == Some("xx") {
                 return Err(EngineError::BadLanguage("xx".into()));
             }
+            let mut pcm = Vec::new();
+            while source.read(&mut pcm)? {}
             let started = Instant::now();
             while started.elapsed() < Duration::from_millis(self.job_ms) {
                 if cancel.is_cancelled() {
@@ -472,8 +472,10 @@ mod tests {
                 }
                 thread::sleep(Duration::from_millis(2));
             }
+            progress(1.0);
+            let translated = if options.translate { "translated " } else { "" };
             Ok(Transcript {
-                text: format!("{} samples", pcm.len()),
+                text: format!("{translated}{} samples", pcm.len()),
                 language: "en".into(),
                 segments: vec![
                     Segment {
@@ -794,6 +796,7 @@ mod tests {
                 path: path.to_owned(),
                 language: None,
                 prompt: None,
+                translate: false,
             });
         }
 
@@ -845,6 +848,25 @@ mod tests {
         assert!(matches!(
             events.last(),
             Some(Event::Result { job: 1, audio_ms: 100, language, .. }) if language == "en"
+        ));
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn translate_reaches_the_engine() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        let path = session.wav();
+        session.send(&Request::ImportFile {
+            job: 1,
+            path,
+            language: None,
+            prompt: None,
+            translate: true,
+        });
+        assert!(matches!(
+            session.until_done(1).last(),
+            Some(Event::Result { text, .. }) if text == "translated 1600 samples"
         ));
         assert_eq!(session.finish(), 0);
     }

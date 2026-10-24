@@ -394,6 +394,7 @@ impl Import {
                 path: item.path.clone(),
                 language,
                 prompt,
+                translate: false,
             };
             let run = Arc::clone(&self.run);
             let events = self.events.clone();

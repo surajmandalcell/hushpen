@@ -30,6 +30,7 @@ fn spec(path: PathBuf) -> ImportSpec {
         path,
         language: Some("en".into()),
         prompt: None,
+        translate: false,
     }
 }
 
@@ -161,15 +162,11 @@ fn a_10_minute_file_keeps_every_word_across_the_windows() {
         .collect();
     assert_eq!(windows.len(), 6, "{windows:#?}");
     assert!(
-        windows[0].contains("window 1/6 0..120 s, overlap 10 s"),
+        windows[0].contains("window 1 0..120 s, overlap 10 s"),
         "{}",
         windows[0]
     );
-    assert!(
-        windows[1].contains("window 2/6 110..230 s"),
-        "{}",
-        windows[1]
-    );
+    assert!(windows[1].contains("window 2 110..230 s"), "{}", windows[1]);
     let heard = heard.lock().unwrap().clone();
     assert!(heard.windows(2).all(|pair| pair[0] <= pair[1]), "{heard:?}");
     assert!(heard.len() >= 7, "one report for each window: {heard:?}");

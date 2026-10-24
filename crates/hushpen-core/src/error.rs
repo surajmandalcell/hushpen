@@ -6,6 +6,8 @@ pub const ENGINE_CRASHED: &str = "ENGINE_CRASHED";
 pub const ENGINE_NO_SPEECH: &str = "ENGINE_NO_SPEECH";
 pub const ENGINE_LOAD_FAILED: &str = "ENGINE_LOAD_FAILED";
 pub const ENGINE_BAD_LANGUAGE: &str = "ENGINE_BAD_LANGUAGE";
+/// Translate was asked of an English-only model such as `tiny.en`.
+pub const ENGINE_TRANSLATE_UNSUPPORTED: &str = "ENGINE_TRANSLATE_UNSUPPORTED";
 /// A request the engine child could not read or does not know.
 pub const ENGINE_PROTOCOL: &str = "ENGINE_PROTOCOL";
 /// A job arrived before any model was loaded.
