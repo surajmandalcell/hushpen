@@ -115,6 +115,7 @@ fn permission_row(
     let icon = match row.key {
         hushpen_core::onboarding::RowKey::Microphone => IconName::Mic,
         hushpen_core::onboarding::RowKey::X11Session => IconName::Monitor,
+        hushpen_core::onboarding::RowKey::Paste => IconName::ClipboardPaste,
         _ => IconName::Keyboard,
     };
     let ready = row.state == RowState::Ready;

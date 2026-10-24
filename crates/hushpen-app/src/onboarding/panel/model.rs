@@ -107,26 +107,21 @@ pub(super) fn view(
         }))
         .into_any_element(),
     );
-    rows.push(
-        div()
-            .w_full()
-            .flex_none()
-            .px(px(size::ROW_PADDING))
-            .py(px(space::MD))
-            .child(
-                ui::track(
-                    palette,
-                    if state == ModelState::Ready {
-                        1.0
-                    } else {
-                        fraction
-                    },
+    if downloading {
+        rows.push(
+            div()
+                .w_full()
+                .flex_none()
+                .px(px(size::ROW_PADDING))
+                .py(px(space::MD))
+                .child(
+                    ui::track(palette, fraction)
+                        .id(hook::id("onboarding", "model.progress"))
+                        .test_support()
+                        .role(Role::ProgressIndicator),
                 )
-                .id(hook::id("onboarding", "model.progress"))
-                .test_support()
-                .role(Role::ProgressIndicator),
-            )
-            .into_any_element(),
-    );
+                .into_any_element(),
+        );
+    }
     ui::group(hook::id("onboarding", "model"), palette, rows)
 }

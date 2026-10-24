@@ -52,7 +52,8 @@ icon_assets!(
         Globe,
         ChevronDown,
         Search,
-        AudioLines
+        AudioLines,
+        ClipboardPaste
     ]
 );
 

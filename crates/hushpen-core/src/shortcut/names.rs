@@ -75,7 +75,8 @@ fn mac_display(keys: &[Key]) -> String {
     parts.collect::<Vec<_>>().join(if plain { "" } else { "+" })
 }
 
+/// `×2` is the double tap. The short form fits a shortcut field.
 pub(super) fn default_hands_free(hold: &Combo, platform: Platform) -> String {
     let hold = hold.display(platform);
-    format!("Double tap {hold}, or {hold}+Space")
+    format!("{hold} ×2 or {hold}+Space")
 }

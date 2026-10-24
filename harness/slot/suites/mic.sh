@@ -138,6 +138,9 @@ reset_app
 read -r ox oy < <(settled_origin "$(app_window)")
 saved=$(jq -r '.values["audio.inputDeviceId"]' /data/config/settings.json)
 $HC state | jq .capture >"$RUN_OUT/001-capture-state.json"
+# The microphone list is the Home picker: open it so its rows are in the tree.
+$HC click home.mic.picker >/dev/null
+wait_until 5 sh -c "$HC tree | jq -e 'any(.[]; .id == \"home.mic.list\")'"
 $HC tree >"$RUN_OUT/001-tree.json"
 shot 001-picker
 listed=$(jq -r '[.devices[] | select(.id | test("vmic_src"))] | length' "$RUN_OUT/001-capture-state.json")
@@ -269,10 +272,8 @@ start_app
 wait_until 10 cap_is '.devices | map(select(.id | test("vmic2_src"))) | length' 1
 index=$(cap '.devices | map(.id | test("vmic2_src")) | index(true) + 1')
 id2=$(cap '.devices[] | select(.id | test("vmic2_src")) | .id')
-# The device list sits below the dictation panel: scroll the page until the row is in the window.
-read -r ox oy < <(settled_origin "$(app_window)")
-xdotool mousemove $((ox + 220)) $((oy + 300))
-for _ in $(seq 8); do xdotool click 5; sleep 0.1; done
+$HC click home.mic.picker >/dev/null
+wait_until 5 sh -c "$HC tree | jq -e 'any(.[]; .id == \"home.mic.device.$index\")'"
 $HC click "home.mic.device.$index" >/dev/null
 wait_until 5 cap_is .saved_device "$id2"
 /harness/slot/app.sh stop

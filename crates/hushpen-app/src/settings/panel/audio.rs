@@ -1,7 +1,6 @@
 //! Audio: the microphone, the cue sounds and their volume, and the longest a dictation runs.
 
-use super::{Choice, Page};
-use crate::mic;
+use super::Page;
 use crate::settings::{Settings, slots};
 use crate::ui;
 use gpui_kit::{AnyElement, App};
@@ -11,35 +10,8 @@ const MINUTE_CHOICES: [i64; 7] = [2, 4, 6, 10, 15, 30, 60];
 
 pub fn microphone(page: &Page, cx: &mut App) -> Vec<AnyElement> {
     let (current, choices, focus) = {
-        let me = page.settings.read(cx);
-        let mic = me.mic.read(cx);
-        let saved = mic.saved();
-        let default = mic
-            .default_name()
-            .map(|name| format!("Default ({name})"))
-            .unwrap_or_else(|| "Default".to_owned());
-        let current = match saved {
-            hushpen_audio::DEFAULT_ID => default.clone(),
-            id => mic
-                .devices()
-                .iter()
-                .find(|device| device.id == id)
-                .map(|device| device.name.clone())
-                .unwrap_or_else(|| id.to_owned()),
-        };
-        let choices: Vec<Choice> = std::iter::once((
-            hushpen_audio::DEFAULT_ID.to_owned(),
-            default,
-            saved == hushpen_audio::DEFAULT_ID,
-        ))
-        .chain(
-            mic.devices()
-                .iter()
-                .take(mic::MAX_DEVICE_ROWS)
-                .map(|device| (device.id.clone(), device.name.clone(), saved == device.id)),
-        )
-        .collect();
-        (current, choices, mic.row_focus.clone())
+        let mic = page.settings.read(cx).mic.read(cx);
+        (mic.saved_label(), mic.choices(), mic.row_focus.clone())
     };
     let mut rows = vec![page.menu(
         "audio.mic",

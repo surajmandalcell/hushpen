@@ -14,8 +14,6 @@ use gpui_kit::{
 };
 use hushpen_core::shortcut::Slot;
 
-const FIELD_MIN_WIDTH: f32 = 128.0;
-const FIELD_MAX_WIDTH: f32 = 236.0;
 /// A binding this long may be cut by the field, so its whole text shows as a tooltip.
 const TOOLTIP_FROM_CHARS: usize = 24;
 
@@ -154,8 +152,7 @@ fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> An
         .flex()
         .items_center()
         .justify_center()
-        .min_w(px(FIELD_MIN_WIDTH))
-        .max_w(px(FIELD_MAX_WIDTH))
+        .w(px(size::FIELD_WIDTH))
         .h(px(size::BUTTON_HEIGHT))
         .px(px(size::BUTTON_PADDING - size::FOCUS_RING))
         .rounded(px(radius::BUTTON))
@@ -193,6 +190,6 @@ fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> An
         hook::id("settings", &format!("shortcut.row.{key}")),
         row.title,
         Some(row.detail.to_owned()),
-        field.child(div().truncate().child(row.shown)),
+        field.child(div().min_w_0().truncate().child(row.shown)),
     )
 }
