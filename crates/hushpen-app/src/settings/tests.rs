@@ -1,9 +1,11 @@
 use super::*;
 use crate::mic::{Mic, MicBackend, MicSession};
+use crate::models::Models;
 use crate::storage;
 use gpui_kit::{Entity, TestAppContext};
 use hushpen_audio::{CaptureError, EventSink, FeedInfo, Finished, InputDevice};
 use hushpen_core::error::DATA_FOLDER_MOVE_FAILED;
+use hushpen_core::shortcut::Platform;
 use hushpen_store::data_dir::DataDir;
 use serde_json::json;
 use std::sync::Mutex;

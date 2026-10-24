@@ -9,6 +9,7 @@ use gpui_kit::{
     WindowOptions, point, px, size,
 };
 use hushpen_store::history::Segment;
+use std::fs;
 
 mod export;
 mod import;
