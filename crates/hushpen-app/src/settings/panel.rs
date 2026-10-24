@@ -247,27 +247,18 @@ pub fn render(
 
 /// The heading, the group, and the help line of one section.
 fn section_of(palette: Palette, section: Section, rows: Vec<AnyElement>) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(space::XS + space::XXS))
-        .w_full()
-        .child(ui::heading(
-            palette,
-            settings_id(&format!("{}.heading", section.key())),
-            section.title(),
-        ))
-        .child(ui::section(
-            palette,
-            ui::group(settings_id(section.key()), palette, rows),
-            section.footer().map(|text| {
-                (
-                    settings_id(&format!("{}.help", section.key())),
-                    text.to_owned(),
-                )
-            }),
-        ))
-        .into_any_element()
+    ui::titled_section(
+        palette,
+        settings_id(&format!("{}.heading", section.key())),
+        section.title(),
+        ui::group(settings_id(section.key()), palette, rows),
+        section.footer().map(|text| {
+            (
+                settings_id(&format!("{}.help", section.key())),
+                text.to_owned(),
+            )
+        }),
+    )
 }
 
 /// The group that says no row matches, with a button that clears the search.

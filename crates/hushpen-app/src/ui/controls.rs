@@ -1,13 +1,14 @@
 //! The controls of a row: the push button, the switch, the slider, the pop-up button, the text
 //! field, and the progress track.
 
-use super::glyph;
+use super::{glyph, icon};
 use crate::hook;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Sizable, Size};
 use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
@@ -84,6 +85,40 @@ pub fn button<F: Fn(&mut Window, &mut App) + 'static>(
             .on_click(on_click);
     }
     element.child(label)
+}
+
+/// A button that is one 16 px icon with no fill until hovered, as high as a push button. The
+/// tooltip names it; `label` is its name in the accessibility tree.
+pub fn icon_button<F: Fn(&mut Window, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    name: IconName,
+    label: String,
+    tooltip: &'static str,
+    focus: &FocusHandle,
+    press: F,
+) -> impl IntoElement + use<F> {
+    let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx);
+    div()
+        .id(id)
+        .test_support()
+        .role(Role::Button)
+        .aria_label(label)
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .size(px(size::BUTTON_HEIGHT))
+        .rounded(px(radius::BUTTON))
+        .border_2()
+        .border_color(gpui_kit::transparent_black())
+        .track_focus(focus)
+        .focus_visible(move |style| style.border_color(palette.accent))
+        .cursor_pointer()
+        .hover(move |style| style.bg(palette.selection))
+        .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
+        .on_click(on_click)
+        .child(icon(palette, name))
 }
 
 /// A switch with its label for the accessibility tree. The whole control, ring included, is the

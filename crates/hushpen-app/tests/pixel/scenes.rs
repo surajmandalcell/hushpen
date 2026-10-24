@@ -87,7 +87,12 @@ pub enum Scene {
     Dictionary,
     /// A queue with a finished, a failed, a cancelled, a running, and a waiting file.
     Import,
+    /// The speech models, with the default one downloaded and active.
     Models,
+    /// Models scrolled to the end: the cleanup and voice sections.
+    ModelsBottom,
+    /// The details sheet of the default speech model.
+    ModelsDetails,
     About,
     /// About scrolled to the end: the links and the copyright line.
     AboutBottom,
@@ -149,6 +154,8 @@ impl Scene {
             Scene::Dictionary => "dictionary".into(),
             Scene::Import => "import".into(),
             Scene::Models => "models".into(),
+            Scene::ModelsBottom => "models-bottom".into(),
+            Scene::ModelsDetails => "models-details".into(),
             Scene::About => "about".into(),
             Scene::AboutBottom => "about-bottom".into(),
             Scene::AboutChecked => "about-checked".into(),
@@ -174,6 +181,8 @@ impl Scene {
             Scene::Dictionary,
             Scene::Import,
             Scene::Models,
+            Scene::ModelsBottom,
+            Scene::ModelsDetails,
             Scene::About,
             Scene::AboutBottom,
             Scene::AboutChecked,
@@ -341,11 +350,13 @@ fn seed_model(storage: &Storage) {
         .clone();
     let dir = storage.data.whisper_models_dir();
     std::fs::create_dir_all(&dir).expect("create the models folder");
-    let path = dir.join(&entry.file);
-    std::fs::File::create(&path)
-        .and_then(|file| file.set_len(entry.bytes))
-        .expect("write the model file");
-    hushpen_store::model_files::write_stamp(&path, &entry.sha256).expect("stamp the model");
+    for file in &entry.files {
+        let path = dir.join(&file.file);
+        std::fs::File::create(&path)
+            .and_then(|created| created.set_len(file.bytes))
+            .expect("write the model file");
+        hushpen_store::model_files::write_stamp(&path, &file.sha256).expect("stamp the model");
+    }
 }
 
 fn focused(snapshot: &gpui_kit::base::test_support::ElementSnapshot) -> bool {
@@ -465,7 +476,9 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
             seed_history(&storage);
         }
         Scene::Dictionary => seed_dictionary(&storage),
-        Scene::Import => seed_model(&storage),
+        Scene::Import | Scene::Models | Scene::ModelsBottom | Scene::ModelsDetails => {
+            seed_model(&storage)
+        }
         // Automatic names the CPU count, which differs between machines.
         Scene::Settings(_) => storage
             .settings
@@ -485,6 +498,11 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                     Models::new(
                         Rc::clone(&storage),
                         hushpen_core::catalog::embedded(),
+                        models::Machine {
+                            platform: Platform::Linux,
+                            ram_bytes: 8 << 30,
+                            opener: Rc::new(SystemOpener),
+                        },
                         models::production_transfer(),
                         models::thread_spawner(),
                         None,
@@ -725,6 +743,14 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             cx.run_until_parked();
         }
         Scene::Models => click(cx, handle, "sidebar.models"),
+        Scene::ModelsBottom => {
+            click(cx, handle, "sidebar.models");
+            scroll_by(cx, handle, -5_000.0);
+        }
+        Scene::ModelsDetails => {
+            click(cx, handle, "sidebar.models");
+            click(cx, handle, "models.info.2");
+        }
         Scene::About => click(cx, handle, "sidebar.about"),
         Scene::AboutBottom => {
             click(cx, handle, "sidebar.about");

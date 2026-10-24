@@ -69,6 +69,25 @@ pub fn heading(palette: Palette, id: SharedString, text: &'static str) -> impl I
         .child(text)
 }
 
+/// One section of a long page such as Settings or Models: the heading, the group, and the
+/// optional help line under it.
+pub fn titled_section(
+    palette: Palette,
+    heading_id: SharedString,
+    title: &'static str,
+    group: impl IntoElement,
+    footer: Option<(SharedString, String)>,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(space::XS + space::XXS))
+        .w_full()
+        .child(heading(palette, heading_id, title))
+        .child(section(palette, group, footer))
+        .into_any_element()
+}
+
 /// A group with the one line of help under it. The help is secondary text, cut to one line.
 pub fn section(
     palette: Palette,

@@ -281,7 +281,9 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::Home => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
         Scene::Import => Some(View::Import),
-        Scene::Models => Some(View::Models),
+        Scene::Models | Scene::ModelsBottom => Some(View::Models),
+        // The scrim dims the whole window, so the shell colors do not hold under the sheet.
+        Scene::ModelsDetails => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
             Some(View::Settings)
@@ -328,7 +330,9 @@ fn check_scenes(scenes: &[Scene], appearance: Appearance) {
         if let Some(view) = selected_view(*scene) {
             let scrolled = matches!(
                 scene,
-                Scene::Settings(SettingsShot::Middle | SettingsShot::Bottom) | Scene::AboutBottom
+                Scene::Settings(SettingsShot::Middle | SettingsShot::Bottom)
+                    | Scene::AboutBottom
+                    | Scene::ModelsBottom
             );
             assert_shell_tokens(&shot.image, appearance, Some(view), scrolled, &name);
         }

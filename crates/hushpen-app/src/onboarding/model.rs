@@ -28,7 +28,7 @@ impl Onboarding {
             .rows()
             .iter()
             .find(|row| row.entry.id == id)
-            .map(|row| (row.entry.name.clone(), row.entry.bytes))
+            .map(|row| (row.entry.name.clone(), row.entry.bytes()))
     }
 
     /// The failure the Models service last reported, such as a bad checksum.

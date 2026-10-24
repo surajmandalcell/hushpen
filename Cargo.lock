@@ -3445,6 +3445,7 @@ dependencies = [
  "hushpen-core",
  "log",
  "rusqlite",
+ "rustix",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",

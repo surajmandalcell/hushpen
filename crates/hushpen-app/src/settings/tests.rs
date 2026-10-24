@@ -714,6 +714,7 @@ fn ai_rig(cx: &mut TestAppContext, platform: Platform, gib: u64) -> AiRig {
         Models::new(
             Rc::clone(&rig.storage),
             hushpen_core::catalog::embedded(),
+            crate::models::Machine::test(platform, gib << 30),
             transfer,
             spawn,
             None,

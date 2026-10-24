@@ -1,24 +1,29 @@
-//! The Models view: one group with a row for each catalog model.
+//! The Models view: a section for each kind of model (speech recognition, text cleanup, voices),
+//! with a row for each model. A row's info button opens its details sheet ([`super::sheet`]).
 
-use super::{ModelState, Models};
+use super::{DELETE, INFO, ModelState, Models, PRIMARY, Row, USE};
 use crate::hook;
-use crate::theme::{self, Palette, SECONDARY, StyledType};
+use crate::theme::{self, Palette, SECONDARY, StyledType, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
-    Window, div, px,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba,
+    Styled, Window, div, px,
 };
-use hushpen_core::catalog::Languages;
+use hushpen_core::catalog::{Languages, ModelKind};
 
-const STATUS_WIDTH: f32 = 92.0;
-
+/// What one row shows, read out of [`Models`] before the elements are built.
 struct RowView {
+    index: usize,
+    kind: ModelKind,
     name: String,
     detail: String,
+    bytes: u64,
     recommended: bool,
     state: ModelState,
     active: bool,
+    focus: [FocusHandle; 4],
 }
 
 #[derive(Clone, Copy)]
@@ -29,127 +34,200 @@ enum Action {
     Delete,
 }
 
+impl Action {
+    fn label(self) -> &'static str {
+        match self {
+            Action::Download => "Download",
+            Action::Cancel => "Cancel",
+            Action::Use => "Use",
+            Action::Delete => "Delete",
+        }
+    }
+
+    fn element(self) -> &'static str {
+        match self {
+            Action::Download => "download",
+            Action::Cancel => "cancel",
+            Action::Use => "select",
+            Action::Delete => "delete",
+        }
+    }
+
+    fn slot(self) -> usize {
+        match self {
+            Action::Download | Action::Cancel => PRIMARY,
+            Action::Use => USE,
+            Action::Delete => DELETE,
+        }
+    }
+}
+
+/// The heading and the help line of each section.
+fn section_text(kind: ModelKind) -> (&'static str, &'static str) {
+    match kind {
+        ModelKind::Speech => (
+            "Speech recognition",
+            "Turns speech into text for dictation and files. Larger models are more accurate and slower.",
+        ),
+        ModelKind::Cleanup => (
+            "Text cleanup",
+            "Fixes grammar and punctuation when AI cleanup is on. Choose the model in Settings.",
+        ),
+        ModelKind::Voice => ("Voices", "Reads text and files aloud."),
+    }
+}
+
 pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
-    let (rows, notice, focus) = {
+    let (sections, notice) = {
         let models = models.read(cx);
         let active = models.active();
-        let rows: Vec<RowView> = models
-            .rows()
-            .iter()
-            .map(|row| RowView {
-                name: row.entry.name.clone(),
-                detail: if row.state == ModelState::Failed {
-                    super::failure_text(&row.entry)
-                } else {
-                    format!(
-                        "{} · {}",
-                        format_size(row.entry.bytes),
-                        match row.entry.languages {
-                            Languages::Multilingual => "Multilingual",
-                            Languages::English => "English only",
-                        },
-                    )
-                },
-                recommended: row.entry.default,
-                state: row.state,
-                active: row.entry.id == active,
+        let sections: Vec<(ModelKind, Vec<RowView>)> = ModelKind::ALL
+            .into_iter()
+            .map(|kind| {
+                let (start, rows) = models.of_kind(kind);
+                let views = rows
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, row)| row_view(start + offset, row, &active))
+                    .collect();
+                (kind, views)
             })
+            .filter(|(_, views): &(_, Vec<RowView>)| !views.is_empty())
             .collect();
-        let focus: Vec<[FocusHandle; 3]> =
-            models.rows().iter().map(|row| row.focus.clone()).collect();
         (
-            rows,
+            sections,
             models.notice().map(|notice| notice.message.clone()),
-            focus,
         )
     };
 
-    let mut group_rows: Vec<AnyElement> = Vec::new();
+    let mut page = div().flex().flex_col().gap(px(space::XXL)).w_full();
     if let Some(message) = notice {
-        group_rows.push(ui::notice_row(
+        page = page.child(ui::group(
+            hook::id("models", "notices"),
             palette,
-            hook::id("models", "notice"),
-            message,
-            Notice::Alert,
-            None,
+            vec![ui::notice_row(
+                palette,
+                hook::id("models", "notice"),
+                message,
+                Notice::Alert,
+                None,
+            )],
         ));
     }
-    for (index, (row, focus)) in rows.into_iter().zip(focus).enumerate() {
-        group_rows.push(model_row(palette, models, index, row, focus));
+    for (kind, views) in sections {
+        let (title, help) = section_text(kind);
+        let rows = views
+            .into_iter()
+            .map(|view| model_row(palette, models, view))
+            .collect();
+        page = page.child(ui::titled_section(
+            palette,
+            hook::id("models", &format!("heading.{}", kind.key())),
+            title,
+            ui::group(
+                hook::id("models", &format!("list.{}", kind.key())),
+                palette,
+                rows,
+            ),
+            Some((
+                hook::id("models", &format!("help.{}", kind.key())),
+                help.to_owned(),
+            )),
+        ));
     }
-    ui::group(hook::id("models", "list"), palette, group_rows)
+    page
 }
 
-fn model_row(
-    palette: Palette,
-    models: &Entity<Models>,
-    index: usize,
-    row: RowView,
-    focus: [FocusHandle; 3],
-) -> AnyElement {
-    let [primary_focus, use_focus, delete_focus] = focus;
-    let state = row.state;
-    let mut controls = div()
+fn row_view(index: usize, row: &Row, active: &str) -> RowView {
+    let detail = match (&row.entry.info, row.state) {
+        (_, ModelState::Failed) => super::failure_text(&row.entry),
+        (Some(info), _) => info.description.clone(),
+        (None, _) => languages_text(row.entry.languages).to_owned(),
+    };
+    RowView {
+        index,
+        kind: row.entry.kind,
+        name: row.entry.name.clone(),
+        detail,
+        bytes: row.entry.bytes(),
+        recommended: row.recommended,
+        state: row.state,
+        active: row.entry.kind == ModelKind::Speech && row.entry.id == active,
+        focus: row.focus.clone(),
+    }
+}
+
+/// The buttons a row offers in its state. Only a speech model can be put to use here; Settings
+/// chooses the cleanup model, and there is one voice model.
+fn actions(view: &RowView) -> Vec<Action> {
+    let mut actions = match view.state {
+        ModelState::NotDownloaded | ModelState::Failed => vec![Action::Download],
+        ModelState::Downloading { .. } => vec![Action::Cancel],
+        ModelState::Verifying | ModelState::Ready => Vec::new(),
+    };
+    if matches!(view.state, ModelState::Ready | ModelState::Failed) {
+        if view.kind == ModelKind::Speech && !view.active {
+            actions.push(Action::Use);
+        }
+        actions.push(Action::Delete);
+    }
+    actions
+}
+
+/// Lightest to heaviest: the size, the status, the details button, then the buttons.
+fn model_row(palette: Palette, models: &Entity<Models>, view: RowView) -> AnyElement {
+    let index = view.index;
+    let info = {
+        let models = models.clone();
+        ui::icon_button(
+            palette,
+            hook::indexed("models", "info", index),
+            IconName::Info,
+            format!("Details of {}", view.name),
+            "Details",
+            &view.focus[INFO],
+            move |window: &mut Window, cx: &mut App| {
+                models.update(cx, |models, cx| models.open_details(index, window, cx));
+            },
+        )
+    };
+    let buttons: Vec<AnyElement> = actions(&view)
+        .into_iter()
+        .map(|action| button(palette, models, index, action, &view.focus[action.slot()]))
+        .collect();
+    let (status, tone) = status_text(palette, view.state, view.active);
+    let controls = div()
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(theme::space::SM))
-        .child(status(palette, index, &row));
-    match state {
-        ModelState::NotDownloaded => {
-            controls = controls.child(button(
-                palette,
-                models,
-                index,
-                Action::Download,
-                "Download",
-                &primary_focus,
-            ));
-        }
-        ModelState::Downloading { .. } | ModelState::Verifying => {
-            if matches!(state, ModelState::Downloading { .. }) {
-                controls = controls.child(button(
-                    palette,
-                    models,
-                    index,
-                    Action::Cancel,
-                    "Cancel",
-                    &primary_focus,
-                ));
-            }
-        }
-        ModelState::Ready | ModelState::Failed => {
-            if state == ModelState::Failed {
-                controls = controls.child(button(
-                    palette,
-                    models,
-                    index,
-                    Action::Download,
-                    "Download",
-                    &primary_focus,
-                ));
-            }
-            if !row.active {
-                controls = controls.child(button(
-                    palette,
-                    models,
-                    index,
-                    Action::Use,
-                    "Use",
-                    &use_focus,
-                ));
-            }
-            controls = controls.child(button(
-                palette,
-                models,
-                index,
-                Action::Delete,
-                "Delete",
-                &delete_focus,
-            ));
-        }
-    }
+        .gap(px(space::SM))
+        .child(
+            ui::value(palette)
+                .id(hook::indexed("models", "size", index))
+                .test_support()
+                .min_w(px(size::MODEL_SIZE_WIDTH))
+                .text_right()
+                .child(format_size(view.bytes)),
+        )
+        .child(
+            ui::value(palette)
+                .id(hook::indexed("models", "status", index))
+                .test_support()
+                .min_w(px(size::MODEL_STATUS_WIDTH))
+                .text_right()
+                .text_color(tone)
+                .child(status),
+        )
+        .child(info)
+        .child(
+            div()
+                .min_w(px(size::MODEL_ACTIONS_WIDTH))
+                .flex()
+                .justify_end()
+                .gap(px(space::SM))
+                .children(buttons),
+        );
 
     ui::row(palette)
         .id(hook::indexed("models", "row", index))
@@ -160,14 +238,14 @@ fn model_row(
                     div()
                         .flex()
                         .items_baseline()
-                        .gap(px(theme::space::SM))
+                        .gap(px(space::SM))
                         .child(
                             ui::title(palette)
                                 .id(hook::indexed("models", "name", index))
                                 .test_support()
-                                .child(row.name),
+                                .child(view.name),
                         )
-                        .children(row.recommended.then(|| {
+                        .children(view.recommended.then(|| {
                             div()
                                 .id(hook::indexed("models", "recommended", index))
                                 .test_support()
@@ -182,37 +260,36 @@ fn model_row(
                         .id(hook::indexed("models", "detail", index))
                         .test_support()
                         .w_full()
-                        .child(row.detail),
+                        .child(view.detail),
                 ),
         )
         .child(controls)
         .into_any_element()
 }
 
-/// The state of a model in words. Only the words that name a result take a status color.
-fn status(palette: Palette, index: usize, row: &RowView) -> impl IntoElement + use<> {
-    let (text, tone) = match row.state {
+/// The state of a model in words, with its color. Only the words that name a result take a
+/// status color.
+pub(super) fn status_text(palette: Palette, state: ModelState, active: bool) -> (String, Rgba) {
+    match state {
         ModelState::NotDownloaded => ("Not downloaded".to_owned(), palette.label_secondary),
         ModelState::Downloading { .. } => (
-            row.state
+            state
                 .percent()
                 .map_or_else(|| "Starting".into(), |percent| format!("{percent}%")),
             palette.label,
         ),
         ModelState::Verifying => ("Checking".to_owned(), palette.label_secondary),
-        ModelState::Ready if row.active => ("Active".to_owned(), palette.success),
+        ModelState::Ready if active => ("Active".to_owned(), palette.success),
         ModelState::Ready => ("Downloaded".to_owned(), palette.label_secondary),
         ModelState::Failed => ("Failed verification".to_owned(), palette.error),
-    };
-    ui::value(palette)
-        .id(hook::indexed("models", "status", index))
-        .test_support()
-        .flex()
-        .items_center()
-        .justify_end()
-        .min_w(px(STATUS_WIDTH))
-        .text_color(tone)
-        .child(text)
+    }
+}
+
+pub(super) fn languages_text(languages: Languages) -> &'static str {
+    match languages {
+        Languages::Multilingual => "Multilingual",
+        Languages::English => "English only",
+    }
 }
 
 fn button(
@@ -220,14 +297,13 @@ fn button(
     models: &Entity<Models>,
     index: usize,
     action: Action,
-    label: &'static str,
     focus: &FocusHandle,
-) -> impl IntoElement + use<> {
+) -> AnyElement {
     let press = {
         let models = models.clone();
         move |_: &mut Window, cx: &mut App| {
             models.update(cx, |models, cx| {
-                let Some(id) = models.rows().get(index).map(|row| row.entry.id.clone()) else {
+                let Some(id) = models.all_rows().get(index).map(|row| row.entry.id.clone()) else {
                     return;
                 };
                 // A refused action shows its reason in the notice row.
@@ -240,21 +316,16 @@ fn button(
             });
         }
     };
-    let element = match action {
-        Action::Download => hook::indexed("models", "download", index),
-        Action::Cancel => hook::indexed("models", "cancel", index),
-        Action::Use => hook::indexed("models", "select", index),
-        Action::Delete => hook::indexed("models", "delete", index),
-    };
     ui::button(
         palette,
-        element,
-        label,
+        hook::indexed("models", action.element(), index),
+        action.label(),
         Kind::Plain,
         Some(focus),
         true,
         press,
     )
+    .into_any_element()
 }
 
 /// Sizes in the units whisper.cpp uses on its model page: MB below 1 GB, then GB.

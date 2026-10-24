@@ -97,7 +97,7 @@ pub fn ai_model(page: &Page, cx: &mut App) -> Vec<AnyElement> {
     let Some(model) = model.filter(|_| provider == "local") else {
         return Vec::new();
     };
-    let size = crate::models::panel::format_size(model.bytes);
+    let size = crate::models::panel::format_size(model.bytes());
     let mut rows = vec![page.menu(
         "cleanup.aiModel",
         "AI model",

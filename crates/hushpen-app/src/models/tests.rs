@@ -1,16 +1,11 @@
+use super::testkit::{self, Rig, settle};
 use super::*;
-use crate::storage;
-use gpui_kit::{AppContext, Entity, TestAppContext};
-use hushpen_store::data_dir::DataDir;
+use gpui_kit::{AppContext, TestAppContext};
 use sha2::{Digest, Sha256};
-use std::cell::RefCell;
-use std::collections::VecDeque;
 
 const ALPHA: &[u8] = b"alpha model bytes";
 const BETA: &[u8] = b"beta model bytes!";
 const GAMMA: &[u8] = b"gamma model byte";
-
-type Work = Rc<RefCell<VecDeque<Box<dyn FnOnce() + Send>>>>;
 
 fn content(id: &str) -> &'static [u8] {
     match id {
@@ -33,8 +28,7 @@ fn catalog() -> &'static Catalog {
             "languages": "multilingual",
         })
     };
-    let text = json!({"whisper": [entry("alpha"), entry("beta"), entry("gamma")]}).to_string();
-    Box::leak(Box::new(Catalog::parse(&text).unwrap()))
+    testkit::leak(json!({"whisper": [entry("alpha"), entry("beta"), entry("gamma")]}))
 }
 
 fn transfer(
@@ -65,80 +59,26 @@ fn instant() -> Arc<Transfer> {
     transfer(|spec, _, _| finish_download(spec, content(id_of(spec))))
 }
 
-struct Rig {
-    models: Entity<Models>,
-    storage: Rc<storage::Storage>,
-    work: Work,
-    _tmp: tempfile::TempDir,
-}
-
-impl Rig {
-    fn file(&self, id: &str) -> PathBuf {
-        self.storage
-            .data
-            .whisper_models_dir()
-            .join(format!("ggml-{id}.bin"))
-    }
-
-    fn downloads(&self) -> Vec<String> {
-        std::fs::read_dir(self.storage.data.downloads_dir())
-            .map(|dir| {
-                dir.flatten()
-                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-}
-
+/// The library with `files` already in the speech folder and `active` chosen.
 fn rig(
     cx: &mut TestAppContext,
     files: &[(&str, &[u8])],
     active: Option<&str>,
     transfer: Arc<Transfer>,
 ) -> Rig {
-    let tmp = tempfile::tempdir().unwrap();
-    let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
-    std::fs::create_dir_all(storage.data.whisper_models_dir()).unwrap();
-    for (id, body) in files {
-        std::fs::write(
-            storage
+    testkit::rig(cx, catalog(), transfer, |storage| {
+        std::fs::create_dir_all(storage.data.whisper_models_dir()).unwrap();
+        for (id, body) in files {
+            let path = storage
                 .data
                 .whisper_models_dir()
-                .join(format!("ggml-{id}.bin")),
-            body,
-        )
-        .unwrap();
-    }
-    if let Some(id) = active {
-        storage.settings.set(SETTING, json!(id)).unwrap();
-    }
-    let work: Work = Rc::default();
-    let queue = Rc::clone(&work);
-    let spawn: Spawner = Rc::new(move |job| {
-        queue.borrow_mut().push_back(job);
-        Ok(())
-    });
-    let models =
-        cx.new(|cx| Models::new(Rc::clone(&storage), catalog(), transfer, spawn, None, cx));
-    Rig {
-        models,
-        storage,
-        work,
-        _tmp: tmp,
-    }
-}
-
-/// Runs the queued worker jobs on this thread and applies the events they send, until nothing
-/// is left to do.
-fn settle(cx: &mut TestAppContext, rig: &Rig) {
-    loop {
-        cx.run_until_parked();
-        let Some(job) = rig.work.borrow_mut().pop_front() else {
-            return;
-        };
-        job();
-    }
+                .join(format!("ggml-{id}.bin"));
+            std::fs::write(path, body).unwrap();
+        }
+        if let Some(id) = active {
+            storage.settings.set(SETTING, json!(id)).unwrap();
+        }
+    })
 }
 
 fn state_of(cx: &mut TestAppContext, rig: &Rig, id: &str) -> ModelState {
@@ -220,6 +160,7 @@ fn a_stamped_file_is_ready_without_hashing(cx: &mut TestAppContext) {
         Models::new(
             Rc::clone(&rig.storage),
             catalog(),
+            Machine::test(Platform::Linux, 8 << 30),
             instant(),
             Rc::new(|_| panic!("a stamped file needs no worker")),
             None,

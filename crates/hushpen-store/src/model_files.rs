@@ -172,6 +172,43 @@ pub fn remove(model: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// The bytes the user may still write on the volume that holds `path`.
+pub fn free_bytes(path: &Path) -> io::Result<u64> {
+    let stat = rustix::fs::statvfs(path)?;
+    Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
+}
+
+/// Whether `free` bytes hold a download of `needed` bytes with a 10% margin, so the download
+/// never fills the disk to the last byte.
+pub fn has_room(free: u64, needed: u64) -> bool {
+    free >= needed.saturating_add(needed / 10)
+}
+
+/// Deletes each `*.download` partial in `dir` that nothing wrote to for `max_age`, and returns
+/// how many went. Call it before any download starts: a running download writes its partial all
+/// the time, so it is never that old.
+pub fn sweep_partials(dir: &Path, max_age: std::time::Duration) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "download")
+        })
+        .filter(|entry| {
+            entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .is_ok_and(|time| time.elapsed().is_ok_and(|age| age > max_age))
+        })
+        .filter(|entry| fs::remove_file(entry.path()).is_ok())
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +316,45 @@ mod tests {
         assert!(!path.exists());
         assert!(!stamp_path(&path).exists());
         remove(&path).unwrap();
+    }
+
+    #[test]
+    fn a_download_needs_its_size_and_ten_percent_more() {
+        assert!(has_room(1_100, 1_000));
+        assert!(!has_room(1_099, 1_000));
+        assert!(!has_room(u64::MAX - 1, u64::MAX), "no overflow at the top");
+    }
+
+    #[test]
+    fn the_free_space_of_a_real_folder_is_known() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(free_bytes(tmp.path()).unwrap() > 0);
+        assert!(free_bytes(&tmp.path().join("missing")).is_err());
+    }
+
+    #[test]
+    fn the_sweep_deletes_only_old_partials() {
+        let tmp = tempfile::tempdir().unwrap();
+        let week = std::time::Duration::from_secs(7 * 24 * 3600);
+        let file = |name: &str, age: std::time::Duration| {
+            let path = tmp.path().join(name);
+            fs::write(&path, b"part").unwrap();
+            let when = std::time::SystemTime::now() - age;
+            File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(when)
+                .unwrap();
+            path
+        };
+        let old = file("ggml-old.bin.download", week * 2);
+        let fresh = file("ggml-new.bin.download", week / 7);
+        let other = file("notes.txt", week * 2);
+        assert_eq!(sweep_partials(tmp.path(), week), 1);
+        assert!(!old.exists());
+        assert!(fresh.exists(), "a recent partial can still resume");
+        assert!(other.exists(), "only partials are swept");
+        assert_eq!(sweep_partials(&tmp.path().join("missing"), week), 0);
     }
 }
