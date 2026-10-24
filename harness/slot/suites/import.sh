@@ -1,6 +1,7 @@
 #!/bin/bash
 # File import end to end: VAL-IMP-001 to 008 and 010, VAL-CROSS-003 and 004, the Files view (a
-# window drop, Copy, Export, Retry, Translate, and a Read aloud WAV with espeak-ng), and the thread
+# window drop, Copy, Export, Retry, Translate, and a Read aloud WAV with espeak-ng), a real XDND
+# drop from slot/drag-source.py (skipped when the drag source cannot run), and the thread
 # count of the X11 flow bar watcher over 20 hide and show cycles (a hp4 scrutiny item folded into
 # this feature). VAL-IMP-009 is the heavy cargo test on the Mac.
 # 001 picks speech-short.wav in the portal file dialog that xdg-desktop-portal-gtk shows; every
@@ -69,7 +70,7 @@ ms_clock() {
   }'
 }
 
-echo "== setup: base.en and base, the Import view"
+echo "== setup: base.en and base, the Files view"
 fresh base.en base
 use_model base.en
 open_view
@@ -134,7 +135,7 @@ sleep 0.6
 shot imp-008-search
 [ "$($HC state | jq -r '.history.rows | map(select(.id == "'"$id"'")) | length')" = 1 ] || failures+="the search for speech-short did not find the row; "
 meta=$($HC state | jq -r '.history.rows[0].meta')
-case "$meta" in *Import*speech-short.wav*) ;; *) failures+="the list line reads '$meta'; " ;; esac
+case "$meta" in *File*speech-short.wav*) ;; *) failures+="the list line reads '$meta'; " ;; esac
 $HC action history-open "{\"id\":\"$id\"}" >/dev/null
 wait_until 5 rendered history.detail
 sleep 0.4
@@ -343,10 +344,12 @@ increasing=$(q "select start_ms from segment where transcript_id = '$id' order b
 [ "$increasing" = yes ] || failures+="segment starts do not increase; "
 last_end=$(q "select max(end_ms) from segment where transcript_id = '$id'")
 [ "${last_end:-0}" -gt 590000 ] || failures+="the last segment ends at $last_end ms; "
-grep 'window ' "$ENGINE_LOG" | tail -6 >"$RUN_OUT/imp-003-windows.log"
-[ "$(grep -c 'window [0-9]*/6' "$RUN_OUT/imp-003-windows.log")" = 6 ] || failures+="the engine log does not show 6 windows; "
-grep -q 'window 1/6 0..120 s, overlap 10 s' "$RUN_OUT/imp-003-windows.log" || failures+="no 120 s window with 10 s overlap in the log; "
-grep -q 'window 2/6 110..230 s' "$RUN_OUT/imp-003-windows.log" || failures+="the second window does not start at 110 s; "
+grep 'engine: window ' "$ENGINE_LOG" | tail -6 >"$RUN_OUT/imp-003-windows.log"
+numbers=$(grep -o 'window [0-9]* ' "$RUN_OUT/imp-003-windows.log" | awk '{printf "%s ", $2}')
+[ "$numbers" = "1 2 3 4 5 6 " ] || failures+="the engine log shows windows '$numbers', not 1 to 6; "
+grep -q 'window 1 0\.\.120 s, overlap 10 s' "$RUN_OUT/imp-003-windows.log" || failures+="no 120 s window with 10 s overlap in the log; "
+grep -q 'window 2 110\.\.230 s' "$RUN_OUT/imp-003-windows.log" || failures+="the second window does not start at 110 s; "
+grep -q 'window 6 550\.\.600 s' "$RUN_OUT/imp-003-windows.log" || failures+="the last window does not end at 600 s; "
 check_failures "VAL-IMP-003 long file" "lighthouse $lighthouse, harbor $harbor (11 to 13 each); starts strictly increase; last segment ends at $last_end ms; 6 windows of 120 s with 10 s overlap in engine.log" "$failures"
 
 echo "== VAL-CROSS-004 a Spanish import keeps its language"
@@ -431,6 +434,43 @@ wait_until 10 sh -c "[ \"\$($HC state | jq -r '.read.loading')\" = false ]"
 kokoro=$(read_state .needs_model)
 $HC action read-engine '{"engine":"system"}' >/dev/null
 check_failures "Files view" "the drop queued and finished the WAV; Copy, an SRT export, Show in History, and Retry worked; translate is off for base.en; Read aloud wrote a $wav_bytes byte WAV with espeak-ng; Kokoro needs its model: $kokoro" "$failures"
+
+echo "== a real XDND drop: a WAV from a GTK drag source lands in the queue, a .txt opens Read aloud"
+failures=""
+open_view
+$HC action import-clear >/dev/null
+read -r dx dy <<<"$($HC tree | jq -r '[.[] | select(.id == "import.drop") | .root_bounds
+  | "\((.x + .width / 2) | floor) \((.y + .height / 2) | floor)"] | first')"
+T0=$(now_ms)
+reason=$(DRAG_SHOT=xdnd-wav-drag-over /harness/slot/xdnd-drag.sh "$dx" "$dy" "$FIX/speech-short.wav")
+drag=$?
+if [ "$drag" = 2 ]; then
+  check "real XDND drop" skip "$reason"
+else
+  [ "$drag" = 0 ] || failures+="the WAV drag ended with $drag: $reason; "
+  wait_until 120 item_final speech-short.wav || failures+="the dropped WAV did not end; "
+  item_is speech-short.wav done || failures+="the dropped WAV ended '$(item speech-short.wav .state)'; "
+  ievents | grep -q ' queued speech-short.wav' || failures+="no queued event for the dropped WAV; "
+  shot xdnd-wav-done
+  note=/tmp/xdnd-note.txt
+  printf '%s\n' "Hushpen reads this note aloud." >"$note"
+  chars=$(wc -m <"$note")
+  $HC action read-text '{"text":""}' >/dev/null
+  [ "$(read_state .text_chars)" = 0 ] || failures+="the text area was not emptied before the drop; "
+  focus "$(app_window)"
+  $HC click sidebar.history >/dev/null
+  wait_until 5 view_is history
+  read -r ox oy <<<"$(win_origin "$(app_window)")"
+  reason=$(DRAG_SHOT=xdnd-txt-drag-over /harness/slot/xdnd-drag.sh $((ox + 600)) $((oy + 300)) "$note") ||
+    failures+="the .txt drag failed: $reason; "
+  wait_until 5 view_is files || failures+="the .txt drop left the view on $($HC state | jq -r .view); "
+  [ "$(files .mode)" = readAloud ] || failures+="the .txt drop left the mode on $(files .mode); "
+  wait_until 5 sh -c "[ \"\$($HC state | jq -r .read.text_chars)\" = $chars ]" ||
+    failures+="the text area holds $(read_state .text_chars) characters, not the $chars of the file; "
+  shot xdnd-txt-read-aloud
+  rm -f "$note"
+  check_failures "real XDND drop" "a WAV dragged from slot/drag-source.py onto the drop zone was queued and transcribed; a .txt dropped on History opened Files in Read aloud with its $chars characters" "$failures"
+fi
 
 echo "== the flow bar watcher thread does not leak over 20 hide and show cycles"
 failures=""
