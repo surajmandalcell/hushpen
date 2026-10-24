@@ -6,6 +6,7 @@
 //! database at once and keeps it, with its audio, for the undo window. When the window ends,
 //! or the app quits, or the app starts again, the audio file goes too.
 
+mod detail;
 pub mod export;
 pub mod panel;
 pub mod playback;
