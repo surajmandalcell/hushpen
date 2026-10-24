@@ -417,6 +417,9 @@ mod tests {
         }
     }
 
+    /// The cleanup budget of every test call; the fakes answer at once, so it never runs out.
+    const TIMEOUT: Duration = Duration::from_secs(3);
+
     const RULE: &str = "So I think we should meet on Tuesday, no wait, Wednesday at three PM.";
 
     fn go(fake: &Fake) -> Option<Record> {
@@ -424,7 +427,7 @@ mod tests {
             Some(fake),
             RULE,
             &[],
-            Duration::from_secs(3),
+            TIMEOUT,
             &CancelToken::default(),
             &Progress::default(),
         )
@@ -456,7 +459,7 @@ mod tests {
             Some(&fake),
             RULE,
             &[],
-            Duration::from_secs(3),
+            TIMEOUT,
             &CancelToken::default(),
             &progress,
         );
@@ -521,7 +524,7 @@ mod tests {
             None,
             RULE,
             &[],
-            Duration::from_secs(3),
+            TIMEOUT,
             &CancelToken::default(),
             &Progress::default(),
         )
@@ -537,14 +540,7 @@ mod tests {
         let fake = Fake::answering(Attempt::Done("never".into()));
         let progress = Progress::default();
         assert_eq!(
-            run(
-                Some(&fake),
-                RULE,
-                &[],
-                Duration::from_secs(3),
-                &token,
-                &progress
-            ),
+            run(Some(&fake), RULE, &[], TIMEOUT, &token, &progress),
             None
         );
         assert!(fake.seen.lock().unwrap().is_empty());
@@ -554,7 +550,7 @@ mod tests {
                 Some(&Fake::answering(Attempt::Cancelled)),
                 RULE,
                 &[],
-                Duration::from_secs(3),
+                TIMEOUT,
                 &CancelToken::default(),
                 &progress
             ),
@@ -581,12 +577,7 @@ mod tests {
         let cleaner =
             cleaner_for(&storage, &host, &transport).expect("the endpoint needs no worker");
         // No URL is set, so the request is refused before any socket opens.
-        let attempt = cleaner.clean(
-            "hello",
-            &[],
-            Duration::from_secs(1),
-            &CancelToken::default(),
-        );
+        let attempt = cleaner.clean("hello", &[], TIMEOUT, &CancelToken::default());
         assert_eq!(attempt, Attempt::Failed("ENDPOINT_FAILED".into()));
     }
 
@@ -599,7 +590,7 @@ mod tests {
             Some(&fake),
             rule,
             &keep,
-            Duration::from_secs(3),
+            TIMEOUT,
             &CancelToken::default(),
             &Progress::default(),
         )
@@ -612,7 +603,7 @@ mod tests {
             Some(&kept),
             rule,
             &keep,
-            Duration::from_secs(3),
+            TIMEOUT,
             &CancelToken::default(),
             &Progress::default(),
         )
@@ -625,7 +616,7 @@ mod tests {
             Some(fake),
             "make this formal",
             "hey can you send me the file",
-            Duration::from_secs(3),
+            TIMEOUT,
             &CancelToken::default(),
             &Progress::default(),
         )

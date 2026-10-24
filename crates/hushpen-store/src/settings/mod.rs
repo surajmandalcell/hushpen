@@ -15,6 +15,7 @@ use std::io;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 const SCHEMA_VERSION: i64 = 1;
 const UNKNOWN_KEY: &str = "_unknown";
@@ -95,6 +96,17 @@ impl SettingsStore {
 
     pub fn get(&self, key: &str) -> Option<Value> {
         self.lock().values.get(key).cloned()
+    }
+
+    /// A milliseconds setting such as `cleanup.llm.timeoutMs`. The registry default is the one
+    /// fallback, for a key that holds no number.
+    pub fn millis(&self, key: &str) -> Duration {
+        let ms = self
+            .get(key)
+            .or_else(|| Some(registry::find(key)?.default_value(Os::CURRENT)))
+            .and_then(|value| value.as_u64())
+            .unwrap_or_default();
+        Duration::from_millis(ms)
     }
 
     /// A copy of every known key and its current value.

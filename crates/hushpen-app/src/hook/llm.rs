@@ -52,12 +52,8 @@ pub fn attach(cx: &mut App, host: Rc<LlmHost>, storage: Rc<Storage>) {
             let host = Rc::clone(&host);
             let last = last.clone();
             move |_, args| {
-                let default_ms = storage
-                    .settings
-                    .get("cleanup.llm.timeoutMs")
-                    .and_then(|value| value.as_u64())
-                    .unwrap_or(3000);
-                start_job(&host, &last, &args, default_ms)
+                let default_timeout = storage.settings.millis("cleanup.llm.timeoutMs");
+                start_job(&host, &last, &args, default_timeout)
             }
         },
     );
@@ -97,18 +93,17 @@ fn start_job(
     host: &LlmHost,
     last: &LastJob,
     args: &Value,
-    default_timeout_ms: u64,
+    default_timeout: Duration,
 ) -> Result<Value, String> {
     let text = args
         .get("text")
         .and_then(Value::as_str)
         .ok_or_else(|| "needs args like {\"text\": \"um hello\"}".to_string())?
         .to_owned();
-    let timeout = Duration::from_millis(
-        args.get("timeoutMs")
-            .and_then(Value::as_u64)
-            .unwrap_or(default_timeout_ms),
-    );
+    let timeout = args
+        .get("timeoutMs")
+        .and_then(Value::as_u64)
+        .map_or(default_timeout, Duration::from_millis);
     let client = host
         .client()
         .ok_or_else(|| "AI cleanup is off or has no verified model".to_string())?;
@@ -194,15 +189,26 @@ mod tests {
     #[test]
     fn a_job_without_a_worker_is_refused() {
         let (host, _dir) = idle_host();
-        let error =
-            start_job(&host, &LastJob::default(), &json!({"text": "um"}), 3000).unwrap_err();
+        let error = start_job(
+            &host,
+            &LastJob::default(),
+            &json!({"text": "um"}),
+            Duration::from_secs(3),
+        )
+        .unwrap_err();
         assert!(error.contains("off"), "{error}");
     }
 
     #[test]
     fn a_job_without_text_is_refused() {
         let (host, _dir) = idle_host();
-        let error = start_job(&host, &LastJob::default(), &json!({}), 3000).unwrap_err();
+        let error = start_job(
+            &host,
+            &LastJob::default(),
+            &json!({}),
+            Duration::from_secs(3),
+        )
+        .unwrap_err();
         assert!(error.contains("text"), "{error}");
     }
 }

@@ -34,15 +34,7 @@ const AI_PROVIDER_SETTING: &str = "cleanup.llm.provider";
 
 const AI_TIMEOUT_SETTING: &str = "cleanup.llm.timeoutMs";
 
-const AI_DEFAULT_TIMEOUT_MS: u64 = if cfg!(target_os = "linux") {
-    8_000
-} else {
-    3_000
-};
-
 const AI_ENDPOINT_TIMEOUT_SETTING: &str = "cleanup.llm.endpointTimeoutMs";
-
-const AI_ENDPOINT_DEFAULT_TIMEOUT_MS: u64 = 6_000;
 
 impl Controller {
     /// Whether the settings ask for AI cleanup. The cleaner source picks the provider.
@@ -64,18 +56,12 @@ impl Controller {
     /// How long the model step may take: the endpoint has its own limit, because a network
     /// round trip is not a local generation.
     pub(super) fn ai_timeout(&self) -> Duration {
-        let (key, default) = if self.ai_uses_endpoint() {
-            (AI_ENDPOINT_TIMEOUT_SETTING, AI_ENDPOINT_DEFAULT_TIMEOUT_MS)
+        let key = if self.ai_uses_endpoint() {
+            AI_ENDPOINT_TIMEOUT_SETTING
         } else {
-            (AI_TIMEOUT_SETTING, AI_DEFAULT_TIMEOUT_MS)
+            AI_TIMEOUT_SETTING
         };
-        let ms = self
-            .storage
-            .settings
-            .get(key)
-            .and_then(|value| value.as_u64())
-            .unwrap_or(default);
-        Duration::from_millis(ms)
+        self.storage.settings.millis(key)
     }
 
     /// The rule text, then the model's rewrite when AI cleanup is on. Every way the model step
