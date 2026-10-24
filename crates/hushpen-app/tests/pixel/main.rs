@@ -384,16 +384,24 @@ fn the_light_and_dark_baselines_differ_and_follow_the_palette_for_every_scene() 
         assert_eq!(dark.dimensions(), (1880, 1200), "{name}: dark size");
         assert_eq!(light.dimensions(), (1880, 1200), "{name}: light size");
         assert_ne!(dark, light, "{name}");
-        // The right margin of the content pane: no view draws there, not even a full list.
+        // The right margin of the content pane: no view draws there, not even a full list. A
+        // sheet dims it with the scrim.
+        let content = |scrim: u32, content: u32| {
+            if matches!(scene, Scene::ModelsDetails) {
+                over(scrim, content >> 8)
+            } else {
+                format!("#{:06X}", content >> 8)
+            }
+        };
         assert_near(
             &hex_at(&dark, 928, 580),
-            "#1E1E1E",
+            &content(theme::dark::SCRIM, theme::dark::CONTENT),
             1,
             &format!("{name}: dark content"),
         );
         assert_near(
             &hex_at(&light, 928, 580),
-            "#F5F5F5",
+            &content(theme::light::SCRIM, theme::light::CONTENT),
             1,
             &format!("{name}: light content"),
         );
