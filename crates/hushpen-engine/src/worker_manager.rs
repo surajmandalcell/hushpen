@@ -1,17 +1,14 @@
-//! The supervisor thread of the LLM child. It follows the engine supervisor (`manager`): it
+//! The supervisor thread of a worker child. It follows the engine supervisor (`manager`): it
 //! owns the process and every deadline, all writes to the child's stdin happen here, and every
-//! job reaches an outcome whatever the child does. The caller turns any failure into the rule
-//! text.
+//! job reaches an outcome whatever the child does.
 
 use crate::backoff::Backoff;
 use crate::client::{ChildSpec, Failure, Timing};
 use crate::engine_log::{EngineLog, Level};
-use crate::llm_client::{
-    LlmCmd, LlmDone, LlmLoaded, LlmOutcome, LlmShared, LlmSpec, LlmState, LlmStatus, LlmWork,
-};
-use hushpen_core::error;
-use hushpen_core::llm_protocol::{LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason};
-use hushpen_core::protocol::{read_frame, write_json};
+use crate::worker::{Cmd, Loaded, Outcome, Protocol, Reply, Shared, Signal, WorkerState};
+use hushpen_core::llm_protocol::UnloadReason;
+use hushpen_core::protocol::{Params, write_json};
+use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
@@ -20,31 +17,36 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-pub(crate) enum Msg {
-    Cmd(LlmCmd),
-    Child { generation: u64, event: ChildEvent },
+pub(crate) enum Msg<P: Protocol> {
+    Cmd(Cmd<P>),
+    Child {
+        generation: u64,
+        event: ChildEvent<P::Event>,
+    },
 }
 
-pub(crate) enum ChildEvent {
-    Event(LlmEvent),
+pub(crate) enum ChildEvent<E> {
+    Event(E),
     /// The child's output ended or held something that is not a frame.
     Closed(String),
 }
 
-pub(crate) struct Setup {
+pub(crate) struct Setup<P: Protocol> {
     pub spec: ChildSpec,
     pub timing: Timing,
     pub log: Arc<EngineLog>,
-    pub shared: Arc<LlmShared>,
-    pub sender: Sender<Msg>,
-    pub receiver: Receiver<Msg>,
+    pub shared: Arc<Shared>,
+    pub sender: Sender<Msg<P>>,
+    pub receiver: Receiver<Msg<P>>,
 }
 
-pub(crate) fn spawn(setup: Setup) -> JoinHandle<()> {
+pub(crate) fn spawn<P: Protocol>(setup: Setup<P>) -> JoinHandle<()> {
     thread::Builder::new()
-        .name("llm-supervisor".into())
+        .name(format!("{}-supervisor", P::NAME))
         .spawn(move || Manager::new(setup).run())
-        .unwrap_or_else(|error| panic!("could not start the LLM supervisor thread: {error}"))
+        .unwrap_or_else(|error| {
+            panic!("could not start the {} supervisor thread: {error}", P::NAME)
+        })
 }
 
 /// How the next start is timed after the child went down.
@@ -67,34 +69,34 @@ struct Running {
     next_ping: Instant,
 }
 
-struct LoadEntry {
-    spec: LlmSpec,
+struct LoadEntry<S> {
+    spec: S,
     /// `None` for the load after a restart, which nobody waits for.
-    reply: Option<Sender<Result<LlmLoaded, Failure>>>,
+    reply: Option<Sender<Result<Loaded, Failure>>>,
 }
 
-struct Pending {
+struct Pending<P: Protocol> {
     job: u64,
-    work: LlmWork,
-    reply: Sender<LlmOutcome>,
+    work: P::Work,
+    reply: Sender<Reply<P>>,
     deadline: Instant,
 }
 
-struct Inflight {
-    reply: Sender<LlmOutcome>,
+struct Inflight<P: Protocol> {
+    reply: Sender<Reply<P>>,
     sent: Instant,
     cancel_deadline: Option<Instant>,
     kind: &'static str,
     model: String,
 }
 
-struct Manager {
+struct Manager<P: Protocol> {
     spec: ChildSpec,
     timing: Timing,
     log: Arc<EngineLog>,
-    shared: Arc<LlmShared>,
-    sender: Sender<Msg>,
-    receiver: Receiver<Msg>,
+    shared: Arc<Shared>,
+    sender: Sender<Msg<P>>,
+    receiver: Receiver<Msg<P>>,
     backoff: Backoff,
     /// Counts child generations so a late message of a dead child is ignored.
     generation: u64,
@@ -103,13 +105,13 @@ struct Manager {
     /// A write failed. The reason is acted on after the message that caused it.
     broken: Option<String>,
     /// The last model the worker confirmed. A restart gives it to the new child.
-    current: Option<LlmSpec>,
+    current: Option<P::Spec>,
     /// The model was in memory when the last child went down, so the new child loads it at once.
     warm: bool,
-    sent_loads: VecDeque<LoadEntry>,
-    unsent_loads: VecDeque<LoadEntry>,
-    pending: VecDeque<Pending>,
-    inflight: HashMap<u64, Inflight>,
+    sent_loads: VecDeque<LoadEntry<P::Spec>>,
+    unsent_loads: VecDeque<LoadEntry<P::Spec>>,
+    pending: VecDeque<Pending<P>>,
+    inflight: HashMap<u64, Inflight<P>>,
     model: Option<String>,
     backend: Option<String>,
     gpu: bool,
@@ -118,8 +120,8 @@ struct Manager {
     stopped: bool,
 }
 
-impl Manager {
-    fn new(setup: Setup) -> Self {
+impl<P: Protocol> Manager<P> {
+    fn new(setup: Setup<P>) -> Self {
         let backoff = Backoff::new(setup.timing.backoff.clone(), setup.timing.healthy_after);
         Self {
             spec: setup.spec,
@@ -153,7 +155,7 @@ impl Manager {
         loop {
             let wait = self.next_wakeup().saturating_duration_since(Instant::now());
             match self.receiver.recv_timeout(wait) {
-                Ok(Msg::Cmd(LlmCmd::Shutdown)) | Err(RecvTimeoutError::Disconnected) => {
+                Ok(Msg::Cmd(Cmd::Shutdown)) | Err(RecvTimeoutError::Disconnected) => {
                     self.stop();
                     return;
                 }
@@ -164,11 +166,11 @@ impl Manager {
         }
     }
 
-    fn handle(&mut self, message: Msg) {
+    fn handle(&mut self, message: Msg<P>) {
         match message {
             Msg::Cmd(command) => self.command(command),
             Msg::Child { generation, event } if generation == self.generation => match event {
-                ChildEvent::Event(event) => self.event(event),
+                ChildEvent::Event(event) => self.event(P::signal(event)),
                 ChildEvent::Closed(reason) => self.down(&reason, Restart::Backoff),
             },
             Msg::Child { .. } => {}
@@ -177,9 +179,9 @@ impl Manager {
 
     // ---- commands from the app ----
 
-    fn command(&mut self, command: LlmCmd) {
+    fn command(&mut self, command: Cmd<P>) {
         match command {
-            LlmCmd::Load { spec, reply } => {
+            Cmd::Load { spec, reply } => {
                 let entry = LoadEntry {
                     spec,
                     reply: Some(reply),
@@ -191,7 +193,7 @@ impl Manager {
                     self.publish();
                 }
             }
-            LlmCmd::Run { job, work, reply } => {
+            Cmd::Run { job, work, reply } => {
                 if self.is_ready() {
                     self.send_job(job, &work, reply);
                 } else {
@@ -203,13 +205,13 @@ impl Manager {
                     });
                 }
             }
-            LlmCmd::Cancel { job } => self.cancel(job),
-            LlmCmd::Unload => {
+            Cmd::Cancel { job } => self.cancel(job),
+            Cmd::Unload => {
                 if self.is_ready() {
-                    self.write(&LlmRequest::Unload);
+                    self.write(&P::unload());
                 }
             }
-            LlmCmd::Shutdown => {}
+            Cmd::Shutdown => {}
         }
     }
 
@@ -217,13 +219,13 @@ impl Manager {
         if let Some(position) = self.pending.iter().position(|p| p.job == job)
             && let Some(pending) = self.pending.remove(position)
         {
-            let _ = pending.reply.send(LlmOutcome::Cancelled);
+            let _ = pending.reply.send(Reply::End(Outcome::Cancelled));
             self.log.write(
                 Level::Info,
                 "JOB",
                 &format!(
                     "job={job} kind={} model=- code=CANCELLED queued",
-                    pending.work.kind()
+                    P::kind(&pending.work)
                 ),
             );
             return;
@@ -234,18 +236,12 @@ impl Manager {
         };
         if inflight.cancel_deadline.is_none() {
             inflight.cancel_deadline = Some(Instant::now() + grace);
-            self.write(&LlmRequest::Cancel { job });
+            self.write(&P::cancel(job));
         }
     }
 
-    fn send_load(&mut self, entry: LoadEntry) {
-        let request = LlmRequest::LoadModel {
-            path: entry.spec.path.to_string_lossy().into_owned(),
-            family: entry.spec.family.clone(),
-            gpu: entry.spec.gpu,
-            threads: u32::try_from(entry.spec.threads).unwrap_or(u32::MAX),
-            idle_secs: entry.spec.idle_secs,
-        };
+    fn send_load(&mut self, entry: LoadEntry<P::Spec>) {
+        let request = P::load(&entry.spec);
         if let Some(running) = self.running.as_mut() {
             running.configured = true;
         }
@@ -254,7 +250,7 @@ impl Manager {
         self.publish();
     }
 
-    fn send_job(&mut self, job: u64, work: &LlmWork, reply: Sender<LlmOutcome>) {
+    fn send_job(&mut self, job: u64, work: &P::Work, reply: Sender<Reply<P>>) {
         // After a restart that left the model unloaded, the new child learns the model here.
         if self.running.as_ref().is_some_and(|r| !r.configured)
             && let Some(spec) = self.current.clone()
@@ -266,68 +262,37 @@ impl Manager {
             .back()
             .map(|entry| &entry.spec)
             .or(self.current.as_ref())
-            .map_or_else(
-                || "-".to_owned(),
-                |load| crate::server::model_name(&load.path),
-            );
+            .map_or_else(|| "-".to_owned(), P::model_name);
         self.inflight.insert(
             job,
             Inflight {
                 reply,
                 sent: Instant::now(),
                 cancel_deadline: None,
-                kind: work.kind(),
+                kind: P::kind(work),
                 model,
             },
         );
-        let request = match work {
-            LlmWork::Cleanup {
-                system,
-                user,
-                max_tokens,
-            } => LlmRequest::Cleanup {
-                job,
-                system: system.clone(),
-                user: user.clone(),
-                max_tokens: *max_tokens,
-            },
-            LlmWork::Command {
-                instruction,
-                selection,
-                max_tokens,
-            } => LlmRequest::Command {
-                job,
-                instruction: instruction.clone(),
-                selection: selection.clone(),
-                max_tokens: *max_tokens,
-            },
-        };
-        self.write(&request);
+        self.write(&P::job(job, work));
     }
 
     // ---- events from the child ----
 
-    fn event(&mut self, event: LlmEvent) {
-        match event {
-            LlmEvent::Ready { protocol, .. } if protocol != LLM_PROTOCOL_VERSION => {
+    fn event(&mut self, signal: Signal<P>) {
+        match signal {
+            Signal::Ready { protocol, .. } if protocol != P::PROTOCOL_VERSION => {
                 self.down("protocol mismatch", Restart::Backoff);
             }
-            LlmEvent::Ready {
+            Signal::Ready {
                 version, backend, ..
             } => self.on_ready(&version, &backend),
-            LlmEvent::Pong => {
+            Signal::Pong => {
                 if let Some(running) = self.running.as_mut() {
                     running.last_pong = Instant::now();
                 }
             }
-            LlmEvent::Loading { .. } => {}
-            LlmEvent::Loaded {
-                model,
-                ms,
-                gpu,
-                backend,
-            } => self.on_loaded(model, ms, gpu, backend),
-            LlmEvent::Unloaded { reason } => {
+            Signal::Loaded(loaded) => self.on_loaded(loaded),
+            Signal::Unloaded(reason) => {
                 self.log.write(
                     Level::Info,
                     "UNLOADED",
@@ -337,80 +302,72 @@ impl Manager {
                 self.unloaded = Some(reason);
                 self.publish();
             }
-            LlmEvent::Result { job, text, stats } => {
-                let line = format!(
-                    "prompt_tokens={} reused_tokens={} new_tokens={} gen_tokens={} load_ms={} ms={}",
-                    stats.prompt_tokens,
-                    stats.reused_tokens,
-                    stats.new_tokens,
-                    stats.gen_tokens,
-                    stats.load_ms,
-                    stats.ms
-                );
-                self.finish(job, LlmOutcome::Done(LlmDone { text, stats }), &line);
+            Signal::Progress { job, progress } => {
+                if let Some(inflight) = self.inflight.get(&job) {
+                    let _ = inflight.reply.send(Reply::Progress(progress));
+                }
             }
-            LlmEvent::Cancelled { job } => self.finish(job, LlmOutcome::Cancelled, ""),
-            LlmEvent::Error {
+            Signal::Done { job, done, counts } => self.finish(job, Outcome::Done(done), &counts),
+            Signal::Cancelled { job } => self.finish(job, Outcome::Cancelled, ""),
+            Signal::Error {
                 job: Some(job),
                 code,
                 params,
             } => {
                 let failure = failure_from(code, &params);
-                self.finish(job, LlmOutcome::Failed(failure), "");
+                self.finish(job, Outcome::Failed(failure), "");
             }
-            LlmEvent::Error {
+            Signal::Error {
                 job: None,
                 code,
                 params,
-            } => {
-                let failure = failure_from(code.clone(), &params);
-                if code == error::LLM_LOAD_FAILED
-                    && let Some(entry) = self.sent_loads.pop_front()
-                {
-                    self.log.write(
-                        Level::Warn,
-                        "LOAD_FAILED",
-                        &format!(
-                            "model={} code={code}",
-                            crate::server::model_name(&entry.spec.path)
-                        ),
-                    );
-                    if let Some(reply) = entry.reply {
-                        let _ = reply.send(Err(failure));
-                    }
-                    self.publish();
-                } else {
-                    self.log
-                        .write(Level::Warn, "LLM_ERROR", &format!("code={code}"));
-                }
-            }
+            } => self.on_error(code, &params),
+            Signal::Other => {}
         }
     }
 
-    fn on_loaded(&mut self, model: String, ms: u64, gpu: bool, backend: String) {
+    fn on_error(&mut self, code: String, params: &Params) {
+        let failure = failure_from(code.clone(), params);
+        if code == P::LOAD_FAILED
+            && let Some(entry) = self.sent_loads.pop_front()
+        {
+            self.log.write(
+                Level::Warn,
+                "LOAD_FAILED",
+                &format!("model={} code={code}", P::model_name(&entry.spec)),
+            );
+            if let Some(reply) = entry.reply {
+                let _ = reply.send(Err(failure));
+            }
+            self.publish();
+        } else {
+            self.log
+                .write(Level::Warn, "WORKER_ERROR", &format!("code={code}"));
+        }
+    }
+
+    fn on_loaded(&mut self, loaded: Loaded) {
         // A reload after an idle unload arrives with no request waiting for it.
         let entry = self.sent_loads.pop_front();
         self.log.write(
             Level::Info,
             "LOADED",
             &format!(
-                "model={model} gpu={} backend={backend} ms={ms}",
-                on_off(gpu)
+                "model={} gpu={} backend={} ms={}",
+                loaded.model,
+                on_off(loaded.gpu),
+                loaded.backend,
+                loaded.ms
             ),
         );
-        self.model = Some(model.clone());
-        self.backend = Some(backend.clone());
-        self.gpu = gpu;
+        self.model = Some(loaded.model.clone());
+        self.backend = Some(loaded.backend.clone());
+        self.gpu = loaded.gpu;
         self.unloaded = None;
         if let Some(entry) = entry {
             self.current = Some(entry.spec);
             if let Some(reply) = entry.reply {
-                let _ = reply.send(Ok(LlmLoaded {
-                    model,
-                    ms,
-                    gpu,
-                    backend,
-                }));
+                let _ = reply.send(Ok(loaded));
             }
         }
         self.publish();
@@ -449,22 +406,21 @@ impl Manager {
         self.publish();
     }
 
-    /// Answers a job and writes its line to `llm.log`. The line holds counts, never text.
-    fn finish(&mut self, job: u64, outcome: LlmOutcome, counts: &str) {
+    /// Answers a job and writes its line to the log. The line holds counts, never text.
+    fn finish(&mut self, job: u64, outcome: Outcome<P::Done>, counts: &str) {
         let Some(inflight) = self.inflight.remove(&job) else {
             return;
         };
         // The user asked to stop this job, so a result that raced the cancel is dropped.
-        let outcome =
-            if inflight.cancel_deadline.is_some() && matches!(outcome, LlmOutcome::Done(_)) {
-                LlmOutcome::Cancelled
-            } else {
-                outcome
-            };
+        let outcome = if inflight.cancel_deadline.is_some() && matches!(outcome, Outcome::Done(_)) {
+            Outcome::Cancelled
+        } else {
+            outcome
+        };
         let (code, level) = match &outcome {
-            LlmOutcome::Done(_) => ("OK", Level::Info),
-            LlmOutcome::Cancelled => ("CANCELLED", Level::Info),
-            LlmOutcome::Failed(failure) => (failure.code.as_str(), Level::Warn),
+            Outcome::Done(_) => ("OK", Level::Info),
+            Outcome::Cancelled => ("CANCELLED", Level::Info),
+            Outcome::Failed(failure) => (failure.code.as_str(), Level::Warn),
         };
         self.log.write(
             level,
@@ -478,7 +434,7 @@ impl Manager {
                 inflight.sent.elapsed().as_millis()
             ),
         );
-        let _ = inflight.reply.send(outcome);
+        let _ = inflight.reply.send(Reply::End(outcome));
     }
 
     // ---- the child process ----
@@ -513,13 +469,7 @@ impl Manager {
         let now = Instant::now();
         self.log
             .write(Level::Info, "SPAWN", &format!("pid={}", child.id()));
-        let hello = write_json(
-            &mut stdin,
-            &LlmRequest::Hello {
-                protocol: LLM_PROTOCOL_VERSION,
-            }
-            .to_json(),
-        );
+        let hello = write_json(&mut stdin, &P::hello());
         self.spawn_readers(stdout, stderr);
         self.running = Some(Running {
             child,
@@ -551,16 +501,16 @@ impl Manager {
     fn spawn_readers(&self, stdout: ChildStdout, stderr: ChildStderr) {
         let generation = self.generation;
         let sender = self.sender.clone();
-        thread::spawn(move || read_events(stdout, &sender, generation));
+        thread::spawn(move || read_events::<P>(stdout, &sender, generation));
         let log = Arc::clone(&self.log);
         thread::spawn(move || pump_stderr(stderr, &log));
     }
 
-    fn write(&mut self, request: &LlmRequest) {
+    fn write(&mut self, request: &Value) {
         let Some(running) = self.running.as_mut() else {
             return;
         };
-        if let Err(failure) = write_json(&mut running.stdin, &request.to_json()) {
+        if let Err(failure) = write_json(&mut running.stdin, request) {
             self.broken
                 .get_or_insert_with(|| format!("write failed: {failure}"));
         }
@@ -580,7 +530,7 @@ impl Manager {
         let _ = running.child.kill();
         self.warm = self.model.is_some();
 
-        let failure = Failure::new(error::LLM_CRASHED, reason);
+        let failure = Failure::new(P::CRASHED, reason);
         let jobs: Vec<u64> = self.inflight.keys().copied().collect();
         for job in jobs {
             let cancelled = self
@@ -588,9 +538,9 @@ impl Manager {
                 .get(&job)
                 .is_some_and(|inflight| inflight.cancel_deadline.is_some());
             let outcome = if cancelled {
-                LlmOutcome::Cancelled
+                Outcome::Cancelled
             } else {
-                LlmOutcome::Failed(failure.clone())
+                Outcome::Failed(failure.clone())
             };
             self.finish(job, outcome, "");
         }
@@ -632,12 +582,16 @@ impl Manager {
 
     fn stop(&mut self) {
         self.stopped = true;
-        let failure = Failure::new(error::LLM_UNAVAILABLE, "the worker is shutting down");
+        let failure = Failure::new(P::UNAVAILABLE, "the worker is shutting down");
         for pending in self.pending.drain(..) {
-            let _ = pending.reply.send(LlmOutcome::Failed(failure.clone()));
+            let _ = pending
+                .reply
+                .send(Reply::End(Outcome::Failed(failure.clone())));
         }
         for (_, inflight) in self.inflight.drain() {
-            let _ = inflight.reply.send(LlmOutcome::Failed(failure.clone()));
+            let _ = inflight
+                .reply
+                .send(Reply::End(Outcome::Failed(failure.clone())));
         }
         for entry in self.sent_loads.drain(..).chain(self.unsent_loads.drain(..)) {
             if let Some(reply) = entry.reply {
@@ -645,7 +599,7 @@ impl Manager {
             }
         }
         if let Some(mut running) = self.running.take() {
-            let _ = write_json(&mut running.stdin, &LlmRequest::Shutdown.to_json());
+            let _ = write_json(&mut running.stdin, &P::shutdown());
             drop(running.stdin);
             let deadline = Instant::now() + Duration::from_secs(1);
             let exited = loop {
@@ -714,7 +668,7 @@ impl Manager {
             if let Some(running) = self.running.as_mut() {
                 running.next_ping = next;
             }
-            self.write(&LlmRequest::Ping);
+            self.write(&P::ping());
         }
     }
 
@@ -722,21 +676,18 @@ impl Manager {
         let mut kept = VecDeque::new();
         for pending in self.pending.drain(..) {
             if now >= pending.deadline {
-                let failure = Failure::new(
-                    error::LLM_UNAVAILABLE,
-                    "the worker did not come back in time",
-                );
+                let failure = Failure::new(P::UNAVAILABLE, "the worker did not come back in time");
                 self.log.write(
                     Level::Warn,
                     "JOB",
                     &format!(
                         "job={} kind={} model=- code={}",
                         pending.job,
-                        pending.work.kind(),
-                        error::LLM_UNAVAILABLE
+                        P::kind(&pending.work),
+                        P::UNAVAILABLE
                     ),
                 );
-                let _ = pending.reply.send(LlmOutcome::Failed(failure));
+                let _ = pending.reply.send(Reply::End(Outcome::Failed(failure)));
             } else {
                 kept.push_back(pending);
             }
@@ -777,17 +728,17 @@ impl Manager {
 
     fn publish(&self) {
         let state = if self.stopped {
-            LlmState::Stopped
+            WorkerState::Stopped
         } else {
             match &self.running {
-                None => LlmState::Backoff,
-                Some(running) if !running.ready => LlmState::Starting,
-                Some(_) if !self.sent_loads.is_empty() => LlmState::Loading,
-                Some(_) => LlmState::Ready,
+                None => WorkerState::Backoff,
+                Some(running) if !running.ready => WorkerState::Starting,
+                Some(_) if !self.sent_loads.is_empty() => WorkerState::Loading,
+                Some(_) => WorkerState::Ready,
             }
         };
         let pid = self.running.as_ref().map(|running| running.child.id());
-        self.shared.update(|status: &mut LlmStatus| {
+        self.shared.update(|status| {
             status.pid = pid;
             status.state = state;
             status.model = self.model.clone();
@@ -799,7 +750,7 @@ impl Manager {
     }
 }
 
-fn failure_from(code: String, params: &hushpen_core::protocol::Params) -> Failure {
+fn failure_from(code: String, params: &Params) -> Failure {
     let (detail, reason) = hushpen_core::protocol::error_texts(params);
     Failure {
         code,
@@ -812,16 +763,12 @@ fn on_off(on: bool) -> &'static str {
     if on { "on" } else { "off" }
 }
 
-fn read_events(stdout: ChildStdout, sender: &Sender<Msg>, generation: u64) {
-    let mut stdout = stdout;
+fn read_events<P: Protocol>(mut stdout: ChildStdout, sender: &Sender<Msg<P>>, generation: u64) {
     loop {
-        let event = match read_frame(&mut stdout) {
-            Ok(Some(frame)) => match LlmEvent::from_frame(&frame) {
-                Ok(event) => ChildEvent::Event(event),
-                Err(problem) => ChildEvent::Closed(format!("unreadable message: {problem}")),
-            },
+        let event = match P::read(&mut stdout) {
+            Ok(Some(event)) => ChildEvent::Event(event),
             Ok(None) => ChildEvent::Closed("the worker closed its output".into()),
-            Err(problem) => ChildEvent::Closed(problem.to_string()),
+            Err(problem) => ChildEvent::Closed(problem),
         };
         let last = matches!(event, ChildEvent::Closed(_));
         if sender.send(Msg::Child { generation, event }).is_err() || last {
