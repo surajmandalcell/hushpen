@@ -70,6 +70,9 @@ Hushpen
 - **appearance**: the system Light or Dark setting. Views follow it live.
 - **settings registry**: the owner of `config/settings.json`. It validates
   values, writes atomically, and keeps unknown keys.
+- **settings row**: one line of the Settings list, such as Microphone. The
+  row list in `settings/search.rs` gives each its section, key, label, and
+  the aliases the search matches.
 - **error log**: `logs/hushpen.log`, a local rotating file. It never holds
   transcript text or audio.
 - **data folder**: the root of all app data (D-13). The UI shows it as `~/...`

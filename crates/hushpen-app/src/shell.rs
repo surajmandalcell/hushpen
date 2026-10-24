@@ -100,6 +100,8 @@ impl Shell {
     /// Shows the Settings view and repaints when it changes.
     pub fn attach_settings(&mut self, settings: Entity<Settings>, cx: &mut Context<Self>) {
         cx.observe(&settings, |_, _, cx| cx.notify()).detach();
+        let scroll = self.content_scroll.clone();
+        settings.update(cx, |settings, _| settings.use_scroll(scroll));
         self.settings = Some(settings);
         cx.notify();
     }
@@ -357,13 +359,32 @@ impl Shell {
     }
 
     /// The title sits in the title bar area, on the chrome center line with the window controls,
-    /// and has no line under it.
-    fn toolbar(&self, palette: Palette) -> impl IntoElement {
+    /// and has no line under it. Settings puts its search field at the right end, on the same
+    /// line.
+    fn toolbar(&self, shell: &Entity<Shell>, palette: Palette, cx: &App) -> impl IntoElement {
+        let search = self
+            .settings
+            .as_ref()
+            .filter(|_| self.active == View::Settings)
+            .and_then(|settings| settings::search_field(settings, cx))
+            .map(|field| {
+                let shell = shell.clone();
+                div()
+                    .mt(px(theme::chrome_top(size::BUTTON_HEIGHT)))
+                    // A press in the field places the caret; it must not move the window.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_key_down(move |event: &KeyDownEvent, window, cx| {
+                        shell.update(cx, |shell, cx| shell.search_key(event, window, cx))
+                    })
+                    .child(field)
+            });
         div()
             .id(hook::id("toolbar", "drag"))
             .test_support()
             .flex()
             .items_start()
+            .justify_between()
+            .gap(px(space::LG))
             .flex_none()
             .w_full()
             .h(px(space::TOOLBAR_HEIGHT))
@@ -374,11 +395,47 @@ impl Shell {
                     .id(hook::id("view", "title"))
                     .test_support()
                     .aria_label(self.active.title())
+                    .min_w_0()
+                    .truncate()
                     .mt(px(theme::chrome_top(TOOLBAR_TITLE.size)))
                     .text_token(TOOLBAR_TITLE)
                     .text_color(palette.label)
                     .child(self.active.title()),
             )
+            .children(search)
+    }
+
+    /// Esc in the Settings search: the first clears the query, the next leaves the field.
+    fn search_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if event.keystroke.key.as_str() != "escape" {
+            return;
+        }
+        let Some(settings) = self.settings.clone() else {
+            return;
+        };
+        if !settings.update(cx, |settings, cx| settings.clear_search(window, cx)) {
+            window.focus(&self.shell_focus, cx);
+        }
+        cx.stop_propagation();
+    }
+
+    /// Cmd+F on macOS, Ctrl+F on Linux: on the Settings view, the caret goes to its search.
+    fn find_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let keystroke = &event.keystroke;
+        if self.active != View::Settings
+            || keystroke.key.as_str() != "f"
+            || !keystroke.modifiers.secondary()
+        {
+            return;
+        }
+        let search = self
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.read(cx).search.clone());
+        if let Some(search) = search {
+            search.update(cx, |input, cx| input.focus(window, cx));
+            cx.stop_propagation();
+        }
     }
 
     fn content(&self, shell: &Entity<Shell>, palette: Palette, cx: &mut App) -> impl IntoElement {
@@ -430,7 +487,7 @@ impl Shell {
             .min_w_0()
             .h_full()
             .bg(palette.content)
-            .child(self.toolbar(palette))
+            .child(self.toolbar(shell, palette, cx))
             .children(
                 self.updater
                     .as_ref()
@@ -482,6 +539,7 @@ impl Render for Shell {
             .role(Role::Group)
             .aria_label("Hushpen")
             .track_focus(&self.shell_focus)
+            .on_key_down(cx.listener(Self::find_key))
             .flex()
             .size_full()
             .overflow_hidden()

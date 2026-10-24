@@ -21,7 +21,7 @@ TM="python3 /harness/slot/tray-menu.py"
 # Launch at login writes into this folder, never the real one.
 export XDG_CONFIG_HOME=/tmp/hp-xdg-config
 AUTOSTART=$XDG_CONFIG_HOME/autostart/hushpen.desktop
-SECTION_KEYS="general shortcuts audio cleanup flowbar storage updates"
+SECTION_KEYS="general shortcuts audio cleanup engine flowbar storage updates"
 
 pstate() { $HC state | jq -r .pipeline.state; }
 pstate_is() { [ "$(pstate)" = "$1" ]; }
@@ -44,7 +44,6 @@ tree_has() { $HC tree | jq -e --arg id "$1" '.[] | select(.id == $id)' >/dev/nul
 tree_get() { $HC tree | jq -r --arg id "$1" ".[] | select(.id == \$id) | .$2" | head -1; }
 # Predicate forms for wait_until (it polls the command, so the read must happen inside).
 view_is() { [ "$($HC state | jq -r .view)" = "$1" ]; }
-section_is() { [ "$(sv .section)" = "$1" ]; }
 setting_is() { [ "$(sget "$1")" = "$2" ]; }
 sv_is() { [ "$(sv "$1")" = "$2" ]; }
 bar_visible() { [ "$($HC state | jq -r .overlay.visible)" = true ]; }
@@ -88,16 +87,17 @@ open_view() { # <view key>
   $HC action open-view "{\"view\":\"$1\"}" >/dev/null
   wait_until 10 view_is "$1"
 }
-section() { # <section key>: the Settings view opened on the section, with its tree rendered
+section() { # <section key>: the Settings view searched down to that section, its group rendered
+  local query=$1
+  case "$1" in
+    shortcuts) query=shortcut ;;
+    flowbar) query="flow bar" ;;
+  esac
   open_view settings || return 1
-  if ! section_is "$1"; then
-    wait_until 10 tree_has "settings.section.$1" || return 1
-    $HC click "settings.section.$1" >/dev/null
-    wait_until 5 section_is "$1" || return 1
-  fi
+  $HC action settings-search "{\"query\":\"$query\"}" >/dev/null || return 1
   wait_until 10 tree_has "settings.$1" || return 1
 }
-tab_to() { # <id>: Tab until that element has focus (7 tabs plus the controls of one section)
+tab_to() { # <id>: Tab until that element has focus
   local id=$1
   for _ in $(seq 20); do
     [ "$(tree_get "$id" focused)" = true ] && return 0
@@ -106,16 +106,20 @@ tab_to() { # <id>: Tab until that element has focus (7 tabs plus the controls of
   done
   [ "$(tree_get "$id" focused)" = true ]
 }
-first_control() { # <section key> -> the tree id of its first control
+first_control() { # <section key> -> the tree id of its first control (Linux has no GPU row)
   case "$1" in
     general) echo settings.general.launchAtLogin ;;
     shortcuts) echo settings.shortcut.hold ;;
     audio) echo settings.audio.mic ;;
     cleanup) echo settings.cleanup.rules ;;
+    engine) echo settings.engine.threads ;;
     flowbar) echo settings.flowbar.enabled ;;
     storage) echo settings.storage.changeFolder ;;
+    updates) echo settings.updates.check ;;
   esac
 }
+search_focused() { [ "$(tree_get settings.search focused)" = true ]; }
+query_is() { [ "$(sv .query)" = "$1" ]; }
 
 echo "== setup: base model, the paste targets, a scratch autostart folder"
 rm -rf /tmp/hp-xdg-config
@@ -125,36 +129,48 @@ ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
 
-echo "== VAL-SET-001 the 7 sections in order, each reachable by keyboard, Esc closes a dropdown"
+echo "== VAL-SET-001 one list of 8 sections with headings, the search, the keyboard, Esc closes a dropdown"
 failures=""
-section general || failures+="Settings did not open on General; "
-# The hook tree is sorted by id, so the tab order is read from the x bounds, left to right.
-section_ids=$($HC tree | jq -r \
-  '[.[] | select(.id | startswith("settings.section."))] | sort_by(.bounds.y, .bounds.x) | .[].id | ltrimstr("settings.section.")' \
+section general || failures+="Settings did not open; "
+$HC action settings-search '{"query":""}' >/dev/null
+# The hook tree is sorted by id, so the page order is read from the y bounds.
+heading_ids=$($HC tree | jq -r \
+  '[.[] | select(.id | test("^settings\\.[a-z]+\\.heading$"))] | sort_by(.bounds.y) | .[].id | ltrimstr("settings.") | rtrimstr(".heading")' \
   | paste -sd' ' -)
-section_rows=$($HC tree | jq -r \
-  '[.[] | select(.id | startswith("settings.section.")) | .bounds.y] | unique | length')
-[ "$section_ids" = "$SECTION_KEYS" ] || failures+="the section tabs in reading order read '$section_ids'; "
-[ "$section_rows" = 1 ] || failures+="the tabs wrap onto $section_rows rows; "
+[ "$heading_ids" = "$SECTION_KEYS" ] || failures+="the headings top to bottom read '$heading_ids'; "
+tree_has settings.section.general && failures+="a tab bar is still there; "
+width=$(tree_get settings.search bounds.width)
+awk -v w="$width" 'BEGIN { exit !(w >= 300) }' || failures+="the search field is $width px wide; "
 $HC tree >"$RUN_OUT/001-tree.json"
 for key in $SECTION_KEYS; do
-  section "$key" || { failures+="section $key did not open; "; continue; }
+  section "$key" || { failures+="section $key did not show; "; continue; }
   shot "001-section-$key"
   failures+=$(chrome_problems "settings $key")
 done
-# Keyboard only: from the General section, Tab to each section tab and open it with Enter.
+# Keyboard only: Ctrl+F puts the caret in the search, typing filters, Esc clears, then leaves.
 section general >/dev/null
+$HC action settings-search '{"query":""}' >/dev/null
 focus "$(app_window)"
 xdotool key Escape # no picker open: a no-op that settles the focus
+xdotool key ctrl+f
+wait_until 5 search_focused || failures+="Ctrl+F did not focus the search; "
+xdotool type --delay 40 mic
+wait_until 5 query_is mic || failures+="typing gave the query '$(sv .query)'; "
+tree_has settings.audio.mic || failures+="the search for mic has no Microphone row; "
+tree_has settings.general.launchAtLogin && failures+="the search for mic still shows General; "
+xdotool key Escape
+wait_until 5 query_is "" || failures+="the first Esc left '$(sv .query)'; "
+search_focused || failures+="the first Esc moved the focus; "
+xdotool key Escape
+sleep 0.3
+search_focused && failures+="the second Esc kept the focus in the search; "
+# From the search field, Tab reaches the first control of each section it was searched down to.
 for key in $SECTION_KEYS; do
-  tab_to "settings.section.$key" || { failures+="Tab never reached the $key tab; "; continue; }
-  xdotool key Return
-  sleep 0.3
-  section_is "$key" || failures+="Enter on the $key tab opened $(sv .section); "
+  section "$key" >/dev/null || continue
+  xdotool key ctrl+f
+  wait_until 5 search_focused || { failures+="$key: Ctrl+F did not focus the search; "; continue; }
   first=$(first_control "$key")
-  if [ -n "$first" ]; then
-    tab_to "$first" || failures+="$key: Tab never reached $first; "
-  fi
+  tab_to "$first" || failures+="$key: Tab never reached $first; "
 done
 # Esc in the open retention dropdown closes it and focuses the trigger again.
 section storage >/dev/null
@@ -165,7 +181,7 @@ xdotool key Escape
 sleep 0.3
 tree_has settings.storage.retention.option.never && failures+="Esc left the dropdown open; "
 [ "$(tree_get settings.storage.retention focused)" = true ] || failures+="after Esc the trigger is not focused; "
-check_failures "VAL-SET-001 sections and keyboard" "7 sections left to right: $section_ids; each reached by Tab and Enter, first controls take focus, Esc closes the retention dropdown onto its trigger" "$failures"
+check_failures "VAL-SET-001 list, search, and keyboard" "headings top to bottom: $heading_ids; a 300 px search, Ctrl+F, typing, Esc twice; Tab reaches each first control; Esc closes the retention dropdown onto its trigger" "$failures"
 
 echo "== VAL-SET-002 launch at login writes and removes the XDG autostart file"
 failures=""

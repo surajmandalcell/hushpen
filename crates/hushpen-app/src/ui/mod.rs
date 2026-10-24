@@ -6,11 +6,11 @@ mod controls;
 mod group;
 mod rows;
 
-pub use controls::{Kind, button, field, menu_button, switch, track};
-pub use group::{group, group_frame, line, section};
+pub use controls::{Kind, button, field, menu_button, slider, switch, track};
+pub use group::{group, group_frame, heading, line, section};
 pub use rows::{
     Notice, fact_row, field_row, icon_row, labeled_row, menu_row, meter_row, named_lines,
-    notice_row, option_row, press_row, row, toggle_row,
+    notice_row, option_row, press_row, row, slider_row, toggle_row,
 };
 
 use crate::theme::{BODY, Palette, SECONDARY, StyledType, size, space};

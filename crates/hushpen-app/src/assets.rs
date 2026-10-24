@@ -45,7 +45,8 @@ icon_assets!(
         // every icon a view uses.
         ArrowUpRight,
         Globe,
-        ChevronDown
+        ChevronDown,
+        Search
     ]
 );
 

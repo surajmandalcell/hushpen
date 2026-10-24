@@ -438,9 +438,7 @@ mod view {
                 cx,
             )
         });
-        settings.update(cx, |settings, cx| {
-            settings.select_section(crate::settings::Section::Shortcuts, cx)
-        });
+        settings.update(cx, |settings, cx| settings.set_query("shortcut".into(), cx));
         shell.update(cx, |shell, cx| {
             shell.attach_settings(settings, cx);
             shell.attach_shortcuts(rig.shortcuts.clone(), cx);

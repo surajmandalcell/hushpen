@@ -1,5 +1,5 @@
 use super::endpoint::EndpointForm;
-use super::{Parts, Section, Settings};
+use super::{Parts, Settings};
 use crate::net::endpoint::{Config, Failure, Kind, Transport, UreqTransport};
 use crate::shell::Shell;
 use crate::storage;
@@ -100,7 +100,8 @@ fn open(cx: &mut TestAppContext, transport: Option<Arc<dyn Transport>>) -> Rig {
     };
     settings.update(cx, |settings, cx| {
         settings.attach_endpoint(form.clone(), cx);
-        settings.select_section(Section::Cleanup, cx);
+        // The window shows the top of the list; the search brings Cleanup there.
+        settings.set_query("cleanup".into(), cx);
     });
     shell.update(cx, |shell, cx| {
         shell.attach_settings(settings.clone(), cx);

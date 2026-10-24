@@ -120,6 +120,16 @@ new decision, add it here in the same change (D-21).
   and the UI hides or explains the engine. speech-dispatcher is not used:
   `spd-say` cannot hand back audio, so pause, seek, and export would not
   work.
+- **D-26 Settings list and search.** Settings is one scrolling list of
+  sections (a heading above each group), not tabs. The row registry in
+  `settings/search.rs` names every row with its section, settings key,
+  label, and aliases; the search matches each word of the query against
+  them and keeps the rows a match depends on (the AI model and endpoint rows
+  under AI source). The query lives only in the view and is never saved.
+  `dictation.maxMinutes`, `audio.cueVolume`, `engine.useGpu`, `engine.threads`,
+  and `cleanup.spokenPunctuation` are shown; the pickers offer only values
+  inside the registry range. Use the GPU shows on macOS only (Linux runs the
+  engine on the CPU).
 
 ## History notes
 

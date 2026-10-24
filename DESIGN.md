@@ -47,6 +47,12 @@ typography:
     fontWeight: 600
     lineHeight: 1
     letterSpacing: 0em
+  heading:
+    fontFamily: ".SystemUIFont on macOS, Inter on Linux"
+    fontSize: 13px
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: 0em
   body:
     fontFamily: ".SystemUIFont on macOS, Inter on Linux"
     fontSize: 13px
@@ -197,6 +203,7 @@ macOS uses the system UI font (`.SystemUIFont`, SF Pro). Linux keeps the embedde
 
 - **Title:** 22px bold, on onboarding pages only.
 - **Toolbar title:** 13px semibold, in the title bar area.
+- **Heading:** 13px semibold, in the secondary label color, above each Settings group.
 - **Body:** 13px regular, for row titles and values.
 - **Button:** 13px medium.
 - **Secondary:** 11px regular, in the secondary label color, for descriptions and group footers.
@@ -240,7 +247,9 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 **Sidebar:** 7 rows in this order: Home, History, Dictionary, Import, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. There are no colored tiles. A focused row shows the accent focus ring.
 
-**Toolbar:** only the view title (13px semibold, label color) in the title bar area. It has no bottom line.
+**Toolbar:** the view title (13px semibold, label color) on the left of the title bar area. On Settings the search field sits at the right end, 300px wide, 24px from the window edge, centered on the chrome line. It has no bottom line.
+
+**Settings:** one scrolling list, grouped like macOS System Settings. Each section is a heading above its group, with an optional footer line under it, in this order: General, Shortcuts, Audio, Cleanup (with AI cleanup and the endpoint form), Engine, Flow bar, Storage, Updates. Typing in the search field keeps only the matching rows under their headings; a row's label, its section, and its aliases all match. With no match the list shows `No settings match "<query>"` and a Clear button. Cmd+F (Ctrl+F on Linux) focuses the field. Esc clears it, and a second Esc leaves it. A new query scrolls the list to the top. The query is never saved. Numeric settings use a slider (160px track, 5% steps, arrow keys, Home and End) or a pop-up of fixed choices inside the registry range.
 
 **Groups and rows:** as in Layout. A row that is a control stays one line: the label on the left, the control on the right. A notice row has a 16px icon in the secondary label color (info, or the exclamation for something the user has to act on) and one line of text; a failed check shows its text in the error color. Every view builds its rows from the shared row builders, so one row kind looks the same on every page.
 

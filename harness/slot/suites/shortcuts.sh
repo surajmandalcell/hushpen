@@ -56,10 +56,9 @@ tree_has() { $HC tree | jq -e --arg id "$1" '.[] | select(.id == $id)' >/dev/nul
 open_settings() {
   $HC action open-view '{"view":"settings"}' >/dev/null
   wait_until 10 test "$($HC state | jq -r .view)" = settings
-  # The Settings view opens on General; the recorder lives in the Shortcuts section.
-  wait_until 10 tree_has settings.section.shortcuts || return 1
-  $HC click settings.section.shortcuts >/dev/null
-  wait_until 5 test "$($HC state | jq -r .settings_view.section)" = shortcuts
+  # The search keeps only the Shortcuts rows, so every recorder field is on screen.
+  $HC action settings-search '{"query":"shortcut"}' >/dev/null
+  wait_until 10 tree_has settings.shortcut.hold
 }
 record_open() { # <slot>
   $HC click "settings.shortcut.$1" >/dev/null

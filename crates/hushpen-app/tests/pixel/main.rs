@@ -26,7 +26,6 @@ use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
 use hushpen_app::flow_bar::view::{Preview, Props, WAVE_BARS, result_text, size_of};
 use hushpen_app::mic::{MicBackend, MicSession};
-use hushpen_app::settings::Section;
 use hushpen_app::theme::{self, Appearance, chrome, space};
 use hushpen_app::views::View;
 use hushpen_audio::{CaptureError, EventSink, InputDevice};
@@ -34,7 +33,7 @@ use hushpen_core::flow_bar::BarState;
 use hushpen_core::onboarding::Step;
 use hushpen_core::permission::{Access, Preflight};
 use image::RgbaImage;
-use scenes::{Scene, Shot};
+use scenes::{Scene, SettingsShot, Shot};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -161,11 +160,13 @@ fn check_image(name: &str, image: &RgbaImage, failures: &mut Vec<String>) {
 
 /// The window chrome that every shell capture shares: the content and sidebar colors, the
 /// drawn window lights on Linux, a neutral selection fill on the active row only, and a sidebar
-/// with no color anywhere (icons and labels are gray). The toolbar has no line under it.
+/// with no color anywhere (icons and labels are gray). The toolbar has no line under it, unless
+/// the content is `scrolled`: then the rows clip at its bottom edge.
 fn assert_shell_tokens(
     image: &RgbaImage,
     appearance: Appearance,
     selected: Option<View>,
+    scrolled: bool,
     name: &str,
 ) {
     let (content, selection) = match appearance {
@@ -212,6 +213,9 @@ fn assert_shell_tokens(
                 "{name}: the sidebar has a colored pixel {r},{g},{b} at ({x}, {y})"
             );
         }
+    }
+    if scrolled {
+        return;
     }
     // The toolbar title sits on the content color: no line under the toolbar at its bottom edge.
     let toolbar_bottom = space::TOOLBAR_HEIGHT as u32;
@@ -318,7 +322,11 @@ fn check_scenes(scenes: &[Scene], appearance: Appearance) {
         check_image(&name, &shot.image, &mut failures);
         scan_shot(*scene, &name, &shot, &mut failures);
         if let Some(view) = selected_view(*scene) {
-            assert_shell_tokens(&shot.image, appearance, Some(view), &name);
+            let scrolled = matches!(
+                scene,
+                Scene::Settings(SettingsShot::Middle | SettingsShot::Bottom)
+            );
+            assert_shell_tokens(&shot.image, appearance, Some(view), scrolled, &name);
         }
     }
     assert!(
@@ -368,14 +376,15 @@ fn the_light_and_dark_baselines_differ_and_follow_the_palette_for_every_scene() 
         assert_eq!(dark.dimensions(), (1880, 1200), "{name}: dark size");
         assert_eq!(light.dimensions(), (1880, 1200), "{name}: light size");
         assert_ne!(dark, light, "{name}");
+        // The right margin of the content pane: no view draws there, not even a full list.
         assert_near(
-            &hex_at(&dark, 900, 580),
+            &hex_at(&dark, 928, 580),
             "#1E1E1E",
             1,
             &format!("{name}: dark content"),
         );
         assert_near(
-            &hex_at(&light, 900, 580),
+            &hex_at(&light, 928, 580),
             "#F5F5F5",
             1,
             &format!("{name}: light content"),
@@ -410,16 +419,21 @@ fn onboarding_takes_the_whole_window_with_no_sidebar() {
     }
 }
 
-/// The seven Settings sections each have a baseline of their own.
+/// A search shows the matching rows of each section under its heading, and nothing else.
 #[test]
-fn every_settings_section_has_a_scene() {
-    let names: Vec<String> = Scene::views().into_iter().map(Scene::name).collect();
-    for section in Section::ALL {
-        assert!(
-            names.contains(&format!("settings-{}", section.key())),
-            "{}",
-            section.key()
-        );
+fn a_settings_search_keeps_the_matching_rows_under_their_headings() {
+    let shot = scenes::capture(Scene::Settings(SettingsShot::Search), Appearance::Dark);
+    let shown = |id: &str| shot.nodes.iter().any(|node| node.id == id && node.visible);
+    for id in [
+        "settings.audio.heading",
+        "settings.audio.mic",
+        "settings.storage.heading",
+        "settings.storage.retention",
+    ] {
+        assert!(shown(id), "{id} shows");
+    }
+    for id in ["settings.general.heading", "settings.storage.changeFolder"] {
+        assert!(!shown(id), "{id} is filtered out");
     }
 }
 

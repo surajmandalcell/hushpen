@@ -33,7 +33,7 @@ FLAC=$FIX/speech-short.flac
 MODEL_ID=qwen3.5-2b
 MODEL_FILE=/data/models/llm/$MODEL_ID.gguf
 FIXTURE_GGUF=/fixtures/llm/Qwen3.5-2B-Q4_K_M.gguf
-SECTION_KEYS="general shortcuts audio cleanup flowbar storage updates"
+SECTION_KEYS="general shortcuts audio cleanup engine flowbar storage updates"
 
 pstate() { $HC state | jq -r .pipeline.state; }
 pstate_is() { [ "$(pstate)" = "$1" ]; }
@@ -196,9 +196,7 @@ session() {
   $HC click sidebar.settings >/dev/null
   wait_until 10 view_is settings || fail "Settings did not open"
   for key in $SECTION_KEYS; do
-    wait_until 10 tree_has "settings.section.$key" || fail "no tab $key"
-    $HC click "settings.section.$key" >/dev/null
-    sleep 0.4
+    wait_until 10 tree_has "settings.$key.heading" || fail "no section $key"
   done
   if [ "$updates" = on ]; then
     hclick settings.updates.checkNow || fail "Check now could not be clicked"

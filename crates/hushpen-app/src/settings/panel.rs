@@ -1,32 +1,170 @@
-//! The Settings view: a row of section tabs on top, then one grouped section. Every control has
-//! a stable hook id: `settings.<section>.<name>`.
+//! The Settings view: one scrolling list of sections, each a heading above a group, filtered by
+//! the search field in the toolbar. Every control has a stable hook id: `settings.<section>.<name>`.
 
-use super::endpoint::{EndpointForm, Test};
-use super::{AiStatus, MoveState, Section, Settings, slots};
+mod audio;
+mod cleanup;
+mod endpoint;
+mod engine;
+mod flow_bar;
+mod general;
+mod shortcuts;
+mod storage;
+mod updates;
+
+use super::search::{self, ROWS, RowId};
+use super::{Section, Settings, slots};
 use crate::hook;
-use crate::mic;
-use crate::shortcuts::{self, Shortcuts};
-use crate::theme::{self, BODY, Palette, StyledType, radius, size, space};
+use crate::shortcuts::Shortcuts;
+use crate::theme::{self, Palette, size, space};
 use crate::ui::{self, Kind, Notice};
-use gpui_kit::TestSupportExt as _;
+use gpui_kit::assets::IconName;
+use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window,
-    div, px, transparent_black,
+    AnyElement, App, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, SharedString, Styled, Window, div, px,
 };
-use hushpen_core::endpoint::{Preset, UrlError};
+use std::rc::Rc;
 
-use slots::{
-    AI_CLEANUP, AI_DOWNLOAD, AI_MODEL, AI_MODEL_OPTION, AI_PROVIDER, AI_PROVIDER_OPTION,
-    CHANGE_FOLDER, ENDPOINT_KEY_CLEAR, ENDPOINT_PRESET, ENDPOINT_PRESET_OPTION, ENDPOINT_TEST,
-    FLOWBAR, FLOWBAR_IDLE, HIDDEN, LOGIN, MIC, POSITION, POSITION_OPTION, RETENTION,
-    RETENTION_OPTION, RULES, SOUNDS, UPDATES_AUTO, UPDATES_CHECK, UPDATES_NOTES, UPDATES_NOW,
-};
+/// What a row builder reads: the colors, the view, and the focus handles of its controls.
+pub(super) struct Page {
+    palette: Palette,
+    settings: Entity<Settings>,
+    shortcuts: Option<Entity<Shortcuts>>,
+    focus: Vec<FocusHandle>,
+    options: Vec<FocusHandle>,
+}
 
-/// The rows of a section and the one line of help under them.
-struct Body {
-    rows: Vec<AnyElement>,
-    footer: Option<&'static str>,
+/// A change a control makes to the view.
+type Act = fn(&mut Settings, &mut Context<Settings>);
+
+/// One option of a picker: the value it stores, its label, and whether it is the current one.
+type Choice = (String, String, bool);
+
+impl Page {
+    /// Runs `act` on the view.
+    fn act(&self, act: Act) -> impl Fn(&mut App) + 'static {
+        let settings = self.settings.clone();
+        move |cx| settings.update(cx, act)
+    }
+
+    /// A row with a switch, under `settings.<name>`.
+    fn toggle(
+        &self,
+        name: &str,
+        title: &'static str,
+        detail: &str,
+        on: bool,
+        slot: usize,
+        act: Act,
+    ) -> AnyElement {
+        ui::toggle_row(
+            self.palette,
+            settings_id(name),
+            title,
+            detail,
+            on,
+            &self.focus[slot],
+            self.act(act),
+        )
+    }
+
+    /// A row with a pop-up button that opens the picker `name`.
+    fn menu(
+        &self,
+        name: &'static str,
+        title: &'static str,
+        detail: &str,
+        current: String,
+        slot: usize,
+    ) -> AnyElement {
+        let settings = self.settings.clone();
+        ui::menu_row(
+            self.palette,
+            settings_id(name),
+            title,
+            detail,
+            current,
+            &self.focus[slot],
+            move |cx| settings.update(cx, |me, cx| me.toggle_picker(name, cx)),
+        )
+    }
+
+    fn picker_open(&self, name: &str, cx: &App) -> bool {
+        self.settings.read(cx).picker == Some(name)
+    }
+
+    /// The options of the open picker `name`, each under `settings.<name>.option.<value>`.
+    /// `choose` gets the value of the one picked.
+    fn options(
+        &self,
+        name: &str,
+        choices: Vec<Choice>,
+        focus: &[FocusHandle],
+        choose: impl Fn(&mut Settings, &str, &mut Context<Settings>) + 'static,
+    ) -> Vec<AnyElement> {
+        let choose = Rc::new(choose);
+        choices
+            .into_iter()
+            .zip(focus)
+            .map(|((value, label, selected), focus)| {
+                let settings = self.settings.clone();
+                let choose = Rc::clone(&choose);
+                let id = settings_id(&format!("{name}.option.{value}"));
+                ui::option_row(
+                    self.palette,
+                    id,
+                    label,
+                    None,
+                    selected,
+                    focus,
+                    move |_, cx| settings.update(cx, |me, cx| choose(me, &value, cx)),
+                )
+            })
+            .collect()
+    }
+}
+
+/// The hook id of a control of this view: `settings.<name>`.
+fn settings_id(name: &str) -> SharedString {
+    hook::id("settings", name)
+}
+
+/// The lines a row draws: none when it does not apply, such as the endpoint fields while AI
+/// cleanup runs on this computer.
+fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
+    match row {
+        RowId::LaunchAtLogin => vec![general::launch_at_login(page, cx)],
+        RowId::StartHidden => vec![general::start_hidden(page, cx)],
+        RowId::HoldKey => shortcuts::slot(page, hushpen_core::shortcut::Slot::Hold, cx),
+        RowId::HandsFree => shortcuts::slot(page, hushpen_core::shortcut::Slot::HandsFree, cx),
+        RowId::PasteLast => shortcuts::slot(page, hushpen_core::shortcut::Slot::PasteLast, cx),
+        RowId::CommandMode => shortcuts::slot(page, hushpen_core::shortcut::Slot::Command, cx),
+        RowId::ResetShortcuts => shortcuts::reset(page, cx),
+        RowId::Microphone => audio::microphone(page, cx),
+        RowId::Sounds => vec![audio::sounds(page, cx)],
+        RowId::CueVolume => vec![audio::cue_volume(page, cx)],
+        RowId::MaxLength => audio::max_length(page, cx),
+        RowId::Rules => vec![cleanup::rules(page, cx)],
+        RowId::SpokenPunctuation => vec![cleanup::spoken_punctuation(page, cx)],
+        RowId::AiCleanup => vec![cleanup::ai_cleanup(page, cx)],
+        RowId::AiSource => cleanup::ai_source(page, cx),
+        RowId::AiModel => cleanup::ai_model(page, cx),
+        RowId::EndpointPreset => endpoint::preset(page, cx),
+        RowId::EndpointUrl => endpoint::url(page, cx),
+        RowId::EndpointModel => endpoint::model(page, cx),
+        RowId::EndpointKey => endpoint::key(page, cx),
+        RowId::EndpointTest => endpoint::test(page, cx),
+        RowId::Gpu => vec![engine::gpu(page, cx)],
+        RowId::Threads => engine::threads(page, cx),
+        RowId::ShowFlowBar => vec![flow_bar::show(page, cx)],
+        RowId::FlowBarIdle => vec![flow_bar::idle(page, cx)],
+        RowId::FlowBarPosition => flow_bar::position(page, cx),
+        RowId::DataFolder => vec![storage::data_folder(page, cx)],
+        RowId::Retention => storage::retention(page, cx),
+        RowId::UpdateCheck => vec![updates::check(page, cx)],
+        RowId::AutoInstall => vec![updates::auto_install(page, cx)],
+        RowId::UpdateStatus => updates::status(page, cx),
+    }
 }
 
 pub fn render(
@@ -35,34 +173,39 @@ pub fn render(
     cx: &mut App,
 ) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
-    let (section, notice, focus, section_focus) = {
+    let (query, notice, page) = {
         let me = settings.read(cx);
         (
-            me.section,
+            me.query.clone(),
             me.notice.clone(),
-            me.control_focus.clone(),
-            me.section_focus.clone(),
+            Page {
+                palette,
+                settings: settings.clone(),
+                shortcuts: shortcuts.cloned(),
+                focus: me.control_focus.clone(),
+                options: me.option_focus.clone(),
+            },
         )
     };
-    let body: AnyElement = match section {
-        Section::Shortcuts => match shortcuts {
-            Some(shortcuts) => shortcuts::panel::render(shortcuts, cx).into_any_element(),
-            None => section_of(
-                palette,
-                section,
-                Body {
-                    rows: vec![later_row(palette, "shortcuts", "Shortcuts", "Later.")],
-                    footer: None,
-                },
-            ),
-        },
-        Section::General => section_of(palette, section, general(palette, settings, &focus, cx)),
-        Section::Audio => section_of(palette, section, audio(palette, settings, &focus, cx)),
-        Section::Cleanup => section_of(palette, section, cleanup(palette, settings, &focus, cx)),
-        Section::FlowBar => section_of(palette, section, flow_bar(palette, settings, &focus, cx)),
-        Section::Storage => section_of(palette, section, storage(palette, settings, &focus, cx)),
-        Section::Updates => section_of(palette, section, updates(palette, settings, &focus, cx)),
-    };
+    let visible = search::visible(&query);
+    let mut sections = Vec::new();
+    for section in Section::ALL {
+        let mut rows = Vec::new();
+        for meta in ROWS.iter().filter(|meta| meta.section == section) {
+            if visible.contains(&meta.id) {
+                rows.extend(rows_of(meta.id, &page, cx));
+            }
+        }
+        if section == Section::Shortcuts
+            && !rows.is_empty()
+            && let Some(notice) = shortcuts::keys_off(&page, cx)
+        {
+            rows.insert(0, notice);
+        }
+        if !rows.is_empty() {
+            sections.push(section_of(palette, section, rows));
+        }
+    }
     // Esc with an open picker closes it and focuses the trigger again.
     let on_escape = {
         let settings = settings.clone();
@@ -76,15 +219,15 @@ pub fn render(
             }
         }
     };
-    let mut page = div()
+    let mut list = div()
+        .id(settings_id("list"))
         .flex()
         .flex_col()
-        .gap(px(space::LG))
+        .gap(px(space::XXL))
         .w_full()
-        .on_key_down(on_escape)
-        .child(section_bar(palette, settings, section, &section_focus));
+        .on_key_down(on_escape);
     if let Some(message) = notice {
-        page = page.child(ui::group(
+        list = list.child(ui::group(
             settings_id("notice.group"),
             palette,
             vec![ui::notice_row(
@@ -96,792 +239,73 @@ pub fn render(
             )],
         ));
     }
-    page.child(body)
+    if sections.is_empty() {
+        list = list.child(no_match(&page, &query));
+    }
+    list.children(sections)
 }
 
-fn section_of(palette: Palette, section: Section, body: Body) -> AnyElement {
-    ui::section(
-        palette,
-        ui::group(settings_id(section.key()), palette, body.rows),
-        body.footer.map(|text| {
-            (
-                hook::id("settings", &format!("{}.help", section.key())),
-                text.to_owned(),
-            )
-        }),
+/// The heading, the group, and the help line of one section.
+fn section_of(palette: Palette, section: Section, rows: Vec<AnyElement>) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(space::XS + space::XXS))
+        .w_full()
+        .child(ui::heading(
+            palette,
+            settings_id(&format!("{}.heading", section.key())),
+            section.title(),
+        ))
+        .child(ui::section(
+            palette,
+            ui::group(settings_id(section.key()), palette, rows),
+            section.footer().map(|text| {
+                (
+                    settings_id(&format!("{}.help", section.key())),
+                    text.to_owned(),
+                )
+            }),
+        ))
+        .into_any_element()
+}
+
+/// The group that says no row matches, with a button that clears the search.
+fn no_match(page: &Page, query: &str) -> AnyElement {
+    let settings = page.settings.clone();
+    let clear = ui::button(
+        page.palette,
+        settings_id("search.clear"),
+        "Clear",
+        Kind::Plain,
+        Some(&page.focus[slots::SEARCH_CLEAR]),
+        true,
+        move |window, cx| {
+            settings.update(cx, |me, cx| me.clear_search(window, cx));
+        },
+    );
+    ui::group(
+        settings_id("search.empty.group"),
+        page.palette,
+        vec![ui::notice_row(
+            page.palette,
+            settings_id("search.empty"),
+            format!("No settings match \"{query}\""),
+            Notice::Info,
+            Some(clear.into_any_element()),
+        )],
     )
     .into_any_element()
 }
 
-fn section_bar(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    active: Section,
-    focus: &[FocusHandle],
-) -> impl IntoElement + use<> {
-    let tabs = Section::ALL.iter().enumerate().map(|(index, section)| {
-        let select = {
-            let settings = settings.clone();
-            let section = *section;
-            move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                settings.update(cx, |me, cx| me.select_section(section, cx));
-            }
-        };
-        let selected = *section == active;
-        let mut tab = div()
-            .id(hook::id("settings", &format!("section.{}", section.key())))
-            .test_support()
-            .track_focus(&focus[index])
-            .role(Role::Button)
-            .aria_label(section.title())
-            .aria_selected(selected)
-            .flex_none()
-            .flex()
-            .items_center()
-            .h(px(size::NAV_ITEM_HEIGHT))
-            .px(px(size::NAV_ITEM_PADDING - size::FOCUS_RING))
-            .rounded(px(radius::SELECTION))
-            .border_2()
-            .border_color(transparent_black())
-            .text_token(BODY)
-            .text_color(if selected {
-                palette.label
-            } else {
-                palette.label_secondary
-            })
-            .cursor_pointer()
-            .hover(move |style| style.bg(palette.hover()))
-            .focus_visible(move |style| style.border_color(palette.accent))
-            .on_click(select)
-            .child(section.title());
-        if selected {
-            tab = tab.bg(palette.selection);
-        }
-        tab
-    });
-    div()
-        .id(hook::id("settings", "sections"))
-        .test_support()
-        .flex()
-        .flex_wrap()
-        .gap(px(space::XXS))
-        .w_full()
-        .children(tabs)
-}
-
-/// A row for a control that does nothing yet.
-fn later_row(palette: Palette, id: &str, title: &'static str, detail: &str) -> AnyElement {
-    ui::labeled_row(
-        palette,
-        hook::id("settings", &format!("{id}.row")),
-        title,
-        Some(detail.to_owned()),
-        ui::value(palette)
-            .text_color(palette.label_tertiary)
-            .child("Later"),
+/// The search field for the right end of the toolbar, or nothing before it is attached.
+pub fn search_field(settings: &Entity<Settings>, cx: &App) -> Option<impl IntoElement + use<>> {
+    let palette = theme::palette(cx);
+    let state: Entity<InputState> = settings.read(cx).search.clone()?;
+    Some(
+        div().w(px(size::SEARCH_FIELD_WIDTH)).flex_none().child(
+            ui::field(palette, settings_id("search"), "Search settings", &state)
+                .prefix(ui::glyph(palette, IconName::Search)),
+        ),
     )
-}
-
-/// The hook id of a control of this view: `settings.<name>`.
-fn settings_id(name: &str) -> SharedString {
-    hook::id("settings", name)
-}
-
-/// One option of an open picker, under `settings.<picker>.option.<value>`.
-fn picker_option(
-    palette: Palette,
-    picker: &str,
-    value: &str,
-    label: String,
-    selected: bool,
-    focus: &FocusHandle,
-    choose: impl Fn(&mut App) + 'static,
-) -> AnyElement {
-    ui::option_row(
-        palette,
-        settings_id(&format!("{picker}.option.{value}")),
-        label,
-        None,
-        selected,
-        focus,
-        move |_, cx| choose(cx),
-    )
-}
-
-// ---- Sections ----
-
-fn general(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Body {
-    let (launch_on, hidden_on) = {
-        let me = settings.read(cx);
-        (me.launch_at_login(), me.stored_bool("startup.startHidden"))
-    };
-    let flip_login = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_launch_at_login(cx))
-    };
-    let flip_hidden = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_start_hidden(cx))
-    };
-    Body {
-        rows: vec![
-            ui::toggle_row(
-                palette,
-                settings_id("general.launchAtLogin"),
-                "Launch at login",
-                "Hushpen starts when you log in.",
-                launch_on,
-                &focus[LOGIN],
-                flip_login,
-            ),
-            ui::toggle_row(
-                palette,
-                settings_id("general.startHidden"),
-                "Start hidden",
-                "A start at login shows only the tray icon.",
-                hidden_on,
-                &focus[HIDDEN],
-                flip_hidden,
-            ),
-        ],
-        footer: None,
-    }
-}
-
-fn audio(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Body {
-    let (picker_open, sounds_on, current, options, mic_focus) = {
-        let me = settings.read(cx);
-        let mic = me.mic.read(cx);
-        let saved = mic.saved();
-        let current = match saved {
-            hushpen_audio::DEFAULT_ID => mic
-                .default_name()
-                .map(|name| format!("Default ({name})"))
-                .unwrap_or_else(|| "Default".to_owned()),
-            id => mic
-                .devices()
-                .iter()
-                .find(|device| device.id == id)
-                .map(|device| device.name.clone())
-                .unwrap_or_else(|| id.to_owned()),
-        };
-        let options: Vec<(String, String, bool)> = std::iter::once((
-            hushpen_audio::DEFAULT_ID.to_owned(),
-            mic.default_name()
-                .map(|name| format!("Default ({name})"))
-                .unwrap_or_else(|| "Default".to_owned()),
-            saved == hushpen_audio::DEFAULT_ID,
-        ))
-        .chain(
-            mic.devices()
-                .iter()
-                .take(mic::MAX_DEVICE_ROWS)
-                .map(|device| (device.id.clone(), device.name.clone(), saved == device.id)),
-        )
-        .collect();
-        (
-            me.picker == Some("audio.mic"),
-            me.stored_bool("audio.cueSounds"),
-            current,
-            options,
-            mic.row_focus.clone(),
-        )
-    };
-    let open_picker = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("audio.mic", cx))
-    };
-    let flip_sounds = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_sounds(cx))
-    };
-    let mut rows = vec![ui::menu_row(
-        palette,
-        settings_id("audio.mic"),
-        "Microphone",
-        "The microphone dictation listens on.",
-        current,
-        &focus[MIC],
-        open_picker,
-    )];
-    if picker_open {
-        for (index, (id, label, selected)) in options.into_iter().enumerate() {
-            let choose = {
-                let settings = settings.clone();
-                move |cx: &mut App| {
-                    settings.update(cx, |me, cx| {
-                        let id = id.clone();
-                        let _ = me.mic.update(cx, |mic, cx| mic.select(&id, cx));
-                        me.picker = None;
-                        cx.notify();
-                    });
-                }
-            };
-            let handle = mic_focus
-                .get(index)
-                .cloned()
-                .unwrap_or_else(|| focus[MIC].clone());
-            rows.push(picker_option(
-                palette,
-                "audio.mic",
-                &index.to_string(),
-                label,
-                selected,
-                &handle,
-                choose,
-            ));
-        }
-    }
-    rows.push(ui::toggle_row(
-        palette,
-        settings_id("audio.sounds"),
-        "Sounds",
-        "A short cue marks the start and end of a dictation.",
-        sounds_on,
-        &focus[SOUNDS],
-        flip_sounds,
-    ));
-    Body { rows, footer: None }
-}
-
-fn cleanup(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Body {
-    let (rules_on, ai_on, provider, model, offered, status, picker_open, provider_open) = {
-        let me = settings.read(cx);
-        (
-            me.stored_bool("cleanup.rules"),
-            me.stored_bool("cleanup.llm.enabled"),
-            me.ai_provider(),
-            me.ai_model(),
-            me.ai_offered(),
-            me.ai_status(cx),
-            me.picker == Some("cleanup.aiModel"),
-            me.picker == Some("cleanup.provider"),
-        )
-    };
-    let flip_rules = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_rules(cx))
-    };
-    let flip_ai = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_ai_cleanup(cx))
-    };
-    let mut rows = vec![
-        ui::toggle_row(
-            palette,
-            settings_id("cleanup.rules"),
-            "Clean up text",
-            "Fillers and stutters are removed before the text is pasted.",
-            rules_on,
-            &focus[RULES],
-            flip_rules,
-        ),
-        ui::toggle_row(
-            palette,
-            settings_id("cleanup.ai"),
-            "AI cleanup",
-            "A language model fixes self-corrections.",
-            ai_on,
-            &focus[AI_CLEANUP],
-            flip_ai,
-        ),
-        ui::menu_row(
-            palette,
-            settings_id("cleanup.provider"),
-            "AI source",
-            "Where the model runs.",
-            provider_label(provider).to_owned(),
-            &focus[AI_PROVIDER],
-            {
-                let settings = settings.clone();
-                move |cx: &mut App| {
-                    settings.update(cx, |me, cx| me.toggle_picker("cleanup.provider", cx))
-                }
-            },
-        ),
-    ];
-    if provider_open {
-        for (index, value) in ["local", "endpoint"].into_iter().enumerate() {
-            let choose = {
-                let settings = settings.clone();
-                move |cx: &mut App| settings.update(cx, |me, cx| me.set_ai_provider(value, cx))
-            };
-            rows.push(picker_option(
-                palette,
-                "cleanup.provider",
-                value,
-                provider_label(value).to_owned(),
-                value == provider,
-                &focus[AI_PROVIDER_OPTION + index],
-                choose,
-            ));
-        }
-    }
-    let footer = Some(
-        "AI cleanup stays off until you turn it on. An endpoint is a server you choose, such as Ollama.",
-    );
-    if provider == "endpoint" {
-        let endpoint = settings.read(cx).endpoint.clone();
-        if let Some(form) = endpoint {
-            rows.extend(endpoint_rows(palette, settings, &form, focus, cx));
-        }
-        return Body { rows, footer };
-    }
-    let Some(model) = model else {
-        return Body { rows, footer };
-    };
-    let open_picker = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("cleanup.aiModel", cx))
-    };
-    let size = crate::models::panel::format_size(model.bytes);
-    rows.push(ui::menu_row(
-        palette,
-        settings_id("cleanup.aiModel"),
-        "AI model",
-        &format!("{size} download. Chosen for this computer."),
-        model.name.clone(),
-        &focus[AI_MODEL],
-        open_picker,
-    ));
-    if picker_open {
-        for (index, entry) in offered.iter().enumerate() {
-            let id = entry.id.clone();
-            let choose = {
-                let settings = settings.clone();
-                move |cx: &mut App| settings.update(cx, |me, cx| me.set_ai_model(&id, cx))
-            };
-            rows.push(picker_option(
-                palette,
-                "cleanup.aiModel",
-                &entry.id,
-                entry.name.clone(),
-                entry.id == model.id,
-                &focus[AI_MODEL_OPTION + index.min(1)],
-                choose,
-            ));
-        }
-    }
-    let text = ai_status_text(status, ai_on);
-    let can_download = ai_on && matches!(status, Some(AiStatus::NotDownloaded | AiStatus::Failed));
-    let download = can_download.then(|| {
-        let settings = settings.clone();
-        ui::button(
-            palette,
-            hook::id("settings", "cleanup.aiDownload"),
-            "Download",
-            Kind::Plain,
-            Some(&focus[AI_DOWNLOAD]),
-            true,
-            move |_, cx| settings.update(cx, |me, cx| me.download_ai_model(cx)),
-        )
-        .into_any_element()
-    });
-    rows.push(ui::notice_row(
-        palette,
-        settings_id("cleanup.aiStatus"),
-        text,
-        Notice::status(matches!(status, Some(AiStatus::Failed))),
-        download,
-    ));
-    Body { rows, footer }
-}
-
-fn ai_status_text(status: Option<AiStatus>, on: bool) -> String {
-    match status {
-        None => "No AI model is available.".into(),
-        Some(AiStatus::NotDownloaded) if on => {
-            "Not downloaded. Dictations use the rule text until it is ready.".into()
-        }
-        Some(AiStatus::NotDownloaded) => "Downloads when you turn AI cleanup on.".into(),
-        Some(AiStatus::Downloading(Some(percent))) => format!("Downloading {percent}%"),
-        Some(AiStatus::Downloading(None)) => "Downloading".into(),
-        Some(AiStatus::Verifying) => "Checking the download".into(),
-        Some(AiStatus::Failed) => "The file failed its check. Download it again.".into(),
-        Some(AiStatus::Preparing) => "Preparing the AI model".into(),
-        Some(AiStatus::Ready) if on => "Ready".into(),
-        Some(AiStatus::Ready) => "Downloaded".into(),
-    }
-}
-
-fn provider_label(provider: &str) -> &'static str {
-    match provider {
-        "endpoint" => "OpenAI-compatible endpoint",
-        _ => "This computer",
-    }
-}
-
-/// The rows for the endpoint: preset, address, model, key, and the connection test.
-fn endpoint_rows(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    form: &Entity<EndpointForm>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Vec<AnyElement> {
-    let preset_open = settings.read(cx).picker == Some("cleanup.endpointPreset");
-    let (preset, key_set, test, text, url, model, key) = {
-        let me = form.read(cx);
-        (
-            me.preset(),
-            me.key_is_set(),
-            me.test.clone(),
-            me.test_text(),
-            me.url.clone(),
-            me.model.clone(),
-            me.key.clone(),
-        )
-    };
-    let mut rows = vec![ui::menu_row(
-        palette,
-        settings_id("cleanup.endpointPreset"),
-        "Endpoint",
-        "Ollama and LM Studio fill in the address for you.",
-        preset.label().to_owned(),
-        &focus[ENDPOINT_PRESET],
-        {
-            let settings = settings.clone();
-            move |cx: &mut App| {
-                settings.update(cx, |me, cx| me.toggle_picker("cleanup.endpointPreset", cx))
-            }
-        },
-    )];
-    if preset_open {
-        for (index, choice) in Preset::ALL.into_iter().enumerate() {
-            let choose = {
-                let settings = settings.clone();
-                move |cx: &mut App| settings.update(cx, |me, cx| me.set_endpoint_preset(choice, cx))
-            };
-            rows.push(picker_option(
-                palette,
-                "cleanup.endpointPreset",
-                choice.key(),
-                choice.label().to_owned(),
-                choice == preset,
-                &focus[ENDPOINT_PRESET_OPTION + index],
-                choose,
-            ));
-        }
-    }
-    rows.push(ui::field_row(
-        palette,
-        settings_id("cleanup.endpointUrl"),
-        "Address",
-        UrlError::NeedsHttps.reason(),
-        &url,
-        None,
-    ));
-    rows.push(ui::field_row(
-        palette,
-        settings_id("cleanup.endpointModel"),
-        "Model",
-        "The model name the endpoint knows.",
-        &model,
-        None,
-    ));
-    let clear = key_set.then(|| {
-        let form = form.clone();
-        ui::button(
-            palette,
-            hook::id("settings", "cleanup.endpointKeyClear"),
-            "Remove",
-            Kind::Plain,
-            Some(&focus[ENDPOINT_KEY_CLEAR]),
-            true,
-            move |_, cx| form.update(cx, |me, cx| me.clear_key(cx)),
-        )
-        .into_any_element()
-    });
-    rows.push(ui::field_row(
-        palette,
-        settings_id("cleanup.endpointKey"),
-        "API key",
-        if key_set {
-            "Saved on this computer. Press Enter to replace it."
-        } else {
-            "Optional. Press Enter to save it on this computer."
-        },
-        &key,
-        clear,
-    ));
-    let running = test == Test::Running;
-    let failed = matches!(test, Test::Failed(_));
-    let run = {
-        let form = form.clone();
-        move |_: &mut Window, cx: &mut App| form.update(cx, |me, cx| me.test_connection(cx))
-    };
-    rows.push(ui::notice_row(
-        palette,
-        settings_id("cleanup.endpointStatus"),
-        text,
-        Notice::status(failed),
-        Some(
-            ui::button(
-                palette,
-                hook::id("settings", "cleanup.endpointTest"),
-                "Test connection",
-                Kind::Plain,
-                Some(&focus[ENDPOINT_TEST]),
-                !running,
-                run,
-            )
-            .into_any_element(),
-        ),
-    ));
-    rows
-}
-
-fn flow_bar(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Body {
-    let (enabled, idle, position, picker_open) = {
-        let me = settings.read(cx);
-        (
-            me.stored_bool("overlay.enabled"),
-            me.stored_bool("overlay.idleVisible"),
-            me.stored_str("overlay.position"),
-            me.picker == Some("flowbar.position"),
-        )
-    };
-    let flip_enabled = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_flow_bar(cx))
-    };
-    let flip_idle = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_flow_bar_idle(cx))
-    };
-    let open_picker = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("flowbar.position", cx))
-    };
-    let mut rows = vec![
-        ui::toggle_row(
-            palette,
-            settings_id("flowbar.enabled"),
-            "Show the flow bar",
-            "The floating bar while you dictate.",
-            enabled,
-            &focus[FLOWBAR],
-            flip_enabled,
-        ),
-        ui::toggle_row(
-            palette,
-            settings_id("flowbar.idle"),
-            "Show when idle",
-            "The bar stays on screen between dictations.",
-            idle,
-            &focus[FLOWBAR_IDLE],
-            flip_idle,
-        ),
-        ui::menu_row(
-            palette,
-            settings_id("flowbar.position"),
-            "Position",
-            "Where the bar sits on the screen.",
-            position_name(&position).to_owned(),
-            &focus[POSITION],
-            open_picker,
-        ),
-    ];
-    if picker_open {
-        for (index, value) in ["bottom", "top"].into_iter().enumerate() {
-            let choose = {
-                let settings = settings.clone();
-                move |cx: &mut App| settings.update(cx, |me, cx| me.set_position(value, cx))
-            };
-            rows.push(picker_option(
-                palette,
-                "flowbar.position",
-                value,
-                position_name(value).to_owned(),
-                position == value,
-                &focus[POSITION_OPTION + index],
-                choose,
-            ));
-        }
-    }
-    Body {
-        rows,
-        footer: Some("Dragging the bar overrides the position until you pick again."),
-    }
-}
-
-fn position_name(value: &str) -> &'static str {
-    match value {
-        "top" => "Top of the screen",
-        _ => "Bottom of the screen",
-    }
-}
-
-const RETENTION_OPTIONS: [(&str, &str); 3] = [
-    ("never", "Never"),
-    ("30d", "30 days"),
-    ("forever", "Keep forever"),
-];
-
-fn retention_label(value: &str) -> &'static str {
-    RETENTION_OPTIONS
-        .iter()
-        .find(|(key, _)| *key == value)
-        .map(|(_, label)| *label)
-        .unwrap_or("30 days")
-}
-
-fn storage(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Body {
-    let (folder, move_state, retention, picker_open, moving) = {
-        let me = settings.read(cx);
-        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-        (
-            hushpen_core::paths::display(me.storage.data.root(), home.as_deref()),
-            me.move_state.clone(),
-            me.stored_str("history.audioRetention"),
-            me.picker == Some("storage.retention"),
-            me.mic.read(cx).state() == mic::CaptureState::Listening,
-        )
-    };
-    let (change_label, change_enabled) = match &move_state {
-        MoveState::Idle => ("Change…", !moving),
-        MoveState::Choosing => ("Choosing…", false),
-        MoveState::Failed(_) => ("Change…", !moving),
-        MoveState::Restarting => ("Restarting…", false),
-    };
-    let change = {
-        let settings = settings.clone();
-        move |_: &mut Window, cx: &mut App| settings.update(cx, |me, cx| me.change_data_folder(cx))
-    };
-    let open_picker = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("storage.retention", cx))
-    };
-    let folder_row = ui::row(palette)
-        .id(hook::id("settings", "storage.folder.row"))
-        .test_support()
-        .child(
-            ui::text_column()
-                .child(ui::title(palette).child("Data folder"))
-                .child(
-                    ui::secondary(palette)
-                        .id(hook::id("settings", "storage.dataFolder"))
-                        .test_support()
-                        .aria_label(folder.clone())
-                        .child(folder),
-                ),
-        )
-        .child(ui::button(
-            palette,
-            hook::id("settings", "storage.changeFolder"),
-            change_label,
-            Kind::Plain,
-            Some(&focus[CHANGE_FOLDER]),
-            change_enabled,
-            change,
-        ))
-        .into_any_element();
-    let mut rows = vec![
-        folder_row,
-        ui::menu_row(
-            palette,
-            settings_id("storage.retention"),
-            "Keep dictation audio",
-            "How long the audio of a finished dictation stays.",
-            retention_label(&retention).to_owned(),
-            &focus[RETENTION],
-            open_picker,
-        ),
-    ];
-    if picker_open {
-        for (index, (value, label)) in RETENTION_OPTIONS.into_iter().enumerate() {
-            let choose = {
-                let settings = settings.clone();
-                move |cx: &mut App| settings.update(cx, |me, cx| me.set_retention(value, cx))
-            };
-            rows.push(picker_option(
-                palette,
-                "storage.retention",
-                value,
-                label.to_owned(),
-                retention == value,
-                &focus[RETENTION_OPTION + index],
-                choose,
-            ));
-        }
-    }
-    Body { rows, footer: None }
-}
-
-fn updates(
-    palette: Palette,
-    settings: &Entity<Settings>,
-    focus: &[FocusHandle],
-    cx: &mut App,
-) -> Body {
-    let (check_on, auto_on, updater) = {
-        let me = settings.read(cx);
-        (
-            me.stored_bool("updates.check"),
-            me.stored_bool("updates.autoInstall"),
-            me.updater.clone(),
-        )
-    };
-    let flip_check = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_update_check(cx))
-    };
-    let flip_auto = {
-        let settings = settings.clone();
-        move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_auto_install(cx))
-    };
-    let mut rows = vec![
-        ui::toggle_row(
-            palette,
-            settings_id("updates.check"),
-            "Check for updates",
-            "Asks GitHub for a newer version at most once a day. Nothing identifies you.",
-            check_on,
-            &focus[UPDATES_CHECK],
-            flip_check,
-        ),
-        ui::toggle_row(
-            palette,
-            settings_id("updates.autoInstall"),
-            "Install updates automatically",
-            "Downloads a new version for you. It starts after you restart.",
-            auto_on,
-            &focus[UPDATES_AUTO],
-            flip_auto,
-        ),
-    ];
-    if let Some(updater) = updater {
-        rows.extend(crate::updater::rows(
-            &updater,
-            &focus[UPDATES_NOW],
-            &focus[UPDATES_NOTES],
-            cx,
-        ));
-    }
-    Body { rows, footer: None }
 }

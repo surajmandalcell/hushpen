@@ -12,11 +12,18 @@ use registry::{REGISTRY, Spec};
 use serde_json::{Map, Value, json};
 use std::fs;
 use std::io;
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const SCHEMA_VERSION: i64 = 1;
 const UNKNOWN_KEY: &str = "_unknown";
+
+/// The smallest and the largest number the registry accepts for `key`, or `None` when the key
+/// is not numeric.
+pub fn range(key: &str) -> Option<RangeInclusive<f64>> {
+    registry::find(key)?.range()
+}
 
 pub struct SettingsStore {
     path: PathBuf,

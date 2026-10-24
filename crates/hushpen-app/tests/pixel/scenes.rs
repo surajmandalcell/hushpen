@@ -18,7 +18,7 @@ use hushpen_app::net::endpoint::UreqTransport;
 use hushpen_app::net::update::CheckError;
 use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
 use hushpen_app::settings::endpoint::EndpointForm;
-use hushpen_app::settings::{Parts as SettingsParts, Section, Settings};
+use hushpen_app::settings::{Parts as SettingsParts, Settings};
 use hushpen_app::shell::Shell;
 use hushpen_app::shortcuts::{KeyControl, Shortcuts};
 use hushpen_app::storage::{self, Storage};
@@ -88,11 +88,46 @@ pub enum Scene {
     Import,
     Models,
     About,
-    Settings(Section),
+    Settings(SettingsShot),
     /// Cleanup on the endpoint, with the failure of a test connection in its status row.
     EndpointFailure,
     /// Shortcuts with the recorder of the first slot waiting for keys.
     ShortcutRecorder,
+}
+
+/// What a Settings baseline shows of the one long list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsShot {
+    /// The top of the list, as the view opens.
+    Top,
+    /// Scrolled one page down.
+    Middle,
+    /// Scrolled to the end.
+    Bottom,
+    /// "audio" in the search field: rows from two sections under their headings.
+    Search,
+    /// A query no row matches.
+    NoMatch,
+}
+
+impl SettingsShot {
+    pub const ALL: [SettingsShot; 5] = [
+        SettingsShot::Top,
+        SettingsShot::Middle,
+        SettingsShot::Bottom,
+        SettingsShot::Search,
+        SettingsShot::NoMatch,
+    ];
+
+    fn key(self) -> &'static str {
+        match self {
+            SettingsShot::Top => "top",
+            SettingsShot::Middle => "middle",
+            SettingsShot::Bottom => "bottom",
+            SettingsShot::Search => "search",
+            SettingsShot::NoMatch => "search-empty",
+        }
+    }
 }
 
 impl Scene {
@@ -110,7 +145,7 @@ impl Scene {
             Scene::Import => "import".into(),
             Scene::Models => "models".into(),
             Scene::About => "about".into(),
-            Scene::Settings(section) => format!("settings-{}", section.key()),
+            Scene::Settings(shot) => format!("settings-{}", shot.key()),
             Scene::EndpointFailure => "settings-cleanup-endpoint-failure".into(),
             Scene::ShortcutRecorder => "shortcut-recorder".into(),
         }
@@ -134,7 +169,7 @@ impl Scene {
             Scene::Models,
             Scene::About,
         ];
-        scenes.extend(Section::ALL.into_iter().map(Scene::Settings));
+        scenes.extend(SettingsShot::ALL.into_iter().map(Scene::Settings));
         scenes.push(Scene::EndpointFailure);
         scenes.push(Scene::ShortcutRecorder);
         scenes
@@ -344,20 +379,30 @@ fn click(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, id: &st
     cx.run_until_parked();
 }
 
+/// Turns the mouse wheel over the content pane; a negative `pixels` moves the page up.
+fn scroll_by(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, pixels: f32) {
+    cx.update_window(handle, |_, window, cx| {
+        window.scroll(
+            "content.scroll",
+            ScrollDelta::Pixels(point(px(0.0), px(pixels))),
+            cx,
+        )
+    })
+    .expect("scroll the page");
+    cx.run_until_parked();
+}
+
+/// Clicks the Settings search field and types `query`, like a user.
+fn type_search(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, query: &str) {
+    click(cx, handle, "settings.search");
+    cx.update_window(handle, |_, window, cx| window.input(query, cx))
+        .expect("type the query");
+    cx.run_until_parked();
+}
+
 /// Clicks `id`, scrolling the page first like the mouse wheel does.
 fn click_scrolled(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, id: &str) {
-    let scroll = |cx: &mut HeadlessAppContext, pixels: f32| {
-        cx.update_window(handle, |_, window, cx| {
-            window.scroll(
-                "content.scroll",
-                ScrollDelta::Pixels(point(px(0.0), px(pixels))),
-                cx,
-            )
-        })
-        .expect("scroll the page");
-        cx.run_until_parked();
-    };
-    scroll(cx, 5_000.0);
+    scroll_by(cx, handle, 5_000.0);
     let id = SharedString::from(id.to_owned());
     for _ in 0..40 {
         let shown = cx
@@ -370,7 +415,7 @@ fn click_scrolled(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle
         if shown {
             break;
         }
-        scroll(cx, -120.0);
+        scroll_by(cx, handle, -120.0);
     }
     click(cx, handle, &id);
 }
@@ -412,6 +457,11 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
         }
         Scene::Dictionary => seed_dictionary(&storage),
         Scene::Import => seed_model(&storage),
+        // Automatic names the CPU count, which differs between machines.
+        Scene::Settings(_) => storage
+            .settings
+            .set("engine.threads", json!(4))
+            .expect("store the thread count"),
         _ => {}
     }
     let mut cx = headless_in(appearance);
@@ -515,7 +565,10 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                 cx,
                             )
                         });
-                        settings.update(cx, |settings, cx| settings.attach_updater(updater, cx));
+                        settings.update(cx, |settings, cx| {
+                            settings.attach_updater(updater, cx);
+                            settings.attach_search(window, cx);
+                        });
                         if matches!(scene, Scene::EndpointFailure) {
                             let form = cx.new(|cx| {
                                 EndpointForm::new(
@@ -653,20 +706,24 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
         }
         Scene::Models => click(cx, handle, "sidebar.models"),
         Scene::About => click(cx, handle, "sidebar.about"),
-        Scene::Settings(section) => {
+        Scene::Settings(shot) => {
             click(cx, handle, "sidebar.settings");
-            if section != Section::General {
-                click(cx, handle, &format!("settings.section.{}", section.key()));
+            match shot {
+                SettingsShot::Top => {}
+                SettingsShot::Middle => scroll_by(cx, handle, -480.0),
+                SettingsShot::Bottom => scroll_by(cx, handle, -5_000.0),
+                SettingsShot::Search => type_search(cx, handle, "audio"),
+                SettingsShot::NoMatch => type_search(cx, handle, "zebra"),
             }
         }
         Scene::ShortcutRecorder => {
             click(cx, handle, "sidebar.settings");
-            click(cx, handle, "settings.section.shortcuts");
-            click(cx, handle, "settings.shortcut.hold");
+            click_scrolled(cx, handle, "settings.shortcut.hold");
         }
         Scene::EndpointFailure => {
             click(cx, handle, "sidebar.settings");
-            click(cx, handle, "settings.section.cleanup");
+            // The search keeps the endpoint form on one screen, with the failure under it.
+            type_search(cx, handle, "endpoint");
             for step in [
                 "settings.cleanup.provider",
                 "settings.cleanup.provider.option.endpoint",
@@ -678,17 +735,9 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             cx.update_window(handle, |_, window, cx| window.input(&other_computer, cx))
                 .expect("type the address");
             cx.run_until_parked();
+            // The test button shares its row with the status, so the failure shows in place.
             click_scrolled(cx, handle, "settings.cleanup.endpointTest");
             std::thread::sleep(std::time::Duration::from_millis(300));
-            cx.run_until_parked();
-            cx.update_window(handle, |_, window, cx| {
-                window.scroll(
-                    "content.scroll",
-                    ScrollDelta::Pixels(point(px(0.0), px(-5_000.0))),
-                    cx,
-                )
-            })
-            .expect("scroll to the status row");
             cx.run_until_parked();
         }
     }

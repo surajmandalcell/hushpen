@@ -3,6 +3,7 @@
 use crate::data_dir::Os;
 use hushpen_core::shortcut::{Platform, Slot};
 use serde_json::{Map, Value, json};
+use std::ops::RangeInclusive;
 
 pub(super) enum Kind {
     Bool,
@@ -37,6 +38,15 @@ pub(super) struct Spec {
 impl Spec {
     pub fn default_value(&self, os: Os) -> Value {
         (self.default)(os)
+    }
+
+    /// The smallest and the largest number a numeric key takes.
+    pub fn range(&self) -> Option<RangeInclusive<f64>> {
+        match self.kind {
+            Kind::Int(min, max) | Kind::AutoOrInt(min, max) => Some(min as f64..=max as f64),
+            Kind::Float(min, max) => Some(min..=max),
+            _ => None,
+        }
     }
 
     /// The value in its accepted form, or `None` when it is invalid.
@@ -277,6 +287,15 @@ mod tests {
         assert_eq!(timeout.sanitize(&json!(100)), Some(json!(100)));
         assert_eq!(timeout.sanitize(&json!(99)), None);
         assert_eq!(timeout.sanitize(&json!(120_001)), None);
+    }
+
+    #[test]
+    fn numeric_keys_report_their_range() {
+        let range = |key| find(key).unwrap().range();
+        assert_eq!(range("dictation.maxMinutes"), Some(2.0..=60.0));
+        assert_eq!(range("audio.cueVolume"), Some(0.0..=1.0));
+        assert_eq!(range("engine.threads"), Some(1.0..=64.0));
+        assert_eq!(range("audio.cueSounds"), None);
     }
 
     #[test]
