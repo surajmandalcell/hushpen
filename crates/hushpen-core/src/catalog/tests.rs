@@ -302,7 +302,7 @@ fn schema_2_reads_the_details_and_requires_them() {
         with("kind", json!("cleanup")).is_err(),
         "kind matches its list"
     );
-    assert!(with("source_page", json!("https://example.com/x")).is_err());
+    assert!(with("source_page", json!("https://github.com/x")).is_err());
 }
 
 #[test]
