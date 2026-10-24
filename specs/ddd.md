@@ -80,8 +80,8 @@ Hushpen
   (or with Show when idle on), with a cross to cancel and a tick to finish.
 - **Files view**: the sidebar view for files (D-31). Its mode is Transcribe
   or Read aloud, and the app opens it on the mode picked last. The view was
-  called Import; Files names both modes, and Import stays the name of one
-  transcribed file.
+  called Import; Files names both modes, and Import stays the code name of
+  one transcribed file (History shows "File").
 - **import**: one audio file in the queue of the Files view, transcribed by
   the engine child into a history row of kind `import`. It is queued,
   running, done, failed, or cancelled.

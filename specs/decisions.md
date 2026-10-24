@@ -187,8 +187,9 @@ new decision, add it here in the same change (D-21).
   partial downloads older than 7 days.
 - **D-31 Files view.** The sidebar view that was Import is Files: one place
   for audio files and text, with a segmented control for Transcribe (the
-  import queue) and Read aloud. "Import" stays the name of one transcribed
-  file (the history kind, the `import.*` hook ids). A drop anywhere on the
+  import queue) and Read aloud. "Import" stays the code name of one transcribed
+  file (the history kind, the `import.*` hook ids); its History line says
+  "File" where a dictation names the app. A drop anywhere on the
   main window opens Files: when every dropped file is `.txt` or `.md` the
   first opens in Read aloud, else all go to the queue, which refuses what is
   not a regular file without opening it. The engine child reads the length
