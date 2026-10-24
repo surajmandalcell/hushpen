@@ -1,6 +1,7 @@
 //! The Settings list in a window: the headings, the search field in the toolbar, the empty
 //! result, Esc, Cmd+F or Ctrl+F, and the slider.
 
+use super::slots;
 use super::tests::{Rig, read, rig, value};
 use crate::shell::Shell;
 use crate::theme;
@@ -83,6 +84,15 @@ fn press(cx: &mut TestAppContext, shown: &Shown, key: &str) {
     cx.update_window(shown.handle, |_, window, cx| window.press(key, cx))
         .unwrap();
     frame(cx, shown);
+}
+
+/// Cmd+F on macOS, Ctrl+F on Linux.
+fn find_key() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "cmd-f"
+    } else {
+        "ctrl-f"
+    }
 }
 
 fn input(cx: &TestAppContext, shown: &Shown) -> Entity<InputState> {
@@ -169,6 +179,7 @@ fn typing_filters_to_the_matching_rows_under_their_headings(cx: &mut TestAppCont
     let state = cx.read(|app| shown.rig.settings.read(app).hook_state_json(app));
     assert_eq!(state["query"], "input");
     assert_eq!(state["rows"], json!(["audio.mic"]));
+    assert_eq!(state["sections"], json!(["audio"]));
 
     search(cx, &shown, "autostart");
     assert!(has(cx, &shown, "settings.general.launchAtLogin"));
@@ -206,15 +217,7 @@ fn a_query_with_no_match_says_so_and_clear_brings_the_list_back(cx: &mut TestApp
 fn secondary_f_focuses_the_search_and_esc_clears_then_leaves_it(cx: &mut TestAppContext) {
     let shown = shown(cx);
     assert!(!search_focused(cx, &shown));
-    press(
-        cx,
-        &shown,
-        if cfg!(target_os = "macos") {
-            "cmd-f"
-        } else {
-            "ctrl-f"
-        },
-    );
+    press(cx, &shown, find_key());
     assert!(
         search_focused(cx, &shown),
         "Cmd+F or Ctrl+F puts the caret in the field"
@@ -234,6 +237,22 @@ fn secondary_f_focuses_the_search_and_esc_clears_then_leaves_it(cx: &mut TestApp
     assert!(search_focused(cx, &shown), "and keeps the caret");
     press(cx, &shown, "escape");
     assert!(!search_focused(cx, &shown), "the next Esc leaves the field");
+}
+
+#[gpui_kit::test]
+fn secondary_f_still_works_after_a_search_hides_the_focused_row(cx: &mut TestAppContext) {
+    let shown = shown(cx);
+    let login = read(cx, &shown.rig, |me| me.control_focus[slots::LOGIN].clone());
+    cx.update_window(shown.handle, |_, window, cx| window.focus(&login, cx))
+        .unwrap();
+    frame(cx, &shown);
+    search(cx, &shown, "audio");
+    assert!(!has(cx, &shown, "settings.general.launchAtLogin"));
+    press(cx, &shown, find_key());
+    assert!(
+        search_focused(cx, &shown),
+        "the keys still reach the shell once the focused row is gone"
+    );
 }
 
 #[gpui_kit::test]
