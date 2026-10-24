@@ -5,10 +5,13 @@
 //! the listener still cannot start after a few tries, macOS gives the grant to a new process
 //! only, and the permissions page offers Quit and Reopen.
 
-use super::KeysStatus;
-use gpui_kit::App;
+use super::{Controller, KeysStatus, unavailable};
+use crate::hook;
+use gpui_kit::{App, Context};
+use hushpen_core::onboarding::Availability;
 use hushpen_core::permission::Access;
 use hushpen_platform::keys::{Reason, Unavailable};
+use serde_json::{Value, json};
 use std::rc::Rc;
 
 /// Starts the listener and gives back the switch for the session state (the Esc grab). It
@@ -70,6 +73,79 @@ impl Restarter {
                 self.failures = self.failures.saturating_add(1);
                 Attempt::Failed(why)
             }
+        }
+    }
+}
+
+impl Controller {
+    /// Starts the global keys when Input Monitoring is granted and they are still off, so the
+    /// grant works with no restart. Failed starts add up to [`Controller::keys_reopen_needed`].
+    pub(super) fn restart_keys(&mut self, cx: &mut Context<Self>) {
+        let input_monitoring = self.access().input_monitoring;
+        let attempt = self
+            .keys_restarter
+            .attempt(cx, input_monitoring, self.keys.as_ref());
+        match attempt {
+            Attempt::Idle => {}
+            Attempt::Started(session_active) => {
+                self.keys = Some(KeysStatus::Available);
+                self.session_active = Some(session_active);
+                hook::record_event("keys", "started after the Input Monitoring grant");
+                cx.notify();
+            }
+            Attempt::Failed(why) => {
+                log::warn!("global keys did not start after the grant: {}", why.message);
+                self.keys = Some(KeysStatus::Unavailable(why));
+                if self.keys_reopen_needed() {
+                    hook::record_event("keys", "reopen needed");
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// How to start the global keys again after a late grant. Without it a grant changes
+    /// nothing for the keys.
+    pub fn attach_keys_restart(&mut self, restart: KeysRestart) {
+        self.keys_restarter.attach(restart);
+    }
+
+    /// Input Monitoring is granted and the keys still do not start: the page offers Quit and
+    /// Reopen, because macOS gives the grant to a new process.
+    pub fn keys_reopen_needed(&self) -> bool {
+        self.keys_restarter.needs_reopen()
+    }
+
+    /// Whether the global keys run, for the onboarding permissions page.
+    pub fn keys_availability(&self) -> Availability {
+        match &self.keys {
+            Some(KeysStatus::Available) => Availability::Ready,
+            Some(KeysStatus::Unavailable(why)) => unavailable(why),
+            None => Availability::Off("Global keys are not running.".into()),
+        }
+    }
+
+    /// `hookctl state` section `global_keys`.
+    pub fn keys_json(&self) -> Value {
+        match &self.keys {
+            Some(KeysStatus::Available) => {
+                json!({"available": true, "reason": null, "reopen": false})
+            }
+            Some(KeysStatus::Unavailable(why)) => json!({
+                "available": false,
+                "reason": why.reason.key(),
+                "message": why.message,
+                "reopen": self.keys_reopen_needed(),
+            }),
+            None => json!({"available": false, "reason": "not-started"}),
+        }
+    }
+
+    /// The words Home shows in its notice row when the global keys are off, if they are.
+    pub fn keys_notice(&self) -> Option<&str> {
+        match &self.keys {
+            Some(KeysStatus::Unavailable(why)) => Some(&why.message),
+            _ => None,
         }
     }
 }

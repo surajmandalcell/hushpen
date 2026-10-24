@@ -2,13 +2,13 @@
 //! goes with it, and the two actions that need the engine or the paste path (reprocess and
 //! re-paste). The rows themselves are read and changed by the History view.
 
-use super::{Controller, ENGINE_NO_SPEECH, InsertSupport, failure_for};
+use super::{Controller, InsertSupport, failure_for};
 use crate::hook;
 use futures::channel::oneshot;
 use gpui_kit::Context;
 use hushpen_core::dictation::RowStatus;
 use hushpen_core::dictionary;
-use hushpen_core::error::HISTORY_WRITE_FAILED;
+use hushpen_core::error::{ENGINE_NO_SPEECH, HISTORY_WRITE_FAILED};
 use hushpen_core::transcript::strip_blank_markers;
 use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
 use hushpen_store::history::{self, Reprocessed, Row, Segment};

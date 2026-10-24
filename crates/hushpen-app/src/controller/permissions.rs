@@ -4,6 +4,8 @@
 //! hash, and macOS drops its grants. The set of grants held so far lives in the internal
 //! setting `permissions.lastGranted`. Reading is passive and never prompts.
 
+use super::Controller;
+use gpui_kit::Context;
 use hushpen_core::permission::{self, Permission, Permissions, Preflight};
 use hushpen_store::settings::SettingsStore;
 use serde_json::{Map, Value};
@@ -123,6 +125,80 @@ pub fn stored(settings: &SettingsStore) -> serde_json::Map<String, Value> {
         .get(LAST_GRANTED)
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default()
+}
+
+impl Controller {
+    /// Reads the permissions now and again every few seconds, and records which grants are
+    /// lost since the last start. A stored grant that reads missing at start is read again on
+    /// a timer, so the start never waits for it on the UI thread.
+    pub fn attach_permissions(&mut self, preflight: Arc<dyn Preflight>, cx: &mut Context<Self>) {
+        let watch = PermissionWatch::start(preflight, &self.storage.settings);
+        let settling = watch.settling();
+        self.permissions = Some(watch);
+        if !settling {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(hushpen_core::permission::SETTLE_EVERY)
+                    .await;
+                let more = this.update(cx, |me, cx| me.settle_permissions(cx));
+                if !matches!(more, Ok(true)) {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// One more start read. Returns whether the start reads still settle.
+    pub(super) fn settle_permissions(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(watch) = &mut self.permissions else {
+            return false;
+        };
+        if watch.settle(&self.storage.settings) {
+            cx.notify();
+        }
+        watch.settling()
+    }
+
+    /// A stored grant read missing at start, and the reads that decide whether it is lost are
+    /// not over yet.
+    pub fn permissions_settling(&self) -> bool {
+        self.permissions
+            .as_ref()
+            .is_some_and(PermissionWatch::settling)
+    }
+
+    pub fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
+        if let Some(watch) = &mut self.permissions
+            && watch.refresh(&self.storage.settings)
+        {
+            cx.notify();
+        }
+        self.restart_keys(cx);
+    }
+
+    /// The permissions that were granted before and are missing now, for onboarding.
+    pub fn lost_permissions(&self) -> &[hushpen_core::permission::Permission] {
+        self.permissions.as_ref().map_or(&[], PermissionWatch::lost)
+    }
+
+    /// What the system lets Hushpen do now, as of the last read.
+    pub fn access(&self) -> Permissions {
+        self.permissions.as_ref().map_or_else(
+            || Permissions::read(&hushpen_core::permission::NotApplicable),
+            |watch| *watch.current(),
+        )
+    }
+
+    /// `hookctl state` section `permissions`.
+    pub fn permissions_json(&self) -> Value {
+        self.permissions
+            .as_ref()
+            .map_or_else(unattached_json, PermissionWatch::to_json)
+    }
 }
 
 #[cfg(test)]
