@@ -87,6 +87,15 @@ impl Player {
     /// Decodes the file. Opens no device.
     pub fn open(path: &Path) -> Result<Self, PlaybackError> {
         let (samples, rate) = decode(path)?;
+        Self::from_samples(rate, samples)
+    }
+
+    /// Plays mono samples that are already in memory, such as synthesized speech. Opens no
+    /// device.
+    pub fn from_samples(rate: u32, samples: Vec<f32>) -> Result<Self, PlaybackError> {
+        if rate == 0 {
+            return Err(PlaybackError("the audio has no sample rate".into()));
+        }
         let duration_ms = (samples.len() as u64 * 1000) / u64::from(rate);
         let track = Arc::new(Mutex::new(Track {
             samples: samples.into(),
@@ -210,6 +219,35 @@ fn decode(path: &Path) -> Result<(Vec<f32>, u32), PlaybackError> {
     Ok((mono, spec.sample_rate))
 }
 
+/// Writes mono samples as a 16-bit PCM WAV, such as an export of synthesized speech. The file
+/// appears at `path` only once it is complete.
+pub fn write_wav(path: &Path, rate: u32, samples: &[f32]) -> Result<(), PlaybackError> {
+    let fail =
+        |error: &dyn fmt::Display| PlaybackError(format!("could not write the audio: {error}"));
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    let part = Path::new(&part);
+    let write = || -> Result<(), PlaybackError> {
+        let mut writer = hound::WavWriter::create(part, spec).map_err(|error| fail(&error))?;
+        for sample in samples {
+            writer
+                .write_sample(i16::from_sample_(*sample))
+                .map_err(|error| fail(&error))?;
+        }
+        writer.finalize().map_err(|error| fail(&error))?;
+        std::fs::rename(part, path).map_err(|error| fail(&error))
+    };
+    write().inspect_err(|_| {
+        let _ = std::fs::remove_file(part);
+    })
+}
+
 /// The output thread: opens the device and holds the stream until the player is dropped.
 fn run(queue: &Receiver<()>, track: &Arc<Mutex<Track>>) {
     let stream = match open_output(track) {
@@ -312,7 +350,7 @@ mod tests {
         }
     }
 
-    fn write_wav(path: &Path, rate: u32, channels: u16, frames: usize) {
+    fn write_ramp(path: &Path, rate: u32, channels: u16, frames: usize) {
         let spec = hound::WavSpec {
             channels,
             sample_rate: rate,
@@ -380,14 +418,14 @@ mod tests {
     fn a_file_decodes_to_mono_with_its_duration() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.wav");
-        write_wav(&path, 16_000, 1, 32_000);
+        write_ramp(&path, 16_000, 1, 32_000);
         let player = Player::open(&path).unwrap();
         assert_eq!(player.duration_ms(), 2_000);
         assert_eq!(player.position_ms(), 0);
         assert!(!player.is_playing());
 
         let stereo = dir.path().join("b.wav");
-        write_wav(&stereo, 8_000, 2, 8_000);
+        write_ramp(&stereo, 8_000, 2, 8_000);
         assert_eq!(Player::open(&stereo).unwrap().duration_ms(), 1_000);
     }
 
@@ -395,7 +433,7 @@ mod tests {
     fn seek_moves_the_position_and_clamps_to_the_end() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.wav");
-        write_wav(&path, 16_000, 1, 32_000);
+        write_ramp(&path, 16_000, 1, 32_000);
         let mut player = Player::open(&path).unwrap();
         player.seek_ms(1_000);
         assert_eq!(player.position_ms(), 1_000);
@@ -404,6 +442,34 @@ mod tests {
         player.seek_ms(0);
         assert_eq!(player.position_ms(), 0);
         assert!(!player.is_playing());
+    }
+
+    #[test]
+    fn samples_in_memory_play_like_a_file() {
+        let mut player = Player::from_samples(24_000, vec![0.1; 12_000]).unwrap();
+        player.silent = true;
+        assert_eq!(player.duration_ms(), 500);
+        player.play();
+        assert!(player.is_playing());
+        assert!(Player::from_samples(0, vec![0.1]).is_err());
+    }
+
+    #[test]
+    fn a_written_wav_reads_back_as_the_same_samples() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("speech.wav");
+        let samples: Vec<f32> = (0..2_400)
+            .map(|index| (index as f32 / 2_400.0) - 0.5)
+            .collect();
+        write_wav(&path, 24_000, &samples).unwrap();
+        assert!(!dir.path().join("speech.wav.part").exists());
+        let (read, rate) = decode(&path).unwrap();
+        assert_eq!(rate, 24_000);
+        assert_eq!(read.len(), samples.len());
+        assert!(read.iter().zip(&samples).all(|(a, b)| (a - b).abs() < 1e-3));
+
+        let missing = dir.path().join("no-folder").join("speech.wav");
+        assert!(write_wav(&missing, 24_000, &samples).is_err());
     }
 
     #[test]

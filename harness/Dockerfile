@@ -4,7 +4,8 @@
 #
 # Contents: GPUI and platform build deps, Mesa lavapipe (software Vulkan), the X11 test stack
 # (Xvfb, openbox, xdotool, xclip, ImageMagick, xinput), PulseAudio, D-Bus with the portal and a
-# StatusNotifier host, the paste targets, and the Rust toolchain named in rust-toolchain.toml.
+# StatusNotifier host, the paste targets, espeak-ng, and the Rust toolchain named in
+# rust-toolchain.toml.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -55,6 +56,12 @@ ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal \
       --default-toolchain 1.99.0 -c rustfmt -c clippy \
  && rustc --version && cargo --version && cargo fmt --version && cargo clippy --version
+
+# The Linux system voice for Read aloud (`hushpen-speech`). A layer of its own, so adding it did
+# not rebuild the toolchain layer.
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends --fix-missing espeak-ng \
+ && espeak-ng --version \
+ && rm -rf /var/lib/apt/lists/*
 
 # Registry and git caches, the target dir, and the repo are bind-mounted at run time.
 WORKDIR /work

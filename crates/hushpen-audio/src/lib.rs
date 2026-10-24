@@ -17,5 +17,5 @@ pub use cue::CuePlayer;
 pub use devices::{DEFAULT_ID, InputDevice, Selection, list_inputs, resolve_selection};
 pub use error::CaptureError;
 pub use feed::{FeedInfo, Feeder};
-pub use playback::{PlaybackError, Player};
+pub use playback::{PlaybackError, Player, write_wav};
 pub use session::{RecoveredSession, Sweep, recover_orphans};

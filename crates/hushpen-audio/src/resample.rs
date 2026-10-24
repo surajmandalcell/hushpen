@@ -1,4 +1,4 @@
-//! Any input rate and channel count to 16 kHz mono.
+//! Any input rate and channel count to 16 kHz mono, or to another output rate.
 
 use crate::error::CaptureError;
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
@@ -24,9 +24,10 @@ pub fn downmix(interleaved: &[f32], channels: usize, out: &mut Vec<f32>) {
 }
 
 /// Streaming resampler for one mono stream. Output length is exact: after
-/// `finish` the total equals `round(input_frames * 16000 / input_rate)`.
+/// `finish` the total equals `round(input_frames * output_rate / input_rate)`.
 pub struct MonoResampler {
     input_rate: u32,
+    output_rate: u32,
     fft: Option<Fft<f32>>,
     pending: Vec<f32>,
     scratch: Vec<f32>,
@@ -36,16 +37,21 @@ pub struct MonoResampler {
 }
 
 impl MonoResampler {
+    /// Resamples to 16 kHz, the rate of the engine and the session WAV.
     pub fn new(input_rate: u32) -> Result<Self, CaptureError> {
-        if input_rate == 0 {
-            return Err(CaptureError::failed("the input sample rate is 0"));
+        Self::to_rate(input_rate, TARGET_RATE)
+    }
+
+    pub fn to_rate(input_rate: u32, output_rate: u32) -> Result<Self, CaptureError> {
+        if input_rate == 0 || output_rate == 0 {
+            return Err(CaptureError::failed("a sample rate is 0"));
         }
-        let (fft, delay_left, scratch) = if input_rate == TARGET_RATE {
+        let (fft, delay_left, scratch) = if input_rate == output_rate {
             (None, 0, Vec::new())
         } else {
             let fft = Fft::<f32>::new(
                 input_rate as usize,
-                TARGET_RATE as usize,
+                output_rate as usize,
                 CHUNK_FRAMES,
                 1,
                 FixedSync::Input,
@@ -57,6 +63,7 @@ impl MonoResampler {
         };
         Ok(Self {
             input_rate,
+            output_rate,
             fft,
             pending: Vec::new(),
             scratch,
@@ -100,7 +107,7 @@ impl MonoResampler {
         let Some(fft) = self.fft.as_mut() else {
             return;
         };
-        let expected = (self.input_frames * u64::from(TARGET_RATE)
+        let expected = (self.input_frames * u64::from(self.output_rate)
             + u64::from(self.input_rate) / 2)
             / u64::from(self.input_rate);
         let need = fft.input_frames_next();
@@ -224,6 +231,18 @@ mod tests {
         let out = run(44_100, &input, 1000);
         let first = out.iter().position(|s| s.abs() > 0.2).unwrap();
         assert!((7_950..8_050).contains(&first), "burst starts at {first}");
+    }
+
+    #[test]
+    fn another_output_rate_has_the_exact_length() {
+        let input = sine(22_050, 0.9, 440.0);
+        let mut resampler = MonoResampler::to_rate(22_050, 24_000).unwrap();
+        let mut out = Vec::new();
+        resampler.process(&input, &mut out);
+        resampler.finish(&mut out);
+        let expected = (input.len() as u64 * 24_000 + 11_025) / 22_050;
+        assert_eq!(out.len() as u64, expected);
+        assert!(MonoResampler::to_rate(22_050, 0).is_err());
     }
 
     #[test]
