@@ -37,13 +37,9 @@ fn language_name(code: &str) -> String {
     }
 }
 
-/// `m:ss`, or `h:mm:ss` past an hour, for the start and end of a segment.
+/// The start or end of a segment, which the database keeps as a signed number.
 fn clock(ms: i64) -> String {
-    let total = ms.max(0) / 1000;
-    match total / 3600 {
-        0 => format!("{}:{:02}", total / 60, total % 60),
-        hours => format!("{hours}:{:02}:{:02}", total / 60 % 60, total % 60),
-    }
+    playback::clock(u64::try_from(ms).unwrap_or(0))
 }
 
 type Press = Box<dyn Fn(&mut Window, &mut App)>;

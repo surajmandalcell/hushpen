@@ -5,9 +5,11 @@
 use gpui_kit::AsyncApp;
 use std::path::PathBuf;
 
-/// `Ok(None)` is a cancelled dialog, which is not an error.
+/// `Ok(None)` is a cancelled dialog, which is not an error. `title` names the dialog where the
+/// platform shows a title, such as "Export transcripts".
 pub async fn choose(
     cx: &mut AsyncApp,
+    title: &'static str,
     directory: PathBuf,
     name: String,
 ) -> Result<Option<PathBuf>, String> {
@@ -20,7 +22,7 @@ pub async fn choose(
         Ok(Ok(chosen)) => Ok(chosen),
         Ok(Err(error)) => {
             log::warn!("the save dialog of the system did not open: {error}");
-            fallback(cx, directory, name).await
+            fallback(cx, title, directory, name).await
         }
         Err(_) => Err("The save dialog was closed before it answered.".to_owned()),
     }
@@ -29,6 +31,7 @@ pub async fn choose(
 #[cfg(target_os = "linux")]
 async fn fallback(
     cx: &mut AsyncApp,
+    title: &'static str,
     directory: PathBuf,
     name: String,
 ) -> Result<Option<PathBuf>, String> {
@@ -37,7 +40,7 @@ async fn fallback(
         .background_executor()
         .spawn(async move {
             rfd::FileDialog::new()
-                .set_title("Export transcripts")
+                .set_title(title)
                 .set_directory(directory)
                 .set_file_name(name)
                 .save_file()
@@ -48,6 +51,7 @@ async fn fallback(
 #[cfg(not(target_os = "linux"))]
 async fn fallback(
     _cx: &mut AsyncApp,
+    _title: &'static str,
     _directory: PathBuf,
     _name: String,
 ) -> Result<Option<PathBuf>, String> {

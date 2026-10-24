@@ -95,9 +95,18 @@ pub struct ImportSpec {
     pub translate: bool,
 }
 
-/// Receives how far an import is, from 0 to 1. It runs on the supervisor thread, so it must
-/// return at once.
-pub type ProgressSink = Arc<dyn Fn(f32) + Send + Sync>;
+/// How far an import is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ImportProgress {
+    /// From 0 to 1.
+    pub fraction: f32,
+    /// The length of the file from its headers, on the first report when they state it.
+    pub audio_ms: Option<u64>,
+}
+
+/// Receives the progress of an import. It runs on the supervisor thread, so it must return at
+/// once.
+pub type ProgressSink = Arc<dyn Fn(ImportProgress) + Send + Sync>;
 
 /// What a job asks the child to read.
 #[derive(Debug, Clone, PartialEq, Eq)]

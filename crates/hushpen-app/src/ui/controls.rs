@@ -288,6 +288,79 @@ pub fn slider<F: Fn(f32, &mut App) + 'static>(
         .child(rail)
 }
 
+/// A segmented control: one segment for each `(key, label)` choice on the control fill, the
+/// chosen one raised on the segment fill. The control is one tab stop; Left and Right move the
+/// choice. Each segment takes `<id>.<key>`.
+pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    label: &'static str,
+    choices: &[(&'static str, &'static str)],
+    chosen: &str,
+    focus: &FocusHandle,
+    choose: F,
+) -> impl IntoElement + use<F> {
+    let choose = Rc::new(choose);
+    let keys: Vec<&'static str> = choices.iter().map(|(key, _)| *key).collect();
+    let at = keys.iter().position(|key| *key == chosen).unwrap_or(0);
+    let segments: Vec<_> = choices
+        .iter()
+        .map(|&(key, text)| {
+            let selected = key == chosen;
+            let segment = div()
+                .id(SharedString::from(format!("{id}.{key}")))
+                .test_support()
+                .role(Role::Tab)
+                .aria_label(text)
+                .aria_selected(selected)
+                .flex()
+                .items_center()
+                .justify_center()
+                .w(px(size::SEGMENT_WIDTH))
+                .h_full()
+                .rounded(px(radius::BUTTON - size::FOCUS_RING))
+                .text_token(BUTTON)
+                .text_color(palette.label)
+                .child(text);
+            if selected {
+                segment.bg(palette.segment)
+            } else {
+                let choose = Rc::clone(&choose);
+                segment
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(palette.selection))
+                    .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| choose(key, cx))
+            }
+        })
+        .collect();
+    div()
+        .id(id)
+        .test_support()
+        .role(Role::TabList)
+        .aria_label(label)
+        .track_focus(focus)
+        .flex_none()
+        .flex()
+        .h(px(size::BUTTON_HEIGHT))
+        .rounded(px(radius::BUTTON))
+        .border_2()
+        .border_color(gpui_kit::transparent_black())
+        .bg(palette.control)
+        .focus_visible(move |style| style.border_color(palette.accent))
+        .on_key_down(move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+            let next = match event.keystroke.key.as_str() {
+                "left" => at.saturating_sub(1),
+                "right" => at + 1,
+                _ => return,
+            };
+            if let Some(&key) = keys.get(next) {
+                choose(key, cx);
+            }
+            cx.stop_propagation();
+        })
+        .children(segments)
+}
+
 /// A pop-up button: the current value and a chevron. It opens the list of options the view
 /// draws under it.
 pub fn menu_button<F: Fn(&mut Window, &mut App) + 'static>(

@@ -2,7 +2,7 @@
 //! `engine.log`.
 
 use super::{Inflight, LoadEntry, Manager, Restart};
-use crate::client::{Failure, JobOutcome, Loaded, Transcription};
+use crate::client::{Failure, ImportProgress, JobOutcome, Loaded, Transcription};
 use crate::engine_log::Level;
 use crate::server::model_name;
 use hushpen_core::error;
@@ -22,12 +22,19 @@ impl Manager {
                 }
             }
             Event::Loading { .. } | Event::Segment { .. } => {}
-            Event::Progress { job, fraction } => {
+            Event::Progress {
+                job,
+                fraction,
+                audio_ms,
+            } => {
                 if let Some(inflight) = self.inflight.get(&job)
                     && inflight.cancel_deadline.is_none()
                     && let Some(progress) = &inflight.progress
                 {
-                    progress(fraction.clamp(0.0, 1.0) as f32);
+                    progress(ImportProgress {
+                        fraction: fraction.clamp(0.0, 1.0) as f32,
+                        audio_ms,
+                    });
                 }
             }
             Event::Loaded { model, ms, gpu } => {

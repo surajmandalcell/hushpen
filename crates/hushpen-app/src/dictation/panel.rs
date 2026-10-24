@@ -9,8 +9,8 @@ use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Rgba, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba,
+    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use hushpen_core::language;
 
@@ -342,24 +342,9 @@ fn option_list(
         )
     });
     let close = dictation.clone();
-    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-        if event.keystroke.key.as_str() == "escape" {
-            close.update(cx, |me, cx| me.close_picker(cx));
-            cx.stop_propagation();
-        }
-    };
-    div()
-        .id(hook::id("home", "language.list"))
-        .test_support()
-        .role(Role::ListBox)
-        .flex()
-        .flex_col()
-        .w_full()
-        .flex_none()
-        .max_h(px(size::MENU_LIST_MAX_HEIGHT))
-        .overflow_y_scroll()
-        // The page behind scrolls on the same wheel event unless the list keeps it.
-        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-        .on_key_down(on_key)
-        .children(rows)
+    ui::option_list(
+        hook::id("home", "language.list"),
+        rows.collect(),
+        move |cx| close.update(cx, |me, cx| me.close_picker(cx)),
+    )
 }

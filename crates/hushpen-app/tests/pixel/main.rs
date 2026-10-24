@@ -33,7 +33,7 @@ use hushpen_core::flow_bar::BarState;
 use hushpen_core::onboarding::Step;
 use hushpen_core::permission::{Access, Preflight};
 use image::RgbaImage;
-use scenes::{Scene, SettingsShot, Shot};
+use scenes::{FilesShot, Scene, SettingsShot, Shot};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -280,7 +280,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::HistoryClear => Some(View::History),
         Scene::Home => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
-        Scene::Import => Some(View::Import),
+        Scene::Files(_) => Some(View::Files),
         Scene::Models | Scene::ModelsBottom => Some(View::Models),
         // The scrim dims the whole window, so the shell colors do not hold under the sheet.
         Scene::ModelsDetails => None,
@@ -333,6 +333,7 @@ fn check_scenes(scenes: &[Scene], appearance: Appearance) {
                 Scene::Settings(SettingsShot::Middle | SettingsShot::Bottom)
                     | Scene::AboutBottom
                     | Scene::ModelsBottom
+                    | Scene::Files(FilesShot::Queue)
             );
             assert_shell_tokens(&shot.image, appearance, Some(view), scrolled, &name);
         }

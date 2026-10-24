@@ -2,8 +2,9 @@
 
 use super::{History, save_dialog};
 use crate::hook;
-use gpui_kit::Context;
+use gpui_kit::{AsyncApp, Context};
 use hushpen_core::export::{self, Format, Item};
+use hushpen_store::db::Database;
 use hushpen_store::history::{self, Row};
 use serde_json::{Value, json};
 use std::fs;
@@ -19,6 +20,20 @@ pub struct Exported {
 }
 
 impl Exported {
+    /// What the view says once the file is written.
+    pub fn notice(&self) -> String {
+        let noun = if self.rows == 1 {
+            "transcript"
+        } else {
+            "transcripts"
+        };
+        format!(
+            "Exported {} {noun} to {}.",
+            self.rows,
+            shown_path(&self.path)
+        )
+    }
+
     pub fn json(&self) -> Value {
         json!({
             "path": self.path.display().to_string(),
@@ -139,109 +154,119 @@ impl History {
                 None => return self.refuse("Select transcripts to export first.".into(), cx),
             },
         };
-        let items = match self.items(&ids) {
-            Ok(items) => items,
+        let file = match ExportFile::of(&self.storage.database, format, &ids) {
+            Ok(file) => file,
             Err(message) => return self.refuse(message, cx),
         };
-        if format != Format::Json && !export::has_text(&items) {
-            let message = match items.len() {
-                1 => "This transcript has no text to export.",
-                _ => "None of the selected transcripts has text to export.",
-            };
-            return self.refuse(message.into(), cx);
-        }
-        let content = export::render(format, &items);
-        let name = suggested_name(format, &items);
         let directory = self.export_dir.clone().unwrap_or_else(default_directory);
-        let rows = items.len();
         self.export_busy = true;
         self.message = None;
         self.notice = None;
         hook::record_event("history", &format!("export-dialog {}", format.extension()));
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let chosen = save_dialog::choose(cx, directory, name).await;
+            let saved = file.save(cx, directory).await;
             let _ = this.update(cx, |me, cx| {
                 me.export_busy = false;
-                me.finish_export(chosen, format, rows, &content, cx);
+                me.finish_export(saved, cx);
             });
         })
         .detach();
         Ok(())
     }
 
-    fn finish_export(
-        &mut self,
-        chosen: Result<Option<PathBuf>, String>,
-        format: Format,
-        rows: usize,
-        content: &str,
-        cx: &mut Context<Self>,
-    ) {
-        match chosen {
+    fn finish_export(&mut self, saved: Result<Option<Exported>, String>, cx: &mut Context<Self>) {
+        match saved {
             Ok(None) => hook::record_event("history", "export-cancelled"),
             Err(message) => {
                 self.message = Some(message);
-                hook::record_event("history", "export-failed dialog");
+                hook::record_event("history", "export-failed");
             }
-            Ok(Some(path)) => {
-                let path = with_extension(path, format);
-                match fs::write(&path, content) {
-                    Ok(()) => {
-                        self.export_dir = path.parent().map(Path::to_path_buf);
-                        self.notice = Some(format!(
-                            "Exported {rows} {} to {}.",
-                            if rows == 1 {
-                                "transcript"
-                            } else {
-                                "transcripts"
-                            },
-                            shown_path(&path)
-                        ));
-                        hook::record_event(
-                            "history",
-                            &format!("export-written {}", path.display()),
-                        );
-                        self.last_export = Some(Exported {
-                            path,
-                            format,
-                            rows,
-                            bytes: content.len(),
-                        });
-                        self.export_menu = false;
-                    }
-                    Err(error) => {
-                        log::warn!("the export file was not written: {error}");
-                        self.message = Some(format!(
-                            "The file could not be written to {}: {}",
-                            shown_path(&path),
-                            error
-                        ));
-                        hook::record_event("history", "export-failed write");
-                    }
-                }
+            Ok(Some(exported)) => {
+                self.export_dir = exported.path.parent().map(Path::to_path_buf);
+                self.notice = Some(exported.notice());
+                hook::record_event(
+                    "history",
+                    &format!("export-written {}", exported.path.display()),
+                );
+                self.last_export = Some(exported);
+                self.export_menu = false;
             }
         }
         cx.notify();
     }
+}
 
-    fn items(&self, ids: &[String]) -> Result<Vec<Item>, String> {
-        let mut items = Vec::new();
-        for id in ids {
-            let Some(row) =
-                history::get(&self.storage.database, id).map_err(|error| error.to_string())?
-            else {
-                continue;
+/// The text of one export file and the name the save dialog suggests for it. History and the
+/// Files queue both write their exports through it.
+pub(crate) struct ExportFile {
+    format: Format,
+    content: String,
+    name: String,
+    rows: usize,
+}
+
+impl ExportFile {
+    /// The rows `ids` in `format`. A row that is gone is left out; with none left, or with no
+    /// words in a text format, there is nothing to export.
+    pub(crate) fn of(database: &Database, format: Format, ids: &[String]) -> Result<Self, String> {
+        let items = items(database, ids)?;
+        if format != Format::Json && !export::has_text(&items) {
+            let message = match items.len() {
+                1 => "This transcript has no text to export.",
+                _ => "None of the selected transcripts has text to export.",
             };
-            let segments =
-                history::segments(&self.storage.database, id).map_err(|error| error.to_string())?;
-            items.push(item_of(&row, &segments));
+            return Err(message.into());
         }
-        if items.is_empty() {
-            return Err("Those transcripts are no longer in the history.".to_owned());
-        }
-        Ok(items)
+        Ok(Self {
+            format,
+            content: export::render(format, &items),
+            name: suggested_name(format, &items),
+            rows: items.len(),
+        })
     }
+
+    /// Asks where to save the file, then writes it there. `Ok(None)` is a cancelled dialog.
+    pub(crate) async fn save(
+        self,
+        cx: &mut AsyncApp,
+        directory: PathBuf,
+    ) -> Result<Option<Exported>, String> {
+        let Some(path) =
+            save_dialog::choose(cx, "Export transcripts", directory, self.name).await?
+        else {
+            return Ok(None);
+        };
+        let path = with_extension(path, self.format);
+        fs::write(&path, &self.content).map_err(|error| {
+            log::warn!("the export file was not written: {error}");
+            format!(
+                "The file could not be written to {}: {error}",
+                shown_path(&path)
+            )
+        })?;
+        Ok(Some(Exported {
+            path,
+            format: self.format,
+            rows: self.rows,
+            bytes: self.content.len(),
+        }))
+    }
+}
+
+fn items(database: &Database, ids: &[String]) -> Result<Vec<Item>, String> {
+    let mut items = Vec::new();
+    for id in ids {
+        let Some(row) = history::get(database, id).map_err(|error| error.to_string())? else {
+            continue;
+        };
+        let segments = history::segments(database, id).map_err(|error| error.to_string())?;
+        items.push(item_of(&row, &segments));
+    }
+    if items.is_empty() {
+        return Err("Those transcripts are no longer in the history.".to_owned());
+    }
+    Ok(items)
 }
 
 fn item_of(row: &Row, segments: &[history::Segment]) -> Item {
@@ -290,12 +315,12 @@ fn with_extension(path: PathBuf, format: Format) -> PathBuf {
     }
 }
 
-fn default_directory() -> PathBuf {
+pub(crate) fn default_directory() -> PathBuf {
     std::env::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// `~/...` for a path under the home folder.
-fn shown_path(path: &Path) -> String {
+pub(crate) fn shown_path(path: &Path) -> String {
     std::env::home_dir()
         .and_then(|home| path.strip_prefix(home).ok().map(Path::to_path_buf))
         .map_or_else(

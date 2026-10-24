@@ -2,10 +2,10 @@
 //! time.
 //!
 //! The files come from outside, so only the engine child decodes: a decoder fault then costs
-//! one job and not the app. The app opens a file only to read its length from the headers
-//! ([`FileDecoder::duration_ms`]), on the thread of the job. WAV, MP3, FLAC, Ogg Vorbis, M4A
-//! (AAC-LC and ALAC), and AIFF decode. Opus, WebM, and video are named in the error instead of
-//! being tried.
+//! one job and not the app. The child also reports the length from the headers
+//! ([`FileDecoder::duration_ms`]) before it decodes, so the app never parses the file. WAV, MP3,
+//! FLAC, Ogg Vorbis, M4A (AAC-LC and ALAC), and AIFF decode. Opus, WebM, and video are named in
+//! the error instead of being tried.
 
 use crate::resample::{MonoResampler, TARGET_RATE, downmix};
 use std::fmt;

@@ -30,9 +30,15 @@ pub struct PlaybackInfo {
     pub error: Option<String>,
 }
 
+/// `4:05`, or `1:02:03` from an hour up.
 pub fn clock(ms: u64) -> String {
     let seconds = ms / 1000;
-    format!("{}:{:02}", seconds / 60, seconds % 60)
+    let (hours, minutes) = (seconds / 3600, seconds / 60 % 60);
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{:02}", seconds % 60)
+    } else {
+        format!("{minutes}:{:02}", seconds % 60)
+    }
 }
 
 impl History {
@@ -229,5 +235,6 @@ mod tests {
         assert_eq!(clock(59_999), "0:59");
         assert_eq!(clock(61_000), "1:01");
         assert_eq!(clock(600_000), "10:00");
+        assert_eq!(clock(3_723_000), "1:02:03");
     }
 }

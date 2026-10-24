@@ -185,8 +185,8 @@ session() {
   hook_action history-search '{"query":""}' >/dev/null
 
   # An import of speech-short.flac.
-  $HC click sidebar.import >/dev/null
-  wait_until 10 view_is import || fail "Import did not open"
+  $HC click sidebar.files >/dev/null
+  wait_until 10 view_is files || fail "Files did not open"
   hook_action import-add "{\"paths\":[\"$FLAC\"]}" >/dev/null
   wait_until 300 item_final speech-short.flac || fail "the import did not finish"
   [ "$(item speech-short.flac .state)" = done ] || fail "the import ended as '$(item speech-short.flac .state)'"

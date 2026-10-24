@@ -11,7 +11,8 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, svg,
+    KeyDownEvent, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, svg,
 };
 
 /// One line of a group: icon, text, then a value or controls on the right.
@@ -355,6 +356,36 @@ pub fn option_row<F: Fn(&mut Window, &mut App) + 'static>(
         None => element.child(title(palette).flex_1().min_w_0().child(label)),
     }
     .into_any_element()
+}
+
+/// The open list of a pop-up button: its option rows under the row that opened it, scrolling
+/// past `MENU_LIST_MAX_HEIGHT`. Esc closes it.
+pub fn option_list(
+    id: SharedString,
+    rows: Vec<AnyElement>,
+    close: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+        if event.keystroke.key.as_str() == "escape" {
+            close(cx);
+            cx.stop_propagation();
+        }
+    };
+    div()
+        .id(id)
+        .test_support()
+        .role(Role::ListBox)
+        .flex()
+        .flex_col()
+        .w_full()
+        .flex_none()
+        .max_h(px(size::MENU_LIST_MAX_HEIGHT))
+        .overflow_y_scroll()
+        // The page behind scrolls on the same wheel event unless the list keeps it.
+        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+        .on_key_down(on_key)
+        .children(rows)
+        .into_any_element()
 }
 
 /// A row that works like a button: the hover fill, the ring under keyboard focus, and the click.

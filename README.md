@@ -34,7 +34,11 @@ runs whisper.cpp in a child process.
 - Personal dictionary of words and replacements.
 - History with search, re-paste, reprocess, delete with undo, and export to
   TXT, SRT, VTT, and JSON.
-- Audio file import (formats that symphonia decodes) with a queue and cancel.
+- Files: drop audio files anywhere on the window to transcribe or translate
+  them in a queue (formats that symphonia decodes, up to 12 hours each),
+  with the time left, Copy, Export, and Retry.
+- Read aloud: typed text or a `.txt` or `.md` file, spoken by the system
+  voice or by Kokoro, with Play and Export Audio to WAV.
 - Flow bar that shows the dictation state without taking focus, a tray menu,
   and a fixed 940x600 window that follows the system Light or Dark setting.
 - Opt-in update check with signed updates. No telemetry.

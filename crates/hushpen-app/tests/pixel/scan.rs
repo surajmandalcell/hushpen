@@ -85,6 +85,8 @@ fn color_owners(nodes: &[Node]) -> Vec<(String, Rect)> {
             || node.is("Status")
             || (node.is("Switch") && node.checked == Some(true))
             || node.focused
+            // A drop zone lights up in the accent while files are dragged over the window.
+            || node.id.ends_with(".drop")
             || node.id.contains("status")
             || node.id.contains(".state.");
         if allowed {
@@ -319,6 +321,8 @@ const ROW_MIN: f32 = 36.0;
 const ROW_MAX: f32 = 36.0 + 11.0 * 1.3 + 1.0;
 const TITLE_MAX: f32 = 13.0 * 1.3 + 1.0;
 const SECONDARY_MAX: f32 = 11.0 * 1.3 + 1.0;
+/// Rows that hold more than a line by design: the text area of Read aloud.
+const TALL_ROWS: [&str; 1] = ["read.text"];
 
 /// The rows of every group, as `(group, row, height)`, from the elements that span a group.
 pub fn rows_of(nodes: &[Node]) -> Vec<(String, String, f32)> {
@@ -367,6 +371,9 @@ pub fn row_report(nodes: &[Node]) -> (String, Vec<String>) {
     }
     for (group, row, height) in rows {
         writeln!(report, "row {height:>6.1} px {row} in {group}").unwrap();
+        if TALL_ROWS.contains(&row.as_str()) {
+            continue;
+        }
         if height < ROW_MIN - 0.1 || height > ROW_MAX {
             problems.push(format!(
                 "{row} in {group} is {height:.1} px high, outside {ROW_MIN} to {ROW_MAX:.1}"

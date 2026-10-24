@@ -3,13 +3,15 @@
 use crate::about::{self, About};
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
+use crate::files::{self, DROP_GROUP, Files};
 use crate::flow_bar::FlowBar;
 use crate::history::{self, History};
 use crate::hook;
-use crate::import::{self, Import};
+use crate::import::ImportRequest;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
 use crate::onboarding::{self, Onboarding};
+use crate::read_aloud::ReadRequest;
 use crate::settings::{self, Settings};
 use crate::shortcuts::Shortcuts;
 use crate::theme::{self, BODY, Palette, StyledType, TOOLBAR_TITLE, chrome, radius, size, space};
@@ -17,8 +19,8 @@ use crate::updater::{self, Updater};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
-    App, ClickEvent, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
+    App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
     StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
 
@@ -36,7 +38,7 @@ pub struct Shell {
     flow_bar: Option<Entity<FlowBar>>,
     dictionary: Option<Entity<Dictionary>>,
     history: Option<Entity<History>>,
-    import: Option<Entity<Import>>,
+    files: Option<Entity<Files>>,
     shortcuts: Option<Entity<Shortcuts>>,
     settings: Option<Entity<Settings>>,
     about: Option<Entity<About>>,
@@ -77,7 +79,7 @@ impl Shell {
             flow_bar: None,
             dictionary: None,
             history: None,
-            import: None,
+            files: None,
             shortcuts: None,
             settings: None,
             about: None,
@@ -147,11 +149,50 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shows the file queue in the Import view and repaints when it changes.
-    pub fn attach_import(&mut self, import: Entity<Import>, cx: &mut Context<Self>) {
-        cx.observe(&import, |_, _, cx| cx.notify()).detach();
-        self.import = Some(import);
+    /// Shows the Files view and repaints when it changes. Show in History opens History on its
+    /// row; Download in Models opens Models.
+    pub fn attach_files(&mut self, files: Entity<Files>, cx: &mut Context<Self>) {
+        cx.observe(&files, |_, _, cx| cx.notify()).detach();
+        let (import, read) = {
+            let view = files.read(cx);
+            (view.import().clone(), view.read_aloud().cloned())
+        };
+        cx.subscribe(
+            &import,
+            |shell, _, request: &ImportRequest, cx| match request {
+                ImportRequest::ShowInHistory(id) => shell.show_in_history(id, cx),
+            },
+        )
+        .detach();
+        if let Some(read) = read {
+            cx.subscribe(&read, |shell, _, request: &ReadRequest, cx| match request {
+                ReadRequest::OpenModels => shell.select(View::Models, cx),
+            })
+            .detach();
+        }
+        self.files = Some(files);
         cx.notify();
+    }
+
+    fn show_in_history(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.select(View::History, cx);
+        if let Some(history) = &self.history {
+            history.update(cx, |history, cx| {
+                if let Err(why) = history.open(id, cx) {
+                    log::info!("the import row did not open in History: {why}");
+                }
+            });
+        }
+    }
+
+    /// Files dropped anywhere on the window open the Files view and land there.
+    fn dropped(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
+        let Some(files) = self.files.clone() else {
+            return;
+        };
+        self.select(View::Files, cx);
+        let paths = paths.paths().to_vec();
+        files.update(cx, |files, cx| files.drop_paths(paths, cx));
     }
 
     /// Keeps the flow bar alive for the app's lifetime. The bar paints in its own window, so
@@ -473,8 +514,8 @@ impl Shell {
             (_, _, Some(dictionary), _, View::Dictionary) => {
                 dictionary::panel::render(dictionary, cx).into_any_element()
             }
-            (_, _, _, _, View::Import) => match &self.import {
-                Some(import) => import::panel::render(import, cx).into_any_element(),
+            (_, _, _, _, View::Files) => match &self.files {
+                Some(files) => files::panel::render(files, cx).into_any_element(),
                 None => placeholder(view, palette).into_any_element(),
             },
             (_, _, _, _, View::Settings) => match &self.settings {
@@ -605,6 +646,10 @@ impl Render for Shell {
                     .and_then(|models| models::sheet::render(models, cx));
                 frame
                     .relative()
+                    .group(DROP_GROUP)
+                    .on_drop::<ExternalPaths>(
+                        cx.listener(|shell, paths, _, cx| shell.dropped(paths, cx)),
+                    )
                     .child(self.sidebar(palette, cx))
                     .child(self.content(&shell, palette, cx))
                     .children(sheet)
@@ -744,7 +789,7 @@ mod tests {
             "sidebar.home",
             "sidebar.history",
             "sidebar.dictionary",
-            "sidebar.import",
+            "sidebar.files",
             "sidebar.models",
             "sidebar.settings",
             "sidebar.about",

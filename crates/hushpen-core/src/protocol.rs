@@ -288,6 +288,8 @@ pub enum Event {
     Progress {
         job: u64,
         fraction: f64,
+        /// The length of the file as its headers state it, on the first report of an import.
+        audio_ms: Option<u64>,
     },
     Segment {
         job: u64,
@@ -362,8 +364,16 @@ impl Event {
             Self::Loaded { model, ms, gpu } => {
                 json!({"type": "loaded", "model": model, "ms": ms, "gpu": gpu})
             }
-            Self::Progress { job, fraction } => {
-                json!({"type": "progress", "job": job, "fraction": fraction})
+            Self::Progress {
+                job,
+                fraction,
+                audio_ms,
+            } => {
+                let mut value = json!({"type": "progress", "job": job, "fraction": fraction});
+                if let Some(ms) = audio_ms {
+                    value["audio_ms"] = json!(ms);
+                }
+                value
             }
             Self::Segment { job, segment } => {
                 let mut value = segment.to_json();
@@ -410,6 +420,7 @@ impl Event {
             "progress" => Ok(Self::Progress {
                 job: fields.u64("job")?,
                 fraction: fields.f64("fraction")?,
+                audio_ms: fields.optional_u64("audio_ms")?,
             }),
             "segment" => Ok(Self::Segment {
                 job: fields.u64("job")?,
@@ -693,6 +704,12 @@ mod tests {
             Event::Progress {
                 job: 3,
                 fraction: 0.25,
+                audio_ms: None,
+            },
+            Event::Progress {
+                job: 3,
+                fraction: 0.0,
+                audio_ms: Some(2_000),
             },
             Event::Cancelled { job: 3 },
             Event::error(Some(3), "ENGINE_BAD_LANGUAGE", "xx"),

@@ -18,6 +18,9 @@ struct Fake {
     steps: Vec<f32>,
 }
 
+/// What the first report of each job says the file lasts.
+const LENGTH_MS: u64 = 90_000;
+
 struct Fixture {
     import: Entity<Import>,
     rig: Rig,
@@ -54,8 +57,9 @@ fn failed(code: &str, detail: &str) -> JobOutcome {
     })
 }
 
+/// The model of the rig is the first of `files`, or `base` when there are none.
 fn open_with(cx: &mut TestAppContext, files: &[&str], steps: Vec<f32>) -> Fixture {
-    let rig = rig(cx, files, "base");
+    let rig = rig(cx, files, files.first().copied().unwrap_or("base"));
     let fake = Arc::new(Fake {
         outcomes: Mutex::default(),
         specs: Mutex::default(),
@@ -71,8 +75,16 @@ fn open_with(cx: &mut TestAppContext, files: &[&str], steps: Vec<f32>) -> Fixtur
             fake.most_at_once.fetch_max(now, Ordering::SeqCst);
             fake.specs.lock().unwrap().push(spec);
             fake.tokens.lock().unwrap().push(token);
+            // Like the engine child, the first report gives the length from the headers.
+            progress(ImportProgress {
+                fraction: 0.0,
+                audio_ms: Some(LENGTH_MS),
+            });
             for step in &fake.steps {
-                progress(*step);
+                progress(ImportProgress {
+                    fraction: *step,
+                    audio_ms: None,
+                });
             }
             let outcome = fake
                 .outcomes
@@ -89,6 +101,10 @@ fn open_with(cx: &mut TestAppContext, files: &[&str], steps: Vec<f32>) -> Fixtur
         work.borrow_mut().push_back(job);
         Ok(())
     });
+    let clock: crate::controller::Clock = {
+        let now = Rc::clone(&rig.now);
+        Rc::new(move || now.get())
+    };
     let import = cx.new(|cx| {
         Import::new(
             Parts {
@@ -97,6 +113,7 @@ fn open_with(cx: &mut TestAppContext, files: &[&str], steps: Vec<f32>) -> Fixtur
                 controller: rig.controller.clone(),
                 run,
                 spawn,
+                clock,
             },
             cx,
         )
@@ -265,8 +282,10 @@ fn the_progress_of_a_job_reaches_its_item(cx: &mut TestAppContext) {
     say(&fixture, failed(error::ENGINE_CRASHED, "stopped"));
     add(cx, &fixture, vec![file(&fixture, "a.wav")]);
     run_one(cx, &fixture);
-    // The failure keeps the last percent the job reached.
-    assert_eq!(items(cx, &fixture)[0]["progress"], 50);
+    // The failure keeps the last percent the job reached, and the length of the first report.
+    let item = items(cx, &fixture)[0].clone();
+    assert_eq!(item["progress"], 50);
+    assert_eq!(item["duration_ms"], LENGTH_MS);
 }
 
 #[gpui_kit::test]
@@ -392,7 +411,7 @@ fn a_failed_file_says_why_in_words_with_no_error_code(cx: &mut TestAppContext) {
         import
             .items()
             .iter()
-            .map(|item| panel::detail_of(item, None))
+            .map(|item| panel::detail_of(item, None, 0))
             .collect()
     });
     assert_eq!(lines[0], "Opus is not supported yet.");
@@ -501,14 +520,21 @@ fn without_a_speech_model_nothing_is_queued_and_the_notice_says_why(cx: &mut Tes
 }
 
 #[gpui_kit::test]
-fn the_dictation_language_and_the_dictionary_apply_to_an_import(cx: &mut TestAppContext) {
+fn the_files_language_and_the_dictionary_apply_to_an_import(cx: &mut TestAppContext) {
     let fixture = open(cx);
-    fixture
-        .rig
-        .storage
-        .settings
-        .set("dictation.language", serde_json::json!("es"))
+    let settings = &fixture.rig.storage.settings;
+    // Dictation keeps its own language.
+    settings
+        .set("dictation.language", serde_json::json!("fr"))
         .unwrap();
+    fixture
+        .import
+        .update(cx, |import, cx| import.set_language("es", cx))
+        .unwrap();
+    assert_eq!(
+        settings.get(LANGUAGE_SETTING),
+        Some(serde_json::json!("es"))
+    );
     hushpen_store::dictionary::add(&fixture.rig.storage.database, "Paulina", None).unwrap();
     say(&fixture, done("Hola Paulina.", "es"));
     add(cx, &fixture, vec![file(&fixture, "speech-es.wav")]);
@@ -603,6 +629,145 @@ fn the_row_of_a_finished_item_is_named_in_the_state(cx: &mut TestAppContext) {
     settle(cx, &fixture.rig);
 }
 
+fn id_of(cx: &mut TestAppContext, fixture: &Fixture, index: usize) -> u64 {
+    items(cx, fixture)[index]["id"].as_u64().unwrap()
+}
+
+fn finished(cx: &mut TestAppContext, text: &str) -> (Fixture, u64) {
+    let fixture = open(cx);
+    say(&fixture, done(text, "en"));
+    add(cx, &fixture, vec![file(&fixture, "talk.wav")]);
+    run_one(cx, &fixture);
+    let id = id_of(cx, &fixture, 0);
+    (fixture, id)
+}
+
+#[gpui_kit::test]
+fn a_row_shows_the_size_at_once_and_the_length_of_the_audio_when_done(cx: &mut TestAppContext) {
+    let fixture = open(cx);
+    say(&fixture, done("words", "en"));
+    add(cx, &fixture, vec![file(&fixture, "a.wav")]);
+    let queued = items(cx, &fixture)[0].clone();
+    assert_eq!(queued["size_bytes"], 5);
+    assert_eq!(queued["duration_ms"], Value::Null);
+    run_one(cx, &fixture);
+    assert_eq!(items(cx, &fixture)[0]["duration_ms"], 4_500);
+}
+
+#[gpui_kit::test]
+fn copy_puts_the_transcript_on_the_clipboard(cx: &mut TestAppContext) {
+    let (fixture, id) = finished(cx, "The quick brown fox.");
+    fixture
+        .import
+        .update(cx, |import, cx| import.copy(id, cx))
+        .unwrap();
+    assert_eq!(
+        crate::controller::testkit::clipboard(cx).as_deref(),
+        Some("The quick brown fox.")
+    );
+    assert!(
+        fixture
+            .import
+            .read_with(cx, |import, _| import.info().is_some())
+    );
+}
+
+#[gpui_kit::test]
+fn export_writes_the_transcript_in_the_chosen_format(cx: &mut TestAppContext) {
+    let (fixture, id) = finished(cx, "first piece second piece");
+    let out = tempfile::tempdir().unwrap();
+    let path = out.path().join("talk.srt");
+    fixture
+        .import
+        .update(cx, |import, cx| import.export(id, Format::Srt, cx))
+        .unwrap();
+    cx.run_until_parked();
+    let chosen = path.clone();
+    cx.simulate_new_path_selection(move |_| Some(chosen.clone()));
+    cx.run_until_parked();
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("00:00:02,000 --> 00:00:04,500"),
+        "{written}"
+    );
+    let state = cx.update(|cx| fixture.import.read(cx).state_json(cx));
+    assert_eq!(state["exporting"], false);
+}
+
+#[gpui_kit::test]
+fn show_in_history_asks_for_the_row_of_the_item(cx: &mut TestAppContext) {
+    let (fixture, id) = finished(cx, "words");
+    let asked = Rc::new(std::cell::RefCell::new(Vec::new()));
+    cx.update(|cx| {
+        let asked = Rc::clone(&asked);
+        cx.subscribe(&fixture.import, move |_, event: &ImportRequest, _| {
+            let ImportRequest::ShowInHistory(row) = event;
+            asked.borrow_mut().push(row.clone());
+        })
+        .detach();
+    });
+    fixture
+        .import
+        .update(cx, |import, cx| import.show_in_history(id, cx))
+        .unwrap();
+    let [row] = rows(&fixture).try_into().unwrap();
+    assert_eq!(*asked.borrow(), [row.id]);
+}
+
+#[gpui_kit::test]
+fn a_failed_item_can_be_retried_and_then_saved(cx: &mut TestAppContext) {
+    let fixture = open(cx);
+    say(&fixture, failed(error::ENGINE_CRASHED, "stopped"));
+    say(&fixture, done("words", "en"));
+    add(cx, &fixture, vec![file(&fixture, "a.wav")]);
+    run_one(cx, &fixture);
+    let id = id_of(cx, &fixture, 0);
+    assert!(
+        fixture
+            .import
+            .update(cx, |import, cx| import.copy(id, cx))
+            .is_err(),
+        "a failed item has no transcript"
+    );
+    fixture
+        .import
+        .update(cx, |import, cx| import.retry(id, cx))
+        .unwrap();
+    run_one(cx, &fixture);
+    assert_eq!(state_of(cx, &fixture), ["done"]);
+    assert_eq!(rows(&fixture).len(), 1);
+}
+
+#[gpui_kit::test]
+fn translate_reaches_the_job_and_is_kept(cx: &mut TestAppContext) {
+    let fixture = open(cx);
+    fixture
+        .import
+        .update(cx, |import, cx| import.set_translate(true, cx))
+        .unwrap();
+    say(&fixture, done("Hello.", "en"));
+    add(cx, &fixture, vec![file(&fixture, "speech-es.wav")]);
+    run_one(cx, &fixture);
+    assert!(fixture.fake.specs.lock().unwrap()[0].translate);
+    assert_eq!(
+        fixture.rig.storage.settings.get(TRANSLATE_SETTING),
+        Some(serde_json::json!(true))
+    );
+}
+
+#[gpui_kit::test]
+fn an_english_only_model_turns_translate_and_the_language_off(cx: &mut TestAppContext) {
+    let fixture = open_with(cx, &["tiny.en"], vec![]);
+    let refused = fixture
+        .import
+        .update(cx, |import, cx| import.set_translate(true, cx));
+    assert!(refused.unwrap_err().contains("English-only"));
+    let state = cx.update(|cx| fixture.import.read(cx).state_json(cx));
+    assert!(state["translate_off"].is_string());
+    assert!(state["language_off"].is_string());
+    assert_eq!(state["translate"], false);
+}
+
 mod view {
     use super::*;
     use crate::shell::Shell;
@@ -627,9 +792,17 @@ mod view {
             )
             .expect("open test window")
         });
+        let files = cx.new(|cx| {
+            crate::files::Files::new(
+                Rc::clone(&fixture.rig.storage),
+                fixture.import.clone(),
+                None,
+                cx,
+            )
+        });
         shell.update(cx, |shell, cx| {
-            shell.attach_import(fixture.import.clone(), cx);
-            shell.select(View::Import, cx);
+            shell.attach_files(files, cx);
+            shell.select(View::Files, cx);
         });
         frame(cx, handle);
         handle
@@ -653,13 +826,79 @@ mod view {
     }
 
     #[gpui_kit::test]
-    fn an_empty_queue_shows_the_picker_and_a_hint(cx: &mut TestAppContext) {
+    fn an_empty_queue_shows_the_drop_zone_and_the_options(cx: &mut TestAppContext) {
         let fixture = open(cx);
         let window = shown(cx, &fixture);
-        assert!(present(cx, window, "import.choose"));
-        assert!(present(cx, window, "import.empty"));
-        assert!(!present(cx, window, "import.row.0"));
+        for id in [
+            "files.mode",
+            "import.drop",
+            "import.choose",
+            "import.model",
+            "import.language",
+            "import.translate",
+        ] {
+            assert!(present(cx, window, id), "{id}");
+        }
+        assert!(!present(cx, window, "import.queue"));
         assert!(!present(cx, window, "import.blocker"));
+    }
+
+    #[gpui_kit::test]
+    fn files_dropped_on_the_window_open_the_files_view_and_are_queued(cx: &mut TestAppContext) {
+        use gpui_kit::{ExternalPaths, FileDropEvent, InputEvent as _};
+        let fixture = open(cx);
+        let window = shown(cx, &fixture);
+        let path = file(&fixture, "talk.mp3");
+        let position = Point::new(px(400.), px(300.));
+        for event in [
+            FileDropEvent::Entered {
+                position,
+                paths: ExternalPaths(vec![path].into()),
+            },
+            FileDropEvent::Submit { position },
+        ] {
+            cx.update_window(window, |_, window, cx| {
+                window.dispatch_event(event.to_platform_input(), cx);
+            })
+            .unwrap();
+            frame(cx, window);
+        }
+        assert_eq!(state_of(cx, &fixture), ["running"]);
+        assert!(present(cx, window, "import.row.0"));
+    }
+
+    #[gpui_kit::test]
+    fn a_done_line_offers_copy_export_show_and_remove(cx: &mut TestAppContext) {
+        let fixture = open(cx);
+        let window = shown(cx, &fixture);
+        say(&fixture, done("words", "en"));
+        add(cx, &fixture, vec![file(&fixture, "talk.mp3")]);
+        run_one(cx, &fixture);
+        frame(cx, window);
+        for id in [
+            "import.copy.0",
+            "import.export.0",
+            "import.show.0",
+            "import.remove.0",
+        ] {
+            assert!(present(cx, window, id), "{id}");
+        }
+        click(cx, window, "import.export.0");
+        assert!(present(cx, window, "import.export.option.srt"));
+    }
+
+    #[gpui_kit::test]
+    fn a_failed_line_offers_retry(cx: &mut TestAppContext) {
+        let fixture = open(cx);
+        let window = shown(cx, &fixture);
+        say(&fixture, failed(error::ENGINE_CRASHED, "stopped"));
+        say(&fixture, done("words", "en"));
+        add(cx, &fixture, vec![file(&fixture, "talk.mp3")]);
+        run_one(cx, &fixture);
+        frame(cx, window);
+        click(cx, window, "import.retry.0");
+        run_one(cx, &fixture);
+        assert_eq!(state_of(cx, &fixture), ["done"]);
     }
 
     #[gpui_kit::test]
@@ -670,7 +909,7 @@ mod view {
         frame(cx, window);
         assert!(present(cx, window, "import.row.0"));
         assert!(present(cx, window, "import.cancel.0"));
-        assert!(!present(cx, window, "import.empty"));
+        assert!(present(cx, window, "import.queue"));
 
         click(cx, window, "import.cancel.0");
         assert_eq!(state_of(cx, &fixture), ["cancelling"]);
@@ -689,7 +928,7 @@ mod view {
 
         click(cx, window, "import.clear");
         assert!(!present(cx, window, "import.row.0"));
-        assert!(present(cx, window, "import.empty"));
+        assert!(!present(cx, window, "import.queue"));
     }
 
     #[gpui_kit::test]

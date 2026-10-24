@@ -414,7 +414,7 @@ fn the_details_sheet_shows_the_facts_and_its_actions_work(cx: &mut TestAppContex
     assert_eq!(label(cx, handle, "models.sheet.speed"), "Slow (2 of 5)");
     assert_eq!(label(cx, handle, "models.sheet.accuracy"), "Good (3 of 5)");
     assert_eq!(label(cx, handle, "models.sheet.memory"), "About 300 MB");
-    assert_eq!(label(cx, handle, "models.sheet.size"), "0 MB in 2 files");
+    assert_eq!(label(cx, handle, "models.sheet.size"), "0 KB in 2 files");
     assert_eq!(label(cx, handle, "models.sheet.languages"), "English only");
     assert_eq!(label(cx, handle, "models.sheet.license"), "Apache-2.0");
     assert_eq!(label(cx, handle, "models.sheet.status"), "Not downloaded");

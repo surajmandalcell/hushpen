@@ -829,10 +829,23 @@ mod tests {
         let fractions: Vec<f64> = events
             .iter()
             .filter_map(|event| match event {
-                Event::Progress { job: 1, fraction } => Some(*fraction),
+                Event::Progress {
+                    job: 1, fraction, ..
+                } => Some(*fraction),
                 _ => None,
             })
             .collect();
+        // The first report gives the length from the headers: 1600 samples at 16 kHz.
+        assert!(
+            matches!(
+                events.first(),
+                Some(Event::Progress {
+                    audio_ms: Some(100),
+                    ..
+                })
+            ),
+            "{events:?}"
+        );
         assert!(fractions.len() >= 2, "{events:?}");
         assert!(fractions.windows(2).all(|pair| pair[0] <= pair[1]));
         assert!(

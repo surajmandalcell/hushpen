@@ -1,7 +1,8 @@
 #!/bin/bash
-# File import end to end: VAL-IMP-001 to 008 and 010, VAL-CROSS-003 and 004, and the thread count
-# of the X11 flow bar watcher over 20 hide and show cycles (a hp4 scrutiny item folded into this
-# feature). VAL-IMP-009 is the heavy cargo test on the Mac.
+# File import end to end: VAL-IMP-001 to 008 and 010, VAL-CROSS-003 and 004, the Files view (a
+# window drop, Copy, Export, Retry, Translate, and a Read aloud WAV with espeak-ng), and the thread
+# count of the X11 flow bar watcher over 20 hide and show cycles (a hp4 scrutiny item folded into
+# this feature). VAL-IMP-009 is the heavy cargo test on the Mac.
 # 001 picks speech-short.wav in the portal file dialog that xdg-desktop-portal-gtk shows; every
 # other file goes in through the hook action import-add (the same call a drop makes). Words are
 # checked like the other suites do: at least 90% of the expected words, with one slip allowed.
@@ -26,6 +27,7 @@ item_is() { [ "$(item "$1" .state)" = "$2" ]; }
 item_final() { case "$(item "$1" .state)" in done | failed | cancelled) return 0 ;; esac; return 1; }
 queue_idle() { [ "$(imp .busy)" = false ]; }
 rendered() { $HC tree | jq -e "any(.[]; .id == \"$1\")" >/dev/null; }
+view_is() { [ "$($HC state | jq -r .view)" = "$1" ]; }
 dialog() { xdotool search --onlyvisible --name "$DIALOG_NAMES" 2>/dev/null | head -1; }
 dialog_open() { [ -n "$(dialog)" ]; }
 dialog_gone() { [ -z "$(dialog)" ]; }
@@ -49,8 +51,9 @@ import_one() { # <path>: adds one file and waits for its end
 text_of() { item "$1" .text; }
 open_view() {
   focus "$(app_window)"
-  $HC click sidebar.import >/dev/null
-  wait_until 5 rendered import.view
+  $HC click sidebar.files >/dev/null
+  wait_until 5 rendered files.view
+  $HC action files-mode '{"mode":"transcribe"}' >/dev/null
   sleep 0.3
 }
 row_of() { q "select id from transcript where source_name = '$1' order by created_at desc limit 1"; }
@@ -369,6 +372,65 @@ export_to "$id" json "$OUT/es.json" || failures+="es.json was not written; "
 cp "$OUT/es.json" "$RUN_OUT/cross-004-row.json"
 [ "$(jq -r '.rows[0].language_detected' "$OUT/es.json")" = es ] || failures+="the JSON language is $(jq -r '.rows[0].language_detected' "$OUT/es.json"); "
 check_failures "VAL-CROSS-004 language" "text '$text'; the row, the detail, and the JSON export say es" "$failures"
+
+echo "== the Files view: a drop, the length, Copy, Export, Retry, Translate, and Read aloud"
+failures=""
+files() { $HC state | jq -r ".files$1"; }
+read_state() { $HC state | jq -r ".read$1"; }
+open_view
+$HC action import-clear >/dev/null
+$HC action files-mode '{"mode":"readAloud"}' >/dev/null
+$HC action files-drop "{\"paths\":[\"$FIX/speech-short.wav\"]}" >/dev/null
+[ "$(files .mode)" = transcribe ] || failures+="a dropped WAV left the mode on $(files .mode); "
+wait_until 120 item_final speech-short.wav || failures+="the dropped file did not end; "
+item_is speech-short.wav done || failures+="the dropped file ended '$(item speech-short.wav .state)'; "
+[ "$(item speech-short.wav .size_bytes)" = "$(stat -c %s "$FIX/speech-short.wav")" ] || failures+="the size reads $(item speech-short.wav .size_bytes); "
+[ "$(item speech-short.wav .duration_ms)" -gt 1000 ] || failures+="the length reads $(item speech-short.wav .duration_ms); "
+sleep 0.3
+shot files-done
+fid=$(item speech-short.wav .id)
+$HC action import-copy "{\"id\":$fid}" >/dev/null
+[ "$(clip)" = "$(text_of speech-short.wav)" ] || failures+="Copy put '$(clip)' on the clipboard; "
+rm -f "$OUT/files.srt"
+$HC paths "$OUT/files.srt" >/dev/null
+$HC action import-export "{\"id\":$fid,\"format\":\"srt\"}" >/dev/null
+wait_until 20 test -s "$OUT/files.srt" || failures+="Export wrote no SRT; "
+grep -q -- '-->' "$OUT/files.srt" || failures+="the SRT has no cue; "
+$HC action import-show "{\"id\":$fid}" >/dev/null
+wait_until 5 view_is history || failures+="Show in History opened $($HC state | jq -r .view); "
+open_view
+broken=/tmp/broken.wav
+head -c 4000 /dev/urandom >"$broken"
+add "$broken" >/dev/null
+wait_until 60 item_is broken.wav failed || failures+="the broken file ended '$(item broken.wav .state)'; "
+bid=$(item broken.wav .id)
+cp "$FIX/speech-short.wav" "$broken"
+$HC action import-retry "{\"id\":$bid}" >/dev/null
+wait_until 120 item_final broken.wav
+item_is broken.wav done || failures+="the retried file ended '$(item broken.wav .state)'; "
+rm -f "$broken"
+use_model base.en || failures+="base.en did not load; "
+open_view
+[ "$(imp .translate_off)" != null ] || failures+="translate is on offer for base.en; "
+$HC action import-translate '{"on":true}' >/dev/null 2>&1
+[ "$(imp .translate)" = false ] || failures+="translate was turned on for base.en; "
+$HC action files-mode '{"mode":"readAloud"}' >/dev/null
+$HC action read-text '{"text":"The quick brown fox jumps over the lazy dog."}' >/dev/null
+wait_until 10 sh -c "[ \"\$($HC state | jq -r '.read.loading')\" = false ]"
+sleep 0.3
+shot files-read-aloud
+[ "$(read_state .unavailable)" = null ] || failures+="the system voice is unavailable: $(read_state .unavailable); "
+rm -f "$OUT/read.wav"
+$HC paths "$OUT/read.wav" >/dev/null
+$HC action read-export >/dev/null
+wait_until 60 test -s "$OUT/read.wav" || failures+="Export Audio wrote no WAV: $(read_state .error); "
+[ "$(head -c 4 "$OUT/read.wav")" = RIFF ] || failures+="the export is not a WAV; "
+wav_bytes=$(stat -c %s "$OUT/read.wav" 2>/dev/null || echo 0)
+$HC action read-engine '{"engine":"kokoro"}' >/dev/null
+wait_until 10 sh -c "[ \"\$($HC state | jq -r '.read.loading')\" = false ]"
+kokoro=$(read_state .needs_model)
+$HC action read-engine '{"engine":"system"}' >/dev/null
+check_failures "Files view" "the drop queued and finished the WAV; Copy, an SRT export, Show in History, and Retry worked; translate is off for base.en; Read aloud wrote a $wav_bytes byte WAV with espeak-ng; Kokoro needs its model: $kokoro" "$failures"
 
 echo "== the flow bar watcher thread does not leak over 20 hide and show cycles"
 failures=""
