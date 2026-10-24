@@ -927,19 +927,21 @@ impl Settings {
         &self.move_state
     }
 
-    /// `hookctl state` section `settings_view`: the query and the registry rows it matches (a row
-    /// that does not apply, such as an endpoint field while AI cleanup runs here, draws nothing),
-    /// the move, and launch at login as the system has it. The hook module wires it once the hook
-    /// is attached.
+    /// `hookctl state` section `settings_view`: the query, the registry rows it matches (a row
+    /// that does not apply, such as an endpoint field while AI cleanup runs here, draws nothing)
+    /// and their sections in page order, the move, and launch at login as the system has it. The
+    /// hook module wires it once the hook is attached.
     pub fn hook_state_json(&self, cx: &gpui_kit::App) -> Value {
-        let rows: Vec<&str> = search::visible(&self.query)
+        let shown: Vec<&search::RowMeta> = search::visible(&self.query)
             .into_iter()
             .filter_map(|id| search::ROWS.iter().find(|meta| meta.id == id))
-            .map(|meta| meta.key)
             .collect();
+        let mut sections: Vec<&str> = shown.iter().map(|meta| meta.section.key()).collect();
+        sections.dedup();
         json!({
             "query": self.query,
-            "rows": rows,
+            "rows": shown.iter().map(|meta| meta.key).collect::<Vec<_>>(),
+            "sections": sections,
             "ai": {
                 "enabled": self.stored_bool("cleanup.llm.enabled"),
                 "provider": self.ai_provider(),

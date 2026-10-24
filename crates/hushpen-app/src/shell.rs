@@ -56,6 +56,12 @@ impl Shell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let shell_focus = cx.focus_handle();
         window.focus(&shell_focus, cx);
+        // A focused control that leaves the frame, such as a row a search hides, would take the
+        // keys with it: they would reach no handler until the next click.
+        cx.on_focus_lost(window, |shell, window, cx| {
+            window.focus(&shell.shell_focus, cx)
+        })
+        .detach();
         // The Kit root does not exist yet: it wraps this view once it is built.
         window.defer(cx, |window, cx| {
             crate::window_chrome::clear_root_fill(chrome::TRANSLUCENT_SIDEBAR, window, cx)
