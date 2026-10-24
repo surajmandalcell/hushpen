@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn markdown_syntax_is_removed_and_blocks_stay_apart() {
-        let source = "---\ntitle: Notes\n---\n# Plan\n\nRead **this** and [the docs](https://x.y).\n\n\
+        let source = "---\ntitle: Notes\n---\n# Plan\n\nRead **this** and [the docs](notes.md).\n\n\
                       - one\n- `two`\n\n> quoted\n\n![a cat](cat.png)\n\n<div>html</div>\n\n---\n\n\
                       | A | B |\n|---|---|\n| 1 | 2 |\n\nline<br>\nnext  \nhard";
         let text = prepare(source, TextFormat::Markdown).unwrap();
