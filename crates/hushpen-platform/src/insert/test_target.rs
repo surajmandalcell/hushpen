@@ -2,6 +2,7 @@
 //! the app in front. A test can then dictate into a background window and leave the focus where
 //! it is. The keys go to that app's process; no app is activated.
 
+#[cfg(any(target_os = "macos", test))]
 use super::Target;
 use std::sync::Mutex;
 
@@ -52,6 +53,7 @@ pub fn running_pid(bundle: &str) -> Option<u32> {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn warn_once(bundle: &str) {
     let mut slot = lock();
     if slot.warned || slot.bundle.as_deref() != Some(bundle) {
@@ -64,6 +66,7 @@ fn warn_once(bundle: &str) {
 
 /// The app that gets the text: the running app of the bundle id that is set, else the app in
 /// front.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn choose(
     bundle: Option<&str>,
     running: impl FnOnce(&str) -> Option<Target>,
@@ -83,6 +86,7 @@ pub(crate) fn choose(
 
 /// The process that gets the key events for `target`: its pid when it is the set app, else
 /// `None`, which posts them to the whole session like a key press.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn key_pid(bundle: Option<&str>, target: &Target) -> Option<i32> {
     let bundle = bundle?;
     if target.label != bundle {
