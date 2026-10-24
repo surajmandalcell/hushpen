@@ -1,7 +1,8 @@
 //! The opt-in update check: when it runs, what it found, and what the views show about it.
 //!
-//! A check runs only while `updates.check` is on, at most once every 24 hours on its own, and
-//! at once when the user presses Check now. It sends no identifier.
+//! A check runs on its own only while `updates.check` is on, at most once every 24 hours, and
+//! at once when the user presses Check now. Check for Updates in About runs one check even while
+//! the switch is off, and leaves the switch off. A check sends no identifier.
 //!
 //! What an offered version leads to depends on how this copy was installed. A macOS app or an
 //! AppImage downloads the file of the signed manifest, checks its sha256, stages it beside the
@@ -247,15 +248,25 @@ impl Updater {
     }
 
     pub fn can_check_now(&self) -> bool {
-        self.checks_on()
-            && !matches!(
-                self.state,
-                State::Checking | State::Downloading(..) | State::Ready(_)
-            )
+        self.checks_on() && self.can_check_once()
+    }
+
+    /// Check for Updates in About: one check the person asked for, whether the switch is on or
+    /// off. It does not turn the switch on.
+    pub fn check_once(&mut self, cx: &mut Context<Self>) {
+        self.begin_check(cx);
+    }
+
+    /// No check, download, or restart is under way.
+    pub fn can_check_once(&self) -> bool {
+        !matches!(
+            self.state,
+            State::Checking | State::Downloading(..) | State::Ready(_)
+        )
     }
 
     fn begin_check(&mut self, cx: &mut Context<Self>) {
-        if !self.can_check_now() {
+        if !self.can_check_once() {
             return;
         }
         self.runs += 1;

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 15] = [
+const ALLOWED: [(&str, &str, &str); 16] = [
     // The default button fills with it; the plain button is a link and takes it for text.
     ("ui/controls.rs", "button", "accent"),
     // The track of a switch that is on, and the filled part of a slider.
@@ -28,6 +28,8 @@ const ALLOWED: [(&str, &str, &str); 15] = [
     ("onboarding/panel.rs", "permission_row", "warning"),
     ("onboarding/panel.rs", "model", "success"),
     ("onboarding/panel.rs", "model", "error"),
+    // What the last update check found on About; a failed check is a status word.
+    ("about/panel.rs", "update_status", "error"),
 ];
 
 const TOKENS: [&str; 4] = ["accent", "success", "warning", "error"];

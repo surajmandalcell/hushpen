@@ -1,6 +1,6 @@
 //! Process start: single instance, the fixed window, and shutdown.
 
-use crate::about::{About, SystemOpener};
+use crate::about::{About, Build, SystemOpener};
 use crate::app_menu;
 use crate::assets::{AppAssets, register_fonts};
 use crate::controller::{
@@ -342,7 +342,15 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             shell.update(cx, |shell, cx| {
                 shell.attach_settings(settings_view.clone(), cx)
             });
-            let about = cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
+            let about = cx.new(|cx| {
+                About::new(
+                    Rc::clone(&storage),
+                    Rc::new(SystemOpener),
+                    Build::current(),
+                    cx,
+                )
+            });
+            about.update(cx, |about, cx| about.attach_models(models.clone(), cx));
             shell.update(cx, |shell, cx| shell.attach_about(about.clone(), cx));
             let updater = Version::parse(hushpen_core::BUILD_VERSION).map(|current| {
                 cx.new(|cx| {
@@ -365,6 +373,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     settings.attach_updater(updater.clone(), cx)
                 });
                 shell.update(cx, |shell, cx| shell.attach_updater(updater.clone(), cx));
+                about.update(cx, |about, cx| about.attach_updater(updater.clone(), cx));
             } else {
                 log::warn!("the build version is not a version, so updates stay off");
             }

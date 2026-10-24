@@ -448,26 +448,29 @@ cli_version=$(/app/hushpen --version 2>/dev/null | awk '{print $2}')
 case "$version" in 2.0.0*) ;; *) failures+="the version '$version' does not start with 2.0.0; " ;; esac
 folder=$(tree_get about.dataFolder text)
 [ "$folder" = "~/hp-moved" ] || failures+="the data folder row reads '$folder'; "
+engine=$(tree_get about.engine text)
+case "$engine" in whisper.cpp*) ;; *) failures+="the engine row reads '$engine'; " ;; esac
 all_text=$($HC tree | jq -r '.[].text' | grep -v '^$')
-for banned in Electron React GPUI Rust whisper.cpp llama.cpp; do
+# The engine row names whisper.cpp on purpose; no other part of the stack shows.
+for banned in Electron React GPUI Rust llama.cpp; do
   grep -q "$banned" <<<"$all_text" && failures+="the About text contains '$banned'; "
 done
 $HC tree >"$RUN_OUT/008-tree.json"
 shot 008-about
-check_failures "VAL-SET-008 about content" "version $version (== hushpen --version), data folder $folder, no stack names in the text" "$failures"
+check_failures "VAL-SET-008 about content" "version $version (== hushpen --version), engine $engine, data folder $folder, no other stack names in the text" "$failures"
 
 echo "== VAL-SET-009 the About rows open the right targets"
 failures=""
 rm -rf "$NEW/logs"
 open_view about >/dev/null
-for target in data-folder log-folder github issues; do
+for target in data-folder log-folder website github issues; do
   $HC click "about.open.$target" >/dev/null || failures+="no row for $target; "
   sleep 0.3
 done
 $HC state | jq -c '.about["open-requests"]' >"$RUN_OUT/009-requests.json"
 requests=$(cat "$RUN_OUT/009-requests.json")
 echo "$requests"
-[ "$(jq length <<<"$requests")" = 4 ] || failures+="4 clicks logged $(jq length <<<"$requests") requests; "
+[ "$(jq length <<<"$requests")" = 5 ] || failures+="5 clicks logged $(jq length <<<"$requests") requests; "
 check_req() { # <index> <target> <url substring>
   local entry
   entry=$(jq -c ".[$1]" <<<"$requests")
@@ -477,10 +480,11 @@ check_req() { # <index> <target> <url substring>
 }
 check_req 0 data-folder "$NEW"
 check_req 1 log-folder "$NEW/logs"
-check_req 2 github github.com
-check_req 3 issues issues
+check_req 2 website asrpro.mandalsuraj.com
+check_req 3 github github.com
+check_req 4 issues issues
 [ -d "$NEW/logs" ] || failures+="logs/ did not come back in the data folder; "
-check_failures "VAL-SET-009 about opens" "one request per row: data folder $NEW, logs $NEW/logs (recreated), the repository URL, the issues URL" "$failures"
+check_failures "VAL-SET-009 about opens" "one request per row: data folder $NEW, logs $NEW/logs (recreated), the website, the repository URL, the issues URL" "$failures"
 
 echo "== VAL-LIC-004 the About licenses row opens the notices file"
 failures=""

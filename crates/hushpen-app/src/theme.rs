@@ -163,6 +163,8 @@ pub mod size {
     pub const METER_BAR_MAX: f32 = 28.0;
     /// The transcript block on Home, high enough for two lines before it grows.
     pub const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
+    /// The app icon at the top of About.
+    pub const APP_ICON: f32 = 96.0;
 }
 
 /// The top of an element `height` high that centers on the chrome center line.

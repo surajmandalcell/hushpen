@@ -4,6 +4,11 @@ use gpui_kit::assets::{Assets as KitAssets, icon_assets};
 use gpui_kit::{App, AssetSource, SharedString};
 use std::borrow::Cow;
 
+/// The asset path of the app icon About shows, for `img()`.
+pub const APP_ICON: &str = "images/hushpen-app-icon.png";
+/// Two pixels for each point of the 96 px icon, so a Retina screen draws it without scaling.
+const APP_ICON_PNG: &[u8] = include_bytes!("../../../assets/hushpen-app-icon-192.png");
+
 pub const INTER_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Inter-Medium.ttf");
 pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf");
 
@@ -43,7 +48,7 @@ icon_assets!(
         Download,
         // The views name these too; the coverage test below scans the sources for
         // every icon a view uses.
-        ArrowUpRight,
+        ExternalLink,
         Globe,
         ChevronDown,
         Search
@@ -104,11 +109,14 @@ mod icon_coverage_tests {
     }
 }
 
-/// The app's own icons first, then the GPUI Kit defaults its controls use.
+/// The app icon and the app's own icons first, then the GPUI Kit defaults its controls use.
 pub struct AppAssets;
 
 impl AssetSource for AppAssets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
+        if path == APP_ICON {
+            return Ok(Some(Cow::Borrowed(APP_ICON_PNG)));
+        }
         match ShellIcons.load(path)? {
             Some(bytes) => Ok(Some(bytes)),
             None => KitAssets.load(path),
@@ -146,5 +154,14 @@ mod tests {
             assert!(AppAssets.load(icon).unwrap().is_some(), "{icon}");
         }
         assert!(AppAssets.load("icons/missing.svg").is_err());
+    }
+
+    #[test]
+    fn the_app_icon_is_a_192_px_png() {
+        let bytes = AppAssets.load(APP_ICON).unwrap().unwrap();
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "PNG signature");
+        // IHDR: the width and the height, big-endian, after the 8-byte signature and the
+        // 8-byte chunk header.
+        assert_eq!(&bytes[16..24], &[0, 0, 0, 192, 0, 0, 0, 192]);
     }
 }

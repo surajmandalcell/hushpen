@@ -1074,5 +1074,6 @@ fn field(palette: Palette, key: &str, label: &str, value: Option<String>) -> Any
         hook::id("history", &format!("detail.{key}")),
         label,
         value,
+        None,
     )
 }

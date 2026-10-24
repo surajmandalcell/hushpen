@@ -183,15 +183,16 @@ pub fn field_row(
     )
 }
 
-/// A row with the name of a fact on the left and its value on the right, cut to one line. The
-/// whole value is in the tooltip and in the label of `value_id`. A missing value says so in the
-/// tertiary color.
+/// A row with the name of a fact on the left and its value on the right, cut to one line, with
+/// an optional control after the value. The whole value is in the tooltip and in the label of
+/// `value_id`. A missing value says so in the tertiary color.
 pub fn fact_row(
     palette: Palette,
     id: SharedString,
     value_id: SharedString,
     title: &str,
     value: Option<String>,
+    trailing: Option<AnyElement>,
 ) -> AnyElement {
     let full = value.clone().unwrap_or_default();
     let mut text = div()
@@ -222,6 +223,7 @@ pub fn fact_row(
                 .child(title.to_owned()),
         )
         .child(text)
+        .children(trailing)
         .into_any_element()
 }
 

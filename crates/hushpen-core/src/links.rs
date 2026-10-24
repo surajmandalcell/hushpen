@@ -1,39 +1,23 @@
-//! The one place that names the project on the web. About and the updater feed
-//! build on these; nothing else in the app hard-codes a GitHub URL.
+//! The project pages About opens, each named once. The update feed keeps its own address in the
+//! app's `net/update.rs`.
 
-/// The repository. External links open only this URL and pages below it.
+/// The project website.
+pub const SITE_URL: &str = "https://asrpro.mandalsuraj.com/";
+
+/// The repository.
 pub const REPO_URL: &str = "https://github.com/surajmandalcell/hushpen";
 
-/// Where "Report issue" goes.
+/// Where "Report an issue" goes.
 pub const ISSUES_URL: &str = "https://github.com/surajmandalcell/hushpen/issues";
-
-/// True when `url` is the repository or a page below it. About refuses to open
-/// anything else.
-pub fn is_repo_page(url: &str) -> bool {
-    url == REPO_URL || url.starts_with(&format!("{REPO_URL}/"))
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn the_repo_url_is_the_one_constant() {
+    fn the_project_urls_are_these_constants() {
+        assert_eq!(SITE_URL, "https://asrpro.mandalsuraj.com/");
         assert_eq!(REPO_URL, "https://github.com/surajmandalcell/hushpen");
         assert_eq!(ISSUES_URL, format!("{REPO_URL}/issues"));
-    }
-
-    #[test]
-    fn repo_pages_are_the_repo_and_below_it() {
-        assert!(is_repo_page(REPO_URL));
-        assert!(is_repo_page(ISSUES_URL));
-        assert!(is_repo_page(&format!("{REPO_URL}/releases")));
-        assert!(!is_repo_page("https://github.com/surajmandalcell"));
-        assert!(!is_repo_page(
-            "https://github.com/surajmandalcell/hushpen.evil"
-        ));
-        // Plain http is not a repo page. The literal stays out of the source
-        // because the net audit flags every non-loopback http URL, test or not.
-        assert!(!is_repo_page(&REPO_URL.replacen("https", "http", 1)));
     }
 }
