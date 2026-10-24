@@ -24,10 +24,10 @@ const ALLOWED: [(&str, &str, &str); 16] = [
     ("import/panel.rs", "status_of", "error"),
     ("models/panel.rs", "status", "success"),
     ("models/panel.rs", "status", "error"),
-    ("onboarding/panel.rs", "permission_row", "success"),
-    ("onboarding/panel.rs", "permission_row", "warning"),
-    ("onboarding/panel.rs", "model", "success"),
-    ("onboarding/panel.rs", "model", "error"),
+    ("onboarding/panel/permissions.rs", "permission_row", "success"),
+    ("onboarding/panel/permissions.rs", "permission_row", "warning"),
+    ("onboarding/panel/model.rs", "view", "success"),
+    ("onboarding/panel/model.rs", "view", "error"),
     // What the last update check found on About; a failed check is a status word.
     ("about/panel.rs", "update_status", "error"),
 ];
@@ -50,10 +50,12 @@ pub(crate) fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
 
 pub(crate) fn function_name(line: &str) -> Option<String> {
     let rest = line.trim_start();
-    let rest = rest.strip_prefix("pub ").unwrap_or(rest);
-    let rest = rest
-        .strip_prefix("(crate) ")
-        .map_or(rest, |_| &rest["(crate) ".len()..]);
+    // A visibility such as `pub` or `pub(super)` comes before the `fn`.
+    let rest = match rest.strip_prefix("pub") {
+        Some(after) if after.starts_with('(') => after.split_once(") ")?.1,
+        Some(after) => after.strip_prefix(' ')?,
+        None => rest,
+    };
     let rest = rest.strip_prefix("fn ")?;
     Some(
         rest.chars()

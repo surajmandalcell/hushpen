@@ -2,6 +2,8 @@
 //! where a start resumes, the practice field, and the repair of a lost grant. No test opens a
 //! window or asks the system for anything.
 
+use super::guide::on_permission_thread;
+use super::permissions::ACCESSIBILITY_PROMPT_WAIT;
 use super::*;
 use crate::controller::testkit::{
     FakeInserter, Rig, attach_inserter, outcome_text, rig, say, send_at, settle,
@@ -14,7 +16,7 @@ use hushpen_core::insert::Chord;
 use hushpen_core::onboarding::RowState;
 use hushpen_core::permission::{Access, Preflight, SETTLE_EVERY, SETTLE_FOR};
 use std::cell::RefCell;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 struct FakeGuide {
