@@ -3,20 +3,16 @@
 use super::{Dictation, Phase};
 use crate::hook;
 use crate::shell::Shell;
-use crate::theme::{self, BODY, Palette, StyledType, radius, size, space};
-use crate::ui::{self, Kind};
+use crate::theme::{self, BODY, Palette, StyledType, size, space};
+use crate::ui::{self, Kind, Notice};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Rgba, Role, SharedString, StatefulInteractiveElement, Styled,
-    Window, div, px, svg, transparent_black,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, Rgba, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use hushpen_core::language;
-
-const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
-const OPTION_LIST_MAX_HEIGHT: f32 = 200.0;
 
 struct Snapshot {
     phase: Phase,
@@ -101,10 +97,17 @@ pub fn render(
     let mut rows: Vec<AnyElement> =
         vec![header(palette, dictation, &view, &record_focus, &copy_focus).into_any_element()];
     if let Some((message, link)) = view.notice.clone() {
-        rows.push(notice_row(palette, shell, message, link, &models_focus).into_any_element());
+        rows.push(notice_row(palette, shell, message, link, &models_focus));
     }
     if let Some(message) = view.keys_notice.clone() {
-        rows.push(keys_row(palette, message).into_any_element());
+        // Why the global keys are off is plain information, not an error.
+        rows.push(ui::notice_row(
+            palette,
+            hook::id("home", "keys-notice"),
+            message,
+            Notice::Info,
+            None,
+        ));
     }
     if view.show_transcript {
         rows.push(transcript_row(palette, &view).into_any_element());
@@ -166,38 +169,41 @@ fn header(
         }
     };
     let enabled = view.can_record && view.phase != Phase::Transcribing;
-    ui::row(palette)
-        .child(ui::icon(palette, IconName::Mic))
-        .child(ui::text_column().child(ui::title(palette).child("Dictation")))
-        .child(
-            ui::value(palette)
-                .id(hook::id("home", "status"))
-                .test_support()
-                .role(Role::Status)
-                .aria_label(view.status.clone())
-                .text_color(status_tone(palette, view))
-                .child(view.status.clone()),
-        )
-        .children((!view.transcript.is_empty()).then(|| {
-            ui::button(
-                palette,
-                hook::id("home", "copy"),
-                "Copy",
-                Kind::Plain,
-                Some(copy_focus),
-                true,
-                copy,
-            )
-        }))
-        .child(ui::button(
+    ui::icon_row(
+        palette,
+        IconName::Mic,
+        ui::title(palette).child("Dictation"),
+        None,
+    )
+    .child(
+        ui::value(palette)
+            .id(hook::id("home", "status"))
+            .test_support()
+            .role(Role::Status)
+            .aria_label(view.status.clone())
+            .text_color(status_tone(palette, view))
+            .child(view.status.clone()),
+    )
+    .children((!view.transcript.is_empty()).then(|| {
+        ui::button(
             palette,
-            hook::id("home", "record"),
-            label,
-            Kind::Default,
-            enabled.then_some(record_focus),
-            enabled,
-            record,
-        ))
+            hook::id("home", "copy"),
+            "Copy",
+            Kind::Plain,
+            Some(copy_focus),
+            true,
+            copy,
+        )
+    }))
+    .child(ui::button(
+        palette,
+        hook::id("home", "record"),
+        label,
+        Kind::Default,
+        enabled.then_some(record_focus),
+        enabled,
+        record,
+    ))
 }
 
 fn notice_row(
@@ -206,62 +212,36 @@ fn notice_row(
     message: String,
     models_link: bool,
     focus: &FocusHandle,
-) -> impl IntoElement + use<> {
+) -> AnyElement {
     let open = {
         let shell = shell.clone();
         move |_: &mut Window, cx: &mut App| {
             shell.update(cx, |shell, cx| shell.select(View::Models, cx));
         }
     };
-    ui::row(palette)
-        .id(hook::id("home", "notice"))
-        .test_support()
-        .role(Role::Alert)
-        .aria_label(message.clone())
-        .text_color(palette.label)
-        .child(
-            svg()
-                .path(IconName::CircleAlert.path())
-                .size(px(size::NAV_ICON))
-                .flex_none()
-                .text_color(palette.label_secondary),
+    let link = models_link.then(|| {
+        ui::button(
+            palette,
+            hook::id("home", "notice.models"),
+            "Open Models",
+            Kind::Plain,
+            Some(focus),
+            true,
+            open,
         )
-        .child(
-            ui::title(palette)
-                .flex_1()
-                .min_w_0()
-                .text_color(palette.label)
-                .child(message),
-        )
-        .children(models_link.then(|| {
-            ui::button(
-                palette,
-                hook::id("home", "notice.models"),
-                "Open Models",
-                Kind::Plain,
-                Some(focus),
-                true,
-                open,
-            )
-        }))
+        .into_any_element()
+    });
+    ui::notice_row(
+        palette,
+        hook::id("home", "notice"),
+        message,
+        Notice::Alert,
+        link,
+    )
 }
 
-fn keys_row(palette: Palette, message: String) -> impl IntoElement + use<> {
-    ui::row(palette)
-        .id(hook::id("home", "keys-notice"))
-        .test_support()
-        .role(Role::Status)
-        .aria_label(message.clone())
-        .child(ui::icon(palette, IconName::Info))
-        .child(
-            ui::title(palette)
-                .flex_1()
-                .min_w_0()
-                .text_color(palette.label_secondary)
-                .child(message),
-        )
-}
-
+/// The transcript, or the placeholder that says what happens now. The block is centered in the
+/// group, and a long transcript keeps every line centered.
 fn transcript_row(palette: Palette, view: &Snapshot) -> impl IntoElement + use<> {
     let empty = view.transcript.is_empty();
     let placeholder = match view.phase {
@@ -282,11 +262,15 @@ fn transcript_row(palette: Palette, view: &Snapshot) -> impl IntoElement + use<>
         .test_support()
         .role(Role::Paragraph)
         .aria_value(if empty { "" } else { &view.transcript }.to_owned())
-        .min_h(px(TRANSCRIPT_MIN_HEIGHT))
+        .min_h(px(size::TRANSCRIPT_MIN_HEIGHT))
         .w_full()
         .flex_none()
-        .px(px(size::ROW_PADDING))
-        .py(px(space::MD))
+        .flex()
+        .items_center()
+        .justify_center()
+        .px(px(space::XXL))
+        .py(px(space::LG))
+        .text_center()
         .text_token(BODY)
         .text_color(if empty {
             palette.label_secondary
@@ -302,81 +286,34 @@ fn language_row(
     view: &Snapshot,
     focus: &FocusHandle,
 ) -> impl IntoElement + use<> {
-    let off = view.picker_off;
     let toggle = {
         let dictation = dictation.clone();
-        move |cx: &mut App| {
+        move |_: &mut Window, cx: &mut App| {
             dictation.update(cx, |me, cx| {
                 let _ = me.toggle_picker(cx);
             });
         }
     };
-    let id = hook::id("home", "language");
-    hook::mark_disabled(&id, off);
-    let on_click = {
-        let toggle = toggle.clone();
-        move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx)
-    };
-    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-            toggle(cx);
-            cx.stop_propagation();
-        }
-    };
-    let label = language::label(&view.language);
-    let tone = if off {
-        palette.label_tertiary
-    } else {
-        palette.label
-    };
-    let mut trigger = div()
-        .id(id)
+    let detail = ui::secondary(palette)
+        .id(hook::id("home", "language.detail"))
         .test_support()
-        .role(Role::Button)
-        .aria_label(label)
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap(px(space::XS))
-        .h(px(size::BUTTON_HEIGHT))
-        .px(px(size::BUTTON_PADDING - size::FOCUS_RING))
-        .rounded(px(radius::BUTTON))
-        .border_2()
-        .border_color(transparent_black())
-        .bg(palette.control)
-        .text_token(theme::BUTTON)
-        .text_color(tone)
-        .child(label)
-        .child(
-            svg()
-                .path(IconName::ChevronDown.path())
-                .size(px(12.0))
-                .flex_none()
-                .text_color(tone),
-        );
-    if !off {
-        trigger = trigger
-            .track_focus(focus)
-            .cursor_pointer()
-            .hover(move |style| style.bg(palette.selection))
-            .focus_visible(move |style| style.border_color(palette.accent))
-            .on_click(on_click)
-            .on_key_down(on_key);
-    }
-    ui::row(palette)
-        .child(ui::icon(palette, IconName::Globe))
-        .child(
-            ui::text_column()
-                .child(ui::title(palette).child("Language"))
-                .child(
-                    ui::secondary(palette)
-                        .id(hook::id("home", "language.detail"))
-                        .test_support()
-                        .aria_label(view.detail.clone())
-                        .child(view.detail.clone()),
-                ),
-        )
-        .child(trigger)
+        .aria_label(view.detail.clone())
+        .child(view.detail.clone());
+    ui::icon_row(
+        palette,
+        IconName::Globe,
+        ui::title(palette).child("Language"),
+        Some(detail.into_any_element()),
+    )
+    .child(ui::menu_button(
+        palette,
+        hook::id("home", "language"),
+        "Language",
+        language::label(&view.language).to_owned(),
+        !view.picker_off,
+        focus,
+        toggle,
+    ))
 }
 
 fn option_list(
@@ -385,15 +322,32 @@ fn option_list(
     view: &Snapshot,
     focus: &[FocusHandle],
 ) -> impl IntoElement + use<> {
-    let rows = view.codes.iter().enumerate().map(|(index, code)| {
-        option_row(
+    let rows = view.codes.iter().zip(focus).map(|(&code, focus)| {
+        let choose = {
+            let dictation = dictation.clone();
+            move |_: &mut Window, cx: &mut App| {
+                dictation.update(cx, |me, cx| {
+                    let _ = me.set_language(code, cx);
+                });
+            }
+        };
+        ui::option_row(
             palette,
-            dictation,
-            code,
-            *code == view.language,
-            focus[index].clone(),
+            hook::id("home", &format!("language.option.{code}")),
+            language::label(code).to_owned(),
+            None,
+            code == view.language,
+            focus,
+            choose,
         )
     });
+    let close = dictation.clone();
+    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+        if event.keystroke.key.as_str() == "escape" {
+            close.update(cx, |me, cx| me.close_picker(cx));
+            cx.stop_propagation();
+        }
+    };
     div()
         .id(hook::id("home", "language.list"))
         .test_support()
@@ -402,75 +356,10 @@ fn option_list(
         .flex_col()
         .w_full()
         .flex_none()
-        .max_h(px(OPTION_LIST_MAX_HEIGHT))
+        .max_h(px(size::MENU_LIST_MAX_HEIGHT))
         .overflow_y_scroll()
         // The page behind scrolls on the same wheel event unless the list keeps it.
         .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-        .p(px(space::XS))
-        .children(rows)
-}
-
-fn option_row(
-    palette: Palette,
-    dictation: &Entity<Dictation>,
-    code: &'static str,
-    selected: bool,
-    focus: FocusHandle,
-) -> impl IntoElement + use<> {
-    let choose = {
-        let dictation = dictation.clone();
-        move |cx: &mut App| {
-            dictation.update(cx, |me, cx| {
-                let _ = me.set_language(code, cx);
-            });
-        }
-    };
-    let on_click = {
-        let choose = choose.clone();
-        move |_: &ClickEvent, _: &mut Window, cx: &mut App| choose(cx)
-    };
-    let close = dictation.clone();
-    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-        match event.keystroke.key.as_str() {
-            "enter" | "space" => choose(cx),
-            "escape" => close.update(cx, |me, cx| me.close_picker(cx)),
-            _ => return,
-        }
-        cx.stop_propagation();
-    };
-    let label = language::label(code);
-    let mut row = div()
-        .id(hook::id("home", &format!("language.option.{code}")))
-        .test_support()
-        .track_focus(&focus)
-        .role(Role::ListBoxOption)
-        .aria_label(label)
-        .aria_selected(selected)
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_between()
-        .h(px(size::NAV_ITEM_HEIGHT))
-        .px(px(space::SM - size::FOCUS_RING))
-        .rounded(px(radius::SELECTION))
-        .border_2()
-        .border_color(transparent_black())
-        .cursor_pointer()
-        .text_token(BODY)
-        .text_color(palette.label)
-        .hover(move |style| style.bg(palette.hover()))
-        .focus_visible(move |style| style.border_color(palette.accent))
-        .on_click(on_click)
         .on_key_down(on_key)
-        .child(label);
-    if selected {
-        row = row.bg(palette.selection).child(
-            svg()
-                .path(IconName::Check.path())
-                .size(px(14.0))
-                .flex_none()
-                .text_color(palette.label),
-        );
-    }
-    row
+        .children(rows)
 }

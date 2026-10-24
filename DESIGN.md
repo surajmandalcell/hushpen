@@ -205,11 +205,11 @@ Letter spacing stays at `0em`. Weights are 400, 500, 600, and 700 for the title 
 
 ## Layout
 
-The window is fixed at 940px by 600px. It is not resizable, has no zoom, and has no full screen. On macOS the title bar is transparent with full-size content, and the native traffic lights sit at (20, 20). On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) at the same left inset, vertically centered in the 48px band, and no maximize button.
+The window is fixed at 940px by 600px. It is not resizable, has no zoom, and has no full screen. On macOS the title bar is transparent with full-size content and AppKit draws the traffic lights. On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) and no maximize button.
 
 The sidebar is 232px wide. The first 48px (`sidebar-top`) hold the window buttons and the word "Hushpen" beside them. Rows start below it: 28px high, 2px apart, with 8px of padding at the sides. The title bar area above the content is 52px high and holds the view title.
 
-The window buttons and the app name share one center line inside the 48px band. On Linux the drawn circles are centered in the band (18px above and below); on macOS the native traffic lights stay at (20, 20) and the name sits on their center line. The name starts 16px right of the last circle, uses the toolbar-title style (13px semibold, label color), and truncates inside the band.
+The chrome has one center line, 26px from the window top. The window buttons, the app name, and the view title all center on it. The 12px circles sit at (20, 20) on both systems. On macOS the native button frame is taller than its circle, so the app reads the frame height after the window opens and moves the frame up by half the difference. The name starts 16px right of the last circle, uses the toolbar-title style (13px semibold, label color), and truncates inside the band.
 
 The content pane has a 24px margin. Groups fill the pane width. Onboarding is one centered column, at most 640px wide.
 
@@ -223,7 +223,7 @@ Long local paths show as `~/...` when they are under the user home directory.
 
 Depth is tonal. There are no shadows on normal content. Shadows are only for dropdowns and menus.
 
-- Hairlines (0.5px, separator color) sit only between rows inside a group, inset to the start of the text.
+- Hairlines (one device pixel, separator color) sit only between rows inside a group, and span the full width of the group on every page.
 - A group has a 0.5px stroke in the separator color. There is no toolbar line and no other stray border.
 - Hover and selection use the neutral selection fill.
 - The focus ring is 2px in the accent color.
@@ -242,7 +242,9 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 **Toolbar:** only the view title (13px semibold, label color) in the title bar area. It has no bottom line.
 
-**Groups and rows:** as in Layout. A row that is a control stays one line: the label on the left, the control on the right.
+**Groups and rows:** as in Layout. A row that is a control stays one line: the label on the left, the control on the right. A notice row has a 16px icon in the secondary label color (info, or the exclamation for something the user has to act on) and one line of text; a failed check shows its text in the error color. Every view builds its rows from the shared row builders, so one row kind looks the same on every page.
+
+**Home:** the Dictation group (status, Record, the transcript, language) above the Microphone group (test, level meter, microphone list). The transcript, or the placeholder before it, is centered in its block with 24px at the sides and 16px above and below; a long transcript keeps every line centered.
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
 

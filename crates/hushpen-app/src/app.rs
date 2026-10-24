@@ -670,6 +670,8 @@ fn open_main_window(
     )?;
     let _ = handle.update(cx, |_, window, _| {
         lock_native_chrome(window);
+        #[cfg(target_os = "macos")]
+        place_traffic_lights(window);
         add_sidebar_material(window);
     });
     Ok((handle, shell))
@@ -683,6 +685,17 @@ fn add_sidebar_material(window: &Window) {
     if let Err(error) = hushpen_platform::window::add_sidebar_material(native_handle(window), width)
     {
         log::warn!("could not add the sidebar material: {error}");
+    }
+}
+
+/// Moves the native traffic lights onto the chrome center line, now that AppKit has made the
+/// buttons and their frame height is known.
+#[cfg(target_os = "macos")]
+fn place_traffic_lights(window: &Window) {
+    if let Some(height) = hushpen_platform::window::close_button_height(native_handle(window)) {
+        window.set_traffic_light_position(crate::window_chrome::traffic_light_position(
+            height as f32,
+        ));
     }
 }
 

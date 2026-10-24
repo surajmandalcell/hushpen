@@ -6,7 +6,7 @@
 //! on current macOS. Linux has no system chrome to keep: the window is frameless and the app
 //! draws close and minimize itself (see `window_controls`).
 
-use crate::theme::{chrome, size as sizes, space};
+use crate::theme::{self, chrome, size as sizes, space};
 use gpui_kit::base::Root;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
@@ -29,7 +29,8 @@ fn options(bounds: Bounds<gpui_kit::Pixels>, native_chrome: bool) -> WindowOptio
         titlebar: native_chrome.then(|| TitlebarOptions {
             title: None,
             appears_transparent: true,
-            traffic_light_position: Some(traffic_light_position()),
+            // The real button frame is read once the window is open (see `app.rs`).
+            traffic_light_position: Some(traffic_light_position(sizes::TRAFFIC_LIGHT)),
         }),
         window_background: background(native_chrome),
         is_resizable: false,
@@ -39,11 +40,13 @@ fn options(bounds: Bounds<gpui_kit::Pixels>, native_chrome: bool) -> WindowOptio
     }
 }
 
-/// Where AppKit draws the traffic lights.
-pub fn traffic_light_position() -> Point<gpui_kit::Pixels> {
+/// Where AppKit draws the traffic lights, for a standard button frame `button_height` high.
+/// GPUI puts the origin of the button frame here, and the frame is taller than the circle it
+/// centers, so the top follows from the frame: its center lands on the chrome center line.
+pub fn traffic_light_position(button_height: f32) -> Point<gpui_kit::Pixels> {
     point(
         px(sizes::TRAFFIC_LIGHT_INSET),
-        px(sizes::TRAFFIC_LIGHT_INSET),
+        px(theme::chrome_top(button_height)),
     )
 }
 
@@ -151,6 +154,22 @@ mod tests {
             titlebar.traffic_light_position,
             Some(point(px(20.0), px(20.0)))
         );
+    }
+
+    /// AppKit's close button frame is taller than its 12 px circle (14 to 16 px before macOS
+    /// 26, more after), and GPUI places the frame, so the lights move up by half the extra.
+    #[test]
+    fn the_native_lights_center_on_the_chrome_line_for_any_button_frame() {
+        for height in [12.0, 14.0, 16.0, 22.0] {
+            let origin = traffic_light_position(height);
+            let center = f32::from(origin.y) + height / 2.0;
+            assert_eq!(f32::from(origin.x), sizes::TRAFFIC_LIGHT_INSET, "{height}");
+            assert!(
+                (center - sizes::CHROME_CENTER).abs() <= 0.5,
+                "a {height} px frame centers at {center}"
+            );
+        }
+        assert_eq!(f32::from(traffic_light_position(14.0).y), 19.0);
     }
 
     #[test]

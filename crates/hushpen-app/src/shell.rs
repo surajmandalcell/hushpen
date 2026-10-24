@@ -225,24 +225,16 @@ impl Shell {
     }
 
     /// The strip at the top of the window: the window controls and the word "Hushpen" beside
-    /// them, on one center line. It is also the place to drag the window by. On macOS AppKit
-    /// draws the traffic lights over it, fixed at (20, 20); the spacer keeps their width clear
-    /// and the title sits on their center line. On Linux the app draws the circles itself,
-    /// centered in the 48 px band with 18 px above and below.
-    #[cfg_attr(target_os = "macos", allow(unused_variables))]
+    /// them, on the chrome center line. It is also the place to drag the window by. On macOS
+    /// AppKit draws the traffic lights over it (see `window_chrome::traffic_light_position`) and
+    /// the spacer keeps their width clear; on Linux the app draws the circles itself.
     fn title_bar(
         &self,
         id: gpui_kit::SharedString,
         palette: Palette,
-        cx: &mut Context<Self>,
+        // Only the drawn Linux controls need the context.
+        #[cfg_attr(target_os = "macos", expect(unused_variables))] cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        // The title's top offset: centered in the band on Linux; on the native lights' center
-        // line (26 px from the top) on macOS.
-        #[cfg(not(target_os = "macos"))]
-        const TITLE_TOP: f32 = (space::SIDEBAR_TOP - TOOLBAR_TITLE.size) / 2.0;
-        #[cfg(target_os = "macos")]
-        const TITLE_TOP: f32 =
-            size::TRAFFIC_LIGHT_INSET + (size::TRAFFIC_LIGHT - TOOLBAR_TITLE.size) / 2.0;
         let strip = div()
             .id(id)
             .test_support()
@@ -257,10 +249,8 @@ impl Shell {
         #[cfg(not(target_os = "macos"))]
         let strip = strip.child(
             div()
-                .h_full()
                 .flex_none()
-                .flex()
-                .items_center()
+                .mt(px(theme::chrome_top(size::TRAFFIC_LIGHT)))
                 .child(crate::window_controls::controls(cx)),
         );
         // The width of the two native lights and their gap, kept clear under AppKit's drawing.
@@ -278,7 +268,7 @@ impl Shell {
                 .flex_1()
                 .min_w_0()
                 .ml(px(space::LG))
-                .mt(px(TITLE_TOP))
+                .mt(px(theme::chrome_top(TOOLBAR_TITLE.size)))
                 .truncate()
                 .text_token(TOOLBAR_TITLE)
                 .text_color(palette.label)
@@ -366,13 +356,14 @@ impl Shell {
         )
     }
 
-    /// The title sits in the title bar area, beside the window controls, and has no line under it.
+    /// The title sits in the title bar area, on the chrome center line with the window controls,
+    /// and has no line under it.
     fn toolbar(&self, palette: Palette) -> impl IntoElement {
         div()
             .id(hook::id("toolbar", "drag"))
             .test_support()
             .flex()
-            .items_center()
+            .items_start()
             .flex_none()
             .w_full()
             .h(px(space::TOOLBAR_HEIGHT))
@@ -383,6 +374,7 @@ impl Shell {
                     .id(hook::id("view", "title"))
                     .test_support()
                     .aria_label(self.active.title())
+                    .mt(px(theme::chrome_top(TOOLBAR_TITLE.size)))
                     .text_token(TOOLBAR_TITLE)
                     .text_color(palette.label)
                     .child(self.active.title()),
@@ -742,15 +734,15 @@ mod tests {
         for id in ["window.maximize", "window.zoom", "window.fullscreen"] {
             assert!(!present(cx, handle, id), "{id}");
         }
-        // The 48 px band keeps 18 px above and below the 12 px circles.
+        // The circles sit where the native ones do on macOS: 20 px in from the top left corner.
         assert_eq!(
             rects[0],
-            (20.0, 18.0, 12.0, 12.0),
-            "close: 12 px circle, centered in the band"
+            (20.0, 20.0, 12.0, 12.0),
+            "close: 12 px circle at (20, 20)"
         );
         assert_eq!(
             rects[1],
-            (40.0, 18.0, 12.0, 12.0),
+            (40.0, 20.0, 12.0, 12.0),
             "minimize: 8 px after close"
         );
     }
@@ -867,22 +859,36 @@ mod tests {
         // 20 + 12 + 8 + 12 for the two circles, then 16 px of clear space.
         let lights_end = size::TRAFFIC_LIGHT_INSET + 2.0 * size::TRAFFIC_LIGHT + space::SM;
         assert_eq!(x, lights_end + space::LG, "16 px right of the last circle");
-        // One center line with the circles: the band's own center on Linux, where the app
-        // draws the circles centered; the native lights' center on macOS, fixed at (20, 20).
-        let want = if cfg!(target_os = "macos") {
-            size::TRAFFIC_LIGHT_INSET + size::TRAFFIC_LIGHT / 2.0
-        } else {
-            space::SIDEBAR_TOP / 2.0
-        };
         let center = y + h / 2.0;
         assert!(
-            (center - want).abs() <= 0.5,
-            "the title centers at {center}, the circles at {want}"
+            (center - size::CHROME_CENTER).abs() <= 0.5,
+            "the name centers at {center}, the chrome line is {}",
+            size::CHROME_CENTER
         );
         assert!(
             x + w <= space::SIDEBAR_WIDTH - space::SM,
             "the word stays inside the band"
         );
+    }
+
+    /// The window controls, the app name, and the view title share one center line. On macOS
+    /// the native lights are not in the tree; `window_chrome` pins their math.
+    #[gpui_kit::test]
+    fn the_chrome_shares_one_center_line(cx: &mut TestAppContext) {
+        let (handle, _) = open(cx);
+        let mut ids = vec!["view.title", "sidebar.name"];
+        if cfg!(not(target_os = "macos")) {
+            ids.extend(["window.close", "window.minimize"]);
+        }
+        for id in ids {
+            let (_, y, _, height) = rect(cx, handle, id);
+            let center = y + height / 2.0;
+            assert!(
+                (center - size::CHROME_CENTER).abs() <= 0.5,
+                "{id} centers at {center}, the chrome line is {}",
+                size::CHROME_CENTER
+            );
+        }
     }
 
     #[gpui_kit::test]

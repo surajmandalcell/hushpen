@@ -7,13 +7,12 @@ use crate::hook;
 use crate::mic;
 use crate::shortcuts::{self, Shortcuts};
 use crate::theme::{self, BODY, Palette, StyledType, radius, size, space};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::input::InputState;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px,
-    transparent_black,
+    KeyDownEvent, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, transparent_black,
 };
 use hushpen_core::endpoint::{Preset, UrlError};
 
@@ -85,14 +84,15 @@ pub fn render(
         .on_key_down(on_escape)
         .child(section_bar(palette, settings, section, &section_focus));
     if let Some(message) = notice {
-        page = page.child(ui::plain_group(
-            hook::id("settings", "notice.group"),
+        page = page.child(ui::group(
+            settings_id("notice.group"),
             palette,
-            vec![ui::note_row(
+            vec![ui::notice_row(
                 palette,
-                hook::id("settings", "notice"),
+                settings_id("notice"),
                 message,
-                true,
+                Notice::Alert,
+                None,
             )],
         ));
     }
@@ -102,7 +102,7 @@ pub fn render(
 fn section_of(palette: Palette, section: Section, body: Body) -> AnyElement {
     ui::section(
         palette,
-        ui::plain_group(hook::id("settings", section.key()), palette, body.rows),
+        ui::group(settings_id(section.key()), palette, body.rows),
         body.footer.map(|text| {
             (
                 hook::id("settings", &format!("{}.help", section.key())),
@@ -182,64 +182,15 @@ fn later_row(palette: Palette, id: &str, title: &'static str, detail: &str) -> A
     )
 }
 
-/// A row with a switch on the right. `toggle` runs when the switch is pressed.
-fn toggle_row(
-    palette: Palette,
-    id: &str,
-    title: &'static str,
-    detail: &str,
-    on: bool,
-    focus: &FocusHandle,
-    toggle: impl Fn(&mut App) + 'static,
-) -> AnyElement {
-    ui::labeled_row(
-        palette,
-        hook::id("settings", &format!("{id}.row")),
-        title,
-        Some(detail.to_owned()),
-        ui::switch(
-            palette,
-            hook::id("settings", id),
-            title,
-            on,
-            true,
-            focus,
-            move |_, cx| toggle(cx),
-        ),
-    )
+/// The hook id of a control of this view: `settings.<name>`.
+fn settings_id(name: &str) -> SharedString {
+    hook::id("settings", name)
 }
 
-/// A row with a pop-up button on the right that shows the current value.
-fn picker_row(
-    palette: Palette,
-    id: &str,
-    title: &'static str,
-    detail: &str,
-    current: String,
-    focus: &FocusHandle,
-    toggle: impl Fn(&mut App) + 'static,
-) -> AnyElement {
-    ui::labeled_row(
-        palette,
-        hook::id("settings", &format!("{id}.row")),
-        title,
-        Some(detail.to_owned()),
-        ui::menu_button(
-            palette,
-            hook::id("settings", id),
-            title,
-            current,
-            true,
-            focus,
-            move |_, cx| toggle(cx),
-        ),
-    )
-}
-
-/// One option of an open picker.
+/// One option of an open picker, under `settings.<picker>.option.<value>`.
 fn picker_option(
     palette: Palette,
-    id: &str,
+    picker: &str,
     value: &str,
     label: String,
     selected: bool,
@@ -248,45 +199,14 @@ fn picker_option(
 ) -> AnyElement {
     ui::option_row(
         palette,
-        hook::id("settings", &format!("{id}.option.{value}")),
+        settings_id(&format!("{picker}.option.{value}")),
         label,
+        None,
         selected,
         focus,
         move |_, cx| choose(cx),
     )
 }
-
-/// A row with a text field on the right.
-fn field_row(
-    palette: Palette,
-    id: &str,
-    title: &'static str,
-    detail: &str,
-    state: &Entity<InputState>,
-    extra: Option<AnyElement>,
-) -> AnyElement {
-    let trailing = div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .child(div().w(px(FIELD_WIDTH)).child(ui::field(
-            palette,
-            hook::id("settings", id),
-            title,
-            state,
-        )))
-        .children(extra);
-    ui::labeled_row(
-        palette,
-        hook::id("settings", &format!("{id}.row")),
-        title,
-        Some(detail.to_owned()),
-        trailing,
-    )
-}
-
-const FIELD_WIDTH: f32 = 220.0;
 
 // ---- Sections ----
 
@@ -310,18 +230,18 @@ fn general(
     };
     Body {
         rows: vec![
-            toggle_row(
+            ui::toggle_row(
                 palette,
-                "general.launchAtLogin",
+                settings_id("general.launchAtLogin"),
                 "Launch at login",
                 "Hushpen starts when you log in.",
                 launch_on,
                 &focus[LOGIN],
                 flip_login,
             ),
-            toggle_row(
+            ui::toggle_row(
                 palette,
-                "general.startHidden",
+                settings_id("general.startHidden"),
                 "Start hidden",
                 "A start at login shows only the tray icon.",
                 hidden_on,
@@ -385,9 +305,9 @@ fn audio(
         let settings = settings.clone();
         move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_sounds(cx))
     };
-    let mut rows = vec![picker_row(
+    let mut rows = vec![ui::menu_row(
         palette,
-        "audio.mic",
+        settings_id("audio.mic"),
         "Microphone",
         "The microphone dictation listens on.",
         current,
@@ -422,9 +342,9 @@ fn audio(
             ));
         }
     }
-    rows.push(toggle_row(
+    rows.push(ui::toggle_row(
         palette,
-        "audio.sounds",
+        settings_id("audio.sounds"),
         "Sounds",
         "A short cue marks the start and end of a dictation.",
         sounds_on,
@@ -462,27 +382,27 @@ fn cleanup(
         move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_ai_cleanup(cx))
     };
     let mut rows = vec![
-        toggle_row(
+        ui::toggle_row(
             palette,
-            "cleanup.rules",
+            settings_id("cleanup.rules"),
             "Clean up text",
             "Fillers and stutters are removed before the text is pasted.",
             rules_on,
             &focus[RULES],
             flip_rules,
         ),
-        toggle_row(
+        ui::toggle_row(
             palette,
-            "cleanup.ai",
+            settings_id("cleanup.ai"),
             "AI cleanup",
             "A language model fixes self-corrections.",
             ai_on,
             &focus[AI_CLEANUP],
             flip_ai,
         ),
-        picker_row(
+        ui::menu_row(
             palette,
-            "cleanup.provider",
+            settings_id("cleanup.provider"),
             "AI source",
             "Where the model runs.",
             provider_label(provider).to_owned(),
@@ -530,9 +450,9 @@ fn cleanup(
         move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("cleanup.aiModel", cx))
     };
     let size = crate::models::panel::format_size(model.bytes);
-    rows.push(picker_row(
+    rows.push(ui::menu_row(
         palette,
-        "cleanup.aiModel",
+        settings_id("cleanup.aiModel"),
         "AI model",
         &format!("{size} download. Chosen for this computer."),
         model.name.clone(),
@@ -572,11 +492,11 @@ fn cleanup(
         )
         .into_any_element()
     });
-    rows.push(ui::status_row(
+    rows.push(ui::notice_row(
         palette,
-        hook::id("settings", "cleanup.aiStatus"),
+        settings_id("cleanup.aiStatus"),
         text,
-        matches!(status, Some(AiStatus::Failed)),
+        Notice::status(matches!(status, Some(AiStatus::Failed))),
         download,
     ));
     Body { rows, footer }
@@ -627,9 +547,9 @@ fn endpoint_rows(
             me.key.clone(),
         )
     };
-    let mut rows = vec![picker_row(
+    let mut rows = vec![ui::menu_row(
         palette,
-        "cleanup.endpointPreset",
+        settings_id("cleanup.endpointPreset"),
         "Endpoint",
         "Ollama and LM Studio fill in the address for you.",
         preset.label().to_owned(),
@@ -658,17 +578,17 @@ fn endpoint_rows(
             ));
         }
     }
-    rows.push(field_row(
+    rows.push(ui::field_row(
         palette,
-        "cleanup.endpointUrl",
+        settings_id("cleanup.endpointUrl"),
         "Address",
         UrlError::NeedsHttps.reason(),
         &url,
         None,
     ));
-    rows.push(field_row(
+    rows.push(ui::field_row(
         palette,
-        "cleanup.endpointModel",
+        settings_id("cleanup.endpointModel"),
         "Model",
         "The model name the endpoint knows.",
         &model,
@@ -687,9 +607,9 @@ fn endpoint_rows(
         )
         .into_any_element()
     });
-    rows.push(field_row(
+    rows.push(ui::field_row(
         palette,
-        "cleanup.endpointKey",
+        settings_id("cleanup.endpointKey"),
         "API key",
         if key_set {
             "Saved on this computer. Press Enter to replace it."
@@ -705,11 +625,11 @@ fn endpoint_rows(
         let form = form.clone();
         move |_: &mut Window, cx: &mut App| form.update(cx, |me, cx| me.test_connection(cx))
     };
-    rows.push(ui::status_row(
+    rows.push(ui::notice_row(
         palette,
-        hook::id("settings", "cleanup.endpointStatus"),
+        settings_id("cleanup.endpointStatus"),
         text,
-        failed,
+        Notice::status(failed),
         Some(
             ui::button(
                 palette,
@@ -754,27 +674,27 @@ fn flow_bar(
         move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_picker("flowbar.position", cx))
     };
     let mut rows = vec![
-        toggle_row(
+        ui::toggle_row(
             palette,
-            "flowbar.enabled",
+            settings_id("flowbar.enabled"),
             "Show the flow bar",
             "The floating bar while you dictate.",
             enabled,
             &focus[FLOWBAR],
             flip_enabled,
         ),
-        toggle_row(
+        ui::toggle_row(
             palette,
-            "flowbar.idle",
+            settings_id("flowbar.idle"),
             "Show when idle",
             "The bar stays on screen between dictations.",
             idle,
             &focus[FLOWBAR_IDLE],
             flip_idle,
         ),
-        picker_row(
+        ui::menu_row(
             palette,
-            "flowbar.position",
+            settings_id("flowbar.position"),
             "Position",
             "Where the bar sits on the screen.",
             position_name(&position).to_owned(),
@@ -883,9 +803,9 @@ fn storage(
         .into_any_element();
     let mut rows = vec![
         folder_row,
-        picker_row(
+        ui::menu_row(
             palette,
-            "storage.retention",
+            settings_id("storage.retention"),
             "Keep dictation audio",
             "How long the audio of a finished dictation stays.",
             retention_label(&retention).to_owned(),
@@ -936,18 +856,18 @@ fn updates(
         move |cx: &mut App| settings.update(cx, |me, cx| me.toggle_auto_install(cx))
     };
     let mut rows = vec![
-        toggle_row(
+        ui::toggle_row(
             palette,
-            "updates.check",
+            settings_id("updates.check"),
             "Check for updates",
             "Asks GitHub for a newer version at most once a day. Nothing identifies you.",
             check_on,
             &focus[UPDATES_CHECK],
             flip_check,
         ),
-        toggle_row(
+        ui::toggle_row(
             palette,
-            "updates.autoInstall",
+            settings_id("updates.autoInstall"),
             "Install updates automatically",
             "Downloads a new version for you. It starts after you restart.",
             auto_on,

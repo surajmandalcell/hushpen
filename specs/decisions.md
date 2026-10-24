@@ -98,6 +98,12 @@ new decision, add it here in the same change (D-21).
   English-only (`.en`) model refuses it with
   `ENGINE_TRANSLATE_UNSUPPORTED`. An `import_file` frame without `translate`
   does not translate.
+- **D-24 Chrome and rows.** The window controls, the sidebar app name, and the
+  view title center on one line 26 px from the window top (`size::CHROME_CENTER`).
+  Linux draws its lights at (20, 20) like macOS; on macOS the lights' button
+  frame is read after the window opens and placed so its center is on the line.
+  A line between rows spans the full group width on every page. Views build
+  their rows from the shared builders in `ui/` (group, rows, controls).
 
 ## History notes
 

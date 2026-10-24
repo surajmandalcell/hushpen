@@ -4,12 +4,10 @@
 use super::{About, Target};
 use crate::hook;
 use crate::theme::{self, Palette, space};
-use crate::ui;
-use gpui_kit::TestSupportExt as _;
+use crate::ui::{self, Notice};
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, Styled, Window, div, px,
 };
 
 pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
@@ -74,37 +72,28 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
         page = page.child(ui::group(
             hook::id("about", "notices"),
             palette,
-            vec![ui::note_row(
+            vec![ui::notice_row(
                 palette,
                 hook::id("about", "notice"),
                 message,
-                true,
+                Notice::Alert,
+                None,
             )],
         ));
     }
-    page.child(ui::plain_group(hook::id("about", "panel"), palette, facts))
-        .child(ui::plain_group(
-            hook::id("about", "actions"),
-            palette,
-            actions,
-        ))
+    page.child(ui::group(hook::id("about", "panel"), palette, facts))
+        .child(ui::group(hook::id("about", "actions"), palette, actions))
 }
 
 /// A title with its value on the right. The value carries the tree id so a test reads it
 /// exactly.
 fn fact_row(palette: Palette, title: &'static str, value: String, id: &'static str) -> AnyElement {
-    ui::labeled_row(
+    ui::fact_row(
         palette,
         hook::id("about", &format!("row.{id}")),
+        hook::id("about", id),
         title,
-        None,
-        ui::value(palette)
-            .id(hook::id("about", id))
-            .test_support()
-            .aria_label(value.clone())
-            .max_w(px(420.0))
-            .truncate()
-            .child(value),
+        Some(value),
     )
 }
 

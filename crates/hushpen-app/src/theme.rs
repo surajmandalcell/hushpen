@@ -130,10 +130,40 @@ pub mod size {
     pub const BUTTON_HEIGHT: f32 = 22.0;
     pub const BUTTON_PADDING: f32 = 12.0;
     pub const TRAFFIC_LIGHT: f32 = 12.0;
-    /// Where the window controls sit, native on macOS and drawn on Linux: the top left corner
-    /// of the first circle.
+    /// The left edge of the first window control, native on macOS and drawn on Linux.
     pub const TRAFFIC_LIGHT_INSET: f32 = 20.0;
+    /// The glyph inside a drawn window control, shown on hover.
+    pub const TRAFFIC_LIGHT_GLYPH: f32 = 9.0;
+    /// The one center line of the window chrome, from the window top: the window controls, the
+    /// app name in the sidebar, and the view title all center on it.
+    pub const CHROME_CENTER: f32 = 26.0;
     pub const FOCUS_RING: f32 = 2.0;
+    /// A small glyph at the end of a row or inside a button.
+    pub const GLYPH: f32 = 12.0;
+    /// The track of a switch.
+    pub const SWITCH_WIDTH: f32 = 34.0;
+    pub const SWITCH_HEIGHT: f32 = 20.0;
+    pub const SWITCH_KNOB: f32 = 16.0;
+    /// A text field at the end of a row.
+    pub const FIELD_WIDTH: f32 = 220.0;
+    /// The widest a pop-up button grows before its text is cut.
+    pub const MENU_MAX_WIDTH: f32 = 240.0;
+    /// The tallest an open pop-up list grows before it scrolls.
+    pub const MENU_LIST_MAX_HEIGHT: f32 = 200.0;
+    /// The thin track of a progress bar or a seek bar.
+    pub const TRACK_HEIGHT: f32 = 4.0;
+    /// The bars of a microphone level meter.
+    pub const METER_BAR_WIDTH: f32 = 4.0;
+    pub const METER_BAR_GAP: f32 = 3.0;
+    pub const METER_BAR_REST: f32 = 3.0;
+    pub const METER_BAR_MAX: f32 = 28.0;
+    /// The transcript block on Home, high enough for two lines before it grows.
+    pub const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
+}
+
+/// The top of an element `height` high that centers on the chrome center line.
+pub const fn chrome_top(height: f32) -> f32 {
+    size::CHROME_CENTER - height / 2.0
 }
 
 /// The font of the views: the system font on macOS, and the embedded Inter on Linux, where no
@@ -488,6 +518,19 @@ pub mod hud {
         pub const ON_ROUND_FINISH: u32 = 0x1A1A1A;
         pub const STATUS_ERROR: u32 = 0xFF9C8F;
         pub const STATUS_WARNING: u32 = 0xFFB3AA;
+    }
+
+    pub mod size {
+        /// The side inset of the pill, and the smaller ones of the listening pill and of a
+        /// pill that ends in a button.
+        pub const INSET: f32 = 12.0;
+        pub const LISTENING_INSET: f32 = 5.0;
+        pub const BUTTON_INSET: f32 = 4.0;
+        pub const DOT: f32 = 6.0;
+        pub const ICON: f32 = 14.0;
+        pub const ROUND_GLYPH: f32 = 12.0;
+        pub const TEXT_BUTTON_HEIGHT: f32 = 24.0;
+        pub const TEXT_BUTTON_PADDING: f32 = 10.0;
     }
 
     pub mod radius {

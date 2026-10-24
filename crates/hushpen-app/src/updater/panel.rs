@@ -4,7 +4,7 @@
 use super::{BANNER_DISMISS, BANNER_INSTALL, BannerKind, State, Updater};
 use crate::hook;
 use crate::theme::{self, space};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::{
     AnyElement, App, Context, Entity, FocusHandle, IntoElement, ParentElement, Styled, div, px,
 };
@@ -53,11 +53,11 @@ pub fn rows(
         )
         .into_any_element()
     };
-    let mut rows = vec![ui::status_row(
+    let mut rows = vec![ui::notice_row(
         palette,
         hook::id("settings", "updates.status"),
         text,
-        failed,
+        Notice::status(failed),
         Some(action),
     )];
     if let Some(version) = version {
@@ -183,11 +183,7 @@ pub fn banner(updater: &Entity<Updater>, cx: &mut App) -> Option<AnyElement> {
             .px(px(space::XXL))
             .pt(px(space::XS))
             .pb(px(space::SM))
-            .child(ui::plain_group(
-                hook::id("update", "banner"),
-                palette,
-                vec![row],
-            ))
+            .child(ui::group(hook::id("update", "banner"), palette, vec![row]))
             .into_any_element(),
     )
 }

@@ -3,17 +3,16 @@
 
 use super::{MicPhase, Mode, Onboarding};
 use crate::hook;
-use crate::mic::METER_BARS;
 use crate::models::ModelState;
 use crate::models::panel::format_size;
 use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, radius, size, space};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba,
-    Role, StatefulInteractiveElement, Styled, Window, div, px, relative, svg, transparent_black,
+    Role, StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
 use hushpen_core::onboarding::{
     HINT_NO_SOUND, HINT_NO_SPEECH, HINT_TRANSCRIPT_FAILED, MicVerdict, NOTE_NO_MODEL, Row,
@@ -21,10 +20,6 @@ use hushpen_core::onboarding::{
 };
 use hushpen_core::permission::Permission;
 
-const BAR_WIDTH: f32 = 4.0;
-const BAR_GAP: f32 = 3.0;
-const BAR_REST: f32 = 3.0;
-const BAR_MAX: f32 = 28.0;
 const FIELD_MIN_HEIGHT: f32 = 84.0;
 
 pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
@@ -72,7 +67,19 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
         .gap(px(space::LG))
         .child(header(palette, step, mode))
         .child(body)
-        .children(notice.map(|message| notice_row(palette, message)))
+        .children(notice.map(|message| {
+            ui::group(
+                hook::id("onboarding", "notice.group"),
+                palette,
+                vec![ui::notice_row(
+                    palette,
+                    hook::id("onboarding", "notice"),
+                    message,
+                    Notice::Alert,
+                    None,
+                )],
+            )
+        }))
         .child(div().flex().justify_end().child(ui::button(
             palette,
             hook::id("onboarding", "continue"),
@@ -273,71 +280,69 @@ fn permission_row(
         let onboarding = onboarding.clone();
         move |_: &mut Window, cx: &mut App| onboarding.update(cx, |me, cx| me.relaunch(cx))
     });
-    ui::row(palette)
-        .id(hook::id("onboarding", &format!("permissions.row.{key}")))
+    let detail = ui::secondary(palette)
+        .id(hook::id("onboarding", &format!("permissions.detail.{key}")))
         .test_support()
-        .aria_label(format!("{}: {state_text}", row.title))
-        .child(ui::icon(palette, icon))
-        .child(
-            ui::text_column()
-                .child(ui::title(palette).child(row.title))
-                .child(
-                    ui::secondary(palette)
-                        .id(hook::id("onboarding", &format!("permissions.detail.{key}")))
-                        .test_support()
-                        .child(row.detail),
-                ),
-        )
-        .child(status(
-            palette,
-            hook::id("onboarding", &format!("permissions.state.{key}")),
-            state_text,
-            tone,
-            row.state == RowState::Missing,
-        ))
-        .children(buttons.map(|(permission, allow, open)| {
-            let slot = Permission::ALL
-                .iter()
-                .position(|candidate| *candidate == permission)
-                .unwrap_or(0);
-            div()
-                .flex_none()
-                .flex()
-                .items_center()
-                .gap(px(space::SM))
-                // Allow asks the system, so it has nothing left to do once the row is Ready.
-                .children((!ready).then(|| {
-                    ui::button(
-                        palette,
-                        hook::id("onboarding", &format!("permissions.allow.{key}")),
-                        "Allow",
-                        Kind::Default,
-                        Some(&focus[slot * 2]),
-                        true,
-                        allow,
-                    )
-                }))
-                .child(ui::button(
+        .child(row.detail);
+    ui::icon_row(
+        palette,
+        icon,
+        ui::title(palette).child(row.title),
+        Some(detail.into_any_element()),
+    )
+    .id(hook::id("onboarding", &format!("permissions.row.{key}")))
+    .test_support()
+    .aria_label(format!("{}: {state_text}", row.title))
+    .child(status(
+        palette,
+        hook::id("onboarding", &format!("permissions.state.{key}")),
+        state_text,
+        tone,
+        row.state == RowState::Missing,
+    ))
+    .children(buttons.map(|(permission, allow, open)| {
+        let slot = Permission::ALL
+            .iter()
+            .position(|candidate| *candidate == permission)
+            .unwrap_or(0);
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            // Allow asks the system, so it has nothing left to do once the row is Ready.
+            .children((!ready).then(|| {
+                ui::button(
                     palette,
-                    hook::id("onboarding", &format!("permissions.open.{key}")),
-                    "Open Settings",
-                    Kind::Plain,
-                    Some(&focus[slot * 2 + 1]),
+                    hook::id("onboarding", &format!("permissions.allow.{key}")),
+                    "Allow",
+                    Kind::Default,
+                    Some(&focus[slot * 2]),
                     true,
-                    open,
-                ))
-        }))
-        .children(relaunch.map(|press| {
-            ui::button(
+                    allow,
+                )
+            }))
+            .child(ui::button(
                 palette,
-                hook::id("onboarding", "permissions.relaunch"),
-                "Quit and Reopen",
-                Kind::Default,
-                Some(relaunch_focus),
+                hook::id("onboarding", &format!("permissions.open.{key}")),
+                "Open Settings",
+                Kind::Plain,
+                Some(&focus[slot * 2 + 1]),
                 true,
-                press,
-            )
-        }))
+                open,
+            ))
+    }))
+    .children(relaunch.map(|press| {
+        ui::button(
+            palette,
+            hook::id("onboarding", "permissions.relaunch"),
+            "Quit and Reopen",
+            Kind::Default,
+            Some(relaunch_focus),
+            true,
+            press,
+        )
+    }))
 }
 
 fn mic_test(
@@ -400,32 +405,30 @@ fn mic_test(
             palette.label_secondary,
         ),
     };
+    let status = ui::secondary(palette)
+        .id(hook::id("onboarding", "mic.status"))
+        .test_support()
+        .role(Role::Status)
+        .aria_label(status.clone())
+        .child(status);
     let rows: Vec<AnyElement> = vec![
-        ui::row(palette)
-            .child(ui::icon(palette, IconName::Mic))
-            .child(
-                ui::text_column()
-                    .child(ui::title(palette).child("Microphone"))
-                    .child(
-                        ui::secondary(palette)
-                            .id(hook::id("onboarding", "mic.status"))
-                            .test_support()
-                            .role(Role::Status)
-                            .aria_label(status.clone())
-                            .child(status),
-                    ),
-            )
-            .child(ui::button(
-                palette,
-                hook::id("onboarding", "mic.test"),
-                label,
-                Kind::Plain,
-                Some(&focus),
-                !checking,
-                toggle,
-            ))
-            .into_any_element(),
-        meter_row(palette, &meter, listening).into_any_element(),
+        ui::icon_row(
+            palette,
+            IconName::Mic,
+            ui::title(palette).child("Microphone"),
+            Some(status.into_any_element()),
+        )
+        .child(ui::button(
+            palette,
+            hook::id("onboarding", "mic.test"),
+            label,
+            Kind::Plain,
+            Some(&focus),
+            !checking,
+            toggle,
+        ))
+        .into_any_element(),
+        ui::meter_row(palette, "onboarding", &meter, listening),
         div()
             .id(hook::id("onboarding", &format!("mic.{result_id}")))
             .test_support()
@@ -441,41 +444,6 @@ fn mic_test(
             .into_any_element(),
     ];
     ui::group(hook::id("onboarding", "mic"), palette, rows)
-}
-
-fn meter_row(palette: Palette, levels: &[f32], listening: bool) -> impl IntoElement + use<> {
-    let bar_color = if listening {
-        palette.label_secondary
-    } else {
-        palette.label_tertiary
-    };
-    let bars = levels
-        .iter()
-        .take(METER_BARS)
-        .enumerate()
-        .map(|(index, level)| {
-            div()
-                .id(hook::indexed("onboarding", "mic.bar", index))
-                .test_support()
-                .flex_none()
-                .w(px(BAR_WIDTH))
-                .h(px(BAR_REST + level.clamp(0.0, 1.0) * (BAR_MAX - BAR_REST)))
-                .rounded(px(radius::BUTTON))
-                .bg(bar_color)
-        });
-    div()
-        .id(hook::id("onboarding", "mic.meter"))
-        .test_support()
-        .flex()
-        .items_end()
-        .justify_center()
-        .flex_none()
-        .w_full()
-        .gap(px(BAR_GAP))
-        .h(px(BAR_MAX + 2.0 * space::MD))
-        .px(px(size::ROW_PADDING))
-        .py(px(space::MD))
-        .children(bars)
 }
 
 fn model(
@@ -530,53 +498,46 @@ fn model(
     };
     let mut rows: Vec<AnyElement> = Vec::new();
     if let Some(message) = notice {
-        rows.push(
-            ui::row(palette)
-                .id(hook::id("onboarding", "model.notice"))
-                .test_support()
-                .role(Role::Alert)
-                .text_color(palette.label)
-                .child(message)
-                .into_any_element(),
-        );
+        rows.push(ui::notice_row(
+            palette,
+            hook::id("onboarding", "model.notice"),
+            message,
+            Notice::Alert,
+            None,
+        ));
     }
+    let size_line = ui::secondary(palette).child(format!("{} · Recommended", format_size(bytes)));
     rows.push(
-        ui::row(palette)
-            .child(ui::icon(palette, IconName::Cpu))
-            .child(
-                ui::text_column()
-                    .child(
-                        ui::title(palette)
-                            .id(hook::id("onboarding", "model.name"))
-                            .test_support()
-                            .child(name),
-                    )
-                    .child(
-                        ui::secondary(palette)
-                            .child(format!("{} · Recommended", format_size(bytes))),
-                    ),
+        ui::icon_row(
+            palette,
+            IconName::Cpu,
+            ui::title(palette)
+                .id(hook::id("onboarding", "model.name"))
+                .test_support()
+                .child(name),
+            Some(size_line.into_any_element()),
+        )
+        .child(
+            ui::value(palette)
+                .id(hook::id("onboarding", "model.status"))
+                .test_support()
+                .role(Role::Status)
+                .aria_label(status.clone())
+                .text_color(tone)
+                .child(status),
+        )
+        .children(action.map(|(label, id)| {
+            ui::button(
+                palette,
+                hook::id("onboarding", &format!("model.{id}")),
+                label,
+                Kind::Plain,
+                Some(&focus),
+                true,
+                press,
             )
-            .child(
-                ui::value(palette)
-                    .id(hook::id("onboarding", "model.status"))
-                    .test_support()
-                    .role(Role::Status)
-                    .aria_label(status.clone())
-                    .text_color(tone)
-                    .child(status),
-            )
-            .children(action.map(|(label, id)| {
-                ui::button(
-                    palette,
-                    hook::id("onboarding", &format!("model.{id}")),
-                    label,
-                    Kind::Plain,
-                    Some(&focus),
-                    true,
-                    press,
-                )
-            }))
-            .into_any_element(),
+        }))
+        .into_any_element(),
     );
     rows.push(
         div()
@@ -585,25 +546,17 @@ fn model(
             .px(px(size::ROW_PADDING))
             .py(px(space::MD))
             .child(
-                div()
-                    .id(hook::id("onboarding", "model.progress"))
-                    .test_support()
-                    .role(Role::ProgressIndicator)
-                    .h(px(4.0))
-                    .w_full()
-                    .rounded(px(radius::FULL))
-                    .bg(palette.control)
-                    .child(
-                        div()
-                            .h_full()
-                            .w(relative(if state == ModelState::Ready {
-                                1.0
-                            } else {
-                                fraction
-                            }))
-                            .rounded(px(radius::FULL))
-                            .bg(palette.label_secondary),
-                    ),
+                ui::track(
+                    palette,
+                    if state == ModelState::Ready {
+                        1.0
+                    } else {
+                        fraction
+                    },
+                )
+                .id(hook::id("onboarding", "model.progress"))
+                .test_support()
+                .role(Role::ProgressIndicator),
             )
             .into_any_element(),
     );
@@ -654,36 +607,32 @@ fn practice(
         }
     };
     let shown = text.clone().unwrap_or_default();
+    let status = ui::secondary(palette)
+        .id(hook::id("onboarding", "practice.status"))
+        .test_support()
+        .role(Role::Status)
+        .aria_label(status)
+        .child(status);
     let rows: Vec<AnyElement> = vec![
-        ui::row(palette)
-            .child(ui::icon(palette, IconName::Keyboard))
-            .child(
-                ui::text_column()
-                    .child(
-                        ui::title(palette)
-                            .id(hook::id("onboarding", "practice.instruction"))
-                            .test_support()
-                            .child(instruction),
-                    )
-                    .child(
-                        ui::secondary(palette)
-                            .id(hook::id("onboarding", "practice.status"))
-                            .test_support()
-                            .role(Role::Status)
-                            .aria_label(status)
-                            .child(status),
-                    ),
-            )
-            .child(ui::button(
-                palette,
-                hook::id("onboarding", "practice.record"),
-                if listening { "Stop" } else { "Record" },
-                Kind::Plain,
-                Some(&record_focus),
-                can_record || listening,
-                toggle,
-            ))
-            .into_any_element(),
+        ui::icon_row(
+            palette,
+            IconName::Keyboard,
+            ui::title(palette)
+                .id(hook::id("onboarding", "practice.instruction"))
+                .test_support()
+                .child(instruction),
+            Some(status.into_any_element()),
+        )
+        .child(ui::button(
+            palette,
+            hook::id("onboarding", "practice.record"),
+            if listening { "Stop" } else { "Record" },
+            Kind::Plain,
+            Some(&record_focus),
+            can_record || listening,
+            toggle,
+        ))
+        .into_any_element(),
         div()
             .w_full()
             .flex_none()
@@ -742,47 +691,25 @@ fn updates(
             });
         }
     };
+    let detail =
+        ui::secondary(palette).child("Off unless you turn it on. Hushpen never updates by itself.");
     let rows: Vec<AnyElement> = vec![
-        ui::row(palette)
-            .child(ui::icon(palette, IconName::Download))
-            .child(
-                ui::text_column()
-                    .child(ui::title(palette).child("Check for updates"))
-                    .child(
-                        ui::secondary(palette)
-                            .child("Off unless you turn it on. Hushpen never updates by itself."),
-                    ),
-            )
-            .child(ui::switch(
-                palette,
-                hook::id("onboarding", "updates.toggle"),
-                "Check for updates",
-                on,
-                true,
-                &focus,
-                flip,
-            ))
-            .into_any_element(),
+        ui::icon_row(
+            palette,
+            IconName::Download,
+            ui::title(palette).child("Check for updates"),
+            Some(detail.into_any_element()),
+        )
+        .child(ui::switch(
+            palette,
+            hook::id("onboarding", "updates.toggle"),
+            "Check for updates",
+            on,
+            true,
+            &focus,
+            flip,
+        ))
+        .into_any_element(),
     ];
     ui::group(hook::id("onboarding", "updates"), palette, rows)
-}
-
-fn notice_row(palette: Palette, message: String) -> impl IntoElement {
-    div()
-        .id(hook::id("onboarding", "notice"))
-        .test_support()
-        .role(Role::Alert)
-        .flex()
-        .items_center()
-        .gap(px(space::SM))
-        .text_token(BODY)
-        .text_color(palette.label)
-        .child(
-            svg()
-                .path(IconName::CircleAlert.path())
-                .size(px(size::NAV_ICON))
-                .flex_none()
-                .text_color(palette.label_secondary),
-        )
-        .child(div().flex_1().min_w_0().child(message))
 }

@@ -3,12 +3,12 @@
 use super::Dictionary;
 use crate::hook;
 use crate::theme::{self, Palette, space};
-use crate::ui::{self, Kind};
+use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
+    Window, div, px,
 };
 
 const EMPTY_TEXT: &str = "No words yet. Add names and terms that Hushpen should get right.";
@@ -61,25 +61,27 @@ pub fn render(dictionary: &Entity<Dictionary>, cx: &mut App) -> impl IntoElement
         .into_any_element(),
     ];
     if let Some(message) = message {
-        group_rows.push(ui::note_row(
+        group_rows.push(ui::notice_row(
             palette,
             hook::id("dictionary", "message"),
             message,
-            true,
+            Notice::Alert,
+            None,
         ));
     }
     if rows.is_empty() {
-        group_rows.push(ui::note_row(
+        group_rows.push(ui::notice_row(
             palette,
             hook::id("dictionary", "empty"),
             EMPTY_TEXT.to_owned(),
-            false,
+            Notice::Info,
+            None,
         ));
     }
     for (index, (row, focus)) in rows.into_iter().zip(focus).enumerate() {
         group_rows.push(entry_row(palette, dictionary, index, row, focus, editing));
     }
-    ui::plain_group(hook::id("dictionary", "list"), palette, group_rows)
+    ui::group(hook::id("dictionary", "list"), palette, group_rows)
 }
 
 fn form(
@@ -186,24 +188,12 @@ fn entry_row(
         container = container.bg(palette.selection);
     }
     container
-        .child(
-            ui::text_column()
-                .child(
-                    ui::title(palette)
-                        .id(hook::indexed("dictionary", "name", index))
-                        .test_support()
-                        .aria_label(row.phrase.clone())
-                        .child(row.phrase),
-                )
-                .child(
-                    ui::secondary(palette)
-                        .id(hook::indexed("dictionary", "detail", index))
-                        .test_support()
-                        .aria_label(detail.clone())
-                        .w_full()
-                        .child(detail),
-                ),
-        )
+        .child(ui::named_lines(
+            palette,
+            hook::indexed("dictionary", "name", index),
+            row.phrase,
+            Some((hook::indexed("dictionary", "detail", index), detail)),
+        ))
         .child(controls)
         .into_any_element()
 }

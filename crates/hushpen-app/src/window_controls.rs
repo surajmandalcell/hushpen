@@ -63,7 +63,7 @@ fn light(
         .child(
             svg()
                 .path(icon.path())
-                .size(px(9.0))
+                .size(px(size::TRAFFIC_LIGHT_GLYPH))
                 .text_color(theme::rgba_of(glyph))
                 .invisible()
                 .group_hover(GROUP, |style| style.visible()),

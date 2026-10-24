@@ -149,7 +149,7 @@ Click math: use the bounds from `hookctl tree` plus the absolute origin from `xw
 
 `services.yaml` `test-pixel` runs `cargo test -p hushpen-app --features pixel-tests` in
 `hushpen-build` with `DISPLAY` unset. GPUI's wgpu headless renderer draws the window offscreen on
-lavapipe at scale 2 (1560x1040) and compares it with
+lavapipe at scale 2 (1880x1200) and compares it with
 `crates/hushpen-app/tests/pixel/baselines/*.png`. On a failure it writes `<view>-actual.png` and
 `<view>-diff.png` to `HUSHPEN_PIXEL_OUT` (the container's `TMPDIR`, on the data drive). Updating
 baselines is an explicit step: run the test with `HUSHPEN_PIXEL_UPDATE=1` and
