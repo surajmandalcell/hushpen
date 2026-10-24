@@ -89,7 +89,7 @@ pub fn seconds(duration_ms: i64) -> String {
 pub fn meta(row: &Row) -> String {
     let mut parts = vec![when(row.created_at)];
     if is_import(row) {
-        parts.push("Import".to_owned());
+        parts.push(FILE_SOURCE.to_owned());
         parts.extend(row.source_name.clone());
     } else if let Some(app) = &row.target_app {
         parts.push(app.clone());
@@ -105,6 +105,9 @@ pub fn meta(row: &Row) -> String {
 }
 
 pub const AUDIO_REMOVED: &str = "Audio removed";
+
+/// The source word of a row transcribed in the Files view, in place of the app name.
+pub const FILE_SOURCE: &str = "File";
 
 pub(super) fn is_import(row: &Row) -> bool {
     row.kind == "import"

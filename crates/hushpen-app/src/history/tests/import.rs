@@ -49,7 +49,7 @@ fn the_list_row_says_import_and_names_the_file(cx: &mut TestAppContext) {
         .find(|row| row["id"] == "I")
         .unwrap();
     let meta = import["meta"].as_str().unwrap();
-    assert!(meta.contains("Import"), "{meta}");
+    assert!(meta.contains("File \u{b7} interview.mp3"), "{meta}");
     assert!(meta.contains("interview.mp3"), "{meta}");
     let dictation = rows
         .as_array()
@@ -57,7 +57,7 @@ fn the_list_row_says_import_and_names_the_file(cx: &mut TestAppContext) {
         .iter()
         .find(|row| row["id"] == "D")
         .unwrap();
-    assert!(!dictation["meta"].as_str().unwrap().contains("Import"));
+    assert!(!dictation["meta"].as_str().unwrap().contains("File"));
     assert_eq!(import["kind"], "import");
     assert_eq!(import["source_name"], "interview.mp3");
 }
