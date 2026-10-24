@@ -21,9 +21,10 @@ Hushpen
 │   └── test hook                   debug builds only
 ├── hushpen engine (child)          whisper.cpp, started as `hushpen engine`
 ├── hushpen-llm (child binary)      llama.cpp, one model in RAM
+├── hushpen-tts (child binary)      Kokoro on sherpa-onnx, one voice model in RAM
 └── data folder                     all app data on disk (D-13)
     ├── settings                    config/settings.json
-    ├── model                       models/whisper/*.bin, models/llm/*.gguf
+    ├── model                       models/whisper/*.bin, models/llm/*.gguf, models/tts/<id>/
     ├── history row                 one entry in history/history.db
     │   ├── audio file              audio/<id>.wav
     │   └── transcript              raw text and cleaned text
@@ -54,8 +55,10 @@ Hushpen
   in under 200 ms. Audio is deleted after 30 days by default; the text stays.
 - **dictionary entry**: a word that goes into the Whisper prompt, or a
   replacement applied after cleanup.
-- **model**: a Whisper model (ggml `.bin`) or an LLM model (GGUF). Every
-  model has a pinned sha256 and downloads only when the user asks.
+- **model**: a Whisper model (ggml `.bin`), an LLM model (GGUF), or a voice
+  model (a folder of pinned files under `models/tts/`, such as
+  `kokoro-82m-int8`). Every model file has a pinned sha256 and downloads only
+  when the user asks.
 - **flow bar**: the always-on-top pill that never takes focus. It stays dark
   in Light and Dark appearance. It shows only while a dictation is active
   (or with Show when idle on), with a cross to cancel and a tick to finish.
@@ -89,6 +92,8 @@ Hushpen
   capture, insertion, the store, and the updater.
 - **engine**: the child process (`hushpen engine`) that runs whisper.cpp.
 - **hushpen-llm**: the child binary that runs llama.cpp (D-06).
+- **hushpen-tts**: the child binary that runs the Kokoro voice model on
+  sherpa-onnx (D-28).
 - Children talk to `hushpen` over framed stdin and stdout only.
 
 ## History notes

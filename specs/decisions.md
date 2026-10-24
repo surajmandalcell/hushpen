@@ -139,6 +139,29 @@ new decision, add it here in the same change (D-21).
   in `hushpen_core::links::SITE_URL`. The Engine fact names whisper.cpp;
   About names no framework.
 
+- **D-28 Kokoro voice worker.** Read aloud with the Kokoro voice runs in a
+  third child process, `hushpen-tts`, a crate with no engine or HTTP
+  dependency (net-audit and two-binary cover it). It speaks the same frame
+  protocol style as `hushpen-llm` (ListVoices, Speak, audio in binary frames,
+  Done, Cancel, idle unload), and the app drives it through the one shared
+  supervisor and a host that implements `SpeechEngine` (D-25). The runtime is
+  the sherpa-onnx 2.0.0 C API, opened with dlopen from pinned, checksummed
+  release libraries (`cargo xtask tts-runtime`; `Contents/Frameworks` on
+  macOS, beside the worker on Linux); nothing downloads at build time and a
+  version mismatch is refused. The `sherpa-onnx-sys` crate was rejected
+  because its build script downloads the library. sherpa-onnx 2.0.0 contains
+  no espeak-ng or piper-phonemize, so the package ships no GPL data; the
+  worker turns text into phonemes itself (the model's lexicon plus number
+  and abbreviation rules) and passes phoneme codepoints, so words outside
+  the lexicon are still spoken instead of silently dropped. The model is
+  Kokoro-82M int8 (four pinned files, catalog kind `voice`, stored under
+  `models/tts/`). It runs on the CPU only: the CoreML provider aborts the
+  process on this model's dynamic shapes (an uncatchable C++ exception from
+  ONNX Runtime). Measured real-time factors: about 0.5 on an Apple M4 Pro,
+  0.44 to 0.46 on four vCPUs of a Linux arm64 container. The library is
+  never dlclosed, because ONNX Runtime's exit-time destructors raced the
+  unload on Linux (a SIGSEGV after an otherwise clean shutdown).
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the
