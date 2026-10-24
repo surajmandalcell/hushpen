@@ -1,7 +1,8 @@
-//! The grouped section: its frame, the lines between its rows, and the help line under it.
+//! The grouped section: its frame, the lines between its rows, the title above it, and the help
+//! line under it.
 
 use super::secondary;
-use crate::theme::{self, Palette, radius, size, space};
+use crate::theme::{self, HEADING, Palette, StyledType, radius, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
     AbsoluteLength, AnyElement, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
@@ -51,6 +52,21 @@ pub fn line(palette: Palette) -> impl IntoElement {
         .flex_none()
         .h(theme::hairline())
         .bg(palette.separator)
+}
+
+/// The title above a group, like a group title in System Settings: one line in the heading type
+/// and the secondary label color, lined up with the text of the rows.
+pub fn heading(palette: Palette, id: SharedString, text: &'static str) -> impl IntoElement {
+    div()
+        .id(id)
+        .test_support()
+        .role(Role::Heading)
+        .aria_label(text)
+        .px(px(size::ROW_PADDING))
+        .text_token(HEADING)
+        .text_color(palette.label_secondary)
+        .truncate()
+        .child(text)
 }
 
 /// A group with the one line of help under it. The help is secondary text, cut to one line.

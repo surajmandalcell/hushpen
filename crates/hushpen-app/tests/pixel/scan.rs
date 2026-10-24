@@ -219,6 +219,12 @@ fn reason(line: Line, nodes: &[Node]) -> Option<&'static str> {
     {
         return Some("the track of a slider");
     }
+    if visible()
+        .filter(|node| node.focused)
+        .any(|node| node.rect.inflated(BLEED).has(line.from + 1.0, line.at))
+    {
+        return Some("the focus ring");
+    }
     for group in visible().filter(|node| node.is("Group")) {
         let rect = group.rect;
         if line.horizontal {

@@ -135,8 +135,7 @@ open_settings_cleanup() {
   focus "$(app_window)"
   $HC action open-view '{"view":"settings"}' >/dev/null
   wait_until 10 view_is settings || return 1
-  wait_until 10 tree_has settings.section.cleanup || return 1
-  [ "$(sv .section)" = cleanup ] || $HC click settings.section.cleanup >/dev/null
+  $HC action settings-search '{"query":"cleanup"}' >/dev/null
   wait_until 10 tree_has settings.cleanup.ai
 }
 # type_into <id> <text> [enter]: replaces what the field holds

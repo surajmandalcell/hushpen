@@ -1,7 +1,7 @@
 //! The rows of a group. A row is one line: an optional icon, the title with at most one short
 //! line under it, then a value or controls on the right.
 
-use super::controls::{field, menu_button, switch};
+use super::controls::{field, menu_button, slider, switch};
 use super::{ROW_GAP, icon, secondary, text_column, title};
 use crate::hook;
 use crate::theme::{BODY, Palette, StyledType, radius, size, space};
@@ -109,6 +109,25 @@ pub fn toggle_row(
         title,
         Some(detail.to_owned()),
         switch(palette, id, title, on, true, focus, move |_, cx| toggle(cx)),
+    )
+}
+
+/// A row with a slider from 0 to 1 on the right. The slider takes `id`, the row `<id>.row`.
+pub fn slider_row(
+    palette: Palette,
+    id: SharedString,
+    title: &'static str,
+    detail: &str,
+    value: f32,
+    focus: &FocusHandle,
+    set: impl Fn(f32, &mut App) + 'static,
+) -> AnyElement {
+    labeled_row(
+        palette,
+        format!("{id}.row").into(),
+        title,
+        Some(detail.to_owned()),
+        slider(palette, id, title, value, focus, set),
     )
 }
 

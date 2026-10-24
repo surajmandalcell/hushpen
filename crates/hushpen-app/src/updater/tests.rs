@@ -1,6 +1,6 @@
 use super::*;
 use crate::net::download::Progress;
-use crate::settings::{Parts as SettingsParts, Section, Settings};
+use crate::settings::{Parts as SettingsParts, Settings};
 use crate::shell::Shell;
 use crate::storage;
 use crate::theme::space;
@@ -452,7 +452,7 @@ fn open_settings(cx: &mut TestAppContext, rig: &Rig) -> Window {
     });
     settings.update(cx, |settings, cx| {
         settings.attach_updater(rig.updater.clone(), cx);
-        settings.select_section(Section::Updates, cx);
+        settings.set_query("updates".into(), cx);
     });
     shell.update(cx, |shell, cx| {
         shell.attach_updater(rig.updater.clone(), cx);

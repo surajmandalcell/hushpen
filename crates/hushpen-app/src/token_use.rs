@@ -1,6 +1,6 @@
 //! The few-colors rule, enforced on the view code: the accent token reaches the screen only
-//! through the default button (and the link-style plain button), a switch that is on, the
-//! focus ring, and the recorder that waits for keys; the status tokens reach it only through
+//! through the default button (and the link-style plain button), a switch that is on, a slider,
+//! the focus ring, and the recorder that waits for keys; the status tokens reach it only through
 //! a status word.
 
 use std::fs;
@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 14] = [
+const ALLOWED: [(&str, &str, &str); 15] = [
     // The default button fills with it; the plain button is a link and takes it for text.
     ("ui/controls.rs", "button", "accent"),
-    // The track of a switch that is on.
+    // The track of a switch that is on, and the filled part of a slider.
     ("ui/controls.rs", "switch", "accent"),
+    ("ui/controls.rs", "slider", "accent"),
     // The recorder that waits for keys has the focus ring while it waits.
     ("shortcuts/panel.rs", "shortcut_row", "accent"),
     // Status words: Ready, Active, Failed. The warning token also colors the attention icon.

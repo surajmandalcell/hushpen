@@ -455,7 +455,7 @@ impl Models {
 
     /// Loads the active model into the engine, but only once its file is verified. The engine
     /// starts with no model so that a changed file is never loaded.
-    fn load_active(&self) {
+    pub(crate) fn load_active(&self) {
         if let (true, Some(engine)) = (self.usable().is_some(), &self.engine) {
             engine.apply_settings(&self.storage.settings.values());
         }

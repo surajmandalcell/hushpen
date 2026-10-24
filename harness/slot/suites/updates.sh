@@ -75,8 +75,7 @@ open_updates() {
   focus "$(app_window)"
   $HC action open-view '{"view":"settings"}' >/dev/null
   wait_until 10 view_is settings || return 1
-  wait_until 10 tree_has settings.section.updates || return 1
-  [ "$(sv .section)" = updates ] || $HC click settings.section.updates >/dev/null
+  $HC action settings-search '{"query":"updates"}' >/dev/null
   wait_until 10 tree_has settings.updates.checkNow
 }
 check_now() { hclick settings.updates.checkNow; }
@@ -165,7 +164,7 @@ rel() { $HC tree | jq -r --arg id "$1" --argjson ox "$ox" --argjson oy "$oy" \
   '.[] | select(.id == $id) | "\((.root_bounds.x + .root_bounds.width / 2 - $ox) | floor) \((.root_bounds.y + .root_bounds.height / 2 - $oy) | floor)"' | head -1; }
 CHECK_NOW_REL=$(rel settings.updates.checkNow)
 SIDEBAR_SETTINGS_REL=$(rel sidebar.settings)
-SECTION_UPDATES_REL=$(rel settings.section.updates)
+SEARCH_REL=$(rel settings.search)
 shot 003-before-check
 check_now || failures+="Check now could not be clicked; "
 wait_until 20 upd_is .state available || failures+="the state is '$(upd .state)', not available; "
@@ -330,7 +329,10 @@ else
     read -r wx wy <<<"$(settled_origin "$wid")"
     click_rel() { read -r cx cy <<<"$1"; xdotool mousemove $((wx + cx)) $((wy + cy)) click 1; sleep 0.8; }
     click_rel "$SIDEBAR_SETTINGS_REL"
-    click_rel "$SECTION_UPDATES_REL"
+    # The release build has no hook: the same search as open_updates puts Check now in its place.
+    click_rel "$SEARCH_REL"
+    xdotool type --delay 30 updates
+    sleep 0.8
     shot 009-release-updates
     click_rel "$CHECK_NOW_REL"
     sleep 6

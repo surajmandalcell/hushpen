@@ -1,6 +1,6 @@
-//! The Shortcuts section of Settings: one group with a row for each shortcut and a recorder
-//! field on its right, the reason a shortcut was refused, and a row that puts all four back
-//! to their defaults.
+//! The rows of the Shortcuts section of Settings: a row for each shortcut with a recorder field
+//! on its right, the reason a shortcut was refused, and a row that puts all four back to their
+//! defaults.
 
 use super::Shortcuts;
 use crate::hook;
@@ -9,8 +9,8 @@ use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
+    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, ParentElement, Role,
+    StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
 };
 use hushpen_core::shortcut::Slot;
 
@@ -46,80 +46,63 @@ fn text_of(slot: Slot) -> (&'static str, &'static str) {
     }
 }
 
-pub fn render(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> impl IntoElement + use<> {
+/// The notice that the shortcuts cannot work here, such as on Wayland, or nothing.
+pub fn keys_off_row(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> Option<AnyElement> {
     let palette = theme::palette(cx);
-    let (rows, why_off, reset_focus) = {
+    let message = shortcuts.read(cx).why_off()?.to_owned();
+    Some(ui::notice_row(
+        palette,
+        hook::id("settings", "shortcut.keys-off"),
+        message,
+        Notice::Info,
+        None,
+    ))
+}
+
+/// The row of one shortcut with its recorder field, and the reason under it when the last
+/// shortcut recorded for it was refused.
+pub fn slot_rows(shortcuts: &Entity<Shortcuts>, slot: Slot, cx: &mut App) -> Vec<AnyElement> {
+    let palette = theme::palette(cx);
+    let row = {
         let me = shortcuts.read(cx);
-        let rows: Vec<Row> = Slot::ALL
-            .into_iter()
-            .enumerate()
-            .map(|(index, slot)| {
-                let (title, detail) = text_of(slot);
-                let recording = me.recording() == Some(slot);
-                let shown = if recording {
-                    me.progress()
-                        .unwrap_or_else(|| "Press the shortcut".to_owned())
-                } else {
-                    me.display(slot)
-                };
-                Row {
-                    slot,
-                    title,
-                    detail,
-                    shown,
-                    recording,
-                    enabled: me.why_off().is_none(),
-                    error: me.failure(slot).map(|refusal| refusal.message.clone()),
-                    focus: me.field_focus[index].clone(),
-                }
-            })
-            .collect();
-        (
-            rows,
-            me.why_off().map(str::to_owned),
-            me.reset_focus.clone(),
-        )
+        let (title, detail) = text_of(slot);
+        let recording = me.recording() == Some(slot);
+        let shown = if recording {
+            me.progress()
+                .unwrap_or_else(|| "Press the shortcut".to_owned())
+        } else {
+            me.display(slot)
+        };
+        let index = Slot::ALL.iter().position(|each| *each == slot).unwrap_or(0);
+        Row {
+            slot,
+            title,
+            detail,
+            shown,
+            recording,
+            enabled: me.why_off().is_none(),
+            error: me.failure(slot).map(|refusal| refusal.message.clone()),
+            focus: me.field_focus[index].clone(),
+        }
     };
-    let mut group_rows: Vec<AnyElement> = Vec::new();
-    if let Some(message) = why_off {
-        group_rows.push(ui::notice_row(
+    let error = row.error.clone();
+    let mut rows = vec![shortcut_row(palette, shortcuts, row)];
+    if let Some(message) = error {
+        rows.push(ui::notice_row(
             palette,
-            hook::id("settings", "shortcut.keys-off"),
+            hook::id("settings", &format!("shortcut.{}.error", slot.key())),
             message,
-            Notice::Info,
+            Notice::Alert,
             None,
         ));
     }
-    for row in rows {
-        let key = row.slot.key();
-        let error = row.error.clone();
-        group_rows.push(shortcut_row(palette, shortcuts, row));
-        if let Some(message) = error {
-            group_rows.push(ui::notice_row(
-                palette,
-                hook::id("settings", &format!("shortcut.{key}.error")),
-                message,
-                Notice::Alert,
-                None,
-            ));
-        }
-    }
-    group_rows.push(reset_row(palette, shortcuts, &reset_focus));
-    ui::section(
-        palette,
-        ui::group(hook::id("settings", "shortcuts"), palette, group_rows),
-        Some((
-            hook::id("settings", "shortcuts.help"),
-            "Click a shortcut, then press the keys. Esc cancels.".to_owned(),
-        )),
-    )
+    rows
 }
 
-fn reset_row(
-    palette: Palette,
-    shortcuts: &Entity<Shortcuts>,
-    reset_focus: &FocusHandle,
-) -> AnyElement {
+/// The row that puts all four shortcuts back to their defaults.
+pub fn reset_row(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> AnyElement {
+    let palette = theme::palette(cx);
+    let reset_focus = shortcuts.read(cx).reset_focus.clone();
     let reset = {
         let shortcuts = shortcuts.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -140,7 +123,7 @@ fn reset_row(
             hook::id("settings", "shortcut.reset"),
             "Reset to default",
             Kind::Plain,
-            Some(reset_focus),
+            Some(&reset_focus),
             true,
             reset,
         ),

@@ -1,7 +1,7 @@
 use super::*;
 use crate::mic::{Mic, MicBackend, MicSession};
 use crate::storage;
-use gpui_kit::{AppContext as _, Entity, TestAppContext};
+use gpui_kit::{Entity, TestAppContext};
 use hushpen_audio::{CaptureError, EventSink, FeedInfo, Finished, InputDevice};
 use hushpen_core::error::DATA_FOLDER_MOVE_FAILED;
 use hushpen_store::data_dir::DataDir;
@@ -102,9 +102,9 @@ impl LoginToggle for FakeLogin {
     }
 }
 
-struct Rig {
-    settings: Entity<Settings>,
-    storage: Rc<storage::Storage>,
+pub(super) struct Rig {
+    pub(super) settings: Entity<Settings>,
+    pub(super) storage: Rc<storage::Storage>,
     mic: Entity<Mic>,
     login: Arc<FakeLogin>,
     restarts: Rc<Mutex<u32>>,
@@ -112,7 +112,7 @@ struct Rig {
     _tmp: tempfile::TempDir,
 }
 
-fn rig(cx: &mut TestAppContext) -> Rig {
+pub(super) fn rig(cx: &mut TestAppContext) -> Rig {
     let rig = rig_with(cx, FakeLogin::default());
     settle_login(cx, &rig);
     rig
@@ -152,7 +152,7 @@ fn rig_with(cx: &mut TestAppContext, login: FakeLogin) -> Rig {
     }
 }
 
-fn read<T>(cx: &TestAppContext, rig: &Rig, f: impl FnOnce(&Settings) -> T) -> T {
+pub(super) fn read<T>(cx: &TestAppContext, rig: &Rig, f: impl FnOnce(&Settings) -> T) -> T {
     cx.read(|app| f(rig.settings.read(app)))
 }
 
@@ -179,7 +179,7 @@ fn settle_login(cx: &mut TestAppContext, rig: &Rig) {
     }
 }
 
-fn value(rig: &Rig, key: &str) -> Value {
+pub(super) fn value(rig: &Rig, key: &str) -> Value {
     rig.storage.settings.get(key).unwrap_or(Value::Null)
 }
 
@@ -187,10 +187,15 @@ fn value(rig: &Rig, key: &str) -> Value {
 fn each_toggle_writes_its_key(cx: &mut TestAppContext) {
     let rig = rig(cx);
     type Toggle = fn(&mut Settings, &mut Context<Settings>);
-    let cases: [(&str, Toggle); 5] = [
+    let cases: [(&str, Toggle); 7] = [
         ("startup.startHidden", Settings::toggle_start_hidden),
         ("audio.cueSounds", Settings::toggle_sounds),
         ("cleanup.rules", Settings::toggle_rules),
+        (
+            "cleanup.spokenPunctuation",
+            Settings::toggle_spoken_punctuation,
+        ),
+        ("engine.useGpu", Settings::toggle_gpu),
         ("overlay.enabled", Settings::toggle_flow_bar),
         ("overlay.idleVisible", Settings::toggle_flow_bar_idle),
     ];
@@ -529,15 +534,55 @@ fn the_retention_and_position_controls_write_their_keys(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-fn sections_switch_and_close_the_open_picker(cx: &mut TestAppContext) {
+fn a_new_query_closes_the_open_picker_and_is_never_saved(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.settings
         .update(cx, |me, cx| me.toggle_picker("storage.retention", cx));
     assert_eq!(read(cx, &rig, |me| me.picker), Some("storage.retention"));
     rig.settings
-        .update(cx, |me, cx| me.select_section(Section::Audio, cx));
-    assert_eq!(read(cx, &rig, |me| me.section), Section::Audio);
+        .update(cx, |me, cx| me.set_query("audio".into(), cx));
+    assert_eq!(read(cx, &rig, |me| me.query.clone()), "audio");
     assert_eq!(read(cx, &rig, |me| me.picker), None);
+    let file = std::fs::read_to_string(rig.storage.settings.path()).unwrap();
+    assert!(
+        !file.contains("\"audio\""),
+        "the query stays out of the file"
+    );
+}
+
+#[gpui_kit::test]
+fn the_cue_volume_moves_in_steps_of_five_percent(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.settings
+        .update(cx, |me, cx| me.set_cue_volume(0.62, cx));
+    assert_eq!(value(&rig, "audio.cueVolume"), json!(0.6));
+    rig.settings.update(cx, |me, cx| me.set_cue_volume(1.7, cx));
+    assert_eq!(value(&rig, "audio.cueVolume"), json!(1.0));
+}
+
+#[gpui_kit::test]
+fn the_length_and_thread_pickers_write_their_keys(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.settings.update(cx, |me, cx| {
+        me.toggle_picker("audio.maxMinutes", cx);
+        me.set_max_minutes(15, cx);
+    });
+    assert_eq!(value(&rig, "dictation.maxMinutes"), json!(15));
+    assert_eq!(read(cx, &rig, |me| me.picker), None);
+    rig.settings
+        .update(cx, |me, cx| me.set_max_minutes(500, cx));
+    assert_eq!(
+        value(&rig, "dictation.maxMinutes"),
+        json!(15),
+        "out of range"
+    );
+    assert!(read(cx, &rig, |me| me.notice.is_some()));
+
+    rig.settings
+        .update(cx, |me, cx| me.set_threads(Some(4), cx));
+    assert_eq!(value(&rig, "engine.threads"), json!(4));
+    rig.settings.update(cx, |me, cx| me.set_threads(None, cx));
+    assert_eq!(value(&rig, "engine.threads"), json!("auto"));
 }
 
 #[gpui_kit::test]

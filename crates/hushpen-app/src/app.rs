@@ -336,6 +336,9 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             if let Some(form) = endpoint_form {
                 settings_view.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
             }
+            let _ = handle.update(cx, |_, window, cx| {
+                settings_view.update(cx, |settings, cx| settings.attach_search(window, cx))
+            });
             shell.update(cx, |shell, cx| {
                 shell.attach_settings(settings_view.clone(), cx)
             });
@@ -462,7 +465,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 crate::hook::attach_tray(cx, tray_controller, tray.is_some());
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_shortcuts(cx, shortcuts);
-                crate::hook::attach_settings_view(cx, settings_view);
+                crate::hook::attach_settings_view(cx, settings_view, handle);
                 crate::hook::attach_about(cx, about);
                 if let Some(updater) = &updater {
                     crate::hook::attach_updates(cx, updater.clone());

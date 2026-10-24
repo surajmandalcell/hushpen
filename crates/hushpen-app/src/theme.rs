@@ -146,6 +146,10 @@ pub mod size {
     pub const SWITCH_KNOB: f32 = 16.0;
     /// A text field at the end of a row.
     pub const FIELD_WIDTH: f32 = 220.0;
+    /// The search field at the right end of the toolbar.
+    pub const SEARCH_FIELD_WIDTH: f32 = 300.0;
+    /// A slider at the end of a row.
+    pub const SLIDER_WIDTH: f32 = 160.0;
     /// The widest a pop-up button grows before its text is cut.
     pub const MENU_MAX_WIDTH: f32 = 240.0;
     /// The tallest an open pop-up list grows before it scrolls.
@@ -191,6 +195,11 @@ pub const TOOLBAR_TITLE: TextToken = TextToken {
     size: 13.0,
     weight: 600.0,
     line_height: 1.0,
+};
+pub const HEADING: TextToken = TextToken {
+    size: 13.0,
+    weight: 600.0,
+    line_height: 1.3,
 };
 pub const BODY: TextToken = TextToken {
     size: 13.0,
@@ -664,6 +673,7 @@ mod tests {
         for (name, token) in [
             ("title", TITLE),
             ("toolbar-title", TOOLBAR_TITLE),
+            ("heading", HEADING),
             ("body", BODY),
             ("button", BUTTON),
             ("secondary", SECONDARY),
@@ -684,7 +694,7 @@ mod tests {
         }
         assert_eq!(
             design.matches("fontSize:").count(),
-            5,
+            6,
             "DESIGN.md has a type the theme lacks"
         );
     }

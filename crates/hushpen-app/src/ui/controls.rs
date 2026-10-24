@@ -1,5 +1,5 @@
-//! The controls of a row: the push button, the switch, the pop-up button, the text field, and
-//! the progress track.
+//! The controls of a row: the push button, the switch, the slider, the pop-up button, the text
+//! field, and the progress track.
 
 use super::glyph;
 use crate::hook;
@@ -11,9 +11,12 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Sizable, Size};
 use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
-    App, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
-    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    App, Bounds, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, Role,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
+use std::cell::Cell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -142,6 +145,112 @@ pub fn switch<F: Fn(&mut Window, &mut App) + 'static>(
             .on_click(on_click);
     }
     element
+}
+
+/// How far Left or Right moves a slider: one 5% step.
+const SLIDER_STEP: f32 = 0.05;
+
+/// A slider from 0 to 1: the accent fills the track up to a round knob. A press or a drag along
+/// it sets the value; Left, Right, Home, and End move it from the keyboard.
+pub fn slider<F: Fn(f32, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    label: &'static str,
+    value: f32,
+    focus: &FocusHandle,
+    set: F,
+) -> impl IntoElement + use<F> {
+    let value = value.clamp(0.0, 1.0);
+    let travel = size::SLIDER_WIDTH - size::SWITCH_KNOB;
+    let rail = div()
+        .relative()
+        .flex_none()
+        .flex()
+        .items_center()
+        .w(px(size::SLIDER_WIDTH))
+        .h(px(size::SWITCH_KNOB))
+        .child(
+            div()
+                .w_full()
+                .h(px(size::TRACK_HEIGHT))
+                .rounded(px(radius::FULL))
+                .bg(palette.control)
+                .child(
+                    div()
+                        .h_full()
+                        .w(relative(value))
+                        .rounded(px(radius::FULL))
+                        .bg(palette.accent),
+                ),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left(px(value * travel))
+                .size(px(size::SWITCH_KNOB))
+                .rounded(px(radius::FULL))
+                .border_1()
+                .border_color(palette.separator)
+                .bg(palette.on_accent),
+        );
+    // The rail's place on screen, from the frame that drew it, maps a pointer to a value.
+    let rail_bounds = Rc::new(Cell::new(Bounds::<Pixels>::default()));
+    let at = {
+        let rail_bounds = Rc::clone(&rail_bounds);
+        Rc::new(move |x: Pixels| {
+            let rail = rail_bounds.get();
+            ((f32::from(x - rail.origin.x) - size::SWITCH_KNOB / 2.0) / travel).clamp(0.0, 1.0)
+        })
+    };
+    let set = Rc::new(set);
+    div()
+        .on_children_prepainted(move |children, _, _| {
+            if let Some(rail) = children.first() {
+                rail_bounds.set(*rail);
+            }
+        })
+        .id(id)
+        .test_support()
+        .role(Role::Slider)
+        .aria_label(label)
+        .aria_numeric_value(f64::from(value))
+        .aria_min_numeric_value(0.0)
+        .aria_max_numeric_value(1.0)
+        .track_focus(focus)
+        .flex_none()
+        .p(px(space::XXS))
+        .rounded(px(radius::BUTTON))
+        .border_2()
+        .border_color(gpui_kit::transparent_black())
+        .cursor_pointer()
+        .focus_visible(move |style| style.border_color(palette.accent))
+        .on_mouse_down(MouseButton::Left, {
+            let (set, at) = (Rc::clone(&set), Rc::clone(&at));
+            move |event: &MouseDownEvent, _: &mut Window, cx: &mut App| {
+                set(at(event.position.x), cx)
+            }
+        })
+        .on_mouse_move({
+            let set = Rc::clone(&set);
+            move |event: &MouseMoveEvent, _: &mut Window, cx: &mut App| {
+                if event.pressed_button == Some(MouseButton::Left) {
+                    set(at(event.position.x), cx);
+                }
+            }
+        })
+        .on_key_down(move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
+            let next = match event.keystroke.key.as_str() {
+                "left" => value - SLIDER_STEP,
+                "right" => value + SLIDER_STEP,
+                "home" => 0.0,
+                "end" => 1.0,
+                _ => return,
+            };
+            set(next.clamp(0.0, 1.0), cx);
+            cx.stop_propagation();
+        })
+        .child(rail)
 }
 
 /// A pop-up button: the current value and a chevron. It opens the list of options the view
