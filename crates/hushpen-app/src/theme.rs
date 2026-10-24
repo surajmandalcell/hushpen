@@ -26,6 +26,7 @@ pub mod dark {
     tokens!(TABLE: u32 {
         CONTENT = 0x1E1E1EFF, "dark-content";
         SIDEBAR = 0x2B2B2DFF, "dark-sidebar";
+        SIDEBAR_BLUR = 0x2B2B2DCC, "dark-sidebar-blur";
         GROUP = 0xFFFFFF0D, "dark-group";
         SELECTION = 0xFFFFFF1A, "dark-selection";
         CONTROL = 0xFFFFFF1F, "dark-control";
@@ -45,6 +46,7 @@ pub mod light {
     tokens!(TABLE: u32 {
         CONTENT = 0xF5F5F5FF, "light-content";
         SIDEBAR = 0xE8E8EAFF, "light-sidebar";
+        SIDEBAR_BLUR = 0xE8E8EACC, "light-sidebar-blur";
         GROUP = 0x00000009, "light-group";
         SELECTION = 0x00000017, "light-selection";
         CONTROL = 0x00000014, "light-control";
@@ -74,16 +76,98 @@ pub mod chrome {
     pub const SIDEBAR_SOLID_DARK: u32 = super::dark::SIDEBAR >> 8;
     pub const SIDEBAR_SOLID_LIGHT: u32 = super::light::SIDEBAR >> 8;
 
-    /// Whether the sidebar shows the native sidebar material instead of a fill: macOS only.
-    pub const TRANSLUCENT_SIDEBAR: bool = cfg!(target_os = "macos");
+    /// How the sidebar paints its background.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Sidebar {
+        /// No fill: the native sidebar material shows through (macOS).
+        Native,
+        /// A translucent fill over what is behind the window (Linux with a compositor).
+        Blurred,
+        /// The solid fill (Linux without a compositor).
+        Solid,
+    }
 
-    /// The sidebar fill for an appearance, or `None` where the sidebar is see-through.
-    pub fn sidebar_fill(translucent: bool, dark: bool) -> Option<u32> {
-        match (translucent, dark) {
-            (true, _) => None,
-            (false, true) => Some(SIDEBAR_SOLID_DARK),
-            (false, false) => Some(SIDEBAR_SOLID_LIGHT),
+    impl Sidebar {
+        /// The fill for an appearance, or `None` where the sidebar is see-through.
+        pub fn fill(self, dark: bool) -> Option<super::Rgba> {
+            match self {
+                Sidebar::Native => None,
+                Sidebar::Blurred => Some(super::rgba(if dark {
+                    super::dark::SIDEBAR_BLUR
+                } else {
+                    super::light::SIDEBAR_BLUR
+                })),
+                Sidebar::Solid => Some(super::rgba(if dark {
+                    super::dark::SIDEBAR
+                } else {
+                    super::light::SIDEBAR
+                })),
+            }
         }
+
+        /// The corner radius the app draws on the window: only the see-through Linux window,
+        /// because macOS rounds its own windows and an opaque one would show black corners.
+        pub fn window_radius(self) -> f32 {
+            if self == Sidebar::Blurred {
+                super::radius::WINDOW
+            } else {
+                super::radius::NONE
+            }
+        }
+
+        /// Whether the window must be see-through for this look: GPUI picks the ARGB visual and
+        /// what is behind the window shows through.
+        pub fn see_through(self) -> bool {
+            self != Sidebar::Solid
+        }
+    }
+
+    /// The sidebar look for a compositing state. macOS always has the native material; Linux is
+    /// translucent with a compositor and solid without one.
+    pub fn sidebar_for(compositor: bool) -> Sidebar {
+        if cfg!(target_os = "macos") {
+            Sidebar::Native
+        } else if compositor {
+            Sidebar::Blurred
+        } else {
+            Sidebar::Solid
+        }
+    }
+
+    /// What the app knows about the compositor. Read at start and followed once a second
+    /// (see `window_chrome::follow_compositor`); a compositor can start or stop while the app runs.
+    #[derive(Debug, Clone, Copy)]
+    struct Compositor(bool);
+
+    impl super::Global for Compositor {}
+
+    /// Whether a compositor draws the screen. macOS always has one; on Linux it is the reading
+    /// of `hushpen_platform::window::compositor_running`, or false before it ran.
+    pub fn compositor(cx: &super::App) -> bool {
+        if cfg!(target_os = "macos") {
+            return true;
+        }
+        cx.try_global::<Compositor>()
+            .is_some_and(|compositor| compositor.0)
+    }
+
+    /// A new compositor reading. Returns true when the look changed, and repaints the windows
+    /// so the sidebar and the window corners follow.
+    pub fn set_compositor(running: bool, cx: &mut super::App) -> bool {
+        if cfg!(target_os = "macos") {
+            return false;
+        }
+        let changed = running != compositor(cx);
+        cx.set_global(Compositor(running));
+        if changed {
+            cx.refresh_windows();
+        }
+        changed
+    }
+
+    /// The sidebar look right now.
+    pub fn sidebar(cx: &super::App) -> Sidebar {
+        sidebar_for(compositor(cx))
     }
 }
 
@@ -95,6 +179,7 @@ pub mod radius {
         SELECTION = 6.0, "selection";
         GROUP = 8.0, "group";
         APP_ICON = 16.0, "app-icon";
+        WINDOW = 10.0, "window";
         FULL = 9999.0, "full";
     });
 }
@@ -746,13 +831,51 @@ mod tests {
     }
 
     #[test]
-    fn the_solid_sidebar_colors_are_the_design_sidebar_colors() {
+    fn the_sidebar_fills_are_the_design_sidebar_colors() {
+        use chrome::Sidebar;
         assert_eq!(chrome::SIDEBAR_SOLID_DARK, 0x2B2B2D);
         assert_eq!(chrome::SIDEBAR_SOLID_LIGHT, 0xE8E8EA);
-        assert_eq!(chrome::sidebar_fill(false, true), Some(0x2B2B2D));
-        assert_eq!(chrome::sidebar_fill(false, false), Some(0xE8E8EA));
-        assert_eq!(chrome::sidebar_fill(true, true), None);
-        assert_eq!(chrome::sidebar_fill(true, false), None);
+        assert_eq!(Sidebar::Solid.fill(true), Some(rgba(0x2B2B2DFF)));
+        assert_eq!(Sidebar::Solid.fill(false), Some(rgba(0xE8E8EAFF)));
+        assert_eq!(Sidebar::Blurred.fill(true), Some(rgba(0x2B2B2DCC)));
+        assert_eq!(Sidebar::Blurred.fill(false), Some(rgba(0xE8E8EACC)));
+        assert_eq!(Sidebar::Native.fill(true), None);
+        assert_eq!(Sidebar::Native.fill(false), None);
+    }
+
+    #[test]
+    fn the_sidebar_look_follows_the_platform_and_the_compositor() {
+        use chrome::Sidebar;
+        if cfg!(target_os = "macos") {
+            assert_eq!(chrome::sidebar_for(true), Sidebar::Native);
+            assert_eq!(chrome::sidebar_for(false), Sidebar::Native);
+        } else {
+            assert_eq!(chrome::sidebar_for(true), Sidebar::Blurred);
+            assert_eq!(chrome::sidebar_for(false), Sidebar::Solid);
+        }
+        assert!(Sidebar::Native.see_through());
+        assert!(Sidebar::Blurred.see_through());
+        assert!(!Sidebar::Solid.see_through());
+        assert_eq!(Sidebar::Blurred.window_radius(), radius::WINDOW);
+        assert_eq!(Sidebar::Solid.window_radius(), radius::NONE);
+        assert_eq!(Sidebar::Native.window_radius(), radius::NONE);
+    }
+
+    #[gpui_kit::test]
+    fn the_compositor_reading_starts_unset_and_only_a_change_repaints(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        if cfg!(target_os = "macos") {
+            return;
+        }
+        cx.update(|cx| {
+            assert!(!chrome::compositor(cx), "unset reads as no compositor");
+            assert!(!chrome::set_compositor(false, cx), "no change, no repaint");
+            assert!(chrome::set_compositor(true, cx));
+            assert!(chrome::compositor(cx));
+            assert_eq!(chrome::sidebar(cx), chrome::Sidebar::Blurred);
+            assert!(!chrome::set_compositor(true, cx));
+        });
     }
 
     #[test]

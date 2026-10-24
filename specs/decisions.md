@@ -162,6 +162,18 @@ new decision, add it here in the same change (D-21).
   never dlclosed, because ONNX Runtime's exit-time destructors raced the
   unload on Linux (a SIGSEGV after an otherwise clean shutdown).
 
+- **D-29 Linux window look.** The Linux window looks like the macOS one when
+  a compositor draws the screen: an owner of `_NET_WM_CM_S<screen>` on X11,
+  or any Wayland session. Then the window is transparent (GPUI always takes
+  the ARGB visual on X11 and switches transparency at run time), with 10 px
+  corners, a hairline edge, the translucent sidebar (`sidebar-blur`, the
+  sidebar color at 80%), and `_KDE_NET_WM_BLUR_BEHIND_REGION` on the sidebar
+  rectangle so KWin blurs it; picom blurs from its own configuration. Without
+  a compositor a transparent pixel renders black, so the window stays square
+  and opaque with the solid sidebar, and the flow bar is a rectangle. The app
+  reads the selection owner at start and once a second, and switches live
+  (`window_chrome::follow_compositor`).
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

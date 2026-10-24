@@ -18,7 +18,7 @@ docker build --platform linux/arm64 -t hushpen-val:noble -f harness/Dockerfile h
 It holds the GPUI build dependencies, Mesa lavapipe (software Vulkan, `llvmpipe`), Xvfb, openbox,
 D-Bus, PulseAudio, `xdg-desktop-portal-gtk`, xdotool, xclip, ImageMagick, xinput, xterm,
 python3 with GTK3 (the paste target), `iproute2` (`ss`), `strace`, `jq`, espeak-ng (the Linux
-system voice for Read aloud), and Rust 1.99.0 with
+system voice for Read aloud), picom (the compositor for the see-through window check), and Rust 1.99.0 with
 rustfmt and clippy. The Rust toolchain is installed under the name in `rust-toolchain.toml`, so
 cargo in a checkout starts with no download. Update both together.
 
@@ -57,6 +57,7 @@ Run them from the repo root after sourcing `env.sh`. `<slot>` is 1 to 6.
 | `hook.sh` | `harness/hook.sh <slot> <hookctl args...>` runs hookctl: `tree`, `state`, `click <id>`, `action`, `wait <path>=<value> [ms]`, `events`, `net`, `feed-wav`, `paths` |
 | `play-wav.sh` | `harness/play-wav.sh <slot> <wav> [--lead-ms N] [--device NAME]` pads the WAV with 1 s of silence and plays it into the virtual mic |
 | `clip.sh` | `harness/clip.sh <slot> set <text> \| get \| clear \| set-primary <text> \| get-primary` reads and writes the clipboard or PRIMARY |
+| `compositor.sh` | `harness/compositor.sh <slot> start\|stop\|status` runs picom (xrender backend) in the slot; within a second the app turns see-through with rounded corners, and back to solid after a stop |
 | `logs.sh` | `harness/logs.sh <slot> [name [-f]]` prints or follows a slot log (`app`, `init`, `xvfb`, `openbox`, `sni-host`, ...); lists the logs without a name |
 
 Also here: `build-app.sh` (builds the debug app and `hookctl` in the `hushpen-build` container and

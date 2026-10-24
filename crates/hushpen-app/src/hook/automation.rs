@@ -342,7 +342,11 @@ fn open_view(cx: &mut App, shell: &Entity<Shell>, args: &Value) -> Result<Value,
 fn window_section(cx: &mut App, window: AnyWindowHandle) -> Value {
     let mut state = window
         .update(cx, |_, window, cx| {
-            let mut state = window_state(window, crate::theme::appearance(cx).is_dark());
+            let mut state = window_state(
+                window,
+                crate::theme::chrome::sidebar(cx),
+                crate::theme::appearance(cx).is_dark(),
+            );
             state["root_fill"] = json!(crate::window_chrome::root_fill_name(window, cx));
             state
         })
@@ -352,7 +356,7 @@ fn window_section(cx: &mut App, window: AnyWindowHandle) -> Value {
     state
 }
 
-pub fn window_state(window: &Window, dark: bool) -> Value {
+pub fn window_state(window: &Window, look: crate::theme::chrome::Sidebar, dark: bool) -> Value {
     let size = window.viewport_size();
     json!({
         "open": true,
@@ -362,8 +366,8 @@ pub fn window_state(window: &Window, dark: bool) -> Value {
         "maximized": window.is_maximized(),
         "fullscreen": window.is_fullscreen(),
         "active": window.is_window_active(),
-        "background": crate::window_chrome::background_name(),
-        "sidebar_fill": crate::window_chrome::sidebar_fill_name(dark),
+        "background": crate::window_chrome::background_name(look.see_through()),
+        "sidebar_fill": crate::window_chrome::sidebar_fill_name(look, dark),
         "sidebar_material": hushpen_platform::window::sidebar_material(
             crate::native::native_handle(window)
         )

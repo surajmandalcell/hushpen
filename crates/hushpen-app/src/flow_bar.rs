@@ -470,7 +470,8 @@ impl FlowBar {
 
 impl Render for FlowBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        view::content(&self.props, Some(&cx.entity()))
+        let composited = crate::theme::chrome::compositor(cx);
+        view::content(&self.props, Some(&cx.entity()), composited)
     }
 }
 

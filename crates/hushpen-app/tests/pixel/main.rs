@@ -174,7 +174,11 @@ fn assert_shell_tokens(
         Appearance::Light => (theme::light::CONTENT, theme::light::SELECTION),
     };
     let content = format!("{:06X}", content >> 8);
-    let sidebar_base = chrome::sidebar_fill(false, appearance.is_dark()).expect("a solid sidebar");
+    let sidebar_base = if appearance.is_dark() {
+        chrome::SIDEBAR_SOLID_DARK
+    } else {
+        chrome::SIDEBAR_SOLID_LIGHT
+    };
     // Between the toolbar and the first panel: the content color in every view.
     assert_eq!(
         hex_at(image, 500, 47),

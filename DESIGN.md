@@ -5,6 +5,7 @@ description: Native macOS-style desktop design system for private speech recogni
 colors:
   dark-content: "#1E1E1E"
   dark-sidebar: "#2B2B2D"
+  dark-sidebar-blur: "#2B2B2DCC"
   dark-group: "#FFFFFF0D"
   dark-selection: "#FFFFFF1A"
   dark-control: "#FFFFFF1F"
@@ -18,6 +19,7 @@ colors:
   dark-error: "#FF453A"
   light-content: "#F5F5F5"
   light-sidebar: "#E8E8EA"
+  light-sidebar-blur: "#E8E8EACC"
   light-group: "#00000009"
   light-selection: "#00000017"
   light-control: "#00000014"
@@ -77,6 +79,7 @@ rounded:
   selection: 6px
   group: 8px
   app-icon: 16px
+  window: 10px
   full: 9999px
 spacing:
   hairline: 0.5px
@@ -181,7 +184,8 @@ The macOS menu bar item is the glyph alone, with no name beside it. It is a temp
 All colors are neutral grays plus one accent. Tokens come in a Dark and a Light set.
 
 - **Content (`#1E1E1E` Dark, `#F5F5F5` Light):** the opaque content pane and the onboarding page.
-- **Sidebar (`#2B2B2D` Dark, `#E8E8EA` Light):** the solid sidebar on Linux. On macOS the sidebar has no fill: the window background is blurred and shows through.
+- **Sidebar (`#2B2B2D` Dark, `#E8E8EA` Light):** the solid sidebar on Linux without a compositor. On macOS the sidebar has no fill: the native sidebar material shows through.
+- **Sidebar blur (the sidebar color at 80%):** the sidebar on Linux with a compositor. What is behind the window shows through; KWin blurs it, and picom blurs it when its own configuration asks.
 - **Group (white 5% Dark, black 3.5% Light):** the fill of a grouped section.
 - **Selection (white 10% Dark, black 9% Light):** the neutral fill of the selected sidebar row and of a selected list row. Never blue.
 - **Control (white 12% Dark, black 8% Light):** the neutral fill of a push button.
@@ -212,7 +216,7 @@ Letter spacing stays at `0em`. Weights are 400, 500, 600, and 700 for the title 
 
 ## Layout
 
-The window is fixed at 940px by 600px. It is not resizable, has no zoom, and has no full screen. On macOS the title bar is transparent with full-size content and AppKit draws the traffic lights. On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) and no maximize button.
+The window is fixed at 940px by 600px. It is not resizable, has no zoom, and has no full screen. On macOS the title bar is transparent with full-size content and AppKit draws the traffic lights. On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) and no maximize button. With a compositor (an owner of `_NET_WM_CM_S<screen>` on X11, or any Wayland session) the Linux window is see-through like the macOS one: 10px corners, a hairline edge in the separator color, an opaque content pane, the translucent sidebar, and `_KDE_NET_WM_BLUR_BEHIND_REGION` set to the sidebar. Without one it is square and opaque with the solid sidebar, because a transparent window renders black there. The app reads the compositor at start and once a second, and switches live. The flow bar is a rectangle without a compositor for the same reason.
 
 The sidebar is 232px wide. The first 48px (`sidebar-top`) hold the window buttons and the word "Hushpen" beside them. Rows start below it: 28px high, 2px apart, with 8px of padding at the sides. The title bar area above the content is 52px high and holds the view title.
 
@@ -241,6 +245,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 - **Push buttons:** 5px radius, 22px high.
 - **Selection and list rows:** 6px radius.
 - **App icon tile:** 16px radius.
+- **Window on Linux with a compositor:** 10px radius, like a macOS window.
 - **Window buttons on Linux:** fully round.
 
 ## Components

@@ -19,7 +19,7 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
     App, ClickEvent, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
-    StatefulInteractiveElement, Styled, Window, div, px, rgb, svg, transparent_black,
+    StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
 
 pub struct Shell {
@@ -63,9 +63,7 @@ impl Shell {
         })
         .detach();
         // The Kit root does not exist yet: it wraps this view once it is built.
-        window.defer(cx, |window, cx| {
-            crate::window_chrome::clear_root_fill(chrome::TRANSLUCENT_SIDEBAR, window, cx)
-        });
+        window.defer(cx, crate::window_chrome::apply_look);
         Self {
             active: View::Home,
             shell_focus,
@@ -340,6 +338,7 @@ impl Shell {
             .into_iter()
             .map(|view| self.nav_item(view, palette, cx))
             .collect();
+        let look = chrome::sidebar(cx);
         let panel = div()
             .id(hook::id("sidebar", "panel"))
             .test_support()
@@ -347,13 +346,14 @@ impl Shell {
             .flex_col()
             .flex_none()
             .w(px(space::SIDEBAR_WIDTH))
-            .h_full();
-        // No fill on macOS: the native sidebar material shows through.
-        let panel =
-            match chrome::sidebar_fill(chrome::TRANSLUCENT_SIDEBAR, palette.appearance.is_dark()) {
-                Some(fill) => panel.bg(rgb(fill)),
-                None => panel,
-            };
+            .h_full()
+            .rounded_l(px(look.window_radius()));
+        // No fill where the sidebar is see-through: the native material on macOS, what is
+        // behind the window on a composited Linux.
+        let panel = match look.fill(palette.appearance.is_dark()) {
+            Some(fill) => panel.bg(fill),
+            None => panel,
+        };
         panel.child(self.sidebar_title(palette, cx)).child(
             div()
                 .flex()
@@ -492,6 +492,7 @@ impl Shell {
             .flex_1()
             .min_w_0()
             .h_full()
+            .rounded_r(px(chrome::sidebar(cx).window_radius()))
             .bg(palette.content)
             .child(self.toolbar(shell, palette, cx))
             .children(
@@ -552,6 +553,17 @@ impl Render for Shell {
             .text_color(palette.label)
             .font_family(theme::FONT_FAMILY)
             .text_token(BODY);
+        // With a compositor the Linux window is see-through: rounded corners and a hairline
+        // edge, like the frame macOS draws. Without one it stays square and opaque.
+        let look = chrome::sidebar(cx);
+        let frame = if look == chrome::Sidebar::Blurred {
+            frame
+                .rounded(px(look.window_radius()))
+                .border(theme::hairline())
+                .border_color(palette.separator)
+        } else {
+            frame
+        };
         let onboarding = self.onboarding.clone().filter(|o| o.read(cx).active());
         if self.onboarding_shown && onboarding.is_none() {
             // The control that held focus left with onboarding, and with no focus the keys reach
