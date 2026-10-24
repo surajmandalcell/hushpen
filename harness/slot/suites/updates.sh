@@ -9,7 +9,8 @@
 # checks start the app under strace (APP_STRACE) so no connect can slip in before the audit.
 # VAL-UPD-009 runs the release build from /app/hushpen-release (HUSHPEN_BUILD_RELEASE=1 harness/build-app.sh);
 # without that file the check fails, because a skipped proof is not a pass. The onboarding half of
-# VAL-UPD-001 (the update step shows the choice off) is in the onboarding suite.
+# VAL-UPD-001 (the update step shows the choice off) is in the onboarding suite. After VAL-UPD-002,
+# About's Check for Updates runs one check while the check is off and leaves it off (D-17).
 # Needs no model and no fixtures. It empties /data, so the slot must not be shared.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -146,6 +147,24 @@ $HC net >"$RUN_OUT/002-net.json"
 [ "$(upd .state)" = idle ] || failures+="the update state is '$(upd .state)'; "
 [ -s "$RUN_OUT/upd-002.strace" ] || echo "(the strace file is empty: no connect call of any kind)"
 check_failures "VAL-UPD-002 no request while off" "60 s idle with Settings > Updates open and the check off, under strace from the first instruction: 0 IP connect calls, 0 feed requests, hookctl net empty" "$failures"
+
+echo "== VAL-UPD-002 (About) Check for Updates runs one check while the check is off"
+failures=""
+n0=$(feed_count)
+focus "$(app_window)"
+$HC action open-view '{"view":"about"}' >/dev/null
+wait_until 10 view_is about || failures+="the About view did not open; "
+wait_until 10 tree_has about.checkForUpdates || failures+="no Check for Updates button; "
+[ "$(tree_get about.checkForUpdates enabled)" = true ] || failures+="Check for Updates is disabled with the check off; "
+hclick about.checkForUpdates || failures+="Check for Updates could not be clicked; "
+wait_until 20 settled || failures+="no check ended; "
+[ "$(upd .state)" = available ] || failures+="the state is '$(upd .state)', not available; "
+[ "$(manifest_count "$n0")" = 1 ] || failures+="the click made $(manifest_count "$n0") manifest request(s), want 1; "
+[ "$(tree_get about.updates.status text)" = "Version 2.1.0 is available" ] || failures+="the About status says '$(tree_get about.updates.status text)'; "
+[ "$(upd .check)" = false ] || failures+="the update check is '$(upd .check)' after the click; "
+setting_true updates.check && failures+="settings.json has updates.check true after the click; "
+shot 002-about-check
+check_failures "VAL-UPD-002 (About) one check while off" "one click: $(manifest_count "$n0") manifest request, state $(upd .state), About says '$(tree_get about.updates.status text)', updates.check still $(upd .check)" "$failures"
 
 echo "== VAL-UPD-003 a newer signed version shows available, the notes link and the banner"
 failures=""
@@ -288,15 +307,16 @@ focus "$(app_window)"
 $HC action open-view '{"view":"about"}' >/dev/null
 wait_until 10 view_is about || failures+="the About view did not open; "
 wait_until 10 tree_has about.open.licenses || failures+="no licenses row; "
-for target in data-folder log-folder github issues licenses; do
+for target in data-folder log-folder website github issues licenses; do
   hclick "about.open.$target" || failures+="no row for $target; "
   sleep 0.4
 done
 sleep 0.5
 cp "$XDG_LOG" "$RUN_OUT/xdg-open-calls.txt" 2>/dev/null
-[ "$(wc -l <"$XDG_LOG" | tr -d ' ')" = 5 ] || failures+="xdg-open was called $(wc -l <"$XDG_LOG" | tr -d ' ') times for 5 rows: $(tr '\n' ' ' <"$XDG_LOG"); "
+[ "$(wc -l <"$XDG_LOG" | tr -d ' ')" = 6 ] || failures+="xdg-open was called $(wc -l <"$XDG_LOG" | tr -d ' ') times for 6 rows: $(tr '\n' ' ' <"$XDG_LOG"); "
 grep -qxF /data "$XDG_LOG" || failures+="no xdg-open call for the data folder; "
 grep -qxF /data/logs "$XDG_LOG" || failures+="no xdg-open call for the log folder; "
+grep -qxF https://asrpro.mandalsuraj.com/ "$XDG_LOG" || failures+="no xdg-open call for the website; "
 grep -q 'github.com/.*hushpen$' "$XDG_LOG" || failures+="no xdg-open call for the repository; "
 grep -q '/issues$' "$XDG_LOG" || failures+="no xdg-open call for the issues page; "
 grep -qxF /app/THIRD-PARTY-NOTICES.html "$XDG_LOG" || failures+="no xdg-open call for the licenses file; "
@@ -305,7 +325,7 @@ alive || failures+="the app died; "
 s0=$(now_ms)
 $HC state >/dev/null
 [ $(($(now_ms) - s0)) -lt 1500 ] || failures+="the app was slow to answer after the clicks; "
-check_failures "VAL-LIC-004 xdg-open" "5 rows, 5 xdg-open calls: $(tr '\n' ' ' <"$XDG_LOG")" "$failures"
+check_failures "VAL-LIC-004 xdg-open" "6 rows, 6 xdg-open calls: $(tr '\n' ' ' <"$XDG_LOG")" "$failures"
 
 echo "== VAL-UPD-009 a release build ignores the feed override"
 failures=""

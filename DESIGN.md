@@ -164,7 +164,7 @@ The look is neutral and uses very few colors. Gray fills, one blue accent, and a
 
 ## App Icon
 
-The app icon follows the selected Ink Slate direction while staying recognizable as Hushpen: a centered speech-loop mark, a simple `#20272d` to `#10171d` to `#04070a` background, and no text. The production source is `assets/hushpen-app-icon.svg`, with raster exports in `assets/hushpen-app-icon.png`, `assets/hushpen-app-icon.icns`, and `assets/linux-icons/*.png`. The macOS menu bar and the Linux tray glyphs use PNG assets.
+The app icon follows the selected Ink Slate direction while staying recognizable as Hushpen: a centered speech-loop mark, a simple `#20272d` to `#10171d` to `#04070a` background, and no text. The production source is `assets/hushpen-app-icon.svg`, with raster exports in `assets/hushpen-app-icon.png`, `assets/hushpen-app-icon.icns`, and `assets/linux-icons/*.png`. About draws `assets/hushpen-app-icon-192.png` at 96px: the tile of the SVG without its margin, with the 16px app-icon corner, at 2x so a Retina screen gets exact pixels. The macOS menu bar and the Linux tray glyphs use PNG assets.
 
 Use a 1024x1024 source canvas and keep the rounded tile inset inside the canvas so the Dock footprint matches standard macOS icon sizing. The visual construction stays layer-friendly: simple background plane, foreground ribbon mark, subtle glass rim, and appearance variants that still read in light or dark contexts.
 
@@ -201,7 +201,7 @@ Do not add colored icon tiles, section accents, or tinted panels.
 
 macOS uses the system UI font (`.SystemUIFont`, SF Pro). Linux keeps the embedded Inter, so text looks the same on a machine with no system copy of it.
 
-- **Title:** 22px bold, on onboarding pages only.
+- **Title:** 22px bold, on onboarding pages and for the app name on About.
 - **Toolbar title:** 13px semibold, in the title bar area.
 - **Heading:** 13px semibold, in the secondary label color, above each Settings group.
 - **Body:** 13px regular, for row titles and values.
@@ -254,6 +254,8 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 **Groups and rows:** as in Layout. A row that is a control stays one line: the label on the left, the control on the right. A notice row has a 16px icon in the secondary label color (info, or the exclamation for something the user has to act on) and one line of text; a failed check shows its text in the error color. Every view builds its rows from the shared row builders, so one row kind looks the same on every page.
 
 **Home:** the Dictation group (status, Record, the transcript, language) above the Microphone group (test, level meter, microphone list). The transcript, or the placeholder before it, is centered in its block with 24px at the sides and 16px above and below; a long transcript keeps every line centered.
+
+**About:** a centered header, a facts group, a links group, and a footer line. The header holds the app icon (96px, 16px radius), "Hushpen" in the title style, the line "Private dictation that stays on this Mac" ("on this computer" on Linux), the build line in the secondary style (`Version 2.0.0 (1a2b3c4, 2026-05-15)`, with `-dev` after the version in a debug build), and a Check for Updates button with what the check found on one secondary line under it. The facts are Version, Engine (whisper.cpp and the model in use), and Data folder (`~/...`, with a Show button). The links are Website, GitHub, Report an issue, Open-source licenses, and Open log folder, each with the external-link glyph on the right. The footer is one centered secondary line: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." The Engine fact is the one place the UI names a component of the stack.
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
 

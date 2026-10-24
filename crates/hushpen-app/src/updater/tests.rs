@@ -282,6 +282,32 @@ fn check_now_ignores_the_daily_limit(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn check_once_asks_one_time_with_the_check_off_and_leaves_it_off(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.start(cx);
+    rig.updater.update(cx, |me, cx| me.check_once(cx));
+    assert!(
+        !cx.read(|app| rig.updater.read(app).can_check_once()),
+        "one check at a time"
+    );
+    cx.run_until_parked();
+    assert_eq!(rig.checker.calls(), 1);
+    assert_eq!(rig.state(cx), State::UpToDate);
+    assert_eq!(rig.hook(cx)["check"], false, "the switch stays off");
+    assert!(
+        !cx.read(|app| rig.updater.read(app).can_check_now()),
+        "Check now in Settings stays off"
+    );
+    rig.now.set(rig.now.get() + CHECK_INTERVAL_MS);
+    rig.start(cx);
+    assert_eq!(
+        rig.checker.calls(),
+        1,
+        "nothing asks on its own while the switch is off"
+    );
+}
+
+#[gpui_kit::test]
 fn turning_the_check_on_runs_a_due_check_once(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.start(cx);

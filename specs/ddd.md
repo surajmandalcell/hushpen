@@ -17,6 +17,7 @@ Hushpen
 │   ├── read aloud                  text to speech with a speech engine
 │   │   └── voice                   one voice of the speech engine
 │   ├── updater                     opt-in check and install
+│   ├── about                       build stamp, facts, and links
 │   └── test hook                   debug builds only
 ├── hushpen engine (child)          whisper.cpp, started as `hushpen engine`
 ├── hushpen-llm (child binary)      llama.cpp, one model in RAM
@@ -67,6 +68,8 @@ Hushpen
   espeak-ng is not installed). Kokoro is a downloaded model.
 - **voice**: one voice of a speech engine, with an id, a name, a language,
   and a quality (default, enhanced, or premium).
+- **build stamp**: the short commit and its date that `build.rs` compiles
+  into `hushpen`. About shows it after the version (D-27).
 - **appearance**: the system Light or Dark setting. Views follow it live.
 - **settings registry**: the owner of `config/settings.json`. It validates
   values, writes atomically, and keeps unknown keys.

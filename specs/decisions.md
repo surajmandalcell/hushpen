@@ -54,8 +54,8 @@ new decision, add it here in the same change (D-21).
   Linux: `${XDG_DATA_HOME:-~/.local/share}/hushpen`. The user can move it in
   Settings. The UI shows `~/...` for paths under the home folder.
 - **D-14 Privacy.** No telemetry. Network use is limited to model downloads
-  the user starts, the update check the user turns on, and the opt-in
-  OpenAI-compatible endpoint. `xtask net-audit` scans for other calls.
+  the user starts, the update check the user turns on or starts from About,
+  and the opt-in OpenAI-compatible endpoint. `xtask net-audit` scans for other calls.
 - **D-15 Cleanup.** Rule-based cleanup is on by default and runs offline. AI
   cleanup is opt-in. It uses a local LLM chosen by RAM, or an endpoint the
   user sets. An LLM timeout or a failed output check falls back to the
@@ -65,6 +65,8 @@ new decision, add it here in the same change (D-21).
   clipboard. It never types into a secure field. Terminals get their own
   paste key.
 - **D-17 Updates.** Off by default. One check per 24 hours plus "Check now".
+  About's Check for Updates runs one check even while the check is off, and
+  leaves it off.
   The manifest `latest.json` is signed with minisign and the public key is in
   the app. The macOS zip and the AppImage replace themselves; deb, rpm, and
   tar.gz show a notice with the release link. No install id.
@@ -130,6 +132,12 @@ new decision, add it here in the same change (D-21).
   and `cleanup.spokenPunctuation` are shown; the pickers offer only values
   inside the registry range. Use the GPU shows on macOS only (Linux runs the
   engine on the CPU).
+- **D-27 About.** About shows the version with the short commit and the
+  commit date. `crates/hushpen-app/build.rs` stamps them from
+  `HUSHPEN_BUILD_COMMIT` and `HUSHPEN_BUILD_DATE`, else from git; a source
+  tree without git shows the version alone. The website address lives only
+  in `hushpen_core::links::SITE_URL`. The Engine fact names whisper.cpp;
+  About names no framework.
 
 ## History notes
 

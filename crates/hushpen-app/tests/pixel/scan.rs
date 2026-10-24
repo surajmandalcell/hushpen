@@ -225,6 +225,18 @@ fn reason(line: Line, nodes: &[Node]) -> Option<&'static str> {
     {
         return Some("the focus ring");
     }
+    // The app icon draws its own tile edge and rim.
+    let (x, y) = if line.horizontal {
+        (line.from + 1.0, line.at)
+    } else {
+        (line.at, line.from + 1.0)
+    };
+    if visible()
+        .filter(|node| node.is("Image"))
+        .any(|node| node.rect.inflated(BLEED).has(x, y))
+    {
+        return Some("the edge of an image");
+    }
     for group in visible().filter(|node| node.is("Group")) {
         let rect = group.rect;
         if line.horizontal {

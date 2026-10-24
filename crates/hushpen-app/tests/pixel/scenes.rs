@@ -6,7 +6,7 @@ use crate::{OneMicrophone, Revoked, headless_in, pixel_data_dir};
 use gpui_kit::base::test_support::snapshots;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, HeadlessAppContext, ScrollDelta, SharedString, point, px, size};
-use hushpen_app::about::{About, SystemOpener};
+use hushpen_app::about::{About, Build, SystemOpener};
 use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::dictation::Dictation;
 use hushpen_app::dictionary::Dictionary;
@@ -40,7 +40,8 @@ use std::sync::{Arc, Mutex};
 /// A key listener that holds nothing and hears nothing, so the shortcut fields can open.
 struct QuietKeys;
 
-/// The Updates view of a fresh folder never asks: the check is off.
+/// The feed of every scene: this version is the newest. The Updates view of a fresh folder never
+/// asks, because the check is off; Check for Updates in About asks once.
 struct NoFeed;
 
 impl Checker for NoFeed {
@@ -88,6 +89,10 @@ pub enum Scene {
     Import,
     Models,
     About,
+    /// About scrolled to the end: the links and the copyright line.
+    AboutBottom,
+    /// About after Check for Updates, with what the check found under the button.
+    AboutChecked,
     Settings(SettingsShot),
     /// Cleanup on the endpoint, with the failure of a test connection in its status row.
     EndpointFailure,
@@ -145,6 +150,8 @@ impl Scene {
             Scene::Import => "import".into(),
             Scene::Models => "models".into(),
             Scene::About => "about".into(),
+            Scene::AboutBottom => "about-bottom".into(),
+            Scene::AboutChecked => "about-checked".into(),
             Scene::Settings(shot) => format!("settings-{}", shot.key()),
             Scene::EndpointFailure => "settings-cleanup-endpoint-failure".into(),
             Scene::ShortcutRecorder => "shortcut-recorder".into(),
@@ -168,6 +175,8 @@ impl Scene {
             Scene::Import,
             Scene::Models,
             Scene::About,
+            Scene::AboutBottom,
+            Scene::AboutChecked,
         ];
         scenes.extend(SettingsShot::ALL.into_iter().map(Scene::Settings));
         scenes.push(Scene::EndpointFailure);
@@ -566,7 +575,7 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                             )
                         });
                         settings.update(cx, |settings, cx| {
-                            settings.attach_updater(updater, cx);
+                            settings.attach_updater(updater.clone(), cx);
                             settings.attach_search(window, cx);
                         });
                         if matches!(scene, Scene::EndpointFailure) {
@@ -580,8 +589,19 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                             });
                             settings.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
                         }
-                        let about =
-                            cx.new(|cx| About::new(Rc::clone(&storage), Rc::new(SystemOpener), cx));
+                        // A fixed commit and date, so the baselines do not change with each commit.
+                        let build = Build {
+                            commit: Some("1a2b3c4"),
+                            date: Some("2026-05-15"),
+                            ..Build::current()
+                        };
+                        let about = cx.new(|cx| {
+                            About::new(Rc::clone(&storage), Rc::new(SystemOpener), build, cx)
+                        });
+                        about.update(cx, |about, cx| {
+                            about.attach_models(models.clone(), cx);
+                            about.attach_updater(updater, cx);
+                        });
                         let history = cx.new(|cx| {
                             History::new(Rc::clone(&storage), controller.clone(), window, cx)
                         });
@@ -706,6 +726,14 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
         }
         Scene::Models => click(cx, handle, "sidebar.models"),
         Scene::About => click(cx, handle, "sidebar.about"),
+        Scene::AboutBottom => {
+            click(cx, handle, "sidebar.about");
+            scroll_by(cx, handle, -5_000.0);
+        }
+        Scene::AboutChecked => {
+            click(cx, handle, "sidebar.about");
+            click(cx, handle, "about.checkForUpdates");
+        }
         Scene::Settings(shot) => {
             click(cx, handle, "sidebar.settings");
             match shot {
