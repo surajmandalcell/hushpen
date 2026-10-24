@@ -205,6 +205,23 @@ fn the_worker_speaks_every_word_and_streams_the_audio() {
 }
 
 #[test]
+fn the_runtime_check_loads_the_bundled_library() {
+    let output = Command::new(env!("CARGO_BIN_EXE_hushpen-tts"))
+        .arg("--check-runtime")
+        .output()
+        .expect("run hushpen-tts --check-runtime");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "sherpa-onnx 2.0.0"
+    );
+}
+
+#[test]
 fn cancel_stops_a_long_job_after_its_first_audio() {
     let mut worker = Worker::start();
     let text = "This is the first sentence of a long text. ".repeat(12);

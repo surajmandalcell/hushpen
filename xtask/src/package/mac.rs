@@ -48,11 +48,13 @@ pub fn build(ctx: &Ctx, formats: &[Format]) -> Result<Vec<PathBuf>, String> {
     fs::write(&sign_script, config::sign_script(&work.join(APP_NAME)))
         .map_err(|e| format!("cannot write {}: {e}", sign_script.display()))?;
 
+    let tts_libs = ctx.tts_libs();
     let input = config::Common {
         version: &ctx.version,
         work: &work,
         icons: &icons,
         resources: &resources,
+        tts_libs: &tts_libs,
     };
     let config_path = work.join("packager.toml");
     fs::write(&config_path, config::mac(&input, &info_plist, &sign_script))

@@ -26,6 +26,10 @@ pub use verify::run_verify;
 
 const APP_BINARY: &str = "hushpen";
 const LLM_BINARY: &str = "hushpen-llm";
+const TTS_BINARY: &str = "hushpen-tts";
+/// Every program a package ships. The app starts the two workers from the folder of its own
+/// executable, so they always travel together.
+const BINARIES: [&str; 3] = [APP_BINARY, LLM_BINARY, TTS_BINARY];
 const NOTICES: &str = "THIRD-PARTY-NOTICES.html";
 const USAGE: &str = "usage: cargo xtask package [--target macos-arm64|linux-x64|linux-arm64] \
 [--formats app,zip,dmg,appimage,deb,rpm,tar.gz] [--out <dir>] [--skip-build] [--test-feed]";
@@ -88,7 +92,7 @@ fn dmg_allowed(ci: Option<&str>, actions: Option<&str>) -> Result<(), String> {
     }
 }
 
-fn target_dir(root: &Path) -> PathBuf {
+pub(crate) fn target_dir(root: &Path) -> PathBuf {
     std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| root.join("target"), PathBuf::from)
 }
 
@@ -107,6 +111,8 @@ pub struct Ctx {
     pub target: Target,
     pub dist: PathBuf,
     pub binaries: PathBuf,
+    /// The folder of the pinned sherpa-onnx libraries for `target`.
+    pub runtime: PathBuf,
 }
 
 impl Ctx {
@@ -122,10 +128,16 @@ impl Ctx {
             fs::remove_dir_all(&dir).map_err(|e| format!("cannot clear {}: {e}", dir.display()))?;
         }
         fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-        for binary in [APP_BINARY, LLM_BINARY] {
+        for binary in BINARIES {
             copy(&self.binaries.join(binary), &dir.join(binary))?;
         }
         Ok(dir)
+    }
+
+    /// The sherpa-onnx libraries the package ships (the pinned files, verified by
+    /// `crate::tts_runtime::ensure` before any packaging step ran).
+    pub fn tts_libs(&self) -> Vec<PathBuf> {
+        crate::tts_runtime::libs_in(&self.runtime, self.target)
     }
 
     /// Resources every package carries: the notices and the install kind.
@@ -209,6 +221,8 @@ fn build_binaries(root: &Path, test_feed: bool) -> Result<(), String> {
         "hushpen-app",
         "-p",
         "hushpen-llm",
+        "-p",
+        "hushpen-tts",
     ]);
     if test_feed {
         command.args(["--features", "hushpen-app/update-test-feed"]);
@@ -275,6 +289,8 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         build_binaries(root, options.test_feed)?;
     }
     let binaries = target_dir(root).join("release");
+    let runtime = crate::tts_runtime::dir(&target_dir(root), target);
+    crate::tts_runtime::ensure(&runtime, target)?;
     let ctx = Ctx {
         root: root.to_path_buf(),
         version: build_version(),
@@ -283,15 +299,16 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
             .out
             .unwrap_or_else(|| target_dir(root).join("dist").join(target.name())),
         binaries,
+        runtime,
     };
     fs::create_dir_all(&ctx.dist).map_err(|e| format!("cannot create dist: {e}"))?;
-    // The app of a test-feed build carries the feed override on purpose. The other binary and
-    // the packaging steps are held to the release rules as usual.
+    // The app of a test-feed build carries the feed override on purpose. The workers and the
+    // packaging steps are held to the release rules as usual.
     let checked: &[&str] = if options.test_feed {
         println!("test-feed build: never publish these files");
-        &[LLM_BINARY]
+        &[LLM_BINARY, TTS_BINARY]
     } else {
-        &[APP_BINARY, LLM_BINARY]
+        &BINARIES
     };
     for binary in checked {
         crate::release_check::check_binary(&ctx.binaries.join(binary))?;
@@ -399,6 +416,7 @@ mod tests {
             target: Target::LinuxX64,
             dist: root.join("dist"),
             binaries: root.join("bin"),
+            runtime: root.join("rt"),
         };
         let resources = ctx.resources(&root, "deb").unwrap();
         let targets: Vec<&str> = resources.iter().map(|(_, t)| t.as_str()).collect();

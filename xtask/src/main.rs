@@ -7,12 +7,13 @@ mod package;
 mod release;
 mod release_check;
 mod root;
+mod tts_runtime;
 mod two_binary;
 mod update_feed;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper] [--artifact <target>=<file>]... [--base-url <url>] [--wrong-sha]|release-manifest --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file> --pub-date <time>|release-verify --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file>>";
+const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|tts-runtime [--target <t>] [--dir <dir>]|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper] [--artifact <target>=<file>]... [--base-url <url>] [--wrong-sha]|release-manifest --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file> --pub-date <time>|release-verify --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file>>";
 
 fn main() -> ExitCode {
     let root = match root::repo_root() {
@@ -27,6 +28,10 @@ fn main() -> ExitCode {
         Some("net-audit") => net_audit::run(&root),
         Some("licenses") => licenses::run(&root),
         Some("two-binary") => two_binary::run(&root),
+        Some("tts-runtime") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            tts_runtime::run(&root, &rest)
+        }
         Some("release-check") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
             release_check::run(&root, &rest)

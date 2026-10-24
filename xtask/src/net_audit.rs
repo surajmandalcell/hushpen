@@ -37,7 +37,7 @@ const HTTP_CRATES: [&str; 9] = [
     "tungstenite",
 ];
 const SOCKET_CRATES: [&str; 3] = ["socket2", "mio", "tokio"];
-const CHILD_CRATES: [&str; 2] = ["hushpen-engine", "hushpen-llm"];
+const CHILD_CRATES: [&str; 3] = ["hushpen-engine", "hushpen-llm", "hushpen-tts"];
 const HTTP_OWNER: &str = "hushpen-app";
 
 const PURPOSE_LOOKBACK: usize = 15;
@@ -529,10 +529,13 @@ mod tests {
     #[test]
     fn child_crates_may_not_use_socket_crates() {
         let manifest = "[target.'cfg(unix)'.dependencies]\nsocket2 = \"0.5\"\n";
-        assert_eq!(
-            scan_manifest("crates/hushpen-llm/Cargo.toml", "hushpen-llm", manifest).len(),
-            1
-        );
+        for worker in ["hushpen-llm", "hushpen-tts"] {
+            assert_eq!(
+                scan_manifest("crates/hushpen-llm/Cargo.toml", worker, manifest).len(),
+                1,
+                "{worker}"
+            );
+        }
         assert!(
             scan_manifest(
                 "crates/hushpen-platform/Cargo.toml",
