@@ -1,10 +1,11 @@
 //! The native building blocks the views share: the grouped section and the lines between its
-//! rows ([`group`]), the rows ([`rows`]), and the controls ([`controls`]). Colors come from the
-//! [`Palette`] the view passes in.
+//! rows ([`group`]), the rows ([`rows`]), the controls ([`controls`]), and the tooltips
+//! ([`tooltip`]). Colors come from the [`Palette`] the view passes in.
 
 mod controls;
 mod group;
 mod rows;
+mod tooltip;
 
 pub use controls::{
     Kind, button, field, icon_button, menu_button, segmented, slider, switch, track,
@@ -14,6 +15,7 @@ pub use rows::{
     Notice, fact_row, field_row, icon_row, labeled_row, menu_row, meter_row, named_lines,
     notice_row, option_list, option_row, press_row, row, slider_row, toggle_row,
 };
+pub use tooltip::{covered, tooltip};
 
 use crate::theme::{BODY, Palette, SECONDARY, StyledType, size, space};
 use gpui_kit::assets::IconName;

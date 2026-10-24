@@ -7,7 +7,6 @@ use crate::hook;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, ParentElement, Role,
     StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
@@ -173,8 +172,7 @@ fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> An
         });
     hook::mark_disabled(&format!("settings.shortcut.{key}"), !row.enabled);
     if !row.recording && needs_tooltip(&row.shown) {
-        let full = row.shown.clone();
-        field = field.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
+        field = ui::tooltip(field, row.shown.clone());
     }
     if row.enabled {
         let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx);

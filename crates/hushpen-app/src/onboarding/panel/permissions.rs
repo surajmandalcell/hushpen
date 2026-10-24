@@ -7,7 +7,6 @@ use crate::theme::{Palette, size, space};
 use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba, Role,
     StatefulInteractiveElement, Styled, Window, div, px, svg,
@@ -73,7 +72,7 @@ fn status(
     attention: bool,
 ) -> impl IntoElement + use<> {
     if attention {
-        div()
+        let mark = div()
             .id(id)
             .test_support()
             .role(Role::Image)
@@ -85,9 +84,8 @@ fn status(
                     .size(px(size::NAV_ICON))
                     .flex_none()
                     .text_color(tone),
-            )
-            .tooltip(move |window, cx| Tooltip::new(text).build(window, cx))
-            .into_any_element()
+            );
+        ui::tooltip(mark, text).into_any_element()
     } else {
         ui::value(palette)
             .id(id)

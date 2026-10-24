@@ -8,7 +8,6 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Sizable, Size};
 use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
@@ -99,7 +98,7 @@ pub fn icon_button<F: Fn(&mut Window, &mut App) + 'static>(
     press: F,
 ) -> impl IntoElement + use<F> {
     let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx);
-    div()
+    let element = div()
         .id(id)
         .test_support()
         .role(Role::Button)
@@ -115,8 +114,8 @@ pub fn icon_button<F: Fn(&mut Window, &mut App) + 'static>(
         .track_focus(focus)
         .focus_visible(move |style| style.border_color(palette.accent))
         .cursor_pointer()
-        .hover(move |style| style.bg(palette.selection))
-        .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
+        .hover(move |style| style.bg(palette.selection));
+    super::tooltip(element, tooltip)
         .on_click(on_click)
         .child(icon(palette, name))
 }

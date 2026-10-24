@@ -245,7 +245,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 - A group has a 0.5px stroke in the separator color. There is no toolbar line and no other stray border.
 - Hover and selection use the neutral selection fill.
 - The focus ring is 2px in the accent color, inside the bounds of a button, a pop-up button, or a row. A focused text field has a 1px accent border and no glow.
-- A sheet floats centered over the scrim: 460px wide (`sheet-width`), the content color, the window radius, and a hairline edge. It has no shadow.
+- A sheet floats centered over the scrim: 460px wide (`sheet-width`), the content color, the window radius, and a hairline edge. It has no shadow. No tooltip of the page under it shows over it.
 
 ## Shapes
 

@@ -11,7 +11,6 @@ use crate::theme::{self, HEADING, Palette, StyledType, radius, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, Context, Entity, ExternalPaths, FocusHandle, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled, Window, div, px, svg,
@@ -270,9 +269,7 @@ fn option_rows(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> Ve
         toggle,
     );
     let switch = match view.translate_off {
-        Some(why) => div()
-            .id(hook::id("import", "translate.why"))
-            .tooltip(move |window, cx| Tooltip::new(why).build(window, cx))
+        Some(why) => ui::tooltip(div().id(hook::id("import", "translate.why")), why)
             .child(switch)
             .into_any_element(),
         None => switch.into_any_element(),

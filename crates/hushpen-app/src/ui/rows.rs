@@ -8,7 +8,6 @@ use crate::theme::{BODY, Palette, StyledType, radius, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::InputState;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window,
@@ -211,7 +210,7 @@ pub fn fact_row(
         })
         .child(value.unwrap_or_else(|| "Not available".to_owned()));
     if !full.is_empty() {
-        text = text.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx));
+        text = super::tooltip(text, full);
     }
     row(palette)
         .id(id)

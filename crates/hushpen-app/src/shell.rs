@@ -15,6 +15,7 @@ use crate::read_aloud::ReadRequest;
 use crate::settings::{self, Settings};
 use crate::shortcuts::Shortcuts;
 use crate::theme::{self, BODY, Palette, StyledType, TOOLBAR_TITLE, chrome, radius, size, space};
+use crate::ui;
 use crate::updater::{self, Updater};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
@@ -644,14 +645,21 @@ impl Render for Shell {
                     .as_ref()
                     .filter(|_| self.active == View::Models)
                     .and_then(|models| models::sheet::render(models, cx));
+                let (sidebar, content) = ui::covered(sheet.is_some(), || {
+                    let sidebar = self.sidebar(palette, cx).into_any_element();
+                    (
+                        sidebar,
+                        self.content(&shell, palette, cx).into_any_element(),
+                    )
+                });
                 frame
                     .relative()
                     .group(DROP_GROUP)
                     .on_drop::<ExternalPaths>(
                         cx.listener(|shell, paths, _, cx| shell.dropped(paths, cx)),
                     )
-                    .child(self.sidebar(palette, cx))
-                    .child(self.content(&shell, palette, cx))
+                    .child(sidebar)
+                    .child(content)
                     .children(sheet)
             }
         }
