@@ -91,6 +91,8 @@ pub struct ImportSpec {
     /// `None` or `auto` detects the language.
     pub language: Option<String>,
     pub prompt: Option<String>,
+    /// Write the transcript in English. English-only models refuse this.
+    pub translate: bool,
 }
 
 /// Receives how far an import is, from 0 to 1. It runs on the supervisor thread, so it must

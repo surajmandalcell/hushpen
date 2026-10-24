@@ -4,6 +4,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use hushpen_audio::decode::DecodeError;
+use hushpen_core::error;
 pub use hushpen_core::protocol::Segment;
 
 /// The full result of one job.
@@ -31,6 +33,46 @@ pub struct TranscribeOptions {
     pub language: Option<String>,
     /// Text that biases the decoder toward the user's words.
     pub prompt: Option<String>,
+    /// Write the transcript in English, whatever language is spoken. English-only models
+    /// cannot do this.
+    pub translate: bool,
+}
+
+/// 16 kHz mono samples that arrive in pieces, such as a file that is decoded while it is
+/// transcribed.
+pub trait PcmSource {
+    /// Appends the next samples to `out`; a call can add none. Returns `Ok(false)` once there
+    /// are no more.
+    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, EngineError>;
+
+    /// How much of the input has been read, from 0 to 1.
+    fn fraction_read(&self) -> f32;
+}
+
+/// A whole buffer, such as a dictation, given to the engine in one read.
+pub struct SliceSource<'a> {
+    pcm: &'a [f32],
+    read: bool,
+}
+
+impl<'a> SliceSource<'a> {
+    pub fn new(pcm: &'a [f32]) -> Self {
+        Self { pcm, read: false }
+    }
+}
+
+impl PcmSource for SliceSource<'_> {
+    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, EngineError> {
+        if !self.read {
+            self.read = true;
+            out.extend_from_slice(self.pcm);
+        }
+        Ok(false)
+    }
+
+    fn fraction_read(&self) -> f32 {
+        if self.read { 1.0 } else { 0.0 }
+    }
 }
 
 /// A flag that stops a running job. Clones share one flag.
@@ -68,6 +110,10 @@ pub enum EngineError {
     BadLanguage(String),
     /// The audio has no samples.
     NoAudio,
+    /// Translate was asked of an English-only model.
+    TranslateUnsupported,
+    /// The imported file could not be decoded while it was transcribed.
+    Decode(DecodeError),
     /// whisper failed while running the job.
     Failed(String),
 }
@@ -80,6 +126,9 @@ impl EngineError {
             Self::Cancelled => None,
             Self::BadLanguage(_) => Some("ENGINE_BAD_LANGUAGE"),
             Self::NoAudio => Some("ENGINE_NO_SPEECH"),
+            Self::TranslateUnsupported => Some(error::ENGINE_TRANSLATE_UNSUPPORTED),
+            Self::Decode(DecodeError::Unsupported(_)) => Some(error::IMPORT_UNSUPPORTED_CODEC),
+            Self::Decode(DecodeError::Failed(_)) => Some(error::IMPORT_DECODE_FAILED),
             Self::Failed(_) => Some("ENGINE_CRASHED"),
         }
     }
@@ -103,6 +152,10 @@ impl fmt::Display for EngineError {
             Self::Cancelled => f.write_str("job cancelled"),
             Self::BadLanguage(code) => write!(f, "unknown language code: {code}"),
             Self::NoAudio => f.write_str("no audio samples"),
+            Self::TranslateUnsupported => {
+                f.write_str("this model knows only English, so it cannot translate")
+            }
+            Self::Decode(failure) => failure.fmt(f),
             Self::Failed(detail) => write!(f, "transcription failed: {detail}"),
         }
     }
@@ -115,26 +168,25 @@ pub trait AsrEngine {
     /// True when the model runs on the GPU.
     fn gpu_in_use(&self) -> bool;
 
-    /// Transcribe 16 kHz mono `f32` samples. Setting `cancel` makes this return
-    /// [`EngineError::Cancelled`] within milliseconds.
+    /// Transcribe 16 kHz mono `f32` samples as `source` gives them. Setting `cancel` makes this
+    /// return [`EngineError::Cancelled`] within milliseconds. `progress` hears how far the job
+    /// is, from 0 to 1, each time a window of the input is done.
+    fn transcribe_stream(
+        &mut self,
+        source: &mut dyn PcmSource,
+        options: &TranscribeOptions,
+        cancel: &CancelFlag,
+        progress: &mut dyn FnMut(f32),
+    ) -> Result<Transcript, EngineError>;
+
+    /// [`AsrEngine::transcribe_stream`] over one buffer, such as a dictation.
     fn transcribe(
         &mut self,
         pcm: &[f32],
         options: &TranscribeOptions,
         cancel: &CancelFlag,
-    ) -> Result<Transcript, EngineError>;
-
-    /// Like [`AsrEngine::transcribe`], and tells `progress` how far the job is (0 to 1) each
-    /// time a window of a long input is done. An engine with no windows reports nothing.
-    fn transcribe_with_progress(
-        &mut self,
-        pcm: &[f32],
-        options: &TranscribeOptions,
-        cancel: &CancelFlag,
-        progress: &mut dyn FnMut(f32),
     ) -> Result<Transcript, EngineError> {
-        let _ = progress;
-        self.transcribe(pcm, options, cancel)
+        self.transcribe_stream(&mut SliceSource::new(pcm), options, cancel, &mut |_| {})
     }
 }
 

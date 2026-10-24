@@ -82,7 +82,7 @@ fn load(gpu: bool) -> WhisperEngine {
 fn english() -> TranscribeOptions {
     TranscribeOptions {
         language: Some("en".into()),
-        prompt: None,
+        ..TranscribeOptions::default()
     }
 }
 
@@ -190,12 +190,54 @@ fn rejects_an_unknown_language_code() {
             &read_wav(&short_wav()),
             &TranscribeOptions {
                 language: Some("xx".into()),
-                prompt: None,
+                ..TranscribeOptions::default()
             },
             &CancelFlag::new(),
         )
         .expect_err("bad language");
     assert_eq!(err, EngineError::BadLanguage("xx".into()));
+}
+
+fn translate() -> TranscribeOptions {
+    TranscribeOptions {
+        translate: true,
+        ..TranscribeOptions::default()
+    }
+}
+
+#[test]
+fn an_english_only_model_refuses_to_translate() {
+    let mut engine = load(false);
+    let err = engine
+        .transcribe(&read_wav(&short_wav()), &translate(), &CancelFlag::new())
+        .expect_err("tiny.en cannot translate");
+    assert_eq!(err, EngineError::TranslateUnsupported);
+    assert_eq!(
+        err.code(),
+        Some(hushpen_core::error::ENGINE_TRANSLATE_UNSUPPORTED)
+    );
+}
+
+#[test]
+fn a_spanish_clip_translates_to_english() {
+    let dir = assets_dir().expect("HUSHPEN_TEST_ASSETS has ggml-base.bin and speech-es.wav");
+    let mut engine = WhisperEngine::load(
+        &dir.join("models/whisper/ggml-base.bin"),
+        LoadOptions {
+            gpu: false,
+            threads: 2,
+        },
+    )
+    .expect("load base");
+    let pcm = read_wav(&dir.join("fixtures/speech-es.wav"));
+    let result = engine
+        .transcribe(&pcm, &translate(), &CancelFlag::new())
+        .expect("translate");
+    let text = words(&result.text);
+    eprintln!("translated: {text}");
+    assert_eq!(result.language, "es");
+    assert!(text.contains("my name is paulina"), "{text}");
+    assert!(!text.contains("llamo"), "{text}");
 }
 
 #[test]
