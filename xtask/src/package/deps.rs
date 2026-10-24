@@ -50,6 +50,10 @@ const LIBS: &[Lib] = &[
     lib("libgomp.so.1", "libgomp1", "libgomp"),
 ];
 
+/// Libraries the package itself ships beside the voice worker, which opens them with dlopen
+/// from its own folder. No system package provides them.
+const SHIPPED: &[&str] = &["libonnxruntime.so", "libsherpa-onnx-c-api.so"];
+
 /// Libraries every libc-based system has; they need no package line.
 const BASE: &[&str] = &[
     "libc.so.6",
@@ -158,7 +162,7 @@ pub fn derive(needed: &[String], bytes: &[u8]) -> Result<Deps, String> {
     let mut wanted: BTreeSet<&'static str> = BTreeSet::new();
 
     for soname in needed {
-        if BASE.contains(&soname.as_str()) {
+        if BASE.contains(&soname.as_str()) || SHIPPED.contains(&soname.as_str()) {
             continue;
         }
         let lib = find(soname).ok_or_else(|| {
@@ -262,6 +266,21 @@ mod tests {
             deps.rpm_recommends
                 .iter()
                 .any(|d| d == "xdg-desktop-portal")
+        );
+    }
+
+    #[test]
+    fn the_bundled_voice_libraries_need_no_package_line() {
+        let deps = derive(
+            &strings(&["libonnxruntime.so", "libsherpa-onnx-c-api.so", "libc.so.6"]),
+            b"",
+        )
+        .unwrap();
+        assert!(
+            !deps
+                .deb_depends
+                .iter()
+                .any(|dep| dep.contains("onnxruntime"))
         );
     }
 

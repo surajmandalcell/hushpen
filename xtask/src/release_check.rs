@@ -31,6 +31,8 @@ const LLAMA_MARKER: &str = "llama_decode";
 
 const APP_BINARY: &str = "hushpen";
 const LLM_BINARY: &str = "hushpen-llm";
+const TTS_BINARY: &str = "hushpen-tts";
+const BINARIES: [&str; 3] = [APP_BINARY, LLM_BINARY, TTS_BINARY];
 
 const GUARD_MESSAGE: &str = "the test hook is for debug builds only";
 
@@ -129,14 +131,17 @@ pub fn scan_bytes(bytes: &[u8], markers: &[&str]) -> Vec<Finding> {
         .collect()
 }
 
-/// Markers a binary named `name` must not contain.
+/// Markers a binary named `name` must not contain: the hook markers for all three programs,
+/// plus the engine symbol of every engine that lives in another binary. The app links
+/// whisper.cpp, the LLM worker llama.cpp, and the voice worker neither (it dlopens
+/// sherpa-onnx), so each is scanned for the symbols it must not carry.
 fn markers_for(name: &str) -> Vec<&'static str> {
     let mut markers = HOOK_MARKERS.to_vec();
-    markers.push(if name == LLM_BINARY {
-        WHISPER_MARKER
-    } else {
-        LLAMA_MARKER
-    });
+    match name {
+        APP_BINARY => markers.push(LLAMA_MARKER),
+        LLM_BINARY => markers.push(WHISPER_MARKER),
+        _ => markers.extend([WHISPER_MARKER, LLAMA_MARKER]),
+    }
     markers
 }
 
@@ -192,7 +197,7 @@ fn target_dir(root: &Path) -> PathBuf {
 
 fn check_tree(root: &Path, features: Option<&str>) -> Result<(), String> {
     let mut violations = Vec::new();
-    for package in ["hushpen-app", "hushpen-llm"] {
+    for package in ["hushpen-app", "hushpen-llm", "hushpen-tts"] {
         // The format puts the features of the package itself on its first line: `-e features`
         // alone prints a feature node only for a dependency, never for the root.
         let mut args = vec![
@@ -278,6 +283,8 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         "hushpen-app",
         "-p",
         "hushpen-llm",
+        "-p",
+        "hushpen-tts",
     ];
     if let Some(list) = &options.features {
         build.extend(["--features", list]);
@@ -291,7 +298,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
 
     let release = target_dir(root).join("release");
     let mut clean = true;
-    for name in [APP_BINARY, LLM_BINARY] {
+    for name in BINARIES {
         let path = release.join(name);
         if !path.is_file() {
             return Err(format!("release binary {} is missing", path.display()));
@@ -375,11 +382,14 @@ mod tests {
     }
 
     #[test]
-    fn the_app_must_not_carry_llama_and_the_llm_binary_must_not_carry_whisper() {
+    fn each_binary_is_scanned_for_the_engines_it_must_not_carry() {
         assert!(markers_for(APP_BINARY).contains(&LLAMA_MARKER));
         assert!(!markers_for(APP_BINARY).contains(&WHISPER_MARKER));
         assert!(markers_for(LLM_BINARY).contains(&WHISPER_MARKER));
         assert!(!markers_for(LLM_BINARY).contains(&LLAMA_MARKER));
+        for marker in [WHISPER_MARKER, LLAMA_MARKER] {
+            assert!(markers_for(TTS_BINARY).contains(&marker));
+        }
     }
 
     #[test]

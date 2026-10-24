@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::names::{self, Format, Target};
-use super::{APP_BINARY, LLM_BINARY, NOTICES, build_version, sha256_hex, target_dir};
+use super::target_dir;
+use super::{APP_BINARY, BINARIES, LLM_BINARY, NOTICES, TTS_BINARY, build_version, sha256_hex};
 
 const DEB_DEPENDS: &[&str] = &[
     "libvulkan1",
@@ -51,7 +52,7 @@ fn need(problems: &mut Vec<String>, ok: bool, message: impl Into<String>) {
 }
 
 fn scan_binaries(dir: &Path, problems: &mut Vec<String>) {
-    for binary in [APP_BINARY, LLM_BINARY] {
+    for binary in BINARIES {
         let path = dir.join(binary);
         if let Err(error) = crate::release_check::check_binary(&path) {
             problems.push(format!("{}: {error}", path.display()));
@@ -60,11 +61,43 @@ fn scan_binaries(dir: &Path, problems: &mut Vec<String>) {
 }
 
 fn check_version_line(binary: &Path, version: &str, problems: &mut Vec<String>) {
-    match capture(Command::new(binary).arg("--version"), "hushpen --version") {
+    let name = binary
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(APP_BINARY)
+        .to_owned();
+    match capture(Command::new(binary).arg("--version"), "--version") {
         Ok(text) => need(
             problems,
-            text.trim() == format!("hushpen {version}"),
+            text.trim() == format!("{name} {version}"),
             format!("{} --version printed {:?}", binary.display(), text.trim()),
+        ),
+        Err(error) => problems.push(error),
+    }
+}
+
+/// The sherpa-onnx libraries of the package are byte-identical to the pinned release files.
+fn check_tts_libs(dir: &Path, target: Target, problems: &mut Vec<String>) {
+    for lib in &crate::tts_runtime::archive_for(target).libs {
+        let path = dir.join(lib.name);
+        match crate::tts_runtime::matches_pinned(&path, lib) {
+            Ok(true) => {}
+            Ok(false) => problems.push(format!("{} is not the pinned library", path.display())),
+            Err(error) => problems.push(error),
+        }
+    }
+}
+
+/// The packaged worker really loads the bundled libraries (dlopen and the version pin).
+fn check_tts_runtime(dir: &Path, problems: &mut Vec<String>) {
+    match capture(
+        Command::new(dir.join(TTS_BINARY)).arg("--check-runtime"),
+        "hushpen-tts --check-runtime",
+    ) {
+        Ok(text) => need(
+            problems,
+            text.trim() == format!("sherpa-onnx {}", crate::tts_runtime::SHERPA_VERSION),
+            format!("hushpen-tts --check-runtime printed {:?}", text.trim()),
         ),
         Err(error) => problems.push(error),
     }
@@ -102,13 +135,18 @@ fn verify_tar(
         "tar -xzf",
     )?;
     let root = scratch.join(&top);
-    for file in [
+    let mut wanted = vec![
         APP_BINARY,
         LLM_BINARY,
+        TTS_BINARY,
         NOTICES,
         "install-kind",
         "icons/512x512.png",
-    ] {
+    ];
+    for lib in &crate::tts_runtime::archive_for(target).libs {
+        wanted.push(lib.name);
+    }
+    for file in wanted {
         need(
             &mut problems,
             root.join(file).is_file(),
@@ -123,6 +161,9 @@ fn verify_tar(
     );
     scan_binaries(&root, &mut problems);
     check_version_line(&root.join(APP_BINARY), version, &mut problems);
+    check_version_line(&root.join(TTS_BINARY), version, &mut problems);
+    check_tts_libs(&root, target, &mut problems);
+    check_tts_runtime(&root, &mut problems);
     Ok(problems)
 }
 
@@ -176,6 +217,9 @@ fn verify_deb(
     for want in [
         "./usr/lib/hushpen/hushpen\n",
         "./usr/lib/hushpen/hushpen-llm\n",
+        "./usr/lib/hushpen/hushpen-tts\n",
+        "./usr/lib/hushpen/libsherpa-onnx-c-api.so\n",
+        "./usr/lib/hushpen/libonnxruntime.so\n",
         "./usr/lib/hushpen/THIRD-PARTY-NOTICES.html\n",
         "./usr/lib/hushpen/install-kind\n",
         "./usr/share/applications/hushpen.desktop\n",
@@ -204,6 +248,9 @@ fn verify_deb(
     );
     scan_binaries(&lib, &mut problems);
     check_version_line(&scratch.join("usr/bin/hushpen"), version, &mut problems);
+    check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
+    check_tts_libs(&lib, target, &mut problems);
+    check_tts_runtime(&lib, &mut problems);
     Ok(problems)
 }
 
@@ -248,6 +295,9 @@ fn verify_rpm(
     for want in [
         "/usr/lib/hushpen/hushpen",
         "/usr/lib/hushpen/hushpen-llm",
+        "/usr/lib/hushpen/hushpen-tts",
+        "/usr/lib/hushpen/libsherpa-onnx-c-api.so",
+        "/usr/lib/hushpen/libonnxruntime.so",
         "/usr/lib/hushpen/THIRD-PARTY-NOTICES.html",
         "/usr/bin/hushpen",
         "/usr/share/applications/hushpen.desktop",
@@ -278,10 +328,18 @@ fn verify_rpm(
     );
     scan_binaries(&lib, &mut problems);
     check_version_line(&lib.join(APP_BINARY), version, &mut problems);
+    check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
+    check_tts_libs(&lib, target, &mut problems);
+    check_tts_runtime(&lib, &mut problems);
     Ok(problems)
 }
 
-fn verify_appimage(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<String>, String> {
+fn verify_appimage(
+    artifact: &Path,
+    scratch: &Path,
+    version: &str,
+    target: Target,
+) -> Result<Vec<String>, String> {
     let mut problems = Vec::new();
     capture(
         Command::new(artifact)
@@ -296,12 +354,12 @@ fn verify_appimage(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec
         root.join("usr/lib/hushpen").join(NOTICES).is_file(),
         format!("AppImage lacks {NOTICES}"),
     );
-    scan_binaries(&root.join("usr/bin"), &mut problems);
-    check_version_line(
-        &root.join("usr/bin").join(APP_BINARY),
-        version,
-        &mut problems,
-    );
+    let bin = root.join("usr/bin");
+    scan_binaries(&bin, &mut problems);
+    check_version_line(&bin.join(APP_BINARY), version, &mut problems);
+    check_version_line(&bin.join(TTS_BINARY), version, &mut problems);
+    check_tts_libs(&bin, target, &mut problems);
+    check_tts_runtime(&bin, &mut problems);
     Ok(problems)
 }
 
@@ -313,7 +371,12 @@ fn plist_value(plist: &str, key: &str) -> Option<String> {
         .map(|value| value.trim_matches('"').to_string())
 }
 
-fn verify_zip(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<String>, String> {
+fn verify_zip(
+    artifact: &Path,
+    scratch: &Path,
+    version: &str,
+    target: Target,
+) -> Result<Vec<String>, String> {
     let mut problems = Vec::new();
     capture(
         Command::new("ditto")
@@ -323,11 +386,11 @@ fn verify_zip(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Stri
         "ditto -x -k",
     )?;
     let app = scratch.join("Hushpen.app");
-    problems.extend(verify_app_bundle(&app, version)?);
+    problems.extend(verify_app_bundle(&app, version, target)?);
     Ok(problems)
 }
 
-fn verify_app_bundle(app: &Path, version: &str) -> Result<Vec<String>, String> {
+fn verify_app_bundle(app: &Path, version: &str, target: Target) -> Result<Vec<String>, String> {
     let mut problems = Vec::new();
     let plist = capture(
         Command::new("plutil")
@@ -360,6 +423,7 @@ fn verify_app_bundle(app: &Path, version: &str) -> Result<Vec<String>, String> {
     );
     let macos = app.join("Contents/MacOS");
     scan_binaries(&macos, &mut problems);
+    check_tts_libs(&app.join("Contents/Frameworks"), target, &mut problems);
     if let Err(error) = capture(
         Command::new("codesign")
             .args(["--verify", "--deep", "--strict"])
@@ -377,10 +441,18 @@ fn verify_app_bundle(app: &Path, version: &str) -> Result<Vec<String>, String> {
         Err(error) => problems.push(error),
     }
     check_version_line(&macos.join(APP_BINARY), version, &mut problems);
+    check_version_line(&macos.join(LLM_BINARY), version, &mut problems);
+    check_version_line(&macos.join(TTS_BINARY), version, &mut problems);
+    check_tts_runtime(&macos, &mut problems);
     Ok(problems)
 }
 
-fn verify_dmg(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<String>, String> {
+fn verify_dmg(
+    artifact: &Path,
+    scratch: &Path,
+    version: &str,
+    target: Target,
+) -> Result<Vec<String>, String> {
     let info = capture(
         Command::new("hdiutil").arg("imageinfo").arg(artifact),
         "hdiutil imageinfo",
@@ -407,7 +479,7 @@ fn verify_dmg(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Stri
         mount.join("Applications").exists(),
         "the dmg has no Applications link",
     );
-    match verify_app_bundle(&mount.join("Hushpen.app"), version) {
+    match verify_app_bundle(&mount.join("Hushpen.app"), version, target) {
         Ok(found) => problems.extend(found),
         Err(error) => problems.push(error),
     }
@@ -539,9 +611,9 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
             Format::TarGz => verify_tar(&artifact, &scratch, &version, target)?,
             Format::Deb => verify_deb(&artifact, &scratch, &version, target)?,
             Format::Rpm => verify_rpm(&artifact, &scratch, &version, target)?,
-            Format::AppImage => verify_appimage(&artifact, &scratch, &version)?,
-            Format::Zip => verify_zip(&artifact, &scratch, &version)?,
-            Format::Dmg => verify_dmg(&artifact, &scratch, &version)?,
+            Format::AppImage => verify_appimage(&artifact, &scratch, &version, target)?,
+            Format::Zip => verify_zip(&artifact, &scratch, &version, target)?,
+            Format::Dmg => verify_dmg(&artifact, &scratch, &version, target)?,
             Format::App => Vec::new(),
         };
         for problem in &found {

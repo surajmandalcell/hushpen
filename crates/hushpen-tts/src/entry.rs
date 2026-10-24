@@ -15,6 +15,21 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Instant;
 
+/// Prints the version of the sherpa-onnx library the worker opens, so a package check can prove
+/// the bundled libraries load, without a model.
+fn check_runtime() -> ExitCode {
+    match SherpaBackend::new(runtime::library_path()).api() {
+        Ok(api) => {
+            println!("sherpa-onnx {}", api.version());
+            ExitCode::SUCCESS
+        }
+        Err(problem) => {
+            eprintln!("hushpen-tts: {problem}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// The text of the smoke run: three sentences, so the first audio comes before the end.
 pub const SMOKE_TEXT: &str = "Hushpen reads your notes aloud on this computer. Nothing you \
 write leaves it. The voice runs in a worker of its own, so a fault there never takes the app \
@@ -22,9 +37,13 @@ down.";
 
 /// Runs the worker. `args` are the arguments after the program name.
 pub fn worker_main(args: &[String]) -> ExitCode {
-    if args.first().map(String::as_str) == Some("--version") {
-        println!("hushpen-tts {}", hushpen_core::VERSION);
-        return ExitCode::SUCCESS;
+    match args.first().map(String::as_str) {
+        Some("--version") => {
+            println!("hushpen-tts {}", hushpen_core::VERSION);
+            return ExitCode::SUCCESS;
+        }
+        Some("--check-runtime") => return check_runtime(),
+        _ => {}
     }
     let smoke = match parse_args(args) {
         Ok(smoke) => smoke,
@@ -56,8 +75,8 @@ struct Smoke {
     out: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: hushpen-tts [--smoke <model folder> [--threads N] [--voice ID] \
-[--text TEXT] [--runs N] [--out FILE.wav]]";
+const USAGE: &str = "usage: hushpen-tts [--version] [--check-runtime] \
+[--smoke <model folder> [--threads N] [--voice ID] [--text TEXT] [--runs N] [--out FILE.wav]]";
 
 fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
     if args.is_empty() {

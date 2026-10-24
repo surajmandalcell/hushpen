@@ -44,6 +44,9 @@ pub struct Common<'a> {
     pub icons: &'a [PathBuf],
     /// Source file and its place under the package's resource folder.
     pub resources: &'a [(PathBuf, String)],
+    /// The pinned sherpa-onnx libraries: into `Contents/Frameworks` on macOS, and beside the
+    /// worker in `usr/bin` in the AppImage, whose payload is the deb layout.
+    pub tts_libs: &'a [PathBuf],
 }
 
 fn common(input: &Common) -> String {
@@ -68,7 +71,7 @@ fn common(input: &Common) -> String {
          description = {description}\nlong-description = {description}\npublisher = {publisher}\n\
          authors = [{publisher}]\nhomepage = {homepage}\ncategory = \"Utility\"\n\
          out-dir = {work}\nbinaries-dir = {work}\nicons = {icons}\n\
-         binaries = [{{ path = \"hushpen\", main = true }}, {{ path = \"hushpen-llm\" }}]\n\
+         binaries = [{{ path = \"hushpen\", main = true }}, {{ path = \"hushpen-llm\" }}, {{ path = \"hushpen-tts\" }}]\n\
          resources = [{resources}]\n",
         product = quote(PRODUCT),
         version = quote(input.version),
@@ -83,14 +86,17 @@ fn common(input: &Common) -> String {
 }
 
 /// The `.app` config. `sign_script` runs before the dmg step so the app inside
-/// the dmg carries the ad-hoc signature too.
+/// the dmg carries the ad-hoc signature too. The sherpa-onnx libraries go to
+/// `Contents/Frameworks`, where the voice worker looks for them.
 pub fn mac(input: &Common, info_plist: &Path, sign_script: &Path) -> String {
+    let frameworks: Vec<String> = input.tts_libs.iter().map(|lib| quote_path(lib)).collect();
     format!(
-        "{}before-each-package-command = {}\n\n[macos]\nminimum-system-version = {}\ninfo-plist-path = {}\n",
+        "{}before-each-package-command = {}\n\n[macos]\nminimum-system-version = {}\ninfo-plist-path = {}\nframeworks = [{}]\n",
         common(input),
         quote(&format!("sh {}", sign_script.display())),
         quote(MIN_MACOS),
         quote_path(info_plist),
+        frameworks.join(", "),
     )
 }
 
@@ -103,7 +109,25 @@ pub fn deb(input: &Common, deps: &Deps) -> String {
 }
 
 pub fn appimage(input: &Common) -> String {
-    common(input)
+    // The AppImage payload is the deb layout; the voice worker finds its libraries beside it
+    // in usr/bin.
+    let files: Vec<String> = input
+        .tts_libs
+        .iter()
+        .filter_map(|lib| {
+            let name = lib.file_name()?.to_str()?;
+            Some(format!(
+                "{} = {}",
+                quote_path(lib),
+                quote(&format!("usr/bin/{name}"))
+            ))
+        })
+        .collect();
+    format!(
+        "{}\n[appimage]\nfiles = {{ {} }}\n",
+        common(input),
+        files.join(", ")
+    )
 }
 
 /// What the app tells the script that signs it: ad-hoc, no identity.
@@ -179,6 +203,7 @@ mod tests {
             work,
             icons,
             resources,
+            tts_libs: &[],
         }
     }
 
@@ -204,9 +229,42 @@ mod tests {
         );
         assert!(text.contains("path = \"hushpen\", main = true"));
         assert!(text.contains("path = \"hushpen-llm\""));
+        assert!(text.contains("path = \"hushpen-tts\""));
         assert!(text.contains("minimum-system-version = \"13.0\""));
         assert!(text.contains("info-plist-path = \"/p/Info.plist\""));
         assert!(text.contains("before-each-package-command = \"sh /w/sign.sh\""));
+    }
+
+    #[test]
+    fn the_mac_config_puts_the_voice_libraries_in_frameworks() {
+        let work = PathBuf::from("/w");
+        let libs = [
+            PathBuf::from("/rt/libsherpa-onnx-c-api.dylib"),
+            PathBuf::from("/rt/libonnxruntime.dylib"),
+        ];
+        let input = Common {
+            tts_libs: &libs,
+            ..input(&work, &[], &[])
+        };
+        let text = mac(&input, Path::new("/p/Info.plist"), Path::new("/w/sign.sh"));
+        assert!(text.contains(
+            "frameworks = [\"/rt/libsherpa-onnx-c-api.dylib\", \"/rt/libonnxruntime.dylib\"]"
+        ));
+    }
+
+    #[test]
+    fn the_appimage_places_the_voice_libraries_beside_the_worker() {
+        let work = PathBuf::from("/w");
+        let libs = [PathBuf::from("/rt/libonnxruntime.so")];
+        let input = Common {
+            tts_libs: &libs,
+            ..input(&work, &[], &[])
+        };
+        let text = appimage(&input);
+        assert!(text.contains("[appimage]"));
+        assert!(
+            text.contains("files = { \"/rt/libonnxruntime.so\" = \"usr/bin/libonnxruntime.so\" }")
+        );
     }
 
     #[test]

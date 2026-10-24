@@ -1,15 +1,17 @@
 //! `cargo xtask two-binary`: whisper.cpp and llama.cpp each bring their own ggml, and two ggml
 //! copies in one binary link without an error while one silently replaces the other. So the
-//! speech engine lives only in the `hushpen` binary (package `hushpen-app`) and the language
-//! model only in `hushpen-llm`. This reads `cargo tree` for both packages and fails when a
-//! sys crate crosses over, or when the expected one is missing (the check would pass for the
-//! wrong reason).
+//! speech engine lives only in the `hushpen` binary (package `hushpen-app`), the language
+//! model only in `hushpen-llm`, and the voice worker `hushpen-tts` links neither (it opens the
+//! pinned sherpa-onnx library with dlopen). This reads `cargo tree` for the three packages and
+//! fails when a sys crate crosses over, or when an expected crate is missing (the check would
+//! pass for the wrong reason).
 
 use std::path::Path;
 use std::process::Command;
 
 const APP: &str = "hushpen-app";
 const LLM: &str = "hushpen-llm";
+const TTS: &str = "hushpen-tts";
 
 /// A crate that must (or must not) show up in the tree of a package.
 struct Rule {
@@ -18,16 +20,29 @@ struct Rule {
     absent: &'static [&'static str],
 }
 
-const RULES: [Rule; 2] = [
+const RULES: [Rule; 3] = [
     Rule {
         package: APP,
         present: &["whisper-rs-sys"],
-        absent: &["llama-cpp-sys-2", "llama-cpp-2", LLM],
+        absent: &["llama-cpp-sys-2", "llama-cpp-2", LLM, TTS],
     },
     Rule {
         package: LLM,
         present: &["llama-cpp-sys-2"],
-        absent: &["whisper-rs-sys", "whisper-rs", "hushpen-engine", APP],
+        absent: &["whisper-rs-sys", "whisper-rs", "hushpen-engine", APP, TTS],
+    },
+    Rule {
+        package: TTS,
+        present: &["libloading"],
+        absent: &[
+            "whisper-rs-sys",
+            "whisper-rs",
+            "llama-cpp-sys-2",
+            "llama-cpp-2",
+            "hushpen-engine",
+            APP,
+            LLM,
+        ],
     },
 ];
 
@@ -101,7 +116,9 @@ pub fn run(root: &Path) -> Result<(), String> {
         found.extend(problems(rule, &tree_of(&cargo, root, rule.package)?));
     }
     if found.is_empty() {
-        println!("two-binary: whisper-rs-sys only in {APP}, llama-cpp-sys-2 only in {LLM}");
+        println!(
+            "two-binary: whisper-rs-sys only in {APP}, llama-cpp-sys-2 only in {LLM}, neither in {TTS}"
+        );
         Ok(())
     } else {
         Err(format!(
@@ -125,10 +142,31 @@ mod tests {
         llama-cpp-2 v0.1.158\n\
         llama-cpp-sys-2 v0.1.158\n";
 
+    const TTS_TREE: &str = "hushpen-tts v2.0.0 (/r/crates/hushpen-tts)\n\
+        hushpen-core v2.0.0 (/r/crates/hushpen-core)\n\
+        libloading v0.8.9\n";
+
     #[test]
     fn the_expected_trees_pass() {
         assert!(problems(&RULES[0], APP_TREE).is_empty());
         assert!(problems(&RULES[1], LLM_TREE).is_empty());
+        assert!(problems(&RULES[2], TTS_TREE).is_empty());
+    }
+
+    #[test]
+    fn an_engine_sys_crate_in_the_voice_worker_fails() {
+        let tree = format!("{TTS_TREE}llama-cpp-sys-2 v0.1.158\n");
+        let found = problems(&RULES[2], &tree);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("llama-cpp-sys-2"));
+    }
+
+    #[test]
+    fn the_voice_worker_without_libloading_fails_so_the_check_cannot_pass_vacuously() {
+        let tree = "hushpen-tts v2.0.0 (/r/crates/hushpen-tts)\n";
+        let found = problems(&RULES[2], tree);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("must depend on libloading"));
     }
 
     #[test]

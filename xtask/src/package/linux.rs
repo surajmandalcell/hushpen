@@ -1,9 +1,10 @@
 //! Linux: AppImage and deb through cargo-packager, rpm through
 //! cargo-generate-rpm, and the tar.gz from here.
 //!
-//! The deb and rpm keep both binaries together in `/usr/lib/hushpen/`, because
-//! the app starts its engine and AI worker from the folder of its own
-//! executable. `/usr/bin/hushpen` points there.
+//! The deb and rpm keep the three programs and the sherpa-onnx libraries of
+//! the voice worker together in `/usr/lib/hushpen/`, because the app starts
+//! its workers from the folder of its own executable. `/usr/bin/hushpen`
+//! points there.
 
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -12,7 +13,7 @@ use std::process::Command;
 
 use super::deps::{self, Deps};
 use super::names::{self, Format};
-use super::{APP_BINARY, Ctx, LLM_BINARY, NOTICES, config, copy, first_file_with_extension};
+use super::{APP_BINARY, BINARIES, Ctx, NOTICES, config, copy, first_file_with_extension};
 use super::{run_packager, run_tool};
 
 const ICON_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256, 512];
@@ -29,9 +30,13 @@ fn icon_paths(ctx: &Ctx) -> Vec<PathBuf> {
 }
 
 fn derive_deps(ctx: &Ctx) -> Result<Deps, String> {
-    let app = ctx.binaries.join(APP_BINARY);
-    let worker = ctx.binaries.join(LLM_BINARY);
-    let deps = deps::derive_from_binaries(&[&app, &worker])?;
+    let mut scanned: Vec<PathBuf> = BINARIES
+        .iter()
+        .map(|binary| ctx.binaries.join(binary))
+        .collect();
+    scanned.extend(ctx.tts_libs());
+    let paths: Vec<&Path> = scanned.iter().map(PathBuf::as_path).collect();
+    let deps = deps::derive_from_binaries(&paths)?;
     println!("deb Depends: {}", deps.deb_depends.join(", "));
     println!("rpm Requires: {}", deps.rpm_requires.join(", "));
     Ok(deps)
@@ -63,11 +68,13 @@ fn packager_run(
     let work = ctx.work_dir(name)?;
     let resources = ctx.resources(&work, kind)?;
     let icons = icon_paths(ctx);
+    let tts_libs = ctx.tts_libs();
     let input = config::Common {
         version: &ctx.version,
         work: &work,
         icons: &icons,
         resources: &resources,
+        tts_libs: &tts_libs,
     };
     let config_path = work.join("packager.toml");
     fs::write(&config_path, render(&input))
@@ -88,14 +95,21 @@ fn deb(ctx: &Ctx, deps: &Deps) -> Result<PathBuf, String> {
     let work = packager_run(ctx, "deb", "deb", |input| config::deb(input, deps), "deb")?;
     let made = first_file_with_extension(&work, ".deb")?;
     let artifact = ctx.artifact(Format::Deb);
-    relayout_deb(&made, &artifact, &work.join("tree"), deps)?;
+    relayout_deb(&made, &artifact, &work.join("tree"), &ctx.tts_libs(), deps)?;
     Ok(artifact)
 }
 
 /// cargo-packager puts every binary in `/usr/bin`. Unpack its deb, move the
-/// binaries beside the notices in `/usr/lib/hushpen`, link `/usr/bin/hushpen`,
-/// add the Recommends line it cannot write, and pack the result again.
-fn relayout_deb(made: &Path, out: &Path, tree: &Path, deps: &Deps) -> Result<(), String> {
+/// programs beside the notices in `/usr/lib/hushpen`, add the sherpa-onnx
+/// libraries there, link `/usr/bin/hushpen`, add the Recommends line it cannot
+/// write, and pack the result again.
+fn relayout_deb(
+    made: &Path,
+    out: &Path,
+    tree: &Path,
+    tts_libs: &[PathBuf],
+    deps: &Deps,
+) -> Result<(), String> {
     run_tool(
         Command::new("dpkg-deb").arg("-R").arg(made).arg(tree),
         "dpkg-deb -R",
@@ -103,10 +117,17 @@ fn relayout_deb(made: &Path, out: &Path, tree: &Path, deps: &Deps) -> Result<(),
     let bin = tree.join("usr/bin");
     let lib = tree.join(LIB_DIR);
     fs::create_dir_all(&lib).map_err(|e| format!("cannot create {}: {e}", lib.display()))?;
-    for binary in [APP_BINARY, LLM_BINARY] {
+    for binary in BINARIES {
         let to = lib.join(binary);
         fs::rename(bin.join(binary), &to)
             .map_err(|e| format!("cannot move {binary} into {}: {e}", lib.display()))?;
+        fs::set_permissions(&to, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("cannot set the mode of {}: {e}", to.display()))?;
+    }
+    for library in tts_libs {
+        let name = library.file_name().ok_or("a runtime library has no name")?;
+        let to = lib.join(name);
+        copy(library, &to)?;
         fs::set_permissions(&to, fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("cannot set the mode of {}: {e}", to.display()))?;
     }
@@ -179,17 +200,25 @@ fn rpm(ctx: &Ctx, deps: &Deps) -> Result<PathBuf, String> {
     fs::write(&desktop, config::desktop_entry())
         .map_err(|e| format!("cannot write the desktop file: {e}"))?;
 
-    let mut assets: Vec<(PathBuf, String, &str)> = vec![
-        (
-            work.join(APP_BINARY),
-            "/usr/lib/hushpen/hushpen".into(),
-            "755",
-        ),
-        (
-            work.join(LLM_BINARY),
-            "/usr/lib/hushpen/hushpen-llm".into(),
-            "755",
-        ),
+    let mut assets: Vec<(PathBuf, String, &str)> = BINARIES
+        .iter()
+        .map(|binary| {
+            (
+                work.join(binary),
+                format!("/usr/lib/hushpen/{binary}"),
+                "755",
+            )
+        })
+        .collect();
+    for library in ctx.tts_libs() {
+        let name = library
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("a runtime library has no UTF-8 name")?
+            .to_owned();
+        assets.push((library, format!("/usr/lib/hushpen/{name}"), "755"));
+    }
+    assets.extend([
         (launcher, "/usr/bin/hushpen".into(), "755"),
         (
             desktop,
@@ -201,7 +230,7 @@ fn rpm(ctx: &Ctx, deps: &Deps) -> Result<PathBuf, String> {
             "/usr/share/licenses/hushpen/LICENSE".into(),
             "644",
         ),
-    ];
+    ]);
     for (source, target) in resources {
         assets.push((source, format!("/usr/lib/hushpen/{target}"), "644"));
     }
@@ -248,8 +277,13 @@ fn tar_gz(ctx: &Ctx) -> Result<PathBuf, String> {
     let top = work.join(&top_name);
     let icons = top.join("icons");
     fs::create_dir_all(&icons).map_err(|e| format!("cannot create {}: {e}", icons.display()))?;
-    for binary in [APP_BINARY, LLM_BINARY] {
+    for binary in BINARIES {
         copy(&work.join(binary), &top.join(binary))?;
+    }
+    // The voice worker opens these from the folder of its own executable.
+    for library in ctx.tts_libs() {
+        let name = library.file_name().ok_or("a runtime library has no name")?;
+        copy(&library, &top.join(name))?;
     }
     copy(&ctx.notices(), &top.join(NOTICES))?;
     copy(&ctx.root.join("LICENSE"), &top.join("LICENSE"))?;
