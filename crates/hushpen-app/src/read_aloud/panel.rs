@@ -120,27 +120,12 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
         let read = read.clone();
         move |_: &mut Window, cx: &mut App| read.update(cx, |read, cx| read.toggle_menu(menu, cx))
     };
-    let mut rows = vec![ui::labeled_row(
-        palette,
-        hook::id("read", "engine.row"),
-        "Engine",
-        Some(match engine {
-            EngineKind::System => "The voices of this computer".to_owned(),
-            EngineKind::Kokoro => "Natural voices from a downloaded model".to_owned(),
-        }),
-        ui::menu_button(
-            palette,
-            hook::id("read", "engine"),
-            "Engine",
-            engine.label().to_owned(),
-            true,
-            &view.focus.engine,
-            toggle(Menu::Engine),
-        ),
-    )];
     let options = &view.focus.options;
-    if view.menu() == Some(Menu::Engine) {
-        let choices = EngineKind::ALL
+    let open = |menu: Menu, choices: &dyn Fn() -> Vec<Choice>| {
+        (view.menu() == Some(menu)).then(|| options_menu(read, menu, choices(), options))
+    };
+    let engine_menu = open(Menu::Engine, &|| {
+        EngineKind::ALL
             .into_iter()
             .map(|kind| {
                 (
@@ -150,9 +135,29 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
                     kind == engine,
                 )
             })
-            .collect();
-        rows.push(options_list(palette, read, Menu::Engine, choices, options));
-    }
+            .collect()
+    });
+    let mut rows = vec![ui::labeled_row(
+        palette,
+        hook::id("read", "engine.row"),
+        "Engine",
+        Some(match engine {
+            EngineKind::System => "The voices of this computer".to_owned(),
+            EngineKind::Kokoro => "Natural voices from a downloaded model".to_owned(),
+        }),
+        ui::pop_up(
+            palette,
+            ui::PopUp {
+                id: hook::id("read", "engine"),
+                label: "Engine",
+                current: engine.label().to_owned(),
+                enabled: true,
+                focus: &view.focus.engine,
+                menu: engine_menu,
+            },
+            toggle(Menu::Engine),
+        ),
+    )];
     if let Some(why) = view.unavailable() {
         let button = view.needs_model().then(|| {
             let read = read.clone();
@@ -179,46 +184,54 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
     }
     let ready = view.voices().is_some_and(Result::is_ok);
     let language = view.language();
-    rows.push(ui::labeled_row(
-        palette,
-        hook::id("read", "language.row"),
-        "Language",
-        Some("Lists the voices that speak it".to_owned()),
-        ui::menu_button(
-            palette,
-            hook::id("read", "language"),
-            "Language",
-            language
-                .as_deref()
-                .map_or_else(|| "None".to_owned(), language_name),
-            ready && !view.languages().is_empty(),
-            &view.focus.language,
-            toggle(Menu::Language),
-        ),
-    ));
-    if view.menu() == Some(Menu::Language) {
-        let choices = view
-            .languages()
+    let language_menu = open(Menu::Language, &|| {
+        view.languages()
             .into_iter()
             .map(|code| {
                 let chosen = Some(&code) == language.as_ref();
                 (code.clone(), language_name(&code), None, chosen)
             })
-            .collect();
-        rows.push(options_list(
+            .collect()
+    });
+    rows.push(ui::labeled_row(
+        palette,
+        hook::id("read", "language.row"),
+        "Language",
+        Some("Lists the voices that speak it".to_owned()),
+        ui::pop_up(
             palette,
-            read,
-            Menu::Language,
-            choices,
-            options,
-        ));
-    }
+            ui::PopUp {
+                id: hook::id("read", "language"),
+                label: "Language",
+                current: language
+                    .as_deref()
+                    .map_or_else(|| "None".to_owned(), language_name),
+                enabled: ready && !view.languages().is_empty(),
+                focus: &view.focus.language,
+                menu: language_menu,
+            },
+            toggle(Menu::Language),
+        ),
+    ));
     let voices = view.language_voices();
     let voice = view.voice();
     let current = voice
         .as_ref()
         .and_then(|id| voices.iter().find(|found| &found.id == id))
         .map_or_else(|| "Default".to_owned(), |found| found.name.clone());
+    let voice_menu = open(Menu::Voice, &|| {
+        let mut choices = vec![(String::new(), "Default".to_owned(), None, voice.is_none())];
+        choices.extend(voices.iter().map(|found| {
+            let chosen = Some(&found.id) == voice.as_ref();
+            let detail = match found.quality {
+                VoiceQuality::Default => found.language.clone(),
+                VoiceQuality::Enhanced => format!("{}, Enhanced", found.language),
+                VoiceQuality::Premium => format!("{}, Premium", found.language),
+            };
+            (found.id.clone(), found.name.clone(), Some(detail), chosen)
+        }));
+        choices
+    });
     rows.push(ui::labeled_row(
         palette,
         hook::id("read", "voice.row"),
@@ -227,29 +240,19 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
             None => "Looking for voices\u{2026}".to_owned(),
             Some(_) => "Default is the engine's own choice".to_owned(),
         }),
-        ui::menu_button(
+        ui::pop_up(
             palette,
-            hook::id("read", "voice"),
-            "Voice",
-            current,
-            ready,
-            &view.focus.voice,
+            ui::PopUp {
+                id: hook::id("read", "voice"),
+                label: "Voice",
+                current,
+                enabled: ready,
+                focus: &view.focus.voice,
+                menu: voice_menu,
+            },
             toggle(Menu::Voice),
         ),
     ));
-    if view.menu() == Some(Menu::Voice) {
-        let mut choices = vec![(String::new(), "Default".to_owned(), None, voice.is_none())];
-        choices.extend(voices.into_iter().map(|found| {
-            let chosen = Some(&found.id) == voice.as_ref();
-            let detail = match found.quality {
-                VoiceQuality::Default => found.language.clone(),
-                VoiceQuality::Enhanced => format!("{}, Enhanced", found.language),
-                VoiceQuality::Premium => format!("{}, Premium", found.language),
-            };
-            (found.id, found.name, Some(detail), chosen)
-        }));
-        rows.push(options_list(palette, read, Menu::Voice, choices, options));
-    }
     let speed = view.speed();
     let slider = {
         let read = read.clone();
@@ -268,57 +271,59 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
         &view.focus.speed,
         slider,
     ));
+    let format_menu = open(Menu::Format, &|| {
+        vec![(
+            "wav".to_owned(),
+            "WAV".to_owned(),
+            Some("16-bit, 24 kHz, mono".to_owned()),
+            true,
+        )]
+    });
     rows.push(ui::labeled_row(
         palette,
         hook::id("read", "format.row"),
         "Format",
         Some("For Export Audio".to_owned()),
-        ui::menu_button(
+        ui::pop_up(
             palette,
-            hook::id("read", "format"),
-            "Format",
-            view.format().to_uppercase(),
-            true,
-            &view.focus.format,
+            ui::PopUp {
+                id: hook::id("read", "format"),
+                label: "Format",
+                current: view.format().to_uppercase(),
+                enabled: true,
+                focus: &view.focus.format,
+                menu: format_menu,
+            },
             toggle(Menu::Format),
         ),
     ));
-    if view.menu() == Some(Menu::Format) {
-        let choices = vec![(
-            "wav".to_owned(),
-            "WAV".to_owned(),
-            Some("16-bit, 24 kHz, mono".to_owned()),
-            true,
-        )];
-        rows.push(options_list(palette, read, Menu::Format, choices, options));
-    }
     rows
 }
 
 /// One choice of an open menu: its value, label, note, and whether it is the current one.
 type Choice = (String, String, Option<String>, bool);
 
-fn options_list(
-    palette: Palette,
+fn options_menu(
     read: &Entity<ReadAloud>,
     menu: Menu,
     choices: Vec<Choice>,
     focus: &[FocusHandle],
-) -> AnyElement {
+) -> ui::Menu {
     let name = match menu {
         Menu::Engine => "engine",
         Menu::Language => "language",
         Menu::Voice => "voice",
         Menu::Format => "format",
     };
-    let rows = choices
-        .into_iter()
-        .zip(focus)
-        .enumerate()
-        .map(|(index, ((value, label, detail, chosen), focus))| {
+    let close = read.clone();
+    let list = ui::Menu::new(hook::id("read", &format!("{name}.list")), move |cx| {
+        close.update(cx, |read, cx| read.close_menu(cx))
+    });
+    choices.into_iter().zip(focus).enumerate().fold(
+        list,
+        |list, (index, ((value, label, detail, chosen), focus))| {
             let read = read.clone();
-            ui::option_row(
-                palette,
+            list.option(
                 hook::indexed("read", &format!("{name}.option"), index),
                 label,
                 detail,
@@ -337,12 +342,8 @@ fn options_list(
                     });
                 },
             )
-        })
-        .collect();
-    let close = read.clone();
-    ui::option_list(hook::id("read", &format!("{name}.list")), rows, move |cx| {
-        close.update(cx, |read, cx| read.close_menu(cx))
-    })
+        },
+    )
 }
 
 /// What is happening, the progress of long text, then Export Audio and Play or Stop.

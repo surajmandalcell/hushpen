@@ -369,9 +369,8 @@ pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
         .children(segments)
 }
 
-/// A pop-up button: the current value and a chevron. It opens the list of options the view
-/// draws under it.
-pub fn menu_button<F: Fn(&mut Window, &mut App) + 'static>(
+/// A pop-up button: the current value and a chevron. [`super::pop_up`] adds its menu.
+pub(super) fn menu_button<F: Fn(&mut Window, &mut App) + 'static>(
     palette: Palette,
     id: SharedString,
     label: &str,
@@ -390,7 +389,7 @@ pub fn menu_button<F: Fn(&mut Window, &mut App) + 'static>(
         .flex()
         .items_center()
         .gap(px(space::XS))
-        .max_w(px(size::MENU_MAX_WIDTH))
+        .max_w(px(size::POP_UP_MAX_WIDTH))
         .h(px(size::BUTTON_HEIGHT))
         .px(px(size::BUTTON_PADDING - size::FOCUS_RING))
         .rounded(px(radius::BUTTON))

@@ -21,14 +21,7 @@ pub fn preset(page: &Page, cx: &mut App) -> Vec<AnyElement> {
         return Vec::new();
     };
     let preset = form.read(cx).preset();
-    let mut rows = vec![page.menu(
-        "cleanup.endpointPreset",
-        "Endpoint",
-        "Ollama and LM Studio fill in the address for you.",
-        preset.label().to_owned(),
-        slots::ENDPOINT_PRESET,
-    )];
-    if page.picker_open("cleanup.endpointPreset", cx) {
+    let menu = page.picker_open("cleanup.endpointPreset", cx).then(|| {
         let choices = Preset::ALL
             .into_iter()
             .map(|choice| {
@@ -39,7 +32,7 @@ pub fn preset(page: &Page, cx: &mut App) -> Vec<AnyElement> {
                 )
             })
             .collect();
-        rows.extend(page.options(
+        page.options(
             "cleanup.endpointPreset",
             choices,
             &page.options,
@@ -48,9 +41,16 @@ pub fn preset(page: &Page, cx: &mut App) -> Vec<AnyElement> {
                     me.set_endpoint_preset(choice, cx);
                 }
             },
-        ));
-    }
-    rows
+        )
+    });
+    vec![page.menu(
+        "cleanup.endpointPreset",
+        "Endpoint",
+        "Ollama and LM Studio fill in the address for you.",
+        preset.label().to_owned(),
+        slots::ENDPOINT_PRESET,
+        menu,
+    )]
 }
 
 pub fn url(page: &Page, cx: &mut App) -> Vec<AnyElement> {

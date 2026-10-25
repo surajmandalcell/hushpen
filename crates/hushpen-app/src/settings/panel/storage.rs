@@ -61,30 +61,30 @@ pub fn data_folder(page: &Page, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-pub fn retention(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+pub fn retention(page: &Page, cx: &mut App) -> AnyElement {
     let retention = page.settings.read(cx).stored_str("history.audioRetention");
     let current = RETENTION
         .iter()
         .find(|(key, _)| *key == retention)
         .map_or("30 days", |(_, label)| *label);
-    let mut rows = vec![page.menu(
+    let menu = page.picker_open("storage.retention", cx).then(|| {
+        let choices = RETENTION
+            .into_iter()
+            .map(|(value, label)| (value.to_owned(), label.to_owned(), retention == value))
+            .collect();
+        page.options(
+            "storage.retention",
+            choices,
+            &page.options,
+            Settings::set_retention,
+        )
+    });
+    page.menu(
         "storage.retention",
         "Keep dictation audio",
         "How long the audio of a finished dictation stays.",
         current.to_owned(),
         slots::RETENTION,
-    )];
-    if page.picker_open("storage.retention", cx) {
-        let choices = RETENTION
-            .into_iter()
-            .map(|(value, label)| (value.to_owned(), label.to_owned(), retention == value))
-            .collect();
-        rows.extend(page.options(
-            "storage.retention",
-            choices,
-            &page.options,
-            Settings::set_retention,
-        ));
-    }
-    rows
+        menu,
+    )
 }

@@ -150,3 +150,75 @@ fn text_and_audio_dropped_together_all_go_in_the_queue(cx: &mut TestAppContext) 
         .update(cx, |files, cx| files.drop_paths(paths, cx));
     assert_eq!(mode(cx, &fixture), Mode::Transcribe);
 }
+
+#[gpui_kit::test]
+fn a_read_aloud_menu_floats_over_the_page_and_esc_closes_it(cx: &mut TestAppContext) {
+    use crate::shell::Shell;
+    use crate::theme::space;
+    use crate::views::View;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{AnyWindowHandle, Bounds, Point, WindowBounds, WindowOptions, px, size};
+
+    fn frame(cx: &mut TestAppContext, handle: AnyWindowHandle) {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+    }
+
+    let (fixture, _) = open(cx);
+    fixture
+        .files
+        .update(cx, |files, cx| files.set_mode(Mode::ReadAloud, cx))
+        .unwrap();
+    let (handle, shell) = cx.update(|cx| {
+        gpui_kit::open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point::default(),
+                    size: size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
+                })),
+                ..Default::default()
+            },
+            cx,
+            |window, cx| cx.new(|cx| Shell::new(window, cx)),
+        )
+        .expect("open test window")
+    });
+    shell.update(cx, |shell, cx| {
+        shell.attach_files(fixture.files.clone(), cx);
+        shell.select(View::Files, cx);
+    });
+    frame(cx, handle);
+    cx.update_window(handle, |_, window, cx| window.click("read.format", cx))
+        .unwrap();
+    frame(cx, handle);
+    let (row, option) = cx
+        .update_window(handle, |_, window, _| {
+            (
+                window.find("read.format.row").bounds(),
+                window.find("read.format.option.0"),
+            )
+        })
+        .unwrap();
+    assert!(option.visible());
+    assert_eq!(option.selected(), Some(true));
+    assert!(
+        option.bounds().bottom() > row.top()
+            && option.bounds().bottom() <= px(space::WINDOW_HEIGHT - space::SM),
+        "the last row has no room under it, so the menu moves up into the window"
+    );
+
+    cx.update_window(handle, |_, window, cx| window.press("escape", cx))
+        .unwrap();
+    frame(cx, handle);
+    let (open, focused) = cx
+        .update_window(handle, |_, window, _| {
+            (
+                window.try_find("read.format.list").is_some(),
+                window.find("read.format").focused(),
+            )
+        })
+        .unwrap();
+    assert!(!open);
+    assert_eq!(focused, Some(true));
+}

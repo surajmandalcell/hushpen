@@ -20,8 +20,8 @@ use crate::ui::{self, Kind, Notice};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    AnyElement, App, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, SharedString, Styled, Window, div, px,
+    AnyElement, App, Context, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+    SharedString, Styled, div, px,
 };
 use std::rc::Rc;
 
@@ -68,7 +68,7 @@ impl Page {
         )
     }
 
-    /// A row with a pop-up button that opens the picker `name`.
+    /// A row with a pop-up button for the picker `name`, with `menu` while it is open.
     fn menu(
         &self,
         name: &'static str,
@@ -76,15 +76,20 @@ impl Page {
         detail: &str,
         current: String,
         slot: usize,
+        menu: Option<ui::Menu>,
     ) -> AnyElement {
         let settings = self.settings.clone();
         ui::menu_row(
             self.palette,
-            settings_id(name),
-            title,
             detail,
-            current,
-            &self.focus[slot],
+            ui::PopUp {
+                id: settings_id(name),
+                label: title,
+                current,
+                enabled: true,
+                focus: &self.focus[slot],
+                menu,
+            },
             move |cx| settings.update(cx, |me, cx| me.toggle_picker(name, cx)),
         )
     }
@@ -93,26 +98,28 @@ impl Page {
         self.settings.read(cx).picker == Some(name)
     }
 
-    /// The options of the open picker `name`, each under `settings.<name>.option.<value>`.
-    /// `choose` gets the value of the one picked.
+    /// The menu of the picker `name`: the list `settings.<name>.list` and each option under
+    /// `settings.<name>.option.<value>`. `choose` gets the value of the one picked.
     fn options(
         &self,
         name: &str,
         choices: Vec<Choice>,
         focus: &[FocusHandle],
         choose: impl Fn(&mut Settings, &str, &mut Context<Settings>) + 'static,
-    ) -> Vec<AnyElement> {
+    ) -> ui::Menu {
         let choose = Rc::new(choose);
+        let close = self.settings.clone();
+        let menu = ui::Menu::new(settings_id(&format!("{name}.list")), move |cx| {
+            close.update(cx, |me, cx| me.close_picker(cx))
+        });
         choices
             .into_iter()
             .zip(focus)
-            .map(|((value, label, selected), focus)| {
+            .fold(menu, |menu, ((value, label, selected), focus)| {
                 let settings = self.settings.clone();
                 let choose = Rc::clone(&choose);
-                let id = settings_id(&format!("{name}.option.{value}"));
-                ui::option_row(
-                    self.palette,
-                    id,
+                menu.option(
+                    settings_id(&format!("{name}.option.{value}")),
                     label,
                     None,
                     selected,
@@ -120,7 +127,6 @@ impl Page {
                     move |_, cx| settings.update(cx, |me, cx| choose(me, &value, cx)),
                 )
             })
-            .collect()
     }
 }
 
@@ -140,14 +146,14 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::PasteLast => shortcuts::slot(page, hushpen_core::shortcut::Slot::PasteLast, cx),
         RowId::CommandMode => shortcuts::slot(page, hushpen_core::shortcut::Slot::Command, cx),
         RowId::ResetShortcuts => shortcuts::reset(page, cx),
-        RowId::Microphone => audio::microphone(page, cx),
+        RowId::Microphone => vec![audio::microphone(page, cx)],
         RowId::Sounds => vec![audio::sounds(page, cx)],
         RowId::CueVolume => vec![audio::cue_volume(page, cx)],
-        RowId::MaxLength => audio::max_length(page, cx),
+        RowId::MaxLength => vec![audio::max_length(page, cx)],
         RowId::Rules => vec![cleanup::rules(page, cx)],
         RowId::SpokenPunctuation => vec![cleanup::spoken_punctuation(page, cx)],
         RowId::AiCleanup => vec![cleanup::ai_cleanup(page, cx)],
-        RowId::AiSource => cleanup::ai_source(page, cx),
+        RowId::AiSource => vec![cleanup::ai_source(page, cx)],
         RowId::AiModel => cleanup::ai_model(page, cx),
         RowId::EndpointPreset => endpoint::preset(page, cx),
         RowId::EndpointUrl => endpoint::url(page, cx),
@@ -155,12 +161,12 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::EndpointKey => endpoint::key(page, cx),
         RowId::EndpointTest => endpoint::test(page, cx),
         RowId::Gpu => vec![engine::gpu(page, cx)],
-        RowId::Threads => engine::threads(page, cx),
+        RowId::Threads => vec![engine::threads(page, cx)],
         RowId::ShowFlowBar => vec![flow_bar::show(page, cx)],
         RowId::FlowBarIdle => vec![flow_bar::idle(page, cx)],
-        RowId::FlowBarPosition => flow_bar::position(page, cx),
+        RowId::FlowBarPosition => vec![flow_bar::position(page, cx)],
         RowId::DataFolder => vec![storage::data_folder(page, cx)],
-        RowId::Retention => storage::retention(page, cx),
+        RowId::Retention => vec![storage::retention(page, cx)],
         RowId::UpdateCheck => vec![updates::check(page, cx)],
         RowId::AutoInstall => vec![updates::auto_install(page, cx)],
         RowId::UpdateStatus => updates::status(page, cx),
@@ -206,26 +212,12 @@ pub fn render(
             sections.push(section_of(palette, section, rows));
         }
     }
-    // Esc with an open picker closes it and focuses the trigger again.
-    let on_escape = {
-        let settings = settings.clone();
-        move |event: &KeyDownEvent, window: &mut Window, cx: &mut App| {
-            if event.keystroke.key.as_str() == "escape" {
-                let focus = settings.update(cx, |me, cx| me.close_picker(cx));
-                if let Some(focus) = focus {
-                    window.focus(&focus, cx);
-                    cx.stop_propagation();
-                }
-            }
-        }
-    };
     let mut list = div()
         .id(settings_id("list"))
         .flex()
         .flex_col()
         .gap(px(space::XXL))
-        .w_full()
-        .on_key_down(on_escape);
+        .w_full();
     if let Some(message) = notice {
         list = list.child(ui::group(
             settings_id("notice.group"),
