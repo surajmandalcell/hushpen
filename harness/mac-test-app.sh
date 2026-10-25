@@ -9,9 +9,12 @@ set -eu
 ROOT=${HUSHPEN_ROOT:-/Volumes/External1TB/data/_custom/droid/hushpen}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 APP=$ROOT/mac-check/Hushpen.app
-IDENTITY=${HUSHPEN_SIGN_IDENTITY:-Apple Development}
+# A keychain with more than one Apple Development certificate makes the bare name ambiguous, so
+# the default is the SHA-1 of the first one.
+IDENTITY=${HUSHPEN_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2; exit}')}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/macos-arm64}
 die() { echo "mac-test-app: $*" >&2; exit 1; }
+[ -n "$IDENTITY" ] || die "no Apple Development identity in the keychain"
 
 cd "$REPO"
 cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-llm -p hushpen-tts

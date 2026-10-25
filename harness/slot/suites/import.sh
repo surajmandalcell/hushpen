@@ -477,6 +477,7 @@ failures=""
 set_setting() { hook_action set-setting "{\"key\":\"$1\",\"value\":$2}" >/dev/null; }
 bar_visible() { [ "$($HC state | jq -r '.overlay.visible')" = "$1" ]; }
 threads() { ls "/proc/$(ui_pid)/task" | wc -l; }
+names() { cat /proc/"$(ui_pid)"/task/*/comm 2>/dev/null | sort; }
 fds() { ls "/proc/$(ui_pid)/fd" | wc -l; }
 set_setting overlay.idleVisible true
 wait_until 5 bar_visible true || failures+="the bar is not visible; "
@@ -489,6 +490,7 @@ done
 sleep 1
 pins() { cat /data/logs/*.log /logs/app.log 2>/dev/null | grep -c 'flow bar pinned on top'; }
 base_threads=$(threads)
+base_names=$(names)
 base_fds=$(fds)
 base_pins=$(pins)
 for _ in $(seq 20); do
@@ -497,12 +499,17 @@ for _ in $(seq 20); do
   set_setting overlay.idleVisible true
   wait_until 5 bar_visible true || failures+="the bar did not show; "
 done
+# A settings write can leave a short-lived thread running for a moment, so a leak is a count
+# that stays up, not one sample.
+settled() { [ "$(threads)" -le $((base_threads + 1)) ]; }
 sleep 2
+wait_until 10 settled
 end_threads=$(threads)
 end_fds=$(fds)
 new_pins=$(($(pins) - base_pins))
 [ "$new_pins" -ge 20 ] || failures+="the watcher started $new_pins times in 20 cycles, so the count proves nothing; "
-[ "$end_threads" -le $((base_threads + 1)) ] || failures+="threads grew from $base_threads to $end_threads; "
+[ "$end_threads" -le $((base_threads + 1)) ] ||
+  failures+="threads grew from $base_threads to $end_threads (new: $(comm -13 <(echo "$base_names") <(names) | tr '\n' ' ')); "
 [ "$end_fds" -le $((base_fds + 3)) ] || failures+="open files grew from $base_fds to $end_fds; "
 # The thread name is cut to 15 characters in /proc.
 watchers=$(grep -l '^x11-flow-bar' /proc/"$(ui_pid)"/task/*/comm 2>/dev/null | wc -l)
