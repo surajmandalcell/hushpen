@@ -279,8 +279,10 @@ fn a_slow_login_item_write_never_holds_the_ui_thread(cx: &mut TestAppContext) {
         .update(cx, |me, cx| me.toggle_launch_at_login(cx));
     let took = started.elapsed();
 
+    // Half the write delay: a loaded machine can spend 100 ms on the toggle itself, and a click
+    // that waited for the write would take the whole 800 ms.
     assert!(
-        took < std::time::Duration::from_millis(100),
+        took < std::time::Duration::from_millis(400),
         "the click waited {took:?} for the login item"
     );
     assert!(
