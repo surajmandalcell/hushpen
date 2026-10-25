@@ -31,3 +31,22 @@ Goal: make Hushpen look and behave like a finished, native app on macOS and Linu
 
 - Same safety rules as mission 1 (`mission1.todo.md`, Hard rules): Codex-only Mac control, no grant-dropping checks, game rule, data on the external drive.
 - Release builds stay Developer ID signed and notarized (`mission1.todo.md`).
+
+## State
+
+1. Chrome: done.
+2. Separators: done.
+3. Home: done.
+4. Files: done. A real XDND drop (import suite, `slot/xdnd-drag.sh`) queues a WAV and opens a `.txt` in Read aloud with its text. A Finder drag on macOS is not driven, because it would move the owner's pointer; the drop path is the same GPUI event.
+5. Text to speech: done, within D-25 (no speech-dispatcher: it cannot hand back audio) and D-28 (Kokoro on the CPU only: the CoreML provider aborts on this model).
+6. Models: done.
+7. Settings: done. Cmd+F on macOS is proven by component tests only, because no synthetic keys are sent on the Mac.
+8. About: done.
+9. Linux look: done with picom (see-through window, rounded corners, solid without a compositor). KWin blur is set but not seen live: no KDE session is available.
+10. Code: done.
+11. Tests: done.
+12. Docs: done.
+
+Pop-up menus float above the page on every view (D-33), checked on the Mac through Codex in Dark and Light.
+
+Release: v2.1.0 is open until the owner raises the CI run budget (D-03: 35 of 35 used). `/Applications/Hushpen.app` runs a local Developer ID build of HEAD.
