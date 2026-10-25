@@ -45,7 +45,7 @@
             </div>
             <div class="terminal-row">
               <span class="terminal-key">local models</span>
-              <span>Whisper models from tiny to large-v3, plus cleanup and voice models. Each one shows its speed, accuracy, and source, and downloads only when you ask, with a checked hash.</span>
+              <span>Whisper models from Tiny to Large v3, plus text cleanup and voice models. Each one shows what it is for, its speed, accuracy, and source, and downloads only when you ask, with a checked hash.</span>
             </div>
             <div class="terminal-row">
               <span class="terminal-key">paste</span>
@@ -143,9 +143,23 @@
 
           <figure class="screenshot-slide" aria-hidden="true">
             <div class="screenshot-frame">
-              <img src="./screenshots/hushpen-models.png" alt="Hushpen Models view listing Whisper models from Tiny to Large v3 Turbo" />
+              <img src="./screenshots/hushpen-files.png" alt="Hushpen Files view in Transcribe mode with the drop zone and the transcription options" />
             </div>
-            <figcaption><strong>Models</strong><span>Whisper models, downloaded only when you ask</span></figcaption>
+            <figcaption><strong>Files</strong><span>drop audio files to transcribe or translate them in a queue</span></figcaption>
+          </figure>
+
+          <figure class="screenshot-slide" aria-hidden="true">
+            <div class="screenshot-frame">
+              <img src="./screenshots/hushpen-read-aloud.png" alt="Hushpen Files view in Read aloud mode with the text area and the voice settings" />
+            </div>
+            <figcaption><strong>Read aloud</strong><span>text or a text file, spoken by the system voice or Kokoro</span></figcaption>
+          </figure>
+
+          <figure class="screenshot-slide" aria-hidden="true">
+            <div class="screenshot-frame">
+              <img src="./screenshots/hushpen-models.png" alt="Hushpen Models view at the speech recognition section, with the size, status, and details button of each Whisper model" />
+            </div>
+            <figcaption><strong>Models</strong><span>speech, text cleanup, and voice models, downloaded only when you ask</span></figcaption>
           </figure>
 
           <figure class="screenshot-slide" aria-hidden="true">
@@ -159,6 +173,8 @@
         <div class="carousel-dots" aria-label="Choose screenshot">
           <button type="button" aria-label="Show Home screenshot" aria-current="true" data-carousel-dot></button>
           <button type="button" aria-label="Show History screenshot" data-carousel-dot></button>
+          <button type="button" aria-label="Show Files screenshot" data-carousel-dot></button>
+          <button type="button" aria-label="Show Read aloud screenshot" data-carousel-dot></button>
           <button type="button" aria-label="Show Models screenshot" data-carousel-dot></button>
           <button type="button" aria-label="Show Cleanup screenshot" data-carousel-dot></button>
         </div>
@@ -172,7 +188,7 @@
             <li><strong>Command Mode</strong>: hold a key, speak an instruction, and the model edits the selected text</li>
             <li><strong>Dictionary</strong>: your own words and replacements</li>
             <li><strong>History</strong>: search, re-paste, reprocess, delete with undo, and export to TXT, SRT, VTT, and JSON</li>
-            <li><strong>Files</strong>: drop audio files on the window to transcribe or translate them in a queue, with the time left, Copy, Export, and Retry</li>
+            <li><strong>Files</strong>: drop audio files on the window to transcribe or translate them in a queue, with the time left, Copy, Export, Show in History, and Retry</li>
             <li><strong>Read aloud</strong>: text or a .txt or .md file, spoken by the system voice or Kokoro, with Export Audio to WAV</li>
             <li><strong>AI cleanup</strong>: a local model, or an OpenAI-compatible endpoint such as Ollama or LM Studio</li>
           </ul>
