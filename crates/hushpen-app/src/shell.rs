@@ -193,7 +193,9 @@ impl Shell {
         };
         self.select(View::Files, cx);
         let paths = paths.paths().to_vec();
-        files.update(cx, |files, cx| files.drop_paths(paths, cx));
+        // The drop runs inside the window's own update, so Read aloud could not reach the
+        // window to fill its text area until that ends.
+        cx.defer(move |cx| files.update(cx, |files, cx| files.drop_paths(paths, cx)));
     }
 
     /// Keeps the flow bar alive for the app's lifetime. The bar paints in its own window, so
