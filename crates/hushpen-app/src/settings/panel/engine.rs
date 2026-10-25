@@ -20,7 +20,7 @@ pub fn gpu(page: &Page, cx: &mut App) -> AnyElement {
     )
 }
 
-pub fn threads(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+pub fn threads(page: &Page, cx: &mut App) -> AnyElement {
     let cpus = std::thread::available_parallelism().map_or(2, usize::from);
     // `auto` is text, so only a stored count reads as a number.
     let stored = page
@@ -43,14 +43,7 @@ pub fn threads(page: &Page, cx: &mut App) -> Vec<AnyElement> {
     counts.dedup();
     let automatic = format!("Automatic ({})", hushpen_core::threads::auto_threads(cpus));
     let current = stored.map_or_else(|| automatic.clone(), threads_label);
-    let mut rows = vec![page.menu(
-        "engine.threads",
-        "Threads",
-        "The CPU threads the speech engine uses.",
-        current,
-        slots::THREADS,
-    )];
-    if page.picker_open("engine.threads", cx) {
+    let menu = page.picker_open("engine.threads", cx).then(|| {
         let choices = std::iter::once(("auto".to_owned(), automatic, stored.is_none()))
             .chain(counts.into_iter().map(|count| {
                 (
@@ -60,13 +53,18 @@ pub fn threads(page: &Page, cx: &mut App) -> Vec<AnyElement> {
                 )
             }))
             .collect();
-        rows.extend(
-            page.options("engine.threads", choices, &page.options, |me, value, cx| {
-                me.set_threads(value.parse().ok(), cx)
-            }),
-        );
-    }
-    rows
+        page.options("engine.threads", choices, &page.options, |me, value, cx| {
+            me.set_threads(value.parse().ok(), cx)
+        })
+    });
+    page.menu(
+        "engine.threads",
+        "Threads",
+        "The CPU threads the speech engine uses.",
+        current,
+        slots::THREADS,
+        menu,
+    )
 }
 
 fn threads_label(count: i64) -> String {

@@ -45,16 +45,9 @@ pub fn ai_cleanup(page: &Page, cx: &mut App) -> AnyElement {
     )
 }
 
-pub fn ai_source(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+pub fn ai_source(page: &Page, cx: &mut App) -> AnyElement {
     let provider = page.settings.read(cx).ai_provider();
-    let mut rows = vec![page.menu(
-        "cleanup.provider",
-        "AI source",
-        "Where the model runs.",
-        provider_label(provider).to_owned(),
-        slots::AI_PROVIDER,
-    )];
-    if page.picker_open("cleanup.provider", cx) {
+    let menu = page.picker_open("cleanup.provider", cx).then(|| {
         let choices = ["local", "endpoint"]
             .into_iter()
             .map(|value| {
@@ -65,14 +58,21 @@ pub fn ai_source(page: &Page, cx: &mut App) -> Vec<AnyElement> {
                 )
             })
             .collect();
-        rows.extend(page.options(
+        page.options(
             "cleanup.provider",
             choices,
             &page.options,
             Settings::set_ai_provider,
-        ));
-    }
-    rows
+        )
+    });
+    page.menu(
+        "cleanup.provider",
+        "AI source",
+        "Where the model runs.",
+        provider_label(provider).to_owned(),
+        slots::AI_PROVIDER,
+        menu,
+    )
 }
 
 fn provider_label(provider: &str) -> &'static str {
@@ -98,14 +98,7 @@ pub fn ai_model(page: &Page, cx: &mut App) -> Vec<AnyElement> {
         return Vec::new();
     };
     let size = crate::models::panel::format_size(model.bytes());
-    let mut rows = vec![page.menu(
-        "cleanup.aiModel",
-        "AI model",
-        &format!("{size} download. Chosen for this computer."),
-        model.name.clone(),
-        slots::AI_MODEL,
-    )];
-    if page.picker_open("cleanup.aiModel", cx) {
+    let menu = page.picker_open("cleanup.aiModel", cx).then(|| {
         let choices = offered
             .into_iter()
             .map(|entry| {
@@ -113,13 +106,21 @@ pub fn ai_model(page: &Page, cx: &mut App) -> Vec<AnyElement> {
                 (entry.id, entry.name, selected)
             })
             .collect();
-        rows.extend(page.options(
+        page.options(
             "cleanup.aiModel",
             choices,
             &page.options,
             Settings::set_ai_model,
-        ));
-    }
+        )
+    });
+    let mut rows = vec![page.menu(
+        "cleanup.aiModel",
+        "AI model",
+        &format!("{size} download. Chosen for this computer."),
+        model.name.clone(),
+        slots::AI_MODEL,
+        menu,
+    )];
     let can_download = on && matches!(status, Some(AiStatus::NotDownloaded | AiStatus::Failed));
     let download = can_download.then(|| {
         let settings = page.settings.clone();

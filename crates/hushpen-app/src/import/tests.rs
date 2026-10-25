@@ -888,6 +888,27 @@ mod view {
     }
 
     #[gpui_kit::test]
+    fn esc_closes_the_export_menu_and_its_button_keeps_the_focus(cx: &mut TestAppContext) {
+        let fixture = open(cx);
+        let window = shown(cx, &fixture);
+        say(&fixture, done("words", "en"));
+        add(cx, &fixture, vec![file(&fixture, "talk.mp3")]);
+        run_one(cx, &fixture);
+        click(cx, window, "import.export.0");
+        assert!(present(cx, window, "import.export.list"));
+        cx.update_window(window, |_, window, cx| window.press("escape", cx))
+            .unwrap();
+        frame(cx, window);
+        assert!(!present(cx, window, "import.export.list"));
+        let focused = cx
+            .update_window(window, |_, window, _| {
+                window.find("import.export.0").focused()
+            })
+            .unwrap();
+        assert_eq!(focused, Some(true));
+    }
+
+    #[gpui_kit::test]
     fn a_failed_line_offers_retry(cx: &mut TestAppContext) {
         let fixture = open(cx);
         let window = shown(cx, &fixture);

@@ -1,7 +1,8 @@
 //! The rows of a group. A row is one line: an optional icon, the title with at most one short
 //! line under it, then a value or controls on the right.
 
-use super::controls::{field, menu_button, slider, switch};
+use super::controls::{field, slider, switch};
+use super::menu::{PopUp, pop_up};
 use super::{ROW_GAP, icon, secondary, text_column, title};
 use crate::hook;
 use crate::theme::{BODY, Palette, StyledType, radius, size, space};
@@ -10,8 +11,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window,
-    div, px, svg,
+    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 /// One line of a group: icon, text, then a value or controls on the right.
@@ -131,25 +131,21 @@ pub fn slider_row(
     )
 }
 
-/// A row with a pop-up button on the right that shows the current value. The button takes `id`,
-/// the row `<id>.row`.
+/// A row with a pop-up button on the right, titled with the label of the button. The row takes
+/// `<id>.row`.
 pub fn menu_row(
     palette: Palette,
-    id: SharedString,
-    title: &'static str,
     detail: &str,
-    current: String,
-    focus: &FocusHandle,
+    button: PopUp,
     toggle: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
+    let (id, title) = (format!("{}.row", button.id), button.label.to_owned());
     labeled_row(
         palette,
-        format!("{id}.row").into(),
+        id.into(),
         title,
         Some(detail.to_owned()),
-        menu_button(palette, id, title, current, true, focus, move |_, cx| {
-            toggle(cx)
-        }),
+        pop_up(palette, button, move |_, cx| toggle(cx)),
     )
 }
 
@@ -309,82 +305,6 @@ pub fn meter_row(palette: Palette, view: &str, levels: &[f32], listening: bool) 
         .px(px(size::ROW_PADDING))
         .py(px(space::MD))
         .children(bars)
-        .into_any_element()
-}
-
-/// One option of a list to choose from, drawn as a row of the group. The chosen one has a check
-/// at the start. `detail` is a short secondary note after the label.
-pub fn option_row<F: Fn(&mut Window, &mut App) + 'static>(
-    palette: Palette,
-    id: SharedString,
-    label: String,
-    detail: Option<String>,
-    selected: bool,
-    focus: &FocusHandle,
-    choose: F,
-) -> AnyElement {
-    let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| choose(window, cx);
-    let element = row(palette)
-        .id(id)
-        .test_support()
-        .track_focus(focus)
-        .role(Role::ListBoxOption)
-        .aria_label(label.clone())
-        .aria_selected(selected)
-        .px(px(size::ROW_PADDING - size::FOCUS_RING))
-        .border_2()
-        .border_color(gpui_kit::transparent_black())
-        .cursor_pointer()
-        .hover(move |style| style.bg(palette.hover()))
-        .focus_visible(move |style| style.border_color(palette.accent))
-        .on_click(on_click)
-        .child(
-            svg()
-                .path(IconName::Check.path())
-                .size(px(size::NAV_ICON))
-                .flex_none()
-                .text_color(if selected {
-                    palette.label
-                } else {
-                    gpui_kit::transparent_black().into()
-                }),
-        );
-    match detail {
-        Some(detail) => element
-            .child(title(palette).flex_none().max_w_full().child(label))
-            .child(secondary(palette).flex_1().min_w_0().child(detail)),
-        None => element.child(title(palette).flex_1().min_w_0().child(label)),
-    }
-    .into_any_element()
-}
-
-/// The open list of a pop-up button: its option rows under the row that opened it, scrolling
-/// past `MENU_LIST_MAX_HEIGHT`. Esc closes it.
-pub fn option_list(
-    id: SharedString,
-    rows: Vec<AnyElement>,
-    close: impl Fn(&mut App) + 'static,
-) -> AnyElement {
-    let on_key = move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-        if event.keystroke.key.as_str() == "escape" {
-            close(cx);
-            cx.stop_propagation();
-        }
-    };
-    div()
-        .id(id)
-        .test_support()
-        .role(Role::ListBox)
-        .flex()
-        .flex_col()
-        .w_full()
-        .flex_none()
-        .max_h(px(size::MENU_LIST_MAX_HEIGHT))
-        .overflow_y_scroll()
-        // The page behind scrolls on the same wheel event unless the list keeps it.
-        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-        .on_key_down(on_key)
-        .children(rows)
         .into_any_element()
 }
 

@@ -112,10 +112,9 @@ pub fn render(
     if view.show_transcript {
         rows.push(transcript_row(palette, &view).into_any_element());
     }
-    rows.push(language_row(palette, dictation, &view, &language_focus).into_any_element());
-    if view.picker_open {
-        rows.push(option_list(palette, dictation, &view, &option_focus).into_any_element());
-    }
+    rows.push(
+        language_row(palette, dictation, &view, &language_focus, &option_focus).into_any_element(),
+    );
     ui::group(hook::id("home", "dictation"), palette, rows)
 }
 
@@ -285,6 +284,7 @@ fn language_row(
     dictation: &Entity<Dictation>,
     view: &Snapshot,
     focus: &FocusHandle,
+    option_focus: &[FocusHandle],
 ) -> impl IntoElement + use<> {
     let toggle = {
         let dictation = dictation.clone();
@@ -305,46 +305,43 @@ fn language_row(
         ui::title(palette).child("Language"),
         Some(detail.into_any_element()),
     )
-    .child(ui::menu_button(
+    .child(ui::pop_up(
         palette,
-        hook::id("home", "language"),
-        "Language",
-        language::label(&view.language).to_owned(),
-        !view.picker_off,
-        focus,
+        ui::PopUp {
+            id: hook::id("home", "language"),
+            label: "Language",
+            current: language::label(&view.language).to_owned(),
+            enabled: !view.picker_off,
+            focus,
+            menu: view
+                .picker_open
+                .then(|| menu(dictation, view, option_focus)),
+        },
         toggle,
     ))
 }
 
-fn option_list(
-    palette: Palette,
-    dictation: &Entity<Dictation>,
-    view: &Snapshot,
-    focus: &[FocusHandle],
-) -> impl IntoElement + use<> {
-    let rows = view.codes.iter().zip(focus).map(|(&code, focus)| {
-        let choose = {
-            let dictation = dictation.clone();
-            move |_: &mut Window, cx: &mut App| {
-                dictation.update(cx, |me, cx| {
-                    let _ = me.set_language(code, cx);
-                });
-            }
-        };
-        ui::option_row(
-            palette,
-            hook::id("home", &format!("language.option.{code}")),
-            language::label(code).to_owned(),
-            None,
-            code == view.language,
-            focus,
-            choose,
-        )
-    });
+fn menu(dictation: &Entity<Dictation>, view: &Snapshot, focus: &[FocusHandle]) -> ui::Menu {
     let close = dictation.clone();
-    ui::option_list(
-        hook::id("home", "language.list"),
-        rows.collect(),
-        move |cx| close.update(cx, |me, cx| me.close_picker(cx)),
-    )
+    let menu = ui::Menu::new(hook::id("home", "language.list"), move |cx| {
+        close.update(cx, |me, cx| me.close_picker(cx))
+    });
+    view.codes
+        .iter()
+        .zip(focus)
+        .fold(menu, |menu, (&code, focus)| {
+            let dictation = dictation.clone();
+            menu.option(
+                hook::id("home", &format!("language.option.{code}")),
+                language::label(code),
+                None,
+                code == view.language,
+                focus,
+                move |_, cx| {
+                    dictation.update(cx, |me, cx| {
+                        let _ = me.set_language(code, cx);
+                    });
+                },
+            )
+        })
 }

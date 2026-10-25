@@ -103,6 +103,9 @@ Hushpen
 - **appearance**: the system Light or Dark setting. Views follow it live.
 - **settings registry**: the owner of `config/settings.json`. It validates
   values, writes atomically, and keeps unknown keys.
+- **pop-up button**: a button that shows the current value of a choice, such
+  as the microphone, and opens its **menu**: the options, floating above the
+  page, with a check before the chosen one (D-33).
 - **settings row**: one line of the Settings list, such as Microphone. The
   row list in `settings/search.rs` gives each its section, key, label, and
   the aliases the search matches.

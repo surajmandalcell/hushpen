@@ -214,6 +214,19 @@ new decision, add it here in the same change (D-21).
   Right Alt+Space` (`Right ⌥ ×2 or Right ⌥+Space` on macOS). Home picks the
   microphone with one pop-up row like Language, shared with Settings
   through `Mic::choices`, and shows the level meter only while a test runs.
+- **D-33 Pop-up menus.** Every choice of fixed values is a pop-up button
+  (`ui::pop_up`). Its menu (`ui::Menu`) is drawn deferred by the kit
+  `Popup`, under the right end of the button, so the `overflow_hidden` of a
+  group never cuts it, and the kit moves it inside the window. The list shows
+  at most `MENU_OPTIONS_SHOWN` (8) whole 24px options, scrolls past them, and
+  opens with the chosen one in view. The shared builder owns the keys and the
+  closing: Up and Down move the focus and scroll with it, Enter picks, Esc
+  closes, a press outside closes and goes no further, and the menu closes when
+  the focus goes anywhere else (Tab runs as an action before any key
+  listener). Each way gives the focus back to the button. A view keeps only
+  the open state and the close callback. The menu fill and its shadow are the
+  `menu` and `shadow` tokens; the kit popover color, which tooltips use, is
+  the menu color.
 
 ## History notes
 

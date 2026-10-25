@@ -325,3 +325,27 @@ fn the_length_picker_offers_the_range_of_the_store(cx: &mut TestAppContext) {
         Some("Maximum length: 30 minutes")
     );
 }
+
+#[gpui_kit::test]
+fn esc_closes_a_picker_and_its_button_keeps_the_focus(cx: &mut TestAppContext) {
+    let shown = shown(cx);
+    search(cx, &shown, "maximum");
+    cx.update_window(shown.handle, |_, window, cx| {
+        window.click("settings.audio.maxMinutes", cx)
+    })
+    .unwrap();
+    frame(cx, &shown);
+    assert!(has(cx, &shown, "settings.audio.maxMinutes.list"));
+    press(cx, &shown, "escape");
+    assert!(!has(cx, &shown, "settings.audio.maxMinutes.list"));
+    let focused = cx
+        .update_window(shown.handle, |_, window, _| {
+            window.find("settings.audio.maxMinutes").focused()
+        })
+        .unwrap();
+    assert_eq!(focused, Some(true));
+    assert!(
+        !has(cx, &shown, "settings.audio.cueVolume"),
+        "the Esc that closes the menu leaves the search as it was"
+    );
+}

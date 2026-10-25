@@ -40,6 +40,8 @@ pub mod dark {
         ERROR = 0xFF453AFF, "dark-error";
         SCRIM = 0x00000066, "dark-scrim";
         SEGMENT = 0xFFFFFF38, "dark-segment";
+        MENU = 0x2B2B2DFF, "dark-menu";
+        SHADOW = 0x00000080, "dark-shadow";
     });
 }
 
@@ -62,6 +64,8 @@ pub mod light {
         ERROR = 0xFF3B30FF, "light-error";
         SCRIM = 0x00000033, "light-scrim";
         SEGMENT = 0xFFFFFFFF, "light-segment";
+        MENU = 0xFFFFFFFF, "light-menu";
+        SHADOW = 0x00000033, "light-shadow";
     });
 }
 
@@ -241,9 +245,17 @@ pub mod size {
     /// A slider at the end of a row.
     pub const SLIDER_WIDTH: f32 = 160.0;
     /// The widest a pop-up button grows before its text is cut.
-    pub const MENU_MAX_WIDTH: f32 = 240.0;
-    /// The tallest an open pop-up list grows before it scrolls.
-    pub const MENU_LIST_MAX_HEIGHT: f32 = 200.0;
+    pub const POP_UP_MAX_WIDTH: f32 = 240.0;
+    /// An open menu: its narrowest, its widest before its options are cut, one option, and the
+    /// space around the options.
+    pub const MENU_MIN_WIDTH: f32 = 180.0;
+    pub const MENU_MAX_WIDTH: f32 = 320.0;
+    pub const MENU_ROW_HEIGHT: f32 = 24.0;
+    pub const MENU_PADDING: f32 = 4.0;
+    /// The most options a menu shows at once; past them its list scrolls. The list is whole
+    /// options high, so none shows cut while the menu is at rest.
+    pub const MENU_OPTIONS_SHOWN: usize = 8;
+    pub const MENU_LIST_MAX_HEIGHT: f32 = MENU_OPTIONS_SHOWN as f32 * MENU_ROW_HEIGHT;
     /// The thin track of a progress bar or a seek bar.
     pub const TRACK_HEIGHT: f32 = 4.0;
     /// The bars of a microphone level meter.
@@ -432,6 +444,9 @@ pub struct Palette {
     pub scrim: Rgba,
     /// The selected segment of a segmented control.
     pub segment: Rgba,
+    /// An open menu, and the shadow under it.
+    pub menu: Rgba,
+    pub shadow: Rgba,
     pub on_accent: Rgba,
 }
 
@@ -456,6 +471,8 @@ impl Palette {
                     error: rgba($set::ERROR),
                     scrim: rgba($set::SCRIM),
                     segment: rgba($set::SEGMENT),
+                    menu: rgba($set::MENU),
+                    shadow: rgba($set::SHADOW),
                     on_accent: rgba(chrome::ON_ACCENT),
                 }
             };
@@ -583,12 +600,7 @@ fn apply(cx: &mut App) {
         theme.colors.border = palette.separator.into();
         theme.colors.input = palette.separator.into();
         theme.colors.ring = palette.accent.into();
-        theme.colors.popover = rgba(if palette.appearance.is_dark() {
-            dark::SIDEBAR
-        } else {
-            0xFFFFFFFF
-        })
-        .into();
+        theme.colors.popover = palette.menu.into();
         theme.colors.popover_foreground = palette.label.into();
         theme.colors.sidebar = palette.sidebar.into();
         theme.colors.sidebar_foreground = palette.label.into();
@@ -830,6 +842,12 @@ mod tests {
             size::TRAFFIC_LIGHT
         );
         assert_eq!(size_of("focus-ring", "size"), size::FOCUS_RING);
+        assert_eq!(size_of("menu", "padding"), size::MENU_PADDING);
+        assert_eq!(size_of("menu", "minWidth"), size::MENU_MIN_WIDTH);
+        assert_eq!(size_of("menu", "maxWidth"), size::MENU_MAX_WIDTH);
+        assert_eq!(size_of("menu", "maxHeight"), size::MENU_LIST_MAX_HEIGHT);
+        assert_eq!(size_of("menu-row", "height"), size::MENU_ROW_HEIGHT);
+        assert_eq!(component("menu", "rounded"), "{rounded.group}");
         assert_eq!(
             component("app-window", "width"),
             "{spacing.window-width}",

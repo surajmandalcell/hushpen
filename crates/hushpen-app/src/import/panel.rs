@@ -238,19 +238,19 @@ fn option_rows(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> Ve
                 .unwrap_or("The language spoken in the files")
                 .to_owned(),
         ),
-        ui::menu_button(
+        ui::pop_up(
             palette,
-            hook::id("import", "language"),
-            "Language",
-            language::label(&view.language).to_owned(),
-            view.language_off.is_none(),
-            &view.language_focus,
+            ui::PopUp {
+                id: hook::id("import", "language"),
+                label: "Language",
+                current: language::label(&view.language).to_owned(),
+                enabled: view.language_off.is_none(),
+                focus: &view.language_focus,
+                menu: (view.menu == Some(Menu::Language)).then(|| language_menu(import, view)),
+            },
             toggle_language,
         ),
     ));
-    if view.menu == Some(Menu::Language) {
-        rows.push(language_list(palette, import, view));
-    }
     let on = view.translate && view.translate_off.is_none();
     let toggle = {
         let import = import.clone();
@@ -284,18 +284,21 @@ fn option_rows(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> Ve
     rows
 }
 
-fn language_list(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> AnyElement {
+fn language_menu(import: &Entity<Import>, view: &Snapshot) -> ui::Menu {
     let mut codes = vec![language::AUTO];
     codes.extend(language::picker_order(&[]));
-    let rows = codes
+    let close = import.clone();
+    let menu = ui::Menu::new(hook::id("import", "language.list"), move |cx| {
+        close.update(cx, |import, cx| import.close_menu(cx))
+    });
+    codes
         .into_iter()
         .zip(&view.option_focus)
-        .map(|(code, focus)| {
+        .fold(menu, |menu, (code, focus)| {
             let import = import.clone();
-            ui::option_row(
-                palette,
+            menu.option(
                 hook::id("import", &format!("language.option.{code}")),
-                language::label(code).to_owned(),
+                language::label(code),
                 None,
                 code == view.language,
                 focus,
@@ -305,11 +308,6 @@ fn language_list(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> 
                 },
             )
         })
-        .collect();
-    let close = import.clone();
-    ui::option_list(hook::id("import", "language.list"), rows, move |cx| {
-        close.update(cx, |import, cx| import.close_menu(cx))
-    })
 }
 
 /// The heading with Clear Finished at its end, and the group of files.
@@ -341,12 +339,9 @@ fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl Into
         ));
     let mut rows = Vec::new();
     for (index, line) in view.lines.into_iter().enumerate() {
-        let open = view.menu == Some(Menu::Export(line.id));
-        let id = line.id;
-        rows.push(item_row(palette, import, index, line));
-        if open {
-            rows.push(format_list(palette, import, id, &view.option_focus));
-        }
+        let menu = (view.menu == Some(Menu::Export(line.id)))
+            .then(|| format_menu(import, line.id, &view.option_focus));
+        rows.push(item_row(palette, import, index, line, menu));
     }
     div()
         .flex()
@@ -415,11 +410,17 @@ fn status_of(palette: Palette, line: &Line) -> (String, gpui_kit::Rgba) {
 }
 
 /// One file: its name and second line, the progress bar while it runs, the status, and the
-/// buttons its state offers.
-fn item_row(palette: Palette, import: &Entity<Import>, index: usize, line: Line) -> AnyElement {
+/// buttons its state offers, with `menu` under Export while it is open.
+fn item_row(
+    palette: Palette,
+    import: &Entity<Import>,
+    index: usize,
+    line: Line,
+    menu: Option<ui::Menu>,
+) -> AnyElement {
     let (status, color) = status_of(palette, &line);
     let running = matches!(line.state, State::Running | State::Cancelling);
-    let buttons = buttons(palette, import, index, &line);
+    let buttons = buttons(palette, import, index, &line, menu);
     ui::row(palette)
         .id(hook::indexed("import", "row", index))
         .test_support()
@@ -458,6 +459,7 @@ fn buttons(
     import: &Entity<Import>,
     index: usize,
     line: &Line,
+    menu: Option<ui::Menu>,
 ) -> Vec<AnyElement> {
     let id = line.id;
     let button = |slot: usize, name: &str, label: &'static str, enabled: bool, run: Action| {
@@ -494,16 +496,18 @@ fn buttons(
             };
             vec![
                 button(0, "copy", "Copy", true, Import::copy),
-                ui::menu_button(
+                ui::pop_up(
                     palette,
-                    hook::indexed("import", "export", index),
-                    "Export",
-                    "Export".to_owned(),
-                    true,
-                    &line.focus[1],
+                    ui::PopUp {
+                        id: hook::indexed("import", "export", index),
+                        label: "Export",
+                        current: "Export".to_owned(),
+                        enabled: true,
+                        focus: &line.focus[1],
+                        menu,
+                    },
                     toggle,
-                )
-                .into_any_element(),
+                ),
                 button(2, "show", "Show in History", true, Import::show_in_history),
                 button(3, "remove", "Remove", true, Import::remove),
             ]
@@ -517,21 +521,19 @@ fn buttons(
 }
 
 /// The formats under a row's Export button.
-fn format_list(
-    palette: Palette,
-    import: &Entity<Import>,
-    id: u64,
-    focus: &[FocusHandle],
-) -> AnyElement {
-    let rows = Format::ALL
+fn format_menu(import: &Entity<Import>, id: u64, focus: &[FocusHandle]) -> ui::Menu {
+    let close = import.clone();
+    let menu = ui::Menu::new(hook::id("import", "export.list"), move |cx| {
+        close.update(cx, |import, cx| import.close_menu(cx))
+    });
+    Format::ALL
         .into_iter()
         .zip(focus)
-        .map(|(format, focus)| {
+        .fold(menu, |menu, (format, focus)| {
             let import = import.clone();
-            ui::option_row(
-                palette,
+            menu.option(
                 hook::id("import", &format!("export.option.{}", format.extension())),
-                format.label().to_owned(),
+                format.label(),
                 Some(format_detail(format).to_owned()),
                 false,
                 focus,
@@ -541,11 +543,6 @@ fn format_list(
                 },
             )
         })
-        .collect();
-    let close = import.clone();
-    ui::option_list(hook::id("import", "export.list"), rows, move |cx| {
-        close.update(cx, |import, cx| import.close_menu(cx))
-    })
 }
 
 fn format_detail(format: Format) -> &'static str {

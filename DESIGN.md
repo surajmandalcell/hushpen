@@ -19,6 +19,8 @@ colors:
   dark-error: "#FF453A"
   dark-scrim: "#00000066"
   dark-segment: "#FFFFFF38"
+  dark-menu: "#2B2B2D"
+  dark-shadow: "#00000080"
   light-content: "#F5F5F5"
   light-sidebar: "#E8E8EA"
   light-sidebar-blur: "#E8E8EACC"
@@ -35,6 +37,8 @@ colors:
   light-error: "#FF3B30"
   light-scrim: "#00000033"
   light-segment: "#FFFFFF"
+  light-menu: "#FFFFFF"
+  light-shadow: "#00000033"
   on-accent: "#FFFFFF"
   window-close: "#FF5F57"
   window-close-glyph: "#6E140F"
@@ -148,6 +152,18 @@ components:
   focus-ring:
     borderColor: "{colors.dark-accent}"
     size: 2px
+  menu:
+    backgroundColor: "{colors.dark-menu}"
+    borderColor: "{colors.dark-separator}"
+    rounded: "{rounded.group}"
+    padding: 4px
+    minWidth: 180px
+    maxWidth: 320px
+    maxHeight: 192px
+  menu-row:
+    typography: "{typography.body}"
+    rounded: "{rounded.button}"
+    height: 24px
   traffic-light-close:
     backgroundColor: "{colors.window-close}"
     textColor: "{colors.window-close-glyph}"
@@ -203,6 +219,8 @@ All colors are neutral grays plus one accent. Tokens come in a Dark and a Light 
 - **Status colors, on status words only:** success (`#30D158` Dark, `#34C759` Light) for ready, error (`#FF453A` Dark, `#FF3B30` Light) for a failure.
 - **Status icon, for a row that needs the user:** warning (`#FF9F0A` Dark, `#FF9500` Light) on an exclamation icon (lucide `circle-alert`, 16px) with the tooltip "Needs attention" and no word. The icon is the only place the warning color appears. Its label in the accessibility tree is "Needs attention".
 - **Scrim (black 40% Dark, black 20% Light):** dims the window behind a sheet.
+- **Menu (`#2B2B2D` Dark, white Light):** an open pop-up menu and a tooltip.
+- **Shadow (black 50% Dark, black 20% Light):** the shadow under an open menu.
 - **On accent (`#FFFFFF`):** text on the default button.
 - **Linux window buttons:** close `#FF5F57` and minimize `#FEBC2E`, with dark glyphs on hover.
 
@@ -239,7 +257,7 @@ Long local paths show as `~/...` when they are under the user home directory.
 
 ## Elevation & Depth
 
-Depth is tonal. There are no shadows on normal content. Shadows are only for dropdowns and menus.
+Depth is tonal. There are no shadows on normal content. Shadows are only for dropdowns and menus: 4px down, 12px of blur, in the shadow color.
 
 - Hairlines (one device pixel, separator color) sit only between rows inside a group, and span the full width of the group on every page.
 - A group has a 0.5px stroke in the separator color. There is no toolbar line and no other stray border.
@@ -282,6 +300,8 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 **Segmented control:** 22px high, 5px radius, on the control fill. Each segment is 120px wide; the selected one has the segment fill and the label color, the others the secondary label color. Left and Right move the choice.
 
 **Details sheet:** the details button opens a sheet for that model. It shows the name, the description, and what the model is good for; a facts group (languages, speed and accuracy as a word with "N of 5", memory, size on disk, license, status); and a files group (the source page as a link row, the folder as a `~/...` path with Show in Finder or Show in Files, and the SHA-256 with Copy). Done closes it, and so does Esc. Tab stays inside the sheet, and closing it returns focus to the details button.
+
+**Pop-up buttons and menus:** a pop-up button shows the current value and a chevron, at most 240px wide. Its menu floats above the page under the button, with the right edges lined up, so no group cuts it; near the window edge it moves inside the window. The menu has the menu color, a hairline edge, the 8px group radius, the menu shadow, and 4px around its options. It is 180px to 320px wide. Each option is 24px high, with a check before the chosen one and an optional secondary note after the label. The menu shows at most eight whole options and scrolls past them, and it opens with the chosen option in view. Up and Down move through the options and scroll with them, and Enter picks one. A choice, Esc, or a press outside the menu closes it, and the pop-up button keeps the focus. Tab closes it and moves on to the next control. A press outside only closes the menu; it does not reach what is under it.
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
 

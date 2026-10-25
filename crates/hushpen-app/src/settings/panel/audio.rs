@@ -8,22 +8,22 @@ use gpui_kit::{AnyElement, App};
 /// The lengths offered for a dictation, in minutes, inside the range the store accepts.
 const MINUTE_CHOICES: [i64; 7] = [2, 4, 6, 10, 15, 30, 60];
 
-pub fn microphone(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+pub fn microphone(page: &Page, cx: &mut App) -> AnyElement {
     let (current, choices, focus) = {
         let mic = page.settings.read(cx).mic.read(cx);
         (mic.saved_label(), mic.choices(), mic.row_focus.clone())
     };
-    let mut rows = vec![page.menu(
+    let menu = page
+        .picker_open("audio.mic", cx)
+        .then(|| page.options("audio.mic", choices, &focus, select_mic));
+    page.menu(
         "audio.mic",
         "Microphone",
         "The microphone dictation listens on.",
         current,
         slots::MIC,
-    )];
-    if page.picker_open("audio.mic", cx) {
-        rows.extend(page.options("audio.mic", choices, &focus, select_mic));
-    }
-    rows
+        menu,
+    )
 }
 
 fn select_mic(me: &mut Settings, id: &str, cx: &mut gpui_kit::Context<Settings>) {
@@ -62,7 +62,7 @@ pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
     )
 }
 
-pub fn max_length(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+pub fn max_length(page: &Page, cx: &mut App) -> AnyElement {
     let stored = page
         .settings
         .read(cx)
@@ -80,19 +80,12 @@ pub fn max_length(page: &Page, cx: &mut App) -> Vec<AnyElement> {
         .collect();
     minutes.sort_unstable();
     minutes.dedup();
-    let mut rows = vec![page.menu(
-        "audio.maxMinutes",
-        "Maximum length",
-        "A dictation stops by itself after this time.",
-        minutes_label(stored),
-        slots::MAX_MINUTES,
-    )];
-    if page.picker_open("audio.maxMinutes", cx) {
+    let menu = page.picker_open("audio.maxMinutes", cx).then(|| {
         let choices = minutes
             .into_iter()
             .map(|choice| (choice.to_string(), minutes_label(choice), choice == stored))
             .collect();
-        rows.extend(page.options(
+        page.options(
             "audio.maxMinutes",
             choices,
             &page.options,
@@ -101,9 +94,16 @@ pub fn max_length(page: &Page, cx: &mut App) -> Vec<AnyElement> {
                     me.set_max_minutes(minutes, cx);
                 }
             },
-        ));
-    }
-    rows
+        )
+    });
+    page.menu(
+        "audio.maxMinutes",
+        "Maximum length",
+        "A dictation stops by itself after this time.",
+        minutes_label(stored),
+        slots::MAX_MINUTES,
+        menu,
+    )
 }
 
 fn minutes_label(minutes: i64) -> String {

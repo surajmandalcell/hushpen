@@ -251,22 +251,10 @@ impl Settings {
         self.endpoint = Some(form);
     }
 
-    /// Esc in an open picker: close it and give the focus back to the
-    /// trigger. Returns the handle to focus, or None when nothing was open.
-    pub fn close_picker(&mut self, cx: &mut Context<Self>) -> Option<FocusHandle> {
-        let slot = match self.picker.take()? {
-            "audio.mic" => slots::MIC,
-            "audio.maxMinutes" => slots::MAX_MINUTES,
-            "engine.threads" => slots::THREADS,
-            "storage.retention" => slots::RETENTION,
-            "flowbar.position" => slots::POSITION,
-            "cleanup.aiModel" => slots::AI_MODEL,
-            "cleanup.provider" => slots::AI_PROVIDER,
-            "cleanup.endpointPreset" => slots::ENDPOINT_PRESET,
-            _ => return None,
-        };
-        cx.notify();
-        Some(self.control_focus[slot].clone())
+    pub fn close_picker(&mut self, cx: &mut Context<Self>) {
+        if self.picker.take().is_some() {
+            cx.notify();
+        }
     }
 
     /// The Settings view opened: re-read launch at login from the system, so

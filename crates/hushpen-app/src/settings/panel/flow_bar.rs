@@ -33,7 +33,7 @@ pub fn idle(page: &Page, cx: &mut App) -> AnyElement {
     )
 }
 
-pub fn position(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+pub fn position(page: &Page, cx: &mut App) -> AnyElement {
     let position = page.settings.read(cx).stored_str("overlay.position");
     let label = |value: &str| {
         POSITIONS
@@ -41,24 +41,24 @@ pub fn position(page: &Page, cx: &mut App) -> Vec<AnyElement> {
             .find(|(key, _)| *key == value)
             .map_or(POSITIONS[0].1, |(_, label)| *label)
     };
-    let mut rows = vec![page.menu(
+    let menu = page.picker_open("flowbar.position", cx).then(|| {
+        let choices = POSITIONS
+            .into_iter()
+            .map(|(value, text)| (value.to_owned(), text.to_owned(), position == value))
+            .collect();
+        page.options(
+            "flowbar.position",
+            choices,
+            &page.options,
+            Settings::set_position,
+        )
+    });
+    page.menu(
         "flowbar.position",
         "Position",
         "Where the bar sits on the screen.",
         label(&position).to_owned(),
         slots::POSITION,
-    )];
-    if page.picker_open("flowbar.position", cx) {
-        let choices = POSITIONS
-            .into_iter()
-            .map(|(value, text)| (value.to_owned(), text.to_owned(), position == value))
-            .collect();
-        rows.extend(page.options(
-            "flowbar.position",
-            choices,
-            &page.options,
-            Settings::set_position,
-        ));
-    }
-    rows
+        menu,
+    )
 }

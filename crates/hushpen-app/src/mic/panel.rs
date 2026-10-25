@@ -1,5 +1,5 @@
-//! The microphone group on the Home view: one row with the microphone picker and the test
-//! button, the open picker list, the level meter while a test runs, and the notice.
+//! The microphone group on the Home view: one row with the microphone pop-up and the test
+//! button, the level meter while a test runs, and the notice.
 
 use super::{CaptureState, CaptureUse, Mic};
 use crate::hook;
@@ -8,8 +8,8 @@ use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled,
-    Window, div, px,
+    App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, Window, div,
+    px,
 };
 use hushpen_audio::DEFAULT_ID;
 
@@ -49,9 +49,6 @@ pub fn render(mic: &Entity<Mic>, cx: &mut App) -> impl IntoElement + use<> {
 
     let palette = theme::palette(cx);
     let mut rows = vec![header(palette, mic, &view).into_any_element()];
-    if view.picker_open {
-        rows.push(option_list(palette, mic, &view));
-    }
     if view.testing {
         rows.push(ui::meter_row(palette, "home", &view.meter, true));
     }
@@ -117,13 +114,16 @@ fn header(palette: Palette, mic: &Entity<Mic>, view: &Snapshot) -> impl IntoElem
             .flex()
             .items_center()
             .gap(px(space::SM))
-            .child(ui::menu_button(
+            .child(ui::pop_up(
                 palette,
-                hook::id("home", "mic.picker"),
-                "Microphone",
-                view.current.clone(),
-                true,
-                &view.picker_focus,
+                ui::PopUp {
+                    id: hook::id("home", "mic.picker"),
+                    label: "Microphone",
+                    current: view.current.clone(),
+                    enabled: true,
+                    focus: &view.picker_focus,
+                    menu: view.picker_open.then(|| menu(mic, view)),
+                },
                 toggle,
             ))
             .child(ui::button(
@@ -138,11 +138,19 @@ fn header(palette: Palette, mic: &Entity<Mic>, view: &Snapshot) -> impl IntoElem
     )
 }
 
-/// The open picker: Default under `home.mic.device.default`, then each microphone under
+/// The open menu: Default under `home.mic.device.default`, then each microphone under
 /// `home.mic.device.<n>` from 1.
-fn option_list(palette: Palette, mic: &Entity<Mic>, view: &Snapshot) -> AnyElement {
-    let rows = view.choices.iter().zip(&view.row_focus).enumerate().map(
-        |(index, ((id, label, chosen), focus))| {
+fn menu(mic: &Entity<Mic>, view: &Snapshot) -> ui::Menu {
+    let close = mic.clone();
+    let menu = ui::Menu::new(hook::id("home", "mic.list"), move |cx| {
+        close.update(cx, |mic, cx| {
+            mic.picker_open = false;
+            cx.notify();
+        })
+    });
+    view.choices.iter().zip(&view.row_focus).enumerate().fold(
+        menu,
+        |menu, (index, ((id, label, chosen), focus))| {
             let choose = {
                 let (mic, id) = (mic.clone(), id.clone());
                 move |_: &mut Window, cx: &mut App| {
@@ -156,22 +164,7 @@ fn option_list(palette: Palette, mic: &Entity<Mic>, view: &Snapshot) -> AnyEleme
             } else {
                 hook::indexed("home", "mic.device", index)
             };
-            ui::option_row(
-                palette,
-                element_id,
-                label.clone(),
-                None,
-                *chosen,
-                focus,
-                choose,
-            )
+            menu.option(element_id, label.clone(), None, *chosen, focus, choose)
         },
-    );
-    let close = mic.clone();
-    ui::option_list(hook::id("home", "mic.list"), rows.collect(), move |cx| {
-        close.update(cx, |mic, cx| {
-            mic.picker_open = false;
-            cx.notify();
-        })
-    })
+    )
 }
