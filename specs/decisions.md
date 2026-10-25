@@ -94,7 +94,8 @@ new decision, add it here in the same change (D-21).
 - **D-23 Import limits.** The engine child decodes an imported file one
   packet at a time while it transcribes it in 120 s windows with 10 s of
   overlap, so memory does not grow with the length of the file (tiny.en:
-  about 470 MB peak for 2 min, 10 min, and 1 h). Files up to 12 hours are
+  about 470 MB peak for 2 min, 10 min, and 1 h on the Mac; 344 MB peak for
+  a 5 h file in a Linux slot, reached in the first 30 s). Files up to 12 hours are
   accepted; the limit only bounds how long one job runs. Translate writes
   English from any spoken language with a multilingual model; an
   English-only (`.en`) model refuses it with

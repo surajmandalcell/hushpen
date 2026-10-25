@@ -37,7 +37,7 @@ Goal: make Hushpen look and behave like a finished, native app on macOS and Linu
 1. Chrome: done.
 2. Separators: done.
 3. Home: done.
-4. Files: done. A real XDND drop (import suite, `slot/xdnd-drag.sh`) queues a WAV and opens a `.txt` in Read aloud with its text. A Finder drag on macOS is not driven, because it would move the owner's pointer; the drop path is the same GPUI event.
+4. Files: done. A real XDND drop (import suite, `slot/xdnd-drag.sh`) queues a WAV and opens a `.txt` in Read aloud with its text. A 5 h file transcribes with a flat engine memory (D-23). A Finder drag on macOS is not driven, because it would move the owner's pointer; the drop path is the same GPUI event.
 5. Text to speech: done, within D-25 (no speech-dispatcher: it cannot hand back audio) and D-28 (Kokoro on the CPU only: the CoreML provider aborts on this model).
 6. Models: done.
 7. Settings: done. Cmd+F on macOS is proven by component tests only, because no synthetic keys are sent on the Mac.
