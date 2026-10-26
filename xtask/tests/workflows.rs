@@ -1,4 +1,4 @@
-//! Workflow files must never run on their own: CI minutes are budgeted.
+//! Workflow files must never run on their own: CI runs by hand, for a release (D-03).
 
 use std::fs;
 use std::path::{Path, PathBuf};

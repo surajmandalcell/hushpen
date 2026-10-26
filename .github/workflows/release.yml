@@ -1,7 +1,7 @@
 name: Release
 
 # Manual only. A tag push starts nothing; the owner pushes the tag first, then dispatches this
-# workflow with that tag. Every dispatch counts against the CI budget in the mission library.
+# workflow with that tag (D-03).
 # The result is a DRAFT release. Publishing it is a separate, manual step.
 on:
   workflow_dispatch:

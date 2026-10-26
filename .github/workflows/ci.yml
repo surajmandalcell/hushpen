@@ -1,7 +1,6 @@
 name: CI
 
-# Manual only. Every dispatch counts against the CI budget in the mission
-# library, so nothing here runs on push, tag, or pull request.
+# Manual only (D-03): it runs for a release, never on push, tag, or pull request.
 on:
   workflow_dispatch:
     inputs:
