@@ -9,10 +9,11 @@ new decision, add it here in the same change (D-21).
   must be compatible with AGPL-3.0-or-later (`deny.toml` allow list).
 - **D-02 Version.** 2.0.0. The GitHub release v2.0.0 is published only after
   every validation passed and every release file was checked.
-- **D-03 CI budget.** Every workflow runs by `workflow_dispatch` only.
+- **D-03 Manual CI.** Every workflow runs by `workflow_dispatch` only.
   `release.yml` has a required `tag` input and checks out that tag. No push,
   tag-push, or pull_request trigger. The one exception is `deploy-docs.yml`.
-  GitHub Actions gets at most 35 runs; the hard limit is 50.
+  CI and Release are started by hand for a release, with no run cap: the
+  repo is public, so standard GitHub-hosted runners cost nothing.
 - **D-04 Docs site.** `docs/**` deploys to GitHub Pages on push and changes
   once, in the publish step after the release.
 - **D-05 GPUI.** The UI is GPUI (`gpui-pre =0.3.7`, GPUI Kit `=0.7.0`) with

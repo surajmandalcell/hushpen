@@ -49,4 +49,4 @@ Goal: make Hushpen look and behave like a finished, native app on macOS and Linu
 
 Pop-up menus float above the page on every view (D-33), checked on the Mac through Codex in Dark and Light.
 
-Release: v2.1.0 is open until the owner raises the CI run budget (D-03: 35 of 35 used). `/Applications/Hushpen.app` runs a local Developer ID build of HEAD.
+Release: v2.1.0 is next (CI by hand, D-03). `/Applications/Hushpen.app` runs a local Developer ID build of HEAD.

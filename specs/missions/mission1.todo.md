@@ -6,7 +6,7 @@ Mission 1 is done. Hushpen v2.0.0 is published (2026-10-22 03:35:39Z): https://g
 
 - Tag `v2.0.0` is on `d40493c`, the commit CI run 33 (ci.yml full) checked. CI run 34 (release.yml) built the draft.
 - The macOS zip and dmg in the release were built locally from `36bf23b` (same code as `bccb29a`, the update-helper fix), signed with "Developer ID Application: SURAJ MANDAL (GF57JXJF5A)" (hardened runtime, microphone entitlement), notarized, and stapled. `SHA256SUMS`, `latest.json`, and `latest.json.minisig` were regenerated with the release key from `.env`. The eight Linux files are the CI originals.
-- CI budget: 35 of 35 runs used. A new release needs a new budget from the owner.
+- CI runs by hand for a release, with no run cap (D-03).
 
 ## Open items for the next release
 
