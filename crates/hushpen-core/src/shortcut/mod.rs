@@ -243,26 +243,40 @@ impl Combo {
         names::display(&keys.into_iter().collect::<Vec<_>>(), platform)
     }
 
-    /// Whether the system uses this shortcut, so Hushpen must not take it. Cmd (Ctrl on Linux)
-    /// with the common editing, window, and quit letters, with or without Shift.
+    /// Whether the system or most apps use this shortcut, so Hushpen must not take it. The keys
+    /// on macOS still reach the front app, and an X11 grab takes them from every app, so either
+    /// way the chord would stop doing its usual job.
     pub fn reserved(&self, platform: Platform) -> bool {
-        const LETTERS: &str = "acfnopqstvwxyz";
-        const WITH_SHIFT: &str = "cqtvwxn";
+        use Modifier::{Alt, Cmd, Ctrl, Shift};
+        // Cmd (Ctrl on Linux) with any letter or digit is an app shortcut almost everywhere.
+        // Ctrl alone on a Mac moves the cursor in every text field.
+        const MAC: &[(&[Modifier], &str)] = &[
+            (&[Cmd], "abcdefghijklmnopqrstuvwxyz0123456789"),
+            (&[Ctrl], "abdefhklnoptvy"),
+            (&[Cmd, Shift], "cgnqtvwxz3456"),
+            (&[Ctrl, Cmd], "fq"),
+            (&[Alt, Cmd], "dhmw"),
+            (&[Ctrl, Shift, Cmd], "345"),
+        ];
+        const LINUX: &[(&[Modifier], &str)] = &[
+            (&[Ctrl], "abcdefghijklmnopqrstuvwxyz0123456789"),
+            (&[Ctrl, Shift], "cnqtvwxz"),
+            (&[Ctrl, Alt], "dlt"),
+            (&[Cmd], "l"),
+        ];
         let Some(letter) = self.letter() else {
             return false;
         };
-        let primary = if platform == Platform::MacOs {
-            Modifier::Cmd
-        } else {
-            Modifier::Ctrl
-        };
         let modifiers: BTreeSet<Modifier> =
             self.keys.iter().filter_map(|k| modifier_of(*k)).collect();
-        if modifiers == BTreeSet::from([primary]) {
-            LETTERS.contains(letter)
+        let table = if platform == Platform::MacOs {
+            MAC
         } else {
-            modifiers == BTreeSet::from([primary, Modifier::Shift]) && WITH_SHIFT.contains(letter)
-        }
+            LINUX
+        };
+        table.iter().any(|(chord, letters)| {
+            modifiers == chord.iter().copied().collect() && letters.contains(letter)
+        })
     }
 }
 

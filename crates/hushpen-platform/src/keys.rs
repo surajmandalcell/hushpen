@@ -20,6 +20,8 @@ mod x11;
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod symbolic;
 
 /// Where the platform thread sends what it saw. Called from the platform thread.
 pub type Sink = Arc<dyn Fn(AppEvent) + Send + Sync>;
@@ -116,12 +118,12 @@ impl GlobalKeys {
         self.inner.stop_recording();
     }
 
-    /// Whether another app already holds this chord. Only a chord with a letter can be held:
-    /// a modifier alone is never grabbed. macOS has no way to ask, so it always answers no.
+    /// Whether something else already runs this chord: another X client that grabbed it, or a
+    /// macOS system shortcut that is on. Only a chord with a letter or digit can be taken.
     pub fn in_use(&self, combo: &Combo) -> bool {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         return self.inner.in_use(combo);
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
             let _ = combo;
             false

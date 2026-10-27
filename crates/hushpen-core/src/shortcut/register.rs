@@ -57,11 +57,16 @@ pub struct Refusal {
 }
 
 impl Refusal {
-    /// Another app holds the shortcut. Only the platform layer can tell, after it tried.
-    pub fn in_use() -> Self {
+    /// Something else runs the shortcut: another app on Linux, a macOS system shortcut that is
+    /// on in System Settings on a Mac. Only the platform layer can tell, after it asked.
+    pub fn in_use(platform: Platform) -> Self {
+        let message = match platform {
+            Platform::MacOs => "macOS uses this shortcut. Choose a different one.",
+            Platform::Linux => "Another app is using this shortcut. Choose a different one.",
+        };
         Self {
             code: crate::error::SHORTCUT_IN_USE,
-            message: "Another app is using this shortcut. Choose a different one.".to_owned(),
+            message: message.to_owned(),
         }
     }
 
@@ -93,7 +98,8 @@ pub fn check(
     if combo.reserved(platform) {
         return Err(Refusal {
             code: SHORTCUT_RESERVED,
-            message: "The system uses this shortcut. Choose a different one.".to_owned(),
+            message: "The system or most apps use this shortcut. Choose a different one."
+                .to_owned(),
         });
     }
     let taken = others

@@ -179,14 +179,49 @@ fn every_problem_has_a_message_and_a_linux_one_has_no_mac_words() {
 }
 
 #[test]
-fn reserved_shortcuts_are_the_system_editing_window_and_quit_chords() {
-    assert!(combo("Ctrl+Q", LINUX).reserved(LINUX));
-    assert!(combo("Ctrl+C", LINUX).reserved(LINUX));
-    assert!(combo("Ctrl+V", LINUX).reserved(LINUX));
-    assert!(combo("Ctrl+Shift+V", LINUX).reserved(LINUX));
-    assert!(combo("Cmd+Q", MAC).reserved(MAC));
-    assert!(combo("Cmd+V", MAC).reserved(MAC));
-    assert!(combo("Cmd+Shift+C", MAC).reserved(MAC));
+fn reserved_shortcuts_are_the_system_and_common_app_chords() {
+    for text in [
+        "Ctrl+Q",
+        "Ctrl+C",
+        "Ctrl+V",
+        "Ctrl+B",
+        "Ctrl+1",
+        "Ctrl+Shift+V",
+        "Ctrl+Shift+Z",
+    ] {
+        assert!(combo(text, LINUX).reserved(LINUX), "{text}");
+    }
+    // A terminal, the lock screen, and the desktop.
+    for text in ["Ctrl+Alt+T", "Ctrl+Alt+L", "Ctrl+Alt+D", "Super+L"] {
+        assert!(combo(text, LINUX).reserved(LINUX), "{text}");
+    }
+    for text in [
+        "Cmd+Q",
+        "Cmd+V",
+        "Cmd+B",
+        "Cmd+H",
+        "Cmd+M",
+        "Cmd+1",
+        "Cmd+Shift+C",
+    ] {
+        assert!(combo(text, MAC).reserved(MAC), "{text}");
+    }
+    // Screenshots, lock screen, full screen, hide others, the Dock, and the text field keys.
+    for text in [
+        "Cmd+Shift+3",
+        "Cmd+Shift+4",
+        "Cmd+Shift+5",
+        "Ctrl+Shift+Cmd+4",
+        "Ctrl+Cmd+Q",
+        "Ctrl+Cmd+F",
+        "Cmd+Alt+H",
+        "Cmd+Alt+D",
+        "Ctrl+A",
+        "Ctrl+E",
+        "Ctrl+K",
+    ] {
+        assert!(combo(text, MAC).reserved(MAC), "{text}");
+    }
     // The primary key differs by system.
     assert!(!combo("Ctrl+Q", MAC).reserved(MAC));
     assert!(!combo("Cmd+Q", LINUX).reserved(LINUX));
@@ -601,7 +636,10 @@ fn a_slot_may_keep_its_own_shortcut_and_a_superset_of_another_is_fine() {
 
 #[test]
 fn the_in_use_refusal_has_the_in_use_code_and_an_invalid_one_says_why() {
-    assert_eq!(Refusal::in_use().code, "SHORTCUT_IN_USE");
+    assert_eq!(Refusal::in_use(LINUX).code, "SHORTCUT_IN_USE");
+    assert!(Refusal::in_use(LINUX).message.contains("Another app"));
+    assert_eq!(Refusal::in_use(MAC).code, "SHORTCUT_IN_USE");
+    assert!(Refusal::in_use(MAC).message.contains("macOS"));
     let refusal = Refusal::invalid(Problem::NeedsModifier, LINUX);
     assert_eq!(refusal.code, "SHORTCUT_INVALID");
     assert_eq!(refusal.message, Problem::NeedsModifier.message(LINUX));
