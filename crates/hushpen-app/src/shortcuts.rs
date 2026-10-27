@@ -170,7 +170,7 @@ impl Shortcuts {
 
     fn mark_taken(&mut self, slot: Slot) {
         self.taken.insert(slot);
-        self.failures.insert(slot, Refusal::in_use());
+        self.failures.insert(slot, Refusal::in_use(self.platform));
         hook::record_event("shortcut", &format!("{} in-use", slot.key()));
     }
 
@@ -331,7 +331,7 @@ impl Shortcuts {
             .map_err(|problem| Refusal::invalid(problem, self.platform))?;
         check(slot, &combo, &self.values, self.platform)?;
         if self.keys.as_ref().is_some_and(|keys| keys.in_use(&combo)) {
-            return Err(Refusal::in_use());
+            return Err(Refusal::in_use(self.platform));
         }
         let setting = match slot {
             Slot::HandsFree => Setting::HandsFree(hushpen_core::shortcut::HandsFree::Custom(combo)),

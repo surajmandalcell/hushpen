@@ -7,6 +7,7 @@
 #![allow(unsafe_code)]
 
 use super::hub::Hub;
+use super::symbolic;
 use super::tap::{Decoder, HEALTH_INTERVAL, Health, Tap, TapAction, TapEvent, TapGuard};
 use super::{Reason, RecordSink, Sink, Unavailable};
 use crate::keyboard_layout::{self, LayoutCache};
@@ -19,7 +20,7 @@ use core_graphics::event::{
     CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
     CallbackResult, EventField,
 };
-use hushpen_core::shortcut::Bindings;
+use hushpen_core::shortcut::{Bindings, Combo};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -149,6 +150,22 @@ impl MacKeys {
 
     pub(super) fn stop_recording(&self) {
         self.hub.stop_recording();
+    }
+
+    /// Whether a macOS system shortcut that is on uses `combo`. Other apps cannot be asked:
+    /// the system keeps no list of their shortcuts.
+    pub(super) fn in_use(&self, combo: &Combo) -> bool {
+        let Some(code) = combo
+            .letter()
+            .and_then(|c| keyboard_layout::shared().key_code_for(c))
+        else {
+            return false;
+        };
+        symbolic::taken(
+            &symbolic::system_hotkeys(),
+            i64::from(code),
+            symbolic::carbon_modifiers(combo),
+        )
     }
 
     pub(super) fn start(
