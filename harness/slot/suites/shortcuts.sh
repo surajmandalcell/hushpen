@@ -52,6 +52,7 @@ slot_error() { sc ".slots.$1.error.code"; }
 recording_is() { [ "$(sc .recording)" = "$1" ]; }
 field_is() { [ "$(field "$1")" = "$2" ]; }
 error_is() { [ "$(slot_error "$1")" = "$2" ]; }
+live_is() { [ "$(sc ".slots.$1.live")" = "$2" ]; }
 tree_has() { $HC tree | jq -e --arg id "$1" '.[] | select(.id == $id)' >/dev/null; }
 open_settings() {
   $HC action open-view '{"view":"settings"}' >/dev/null
@@ -201,11 +202,11 @@ wait_until 5 error_is pasteLast SHORTCUT_IN_USE || failures+="pasteLast error is
 $HC state | jq -c .shortcuts >"$RUN_OUT/003-state.json"
 shot 003-in-use
 [ "$(saved pasteLast)" = Ctrl+Alt+J ] || failures+="shortcut.pasteLast is '$(saved pasteLast)'; "
-[ "$(sc .slots.pasteLast.live)" = false ] || failures+="the held chord is live; "
+live_is pasteLast false || failures+="the held chord is live; "
 case "$(sc .slots.pasteLast.error.steps)" in *"Then it works here"*) ;; *) failures+="the steps read '$(sc .slots.pasteLast.error.steps)'; " ;; esac
 tree_has settings.shortcut.pasteLast.steps || failures+="no steps row under the field; "
 helper_down
-wait_until 10 test "$(sc .slots.pasteLast.live)" = true || failures+="the chord did not go live after the helper let go; "
+wait_until 10 live_is pasteLast true || failures+="the chord did not go live after the helper let go; "
 [ "$(slot_error pasteLast)" = null ] || failures+="the error stayed: '$(slot_error pasteLast)'; "
 shot 003-freed
 gtk_clear
@@ -249,27 +250,29 @@ wait_until 10 fresh_paste || failures+="Ctrl+Alt+P no longer pastes; "
 toggle_run ctrl+alt+h "$SHORT_WAV" || failures+="Ctrl+Alt+H no longer runs a session: $(pevents); "
 check_failures "VAL-KEY-004 reserved" "the paste last chord gave SHORTCUT_RESERVED, Ctrl+Q was saved, $hands0 back, paste last and hands-free still work" "$failures"
 
-echo "== VAL-KEY-005 Esc cancels the recorder and the recorder blocks the live shortcut"
+echo "== VAL-KEY-005 Esc alone cancels the recorder and the recorder blocks the live shortcut"
 failures=""
 record_open hold || failures+="no recorder for hold; "
 T0=$(now_ms)
 xdotool keydown 105
 sleep 0.5
 pstate_is idle || failures+="Right Ctrl started a dictation while recording ($(pstate)); "
-xdotool key Escape
-sleep 0.3
 xdotool keyup 105
+wait_until 5 recording_is null || failures+="releasing Right Ctrl did not close the recorder; "
+[ -z "$(pevents)" ] || failures+="the pipeline moved while recording: $(pevents); "
+record_open hold || failures+="no second recorder for hold; "
+xdotool key Escape
 sleep 0.7
 shot 005-cancelled
-[ -z "$(pevents)" ] || failures+="the pipeline moved while recording: $(pevents); "
-recording_is null || failures+="the recorder is still open (recording=$(sc .recording)); "
+recording_is null || failures+="Esc did not close the recorder (recording=$(sc .recording)); "
+[ "$(slot_error hold)" = null ] || failures+="Esc gave '$(slot_error hold)'; "
 [ "$(saved hold)" = RightCtrl ] || failures+="shortcut.hold is '$(saved hold)'; "
 field_is hold "Right Ctrl" || failures+="the hold field reads '$(field hold)'; "
 gtk_clear
 hold_run 105 "$SHORT_WAV" || failures+="the hold key does not work after the recorder closed; "
 got=$(gtk_commit)
 words_ok "$got" || failures+="the entry holds '$got' after the recorder; "
-check_failures "VAL-KEY-005 Esc cancels" "keydown during recording started nothing, Esc closed the recorder, shortcut.hold stayed RightCtrl and worked again (typed '$got')" "$failures"
+check_failures "VAL-KEY-005 Esc cancels" "Right Ctrl held in the recorder started nothing, Esc alone closed the recorder, shortcut.hold stayed RightCtrl and worked again (typed '$got')" "$failures"
 
 echo "== VAL-KEY-009 any key: F7 alone and Ctrl+Tab, and the key stays away from the focused app"
 failures=""
