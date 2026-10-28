@@ -7,7 +7,7 @@
 use super::child::{Started, load_spec, start_client};
 use super::{assert_expected_words, model_path};
 use hushpen_core::error;
-use hushpen_engine::{ImportSpec, JobOutcome, Timing, Transcription};
+use hushpen_engine::{ImportProgress, ImportSpec, JobOutcome, Timing, Transcription};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -91,8 +91,8 @@ fn an_import_reports_progress_that_only_goes_up() {
     let outcome = client
         .import(
             spec(fixture("speech-short.flac")),
-            Some(Arc::new(move |fraction| {
-                sink.lock().unwrap().push(fraction)
+            Some(Arc::new(move |progress: ImportProgress| {
+                sink.lock().unwrap().push(progress.fraction)
             })),
         )
         .wait();
@@ -125,8 +125,8 @@ fn a_10_minute_file_keeps_every_word_across_the_windows() {
         client
             .import(
                 spec(fixture("long-600s.wav")),
-                Some(Arc::new(move |fraction| {
-                    sink.lock().unwrap().push(fraction)
+                Some(Arc::new(move |progress: ImportProgress| {
+                    sink.lock().unwrap().push(progress.fraction)
                 })),
             )
             .wait(),
