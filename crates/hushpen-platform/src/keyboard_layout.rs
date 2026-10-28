@@ -1,4 +1,5 @@
-//! The keys that type letters and digits on the layout in use.
+//! The keys that type characters (letters, digits, and symbols such as ``` or `-`) on the layout
+//! in use.
 //!
 //! Cmd+V is Cmd plus the key that carries `v`. On QWERTY that is key code 9; on Dvorak and
 //! other layouts it is another key, and a fixed 9 would paste with the wrong shortcut. The key
@@ -51,7 +52,8 @@ impl Table {
             let Some(ch) = typed(code) else { continue };
             let mut lower = ch.to_lowercase();
             if let (Some(lower), None) = (lower.next(), lower.next())
-                && (lower.is_ascii_lowercase() || lower.is_ascii_digit())
+                && !lower.is_control()
+                && !lower.is_whitespace()
             {
                 codes.entry(lower).or_insert(code);
             }
@@ -59,7 +61,7 @@ impl Table {
         Self { codes }
     }
 
-    /// The key code that types `target` (a letter or digit).
+    /// The key code that types `target` (a letter, digit, or symbol).
     pub(crate) fn code(&self, target: char) -> Option<u16> {
         self.codes.get(&target.to_ascii_lowercase()).copied()
     }
@@ -320,25 +322,30 @@ mod tests {
     }
 
     #[test]
-    fn capitals_and_digits_are_found_and_other_characters_are_not_kept() {
+    fn capitals_digits_and_symbols_are_found_and_space_and_control_characters_are_not_kept() {
         let table = Table::from_typed(|code| match code {
             0 => Some('A'),
             18 => Some('1'),
             49 => Some(' '),
             43 => Some(','),
+            50 => Some('`'),
+            48 => Some('\t'),
             _ => None,
         });
         assert_eq!(table.code('a'), Some(0));
         assert_eq!(table.code('1'), Some(18));
-        assert_eq!(table.code(','), None);
+        assert_eq!(table.code(','), Some(43));
+        assert_eq!(table.code('`'), Some(50));
+        assert_eq!(table.code(' '), None);
+        assert_eq!(table.code('\t'), None);
     }
 
     #[test]
-    fn the_listener_map_has_the_letters_and_space() {
+    fn the_listener_map_has_the_characters_and_space() {
         let chars = Table::from_typed(dvorak).chars(49);
         assert_eq!(chars.get(&40), Some(&'v'));
         assert_eq!(chars.get(&49), Some(&' '));
-        assert_eq!(chars.get(&9), None);
+        assert_eq!(chars.get(&9), Some(&'.'));
     }
 
     #[test]

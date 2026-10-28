@@ -229,7 +229,7 @@ new decision, add it here in the same change (D-21).
   the open state and the close callback. The menu fill and its shadow are the
   `menu` and `shadow` tokens; the kit popover color, which tooltips use, is
   the menu color.
-- **D-34 Shortcut conflicts.** Settings > Shortcuts has four global slots
+- **D-34 Shortcut keys and conflicts.** Settings > Shortcuts has four global slots
   (hold, hands-free, paste last, Command Mode); the footer says how to change
   one: "Click a shortcut, then press the keys. Esc cancels." A recorded chord
   is refused, and the old one kept, when it is not a valid chord, when
@@ -238,11 +238,20 @@ new decision, add it here in the same change (D-21).
   digit, plus the screenshot, lock, full screen, hide, Dock, terminal, and
   Mac text field chords), or when something else runs it now: an X11 passive
   grab by another client, or a macOS system shortcut that is on
-  (`CopySymbolicHotKeys`). macOS keeps no list of other apps' shortcuts, so
+  (`CopySymbolicHotKeys`; the error says to turn it off in System Settings >
+  Keyboard). Cmd+Tab is not refused; Cmd+` is the macOS shortcut "Move focus
+  to next window" and is refused until it is turned off there. macOS keeps no list of other apps' shortcuts, so
   those cannot be checked. A saved chord that is taken at start stays saved,
-  shows the error, and does not run. Keys are modifiers, Fn, letters, and
-  digits: the macOS listener cannot keep a key from the front app, so a bare
-  F-key or symbol would also do its usual job there.
+  shows the error, and does not run. A shortcut is modifiers plus at most
+  one key of any kind: a letter, digit, or symbol key of the layout
+  (```, `-`, `[`), Space, Tab, Return, Backspace, Delete, the arrows,
+  Home, End, Page Up, Page Down, or F1 to F20. F-keys may stand alone; any
+  other key needs Ctrl, Alt, Cmd, or Fn. Modifiers alone need one on the
+  right side or Fn (Cmd+Right Ctrl). The key that completes a live shortcut,
+  and every key but a modifier while the recorder is open, stay away from the
+  front app: on macOS a filtering event tap drops them (with Accessibility;
+  with only Input Monitoring the tap listens), on X11 each live chord is
+  grabbed and the recorder grabs the keyboard. Modifier events always pass.
 
 ## History notes
 

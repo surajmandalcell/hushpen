@@ -1,9 +1,10 @@
 //! Keyboard shortcuts: the setting text, key names for each system, the rules a new shortcut
 //! must pass, and the engine that turns raw key presses into pipeline events.
 //!
-//! A shortcut is a [`Combo`]: modifier-only keys such as Right Alt or Fn, or modifiers plus one
-//! letter or digit. Nothing here touches a keyboard; the platform layer feeds [`Engine`] with
-//! physical key events and sends out what it answers.
+//! A shortcut is a [`Combo`]: modifier-only keys such as Cmd+Right Ctrl or Fn, or modifiers plus
+//! one other key of any kind (a letter, ```, Tab, Space, an arrow, F5). Nothing here touches a
+//! keyboard; the platform layer feeds [`Engine`] with physical key events and sends out what it
+//! answers.
 
 mod engine;
 mod names;
@@ -21,6 +22,9 @@ pub const DEFAULT_HANDS_FREE: &str = "DoubleTap+Hold+Space";
 
 /// Most keys one shortcut may have.
 const MAX_KEYS: usize = 5;
+
+/// The function keys run from F1 to this one.
+pub const LAST_F_KEY: u8 = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Platform {
@@ -99,6 +103,38 @@ pub enum Modifier {
     Cmd,
 }
 
+/// A key that types no character: the editing and moving keys, and the function keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Named {
+    Tab,
+    Return,
+    Backspace,
+    /// Forward delete.
+    Delete,
+    Up,
+    Down,
+    Left,
+    Right,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    /// F1 to [`LAST_F_KEY`].
+    F(u8),
+}
+
+impl Named {
+    /// Every named key, in the order of the enum.
+    pub fn all() -> impl Iterator<Item = Named> {
+        use Named::*;
+        [
+            Tab, Return, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown,
+        ]
+        .into_iter()
+        .chain((1..=LAST_F_KEY).map(Named::F))
+    }
+}
+
 /// One key of a shortcut. The order is the order of the setting text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
@@ -107,8 +143,10 @@ pub enum Key {
     Any(Modifier),
     /// The modifier on the right side only.
     Right(Modifier),
-    /// A lowercase ASCII letter or digit.
+    /// A character key, lowercase: a letter, a digit, a symbol key such as ``` or `-`, or
+    /// Space as `' '`.
     Char(char),
+    Named(Named),
 }
 
 /// Why a set of keys is not a shortcut.
@@ -119,10 +157,13 @@ pub enum Problem {
     BothSides,
     /// The Fn key exists on a Mac only.
     NoFn,
+    /// Two keys that are not modifiers, or a key that cannot be a shortcut.
     BadKey,
-    /// A letter needs Ctrl, Alt, or Cmd, or the shortcut would take ordinary typing.
+    /// A key other than F1 to F20 needs Ctrl, Alt, Cmd, or Fn, or the shortcut would take
+    /// ordinary typing.
     NeedsModifier,
-    /// Modifiers alone must name the key, such as Right Alt.
+    /// Modifiers alone need one on a named side, such as Right Alt, or plain Ctrl+Shift would
+    /// start a session in the middle of every Ctrl+Shift shortcut.
     NeedsRightSide,
 }
 
@@ -134,10 +175,10 @@ impl Problem {
             Problem::TooMany => format!("Use at most {MAX_KEYS} keys."),
             Problem::BothSides => "Use the same side for one modifier.".to_owned(),
             Problem::NoFn => "The Fn key is only available on a Mac.".to_owned(),
-            Problem::BadKey => "Use a letter or a digit with the modifiers.".to_owned(),
-            Problem::NeedsModifier => format!("Add Ctrl, {alt}, or {cmd} to the letter."),
+            Problem::BadKey => "Use one key besides the modifiers.".to_owned(),
+            Problem::NeedsModifier => format!("Add Ctrl, {alt}, or {cmd} to the key."),
             Problem::NeedsRightSide => {
-                format!("Press a modifier on the right side, such as Right {alt}, or add a letter.")
+                format!("Add a modifier on the right side, such as Right {alt}, or another key.")
             }
         }
     }
@@ -178,30 +219,32 @@ impl Combo {
         if keys.contains(&Key::Fn) && platform != Platform::MacOs {
             return Err(Problem::NoFn);
         }
-        let letters: Vec<char> = keys
-            .iter()
-            .filter_map(|key| match key {
-                Key::Char(c) => Some(*c),
-                _ => None,
-            })
-            .collect();
-        if letters.len() > 1 || letters.iter().any(|c| !c.is_ascii_alphanumeric()) {
+        let mains: Vec<Key> = keys.iter().copied().filter(is_main).collect();
+        if mains.len() > 1 || !mains.iter().all(|key| valid_main(*key)) {
             return Err(Problem::BadKey);
         }
-        if letters.is_empty() {
-            if keys
-                .iter()
-                .any(|key| !matches!(key, Key::Right(_) | Key::Fn))
-            {
-                return Err(Problem::NeedsRightSide);
+        match mains.first() {
+            None => {
+                if !keys
+                    .iter()
+                    .any(|key| matches!(key, Key::Right(_) | Key::Fn))
+                {
+                    return Err(Problem::NeedsRightSide);
+                }
             }
-        } else if !keys.iter().any(|key| {
-            matches!(
-                modifier_of(*key),
-                Some(Modifier::Ctrl | Modifier::Alt | Modifier::Cmd)
-            )
-        }) {
-            return Err(Problem::NeedsModifier);
+            // A function key types nothing, so it may be a shortcut on its own.
+            Some(Key::Named(Named::F(_))) => {}
+            Some(_) => {
+                if !keys.iter().any(|key| {
+                    *key == Key::Fn
+                        || matches!(
+                            modifier_of(*key),
+                            Some(Modifier::Ctrl | Modifier::Alt | Modifier::Cmd)
+                        )
+                }) {
+                    return Err(Problem::NeedsModifier);
+                }
+            }
         }
         Ok(Self {
             keys: keys.into_iter().collect(),
@@ -219,9 +262,14 @@ impl Combo {
         })
     }
 
-    /// Reads setting text such as `Ctrl+Alt+V` or `RightOption`. Names are not case sensitive,
-    /// and `Alt` and `Option`, `Cmd`, `Command`, and `Super` mean the same key. A side is
-    /// written `RightAlt` or `Right Alt`.
+    /// The one key that is not a modifier or Fn, such as `V`, Tab, or F5.
+    pub fn main(&self) -> Option<Key> {
+        self.keys.iter().copied().find(is_main)
+    }
+
+    /// Reads setting text such as `Ctrl+Alt+V`, `Cmd+Tab`, `Cmd+\``, or `RightOption`. Names are
+    /// not case sensitive, and `Alt` and `Option`, `Cmd`, `Command`, and `Super` mean the same
+    /// key. A side is written `RightAlt` or `Right Alt`. The `+` key is written `Plus`.
     pub fn parse(text: &str, platform: Platform) -> Result<Self, Problem> {
         let keys: Result<Vec<Key>, Problem> = text.split('+').map(parse_key).collect();
         Self::new(keys?, platform)
@@ -283,11 +331,61 @@ impl Combo {
 fn modifier_of(key: Key) -> Option<Modifier> {
     match key {
         Key::Any(modifier) | Key::Right(modifier) => Some(modifier),
-        Key::Fn | Key::Char(_) => None,
+        Key::Fn | Key::Char(_) | Key::Named(_) => None,
     }
 }
 
+fn is_main(key: &Key) -> bool {
+    matches!(key, Key::Char(_) | Key::Named(_))
+}
+
+fn valid_main(key: Key) -> bool {
+    match key {
+        Key::Char(c) => c == ' ' || !(c.is_control() || c.is_whitespace() || c.is_uppercase()),
+        Key::Named(Named::F(n)) => (1..=LAST_F_KEY).contains(&n),
+        _ => true,
+    }
+}
+
+/// A key as one character, lowercase.
+fn char_key(c: char) -> Key {
+    let mut lower = c.to_lowercase();
+    match (lower.next(), lower.next()) {
+        (Some(lower), None) => Key::Char(lower),
+        _ => Key::Char(c),
+    }
+}
+
+fn parse_named(name: &str) -> Option<Key> {
+    let named = match name {
+        "space" => return Some(Key::Char(' ')),
+        "plus" => return Some(Key::Char('+')),
+        "tab" => Named::Tab,
+        "return" | "enter" => Named::Return,
+        "backspace" => Named::Backspace,
+        "delete" | "del" | "forwarddelete" => Named::Delete,
+        "up" => Named::Up,
+        "down" => Named::Down,
+        "left" => Named::Left,
+        "right" => Named::Right,
+        "home" => Named::Home,
+        "end" => Named::End,
+        "pageup" | "pgup" => Named::PageUp,
+        "pagedown" | "pgdn" => Named::PageDown,
+        _ => {
+            let n: u8 = name.strip_prefix('f')?.parse().ok()?;
+            Named::F(n)
+        }
+    };
+    Some(Key::Named(named))
+}
+
 fn parse_key(token: &str) -> Result<Key, Problem> {
+    let trimmed = token.trim();
+    let mut chars = trimmed.chars();
+    if let (Some(c), None) = (chars.next(), chars.next()) {
+        return Ok(char_key(c));
+    }
     let name: String = token
         .chars()
         .filter(|c| !matches!(c, ' ' | '-' | '_'))
@@ -314,11 +412,7 @@ fn parse_key(token: &str) -> Result<Key, Problem> {
     if name == "fn" {
         return Ok(Key::Fn);
     }
-    let mut chars = name.chars();
-    match (chars.next(), chars.next()) {
-        (Some(c), None) if c.is_ascii_alphanumeric() => Ok(Key::Char(c)),
-        _ => Err(Problem::BadKey),
-    }
+    parse_named(&name).ok_or(Problem::BadKey)
 }
 
 /// The hands-free setting: the built-in gestures, or one recorded shortcut.

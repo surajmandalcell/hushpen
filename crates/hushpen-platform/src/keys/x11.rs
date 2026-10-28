@@ -1,11 +1,11 @@
 //! X11 global keys.
 //!
 //! Every key is read from XInput2 raw key events on the root window and handed to the shared
-//! [`Hub`]. They need no grab, so the focused app still gets every key, and they include XTest
-//! input. Esc must also stay away from the focused app while a session runs, so it is grabbed
-//! with `XGrabKey` when a session starts and released when it ends. The grab only swallows the
-//! key: a window manager may already hold Alt+Esc, which makes that one grab fail, so the
-//! cancel comes from the raw event, and only while a session runs.
+//! [`Hub`]. They need no grab and include XTest input. A grab only keeps a key from the focused
+//! app: each live shortcut with a key that is not a modifier (Ctrl+Alt+V, Ctrl+Tab, F5) is
+//! grabbed with `XGrabKey`, the whole keyboard is grabbed while the recorder is open, and Esc
+//! is grabbed while a session runs. A window manager may already hold a chord such as Alt+Esc,
+//! which makes that one grab fail, so what Hushpen does always comes from the raw event.
 //!
 //! Raw events reach us even when another client holds a chord with a passive grab. Whether a
 //! chord is free is therefore asked once, when it is registered, by grabbing it and letting go.
@@ -13,14 +13,14 @@
 use super::hub::Hub;
 use super::keymap;
 use super::{Reason, RecordSink, Sink, Unavailable};
-use hushpen_core::shortcut::{Bindings, Combo, Key, Modifier, Phys};
-use std::collections::HashMap;
+use hushpen_core::shortcut::{Bindings, Combo, HandsFree, Key, Modifier, Phys, Recording};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
 use x11rb::protocol::xinput::{self, ConnectionExt as _, KeyEventFlags, XIEventMask};
-use x11rb::protocol::xproto::{ConnectionExt as _, GrabMode, ModMask, Window};
+use x11rb::protocol::xproto::{ConnectionExt as _, GrabMode, GrabStatus, ModMask, Window};
 use x11rb::protocol::{ErrorKind, Event};
 use x11rb::rust_connection::RustConnection;
 
@@ -38,6 +38,8 @@ pub(super) struct X11Keys {
     table: Table,
     /// Whether Esc is grabbed for a running session.
     grabbed: Mutex<bool>,
+    /// The key code and modifier mask of each grab that keeps a live shortcut's key.
+    chord_grabs: Mutex<BTreeSet<(u8, u16)>>,
 }
 
 fn unavailable(what: &str, error: impl std::fmt::Display) -> Unavailable {
@@ -62,6 +64,38 @@ fn mask_of(modifier: Modifier) -> ModMask {
         Modifier::Shift => ModMask::SHIFT,
         Modifier::Cmd => ModMask::M4,
     }
+}
+
+fn modifier_mask(combo: &Combo) -> ModMask {
+    combo
+        .keys()
+        .iter()
+        .fold(ModMask::from(0u16), |mask, key| match key {
+            Key::Any(modifier) | Key::Right(modifier) => mask | mask_of(*modifier),
+            Key::Fn | Key::Char(_) | Key::Named(_) => mask,
+        })
+}
+
+fn phys_of(key: Key) -> Option<Phys> {
+    match key {
+        Key::Char(c) => Some(Phys::Char(c)),
+        Key::Named(named) => Some(Phys::Named(named)),
+        _ => None,
+    }
+}
+
+/// The live shortcuts that have a key a grab can hold.
+fn live_chords(bindings: &Bindings) -> impl Iterator<Item = &Combo> {
+    let custom = bindings.hands_free.as_ref().and_then(HandsFree::combo);
+    [
+        bindings.hold.as_ref(),
+        bindings.command.as_ref(),
+        bindings.paste_last.as_ref(),
+        custom,
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|combo| combo.main().is_some())
 }
 
 fn read_table(conn: &RustConnection) -> Option<HashMap<u32, Phys>> {
@@ -110,8 +144,20 @@ impl X11Keys {
             Unavailable::new(Reason::Failed, "The keyboard mapping is unreadable.")
         })?;
         let table: Table = Arc::new(Mutex::new(table));
-        let hub = Arc::new(Hub::new(bindings, sink, record));
         let conn = Arc::new(conn);
+        // The engine closes the recorder itself when the keys come up or Esc goes down, so the
+        // keyboard grab of the recorder ends here too.
+        let record: RecordSink = {
+            let conn = Arc::clone(&conn);
+            Arc::new(move |recording: Recording| {
+                if !matches!(recording, Recording::Progress(_)) {
+                    let _ = conn.ungrab_keyboard(x11rb::CURRENT_TIME);
+                    let _ = conn.flush();
+                }
+                record(recording);
+            })
+        };
+        let hub = Arc::new(Hub::new(bindings.clone(), sink, record));
         let reader = Arc::clone(&conn);
         let reader_hub = Arc::clone(&hub);
         let reader_table = Arc::clone(&table);
@@ -119,25 +165,97 @@ impl X11Keys {
             .name("hushpen-keys".into())
             .spawn(move || read_events(&reader, &reader_hub, &reader_table))
             .map_err(|e| unavailable("start the key listener", e))?;
-        Ok(Self {
+        let keys = Self {
             conn,
             root,
             hub,
             table,
             grabbed: Mutex::new(false),
-        })
+            chord_grabs: Mutex::new(BTreeSet::new()),
+        };
+        keys.grab_chords(&bindings);
+        Ok(keys)
     }
 
     pub(super) fn set_bindings(&self, bindings: Bindings) {
+        self.grab_chords(&bindings);
         self.hub.set_bindings(bindings);
     }
 
+    /// Grabs the key of each live shortcut and lets go of the ones no longer live. A chord
+    /// another client holds cannot be grabbed; it still runs from the raw event.
+    fn grab_chords(&self, bindings: &Bindings) {
+        let wanted: BTreeSet<(u8, u16)> = live_chords(bindings)
+            .filter_map(|combo| {
+                let code = combo
+                    .main()
+                    .and_then(phys_of)
+                    .and_then(|p| self.code_for(p))?;
+                Some((code, modifier_mask(combo)))
+            })
+            .flat_map(|(code, base)| {
+                lock_states()
+                    .into_iter()
+                    .map(move |lock| (code, u16::from(base | lock)))
+            })
+            .collect();
+        let Ok(mut held) = self.chord_grabs.lock() else {
+            return;
+        };
+        for (code, mask) in held.difference(&wanted) {
+            let _ = self.conn.ungrab_key(*code, self.root, ModMask::from(*mask));
+        }
+        held.retain(|grab| wanted.contains(grab));
+        for (code, mask) in wanted.difference(&held.clone()) {
+            let result = self
+                .conn
+                .grab_key(
+                    false,
+                    self.root,
+                    ModMask::from(*mask),
+                    *code,
+                    GrabMode::ASYNC,
+                    GrabMode::ASYNC,
+                )
+                .map(|cookie| cookie.check());
+            match result {
+                Ok(Ok(())) => {
+                    held.insert((*code, *mask));
+                }
+                Ok(Err(error)) => {
+                    log::debug!("the grab of key {code} with {mask:#x} failed: {error}")
+                }
+                Err(error) => log::warn!("the grab of key {code} failed: {error}"),
+            }
+        }
+        let _ = self.conn.flush();
+    }
+
+    /// The recorder takes the whole keyboard, so Ctrl+Tab or Alt+Tab is recorded and does not
+    /// also move the focus or switch windows.
     pub(super) fn start_recording(&self) {
         self.hub.start_recording();
+        let status = self
+            .conn
+            .grab_keyboard(
+                false,
+                self.root,
+                x11rb::CURRENT_TIME,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| reply.status);
+        if status != Some(GrabStatus::SUCCESS) {
+            log::debug!("the recorder could not grab the keyboard: {status:?}");
+        }
     }
 
     pub(super) fn stop_recording(&self) {
         self.hub.stop_recording();
+        let _ = self.conn.ungrab_keyboard(x11rb::CURRENT_TIME);
+        let _ = self.conn.flush();
     }
 
     fn code_for(&self, phys: Phys) -> Option<u8> {
@@ -145,21 +263,24 @@ impl X11Keys {
         keymap::code_of(&table, phys)
     }
 
-    /// Whether another client holds `combo` with a passive grab. A chord with no letter has no
-    /// key a client could grab, so it is always free.
+    /// Whether another client holds `combo` with a passive grab. A chord of modifiers alone has
+    /// no key a client could grab, so it is always free.
     pub(super) fn in_use(&self, combo: &Combo) -> bool {
-        let Some(code) = combo.letter().and_then(|c| self.code_for(Phys::Char(c))) else {
+        let Some(code) = combo
+            .main()
+            .and_then(phys_of)
+            .and_then(|p| self.code_for(p))
+        else {
             return false;
         };
-        let base = combo
-            .keys()
-            .iter()
-            .fold(ModMask::from(0u16), |mask, key| match key {
-                Key::Any(modifier) | Key::Right(modifier) => mask | mask_of(*modifier),
-                Key::Fn | Key::Char(_) => mask,
-            });
+        let base = modifier_mask(combo);
+        let ours = self
+            .chord_grabs
+            .lock()
+            .map(|held| held.clone())
+            .unwrap_or_default();
         let mut taken = false;
-        let mut ours = Vec::new();
+        let mut probes = Vec::new();
         for lock in lock_states() {
             let modifiers = base | lock;
             let result = self
@@ -174,7 +295,7 @@ impl X11Keys {
                 )
                 .map(|cookie| cookie.check());
             match result {
-                Ok(Ok(())) => ours.push(modifiers),
+                Ok(Ok(())) => probes.push(modifiers),
                 Ok(Err(ReplyError::X11Error(error))) if error.error_kind == ErrorKind::Access => {
                     taken = true;
                 }
@@ -182,8 +303,11 @@ impl X11Keys {
                 Err(error) => log::warn!("the in-use check for {combo:?} failed: {error}"),
             }
         }
-        for modifiers in ours {
-            let _ = self.conn.ungrab_key(code, self.root, modifiers);
+        // A probe of a live shortcut's own grab must not let that grab go.
+        for modifiers in probes {
+            if !ours.contains(&(code, u16::from(modifiers))) {
+                let _ = self.conn.ungrab_key(code, self.root, modifiers);
+            }
         }
         let _ = self.conn.flush();
         taken
