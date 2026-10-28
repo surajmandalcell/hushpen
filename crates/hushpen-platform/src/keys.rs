@@ -6,7 +6,7 @@
 //! working through its buttons.
 
 use hushpen_core::dictation::AppEvent;
-use hushpen_core::shortcut::{Bindings, Combo, Recording};
+use hushpen_core::shortcut::{Bindings, Combo, Conflict, Recording};
 use std::sync::Arc;
 
 mod hub;
@@ -118,16 +118,23 @@ impl GlobalKeys {
         self.inner.stop_recording();
     }
 
-    /// Whether something else already runs this chord: another X client that grabbed it, or a
-    /// macOS system shortcut that is on. Only a chord with a letter or digit can be taken.
-    pub fn in_use(&self, combo: &Combo) -> bool {
+    /// What else already runs this chord, and how the user frees it: another X client that
+    /// grabbed it, or a macOS system shortcut that is on.
+    pub fn conflict(&self, combo: &Combo) -> Option<Conflict> {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
-        return self.inner.in_use(combo);
+        return self.inner.conflict(combo);
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
             let _ = combo;
-            false
+            None
         }
+    }
+
+    /// Turns on again what Hushpen turned off in the system, such as the macOS app switcher
+    /// while Cmd+Tab was a shortcut. For the app's quit.
+    pub fn restore_system(&self) {
+        #[cfg(target_os = "macos")]
+        self.inner.restore_system();
     }
 
     /// Esc belongs to the pipeline while a session runs and to the focused app otherwise.

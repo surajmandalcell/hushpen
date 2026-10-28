@@ -192,7 +192,7 @@ old=$(gtk_commit)
 chord_free ctrl+alt+v || failures+="another client cannot grab Ctrl+Alt+V; "
 check_failures "VAL-KEY-002 chords" "saved Ctrl+Alt+H, Ctrl+Alt+P, RightCtrl+RightShift; hands-free ran and typed '$first'; Ctrl+Alt+P pasted the last transcript; Ctrl+Alt+V does nothing and can be grabbed" "$failures"
 
-echo "== VAL-KEY-003 a chord held by another X client shows the in-use error"
+echo "== VAL-KEY-003 a chord another X client holds is saved with the steps to free it, and works once free"
 failures=""
 helper_up ctrl+alt+j || failures+="the helper did not grab Ctrl+Alt+J ($(cat "$HELPER_LOG")); "
 record_open pasteLast || failures+="no recorder for pasteLast; "
@@ -200,20 +200,28 @@ chord ctrl+alt+j
 wait_until 5 error_is pasteLast SHORTCUT_IN_USE || failures+="pasteLast error is '$(slot_error pasteLast)'; "
 $HC state | jq -c .shortcuts >"$RUN_OUT/003-state.json"
 shot 003-in-use
-[ "$(saved pasteLast)" = Ctrl+Alt+P ] || failures+="shortcut.pasteLast changed to '$(saved pasteLast)'; "
-$HC action shortcut-cancel >/dev/null
+[ "$(saved pasteLast)" = Ctrl+Alt+J ] || failures+="shortcut.pasteLast is '$(saved pasteLast)'; "
+[ "$(sc .slots.pasteLast.live)" = false ] || failures+="the held chord is live; "
+case "$(sc .slots.pasteLast.error.steps)" in *"Then it works here"*) ;; *) failures+="the steps read '$(sc .slots.pasteLast.error.steps)'; " ;; esac
+tree_has settings.shortcut.pasteLast.steps || failures+="no steps row under the field; "
 helper_down
+wait_until 10 test "$(sc .slots.pasteLast.live)" = true || failures+="the chord did not go live after the helper let go; "
+[ "$(slot_error pasteLast)" = null ] || failures+="the error stayed: '$(slot_error pasteLast)'; "
+shot 003-freed
 gtk_clear
 set_clip OLD
 focus "$GT"
 T0=$(now_ms)
-chord ctrl+alt+p
-wait_until 10 fresh_paste || failures+="the previous chord Ctrl+Alt+P no longer pastes; "
+chord ctrl+alt+j
+wait_until 10 fresh_paste || failures+="the freed chord Ctrl+Alt+J made no paste; "
 got=$(gtk_commit)
-[ "$got" = "$first_text" ] || failures+="Ctrl+Alt+P typed '$got'; "
-check_failures "VAL-KEY-003 in use" "SHORTCUT_IN_USE for pasteLast, setting stayed Ctrl+Alt+P, the old chord still pasted" "$failures"
+[ "$got" = "$first_text" ] || failures+="Ctrl+Alt+J typed '$got'; "
+record_open pasteLast || failures+="no recorder to put Ctrl+Alt+P back; "
+chord ctrl+alt+p
+wait_until 5 field_is pasteLast "Ctrl+Alt+P" || failures+="the paste last field reads '$(field pasteLast)'; "
+check_failures "VAL-KEY-003 in use" "SHORTCUT_IN_USE with steps for Ctrl+Alt+J, saved but not live; live within 10 s of the helper letting go and pasted '$got'" "$failures"
 
-echo "== VAL-KEY-004 a Hushpen shortcut or a reserved chord is rejected"
+echo "== VAL-KEY-004 only a chord another slot holds is rejected; Ctrl+Q is the user's choice"
 failures=""
 hands0=$(saved handsFree)
 record_open handsFree || failures+="no recorder for handsFree; "
@@ -225,11 +233,13 @@ $HC state | jq -c .shortcuts >"$RUN_OUT/004-state-taken.json"
 $HC action shortcut-cancel >/dev/null
 record_open handsFree || failures+="no second recorder for handsFree; "
 chord ctrl+q
-wait_until 5 error_is handsFree SHORTCUT_RESERVED || failures+="Ctrl+Q gave '$(slot_error handsFree)'; "
-shot 004-reserved
-$HC state | jq -c .shortcuts >"$RUN_OUT/004-state-reserved.json"
-[ "$(saved handsFree)" = "$hands0" ] || failures+="shortcut.handsFree changed to '$(saved handsFree)' after Ctrl+Q; "
-$HC action shortcut-cancel >/dev/null
+wait_until 5 field_is handsFree "Ctrl+Q" || failures+="Ctrl+Q gave '$(field handsFree)' ($(slot_error handsFree)); "
+shot 004-ctrl-q
+$HC state | jq -c .shortcuts >"$RUN_OUT/004-state-ctrl-q.json"
+[ "$(saved handsFree)" = Ctrl+Q ] || failures+="shortcut.handsFree is '$(saved handsFree)' after Ctrl+Q; "
+record_open handsFree || failures+="no recorder to put $hands0 back; "
+chord ctrl+alt+h
+wait_until 5 field_is handsFree "Ctrl+Alt+H" || failures+="the hands-free field reads '$(field handsFree)'; "
 gtk_clear
 set_clip OLD
 focus "$GT"
@@ -237,7 +247,7 @@ T0=$(now_ms)
 chord ctrl+alt+p
 wait_until 10 fresh_paste || failures+="Ctrl+Alt+P no longer pastes; "
 toggle_run ctrl+alt+h "$SHORT_WAV" || failures+="Ctrl+Alt+H no longer runs a session: $(pevents); "
-check_failures "VAL-KEY-004 reserved" "both attempts gave SHORTCUT_RESERVED, handsFree stayed $hands0, paste last and hands-free still work" "$failures"
+check_failures "VAL-KEY-004 reserved" "the paste last chord gave SHORTCUT_RESERVED, Ctrl+Q was saved, $hands0 back, paste last and hands-free still work" "$failures"
 
 echo "== VAL-KEY-005 Esc cancels the recorder and the recorder blocks the live shortcut"
 failures=""
@@ -286,7 +296,15 @@ chord F7
 wait_until 10 fresh_paste || failures+="F7 made no paste: $(li .); "
 got=$(gtk_commit)
 [ -n "$got" ] && [ "$got" = "$tab_text" ] || failures+="F7 typed '$got', the transcript is '$tab_text'; "
-check_failures "VAL-KEY-009 any key" "saved F7 and Ctrl+Tab; Ctrl+Tab ran a session that typed '$tabbed' into the entry; F7 pasted it again" "$failures"
+record_open hold || failures+="no recorder for hold; "
+tap XF86AudioPlay
+wait_until 5 field_is hold "Play/Pause" || failures+="the hold field reads '$(field hold)'; "
+[ "$(saved hold)" = PlayPause ] || failures+="shortcut.hold is '$(saved hold)'; "
+gtk_clear
+hold_run XF86AudioPlay "$SHORT_WAV" || failures+="holding Play/Pause did not run a dictation: $(pevents); "
+played=$(gtk_commit)
+words_ok "$played" || failures+="the Play/Pause hold typed '$played'; "
+check_failures "VAL-KEY-009 any key" "saved F7, Ctrl+Tab, and Play/Pause as the hold key; Ctrl+Tab ran a session that typed '$tabbed' into the entry; F7 pasted it again; holding Play/Pause typed '$played'" "$failures"
 
 echo "== VAL-KEY-008 Reset to default, and a chord in use at start"
 failures=""

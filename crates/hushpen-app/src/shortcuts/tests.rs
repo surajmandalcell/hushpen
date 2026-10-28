@@ -28,8 +28,13 @@ impl KeyControl for FakeKeys {
         *self.stopped.borrow_mut() += 1;
     }
 
-    fn in_use(&self, combo: &Combo) -> bool {
-        self.held.borrow().contains(combo)
+    fn conflict(&self, combo: &Combo) -> Option<Conflict> {
+        self.held.borrow().contains(combo).then(|| Conflict {
+            message: "Another app or the desktop uses this shortcut.".to_owned(),
+            steps: "Remove it in System Settings > Keyboard > Shortcuts. Then it works here."
+                .to_owned(),
+            open: Some(Opener::Command(vec!["true".to_owned()])),
+        })
     }
 }
 
@@ -186,22 +191,31 @@ fn chords_for_the_other_three_slots_are_saved(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_chord_another_app_holds_is_refused_and_the_old_one_stays(cx: &mut TestAppContext) {
+fn a_chord_another_app_holds_is_saved_with_its_steps_and_works_once_freed(cx: &mut TestAppContext) {
     let rig = rig_with(cx, &["Ctrl+Alt+J"], &[]);
     record(cx, &rig, Slot::PasteLast, &chord('j'));
 
     let state = state(cx, &rig);
-    assert_eq!(
-        state["slots"]["pasteLast"]["error"]["code"],
-        "SHORTCUT_IN_USE"
-    );
-    assert_eq!(saved_text(&rig, Slot::PasteLast), "Ctrl+Alt+V");
-    assert_eq!(state["slots"]["pasteLast"]["setting"], "Ctrl+Alt+V");
-    assert_eq!(rig.keys.live().paste_last, Some(combo("Ctrl+Alt+V")));
+    let error = &state["slots"]["pasteLast"]["error"];
+    assert_eq!(error["code"], "SHORTCUT_IN_USE");
+    assert!(error["steps"].as_str().unwrap().contains("Remove it"));
+    assert_eq!(error["can_open"], true);
+    assert_eq!(saved_text(&rig, Slot::PasteLast), "Ctrl+Alt+J");
+    assert_eq!(state["slots"]["pasteLast"]["live"], false);
+    assert_eq!(rig.keys.live().paste_last, None);
+
+    rig.keys.held.borrow_mut().clear();
+    cx.executor()
+        .advance_clock(RECHECK + Duration::from_millis(100));
+    cx.run_until_parked();
+    let state = self::state(cx, &rig);
+    assert_eq!(state["slots"]["pasteLast"]["error"], Value::Null);
+    assert_eq!(state["slots"]["pasteLast"]["live"], true);
+    assert_eq!(rig.keys.live().paste_last, Some(combo("Ctrl+Alt+J")));
 }
 
 #[gpui_kit::test]
-fn a_system_chord_and_a_chord_hushpen_uses_are_refused_as_reserved(cx: &mut TestAppContext) {
+fn only_a_chord_another_slot_holds_is_refused(cx: &mut TestAppContext) {
     let rig = rig(cx);
     record(cx, &rig, Slot::HandsFree, &chord('v'));
     let first = state(cx, &rig);
@@ -209,7 +223,9 @@ fn a_system_chord_and_a_chord_hushpen_uses_are_refused_as_reserved(cx: &mut Test
         first["slots"]["handsFree"]["error"]["code"],
         "SHORTCUT_RESERVED"
     );
+    assert_eq!(saved_text(&rig, Slot::HandsFree), "DoubleTap+Hold+Space");
 
+    // A chord every app uses is the user's choice.
     record(
         cx,
         &rig,
@@ -217,21 +233,28 @@ fn a_system_chord_and_a_chord_hushpen_uses_are_refused_as_reserved(cx: &mut Test
         &[Key::Any(Modifier::Ctrl), Key::Char('q')],
     );
     let second = state(cx, &rig);
+    assert_eq!(second["slots"]["handsFree"]["error"], Value::Null);
+    assert_eq!(saved_text(&rig, Slot::HandsFree), "Ctrl+Q");
     assert_eq!(
-        second["slots"]["handsFree"]["error"]["code"],
-        "SHORTCUT_RESERVED"
+        rig.keys.live().hands_free,
+        Some(HandsFree::Custom(combo("Ctrl+Q")))
     );
-    assert_eq!(saved_text(&rig, Slot::HandsFree), "DoubleTap+Hold+Space");
-    assert_eq!(rig.keys.live().paste_last, Some(combo("Ctrl+Alt+V")));
 }
 
 #[gpui_kit::test]
-fn keys_that_are_not_a_shortcut_say_why(cx: &mut TestAppContext) {
+fn a_single_key_or_a_media_key_can_be_the_hold_key(cx: &mut TestAppContext) {
     let rig = rig(cx);
     record(cx, &rig, Slot::Hold, &[Key::Char('a')]);
-    let state = state(cx, &rig);
-    assert_eq!(state["slots"]["hold"]["error"]["code"], "SHORTCUT_INVALID");
-    assert_eq!(saved_text(&rig, Slot::Hold), "RightAlt");
+    assert_eq!(saved_text(&rig, Slot::Hold), "A");
+    assert_eq!(rig.keys.live().hold, Some(combo("A")));
+    record(
+        cx,
+        &rig,
+        Slot::Hold,
+        &[Key::Named(hushpen_core::shortcut::Named::PlayPause)],
+    );
+    assert_eq!(saved_text(&rig, Slot::Hold), "PlayPause");
+    assert_eq!(state(cx, &rig)["slots"]["hold"]["display"], "Play/Pause");
 }
 
 #[gpui_kit::test]
@@ -351,7 +374,7 @@ fn a_saved_value_that_is_not_a_shortcut_falls_back_to_the_default(cx: &mut TestA
     let rig = rig_with(
         cx,
         &[],
-        &[("shortcut.pasteLast", "V"), ("shortcut.hold", "Fn")],
+        &[("shortcut.pasteLast", "Nope"), ("shortcut.hold", "Fn")],
     );
     let state = state(cx, &rig);
     assert_eq!(state["slots"]["pasteLast"]["setting"], "Ctrl+Alt+V");
@@ -506,13 +529,19 @@ mod view {
             .unwrap();
         assert_eq!(
             label(cx, handle, "settings.shortcut.pasteLast").as_deref(),
-            Some("Ctrl+Alt+V")
+            Some("Ctrl+Alt+J")
         );
         assert!(
             label(cx, handle, "settings.shortcut.pasteLast.error")
                 .unwrap()
                 .contains("Another app")
         );
+        assert!(
+            label(cx, handle, "settings.shortcut.pasteLast.steps")
+                .unwrap()
+                .contains("Then it works here")
+        );
+        click(cx, handle, "settings.shortcut.pasteLast.open");
     }
 
     #[gpui_kit::test]

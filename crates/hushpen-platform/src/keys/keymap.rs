@@ -2,7 +2,9 @@
 //!
 //! Pure data, so it is tested on every system. The listener reads the server's mapping and
 //! calls [`build`]; a key the mapping does not name still resolves when it is a modifier or Esc
-//! at its place on an evdev keyboard (key code is the evdev code plus 8).
+//! at its place on an evdev keyboard (key code is the evdev code plus 8). Every key with a
+//! keysym is a key: one with no name of its own (`XF86Calculator`, `XF86Launch5`) is
+//! [`Phys::Code`] with its keysym, and X11 names it.
 
 use hushpen_core::shortcut::{Modifier, Named, Phys, Side};
 use std::collections::HashMap;
@@ -42,7 +44,48 @@ fn modifier_keysym(keysym: u32) -> Option<Phys> {
 fn named_keysym(keysym: u32) -> Option<Phys> {
     let named = match keysym {
         0xff09 | 0xfe20 => Named::Tab,
-        0xff0d | 0xff8d => Named::Return,
+        0xff0d => Named::Return,
+        0xff8d => Named::KeypadEnter,
+        0xff0b => Named::KeypadClear,
+        0xff63 => Named::Insert,
+        0xff6a => Named::Help,
+        0xff67 => Named::Menu,
+        0xff61 => Named::PrintScreen,
+        0xff14 => Named::ScrollLock,
+        0xff13 => Named::Pause,
+        0xff7f => Named::NumLock,
+        0xffe5 => Named::CapsLock,
+        0xffb0..=0xffb9 => Named::Keypad(char::from_digit(keysym - 0xffb0, 10)?),
+        // The keypad keys with Num Lock off are still the same keys.
+        0xff9e => Named::Keypad('0'),
+        0xff9c => Named::Keypad('1'),
+        0xff99 => Named::Keypad('2'),
+        0xff9b => Named::Keypad('3'),
+        0xff96 => Named::Keypad('4'),
+        0xff9d => Named::Keypad('5'),
+        0xff98 => Named::Keypad('6'),
+        0xff95 => Named::Keypad('7'),
+        0xff97 => Named::Keypad('8'),
+        0xff9a => Named::Keypad('9'),
+        0xffae | 0xff9f => Named::Keypad('.'),
+        0xffab => Named::Keypad('+'),
+        0xffad => Named::Keypad('-'),
+        0xffaa => Named::Keypad('*'),
+        0xffaf => Named::Keypad('/'),
+        0xffbd => Named::Keypad('='),
+        0x1008_ff14 | 0x1008_ff31 => Named::PlayPause,
+        0x1008_ff17 => Named::NextTrack,
+        0x1008_ff16 => Named::PreviousTrack,
+        0x1008_ff97 => Named::FastForward,
+        0x1008_ff3e => Named::Rewind,
+        0x1008_ff13 => Named::VolumeUp,
+        0x1008_ff11 => Named::VolumeDown,
+        0x1008_ff12 => Named::Mute,
+        0x1008_ff02 => Named::BrightnessUp,
+        0x1008_ff03 => Named::BrightnessDown,
+        0x1008_ff05 => Named::KeyboardLightUp,
+        0x1008_ff06 => Named::KeyboardLightDown,
+        0x1008_ff2c => Named::Eject,
         0xff08 => Named::Backspace,
         0xffff => Named::Delete,
         0xff52 => Named::Up,
@@ -53,8 +96,8 @@ fn named_keysym(keysym: u32) -> Option<Phys> {
         0xff57 => Named::End,
         0xff55 => Named::PageUp,
         0xff56 => Named::PageDown,
-        // F1 to F20.
-        0xffbe..=0xffd1 => Named::F(u8::try_from(keysym - 0xffbe + 1).ok()?),
+        // F1 to F35.
+        0xffbe..=0xffe0 => Named::F(u8::try_from(keysym - 0xffbe + 1).ok()?),
         _ => return None,
     };
     Some(Phys::Named(named))
@@ -97,12 +140,28 @@ pub(super) fn build(min_keycode: u8, per: usize, keysyms: &[u32]) -> HashMap<u32
                     .take(2)
                     .find_map(|keysym| char_keysym(*keysym))
             })
-            .or_else(|| symbols.iter().find_map(|keysym| char_keysym(*keysym)));
+            .or_else(|| symbols.iter().find_map(|keysym| char_keysym(*keysym)))
+            .or_else(|| {
+                symbols
+                    .iter()
+                    .find(|keysym| **keysym != 0)
+                    .map(|keysym| Phys::Code(*keysym))
+            });
         if let Some(phys) = found {
             table.insert(code, phys);
         }
     }
     table
+}
+
+/// The X11 name of a keysym, without its prefix: `XF86XK_Calculator` is `Calculator`.
+pub(super) fn code_name(keysym: u32) -> Option<String> {
+    let name = xkeysym::Keysym::new(keysym).name()?;
+    let short = name
+        .strip_prefix("XF86XK_")
+        .or_else(|| name.strip_prefix("XK_"))
+        .unwrap_or(name);
+    Some(short.replace('_', " "))
 }
 
 /// The lowest key code that stands for `key`.
@@ -174,6 +233,36 @@ mod tests {
         assert_eq!(table[&84], Phys::Named(Named::Left));
         assert_eq!(table[&85], Phys::Named(Named::F(5)));
         assert_eq!(table[&86], Phys::Char('ü'));
+    }
+
+    #[test]
+    fn media_keypad_lock_and_unnamed_keys_are_shortcut_keys() {
+        let table = build(
+            150,
+            2,
+            &[
+                0x1008_ff14,
+                0,
+                0xff9c,
+                0xffb1,
+                0xffe5,
+                0,
+                0x1008_ff1d,
+                0,
+                0xffe0,
+                0,
+                0xff8d,
+                0,
+            ],
+        );
+        assert_eq!(table[&150], Phys::Named(Named::PlayPause));
+        assert_eq!(table[&151], Phys::Named(Named::Keypad('1')));
+        assert_eq!(table[&152], Phys::Named(Named::CapsLock));
+        assert_eq!(table[&153], Phys::Code(0x1008_ff1d));
+        assert_eq!(table[&154], Phys::Named(Named::F(35)));
+        assert_eq!(table[&155], Phys::Named(Named::KeypadEnter));
+        assert_eq!(code_name(0x1008_ff1d).as_deref(), Some("Calculator"));
+        assert_eq!(code_name(0x1008_ff45).as_deref(), Some("Launch5"));
     }
 
     #[test]

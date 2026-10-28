@@ -18,6 +18,8 @@ test-automation = []
 [dependencies]
 hushpen-core.workspace = true
 log.workspace = true
+# The X11 key names, for a key Hushpen has no name of its own for.
+xkeysym.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb.workspace = true

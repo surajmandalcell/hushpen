@@ -11,13 +11,37 @@ use std::time::{Duration, Instant};
 
 pub const KEYCODE_ESCAPE: i64 = 53;
 const KEYCODE_FN: i64 = 63;
+const KEYCODE_CAPS_LOCK: i64 = 57;
 pub const KEYCODE_SPACE: i64 = 49;
 
-/// The keys that type no character, by their fixed key code (`kVK_Tab`, `kVK_F1`, and so on).
-const NAMED_KEYS: [(i64, Named); 33] = [
+/// A media key has no key code; it is `MEDIA_CODE` plus its `NX_KEYTYPE` number.
+pub const MEDIA_CODE: u32 = 0x1_0000;
+
+/// The keys that type no character, by their fixed key code (`kVK_Tab`, `kVK_F1`,
+/// `kVK_ANSI_Keypad1`, and so on).
+const NAMED_KEYS: [(i64, Named); 52] = [
     (48, Named::Tab),
     (36, Named::Return),
-    (76, Named::Return),
+    (76, Named::KeypadEnter),
+    (71, Named::KeypadClear),
+    (65, Named::Keypad('.')),
+    (67, Named::Keypad('*')),
+    (69, Named::Keypad('+')),
+    (75, Named::Keypad('/')),
+    (78, Named::Keypad('-')),
+    (81, Named::Keypad('=')),
+    (82, Named::Keypad('0')),
+    (83, Named::Keypad('1')),
+    (84, Named::Keypad('2')),
+    (85, Named::Keypad('3')),
+    (86, Named::Keypad('4')),
+    (87, Named::Keypad('5')),
+    (88, Named::Keypad('6')),
+    (89, Named::Keypad('7')),
+    (91, Named::Keypad('8')),
+    (92, Named::Keypad('9')),
+    (114, Named::Help),
+    (110, Named::Menu),
     (51, Named::Backspace),
     (117, Named::Delete),
     (126, Named::Up),
@@ -50,12 +74,72 @@ const NAMED_KEYS: [(i64, Named); 33] = [
     (90, Named::F(20)),
 ];
 
-/// The key code of a named key. Keypad Enter also reads as Return; this is the main one.
+/// The key code of a named key, when it has one. Media keys have none.
 pub fn named_keycode(named: Named) -> Option<i64> {
+    match named {
+        Named::Escape => return Some(KEYCODE_ESCAPE),
+        Named::CapsLock => return Some(KEYCODE_CAPS_LOCK),
+        _ => {}
+    }
     NAMED_KEYS
         .iter()
         .find(|(_, each)| *each == named)
         .map(|(code, _)| *code)
+}
+
+/// The media keys by `NX_KEYTYPE` number (`NX_KEYTYPE_SOUND_UP` is 0, and so on).
+const MEDIA_KEYS: [(u32, Named); 13] = [
+    (0, Named::VolumeUp),
+    (1, Named::VolumeDown),
+    (2, Named::BrightnessUp),
+    (3, Named::BrightnessDown),
+    (7, Named::Mute),
+    (14, Named::Eject),
+    (16, Named::PlayPause),
+    (17, Named::NextTrack),
+    (18, Named::PreviousTrack),
+    (19, Named::FastForward),
+    (20, Named::Rewind),
+    (21, Named::KeyboardLightUp),
+    (22, Named::KeyboardLightDown),
+];
+
+/// The physical key of a media key event: `NX_SUBTYPE_AUX_CONTROL_BUTTONS` (8) with the key in
+/// the high half of `data1` and its state (`0xA` down, `0xB` up) in the byte below.
+pub fn media_key(subtype: i64, data1: i64) -> Option<(Phys, bool)> {
+    const AUX_CONTROL_BUTTONS: i64 = 8;
+    if subtype != AUX_CONTROL_BUTTONS {
+        return None;
+    }
+    let code = u32::try_from((data1 >> 16) & 0xFFFF).ok()?;
+    let down = match (data1 >> 8) & 0xFF {
+        0xA => true,
+        0xB => false,
+        _ => return None,
+    };
+    let phys = MEDIA_KEYS
+        .iter()
+        .find(|(each, _)| *each == code)
+        .map(|(_, named)| Phys::Named(*named))
+        .unwrap_or(Phys::Code(MEDIA_CODE + code));
+    Some((phys, down))
+}
+
+/// The words for a Mac key that has no name in the shortcut model.
+pub fn code_name(code: u32) -> Option<String> {
+    let name = match code {
+        10 => "§",
+        93 => "¥",
+        94 => "JIS _",
+        95 => "Keypad ,",
+        102 => "英数",
+        104 => "かな",
+        131 => "Launchpad",
+        160 => "Mission Control",
+        code if code >= MEDIA_CODE => return Some(format!("Media key {}", code - MEDIA_CODE)),
+        _ => return None,
+    };
+    Some(name.to_owned())
 }
 
 fn named_of(keycode: i64) -> Option<Named> {
@@ -65,6 +149,7 @@ fn named_of(keycode: i64) -> Option<Named> {
         .map(|(_, named)| *named)
 }
 
+pub const FLAG_ALPHA_SHIFT: u64 = 0x0001_0000;
 pub const FLAG_ALTERNATE: u64 = 0x0008_0000;
 pub const FLAG_SECONDARY_FN: u64 = 0x0080_0000;
 pub const FLAG_SHIFT: u64 = 0x0002_0000;
@@ -127,6 +212,11 @@ pub enum TapEvent {
         keycode: i64,
         flags: u64,
     },
+    /// A media key (`NX_SYSDEFINED`), with the event's subtype and `data1`.
+    Media {
+        subtype: i64,
+        data1: i64,
+    },
     /// `kCGEventTapDisabledByTimeout`: the system turned the tap off because the callback was slow.
     DisabledByTimeout,
     /// `kCGEventTapDisabledByUserInput`.
@@ -137,6 +227,8 @@ pub enum TapEvent {
 pub enum TapAction {
     /// A key went down (`true`) or up (`false`).
     Key(Phys, bool),
+    /// A key that macOS reports once, on its press: Caps Lock. It goes down and up at once.
+    Tap(Phys),
     /// Turn the tap on again.
     Reenable,
     Ignore,
@@ -149,6 +241,8 @@ pub struct Decoder {
     chars: HashMap<i64, char>,
     /// The modifiers that are down, so a flags event is a change or nothing.
     down: BTreeSet<Phys>,
+    /// The Caps Lock state of the last Caps Lock event, so a press counts once.
+    caps: Option<bool>,
 }
 
 impl Decoder {
@@ -156,6 +250,7 @@ impl Decoder {
         Self {
             chars,
             down: BTreeSet::new(),
+            caps: None,
         }
     }
 
@@ -164,6 +259,10 @@ impl Decoder {
             TapEvent::FlagsChanged { keycode, flags } => self.flags_changed(keycode, flags),
             TapEvent::KeyDown { keycode, .. } => self.key(keycode, true),
             TapEvent::KeyUp { keycode, .. } => self.key(keycode, false),
+            TapEvent::Media { subtype, data1 } => match media_key(subtype, data1) {
+                Some((phys, down)) => TapAction::Key(phys, down),
+                None => TapAction::Ignore,
+            },
             TapEvent::DisabledByTimeout | TapEvent::DisabledByUserInput => TapAction::Reenable,
         }
     }
@@ -177,11 +276,21 @@ impl Decoder {
         }
         match self.chars.get(&keycode) {
             Some(c) => TapAction::Key(Phys::Char(*c), down),
-            None => TapAction::Ignore,
+            None => match u32::try_from(keycode) {
+                Ok(code) if code < MEDIA_CODE => TapAction::Key(Phys::Code(code), down),
+                _ => TapAction::Ignore,
+            },
         }
     }
 
     fn flags_changed(&mut self, keycode: i64, flags: u64) -> TapAction {
+        if keycode == KEYCODE_CAPS_LOCK {
+            let on = flags & FLAG_ALPHA_SHIFT != 0;
+            if self.caps.replace(on) == Some(on) {
+                return TapAction::Ignore;
+            }
+            return TapAction::Tap(Phys::Named(Named::CapsLock));
+        }
         let (phys, pressed) = if keycode == KEYCODE_FN {
             (Phys::Fn, flags & FLAG_SECONDARY_FN != 0)
         } else if let Some(key) = MODIFIER_KEYS.iter().find(|key| key.keycode == keycode) {
@@ -414,8 +523,53 @@ mod tests {
             decoder.decode(key_down(KEYCODE_ESCAPE)),
             TapAction::Key(Phys::Esc, true)
         );
-        assert_eq!(decoder.decode(key_down(0)), TapAction::Ignore);
-        assert_eq!(decoder.decode(flags(57, 0)), TapAction::Ignore, "Caps Lock");
+        assert_eq!(
+            decoder.decode(key_down(0)),
+            TapAction::Key(Phys::Code(0), true),
+            "a key the layout does not type is still a key"
+        );
+        assert_eq!(
+            decoder.decode(flags(57, FLAG_ALPHA_SHIFT)),
+            TapAction::Tap(Phys::Named(Named::CapsLock))
+        );
+        assert_eq!(
+            decoder.decode(flags(57, FLAG_ALPHA_SHIFT)),
+            TapAction::Ignore,
+            "the same Caps Lock state again is not a second press"
+        );
+        assert_eq!(
+            decoder.decode(flags(57, 0)),
+            TapAction::Tap(Phys::Named(Named::CapsLock))
+        );
+    }
+
+    #[test]
+    fn media_keys_come_from_the_system_defined_event() {
+        let mut decoder = decoder();
+        let event = |code: i64, state: i64| TapEvent::Media {
+            subtype: 8,
+            data1: (code << 16) | (state << 8),
+        };
+        assert_eq!(
+            decoder.decode(event(16, 0xA)),
+            TapAction::Key(Phys::Named(Named::PlayPause), true)
+        );
+        assert_eq!(
+            decoder.decode(event(0, 0xB)),
+            TapAction::Key(Phys::Named(Named::VolumeUp), false)
+        );
+        assert_eq!(
+            decoder.decode(event(6, 0xA)),
+            TapAction::Key(Phys::Code(MEDIA_CODE + 6), true)
+        );
+        assert_eq!(
+            decoder.decode(TapEvent::Media {
+                subtype: 7,
+                data1: 16 << 16 | 0xA << 8
+            }),
+            TapAction::Ignore
+        );
+        assert_eq!(code_name(MEDIA_CODE + 6).as_deref(), Some("Media key 6"));
     }
 
     #[test]
@@ -427,6 +581,9 @@ mod tests {
             (123, Named::Left),
             (96, Named::F(5)),
             (90, Named::F(20)),
+            (83, Named::Keypad('1')),
+            (76, Named::KeypadEnter),
+            (114, Named::Help),
         ] {
             assert_eq!(
                 decoder.decode(key_down(keycode)),
@@ -442,7 +599,21 @@ mod tests {
             decoder.decode(key_down(27)),
             TapAction::Key(Phys::Char('-'), true)
         );
-        assert!(Named::all().all(|named| named_keycode(named).is_some()));
+        let media = MEDIA_KEYS.map(|(_, named)| named);
+        assert!(
+            Named::all()
+                .filter(|named| !media.contains(named))
+                .filter(|named| !matches!(named, Named::F(n) if *n > 20))
+                .filter(|named| !matches!(
+                    named,
+                    Named::Insert
+                        | Named::PrintScreen
+                        | Named::ScrollLock
+                        | Named::Pause
+                        | Named::NumLock
+                ))
+                .all(|named| named_keycode(named).is_some())
+        );
     }
 
     #[test]
@@ -476,6 +647,11 @@ mod tests {
             let outputs = match decoder.decode(*event) {
                 TapAction::Key(key, true) => engine.press(key),
                 TapAction::Key(key, false) => engine.release(key),
+                TapAction::Tap(key) => {
+                    let mut both = engine.press(key);
+                    both.extend(engine.release(key));
+                    both
+                }
                 TapAction::Reenable | TapAction::Ignore => Vec::new(),
             };
             out.extend(outputs.into_iter().filter_map(|output| match output {

@@ -31,7 +31,7 @@ use hushpen_app::theme::{Appearance, space};
 use hushpen_app::updater::{Checker, Parts as UpdaterParts, SystemInstaller, Updater, wall_clock};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
-use hushpen_core::shortcut::{Bindings, Combo, Platform};
+use hushpen_core::shortcut::{Bindings, Combo, Conflict, Platform};
 use hushpen_core::update::{Offer, Version};
 use hushpen_engine::{
     Failure, ImportProgress, JobOutcome, Segment as EngineSegment, Transcription,
@@ -65,8 +65,8 @@ impl KeyControl for QuietKeys {
 
     fn stop_recording(&self) {}
 
-    fn in_use(&self, _: &Combo) -> bool {
-        false
+    fn conflict(&self, _: &Combo) -> Option<Conflict> {
+        None
     }
 }
 

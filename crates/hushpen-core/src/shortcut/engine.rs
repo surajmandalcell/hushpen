@@ -27,18 +27,21 @@ pub enum Phys {
     /// A lowercase character key. Space is `' '`.
     Char(char),
     Named(Named),
+    /// A key with no name, by the system's number (see [`Key::Code`]).
+    Code(u32),
     Esc,
 }
 
 impl Phys {
-    fn recorded(self) -> Option<Key> {
+    fn recorded(self) -> Key {
         match self {
-            Phys::Modifier(modifier, Side::Left) => Some(Key::Any(modifier)),
-            Phys::Modifier(modifier, Side::Right) => Some(Key::Right(modifier)),
-            Phys::Fn => Some(Key::Fn),
-            Phys::Char(c) => Some(Key::Char(c)),
-            Phys::Named(named) => Some(Key::Named(named)),
-            Phys::Esc => None,
+            Phys::Modifier(modifier, Side::Left) => Key::Any(modifier),
+            Phys::Modifier(modifier, Side::Right) => Key::Right(modifier),
+            Phys::Fn => Key::Fn,
+            Phys::Char(c) => Key::Char(c),
+            Phys::Named(named) => Key::Named(named),
+            Phys::Code(code) => Key::Code(code),
+            Phys::Esc => Key::Named(Named::Escape),
         }
     }
 
@@ -64,7 +67,7 @@ pub enum Recording {
     Progress(Vec<Key>),
     /// Every key is up: the shortcut is the most keys that were down together.
     Captured(Vec<Key>),
-    /// Esc. The recorder is closed.
+    /// Esc with no other key down. The recorder is closed.
     Cancelled,
 }
 
@@ -74,16 +77,20 @@ pub enum Output {
     Record(Recording),
 }
 
-fn accepts(key: Key, phys: Phys, claimed: &BTreeSet<Phys>) -> bool {
+fn accepts(combo: &Combo, key: Key, phys: Phys, claimed: &BTreeSet<Phys>) -> bool {
     match (key, phys) {
         (Key::Fn, Phys::Fn) => true,
         (Key::Char(a), Phys::Char(b)) => a == b,
         (Key::Named(a), Phys::Named(b)) => a == b,
+        (Key::Named(Named::Escape), Phys::Esc) => true,
+        (Key::Code(a), Phys::Code(b)) => a == b,
         (Key::Right(wanted), Phys::Modifier(modifier, Side::Right)) => wanted == modifier,
         // A right-hand key that the hold or Command Mode shortcut uses does not count as the
-        // plain modifier of another shortcut, or one chord would start two things.
+        // plain modifier of another shortcut, or one chord would start two things. With the
+        // right key in the same chord, the plain one is the left key.
         (Key::Any(wanted), Phys::Modifier(modifier, side)) => {
-            wanted == modifier && (side == Side::Left || !claimed.contains(&phys))
+            wanted == modifier
+                && (side == Side::Left || (!claimed.contains(&phys) && !combo.left_only(wanted)))
         }
         _ => false,
     }
@@ -93,11 +100,14 @@ fn satisfied(combo: &Combo, down: &BTreeSet<Phys>, claimed: &BTreeSet<Phys>) -> 
     combo
         .keys()
         .iter()
-        .all(|key| down.iter().any(|phys| accepts(*key, *phys, claimed)))
+        .all(|key| down.iter().any(|phys| accepts(combo, *key, *phys, claimed)))
 }
 
 fn uses(combo: &Combo, phys: Phys, claimed: &BTreeSet<Phys>) -> bool {
-    combo.keys().iter().any(|key| accepts(*key, phys, claimed))
+    combo
+        .keys()
+        .iter()
+        .any(|key| accepts(combo, *key, phys, claimed))
 }
 
 /// A shortcut that fires when it is let go. It arms when the last key goes down with no other
@@ -326,19 +336,18 @@ impl Engine {
             return Vec::new();
         }
         if let Some(recorder) = &mut self.recorder {
-            let progress = if key == Phys::Esc {
+            // Esc alone closes the recorder; with other keys down it is part of the shortcut.
+            if key == Phys::Esc && recorder.held.is_empty() {
                 self.recorder = None;
                 self.follow_hold();
                 return vec![Output::Record(Recording::Cancelled)];
-            } else {
-                recorder.held.insert(key);
-                key.recorded().map(|recorded| {
-                    recorder.peak.insert(recorded);
-                    Output::Record(Recording::Progress(recorder.peak.iter().copied().collect()))
-                })
-            };
+            }
+            recorder.held.insert(key);
+            recorder.peak.insert(key.recorded());
+            let progress =
+                Output::Record(Recording::Progress(recorder.peak.iter().copied().collect()));
             self.follow_hold();
-            return progress.into_iter().collect();
+            return vec![progress];
         }
         let mut out = Vec::new();
         if key == Phys::Esc && self.escape {

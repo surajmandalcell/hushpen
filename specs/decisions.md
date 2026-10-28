@@ -231,27 +231,34 @@ new decision, add it here in the same change (D-21).
   the menu color.
 - **D-34 Shortcut keys and conflicts.** Settings > Shortcuts has four global slots
   (hold, hands-free, paste last, Command Mode); the footer says how to change
-  one: "Click a shortcut, then press the keys. Esc cancels." A recorded chord
-  is refused, and the old one kept, when it is not a valid chord, when
-  another slot has it (the message names the slot), when the system or most
-  apps use it (`Combo::reserved`: Cmd, or Ctrl on Linux, with any letter or
-  digit, plus the screenshot, lock, full screen, hide, Dock, terminal, and
-  Mac text field chords), or when something else runs it now: an X11 passive
-  grab by another client, or a macOS system shortcut that is on
-  (`CopySymbolicHotKeys`; the error says to turn it off in System Settings >
-  Keyboard). Cmd+Tab is not refused; Cmd+` is the macOS shortcut "Move focus
-  to next window" and is refused until it is turned off there. macOS keeps no list of other apps' shortcuts, so
-  those cannot be checked. A saved chord that is taken at start stays saved,
-  shows the error, and does not run. A shortcut is modifiers plus at most
-  one key of any kind: a letter, digit, or symbol key of the layout
-  (```, `-`, `[`), Space, Tab, Return, Backspace, Delete, the arrows,
-  Home, End, Page Up, Page Down, or F1 to F20. F-keys may stand alone; any
-  other key needs Ctrl, Alt, Cmd, or Fn. Modifiers alone need one on the
-  right side or Fn (Cmd+Right Ctrl). The key that completes a live shortcut,
-  and every key but a modifier while the recorder is open, stay away from the
-  front app: on macOS a filtering event tap drops them (with Accessibility;
-  with only Input Monitoring the tap listens), on X11 each live chord is
-  grabbed and the recorder grabs the keyboard. Modifier events always pass.
+  one: "Click a shortcut, then press the keys. Esc cancels." Hushpen keeps no
+  list of allowed chords: any keys the system reports, held together, are a
+  shortcut. That covers a bare key (a letter, F13, Caps Lock), a media key
+  (Play/Pause, Volume Up), a keypad key, a key with no name (saved as
+  `Key<number>`: the macOS key code, or the X11 keysym, named by X11), a
+  plain modifier, both sides of one modifier (Left Ctrl+Right Ctrl), and up
+  to 6 keys. Esc alone closes the recorder; with other keys down it is part
+  of the shortcut. Hushpen refuses, and keeps the old one, only a chord that
+  another slot has (the message names the slot) or setting text that names no
+  key. A chord that something else runs now (an X11 passive grab by another
+  client, or a macOS system shortcut that is on, read with
+  `CopySymbolicHotKeys`) is saved but not live: the field shows who uses it
+  (on macOS the System Settings name, found with `CGSGetSymbolicHotKeyValue`)
+  and one line of steps, with Open Settings (System Settings > Keyboard on
+  macOS, the desktop's shortcut settings on Linux). The slot is tried again
+  every 2 s and goes live once it is free. The macOS app switcher has no
+  switch in System Settings and runs before any tap, so while a live shortcut
+  is Cmd+Tab or Cmd+Shift+Tab, Hushpen turns that hotkey off for the login
+  session (`CGSSetSymbolicHotKeyEnabled`, as AltTab does) and turns it on
+  again when the shortcut changes or the app quits; a note in the temporary
+  folder lets the next start undo it after a crash. macOS keeps no list of
+  other apps' shortcuts, so those cannot be checked. The key that completes a
+  live shortcut, and every key but a modifier while the recorder is open,
+  stay away from the front app: on macOS a filtering event tap drops them,
+  media keys included (with Accessibility; with only Input Monitoring the
+  tap listens), on X11 each live chord with one key is grabbed and the
+  recorder grabs the keyboard. Modifier events always pass. Caps Lock on
+  macOS reports only its press, so it works for a tap shortcut, not a hold.
 
 ## History notes
 
