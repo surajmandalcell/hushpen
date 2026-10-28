@@ -33,7 +33,7 @@ cat >"$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>app.hushpen.test</string>
   <key>CFBundleName</key><string>Hushpen</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>2.0.0</string>
+  <key>CFBundleShortVersionString</key><string>2.1.0</string>
   <key>CFBundleVersion</key><string>$(git rev-parse --short HEAD)</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
