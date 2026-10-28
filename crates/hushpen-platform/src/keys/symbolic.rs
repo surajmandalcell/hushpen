@@ -78,7 +78,7 @@ pub(super) fn carbon_modifiers(combo: &Combo) -> i64 {
                 Modifier::Ctrl => CONTROL,
             }
         }
-        Key::Fn | Key::Char(_) => bits,
+        Key::Fn | Key::Char(_) | Key::Named(_) => bits,
     })
 }
 
@@ -124,15 +124,18 @@ mod tests {
         assert!(taken(&[with_fn], ANSI_3, bits));
     }
 
-    /// The screenshot shortcut is in the list on every Mac, on or off, in the same bits.
+    /// The screenshot and the next-window shortcuts are in the list on every Mac, on or off, in
+    /// the same bits.
     #[test]
-    fn the_system_lists_the_screenshot_shortcut() {
+    fn the_system_lists_the_screenshot_and_next_window_shortcuts() {
+        const ANSI_GRAVE: i64 = 50;
         let hotkeys = system_hotkeys();
-        assert!(
+        let listed = |code: i64, bits: i64| {
             hotkeys
                 .iter()
-                .any(|hotkey| hotkey.code == ANSI_3 && hotkey.modifiers & MODIFIERS == CMD | SHIFT),
-            "{hotkeys:?}"
-        );
+                .any(|hotkey| hotkey.code == code && hotkey.modifiers & MODIFIERS == bits)
+        };
+        assert!(listed(ANSI_3, CMD | SHIFT), "{hotkeys:?}");
+        assert!(listed(ANSI_GRAVE, CMD), "{hotkeys:?}");
     }
 }

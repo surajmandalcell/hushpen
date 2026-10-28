@@ -61,7 +61,9 @@ impl Refusal {
     /// on in System Settings on a Mac. Only the platform layer can tell, after it asked.
     pub fn in_use(platform: Platform) -> Self {
         let message = match platform {
-            Platform::MacOs => "macOS uses this shortcut. Choose a different one.",
+            Platform::MacOs => {
+                "macOS uses this shortcut. Turn it off in System Settings > Keyboard, or choose another."
+            }
             Platform::Linux => "Another app is using this shortcut. Choose a different one.",
         };
         Self {

@@ -37,14 +37,26 @@ impl Hub {
         }
     }
 
-    pub(super) fn press(&self, key: Phys) {
-        let outputs = self.engine().press(key);
+    /// Returns whether the event should stop here, so the front app does not also get it.
+    pub(super) fn press(&self, key: Phys) -> bool {
+        let (outputs, swallow) = {
+            let mut engine = self.engine();
+            let outputs = engine.press(key);
+            (outputs, engine.swallows(key))
+        };
         self.send(outputs);
+        swallow
     }
 
-    pub(super) fn release(&self, key: Phys) {
-        let outputs = self.engine().release(key);
+    /// Returns whether the event should stop here, as its press did.
+    pub(super) fn release(&self, key: Phys) -> bool {
+        let (outputs, swallow) = {
+            let mut engine = self.engine();
+            let swallow = engine.swallows(key);
+            (engine.release(key), swallow)
+        };
         self.send(outputs);
+        swallow
     }
 
     #[cfg(target_os = "macos")]
@@ -75,7 +87,7 @@ impl Hub {
 mod tests {
     use super::*;
     use hushpen_core::dictation::AppEvent;
-    use hushpen_core::shortcut::{Combo, Key, Modifier, Platform, Recording, Side};
+    use hushpen_core::shortcut::{Combo, Key, Modifier, Named, Platform, Recording, Side};
     use std::sync::Arc;
 
     const R_ALT: Phys = Phys::Modifier(Modifier::Alt, Side::Right);
@@ -118,6 +130,22 @@ mod tests {
         let (hub, events, _) = hub(Some(right_alt()));
         hub.press(R_ALT);
         hub.set_bindings(Bindings::default());
+        assert_eq!(
+            *events.lock().unwrap(),
+            vec![AppEvent::HoldDown, AppEvent::HoldUp]
+        );
+    }
+
+    #[test]
+    fn the_key_of_a_live_shortcut_stops_at_the_hub_and_other_keys_pass() {
+        let f5 = Combo::new([Key::Named(Named::F(5))], Platform::Linux).unwrap();
+        let (hub, events, _) = hub(Some(f5));
+        let key = Phys::Named(Named::F(5));
+        assert!(hub.press(key));
+        assert!(hub.release(key));
+        assert!(!hub.press(Phys::Char('a')));
+        assert!(!hub.release(Phys::Char('a')));
+        assert!(!hub.press(R_ALT), "a modifier always passes");
         assert_eq!(
             *events.lock().unwrap(),
             vec![AppEvent::HoldDown, AppEvent::HoldUp]

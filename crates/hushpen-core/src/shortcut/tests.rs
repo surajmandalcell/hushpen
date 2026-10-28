@@ -142,7 +142,13 @@ fn text_that_is_not_a_shortcut_says_why() {
         ("Alt", Problem::NeedsRightSide),
         ("Ctrl+V+B", Problem::BadKey),
         ("Ctrl+RightCtrl+V", Problem::BothSides),
-        ("Ctrl+Space", Problem::BadKey),
+        ("Ctrl+Tab+V", Problem::BadKey),
+        ("Ctrl+F25", Problem::BadKey),
+        ("Ctrl+Nope", Problem::BadKey),
+        ("Tab", Problem::NeedsModifier),
+        ("Shift+Tab", Problem::NeedsModifier),
+        ("Space", Problem::NeedsModifier),
+        ("Ctrl+Shift", Problem::NeedsRightSide),
         ("Fn", Problem::NoFn),
     ];
     for (text, expected) in cases {
@@ -155,6 +161,50 @@ fn text_that_is_not_a_shortcut_says_why() {
     assert_eq!(Combo::parse("Fn", MAC).err(), None);
     // A repeated modifier is one key.
     assert_eq!(combo("Ctrl+Ctrl+V", LINUX), combo("Ctrl+V", LINUX));
+}
+
+#[test]
+fn any_key_of_the_keyboard_can_be_the_key_of_a_shortcut() {
+    for (text, shown) in [
+        ("Cmd+Tab", "⌘⇥"),
+        ("Cmd+`", "⌘`"),
+        ("Shift+Cmd+`", "⇧⌘`"),
+        ("Ctrl+Space", "⌃Space"),
+        ("Cmd+Return", "⌘↩"),
+        ("Option+Backspace", "⌥⌫"),
+        ("Ctrl+Option+Left", "⌃⌥←"),
+        ("Cmd+PageDown", "⌘⇟"),
+        ("Cmd+-", "⌘-"),
+        ("Cmd+Plus", "⌘+"),
+        ("Ctrl+[", "⌃["),
+        ("F5", "F5"),
+        ("Shift+F12", "⇧F12"),
+        ("Cmd+RightCtrl", "⌘+Right ⌃"),
+        ("Fn+Delete", "Fn+⌦"),
+    ] {
+        let parsed = combo(text, MAC);
+        assert_eq!(parsed.display(MAC), shown, "{text}");
+        assert_eq!(combo(&parsed.to_setting(MAC), MAC), parsed, "{text}");
+    }
+    for (text, shown) in [
+        ("Ctrl+Tab", "Ctrl+Tab"),
+        ("Super+`", "Super+`"),
+        ("Ctrl+Alt+Left", "Ctrl+Alt+Left"),
+        ("Ctrl+PageDown", "Ctrl+Page Down"),
+        ("Alt+Return", "Alt+Enter"),
+        ("Ctrl+Plus", "Ctrl+Plus"),
+        ("Super+RightCtrl", "Super+Right Ctrl"),
+        ("F9", "F9"),
+    ] {
+        let parsed = combo(text, LINUX);
+        assert_eq!(parsed.display(LINUX), shown, "{text}");
+        assert_eq!(combo(&parsed.to_setting(LINUX), LINUX), parsed, "{text}");
+    }
+    assert_eq!(combo("Cmd+Tab", MAC).main(), Some(Key::Named(Named::Tab)));
+    assert_eq!(combo("Cmd+`", MAC).main(), Some(Key::Char('`')));
+    assert_eq!(combo("Cmd+RightCtrl", MAC).main(), None);
+    assert_eq!(combo("Ctrl+ü", LINUX).main(), Some(Key::Char('ü')));
+    assert_eq!(combo("Ctrl+Ü", LINUX), combo("Ctrl+ü", LINUX));
 }
 
 #[test]
@@ -314,6 +364,98 @@ fn chord(engine: &mut Engine, keys: &[Phys]) -> Vec<AppEvent> {
         events.extend(app(engine.release(*key)));
     }
     events
+}
+
+const L_CMD: Phys = Phys::Modifier(Modifier::Cmd, Side::Left);
+const TAB: Phys = Phys::Named(Named::Tab);
+
+#[test]
+fn a_named_key_chord_holds_and_its_key_stops_at_hushpen() {
+    let mut engine = Engine::new(Bindings {
+        hold: Some(combo("Cmd+Tab", MAC)),
+        ..Bindings::default()
+    });
+    assert_eq!(app(engine.press(L_CMD)), []);
+    assert!(!engine.swallows(L_CMD), "a modifier always reaches the app");
+    assert_eq!(app(engine.press(TAB)), [AppEvent::HoldDown]);
+    assert!(engine.swallows(TAB));
+    // A repeat of the held key stops too.
+    assert_eq!(app(engine.press(TAB)), []);
+    assert!(engine.swallows(TAB));
+    assert!(engine.swallows(TAB), "asked before the release");
+    assert_eq!(app(engine.release(TAB)), [AppEvent::HoldUp]);
+    assert!(!engine.swallows(TAB));
+    engine.release(L_CMD);
+}
+
+#[test]
+fn a_key_that_is_not_exactly_a_live_shortcut_reaches_the_app() {
+    let mut engine = Engine::new(Bindings {
+        paste_last: Some(combo("Cmd+Tab", MAC)),
+        ..Bindings::default()
+    });
+    // Cmd+Shift+Tab is another shortcut.
+    engine.press(L_CMD);
+    engine.press(L_SHIFT);
+    engine.press(TAB);
+    assert!(!engine.swallows(TAB));
+    engine.release(TAB);
+    engine.release(L_SHIFT);
+    // Tab alone, and a key no shortcut has.
+    engine.release(L_CMD);
+    engine.press(TAB);
+    assert!(!engine.swallows(TAB));
+    engine.release(TAB);
+    engine.press(L_CMD);
+    engine.press(Phys::Char('`'));
+    assert!(!engine.swallows(Phys::Char('`')));
+    engine.release(Phys::Char('`'));
+    engine.press(TAB);
+    assert!(engine.swallows(TAB));
+    assert_eq!(app(engine.release(TAB)), []);
+    assert_eq!(app(engine.release(L_CMD)), [AppEvent::PasteLast]);
+}
+
+#[test]
+fn every_key_but_a_modifier_stops_at_hushpen_while_recording() {
+    let mut engine = Engine::new(defaults());
+    engine.start_recording();
+    engine.press(L_CMD);
+    engine.press(TAB);
+    assert!(!engine.swallows(L_CMD));
+    assert!(engine.swallows(TAB));
+    engine.release(TAB);
+    assert_eq!(
+        recorded(engine.release(L_CMD)),
+        [Recording::Captured(vec![
+            Key::Any(Modifier::Cmd),
+            Key::Named(Named::Tab)
+        ])]
+    );
+    engine.start_recording();
+    assert_eq!(recorded(engine.press(Phys::Esc)), [Recording::Cancelled]);
+    assert!(
+        engine.swallows(Phys::Esc),
+        "the cancel does not reach the app"
+    );
+}
+
+#[test]
+fn space_for_the_built_in_hands_free_stops_at_hushpen() {
+    let mut engine = Engine::new(Bindings {
+        command: None,
+        ..defaults()
+    });
+    engine.press(R_ALT);
+    assert_eq!(
+        app(engine.press(Phys::Char(' '))),
+        [AppEvent::HandsFreeToggle]
+    );
+    assert!(engine.swallows(Phys::Char(' ')));
+    engine.release(Phys::Char(' '));
+    engine.release(R_ALT);
+    engine.press(Phys::Char(' '));
+    assert!(!engine.swallows(Phys::Char(' ')), "plain Space types");
 }
 
 #[test]

@@ -5,12 +5,65 @@
 //! decides. The key codes and flag bits are the macOS values (`kVK_RightOption`,
 //! `kCGEventFlagMaskAlternate`, and so on), so this module compiles everywhere.
 
-use hushpen_core::shortcut::{Modifier, Phys, Side};
+use hushpen_core::shortcut::{Modifier, Named, Phys, Side};
 use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
 
 pub const KEYCODE_ESCAPE: i64 = 53;
 const KEYCODE_FN: i64 = 63;
+pub const KEYCODE_SPACE: i64 = 49;
+
+/// The keys that type no character, by their fixed key code (`kVK_Tab`, `kVK_F1`, and so on).
+const NAMED_KEYS: [(i64, Named); 33] = [
+    (48, Named::Tab),
+    (36, Named::Return),
+    (76, Named::Return),
+    (51, Named::Backspace),
+    (117, Named::Delete),
+    (126, Named::Up),
+    (125, Named::Down),
+    (123, Named::Left),
+    (124, Named::Right),
+    (115, Named::Home),
+    (119, Named::End),
+    (116, Named::PageUp),
+    (121, Named::PageDown),
+    (122, Named::F(1)),
+    (120, Named::F(2)),
+    (99, Named::F(3)),
+    (118, Named::F(4)),
+    (96, Named::F(5)),
+    (97, Named::F(6)),
+    (98, Named::F(7)),
+    (100, Named::F(8)),
+    (101, Named::F(9)),
+    (109, Named::F(10)),
+    (103, Named::F(11)),
+    (111, Named::F(12)),
+    (105, Named::F(13)),
+    (107, Named::F(14)),
+    (113, Named::F(15)),
+    (106, Named::F(16)),
+    (64, Named::F(17)),
+    (79, Named::F(18)),
+    (80, Named::F(19)),
+    (90, Named::F(20)),
+];
+
+/// The key code of a named key. Keypad Enter also reads as Return; this is the main one.
+pub fn named_keycode(named: Named) -> Option<i64> {
+    NAMED_KEYS
+        .iter()
+        .find(|(_, each)| *each == named)
+        .map(|(code, _)| *code)
+}
+
+fn named_of(keycode: i64) -> Option<Named> {
+    NAMED_KEYS
+        .iter()
+        .find(|(code, _)| *code == keycode)
+        .map(|(_, named)| *named)
+}
 
 pub const FLAG_ALTERNATE: u64 = 0x0008_0000;
 pub const FLAG_SECONDARY_FN: u64 = 0x0080_0000;
@@ -92,7 +145,7 @@ pub enum TapAction {
 /// Turns tap events into key presses and releases.
 #[derive(Debug)]
 pub struct Decoder {
-    /// The letter and digit keys on the current layout, by key code.
+    /// The character keys on the current layout, by key code.
     chars: HashMap<i64, char>,
     /// The modifiers that are down, so a flags event is a change or nothing.
     down: BTreeSet<Phys>,
@@ -118,6 +171,9 @@ impl Decoder {
     fn key(&self, keycode: i64, down: bool) -> TapAction {
         if keycode == KEYCODE_ESCAPE {
             return TapAction::Key(Phys::Esc, down);
+        }
+        if let Some(named) = named_of(keycode) {
+            return TapAction::Key(Phys::Named(named), down);
         }
         match self.chars.get(&keycode) {
             Some(c) => TapAction::Key(Phys::Char(*c), down),
@@ -195,6 +251,15 @@ impl<T: Tap> TapGuard<T> {
 
     pub fn reenable(&self) {
         self.tap.enable();
+    }
+
+    pub fn tap(&self) -> &T {
+        &self.tap
+    }
+
+    /// Puts a better tap in place of a live one, such as a filtering tap once it is allowed.
+    pub fn replace(&mut self, tap: T) {
+        self.tap = tap;
     }
 
     /// Once per [`HEALTH_INTERVAL`]: a tap that is no longer alive is replaced by `install`.
@@ -351,6 +416,33 @@ mod tests {
         );
         assert_eq!(decoder.decode(key_down(0)), TapAction::Ignore);
         assert_eq!(decoder.decode(flags(57, 0)), TapAction::Ignore, "Caps Lock");
+    }
+
+    #[test]
+    fn named_keys_have_their_fixed_key_codes_and_symbol_keys_come_from_the_layout() {
+        let mut decoder = Decoder::new(HashMap::from([(50, '`'), (27, '-')]));
+        for (keycode, named) in [
+            (48, Named::Tab),
+            (36, Named::Return),
+            (123, Named::Left),
+            (96, Named::F(5)),
+            (90, Named::F(20)),
+        ] {
+            assert_eq!(
+                decoder.decode(key_down(keycode)),
+                TapAction::Key(Phys::Named(named), true)
+            );
+            assert_eq!(named_keycode(named), Some(keycode));
+        }
+        assert_eq!(
+            decoder.decode(key_down(50)),
+            TapAction::Key(Phys::Char('`'), true)
+        );
+        assert_eq!(
+            decoder.decode(key_down(27)),
+            TapAction::Key(Phys::Char('-'), true)
+        );
+        assert!(Named::all().all(|named| named_keycode(named).is_some()));
     }
 
     #[test]

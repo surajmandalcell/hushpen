@@ -1,6 +1,10 @@
-//! macOS global keys: a listen-only `CGEventTap` on its own thread and run loop.
+//! macOS global keys: a `CGEventTap` on its own thread and run loop.
 //!
-//! The tap only listens, so Esc and every other key still reach the focused app. A tap that the
+//! With Accessibility allowed the tap filters: the key that completes a live shortcut, and every
+//! key but a modifier while the recorder is open, stop here, so Cmd+Tab runs Hushpen and not the
+//! app switcher. Every other key, Esc during a session included, still reaches the focused app.
+//! With only Input Monitoring the tap listens, and the front app also gets the shortcut's key.
+//! A listening tap is swapped for a filtering one once Accessibility is allowed. A tap that the
 //! system disabled is turned on again; a tap whose port died is replaced.
 
 // `CFMachPortIsValid` is a plain C call on a port that this module owns.
@@ -8,7 +12,10 @@
 
 use super::hub::Hub;
 use super::symbolic;
-use super::tap::{Decoder, HEALTH_INTERVAL, Health, Tap, TapAction, TapEvent, TapGuard};
+use super::tap::{
+    Decoder, HEALTH_INTERVAL, Health, KEYCODE_SPACE, Tap, TapAction, TapEvent, TapGuard,
+    named_keycode,
+};
 use super::{Reason, RecordSink, Sink, Unavailable};
 use crate::keyboard_layout::{self, LayoutCache};
 use core_foundation::base::TCFType;
@@ -20,7 +27,7 @@ use core_graphics::event::{
     CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
     CallbackResult, EventField,
 };
-use hushpen_core::shortcut::{Bindings, Combo};
+use hushpen_core::shortcut::{Bindings, Combo, Key};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -31,16 +38,14 @@ use std::time::{Duration, Instant};
 /// How long one run loop slice lasts before the thread looks at the flags again.
 const SLICE: Duration = Duration::from_millis(250);
 
-const SPACE_KEYCODE: i64 = 49;
-
 pub(super) struct MacKeys {
     hub: Arc<Hub>,
 }
 
-/// The letter, digit, and Space keys on the layout in use, by key code. The table is the copy
+/// The character keys and Space on the layout in use, by key code. The table is the copy
 /// that the main thread keeps; this thread never asks the system.
 fn layout_chars(layout: &LayoutCache) -> HashMap<i64, char> {
-    layout.snapshot().1.chars(SPACE_KEYCODE)
+    layout.snapshot().1.chars(KEYCODE_SPACE)
 }
 
 /// The key map again, when the main thread published another layout since `seen`.
@@ -50,12 +55,14 @@ fn changed_chars(layout: &LayoutCache, seen: &mut u64) -> Option<HashMap<i64, ch
         return None;
     }
     *seen = generation;
-    Some(table.chars(SPACE_KEYCODE))
+    Some(table.chars(KEYCODE_SPACE))
 }
 
 struct InstalledTap {
     tap: CGEventTap<'static>,
     source: CFRunLoopSource,
+    /// The tap may drop events; a listen-only tap may not.
+    filters: bool,
 }
 
 impl Tap for InstalledTap {
@@ -75,10 +82,26 @@ impl Drop for InstalledTap {
     }
 }
 
+/// A filtering tap when Accessibility is allowed, else a listening one. Creating a filtering tap
+/// without the grant can make macOS ask, so it is only tried with the grant.
+fn install_best(
+    decoder: &Arc<Mutex<Decoder>>,
+    hub: &Arc<Hub>,
+    reenable: &Arc<AtomicBool>,
+) -> Option<InstalledTap> {
+    if crate::permissions::accessibility_trusted()
+        && let Some(tap) = install(decoder, hub, reenable, true)
+    {
+        return Some(tap);
+    }
+    install(decoder, hub, reenable, false)
+}
+
 fn install(
     decoder: &Arc<Mutex<Decoder>>,
     hub: &Arc<Hub>,
     reenable: &Arc<AtomicBool>,
+    filters: bool,
 ) -> Option<InstalledTap> {
     let callback = {
         let decoder = Arc::clone(decoder);
@@ -106,19 +129,33 @@ fn install(
                 Ok(mut decoder) => decoder.decode(tap_event),
                 Err(_) => TapAction::Ignore,
             };
-            match action {
+            let swallow = match action {
                 TapAction::Key(key, true) => hub.press(key),
                 TapAction::Key(key, false) => hub.release(key),
-                TapAction::Reenable => reenable.store(true, Ordering::Release),
-                TapAction::Ignore => {}
+                TapAction::Reenable => {
+                    reenable.store(true, Ordering::Release);
+                    false
+                }
+                TapAction::Ignore => false,
+            };
+            // A modifier is a flags event and is never swallowed, so the system's idea of
+            // which modifiers are down stays right.
+            if filters && swallow && matches!(kind, CGEventType::KeyDown | CGEventType::KeyUp) {
+                CallbackResult::Drop
+            } else {
+                CallbackResult::Keep
             }
-            CallbackResult::Keep
         }
+    };
+    let options = if filters {
+        CGEventTapOptions::Default
+    } else {
+        CGEventTapOptions::ListenOnly
     };
     let tap = CGEventTap::new(
         CGEventTapLocation::Session,
         CGEventTapPlacement::HeadInsertEventTap,
-        CGEventTapOptions::ListenOnly,
+        options,
         vec![
             CGEventType::FlagsChanged,
             CGEventType::KeyDown,
@@ -131,7 +168,11 @@ fn install(
     // SAFETY: a constant of the CoreFoundation framework.
     CFRunLoop::get_current().add_source(&source, unsafe { kCFRunLoopCommonModes });
     tap.enable();
-    Some(InstalledTap { tap, source })
+    Some(InstalledTap {
+        tap,
+        source,
+        filters,
+    })
 }
 
 impl MacKeys {
@@ -155,15 +196,18 @@ impl MacKeys {
     /// Whether a macOS system shortcut that is on uses `combo`. Other apps cannot be asked:
     /// the system keeps no list of their shortcuts.
     pub(super) fn in_use(&self, combo: &Combo) -> bool {
-        let Some(code) = combo
-            .letter()
-            .and_then(|c| keyboard_layout::shared().key_code_for(c))
-        else {
+        let code = match combo.main() {
+            Some(Key::Named(named)) => named_keycode(named),
+            Some(Key::Char(' ')) => Some(KEYCODE_SPACE),
+            Some(Key::Char(c)) => keyboard_layout::shared().key_code_for(c).map(i64::from),
+            _ => None,
+        };
+        let Some(code) = code else {
             return false;
         };
         symbolic::taken(
             &symbolic::system_hotkeys(),
-            i64::from(code),
+            code,
             symbolic::carbon_modifiers(combo),
         )
     }
@@ -210,11 +254,19 @@ fn run(hub: &Arc<Hub>, layout: &LayoutCache, ready: mpsc::Sender<bool>) {
     let (mut seen, _) = layout.snapshot();
     let decoder = Arc::new(Mutex::new(Decoder::new(layout_chars(layout))));
     let reenable = Arc::new(AtomicBool::new(false));
-    let Some(first) = install(&decoder, hub, &reenable) else {
+    let Some(first) = install_best(&decoder, hub, &reenable) else {
         let _ = ready.send(false);
         return;
     };
     let _ = ready.send(true);
+    log::info!(
+        "the key tap {}",
+        if first.filters {
+            "filters: a live shortcut's key stops at Hushpen"
+        } else {
+            "only listens: Accessibility is not allowed"
+        }
+    );
     let mut guard = TapGuard::new(first, Instant::now());
     loop {
         // SAFETY: a constant of the CoreFoundation framework.
@@ -227,8 +279,16 @@ fn run(hub: &Arc<Hub>, layout: &LayoutCache, ready: mpsc::Sender<bool>) {
                 decoder.reset();
             }
             hub.reset();
-            install(&decoder, hub, &reenable)
+            install_best(&decoder, hub, &reenable)
         });
+        if matches!(health, Some(Health::Fine))
+            && !guard.tap().filters
+            && crate::permissions::accessibility_trusted()
+            && let Some(filtering) = install(&decoder, hub, &reenable, true)
+        {
+            log::info!("Accessibility is allowed now, so the key tap filters");
+            guard.replace(filtering);
+        }
         if let Some(chars) = changed_chars(layout, &mut seen)
             && let Ok(mut decoder) = decoder.lock()
         {
@@ -274,13 +334,13 @@ mod tests {
             .unwrap();
         let first = answers.recv().unwrap();
         assert_eq!(first.get(&9), Some(&'v'));
-        assert_eq!(first.get(&SPACE_KEYCODE), Some(&' '));
+        assert_eq!(first.get(&KEYCODE_SPACE), Some(&' '));
         // The main thread saw a layout change and published the new table.
         layout.publish(Table::from_typed(layouts::dvorak));
         ready.send(()).unwrap();
         let second = answers.recv().unwrap();
         assert_eq!(second.get(&40), Some(&'v'));
-        assert_eq!(second.get(&9), None);
+        assert_eq!(second.get(&9), Some(&'.'));
         tap.join()
             .expect("the tap thread reads the table and calls no TIS function");
     }

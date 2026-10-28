@@ -4,8 +4,12 @@
 //! and [`Engine::release`]. Both answer with what to send on: pipeline events for the live
 //! shortcuts, or recorder progress while a new shortcut is being recorded. While the recorder is
 //! open no live shortcut fires.
+//!
+//! The engine also says which key events should stop at Hushpen ([`Engine::swallows`]): every key
+//! but a modifier while the recorder is open, and the key that completes a live shortcut, so
+//! the front app does not also act on Cmd+Tab or F5.
 
-use super::{Combo, HandsFree, Key, Modifier};
+use super::{Combo, HandsFree, Key, Modifier, Named};
 use crate::dictation::AppEvent;
 use std::collections::BTreeSet;
 
@@ -22,6 +26,7 @@ pub enum Phys {
     Fn,
     /// A lowercase character key. Space is `' '`.
     Char(char),
+    Named(Named),
     Esc,
 }
 
@@ -31,9 +36,15 @@ impl Phys {
             Phys::Modifier(modifier, Side::Left) => Some(Key::Any(modifier)),
             Phys::Modifier(modifier, Side::Right) => Some(Key::Right(modifier)),
             Phys::Fn => Some(Key::Fn),
-            Phys::Char(c) if c.is_ascii_alphanumeric() => Some(Key::Char(c)),
-            Phys::Char(_) | Phys::Esc => None,
+            Phys::Char(c) => Some(Key::Char(c)),
+            Phys::Named(named) => Some(Key::Named(named)),
+            Phys::Esc => None,
         }
+    }
+
+    /// A modifier or Fn: its events always reach the front app.
+    fn is_modifier(self) -> bool {
+        matches!(self, Phys::Modifier(..) | Phys::Fn)
     }
 }
 
@@ -67,6 +78,7 @@ fn accepts(key: Key, phys: Phys, claimed: &BTreeSet<Phys>) -> bool {
     match (key, phys) {
         (Key::Fn, Phys::Fn) => true,
         (Key::Char(a), Phys::Char(b)) => a == b,
+        (Key::Named(a), Phys::Named(b)) => a == b,
         (Key::Right(wanted), Phys::Modifier(modifier, Side::Right)) => wanted == modifier,
         // A right-hand key that the hold or Command Mode shortcut uses does not count as the
         // plain modifier of another shortcut, or one chord would start two things.
@@ -140,6 +152,8 @@ pub struct Engine {
     /// Esc belongs to the pipeline: it is sent on as [`AppEvent::Esc`].
     escape: bool,
     recorder: Option<Recorder>,
+    /// The keys whose press stopped at Hushpen, so their repeats and release stop too.
+    swallowed: BTreeSet<Phys>,
 }
 
 impl Engine {
@@ -154,6 +168,7 @@ impl Engine {
             paste_last_armed: false,
             escape: false,
             recorder: None,
+            swallowed: BTreeSet::new(),
         };
         engine.set_bindings(bindings);
         engine
@@ -267,7 +282,46 @@ impl Engine {
         events
     }
 
+    /// Whether the last press of `key` stopped at Hushpen. Ask after [`Engine::press`] for the
+    /// press and its repeats, and before [`Engine::release`] for the release.
+    pub fn swallows(&self, key: Phys) -> bool {
+        self.swallowed.contains(&key)
+    }
+
+    /// Whether the keys down now are exactly a live shortcut that has `key` as its main key, or
+    /// Space with the hold key for the built-in hands-free.
+    fn completes_shortcut(&self, key: Phys) -> bool {
+        let custom = self.bindings.hands_free.as_ref().and_then(HandsFree::combo);
+        let exact = |combo: &Combo| {
+            uses(combo, key, &self.claimed)
+                && satisfied(combo, &self.down, &self.claimed)
+                && self
+                    .down
+                    .iter()
+                    .all(|phys| uses(combo, *phys, &self.claimed))
+        };
+        let live = [
+            self.bindings.hold.as_ref(),
+            self.bindings.command.as_ref(),
+            self.bindings.paste_last.as_ref(),
+            custom,
+        ];
+        live.into_iter().flatten().any(exact)
+            || (key == Phys::Char(' ')
+                && self.hold_on
+                && self.bindings.hands_free == Some(HandsFree::Default))
+    }
+
     pub fn press(&mut self, key: Phys) -> Vec<Output> {
+        let recording = self.recorder.is_some();
+        let out = self.press_key(key);
+        if !key.is_modifier() && (recording || self.completes_shortcut(key)) {
+            self.swallowed.insert(key);
+        }
+        out
+    }
+
+    fn press_key(&mut self, key: Phys) -> Vec<Output> {
         if !self.down.insert(key) {
             return Vec::new();
         }
@@ -315,6 +369,7 @@ impl Engine {
     }
 
     pub fn release(&mut self, key: Phys) -> Vec<Output> {
+        self.swallowed.remove(&key);
         if !self.down.remove(&key) {
             return Vec::new();
         }
@@ -354,6 +409,7 @@ impl Engine {
     /// more. A hold that was on is let go.
     pub fn reset(&mut self) -> Vec<Output> {
         self.down.clear();
+        self.swallowed.clear();
         self.hands_free_armed = false;
         self.paste_last_armed = false;
         if let Some(recorder) = &mut self.recorder {

@@ -4,7 +4,7 @@
 //! calls [`build`]; a key the mapping does not name still resolves when it is a modifier or Esc
 //! at its place on an evdev keyboard (key code is the evdev code plus 8).
 
-use hushpen_core::shortcut::{Modifier, Phys, Side};
+use hushpen_core::shortcut::{Modifier, Named, Phys, Side};
 use std::collections::HashMap;
 
 const KEYSYM_ESCAPE: u32 = 0xff1b;
@@ -39,9 +39,39 @@ fn modifier_keysym(keysym: u32) -> Option<Phys> {
     Some(Phys::Modifier(modifier, side))
 }
 
+fn named_keysym(keysym: u32) -> Option<Phys> {
+    let named = match keysym {
+        0xff09 | 0xfe20 => Named::Tab,
+        0xff0d | 0xff8d => Named::Return,
+        0xff08 => Named::Backspace,
+        0xffff => Named::Delete,
+        0xff52 => Named::Up,
+        0xff54 => Named::Down,
+        0xff51 => Named::Left,
+        0xff53 => Named::Right,
+        0xff50 => Named::Home,
+        0xff57 => Named::End,
+        0xff55 => Named::PageUp,
+        0xff56 => Named::PageDown,
+        // F1 to F20.
+        0xffbe..=0xffd1 => Named::F(u8::try_from(keysym - 0xffbe + 1).ok()?),
+        _ => return None,
+    };
+    Some(Phys::Named(named))
+}
+
+/// Latin-1 keysyms are their Unicode code points: printable ASCII and 0xA1 to 0xFF.
 fn char_keysym(keysym: u32) -> Option<Phys> {
-    let c = char::from_u32(keysym).filter(|_| (0x20..0x7f).contains(&keysym))?;
-    (c == ' ' || c.is_ascii_alphanumeric()).then(|| Phys::Char(c.to_ascii_lowercase()))
+    if keysym == 0x20 {
+        return Some(Phys::Char(' '));
+    }
+    let printable = (0x21..0x7f).contains(&keysym) || (0xa1..=0xff).contains(&keysym);
+    let c = char::from_u32(keysym).filter(|_| printable)?;
+    let mut lower = c.to_lowercase();
+    Some(Phys::Char(match (lower.next(), lower.next()) {
+        (Some(lower), None) => lower,
+        _ => c,
+    }))
 }
 
 /// `keysyms` is the reply of `GetKeyboardMapping`: `per` keysyms for each key code from
@@ -58,6 +88,7 @@ pub(super) fn build(min_keycode: u8, per: usize, keysyms: &[u32]) -> HashMap<u32
             .iter()
             .find_map(|keysym| modifier_keysym(*keysym))
             .or_else(|| symbols.contains(&KEYSYM_ESCAPE).then_some(Phys::Esc))
+            .or_else(|| symbols.iter().find_map(|keysym| named_keysym(*keysym)))
             // The first shift group names the key on the main layout; a later group only
             // helps when the first has no Latin letter, as on a Cyrillic layout.
             .or_else(|| {
@@ -128,10 +159,21 @@ mod tests {
     }
 
     #[test]
-    fn symbols_and_function_keys_are_not_shortcut_keys() {
-        let table = build(80, 2, &[0x2d, 0x5f, 0xffbe, 0]);
-        assert!(!table.contains_key(&80));
-        assert!(!table.contains_key(&81));
+    fn symbol_tab_arrow_and_function_keys_are_shortcut_keys() {
+        let table = build(
+            80,
+            2,
+            &[
+                0x2d, 0x5f, 0xffbe, 0, 0x60, 0x7e, 0xff09, 0xfe20, 0xff51, 0, 0xffc2, 0, 0xfc, 0xdc,
+            ],
+        );
+        assert_eq!(table[&80], Phys::Char('-'));
+        assert_eq!(table[&81], Phys::Named(Named::F(1)));
+        assert_eq!(table[&82], Phys::Char('`'));
+        assert_eq!(table[&83], Phys::Named(Named::Tab));
+        assert_eq!(table[&84], Phys::Named(Named::Left));
+        assert_eq!(table[&85], Phys::Named(Named::F(5)));
+        assert_eq!(table[&86], Phys::Char('ü'));
     }
 
     #[test]

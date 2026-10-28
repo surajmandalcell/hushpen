@@ -1,5 +1,5 @@
 #!/bin/bash
-# The shortcut recorder in Settings > Shortcuts: VAL-KEY-001 to 006 and 008 (VAL-KEY-007 is the
+# The shortcut recorder in Settings > Shortcuts: VAL-KEY-001 to 006, 008, and 009 (VAL-KEY-007 is the
 # unit tests of hushpen-core). The recorder is opened with a click on the field (hookctl click)
 # and the keys come from xdotool as keycodes: Right Alt 108, Right Ctrl 105, Right Shift 62, Esc 9.
 # Another X client that holds a chord is grab-chord.py. Needs speech-short.wav in /assets/fixtures
@@ -261,6 +261,33 @@ got=$(gtk_commit)
 words_ok "$got" || failures+="the entry holds '$got' after the recorder; "
 check_failures "VAL-KEY-005 Esc cancels" "keydown during recording started nothing, Esc closed the recorder, shortcut.hold stayed RightCtrl and worked again (typed '$got')" "$failures"
 
+echo "== VAL-KEY-009 any key: F7 alone and Ctrl+Tab, and the key stays away from the focused app"
+failures=""
+record_open pasteLast || failures+="no recorder for pasteLast; "
+chord F7
+wait_until 5 field_is pasteLast "F7" || failures+="the paste last field reads '$(field pasteLast)'; "
+record_open handsFree || failures+="no recorder for handsFree; "
+chord ctrl+Tab
+wait_until 5 field_is handsFree "Ctrl+Tab" || failures+="the hands-free field reads '$(field handsFree)'; "
+shot 009-recorded
+[ "$(saved pasteLast)" = F7 ] || failures+="shortcut.pasteLast is '$(saved pasteLast)'; "
+[ "$(saved handsFree)" = Ctrl+Tab ] || failures+="shortcut.handsFree is '$(saved handsFree)'; "
+gtk_clear
+# A Tab that reached the entry would move the focus out of it, and the words would land elsewhere.
+toggle_run ctrl+Tab "$SHORT_WAV" || failures+="Ctrl+Tab did not run a session: $(pevents); "
+tabbed=$(gtk_commit)
+words_ok "$tabbed" || failures+="the Ctrl+Tab session typed '$tabbed'; "
+tab_text=$(dict .transcript)
+gtk_clear
+set_clip OLD
+focus "$GT"
+T0=$(now_ms)
+chord F7
+wait_until 10 fresh_paste || failures+="F7 made no paste: $(li .); "
+got=$(gtk_commit)
+[ -n "$got" ] && [ "$got" = "$tab_text" ] || failures+="F7 typed '$got', the transcript is '$tab_text'; "
+check_failures "VAL-KEY-009 any key" "saved F7 and Ctrl+Tab; Ctrl+Tab ran a session that typed '$tabbed' into the entry; F7 pasted it again" "$failures"
+
 echo "== VAL-KEY-008 Reset to default, and a chord in use at start"
 failures=""
 $HC state | jq -c '.shortcuts.slots | map_values(.setting)' >"$RUN_OUT/008-before.json"
@@ -276,8 +303,9 @@ gtk_clear
 hold_run 108 "$SHORT_WAV" || failures+="the default hold key did not run a dictation; "
 got=$(gtk_commit)
 words_ok "$got" || failures+="the default hold key typed '$got'; "
-helper_up ctrl+alt+v || failures+="the helper did not grab Ctrl+Alt+V ($(cat "$HELPER_LOG")); "
+# The running app grabs its live Ctrl+Alt+V, so it stops before the helper takes the chord.
 /harness/slot/app.sh stop
+helper_up ctrl+alt+v || failures+="the helper did not grab Ctrl+Alt+V ($(cat "$HELPER_LOG")); "
 start_app
 wait_until 90 engine_ready_with base
 open_settings
