@@ -18,8 +18,9 @@ runs whisper.cpp in a child process.
 ## Features
 
 - Hold-to-talk dictation with a global key (Right Option on macOS, Right Alt
-  on Linux by default; you can record your own). Tap, double-tap, and Esc to
-  cancel.
+  on Linux by default). Tap, double-tap, and Esc to cancel. Any key or chord
+  the system reports can be a shortcut, media keys included; a shortcut that
+  another app uses shows how to free it.
 - Local transcription with Whisper models from Tiny to Large v3, with
   English-only and compact variants. Metal on macOS, CPU on Linux.
 - Models view in three sections: speech recognition, text cleanup, and
@@ -58,8 +59,8 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 ### macOS (Apple silicon)
 
-1. Download `Hushpen-2.0.0-macos-arm64.dmg` and drag Hushpen to Applications,
-   or unzip `Hushpen-2.0.0-macos-arm64.zip` and move `Hushpen.app` to
+1. Download `Hushpen-2.1.0-macos-arm64.dmg` and drag Hushpen to Applications,
+   or unzip `Hushpen-2.1.0-macos-arm64.zip` and move `Hushpen.app` to
    Applications.
 2. Open Hushpen. The app is signed with a Developer ID certificate and
    notarized by Apple, so macOS opens it after one standard confirmation.
@@ -68,10 +69,10 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 Replace `x64` with `arm64` on an Arm machine.
 
-- AppImage: `chmod +x Hushpen-2.0.0-linux-x64.AppImage`, then run it.
-- Debian and Ubuntu: `sudo apt install ./Hushpen-2.0.0-linux-x64.deb`
-- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.0.0-linux-x64.rpm`
-- tar.gz: `tar xzf Hushpen-2.0.0-linux-x64.tar.gz`, then run `hushpen` from
+- AppImage: `chmod +x Hushpen-2.1.0-linux-x64.AppImage`, then run it.
+- Debian and Ubuntu: `sudo apt install ./Hushpen-2.1.0-linux-x64.deb`
+- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.1.0-linux-x64.rpm`
+- tar.gz: `tar xzf Hushpen-2.1.0-linux-x64.tar.gz`, then run `hushpen` from
   the new folder.
 
 Every package holds three programs: `hushpen`, the `hushpen-llm` helper that

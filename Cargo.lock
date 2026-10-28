@@ -3335,7 +3335,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "hushpen-app"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "futures",
  "gpui-kit",
@@ -3361,7 +3361,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-audio"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "cpal",
  "hound",
@@ -3374,14 +3374,14 @@ dependencies = [
 
 [[package]]
 name = "hushpen-core"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "hushpen-engine"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "hound",
  "hushpen-audio",
@@ -3395,7 +3395,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-llm"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "hushpen-core",
  "llama-cpp-2",
@@ -3405,7 +3405,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-platform"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "block2 0.6.2",
  "core-foundation 0.10.1",
@@ -3425,7 +3425,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-speech"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "block2 0.6.2",
  "hushpen-audio",
@@ -3440,7 +3440,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-store"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "directories",
  "hushpen-core",
@@ -3454,7 +3454,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-testhook"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "hushpen-store",
  "serde_json",
@@ -3462,7 +3462,7 @@ dependencies = [
 
 [[package]]
 name = "hushpen-tts"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "hound",
  "hushpen-core",
@@ -9671,7 +9671,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "minisign",
  "minisign-verify",
