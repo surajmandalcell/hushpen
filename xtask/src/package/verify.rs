@@ -76,11 +76,22 @@ fn check_version_line(binary: &Path, version: &str, problems: &mut Vec<String>) 
     }
 }
 
-/// The sherpa-onnx libraries of the package are byte-identical to the pinned release files.
-fn check_tts_libs(dir: &Path, target: Target, problems: &mut Vec<String>) {
+/// The sherpa-onnx libraries of the package are the pinned release files. A deb, rpm, or tar.gz
+/// holds them byte for byte. The macOS bundle signs them again and the AppImage tool strips and
+/// patches them, so there `rewritten` names the pinned copies, and their machine code must match.
+fn check_tts_libs(
+    dir: &Path,
+    target: Target,
+    rewritten: Option<&Path>,
+    problems: &mut Vec<String>,
+) {
     for lib in &crate::tts_runtime::archive_for(target).libs {
         let path = dir.join(lib.name);
-        match crate::tts_runtime::matches_pinned(&path, lib) {
+        let same = match rewritten {
+            Some(pinned) => crate::tts_runtime::same_code(&path, &pinned.join(lib.name)),
+            None => crate::tts_runtime::matches_pinned(&path, lib),
+        };
+        match same {
             Ok(true) => {}
             Ok(false) => problems.push(format!("{} is not the pinned library", path.display())),
             Err(error) => problems.push(error),
@@ -162,7 +173,7 @@ fn verify_tar(
     scan_binaries(&root, &mut problems);
     check_version_line(&root.join(APP_BINARY), version, &mut problems);
     check_version_line(&root.join(TTS_BINARY), version, &mut problems);
-    check_tts_libs(&root, target, &mut problems);
+    check_tts_libs(&root, target, None, &mut problems);
     check_tts_runtime(&root, &mut problems);
     Ok(problems)
 }
@@ -249,7 +260,7 @@ fn verify_deb(
     scan_binaries(&lib, &mut problems);
     check_version_line(&scratch.join("usr/bin/hushpen"), version, &mut problems);
     check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
-    check_tts_libs(&lib, target, &mut problems);
+    check_tts_libs(&lib, target, None, &mut problems);
     check_tts_runtime(&lib, &mut problems);
     Ok(problems)
 }
@@ -329,7 +340,7 @@ fn verify_rpm(
     scan_binaries(&lib, &mut problems);
     check_version_line(&lib.join(APP_BINARY), version, &mut problems);
     check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
-    check_tts_libs(&lib, target, &mut problems);
+    check_tts_libs(&lib, target, None, &mut problems);
     check_tts_runtime(&lib, &mut problems);
     Ok(problems)
 }
@@ -339,6 +350,7 @@ fn verify_appimage(
     scratch: &Path,
     version: &str,
     target: Target,
+    pinned: &Path,
 ) -> Result<Vec<String>, String> {
     let mut problems = Vec::new();
     capture(
@@ -358,7 +370,7 @@ fn verify_appimage(
     scan_binaries(&bin, &mut problems);
     check_version_line(&bin.join(APP_BINARY), version, &mut problems);
     check_version_line(&bin.join(TTS_BINARY), version, &mut problems);
-    check_tts_libs(&bin, target, &mut problems);
+    check_tts_libs(&bin, target, Some(pinned), &mut problems);
     check_tts_runtime(&bin, &mut problems);
     Ok(problems)
 }
@@ -376,6 +388,7 @@ fn verify_zip(
     scratch: &Path,
     version: &str,
     target: Target,
+    pinned: &Path,
 ) -> Result<Vec<String>, String> {
     let mut problems = Vec::new();
     capture(
@@ -386,11 +399,16 @@ fn verify_zip(
         "ditto -x -k",
     )?;
     let app = scratch.join("Hushpen.app");
-    problems.extend(verify_app_bundle(&app, version, target)?);
+    problems.extend(verify_app_bundle(&app, version, target, pinned)?);
     Ok(problems)
 }
 
-fn verify_app_bundle(app: &Path, version: &str, target: Target) -> Result<Vec<String>, String> {
+fn verify_app_bundle(
+    app: &Path,
+    version: &str,
+    target: Target,
+    pinned: &Path,
+) -> Result<Vec<String>, String> {
     let mut problems = Vec::new();
     let plist = capture(
         Command::new("plutil")
@@ -423,7 +441,12 @@ fn verify_app_bundle(app: &Path, version: &str, target: Target) -> Result<Vec<St
     );
     let macos = app.join("Contents/MacOS");
     scan_binaries(&macos, &mut problems);
-    check_tts_libs(&app.join("Contents/Frameworks"), target, &mut problems);
+    check_tts_libs(
+        &app.join("Contents/Frameworks"),
+        target,
+        Some(pinned),
+        &mut problems,
+    );
     if let Err(error) = capture(
         Command::new("codesign")
             .args(["--verify", "--deep", "--strict"])
@@ -452,6 +475,7 @@ fn verify_dmg(
     scratch: &Path,
     version: &str,
     target: Target,
+    pinned: &Path,
 ) -> Result<Vec<String>, String> {
     let info = capture(
         Command::new("hdiutil").arg("imageinfo").arg(artifact),
@@ -479,7 +503,7 @@ fn verify_dmg(
         mount.join("Applications").exists(),
         "the dmg has no Applications link",
     );
-    match verify_app_bundle(&mount.join("Hushpen.app"), version, target) {
+    match verify_app_bundle(&mount.join("Hushpen.app"), version, target, pinned) {
         Ok(found) => problems.extend(found),
         Err(error) => problems.push(error),
     }
@@ -594,6 +618,8 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
         ),
     };
 
+    let pinned = crate::tts_runtime::dir(&target_dir(root), target);
+    crate::tts_runtime::ensure(&pinned, target)?;
     let mut problems = name_differences(&dir, &planned)?;
     problems.extend(check_sums(&dir, &planned));
     for format in formats {
@@ -611,9 +637,9 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
             Format::TarGz => verify_tar(&artifact, &scratch, &version, target)?,
             Format::Deb => verify_deb(&artifact, &scratch, &version, target)?,
             Format::Rpm => verify_rpm(&artifact, &scratch, &version, target)?,
-            Format::AppImage => verify_appimage(&artifact, &scratch, &version, target)?,
-            Format::Zip => verify_zip(&artifact, &scratch, &version, target)?,
-            Format::Dmg => verify_dmg(&artifact, &scratch, &version, target)?,
+            Format::AppImage => verify_appimage(&artifact, &scratch, &version, target, &pinned)?,
+            Format::Zip => verify_zip(&artifact, &scratch, &version, target, &pinned)?,
+            Format::Dmg => verify_dmg(&artifact, &scratch, &version, target, &pinned)?,
             Format::App => Vec::new(),
         };
         for problem in &found {

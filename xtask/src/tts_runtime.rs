@@ -131,6 +131,72 @@ pub fn matches_pinned(path: &Path, lib: &Lib) -> Result<bool, String> {
     Ok(size == lib.bytes && sha256_hex(path)? == lib.sha256)
 }
 
+/// The machine code of a library: the ELF `.text` section or the Mach-O `__TEXT,__text`
+/// section of a 64-bit little-endian file. Packagers change the rest: the macOS bundle signs
+/// every dylib again, and the AppImage tool strips each `.so` and sets its rpath.
+pub fn code_section(bytes: &[u8]) -> Option<&[u8]> {
+    let u16_at = |at: usize| Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?));
+    let u32_at = |at: usize| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    let u64_at = |at: usize| Some(u64::from_le_bytes(bytes.get(at..at + 8)?.try_into().ok()?));
+    let slice = |offset: u64, size: u64| {
+        let start = usize::try_from(offset).ok()?;
+        bytes.get(start..start.checked_add(usize::try_from(size).ok()?)?)
+    };
+    if bytes.starts_with(b"\x7fELF") {
+        if bytes.get(4..6)? != [2, 1] {
+            return None;
+        }
+        let headers = usize::try_from(u64_at(0x28)?).ok()?;
+        let entry = usize::from(u16_at(0x3A)?);
+        let count = usize::from(u16_at(0x3C)?);
+        let names_at = headers + usize::from(u16_at(0x3E)?) * entry;
+        let names = usize::try_from(u64_at(names_at + 0x18)?).ok()?;
+        return (0..count).find_map(|index| {
+            let header = headers + index * entry;
+            let name = names + usize::try_from(u32_at(header)?).ok()?;
+            (bytes.get(name..name + 6)? == b".text\0")
+                .then(|| slice(u64_at(header + 0x18)?, u64_at(header + 0x20)?))
+                .flatten()
+        });
+    }
+    const MACH_O_64: u32 = 0xfeed_facf;
+    const LC_SEGMENT_64: u32 = 0x19;
+    if u32_at(0)? != MACH_O_64 {
+        return None;
+    }
+    let field = |at: usize, name: &[u8]| {
+        let raw = bytes.get(at..at + 16)?;
+        Some(raw.split(|&byte| byte == 0).next()? == name)
+    };
+    let mut command = 32;
+    for _ in 0..u32_at(16)? {
+        let size = usize::try_from(u32_at(command + 4)?).ok()?;
+        if u32_at(command)? == LC_SEGMENT_64 && field(command + 8, b"__TEXT")? {
+            for section in 0..usize::try_from(u32_at(command + 64)?).ok()? {
+                let at = command + 72 + section * 80;
+                if field(at, b"__text")? {
+                    return slice(u64::from(u32_at(at + 48)?), u64_at(at + 40)?);
+                }
+            }
+        }
+        command += size;
+    }
+    None
+}
+
+/// The library at `packaged` carries the same machine code as the pinned copy at `pinned`.
+pub fn same_code(packaged: &Path, pinned: &Path) -> Result<bool, String> {
+    if !packaged.is_file() {
+        return Ok(false);
+    }
+    let read =
+        |path: &Path| fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()));
+    let (packaged, pinned_bytes) = (read(packaged)?, read(pinned)?);
+    let pinned_code = code_section(&pinned_bytes)
+        .ok_or_else(|| format!("{} has no code section", pinned.display()))?;
+    Ok(code_section(&packaged) == Some(pinned_code))
+}
+
 /// Makes sure `dir` holds the pinned libraries of `target`, downloading the archive when one
 /// is missing or does not match. Returns `true` when a download ran.
 pub fn ensure(dir: &Path, target: Target) -> Result<bool, String> {
@@ -302,6 +368,66 @@ mod tests {
         fs::write(&path, b"abcd").unwrap();
         assert!(!matches_pinned(&path, &lib).unwrap());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A 64-bit little-endian ELF file with a section-name table and `.text` holding `code`.
+    fn elf(code: &[u8]) -> Vec<u8> {
+        let names = b"\0.text\0.shstrtab\0";
+        let names_at = 64u64;
+        let code_at = names_at + names.len() as u64;
+        let headers = code_at + code.len() as u64;
+        let mut file = vec![0u8; 64];
+        file[..6].copy_from_slice(b"\x7fELF\x02\x01");
+        file[0x28..0x30].copy_from_slice(&headers.to_le_bytes());
+        file[0x3A..0x3C].copy_from_slice(&64u16.to_le_bytes());
+        file[0x3C..0x3E].copy_from_slice(&3u16.to_le_bytes());
+        file[0x3E..0x40].copy_from_slice(&2u16.to_le_bytes());
+        file.extend_from_slice(names);
+        file.extend_from_slice(code);
+        let section = |name: u32, offset: u64, size: u64| {
+            let mut header = vec![0u8; 64];
+            header[..4].copy_from_slice(&name.to_le_bytes());
+            header[0x18..0x20].copy_from_slice(&offset.to_le_bytes());
+            header[0x20..0x28].copy_from_slice(&size.to_le_bytes());
+            header
+        };
+        file.extend(section(0, 0, 0));
+        file.extend(section(1, code_at, code.len() as u64));
+        file.extend(section(7, names_at, names.len() as u64));
+        file
+    }
+
+    /// A 64-bit Mach-O file with one `__TEXT` segment whose `__text` section holds `code`.
+    fn mach_o(code: &[u8], signature: &[u8]) -> Vec<u8> {
+        let mut file = vec![0u8; 32];
+        file[..4].copy_from_slice(&0xfeed_facfu32.to_le_bytes());
+        file[16..20].copy_from_slice(&1u32.to_le_bytes());
+        let mut segment = vec![0u8; 72 + 80];
+        segment[..4].copy_from_slice(&0x19u32.to_le_bytes());
+        segment[4..8].copy_from_slice(&(152u32).to_le_bytes());
+        segment[8..14].copy_from_slice(b"__TEXT");
+        segment[64..68].copy_from_slice(&1u32.to_le_bytes());
+        segment[72..78].copy_from_slice(b"__text");
+        segment[88..94].copy_from_slice(b"__TEXT");
+        segment[112..120].copy_from_slice(&(code.len() as u64).to_le_bytes());
+        segment[120..124].copy_from_slice(&(32u32 + 152).to_le_bytes());
+        file.extend(segment);
+        file.extend_from_slice(code);
+        file.extend_from_slice(signature);
+        file
+    }
+
+    #[test]
+    fn the_code_section_survives_a_new_signature_or_a_strip() {
+        assert_eq!(code_section(&elf(b"CODE")), Some(&b"CODE"[..]));
+        let signed_once = mach_o(b"CODE", b"sig-1");
+        let signed_again = mach_o(b"CODE", b"another-signature");
+        assert_ne!(signed_once, signed_again);
+        assert_eq!(code_section(&signed_once), code_section(&signed_again));
+        assert_eq!(code_section(&signed_once), Some(&b"CODE"[..]));
+        assert_ne!(code_section(&mach_o(b"EDOC", b"")), Some(&b"CODE"[..]));
+        assert_eq!(code_section(b"not a library"), None);
+        assert_eq!(code_section(&elf(b"CODE")[..80]), None);
     }
 
     #[test]
