@@ -250,8 +250,11 @@ new decision, add it here in the same change (D-21).
   switch in System Settings and runs before any tap, so while a live shortcut
   is Cmd+Tab or Cmd+Shift+Tab, Hushpen turns that hotkey off for the login
   session (`CGSSetSymbolicHotKeyEnabled`, as AltTab does) and turns it on
-  again when the shortcut changes or the app quits; a note in the temporary
-  folder lets the next start undo it after a crash. macOS keeps no list of
+  again when the shortcut changes or the app quits. While it is off, a child
+  `hushpen switcher-guard` in its own process group turns it on when the app
+  is killed or crashes (it reads the hotkeys on a pipe and acts when the pipe
+  closes); a note in the temporary folder lets the next start undo it if the
+  guard died too. macOS keeps no list of
   other apps' shortcuts, so those cannot be checked. The key that completes a
   live shortcut, and every key but a modifier while the recorder is open,
   stay away from the front app: on macOS a filtering event tap drops them,

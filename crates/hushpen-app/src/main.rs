@@ -11,6 +11,7 @@ fn main() -> ExitCode {
         }
         Command::Engine(args) => hushpen_engine::engine_main(&args),
         Command::UpdateApply(args) => hushpen_app::update_apply::main(&args),
+        Command::SwitcherGuard => hushpen_platform::keys::switcher_guard_main(),
         Command::Unknown(argument) => {
             eprintln!("hushpen: unknown argument '{argument}'. Try --version.");
             ExitCode::from(2)

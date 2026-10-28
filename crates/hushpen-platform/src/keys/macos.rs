@@ -10,7 +10,7 @@
 //!
 //! The app switcher runs before any tap, so while a live shortcut is its chord (Cmd+Tab) the
 //! switcher is turned off for the session, and turned on again when the shortcut changes or the
-//! app quits.
+//! app quits. A guard child turns it on again when the app is killed or crashes.
 
 // The tap is created and read through plain C calls on pointers this module owns.
 #![allow(unsafe_code)]
@@ -33,7 +33,10 @@ use core_foundation::runloop::{
 use hushpen_core::shortcut::{Bindings, Combo, Conflict, HandsFree, Key, Opener};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::c_void;
+use std::io::{BufRead, Write};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
+use std::process::{Child, ChildStdin, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -88,6 +91,70 @@ pub(super) struct MacKeys {
     hub: Arc<Hub>,
     /// The app switcher hotkeys Hushpen turned off.
     switcher_off: Mutex<BTreeSet<i32>>,
+    guard: Mutex<Option<SwitcherGuard>>,
+}
+
+/// A child that outlives a kill or a crash of the app. It reads the app switcher hotkeys that
+/// are off, one line for each change, and turns the last ones on when its pipe closes.
+struct SwitcherGuard {
+    child: Child,
+    stdin: ChildStdin,
+}
+
+impl SwitcherGuard {
+    fn spawn() -> std::io::Result<Self> {
+        let mut child = std::process::Command::new(std::env::current_exe()?)
+            .arg(super::SWITCHER_GUARD_ARG)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            // Its own group, so a signal sent to the app's group does not end it too.
+            .process_group(0)
+            .spawn()?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| std::io::Error::other("the guard has no pipe"))?;
+        Ok(Self { child, stdin })
+    }
+
+    fn tell(&mut self, off: &BTreeSet<i32>) -> std::io::Result<()> {
+        let ids: Vec<String> = off.iter().map(i32::to_string).collect();
+        writeln!(self.stdin, "{}", ids.join(" "))?;
+        self.stdin.flush()
+    }
+
+    fn finish(self) {
+        let Self { mut child, stdin } = self;
+        drop(stdin);
+        thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
+}
+
+fn switcher_ids(text: &str) -> BTreeSet<i32> {
+    text.split_whitespace()
+        .filter_map(|id| id.parse().ok())
+        .filter(|id| symbolic::APP_SWITCHER.contains(id))
+        .collect()
+}
+
+/// The switcher guard: turns on the hotkeys of the last line it read once the app's end closes
+/// the pipe.
+pub(super) fn switcher_guard_main() -> ExitCode {
+    let mut off = BTreeSet::new();
+    for line in std::io::stdin().lock().lines() {
+        let Ok(line) = line else { break };
+        off = switcher_ids(&line);
+    }
+    if !off.is_empty() {
+        for id in &off {
+            symbolic::set_enabled(*id, true);
+        }
+        let _ = std::fs::remove_file(switcher_note());
+    }
+    ExitCode::SUCCESS
 }
 
 /// The character keys and Space on the layout in use, by key code. The table is the copy
@@ -386,6 +453,39 @@ impl MacKeys {
         if let Err(error) = written {
             log::warn!("the app switcher note was not written: {error}");
         }
+        self.tell_guard(&off);
+    }
+
+    fn tell_guard(&self, off: &BTreeSet<i32>) {
+        let Ok(mut guard) = self.guard.lock() else {
+            return;
+        };
+        if off.is_empty() {
+            if let Some(mut done) = guard.take() {
+                let _ = done.tell(off);
+                done.finish();
+            }
+            return;
+        }
+        // A second try replaces a guard that died.
+        for _ in 0..2 {
+            if guard.is_none() {
+                match SwitcherGuard::spawn() {
+                    Ok(started) => *guard = Some(started),
+                    Err(error) => {
+                        log::warn!("the app switcher guard did not start: {error}");
+                        return;
+                    }
+                }
+            }
+            if guard.as_mut().is_some_and(|live| live.tell(off).is_ok()) {
+                return;
+            }
+            if let Some(dead) = guard.take() {
+                dead.finish();
+            }
+        }
+        log::warn!("the app switcher guard does not answer");
     }
 
     /// Turns on what Hushpen turned off in the system. For the app's quit.
@@ -458,15 +558,12 @@ impl MacKeys {
         match started.recv() {
             Ok(true) => {
                 // A crash may have left the switcher off; this start owns it now.
-                let left_off: BTreeSet<i32> = std::fs::read_to_string(switcher_note())
-                    .unwrap_or_default()
-                    .split_whitespace()
-                    .filter_map(|id| id.parse().ok())
-                    .filter(|id| symbolic::APP_SWITCHER.contains(id))
-                    .collect();
+                let left_off =
+                    switcher_ids(&std::fs::read_to_string(switcher_note()).unwrap_or_default());
                 let keys = Self {
                     hub,
                     switcher_off: Mutex::new(left_off),
+                    guard: Mutex::new(None),
                 };
                 keys.follow_switcher(&bindings);
                 Ok(keys)
@@ -538,6 +635,13 @@ fn run(hub: &Arc<Hub>, layout: &LayoutCache, ready: mpsc::Sender<bool>) {
 mod tests {
     use super::*;
     use crate::keyboard_layout::{Table, layouts};
+
+    #[test]
+    fn the_switcher_note_and_guard_lines_name_only_the_switcher_hotkeys() {
+        assert_eq!(switcher_ids("1 2"), BTreeSet::from([1, 2]));
+        assert_eq!(switcher_ids("2 x 64 -1"), BTreeSet::from([2]));
+        assert!(switcher_ids("").is_empty());
+    }
 
     /// The tap thread is never the main thread, so a TIS call there would trip the debug
     /// assertion of the layout read. It gets and follows its key map from the shared table.
