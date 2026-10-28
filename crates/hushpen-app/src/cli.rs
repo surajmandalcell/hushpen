@@ -16,6 +16,8 @@ pub enum Command {
     Engine(Vec<String>),
     /// The update helper that swaps a staged version in after the app quit.
     UpdateApply(Vec<String>),
+    /// The child that turns the macOS app switcher on again if the app ends without doing it.
+    SwitcherGuard,
     Unknown(String),
 }
 
@@ -35,6 +37,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Command {
             Some("--version" | "-V") => return Command::Version,
             Some("engine") => return Command::Engine(args.collect()),
             Some("update-apply") => return Command::UpdateApply(args.collect()),
+            Some(hushpen_platform::keys::SWITCHER_GUARD_ARG) => return Command::SwitcherGuard,
             Some(other) => return Command::Unknown(other.to_owned()),
         }
     }
@@ -100,6 +103,11 @@ mod tests {
             parse_args(&["update-apply", "--pid", "7"]),
             Command::UpdateApply(vec!["--pid".into(), "7".into()])
         );
+    }
+
+    #[test]
+    fn the_switcher_guard_subcommand_starts_the_guard() {
+        assert_eq!(parse_args(&["switcher-guard"]), Command::SwitcherGuard);
     }
 
     #[test]

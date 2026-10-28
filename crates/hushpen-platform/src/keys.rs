@@ -82,6 +82,19 @@ impl std::fmt::Display for Unavailable {
 
 impl std::error::Error for Unavailable {}
 
+/// The argument that starts the app binary as the macOS switcher guard, a child that turns
+/// Cmd+Tab on again when the app is killed or crashes. The binary answers it with
+/// [`switcher_guard_main`] before anything else.
+pub const SWITCHER_GUARD_ARG: &str = "switcher-guard";
+
+/// Runs the switcher guard until the app that started it ends.
+pub fn switcher_guard_main() -> std::process::ExitCode {
+    #[cfg(target_os = "macos")]
+    return macos::switcher_guard_main();
+    #[cfg(not(target_os = "macos"))]
+    std::process::ExitCode::from(2)
+}
+
 /// The running key listener. It lives until the process ends.
 pub struct GlobalKeys {
     #[cfg(target_os = "linux")]
