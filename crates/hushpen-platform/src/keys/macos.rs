@@ -1,34 +1,39 @@
 //! macOS global keys: a `CGEventTap` on its own thread and run loop.
 //!
-//! With Accessibility allowed the tap filters: the key that completes a live shortcut, and every
-//! key but a modifier while the recorder is open, stop here, so Cmd+Tab runs Hushpen and not the
-//! app switcher. Every other key, Esc during a session included, still reaches the focused app.
-//! With only Input Monitoring the tap listens, and the front app also gets the shortcut's key.
-//! A listening tap is swapped for a filtering one once Accessibility is allowed. A tap that the
-//! system disabled is turned on again; a tap whose port died is replaced.
+//! The tap sees every key, the media keys (`NX_SYSDEFINED` events) included. With
+//! Accessibility allowed it filters: the key that completes a live shortcut, and every key but a
+//! modifier while the recorder is open, stop here, so Cmd+Tab or Play runs Hushpen and not the
+//! app switcher or the music app. Every other key, Esc during a session included, still reaches
+//! the focused app. With only Input Monitoring the tap listens, and the front app also gets the
+//! shortcut's key. A listening tap is swapped for a filtering one once Accessibility is allowed.
+//! A tap that the system disabled is turned on again; a tap whose port died is replaced.
+//!
+//! The app switcher runs before any tap, so while a live shortcut is its chord (Cmd+Tab) the
+//! switcher is turned off for the session, and turned on again when the shortcut changes or the
+//! app quits.
 
-// `CFMachPortIsValid` is a plain C call on a port that this module owns.
+// The tap is created and read through plain C calls on pointers this module owns.
 #![allow(unsafe_code)]
 
 use super::hub::Hub;
 use super::symbolic;
 use super::tap::{
-    Decoder, HEALTH_INTERVAL, Health, KEYCODE_SPACE, Tap, TapAction, TapEvent, TapGuard,
-    named_keycode,
+    Decoder, HEALTH_INTERVAL, Health, KEYCODE_SPACE, MEDIA_CODE, Tap, TapAction, TapEvent,
+    TapGuard, named_keycode,
 };
 use super::{Reason, RecordSink, Sink, Unavailable};
 use crate::keyboard_layout::{self, LayoutCache};
 use core_foundation::base::TCFType;
-use core_foundation::mach_port::CFMachPortIsValid;
+use core_foundation::mach_port::{
+    CFMachPort, CFMachPortInvalidate, CFMachPortIsValid, CFMachPortRef,
+};
 use core_foundation::runloop::{
     CFRunLoop, CFRunLoopSource, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
-use core_graphics::event::{
-    CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
-    CallbackResult, EventField,
-};
-use hushpen_core::shortcut::{Bindings, Combo, Key};
-use std::collections::HashMap;
+use hushpen_core::shortcut::{Bindings, Combo, Conflict, HandsFree, Key, Opener};
+use std::collections::{BTreeSet, HashMap};
+use std::ffi::c_void;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -38,8 +43,51 @@ use std::time::{Duration, Instant};
 /// How long one run loop slice lasts before the thread looks at the flags again.
 const SLICE: Duration = Duration::from_millis(250);
 
+/// System Settings > Keyboard, where the Keyboard Shortcuts button is.
+const KEYBOARD_SETTINGS: &str = "x-apple.systempreferences:com.apple.Keyboard-Settings.extension";
+
+type EventRef = *mut c_void;
+type TapCallback = unsafe extern "C" fn(
+    proxy: *mut c_void,
+    kind: u32,
+    event: EventRef,
+    info: *mut c_void,
+) -> EventRef;
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventTapCreate(
+        tap: u32,
+        place: u32,
+        options: u32,
+        events: u64,
+        callback: TapCallback,
+        info: *mut c_void,
+    ) -> CFMachPortRef;
+    fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+    fn CGEventGetIntegerValueField(event: EventRef, field: u32) -> i64;
+    fn CGEventGetFlags(event: EventRef) -> u64;
+}
+
+/// `kCGSessionEventTap`, `kCGHeadInsertEventTap`, and the tap options.
+const SESSION_TAP: u32 = 1;
+const HEAD_INSERT: u32 = 0;
+const OPTION_DEFAULT: u32 = 0;
+const OPTION_LISTEN_ONLY: u32 = 1;
+/// The event types: `kCGEventKeyDown` and so on, `NX_SYSDEFINED` for the media keys.
+const KEY_DOWN: u32 = 10;
+const KEY_UP: u32 = 11;
+const FLAGS_CHANGED: u32 = 12;
+const SYSTEM_DEFINED: u32 = 14;
+const DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
+const DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
+/// `kCGKeyboardEventKeycode`.
+const FIELD_KEYCODE: u32 = 9;
+
 pub(super) struct MacKeys {
     hub: Arc<Hub>,
+    /// The app switcher hotkeys Hushpen turned off.
+    switcher_off: Mutex<BTreeSet<i32>>,
 }
 
 /// The character keys and Space on the layout in use, by key code. The table is the copy
@@ -58,28 +106,134 @@ fn changed_chars(layout: &LayoutCache, seen: &mut u64) -> Option<HashMap<i64, ch
     Some(table.chars(KEYCODE_SPACE))
 }
 
+/// What the tap callback reaches through its `info` pointer.
+struct Context {
+    decoder: Arc<Mutex<Decoder>>,
+    hub: Arc<Hub>,
+    reenable: Arc<AtomicBool>,
+    filters: bool,
+}
+
 struct InstalledTap {
-    tap: CGEventTap<'static>,
+    port: CFMachPort,
     source: CFRunLoopSource,
+    context: *mut Context,
     /// The tap may drop events; a listen-only tap may not.
     filters: bool,
 }
 
 impl Tap for InstalledTap {
     fn alive(&self) -> bool {
-        // SAFETY: the port belongs to `self.tap`, which is alive for this call.
-        unsafe { CFMachPortIsValid(self.tap.mach_port().as_concrete_TypeRef()) != 0 }
+        // SAFETY: the port belongs to `self`, which is alive for this call.
+        unsafe { CFMachPortIsValid(self.port.as_concrete_TypeRef()) != 0 }
     }
 
     fn enable(&self) {
-        self.tap.enable();
+        // SAFETY: as above.
+        unsafe { CGEventTapEnable(self.port.as_concrete_TypeRef(), true) };
     }
 }
 
 impl Drop for InstalledTap {
     fn drop(&mut self) {
         CFRunLoop::get_current().remove_source(&self.source, unsafe { kCFRunLoopCommonModes });
+        // SAFETY: the port is invalidated on this thread, the only one that runs its callback,
+        // so no callback can still use the context that is freed after it.
+        unsafe {
+            CFMachPortInvalidate(self.port.as_concrete_TypeRef());
+            drop(Box::from_raw(self.context));
+        }
     }
+}
+
+/// The subtype and `data1` of a system defined event, which only AppKit reads.
+fn media_fields(event: EventRef) -> Option<(i64, i64)> {
+    objc2::rc::autoreleasepool(|_| {
+        // SAFETY: `event` is the live event the tap was handed; the AppKit type is the same
+        // CoreGraphics object.
+        let event = unsafe { &*(event as *const objc2_core_graphics::CGEvent) };
+        let ns = objc2_app_kit::NSEvent::eventWithCGEvent(event)?;
+        Some((i64::from(ns.subtype().0), ns.data1() as i64))
+    })
+}
+
+fn tap_event(kind: u32, event: EventRef) -> Option<TapEvent> {
+    let fields = || {
+        // SAFETY: a key event the tap was handed, alive for this callback.
+        unsafe {
+            (
+                CGEventGetIntegerValueField(event, FIELD_KEYCODE),
+                CGEventGetFlags(event),
+            )
+        }
+    };
+    if event.is_null() && !matches!(kind, DISABLED_BY_TIMEOUT | DISABLED_BY_USER_INPUT) {
+        return None;
+    }
+    Some(match kind {
+        FLAGS_CHANGED => {
+            let (keycode, flags) = fields();
+            TapEvent::FlagsChanged { keycode, flags }
+        }
+        KEY_DOWN => {
+            let (keycode, flags) = fields();
+            TapEvent::KeyDown { keycode, flags }
+        }
+        KEY_UP => {
+            let (keycode, flags) = fields();
+            TapEvent::KeyUp { keycode, flags }
+        }
+        SYSTEM_DEFINED => {
+            let (subtype, data1) = media_fields(event)?;
+            TapEvent::Media { subtype, data1 }
+        }
+        DISABLED_BY_TIMEOUT => TapEvent::DisabledByTimeout,
+        DISABLED_BY_USER_INPUT => TapEvent::DisabledByUserInput,
+        _ => return None,
+    })
+}
+
+/// Whether the event stops here.
+fn handle(context: &Context, kind: u32, event: EventRef) -> bool {
+    let Some(tap_event) = tap_event(kind, event) else {
+        return false;
+    };
+    let action = match context.decoder.lock() {
+        Ok(mut decoder) => decoder.decode(tap_event),
+        Err(_) => TapAction::Ignore,
+    };
+    let swallow = match action {
+        TapAction::Key(key, true) => context.hub.press(key),
+        TapAction::Key(key, false) => context.hub.release(key),
+        TapAction::Tap(key) => {
+            context.hub.press(key);
+            context.hub.release(key);
+            false
+        }
+        TapAction::Reenable => {
+            context.reenable.store(true, Ordering::Release);
+            false
+        }
+        TapAction::Ignore => false,
+    };
+    // A modifier is a flags event and is never swallowed, so the system's idea of which
+    // modifiers are down stays right.
+    context.filters && swallow && matches!(kind, KEY_DOWN | KEY_UP | SYSTEM_DEFINED)
+}
+
+unsafe extern "C" fn callback(
+    _proxy: *mut c_void,
+    kind: u32,
+    event: EventRef,
+    info: *mut c_void,
+) -> EventRef {
+    // SAFETY: `info` is the context of this tap, freed only after the tap is invalidated.
+    let context = unsafe { &*(info as *const Context) };
+    let drop = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle(context, kind, event)
+    }))
+    .unwrap_or(false);
+    if drop { std::ptr::null_mut() } else { event }
 }
 
 /// A filtering tap when Accessibility is allowed, else a listening one. Creating a filtering tap
@@ -103,76 +257,87 @@ fn install(
     reenable: &Arc<AtomicBool>,
     filters: bool,
 ) -> Option<InstalledTap> {
-    let callback = {
-        let decoder = Arc::clone(decoder);
-        let hub = Arc::clone(hub);
-        let reenable = Arc::clone(reenable);
-        move |_proxy, kind: CGEventType, event: &core_graphics::event::CGEvent| {
-            let tap_event = match kind {
-                CGEventType::FlagsChanged => TapEvent::FlagsChanged {
-                    keycode: event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE),
-                    flags: event.get_flags().bits(),
-                },
-                CGEventType::KeyDown => TapEvent::KeyDown {
-                    keycode: event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE),
-                    flags: event.get_flags().bits(),
-                },
-                CGEventType::KeyUp => TapEvent::KeyUp {
-                    keycode: event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE),
-                    flags: event.get_flags().bits(),
-                },
-                CGEventType::TapDisabledByTimeout => TapEvent::DisabledByTimeout,
-                CGEventType::TapDisabledByUserInput => TapEvent::DisabledByUserInput,
-                _ => return CallbackResult::Keep,
-            };
-            let action = match decoder.lock() {
-                Ok(mut decoder) => decoder.decode(tap_event),
-                Err(_) => TapAction::Ignore,
-            };
-            let swallow = match action {
-                TapAction::Key(key, true) => hub.press(key),
-                TapAction::Key(key, false) => hub.release(key),
-                TapAction::Reenable => {
-                    reenable.store(true, Ordering::Release);
-                    false
-                }
-                TapAction::Ignore => false,
-            };
-            // A modifier is a flags event and is never swallowed, so the system's idea of
-            // which modifiers are down stays right.
-            if filters && swallow && matches!(kind, CGEventType::KeyDown | CGEventType::KeyUp) {
-                CallbackResult::Drop
-            } else {
-                CallbackResult::Keep
-            }
-        }
-    };
+    let context = Box::into_raw(Box::new(Context {
+        decoder: Arc::clone(decoder),
+        hub: Arc::clone(hub),
+        reenable: Arc::clone(reenable),
+        filters,
+    }));
+    let mask = [KEY_DOWN, KEY_UP, FLAGS_CHANGED, SYSTEM_DEFINED]
+        .into_iter()
+        .fold(0u64, |mask, kind| mask | (1 << kind));
     let options = if filters {
-        CGEventTapOptions::Default
+        OPTION_DEFAULT
     } else {
-        CGEventTapOptions::ListenOnly
+        OPTION_LISTEN_ONLY
     };
-    let tap = CGEventTap::new(
-        CGEventTapLocation::Session,
-        CGEventTapPlacement::HeadInsertEventTap,
-        options,
-        vec![
-            CGEventType::FlagsChanged,
-            CGEventType::KeyDown,
-            CGEventType::KeyUp,
-        ],
-        callback,
-    )
-    .ok()?;
-    let source = tap.mach_port().create_runloop_source(0).ok()?;
+    // SAFETY: the callback matches `CGEventTapCallBack`, and `context` lives until the tap is
+    // dropped.
+    let raw = unsafe {
+        CGEventTapCreate(
+            SESSION_TAP,
+            HEAD_INSERT,
+            options,
+            mask,
+            callback,
+            context.cast(),
+        )
+    };
+    if raw.is_null() {
+        // SAFETY: no tap holds the context.
+        drop(unsafe { Box::from_raw(context) });
+        return None;
+    }
+    // SAFETY: `CGEventTapCreate` returns an owned port (create rule).
+    let port = unsafe { CFMachPort::wrap_under_create_rule(raw) };
+    let Ok(source) = port.create_runloop_source(0) else {
+        // SAFETY: the port is new and has no run loop source, so its callback never ran.
+        unsafe {
+            CFMachPortInvalidate(port.as_concrete_TypeRef());
+            drop(Box::from_raw(context));
+        }
+        return None;
+    };
     // SAFETY: a constant of the CoreFoundation framework.
     CFRunLoop::get_current().add_source(&source, unsafe { kCFRunLoopCommonModes });
-    tap.enable();
+    // SAFETY: the port is the live tap.
+    unsafe { CGEventTapEnable(port.as_concrete_TypeRef(), true) };
     Some(InstalledTap {
-        tap,
+        port,
         source,
+        context,
         filters,
     })
+}
+
+/// The macOS key code of the first key of `combo` that is not a modifier.
+fn main_keycode(combo: &Combo) -> Option<i64> {
+    match combo.main()? {
+        Key::Named(named) => named_keycode(named),
+        Key::Char(' ') => Some(KEYCODE_SPACE),
+        Key::Char(c) => keyboard_layout::shared().key_code_for(c).map(i64::from),
+        Key::Code(code) if code < MEDIA_CODE => Some(i64::from(code)),
+        _ => None,
+    }
+}
+
+/// Where Hushpen notes the switcher hotkeys it turned off, so a start after a crash turns them
+/// on again. The temporary folder lasts about as long as the login session that the window
+/// server keeps the setting for.
+fn switcher_note() -> PathBuf {
+    std::env::temp_dir().join("hushpen-app-switcher-off")
+}
+
+fn live_combos(bindings: &Bindings) -> impl Iterator<Item = &Combo> {
+    let custom = bindings.hands_free.as_ref().and_then(HandsFree::combo);
+    [
+        bindings.hold.as_ref(),
+        bindings.command.as_ref(),
+        bindings.paste_last.as_ref(),
+        custom,
+    ]
+    .into_iter()
+    .flatten()
 }
 
 impl MacKeys {
@@ -182,7 +347,50 @@ impl MacKeys {
     }
 
     pub(super) fn set_bindings(&self, bindings: Bindings) {
+        self.follow_switcher(&bindings);
         self.hub.set_bindings(bindings);
+    }
+
+    /// Turns the app switcher off while a live shortcut is its chord, and on again after.
+    fn follow_switcher(&self, bindings: &Bindings) {
+        let wanted: BTreeSet<i32> = live_combos(bindings)
+            .filter(|combo| combo.mains().count() == 1)
+            .filter_map(|combo| Some((main_keycode(combo)?, symbolic::carbon_modifiers(combo))))
+            .flat_map(|(code, modifiers)| symbolic::switcher_hotkeys(code, modifiers))
+            .collect();
+        let Ok(mut off) = self.switcher_off.lock() else {
+            return;
+        };
+        for id in off.difference(&wanted).copied().collect::<Vec<_>>() {
+            if symbolic::set_enabled(id, true) {
+                off.remove(&id);
+                log::info!("the app switcher hotkey {id} is on again");
+            }
+        }
+        for id in wanted {
+            if !off.contains(&id) && symbolic::is_enabled(id) && symbolic::set_enabled(id, false) {
+                off.insert(id);
+                log::info!("the app switcher hotkey {id} is off while Hushpen owns its chord");
+            }
+        }
+        let note = switcher_note();
+        let written = if off.is_empty() {
+            std::fs::remove_file(&note).or_else(|error| match error.kind() {
+                std::io::ErrorKind::NotFound => Ok(()),
+                _ => Err(error),
+            })
+        } else {
+            let ids: Vec<String> = off.iter().map(i32::to_string).collect();
+            std::fs::write(&note, ids.join(" "))
+        };
+        if let Err(error) = written {
+            log::warn!("the app switcher note was not written: {error}");
+        }
+    }
+
+    /// Turns on what Hushpen turned off in the system. For the app's quit.
+    pub(super) fn restore_system(&self) {
+        self.follow_switcher(&Bindings::default());
     }
 
     pub(super) fn start_recording(&self) {
@@ -193,23 +401,29 @@ impl MacKeys {
         self.hub.stop_recording();
     }
 
-    /// Whether a macOS system shortcut that is on uses `combo`. Other apps cannot be asked:
-    /// the system keeps no list of their shortcuts.
-    pub(super) fn in_use(&self, combo: &Combo) -> bool {
-        let code = match combo.main() {
-            Some(Key::Named(named)) => named_keycode(named),
-            Some(Key::Char(' ')) => Some(KEYCODE_SPACE),
-            Some(Key::Char(c)) => keyboard_layout::shared().key_code_for(c).map(i64::from),
-            _ => None,
+    /// The macOS system shortcut that is on and uses `combo`, with where to turn it off. Other
+    /// apps cannot be asked: the system keeps no list of their shortcuts.
+    pub(super) fn conflict(&self, combo: &Combo) -> Option<Conflict> {
+        let code = main_keycode(combo)?;
+        let modifiers = symbolic::carbon_modifiers(combo);
+        if !symbolic::taken(&symbolic::system_hotkeys(), code, modifiers) {
+            return None;
+        }
+        let (message, steps) = match symbolic::owner(code, modifiers) {
+            Some((name, section)) => (
+                format!("macOS uses this shortcut for \"{name}\"."),
+                format!("Turn it off in Keyboard Shortcuts > {section}. Then it works here."),
+            ),
+            None => (
+                "macOS uses this shortcut.".to_owned(),
+                "Turn it off in Keyboard > Keyboard Shortcuts. Then it works here.".to_owned(),
+            ),
         };
-        let Some(code) = code else {
-            return false;
-        };
-        symbolic::taken(
-            &symbolic::system_hotkeys(),
-            code,
-            symbolic::carbon_modifiers(combo),
-        )
+        Some(Conflict {
+            message,
+            steps,
+            open: Some(Opener::Url(KEYBOARD_SETTINGS.to_owned())),
+        })
     }
 
     pub(super) fn start(
@@ -225,9 +439,10 @@ impl MacKeys {
                 "Input Monitoring is not allowed for Hushpen, so global keys are off.",
             ));
         }
+        hushpen_core::shortcut::set_code_names(super::tap::code_name);
         // The layout is read here, on the main thread; the tap thread only reads the copy.
         keyboard_layout::follow_system();
-        let hub = Arc::new(Hub::new(bindings, sink, record));
+        let hub = Arc::new(Hub::new(bindings.clone(), sink, record));
         let (ready, started) = mpsc::channel();
         let thread_hub = Arc::clone(&hub);
         let layout = Arc::clone(keyboard_layout::shared());
@@ -241,7 +456,21 @@ impl MacKeys {
                 )
             })?;
         match started.recv() {
-            Ok(true) => Ok(Self { hub }),
+            Ok(true) => {
+                // A crash may have left the switcher off; this start owns it now.
+                let left_off: BTreeSet<i32> = std::fs::read_to_string(switcher_note())
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .filter_map(|id| id.parse().ok())
+                    .filter(|id| symbolic::APP_SWITCHER.contains(id))
+                    .collect();
+                let keys = Self {
+                    hub,
+                    switcher_off: Mutex::new(left_off),
+                };
+                keys.follow_switcher(&bindings);
+                Ok(keys)
+            }
             _ => Err(Unavailable::new(
                 Reason::Permission,
                 "macOS did not let Hushpen listen for keys. Check Input Monitoring.",

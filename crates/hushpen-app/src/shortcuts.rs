@@ -1,8 +1,9 @@
 //! Settings > Shortcuts: the hold key, hands-free, paste last, and the Command Mode key.
 //!
-//! This owns what each slot holds, the recorder, and the rules a new shortcut passes: it must be
-//! a shortcut at all, not reserved by the system or used by another slot, and not held by
-//! another app. A refused shortcut keeps the old value. The key listener is reached through
+//! This owns what each slot holds, the recorder, and the one rule Hushpen itself has: a slot may
+//! not hold the shortcut of another slot. Any keys the system reports are a shortcut. A shortcut
+//! that the system or another app already runs is saved, shows who uses it and how to free it,
+//! and starts to work by itself once it is free. The key listener is reached through
 //! [`KeyControl`], so the rules run the same with or without a keyboard.
 
 pub mod panel;
@@ -14,7 +15,8 @@ use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{Context, FocusHandle};
 use hushpen_core::error::SETTINGS_CORRUPT;
 use hushpen_core::shortcut::{
-    Bindings, Combo, Key, Platform, Recording, Refusal, Setting, Slot, bindings, check,
+    Bindings, Combo, Conflict, Key, Opener, Platform, Recording, Refusal, Setting, Slot, bindings,
+    check,
 };
 use hushpen_platform::keys::{GlobalKeys, RecordSink};
 use serde_json::{Value, json};
@@ -27,12 +29,16 @@ use std::time::Duration;
 /// hold key for good.
 const RECORDER_IDLE: Duration = Duration::from_secs(10);
 
+/// How often a shortcut that something else runs is tried again, so it works soon after the
+/// user frees it.
+const RECHECK: Duration = Duration::from_secs(2);
+
 /// What the shortcut rules need from the key listener.
 pub trait KeyControl {
     fn set_bindings(&self, bindings: Bindings);
     fn start_recording(&self);
     fn stop_recording(&self);
-    fn in_use(&self, combo: &Combo) -> bool;
+    fn conflict(&self, combo: &Combo) -> Option<Conflict>;
 }
 
 impl KeyControl for GlobalKeys {
@@ -48,8 +54,8 @@ impl KeyControl for GlobalKeys {
         GlobalKeys::stop_recording(self);
     }
 
-    fn in_use(&self, combo: &Combo) -> bool {
-        GlobalKeys::in_use(self, combo)
+    fn conflict(&self, combo: &Combo) -> Option<Conflict> {
+        GlobalKeys::conflict(self, combo)
     }
 }
 
@@ -68,7 +74,7 @@ pub struct Shortcuts {
     why_off: Option<String>,
     values: BTreeMap<Slot, Setting>,
     failures: BTreeMap<Slot, Refusal>,
-    /// The slots whose shortcut another app holds: saved, but not live.
+    /// The slots whose shortcut the system or another app runs: saved, but not live.
     taken: BTreeSet<Slot>,
     recorder: Option<Recorder>,
     recorders_opened: u64,
@@ -146,11 +152,20 @@ impl Shortcuts {
                 self.why_off = None;
                 let slots: Vec<Slot> = self.values.keys().copied().collect();
                 for slot in slots {
-                    if self.held_by_other_app(slot) {
-                        self.mark_taken(slot);
+                    if let Some(conflict) = self.conflict_of(slot) {
+                        self.mark_taken(slot, conflict);
                     }
                 }
                 self.apply_live();
+                cx.spawn(async move |this, cx| {
+                    loop {
+                        cx.background_executor().timer(RECHECK).await;
+                        if this.update(cx, |me, cx| me.recheck(cx)).is_err() {
+                            return;
+                        }
+                    }
+                })
+                .detach();
             }
             Err(why) => {
                 self.keys = None;
@@ -160,18 +175,50 @@ impl Shortcuts {
         cx.notify();
     }
 
-    fn held_by_other_app(&self, slot: Slot) -> bool {
-        let combo = self.values.get(&slot).and_then(Setting::combo);
-        match (&self.keys, combo) {
-            (Some(keys), Some(combo)) => keys.in_use(combo),
-            _ => false,
+    fn conflict_of(&self, slot: Slot) -> Option<Conflict> {
+        let combo = self.values.get(&slot).and_then(Setting::combo)?;
+        self.keys.as_ref()?.conflict(combo)
+    }
+
+    fn mark_taken(&mut self, slot: Slot, conflict: Conflict) {
+        self.taken.insert(slot);
+        self.failures.insert(slot, Refusal::conflict(conflict));
+        hook::record_event("shortcut", &format!("{} in-use", slot.key()));
+    }
+
+    /// A saved shortcut that something else ran starts to work once it is free.
+    fn recheck(&mut self, cx: &mut Context<Self>) {
+        if self.recorder.is_some() {
+            return;
+        }
+        let mut freed = false;
+        for slot in self.taken.clone() {
+            match self.conflict_of(slot) {
+                Some(conflict) => {
+                    self.failures.insert(slot, Refusal::conflict(conflict));
+                }
+                None => {
+                    self.taken.remove(&slot);
+                    self.failures.remove(&slot);
+                    hook::record_event("shortcut", &format!("{} live", slot.key()));
+                    freed = true;
+                }
+            }
+        }
+        if freed {
+            self.apply_live();
+            cx.notify();
         }
     }
 
-    fn mark_taken(&mut self, slot: Slot) {
-        self.taken.insert(slot);
-        self.failures.insert(slot, Refusal::in_use(self.platform));
-        hook::record_event("shortcut", &format!("{} in-use", slot.key()));
+    /// Opens the settings where the user frees the shortcut of `slot`.
+    pub fn open_conflict_settings(&self, slot: Slot) -> Result<(), String> {
+        let opener = self
+            .failure(slot)
+            .and_then(|refusal| refusal.open.clone())
+            .ok_or_else(|| "Nothing to open for this shortcut.".to_owned())?;
+        hook::record_event("shortcut", &format!("{} open-settings", slot.key()));
+        open(&opener).map_err(|error| format!("The settings did not open: {error}"))
     }
 
     fn apply_live(&self) {
@@ -201,7 +248,7 @@ impl Shortcuts {
         self.failures.get(&slot)
     }
 
-    /// Whether the shortcut of `slot` runs: another app does not hold it.
+    /// Whether the shortcut of `slot` runs: nothing else runs it.
     pub fn is_live(&self, slot: Slot) -> bool {
         !self.taken.contains(&slot)
     }
@@ -308,16 +355,20 @@ impl Shortcuts {
     }
 
     /// Tries a recorded shortcut for `slot`. A refusal is shown on the slot and nothing changes.
+    /// A shortcut that something else runs is saved, and shows who runs it and how to free it.
     fn apply(&mut self, slot: Slot, keys: Vec<Key>) {
         match self.try_apply(slot, keys) {
-            Ok(()) => {
+            Ok(conflict) => {
                 self.failures.remove(&slot);
                 self.taken.remove(&slot);
-                self.apply_live();
                 hook::record_event(
                     "shortcut",
                     &format!("{} {}", slot.key(), self.setting_text(slot)),
                 );
+                if let Some(conflict) = conflict {
+                    self.mark_taken(slot, conflict);
+                }
+                self.apply_live();
             }
             Err(refusal) => {
                 hook::record_event("shortcut", &format!("{} {}", slot.key(), refusal.code));
@@ -326,34 +377,35 @@ impl Shortcuts {
         }
     }
 
-    fn try_apply(&mut self, slot: Slot, keys: Vec<Key>) -> Result<(), Refusal> {
+    fn try_apply(&mut self, slot: Slot, keys: Vec<Key>) -> Result<Option<Conflict>, Refusal> {
         let combo = Combo::new(keys, self.platform)
             .map_err(|problem| Refusal::invalid(problem, self.platform))?;
-        check(slot, &combo, &self.values, self.platform)?;
-        if self.keys.as_ref().is_some_and(|keys| keys.in_use(&combo)) {
-            return Err(Refusal::in_use(self.platform));
-        }
+        check(slot, &combo, &self.values)?;
+        let conflict = self.keys.as_ref().and_then(|keys| keys.conflict(&combo));
         let setting = match slot {
             Slot::HandsFree => Setting::HandsFree(hushpen_core::shortcut::HandsFree::Custom(combo)),
             _ => Setting::Keys(combo),
         };
-        self.save(slot, setting)
+        self.save(slot, setting)?;
+        Ok(conflict)
     }
 
     fn save(&mut self, slot: Slot, setting: Setting) -> Result<(), Refusal> {
         self.storage
             .settings
             .set(slot.setting_key(), json!(setting.to_text(self.platform)))
-            .map_err(|error| Refusal {
-                code: SETTINGS_CORRUPT,
-                message: format!("The shortcut could not be saved: {error}"),
+            .map_err(|error| {
+                Refusal::new(
+                    SETTINGS_CORRUPT,
+                    format!("The shortcut could not be saved: {error}"),
+                )
             })?;
         self.values.insert(slot, setting);
         Ok(())
     }
 
     /// Puts all four shortcuts back to the factory defaults of this system. A default that
-    /// another app holds is saved too and shows the in-use error.
+    /// something else runs is saved too and shows the in-use error.
     pub fn reset_all(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         if self.recorder.take().is_some()
             && let Some(keys) = &self.keys
@@ -367,8 +419,8 @@ impl Shortcuts {
                 .map_err(|refusal| refusal.message)?;
         }
         for slot in Slot::ALL {
-            if self.held_by_other_app(slot) {
-                self.mark_taken(slot);
+            if let Some(conflict) = self.conflict_of(slot) {
+                self.mark_taken(slot, conflict);
             }
         }
         self.apply_live();
@@ -391,6 +443,8 @@ impl Shortcuts {
                         "error": self.failure(slot).map(|refusal| json!({
                             "code": refusal.code,
                             "message": refusal.message,
+                            "steps": refusal.steps,
+                            "can_open": refusal.open.is_some(),
                         })),
                     }),
                 )
@@ -402,6 +456,21 @@ impl Shortcuts {
             "recorder_available": self.why_off.is_none(),
             "slots": slots,
         })
+    }
+}
+
+fn open(opener: &Opener) -> std::io::Result<()> {
+    match opener {
+        Opener::Url(url) => hushpen_platform::permissions::open_url(url),
+        Opener::Command(argv) => {
+            let (program, args) = argv
+                .split_first()
+                .ok_or_else(|| std::io::Error::other("no program"))?;
+            let mut child = std::process::Command::new(program).args(args).spawn()?;
+            // Waited for on its own thread, so the finished program leaves no zombie.
+            std::thread::spawn(move || child.wait());
+            Ok(())
+        }
     }
 }
 

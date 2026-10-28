@@ -49,34 +49,58 @@ impl Setting {
     }
 }
 
-/// Why a shortcut was not accepted: the code the UI and the hook show, and a sentence.
+/// How the user reaches the settings that hold a conflicting shortcut.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Opener {
+    /// A `x-apple.systempreferences:` link.
+    Url(String),
+    /// A program and its arguments, such as `systemsettings kcm_keys`.
+    Command(Vec<String>),
+}
+
+/// Something else runs a shortcut: a macOS system shortcut that is on, or another X11 app that
+/// grabbed it. Only the platform layer can tell, after it asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Conflict {
+    /// Who uses it, such as `macOS uses this shortcut for "Move focus to next window".`
+    pub message: String,
+    /// How to free it, in one line.
+    pub steps: String,
+    /// The settings to open, when the system has a way to open them.
+    pub open: Option<Opener>,
+}
+
+/// Why a shortcut was not accepted, or why a saved one does not run: the code the UI and the
+/// hook show, a sentence, and for a conflict the way to free the shortcut.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
     pub code: &'static str,
     pub message: String,
+    pub steps: Option<String>,
+    pub open: Option<Opener>,
 }
 
 impl Refusal {
-    /// Something else runs the shortcut: another app on Linux, a macOS system shortcut that is
-    /// on in System Settings on a Mac. Only the platform layer can tell, after it asked.
-    pub fn in_use(platform: Platform) -> Self {
-        let message = match platform {
-            Platform::MacOs => {
-                "macOS uses this shortcut. Turn it off in System Settings > Keyboard, or choose another."
-            }
-            Platform::Linux => "Another app is using this shortcut. Choose a different one.",
-        };
+    pub fn new(code: &'static str, message: String) -> Self {
+        Self {
+            code,
+            message,
+            steps: None,
+            open: None,
+        }
+    }
+
+    pub fn conflict(conflict: Conflict) -> Self {
         Self {
             code: crate::error::SHORTCUT_IN_USE,
-            message: message.to_owned(),
+            message: conflict.message,
+            steps: Some(conflict.steps),
+            open: conflict.open,
         }
     }
 
     pub fn invalid(problem: Problem, platform: Platform) -> Self {
-        Self {
-            code: SHORTCUT_INVALID,
-            message: problem.message(platform),
-        }
+        Self::new(SHORTCUT_INVALID, problem.message(platform))
     }
 }
 
@@ -89,33 +113,22 @@ fn slot_name(slot: Slot) -> &'static str {
     }
 }
 
-/// Checks a recorded shortcut for `slot` against the system's shortcuts and the other slots.
-/// `others` is what the other slots hold now.
-pub fn check(
-    slot: Slot,
-    combo: &Combo,
-    others: &BTreeMap<Slot, Setting>,
-    platform: Platform,
-) -> Result<(), Refusal> {
-    if combo.reserved(platform) {
-        return Err(Refusal {
-            code: SHORTCUT_RESERVED,
-            message: "The system or most apps use this shortcut. Choose a different one."
-                .to_owned(),
-        });
-    }
+/// Checks a recorded shortcut for `slot` against the other slots, the one thing Hushpen itself
+/// refuses. `others` is what the other slots hold now. What the system already runs is asked
+/// of the platform layer.
+pub fn check(slot: Slot, combo: &Combo, others: &BTreeMap<Slot, Setting>) -> Result<(), Refusal> {
     let taken = others
         .iter()
         .filter(|(other, _)| **other != slot)
         .find(|(_, setting)| setting.combo() == Some(combo));
     if let Some((other, _)) = taken {
-        return Err(Refusal {
-            code: SHORTCUT_RESERVED,
-            message: format!(
+        return Err(Refusal::new(
+            SHORTCUT_RESERVED,
+            format!(
                 "Hushpen already uses this shortcut for {}. Choose a different one.",
                 slot_name(*other)
             ),
-        });
+        ));
     }
     Ok(())
 }

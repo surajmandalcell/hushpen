@@ -1,8 +1,10 @@
 //! Keyboard shortcuts: the setting text, key names for each system, the rules a new shortcut
 //! must pass, and the engine that turns raw key presses into pipeline events.
 //!
-//! A shortcut is a [`Combo`]: modifier-only keys such as Cmd+Right Ctrl or Fn, or modifiers plus
-//! one other key of any kind (a letter, ```, Tab, Space, an arrow, F5). Nothing here touches a
+//! A shortcut is a [`Combo`]: any keys the system reports, held together. That is modifiers
+//! alone (Cmd+Right Ctrl, Fn, Left Ctrl+Right Ctrl), one key alone (F13, Play, Caps Lock, a
+//! letter), or modifiers with other keys (Cmd+Tab, Cmd+`). Hushpen does not keep a list of
+//! allowed chords: only the system and the other slots can refuse one. Nothing here touches a
 //! keyboard; the platform layer feeds [`Engine`] with physical key events and sends out what it
 //! answers.
 
@@ -13,18 +15,34 @@ mod register;
 mod tests;
 
 pub use engine::{Bindings, Engine, Output, Phys, Recording, Side};
-pub use register::{Refusal, Setting, bindings, check};
+pub use register::{Conflict, Opener, Refusal, Setting, bindings, check};
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 /// The default hands-free setting: a double tap of the hold key, and the hold key with Space.
 pub const DEFAULT_HANDS_FREE: &str = "DoubleTap+Hold+Space";
 
-/// Most keys one shortcut may have.
-const MAX_KEYS: usize = 5;
+/// Most keys one shortcut may have. Most keyboards report at most six keys down at once.
+const MAX_KEYS: usize = 6;
 
-/// The function keys run from F1 to this one.
-pub const LAST_F_KEY: u8 = 20;
+/// The function keys run from F1 to this one (X11 names F1 to F35; a Mac has F1 to F20).
+pub const LAST_F_KEY: u8 = 35;
+
+/// The system's name for a [`Key::Code`], set once by the platform layer.
+static CODE_NAMES: OnceLock<fn(u32) -> Option<String>> = OnceLock::new();
+
+/// Lets the platform name the keys that have no name here, such as `XF86Calculator`.
+pub fn set_code_names(names: fn(u32) -> Option<String>) {
+    let _ = CODE_NAMES.set(names);
+}
+
+fn code_name(code: u32) -> String {
+    CODE_NAMES
+        .get()
+        .and_then(|names| names(code))
+        .unwrap_or_else(|| format!("Key {code}"))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Platform {
@@ -103,7 +121,8 @@ pub enum Modifier {
     Cmd,
 }
 
-/// A key that types no character: the editing and moving keys, and the function keys.
+/// A key that types no character and that both systems name the same way: the editing and
+/// moving keys, the keypad, the lock keys, the function keys, and the media keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Named {
     Tab,
@@ -119,19 +138,87 @@ pub enum Named {
     End,
     PageUp,
     PageDown,
+    /// Esc with other keys. Esc alone closes the recorder, so it is never a shortcut alone.
+    Escape,
+    Insert,
+    Help,
+    CapsLock,
+    /// The context menu key of a PC keyboard.
+    Menu,
+    PrintScreen,
+    ScrollLock,
+    Pause,
+    NumLock,
+    /// A keypad key: a digit, `.`, `+`, `-`, `*`, `/`, or `=`.
+    Keypad(char),
+    KeypadEnter,
+    KeypadClear,
     /// F1 to [`LAST_F_KEY`].
     F(u8),
+    PlayPause,
+    NextTrack,
+    PreviousTrack,
+    FastForward,
+    Rewind,
+    VolumeUp,
+    VolumeDown,
+    Mute,
+    BrightnessUp,
+    BrightnessDown,
+    KeyboardLightUp,
+    KeyboardLightDown,
+    Eject,
 }
+
+/// The keys of a keypad that are not Enter or Clear.
+pub const KEYPAD_CHARS: &str = "0123456789.+-*/=";
 
 impl Named {
     /// Every named key, in the order of the enum.
     pub fn all() -> impl Iterator<Item = Named> {
         use Named::*;
         [
-            Tab, Return, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown,
+            Tab,
+            Return,
+            Backspace,
+            Delete,
+            Up,
+            Down,
+            Left,
+            Right,
+            Home,
+            End,
+            PageUp,
+            PageDown,
+            Escape,
+            Insert,
+            Help,
+            CapsLock,
+            Menu,
+            PrintScreen,
+            ScrollLock,
+            Pause,
+            NumLock,
         ]
         .into_iter()
-        .chain((1..=LAST_F_KEY).map(Named::F))
+        .chain(KEYPAD_CHARS.chars().map(Keypad))
+        .chain([KeypadEnter, KeypadClear])
+        .chain((1..=LAST_F_KEY).map(F))
+        .chain([
+            PlayPause,
+            NextTrack,
+            PreviousTrack,
+            FastForward,
+            Rewind,
+            VolumeUp,
+            VolumeDown,
+            Mute,
+            BrightnessUp,
+            BrightnessDown,
+            KeyboardLightUp,
+            KeyboardLightDown,
+            Eject,
+        ])
     }
 }
 
@@ -147,6 +234,9 @@ pub enum Key {
     /// Space as `' '`.
     Char(char),
     Named(Named),
+    /// A key with no name here, by the system's own number: the macOS key code (a media key
+    /// is `0x10000` plus its `NX_KEYTYPE`), or the X11 keysym.
+    Code(u32),
 }
 
 /// Why a set of keys is not a shortcut.
@@ -154,32 +244,19 @@ pub enum Key {
 pub enum Problem {
     Empty,
     TooMany,
-    BothSides,
     /// The Fn key exists on a Mac only.
     NoFn,
-    /// Two keys that are not modifiers, or a key that cannot be a shortcut.
+    /// A key name in the setting text that no key has.
     BadKey,
-    /// A key other than F1 to F20 needs Ctrl, Alt, Cmd, or Fn, or the shortcut would take
-    /// ordinary typing.
-    NeedsModifier,
-    /// Modifiers alone need one on a named side, such as Right Alt, or plain Ctrl+Shift would
-    /// start a session in the middle of every Ctrl+Shift shortcut.
-    NeedsRightSide,
 }
 
 impl Problem {
-    pub fn message(self, platform: Platform) -> String {
-        let (alt, cmd) = names::modifier_words(platform);
+    pub fn message(self, _platform: Platform) -> String {
         match self {
             Problem::Empty => "Press the keys for the shortcut.".to_owned(),
             Problem::TooMany => format!("Use at most {MAX_KEYS} keys."),
-            Problem::BothSides => "Use the same side for one modifier.".to_owned(),
             Problem::NoFn => "The Fn key is only available on a Mac.".to_owned(),
-            Problem::BadKey => "Use one key besides the modifiers.".to_owned(),
-            Problem::NeedsModifier => format!("Add Ctrl, {alt}, or {cmd} to the key."),
-            Problem::NeedsRightSide => {
-                format!("Add a modifier on the right side, such as Right {alt}, or another key.")
-            }
+            Problem::BadKey => "This shortcut names a key that does not exist.".to_owned(),
         }
     }
 }
@@ -199,52 +276,11 @@ impl Combo {
         if keys.len() > MAX_KEYS {
             return Err(Problem::TooMany);
         }
-        let any: BTreeSet<Modifier> = keys
-            .iter()
-            .filter_map(|key| match key {
-                Key::Any(modifier) => Some(*modifier),
-                _ => None,
-            })
-            .collect();
-        let right: BTreeSet<Modifier> = keys
-            .iter()
-            .filter_map(|key| match key {
-                Key::Right(modifier) => Some(*modifier),
-                _ => None,
-            })
-            .collect();
-        if any.intersection(&right).next().is_some() {
-            return Err(Problem::BothSides);
-        }
         if keys.contains(&Key::Fn) && platform != Platform::MacOs {
             return Err(Problem::NoFn);
         }
-        let mains: Vec<Key> = keys.iter().copied().filter(is_main).collect();
-        if mains.len() > 1 || !mains.iter().all(|key| valid_main(*key)) {
+        if !keys.iter().all(|key| exists(*key)) {
             return Err(Problem::BadKey);
-        }
-        match mains.first() {
-            None => {
-                if !keys
-                    .iter()
-                    .any(|key| matches!(key, Key::Right(_) | Key::Fn))
-                {
-                    return Err(Problem::NeedsRightSide);
-                }
-            }
-            // A function key types nothing, so it may be a shortcut on its own.
-            Some(Key::Named(Named::F(_))) => {}
-            Some(_) => {
-                if !keys.iter().any(|key| {
-                    *key == Key::Fn
-                        || matches!(
-                            modifier_of(*key),
-                            Some(Modifier::Ctrl | Modifier::Alt | Modifier::Cmd)
-                        )
-                }) {
-                    return Err(Problem::NeedsModifier);
-                }
-            }
         }
         Ok(Self {
             keys: keys.into_iter().collect(),
@@ -262,14 +298,26 @@ impl Combo {
         })
     }
 
-    /// The one key that is not a modifier or Fn, such as `V`, Tab, or F5.
+    /// The first key that is not a modifier or Fn, such as `V`, Tab, or F5.
     pub fn main(&self) -> Option<Key> {
         self.keys.iter().copied().find(is_main)
     }
 
-    /// Reads setting text such as `Ctrl+Alt+V`, `Cmd+Tab`, `Cmd+\``, or `RightOption`. Names are
-    /// not case sensitive, and `Alt` and `Option`, `Cmd`, `Command`, and `Super` mean the same
-    /// key. A side is written `RightAlt` or `Right Alt`. The `+` key is written `Plus`.
+    /// The keys that are not a modifier or Fn.
+    pub fn mains(&self) -> impl Iterator<Item = Key> + '_ {
+        self.keys.iter().copied().filter(is_main)
+    }
+
+    /// Whether the plain `modifier` key stands for the left one: the chord also has the right
+    /// one, as in Left Ctrl+Right Ctrl.
+    pub fn left_only(&self, modifier: Modifier) -> bool {
+        self.keys.contains(&Key::Right(modifier))
+    }
+
+    /// Reads setting text such as `Ctrl+Alt+V`, `Cmd+Tab`, `Cmd+\``, `F13`, `PlayPause`, or
+    /// `RightOption`. Names are not case sensitive, and `Alt` and `Option`, `Cmd`, `Command`,
+    /// and `Super` mean the same key. A side is written `RightAlt` or `Right Alt`. The `+` key
+    /// is written `Plus`, a keypad key `Keypad1`, and a key with no name `Key179`.
     pub fn parse(text: &str, platform: Platform) -> Result<Self, Problem> {
         let keys: Result<Vec<Key>, Problem> = text.split('+').map(parse_key).collect();
         Self::new(keys?, platform)
@@ -290,59 +338,24 @@ impl Combo {
         let keys: BTreeSet<Key> = keys.iter().copied().collect();
         names::display(&keys.into_iter().collect::<Vec<_>>(), platform)
     }
-
-    /// Whether the system or most apps use this shortcut, so Hushpen must not take it. The keys
-    /// on macOS still reach the front app, and an X11 grab takes them from every app, so either
-    /// way the chord would stop doing its usual job.
-    pub fn reserved(&self, platform: Platform) -> bool {
-        use Modifier::{Alt, Cmd, Ctrl, Shift};
-        // Cmd (Ctrl on Linux) with any letter or digit is an app shortcut almost everywhere.
-        // Ctrl alone on a Mac moves the cursor in every text field.
-        const MAC: &[(&[Modifier], &str)] = &[
-            (&[Cmd], "abcdefghijklmnopqrstuvwxyz0123456789"),
-            (&[Ctrl], "abdefhklnoptvy"),
-            (&[Cmd, Shift], "cgnqtvwxz3456"),
-            (&[Ctrl, Cmd], "fq"),
-            (&[Alt, Cmd], "dhmw"),
-            (&[Ctrl, Shift, Cmd], "345"),
-        ];
-        const LINUX: &[(&[Modifier], &str)] = &[
-            (&[Ctrl], "abcdefghijklmnopqrstuvwxyz0123456789"),
-            (&[Ctrl, Shift], "cnqtvwxz"),
-            (&[Ctrl, Alt], "dlt"),
-            (&[Cmd], "l"),
-        ];
-        let Some(letter) = self.letter() else {
-            return false;
-        };
-        let modifiers: BTreeSet<Modifier> =
-            self.keys.iter().filter_map(|k| modifier_of(*k)).collect();
-        let table = if platform == Platform::MacOs {
-            MAC
-        } else {
-            LINUX
-        };
-        table.iter().any(|(chord, letters)| {
-            modifiers == chord.iter().copied().collect() && letters.contains(letter)
-        })
-    }
 }
 
-fn modifier_of(key: Key) -> Option<Modifier> {
-    match key {
-        Key::Any(modifier) | Key::Right(modifier) => Some(modifier),
-        Key::Fn | Key::Char(_) | Key::Named(_) => None,
-    }
+#[cfg(test)]
+fn names_setting(named: Named) -> String {
+    names::setting(&[Key::Named(named)], Platform::Linux)
 }
 
 fn is_main(key: &Key) -> bool {
-    matches!(key, Key::Char(_) | Key::Named(_))
+    matches!(key, Key::Char(_) | Key::Named(_) | Key::Code(_))
 }
 
-fn valid_main(key: Key) -> bool {
+/// Whether some keyboard has this key. Only hand-written setting text can name one that does
+/// not, such as F99 or a keypad letter.
+fn exists(key: Key) -> bool {
     match key {
         Key::Char(c) => c == ' ' || !(c.is_control() || c.is_whitespace() || c.is_uppercase()),
         Key::Named(Named::F(n)) => (1..=LAST_F_KEY).contains(&n),
+        Key::Named(Named::Keypad(c)) => KEYPAD_CHARS.contains(c),
         _ => true,
     }
 }
@@ -357,9 +370,53 @@ fn char_key(c: char) -> Key {
 }
 
 fn parse_named(name: &str) -> Option<Key> {
+    if let Some(rest) = name.strip_prefix("keypad") {
+        return Some(Key::Named(match rest {
+            "enter" => Named::KeypadEnter,
+            "clear" => Named::KeypadClear,
+            "plus" => Named::Keypad('+'),
+            "minus" => Named::Keypad('-'),
+            "multiply" => Named::Keypad('*'),
+            "divide" => Named::Keypad('/'),
+            "equals" => Named::Keypad('='),
+            "decimal" => Named::Keypad('.'),
+            other => {
+                let mut chars = other.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(c), None) => Named::Keypad(c),
+                    _ => return None,
+                }
+            }
+        }));
+    }
+    if let Some(code) = name.strip_prefix("key").and_then(|n| n.parse().ok()) {
+        return Some(Key::Code(code));
+    }
     let named = match name {
         "space" => return Some(Key::Char(' ')),
         "plus" => return Some(Key::Char('+')),
+        "escape" | "esc" => Named::Escape,
+        "insert" | "ins" => Named::Insert,
+        "help" => Named::Help,
+        "capslock" => Named::CapsLock,
+        "menu" => Named::Menu,
+        "printscreen" | "print" => Named::PrintScreen,
+        "scrolllock" => Named::ScrollLock,
+        "pause" => Named::Pause,
+        "numlock" => Named::NumLock,
+        "playpause" | "play" => Named::PlayPause,
+        "nexttrack" | "next" => Named::NextTrack,
+        "previoustrack" | "previous" | "prev" => Named::PreviousTrack,
+        "fastforward" => Named::FastForward,
+        "rewind" => Named::Rewind,
+        "volumeup" => Named::VolumeUp,
+        "volumedown" => Named::VolumeDown,
+        "mute" => Named::Mute,
+        "brightnessup" => Named::BrightnessUp,
+        "brightnessdown" => Named::BrightnessDown,
+        "keyboardlightup" => Named::KeyboardLightUp,
+        "keyboardlightdown" => Named::KeyboardLightDown,
+        "eject" => Named::Eject,
         "tab" => Named::Tab,
         "return" | "enter" => Named::Return,
         "backspace" => Named::Backspace,

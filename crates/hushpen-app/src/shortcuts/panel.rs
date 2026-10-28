@@ -1,6 +1,6 @@
 //! The rows of the Shortcuts section of Settings: a row for each shortcut with a recorder field
-//! on its right, the reason a shortcut was refused, and a row that puts all four back to their
-//! defaults.
+//! on its right, the reason a shortcut was refused or does not run, how to free a shortcut that
+//! something else runs, and a row that puts all four back to their defaults.
 
 use super::Shortcuts;
 use crate::hook;
@@ -8,8 +8,8 @@ use crate::theme::{self, BUTTON, Palette, StyledType, radius, size};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, ParentElement, Role,
-    StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
+    AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement as _,
+    ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
 };
 use hushpen_core::shortcut::Slot;
 
@@ -28,6 +28,8 @@ struct Row {
     recording: bool,
     enabled: bool,
     error: Option<String>,
+    /// How to free a shortcut that something else runs, and whether its settings can be opened.
+    steps: Option<(String, bool)>,
     focus: FocusHandle,
 }
 
@@ -79,10 +81,14 @@ pub fn slot_rows(shortcuts: &Entity<Shortcuts>, slot: Slot, cx: &mut App) -> Vec
             recording,
             enabled: me.why_off().is_none(),
             error: me.failure(slot).map(|refusal| refusal.message.clone()),
+            steps: me.failure(slot).and_then(|refusal| {
+                let steps = refusal.steps.clone()?;
+                Some((steps, refusal.open.is_some()))
+            }),
             focus: me.field_focus[index].clone(),
         }
     };
-    let error = row.error.clone();
+    let (error, steps) = (row.error.clone(), row.steps.clone());
     let mut rows = vec![shortcut_row(palette, shortcuts, row)];
     if let Some(message) = error {
         rows.push(ui::notice_row(
@@ -91,6 +97,32 @@ pub fn slot_rows(shortcuts: &Entity<Shortcuts>, slot: Slot, cx: &mut App) -> Vec
             message,
             Notice::Alert,
             None,
+        ));
+    }
+    if let Some((steps, can_open)) = steps {
+        let open = can_open.then(|| {
+            let shortcuts = shortcuts.clone();
+            ui::button(
+                palette,
+                hook::id("settings", &format!("shortcut.{}.open", slot.key())),
+                "Open Settings",
+                Kind::Plain,
+                None,
+                true,
+                move |_: &mut Window, cx: &mut App| {
+                    if let Err(error) = shortcuts.read(cx).open_conflict_settings(slot) {
+                        log::warn!("{error}");
+                    }
+                },
+            )
+            .into_any_element()
+        });
+        rows.push(ui::notice_row(
+            palette,
+            hook::id("settings", &format!("shortcut.{}.steps", slot.key())),
+            steps,
+            Notice::Info,
+            open,
         ));
     }
     rows

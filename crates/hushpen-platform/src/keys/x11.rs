@@ -13,7 +13,9 @@
 use super::hub::Hub;
 use super::keymap;
 use super::{Reason, RecordSink, Sink, Unavailable};
-use hushpen_core::shortcut::{Bindings, Combo, HandsFree, Key, Modifier, Phys, Recording};
+use hushpen_core::shortcut::{
+    Bindings, Combo, Conflict, HandsFree, Key, Modifier, Opener, Phys, Recording,
+};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -72,7 +74,7 @@ fn modifier_mask(combo: &Combo) -> ModMask {
         .iter()
         .fold(ModMask::from(0u16), |mask, key| match key {
             Key::Any(modifier) | Key::Right(modifier) => mask | mask_of(*modifier),
-            Key::Fn | Key::Char(_) | Key::Named(_) => mask,
+            Key::Fn | Key::Char(_) | Key::Named(_) | Key::Code(_) => mask,
         })
 }
 
@@ -80,7 +82,67 @@ fn phys_of(key: Key) -> Option<Phys> {
     match key {
         Key::Char(c) => Some(Phys::Char(c)),
         Key::Named(named) => Some(Phys::Named(named)),
+        Key::Code(code) => Some(Phys::Code(code)),
         _ => None,
+    }
+}
+
+/// Where this desktop keeps its shortcuts, and the program that opens them.
+fn desktop_settings() -> (&'static str, Option<&'static [&'static str]>) {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let has = |part: &str| desktop.split(':').any(|name| name == part);
+    if has("kde") {
+        (
+            "System Settings > Keyboard > Shortcuts",
+            Some(&["systemsettings", "kcm_keys"]),
+        )
+    } else if has("gnome") || has("unity") || has("budgie") {
+        (
+            "Settings > Keyboard > Keyboard Shortcuts",
+            Some(&["gnome-control-center", "keyboard"]),
+        )
+    } else if has("x-cinnamon") || has("cinnamon") {
+        (
+            "System Settings > Keyboard > Shortcuts",
+            Some(&["cinnamon-settings", "keyboard"]),
+        )
+    } else if has("xfce") {
+        (
+            "Settings > Keyboard > Application Shortcuts, or Window Manager > Keyboard",
+            Some(&["xfce4-keyboard-settings"]),
+        )
+    } else if has("mate") {
+        (
+            "Control Center > Keyboard Shortcuts",
+            Some(&["mate-keybinding-properties"]),
+        )
+    } else if has("lxqt") {
+        (
+            "Preferences > Shortcut Keys",
+            Some(&["lxqt-config-globalkeyshortcuts"]),
+        )
+    } else {
+        ("your desktop's keyboard shortcut settings", None)
+    }
+}
+
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
+}
+
+/// The conflict of a chord another X client grabbed. X11 does not say which client.
+fn grab_conflict() -> Conflict {
+    let (place, program) = desktop_settings();
+    let open = program
+        .filter(|argv| on_path(argv[0]))
+        .map(|argv| Opener::Command(argv.iter().map(|arg| (*arg).to_owned()).collect()));
+    Conflict {
+        message: "Another app or the desktop uses this shortcut.".to_owned(),
+        steps: format!("Remove it in {place}. Then it works here."),
+        open,
     }
 }
 
@@ -95,7 +157,8 @@ fn live_chords(bindings: &Bindings) -> impl Iterator<Item = &Combo> {
     ]
     .into_iter()
     .flatten()
-    .filter(|combo| combo.main().is_some())
+    // A grab holds one key with modifiers, so a chord of two keys only listens.
+    .filter(|combo| combo.mains().count() == 1)
 }
 
 fn read_table(conn: &RustConnection) -> Option<HashMap<u32, Phys>> {
@@ -143,6 +206,7 @@ impl X11Keys {
         let table = read_table(&conn).ok_or_else(|| {
             Unavailable::new(Reason::Failed, "The keyboard mapping is unreadable.")
         })?;
+        hushpen_core::shortcut::set_code_names(keymap::code_name);
         let table: Table = Arc::new(Mutex::new(table));
         let conn = Arc::new(conn);
         // The engine closes the recorder itself when the keys come up or Esc goes down, so the
@@ -263,9 +327,16 @@ impl X11Keys {
         keymap::code_of(&table, phys)
     }
 
-    /// Whether another client holds `combo` with a passive grab. A chord of modifiers alone has
-    /// no key a client could grab, so it is always free.
-    pub(super) fn in_use(&self, combo: &Combo) -> bool {
+    /// Whether another client holds `combo` with a passive grab, and how to free it. A chord of
+    /// modifiers alone has no key a client could grab, so it is always free.
+    pub(super) fn conflict(&self, combo: &Combo) -> Option<Conflict> {
+        self.grabbed_elsewhere(combo).then(grab_conflict)
+    }
+
+    fn grabbed_elsewhere(&self, combo: &Combo) -> bool {
+        if combo.mains().count() != 1 {
+            return false;
+        }
         let Some(code) = combo
             .main()
             .and_then(phys_of)

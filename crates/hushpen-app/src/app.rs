@@ -682,6 +682,12 @@ fn keys_starter(events: EventSender, shortcuts: Entity<Shortcuts>) -> KeysRestar
         };
         let keys = Rc::new(GlobalKeys::start(bindings, sink, record)?);
         let session = Rc::clone(&keys);
+        let quitting = Rc::clone(&keys);
+        cx.on_app_quit(move |_| {
+            quitting.restore_system();
+            async {}
+        })
+        .detach();
         shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Ok(keys), cx));
         Ok(Rc::new(move |active| session.set_session_active(active)) as Rc<dyn Fn(bool)>)
     })

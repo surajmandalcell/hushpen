@@ -133,34 +133,84 @@ fn setting_text_parses_in_any_order_case_and_spacing_and_alias() {
 }
 
 #[test]
-fn text_that_is_not_a_shortcut_says_why() {
-    let cases = [
+fn only_text_that_names_no_key_is_not_a_shortcut() {
+    for (text, expected) in [
         ("", Problem::BadKey),
-        ("V", Problem::NeedsModifier),
-        ("Shift+V", Problem::NeedsModifier),
-        ("Ctrl+Alt", Problem::NeedsRightSide),
-        ("Alt", Problem::NeedsRightSide),
-        ("Ctrl+V+B", Problem::BadKey),
-        ("Ctrl+RightCtrl+V", Problem::BothSides),
-        ("Ctrl+Tab+V", Problem::BadKey),
-        ("Ctrl+F25", Problem::BadKey),
+        ("Ctrl+F36", Problem::BadKey),
         ("Ctrl+Nope", Problem::BadKey),
-        ("Tab", Problem::NeedsModifier),
-        ("Shift+Tab", Problem::NeedsModifier),
-        ("Space", Problem::NeedsModifier),
-        ("Ctrl+Shift", Problem::NeedsRightSide),
+        ("KeypadA", Problem::BadKey),
         ("Fn", Problem::NoFn),
-    ];
-    for (text, expected) in cases {
+    ] {
         assert_eq!(Combo::parse(text, LINUX).err(), Some(expected), "{text:?}");
     }
     assert_eq!(
-        Combo::parse("Fn+Ctrl+Alt+Shift+Cmd+V", MAC).err(),
+        Combo::parse("Fn+Ctrl+Alt+Shift+Cmd+V+B", MAC).err(),
         Some(Problem::TooMany)
     );
     assert_eq!(Combo::parse("Fn", MAC).err(), None);
     // A repeated modifier is one key.
     assert_eq!(combo("Ctrl+Ctrl+V", LINUX), combo("Ctrl+V", LINUX));
+}
+
+/// Hushpen keeps no list of allowed chords: a bare key, a plain modifier, both sides of one
+/// modifier, two keys, and the chords every app uses are all shortcuts.
+#[test]
+fn every_chord_the_keyboard_can_press_is_a_shortcut() {
+    for text in [
+        "V",
+        "Shift+V",
+        "Alt",
+        "Ctrl+Shift",
+        "Ctrl+RightCtrl",
+        "Ctrl+V+B",
+        "Ctrl+Tab+V",
+        "Tab",
+        "Space",
+        "Ctrl+C",
+        "Ctrl+Q",
+        "Super+L",
+        "F35",
+        "CapsLock",
+        "PlayPause",
+        "Keypad5",
+        "Key4242",
+    ] {
+        let parsed = combo(text, LINUX);
+        assert_eq!(combo(&parsed.to_setting(LINUX), LINUX), parsed, "{text}");
+    }
+    for text in ["Cmd+Q", "Cmd+C", "Cmd+Shift+3", "Ctrl+A", "Cmd", "Shift"] {
+        let parsed = combo(text, MAC);
+        assert_eq!(combo(&parsed.to_setting(MAC), MAC), parsed, "{text}");
+    }
+}
+
+#[test]
+fn media_keypad_lock_and_unnamed_keys_have_names_on_both_systems() {
+    for (text, mac, linux) in [
+        ("PlayPause", "Play/Pause", "Play/Pause"),
+        ("Cmd+VolumeUp", "⌘+Volume Up", "Super+Volume Up"),
+        ("Mute", "Mute", "Mute"),
+        ("CapsLock", "⇪", "Caps Lock"),
+        ("Keypad1", "Keypad 1", "Keypad 1"),
+        ("Ctrl+KeypadPlus", "⌃+Keypad +", "Ctrl+Keypad +"),
+        ("KeypadEnter", "⌤", "Keypad Enter"),
+        ("Ctrl+Escape", "⌃⎋", "Ctrl+Esc"),
+        ("F13", "F13", "F13"),
+        ("Ctrl+RightCtrl", "Left ⌃+Right ⌃", "Left Ctrl+Right Ctrl"),
+        ("Key4242", "Key 4242", "Key 4242"),
+    ] {
+        assert_eq!(combo(text, MAC).display(MAC), mac, "{text}");
+        assert_eq!(combo(text, LINUX).display(LINUX), linux, "{text}");
+    }
+    assert_eq!(
+        combo("Ctrl+KeypadMinus", LINUX).keys(),
+        [Key::Any(Modifier::Ctrl), Key::Named(Named::Keypad('-'))]
+    );
+    assert_eq!(combo("Key179", MAC).main(), Some(Key::Code(179)));
+    assert!(Named::all().all(|named| {
+        let text = combo(&format!("Ctrl+{}", super::names_setting(named)), LINUX);
+        text.main() == Some(Key::Named(named))
+    }));
 }
 
 #[test]
@@ -212,11 +262,8 @@ fn every_problem_has_a_message_and_a_linux_one_has_no_mac_words() {
     for problem in [
         Problem::Empty,
         Problem::TooMany,
-        Problem::BothSides,
         Problem::NoFn,
         Problem::BadKey,
-        Problem::NeedsModifier,
-        Problem::NeedsRightSide,
     ] {
         let text = problem.message(LINUX);
         assert!(!text.is_empty());
@@ -225,63 +272,6 @@ fn every_problem_has_a_message_and_a_linux_one_has_no_mac_words() {
             "{text}"
         );
     }
-    assert!(Problem::NeedsModifier.message(MAC).contains("Option"));
-}
-
-#[test]
-fn reserved_shortcuts_are_the_system_and_common_app_chords() {
-    for text in [
-        "Ctrl+Q",
-        "Ctrl+C",
-        "Ctrl+V",
-        "Ctrl+B",
-        "Ctrl+1",
-        "Ctrl+Shift+V",
-        "Ctrl+Shift+Z",
-    ] {
-        assert!(combo(text, LINUX).reserved(LINUX), "{text}");
-    }
-    // A terminal, the lock screen, and the desktop.
-    for text in ["Ctrl+Alt+T", "Ctrl+Alt+L", "Ctrl+Alt+D", "Super+L"] {
-        assert!(combo(text, LINUX).reserved(LINUX), "{text}");
-    }
-    for text in [
-        "Cmd+Q",
-        "Cmd+V",
-        "Cmd+B",
-        "Cmd+H",
-        "Cmd+M",
-        "Cmd+1",
-        "Cmd+Shift+C",
-    ] {
-        assert!(combo(text, MAC).reserved(MAC), "{text}");
-    }
-    // Screenshots, lock screen, full screen, hide others, the Dock, and the text field keys.
-    for text in [
-        "Cmd+Shift+3",
-        "Cmd+Shift+4",
-        "Cmd+Shift+5",
-        "Ctrl+Shift+Cmd+4",
-        "Ctrl+Cmd+Q",
-        "Ctrl+Cmd+F",
-        "Cmd+Alt+H",
-        "Cmd+Alt+D",
-        "Ctrl+A",
-        "Ctrl+E",
-        "Ctrl+K",
-    ] {
-        assert!(combo(text, MAC).reserved(MAC), "{text}");
-    }
-    // The primary key differs by system.
-    assert!(!combo("Ctrl+Q", MAC).reserved(MAC));
-    assert!(!combo("Cmd+Q", LINUX).reserved(LINUX));
-    // Extra modifiers make it Hushpen's own.
-    assert!(!combo("Ctrl+Alt+V", LINUX).reserved(LINUX));
-    assert!(!combo("Ctrl+Cmd+V", MAC).reserved(MAC));
-    assert!(!combo("Ctrl+Alt+H", LINUX).reserved(LINUX));
-    // Modifier-only keys are never reserved.
-    assert!(!combo("RightCtrl", LINUX).reserved(LINUX));
-    assert!(!combo("Fn", MAC).reserved(MAC));
 }
 
 #[test]
@@ -663,19 +653,51 @@ fn recording_a_modifier_only_key_gives_the_right_hand_key() {
 }
 
 #[test]
-fn the_recorder_blocks_every_live_shortcut_and_esc_closes_it() {
+fn the_recorder_blocks_every_live_shortcut_and_esc_alone_closes_it() {
     let mut engine = Engine::new(defaults());
     engine.start_recording();
     assert_eq!(app(engine.press(R_ALT)), []);
+    // With a key held, Esc is part of the shortcut.
+    assert_eq!(
+        recorded(engine.press(Phys::Esc)),
+        [Recording::Progress(vec![
+            Key::Right(Modifier::Alt),
+            Key::Named(Named::Escape)
+        ])]
+    );
+    assert!(engine.swallows(Phys::Esc));
+    engine.release(Phys::Esc);
+    engine.release(R_ALT);
+    engine.start_recording();
     assert_eq!(recorded(engine.press(Phys::Esc)), [Recording::Cancelled]);
     assert!(!engine.is_recording());
-    // The hold key is still down, and its release must not start or stop anything odd.
-    assert_eq!(app(engine.release(R_ALT)), [AppEvent::HoldUp]);
     engine.release(Phys::Esc);
     // Live again.
     assert_eq!(
         chord(&mut engine, &[R_ALT]),
         [AppEvent::HoldArm, AppEvent::HoldUp]
+    );
+}
+
+#[test]
+fn a_bare_key_a_media_key_and_both_sides_of_ctrl_are_live_shortcuts() {
+    let mac = |text: &str| Combo::parse(text, Platform::MacOs).unwrap();
+    let mut engine = Engine::new(Bindings {
+        hold: Some(mac("PlayPause")),
+        hands_free: None,
+        paste_last: Some(mac("Ctrl+RightCtrl")),
+        command: Some(mac("Key179")),
+    });
+    let play = Phys::Named(Named::PlayPause);
+    assert_eq!(app(engine.press(play)), [AppEvent::HoldDown]);
+    assert!(engine.swallows(play));
+    assert_eq!(app(engine.release(play)), [AppEvent::HoldUp]);
+    // Right Ctrl alone is not Left Ctrl+Right Ctrl.
+    assert_eq!(chord(&mut engine, &[R_CTRL]), []);
+    assert_eq!(chord(&mut engine, &[L_CTRL, R_CTRL]), [AppEvent::PasteLast]);
+    assert_eq!(
+        chord(&mut engine, &[Phys::Code(179)]),
+        [AppEvent::CommandDown, AppEvent::CommandUp]
     );
 }
 
@@ -727,28 +749,26 @@ fn held(platform: Platform) -> BTreeMap<Slot, Setting> {
 #[test]
 fn a_new_shortcut_that_is_free_passes() {
     let others = held(LINUX);
+    assert_eq!(check(Slot::PasteLast, &ctrl_alt('p'), &others), Ok(()));
     assert_eq!(
-        check(Slot::PasteLast, &ctrl_alt('p'), &others, LINUX),
-        Ok(())
-    );
-    assert_eq!(
-        check(Slot::Hold, &combo("RightCtrl", LINUX), &others, LINUX),
+        check(Slot::Hold, &combo("RightCtrl", LINUX), &others),
         Ok(())
     );
 }
 
 #[test]
-fn a_reserved_chord_is_refused_with_the_reserved_code() {
+fn a_chord_every_app_uses_is_the_user_s_choice() {
     let others = held(LINUX);
-    let refusal = check(Slot::HandsFree, &combo("Ctrl+Q", LINUX), &others, LINUX).unwrap_err();
-    assert_eq!(refusal.code, "SHORTCUT_RESERVED");
-    assert!(refusal.message.contains("system"));
+    assert_eq!(
+        check(Slot::HandsFree, &combo("Ctrl+Q", LINUX), &others),
+        Ok(())
+    );
 }
 
 #[test]
 fn a_chord_another_slot_already_holds_is_refused_with_the_reserved_code() {
     let others = held(LINUX);
-    let refusal = check(Slot::HandsFree, &ctrl_alt('v'), &others, LINUX).unwrap_err();
+    let refusal = check(Slot::HandsFree, &ctrl_alt('v'), &others).unwrap_err();
     assert_eq!(refusal.code, "SHORTCUT_RESERVED");
     assert!(
         refusal.message.contains("paste last"),
@@ -760,31 +780,28 @@ fn a_chord_another_slot_already_holds_is_refused_with_the_reserved_code() {
 #[test]
 fn a_slot_may_keep_its_own_shortcut_and_a_superset_of_another_is_fine() {
     let others = held(LINUX);
-    assert_eq!(
-        check(Slot::PasteLast, &ctrl_alt('v'), &others, LINUX),
-        Ok(())
-    );
+    assert_eq!(check(Slot::PasteLast, &ctrl_alt('v'), &others), Ok(()));
     // The Command Mode default is the hold key plus Right Shift, which is not the same key set.
     assert_eq!(
-        check(
-            Slot::Command,
-            &combo("RightAlt+RightShift", LINUX),
-            &others,
-            LINUX
-        ),
+        check(Slot::Command, &combo("RightAlt+RightShift", LINUX), &others),
         Ok(())
     );
 }
 
 #[test]
-fn the_in_use_refusal_has_the_in_use_code_and_an_invalid_one_says_why() {
-    assert_eq!(Refusal::in_use(LINUX).code, "SHORTCUT_IN_USE");
-    assert!(Refusal::in_use(LINUX).message.contains("Another app"));
-    assert_eq!(Refusal::in_use(MAC).code, "SHORTCUT_IN_USE");
-    assert!(Refusal::in_use(MAC).message.contains("macOS"));
-    let refusal = Refusal::invalid(Problem::NeedsModifier, LINUX);
+fn a_conflict_keeps_its_steps_and_an_invalid_refusal_says_why() {
+    let refusal = Refusal::conflict(Conflict {
+        message: "macOS uses this shortcut.".to_owned(),
+        steps: "Turn it off.".to_owned(),
+        open: Some(Opener::Url("x-apple.systempreferences:x".to_owned())),
+    });
+    assert_eq!(refusal.code, "SHORTCUT_IN_USE");
+    assert_eq!(refusal.steps.as_deref(), Some("Turn it off."));
+    assert!(refusal.open.is_some());
+    let refusal = Refusal::invalid(Problem::BadKey, LINUX);
     assert_eq!(refusal.code, "SHORTCUT_INVALID");
-    assert_eq!(refusal.message, Problem::NeedsModifier.message(LINUX));
+    assert_eq!(refusal.message, Problem::BadKey.message(LINUX));
+    assert_eq!(refusal.steps, None);
 }
 
 #[test]
@@ -802,7 +819,7 @@ fn settings_parse_per_slot_and_print_back() {
             LINUX
         ))))
     );
-    assert!(Setting::parse(Slot::Hold, "x", LINUX).is_err());
+    assert!(Setting::parse(Slot::Hold, "Nope", LINUX).is_err());
 }
 
 #[test]
