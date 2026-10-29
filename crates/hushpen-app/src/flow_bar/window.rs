@@ -1,6 +1,6 @@
 //! The flow bar's native window: a GPUI pop-up that the app places itself.
 
-use super::{FlowBar, Host, Native};
+use super::{FALLBACK_SCREEN, FlowBar, Host, Native, Screen};
 use crate::native::native_handle;
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, Entity, Pixels, WeakEntity, WindowBackgroundAppearance,
@@ -75,13 +75,32 @@ impl PopUp {
 }
 
 impl Host for PopUp {
-    fn screen(&self, cx: &App) -> (f32, f32) {
-        cx.primary_display()
+    fn screen(&self, cx: &App) -> Screen {
+        let desktop = cx
+            .primary_display()
             .map(|display| {
                 let size = display.bounds().size;
                 (f32::from(size.width), f32::from(size.height))
             })
-            .unwrap_or((1280.0, 800.0))
+            .unwrap_or(FALLBACK_SCREEN.size);
+        let Some(found) = hushpen_platform::window::pointer_screen() else {
+            return Screen {
+                origin: (0.0, 0.0),
+                size: desktop,
+            };
+        };
+        // X11 counts device pixels and GPUI logical ones: GPUI's display is the whole root
+        // window divided by its scale. AppKit counts points on both sides.
+        let scale = if cfg!(target_os = "linux") && desktop.0 > 0.0 {
+            (found.desktop_width / desktop.0).max(0.1)
+        } else {
+            1.0
+        };
+        let rect = found.screen;
+        Screen {
+            origin: (rect.x / scale, rect.y / scale),
+            size: (rect.width / scale, rect.height / scale),
+        }
     }
 
     fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native> {

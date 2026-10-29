@@ -84,7 +84,7 @@ objc2-core-graphics = "=0.3.2"
 objc2-foundation = "=0.3.2"
 objc2-service-management = "=0.3.2"
 sys-locale = "=0.3.2"
-x11rb = { version = "=0.14.0", features = ["xinput", "xtest"] }
+x11rb = { version = "=0.14.0", features = ["randr", "xinput", "xtest"] }
 xkeysym = "=0.2.1"
 # The StatusNotifier watcher check and the appearance read. gpui-tray brings its own zbus 6.
 zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
