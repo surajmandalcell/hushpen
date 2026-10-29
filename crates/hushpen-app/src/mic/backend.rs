@@ -22,6 +22,8 @@ pub trait MicBackend: Send + Sync + 'static {
 pub trait MicSession {
     fn stop(self: Box<Self>) -> Result<Finished, CaptureError>;
     fn feed_wav(&self, path: &Path) -> Result<FeedInfo, CaptureError>;
+    /// Boosts the microphone by `gain`, 1.0 to 2.0, from now on.
+    fn set_gain(&self, _gain: f32) {}
 }
 
 /// The real microphones, through cpal.
@@ -60,5 +62,9 @@ impl MicSession for CpalSession {
 
     fn feed_wav(&self, path: &Path) -> Result<FeedInfo, CaptureError> {
         self.0.feeder().feed_wav(path)
+    }
+
+    fn set_gain(&self, gain: f32) {
+        self.0.set_gain(gain);
     }
 }

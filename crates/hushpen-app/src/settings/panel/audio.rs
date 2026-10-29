@@ -1,4 +1,5 @@
-//! Audio: the microphone, the cue sounds and their volume, and the longest a dictation runs.
+//! Audio: the microphone and its boost, the cue sounds and their volume, and the longest a
+//! dictation runs.
 
 use super::Page;
 use crate::settings::{Settings, slots};
@@ -30,6 +31,25 @@ fn select_mic(me: &mut Settings, id: &str, cx: &mut gpui_kit::Context<Settings>)
     let _ = me.mic.update(cx, |mic, cx| mic.select(id, cx));
     me.picker = None;
     cx.notify();
+}
+
+/// The boost slider runs from 100% at the left end to 200% at the right.
+pub fn input_gain(page: &Page, cx: &mut App) -> AnyElement {
+    let gain = page
+        .settings
+        .read(cx)
+        .stored_f64(crate::mic::GAIN_SETTING)
+        .unwrap_or(1.0) as f32;
+    let settings = page.settings.clone();
+    ui::slider_row(
+        page.palette,
+        super::settings_id(crate::mic::GAIN_SETTING),
+        "Input boost",
+        &format!("Makes a quiet microphone louder: {:.0}%.", gain * 100.0),
+        gain - 1.0,
+        &page.focus[slots::INPUT_GAIN],
+        move |position, cx| settings.update(cx, |me, cx| me.set_input_gain(1.0 + position, cx)),
+    )
 }
 
 pub fn sounds(page: &Page, cx: &mut App) -> AnyElement {

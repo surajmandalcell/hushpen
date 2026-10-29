@@ -29,6 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const SETTING: &str = "audio.inputDeviceId";
+pub const GAIN_SETTING: &str = "audio.inputGain";
 
 /// Bars in the level meter. Each bar is one level value, 50 ms.
 pub const METER_BARS: usize = 32;
@@ -396,6 +397,22 @@ impl Mic {
         }
     }
 
+    /// The saved boost of the microphone: 1.0 is none, 2.0 is 200%.
+    pub fn gain(&self) -> f32 {
+        self.storage
+            .settings
+            .get(GAIN_SETTING)
+            .and_then(|value| value.as_f64())
+            .map_or(1.0, |gain| gain as f32)
+    }
+
+    /// Gives the running session the saved boost, so a change is heard at once.
+    pub fn apply_gain(&self) {
+        if let Some(session) = &self.session {
+            session.inner.set_gain(self.gain());
+        }
+    }
+
     /// Who the running session serves, if one runs.
     pub fn session_use(&self) -> Option<CaptureUse> {
         self.session.as_ref().map(|session| session.used_for)
@@ -436,6 +453,7 @@ impl Mic {
         let path = new_session_path(&self.storage.data.sessions_dir(), now_unix_ms());
         match self.backend.start(&device, path.clone(), sink) {
             Ok(inner) => {
+                inner.set_gain(self.gain());
                 self.session = Some(Session {
                     inner,
                     path: path.clone(),

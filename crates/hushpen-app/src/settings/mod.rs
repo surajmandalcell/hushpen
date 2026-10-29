@@ -56,7 +56,8 @@ pub(crate) mod slots {
     pub const UPDATES_NOW: usize = 24;
     pub const UPDATES_NOTES: usize = 25;
     pub const SEARCH_CLEAR: usize = 26;
-    pub const COUNT: usize = 27;
+    pub const INPUT_GAIN: usize = 27;
+    pub const COUNT: usize = 28;
     /// The options of the open picker. One picker is open at a time, so they share a pool.
     pub const OPTIONS: usize = 12;
 }

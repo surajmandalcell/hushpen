@@ -12,6 +12,9 @@
 - **Read aloud shortcut.** Select text in any app and press Ctrl+Cmd+S
   (Ctrl+Alt+S on Linux) to hear it with the Read aloud voice. Press it again
   to stop.
+- **Input boost.** A slider under Microphone in Settings makes a quiet
+  microphone louder, up to 200%. A change is heard at once, also in the
+  microphone test.
 
 ### Improved
 

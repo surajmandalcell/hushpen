@@ -17,6 +17,7 @@ pub enum RowId {
     ReadAloud,
     ResetShortcuts,
     Microphone,
+    InputGain,
     Sounds,
     CueVolume,
     MaxLength,
@@ -173,6 +174,23 @@ pub static ROWS: &[RowMeta] = &[
         "audio.mic",
         "Microphone",
         &["mic", "input", "device", "recording"],
+    ),
+    RowMeta::new(
+        InputGain,
+        Audio,
+        "audio.inputGain",
+        "Input boost",
+        &[
+            "mic",
+            "microphone",
+            "input",
+            "gain",
+            "boost",
+            "volume",
+            "louder",
+            "quiet",
+            "level",
+        ],
     ),
     RowMeta::new(
         Sounds,
@@ -414,8 +432,10 @@ mod tests {
 
     #[test]
     fn aliases_find_their_rows() {
-        assert_eq!(keys("mic"), ["audio.mic"]);
-        assert_eq!(keys("input"), ["audio.mic"]);
+        assert_eq!(keys("mic"), ["audio.mic", "audio.inputGain"]);
+        assert_eq!(keys("input"), ["audio.mic", "audio.inputGain"]);
+        assert_eq!(keys("boost"), ["audio.inputGain"]);
+        assert_eq!(keys("gain"), ["audio.inputGain"]);
         assert_eq!(keys("autostart"), ["general.launchAtLogin"]);
         assert_eq!(
             keys("credential"),

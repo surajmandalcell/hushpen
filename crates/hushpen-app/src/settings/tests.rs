@@ -565,6 +565,23 @@ fn the_cue_volume_moves_in_steps_of_five_percent(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_input_boost_moves_in_steps_of_five_percent_from_100_to_200(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    assert_eq!(
+        value(&rig, "audio.inputGain"),
+        json!(1.0),
+        "no boost by default"
+    );
+    rig.settings
+        .update(cx, |me, cx| me.set_input_gain(1.62, cx));
+    assert_eq!(value(&rig, "audio.inputGain"), json!(1.6));
+    rig.settings.update(cx, |me, cx| me.set_input_gain(3.0, cx));
+    assert_eq!(value(&rig, "audio.inputGain"), json!(2.0));
+    rig.settings.update(cx, |me, cx| me.set_input_gain(0.2, cx));
+    assert_eq!(value(&rig, "audio.inputGain"), json!(1.0));
+}
+
+#[gpui_kit::test]
 fn the_length_and_thread_pickers_write_their_keys(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.settings.update(cx, |me, cx| {

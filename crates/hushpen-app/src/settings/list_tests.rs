@@ -172,13 +172,14 @@ fn typing_filters_to_the_matching_rows_under_their_headings(cx: &mut TestAppCont
     let shown = shown(cx);
     search(cx, &shown, "input");
     assert!(has(cx, &shown, "settings.audio.mic"));
+    assert!(has(cx, &shown, "settings.audio.inputGain"));
     assert!(has(cx, &shown, "settings.audio.heading"));
     assert!(!has(cx, &shown, "settings.audio.sounds"));
     assert!(!has(cx, &shown, "settings.general.heading"));
     assert!(!has(cx, &shown, "settings.general.launchAtLogin"));
     let state = cx.read(|app| shown.rig.settings.read(app).hook_state_json(app));
     assert_eq!(state["query"], "input");
-    assert_eq!(state["rows"], json!(["audio.mic"]));
+    assert_eq!(state["rows"], json!(["audio.mic", "audio.inputGain"]));
     assert_eq!(state["sections"], json!(["audio"]));
 
     search(cx, &shown, "autostart");
@@ -301,6 +302,28 @@ fn the_volume_slider_follows_a_press_and_the_arrow_keys(cx: &mut TestAppContext)
     assert_eq!(value(&shown.rig, "audio.cueVolume"), json!(0.55));
     press(cx, &shown, "home");
     assert_eq!(value(&shown.rig, "audio.cueVolume"), json!(0.0));
+}
+
+#[gpui_kit::test]
+fn the_boost_slider_runs_from_100_to_200_percent(cx: &mut TestAppContext) {
+    let shown = shown(cx);
+    search(cx, &shown, "boost");
+    cx.update_window(shown.handle, |_, window, cx| {
+        window.click("settings.audio.inputGain", cx)
+    })
+    .unwrap();
+    frame(cx, &shown);
+    assert_eq!(
+        value(&shown.rig, "audio.inputGain"),
+        json!(1.5),
+        "a press in the middle"
+    );
+    press(cx, &shown, "right");
+    assert_eq!(value(&shown.rig, "audio.inputGain"), json!(1.55));
+    press(cx, &shown, "end");
+    assert_eq!(value(&shown.rig, "audio.inputGain"), json!(2.0));
+    press(cx, &shown, "home");
+    assert_eq!(value(&shown.rig, "audio.inputGain"), json!(1.0));
 }
 
 #[gpui_kit::test]
