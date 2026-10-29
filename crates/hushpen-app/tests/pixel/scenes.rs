@@ -108,7 +108,8 @@ pub enum Scene {
     Settings(SettingsShot),
     /// Cleanup on the endpoint, with the failure of a test connection in its status row.
     EndpointFailure,
-    /// Shortcuts with the recorder of the first slot waiting for keys.
+    /// Shortcuts with the recorder of the first slot waiting for keys, one changed shortcut
+    /// with its reset button, and one shortcut off.
     ShortcutRecorder,
 }
 
@@ -557,6 +558,15 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
             seed_history(&storage);
         }
         Scene::Dictionary => seed_dictionary(&storage),
+        Scene::ShortcutRecorder => {
+            let settings = &storage.settings;
+            settings
+                .set("shortcut.command", json!("Ctrl+Alt+K"))
+                .expect("store a changed shortcut");
+            settings
+                .set("shortcut.enabled", json!({"pasteLast": false}))
+                .expect("turn a shortcut off");
+        }
         Scene::Files(shot) => {
             seed_model(&storage);
             if shot == FilesShot::ReadAloud {
