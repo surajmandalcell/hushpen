@@ -148,6 +148,7 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::ReadAloud => shortcuts::slot(page, hushpen_core::shortcut::Slot::ReadAloud, cx),
         RowId::ResetShortcuts => shortcuts::reset(page, cx),
         RowId::Microphone => vec![audio::microphone(page, cx)],
+        RowId::InputGain => vec![audio::input_gain(page, cx)],
         RowId::Sounds => vec![audio::sounds(page, cx)],
         RowId::CueVolume => vec![audio::cue_volume(page, cx)],
         RowId::MaxLength => vec![audio::max_length(page, cx)],

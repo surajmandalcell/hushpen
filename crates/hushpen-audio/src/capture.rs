@@ -11,7 +11,7 @@ use crate::mic_stream::{MicHandle, MicHub};
 use crate::resample::{MonoResampler, TARGET_RATE, downmix};
 use crate::session::SessionWriter;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, LazyLock};
 use std::thread::{self, JoinHandle};
@@ -27,6 +27,33 @@ const END_GAP_MS: u64 = 100;
 /// are 20 ms to 100 ms, so a callback after the stop request means the last words are in the
 /// file. A source that sends nothing, such as an idle virtual one, costs the whole wait.
 const TAIL_DRAIN_MAX: Duration = Duration::from_millis(250);
+/// The most a boost may raise the microphone: 200%.
+pub(crate) const MAX_GAIN: f32 = 2.0;
+/// Below this a boosted sample passes unchanged; above it a soft knee bends it toward full
+/// scale, so a loud word under a strong boost is rounded instead of cut flat.
+const KNEE: f32 = 0.8;
+
+/// Multiplies microphone samples by `gain` (1.0 to [`MAX_GAIN`]) and keeps them inside -1.0 to
+/// 1.0 with a soft knee. A gain of 1.0 changes nothing.
+pub(crate) fn boost(samples: &mut [f32], gain: f32) {
+    let gain = if gain.is_finite() {
+        gain.clamp(1.0, MAX_GAIN)
+    } else {
+        1.0
+    };
+    if gain == 1.0 {
+        return;
+    }
+    for sample in samples {
+        let raised = *sample * gain;
+        let size = raised.abs();
+        *sample = if size <= KNEE {
+            raised
+        } else {
+            raised.signum() * (KNEE + (1.0 - KNEE) * ((size - KNEE) / (1.0 - KNEE)).tanh())
+        };
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CaptureEvent {
@@ -87,6 +114,8 @@ pub struct Capture {
     started: Instant,
     /// Milliseconds after `started` of the newest microphone delivery the worker wrote, plus 1.
     mic_seen: Arc<AtomicU64>,
+    /// The boost of the microphone, as the bits of an `f32`.
+    gain: Arc<AtomicU32>,
 }
 
 impl Capture {
@@ -127,11 +156,14 @@ impl Capture {
         let writer = SessionWriter::create(&path)?;
         let mic_seen = Arc::new(AtomicU64::new(0));
         let seen = Arc::clone(&mic_seen);
+        let gain = Arc::new(AtomicU32::new(1.0_f32.to_bits()));
+        let boost = Arc::clone(&gain);
         let worker = thread::Builder::new()
             .name("hushpen-capture".into())
             .spawn(move || {
                 let mut worker = Worker::new(path, writer, sink, paced, started);
                 worker.mic_seen = seen;
+                worker.gain = boost;
                 worker.run(&rx);
             })?;
         Ok(Self {
@@ -141,7 +173,14 @@ impl Capture {
             feeding: Arc::new(AtomicBool::new(false)),
             started,
             mic_seen,
+            gain,
         })
+    }
+
+    /// Boosts the microphone by `gain` (1.0 to [`MAX_GAIN`]) from the next audio it delivers,
+    /// for the file and the level alike. A test feed is never boosted.
+    pub fn set_gain(&self, gain: f32) {
+        self.gain.store(gain.to_bits(), Ordering::SeqCst);
     }
 
     /// Closes the microphone, fixes the WAV header, and returns the file.
@@ -209,6 +248,7 @@ struct Worker {
     /// 16 kHz samples in the file so far.
     written: u64,
     mic_seen: Arc<AtomicU64>,
+    gain: Arc<AtomicU32>,
 }
 
 impl Worker {
@@ -234,6 +274,7 @@ impl Worker {
             started,
             written: 0,
             mic_seen: Arc::new(AtomicU64::new(0)),
+            gain: Arc::new(AtomicU32::new(1.0_f32.to_bits())),
         }
     }
 
@@ -315,6 +356,9 @@ impl Worker {
         mono.clear();
         out.clear();
         downmix(data, usize::from(channels), &mut mono);
+        if source == Source::Mic {
+            boost(&mut mono, f32::from_bits(self.gain.load(Ordering::SeqCst)));
+        }
         if let Some(state) = self.state(source) {
             state.resampler.process(&mono, &mut out);
         }
@@ -516,6 +560,87 @@ mod tests {
             done: done_rx,
         });
         capture
+    }
+
+    #[test]
+    fn a_boost_raises_quiet_audio_and_bends_loud_audio_below_full_scale() {
+        let mut same = vec![0.2, -0.5, 0.9];
+        boost(&mut same, 1.0);
+        assert_eq!(same, [0.2, -0.5, 0.9]);
+
+        let mut raised = vec![0.2, -0.2, 0.0];
+        boost(&mut raised, 1.5);
+        assert!((raised[0] - 0.3).abs() < 1e-6 && (raised[1] + 0.3).abs() < 1e-6);
+        assert_eq!(raised[2], 0.0);
+
+        let mut loud: Vec<f32> = (0..=100).map(|i| i as f32 / 100.0).collect();
+        boost(&mut loud, 2.0);
+        assert!(
+            loud.windows(2).all(|pair| pair[0] <= pair[1]),
+            "it keeps the order"
+        );
+        assert!(loud.iter().all(|s| *s < 1.0), "nothing reaches full scale");
+        assert!(loud[100] > 0.95, "a full sample stays loud: {}", loud[100]);
+
+        let mut wild = vec![0.25];
+        boost(&mut wild, 9.0);
+        assert!((wild[0] - 0.5).abs() < 1e-6, "the gain stops at 200%");
+        boost(&mut wild, f32::NAN);
+        assert!(
+            (wild[0] - 0.5).abs() < 1e-6,
+            "a broken gain changes nothing"
+        );
+    }
+
+    fn loudest_after(source: Source, gain: f32) -> i16 {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, rx) = mpsc::channel();
+        let writer = SessionWriter::create(&path).unwrap();
+        let mut worker = Worker::new(path.clone(), writer, events().0, false, Instant::now());
+        worker.gain = Arc::new(AtomicU32::new(gain.to_bits()));
+        let running = thread::spawn(move || worker.run(&rx));
+        if source == Source::Feed {
+            tx.send(Msg::FeedStart).unwrap();
+        }
+        let Msg::Frames {
+            rate,
+            channels,
+            data,
+            at,
+            ..
+        } = tone_second(Instant::now())
+        else {
+            unreachable!()
+        };
+        tx.send(Msg::Frames {
+            source,
+            rate,
+            channels,
+            data,
+            at,
+        })
+        .unwrap();
+        if source == Source::Feed {
+            tx.send(Msg::FeedEnd).unwrap();
+        }
+        let finished = stop(&tx);
+        running.join().unwrap();
+        hound::WavReader::open(&finished.path)
+            .unwrap()
+            .samples::<i16>()
+            .map(|s| s.unwrap().saturating_abs())
+            .max()
+            .unwrap()
+    }
+
+    #[test]
+    fn the_boost_raises_the_microphone_in_the_file_and_never_a_test_feed() {
+        let plain = loudest_after(Source::Mic, 1.0);
+        let boosted = loudest_after(Source::Mic, 1.5);
+        let ratio = f32::from(boosted) / f32::from(plain);
+        assert!((ratio - 1.5).abs() < 0.05, "{plain} -> {boosted}");
+        assert_eq!(loudest_after(Source::Feed, 2.0), plain);
     }
 
     #[test]

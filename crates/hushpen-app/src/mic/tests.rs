@@ -12,11 +12,13 @@ struct Fake {
     started: Mutex<Vec<(String, PathBuf)>>,
     stopped: Arc<Mutex<u32>>,
     warmed: Mutex<Vec<String>>,
+    gains: Arc<Mutex<Vec<f32>>>,
 }
 
 struct FakeSession {
     path: PathBuf,
     stopped: Arc<Mutex<u32>>,
+    gains: Arc<Mutex<Vec<f32>>>,
 }
 
 impl Fake {
@@ -52,6 +54,7 @@ impl MicBackend for Fake {
         Ok(Box::new(FakeSession {
             path,
             stopped: Arc::clone(&self.stopped),
+            gains: Arc::clone(&self.gains),
         }))
     }
 }
@@ -72,6 +75,10 @@ impl MicSession for FakeSession {
             sample_rate: 44_100,
             channels: 2,
         })
+    }
+
+    fn set_gain(&self, gain: f32) {
+        self.gains.lock().unwrap().push(gain);
     }
 }
 
@@ -566,4 +573,21 @@ fn the_use_clears_with_the_session(cx: &mut TestAppContext) {
         rig.mic.read_with(cx, |mic, _| mic.session_use()),
         Some(CaptureUse::Test)
     );
+}
+
+#[gpui_kit::test]
+fn a_session_gets_the_saved_boost_at_start_and_each_change_after(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    rig.mic.read_with(cx, |mic, _| mic.apply_gain());
+    assert!(
+        rig.backend.gains.lock().unwrap().is_empty(),
+        "no session, no boost"
+    );
+    rig.storage.settings.set(GAIN_SETTING, json!(1.5)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    rig.storage.settings.set(GAIN_SETTING, json!(2.0)).unwrap();
+    rig.mic.read_with(cx, |mic, _| mic.apply_gain());
+    assert_eq!(*rig.backend.gains.lock().unwrap(), [1.5, 2.0]);
 }

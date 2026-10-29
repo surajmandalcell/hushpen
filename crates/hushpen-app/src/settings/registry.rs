@@ -24,6 +24,17 @@ impl Settings {
         }
     }
 
+    /// Sets the microphone boost, from 100% to 200% in steps of 5%, and gives it to a session
+    /// that runs, so the level meter and the dictation follow the slider at once.
+    pub fn set_input_gain(&mut self, gain: f32, cx: &mut Context<Self>) {
+        let stepped = (f64::from(gain.clamp(1.0, 2.0)) * 20.0).round() / 20.0;
+        let stored = self.stored_f64(crate::mic::GAIN_SETTING);
+        if stored.is_none_or(|stored| (stored - stepped).abs() > f64::EPSILON) {
+            self.set(crate::mic::GAIN_SETTING, json!(stepped), cx);
+            self.mic.read(cx).apply_gain();
+        }
+    }
+
     pub fn set_max_minutes(&mut self, minutes: i64, cx: &mut Context<Self>) {
         self.set("dictation.maxMinutes", json!(minutes), cx);
         self.picker = None;

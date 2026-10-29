@@ -173,6 +173,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     ),
     spec!("dictation.maxMinutes", Kind::Int(2, 60), |_| json!(6)),
     spec!("audio.inputDeviceId", Kind::Text(256), |_| json!("default")),
+    spec!("audio.inputGain", Kind::Float(1.0, 2.0), |_| json!(1.0)),
     spec!("audio.cueSounds", Kind::Bool, |_| json!(true)),
     spec!("audio.cueVolume", Kind::Float(0.0, 1.0), |_| json!(0.5)),
     spec!("cleanup.rules", Kind::Bool, |_| json!(true)),
@@ -325,6 +326,7 @@ mod tests {
         let range = |key| find(key).unwrap().range();
         assert_eq!(range("dictation.maxMinutes"), Some(2.0..=60.0));
         assert_eq!(range("audio.cueVolume"), Some(0.0..=1.0));
+        assert_eq!(range("audio.inputGain"), Some(1.0..=2.0));
         assert_eq!(range("engine.threads"), Some(1.0..=64.0));
         assert_eq!(range("audio.cueSounds"), None);
     }
