@@ -383,6 +383,17 @@ fn plist_value(plist: &str, key: &str) -> Option<String> {
         .map(|value| value.trim_matches('"').to_string())
 }
 
+/// macOS 26 and later find the icon in `Assets.car` by `CFBundleIconName`; with no icon of that
+/// name they draw the .icns inside a gray tile. The renditions of an icon named `Hushpen` are
+/// stored as `Hushpen/...`.
+fn car_has_icon(car: &[u8], name: &str) -> bool {
+    let needle = format!("{name}/");
+    !name.is_empty()
+        && car
+            .windows(needle.len())
+            .any(|window| window == needle.as_bytes())
+}
+
 fn verify_zip(
     artifact: &Path,
     scratch: &Path,
@@ -438,6 +449,13 @@ fn verify_app_bundle(
         &mut problems,
         app.join("Contents/Resources").join(NOTICES).is_file(),
         format!("the app lacks Resources/{NOTICES}"),
+    );
+    let icon = plist_value(&plist, "CFBundleIconName").unwrap_or_default();
+    let car = fs::read(app.join("Contents/Resources/Assets.car")).unwrap_or_default();
+    need(
+        &mut problems,
+        car_has_icon(&car, &icon),
+        format!("Resources/Assets.car has no icon named {icon:?} (CFBundleIconName)"),
     );
     let macos = app.join("Contents/MacOS");
     scan_binaries(&macos, &mut problems);
@@ -664,6 +682,22 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shipped_icon_catalog_holds_the_icon_the_plist_names() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let plist = fs::read_to_string(root.join("packaging/Info.plist")).unwrap();
+        let name = plist
+            .split("<key>CFBundleIconName</key>")
+            .nth(1)
+            .and_then(|rest| rest.split("<string>").nth(1))
+            .and_then(|rest| rest.split("</string>").next())
+            .unwrap();
+        let car = fs::read(root.join("assets/hushpen-app-icon.car")).unwrap();
+        assert!(car_has_icon(&car, name), "Assets.car has no icon {name:?}");
+        assert!(!car_has_icon(&car, "hushpen-app-icon"));
+        assert!(!car_has_icon(b"", ""));
+    }
 
     #[test]
     fn plist_values_are_read_from_plutil_output() {
