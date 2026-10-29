@@ -1,6 +1,8 @@
-//! Cue sounds: short tones for start, stop, and cancel, played on the default output device.
+//! Cue sounds: short sounds for start, stop, and cancel, played on the default output device.
 //!
-//! The tones are made here, so nothing ships as a file. A [`CuePlayer`] hands every request to
+//! The three sounds are WAV files built into the program (`assets/sounds`: mono, 48 kHz,
+//! 16-bit, peak at full scale, faded at both ends), resampled to the output rate when they play.
+//! A [`CuePlayer`] hands every request to
 //! its own thread, so a cue never waits for the audio system and never delays the microphone.
 //! The thread keeps the output stream open for minutes after a cue: opening one takes up to a
 //! second on PulseAudio, and a start cue that waits that long is no cue. It closes the stream
@@ -9,7 +11,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use hushpen_core::dictation::Cue;
-use std::f32::consts::PI;
+use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -20,42 +22,75 @@ use std::time::{Duration, Instant};
 const KEEP_OPEN: Duration = Duration::from_secs(600);
 /// The loudest sample of a cue at volume 1.0, so a full volume cue is loud but never clips.
 const PEAK: f32 = 0.8;
-/// Each note fades in and out over this long, so no note clicks.
-const FADE_MS: f32 = 8.0;
 
-/// One note: its pitch in hertz and its length in milliseconds.
-type Note = (f32, f32);
+const START: &[u8] = include_bytes!("../../../assets/sounds/cue-start.wav");
+const SUCCESS: &[u8] = include_bytes!("../../../assets/sounds/cue-success.wav");
+const CANCEL: &[u8] = include_bytes!("../../../assets/sounds/cue-cancel.wav");
 
-fn notes(cue: Cue) -> &'static [Note] {
+fn wav(cue: Cue) -> &'static [u8] {
     match cue {
-        Cue::Start => &[(660.0, 70.0), (990.0, 90.0)],
-        Cue::Stop => &[(990.0, 70.0), (660.0, 90.0)],
-        Cue::Cancel => &[(330.0, 80.0), (220.0, 120.0)],
+        Cue::Start => START,
+        Cue::Stop => SUCCESS,
+        Cue::Cancel => CANCEL,
     }
+}
+
+/// The samples of a built-in WAV as mono between -1.0 and 1.0, with their rate.
+fn decode(bytes: &[u8]) -> (u32, Vec<f32>) {
+    let reader = match hound::WavReader::new(Cursor::new(bytes)) {
+        Ok(reader) => reader,
+        Err(error) => {
+            log::warn!("a cue sound does not decode: {error}");
+            return (1, Vec::new());
+        }
+    };
+    let spec = reader.spec();
+    let channels = usize::from(spec.channels.max(1));
+    let scale = 1.0 / (1_i64 << (spec.bits_per_sample.clamp(1, 32) - 1)) as f32;
+    let interleaved: Vec<f32> = match spec.sample_format {
+        hound::SampleFormat::Float => reader.into_samples::<f32>().flatten().collect(),
+        hound::SampleFormat::Int => reader
+            .into_samples::<i32>()
+            .flatten()
+            .map(|s| s as f32 * scale)
+            .collect(),
+    };
+    let mono = interleaved
+        .chunks(channels)
+        .map(|frame| frame.iter().sum::<f32>() / frame.len() as f32)
+        .collect();
+    (spec.sample_rate.max(1), mono)
+}
+
+/// `samples` at rate `from`, resampled to rate `to` by linear interpolation. A cue is short and
+/// bright, so this is enough.
+fn resample(samples: &[f32], from: u32, to: u32) -> Vec<f32> {
+    if from == to || samples.is_empty() {
+        return samples.to_vec();
+    }
+    let count = (samples.len() as u64 * u64::from(to) / u64::from(from)) as usize;
+    let step = f64::from(from) / f64::from(to);
+    (0..count)
+        .map(|i| {
+            let at = i as f64 * step;
+            let index = at as usize;
+            let next = samples.get(index + 1).copied().unwrap_or(0.0);
+            let here = samples.get(index).copied().unwrap_or(0.0);
+            here + (next - here) * (at - index as f64) as f32
+        })
+        .collect()
 }
 
 /// The cue as mono samples at `rate`, between -[`PEAK`] and [`PEAK`] at full `volume`. The
 /// volume is a linear gain from 0.0 to 1.0.
 pub fn render(cue: Cue, rate: u32, volume: f32) -> Vec<f32> {
     let gain = PEAK * volume.clamp(0.0, 1.0);
-    let rate = rate.max(1) as f32;
-    let mut samples = Vec::new();
-    for &(hertz, ms) in notes(cue) {
-        let count = (rate * ms / 1000.0) as usize;
-        let fade = ((rate * FADE_MS / 1000.0) as usize).clamp(1, count.max(1) / 2);
-        for i in 0..count {
-            let edge = i.min(count - 1 - i);
-            let envelope = if edge < fade {
-                0.5 - 0.5 * (PI * edge as f32 / fade as f32).cos()
-            } else {
-                1.0
-            };
-            samples.push(gain * envelope * (2.0 * PI * hertz * i as f32 / rate).sin());
-        }
-    }
-    samples
+    let (from, samples) = decode(wav(cue));
+    resample(&samples, from, rate.max(1))
+        .into_iter()
+        .map(|sample| (sample * gain).clamp(-PEAK, PEAK))
+        .collect()
 }
-
 /// What the output callback plays: one cue, then silence.
 #[derive(Default)]
 struct Playing {
@@ -253,7 +288,7 @@ mod tests {
         for cue in [Cue::Start, Cue::Stop, Cue::Cancel] {
             let samples = render(cue, 48_000, 1.0);
             let ms = samples.len() * 1000 / 48_000;
-            assert!((100..=300).contains(&ms), "{cue:?} lasts {ms} ms");
+            assert!((100..=500).contains(&ms), "{cue:?} lasts {ms} ms");
             let loudest = peak(&samples);
             assert!(
                 loudest > 0.5 && loudest <= PEAK + f32::EPSILON,
@@ -302,6 +337,30 @@ mod tests {
         assert_eq!(peak(&render(Cue::Stop, 48_000, 7.0)), full);
         assert_eq!(peak(&render(Cue::Stop, 48_000, 0.0)), 0.0);
         assert_eq!(peak(&render(Cue::Stop, 48_000, -1.0)), 0.0);
+    }
+
+    #[test]
+    fn each_cue_plays_its_own_sound_file() {
+        assert_eq!(wav(Cue::Start), START);
+        assert_eq!(wav(Cue::Stop), SUCCESS);
+        assert_eq!(wav(Cue::Cancel), CANCEL);
+        for bytes in [START, SUCCESS, CANCEL] {
+            let (rate, samples) = decode(bytes);
+            assert_eq!(rate, 48_000);
+            assert!(!samples.is_empty());
+        }
+    }
+
+    #[test]
+    fn resampling_keeps_the_length_in_time_and_the_shape() {
+        let ramp: Vec<f32> = (0..480).map(|i| i as f32 / 480.0).collect();
+        let half = resample(&ramp, 48_000, 24_000);
+        assert_eq!(half.len(), 240);
+        assert!((half[120] - 0.5).abs() < 0.01, "{}", half[120]);
+        let double = resample(&ramp, 48_000, 96_000);
+        assert_eq!(double.len(), 960);
+        assert!((double[1] - 0.5 / 480.0).abs() < 1e-6);
+        assert_eq!(resample(&ramp, 48_000, 48_000), ramp);
     }
 
     #[test]
