@@ -20,7 +20,8 @@ runs whisper.cpp in a child process.
 - Hold-to-talk dictation with a global key (Right Option on macOS, Right Alt
   on Linux by default). Tap, double-tap, and Esc to cancel. Any key or chord
   the system reports can be a shortcut, media keys included; a shortcut that
-  another app uses shows how to free it.
+  another app uses shows how to free it. Each shortcut has a switch to turn
+  it off and a button to reset it.
 - Local transcription with Whisper models from Tiny to Large v3, with
   English-only and compact variants. Metal on macOS, CPU on Linux.
 - Models view in three sections: speech recognition, text cleanup, and
@@ -43,7 +44,8 @@ runs whisper.cpp in a child process.
   them in a queue (WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF, up to 12 hours
   each), with the time left, Copy, Export, Show in History, and Retry.
 - Read aloud: typed text or a `.txt` or `.md` file, spoken by the system
-  voice or by Kokoro, with Play and Export Audio to WAV.
+  voice or by Kokoro, with Play and Export Audio to WAV. A shortcut reads the
+  text selected in any app.
 - Settings in one list with a search field (Cmd+F on macOS, Ctrl+F on
   Linux).
 - Flow bar that shows the dictation state without taking focus, a tray menu,

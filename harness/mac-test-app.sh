@@ -22,6 +22,7 @@ ps -axo command | grep -q "^$APP/Contents/MacOS/hushpen" && die "built; Hushpen 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$CARGO_TARGET_DIR/debug/hushpen" "$CARGO_TARGET_DIR/debug/hushpen-llm" "$CARGO_TARGET_DIR/debug/hushpen-tts" "$APP/Contents/MacOS/"
 cp assets/hushpen-app-icon.icns "$APP/Contents/Resources/Hushpen.icns"
+cp assets/hushpen-app-icon.car "$APP/Contents/Resources/Assets.car"
 cat >"$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -30,10 +31,11 @@ cat >"$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Hushpen</string>
   <key>CFBundleExecutable</key><string>hushpen</string>
   <key>CFBundleIconFile</key><string>Hushpen</string>
+  <key>CFBundleIconName</key><string>Hushpen</string>
   <key>CFBundleIdentifier</key><string>app.hushpen.test</string>
   <key>CFBundleName</key><string>Hushpen</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>2.1.0</string>
+  <key>CFBundleShortVersionString</key><string>2.2.0</string>
   <key>CFBundleVersion</key><string>$(git rev-parse --short HEAD)</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>

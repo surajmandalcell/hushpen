@@ -7,7 +7,7 @@ new decision, add it here in the same change (D-21).
   `LICENSE` file, and `THIRD-PARTY-NOTICES.html` inside every package. The
   About "Open-source licenses" row links to it. Every dependency license
   must be compatible with AGPL-3.0-or-later (`deny.toml` allow list).
-- **D-02 Version.** 2.1.0. A GitHub release is published only after every
+- **D-02 Version.** 2.2.0. A GitHub release is published only after every
   validation passed and every release file was checked. `CHANGELOG.md` holds
   the notes of each version, and the release text is its section.
 - **D-03 Manual CI.** Every workflow runs by `workflow_dispatch` only.
@@ -230,9 +230,16 @@ new decision, add it here in the same change (D-21).
   the open state and the close callback. The menu fill and its shadow are the
   `menu` and `shadow` tokens; the kit popover color, which tooltips use, is
   the menu color.
-- **D-34 Shortcut keys and conflicts.** Settings > Shortcuts has four global slots
-  (hold, hands-free, paste last, Command Mode); the footer says how to change
-  one: "Click a shortcut, then press the keys. Esc cancels." Hushpen keeps no
+- **D-34 Shortcut keys and conflicts.** Settings > Shortcuts has five global slots
+  (hold, hands-free, paste last, Command Mode, read aloud); the footer says how
+  to change one: "Click a shortcut, then press the keys. Esc cancels." Each
+  row has a reset button (only while the slot is not its default), the field,
+  and a switch. A slot that is off keeps its keys but is not live
+  (`shortcut.enabled` maps a slot key to `false`); with hold off, the hold key
+  still starts the built-in hands-free (double tap, Hold+Space). Read aloud
+  (Ctrl+Cmd+S, Ctrl+Alt+S on Linux) reads the selection like Command Mode and
+  plays it with the Read aloud voice; pressed while it plays, it stops, and
+  with nothing selected the flow bar says "Select text first". Hushpen keeps no
   list of allowed chords: any keys the system reports, held together, are a
   shortcut. That covers a bare key (a letter, F13, Caps Lock), a media key
   (Play/Pause, Volume Up), a keypad key, a key with no name (saved as

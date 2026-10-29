@@ -22,7 +22,7 @@ FEED_LOG=$RUN_OUT/feed-requests.jsonl
 FEED_PID=/tmp/feed.pid
 FEED_MODE=/tmp/feed-mode
 SETTINGS_FILE=/data/config/settings.json
-NOTES_NEWER=https://github.com/surajmandalcell/hushpen/releases/tag/v2.1.0
+NOTES_NEWER=https://github.com/surajmandalcell/hushpen/releases/tag/v9.0.0
 STUB_BIN=/tmp/stubbin
 XDG_LOG=/tmp/xdg-open.log
 
@@ -160,7 +160,7 @@ hclick about.checkForUpdates || failures+="Check for Updates could not be clicke
 wait_until 20 settled || failures+="no check ended; "
 [ "$(upd .state)" = available ] || failures+="the state is '$(upd .state)', not available; "
 [ "$(manifest_count "$n0")" = 1 ] || failures+="the click made $(manifest_count "$n0") manifest request(s), want 1; "
-[ "$(tree_get about.updates.status text)" = "Version 2.1.0 is available" ] || failures+="the About status says '$(tree_get about.updates.status text)'; "
+[ "$(tree_get about.updates.status text)" = "Version 9.0.0 is available" ] || failures+="the About status says '$(tree_get about.updates.status text)'; "
 [ "$(upd .check)" = false ] || failures+="the update check is '$(upd .check)' after the click; "
 setting_true updates.check && failures+="settings.json has updates.check true after the click; "
 shot 002-about-check
@@ -188,9 +188,9 @@ shot 003-before-check
 check_now || failures+="Check now could not be clicked; "
 wait_until 20 upd_is .state available || failures+="the state is '$(upd .state)', not available; "
 update_events | tee "$RUN_OUT/003-events.txt" | grep -q 'state checking,state available' || failures+="the update events are '$(update_events)', not checking then available; "
-[ "$(upd .version)" = 2.1.0 ] || failures+="the offered version is '$(upd .version)'; "
+[ "$(upd .version)" = 9.0.0 ] || failures+="the offered version is '$(upd .version)'; "
 [ "$(upd .notes_url)" = "$NOTES_NEWER" ] || failures+="notes_url is '$(upd .notes_url)'; "
-[ "$(tree_get settings.updates.status text)" = "Version 2.1.0 is available" ] || failures+="the status row says '$(tree_get settings.updates.status text)'; "
+[ "$(tree_get settings.updates.status text)" = "Version 9.0.0 is available" ] || failures+="the status row says '$(tree_get settings.updates.status text)'; "
 tree_has settings.updates.notes || failures+="no release notes link; "
 [ "$(tree_get update.banner.install text)" = "Download and install" ] || failures+="the banner button says '$(tree_get update.banner.install text)'; "
 [ "$(upd .banner)" = true ] || failures+="the hook says the banner is hidden; "
@@ -201,7 +201,7 @@ wait_until 5 upd_is .last_open.ok true
 sleep 0.5
 grep -qxF "$NOTES_NEWER" "$XDG_LOG" 2>/dev/null || failures+="the stub xdg-open was not called with the notes URL (log: $(cat "$XDG_LOG" 2>/dev/null | tr '\n' ' ')); "
 $HC state | jq -c .updates >"$RUN_OUT/003-state.json"
-check_failures "VAL-UPD-003 available" "Check now: events '$(update_events)'; version 2.1.0; notes_url $NOTES_NEWER opened through xdg-open; the banner offers 'Download and install'" "$failures"
+check_failures "VAL-UPD-003 available" "Check now: events '$(update_events)'; version 9.0.0; notes_url $NOTES_NEWER opened through xdg-open; the banner offers 'Download and install'" "$failures"
 
 echo "== VAL-UPD-001 (switch) the banner follows Install updates automatically"
 failures=""

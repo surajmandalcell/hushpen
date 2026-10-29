@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.2.0
+
+### New
+
+- **Turn a shortcut off.** Each shortcut in Settings has a switch. A shortcut
+  that is off keeps its keys for later. With Hold to dictate off, the hold key
+  still starts hands-free with a double tap or Hold+Space.
+- **Reset one shortcut.** A reset button next to a changed shortcut puts it
+  back to its default. Reset to default still resets all of them.
+- **Read aloud shortcut.** Select text in any app and press Ctrl+Cmd+S
+  (Ctrl+Alt+S on Linux) to hear it with the Read aloud voice. Press it again
+  to stop.
+
+### Improved
+
+- The flow bar opens on the screen that has the pointer, so it follows you to
+  a second monitor. A position you drag it to applies on every screen.
+- On macOS 26 and later the app icon fills its tile like other apps, with no
+  gray border around it.
+
+### Fixed
+
+- Right after a speech or voice model loaded, its status could still say that
+  no model was loaded.
+
 ## 2.1.0
 
 ### New
