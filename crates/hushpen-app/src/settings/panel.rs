@@ -145,6 +145,7 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::HandsFree => shortcuts::slot(page, hushpen_core::shortcut::Slot::HandsFree, cx),
         RowId::PasteLast => shortcuts::slot(page, hushpen_core::shortcut::Slot::PasteLast, cx),
         RowId::CommandMode => shortcuts::slot(page, hushpen_core::shortcut::Slot::Command, cx),
+        RowId::ReadAloud => shortcuts::slot(page, hushpen_core::shortcut::Slot::ReadAloud, cx),
         RowId::ResetShortcuts => shortcuts::reset(page, cx),
         RowId::Microphone => vec![audio::microphone(page, cx)],
         RowId::Sounds => vec![audio::sounds(page, cx)],

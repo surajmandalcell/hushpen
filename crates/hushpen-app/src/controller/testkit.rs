@@ -266,6 +266,18 @@ pub fn send_at(cx: &mut TestAppContext, rig: &Rig, ms: u64, event: AppEvent) -> 
     send(cx, rig, event)
 }
 
+pub fn set_gate(cx: &mut TestAppContext, rig: &Rig, gate: hushpen_core::onboarding::KeyGate) {
+    rig.controller
+        .update(cx, |controller, cx| controller.set_gate(gate, cx));
+}
+
+pub fn history_rows(rig: &Rig) -> usize {
+    hushpen_store::history::page(&rig.storage.database, "", None, 50)
+        .unwrap()
+        .rows
+        .len()
+}
+
 pub fn machine_state(cx: &mut TestAppContext, rig: &Rig) -> State {
     rig.controller
         .read_with(cx, |controller, _| controller.state())

@@ -15,8 +15,8 @@ use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{Context, FocusHandle};
 use hushpen_core::error::SETTINGS_CORRUPT;
 use hushpen_core::shortcut::{
-    Bindings, Combo, Conflict, Key, Opener, Platform, Recording, Refusal, Setting, Slot, bindings,
-    check,
+    Bindings, Combo, Conflict, ENABLED_SETTING, HandsFree, Key, Opener, Platform, Recording,
+    Refusal, Setting, Slot, bindings, check,
 };
 use hushpen_platform::keys::{GlobalKeys, RecordSink};
 use serde_json::{Value, json};
@@ -76,10 +76,14 @@ pub struct Shortcuts {
     failures: BTreeMap<Slot, Refusal>,
     /// The slots whose shortcut the system or another app runs: saved, but not live.
     taken: BTreeSet<Slot>,
+    /// The slots the user turned off. They keep their keys.
+    off: BTreeSet<Slot>,
     recorder: Option<Recorder>,
     recorders_opened: u64,
     records: UnboundedSender<Recording>,
     pub(crate) field_focus: Vec<FocusHandle>,
+    pub(crate) slot_reset_focus: Vec<FocusHandle>,
+    pub(crate) switch_focus: Vec<FocusHandle>,
     pub(crate) reset_focus: FocusHandle,
 }
 
@@ -102,6 +106,17 @@ impl Shortcuts {
             .into_iter()
             .map(|slot| (slot, saved(&storage, slot, platform)))
             .collect();
+        let enabled = storage.settings.get(ENABLED_SETTING);
+        let off = Slot::ALL
+            .into_iter()
+            .filter(|slot| !slot.is_on(enabled.as_ref()))
+            .collect();
+        let handles = |cx: &mut Context<Self>| -> Vec<FocusHandle> {
+            Slot::ALL
+                .iter()
+                .map(|_| cx.focus_handle().tab_stop(true))
+                .collect()
+        };
         Self {
             storage,
             platform,
@@ -110,13 +125,13 @@ impl Shortcuts {
             values,
             failures: BTreeMap::new(),
             taken: BTreeSet::new(),
+            off,
             recorder: None,
             recorders_opened: 0,
             records,
-            field_focus: Slot::ALL
-                .iter()
-                .map(|_| cx.focus_handle().tab_stop(true))
-                .collect(),
+            field_focus: handles(cx),
+            slot_reset_focus: handles(cx),
+            switch_focus: handles(cx),
             reset_focus: cx.focus_handle().tab_stop(true),
         }
     }
@@ -127,7 +142,7 @@ impl Shortcuts {
 
     /// The shortcuts to start the key listener with.
     pub fn bindings(&self) -> Bindings {
-        bindings(&self.values, &self.taken)
+        bindings(&self.values, &self.taken, &self.off)
     }
 
     /// Where the key listener reports the recorder. Thread safe.
@@ -150,12 +165,7 @@ impl Shortcuts {
             Ok(keys) => {
                 self.keys = Some(keys);
                 self.why_off = None;
-                let slots: Vec<Slot> = self.values.keys().copied().collect();
-                for slot in slots {
-                    if let Some(conflict) = self.conflict_of(slot) {
-                        self.mark_taken(slot, conflict);
-                    }
-                }
+                self.mark_all_taken();
                 self.apply_live();
                 cx.spawn(async move |this, cx| {
                     loop {
@@ -175,9 +185,38 @@ impl Shortcuts {
         cx.notify();
     }
 
+    /// Whether the keys of `slot` are live. An off hold key stays live for the built-in
+    /// hands-free gestures.
+    fn runs(&self, slot: Slot) -> bool {
+        !self.off.contains(&slot)
+            || (slot == Slot::Hold
+                && self.is_on(Slot::HandsFree)
+                && *self.value(Slot::HandsFree) == Setting::HandsFree(HandsFree::Default))
+    }
+
+    /// A shortcut that does not run is never asked about: nothing can clash with it.
     fn conflict_of(&self, slot: Slot) -> Option<Conflict> {
+        if !self.runs(slot) {
+            return None;
+        }
         let combo = self.values.get(&slot).and_then(Setting::combo)?;
         self.keys.as_ref()?.conflict(combo)
+    }
+
+    /// Asks again about every shortcut, after a change of which ones run.
+    fn refresh_taken(&mut self) {
+        for slot in std::mem::take(&mut self.taken) {
+            self.failures.remove(&slot);
+        }
+        self.mark_all_taken();
+    }
+
+    fn mark_all_taken(&mut self) {
+        for slot in Slot::ALL {
+            if let Some(conflict) = self.conflict_of(slot) {
+                self.mark_taken(slot, conflict);
+            }
+        }
     }
 
     fn mark_taken(&mut self, slot: Slot, conflict: Conflict) {
@@ -248,9 +287,92 @@ impl Shortcuts {
         self.failures.get(&slot)
     }
 
-    /// Whether the shortcut of `slot` runs: nothing else runs it.
+    /// Whether the shortcut of `slot` runs: it is on and nothing else runs it.
     pub fn is_live(&self, slot: Slot) -> bool {
-        !self.taken.contains(&slot)
+        self.is_on(slot) && !self.taken.contains(&slot)
+    }
+
+    /// Whether the user has the shortcut of `slot` on.
+    pub fn is_on(&self, slot: Slot) -> bool {
+        !self.off.contains(&slot)
+    }
+
+    /// Whether `slot` holds its factory default.
+    pub fn is_default(&self, slot: Slot) -> bool {
+        *self.value(slot) == Setting::default_for(slot, self.platform)
+    }
+
+    /// Turns the shortcut of `slot` on or off. It keeps its keys either way. Turning one on is
+    /// refused when another shortcut that is on now holds the same keys.
+    pub fn set_on(&mut self, slot: Slot, on: bool, cx: &mut Context<Self>) -> Result<(), String> {
+        if on == self.is_on(slot) {
+            return Ok(());
+        }
+        if self.recording() == Some(slot) {
+            self.cancel_recording(cx);
+        }
+        let mut off = self.off.clone();
+        if on {
+            off.remove(&slot);
+            if let Some(combo) = self.value(slot).combo()
+                && let Err(refusal) = check(slot, combo, &self.values, &off)
+            {
+                self.failures.insert(slot, refusal.clone());
+                cx.notify();
+                return Err(refusal.message);
+            }
+        } else {
+            off.insert(slot);
+        }
+        let map: serde_json::Map<String, Value> = Slot::ALL
+            .into_iter()
+            .filter(|slot| off.contains(slot))
+            .map(|slot| (slot.key().to_owned(), Value::Bool(false)))
+            .collect();
+        self.storage
+            .settings
+            .set(ENABLED_SETTING, Value::Object(map))
+            .map_err(|error| format!("The shortcut could not be saved: {error}"))?;
+        self.off = off;
+        self.failures.remove(&slot);
+        self.refresh_taken();
+        self.apply_live();
+        hook::record_event(
+            "shortcut",
+            &format!("{} {}", slot.key(), if on { "on" } else { "off" }),
+        );
+        cx.notify();
+        Ok(())
+    }
+
+    /// Puts the shortcut of `slot` back to its factory default. A default that another
+    /// shortcut that is on holds now is refused and nothing changes.
+    pub fn reset(&mut self, slot: Slot, cx: &mut Context<Self>) -> Result<(), String> {
+        if self.recording() == Some(slot) {
+            self.cancel_recording(cx);
+        }
+        let setting = Setting::default_for(slot, self.platform);
+        let result = match setting.combo() {
+            Some(combo) => check(slot, combo, &self.values, &self.off),
+            None => Ok(()),
+        }
+        .and_then(|()| self.save(slot, setting));
+        match result {
+            Ok(()) => {
+                self.failures.remove(&slot);
+                self.refresh_taken();
+                self.apply_live();
+                hook::record_event("shortcut", &format!("{} reset", slot.key()));
+                cx.notify();
+                Ok(())
+            }
+            Err(refusal) => {
+                let message = refusal.message.clone();
+                self.failures.insert(slot, refusal);
+                cx.notify();
+                Err(message)
+            }
+        }
     }
 
     pub fn recording(&self) -> Option<Slot> {
@@ -272,6 +394,9 @@ impl Shortcuts {
     pub fn start_recording(&mut self, slot: Slot, cx: &mut Context<Self>) -> Result<(), String> {
         if let Some(why) = &self.why_off {
             return Err(why.clone());
+        }
+        if !self.is_on(slot) {
+            return Err("Turn the shortcut on to change it.".to_owned());
         }
         let Some(keys) = self.keys.clone() else {
             return Err("Global keys are not running.".to_owned());
@@ -358,16 +483,13 @@ impl Shortcuts {
     /// A shortcut that something else runs is saved, and shows who runs it and how to free it.
     fn apply(&mut self, slot: Slot, keys: Vec<Key>) {
         match self.try_apply(slot, keys) {
-            Ok(conflict) => {
+            Ok(()) => {
                 self.failures.remove(&slot);
-                self.taken.remove(&slot);
                 hook::record_event(
                     "shortcut",
                     &format!("{} {}", slot.key(), self.setting_text(slot)),
                 );
-                if let Some(conflict) = conflict {
-                    self.mark_taken(slot, conflict);
-                }
+                self.refresh_taken();
                 self.apply_live();
             }
             Err(refusal) => {
@@ -377,17 +499,15 @@ impl Shortcuts {
         }
     }
 
-    fn try_apply(&mut self, slot: Slot, keys: Vec<Key>) -> Result<Option<Conflict>, Refusal> {
+    fn try_apply(&mut self, slot: Slot, keys: Vec<Key>) -> Result<(), Refusal> {
         let combo = Combo::new(keys, self.platform)
             .map_err(|problem| Refusal::invalid(problem, self.platform))?;
-        check(slot, &combo, &self.values)?;
-        let conflict = self.keys.as_ref().and_then(|keys| keys.conflict(&combo));
+        check(slot, &combo, &self.values, &self.off)?;
         let setting = match slot {
-            Slot::HandsFree => Setting::HandsFree(hushpen_core::shortcut::HandsFree::Custom(combo)),
+            Slot::HandsFree => Setting::HandsFree(HandsFree::Custom(combo)),
             _ => Setting::Keys(combo),
         };
-        self.save(slot, setting)?;
-        Ok(conflict)
+        self.save(slot, setting)
     }
 
     fn save(&mut self, slot: Slot, setting: Setting) -> Result<(), Refusal> {
@@ -404,8 +524,8 @@ impl Shortcuts {
         Ok(())
     }
 
-    /// Puts all four shortcuts back to the factory defaults of this system. A default that
-    /// something else runs is saved too and shows the in-use error.
+    /// Puts every shortcut back to the factory default of this system and turns it on. A
+    /// default that something else runs is saved too and shows the in-use error.
     pub fn reset_all(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
         if self.recorder.take().is_some()
             && let Some(keys) = &self.keys
@@ -418,11 +538,12 @@ impl Shortcuts {
             self.save(slot, Setting::default_for(slot, self.platform))
                 .map_err(|refusal| refusal.message)?;
         }
-        for slot in Slot::ALL {
-            if let Some(conflict) = self.conflict_of(slot) {
-                self.mark_taken(slot, conflict);
-            }
-        }
+        self.storage
+            .settings
+            .set(ENABLED_SETTING, json!({}))
+            .map_err(|error| format!("The shortcuts could not be saved: {error}"))?;
+        self.off.clear();
+        self.mark_all_taken();
         self.apply_live();
         hook::record_event("shortcut", "reset");
         cx.notify();
@@ -439,6 +560,8 @@ impl Shortcuts {
                     json!({
                         "display": self.display(slot),
                         "setting": self.setting_text(slot),
+                        "on": self.is_on(slot),
+                        "default": self.is_default(slot),
                         "live": self.is_live(slot),
                         "error": self.failure(slot).map(|refusal| json!({
                             "code": refusal.code,

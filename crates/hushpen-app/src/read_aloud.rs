@@ -31,6 +31,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::Duration;
 
+/// The way the read-aloud shortcut reaches this player: the selection goes into the text
+/// area and plays.
+pub fn speaker(read: &Entity<ReadAloud>) -> crate::controller::Speaker {
+    let (playing, stop, speak) = (read.clone(), read.clone(), read.clone());
+    crate::controller::Speaker {
+        playing: Rc::new(move |cx| playing.read(cx).playing()),
+        stop: Rc::new(move |cx| stop.update(cx, |read, cx| read.stop(cx))),
+        speak: Rc::new(move |text, cx| {
+            speak.update(cx, |read, cx| {
+                read.set_text(&text, TextFormat::Plain, cx);
+                read.play(cx)
+            })
+        }),
+    }
+}
+
 pub const ENGINE_SETTING: &str = "readAloud.engine";
 pub const SPEED_SETTING: &str = "readAloud.speed";
 pub const FORMAT_SETTING: &str = "readAloud.format";

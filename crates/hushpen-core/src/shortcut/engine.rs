@@ -59,6 +59,22 @@ pub struct Bindings {
     pub hands_free: Option<HandsFree>,
     pub paste_last: Option<Combo>,
     pub command: Option<Combo>,
+    pub read_aloud: Option<Combo>,
+}
+
+impl Bindings {
+    /// Every live shortcut that has keys of its own. The built-in hands-free has none.
+    pub fn chords(&self) -> impl Iterator<Item = &Combo> {
+        [
+            self.hold.as_ref(),
+            self.command.as_ref(),
+            self.paste_last.as_ref(),
+            self.read_aloud.as_ref(),
+            self.hands_free.as_ref().and_then(HandsFree::combo),
+        ]
+        .into_iter()
+        .flatten()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,6 +175,7 @@ pub struct Engine {
     command_on: bool,
     hands_free_armed: bool,
     paste_last_armed: bool,
+    read_aloud_armed: bool,
     /// Esc belongs to the pipeline: it is sent on as [`AppEvent::Esc`].
     escape: bool,
     recorder: Option<Recorder>,
@@ -176,6 +193,7 @@ impl Engine {
             command_on: false,
             hands_free_armed: false,
             paste_last_armed: false,
+            read_aloud_armed: false,
             escape: false,
             recorder: None,
             swallowed: BTreeSet::new(),
@@ -221,6 +239,7 @@ impl Engine {
         self.bindings = bindings;
         self.hands_free_armed = false;
         self.paste_last_armed = false;
+        self.read_aloud_armed = false;
         self.hold_on = self.hold_satisfied();
         self.command_on = self.command_satisfied();
         out
@@ -235,6 +254,7 @@ impl Engine {
         self.recorder = Some(Recorder::default());
         self.hands_free_armed = false;
         self.paste_last_armed = false;
+        self.read_aloud_armed = false;
     }
 
     pub fn stop_recording(&mut self) {
@@ -301,7 +321,6 @@ impl Engine {
     /// Whether the keys down now are exactly a live shortcut that has `key` as its main key, or
     /// Space with the hold key for the built-in hands-free.
     fn completes_shortcut(&self, key: Phys) -> bool {
-        let custom = self.bindings.hands_free.as_ref().and_then(HandsFree::combo);
         let exact = |combo: &Combo| {
             uses(combo, key, &self.claimed)
                 && satisfied(combo, &self.down, &self.claimed)
@@ -310,13 +329,7 @@ impl Engine {
                     .iter()
                     .all(|phys| uses(combo, *phys, &self.claimed))
         };
-        let live = [
-            self.bindings.hold.as_ref(),
-            self.bindings.command.as_ref(),
-            self.bindings.paste_last.as_ref(),
-            custom,
-        ];
-        live.into_iter().flatten().any(exact)
+        self.bindings.chords().any(exact)
             || (key == Phys::Char(' ')
                 && self.hold_on
                 && self.bindings.hands_free == Some(HandsFree::Default))
@@ -374,6 +387,12 @@ impl Engine {
             &self.down,
             &self.claimed,
         );
+        press_toggle(
+            self.bindings.read_aloud.as_ref(),
+            &mut self.read_aloud_armed,
+            &self.down,
+            &self.claimed,
+        );
         out
     }
 
@@ -411,6 +430,14 @@ impl Engine {
         ) {
             out.push(Output::App(AppEvent::PasteLast));
         }
+        if release_toggle(
+            self.bindings.read_aloud.as_ref(),
+            &mut self.read_aloud_armed,
+            &self.down,
+            &self.claimed,
+        ) {
+            out.push(Output::App(AppEvent::ReadAloud));
+        }
         out
     }
 
@@ -421,6 +448,7 @@ impl Engine {
         self.swallowed.clear();
         self.hands_free_armed = false;
         self.paste_last_armed = false;
+        self.read_aloud_armed = false;
         if let Some(recorder) = &mut self.recorder {
             recorder.held.clear();
         }

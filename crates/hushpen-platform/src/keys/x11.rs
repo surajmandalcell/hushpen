@@ -13,9 +13,7 @@
 use super::hub::Hub;
 use super::keymap;
 use super::{Reason, RecordSink, Sink, Unavailable};
-use hushpen_core::shortcut::{
-    Bindings, Combo, Conflict, HandsFree, Key, Modifier, Opener, Phys, Recording,
-};
+use hushpen_core::shortcut::{Bindings, Combo, Conflict, Key, Modifier, Opener, Phys, Recording};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -148,17 +146,10 @@ fn grab_conflict() -> Conflict {
 
 /// The live shortcuts that have a key a grab can hold.
 fn live_chords(bindings: &Bindings) -> impl Iterator<Item = &Combo> {
-    let custom = bindings.hands_free.as_ref().and_then(HandsFree::combo);
-    [
-        bindings.hold.as_ref(),
-        bindings.command.as_ref(),
-        bindings.paste_last.as_ref(),
-        custom,
-    ]
-    .into_iter()
-    .flatten()
-    // A grab holds one key with modifiers, so a chord of two keys only listens.
-    .filter(|combo| combo.mains().count() == 1)
+    bindings
+        .chords()
+        // A grab holds one key with modifiers, so a chord of two keys only listens.
+        .filter(|combo| combo.mains().count() == 1)
 }
 
 fn read_table(conn: &RustConnection) -> Option<HashMap<u32, Phys>> {

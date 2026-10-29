@@ -351,6 +351,116 @@ fn reset_puts_all_four_back_to_the_defaults(cx: &mut TestAppContext) {
     assert_eq!(live.hands_free, Some(HandsFree::Default));
 }
 
+fn switch(cx: &mut TestAppContext, rig: &Rig, slot: Slot, on: bool) -> Result<(), String> {
+    rig.shortcuts
+        .update(cx, |shortcuts, cx| shortcuts.set_on(slot, on, cx))
+}
+
+#[gpui_kit::test]
+fn an_off_shortcut_stops_running_keeps_its_keys_and_survives_a_restart(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    switch(cx, &rig, Slot::PasteLast, false).unwrap();
+    switch(cx, &rig, Slot::Command, false).unwrap();
+    let live = rig.keys.live();
+    assert_eq!(live.paste_last, None);
+    assert_eq!(live.command, None);
+    assert_eq!(live.hold, Some(combo("RightAlt")));
+    assert_eq!(saved_text(&rig, Slot::PasteLast), "Ctrl+Alt+V");
+    assert_eq!(
+        rig.storage.settings.get(ENABLED_SETTING),
+        Some(json!({"pasteLast": false, "command": false}))
+    );
+    let state = state(cx, &rig);
+    assert_eq!(state["slots"]["pasteLast"]["on"], false);
+    assert_eq!(state["slots"]["pasteLast"]["live"], false);
+    assert_eq!(state["slots"]["pasteLast"]["display"], "Ctrl+Alt+V");
+
+    let again = cx.new(|cx| Shortcuts::new(Rc::clone(&rig.storage), LINUX, cx));
+    assert!(!again.read_with(cx, |shortcuts, _| shortcuts.is_on(Slot::PasteLast)));
+    assert_eq!(
+        again
+            .read_with(cx, |shortcuts, _| shortcuts.bindings())
+            .paste_last,
+        None
+    );
+
+    switch(cx, &rig, Slot::PasteLast, true).unwrap();
+    assert_eq!(rig.keys.live().paste_last, Some(combo("Ctrl+Alt+V")));
+}
+
+#[gpui_kit::test]
+fn with_the_hold_key_off_the_key_stays_live_for_hands_free_only(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    switch(cx, &rig, Slot::Hold, false).unwrap();
+    assert_eq!(rig.keys.live().hold, Some(combo("RightAlt")));
+    assert_eq!(rig.keys.live().hands_free, Some(HandsFree::Default));
+    switch(cx, &rig, Slot::HandsFree, false).unwrap();
+    assert_eq!(
+        rig.keys.live(),
+        Bindings {
+            paste_last: Some(combo("Ctrl+Alt+V")),
+            command: Some(combo("RightAlt+RightShift")),
+            read_aloud: Some(combo("Ctrl+Alt+S")),
+            ..Bindings::default()
+        }
+    );
+}
+
+#[gpui_kit::test]
+fn an_off_shortcut_cannot_be_recorded(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    switch(cx, &rig, Slot::PasteLast, false).unwrap();
+    let opened = rig.shortcuts.update(cx, |shortcuts, cx| {
+        shortcuts.start_recording(Slot::PasteLast, cx)
+    });
+    assert!(opened.is_err());
+    assert_eq!(*rig.keys.recording.borrow(), 0);
+}
+
+#[gpui_kit::test]
+fn the_keys_of_an_off_shortcut_can_go_to_another_and_then_it_will_not_turn_on(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx);
+    switch(cx, &rig, Slot::PasteLast, false).unwrap();
+    record(cx, &rig, Slot::HandsFree, &chord('v'));
+    assert_eq!(saved_text(&rig, Slot::HandsFree), "Ctrl+Alt+V");
+    let refused = switch(cx, &rig, Slot::PasteLast, true).unwrap_err();
+    assert!(refused.contains("hands-free"), "{refused}");
+    let state = state(cx, &rig);
+    assert_eq!(state["slots"]["pasteLast"]["on"], false);
+    assert_eq!(
+        state["slots"]["pasteLast"]["error"]["code"],
+        "SHORTCUT_RESERVED"
+    );
+}
+
+#[gpui_kit::test]
+fn reset_puts_one_shortcut_back_and_leaves_the_others(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    record(cx, &rig, Slot::PasteLast, &chord('p'));
+    record(cx, &rig, Slot::Hold, &[RIGHT_CTRL]);
+    assert_eq!(state(cx, &rig)["slots"]["pasteLast"]["default"], false);
+    rig.shortcuts
+        .update(cx, |shortcuts, cx| shortcuts.reset(Slot::PasteLast, cx))
+        .unwrap();
+    assert_eq!(saved_text(&rig, Slot::PasteLast), "Ctrl+Alt+V");
+    assert_eq!(saved_text(&rig, Slot::Hold), "RightCtrl");
+    assert_eq!(rig.keys.live().paste_last, Some(combo("Ctrl+Alt+V")));
+    assert_eq!(state(cx, &rig)["slots"]["pasteLast"]["default"], true);
+}
+
+#[gpui_kit::test]
+fn reset_all_turns_every_shortcut_on_again(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    switch(cx, &rig, Slot::Command, false).unwrap();
+    rig.shortcuts
+        .update(cx, |shortcuts, cx| shortcuts.reset_all(cx))
+        .unwrap();
+    assert_eq!(rig.storage.settings.get(ENABLED_SETTING), Some(json!({})));
+    assert_eq!(rig.keys.live().command, Some(combo("RightAlt+RightShift")));
+}
+
 #[gpui_kit::test]
 fn a_chord_held_by_another_app_at_start_shows_the_error_and_the_hold_key_still_runs(
     cx: &mut TestAppContext,

@@ -669,6 +669,7 @@ mod tests {
             hands_free: Some(HandsFree::Default),
             paste_last: Some(mac("Ctrl+Cmd+V")),
             command: Some(mac("RightOption+RightShift")),
+            read_aloud: Some(mac("Ctrl+Cmd+S")),
         }
     }
 

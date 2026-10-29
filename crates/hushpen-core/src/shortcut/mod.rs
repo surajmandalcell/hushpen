@@ -23,6 +23,10 @@ use std::sync::OnceLock;
 /// The default hands-free setting: a double tap of the hold key, and the hold key with Space.
 pub const DEFAULT_HANDS_FREE: &str = "DoubleTap+Hold+Space";
 
+/// The setting that says which shortcuts are off: an object from a slot key to `false`. An off
+/// shortcut keeps its keys, so turning it on again brings them back.
+pub const ENABLED_SETTING: &str = "shortcut.enabled";
+
 /// Most keys one shortcut may have. Most keyboards report at most six keys down at once.
 const MAX_KEYS: usize = 6;
 
@@ -60,7 +64,7 @@ impl Platform {
     }
 }
 
-/// The four shortcuts a user can change.
+/// The shortcuts a user can change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Slot {
     /// Held while speaking.
@@ -70,10 +74,18 @@ pub enum Slot {
     PasteLast,
     /// Held while speaking an instruction for the selected text.
     Command,
+    /// Reads the selected text aloud, and stops the reading the next time.
+    ReadAloud,
 }
 
 impl Slot {
-    pub const ALL: [Slot; 4] = [Slot::Hold, Slot::HandsFree, Slot::PasteLast, Slot::Command];
+    pub const ALL: [Slot; 5] = [
+        Slot::Hold,
+        Slot::HandsFree,
+        Slot::PasteLast,
+        Slot::Command,
+        Slot::ReadAloud,
+    ];
 
     /// The name used in hook ids and the hook state.
     pub fn key(self) -> &'static str {
@@ -82,11 +94,21 @@ impl Slot {
             Slot::HandsFree => "handsFree",
             Slot::PasteLast => "pasteLast",
             Slot::Command => "command",
+            Slot::ReadAloud => "readAloud",
         }
     }
 
     pub fn from_key(key: &str) -> Option<Slot> {
         Self::ALL.into_iter().find(|slot| slot.key() == key)
+    }
+
+    /// Whether the shortcut runs, from the value of [`ENABLED_SETTING`]. A slot it does not
+    /// name is on.
+    pub fn is_on(self, enabled: Option<&serde_json::Value>) -> bool {
+        enabled
+            .and_then(|map| map.get(self.key()))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true)
     }
 
     pub fn setting_key(self) -> &'static str {
@@ -95,6 +117,7 @@ impl Slot {
             Slot::HandsFree => "shortcut.handsFree",
             Slot::PasteLast => "shortcut.pasteLast",
             Slot::Command => "shortcut.command",
+            Slot::ReadAloud => "shortcut.readAloud",
         }
     }
 
@@ -109,6 +132,8 @@ impl Slot {
             Slot::PasteLast => "Ctrl+Alt+V",
             Slot::Command if mac => "RightOption+RightShift",
             Slot::Command => "RightAlt+RightShift",
+            Slot::ReadAloud if mac => "Ctrl+Cmd+S",
+            Slot::ReadAloud => "Ctrl+Alt+S",
         }
     }
 }

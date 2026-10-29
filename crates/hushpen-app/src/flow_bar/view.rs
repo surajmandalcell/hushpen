@@ -127,7 +127,7 @@ pub fn failure_text(code: Option<&str>) -> &'static str {
         Some(INSERT_NO_PERMISSION) => "Not allowed to paste. Text copied",
         Some(CAPTURE_FAILED) => "Recording stopped",
         Some(ENGINE_NO_MODEL | ENGINE_LOAD_FAILED) => "Speech model not ready",
-        Some(COMMAND_NO_SELECTION) => "Select text first",
+        Some(COMMAND_NO_SELECTION | READ_NO_SELECTION) => "Select text first",
         Some(COMMAND_NEEDS_AI) => "Command mode needs AI cleanup or the endpoint",
         Some(LLM_TIMEOUT) => "AI edit timed out. Text unchanged",
         Some(

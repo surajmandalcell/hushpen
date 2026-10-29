@@ -47,7 +47,8 @@ pub(super) struct Selecting {
 /// memory like the selection itself.
 pub(super) type SelectionRead = (u64, Option<String>);
 
-/// A short notice for a Command Mode start that was refused. The flow bar shows each one once.
+/// A short notice for a refused Command Mode start or read-aloud shortcut. The flow bar shows
+/// each one once.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flash {
     pub seq: u64,
@@ -75,7 +76,7 @@ pub(super) fn edit_failure_code(code: &str) -> &'static str {
 }
 
 impl Controller {
-    /// The newest refused Command Mode start, for the flow bar.
+    /// The newest refused Command Mode start or read-aloud shortcut, for the flow bar.
     pub fn flash(&self) -> Option<&Flash> {
         self.flash.as_ref()
     }
@@ -233,17 +234,22 @@ impl Controller {
         }
     }
 
+    /// Shows a short notice on the flow bar once.
+    pub(super) fn show_flash(&mut self, code: &'static str, message: String) {
+        self.flash_seq += 1;
+        self.flash = Some(Flash {
+            seq: self.flash_seq,
+            code,
+            message,
+        });
+    }
+
     /// Records a refused start, cancels a hold that already began, and returns the reason.
     fn refuse_command(&mut self, code: &'static str, now: u64, cx: &mut Context<Self>) -> String {
         let message = failure_for(code).1;
         self.refused = Some(code);
         self.selection = None;
-        self.flash_seq += 1;
-        self.flash = Some(Flash {
-            seq: self.flash_seq,
-            code,
-            message: message.to_owned(),
-        });
+        self.show_flash(code, message.to_owned());
         hook::record_event("dictation", &format!("blocked {code}"));
         if self.machine.state() == State::Listening {
             let before = self.machine.state();

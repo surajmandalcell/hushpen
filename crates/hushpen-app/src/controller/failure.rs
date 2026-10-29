@@ -52,6 +52,7 @@ pub(crate) fn failure_for(code: &str) -> (&'static str, &'static str) {
             "No transcript is available yet. Dictate something first.",
         ),
         error::COMMAND_NO_SELECTION => (error::COMMAND_NO_SELECTION, "Select text first"),
+        error::READ_NO_SELECTION => (error::READ_NO_SELECTION, "Select text first"),
         error::COMMAND_NEEDS_AI => (
             error::COMMAND_NEEDS_AI,
             "Command mode needs AI cleanup or the endpoint",

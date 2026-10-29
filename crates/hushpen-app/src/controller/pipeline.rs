@@ -240,10 +240,11 @@ impl Controller {
                 | AppEvent::FlowBarClick
         );
         let command = matches!(event, AppEvent::CommandDown);
+        let repeats = matches!(event, AppEvent::PasteLast | AppEvent::ReadAloud);
         let refused = match self.gate {
             KeyGate::Open => false,
-            KeyGate::Closed => starts || command || matches!(event, AppEvent::PasteLast),
-            KeyGate::Practice => command || matches!(event, AppEvent::PasteLast),
+            KeyGate::Closed => starts || command || repeats,
+            KeyGate::Practice => command || repeats,
         };
         if refused {
             hook::record_event("onboarding", "key-blocked");

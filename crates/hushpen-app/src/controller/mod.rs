@@ -60,6 +60,10 @@ mod keys_tests;
 pub use keys::{KeysRestart, RETRIES as KEYS_RETRIES};
 mod permissions;
 mod pipeline;
+mod speak;
+pub use speak::Speaker;
+#[cfg(test)]
+mod speak_tests;
 #[cfg(test)]
 pub(crate) mod testkit;
 #[cfg(test)]
@@ -327,6 +331,11 @@ pub struct Controller {
     /// The selection read for the start that is reaching the machine now.
     selection_ready: Option<String>,
     selections: UnboundedSender<command::SelectionRead>,
+    /// The player of the read-aloud shortcut.
+    speaker: Option<Speaker>,
+    /// The selection read of the read-aloud shortcut that is waiting.
+    speaking: Option<u64>,
+    spoken: UnboundedSender<command::SelectionRead>,
     /// The newest refused Command Mode start.
     flash: Option<Flash>,
     flash_seq: u64,
@@ -378,6 +387,19 @@ impl Controller {
             while let Some(read) = answers.next().await {
                 if this
                     .update(cx, |me, cx| me.selection_read(read, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        let (spoken, read) = unbounded();
+        cx.spawn(async move |this, cx| {
+            let mut read = read;
+            while let Some(answer) = read.next().await {
+                if this
+                    .update(cx, |me, cx| me.spoken_selection(answer, cx))
                     .is_err()
                 {
                     break;
@@ -468,6 +490,9 @@ impl Controller {
             selection_seq: 0,
             selection_ready: None,
             selections,
+            speaker: None,
+            speaking: None,
+            spoken,
             flash: None,
             flash_seq: 0,
             armed: None,
@@ -712,6 +737,11 @@ impl Controller {
                     continue;
                 }
             }
+            if event == AppEvent::ReadAloud {
+                self.read_aloud_pressed(cx);
+                changed = true;
+                continue;
+            }
             let mut before = self.machine.state();
             let effects = self.machine.handle(event, now);
             changed |= before != self.machine.state() || !effects.is_empty();
@@ -838,10 +868,21 @@ fn cue_key(cue: Cue) -> &'static str {
 }
 
 fn config_from(storage: &Storage) -> Config {
+    use hushpen_core::shortcut::{DEFAULT_HANDS_FREE, ENABLED_SETTING, Slot};
     let minutes = storage
         .settings
         .get(MAX_MINUTES_SETTING)
         .and_then(|value| value.as_u64())
         .filter(|minutes| *minutes > 0);
-    minutes.map_or_else(Config::default, Config::with_max_minutes)
+    let enabled = storage.settings.get(ENABLED_SETTING);
+    let built_in = storage
+        .settings
+        .get(Slot::HandsFree.setting_key())
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .is_none_or(|text| text.trim().eq_ignore_ascii_case(DEFAULT_HANDS_FREE));
+    Config {
+        hold_to_talk: Slot::Hold.is_on(enabled.as_ref()),
+        double_tap: built_in && Slot::HandsFree.is_on(enabled.as_ref()),
+        ..minutes.map_or_else(Config::default, Config::with_max_minutes)
+    }
 }

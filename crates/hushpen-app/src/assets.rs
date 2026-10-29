@@ -53,7 +53,8 @@ icon_assets!(
         ChevronDown,
         Search,
         AudioLines,
-        ClipboardPaste
+        ClipboardPaste,
+        RotateCcw
     ]
 );
 

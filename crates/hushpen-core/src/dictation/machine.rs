@@ -14,6 +14,8 @@ pub struct DictationMachine {
     state_since: u64,
     /// The press time of the last tap, until a second press uses it up or it goes stale.
     tap_at: Option<u64>,
+    /// When the hold key went down while it does not record, to tell a tap from a hold.
+    pressed_at: Option<u64>,
     warned: bool,
     raw: String,
     text: String,
@@ -29,6 +31,7 @@ impl DictationMachine {
             started_at: 0,
             state_since: 0,
             tap_at: None,
+            pressed_at: None,
             warned: false,
             raw: String::new(),
             text: String::new(),
@@ -60,10 +63,19 @@ impl DictationMachine {
         match event {
             AppEvent::HoldDown => match self.state {
                 State::Idle => {
-                    let double = self
-                        .tap_at
-                        .is_some_and(|tap| now.saturating_sub(tap) <= DOUBLE_TAP_MS);
-                    self.start(if double { Mode::HandsFree } else { Mode::Hold }, now)
+                    let double = self.config.double_tap
+                        && self
+                            .tap_at
+                            .is_some_and(|tap| now.saturating_sub(tap) <= DOUBLE_TAP_MS);
+                    if double {
+                        self.start(Mode::HandsFree, now)
+                    } else if self.config.hold_to_talk {
+                        self.start(Mode::Hold, now)
+                    } else {
+                        self.tap_at = None;
+                        self.pressed_at = Some(now);
+                        Vec::new()
+                    }
                 }
                 State::Listening if !matches!(self.mode, Mode::Hold | Mode::Command) => {
                     self.stop_listening(now)
@@ -72,6 +84,12 @@ impl DictationMachine {
             },
             AppEvent::HoldArm => Vec::new(),
             AppEvent::HoldUp => {
+                if let Some(pressed) = self.pressed_at.take()
+                    && self.state == State::Idle
+                    && now.saturating_sub(pressed) < MIN_HOLD_MS
+                {
+                    self.tap_at = Some(pressed);
+                }
                 if self.state != State::Listening || self.mode != Mode::Hold {
                     return Vec::new();
                 }
@@ -129,6 +147,7 @@ impl DictationMachine {
                 }
                 _ => Vec::new(),
             },
+            AppEvent::ReadAloud => Vec::new(),
             AppEvent::Tick => self.tick(now),
             AppEvent::CaptureError { code } => {
                 if self.state != State::Listening {
