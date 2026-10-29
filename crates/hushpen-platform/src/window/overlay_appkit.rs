@@ -5,7 +5,7 @@
 // AppKit calls take a raw `NSView` address from the GPUI window handle.
 #![allow(unsafe_code)]
 
-use super::{ChromeError, Frame, Pointer};
+use super::{ChromeError, Frame, Layout, Pointer, ScreenRect};
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSEvent, NSScreen, NSView, NSWindow, NSWindowCollectionBehavior};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -55,6 +55,40 @@ pub(super) fn pointer() -> Result<Pointer, ChromeError> {
         x: at.x as f32,
         y: (primary_height - at.y) as f32,
         left: NSEvent::pressedMouseButtons() & 1 != 0,
+    })
+}
+
+/// Every screen in points from the top left of the primary screen, and the pointer.
+pub(super) fn screens() -> Result<Layout, ChromeError> {
+    let mtm = MainThreadMarker::new()
+        .ok_or_else(|| ChromeError::new("the screens need the main thread"))?;
+    let all = NSScreen::screens(mtm);
+    // AppKit puts the origin at the bottom left of the primary screen, the first one.
+    let primary_height = all
+        .firstObject()
+        .map_or(0.0, |screen| screen.frame().size.height);
+    let screens: Vec<ScreenRect> = all
+        .iter()
+        .map(|screen| {
+            let frame = screen.frame();
+            ScreenRect {
+                x: frame.origin.x as f32,
+                y: (primary_height - frame.origin.y - frame.size.height) as f32,
+                width: frame.size.width as f32,
+                height: frame.size.height as f32,
+            }
+        })
+        .collect();
+    let at = NSEvent::mouseLocation();
+    let left = screens.iter().map(|s| s.x).fold(f32::INFINITY, f32::min);
+    let right = screens
+        .iter()
+        .map(|s| s.x + s.width)
+        .fold(f32::NEG_INFINITY, f32::max);
+    Ok(Layout {
+        desktop_width: (right - left).max(0.0),
+        screens,
+        pointer: (at.x as f32, (primary_height - at.y) as f32),
     })
 }
 

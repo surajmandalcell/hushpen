@@ -10,7 +10,15 @@ use hushpen_engine::{Failure, JobOutcome};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-const SCREEN: (f32, f32) = (1280.0, 800.0);
+const SCREEN: Screen = Screen {
+    origin: (0.0, 0.0),
+    size: (1280.0, 800.0),
+};
+/// A second screen to the right of the first, a little higher.
+const RIGHT: Screen = Screen {
+    origin: (1280.0, -100.0),
+    size: (1920.0, 1080.0),
+};
 const CORRECTED: &str = "I think we should meet on Wednesday at 3 PM.";
 
 struct Bar {
@@ -68,7 +76,12 @@ fn build(cx: &mut TestAppContext, rig: &Rig) -> Entity<FlowBar> {
 
 impl Bar {
     fn tick(&self, cx: &mut TestAppContext) -> Option<Bounds<Pixels>> {
-        self.bar.update(cx, |bar, cx| bar.tick(SCREEN, cx))
+        self.tick_on(SCREEN, cx)
+    }
+
+    /// A tick while the pointer is on `screen`.
+    fn tick_on(&self, screen: Screen, cx: &mut TestAppContext) -> Option<Bounds<Pixels>> {
+        self.bar.update(cx, |bar, cx| bar.tick(screen, cx))
     }
 
     fn props(&self, cx: &mut TestAppContext) -> Props {
@@ -155,6 +168,76 @@ fn the_top_preset_puts_the_bar_at_the_top_center(cx: &mut TestAppContext) {
     assert_eq!((x + width / 2.0, y), (640.0, 40.0));
 }
 
+#[gpui_kit::test]
+fn the_bar_appears_on_the_screen_with_the_pointer(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    let (x, y, width, height) = rect(bar.tick_on(RIGHT, cx).expect("the idle bar shows"));
+    assert_eq!((x + width / 2.0, y + height), (2240.0, 948.0));
+}
+
+#[gpui_kit::test]
+fn a_dictation_moves_the_bar_to_the_pointer_and_keeps_it_there(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    let (x, ..) = rect(bar.tick(cx).unwrap());
+    assert!(x < 1280.0, "the idle pill starts on the first screen");
+    say(&bar.rig, JobOutcome::Cancelled);
+    bar.at(11_000);
+    bar.click(cx);
+    assert_eq!(machine_state(cx, &bar.rig), State::Listening);
+    let (x, _, width, _) = rect(bar.tick_on(RIGHT, cx).unwrap());
+    assert_eq!(x + width / 2.0, 2240.0);
+    let (x, _, width, _) = rect(bar.tick_on(SCREEN, cx).unwrap());
+    assert_eq!(
+        x + width / 2.0,
+        2240.0,
+        "the bar does not jump during a dictation"
+    );
+}
+
+#[gpui_kit::test]
+fn a_bar_dragged_on_one_screen_keeps_its_spot_on_another(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    let (x0, y0) = {
+        bar.tick_on(RIGHT, cx);
+        bar.bar.read_with(cx, |bar, _| bar.frame().0)
+    };
+    pointer_at(&bar, 2000.0, 900.0, true);
+    bar.bar.update(cx, |bar, cx| bar.press_at(cx));
+    pointer_at(&bar, 1900.0, 900.0, true);
+    bar.tick_on(RIGHT, cx);
+    pointer_at(&bar, 1900.0, 900.0, false);
+    bar.bar.update(cx, |bar, cx| bar.release(cx));
+    let spot = bar.setting("overlay.customPos").unwrap();
+    assert_eq!(
+        spot["x"],
+        json!(x0 - 100.0 - 1280.0 + view::IDLE_SIZE.0 / 2.0)
+    );
+    assert_eq!(spot["y"], json!(y0 + 100.0 + view::IDLE_SIZE.1));
+
+    let again = build(cx, &bar.rig);
+    again.update(cx, |bar, _| bar.animate = false);
+    let on_first = again.update(cx, |bar, cx| bar.tick(SCREEN, cx)).unwrap();
+    // The first screen is shorter, so the bar sits on its bottom edge.
+    assert_eq!(
+        (rect(on_first).0, rect(on_first).1),
+        (x0 - 100.0 - 1280.0, SCREEN.size.1 - view::IDLE_SIZE.1)
+    );
+}
+
+#[gpui_kit::test]
+fn a_bar_dragged_on_the_second_screen_stays_on_it(cx: &mut TestAppContext) {
+    let bar = bar(cx, &["base"], "base");
+    bar.tick_on(RIGHT, cx);
+    pointer_at(&bar, 2240.0, 930.0, true);
+    bar.bar.update(cx, |bar, cx| bar.press_at(cx));
+    pointer_at(&bar, -5000.0, -5000.0, true);
+    bar.tick_on(RIGHT, cx);
+    assert_eq!(
+        bar.bar.read_with(cx, |bar, _| bar.frame().0),
+        (1280.0, -100.0)
+    );
+}
+
 /// A host whose native window work updates the App, as GPUI does when AppKit reports a move.
 struct Reentrant {
     app: gpui_kit::AsyncApp,
@@ -162,7 +245,7 @@ struct Reentrant {
 }
 
 impl Host for Reentrant {
-    fn screen(&self, _: &App) -> (f32, f32) {
+    fn screen(&self, _: &App) -> Screen {
         SCREEN
     }
 

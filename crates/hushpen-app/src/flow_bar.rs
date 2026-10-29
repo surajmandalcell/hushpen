@@ -36,13 +36,24 @@ const SPOT_KEY: &str = "overlay.customPos";
 /// How often the bar reads the pipeline while it rests, and while it moves or a press is down.
 const TICK: Duration = Duration::from_millis(50);
 const FRAME: Duration = Duration::from_millis(16);
-/// The size of the screen when the display server will not say.
-const FALLBACK_SCREEN: (f32, f32) = (1280.0, 800.0);
+/// The screen when the display server will not say.
+const FALLBACK_SCREEN: Screen = Screen {
+    origin: (0.0, 0.0),
+    size: (1280.0, 800.0),
+};
+
+/// One screen in logical pixels: its top left corner from the top left of the primary screen,
+/// and its size.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Screen {
+    pub origin: (f32, f32),
+    pub size: (f32, f32),
+}
 
 /// What opens, moves, and closes the native window of the bar.
 pub trait Host {
-    /// The size of the primary screen in logical pixels.
-    fn screen(&self, cx: &App) -> (f32, f32);
+    /// The screen that holds the pointer, in logical pixels.
+    fn screen(&self, cx: &App) -> Screen;
     /// Opens the window on first use, and plans the move and resize to `bounds`. The native
     /// call that moves the window is not made here but returned: AppKit reports a move or a
     /// resize while the call runs, and GPUI answers with an update of the App, which fails when
@@ -82,7 +93,9 @@ pub struct FlowBar {
     props: Props,
     visible: bool,
     origin: (f32, f32),
-    screen: (f32, f32),
+    /// The screen the bar is on. It is chosen when the bar appears or a dictation starts, so
+    /// the bar does not jump to another screen in the middle of a dictation.
+    screen: Screen,
 
     pressed: bool,
     drag: Drag,
@@ -180,9 +193,12 @@ impl FlowBar {
 
     /// Reads the pipeline, the settings, and the pointer, and works out what to draw and where.
     /// `None` means the window should not exist.
-    pub fn tick(&mut self, screen: (f32, f32), cx: &mut Context<Self>) -> Option<Bounds<Pixels>> {
+    pub fn tick(&mut self, screen: Screen, cx: &mut Context<Self>) -> Option<Bounds<Pixels>> {
         let now = (self.clock)();
-        self.screen = screen;
+        let was_idle = self.props.state == BarState::Idle;
+        if !self.visible {
+            self.screen = screen;
+        }
         self.follow_pointer(cx);
 
         let (derived, code, copied, offered, preparing, flash) = {
@@ -218,6 +234,9 @@ impl FlowBar {
 
         let wanted = self.flag("overlay.enabled", true)
             && (shown != BarState::Idle || self.pressed || self.flag("overlay.idleVisible", false));
+        if wanted && was_idle && shown != BarState::Idle && !self.pressed {
+            self.screen = screen;
+        }
         // A bar on its way out keeps what it showed last: the idle pill must not flash up as
         // a result fades.
         let mut props = if wanted {
@@ -280,10 +299,10 @@ impl FlowBar {
         let at = match self.drag_origin {
             Some(origin) => origin,
             None => {
-                let (x, y) = place(screen, goal_size, self.spot());
+                let (x, y) = place(self.screen.size, goal_size, self.spot());
                 (
-                    x + (goal_size.0 - size.0) / 2.0,
-                    y + (goal_size.1 - size.1) / 2.0,
+                    self.screen.origin.0 + x + (goal_size.0 - size.0) / 2.0,
+                    self.screen.origin.1 + y + (goal_size.1 - size.1) / 2.0,
                 )
             }
         };
@@ -304,8 +323,11 @@ impl FlowBar {
     fn apply(&mut self, at: (f32, f32)) {
         if let Some(delta) = self.drag.moved(at) {
             let (width, height) = self.motion.size();
-            let x = (self.drag_anchor.0 + delta.0).clamp(0.0, (self.screen.0 - width).max(0.0));
-            let y = (self.drag_anchor.1 + delta.1).clamp(0.0, (self.screen.1 - height).max(0.0));
+            let Screen { origin, size } = self.screen;
+            let x = (self.drag_anchor.0 + delta.0)
+                .clamp(origin.0, origin.0 + (size.0 - width).max(0.0));
+            let y = (self.drag_anchor.1 + delta.1)
+                .clamp(origin.1, origin.1 + (size.1 - height).max(0.0));
             self.drag_origin = Some((x, y));
         }
     }
@@ -368,7 +390,12 @@ impl FlowBar {
             return;
         };
         let size = view::size_of(&self.props);
-        let Spot::Custom { center_x, edge_y } = Spot::dragged(origin, size, self.screen) else {
+        // The spot is kept from the corner of the screen, so it holds on every screen.
+        let local = (
+            origin.0 - self.screen.origin.0,
+            origin.1 - self.screen.origin.1,
+        );
+        let Spot::Custom { center_x, edge_y } = Spot::dragged(local, size, self.screen.size) else {
             return;
         };
         self.origin = origin;

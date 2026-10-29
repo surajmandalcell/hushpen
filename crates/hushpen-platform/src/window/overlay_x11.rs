@@ -2,7 +2,7 @@
 //! manager neither moves nor stacks it. The app places it itself and a watcher thread keeps it
 //! above every other window.
 
-use super::{ChromeError, Frame, Pointer};
+use super::{ChromeError, Frame, Layout, Pointer, ScreenRect};
 use crate::x11util::{fail, with_x11};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
@@ -41,6 +41,51 @@ pub(super) fn pointer() -> Result<Pointer, ChromeError> {
             x: f32::from(reply.root_x),
             y: f32::from(reply.root_y),
             left: reply.mask.contains(KeyButMask::BUTTON1),
+        })
+    })
+}
+
+/// Every monitor in root window pixels, and the pointer. Without RandR the whole root window
+/// is one screen.
+pub(super) fn screens() -> Result<Layout, ChromeError> {
+    use x11rb::protocol::randr::ConnectionExt as _;
+    with_x11(|conn, screen, root| {
+        let reply = conn
+            .query_pointer(root)
+            .map_err(|e| fail("query the pointer", e))?
+            .reply()
+            .map_err(|e| fail("query the pointer", e))?;
+        let pointer = (f32::from(reply.root_x), f32::from(reply.root_y));
+        let whole = &conn.setup().roots[screen];
+        let whole = ScreenRect {
+            x: 0.0,
+            y: 0.0,
+            width: f32::from(whole.width_in_pixels),
+            height: f32::from(whole.height_in_pixels),
+        };
+        let monitors = conn
+            .randr_get_monitors(root, true)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| reply.monitors)
+            .unwrap_or_default();
+        let mut screens: Vec<ScreenRect> = monitors
+            .iter()
+            .filter(|monitor| monitor.width > 0 && monitor.height > 0)
+            .map(|monitor| ScreenRect {
+                x: f32::from(monitor.x),
+                y: f32::from(monitor.y),
+                width: f32::from(monitor.width),
+                height: f32::from(monitor.height),
+            })
+            .collect();
+        if screens.is_empty() {
+            screens.push(whole);
+        }
+        Ok(Layout {
+            screens,
+            pointer,
+            desktop_width: whole.width,
         })
     })
 }

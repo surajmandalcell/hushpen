@@ -301,6 +301,71 @@ pub fn pointer(handle: WindowHandle) -> Option<Pointer> {
     }
 }
 
+/// A screen rectangle from the top left of the primary screen. Pixels on X11, points on macOS.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScreenRect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl ScreenRect {
+    fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+
+    fn distance(&self, x: f32, y: f32) -> f32 {
+        let dx = (self.x - x).max(x - (self.x + self.width)).max(0.0);
+        let dy = (self.y - y).max(y - (self.y + self.height)).max(0.0);
+        dx.hypot(dy)
+    }
+}
+
+/// The screen with the pointer, and the width of the whole desktop in the same units.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PointerScreen {
+    pub screen: ScreenRect,
+    pub desktop_width: f32,
+}
+
+/// The screen that holds the point, or the nearest one when the point is on none of them.
+fn screen_at(screens: &[ScreenRect], x: f32, y: f32) -> Option<ScreenRect> {
+    screens
+        .iter()
+        .find(|screen| screen.contains(x, y))
+        .or_else(|| {
+            screens
+                .iter()
+                .min_by(|a, b| a.distance(x, y).total_cmp(&b.distance(x, y)))
+        })
+        .copied()
+}
+
+/// The screen the pointer is on, for the flow bar. `None` where the backend cannot say.
+pub fn pointer_screen() -> Option<PointerScreen> {
+    #[cfg(target_os = "linux")]
+    let layout = overlay_x11::screens();
+    #[cfg(target_os = "macos")]
+    let layout = overlay_appkit::screens();
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    let layout: Result<Layout, ChromeError> = Err(ChromeError::new("no screens here"));
+    let layout = layout
+        .map_err(|error| log::debug!("the screens could not be read: {error}"))
+        .ok()?;
+    Some(PointerScreen {
+        screen: screen_at(&layout.screens, layout.pointer.0, layout.pointer.1)?,
+        desktop_width: layout.desktop_width,
+    })
+}
+
+/// Every screen, where the pointer is, and how wide the whole desktop is, all in one unit.
+struct Layout {
+    screens: Vec<ScreenRect>,
+    pointer: (f32, f32),
+    desktop_width: f32,
+}
+
 /// Keeps the flow bar above every other window, and visible while another app is in front.
 /// Call once, right after the window opens.
 pub fn pin_overlay(handle: WindowHandle) -> Result<(), ChromeError> {
@@ -368,6 +433,34 @@ mod tests {
         assert!(clear_blur_behind(WindowHandle::Other).is_ok());
         assert!(pin_overlay(WindowHandle::Other).is_ok());
         assert!(pointer(WindowHandle::Other).is_none());
+    }
+
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> ScreenRect {
+        ScreenRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn the_pointer_picks_the_screen_it_is_on() {
+        let left = rect(0.0, 0.0, 1440.0, 900.0);
+        let right = rect(1440.0, -200.0, 2560.0, 1440.0);
+        let screens = [left, right];
+        assert_eq!(screen_at(&screens, 700.0, 450.0), Some(left));
+        assert_eq!(screen_at(&screens, 1440.0, 0.0), Some(right));
+        assert_eq!(screen_at(&screens, 3000.0, -150.0), Some(right));
+    }
+
+    #[test]
+    fn a_pointer_on_no_screen_gets_the_nearest_one() {
+        let left = rect(0.0, 0.0, 1440.0, 900.0);
+        let right = rect(1440.0, 0.0, 1920.0, 1080.0);
+        assert_eq!(screen_at(&[left, right], 2000.0, 1200.0), Some(right));
+        assert_eq!(screen_at(&[left, right], -10.0, 5.0), Some(left));
+        assert_eq!(screen_at(&[], 0.0, 0.0), None);
     }
 
     #[test]
