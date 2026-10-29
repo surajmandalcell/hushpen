@@ -19,6 +19,7 @@
   a second monitor. A position you drag it to applies on every screen.
 - On macOS 26 and later the app icon fills its tile like other apps, with no
   gray border around it.
+- New sounds for the start, the finish, and the cancel of a dictation.
 
 ### Fixed
 
