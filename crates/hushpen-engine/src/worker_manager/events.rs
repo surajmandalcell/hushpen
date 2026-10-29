@@ -67,10 +67,10 @@ impl<P: Protocol> Manager<P> {
                 "LOAD_FAILED",
                 &format!("model={} code={code}", P::model_name(&entry.spec)),
             );
+            self.publish();
             if let Some(reply) = entry.reply {
                 let _ = reply.send(Err(failure));
             }
-            self.publish();
         } else {
             self.log
                 .write(Level::Warn, "WORKER_ERROR", &format!("code={code}"));
@@ -95,13 +95,15 @@ impl<P: Protocol> Manager<P> {
         self.backend = Some(loaded.backend.clone());
         self.gpu = loaded.gpu;
         self.unloaded = None;
-        if let Some(entry) = entry {
+        let reply = entry.and_then(|entry| {
             self.current = Some(entry.spec);
-            if let Some(reply) = entry.reply {
-                let _ = reply.send(Ok(loaded));
-            }
-        }
+            entry.reply
+        });
+        // The status is published before the answer, so a caller that reads it next sees the model.
         self.publish();
+        if let Some(reply) = reply {
+            let _ = reply.send(Ok(loaded));
+        }
     }
 
     fn on_ready(&mut self, version: &str, backend: &str) {
