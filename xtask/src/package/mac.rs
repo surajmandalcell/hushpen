@@ -41,7 +41,13 @@ fn make_zip(app: &Path, zip: &Path) -> Result<(), String> {
 
 pub fn build(ctx: &Ctx, formats: &[Format]) -> Result<Vec<PathBuf>, String> {
     let work = ctx.work_dir("mac")?;
-    let resources = ctx.resources(&work, "app")?;
+    let mut resources = ctx.resources(&work, "app")?;
+    // macOS 26 and later draw the Icon Composer icon in Assets.car (CFBundleIconName) at full
+    // size; the .icns stays for older systems.
+    resources.push((
+        ctx.root.join("assets/hushpen-app-icon.car"),
+        "Assets.car".to_string(),
+    ));
     let icons = [ctx.root.join("assets/hushpen-app-icon.icns")];
     let info_plist = ctx.root.join("packaging/Info.plist");
     let sign_script = work.join("sign-before-dmg.sh");
