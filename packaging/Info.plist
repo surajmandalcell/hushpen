@@ -8,5 +8,7 @@
   <false/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleIconName</key>
+  <string>Hushpen</string>
 </dict>
 </plist>
