@@ -8,10 +8,14 @@ set -eu
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
-xcrun actool "$REPO/assets/hushpen-app-icon.icon" --compile "$OUT" \
+# actool names the icon in Assets.car after the .icon folder, not after --app-icon, so the
+# source is compiled under the name CFBundleIconName asks for.
+cp -R "$REPO/assets/hushpen-app-icon.icon" "$OUT/Hushpen.icon"
+mkdir "$OUT/car"
+xcrun actool "$OUT/Hushpen.icon" --compile "$OUT/car" \
   --output-format human-readable-text --errors --warnings \
   --output-partial-info-plist "$OUT/partial.plist" --app-icon Hushpen --include-all-app-icons \
   --enable-on-demand-resources NO --development-region en --target-device mac \
   --minimum-deployment-target 13.0 --platform macosx >/dev/null
-cp "$OUT/Assets.car" "$REPO/assets/hushpen-app-icon.car"
+cp "$OUT/car/Assets.car" "$REPO/assets/hushpen-app-icon.car"
 echo "wrote assets/hushpen-app-icon.car"
