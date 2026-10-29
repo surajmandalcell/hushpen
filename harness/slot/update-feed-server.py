@@ -10,8 +10,8 @@ every request; the mode "404" answers every request with 404 and "slow" waits 30
 installer file, is served as 404 and still logged, so the suite can prove that nothing else was
 asked for. Every request is one line in the log: time, method, path, and every request header.
 The folders hold signed copies of test manifests: the secret keys were thrown away after signing,
-so the files are fixed. `same` (2.0.0-dev) is not newer than the debug app; `newer` is 2.1.0, above 2.1.0-dev;
-`wrongkey` is signed by a key that test.pub does not match; `tampered` changed after signing.
+so the files are fixed. `same` (2.0.0-dev) is not newer than the debug app; `newer` is 9.0.0, above any
+real version; `wrongkey` is signed by a key that test.pub does not match; `tampered` changed after signing.
 The self-update suite adds /update-test (harness/update-fixtures.sh): a mode may also name a folder
 under /update-test/feed (good, badsha), and a path that names a file in /update-test/rc2 is served
 from there, in 64 KiB steps 50 ms apart while /tmp/feed-slow exists. Without /update-test every
