@@ -53,10 +53,11 @@ impl Manager {
                 self.model = Some(model.clone());
                 self.gpu = gpu;
                 self.current = Some(entry.spec);
+                // The status is published before the answer, so a caller that reads it next sees the model.
+                self.publish();
                 if let Some(reply) = entry.reply {
                     let _ = reply.send(Ok(Loaded { model, ms, gpu }));
                 }
-                self.publish();
             }
             Event::Result {
                 job,
@@ -99,10 +100,10 @@ impl Manager {
                         "LOAD_FAILED",
                         &format!("model={} code={code}", model_name(&entry.spec.path)),
                     );
+                    self.publish();
                     if let Some(reply) = entry.reply {
                         let _ = reply.send(Err(failure));
                     }
-                    self.publish();
                 } else {
                     self.log
                         .write(Level::Warn, "ENGINE_ERROR", &format!("code={code}"));
