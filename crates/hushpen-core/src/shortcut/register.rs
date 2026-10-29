@@ -110,16 +110,22 @@ fn slot_name(slot: Slot) -> &'static str {
         Slot::HandsFree => "hands-free",
         Slot::PasteLast => "paste last",
         Slot::Command => "command mode",
+        Slot::ReadAloud => "read aloud",
     }
 }
 
 /// Checks a recorded shortcut for `slot` against the other slots, the one thing Hushpen itself
-/// refuses. `others` is what the other slots hold now. What the system already runs is asked
-/// of the platform layer.
-pub fn check(slot: Slot, combo: &Combo, others: &BTreeMap<Slot, Setting>) -> Result<(), Refusal> {
+/// refuses. `others` is what the other slots hold now, and a slot in `off` does not count.
+/// What the system already runs is asked of the platform layer.
+pub fn check(
+    slot: Slot,
+    combo: &Combo,
+    others: &BTreeMap<Slot, Setting>,
+    off: &BTreeSet<Slot>,
+) -> Result<(), Refusal> {
     let taken = others
         .iter()
-        .filter(|(other, _)| **other != slot)
+        .filter(|(other, _)| **other != slot && !off.contains(*other))
         .find(|(_, setting)| setting.combo() == Some(combo));
     if let Some((other, _)) = taken {
         return Err(Refusal::new(
@@ -134,17 +140,33 @@ pub fn check(slot: Slot, combo: &Combo, others: &BTreeMap<Slot, Setting>) -> Res
 }
 
 /// The live shortcuts for what the slots hold. A slot in `unavailable` (another app holds it)
-/// stays saved but does not run.
-pub fn bindings(values: &BTreeMap<Slot, Setting>, unavailable: &BTreeSet<Slot>) -> Bindings {
-    let live = |slot: Slot| values.get(&slot).filter(|_| !unavailable.contains(&slot));
+/// or in `off` stays saved but does not run. With the hold key off, the key stays live for the
+/// built-in hands-free gestures; the pipeline then does not record while it is held.
+pub fn bindings(
+    values: &BTreeMap<Slot, Setting>,
+    unavailable: &BTreeSet<Slot>,
+    off: &BTreeSet<Slot>,
+) -> Bindings {
+    let saved = |slot: Slot| values.get(&slot).filter(|_| !unavailable.contains(&slot));
+    let live = |slot: Slot| saved(slot).filter(|_| !off.contains(&slot));
     let combo = |slot: Slot| live(slot).and_then(Setting::combo).cloned();
+    let hands_free = live(Slot::HandsFree).map(|setting| match setting {
+        Setting::HandsFree(hands_free) => hands_free.clone(),
+        Setting::Keys(combo) => HandsFree::Custom(combo.clone()),
+    });
+    let hold = if off.contains(&Slot::Hold) {
+        saved(Slot::Hold)
+            .filter(|_| hands_free == Some(HandsFree::Default))
+            .and_then(Setting::combo)
+            .cloned()
+    } else {
+        combo(Slot::Hold)
+    };
     Bindings {
-        hold: combo(Slot::Hold),
-        hands_free: live(Slot::HandsFree).map(|setting| match setting {
-            Setting::HandsFree(hands_free) => hands_free.clone(),
-            Setting::Keys(combo) => HandsFree::Custom(combo.clone()),
-        }),
+        hold,
+        hands_free,
         paste_last: combo(Slot::PasteLast),
         command: combo(Slot::Command),
+        read_aloud: combo(Slot::ReadAloud),
     }
 }

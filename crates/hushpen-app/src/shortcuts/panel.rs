@@ -1,12 +1,14 @@
-//! The rows of the Shortcuts section of Settings: a row for each shortcut with a recorder field
-//! on its right, the reason a shortcut was refused or does not run, how to free a shortcut that
-//! something else runs, and a row that puts all four back to their defaults.
+//! The rows of the Shortcuts section of Settings: a row for each shortcut with, lightest to
+//! heaviest, a reset button, its recorder field, and its switch; the reason a shortcut was
+//! refused or does not run; how to free a shortcut that something else runs; and a row that
+//! puts all of them back to their defaults.
 
 use super::Shortcuts;
 use crate::hook;
-use crate::theme::{self, BUTTON, Palette, StyledType, radius, size};
+use crate::theme::{self, BUTTON, Palette, StyledType, radius, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::assets::IconName;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement as _,
     ParentElement, Role, StatefulInteractiveElement, Styled, Window, div, px, transparent_black,
@@ -23,14 +25,20 @@ pub(super) fn needs_tooltip(shown: &str) -> bool {
 struct Row {
     slot: Slot,
     title: &'static str,
-    detail: &'static str,
+    detail: String,
     shown: String,
     recording: bool,
+    /// The key listener runs, so the shortcut can be recorded.
     enabled: bool,
+    /// The user has the shortcut on.
+    on: bool,
+    is_default: bool,
     error: Option<String>,
     /// How to free a shortcut that something else runs, and whether its settings can be opened.
     steps: Option<(String, bool)>,
     focus: FocusHandle,
+    reset_focus: FocusHandle,
+    switch_focus: FocusHandle,
 }
 
 fn text_of(slot: Slot) -> (&'static str, &'static str) {
@@ -42,6 +50,7 @@ fn text_of(slot: Slot) -> (&'static str, &'static str) {
             "Command mode",
             "Hold to speak an instruction for the selected text.",
         ),
+        Slot::ReadAloud => ("Read aloud", "Reads the selected text out loud."),
     }
 }
 
@@ -73,6 +82,13 @@ pub fn slot_rows(shortcuts: &Entity<Shortcuts>, slot: Slot, cx: &mut App) -> Vec
             me.display(slot)
         };
         let index = Slot::ALL.iter().position(|each| *each == slot).unwrap_or(0);
+        let built_in = me.value(Slot::HandsFree).combo().is_none();
+        let detail = match slot {
+            Slot::Hold if !me.is_on(slot) && me.is_on(Slot::HandsFree) && built_in => {
+                "Off. Hands-free still starts with this key.".to_owned()
+            }
+            _ => detail.to_owned(),
+        };
         Row {
             slot,
             title,
@@ -80,12 +96,16 @@ pub fn slot_rows(shortcuts: &Entity<Shortcuts>, slot: Slot, cx: &mut App) -> Vec
             shown,
             recording,
             enabled: me.why_off().is_none(),
+            on: me.is_on(slot),
+            is_default: me.is_default(slot),
             error: me.failure(slot).map(|refusal| refusal.message.clone()),
             steps: me.failure(slot).and_then(|refusal| {
                 let steps = refusal.steps.clone()?;
                 Some((steps, refusal.open.is_some()))
             }),
             focus: me.field_focus[index].clone(),
+            reset_focus: me.slot_reset_focus[index].clone(),
+            switch_focus: me.switch_focus[index].clone(),
         }
     };
     let (error, steps) = (row.error.clone(), row.steps.clone());
@@ -128,7 +148,7 @@ pub fn slot_rows(shortcuts: &Entity<Shortcuts>, slot: Slot, cx: &mut App) -> Vec
     rows
 }
 
-/// The row that puts all four shortcuts back to their defaults.
+/// The row that puts every shortcut back to its default and turns it on.
 pub fn reset_row(shortcuts: &Entity<Shortcuts>, cx: &mut App) -> AnyElement {
     let palette = theme::palette(cx);
     let reset_focus = shortcuts.read(cx).reset_focus.clone();
@@ -195,18 +215,19 @@ fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> An
         })
         .bg(palette.control)
         .text_token(BUTTON)
-        .text_color(if !row.enabled {
+        .text_color(if !row.enabled || !row.on {
             palette.label_tertiary
         } else if row.recording {
             palette.label_secondary
         } else {
             palette.label
         });
-    hook::mark_disabled(&format!("settings.shortcut.{key}"), !row.enabled);
+    let usable = row.enabled && row.on;
+    hook::mark_disabled(&format!("settings.shortcut.{key}"), !usable);
     if !row.recording && needs_tooltip(&row.shown) {
         field = ui::tooltip(field, row.shown.clone());
     }
-    if row.enabled {
+    if usable {
         let on_click = move |_: &ClickEvent, _: &mut Window, cx: &mut App| toggle(cx);
         field = field
             .track_focus(&row.focus)
@@ -215,11 +236,62 @@ fn shortcut_row(palette: Palette, shortcuts: &Entity<Shortcuts>, row: Row) -> An
             .focus_visible(move |style| style.border_color(palette.accent))
             .on_click(on_click);
     }
+    let slot = row.slot;
+    // A shortcut at its default has nothing to reset; the empty place keeps the fields lined up.
+    let reset = if row.is_default {
+        div()
+            .flex_none()
+            .size(px(size::BUTTON_HEIGHT))
+            .into_any_element()
+    } else {
+        let shortcuts = shortcuts.clone();
+        ui::icon_button(
+            palette,
+            hook::id("settings", &format!("shortcut.{key}.reset")),
+            IconName::RotateCcw,
+            format!("Reset {} to default", row.title),
+            "Reset to default",
+            &row.reset_focus,
+            move |_: &mut Window, cx: &mut App| {
+                shortcuts.update(cx, |shortcuts, cx| {
+                    if let Err(error) = shortcuts.reset(slot, cx) {
+                        log::debug!("the shortcut was not reset: {error}");
+                    }
+                });
+            },
+        )
+        .into_any_element()
+    };
+    let switch = {
+        let shortcuts = shortcuts.clone();
+        let on = row.on;
+        ui::switch(
+            palette,
+            hook::id("settings", &format!("shortcut.{key}.on")),
+            row.title,
+            on,
+            true,
+            &row.switch_focus,
+            move |_: &mut Window, cx: &mut App| {
+                shortcuts.update(cx, |shortcuts, cx| {
+                    if let Err(error) = shortcuts.set_on(slot, !on, cx) {
+                        log::debug!("the shortcut was not switched: {error}");
+                    }
+                });
+            },
+        )
+    };
     ui::labeled_row(
         palette,
         hook::id("settings", &format!("shortcut.row.{key}")),
         row.title,
-        Some(row.detail.to_owned()),
-        field.child(div().min_w_0().truncate().child(row.shown)),
+        Some(row.detail),
+        div()
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            .child(reset)
+            .child(field.child(div().min_w_0().truncate().child(row.shown)))
+            .child(switch),
     )
 }

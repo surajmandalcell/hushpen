@@ -115,6 +115,8 @@ pub enum AppEvent {
     Esc,
     /// The "Paste last transcript" shortcut.
     PasteLast,
+    /// The "Read aloud" shortcut. The controller answers it; no session starts.
+    ReadAloud,
     /// Time passed. Sent at least every 250 ms while a session runs, and again at each deadline.
     Tick,
     CaptureError {
@@ -231,6 +233,10 @@ pub struct Config {
     pub done_ms: u64,
     pub cancelled_ms: u64,
     pub failed_ms: u64,
+    /// Holding the hold key records. Off, the key only gives the built-in hands-free gestures.
+    pub hold_to_talk: bool,
+    /// A double tap of the hold key starts hands-free: the built-in hands-free is on.
+    pub double_tap: bool,
 }
 
 impl Default for Config {
@@ -240,6 +246,8 @@ impl Default for Config {
             done_ms: 1_500,
             cancelled_ms: 500,
             failed_ms: 2_000,
+            hold_to_talk: true,
+            double_tap: true,
         }
     }
 }

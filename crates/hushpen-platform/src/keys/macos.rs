@@ -30,7 +30,7 @@ use core_foundation::mach_port::{
 use core_foundation::runloop::{
     CFRunLoop, CFRunLoopSource, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
-use hushpen_core::shortcut::{Bindings, Combo, Conflict, HandsFree, Key, Opener};
+use hushpen_core::shortcut::{Bindings, Combo, Conflict, Key, Opener};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::c_void;
 use std::io::{BufRead, Write};
@@ -395,18 +395,6 @@ fn switcher_note() -> PathBuf {
     std::env::temp_dir().join("hushpen-app-switcher-off")
 }
 
-fn live_combos(bindings: &Bindings) -> impl Iterator<Item = &Combo> {
-    let custom = bindings.hands_free.as_ref().and_then(HandsFree::combo);
-    [
-        bindings.hold.as_ref(),
-        bindings.command.as_ref(),
-        bindings.paste_last.as_ref(),
-        custom,
-    ]
-    .into_iter()
-    .flatten()
-}
-
 impl MacKeys {
     /// The tap only listens, so there is nothing to grab for a session; Esc is only sent on.
     pub(super) fn set_session_active(&self, active: bool) {
@@ -420,7 +408,8 @@ impl MacKeys {
 
     /// Turns the app switcher off while a live shortcut is its chord, and on again after.
     fn follow_switcher(&self, bindings: &Bindings) {
-        let wanted: BTreeSet<i32> = live_combos(bindings)
+        let wanted: BTreeSet<i32> = bindings
+            .chords()
             .filter(|combo| combo.mains().count() == 1)
             .filter_map(|combo| Some((main_keycode(combo)?, symbolic::carbon_modifiers(combo))))
             .flat_map(|(code, modifiers)| symbolic::switcher_hotkeys(code, modifiers))

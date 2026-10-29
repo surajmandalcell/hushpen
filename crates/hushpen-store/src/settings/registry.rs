@@ -160,6 +160,10 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("shortcut.command", Kind::Text(64), |os| {
         shortcut_default(Slot::Command, os)
     }),
+    spec!("shortcut.readAloud", Kind::Text(64), |os| {
+        shortcut_default(Slot::ReadAloud, os)
+    }),
+    spec!("shortcut.enabled", Kind::BoolMap, |_| json!({})),
     spec!("dictation.modelId", Kind::OptionalText(128), |_| json!("")),
     spec!("dictation.language", Kind::Language, |_| json!("auto")),
     spec!(
@@ -303,6 +307,9 @@ mod tests {
         let hold = find("shortcut.hold").unwrap();
         assert_eq!(hold.default_value(Os::MacOs), json!("RightOption"));
         assert_eq!(hold.default_value(Os::Linux), json!("RightAlt"));
+        let read = find("shortcut.readAloud").unwrap();
+        assert_eq!(read.default_value(Os::MacOs), json!("Ctrl+Cmd+S"));
+        assert_eq!(read.default_value(Os::Linux), json!("Ctrl+Alt+S"));
     }
 
     #[test]

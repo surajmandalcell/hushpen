@@ -106,6 +106,7 @@ fn every_event() -> Vec<AppEvent> {
             session: 1,
             code: LLM_TIMEOUT,
         },
+        AppEvent::ReadAloud,
     ]
 }
 
@@ -130,10 +131,11 @@ fn variant_index(event: &AppEvent) -> usize {
         AppEvent::CommandUp => 15,
         AppEvent::EditFailed { .. } => 16,
         AppEvent::HoldArm => 17,
+        AppEvent::ReadAloud => 18,
     }
 }
 
-const VARIANTS: usize = 18;
+const VARIANTS: usize = 19;
 
 fn start_effects() -> Vec<Effect> {
     vec![Effect::StartCapture { session: 1 }, Effect::Cue(Cue::Start)]
@@ -349,7 +351,7 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
         }
     }
     assert_eq!(pairs, State::ALL.len() * VARIANTS);
-    assert_eq!(pairs, 144);
+    assert_eq!(pairs, 152);
 }
 
 #[test]
@@ -466,6 +468,57 @@ fn a_second_press_after_a_real_hold_is_not_a_double_tap() {
     handle(&mut m, AppEvent::Tick, 900);
     assert_eq!(m.state(), State::Idle);
     handle(&mut m, AppEvent::HoldDown, 950);
+    assert_eq!(m.mode(), Mode::Hold);
+}
+
+fn hold_off() -> DictationMachine {
+    DictationMachine::new(Config {
+        hold_to_talk: false,
+        ..Config::default()
+    })
+}
+
+#[test]
+fn with_hold_to_talk_off_a_hold_records_nothing() {
+    let mut m = hold_off();
+    assert!(handle(&mut m, AppEvent::HoldDown, 0).is_empty());
+    assert!(handle(&mut m, AppEvent::HoldUp, 2_000).is_empty());
+    assert_eq!(m.state(), State::Idle);
+    assert_eq!(m.session(), 0);
+}
+
+#[test]
+fn with_hold_to_talk_off_a_double_tap_still_starts_and_a_press_stops_hands_free() {
+    let mut m = hold_off();
+    tap(&mut m, 0, 100);
+    assert_eq!(m.state(), State::Idle);
+    let effects = handle(&mut m, AppEvent::HoldDown, 250);
+    assert_eq!(m.mode(), Mode::HandsFree);
+    assert_eq!(
+        effects,
+        vec![Effect::StartCapture { session: 1 }, Effect::Cue(Cue::Start)]
+    );
+    handle(&mut m, AppEvent::HoldUp, 300);
+    handle(&mut m, AppEvent::HoldDown, 3_000);
+    assert_eq!(m.state(), State::Transcribing);
+}
+
+#[test]
+fn with_hold_to_talk_off_a_long_press_is_not_half_of_a_double_tap() {
+    let mut m = hold_off();
+    tap(&mut m, 0, 300);
+    handle(&mut m, AppEvent::HoldDown, 400);
+    assert_eq!(m.state(), State::Idle);
+}
+
+#[test]
+fn with_the_built_in_hands_free_off_a_double_tap_is_two_holds() {
+    let mut m = DictationMachine::new(Config {
+        double_tap: false,
+        ..Config::default()
+    });
+    tap(&mut m, 0, 100);
+    handle(&mut m, AppEvent::HoldDown, 250);
     assert_eq!(m.mode(), Mode::Hold);
 }
 

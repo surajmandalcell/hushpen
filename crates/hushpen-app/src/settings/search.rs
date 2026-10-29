@@ -14,6 +14,7 @@ pub enum RowId {
     HandsFree,
     PasteLast,
     CommandMode,
+    ReadAloud,
     ResetShortcuts,
     Microphone,
     Sounds,
@@ -97,7 +98,7 @@ impl RowMeta {
     }
 }
 
-const SHORTCUT: &[&str] = &["shortcut", "hotkey", "keyboard", "key"];
+const SHORTCUT: &[&str] = &["shortcut", "hotkey", "keyboard", "key", "disable"];
 const ENDPOINT: &[&str] = &["endpoint", "server", "openai", "ollama", "lm studio"];
 
 pub static ROWS: &[RowMeta] = &[
@@ -142,6 +143,22 @@ pub static ROWS: &[RowMeta] = &[
         "shortcut.command",
         "Command mode",
         SHORTCUT,
+    ),
+    RowMeta::new(
+        ReadAloud,
+        Shortcuts,
+        "shortcut.readAloud",
+        "Read aloud",
+        &[
+            "shortcut",
+            "hotkey",
+            "keyboard",
+            "key",
+            "disable",
+            "speak",
+            "voice",
+            "selection",
+        ],
     ),
     RowMeta::new(
         ResetShortcuts,
@@ -409,7 +426,8 @@ mod tests {
                 .iter()
                 .all(|key| key.starts_with("shortcut."))
         );
-        assert_eq!(keys("hotkey").len(), 5);
+        assert_eq!(keys("hotkey").len(), 6);
+        assert_eq!(keys("speak"), ["shortcut.readAloud"]);
     }
 
     #[test]

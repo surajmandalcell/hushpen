@@ -6,19 +6,6 @@ use super::tests::hold_run;
 use gpui_kit::TestAppContext;
 use hushpen_core::dictation::{AppEvent, State};
 use hushpen_core::onboarding::KeyGate;
-use hushpen_store::history;
-
-fn set_gate(cx: &mut TestAppContext, rig: &Rig, gate: KeyGate) {
-    rig.controller
-        .update(cx, |controller, cx| controller.set_gate(gate, cx));
-}
-
-fn history_rows(rig: &Rig) -> usize {
-    history::page(&rig.storage.database, "", None, 50)
-        .unwrap()
-        .rows
-        .len()
-}
 
 #[gpui_kit::test]
 fn a_closed_gate_refuses_every_start_and_opens_no_microphone(cx: &mut TestAppContext) {

@@ -55,6 +55,30 @@ fn the_hold_key_listens_while_down_and_transcribes_after_a_two_second_hold(
 }
 
 #[gpui_kit::test]
+fn with_hold_to_dictate_off_a_hold_records_nothing_and_a_double_tap_starts_hands_free(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("shortcut.enabled", json!({"hold": false}))
+        .unwrap();
+    send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    assert!(session_wavs(&rig).is_empty(), "no capture");
+
+    send_at(cx, &rig, 5_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 5_100, AppEvent::HoldUp).unwrap();
+    send_at(cx, &rig, 5_300, AppEvent::HoldDown).unwrap();
+    assert_eq!(machine_state(cx, &rig), State::Listening);
+    assert_eq!(
+        rig.controller.read_with(cx, |c, _| c.mode()),
+        Mode::HandsFree
+    );
+}
+
+#[gpui_kit::test]
 fn a_dictation_after_the_microphone_stopped_is_a_transcription_in_flight(cx: &mut TestAppContext) {
     let rig = rig(cx, &["base"], "base");
     say(&rig, outcome_text("in flight", "en"));

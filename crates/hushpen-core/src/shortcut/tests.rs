@@ -299,7 +299,8 @@ fn slots_have_stable_names_and_setting_keys() {
             "shortcut.hold",
             "shortcut.handsFree",
             "shortcut.pasteLast",
-            "shortcut.command"
+            "shortcut.command",
+            "shortcut.readAloud"
         ]
     );
     for slot in Slot::ALL {
@@ -322,6 +323,7 @@ fn defaults() -> Bindings {
         hands_free: Some(HandsFree::Default),
         paste_last: Some(combo("Ctrl+Alt+V", LINUX)),
         command: Some(combo("RightAlt+RightShift", LINUX)),
+        read_aloud: Some(combo("Ctrl+Alt+S", LINUX)),
     }
 }
 
@@ -687,6 +689,7 @@ fn a_bare_key_a_media_key_and_both_sides_of_ctrl_are_live_shortcuts() {
         hands_free: None,
         paste_last: Some(mac("Ctrl+RightCtrl")),
         command: Some(mac("Key179")),
+        read_aloud: None,
     });
     let play = Phys::Named(Named::PlayPause);
     assert_eq!(app(engine.press(play)), [AppEvent::HoldDown]);
@@ -749,9 +752,17 @@ fn held(platform: Platform) -> BTreeMap<Slot, Setting> {
 #[test]
 fn a_new_shortcut_that_is_free_passes() {
     let others = held(LINUX);
-    assert_eq!(check(Slot::PasteLast, &ctrl_alt('p'), &others), Ok(()));
     assert_eq!(
-        check(Slot::Hold, &combo("RightCtrl", LINUX), &others),
+        check(Slot::PasteLast, &ctrl_alt('p'), &others, &BTreeSet::new()),
+        Ok(())
+    );
+    assert_eq!(
+        check(
+            Slot::Hold,
+            &combo("RightCtrl", LINUX),
+            &others,
+            &BTreeSet::new()
+        ),
         Ok(())
     );
 }
@@ -760,7 +771,12 @@ fn a_new_shortcut_that_is_free_passes() {
 fn a_chord_every_app_uses_is_the_user_s_choice() {
     let others = held(LINUX);
     assert_eq!(
-        check(Slot::HandsFree, &combo("Ctrl+Q", LINUX), &others),
+        check(
+            Slot::HandsFree,
+            &combo("Ctrl+Q", LINUX),
+            &others,
+            &BTreeSet::new()
+        ),
         Ok(())
     );
 }
@@ -768,7 +784,7 @@ fn a_chord_every_app_uses_is_the_user_s_choice() {
 #[test]
 fn a_chord_another_slot_already_holds_is_refused_with_the_reserved_code() {
     let others = held(LINUX);
-    let refusal = check(Slot::HandsFree, &ctrl_alt('v'), &others).unwrap_err();
+    let refusal = check(Slot::HandsFree, &ctrl_alt('v'), &others, &BTreeSet::new()).unwrap_err();
     assert_eq!(refusal.code, "SHORTCUT_RESERVED");
     assert!(
         refusal.message.contains("paste last"),
@@ -780,10 +796,18 @@ fn a_chord_another_slot_already_holds_is_refused_with_the_reserved_code() {
 #[test]
 fn a_slot_may_keep_its_own_shortcut_and_a_superset_of_another_is_fine() {
     let others = held(LINUX);
-    assert_eq!(check(Slot::PasteLast, &ctrl_alt('v'), &others), Ok(()));
+    assert_eq!(
+        check(Slot::PasteLast, &ctrl_alt('v'), &others, &BTreeSet::new()),
+        Ok(())
+    );
     // The Command Mode default is the hold key plus Right Shift, which is not the same key set.
     assert_eq!(
-        check(Slot::Command, &combo("RightAlt+RightShift", LINUX), &others),
+        check(
+            Slot::Command,
+            &combo("RightAlt+RightShift", LINUX),
+            &others,
+            &BTreeSet::new()
+        ),
         Ok(())
     );
 }
@@ -825,9 +849,13 @@ fn settings_parse_per_slot_and_print_back() {
 #[test]
 fn bindings_follow_the_slots_and_leave_out_the_ones_another_app_holds() {
     let values = held(LINUX);
-    let live = bindings(&values, &BTreeSet::new());
+    let live = bindings(&values, &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(live, defaults());
-    let without_paste = bindings(&values, &BTreeSet::from([Slot::PasteLast]));
+    let without_paste = bindings(
+        &values,
+        &BTreeSet::from([Slot::PasteLast]),
+        &BTreeSet::new(),
+    );
     assert_eq!(without_paste.paste_last, None);
     assert_eq!(without_paste.hold, defaults().hold);
 }
@@ -840,9 +868,62 @@ fn a_recorded_hands_free_chord_becomes_a_custom_binding() {
         Setting::parse(Slot::HandsFree, "Ctrl+Alt+H", LINUX).unwrap(),
     );
     assert_eq!(
-        bindings(&values, &BTreeSet::new()).hands_free,
+        bindings(&values, &BTreeSet::new(), &BTreeSet::new()).hands_free,
         Some(HandsFree::Custom(ctrl_alt('h')))
     );
+}
+
+#[test]
+fn an_off_shortcut_does_not_run_and_keeps_its_keys() {
+    let values = held(LINUX);
+    let off = BTreeSet::from([Slot::PasteLast, Slot::Command]);
+    let live = bindings(&values, &BTreeSet::new(), &off);
+    assert_eq!(live.paste_last, None);
+    assert_eq!(live.command, None);
+    assert_eq!(live.hold, defaults().hold);
+    assert_eq!(
+        values[&Slot::PasteLast],
+        Setting::default_for(Slot::PasteLast, LINUX)
+    );
+}
+
+#[test]
+fn with_the_hold_key_off_it_stays_live_only_for_the_built_in_hands_free() {
+    let mut values = held(LINUX);
+    let off = BTreeSet::from([Slot::Hold]);
+    let live = bindings(&values, &BTreeSet::new(), &off);
+    assert_eq!(live.hold, defaults().hold);
+    assert_eq!(live.hands_free, Some(HandsFree::Default));
+
+    let both = BTreeSet::from([Slot::Hold, Slot::HandsFree]);
+    assert_eq!(bindings(&values, &BTreeSet::new(), &both).hold, None);
+
+    values.insert(
+        Slot::HandsFree,
+        Setting::parse(Slot::HandsFree, "Ctrl+Alt+H", LINUX).unwrap(),
+    );
+    let custom = bindings(&values, &BTreeSet::new(), &off);
+    assert_eq!(custom.hold, None);
+    assert_eq!(custom.hands_free, Some(HandsFree::Custom(ctrl_alt('h'))));
+}
+
+#[test]
+fn the_keys_of_an_off_shortcut_are_free_for_another_one() {
+    let others = held(LINUX);
+    let off = BTreeSet::from([Slot::PasteLast]);
+    assert_eq!(
+        check(Slot::HandsFree, &ctrl_alt('v'), &others, &off),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_slot_is_on_unless_the_setting_turns_it_off() {
+    let enabled = serde_json::json!({"pasteLast": false, "command": true});
+    assert!(Slot::Hold.is_on(Some(&enabled)));
+    assert!(Slot::Command.is_on(Some(&enabled)));
+    assert!(!Slot::PasteLast.is_on(Some(&enabled)));
+    assert!(Slot::PasteLast.is_on(None));
 }
 
 // Command Mode events.

@@ -29,6 +29,7 @@ fn event_named(name: &str) -> Option<AppEvent> {
         "home" => AppEvent::HomeToggle,
         "flow-bar" => AppEvent::FlowBarClick,
         "esc" => AppEvent::Esc,
+        "read-aloud" => AppEvent::ReadAloud,
         _ => return None,
     })
 }
@@ -72,7 +73,7 @@ pub fn attach(cx: &mut App, dictation: Entity<Dictation>) {
         cx,
         "pipeline-event",
         "Send one event to the dictation pipeline, the same one the hold key feeds. \
-         Args: {\"event\": \"hold-down\" | \"hold-up\" | \"command-down\" | \"command-up\" | \"hands-free\" | \"home\" | \"flow-bar\" | \"esc\"}.",
+         Args: {\"event\": \"hold-down\" | \"hold-up\" | \"command-down\" | \"command-up\" | \"hands-free\" | \"home\" | \"flow-bar\" | \"esc\" | \"read-aloud\"}.",
         move |cx, args| {
             let name = args
                 .get("event")

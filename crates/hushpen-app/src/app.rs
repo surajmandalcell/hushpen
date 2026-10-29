@@ -278,6 +278,10 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     })
                 })
                 .ok();
+            if let Some(read) = &read_aloud {
+                let speaker = crate::read_aloud::speaker(read);
+                controller.update(cx, |controller, _| controller.attach_speaker(speaker));
+            }
             let files = cx.new(|cx| {
                 Files::new(
                     Rc::clone(&dictation_storage),
