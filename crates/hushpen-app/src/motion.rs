@@ -12,12 +12,12 @@ use gpui_kit::{AnyElement, App, ElementId, IntoElement, RenderOnce, Styled, Wind
 use std::time::{Duration, Instant};
 
 /// Something small that appears: a tooltip, an open menu.
-pub const FAST: Duration = Duration::from_millis(120);
+pub const FAST: Duration = Duration::from_millis(90);
 /// A control that moves from one state to the other: the knob of a switch, the fill of a
 /// segmented control.
-pub const SLIDE: Duration = Duration::from_millis(150);
+pub const SLIDE: Duration = Duration::from_millis(110);
 /// A surface that appears or changes: the view in the content pane, a sheet, an onboarding step.
-pub const BASE: Duration = Duration::from_millis(180);
+pub const BASE: Duration = Duration::from_millis(130);
 /// How far a surface travels into its place while it fades in, in pixels.
 pub const TRAVEL: f32 = 4.0;
 
@@ -284,12 +284,14 @@ pub(crate) mod tests {
         let changed = fixture.after(cx, 0);
         assert_eq!((changed.changed, changed.moved), (0.0, 0.0));
 
-        let half = fixture.after(cx, 90);
+        let half_ms = BASE.as_millis() as u64 / 2;
+        let half = fixture.after(cx, half_ms);
+        let slid = half_ms as f32 / SLIDE.as_millis() as f32;
         assert!(near(half.entered, ease_out(0.5)), "{half:?}");
         assert!(near(half.changed, ease_out(0.5)), "{half:?}");
-        assert!(near(half.moved, ease_out(0.6)), "{half:?}");
+        assert!(near(half.moved, ease_out(slid)), "{half:?}");
 
-        let done = fixture.after(cx, 90);
+        let done = fixture.after(cx, half_ms);
         assert_eq!(
             done,
             Sample {

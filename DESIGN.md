@@ -284,9 +284,9 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 Motion is short and quiet. It shows where something comes from and never makes the user wait. Every animation uses the same tokens:
 
-- **Fast (120 ms):** something small that appears, such as a tooltip or a pop-up menu.
-- **Slide (150 ms):** a control that moves to a new state, such as the knob of a switch or the fill of a segmented control.
-- **Base (180 ms):** a surface that comes in, such as a view, an onboarding step, or a sheet.
+- **Fast (90 ms):** something small that appears, such as a tooltip or a pop-up menu.
+- **Slide (110 ms):** a control that moves to a new state, such as the knob of a switch or the fill of a segmented control.
+- **Base (130 ms):** a surface that comes in, such as a view, an onboarding step, or a sheet.
 - **Travel (4px):** how far a surface moves on its way in.
 
 Every animation uses one cubic ease-out curve. It never overshoots or bounces.
