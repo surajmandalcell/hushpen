@@ -146,12 +146,14 @@ there are no submodules:
 git clone https://github.com/surajmandalcell/hushpen.git
 cd hushpen
 cargo build --release --locked -p hushpen-app -p hushpen-llm -p hushpen-tts
+cp assets/ggml-silero-v5.1.2.bin "${CARGO_TARGET_DIR:-target}/release/"
 ```
 
 The programs are `target/release/hushpen`, `target/release/hushpen-llm`, and
 `target/release/hushpen-tts`. Keep them in the same folder; `hushpen` starts
-the two workers from there. The first build compiles whisper.cpp and llama.cpp
-and takes several minutes.
+the two workers from there. Keep the small Silero speech detector beside
+them too; it skips silence without a download. The first build compiles
+whisper.cpp and llama.cpp and takes several minutes.
 
 Read aloud with the Kokoro voice also needs the sherpa-onnx libraries next to
 `hushpen-tts` (in `Contents/Frameworks` of an `.app`). Fetch the pinned,
