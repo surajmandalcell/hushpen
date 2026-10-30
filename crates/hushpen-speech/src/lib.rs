@@ -77,14 +77,36 @@ impl fmt::Display for SpeechError {
 
 impl std::error::Error for SpeechError {}
 
-/// One way to turn text into speech: the system voice here, Kokoro in its own child.
+/// One way to turn text into speech: the system voice here, a voice model in its own child.
 pub trait SpeechEngine: Send + Sync {
     /// The installed voices, or `SPEECH_UNAVAILABLE` when this engine cannot run here.
     fn voices(&self) -> Result<Vec<Voice>, SpeechError>;
 
+    /// A quick look whether the engine can speak here, such as whether its voice model is
+    /// downloaded, for a menu that lists the engines. [`SpeechEngine::voices`] has the answer
+    /// that counts.
+    fn available(&self) -> bool {
+        true
+    }
+
     /// Speaks one chunk of plain text and blocks until its audio is complete. `voice` is a
     /// `Voice::id`, or `None` for the default voice; `speed` is within `MIN_SPEED..=MAX_SPEED`.
     fn speak(&self, text: &str, voice: Option<&str>, speed: f32) -> Result<Pcm, SpeechError>;
+
+    /// Speaks one chunk like [`SpeechEngine::speak`], giving `sink` each piece of audio as soon
+    /// as it is made, so a model that speaks a sentence at a time is heard before the chunk is
+    /// done. When `sink` returns false the engine drops the rest of the chunk and returns
+    /// `Ok`. Engines that make a chunk in one go keep this default.
+    fn speak_into(
+        &self,
+        text: &str,
+        voice: Option<&str>,
+        speed: f32,
+        sink: &mut dyn FnMut(Pcm) -> bool,
+    ) -> Result<(), SpeechError> {
+        sink(self.speak(text, voice, speed)?);
+        Ok(())
+    }
 }
 
 /// The system voice of this OS: AVSpeechSynthesizer on macOS, espeak-ng on Linux.

@@ -34,7 +34,7 @@ impl Synthesis {
         &self.events
     }
 
-    /// Stops after the chunk that is being spoken.
+    /// Stops after the piece of audio that is being made.
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
     }
@@ -87,22 +87,38 @@ fn run(
             let _ = events.send(SpeechEvent::Cancelled);
             return;
         }
-        let event = match engine.speak(chunk, voice, speed).and_then(to_output_rate) {
-            Ok(samples) => SpeechEvent::Audio {
-                samples,
-                done: index + 1,
-                total,
-            },
+        let (mut failure, mut gone) = (None, false);
+        let mut sink = |pcm: Pcm| match to_output_rate(pcm) {
+            Ok(samples) => {
+                let event = SpeechEvent::Audio {
+                    samples,
+                    done: index + 1,
+                    total,
+                };
+                gone = events.send(event).is_err();
+                !gone && !cancelled.load(Ordering::Relaxed)
+            }
             Err(error) => {
-                let _ = events.send(SpeechEvent::Failed(error));
-                return;
+                failure = Some(error);
+                false
             }
         };
-        if events.send(event).is_err() {
+        let spoken = engine.speak_into(chunk, voice, speed, &mut sink);
+        if gone {
+            return;
+        }
+        if let Some(error) = spoken.err().or(failure) {
+            let _ = events.send(SpeechEvent::Failed(error));
             return;
         }
     }
-    let _ = events.send(SpeechEvent::Done);
+    // A cancel inside the last chunk leaves its audio short, so the run did not finish.
+    let last = if cancelled.load(Ordering::Relaxed) {
+        SpeechEvent::Cancelled
+    } else {
+        SpeechEvent::Done
+    };
+    let _ = events.send(last);
 }
 
 fn to_output_rate(pcm: Pcm) -> Result<Vec<f32>, SpeechError> {
@@ -229,6 +245,71 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert!(
             matches!(&events[0], SpeechEvent::Failed(error) if error.code == SPEECH_VOICE_MISSING)
+        );
+    }
+
+    /// Speaks each word of a chunk as a piece of its own, and counts the pieces it made.
+    struct PieceEngine {
+        gate: Mutex<Receiver<()>>,
+        pieces: Mutex<usize>,
+    }
+
+    impl SpeechEngine for PieceEngine {
+        fn voices(&self) -> Result<Vec<Voice>, SpeechError> {
+            Ok(Vec::new())
+        }
+
+        fn speak(&self, _: &str, _: Option<&str>, _: f32) -> Result<Pcm, SpeechError> {
+            unreachable!("Read aloud streams the pieces")
+        }
+
+        fn speak_into(
+            &self,
+            text: &str,
+            _: Option<&str>,
+            _: f32,
+            sink: &mut dyn FnMut(Pcm) -> bool,
+        ) -> Result<(), SpeechError> {
+            for word in text.split_whitespace() {
+                let _ = self.gate.lock().unwrap().recv();
+                *self.pieces.lock().unwrap() += 1;
+                let pcm = Pcm {
+                    rate: SAMPLE_RATE,
+                    samples: vec![0.5; word.len()],
+                };
+                if !sink(pcm) {
+                    break;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_pieces_of_a_chunk_stream_as_they_are_made_and_cancel_stops_inside_it() {
+        let (tokens, gate) = mpsc::channel();
+        let engine = Arc::new(PieceEngine {
+            gate: Mutex::new(gate),
+            pieces: Mutex::new(0),
+        });
+        let synthesis = synthesize(engine.clone(), "One two three four five.".into(), None, 1.0);
+        tokens.send(()).unwrap();
+        let first = synthesis.events().recv_timeout(Duration::from_secs(10));
+        assert!(
+            matches!(&first, Ok(SpeechEvent::Audio { samples, done: 1, total: 1 }) if samples.len() == 3),
+            "{first:?}"
+        );
+        tokens.send(()).unwrap();
+        let second = synthesis.events().recv_timeout(Duration::from_secs(10));
+        assert!(matches!(second, Ok(SpeechEvent::Audio { .. })));
+        synthesis.cancel();
+        tokens.send(()).unwrap();
+        let rest = collect(&synthesis);
+        assert_eq!(rest.last(), Some(&SpeechEvent::Cancelled));
+        assert_eq!(
+            *engine.pieces.lock().unwrap(),
+            3,
+            "the chunk stopped after its third piece"
         );
     }
 
