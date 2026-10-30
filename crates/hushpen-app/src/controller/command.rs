@@ -94,10 +94,10 @@ impl Controller {
         adopted: &mut Option<Armed>,
         cx: &mut Context<Self>,
     ) -> Result<Pass, String> {
-        let starting = match self.machine.state() {
-            State::Idle => true,
-            State::Listening if self.machine.mode() == Mode::Hold => false,
-            _ => return Ok(Pass::Go),
+        let starting = match (self.machine.state(), self.machine.mode()) {
+            (State::Listening, Mode::Hold) => false,
+            (State::Listening, _) => return Ok(Pass::Go),
+            _ => true,
         };
         if let Some(selection) = self.selection_ready.take() {
             self.selection = Some(selection);
@@ -200,7 +200,7 @@ impl Controller {
         };
         let still = self.armed.is_none()
             && match selecting.hold {
-                None => self.machine.state() == State::Idle,
+                None => self.machine.state() != State::Listening,
                 Some(session) => {
                     self.machine.state() == State::Listening
                         && self.machine.mode() == Mode::Hold
@@ -272,8 +272,10 @@ impl Controller {
         instruction: String,
         queue: &mut VecDeque<AppEvent>,
     ) {
-        self.pending.instruction = Some(instruction.clone());
-        let Some(selection) = self.selection.clone() else {
+        let run = self.run_of(session);
+        run.pending.instruction = Some(instruction.clone());
+        let found = Arc::clone(&run.found);
+        let Some(selection) = run.selection.clone() else {
             queue.push_back(AppEvent::EditFailed {
                 session,
                 code: COMMAND_NO_SELECTION,
@@ -283,7 +285,7 @@ impl Controller {
         let cleaner = self.ai.as_ref().and_then(|source| source());
         let timeout = self.ai_timeout();
         let token = Arc::new(CancelToken::default());
-        self.ai_cancel = Some(Arc::clone(&token));
+        self.run_of(session).ai_cancel = Some(Arc::clone(&token));
         let progress = Arc::clone(&self.ai_progress);
         let last = Arc::clone(&self.last_ai);
         let events = self.events.clone();
@@ -320,6 +322,7 @@ impl Controller {
                     code: edit_failure_code(&record.code),
                 },
             };
+            super::runs::lock(&found).ai = Some(record.clone());
             {
                 let mut slot = last.lock().unwrap_or_else(|p| p.into_inner());
                 if slot.as_ref().is_none_or(|(owner, _)| *owner <= session) {
@@ -331,7 +334,7 @@ impl Controller {
         }));
         if let Err(error) = spawned {
             log::warn!("{LLM_UNAVAILABLE} could not start the AI edit: {error}");
-            self.ai_cancel = None;
+            self.run_of(session).ai_cancel = None;
             queue.push_back(AppEvent::EditFailed {
                 session,
                 code: LLM_UNAVAILABLE,
@@ -339,13 +342,8 @@ impl Controller {
         }
     }
 
-    /// Whether the running or the last session was a Command Mode one, for the history row.
-    pub(super) fn is_command(&self) -> bool {
-        self.machine.mode() == Mode::Command
-    }
-
-    /// The same, for the views.
+    /// Whether the newest session was a Command Mode one, for the views.
     pub fn ran_command(&self) -> bool {
-        self.is_command()
+        self.machine.mode() == Mode::Command
     }
 }

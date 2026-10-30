@@ -192,7 +192,11 @@ impl Controller {
         let text = text.to_owned();
         let events = self.events.clone();
         let last = Arc::clone(&self.last_insert);
+        let turn = Arc::clone(&self.paste_turn);
         let spawned = (self.spawn)(Box::new(move || {
+            // The machine sends the next insert once this one settled, while this thread may
+            // still have to put the user's clipboard back.
+            let _turn = turn.lock().unwrap_or_else(|p| p.into_inner());
             let mut settled = false;
             let finish = |report: &Report, settled: &mut bool| {
                 if std::mem::replace(settled, true) {

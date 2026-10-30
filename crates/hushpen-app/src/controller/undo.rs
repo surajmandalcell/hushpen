@@ -72,10 +72,15 @@ impl Controller {
         let (Some(report), Some(target)) = (report, self.paste_target.clone()) else {
             return;
         };
+        let rule_text = self
+            .runs
+            .get(&session)
+            .map(|run| run.pending.rule.clone())
+            .unwrap_or_default();
         let candidate = Candidate {
             ai_used: true,
             ai_text,
-            rule_text: &self.pending.rule,
+            rule_text: &rule_text,
             report: &report,
             classes: &target.classes,
             window: target.window,
@@ -83,7 +88,7 @@ impl Controller {
         };
         match decide(&candidate) {
             Ok(window) => {
-                let offer = Offer::new(row_id, self.pending.rule.clone(), window, (self.clock)());
+                let offer = Offer::new(row_id, rule_text, window, (self.clock)());
                 hook::record_event("undo", "offered");
                 self.undo = Some(Standby { offer, target });
             }

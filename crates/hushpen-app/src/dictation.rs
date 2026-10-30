@@ -148,11 +148,9 @@ impl Dictation {
         self.controller.read(cx).can_record(cx)
     }
 
-    /// What the record button does: stop while listening, otherwise start.
+    /// What the record button does: stop while listening, otherwise start. A start does not
+    /// wait for the words of the last recording; they still arrive.
     pub fn toggle(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        if self.phase(cx) == Phase::Transcribing {
-            return Err("a transcription is still running".into());
-        }
         self.controller.update(cx, |controller, cx| {
             controller.dispatch(AppEvent::HomeToggle, cx)
         })

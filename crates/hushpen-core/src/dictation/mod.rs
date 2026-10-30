@@ -5,6 +5,11 @@
 //! the `now` argument (milliseconds on any monotonic scale), and every action comes out as an
 //! [`Effect`] for the app to run. Slow effects report back as events that carry the session id
 //! of the run that asked for them, so a late answer from a cancelled run changes nothing.
+//!
+//! A start never waits for the session before it. While that session transcribes, cleans, or
+//! inserts, it finishes behind the new one: it still inserts its text and saves its row, and
+//! texts go in the order they were spoken. Esc and the flow bar follow the newest session.
+//! When it ends, the newest older session that still runs comes back to the front.
 
 mod machine;
 #[cfg(test)]
@@ -180,13 +185,16 @@ pub enum Effect {
     },
     /// `keep: false` deletes the session audio and leaves no row.
     StopCapture {
+        session: u64,
         keep: bool,
     },
     Cue(Cue),
     Transcribe {
         session: u64,
     },
-    CancelTranscribe,
+    CancelTranscribe {
+        session: u64,
+    },
     /// Rule and dictionary cleanup, then the AI step when it is on.
     Clean {
         session: u64,
@@ -198,7 +206,10 @@ pub enum Effect {
         session: u64,
         instruction: String,
     },
-    StopLlm,
+    StopLlm {
+        session: u64,
+    },
+    /// Sent once every older session has finished, so two texts never go in at once.
     Insert {
         session: u64,
         text: String,
@@ -207,6 +218,7 @@ pub enum Effect {
     /// Save one history row for the run, with the session audio when it has any. A run that
     /// ends with no words is a `Failed` row with `ENGINE_NO_SPEECH`.
     SaveRow {
+        session: u64,
         status: RowStatus,
         text: Option<String>,
         code: Option<&'static str>,
@@ -222,6 +234,7 @@ pub enum Effect {
     },
     /// Show the error for this code.
     Notify {
+        session: u64,
         code: &'static str,
     },
 }

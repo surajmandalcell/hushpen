@@ -21,11 +21,11 @@ pub(super) struct Armed {
 }
 
 impl Controller {
-    /// Arms a hold, or starts it at once when no chord can follow: a busy pipeline, a closed
-    /// onboarding gate, or a start that is refused anyway.
+    /// Arms a hold, or starts it at once when no chord can follow: a session that listens, a
+    /// closed onboarding gate, or a start that is refused anyway.
     pub(super) fn arm_hold(&mut self, at: u64, cx: &mut Context<Self>) -> Result<(), String> {
         let arm = self.gate == KeyGate::Open
-            && self.machine.state() == State::Idle
+            && self.machine.state() != State::Listening
             && self.blocker(cx).is_none();
         if !arm {
             return self.dispatch_at(AppEvent::HoldDown, Some(at), cx);
@@ -81,7 +81,6 @@ impl Controller {
     pub(super) fn release_unused_capture(&mut self, armed: Armed, cx: &mut Context<Self>) {
         if armed.mic && self.machine.state() != State::Listening {
             let _ = self.mic.update(cx, |mic, cx| mic.stop(false, cx));
-            self.wav = None;
         }
     }
 }
