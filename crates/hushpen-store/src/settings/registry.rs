@@ -262,6 +262,19 @@ pub(super) static REGISTRY: &[Spec] = &[
         json!("")
     }),
     spec!(internal "overlay.customPos", Kind::Position, |_| Value::Null),
+    spec!(internal "ui.lastView", Kind::Choice(VIEWS), |_| json!("home")),
+];
+
+/// The keys of the sidebar views, which the app saves as the last view. Manual keeps `files`,
+/// its name before the rename.
+const VIEWS: &[&str] = &[
+    "home",
+    "history",
+    "files",
+    "dictionary",
+    "models",
+    "settings",
+    "about",
 ];
 
 pub(super) fn find(key: &str) -> Option<&'static Spec> {
@@ -345,6 +358,15 @@ mod tests {
         assert_eq!(sanitize("readAloud.speed", json!(2.5)), None);
         assert_eq!(sanitize("readAloud.speed", json!(0.5)), Some(json!(0.5)));
         assert_eq!(sanitize("readAloud.format", json!("mp3")), None);
+    }
+
+    #[test]
+    fn the_last_view_is_internal_and_takes_only_a_view_key() {
+        let spec = find("ui.lastView").unwrap();
+        assert!(spec.internal);
+        assert_eq!(spec.sanitize(&json!("files")), Some(json!("files")));
+        assert_eq!(spec.sanitize(&json!("manual")), None);
+        assert_eq!(spec.sanitize(&json!("onboarding")), None);
     }
 
     #[test]

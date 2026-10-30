@@ -1481,9 +1481,15 @@ mod window {
     use gpui_kit::{AnyWindowHandle, Bounds, Point, WindowBounds, WindowOptions, px, size};
 
     fn open(cx: &mut TestAppContext, fixture: &Fixture) -> AnyWindowHandle {
+        open_shell(cx, fixture).0
+    }
+
+    /// Opens the window as a start does: onboarding, and the saved view under it.
+    fn open_shell(cx: &mut TestAppContext, fixture: &Fixture) -> (AnyWindowHandle, Entity<Shell>) {
         cx.update(gpui_kit::init);
         let onboarding = fixture.onboarding.clone();
-        let (handle, _shell) = cx.update(|cx| {
+        let storage = Rc::clone(&fixture.rig.storage);
+        let (handle, shell) = cx.update(|cx| {
             gpui_kit::open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -1497,6 +1503,7 @@ mod window {
                     cx.new(|cx| {
                         let mut shell = Shell::new(window, cx);
                         shell.attach_onboarding(onboarding, cx);
+                        shell.attach_storage(storage, cx);
                         shell
                     })
                 },
@@ -1504,7 +1511,7 @@ mod window {
             .expect("open test window")
         });
         frame(cx, handle);
-        handle
+        (handle, shell)
     }
 
     fn frame(cx: &mut TestAppContext, handle: AnyWindowHandle) {
@@ -1545,6 +1552,23 @@ mod window {
             press(cx, handle, "tab");
         }
         assert!(focused(cx, handle, id), "Tab never reached {id}");
+    }
+
+    #[gpui_kit::test]
+    fn onboarding_shows_first_over_the_view_saved_at_the_last_quit(cx: &mut TestAppContext) {
+        let fixture = mac(cx, &["base"], "base");
+        fixture
+            .settings()
+            .set_internal(crate::shell::LAST_VIEW, json!("history"))
+            .unwrap();
+        let (handle, shell) = open_shell(cx, &fixture);
+        assert!(present(cx, handle, "onboarding.page"));
+        assert!(!present(cx, handle, "sidebar.history"), "no sidebar yet");
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.active()),
+            crate::views::View::History,
+            "the saved view waits under onboarding"
+        );
     }
 
     #[gpui_kit::test]

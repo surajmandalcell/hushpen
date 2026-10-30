@@ -15,6 +15,7 @@ use crate::onboarding::{self, Onboarding};
 use crate::read_aloud::ReadRequest;
 use crate::settings::{self, Settings};
 use crate::shortcuts::Shortcuts;
+use crate::storage::Storage;
 use crate::theme::{self, BODY, Palette, StyledType, TOOLBAR_TITLE, chrome, radius, size, space};
 use crate::ui;
 use crate::updater::{self, Updater};
@@ -25,6 +26,11 @@ use gpui_kit::{
     KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
     StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
+use serde_json::json;
+use std::rc::Rc;
+
+/// The view the window showed last, so the next start opens on it.
+pub const LAST_VIEW: &str = "ui.lastView";
 
 pub struct Shell {
     active: View,
@@ -54,6 +60,8 @@ pub struct Shell {
     content_scroll: ScrollHandle,
     /// The palette of the last frame, for the test hook and for tests.
     rendered: theme::Appearance,
+    /// Where the picked view is saved. Without it nothing is saved.
+    storage: Option<Rc<Storage>>,
 }
 
 impl Shell {
@@ -90,7 +98,21 @@ impl Shell {
             onboarding_shown: false,
             content_scroll: ScrollHandle::new(),
             rendered: theme::Appearance::Dark,
+            storage: None,
         }
+    }
+
+    /// Opens the view that was open at the last quit and saves each view picked from now on.
+    /// Onboarding, while it runs, still covers the view.
+    pub fn attach_storage(&mut self, storage: Rc<Storage>, cx: &mut Context<Self>) {
+        let saved = storage
+            .settings
+            .get(LAST_VIEW)
+            .and_then(|value| value.as_str().and_then(View::from_key));
+        if let Some(view) = saved {
+            self.select(view, cx);
+        }
+        self.storage = Some(storage);
     }
 
     /// The appearance the window was last drawn with.
@@ -235,6 +257,11 @@ impl Shell {
             self.active = view;
             self.content_scroll.set_offset(Point::default());
             hook::record_event("view", view.key());
+            if let Some(storage) = &self.storage
+                && let Err(error) = storage.settings.set_internal(LAST_VIEW, json!(view.key()))
+            {
+                log::warn!("could not save the last view: {error}");
+            }
             // A tray action can leave Models while a details sheet is open.
             if let Some(models) = &self.models {
                 models.update(cx, |models, cx| models.dismiss_details(cx));
@@ -700,6 +727,10 @@ mod tests {
     fn open(cx: &mut TestAppContext) -> (gpui_kit::AnyWindowHandle, Entity<Shell>) {
         cx.update(gpui_kit::init);
         cx.update(theme::install);
+        open_window(cx)
+    }
+
+    fn open_window(cx: &mut TestAppContext) -> (gpui_kit::AnyWindowHandle, Entity<Shell>) {
         let (handle, shell) = cx.update(|cx| {
             gpui_kit::open_window(
                 WindowOptions {
@@ -850,6 +881,56 @@ mod tests {
         assert_eq!(shell.read_with(cx, |shell, _| shell.active()), View::Home);
         assert!(present(cx, handle, "view.title"));
         assert!(present(cx, handle, "home.placeholder"));
+    }
+
+    fn storage_at(root: &std::path::Path) -> Rc<Storage> {
+        let data = hushpen_store::data_dir::DataDir::open(root).unwrap();
+        Rc::new(crate::storage::open(data).unwrap())
+    }
+
+    fn attach_storage(cx: &mut TestAppContext, shell: &Entity<Shell>, storage: Rc<Storage>) {
+        shell.update(cx, |shell, cx| shell.attach_storage(storage, cx));
+        cx.run_until_parked();
+    }
+
+    #[gpui_kit::test]
+    fn the_next_start_opens_the_view_that_was_open_at_quit(cx: &mut TestAppContext) {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().join("data");
+        let (handle, shell) = open(cx);
+        let storage = storage_at(&root);
+        attach_storage(cx, &shell, Rc::clone(&storage));
+        assert_eq!(
+            shell.read_with(cx, |shell, _| shell.active()),
+            View::Home,
+            "a first start opens Home"
+        );
+        click(cx, handle, "sidebar.files");
+        assert_eq!(storage.settings.get(LAST_VIEW), Some(json!("files")));
+        click(cx, handle, "sidebar.models");
+        assert_eq!(storage.settings.get(LAST_VIEW), Some(json!("models")));
+
+        let (next_handle, next) = open_window(cx);
+        attach_storage(cx, &next, storage_at(&root));
+        assert_eq!(next.read_with(cx, |shell, _| shell.active()), View::Models);
+        render(cx, next_handle);
+        assert!(present(cx, next_handle, "models.placeholder"));
+    }
+
+    #[gpui_kit::test]
+    fn every_view_can_be_saved_as_the_last_view(cx: &mut TestAppContext) {
+        let folder = tempfile::tempdir().unwrap();
+        let (_, shell) = open(cx);
+        let storage = storage_at(&folder.path().join("data"));
+        attach_storage(cx, &shell, Rc::clone(&storage));
+        for view in View::ALL.into_iter().rev() {
+            shell.update(cx, |shell, cx| shell.select(view, cx));
+            assert_eq!(
+                storage.settings.get(LAST_VIEW),
+                Some(json!(view.key())),
+                "{view:?}"
+            );
+        }
     }
 
     #[gpui_kit::test]
