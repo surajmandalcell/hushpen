@@ -125,7 +125,7 @@ saved=$(jq -r '.values["dictation.language"]' "$SETTINGS")
 /harness/slot/app.sh restart >/dev/null
 wait_until 20 dict_is .state idle
 [ "$(dict .picker.selected)" = es ] || failures+="after a restart the picker shows $(dict .picker.selected); "
-[ "$(tree_text home.language)" = Spanish ] || failures+="the picker button reads '$(tree_text home.language)'; "
+[ "$(tree_text home.language)" = "Language: Spanish" ] || failures+="the picker button reads '$(tree_text home.language)'; "
 shot 006-restart-spanish
 # A bad value in the file turns into auto.
 /harness/slot/app.sh stop
@@ -196,11 +196,17 @@ wait_until 5 dict_is .state listening
 paplay --device=vmic "$padded"
 hook_action dictation-record >/dev/null
 wait_until 5 dict_is .state transcribing
+# The state flips at the stop, before the recording is closed and the job reaches the engine. A
+# kill inside that gap hits an idle engine, and the job then runs on the new one and finishes.
+sleep 1
 ui_before=$(ui_pid)
 engine_pid=$(engine .pid)
 kill -9 "$engine_pid"
 wait_until 30 dict_final
 shot 008-failed
+# The flow bar eases to the size of its notice; this frame is the settled one.
+sleep 1
+shot 008-failed-settled
 session=$(dict .session)
 failures=""
 [ "$(dict .state)" = failed ] || failures+="state is $(dict .state); "

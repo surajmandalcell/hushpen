@@ -90,7 +90,8 @@ open_models
 click_row download base.en
 samples=() part_seen=0 responsive="" h_ms=-1 m_ms=-1
 started=$(now_ms)
-while [ $(($(now_ms) - started)) -lt 120000 ]; do
+# 148 MB: five minutes cover a link that slows to 0.5 MB/s.
+while [ $(($(now_ms) - started)) -lt 300000 ]; do
   state=$(m base.en .state)
   [ "$state" = ready ] && break
   [ "$state" = downloading ] && samples+=("$(m base.en '.progress // 0')")
@@ -174,7 +175,7 @@ failures=""
 [ ! -e "$MODELS/ggml-small.en.bin" ] || failures+="a model file exists after the kill; "
 left=$(download_files | tr '\n' ' ')
 click_row download small.en
-wait_until 180 m_is small.en .state ready
+wait_until 900 m_is small.en .state ready
 shot 004-redownloaded
 sum=$(sha256sum "$MODELS/ggml-small.en.bin" 2>/dev/null | awk '{print $1}')
 [ "$(m small.en .state)" = ready ] || failures+="the new download ended as $(m small.en .state); "
