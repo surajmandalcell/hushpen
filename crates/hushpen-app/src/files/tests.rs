@@ -2,6 +2,7 @@ use super::*;
 use crate::controller::testkit::{Rig, rig};
 use crate::import::{Import, Parts as ImportParts};
 use crate::read_aloud::{Parts as ReadParts, ReadAloud};
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext};
 use hushpen_speech::{Pcm, SpeechEngine, SpeechError, Voice};
 use std::sync::Arc;
@@ -151,19 +152,18 @@ fn text_and_audio_dropped_together_all_go_in_the_queue(cx: &mut TestAppContext) 
     assert_eq!(mode(cx, &fixture), Mode::Transcribe);
 }
 
-#[gpui_kit::test]
-fn a_read_aloud_menu_floats_over_the_page_and_esc_closes_it(cx: &mut TestAppContext) {
+fn frame(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) {
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+        .unwrap();
+}
+
+/// The Files view in Read aloud, in a window of the app's size.
+fn read_aloud_window(cx: &mut TestAppContext) -> (Fixture, gpui_kit::AnyWindowHandle) {
     use crate::shell::Shell;
     use crate::theme::space;
     use crate::views::View;
-    use gpui_kit::test::TestWindowExt as _;
-    use gpui_kit::{AnyWindowHandle, Bounds, Point, WindowBounds, WindowOptions, px, size};
-
-    fn frame(cx: &mut TestAppContext, handle: AnyWindowHandle) {
-        cx.run_until_parked();
-        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
-            .unwrap();
-    }
+    use gpui_kit::{Bounds, Point, WindowBounds, WindowOptions, px, size};
 
     let (fixture, _) = open(cx);
     fixture
@@ -189,6 +189,15 @@ fn a_read_aloud_menu_floats_over_the_page_and_esc_closes_it(cx: &mut TestAppCont
         shell.select(View::Files, cx);
     });
     frame(cx, handle);
+    (fixture, handle)
+}
+
+#[gpui_kit::test]
+fn a_read_aloud_menu_floats_over_the_page_and_esc_closes_it(cx: &mut TestAppContext) {
+    use crate::theme::space;
+    use gpui_kit::px;
+
+    let (_fixture, handle) = read_aloud_window(cx);
     cx.update_window(handle, |_, window, cx| window.click("read.format", cx))
         .unwrap();
     frame(cx, handle);
@@ -221,4 +230,40 @@ fn a_read_aloud_menu_floats_over_the_page_and_esc_closes_it(cx: &mut TestAppCont
         .unwrap();
     assert!(!open);
     assert_eq!(focused, Some(true));
+}
+
+/// The speed reads left of its track, and the slider gives the same words to the accessibility
+/// tree, at rest, after a press, and after an arrow key.
+#[gpui_kit::test]
+fn the_speed_slider_reads_its_value_beside_the_track(cx: &mut TestAppContext) {
+    let (_fixture, handle) = read_aloud_window(cx);
+    let reading = |cx: &mut TestAppContext| {
+        cx.update_window(handle, |_, window, _| {
+            let shown = window.find("read.speed.value").label().map(str::to_owned);
+            let value = window.find("read.speed").value().map(str::to_owned);
+            assert_eq!(
+                shown, value,
+                "the reading and the accessibility value agree"
+            );
+            shown
+        })
+        .unwrap()
+    };
+    assert_eq!(reading(cx).as_deref(), Some("1.00\u{d7}"));
+    cx.update_window(handle, |_, window, cx| window.click("read.speed", cx))
+        .unwrap();
+    frame(cx, handle);
+    assert_eq!(
+        reading(cx).as_deref(),
+        Some("1.25\u{d7}"),
+        "a press in the middle"
+    );
+    cx.update_window(handle, |_, window, cx| window.press("right", cx))
+        .unwrap();
+    frame(cx, handle);
+    assert_eq!(
+        reading(cx).as_deref(),
+        Some("1.35\u{d7}"),
+        "one step to the right"
+    );
 }

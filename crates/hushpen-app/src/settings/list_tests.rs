@@ -71,6 +71,22 @@ fn label(cx: &mut TestAppContext, shown: &Shown, id: &'static str) -> Option<Str
     .unwrap()
 }
 
+/// The reading left of the slider `key`, and the value the slider gives the accessibility tree.
+/// A row that disagrees with itself reads as `None`.
+fn reading(cx: &mut TestAppContext, shown: &Shown, key: &str) -> Option<String> {
+    cx.update_window(shown.handle, |_, window, _| {
+        let id = format!("settings.{key}");
+        let shown = window
+            .try_find(format!("{id}.value"))
+            .and_then(|found| found.label().map(str::to_owned));
+        let value = window
+            .try_find(id)
+            .and_then(|found| found.value().map(str::to_owned));
+        shown.filter(|shown| value.as_ref() == Some(shown))
+    })
+    .unwrap()
+}
+
 fn search(cx: &mut TestAppContext, shown: &Shown, query: &str) {
     let settings = shown.rig.settings.clone();
     cx.update_window(shown.handle, |_, window, cx| {
@@ -298,10 +314,22 @@ fn the_volume_slider_follows_a_press_and_the_arrow_keys(cx: &mut TestAppContext)
         json!(0.5),
         "a press in the middle"
     );
+    assert_eq!(
+        reading(cx, &shown, "audio.cueVolume").as_deref(),
+        Some("50%")
+    );
     press(cx, &shown, "right");
     assert_eq!(value(&shown.rig, "audio.cueVolume"), json!(0.55));
+    assert_eq!(
+        reading(cx, &shown, "audio.cueVolume").as_deref(),
+        Some("55%")
+    );
     press(cx, &shown, "home");
     assert_eq!(value(&shown.rig, "audio.cueVolume"), json!(0.0));
+    assert_eq!(
+        reading(cx, &shown, "audio.cueVolume").as_deref(),
+        Some("0%")
+    );
 }
 
 #[gpui_kit::test]
@@ -318,12 +346,28 @@ fn the_boost_slider_runs_from_100_to_200_percent(cx: &mut TestAppContext) {
         json!(1.5),
         "a press in the middle"
     );
+    assert_eq!(
+        reading(cx, &shown, "audio.inputGain").as_deref(),
+        Some("150%")
+    );
     press(cx, &shown, "right");
     assert_eq!(value(&shown.rig, "audio.inputGain"), json!(1.55));
+    assert_eq!(
+        reading(cx, &shown, "audio.inputGain").as_deref(),
+        Some("155%")
+    );
     press(cx, &shown, "end");
     assert_eq!(value(&shown.rig, "audio.inputGain"), json!(2.0));
+    assert_eq!(
+        reading(cx, &shown, "audio.inputGain").as_deref(),
+        Some("200%")
+    );
     press(cx, &shown, "home");
     assert_eq!(value(&shown.rig, "audio.inputGain"), json!(1.0));
+    assert_eq!(
+        reading(cx, &shown, "audio.inputGain").as_deref(),
+        Some("100%")
+    );
 }
 
 #[gpui_kit::test]

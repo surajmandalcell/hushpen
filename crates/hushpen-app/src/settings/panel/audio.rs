@@ -43,11 +43,14 @@ pub fn input_gain(page: &Page, cx: &mut App) -> AnyElement {
     let settings = page.settings.clone();
     ui::slider_row(
         page.palette,
-        super::settings_id(crate::mic::GAIN_SETTING),
-        "Input boost",
-        &format!("Makes a quiet microphone louder: {:.0}%.", gain * 100.0),
-        gain - 1.0,
-        &page.focus[slots::INPUT_GAIN],
+        "Makes a quiet microphone louder.",
+        ui::Slider {
+            id: super::settings_id(crate::mic::GAIN_SETTING),
+            label: "Input boost",
+            position: gain - 1.0,
+            reading: percent(gain),
+            focus: &page.focus[slots::INPUT_GAIN],
+        },
         move |position, cx| settings.update(cx, |me, cx| me.set_input_gain(1.0 + position, cx)),
     )
 }
@@ -71,15 +74,24 @@ pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
         .stored_f64("audio.cueVolume")
         .unwrap_or_default();
     let settings = page.settings.clone();
+    let volume = volume as f32;
     ui::slider_row(
         page.palette,
-        super::settings_id("audio.cueVolume"),
-        "Sound volume",
         "How loud the cues play.",
-        volume as f32,
-        &page.focus[slots::CUE_VOLUME],
+        ui::Slider {
+            id: super::settings_id("audio.cueVolume"),
+            label: "Sound volume",
+            position: volume,
+            reading: percent(volume),
+            focus: &page.focus[slots::CUE_VOLUME],
+        },
         move |volume, cx| settings.update(cx, |me, cx| me.set_cue_volume(volume, cx)),
     )
+}
+
+/// `1.5` reads `150%`.
+fn percent(fraction: f32) -> String {
+    format!("{:.0}%", fraction * 100.0)
 }
 
 pub fn max_length(page: &Page, cx: &mut App) -> AnyElement {

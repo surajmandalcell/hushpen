@@ -307,7 +307,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 **Text inputs:** the button height (22px) and radius (5px), with the control fill, so an input in one row with buttons aligns with them. The inner padding keeps the 13px text clear of the edges. A search field (Settings, History) leads with the search glyph.
 
-**Switches, sliders, and selection focus:** use the accent. The focus ring of a switch or a slider sits outside its track, and the control moves right by the ring, so the track ends on the same line as the buttons in the rows around it.
+**Switches, sliders, and selection focus:** use the accent. The focus ring of a switch or a slider sits outside its track, and the control moves right by the ring, so the track ends on the same line as the buttons in the rows around it. A slider row shows its value, such as `150%` or `1.25×`, just left of the track in a 40px right-aligned column: body text, the secondary label color, and tabular digits, so the number stays in place while a drag or an arrow key changes it. The line under the row title stays plain help.
 
 **Shortcut fields:** in Settings, every shortcut field is 220px wide (the text field width), so the column lines up. The default hands-free reads `Right Alt ×2 or Right Alt+Space`; a binding that may be cut shows whole in a tooltip. Each shortcut row holds, left to right, a reset icon button (lucide `rotate-ccw`, shown only when the shortcut is not its default; an empty place of the same size keeps the fields lined up), the field, and a switch. The field of a shortcut that is off uses the tertiary label color.
 

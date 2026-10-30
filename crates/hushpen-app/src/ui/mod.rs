@@ -11,7 +11,7 @@ mod menu_tests;
 mod rows;
 mod tooltip;
 
-pub use controls::{Kind, button, field, icon_button, segmented, slider, switch, track};
+pub use controls::{Kind, Slider, button, field, icon_button, segmented, switch, track};
 pub use group::{group, group_frame, heading, line, section, titled_section};
 pub use menu::{Menu, PopUp, pop_up};
 pub use rows::{
