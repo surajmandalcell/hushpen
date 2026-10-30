@@ -51,7 +51,7 @@ fn an_armed_hold_starts_with_its_cue_when_the_window_ends(cx: &mut TestAppContex
 
     assert_eq!(machine_state(cx, &rig), State::Listening);
     assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Hold);
-    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.5)]);
+    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.25)]);
     assert_eq!(mic_starts(&rig), 1, "the start adopted the armed capture");
     assert_eq!(session_wavs(&rig).len(), 1);
 
@@ -99,7 +99,7 @@ fn the_window_timer_does_nothing_after_the_chord_took_the_hold(cx: &mut TestAppC
     past_the_window(cx);
 
     assert_eq!(machine_state(cx, &rig), State::Idle);
-    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.5)], "one cue");
+    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.25)], "one cue");
 }
 
 #[gpui_kit::test]

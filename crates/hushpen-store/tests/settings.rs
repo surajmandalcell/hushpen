@@ -172,7 +172,7 @@ fn bad_values_reset_to_their_defaults_on_load() {
         Some(json!(["en", "de", "fr", "es", "it"]))
     );
     assert_eq!(store.get("overlay.position"), Some(json!("bottom")));
-    assert_eq!(store.get("audio.cueVolume"), Some(json!(0.5)));
+    assert_eq!(store.get("audio.cueVolume"), Some(json!(0.25)));
     assert_eq!(store.get("history.audioRetention"), Some(json!("forever")));
     assert_eq!(store.get("engine.threads"), Some(json!("auto")));
     assert_eq!(store.get("cleanup.llm.provider"), Some(json!("local")));

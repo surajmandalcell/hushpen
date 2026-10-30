@@ -39,7 +39,7 @@ pub fn input_gain(page: &Page, cx: &mut App) -> AnyElement {
         .settings
         .read(cx)
         .stored_f64(crate::mic::GAIN_SETTING)
-        .unwrap_or(1.0) as f32;
+        .unwrap_or(1.5) as f32;
     let settings = page.settings.clone();
     ui::slider_row(
         page.palette,
@@ -72,7 +72,7 @@ pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
         .settings
         .read(cx)
         .stored_f64("audio.cueVolume")
-        .unwrap_or_default();
+        .unwrap_or(0.25);
     let settings = page.settings.clone();
     let volume = volume as f32;
     ui::slider_row(

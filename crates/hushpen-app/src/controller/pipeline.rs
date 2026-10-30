@@ -219,7 +219,7 @@ impl Controller {
         let volume = settings
             .get(CUE_VOLUME_SETTING)
             .and_then(|value| value.as_f64())
-            .map_or(0.5, |volume| volume as f32);
+            .map_or(0.25, |volume| volume as f32);
         cues(cue, volume);
     }
 

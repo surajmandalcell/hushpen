@@ -403,7 +403,7 @@ impl Mic {
             .settings
             .get(GAIN_SETTING)
             .and_then(|value| value.as_f64())
-            .map_or(1.0, |gain| gain as f32)
+            .map_or(1.5, |gain| gain as f32)
     }
 
     /// Gives the running session the saved boost, so a change is heard at once.
