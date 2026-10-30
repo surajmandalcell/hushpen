@@ -29,7 +29,9 @@ use hushpen_app::shell::Shell;
 use hushpen_app::shortcuts::{KeyControl, Shortcuts};
 use hushpen_app::storage::{self, Storage};
 use hushpen_app::theme::{Appearance, space};
+use hushpen_app::tts_host::built_in_voice;
 use hushpen_app::updater::{Checker, Parts as UpdaterParts, SystemInstaller, Updater, wall_clock};
+use hushpen_app::voices::{Parts as VoiceParts, VoiceLibrary};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
 use hushpen_core::shortcut::{Bindings, Combo, Conflict, Platform};
@@ -40,6 +42,7 @@ use hushpen_engine::{
 use hushpen_speech::{Pcm, SpeechEngine, SpeechError, Voice, VoiceQuality};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::history::{self, Row};
+use hushpen_store::voices::Library;
 use image::RgbaImage;
 use serde_json::json;
 use std::panic::{self, AssertUnwindSafe};
@@ -93,6 +96,10 @@ pub enum Scene {
     HistorySelect,
     /// The "Delete all N transcripts and their audio?" dialog.
     HistoryClear,
+    /// History with a read aloud on top of the transcripts.
+    HistoryRead,
+    /// The detail of a read aloud, with Read aloud again in the place of Reprocess.
+    HistoryReadDetail,
     Dictionary,
     Files(FilesShot),
     /// The speech models, with the default one downloaded and active.
@@ -116,6 +123,10 @@ pub enum Scene {
     EnhanceTune,
     /// The audio enhance sheet on Find best settings, waiting for the reading.
     EnhanceFind,
+    /// The Manage Voices sheet on its list: the built-in voice and a cloned default voice.
+    Voices,
+    /// The Manage Voices sheet on Add Voice, before a take.
+    VoicesAdd,
 }
 
 /// What a Settings baseline shows of the one long list.
@@ -144,14 +155,17 @@ pub enum FilesShot {
     Queue,
     /// Read aloud with text in the text area, opened in the mode the user last picked.
     ReadAloud,
+    /// Read aloud on Chatterbox Turbo with a cloned default voice and the voice library row.
+    ReadChatterbox,
 }
 
 impl FilesShot {
-    pub const ALL: [FilesShot; 4] = [
+    pub const ALL: [FilesShot; 5] = [
         FilesShot::Empty,
         FilesShot::DragOver,
         FilesShot::Queue,
         FilesShot::ReadAloud,
+        FilesShot::ReadChatterbox,
     ];
 
     fn name(self) -> &'static str {
@@ -160,6 +174,7 @@ impl FilesShot {
             FilesShot::DragOver => "files-drag-over",
             FilesShot::Queue => "files-queue",
             FilesShot::ReadAloud => "files-read-aloud",
+            FilesShot::ReadChatterbox => "files-read-aloud-chatterbox",
         }
     }
 }
@@ -195,6 +210,8 @@ impl Scene {
             Scene::HistoryDetail => "history-detail".into(),
             Scene::HistorySelect => "history-select".into(),
             Scene::HistoryClear => "history-clear".into(),
+            Scene::HistoryRead => "history-read".into(),
+            Scene::HistoryReadDetail => "history-read-detail".into(),
             Scene::Dictionary => "dictionary".into(),
             Scene::Files(shot) => shot.name().into(),
             Scene::Models => "models".into(),
@@ -208,6 +225,8 @@ impl Scene {
             Scene::ShortcutRecorder => "shortcut-recorder".into(),
             Scene::EnhanceTune => "settings-enhance".into(),
             Scene::EnhanceFind => "settings-enhance-find".into(),
+            Scene::Voices => "voices".into(),
+            Scene::VoicesAdd => "voices-add".into(),
         }
     }
 
@@ -224,6 +243,8 @@ impl Scene {
             Scene::HistoryDetail,
             Scene::HistorySelect,
             Scene::HistoryClear,
+            Scene::HistoryRead,
+            Scene::HistoryReadDetail,
             Scene::Dictionary,
             Scene::Models,
             Scene::ModelsBottom,
@@ -238,6 +259,8 @@ impl Scene {
         scenes.push(Scene::ShortcutRecorder);
         scenes.push(Scene::EnhanceTune);
         scenes.push(Scene::EnhanceFind);
+        scenes.push(Scene::Voices);
+        scenes.push(Scene::VoicesAdd);
         scenes
     }
 
@@ -261,7 +284,11 @@ impl Scene {
     pub fn has_sheet(self) -> bool {
         matches!(
             self,
-            Scene::ModelsDetails | Scene::EnhanceTune | Scene::EnhanceFind
+            Scene::ModelsDetails
+                | Scene::EnhanceTune
+                | Scene::EnhanceFind
+                | Scene::Voices
+                | Scene::VoicesAdd
         )
     }
 }
@@ -343,6 +370,49 @@ fn seed_history(storage: &Storage) {
     }
 }
 
+/// A read aloud half an hour after the newest transcript, so it leads the list.
+fn seed_read(storage: &Storage) {
+    let id = "read-0";
+    let relative = format!("audio/{id}.wav");
+    let path = storage.data.root().join(&relative);
+    std::fs::create_dir_all(path.parent().expect("a folder")).expect("audio folder");
+    std::fs::write(&path, b"wav").expect("an audio file");
+    let row = Row {
+        id: id.into(),
+        created_at: FIRST_AT + 1_800_000,
+        kind: "read".into(),
+        status: "completed".into(),
+        duration_ms: 9_400,
+        model_id: Some("chatterbox-turbo".into()),
+        language_requested: Some("en".into()),
+        final_text: Some(READ_TEXT.into()),
+        insert_outcome: Some("none".into()),
+        source_name: Some("Anna".into()),
+        audio_path: Some(relative),
+        ..Row::default()
+    };
+    history::save(&storage.database, &row, &[]).expect("save a read aloud");
+}
+
+/// When the cloned voice was added: 2026-05-01 10:20 UTC.
+const VOICE_ADDED_AT: u64 = 1_777_630_800_000;
+
+/// Read aloud on Chatterbox Turbo, with one cloned voice that is the default voice.
+fn seed_chatterbox(storage: &Storage) {
+    let anna = Library::new(storage.data.voices_dir())
+        .add("Anna", 8_000, VOICE_ADDED_AT, |path| {
+            std::fs::write(path, b"clip")
+        })
+        .expect("add a cloned voice");
+    let settings = &storage.settings;
+    settings
+        .set("readAloud.engine", json!("chatterbox-turbo"))
+        .expect("store the engine");
+    settings
+        .set("readAloud.defaultVoice", json!(anna.id))
+        .expect("store the default voice");
+}
+
 fn seed_dictionary(storage: &Storage) {
     for (phrase, heard) in [
         ("Hushpen", "hush pen"),
@@ -394,6 +464,25 @@ impl SpeechEngine for FixedVoices {
             voice("daniel", "Daniel", "en-GB", VoiceQuality::Default),
             voice("anna", "Anna", "de-DE", VoiceQuality::Default),
         ])
+    }
+
+    fn speak(&self, _: &str, _: Option<&str>, _: f32) -> Result<Pcm, SpeechError> {
+        Err(SpeechError::failed("the scenes play no sound"))
+    }
+}
+
+/// Chatterbox as the app lists it: the voice of the model, then each voice of the library.
+struct ChatterboxVoices(std::path::PathBuf);
+
+impl SpeechEngine for ChatterboxVoices {
+    fn voices(&self) -> Result<Vec<Voice>, SpeechError> {
+        let cloned = Library::new(&self.0).list().into_iter().map(|entry| Voice {
+            id: entry.id,
+            name: entry.name,
+            language: "en".into(),
+            quality: VoiceQuality::Default,
+        });
+        Ok(std::iter::once(built_in_voice()).chain(cloned).collect())
     }
 
     fn speak(&self, _: &str, _: Option<&str>, _: f32) -> Result<Pcm, SpeechError> {
@@ -574,6 +663,10 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
         Scene::History | Scene::HistoryDetail | Scene::HistorySelect | Scene::HistoryClear => {
             seed_history(&storage);
         }
+        Scene::HistoryRead | Scene::HistoryReadDetail => {
+            seed_history(&storage);
+            seed_read(&storage);
+        }
         Scene::Dictionary => seed_dictionary(&storage),
         Scene::ShortcutRecorder => {
             let settings = &storage.settings;
@@ -586,12 +679,22 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
         }
         Scene::Files(shot) => {
             seed_model(&storage);
-            if shot == FilesShot::ReadAloud {
+            if matches!(shot, FilesShot::ReadAloud | FilesShot::ReadChatterbox) {
                 storage
                     .settings
                     .set("files.mode", json!("readAloud"))
                     .expect("store the mode");
             }
+            if shot == FilesShot::ReadChatterbox {
+                seed_chatterbox(&storage);
+            }
+        }
+        Scene::Voices | Scene::VoicesAdd => {
+            storage
+                .settings
+                .set("files.mode", json!("readAloud"))
+                .expect("store the mode");
+            seed_chatterbox(&storage);
         }
         Scene::Models | Scene::ModelsBottom | Scene::ModelsDetails => seed_model(&storage),
         // Automatic names the CPU count, which differs between machines.
@@ -761,7 +864,9 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                         });
                         let dictionary =
                             cx.new(|cx| Dictionary::new(Rc::clone(&storage), window, cx));
-                        let files = matches!(scene, Scene::Files(_)).then(|| {
+                        let manual =
+                            matches!(scene, Scene::Files(_) | Scene::Voices | Scene::VoicesAdd);
+                        let files = manual.then(|| {
                             let import = cx.new(|cx| {
                                 Import::new(
                                     ImportParts {
@@ -792,15 +897,29 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                 import.update(cx, |import, cx| import.add_paths(paths, cx));
                             }
                             let voices: Arc<dyn SpeechEngine> = Arc::new(FixedVoices);
+                            let chatterbox: Arc<dyn SpeechEngine> =
+                                Arc::new(ChatterboxVoices(storage.data.voices_dir()));
+                            let library = cx.new(|cx| {
+                                VoiceLibrary::new(
+                                    VoiceParts {
+                                        storage: Rc::clone(&storage),
+                                        mic: Some(mic.clone()),
+                                        spawn: models::thread_spawner(),
+                                        silent: true,
+                                    },
+                                    window,
+                                    cx,
+                                )
+                            });
                             let read = cx.new(|cx| {
                                 ReadAloud::new(
                                     ReadParts {
                                         storage: Rc::clone(&storage),
                                         system: Arc::clone(&voices),
-                                        kokoro: Arc::clone(&voices),
-                                        turbo: Arc::clone(&voices),
-                                        nano: voices,
-                                        library: None,
+                                        kokoro: voices,
+                                        turbo: Arc::clone(&chatterbox),
+                                        nano: chatterbox,
+                                        library: Some(library),
                                         spawn: models::thread_spawner(),
                                         silent: true,
                                     },
@@ -879,6 +998,11 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "sidebar.history");
             click(cx, handle, "history.clear");
         }
+        Scene::HistoryRead => click(cx, handle, "sidebar.history"),
+        Scene::HistoryReadDetail => {
+            click(cx, handle, "sidebar.history");
+            click(cx, handle, "history.row.0");
+        }
         Scene::Dictionary => click(cx, handle, "sidebar.dictionary"),
         Scene::Files(FilesShot::Empty) => click(cx, handle, "sidebar.files"),
         Scene::Files(FilesShot::DragOver) => {
@@ -897,7 +1021,7 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             .expect("drag a file over the window");
             cx.run_until_parked();
         }
-        Scene::Files(FilesShot::ReadAloud) => {
+        Scene::Files(FilesShot::ReadAloud | FilesShot::ReadChatterbox) => {
             click(cx, handle, "sidebar.files");
             click(cx, handle, "read.text");
             // The text area lets go of the focus, so the baseline shows it at rest.
@@ -971,6 +1095,15 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "sidebar.settings");
             click_scrolled(cx, handle, "settings.audio.enhance.adjust");
             click(cx, handle, "enhance.find");
+        }
+        Scene::Voices => {
+            click(cx, handle, "sidebar.files");
+            click(cx, handle, "read.manage");
+        }
+        Scene::VoicesAdd => {
+            click(cx, handle, "sidebar.files");
+            click(cx, handle, "read.manage");
+            click(cx, handle, "voices.add");
         }
         Scene::EndpointFailure => {
             click(cx, handle, "sidebar.settings");
