@@ -448,12 +448,14 @@ pub(super) fn slider<F: Fn(f32, &mut App) + 'static>(
 
 /// A segmented control: one segment for each `(key, label)` choice on the control fill, the
 /// chosen one raised on the segment fill. The control is one tab stop; Left and Right move the
-/// choice, and the fill slides to it. Each segment takes `<id>.<key>`.
-pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
+/// choice, and the fill slides to it. Each segment takes `<id>.<key>` and is `width` wide.
+#[expect(clippy::too_many_arguments, reason = "the parts of one control")]
+pub fn segmented<F: Fn(&'static str, &mut Window, &mut App) + 'static>(
     palette: Palette,
     id: SharedString,
     label: &'static str,
     choices: &[(&'static str, &'static str)],
+    width: f32,
     chosen: &str,
     focus: &FocusHandle,
     choose: F,
@@ -482,7 +484,7 @@ pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
                     .flex()
                     .items_center()
                     .justify_center()
-                    .w(px(size::SEGMENT_WIDTH))
+                    .w(px(width))
                     .h_full()
                     .rounded(px(radius::BUTTON - size::FOCUS_RING))
                     .text_token(BUTTON)
@@ -497,8 +499,8 @@ pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
                     segment
                         .cursor_pointer()
                         .hover(move |style| style.bg(palette.selection))
-                        .on_click(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                            choose(key, cx)
+                        .on_click(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                            choose(key, window, cx)
                         })
                 }
             })
@@ -508,8 +510,8 @@ pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
                 .absolute()
                 .top_0()
                 .bottom_0()
-                .left(px(fill * size::SEGMENT_WIDTH))
-                .w(px(size::SEGMENT_WIDTH))
+                .left(px(fill * width))
+                .w(px(width))
                 .rounded(px(radius::BUTTON - size::FOCUS_RING))
                 .bg(palette.segment)
         });
@@ -528,17 +530,19 @@ pub fn segmented<F: Fn(&'static str, &mut App) + 'static>(
             .border_color(gpui_kit::transparent_black())
             .bg(palette.control)
             .focus_visible(move |style| style.border_color(palette.accent))
-            .on_key_down(move |event: &KeyDownEvent, _: &mut Window, cx: &mut App| {
-                let next = match event.keystroke.key.as_str() {
-                    "left" => at.saturating_sub(1),
-                    "right" => at + 1,
-                    _ => return,
-                };
-                if let Some(&key) = keys.get(next) {
-                    choose(key, cx);
-                }
-                cx.stop_propagation();
-            })
+            .on_key_down(
+                move |event: &KeyDownEvent, window: &mut Window, cx: &mut App| {
+                    let next = match event.keystroke.key.as_str() {
+                        "left" => at.saturating_sub(1),
+                        "right" => at + 1,
+                        _ => return,
+                    };
+                    if let Some(&key) = keys.get(next) {
+                        choose(key, window, cx);
+                    }
+                    cx.stop_propagation();
+                },
+            )
             .children(pill)
             .children(segments)
     })
@@ -663,9 +667,10 @@ mod tests {
                     "probe.mode".into(),
                     "Mode",
                     &[("a", "A"), ("b", "B")],
+                    size::SEGMENT_WIDTH,
                     self.chosen,
                     &self.focus,
-                    |_, _| {},
+                    |_, _, _| {},
                 ))
         }
     }

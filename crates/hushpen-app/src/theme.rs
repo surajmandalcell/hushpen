@@ -243,9 +243,9 @@ pub mod size {
     /// The search field at the right end of the toolbar.
     pub const SEARCH_FIELD_WIDTH: f32 = 300.0;
     /// A slider at the end of a row, and the reading of its value left of it, wide enough for
-    /// `200%` and `2.00×`.
+    /// `200%`, `2.00×`, `120 Hz`, and `+12 dB`.
     pub const SLIDER_WIDTH: f32 = 160.0;
-    pub const SLIDER_VALUE_WIDTH: f32 = 40.0;
+    pub const SLIDER_VALUE_WIDTH: f32 = 48.0;
     /// The widest a pop-up button grows before its text is cut.
     pub const POP_UP_MAX_WIDTH: f32 = 240.0;
     /// An open menu: its narrowest, its widest before its options are cut, one option, and the
@@ -276,6 +276,9 @@ pub mod size {
     pub const MODEL_ACTIONS_WIDTH: f32 = 124.0;
     /// One segment of a segmented control, such as Transcribe and Read aloud on Manual.
     pub const SEGMENT_WIDTH: f32 = 120.0;
+    /// One segment of a segmented control inside a row, such as Off, Auto, and Custom of
+    /// Audio enhance, so the row keeps room for its title.
+    pub const ROW_SEGMENT_WIDTH: f32 = 72.0;
     /// The drop zone at the top of Manual, and the icon in its middle.
     pub const DROP_ZONE_HEIGHT: f32 = 152.0;
     pub const DROP_ICON: f32 = 28.0;
