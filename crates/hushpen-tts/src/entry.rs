@@ -1,10 +1,12 @@
 //! `hushpen-tts`: the entry point of the worker.
 //!
 //! No arguments serves the frame protocol on stdin and stdout. `--smoke <model folder>` speaks
-//! a fixed text, prints the timings and the real-time factor (synthesis time over audio time,
-//! under 1 is faster than real time), and exits; it opens no data folder and no socket.
+//! a fixed text with the Kokoro or Chatterbox model in the folder, prints the timings and the
+//! real-time factor (synthesis time over audio time, under 1 is faster than real time), and
+//! exits; it opens no data folder and no socket.
 
-use crate::backend::{Backend, CancelFlag, LoadSpec, TtsEngine};
+use crate::backend::{Backend, CancelFlag, LoadError, LoadSpec, Session, TtsEngine};
+use crate::chatterbox::{self, ChatterboxBackend};
 use crate::kokoro::SherpaBackend;
 use crate::runtime;
 use crate::server::{ServerConfig, serve};
@@ -15,17 +17,44 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Prints the version of the sherpa-onnx library the worker opens, so a package check can prove
-/// the bundled libraries load, without a model.
+/// Prints the versions of the sherpa-onnx and ONNX Runtime libraries the worker opens, one a
+/// line, so a package check can prove the bundled libraries load, without a model.
 fn check_runtime() -> ExitCode {
-    match SherpaBackend::new(runtime::library_path()).api() {
-        Ok(api) => {
+    let sherpa = SherpaBackend::new(runtime::library_path()).api();
+    let onnx = ChatterboxBackend::new(runtime::onnxruntime_path()).runtime_version();
+    match (sherpa, onnx) {
+        (Ok(api), Ok(onnx)) => {
             println!("sherpa-onnx {}", api.version());
+            println!("onnxruntime {onnx}");
             ExitCode::SUCCESS
         }
-        Err(problem) => {
+        (Err(problem), _) | (_, Err(problem)) => {
             eprintln!("hushpen-tts: {problem}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Every engine of the worker. A load goes to the engine the request names.
+struct Engines {
+    kokoro: SherpaBackend,
+    chatterbox: ChatterboxBackend,
+}
+
+impl Engines {
+    fn new() -> Self {
+        Self {
+            kokoro: SherpaBackend::new(runtime::library_path()),
+            chatterbox: ChatterboxBackend::new(runtime::onnxruntime_path()),
+        }
+    }
+}
+
+impl Backend for Engines {
+    fn load(&self, spec: &LoadSpec) -> Result<Box<dyn Session>, LoadError> {
+        match spec.engine {
+            TtsEngine::Kokoro => self.kokoro.load(spec),
+            TtsEngine::Chatterbox => self.chatterbox.load(spec),
         }
     }
 }
@@ -52,7 +81,7 @@ pub fn worker_main(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let backend = SherpaBackend::new(runtime::library_path());
+    let backend = Engines::new();
     match smoke {
         None => {
             let config = ServerConfig {
@@ -69,14 +98,16 @@ pub fn worker_main(args: &[String]) -> ExitCode {
 struct Smoke {
     dir: PathBuf,
     threads: Option<usize>,
-    voice: String,
+    /// A Kokoro voice id or a Chatterbox clip; `None` is the model's default voice.
+    voice: Option<String>,
     text: String,
     runs: usize,
     out: Option<PathBuf>,
 }
 
 const USAGE: &str = "usage: hushpen-tts [--version] [--check-runtime] \
-[--smoke <model folder> [--threads N] [--voice ID] [--text TEXT] [--runs N] [--out FILE.wav]]";
+[--smoke <model folder> [--threads N] [--voice ID or CLIP.wav] [--text TEXT] [--runs N] \
+[--out FILE.wav]]";
 
 fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
     if args.is_empty() {
@@ -86,7 +117,7 @@ fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
     let mut smoke = Smoke {
         dir: PathBuf::new(),
         threads: None,
-        voice: DEFAULT_VOICE.to_owned(),
+        voice: None,
         text: SMOKE_TEXT.to_owned(),
         runs: 1,
         out: None,
@@ -97,7 +128,7 @@ fn parse_args(args: &[String]) -> Result<Option<Smoke>, String> {
         match arg.as_str() {
             "--smoke" => dir = Some(PathBuf::from(value()?)),
             "--threads" => smoke.threads = Some(number(value()?, arg)?),
-            "--voice" => smoke.voice = value()?.clone(),
+            "--voice" => smoke.voice = Some(value()?.clone()),
             "--text" => smoke.text = value()?.clone(),
             "--runs" => smoke.runs = number(value()?, arg)?,
             "--out" => smoke.out = Some(PathBuf::from(value()?)),
@@ -115,7 +146,7 @@ fn number(text: &str, arg: &str) -> Result<usize, String> {
         .ok_or_else(|| format!("{arg} needs a number above 0"))
 }
 
-fn run_smoke(backend: &SherpaBackend, smoke: &Smoke) -> ExitCode {
+fn run_smoke(backend: &Engines, smoke: &Smoke) -> ExitCode {
     match smoke_runs(backend, smoke) {
         Ok(()) => ExitCode::SUCCESS,
         Err(problem) => {
@@ -125,18 +156,34 @@ fn run_smoke(backend: &SherpaBackend, smoke: &Smoke) -> ExitCode {
     }
 }
 
-fn smoke_runs(backend: &SherpaBackend, smoke: &Smoke) -> Result<(), String> {
-    if find_voice(&smoke.voice).is_none() {
-        return Err(format!("unknown voice '{}'", smoke.voice));
-    }
+fn smoke_runs(backend: &Engines, smoke: &Smoke) -> Result<(), String> {
+    let engine = if chatterbox::is_model_dir(&smoke.dir) {
+        TtsEngine::Chatterbox
+    } else {
+        TtsEngine::Kokoro
+    };
+    let voice = match engine {
+        TtsEngine::Kokoro => {
+            let id = smoke.voice.as_deref().unwrap_or(DEFAULT_VOICE);
+            find_voice(id).ok_or_else(|| format!("unknown voice '{id}'"))?;
+            Some(id)
+        }
+        TtsEngine::Chatterbox => smoke.voice.as_deref(),
+    };
     let cpus = std::thread::available_parallelism().map_or(2, usize::from);
     let spec = LoadSpec {
         dir: smoke.dir.clone(),
-        engine: TtsEngine::Kokoro,
+        engine,
         threads: smoke.threads.unwrap_or_else(|| auto_threads(cpus)),
         idle: None,
     };
-    println!("runtime: sherpa-onnx {}", backend.api()?.version());
+    match engine {
+        TtsEngine::Kokoro => println!("runtime: sherpa-onnx {}", backend.kokoro.api()?.version()),
+        TtsEngine::Chatterbox => println!(
+            "runtime: onnxruntime {}",
+            backend.chatterbox.runtime_version()?
+        ),
+    }
     let loading = Instant::now();
     let mut session = backend.load(&spec).map_err(|failure| failure.detail)?;
     println!("threads: {}", spec.threads);
@@ -150,7 +197,7 @@ fn smoke_runs(backend: &SherpaBackend, smoke: &Smoke) -> Result<(), String> {
         session
             .speak(
                 &smoke.text,
-                Some(&smoke.voice),
+                voice,
                 1.0,
                 &CancelFlag::new(),
                 &mut |samples| {
@@ -231,7 +278,7 @@ mod tests {
         };
         assert_eq!(smoke.dir, PathBuf::from("/m/kokoro"));
         assert_eq!((smoke.threads, smoke.runs), (Some(3), 2));
-        assert_eq!(smoke.voice, "bm_george");
+        assert_eq!(smoke.voice.as_deref(), Some("bm_george"));
         assert_eq!(smoke.text, SMOKE_TEXT);
         assert_eq!(smoke.out, Some(PathBuf::from("/tmp/a.wav")));
     }

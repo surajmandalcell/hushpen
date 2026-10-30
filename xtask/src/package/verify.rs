@@ -107,7 +107,12 @@ fn check_tts_runtime(dir: &Path, problems: &mut Vec<String>) {
     ) {
         Ok(text) => need(
             problems,
-            text.trim() == format!("sherpa-onnx {}", crate::tts_runtime::SHERPA_VERSION),
+            text.trim()
+                == format!(
+                    "sherpa-onnx {}\nonnxruntime {}",
+                    crate::tts_runtime::SHERPA_VERSION,
+                    crate::tts_runtime::ONNXRUNTIME_VERSION
+                ),
             format!("hushpen-tts --check-runtime printed {:?}", text.trim()),
         ),
         Err(error) => problems.push(error),

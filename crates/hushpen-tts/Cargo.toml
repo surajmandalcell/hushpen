@@ -19,8 +19,7 @@ heavy = []
 hound.workspace = true
 hushpen-core.workspace = true
 libloading.workspace = true
-
-[dev-dependencies]
+ort.workspace = true
 serde_json.workspace = true
 
 [lib]

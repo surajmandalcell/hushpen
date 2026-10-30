@@ -15,6 +15,8 @@ use crate::package::{copy, run_tool, sha256_hex};
 
 /// The only sherpa-onnx release whose C API layout the worker knows (see its `sherpa` module).
 pub const SHERPA_VERSION: &str = "2.0.0";
+/// The ONNX Runtime library inside that release, which the Chatterbox voices also run on.
+pub const ONNXRUNTIME_VERSION: &str = "1.28.2";
 const RELEASE: &str = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0";
 
 /// One library a package ships, with the digest of the exact file in the release archive.
