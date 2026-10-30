@@ -524,7 +524,7 @@ mod tests {
             panic!("no model, no load");
         };
         assert!(
-            problem.detail.contains(TOKENIZER_FILE),
+            problem.detail.contains(LANGUAGE_MODEL_FILE),
             "{}",
             problem.detail
         );
