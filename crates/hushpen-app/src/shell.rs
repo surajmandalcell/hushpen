@@ -10,6 +10,7 @@ use crate::hook;
 use crate::import::ImportRequest;
 use crate::mic::{self, Mic};
 use crate::models::{self, Models};
+use crate::motion;
 use crate::onboarding::{self, Onboarding};
 use crate::read_aloud::ReadRequest;
 use crate::settings::{self, Settings};
@@ -492,7 +493,15 @@ impl Shell {
         }
     }
 
-    fn content(&self, shell: &Entity<Shell>, palette: Palette, cx: &mut App) -> impl IntoElement {
+    /// The title bar and the active view. `arrival` is how far the view has come in since it was
+    /// picked, from 0 to 1.
+    fn content(
+        &self,
+        shell: &Entity<Shell>,
+        palette: Palette,
+        arrival: f32,
+        cx: &mut App,
+    ) -> impl IntoElement {
         let view = self.active;
         let body = match (
             &self.mic,
@@ -556,14 +565,16 @@ impl Shell {
                     .min_h_0()
                     .overflow_y_scroll()
                     .track_scroll(&self.content_scroll)
-                    .child(
+                    .child(motion::arrive(
                         div()
                             .w_full()
                             .px(px(space::XXL))
                             .pt(px(space::XS))
                             .pb(px(space::XXL))
                             .child(body),
-                    ),
+                        arrival,
+                        motion::TRAVEL,
+                    )),
             )
     }
 }
@@ -639,19 +650,29 @@ impl Render for Shell {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .child(onboarding::panel::render(&onboarding, cx)),
+                        .child(onboarding::panel::render(&onboarding, window, cx)),
                 ),
             None => {
                 let sheet = self
                     .models
                     .as_ref()
                     .filter(|_| self.active == View::Models)
-                    .and_then(|models| models::sheet::render(models, cx));
+                    .and_then(|models| models::sheet::render(models, window, cx));
+                // The content of a newly picked view fades in and rises into place; the sidebar
+                // and the title bar stay still.
+                let arrival = motion::change(
+                    hook::id("content", "view"),
+                    self.active,
+                    motion::BASE,
+                    window,
+                    cx,
+                );
                 let (sidebar, content) = ui::covered(sheet.is_some(), || {
                     let sidebar = self.sidebar(palette, cx).into_any_element();
                     (
                         sidebar,
-                        self.content(&shell, palette, cx).into_any_element(),
+                        self.content(&shell, palette, arrival, cx)
+                            .into_any_element(),
                     )
                 });
                 frame
@@ -781,6 +802,45 @@ mod tests {
         assert!(
             weak.upgrade().is_some(),
             "the flow bar must outlive start-up without the test hook"
+        );
+    }
+
+    /// A picked view fades in and rises into place once; the sidebar and the title bar stay
+    /// still.
+    #[gpui_kit::test]
+    fn a_picked_view_rises_into_place_while_the_chrome_stays_still(cx: &mut TestAppContext) {
+        let (handle, _) = open(cx);
+        cx.update(|cx| cx.set_global(motion::tests::Play));
+        let home = rect(cx, handle, "home.placeholder");
+        let row = rect(cx, handle, "sidebar.history");
+        let title = rect(cx, handle, "view.title");
+        click(cx, handle, "sidebar.history");
+        render(cx, handle);
+        let rising = rect(cx, handle, "history.placeholder");
+        assert_eq!(rising.1 - home.1, motion::TRAVEL, "it starts lower");
+        assert_eq!(
+            rect(cx, handle, "sidebar.history"),
+            row,
+            "the sidebar stays"
+        );
+        let moved = rect(cx, handle, "view.title");
+        assert_eq!((moved.0, moved.1), (title.0, title.1), "the title stays");
+
+        cx.executor().advance_clock(motion::BASE);
+        cx.update_window(handle, |_, window, cx| window.simulate_next_frame(cx))
+            .unwrap();
+        render(cx, handle);
+        assert_eq!(
+            rect(cx, handle, "history.placeholder").1,
+            home.1,
+            "in place"
+        );
+        cx.executor().advance_clock(motion::BASE);
+        render(cx, handle);
+        assert_eq!(
+            rect(cx, handle, "history.placeholder").1,
+            home.1,
+            "a later frame does not play it again"
         );
     }
 

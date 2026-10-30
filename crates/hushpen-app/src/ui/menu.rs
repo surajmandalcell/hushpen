@@ -5,14 +5,16 @@
 
 use super::controls::menu_button;
 use super::{secondary, title};
+use crate::motion;
 use crate::theme::{self, BODY, Palette, StyledType, radius, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::Popup;
 use gpui_kit::{
-    Anchor, AnyElement, App, BoxShadow, ClickEvent, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseDownEvent, ParentElement, RenderOnce, Role, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, point, px, svg, transparent_black,
+    Anchor, AnyElement, App, BoxShadow, ClickEvent, Div, FocusHandle, InteractiveElement,
+    IntoElement, KeyDownEvent, MouseDownEvent, ParentElement, RenderOnce, Role, ScrollHandle,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, point, px, svg,
+    transparent_black,
 };
 use std::rc::Rc;
 
@@ -161,6 +163,14 @@ impl RenderOnce for Host {
         let Some(menu) = menu else {
             return host;
         };
+        // The menu drops a few pixels into place as it fades in. Its place stays in the frame only
+        // while it is open, so each opening plays once.
+        let arrival = motion::enter(
+            SharedString::from(format!("{id}.arrival")),
+            motion::FAST,
+            window,
+            cx,
+        );
         if opening {
             // A menu opens with its chosen option in view. The list has not been measured yet,
             // so the offset comes from the fixed option height.
@@ -181,7 +191,11 @@ impl RenderOnce for Host {
         // The keys reach the host from the button and from the options, which draw later but
         // stay inside it for key dispatch.
         host.on_key_down(keys(&menu, &focus, &scroll))
-            .content(panel(palette, menu, &focus, &scroll))
+            .content(motion::arrive(
+                panel(palette, menu, &focus, &scroll),
+                arrival,
+                -motion::TRAVEL,
+            ))
     }
 }
 
@@ -219,12 +233,7 @@ fn keys(
 }
 
 /// The floating surface: the options in a list box that scrolls past `MENU_LIST_MAX_HEIGHT`.
-fn panel(
-    palette: Palette,
-    menu: Menu,
-    button: &FocusHandle,
-    scroll: &ScrollHandle,
-) -> impl IntoElement {
+fn panel(palette: Palette, menu: Menu, button: &FocusHandle, scroll: &ScrollHandle) -> Div {
     let Menu {
         list,
         choices,

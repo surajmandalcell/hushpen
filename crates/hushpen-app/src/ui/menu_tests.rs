@@ -108,6 +108,30 @@ fn open_mics(cx: &mut TestAppContext, home: &Home) {
     click(cx, home, "home.mic.picker");
 }
 
+/// The menu drops a few pixels into place as it opens, and it does so on each opening.
+#[gpui_kit::test]
+fn the_menu_drops_into_place_each_time_it_opens(cx: &mut TestAppContext) {
+    use crate::motion;
+    let home = home(cx);
+    cx.update(|cx| cx.set_global(motion::tests::Play));
+    open_mics(cx, &home);
+    let opening = bounds(cx, &home, "home.mic.list").top();
+    cx.executor().advance_clock(motion::FAST);
+    act(cx, &home, |window, cx| {
+        window.simulate_next_frame(cx);
+    });
+    let settled = bounds(cx, &home, "home.mic.list").top();
+    assert_eq!(settled - opening, px(motion::TRAVEL), "it starts higher");
+    press(cx, &home, "escape");
+    assert!(find(cx, &home, "home.mic.list").is_none());
+    open_mics(cx, &home);
+    assert_eq!(
+        bounds(cx, &home, "home.mic.list").top(),
+        opening,
+        "it drops in again"
+    );
+}
+
 #[gpui_kit::test]
 fn the_microphone_menu_floats_out_of_its_group_with_eight_whole_options(cx: &mut TestAppContext) {
     let home = home(cx);

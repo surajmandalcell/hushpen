@@ -472,6 +472,28 @@ fn tab_stays_in_the_sheet_and_esc_gives_focus_back_to_the_info_button(cx: &mut T
     assert!(focused(cx, handle, "models.info.0"));
 }
 
+/// The sheet fades in over the scrim and rises a few pixels into place as it opens.
+#[gpui_kit::test]
+fn the_sheet_rises_into_place_as_it_opens(cx: &mut TestAppContext) {
+    use crate::motion;
+    let (rig, _) = rig(cx);
+    let handle = window(cx, &rig);
+    cx.update(|cx| cx.set_global(motion::tests::Play));
+    let top = |cx: &mut TestAppContext| {
+        cx.update_window(handle, |_, window, _| {
+            window.find("models.sheet").bounds().top()
+        })
+        .unwrap()
+    };
+    click(cx, handle, "models.info.0");
+    let opening = top(cx);
+    cx.executor().advance_clock(motion::BASE);
+    cx.update_window(handle, |_, window, cx| window.simulate_next_frame(cx))
+        .unwrap();
+    render(cx, handle);
+    assert_eq!(opening - top(cx), px(motion::TRAVEL));
+}
+
 fn hover(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) {
     let id = gpui_kit::SharedString::from(id.to_owned());
     cx.update_window(handle, |_, window, cx| window.hover(id, cx))
