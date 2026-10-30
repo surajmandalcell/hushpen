@@ -11,7 +11,9 @@ use std::process::Command;
 
 use super::names::{self, Format, Target};
 use super::target_dir;
-use super::{APP_BINARY, BINARIES, LLM_BINARY, NOTICES, TTS_BINARY, build_version, sha256_hex};
+use super::{
+    APP_BINARY, BINARIES, LLM_BINARY, NOTICES, TTS_BINARY, VAD_MODEL, build_version, sha256_hex,
+};
 
 const DEB_DEPENDS: &[&str] = &[
     "libvulkan1",
@@ -57,6 +59,12 @@ fn scan_binaries(dir: &Path, problems: &mut Vec<String>) {
         if let Err(error) = crate::release_check::check_binary(&path) {
             problems.push(format!("{}: {error}", path.display()));
         }
+    }
+}
+
+fn check_vad(dir: &Path, problems: &mut Vec<String>) {
+    if let Err(error) = super::verify_vad(&dir.join(VAD_MODEL)) {
+        problems.push(error);
     }
 }
 
@@ -176,6 +184,7 @@ fn verify_tar(
         format!("install-kind says {:?}, not tar", kind.trim()),
     );
     scan_binaries(&root, &mut problems);
+    check_vad(&root, &mut problems);
     check_version_line(&root.join(APP_BINARY), version, &mut problems);
     check_version_line(&root.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&root, target, None, &mut problems);
@@ -263,6 +272,7 @@ fn verify_deb(
         format!("install-kind says {:?}, not deb", kind.trim()),
     );
     scan_binaries(&lib, &mut problems);
+    check_vad(&lib, &mut problems);
     check_version_line(&scratch.join("usr/bin/hushpen"), version, &mut problems);
     check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&lib, target, None, &mut problems);
@@ -343,6 +353,7 @@ fn verify_rpm(
         format!("install-kind says {:?}, not rpm", kind.trim()),
     );
     scan_binaries(&lib, &mut problems);
+    check_vad(&lib, &mut problems);
     check_version_line(&lib.join(APP_BINARY), version, &mut problems);
     check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&lib, target, None, &mut problems);
@@ -372,6 +383,7 @@ fn verify_appimage(
         format!("AppImage lacks {NOTICES}"),
     );
     let bin = root.join("usr/bin");
+    check_vad(&root.join("usr/lib/hushpen"), &mut problems);
     scan_binaries(&bin, &mut problems);
     check_version_line(&bin.join(APP_BINARY), version, &mut problems);
     check_version_line(&bin.join(TTS_BINARY), version, &mut problems);
@@ -463,6 +475,7 @@ fn verify_app_bundle(
         format!("Resources/Assets.car has no icon named {icon:?} (CFBundleIconName)"),
     );
     let macos = app.join("Contents/MacOS");
+    check_vad(&app.join("Contents/Resources"), &mut problems);
     scan_binaries(&macos, &mut problems);
     check_tts_libs(
         &app.join("Contents/Frameworks"),

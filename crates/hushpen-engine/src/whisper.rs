@@ -71,6 +71,7 @@ pub struct WhisperEngine {
     threads: usize,
     gpu: bool,
     multilingual: bool,
+    vad_model: String,
 }
 
 impl WhisperEngine {
@@ -88,12 +89,14 @@ impl WhisperEngine {
         let state = context
             .create_state()
             .map_err(|err| EngineError::LoadFailed(err.to_string()))?;
+        let vad_model = crate::vad::model_path()?;
         Ok(Self {
             state,
             multilingual: context.is_multilingual(),
             _context: context,
             threads: options.threads.max(1),
             gpu: options.gpu && gpu_backend_present(),
+            vad_model,
         })
     }
 }
@@ -153,7 +156,9 @@ impl AsrEngine for WhisperEngine {
             let (found, language_used) =
                 self.run_window(pcm, detected.as_deref(), options, cancel)?;
             // Later windows reuse the language of the first one instead of detecting again.
-            detected.get_or_insert(language_used);
+            if !found.is_empty() {
+                detected.get_or_insert(language_used);
+            }
             let last = window.keep_to == usize::MAX;
             segments.extend(windows::own_segments(&window, found));
             progress(if last { 1.0 } else { input.fraction_read() });
@@ -186,6 +191,12 @@ impl WhisperEngine {
         params.set_n_threads(i32::try_from(self.threads).unwrap_or(i32::MAX));
         params.set_language(language);
         params.set_translate(options.translate);
+        params.set_no_context(true);
+        params.set_suppress_nst(true);
+        params.set_no_speech_thold(0.6);
+        params.set_vad_model_path(Some(&self.vad_model));
+        params.set_vad_params(crate::vad::params());
+        params.enable_vad(true);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_special(false);

@@ -15,7 +15,7 @@ fn notices() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
-const SECTIONS: [(&str, &str); 14] = [
+const SECTIONS: [(&str, &str); 15] = [
     ("whisper-cpp", "whisper.cpp"),
     ("llama-cpp", "llama.cpp"),
     ("ggml", "ggml"),
@@ -27,13 +27,14 @@ const SECTIONS: [(&str, &str); 14] = [
     ("sqlite", "SQLite"),
     ("inter", "Inter"),
     ("whisper-models", "Whisper models"),
+    ("silero-vad", "Silero VAD"),
     ("llm-models", "LLM models"),
     ("kokoro-model", "Kokoro voice model"),
     ("chatterbox-models", "Chatterbox voice models"),
 ];
 
 #[test]
-fn the_notices_hold_the_fourteen_manual_sections() {
+fn the_notices_hold_every_manual_section() {
     let html = notices();
     for (id, title) in SECTIONS {
         assert!(

@@ -31,6 +31,8 @@ const TTS_BINARY: &str = "hushpen-tts";
 /// executable, so they always travel together.
 const BINARIES: [&str; 3] = [APP_BINARY, LLM_BINARY, TTS_BINARY];
 const NOTICES: &str = "THIRD-PARTY-NOTICES.html";
+const VAD_MODEL: &str = "ggml-silero-v5.1.2.bin";
+const VAD_SHA256: &str = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
 const USAGE: &str = "usage: cargo xtask package [--target macos-arm64|linux-x64|linux-arm64] \
 [--formats app,zip,dmg,appimage,deb,rpm,tar.gz] [--out <dir>] [--skip-build] [--test-feed]";
 
@@ -140,16 +142,19 @@ impl Ctx {
         crate::tts_runtime::libs_in(&self.runtime, self.target)
     }
 
-    /// Resources every package carries: the notices and the install kind.
+    /// Resources every package carries: notices, the speech detector, and the install kind.
     pub fn resources(&self, work: &Path, kind: &str) -> Result<Vec<(PathBuf, String)>, String> {
         if !self.notices().is_file() {
             return Err(format!("{} is missing", self.notices().display()));
         }
+        let vad = self.root.join("assets").join(VAD_MODEL);
+        verify_vad(&vad)?;
         let install_kind = work.join("install-kind");
         fs::write(&install_kind, format!("{kind}\n"))
             .map_err(|e| format!("cannot write {}: {e}", install_kind.display()))?;
         Ok(vec![
             (self.notices(), NOTICES.to_string()),
+            (vad, VAD_MODEL.to_string()),
             (install_kind, "install-kind".to_string()),
         ])
     }
@@ -160,6 +165,16 @@ impl Ctx {
             .expect("only shipped formats have an artifact name");
         self.dist.join(name)
     }
+}
+
+fn verify_vad(path: &Path) -> Result<(), String> {
+    if sha256_hex(path)? != VAD_SHA256 {
+        return Err(format!(
+            "{} is not the pinned speech detector",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 pub fn copy(from: &Path, to: &Path) -> Result<(), String> {
@@ -406,10 +421,17 @@ mod tests {
     }
 
     #[test]
-    fn resources_hold_the_notices_and_an_install_kind_file() {
+    fn resources_hold_the_notices_speech_detector_and_install_kind() {
         let root = std::env::temp_dir().join(format!("pkg-res-{}", std::process::id()));
         fs::create_dir_all(root.join("assets")).unwrap();
         fs::write(root.join("assets").join(NOTICES), b"<html></html>").unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../assets")
+                .join(VAD_MODEL),
+            root.join("assets").join(VAD_MODEL),
+        )
+        .unwrap();
         let ctx = Ctx {
             root: root.clone(),
             version: "2.0.0".into(),
@@ -420,11 +442,13 @@ mod tests {
         };
         let resources = ctx.resources(&root, "deb").unwrap();
         let targets: Vec<&str> = resources.iter().map(|(_, t)| t.as_str()).collect();
-        assert_eq!(targets, [NOTICES, "install-kind"]);
+        assert_eq!(targets, [NOTICES, VAD_MODEL, "install-kind"]);
         assert_eq!(
             fs::read_to_string(root.join("install-kind")).unwrap(),
             "deb\n"
         );
+        fs::write(root.join("assets").join(VAD_MODEL), b"wrong model").unwrap();
+        assert!(ctx.resources(&root, "deb").is_err());
         fs::remove_file(root.join("assets").join(NOTICES)).unwrap();
         assert!(ctx.resources(&root, "deb").is_err());
         fs::remove_dir_all(root).unwrap();

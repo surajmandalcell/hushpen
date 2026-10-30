@@ -101,6 +101,12 @@ pub const SECTIONS: &[Section] = &[
         texts: &["packaging/licenses/manual/mit-openai-whisper.txt"],
     },
     Section {
+        id: "silero-vad",
+        title: "Silero VAD",
+        note: "Voice activity detector, bundled for dictation and file transcription. Silero Team, MIT license. Model v5.1.2, converted by ggml-org: https://huggingface.co/ggml-org/whisper-vad (revision 9ffd54a1e1ee413ddf265af9913beaf518d1639b). https://github.com/snakers4/silero-vad",
+        texts: &["packaging/licenses/manual/mit-silero-vad.txt"],
+    },
+    Section {
         id: "llm-models",
         title: "LLM models",
         note: "The cleanup models Hushpen downloads on request: Gemma 4 E2B (Google, from https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF) and Qwen3.5 2B (Alibaba Cloud Qwen team, from https://huggingface.co/unsloth/Qwen3.5-2B-GGUF). Both are published under the Apache License 2.0.",
@@ -241,7 +247,7 @@ mod tests {
     fn section_ids_are_unique() {
         let ids: BTreeSet<_> = SECTIONS.iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), SECTIONS.len());
-        assert_eq!(SECTIONS.len(), 14);
+        assert_eq!(SECTIONS.len(), 15);
     }
 
     #[test]

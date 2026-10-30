@@ -11,6 +11,7 @@ mod llm_client;
 mod manager;
 mod server;
 mod tts_client;
+mod vad;
 mod wav;
 mod windows;
 // Calls the whisper abort callback through the raw FFI API (see the module comment).
