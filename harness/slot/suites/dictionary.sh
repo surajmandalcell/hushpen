@@ -65,15 +65,15 @@ event_prompt() { # the prompt of the newest transcribe event since T0
 tab() { xdotool key Tab; sleep 0.25; }
 rendered() { $HC tree | jq -e "any(.[]; .id == \"$1\")" >/dev/null; }
 
-# From the focused Dictionary sidebar item, five Tabs reach the Write as field: the four items
-# after it, then the field.
+# From the focused Dictionary sidebar item, four Tabs reach the Write as field: the three items
+# after it (Models, Settings, About), then the field.
 open_dictionary() {
   focus "$(app_window)"
   $HC click sidebar.dictionary >/dev/null
   wait_until 5 rendered dictionary.form
   sleep 0.4
 }
-to_write_as() { for _ in 1 2 3 4 5; do tab; done; }
+to_write_as() { for _ in 1 2 3 4; do tab; done; }
 
 echo "== setup: base model and the paste targets"
 fresh base

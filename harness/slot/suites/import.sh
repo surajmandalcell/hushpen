@@ -469,7 +469,7 @@ else
     failures+="the text area holds $(read_state .text_chars) characters, not the $chars of the file; "
   shot xdnd-txt-read-aloud
   rm -f "$note"
-  check_failures "real XDND drop" "a WAV dragged from slot/drag-source.py onto the drop zone was queued and transcribed; a .txt dropped on History opened Files in Read aloud with its $chars characters" "$failures"
+  check_failures "real XDND drop" "a WAV dragged from slot/drag-source.py onto the drop zone was queued and transcribed; a .txt dropped on History opened Manual in Read aloud with its $chars characters" "$failures"
 fi
 
 echo "== the flow bar watcher thread does not leak over 20 hide and show cycles"
