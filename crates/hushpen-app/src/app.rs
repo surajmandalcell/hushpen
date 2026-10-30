@@ -541,6 +541,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 crate::hook::attach_mic(cx, mic);
                 crate::hook::attach_shortcuts(cx, shortcuts);
                 crate::hook::attach_settings_view(cx, settings_view, handle);
+                crate::hook::attach_enhance(cx, tuning, handle);
                 crate::hook::attach_about(cx, about);
                 if let Some(updater) = &updater {
                     crate::hook::attach_updates(cx, updater.clone());
