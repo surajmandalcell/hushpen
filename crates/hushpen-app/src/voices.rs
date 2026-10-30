@@ -800,6 +800,11 @@ impl VoiceLibrary {
         }
     }
 
+    /// Puts `name` in the name field of the add page, as typing does.
+    pub fn set_name(&mut self, name: String, cx: &mut Context<Self>) {
+        self.set_input(&self.name.clone(), name, cx);
+    }
+
     /// Puts `text` in a field of the sheet.
     fn set_input(&self, input: &Entity<InputState>, text: String, cx: &mut Context<Self>) {
         let input = input.clone();

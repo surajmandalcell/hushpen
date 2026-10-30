@@ -81,10 +81,7 @@ fn add(cx: &mut VisualTestContext, fixture: &Fixture, name: &str, seconds: f32) 
     });
     run_all(cx, fixture);
     let name = name.to_owned();
-    fixture.library.update(cx, |me, cx| {
-        let field = me.name.clone();
-        me.set_input(&field, name, cx);
-    });
+    fixture.library.update(cx, |me, cx| me.set_name(name, cx));
     cx.run_until_parked();
     fixture.library.update(cx, |me, cx| me.save(cx)).unwrap()
 }

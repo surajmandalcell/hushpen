@@ -23,8 +23,9 @@ pub fn attach(cx: &mut App, models: Entity<Models>) {
     let _ = register_action(
         cx,
         "model-download",
-        "Start or resume a model download like the Download button. Args: {\"id\": \"base.en\"}. \
-         Progress is `models.models[].progress` in `hookctl state`.",
+        "Start or resume a model download like the Download button. Args: {\"id\": \"base.en\"}, \
+         or a voice model such as {\"id\": \"chatterbox-turbo\"}. Progress is \
+         `models.models[].progress` in `hookctl state`.",
         {
             let models = models.clone();
             move |cx, args| {
