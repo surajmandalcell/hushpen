@@ -4,12 +4,15 @@
 
 use gpui_kit::{SpringConfig, SpringState};
 
-/// The frame follows a new state size with a short, slightly soft spring.
-const SIZE: SpringConfig = SpringConfig::new(560.0, 40.0, 1.0);
-/// Coming and going: no overshoot, so the opacity never passes 1.
-const PRESENCE: SpringConfig = SpringConfig::new(420.0, 41.0, 1.0);
+/// The frame follows a new state size with a short, slightly soft spring: it settles in about
+/// 160 ms.
+const SIZE: SpringConfig = SpringConfig::new(1500.0, 70.0, 1.0);
+/// Coming and going in about 180 ms, with no overshoot, so the opacity never passes 1.
+const PRESENCE: SpringConfig = SpringConfig::new(1500.0, 78.0, 1.0);
 /// The content of a new state fades in over this time.
-const FADE_MS: f32 = 140.0;
+const FADE_MS: f32 = 90.0;
+/// The content starts to fade in once the bar is this far there.
+const CONTENT_FROM: f32 = 0.3;
 /// A waveform bar rises fast and falls slower, so speech reads as a pulse and not as noise.
 const WAVE_RISE_MS: f32 = 40.0;
 const WAVE_FALL_MS: f32 = 140.0;
@@ -119,10 +122,10 @@ impl Motion {
         self.presence.position.clamp(0.0, 1.0)
     }
 
-    /// The opacity of the content: it waits for the bar to be half there, then fades in.
+    /// The opacity of the content: it waits for the bar to be partly there, then fades in.
     pub fn fade(&self) -> f32 {
         let ease = 1.0 - (1.0 - self.fade).powi(3);
-        ease * ((self.presence() - 0.5) * 2.0).clamp(0.0, 1.0)
+        ease * ((self.presence() - CONTENT_FROM) / (1.0 - CONTENT_FROM)).clamp(0.0, 1.0)
     }
 
     pub fn wave(&self) -> &[f32] {
@@ -188,6 +191,46 @@ mod tests {
         assert_eq!(motion.presence(), 1.0);
         assert!(motion.fade() > 0.99);
         assert!(motion.is_settled());
+    }
+
+    #[test]
+    fn a_new_bar_is_fully_there_within_180_ms_and_never_overshoots() {
+        let mut motion = Motion::default();
+        motion.update(0, shown((112.0, 32.0)), true);
+        let mut now = 0;
+        let mut last = 0.0;
+        while !motion.is_settled() {
+            now = run(&mut motion, now, 1, || shown((112.0, 32.0)));
+            assert!(now <= 180, "still moving after {now} ms");
+            assert!(motion.presence() >= last, "the presence goes back");
+            assert!(motion.presence.position <= 1.0, "it overshoots");
+            last = motion.presence();
+        }
+        assert_eq!(motion.size(), (112.0, 32.0));
+    }
+
+    #[test]
+    fn the_content_shows_while_the_bar_still_grows() {
+        let mut motion = Motion::default();
+        motion.update(0, shown((112.0, 32.0)), true);
+        run(&mut motion, 0, 3, || shown((112.0, 32.0)));
+        assert!(motion.presence() < 1.0, "still on its way");
+        assert!(motion.fade() > 0.0, "the content is already fading in");
+    }
+
+    #[test]
+    fn a_new_state_size_settles_within_180_ms() {
+        let mut motion = Motion::default();
+        let start = run(&mut motion, 0, 40, || shown((112.0, 32.0)));
+        let mut now = start;
+        loop {
+            now = run(&mut motion, now, 1, || shown((236.0, 32.0)));
+            if motion.is_settled() {
+                break;
+            }
+            assert!(now - start <= 180, "still moving after {} ms", now - start);
+        }
+        assert_eq!(motion.size(), (236.0, 32.0));
     }
 
     #[test]
