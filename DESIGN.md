@@ -274,6 +274,27 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 - **Window on Linux with a compositor:** 10px radius, like a macOS window.
 - **Window buttons on Linux:** fully round.
 
+## Motion
+
+Motion is short and quiet. It shows where something comes from and never makes the user wait. Every animation uses the same tokens:
+
+- **Fast (120 ms):** something small that appears, such as a tooltip or a pop-up menu.
+- **Slide (150 ms):** a control that moves to a new state, such as the knob of a switch or the fill of a segmented control.
+- **Base (180 ms):** a surface that comes in, such as a view, an onboarding step, or a sheet.
+- **Travel (4px):** how far a surface moves on its way in.
+
+Every animation uses one cubic ease-out curve. It never overshoots or bounces.
+
+- A tooltip fades in and rises 4px into place.
+- A pop-up menu fades in and drops 4px into place, each time it opens.
+- A view picked in the sidebar fades in and rises 4px into place in the content pane. The sidebar and the title bar stay still. A new onboarding step comes in the same way.
+- As a sheet opens, the scrim fades in, and the sheet fades in and rises 4px into place. It does not scale, because the renderer cannot scale an element.
+- A switch slides its knob across and blends its track into the new fill. A segmented control slides its fill to the new segment.
+
+An animation plays only when its state changes: a new view, a menu that opens, a switch that turns on. A redraw of the same state never plays it again. The new state is there at once for the keyboard and the accessibility tree, so a switch reads "on" before its knob arrives. Text moves and fades as one block; its layout never animates. With Reduce Motion every change shows at once. The pixel tests turn on Reduce Motion, so every baseline is a settled frame.
+
+The flow bar has its own motion, described under Recording overlay.
+
 ## Components
 
 **Sidebar:** 7 rows in this order: Home, History, Dictionary, Files, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. There are no colored tiles. A focused row shows the accent focus ring.
