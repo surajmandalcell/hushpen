@@ -16,6 +16,8 @@ mod dictionary;
 #[cfg(feature = "test-automation")]
 mod engine;
 #[cfg(feature = "test-automation")]
+mod enhance;
+#[cfg(feature = "test-automation")]
 mod flow_bar;
 #[cfg(feature = "test-automation")]
 mod history;
@@ -54,6 +56,8 @@ pub use dictation::attach as attach_dictation;
 pub use dictionary::attach as attach_dictionary;
 #[cfg(feature = "test-automation")]
 pub use engine::attach as attach_engine;
+#[cfg(feature = "test-automation")]
+pub use enhance::attach as attach_enhance;
 #[cfg(feature = "test-automation")]
 pub use flow_bar::attach as attach_flow_bar;
 #[cfg(feature = "test-automation")]
