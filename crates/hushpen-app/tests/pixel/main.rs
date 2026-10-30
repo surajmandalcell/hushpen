@@ -282,7 +282,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::HistoryClear => Some(View::History),
         Scene::Home => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
-        Scene::Files(_) => Some(View::Files),
+        Scene::Files(_) => Some(View::Manual),
         Scene::Models | Scene::ModelsBottom => Some(View::Models),
         // The scrim dims the whole window, so the shell colors do not hold under the sheet.
         Scene::ModelsDetails => None,

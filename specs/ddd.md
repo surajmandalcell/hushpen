@@ -14,7 +14,7 @@ Hushpen
 │   ├── tray                        menu with the same actions
 │   ├── dictation                   one hold-to-talk run of the state machine
 │   │   └── recording               microphone audio in a session WAV
-│   ├── Files view                  the sidebar view for audio files and text
+│   ├── Manual view                 the sidebar view for audio files and text
 │   │   ├── drop zone               where audio files are dropped or chosen
 │   │   ├── queue                   the imports, one at a time
 │   │   │   └── import              one audio file transcribed into a history row
@@ -78,11 +78,12 @@ Hushpen
 - **flow bar**: the always-on-top pill that never takes focus. It stays dark
   in Light and Dark appearance. It shows only while a dictation is active
   (or with Show when idle on), with a cross to cancel and a tick to finish.
-- **Files view**: the sidebar view for files (D-31). Its mode is Transcribe
-  or Read aloud, and the app opens it on the mode picked last. The view was
-  called Import; Files names both modes, and Import stays the code name of
-  one transcribed file (History shows "File").
-- **import**: one audio file in the queue of the Files view, transcribed by
+- **Manual view**: the sidebar view for files that the user starts by hand
+  (D-31). Its mode is Transcribe or Read aloud, and the app opens it on the
+  mode picked last. Files stays its code name (the `files` module, the
+  `files.*` settings, the `sidebar.files` hook id), and Import stays the
+  code name of one transcribed file (History shows "File").
+- **import**: one audio file in the queue of the Manual view, transcribed by
   the engine child into a history row of kind `import`. It is queued,
   running, done, failed, or cancelled.
 - **drop zone**: the dashed area at the top of Transcribe. A drop anywhere on

@@ -188,12 +188,14 @@ new decision, add it here in the same change (D-21).
   the app reads the free space of the downloads folder (statvfs) and refuses
   when it is less than the bytes still to fetch plus 10%. At start it deletes
   partial downloads older than 7 days.
-- **D-31 Files view.** The sidebar view that was Import is Files: one place
-  for audio files and text, with a segmented control for Transcribe (the
-  import queue) and Read aloud. "Import" stays the code name of one transcribed
+- **D-31 Manual view.** Manual, third in the sidebar after History, is one
+  place for audio files and text that the user starts by hand, with a
+  segmented control for Transcribe (the import queue) and Read aloud. "Files"
+  stays its code name (the `files` module, the `files.*` settings, the
+  `sidebar.files` hook id), and "Import" the code name of one transcribed
   file (the history kind, the `import.*` hook ids); its History line says
   "File" where a dictation names the app. A drop anywhere on the
-  main window opens Files: when every dropped file is `.txt` or `.md` the
+  main window opens Manual: when every dropped file is `.txt` or `.md` the
   first opens in Read aloud, else all go to the queue, which refuses what is
   not a regular file without opening it. The engine child reads the length
   from the headers and sends it as `audio_ms` on the first `progress` event

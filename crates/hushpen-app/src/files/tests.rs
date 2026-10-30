@@ -186,7 +186,7 @@ fn read_aloud_window(cx: &mut TestAppContext) -> (Fixture, gpui_kit::AnyWindowHa
     });
     shell.update(cx, |shell, cx| {
         shell.attach_files(fixture.files.clone(), cx);
-        shell.select(View::Files, cx);
+        shell.select(View::Manual, cx);
     });
     frame(cx, handle);
     (fixture, handle)
