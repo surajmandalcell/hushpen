@@ -397,7 +397,7 @@ fn the_view_has_a_section_for_each_kind_and_only_speech_rows_offer_use(cx: &mut 
     );
     assert!(
         !present(cx, handle, "models.select.2"),
-        "there is one voice model"
+        "Read aloud picks the voice"
     );
     assert_eq!(label(cx, handle, "models.info.2"), "Details of Voice");
 }

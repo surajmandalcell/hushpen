@@ -99,7 +99,8 @@ pub struct ModelEntry {
     pub kind: ModelKind,
     pub name: String,
     /// One file for a speech or a cleanup model, every file of the folder for a voice model.
-    /// Never empty. File names are unique across the catalog, so partial downloads never clash.
+    /// Never empty. No two entries put a file in the same place: speech and cleanup file names
+    /// are unique across the catalog, and a voice model's files sit in a folder of its own.
     pub files: Vec<ModelFile>,
     pub license: String,
     pub languages: Languages,
@@ -151,12 +152,16 @@ impl Catalog {
                 entry.id
             ));
         }
-        let (mut ids, mut files) = (HashSet::new(), HashSet::new());
+        let (mut ids, mut places) = (HashSet::new(), HashSet::new());
         for entry in catalog.models() {
             if !ids.insert(entry.id.as_str()) {
                 return Err(format!("duplicate model id `{}`", entry.id));
             }
-            if let Some(file) = entry.files.iter().find(|f| !files.insert(f.file.as_str())) {
+            let place = |file: &ModelFile| match entry.kind {
+                ModelKind::Voice => format!("{}/{}", entry.id, file.file),
+                ModelKind::Speech | ModelKind::Cleanup => file.file.clone(),
+            };
+            if let Some(file) = entry.files.iter().find(|f| !places.insert(place(f))) {
                 return Err(format!("the file `{}` is listed twice", file.file));
             }
         }

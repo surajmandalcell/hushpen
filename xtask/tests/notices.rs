@@ -15,7 +15,7 @@ fn notices() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
-const SECTIONS: [(&str, &str); 13] = [
+const SECTIONS: [(&str, &str); 14] = [
     ("whisper-cpp", "whisper.cpp"),
     ("llama-cpp", "llama.cpp"),
     ("ggml", "ggml"),
@@ -29,10 +29,11 @@ const SECTIONS: [(&str, &str); 13] = [
     ("whisper-models", "Whisper models"),
     ("llm-models", "LLM models"),
     ("kokoro-model", "Kokoro voice model"),
+    ("chatterbox-models", "Chatterbox voice models"),
 ];
 
 #[test]
-fn the_notices_hold_the_thirteen_manual_sections() {
+fn the_notices_hold_the_fourteen_manual_sections() {
     let html = notices();
     for (id, title) in SECTIONS {
         assert!(
@@ -58,6 +59,8 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
         "Gemma 4 E2B",
         "Qwen3.5 2B",
         "Kokoro 82M",
+        "Chatterbox Turbo",
+        "Resemble AI",
         "Mark Borgerding",
     ] {
         assert!(html.contains(needle), "the notices lack {needle:?}");

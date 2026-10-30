@@ -159,7 +159,7 @@ fn row_view(index: usize, row: &Row, active: &str) -> RowView {
 }
 
 /// The buttons a row offers in its state. Only a speech model can be put to use here; Settings
-/// chooses the cleanup model, and there is one voice model.
+/// chooses the cleanup model, and Read aloud the voice.
 fn actions(view: &RowView) -> Vec<Action> {
     let mut actions = match view.state {
         ModelState::NotDownloaded | ModelState::Failed => vec![Action::Download],
