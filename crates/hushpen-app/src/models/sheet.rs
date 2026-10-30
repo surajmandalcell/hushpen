@@ -4,9 +4,9 @@
 
 use super::panel::{format_size, languages_text, status_text};
 use super::{Models, Row, details::checksum_text};
-use crate::hook;
 use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
 use crate::ui::{self, Kind};
+use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::FocusTrapElement as _;
@@ -23,8 +23,16 @@ const SHOW_FILES: &str = if cfg!(target_os = "macos") {
     "Show in Files"
 };
 
-/// The sheet of the open row, or nothing while no details are open.
-pub fn render(models: &Entity<Models>, cx: &mut App) -> Option<AnyElement> {
+/// The sheet of the open row, or nothing while no details are open. As it opens, the scrim fades
+/// in and the sheet fades in and rises a few pixels into place.
+pub fn render(models: &Entity<Models>, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+    models.read(cx).details()?;
+    let arrival = motion::enter(
+        hook::id("models", "sheet.arrival"),
+        motion::BASE,
+        window,
+        cx,
+    );
     let palette = theme::palette(cx);
     let me = models.read(cx);
     let row = me.details()?;
@@ -147,8 +155,8 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> Option<AnyElement> {
             .flex()
             .items_center()
             .justify_center()
-            .bg(palette.scrim)
-            .child(sheet)
+            .bg(theme::faded(palette.scrim, arrival))
+            .child(motion::arrive(sheet, arrival, motion::TRAVEL))
             .into_any_element(),
     )
 }

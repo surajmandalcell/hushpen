@@ -8,9 +8,9 @@ mod practice;
 mod updates;
 
 use super::{Mode, Onboarding};
-use crate::hook;
 use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, space};
 use crate::ui::{self, Kind, Notice};
+use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
     App, Entity, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
@@ -18,7 +18,12 @@ use gpui_kit::{
 };
 use hushpen_core::onboarding::Step;
 
-pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement + use<> {
+/// The page of the current step. A new step fades in and rises into place, as a view does.
+pub fn render(
+    onboarding: &Entity<Onboarding>,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
     let (step, mode, can_continue, notice) = {
         let me = onboarding.read(cx);
@@ -29,6 +34,13 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
             me.notice().map(str::to_owned),
         )
     };
+    let arrival = motion::change(
+        hook::id("onboarding", "step"),
+        (step, mode),
+        motion::BASE,
+        window,
+        cx,
+    );
     let continue_focus = onboarding.read(cx).continue_focus.clone();
     let body = match step {
         Step::Permissions => permissions::view(palette, onboarding, cx).into_any_element(),
@@ -48,7 +60,7 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
             });
         }
     };
-    div()
+    let page = div()
         .id(hook::id("onboarding", "page"))
         .test_support()
         .flex()
@@ -84,7 +96,8 @@ pub fn render(onboarding: &Entity<Onboarding>, cx: &mut App) -> impl IntoElement
             Some(&continue_focus),
             can_continue,
             advance,
-        )))
+        )));
+    motion::arrive(page, arrival, motion::TRAVEL)
 }
 
 fn header(palette: Palette, step: Step, mode: Mode) -> impl IntoElement + use<> {

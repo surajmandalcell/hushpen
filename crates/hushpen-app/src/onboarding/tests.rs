@@ -1568,6 +1568,26 @@ mod window {
         );
     }
 
+    /// A new step fades in and rises into place, as a view does; the first one is in place.
+    #[gpui_kit::test]
+    fn a_new_step_rises_into_place(cx: &mut TestAppContext) {
+        use crate::motion;
+        let fixture = mac(cx, &["base"], "base");
+        let handle = open(cx, &fixture);
+        cx.update(|cx| cx.set_global(motion::tests::Play));
+        frame(cx, handle);
+        let first = rect(cx, handle, "onboarding.title".into());
+        go_to_unchecked(cx, &fixture, Step::MicTest);
+        frame(cx, handle);
+        let rising = rect(cx, handle, "onboarding.title".into());
+        assert_eq!(rising.1 - first.1, motion::TRAVEL, "it starts lower");
+        cx.executor().advance_clock(motion::BASE);
+        cx.update_window(handle, |_, window, cx| window.simulate_next_frame(cx))
+            .unwrap();
+        frame(cx, handle);
+        assert_eq!(rect(cx, handle, "onboarding.title".into()).1, first.1);
+    }
+
     /// `(x, y, width, height)` of an element in the window.
     fn rect(cx: &mut TestAppContext, handle: AnyWindowHandle, id: String) -> (f32, f32, f32, f32) {
         let id = gpui_kit::SharedString::from(id);
