@@ -284,8 +284,8 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::Dictionary => Some(View::Dictionary),
         Scene::Files(_) => Some(View::Manual),
         Scene::Models | Scene::ModelsBottom => Some(View::Models),
-        // The scrim dims the whole window, so the shell colors do not hold under the sheet.
-        Scene::ModelsDetails => None,
+        // The scrim dims the whole window, so the shell colors do not hold under a sheet.
+        Scene::ModelsDetails | Scene::EnhanceTune | Scene::EnhanceFind => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
             Some(View::Settings)
@@ -390,7 +390,7 @@ fn the_light_and_dark_baselines_differ_and_follow_the_palette_for_every_scene() 
         // The right margin of the content pane: no view draws there, not even a full list. A
         // sheet dims it with the scrim.
         let content = |scrim: u32, content: u32| {
-            if matches!(scene, Scene::ModelsDetails) {
+            if scene.has_sheet() {
                 over(scrim, content >> 8)
             } else {
                 format!("#{:06X}", content >> 8)

@@ -13,6 +13,7 @@ use hushpen_app::about::{About, Build, SystemOpener};
 use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
 use hushpen_app::dictation::Dictation;
 use hushpen_app::dictionary::Dictionary;
+use hushpen_app::enhance::{Parts as EnhanceParts, Tuning};
 use hushpen_app::files::Files;
 use hushpen_app::history::History;
 use hushpen_app::import::{Import, ImportRunner, Parts as ImportParts};
@@ -111,6 +112,10 @@ pub enum Scene {
     /// Shortcuts with the recorder of the first slot waiting for keys, one changed shortcut
     /// with its reset button, and one shortcut off.
     ShortcutRecorder,
+    /// The audio enhance sheet on its tuning page, opened by Adjust on the Custom row.
+    EnhanceTune,
+    /// The audio enhance sheet on Find best settings, waiting for the reading.
+    EnhanceFind,
 }
 
 /// What a Settings baseline shows of the one long list.
@@ -201,6 +206,8 @@ impl Scene {
             Scene::Settings(shot) => format!("settings-{}", shot.key()),
             Scene::EndpointFailure => "settings-cleanup-endpoint-failure".into(),
             Scene::ShortcutRecorder => "shortcut-recorder".into(),
+            Scene::EnhanceTune => "settings-enhance".into(),
+            Scene::EnhanceFind => "settings-enhance-find".into(),
         }
     }
 
@@ -229,6 +236,8 @@ impl Scene {
         scenes.extend(SettingsShot::ALL.into_iter().map(Scene::Settings));
         scenes.push(Scene::EndpointFailure);
         scenes.push(Scene::ShortcutRecorder);
+        scenes.push(Scene::EnhanceTune);
+        scenes.push(Scene::EnhanceFind);
         scenes
     }
 
@@ -245,6 +254,14 @@ impl Scene {
         !matches!(
             self,
             Scene::Shell | Scene::Home | Scene::Onboarding(_) | Scene::PermissionsChanged
+        )
+    }
+
+    /// Whether a sheet floats over the page, so the scrim dims the whole window.
+    pub fn has_sheet(self) -> bool {
+        matches!(
+            self,
+            Scene::ModelsDetails | Scene::EnhanceTune | Scene::EnhanceFind
         )
     }
 }
@@ -582,6 +599,15 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
             .settings
             .set("engine.threads", json!(4))
             .expect("store the thread count"),
+        Scene::EnhanceTune | Scene::EnhanceFind => {
+            let settings = &storage.settings;
+            settings
+                .set("engine.threads", json!(4))
+                .expect("store the thread count");
+            settings
+                .set("audio.enhance", json!("custom"))
+                .expect("store the mode");
+        }
         _ => {}
     }
     let mut cx = headless_in(appearance);
@@ -690,9 +716,21 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                 cx,
                             )
                         });
+                        let tuning = cx.new(|cx| {
+                            Tuning::new(
+                                EnhanceParts {
+                                    storage: Rc::clone(&storage),
+                                    mic: mic.clone(),
+                                    run: Arc::new(|_, _| JobOutcome::Cancelled),
+                                    spawn: models::thread_spawner(),
+                                },
+                                cx,
+                            )
+                        });
                         settings.update(cx, |settings, cx| {
                             settings.attach_updater(updater.clone(), cx);
                             settings.attach_search(window, cx);
+                            settings.attach_tuning(tuning, cx);
                         });
                         if matches!(scene, Scene::EndpointFailure) {
                             let form = cx.new(|cx| {
@@ -921,6 +959,15 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
         Scene::ShortcutRecorder => {
             click(cx, handle, "sidebar.settings");
             click_scrolled(cx, handle, "settings.shortcut.hold");
+        }
+        Scene::EnhanceTune => {
+            click(cx, handle, "sidebar.settings");
+            click_scrolled(cx, handle, "settings.audio.enhance.adjust");
+        }
+        Scene::EnhanceFind => {
+            click(cx, handle, "sidebar.settings");
+            click_scrolled(cx, handle, "settings.audio.enhance.adjust");
+            click(cx, handle, "enhance.find");
         }
         Scene::EndpointFailure => {
             click(cx, handle, "sidebar.settings");

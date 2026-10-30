@@ -321,14 +321,16 @@ const ROW_MIN: f32 = 36.0;
 const ROW_MAX: f32 = 36.0 + 11.0 * 1.3 + 1.0;
 const TITLE_MAX: f32 = 13.0 * 1.3 + 1.0;
 const SECONDARY_MAX: f32 = 11.0 * 1.3 + 1.0;
-/// Rows that hold more than a line by design: the text area of Read aloud.
-const TALL_ROWS: [&str; 1] = ["read.text"];
+/// Rows that hold more than a line by design: the text area of Read aloud and the lines to read
+/// for Find best settings.
+const TALL_ROWS: [&str; 2] = ["read.text", "enhance.reading"];
 
 /// The rows of every group, as `(group, row, height)`, from the elements that span a group.
 pub fn rows_of(nodes: &[Node]) -> Vec<(String, String, f32)> {
     let mut rows = Vec::new();
     for group in nodes.iter().filter(|node| node.visible && node.is("Group")) {
         let rect = group.rect;
+        let view = group.id.split('.').next();
         let mut spanning: Vec<&Node> = nodes
             .iter()
             .filter(|node| {
@@ -336,6 +338,8 @@ pub fn rows_of(nodes: &[Node]) -> Vec<(String, String, f32)> {
                 node.visible
                     && !node.is("Group")
                     && !node.id.starts_with("toolbar.")
+                    // A sheet floats over the page, so a page row can lie inside a sheet group.
+                    && node.id.split('.').next() == view
                     && node.rect.x <= rect.x + 1.5
                     && node.rect.w >= rect.w - 3.0
                     && node.rect.y >= rect.y - 0.5
