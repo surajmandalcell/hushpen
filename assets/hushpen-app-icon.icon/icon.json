@@ -1,13 +1,10 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "srgb:0.10980,0.10980,0.12157,1.00000",
-      "srgb:0.03922,0.03922,0.04314,1.00000"
+      "srgb:0.96863,0.95686,0.93725,1.00000",
+      "srgb:0.90980,0.89020,0.85490,1.00000"
     ],
-    "orientation" : {
-      "start" : { "x" : 0.5, "y" : 0 },
-      "stop" : { "x" : 0.5, "y" : 1 }
-    }
+    "orientation" : { "start" : { "x" : 0.5, "y" : 0 }, "stop" : { "x" : 0.5, "y" : 1 } }
   },
   "groups" : [
     {
@@ -15,20 +12,15 @@
         {
           "glass" : false,
           "image-name" : "mark.svg",
-          "name" : "mark"
+          "name" : "mark",
+          "fill-specializations" : [
+            { "appearance" : "dark", "value" : { "solid" : "srgb:0.92549,0.90588,0.87059,1.00000" } }
+          ]
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0.5
-      }
+      "shadow" : { "kind" : "neutral", "opacity" : 0.15 },
+      "translucency" : { "enabled" : false, "value" : 0.5 }
     }
   ],
-  "supported-platforms" : {
-    "squares" : [ "macOS" ]
-  }
+  "supported-platforms" : { "squares" : [ "macOS" ] }
 }
