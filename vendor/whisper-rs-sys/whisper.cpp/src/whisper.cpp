@@ -6754,7 +6754,6 @@ static void whisper_sequence_score(
 }
 
 static bool whisper_vad(
-        struct whisper_context * ctx,
           struct whisper_state * state,
     struct whisper_full_params   params,
                    const float * samples,
@@ -6788,8 +6787,8 @@ static bool whisper_vad(
 
     if (vad_segments->data.size() > 0) {
         state->has_vad_segments = true;
-        ctx->state->vad_segments.clear();
-        ctx->state->vad_segments.reserve(vad_segments->data.size());
+        state->vad_segments.clear();
+        state->vad_segments.reserve(vad_segments->data.size());
 
         // Initialize the time mapping table
         state->vad_mapping_table.clear();
@@ -6862,7 +6861,7 @@ static bool whisper_vad(
 
                 WHISPER_LOG_INFO("%s: vad_segment_info: orig_start: %.2f, orig_end: %.2f, vad_start: %.2f, vad_end: %.2f\n",
                     __func__, segment.orig_start/100.0, segment.orig_end/100.0, segment.vad_start/100.0, segment.vad_end/100.0);
-                ctx->state->vad_segments.push_back(segment);
+                state->vad_segments.push_back(segment);
 
                 // Copy this speech segment
                 memcpy(filtered_samples.data() + offset, samples + segment_start_samples, segment_length * sizeof(float));
@@ -6915,7 +6914,7 @@ static bool whisper_vad(
     return true;
 }
 
-int whisper_full_with_state(
+static int whisper_full_with_state_impl(
         struct whisper_context * ctx,
           struct whisper_state * state,
     struct whisper_full_params   params,
@@ -7888,8 +7887,9 @@ int whisper_full_with_state(
     return 0;
 }
 
-int whisper_full(
+int whisper_full_with_state(
         struct whisper_context * ctx,
+          struct whisper_state * state,
     struct whisper_full_params   params,
                    const float * samples,
                            int   n_samples) {
@@ -7897,17 +7897,28 @@ int whisper_full(
     std::vector<float> vad_samples;
     if (params.vad) {
         WHISPER_LOG_INFO("%s: VAD is enabled, processing speech segments only\n", __func__);
-        if (!whisper_vad(ctx, ctx->state, params, samples, n_samples, vad_samples)) {
+        if (!whisper_vad(state, params, samples, n_samples, vad_samples)) {
             WHISPER_LOG_ERROR("%s: failed to compute VAD\n", __func__);
             return -1;
         }
         if (vad_samples.empty()) {
-            ctx->state->result_all.clear();
+            state->result_all.clear();
             return 0;
         }
         samples = vad_samples.data();
         n_samples = vad_samples.size();
+    } else {
+        state->has_vad_segments = false;
+        state->vad_mapping_table.clear();
     }
+    return whisper_full_with_state_impl(ctx, state, params, samples, n_samples);
+}
+
+int whisper_full(
+        struct whisper_context * ctx,
+    struct whisper_full_params   params,
+                   const float * samples,
+                           int   n_samples) {
     return whisper_full_with_state(ctx, ctx->state, params, samples, n_samples);
 }
 
@@ -7925,7 +7936,7 @@ int whisper_full_parallel(
     std::vector<float> vad_samples;
     if (params.vad) {
         WHISPER_LOG_INFO("%s: VAD is enabled, processing speech segments only\n", __func__);
-        if (!whisper_vad(ctx, ctx->state, params, samples, n_samples, vad_samples)) {
+        if (!whisper_vad(ctx->state, params, samples, n_samples, vad_samples)) {
             WHISPER_LOG_ERROR("%s: failed to compute VAD\n", __func__);
             return -1;
         }
@@ -7966,7 +7977,7 @@ int whisper_full_parallel(
         params_cur.progress_callback = nullptr;
         params_cur.progress_callback_user_data = nullptr;
 
-        workers[i] = std::thread(whisper_full_with_state, ctx, states[i], std::move(params_cur), samples + start_samples, n_samples_cur);
+        workers[i] = std::thread(whisper_full_with_state_impl, ctx, states[i], std::move(params_cur), samples + start_samples, n_samples_cur);
     }
 
     {
@@ -7976,7 +7987,7 @@ int whisper_full_parallel(
         params_cur.print_realtime = false;
 
         // Run the first transformation using default state but only for the first chunk.
-        ret = whisper_full_with_state(ctx, ctx->state, std::move(params_cur), samples, offset_samples + n_samples_per_processor);
+        ret = whisper_full_with_state_impl(ctx, ctx->state, std::move(params_cur), samples, offset_samples + n_samples_per_processor);
     }
 
     for (int i = 0; i < n_processors - 1; ++i) {
