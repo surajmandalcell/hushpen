@@ -11,6 +11,7 @@ use crate::hook;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
+use gpui_kit::assets::IconName;
 use gpui_kit::{
     AnyElement, App, Bounds, ClickEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Pixels, Role, StatefulInteractiveElement, Styled, Window, div, px,
@@ -44,6 +45,17 @@ fn clock(ms: i64) -> String {
 
 type Press = Box<dyn Fn(&mut Window, &mut App)>;
 
+/// The look of one icon button of the detail view.
+struct Icon {
+    id: &'static str,
+    name: IconName,
+    label: &'static str,
+    tooltip: &'static str,
+}
+
+/// The detail of one row. The header holds Back, the facts of the row, and the copy buttons; the
+/// Recording row Export, Reprocess, and Delete; the player Play and the seek bar. Each group of
+/// buttons runs from lightest to heaviest, and the focus moves in the order they are drawn.
 pub(super) fn detail_view(
     history: &Entity<History>,
     row: Row,
@@ -56,7 +68,6 @@ pub(super) fn detail_view(
             [
                 view.focus.back.clone(),
                 view.focus.copy.clone(),
-                view.focus.repaste.clone(),
                 view.focus.undo_cleanup.clone(),
                 view.focus.copy_original.clone(),
                 view.focus.reprocess.clone(),
@@ -83,7 +94,6 @@ pub(super) fn detail_view(
     let [
         back_focus,
         copy_focus,
-        repaste_focus,
         undo_cleanup_focus,
         copy_original_focus,
         reprocess_focus,
@@ -109,78 +119,64 @@ pub(super) fn detail_view(
     };
     let ai_used = row.llm_outcome.as_deref() == Some("used");
     let has_ai_text = row.llm_text.is_some();
-    let button =
-        |id: &str, label: &'static str, focus: &FocusHandle, enabled: bool, press: Press| {
-            ui::button(
-                palette,
-                hook::id("history", id),
-                label,
-                Kind::Plain,
-                enabled.then_some(focus),
-                enabled,
-                move |window, cx| press(window, cx),
-            )
-        };
-    let text_controls = div()
-        .flex_none()
-        .flex()
-        .gap(px(space::SM))
-        .child(button(
-            "copy",
-            "Copy",
-            &copy_focus,
-            has_text,
+    let button = |icon: Icon, focus: &FocusHandle, enabled: bool, press: Press| {
+        ui::icon_button_enabled(
+            palette,
+            hook::id("history", icon.id),
+            icon.name,
+            icon.label.to_owned(),
+            icon.tooltip,
+            focus,
+            enabled,
+            move |window, cx| press(window, cx),
+        )
+        .into_any_element()
+    };
+    let buttons = |children: Vec<AnyElement>| {
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            .children(children)
+    };
+    let mut copy_buttons = Vec::new();
+    if has_ai_text {
+        copy_buttons.push(button(
+            Icon {
+                id: "copy-original",
+                name: IconName::ClipboardClock,
+                label: "Copy original text",
+                tooltip: "Copy original",
+            },
+            &copy_original_focus,
+            true,
             Box::new(act(|history, id, cx| {
-                let _ = history.copy(Some(id), cx);
+                let _ = history.copy_original(Some(id), cx);
             })),
-        ))
-        .child(button(
-            "repaste",
-            "Re-paste",
-            &repaste_focus,
-            has_text,
-            Box::new(act(|history, id, cx| {
-                let _ = history.repaste(Some(id), cx);
-            })),
-        ))
-        .children(ai_used.then(|| {
-            button(
-                "undo-cleanup",
-                "Undo cleanup",
-                &undo_cleanup_focus,
-                true,
-                Box::new(act(|history, id, cx| {
-                    let _ = history.undo_cleanup(Some(id), cx);
-                })),
-            )
-        }))
-        .children(has_ai_text.then(|| {
-            button(
-                "copy-original",
-                "Copy original",
-                &copy_original_focus,
-                true,
-                Box::new(act(|history, id, cx| {
-                    let _ = history.copy_original(Some(id), cx);
-                })),
-            )
-        }));
-    let file_controls = div()
-        .flex_none()
-        .flex()
-        .gap(px(space::SM))
-        .child(button(
-            "reprocess",
-            "Reprocess",
-            &reprocess_focus,
-            audio && !running,
-            Box::new(act(|history, id, cx| {
-                let _ = history.reprocess(Some(id), cx);
-            })),
-        ))
-        .child(button(
-            "export",
-            "Export",
+        ));
+    }
+    copy_buttons.push(button(
+        Icon {
+            id: "copy",
+            name: IconName::Copy,
+            label: "Copy text",
+            tooltip: "Copy",
+        },
+        &copy_focus,
+        has_text,
+        Box::new(act(|history, id, cx| {
+            let _ = history.copy(Some(id), cx);
+        })),
+    ));
+    let file_buttons = vec![
+        button(
+            Icon {
+                id: "export",
+                name: IconName::Share,
+                label: "Export",
+                tooltip: "Export",
+            },
             &export.button_focus,
             true,
             Box::new({
@@ -189,16 +185,50 @@ pub(super) fn detail_view(
                     history.update(cx, |history, cx| history.toggle_export_menu(cx));
                 }
             }),
-        ))
-        .child(button(
-            "delete",
-            "Delete",
+        ),
+        button(
+            Icon {
+                id: "reprocess",
+                name: IconName::RefreshCw,
+                label: "Reprocess",
+                tooltip: "Reprocess",
+            },
+            &reprocess_focus,
+            audio && !running,
+            Box::new(act(|history, id, cx| {
+                let _ = history.reprocess(Some(id), cx);
+            })),
+        ),
+        button(
+            Icon {
+                id: "delete",
+                name: IconName::Trash,
+                label: "Delete transcript",
+                tooltip: "Delete",
+            },
             &delete_focus,
             true,
             Box::new(act(|history, id, cx| {
                 let _ = history.delete(Some(id), cx);
             })),
-        ));
+        ),
+    ];
+    // Undo cleanup sits on the row of the AI text it takes back.
+    let mut undo_cleanup = ai_used.then(|| {
+        button(
+            Icon {
+                id: "undo-cleanup",
+                name: IconName::Undo2,
+                label: "Undo AI cleanup",
+                tooltip: "Undo cleanup",
+            },
+            &undo_cleanup_focus,
+            true,
+            Box::new(act(|history, id, cx| {
+                let _ = history.undo_cleanup(Some(id), cx);
+            })),
+        )
+    });
 
     let mut rows: Vec<AnyElement> = vec![
         ui::row(palette)
@@ -214,25 +244,15 @@ pub(super) fn detail_view(
                 back,
             ))
             .child(ui::secondary(palette).flex_1().min_w_0().child(meta(&row)))
+            .child(buttons(copy_buttons))
+            .into_any_element(),
+        ui::row(palette)
+            .id(hook::id("history", "actions.file"))
+            .test_support()
+            .child(ui::title(palette).flex_1().min_w_0().child("Recording"))
+            .child(buttons(file_buttons))
             .into_any_element(),
     ];
-    for (name, title, controls) in [
-        ("actions.text", "Text", text_controls.into_any_element()),
-        (
-            "actions.file",
-            "Recording",
-            file_controls.into_any_element(),
-        ),
-    ] {
-        rows.push(
-            ui::row(palette)
-                .id(hook::id("history", name))
-                .test_support()
-                .child(ui::title(palette).flex_1().min_w_0().child(title))
-                .child(controls)
-                .into_any_element(),
-        );
-    }
     if export.open {
         rows.push(banner(
             palette,
@@ -298,10 +318,21 @@ pub(super) fn detail_view(
         if is_import(&row) && matches!(key, "app" | "rule") && value.is_none() {
             continue;
         }
-        rows.push(field(palette, key, label, value));
+        let trailing = if key == "llm" {
+            undo_cleanup.take()
+        } else {
+            None
+        };
+        rows.push(field(palette, key, label, value, trailing));
     }
     if is_import(&row) {
-        rows.push(field(palette, "file", "File", row.source_name.clone()));
+        rows.push(field(
+            palette,
+            "file",
+            "File",
+            row.source_name.clone(),
+            None,
+        ));
         for (index, segment) in segments.iter().enumerate() {
             let label = format!(
                 "{} \u{2013} {}",
@@ -313,6 +344,7 @@ pub(super) fn detail_view(
                 &format!("segment.{index}"),
                 &label,
                 Some(segment.text.clone()),
+                None,
             ));
         }
     }
@@ -396,16 +428,18 @@ fn player_row(palette: Palette, history: &Entity<History>, id: &str, player: Pla
         playback::clock(info.duration_ms)
     );
     let track = ui::track(palette, fraction);
+    let play = if info.playing { "Pause" } else { "Play" };
     let mut row = ui::row(palette)
         .id(hook::id("history", "player"))
         .test_support()
-        .child(ui::button(
+        .child(ui::swap_icon_button(
             palette,
             hook::id("history", "play"),
-            if info.playing { "Pause" } else { "Play" },
-            Kind::Plain,
-            Some(&play_focus),
-            true,
+            [IconName::Play, IconName::Pause],
+            info.playing,
+            play,
+            play,
+            &play_focus,
             toggle,
         ))
         .child(
@@ -457,14 +491,21 @@ fn player_row(palette: Palette, history: &Entity<History>, id: &str, player: Pla
     row.into_any_element()
 }
 
-/// The fact row of one field of the transcript, under `history.detail.<key>`.
-fn field(palette: Palette, key: &str, label: &str, value: Option<String>) -> AnyElement {
+/// The fact row of one field of the transcript, under `history.detail.<key>`, with an optional
+/// button after the value.
+fn field(
+    palette: Palette,
+    key: &str,
+    label: &str,
+    value: Option<String>,
+    trailing: Option<AnyElement>,
+) -> AnyElement {
     ui::fact_row(
         palette,
         hook::id("history", &format!("detail.{key}.row")),
         hook::id("history", &format!("detail.{key}")),
         label,
         value,
-        None,
+        trailing,
     )
 }

@@ -120,12 +120,6 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
     );
     action(
         cx,
-        "history-repaste",
-        "Paste the text of a transcript into the focused app, like Re-paste. Args as history-copy.",
-        |history, id, cx| history.repaste(id.as_deref(), cx),
-    );
-    action(
-        cx,
         "history-copy-original",
         "Copy the text from before the AI cleanup, like Copy original. Args as history-copy.",
         |history, id, cx| history.copy_original(id.as_deref(), cx),
