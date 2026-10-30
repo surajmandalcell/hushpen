@@ -13,7 +13,9 @@ use std::process::Command;
 
 use super::deps::{self, Deps};
 use super::names::{self, Format};
-use super::{APP_BINARY, BINARIES, Ctx, NOTICES, config, copy, first_file_with_extension};
+use super::{
+    APP_BINARY, BINARIES, Ctx, NOTICES, VAD_MODEL, config, copy, first_file_with_extension,
+};
 use super::{run_packager, run_tool};
 
 const ICON_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256, 512];
@@ -286,6 +288,9 @@ fn tar_gz(ctx: &Ctx) -> Result<PathBuf, String> {
         copy(&library, &top.join(name))?;
     }
     copy(&ctx.notices(), &top.join(NOTICES))?;
+    let vad = ctx.root.join("assets").join(VAD_MODEL);
+    super::verify_vad(&vad)?;
+    copy(&vad, &top.join(VAD_MODEL))?;
     copy(&ctx.root.join("LICENSE"), &top.join("LICENSE"))?;
     fs::write(top.join("install-kind"), "tar\n")
         .map_err(|e| format!("cannot write install-kind: {e}"))?;

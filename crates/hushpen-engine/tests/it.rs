@@ -18,6 +18,8 @@ use hushpen_engine::{
 mod child;
 #[path = "it/import.rs"]
 mod import;
+#[path = "it/silence.rs"]
+mod silence;
 
 fn assets_dir() -> Option<PathBuf> {
     std::env::var_os("HUSHPEN_TEST_ASSETS").map(PathBuf::from)
