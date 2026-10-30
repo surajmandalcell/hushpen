@@ -19,8 +19,9 @@ use gpui_kit::{
 };
 use hushpen_core::chatterbox::BUILT_IN_VOICE;
 
-/// The width of the last place in a voice row: Set as Default, or the word Default.
-const DEFAULT_COLUMN_WIDTH: f32 = 108.0;
+/// The width of the last place in a voice row: Set as Default, or the word Default. Set as
+/// Default is about 111px wide in Inter, so the column holds it with room for a wider font.
+const DEFAULT_COLUMN_WIDTH: f32 = 120.0;
 
 fn id(name: &str) -> SharedString {
     hook::id("voices", name)
