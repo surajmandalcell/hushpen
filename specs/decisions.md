@@ -159,8 +159,9 @@ new decision, add it here in the same change (D-21).
   the sherpa-onnx 2.0.0 C API, opened with dlopen from pinned, checksummed
   release libraries (`cargo xtask tts-runtime`; `Contents/Frameworks` on
   macOS, beside the worker on Linux); nothing downloads at build time and a
-  version mismatch is refused. The `sherpa-onnx-sys` crate was rejected
-  because its build script downloads the library. sherpa-onnx 2.0.0 contains
+  version mismatch is refused. The worker also runs Chatterbox (D-35). The
+  `sherpa-onnx-sys` crate was rejected because its build script downloads
+  the library. sherpa-onnx 2.0.0 contains
   no espeak-ng or piper-phonemize, so the package ships no GPL data; the
   worker turns text into phonemes itself (the model's lexicon plus number
   and abbreviation rules) and passes phoneme codepoints, so words outside
@@ -216,7 +217,10 @@ new decision, add it here in the same change (D-21).
   first plays while the rest is spoken. Export Audio writes the samples the
   player holds as a 16-bit WAV, the only format for now. The settings keys
   are `files.mode`, `files.language`, `files.translate`, `readAloud.engine`,
-  `readAloud.voice.system`, `readAloud.voice.kokoro`, `readAloud.speed`
+  `readAloud.voice.system`, `readAloud.voice.kokoro`,
+  `readAloud.voice.chatterbox` (both Chatterbox models),
+  `readAloud.defaultVoice` (a cloned voice id, empty for the voice of the
+  model), `readAloud.speed`
   (0.5 to 2, in steps of 0.05), and `readAloud.format`.
 - **D-32 Focus and control edges.** A focused text field has a 1px accent
   border and no glow (the kit theme's `focus_ring` is off). Buttons, pop-up
@@ -280,6 +284,39 @@ new decision, add it here in the same change (D-21).
   tap listens), on X11 each live chord with one key is grabbed and the
   recorder grabs the keyboard. Modifier events always pass. Caps Lock on
   macOS reports only its press, so it works for a tap shortcut, not a hold.
+- **D-35 Chatterbox and the voice library.** Read aloud also speaks with
+  Chatterbox Turbo and Chatterbox Nano (catalog kind `voice`, under
+  `models/tts/`) in the same `hushpen-tts` worker, one voice model in RAM at
+  a time. They run on ONNX Runtime through `ort` with `load-dynamic`,
+  opened from the library file sherpa-onnx already links, so the package
+  ships no new runtime. Turbo comes from `ResembleAI/chatterbox-turbo-ONNX`,
+  whose repo has no default voice clip, so its clip comes from
+  `onnx-community/chatterbox-ONNX`. No official Nano ONNX export exists;
+  Nano is the community export `Masterx/chatterbox-nano-ONNX`. Both read
+  English only: other text fails with `SPEECH_NOT_ENGLISH`, and the UI
+  offers the system voice. A voice is cloned from a clip of 5 to 20 s of
+  speech (a guided microphone take or a WAV, MP3, or M4A file, the silence
+  cut and the level raised, resampled to 24 kHz) kept in
+  `voices/<id>/reference.wav` with `voice.json`. The worker computes the
+  voice conditioning once and keeps it beside the clip as
+  `reference.<model>.cond`; a clip it cannot use fails with
+  `SPEECH_VOICE_CLIP`. The default voice (`readAloud.defaultVoice`) is what
+  Chatterbox reads with while the Voice menu says Default; empty means the
+  voice of the model (`default_voice.wav`). Measured on an Apple M4 Pro with
+  8 threads: Turbo has its first audio after about 1.2 s at a real-time
+  factor of 0.4 to 0.55 and uses about 650 MB idle, up to 850 MB; Nano about
+  0.75 s, 0.27 to 0.37, 470 MB, up to 680 MB.
+- **D-36 Read aloud in History.** Each text that Read aloud speaks to the
+  end, for Play or for Export, saves one history row of kind `read`: the
+  spoken text as the final text, the engine key as `model_id`, the voice
+  name as `source_name` (so search finds it), the voice language, the length,
+  and `audio/<id>.wav` while the audio retention keeps the audio of a
+  finished dictation. Playing or exporting the same speech again adds no
+  row; a stopped or failed read adds none. Schema version 2 allows the kind:
+  SQLite cannot change a CHECK, so the migration builds the table again with
+  the same rowids, with foreign keys off and `foreign_key_check` before the
+  commit. Reprocess is refused for a read; Read aloud again speaks the text
+  once more with the voice chosen now.
 
 ## History notes
 

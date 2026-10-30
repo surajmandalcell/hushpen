@@ -19,19 +19,21 @@ Hushpen
 │   │   ├── queue                   the imports, one at a time
 │   │   │   └── import              one audio file transcribed into a history row
 │   │   └── read aloud              text to speech with a speech engine
-│   │       └── voice               one voice of the speech engine
+│   │       ├── voice               one voice of the speech engine
+│   │       └── voice library       the cloned voices for Chatterbox
 │   ├── updater                     opt-in check and install
 │   ├── about                       build stamp, facts, and links
 │   └── test hook                   debug builds only
 ├── hushpen engine (child)          whisper.cpp, started as `hushpen engine`
 ├── hushpen-llm (child binary)      llama.cpp, one model in RAM
-├── hushpen-tts (child binary)      Kokoro on sherpa-onnx, one voice model in RAM
+├── hushpen-tts (child binary)      Kokoro and Chatterbox, one voice model in RAM
 └── data folder                     all app data on disk (D-13)
     ├── settings                    config/settings.json
     ├── model                       models/whisper/*.bin, models/llm/*.gguf, models/tts/<id>/
     ├── history row                 one entry in history/history.db
     │   ├── audio file              audio/<id>.wav
-    │   └── transcript              raw text and cleaned text
+    │   └── transcript              raw text and cleaned text, or the text read aloud
+    ├── cloned voice                voices/<id>/reference.wav and voice.json
     ├── dictionary entry            a word or a replacement
     └── session WAV                 cache/sessions/<id>.wav
 ```
@@ -57,6 +59,8 @@ Hushpen
   saved first and restored after the target app reads it.
 - **history row**: one entry in the SQLite history database. Search answers
   in under 200 ms. Audio is deleted after 30 days by default; the text stays.
+  Its kind is `dictation`, `import`, `command`, or `read` (a text read
+  aloud to the end, D-36).
 - **dictionary entry**: a word that goes into the Whisper prompt, or a
   replacement applied after cleanup.
 - **model**: a Whisper model (ggml `.bin`), an LLM model (GGUF), or a voice
@@ -98,9 +102,19 @@ Hushpen
   result can be played, paused, and exported as a WAV.
 - **speech engine**: what turns text into speech. The system voice is
   AVSpeechSynthesizer on macOS and espeak-ng on Linux (unavailable when
-  espeak-ng is not installed). Kokoro is a downloaded model.
+  espeak-ng is not installed). Kokoro, Chatterbox Turbo, and Chatterbox Nano
+  are downloaded models. Chatterbox reads English only, with the voice of a
+  clip (D-35).
 - **voice**: one voice of a speech engine, with an id, a name, a language,
   and a quality (default, enhanced, or premium).
+- **voice library**: the cloned voices, kept in `voices/` and shared by both
+  Chatterbox models. The Manage Voices sheet adds, plays, renames, and
+  deletes them.
+- **cloned voice**: a voice made from a clip of 5 to 20 s of someone
+  speaking, recorded in the sheet or taken from an audio file.
+- **default voice**: the voice Chatterbox reads with when the Voice menu says
+  Default: a cloned voice set as default, or else the voice that comes with
+  the model (Built-in).
 - **build stamp**: the short commit and its date that `build.rs` compiles
   into `hushpen`. About shows it after the version (D-27).
 - **appearance**: the system Light or Dark setting. Views follow it live.
@@ -125,8 +139,8 @@ Hushpen
   capture, insertion, the store, and the updater.
 - **engine**: the child process (`hushpen engine`) that runs whisper.cpp.
 - **hushpen-llm**: the child binary that runs llama.cpp (D-06).
-- **hushpen-tts**: the child binary that runs the Kokoro voice model on
-  sherpa-onnx (D-28).
+- **hushpen-tts**: the child binary that runs the voice models: Kokoro on
+  sherpa-onnx (D-28) and Chatterbox on ONNX Runtime (D-35).
 - Children talk to `hushpen` over framed stdin and stdout only.
 
 ## History notes
