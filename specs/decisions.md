@@ -84,6 +84,14 @@ new decision, add it here in the same change (D-21).
 - **D-19 Engine build.** Metal on macOS and CPU on Linux. Release builds use
   `GGML_NATIVE=OFF` so one build runs on older CPUs. Cancel finishes in under
   1 s, and an engine crash keeps the audio.
+  Dictation and file transcription skip silence with the bundled Silero VAD
+  v5.1.2 model, offline and always on. Speech keeps 250 ms of padding on each
+  side; a 600 ms pause splits regions, with a speech threshold of 0.5 and a
+  minimum speech length of 100 ms. Subtitle times use the original audio
+  clock, including the gaps. Empty windows do not fix the detected language.
+  Decoding uses no past transcript context, suppresses non-speech tokens,
+  and keeps the no-speech threshold at 0.6. The 885,098-byte MIT model ships
+  in every package, pinned by SHA-256 in the package checks, not downloaded.
 - **D-20 Packages.** macOS zip and dmg; Linux AppImage, deb, rpm, and tar.gz
   for x64 and arm64. File names are `Hushpen-<version>-<target>.<ext>`. The
   dmg is built on CI only.
