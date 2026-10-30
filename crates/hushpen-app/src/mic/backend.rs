@@ -19,7 +19,8 @@ pub trait MicBackend: Send + Sync + 'static {
     ) -> Result<Box<dyn MicSession>, CaptureError>;
 }
 
-pub trait MicSession {
+/// `Send`, so a stop that waits for the tail of the speech can run off the main thread.
+pub trait MicSession: Send {
     fn stop(self: Box<Self>) -> Result<Finished, CaptureError>;
     fn feed_wav(&self, path: &Path) -> Result<FeedInfo, CaptureError>;
     /// Boosts the microphone by `gain`, 1.0 to 2.0, from now on.

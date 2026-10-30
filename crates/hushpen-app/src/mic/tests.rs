@@ -426,6 +426,38 @@ fn a_session_collects_levels_and_stop_keeps_or_deletes_the_file(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn a_detached_session_frees_the_microphone_before_its_file_is_finished(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    devices(cx, &rig, virtual_mics());
+    let first = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    let kept = rig.mic.update(cx, |mic, cx| mic.detach(true, cx)).unwrap();
+    assert_eq!(*rig.backend.stopped.lock().unwrap(), 0, "not stopped yet");
+    assert_eq!(state_json(cx, &rig)["state"], "idle");
+    assert_eq!(
+        state_json(cx, &rig)["last_session"],
+        first.to_string_lossy().as_ref()
+    );
+
+    let second = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    assert_ne!(second, first, "the next session gets its own file at once");
+    let finished = kept.finish().unwrap();
+    assert_eq!(finished.path, first);
+    assert!(first.exists());
+
+    let dropped = rig.mic.update(cx, |mic, cx| mic.detach(false, cx)).unwrap();
+    dropped.finish().unwrap();
+    assert!(!second.exists(), "a session that is not kept is deleted");
+    assert_eq!(*rig.backend.stopped.lock().unwrap(), 2);
+    assert!(rig.mic.update(cx, |mic, cx| mic.detach(true, cx)).is_none());
+}
+
+#[gpui_kit::test]
 fn a_mic_error_during_a_session_closes_the_file_and_shows_a_notice(cx: &mut TestAppContext) {
     let rig = rig(cx, None);
     devices(cx, &rig, virtual_mics());
