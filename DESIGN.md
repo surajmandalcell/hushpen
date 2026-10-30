@@ -284,7 +284,7 @@ Depth is tonal. There are no shadows on normal content. Shadows are only for dro
 
 Motion is short and quiet. It shows where something comes from and never makes the user wait. Every animation uses the same tokens:
 
-- **Fast (90 ms):** something small that appears, such as a tooltip or a pop-up menu.
+- **Fast (90 ms):** something small that appears or changes, such as a tooltip, a pop-up menu, or the icon of Play and Pause.
 - **Slide (110 ms):** a control that moves to a new state, such as the knob of a switch or the fill of a segmented control.
 - **Base (130 ms):** a surface that comes in, such as a view, an onboarding step, or a sheet.
 - **Travel (4px):** how far a surface moves on its way in.
@@ -296,6 +296,7 @@ Every animation uses one cubic ease-out curve. It never overshoots or bounces.
 - A view picked in the sidebar fades in and rises 4px into place in the content pane. The sidebar and the title bar stay still. A new onboarding step comes in the same way.
 - As a sheet opens, the scrim fades in, and the sheet fades in and rises 4px into place. It does not scale, because the renderer cannot scale an element.
 - A switch slides its knob across and blends its track into the new fill. A segmented control slides its fill to the new segment.
+- An icon button with two states, such as Play and Pause, cross-fades its icons: the old icon fades out and shrinks, and the new one fades in and grows from a quarter of its size into place.
 
 An animation plays only when its state changes: a new view, a menu that opens, a switch that turns on. A redraw of the same state never plays it again. The new state is there at once for the keyboard and the accessibility tree, so a switch reads "on" before its knob arrives. Text moves and fades as one block; its layout never animates. With Reduce Motion every change shows at once. The pixel tests turn on Reduce Motion, so every baseline is a settled frame.
 
@@ -303,7 +304,7 @@ The flow bar has its own motion, described under Recording overlay.
 
 ## Components
 
-**Sidebar:** 7 rows in this order: Home, History, Dictionary, Files, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. There are no colored tiles. A focused row shows the accent focus ring.
+**Sidebar:** 7 rows in this order: Home, History, Manual, Dictionary, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. There are no colored tiles. A focused row shows the accent focus ring. The window opens on the view that was open at the last quit, and on Home the first time. Onboarding, while it is not done, shows first.
 
 **Toolbar:** the view title (13px semibold, label color) on the left of the title bar area. On Settings the search field sits at the right end, 300px wide, 24px from the window edge, centered on the chrome line. It has no bottom line.
 
@@ -313,13 +314,22 @@ The flow bar has its own motion, described under Recording overlay.
 
 **Home:** the Dictation group (status, Record, the transcript, language) above the Microphone group. The Microphone group is one row: the microphone pop-up (Default with the system microphone in brackets, then each microphone) and Test microphone. The level meter row shows only while a test runs; its bars grow up and down from the middle of the row. The transcript, or the placeholder before it, is centered in its block with 24px at the sides and 16px above and below; a long transcript keeps every line centered.
 
+**History:** one group: the search field, then a row for each transcript, newest first. A row opens its detail, one group of rows:
+
+- The top row holds Back, one secondary line with the time, the app or the file, the length, and the result, and at the right end the copy icons: Copy original (lucide `clipboard-clock`, only for a row with AI text), then Copy (lucide `copy`).
+- The Recording row holds Export (lucide `share`, which opens the bar of formats: TXT, SRT, VTT, JSON), Reprocess (lucide `refresh-cw`, off with no audio or while it runs), and Delete (lucide `trash`, with undo).
+- The player row, when the audio is kept, holds Play or Pause, the seek bar, and the time.
+- The fields follow: the raw text, the text after the rules, the text after AI cleanup with Undo cleanup (lucide `undo-2`) at its right end, the final text, the app, and the facts.
+
+Each group of icons runs from lightest to heaviest. The focus moves in the order the controls are drawn.
+
 **About:** a centered header, a facts group, a links group, and a footer line. The header holds the app icon (96px, 16px radius), "Hushpen" in the title style, the line "Private dictation that stays on this Mac" ("on this computer" on Linux), the build line in the secondary style (`Version 2.0.0 (1a2b3c4, 2026-05-15)`, with `-dev` after the version in a debug build), and a Check for Updates button with what the check found on one secondary line under it. The facts are Version, Engine (whisper.cpp and the model in use), and Data folder (`~/...`, with a Show button). The links are Website, GitHub, Report an issue, Open-source licenses, and Open log folder, each with the external-link glyph on the right. The footer is one centered secondary line: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." The Engine fact is the one place the UI names a component of the stack.
 
 **Models:** one section for each model kind, in this order: Speech recognition, Text cleanup, Voices. Each section is a heading above its group, with one footer line. Text cleanup lists only the models this machine is offered. A row holds the name, then the word "Recommended" in the secondary style for the suggested model of its kind, and one secondary line that says what the model is for. On the right, lightest to heaviest: the size, the status word, the details button (lucide `info`, 16px, in the secondary label color, tooltip "Details"), then Download or Cancel, Use (speech models only), and Delete. The size, status, and button columns keep fixed widths, so they line up from row to row.
 
-**Files:** a centered segmented control at the top picks Transcribe or Read aloud, and the view opens on the mode the user picked last.
+**Manual:** a centered segmented control at the top picks Transcribe or Read aloud, and the view opens on the mode the user picked last.
 
-- Transcribe starts with the drop zone: 152px high, the group fill, a dashed hairline in the tertiary label color, the 8px group radius, a 28px lucide `audio-lines` icon, "Drop audio files here", "Choose Files…", and the formats on one secondary line. Files dragged anywhere over the window turn it to the selection fill with an accent outline. A drop anywhere on the window opens Files: text files go to Read aloud, the rest to the queue.
+- Transcribe starts with the drop zone: 152px high, the group fill, a dashed hairline in the tertiary label color, the 8px group radius, a 28px lucide `audio-lines` icon, "Drop audio files here", "Choose Files…", and the formats on one secondary line. Files dragged anywhere over the window turn it to the selection fill with an accent outline. A drop anywhere on the window opens Manual: text files go to Read aloud, the rest to the queue.
 - The Options group holds Model, Language, and Translate to English. Translate is off with a tooltip that says why for English-only and turbo models.
 - The Queue group has one row per file: the name, then size · length · the folder, the time left, the snippet, or the error on the secondary line. On the right are a 120px progress bar, a 96px status column, then the buttons. A waiting or running file has Cancel. A done file has Copy, Export (TXT, SRT, VTT, JSON), Show in History, and Remove. A failed file has Retry and Remove. Clear Finished sits at the right end of the Queue heading, on the same line as the buttons in the rows.
 - Read aloud has a Text group (a 132px text area, the character count, and "Open Text File…" for `.txt` and `.md`), a Voice group (Engine, Language, Voice, Speed, Format), and an actions row with the status, the progress, Export Audio…, and Play or Stop. When Kokoro has no model, a notice row with "Download in Models" takes the place of the voice rows.
@@ -330,7 +340,7 @@ The flow bar has its own motion, described under Recording overlay.
 
 **Pop-up buttons and menus:** a pop-up button shows the current value and a chevron, at most 240px wide. Its menu floats above the page under the button, with the right edges lined up, so no group cuts it; near the window edge it moves inside the window. The menu has the menu color, a hairline edge, the 8px group radius, the menu shadow, and 4px around its options. It is 180px to 320px wide. Each option is 24px high, with a check before the chosen one and an optional secondary note after the label. The menu shows at most eight whole options and scrolls past them, and it opens with the chosen option in view. Up and Down move through the options and scroll with them, and Enter picks one. A choice, Esc, or a press outside the menu closes it, and the pop-up button keeps the focus. Tab closes it and moves on to the next control. A press outside only closes the menu; it does not reach what is under it.
 
-**Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color.
+**Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A focused button shows the accent focus ring. A disabled button uses the tertiary label color. An icon button is a 22px square with a 16px lucide icon in the secondary label color and no fill until hovered. A tooltip names it, and its name in the accessibility tree says what it does, such as "Copy text" for Copy. An off icon button uses the tertiary label color and takes no focus.
 
 **Text inputs:** the button height (22px) and radius (5px), with the control fill, so an input in one row with buttons aligns with them. The inner padding keeps the 13px text clear of the edges. A search field (Settings, History) leads with the search glyph.
 
