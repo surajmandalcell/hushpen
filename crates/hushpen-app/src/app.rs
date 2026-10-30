@@ -465,6 +465,8 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             shell.update(cx, |shell, cx| {
                 shell.attach_dictation(dictation.clone(), cx)
             });
+            // Every view is in place now, so the one open at the last quit can open again.
+            shell.update(cx, |shell, cx| shell.attach_storage(Rc::clone(&storage), cx));
             let tray_controller = controller.clone();
             let flow_bar = cx.new(|_| {
                 FlowBar::new(
