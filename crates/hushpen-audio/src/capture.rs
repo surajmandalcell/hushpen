@@ -5,6 +5,7 @@
 //! a channel. The test feeder pushes frames from a WAV into the same channel. The worker
 //! thread downmixes, resamples to 16 kHz mono, writes the session WAV, and measures levels.
 
+use crate::enhance::{Enhance, Enhancer};
 use crate::error::CaptureError;
 use crate::levels::LevelMeter;
 use crate::mic_stream::{MicHandle, MicHub};
@@ -116,6 +117,8 @@ pub struct Capture {
     mic_seen: Arc<AtomicU64>,
     /// The boost of the microphone, as the bits of an `f32`.
     gain: Arc<AtomicU32>,
+    /// The enhance of the microphone, as [`Enhance::to_bits`].
+    enhance: Arc<AtomicU64>,
 }
 
 impl Capture {
@@ -158,12 +161,15 @@ impl Capture {
         let seen = Arc::clone(&mic_seen);
         let gain = Arc::new(AtomicU32::new(1.0_f32.to_bits()));
         let boost = Arc::clone(&gain);
+        let enhance = Arc::new(AtomicU64::new(Enhance::OFF.to_bits()));
+        let shaping = Arc::clone(&enhance);
         let worker = thread::Builder::new()
             .name("hushpen-capture".into())
             .spawn(move || {
                 let mut worker = Worker::new(path, writer, sink, paced, started);
                 worker.mic_seen = seen;
                 worker.gain = boost;
+                worker.enhance = shaping;
                 worker.run(&rx);
             })?;
         Ok(Self {
@@ -174,6 +180,7 @@ impl Capture {
             started,
             mic_seen,
             gain,
+            enhance,
         })
     }
 
@@ -181,6 +188,12 @@ impl Capture {
     /// for the file and the level alike. A test feed is never boosted.
     pub fn set_gain(&self, gain: f32) {
         self.gain.store(gain.to_bits(), Ordering::SeqCst);
+    }
+
+    /// Runs the microphone through `enhance` from the next audio it delivers, before the boost.
+    /// A test feed is never enhanced.
+    pub fn set_enhance(&self, enhance: Enhance) {
+        self.enhance.store(enhance.to_bits(), Ordering::SeqCst);
     }
 
     /// Closes the microphone, fixes the WAV header, and returns the file.
@@ -249,6 +262,9 @@ struct Worker {
     written: u64,
     mic_seen: Arc<AtomicU64>,
     gain: Arc<AtomicU32>,
+    enhance: Arc<AtomicU64>,
+    enhancer: Enhancer,
+    shaped: Vec<f32>,
 }
 
 impl Worker {
@@ -275,6 +291,9 @@ impl Worker {
             written: 0,
             mic_seen: Arc::new(AtomicU64::new(0)),
             gain: Arc::new(AtomicU32::new(1.0_f32.to_bits())),
+            enhance: Arc::new(AtomicU64::new(Enhance::OFF.to_bits())),
+            enhancer: Enhancer::new(),
+            shaped: Vec::new(),
         }
     }
 
@@ -356,11 +375,11 @@ impl Worker {
         mono.clear();
         out.clear();
         downmix(data, usize::from(channels), &mut mono);
-        if source == Source::Mic {
-            boost(&mut mono, f32::from_bits(self.gain.load(Ordering::SeqCst)));
-        }
         if let Some(state) = self.state(source) {
             state.resampler.process(&mono, &mut out);
+        }
+        if source == Source::Mic {
+            self.enhance_mic(&mut out);
         }
         self.write(&out);
         self.mono = mono;
@@ -373,7 +392,23 @@ impl Worker {
         };
         let mut out = Vec::new();
         state.resampler.finish(&mut out);
+        if source == Source::Mic {
+            self.enhance_mic(&mut out);
+            let gain = f32::from_bits(self.gain.load(Ordering::SeqCst));
+            self.enhancer.finish(gain, &mut out);
+        }
         self.write(&out);
+    }
+
+    /// Runs 16 kHz microphone audio through the enhance and then the boost, as set now.
+    fn enhance_mic(&mut self, samples: &mut Vec<f32>) {
+        let enhance = Enhance::from_bits(self.enhance.load(Ordering::SeqCst));
+        let gain = f32::from_bits(self.gain.load(Ordering::SeqCst));
+        let mut shaped = std::mem::take(&mut self.shaped);
+        shaped.clear();
+        self.enhancer.process(enhance, gain, samples, &mut shaped);
+        std::mem::swap(samples, &mut shaped);
+        self.shaped = shaped;
     }
 
     /// Fills the file with silence up to `at` minus `chunk_ms` when the gap is longer than
@@ -592,13 +627,14 @@ mod tests {
         );
     }
 
-    fn loudest_after(source: Source, gain: f32) -> i16 {
+    fn loudest_after(source: Source, gain: f32, enhance: Enhance) -> i16 {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.wav");
         let (tx, rx) = mpsc::channel();
         let writer = SessionWriter::create(&path).unwrap();
         let mut worker = Worker::new(path.clone(), writer, events().0, false, Instant::now());
         worker.gain = Arc::new(AtomicU32::new(gain.to_bits()));
+        worker.enhance = Arc::new(AtomicU64::new(enhance.to_bits()));
         let running = thread::spawn(move || worker.run(&rx));
         if source == Source::Feed {
             tx.send(Msg::FeedStart).unwrap();
@@ -636,11 +672,46 @@ mod tests {
 
     #[test]
     fn the_boost_raises_the_microphone_in_the_file_and_never_a_test_feed() {
-        let plain = loudest_after(Source::Mic, 1.0);
-        let boosted = loudest_after(Source::Mic, 1.5);
+        let plain = loudest_after(Source::Mic, 1.0, Enhance::OFF);
+        let boosted = loudest_after(Source::Mic, 1.5, Enhance::OFF);
         let ratio = f32::from(boosted) / f32::from(plain);
         assert!((ratio - 1.5).abs() < 0.05, "{plain} -> {boosted}");
-        assert_eq!(loudest_after(Source::Feed, 2.0), plain);
+        assert_eq!(loudest_after(Source::Feed, 2.0, Enhance::OFF), plain);
+    }
+
+    #[test]
+    fn the_enhance_shapes_the_microphone_in_the_file_and_never_a_test_feed() {
+        let plain = loudest_after(Source::Mic, 1.0, Enhance::OFF);
+        let cut = Enhance {
+            low_cut_hz: 1_000,
+            ..Enhance::OFF
+        };
+        let shaped = loudest_after(Source::Mic, 1.0, cut);
+        assert!(
+            shaped < plain / 4,
+            "440 Hz under a 1 kHz low cut: {plain} -> {shaped}"
+        );
+        assert_eq!(loudest_after(Source::Feed, 1.0, cut), plain);
+    }
+
+    #[test]
+    fn noise_reduction_keeps_the_length_of_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        let (tx, rx) = mpsc::channel();
+        let writer = SessionWriter::create(&path).unwrap();
+        let mut worker = Worker::new(path.clone(), writer, events().0, false, Instant::now());
+        let on = Enhance {
+            noise_reduction: true,
+            ..Enhance::AUTO
+        };
+        worker.enhance = Arc::new(AtomicU64::new(on.to_bits()));
+        let running = thread::spawn(move || worker.run(&rx));
+        tx.send(tone_second(Instant::now())).unwrap();
+        tx.send(tone_second(Instant::now())).unwrap();
+        let finished = stop(&tx);
+        running.join().unwrap();
+        assert_eq!(finished.samples, 32_000, "2 s at 16 kHz, none held back");
     }
 
     #[test]
