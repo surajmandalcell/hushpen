@@ -1,5 +1,5 @@
-//! The app side of the `hushpen-tts` child: [`TtsClient`] speaks text with the Kokoro voice
-//! model on the worker. A job streams its audio as [`Reply::Progress`] and ends in one outcome,
+//! The app side of the `hushpen-tts` child: [`TtsClient`] speaks text with a voice model
+//! (Kokoro or Chatterbox) on the worker. A job streams its audio as [`Reply::Progress`] and ends in one outcome,
 //! whatever the child does. The supervision itself is shared with the LLM worker (see `worker`).
 //!
 //! [`Reply::Progress`]: crate::worker::Reply::Progress
@@ -10,26 +10,28 @@ use crate::worker::{
 };
 use hushpen_core::error;
 use hushpen_core::tts_protocol::{
-    DEFAULT_IDLE_SECS, ReadError, SpeakStats, TTS_PROTOCOL_VERSION, TtsEvent, TtsRequest,
-    read_event,
+    DEFAULT_IDLE_SECS, ReadError, SpeakStats, TTS_PROTOCOL_VERSION, TtsEngine, TtsEvent,
+    TtsRequest, read_event,
 };
 use serde_json::Value;
 use std::path::PathBuf;
 use std::process::ChildStdout;
 
-/// The voice model to keep ready: the folder that holds its files.
+/// The voice model to keep ready: the folder that holds its files and the code that runs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TtsSpec {
     pub dir: PathBuf,
+    pub engine: TtsEngine,
     pub threads: usize,
     /// Seconds without a job before the worker drops the model. `0` keeps it.
     pub idle_secs: u64,
 }
 
 impl TtsSpec {
-    pub fn new(dir: PathBuf) -> Self {
+    pub fn new(engine: TtsEngine, dir: PathBuf) -> Self {
         Self {
             dir,
+            engine,
             threads: 4,
             idle_secs: DEFAULT_IDLE_SECS,
         }
@@ -40,7 +42,8 @@ impl TtsSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TtsWork {
     pub text: String,
-    /// A voice id such as `af_heart`, `None` for the default voice.
+    /// A Kokoro voice id such as `af_heart` or the path of a Chatterbox voice clip, `None` for
+    /// the default voice.
     pub voice: Option<String>,
     pub speed: f32,
 }
@@ -108,6 +111,7 @@ impl Protocol for TtsWorker {
     fn load(spec: &TtsSpec) -> Value {
         TtsRequest::LoadModel {
             dir: spec.dir.to_string_lossy().into_owned(),
+            engine: spec.engine,
             threads: u32::try_from(spec.threads).unwrap_or(u32::MAX),
             idle_secs: spec.idle_secs,
         }

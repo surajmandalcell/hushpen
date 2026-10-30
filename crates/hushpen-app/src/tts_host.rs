@@ -11,6 +11,7 @@ use crate::worker_bin::worker_path;
 use hushpen_core::error;
 use hushpen_core::kokoro::{self, VOICES};
 use hushpen_core::threads::auto_threads;
+use hushpen_core::tts_protocol::TtsEngine;
 use hushpen_engine::{
     ChildSpec, EngineLog, Failure, Timing, TtsClient, TtsOutcome, TtsReply, TtsSpec, TtsStatus,
     TtsWork,
@@ -197,7 +198,7 @@ pub fn wanted_load(models_dir: &Path, cpus: usize) -> Option<TtsSpec> {
     }
     Some(TtsSpec {
         threads: auto_threads(cpus),
-        ..TtsSpec::new(dir)
+        ..TtsSpec::new(TtsEngine::Kokoro, dir)
     })
 }
 

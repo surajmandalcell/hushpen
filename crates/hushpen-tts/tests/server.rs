@@ -5,7 +5,7 @@ use hushpen_core::kokoro::{DEFAULT_VOICE, VOICES, find_voice};
 use hushpen_core::llm_protocol::UnloadReason;
 use hushpen_core::protocol::{FrameKind, write_frame, write_json};
 use hushpen_core::tts_protocol::{
-    MAX_AUDIO_SAMPLES, TTS_PROTOCOL_VERSION, TtsEvent, TtsRequest, read_event,
+    MAX_AUDIO_SAMPLES, TTS_PROTOCOL_VERSION, TtsEngine, TtsEvent, TtsRequest, read_event,
 };
 use hushpen_tts::backend::{Backend, CancelFlag, JobError, LoadError, LoadSpec, Session};
 use hushpen_tts::server::{EXIT_BAD_FRAME, EXIT_BAD_PROTOCOL, ServerConfig, serve};
@@ -20,7 +20,8 @@ const RATE: u32 = 24_000;
 const LOAD_MS: u64 = 20;
 
 /// A model whose audio holds the speaker number: each sample is `speaker / 100`. It writes 100
-/// samples for each byte of text, in three pieces over `job_ms`. A folder with `bad` in its name
+/// samples for each byte of text, in three pieces over `job_ms`. A voice that is not a Kokoro
+/// voice fails the job. A folder with `bad` in its name
 /// fails to load. The text `explode` fails, `long` writes more than one frame holds at once.
 struct Fake {
     job_ms: u64,
@@ -39,7 +40,7 @@ impl Session for FakeSession {
     fn speak(
         &mut self,
         text: &str,
-        speaker: i32,
+        voice: Option<&str>,
         _speed: f32,
         cancel: &CancelFlag,
         sink: &mut dyn FnMut(&[f32]),
@@ -50,7 +51,14 @@ impl Session for FakeSession {
                 detail: "boom".into(),
             });
         }
-        let value = speaker as f32 / 100.0;
+        let voice = voice.unwrap_or(DEFAULT_VOICE);
+        let Some(found) = find_voice(voice) else {
+            return Err(JobError::Failed {
+                code: error::SPEECH_VOICE_MISSING,
+                detail: voice.to_owned(),
+            });
+        };
+        let value = found.speaker as f32 / 100.0;
         if text == "long" {
             sink(&vec![value; MAX_AUDIO_SAMPLES + 10]);
             return Ok(());
@@ -137,6 +145,7 @@ impl Worker {
     fn load_with(&mut self, name: &str, idle_secs: u64) -> TtsEvent {
         self.send(&TtsRequest::LoadModel {
             dir: format!("/models/tts/{name}"),
+            engine: TtsEngine::Kokoro,
             threads: 2,
             idle_secs,
         });
@@ -322,12 +331,13 @@ fn empty_text_an_unknown_voice_and_no_model_get_coded_errors() {
         worker.next(),
         TtsEvent::Error { job: Some(2), code, .. } if code == error::SPEECH_NO_TEXT
     ));
+    assert_eq!(worker.loads.load(Ordering::SeqCst), 0);
+    worker.load();
     worker.speak(3, "hello", Some("zf_xiaobei"));
     assert!(matches!(
-        worker.next(),
+        worker.spoken(3).end,
         TtsEvent::Error { job: Some(3), code, .. } if code == error::SPEECH_VOICE_MISSING
     ));
-    assert_eq!(worker.loads.load(Ordering::SeqCst), 0);
     assert_eq!(worker.finish(), 0);
 }
 
@@ -469,6 +479,7 @@ fn unload_drops_the_model_and_a_second_load_of_it_answers_at_once() {
     worker.load();
     worker.send(&TtsRequest::LoadModel {
         dir: "/models/tts/kokoro-82m-int8".into(),
+        engine: TtsEngine::Kokoro,
         threads: 2,
         idle_secs: 300,
     });

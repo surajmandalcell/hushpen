@@ -1,4 +1,5 @@
-//! Numbers as English words, for a lexicon that has no digits: `45` is `forty five`.
+//! Numbers as English words, for a lexicon or a model that reads no digits: `45` is `forty
+//! five`, `$4.50` is `four dollars and fifty cents`.
 
 const ONES: [&str; 20] = [
     "zero",
@@ -131,6 +132,105 @@ pub fn time(hours: u64, minutes: u64) -> String {
         0 => format!("{} o'clock", cardinal(hours)),
         1..=9 => format!("{} oh {}", cardinal(hours), ONES[minutes as usize]),
         _ => format!("{} {}", cardinal(hours), cardinal(minutes)),
+    }
+}
+
+/// Reads the number at `start` of `chars` as words, with a currency sign before it and an
+/// ordinal ending after it. Returns the words and where the text goes on.
+pub fn read(chars: &[char], start: usize) -> (String, usize) {
+    let mut end = start;
+    while end < chars.len() {
+        let c = chars[end];
+        let inner = matches!(c, ',' | '.' | ':')
+            && end > start
+            && chars.get(end + 1).is_some_and(char::is_ascii_digit);
+        if !(c.is_ascii_digit() || inner) {
+            break;
+        }
+        end += 1;
+    }
+    let raw: String = chars[start..end].iter().collect();
+    let suffix: String = chars[end..chars.len().min(end + 2)]
+        .iter()
+        .collect::<String>()
+        .to_lowercase();
+    let as_ordinal = matches!(suffix.as_str(), "st" | "nd" | "rd" | "th")
+        && !chars.get(end + 2).is_some_and(|c| c.is_alphanumeric());
+    let currency = start
+        .checked_sub(1)
+        .and_then(|before| currency(chars[before]));
+    let words = read_number(&raw, currency, as_ordinal);
+    (words, if as_ordinal { end + 2 } else { end })
+}
+
+/// The names of one unit and its hundredth.
+struct Currency {
+    one: &'static str,
+    many: &'static str,
+    cents: &'static str,
+}
+
+fn currency(sign: char) -> Option<Currency> {
+    let (one, many, cents) = match sign {
+        '$' => ("dollar", "dollars", "cents"),
+        '€' => ("euro", "euros", "cents"),
+        '£' => ("pound", "pounds", "pence"),
+        _ => return None,
+    };
+    Some(Currency { one, many, cents })
+}
+
+fn read_number(raw: &str, currency: Option<Currency>, as_ordinal: bool) -> String {
+    if let Some((hours, minutes)) = raw.split_once(':') {
+        return match (hours.parse::<u64>(), minutes.parse::<u64>()) {
+            (Ok(h), Ok(m)) if h <= 24 && m <= 59 && minutes.len() == 2 => time(h, m),
+            _ => raw
+                .split(':')
+                .map(|part| read_number(part, None, false))
+                .collect::<Vec<_>>()
+                .join(" "),
+        };
+    }
+    let (whole, fraction) = match raw.split_once('.') {
+        Some((whole, fraction)) if !fraction.contains('.') => (whole, Some(fraction)),
+        Some(_) => {
+            return raw
+                .split('.')
+                .map(|part| read_number(part, None, false))
+                .collect::<Vec<_>>()
+                .join(" point ");
+        }
+        None => (raw, None),
+    };
+    let grouped = whole.contains(',');
+    let whole: String = whole.chars().filter(char::is_ascii_digit).collect();
+    let Ok(n) = whole.parse::<u64>() else {
+        return digits(raw);
+    };
+    if whole.len() > 1 && whole.starts_with('0') && fraction.is_none() {
+        return digits(&whole);
+    }
+    if let Some(money) = currency {
+        let unit = if n == 1 { money.one } else { money.many };
+        let mut words = format!("{} {unit}", cardinal(n));
+        if let Some(cents) = fraction.filter(|cents| cents.len() == 2)
+            && let Ok(cents) = cents.parse::<u64>()
+            && cents > 0
+        {
+            words = format!("{words} and {} {}", cardinal(cents), money.cents);
+        }
+        return words;
+    }
+    if as_ordinal && fraction.is_none() {
+        return ordinal(n);
+    }
+    let words = match fraction {
+        None if !grouped && whole.len() == 4 => year(n).unwrap_or_else(|| cardinal(n)),
+        _ => cardinal(n),
+    };
+    match fraction {
+        Some(fraction) => format!("{words} point {}", digits(fraction)),
+        None => words,
     }
 }
 

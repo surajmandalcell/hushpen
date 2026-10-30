@@ -2,6 +2,7 @@
 
 pub mod cancel;
 pub mod catalog;
+pub mod chatterbox;
 pub mod cleanup;
 pub mod dictation;
 pub mod dictionary;

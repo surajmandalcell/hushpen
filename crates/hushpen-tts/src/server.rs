@@ -10,7 +10,7 @@
 
 use crate::backend::{Backend, CancelFlag, JobError, LoadSpec, Session};
 use hushpen_core::error;
-use hushpen_core::kokoro::{DEFAULT_VOICE, VOICES, find_voice};
+use hushpen_core::kokoro::VOICES;
 use hushpen_core::llm_protocol::UnloadReason;
 use hushpen_core::protocol::{DecodeError, Frame, FrameError, FrameKind, read_frame};
 use hushpen_core::tts_protocol::{
@@ -52,7 +52,7 @@ type Jobs = Arc<Mutex<HashMap<u64, JobEntry>>>;
 struct SpeakJob {
     job: u64,
     text: String,
-    speaker: i32,
+    voice: Option<String>,
     speed: f32,
 }
 
@@ -62,7 +62,7 @@ enum Work {
     Unload,
 }
 
-/// The English voices the model speaks, for `ListVoices`.
+/// The English voices of the Kokoro model, for `ListVoices`.
 pub fn voice_list() -> Vec<VoiceInfo> {
     VOICES
         .iter()
@@ -157,11 +157,13 @@ fn read_requests(
             }
             TtsRequest::LoadModel {
                 dir,
+                engine,
                 threads,
                 idle_secs,
             } => {
                 let spec = LoadSpec {
                     dir: PathBuf::from(dir),
+                    engine,
                     threads: threads.max(1) as usize,
                     idle: (idle_secs > 0).then(|| Duration::from_secs(idle_secs)),
                 };
@@ -179,7 +181,6 @@ fn read_requests(
                 voice,
                 speed,
             } => {
-                let voice = voice.unwrap_or_else(|| DEFAULT_VOICE.to_owned());
                 if text.trim().is_empty() {
                     send(
                         output,
@@ -187,23 +188,17 @@ fn read_requests(
                     );
                     continue;
                 }
-                match find_voice(&voice) {
-                    Some(found) => submit(
-                        output,
-                        jobs,
-                        work,
-                        SpeakJob {
-                            job,
-                            text,
-                            speaker: found.speaker,
-                            speed,
-                        },
-                    ),
-                    None => send(
-                        output,
-                        &TtsEvent::error(Some(job), error::SPEECH_VOICE_MISSING, voice),
-                    ),
-                }
+                submit(
+                    output,
+                    jobs,
+                    work,
+                    SpeakJob {
+                        job,
+                        text,
+                        voice,
+                        speed,
+                    },
+                );
             }
             TtsRequest::Unload => {
                 let _ = work.send(Work::Unload);
@@ -400,7 +395,8 @@ impl Worker {
         let rate = session.sample_rate();
         let mut written: u64 = 0;
         let mut first_audio_ms = None;
-        let result = session.speak(&job.text, job.speaker, job.speed, cancel, &mut |samples| {
+        let voice = job.voice.as_deref();
+        let result = session.speak(&job.text, voice, job.speed, cancel, &mut |samples| {
             if samples.is_empty() {
                 return;
             }

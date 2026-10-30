@@ -16,7 +16,7 @@ use std::fmt;
 use std::io::{Read, Write};
 
 /// Bumped when a message changes shape. `Hello` carries it and `Ready` answers with it.
-pub const TTS_PROTOCOL_VERSION: u32 = 1;
+pub const TTS_PROTOCOL_VERSION: u32 = 2;
 
 /// Default idle time before the worker drops the model, in seconds.
 pub const DEFAULT_IDLE_SECS: u64 = 300;
@@ -27,6 +27,32 @@ pub const MAX_AUDIO_SAMPLES: usize = 240_000;
 /// The speed range, as a factor of the voice's normal speed.
 pub const MIN_SPEED: f32 = 0.5;
 pub const MAX_SPEED: f32 = 2.0;
+
+/// The code that runs the model of a `LoadModel` folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TtsEngine {
+    /// Kokoro on sherpa-onnx, with the voices of its speaker table.
+    Kokoro,
+    /// Chatterbox Turbo or Nano on ONNX Runtime, which clone the voice of a clip.
+    Chatterbox,
+}
+
+impl TtsEngine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Kokoro => "kokoro",
+            Self::Chatterbox => "chatterbox",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "kokoro" => Some(Self::Kokoro),
+            "chatterbox" => Some(Self::Chatterbox),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceInfo {
@@ -62,12 +88,15 @@ pub enum TtsRequest {
     /// an idle unload the next job loads the same model again without a new `LoadModel`.
     LoadModel {
         dir: String,
+        engine: TtsEngine,
         threads: u32,
         /// Seconds without a job before the model is dropped. `0` keeps it for good.
         idle_secs: u64,
     },
+    /// The voices of the Kokoro model.
     ListVoices,
-    /// Speaks one chunk of plain text. `voice` is a `VoiceInfo::id`, `None` the default voice.
+    /// Speaks one chunk of plain text. For Kokoro `voice` is a `VoiceInfo::id`; for Chatterbox
+    /// it is the path of the WAV clip to clone. `None` is the model's default voice.
     Speak {
         job: u64,
         text: String,
@@ -89,10 +118,12 @@ impl TtsRequest {
             Self::Hello { protocol } => json!({"type": "hello", "protocol": protocol}),
             Self::LoadModel {
                 dir,
+                engine,
                 threads,
                 idle_secs,
             } => json!({
-                "type": "load_model", "dir": dir, "threads": threads, "idle_secs": idle_secs,
+                "type": "load_model", "dir": dir, "engine": engine.as_str(), "threads": threads,
+                "idle_secs": idle_secs,
             }),
             Self::ListVoices => json!({"type": "list_voices"}),
             Self::Speak {
@@ -118,6 +149,8 @@ impl TtsRequest {
             }),
             "load_model" => Ok(Self::LoadModel {
                 dir: fields.string("dir")?,
+                engine: TtsEngine::parse(&fields.string("engine")?)
+                    .ok_or_else(|| Fields::wrong("engine", "kokoro or chatterbox"))?,
                 threads: fields.u32("threads")?,
                 idle_secs: fields
                     .optional_u64("idle_secs")?
@@ -420,8 +453,15 @@ mod tests {
             TtsRequest::Hello { protocol: 1 },
             TtsRequest::LoadModel {
                 dir: "/m/tts/kokoro-82m-int8".into(),
+                engine: TtsEngine::Kokoro,
                 threads: 4,
                 idle_secs: 300,
+            },
+            TtsRequest::LoadModel {
+                dir: "/m/tts/chatterbox-turbo".into(),
+                engine: TtsEngine::Chatterbox,
+                threads: 8,
+                idle_secs: 0,
             },
             TtsRequest::ListVoices,
             TtsRequest::Speak {
@@ -435,6 +475,12 @@ mod tests {
                 text: "Hi.".into(),
                 voice: None,
                 speed: 1.0,
+            },
+            TtsRequest::Speak {
+                job: 5,
+                text: "Hi.".into(),
+                voice: Some("/d/voices/a1/reference.wav".into()),
+                speed: 0.75,
             },
             TtsRequest::Cancel { job: 3 },
             TtsRequest::Unload,
@@ -455,11 +501,18 @@ mod tests {
                 Err(DecodeError::Invalid(_))
             ));
         }
-        let value = json!({"type": "load_model", "dir": "/m", "threads": 2});
+        let value = json!({"type": "load_model", "dir": "/m", "engine": "kokoro", "threads": 2});
         let Ok(TtsRequest::LoadModel { idle_secs, .. }) = TtsRequest::from_json(&value) else {
             panic!("a load request");
         };
         assert_eq!(idle_secs, DEFAULT_IDLE_SECS);
+        for engine in [json!("piper"), Value::Null] {
+            let value = json!({"type": "load_model", "dir": "/m", "engine": engine, "threads": 2});
+            assert!(matches!(
+                TtsRequest::from_json(&value),
+                Err(DecodeError::Invalid(_))
+            ));
+        }
     }
 
     #[test]

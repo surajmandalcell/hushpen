@@ -4,6 +4,7 @@
 #![cfg(unix)]
 
 use hushpen_core::error;
+use hushpen_core::tts_protocol::TtsEngine;
 use hushpen_engine::{
     ChildSpec, EngineLog, Timing, TtsAudio, TtsClient, TtsOutcome, TtsReply, TtsSpec, TtsState,
     TtsWork,
@@ -61,7 +62,10 @@ fn a_job_streams_its_audio_in_order_then_ends_with_its_times() {
     let dir = tempfile::tempdir().unwrap();
     let (client, log) = started(dir.path());
     let loaded = client
-        .load_model(TtsSpec::new(PathBuf::from("/models/tts/kokoro-82m-int8")))
+        .load_model(TtsSpec::new(
+            TtsEngine::Kokoro,
+            PathBuf::from("/models/tts/kokoro-82m-int8"),
+        ))
         .wait()
         .unwrap();
     assert_eq!(loaded.model, "kokoro-82m-int8");
@@ -125,7 +129,10 @@ fn a_failed_load_gets_the_load_code() {
     let dir = tempfile::tempdir().unwrap();
     let (client, _) = started(dir.path());
     let failure = client
-        .load_model(TtsSpec::new(PathBuf::from("/models/tts/missing")))
+        .load_model(TtsSpec::new(
+            TtsEngine::Kokoro,
+            PathBuf::from("/models/tts/missing"),
+        ))
         .wait()
         .unwrap_err();
     assert_eq!(failure.code, error::TTS_LOAD_FAILED);

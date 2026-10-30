@@ -88,6 +88,10 @@ pub const SPEECH_TEXT_UNREADABLE: &str = "SPEECH_TEXT_UNREADABLE";
 pub const SPEECH_VOICE_MISSING: &str = "SPEECH_VOICE_MISSING";
 /// The speech engine failed while it spoke.
 pub const SPEECH_FAILED: &str = "SPEECH_FAILED";
+/// The text is not English, and the voice reads English only.
+pub const SPEECH_NOT_ENGLISH: &str = "SPEECH_NOT_ENGLISH";
+/// A voice clip cannot be cloned: it is unreadable, too short, or silent.
+pub const SPEECH_VOICE_CLIP: &str = "SPEECH_VOICE_CLIP";
 /// The voice worker is not up, or did not come back in time after a crash.
 pub const TTS_UNAVAILABLE: &str = "TTS_UNAVAILABLE";
 /// The voice model or the voice runtime library could not be loaded.

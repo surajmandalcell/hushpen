@@ -3,9 +3,10 @@
 use crate::backend::{Backend, CancelFlag, JobError, LoadError, LoadSpec, Session};
 use crate::phonemes::Lexicon;
 use crate::sherpa::{Api, KokoroFiles, Tts};
-use hushpen_core::error::SPEECH_FAILED;
+use hushpen_core::error::{SPEECH_FAILED, SPEECH_VOICE_MISSING};
 use hushpen_core::kokoro::{
-    FILES, LEXICON_FILE, MODEL_FILE, SAMPLE_RATE, TOKENS_FILE, VOICES, VOICES_FILE,
+    DEFAULT_VOICE, FILES, LEXICON_FILE, MODEL_FILE, SAMPLE_RATE, TOKENS_FILE, VOICES, VOICES_FILE,
+    find_voice,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -85,11 +86,18 @@ impl Session for KokoroSession {
     fn speak(
         &mut self,
         text: &str,
-        speaker: i32,
+        voice: Option<&str>,
         speed: f32,
         cancel: &CancelFlag,
         sink: &mut dyn FnMut(&[f32]),
     ) -> Result<(), JobError> {
+        let id = voice.unwrap_or(DEFAULT_VOICE);
+        let speaker = find_voice(id)
+            .ok_or_else(|| JobError::Failed {
+                code: SPEECH_VOICE_MISSING,
+                detail: id.to_owned(),
+            })?
+            .speaker;
         let sentences = self.lexicon.sentences(text);
         if sentences.is_empty() {
             return Ok(());
@@ -116,6 +124,7 @@ impl Session for KokoroSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::TtsEngine;
     use std::time::Duration;
 
     #[test]
@@ -124,6 +133,7 @@ mod tests {
         let backend = SherpaBackend::new(PathBuf::from("/nonexistent/lib"));
         let spec = LoadSpec {
             dir,
+            engine: TtsEngine::Kokoro,
             threads: 2,
             idle: Some(Duration::from_secs(1)),
         };

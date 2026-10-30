@@ -8,7 +8,9 @@
 
 use hushpen_core::kokoro::{LEXICON_FILE, MODEL_ID, SAMPLE_RATE};
 use hushpen_core::protocol::write_json;
-use hushpen_core::tts_protocol::{TTS_PROTOCOL_VERSION, TtsEvent, TtsRequest, read_event};
+use hushpen_core::tts_protocol::{
+    TTS_PROTOCOL_VERSION, TtsEngine, TtsEvent, TtsRequest, read_event,
+};
 use hushpen_tts::phonemes::Lexicon;
 use std::io::BufRead;
 use std::path::PathBuf;
@@ -91,6 +93,7 @@ impl Worker {
         assert!(matches!(worker.next(), TtsEvent::Ready { .. }));
         worker.send(&TtsRequest::LoadModel {
             dir: model_dir().to_string_lossy().into_owned(),
+            engine: TtsEngine::Kokoro,
             threads: threads(),
             idle_secs: 300,
         });
