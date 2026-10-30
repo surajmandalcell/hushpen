@@ -34,7 +34,7 @@ check_app() {
   [ -f "$app/Contents/Frameworks/libsherpa-onnx-c-api.dylib" ]
   [ -f "$app/Contents/Frameworks/libonnxruntime.dylib" ]
   [ "$("$app/Contents/MacOS/hushpen-tts" --version)" = "hushpen-tts $version" ]
-  [ "$("$app/Contents/MacOS/hushpen-tts" --check-runtime)" = "sherpa-onnx 2.0.0" ]
+  [ "$("$app/Contents/MacOS/hushpen-tts" --check-runtime)" = "$(printf 'sherpa-onnx 2.0.0\nonnxruntime 1.28.2')" ]
 }
 
 echo "==> zip"

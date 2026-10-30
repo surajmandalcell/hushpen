@@ -58,7 +58,7 @@ pub const SECTIONS: &[Section] = &[
     Section {
         id: "onnxruntime",
         title: "ONNX Runtime",
-        note: "Model runtime the hushpen-tts voice worker loads together with sherpa-onnx (Microsoft, https://github.com/microsoft/onnxruntime, version 1.28.2). MIT license. The third-party notices of the library follow its own license.",
+        note: "Model runtime the hushpen-tts voice worker loads for sherpa-onnx and for the Chatterbox voices (Microsoft, https://github.com/microsoft/onnxruntime, version 1.28.2). MIT license. The third-party notices of the library follow its own license.",
         texts: &[
             "packaging/licenses/manual/mit-onnxruntime.txt",
             "packaging/licenses/manual/onnxruntime-notices.txt",

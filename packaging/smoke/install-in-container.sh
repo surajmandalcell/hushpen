@@ -52,6 +52,6 @@ docker run --rm --name "${HUSHPEN_PKG_CONTAINER:-hushpen-build}" --platform "$pl
     [ "$got" = "hushpen $VERSION" ]
     [ "$(/usr/lib/hushpen/hushpen-llm --version)" = "hushpen-llm $VERSION" ]
     [ "$(/usr/lib/hushpen/hushpen-tts --version)" = "hushpen-tts $VERSION" ]
-    [ "$(/usr/lib/hushpen/hushpen-tts --check-runtime)" = "sherpa-onnx 2.0.0" ]
+    [ "$(/usr/lib/hushpen/hushpen-tts --check-runtime)" = "$(printf "sherpa-onnx 2.0.0\nonnxruntime 1.28.2")" ]
     echo "install ok"
   '
