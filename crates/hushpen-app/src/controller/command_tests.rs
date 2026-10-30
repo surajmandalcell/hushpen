@@ -237,7 +237,7 @@ fn a_chord_key_that_comes_after_the_window_turns_the_running_hold_into_the_comma
 
     assert_eq!(machine_state(cx, &rig), State::Listening);
     assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Command);
-    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.5)], "one cue");
+    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.25)], "one cue");
     assert_eq!(rig.mic_backend.starts.load(Ordering::SeqCst), 1);
 }
 
@@ -255,7 +255,7 @@ fn a_chord_that_is_accepted_plays_one_start_cue_and_keeps_the_armed_audio(cx: &m
 
     assert_eq!(
         *played.lock().unwrap(),
-        vec![(Cue::Start, 0.5), (Cue::Stop, 0.5)]
+        vec![(Cue::Start, 0.25), (Cue::Stop, 0.25)]
     );
     assert_eq!(
         rig.mic_backend.starts.load(Ordering::SeqCst),
@@ -428,7 +428,7 @@ fn a_slow_selection_read_never_holds_the_command_keys(cx: &mut TestAppContext) {
     assert_eq!(inserter.selection_reads.load(Ordering::SeqCst), 1);
     assert_eq!(machine_state(cx, &rig), State::Listening);
     assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Command);
-    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.5)]);
+    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.25)]);
     assert_eq!(rig.mic_backend.starts.load(Ordering::SeqCst), 1);
 }
 

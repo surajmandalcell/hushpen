@@ -569,8 +569,8 @@ fn the_input_boost_moves_in_steps_of_five_percent_from_100_to_200(cx: &mut TestA
     let rig = rig(cx);
     assert_eq!(
         value(&rig, "audio.inputGain"),
-        json!(1.0),
-        "no boost by default"
+        json!(1.5),
+        "a 150% boost by default"
     );
     rig.settings
         .update(cx, |me, cx| me.set_input_gain(1.62, cx));
