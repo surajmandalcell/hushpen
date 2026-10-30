@@ -100,6 +100,27 @@ struct Session {
     used_for: CaptureUse,
 }
 
+/// A session that no longer holds the microphone but still has to finish its WAV. Finishing
+/// waits for the tail of the speech and closes the file, which can take a few hundred
+/// milliseconds, so a worker thread does it while the next session already records.
+pub struct Detached {
+    inner: Box<dyn MicSession>,
+    keep: bool,
+}
+
+impl Detached {
+    /// Finishes the WAV, or deletes it when it is not kept.
+    pub fn finish(self) -> Result<Finished, CaptureError> {
+        let result = self.inner.stop();
+        if !self.keep
+            && let Ok(finished) = &result
+        {
+            let _ = std::fs::remove_file(&finished.path);
+        }
+        result
+    }
+}
+
 pub struct Mic {
     storage: Rc<Storage>,
     backend: Arc<dyn MicBackend>,
@@ -548,6 +569,24 @@ impl Mic {
         result.map(Some)
     }
 
+    /// Ends the session at once and gives it to the caller to finish, so the next start never
+    /// waits for the old file. Returns `None` when no session was open.
+    pub fn detach(&mut self, keep: bool, cx: &mut Context<Self>) -> Option<Detached> {
+        let session = self.session.take()?;
+        self.levels.clear();
+        self.state = CaptureState::Idle;
+        if keep {
+            self.last_session = Some(session.path.clone());
+        }
+        self.warm();
+        hook::record_event("capture", "idle");
+        cx.notify();
+        Some(Detached {
+            inner: session.inner,
+            keep,
+        })
+    }
+
     /// The microphone failed under a running session, or did not open (`starting`). The audio so
     /// far stays on disk, except for a start that never got any.
     fn lost(&mut self, error: &CaptureError, starting: bool, cx: &mut Context<Self>) {
@@ -645,6 +684,11 @@ pub fn sweep_orphans(data: &DataDir) -> Sweep {
         );
     }
     sweep
+}
+
+/// The message for a session that could not finish its WAV.
+pub fn stop_message(error: &CaptureError) -> String {
+    notice_for(error, false).message
 }
 
 /// The message for a failed start (`starting`) or a session that broke.
