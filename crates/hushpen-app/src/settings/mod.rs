@@ -9,6 +9,7 @@ mod panel;
 mod registry;
 pub mod search;
 
+use crate::enhance::Tuning;
 use crate::hook;
 use crate::mic::Mic;
 use crate::storage::Storage;
@@ -57,7 +58,9 @@ pub(crate) mod slots {
     pub const UPDATES_NOTES: usize = 25;
     pub const SEARCH_CLEAR: usize = 26;
     pub const INPUT_GAIN: usize = 27;
-    pub const COUNT: usize = 28;
+    pub const ENHANCE: usize = 28;
+    pub const ENHANCE_ADJUST: usize = 29;
+    pub const COUNT: usize = 30;
     /// The options of the open picker. One picker is open at a time, so they share a pool.
     pub const OPTIONS: usize = 12;
 }
@@ -152,6 +155,8 @@ pub struct Settings {
     ai_loading: bool,
     pub(crate) endpoint: Option<Entity<endpoint::EndpointForm>>,
     pub(crate) updater: Option<Entity<Updater>>,
+    /// The audio enhance sheet, which the Audio enhance row opens.
+    pub(crate) tuning: Option<Entity<Tuning>>,
     in_flight: Option<InFlight>,
 }
 
@@ -208,6 +213,7 @@ impl Settings {
             ai_loading: false,
             endpoint: None,
             updater: None,
+            tuning: None,
             in_flight: None,
         };
         me.refresh_login(cx);
@@ -234,6 +240,12 @@ impl Settings {
         if let Some(updater) = self.updater.clone() {
             updater.update(cx, |updater, cx| updater.settings_changed(cx));
         }
+    }
+
+    /// Connects the audio enhance sheet to the Audio enhance row.
+    pub fn attach_tuning(&mut self, tuning: Entity<Tuning>, cx: &mut Context<Self>) {
+        cx.observe(&tuning, |_, _, cx| cx.notify()).detach();
+        self.tuning = Some(tuning);
     }
 
     /// Tells Settings how to see a running transcription.

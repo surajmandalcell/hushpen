@@ -1,10 +1,12 @@
-//! Audio: the microphone and its boost, the cue sounds and their volume, and the longest a
+//! Audio: the microphone, its boost, and its enhance, the cue sounds and their volume, and the longest a
 //! dictation runs.
 
 use super::Page;
+use crate::enhance::Mode;
 use crate::settings::{Settings, slots};
-use crate::ui;
-use gpui_kit::{AnyElement, App};
+use crate::theme::{size, space};
+use crate::ui::{self, Kind};
+use gpui_kit::{AnyElement, App, ParentElement as _, Styled as _, Window, div, px};
 
 /// The lengths offered for a dictation, in minutes, inside the range the store accepts.
 const MINUTE_CHOICES: [i64; 7] = [2, 4, 6, 10, 15, 30, 60];
@@ -52,6 +54,61 @@ pub fn input_gain(page: &Page, cx: &mut App) -> AnyElement {
             focus: &page.focus[slots::INPUT_GAIN],
         },
         move |position, cx| settings.update(cx, |me, cx| me.set_input_gain(1.0 + position, cx)),
+    )
+}
+
+/// Off, Auto, or Custom, and with Custom the Adjust button that opens the tuning sheet.
+pub fn enhance(page: &Page, cx: &mut App) -> AnyElement {
+    let mode = crate::enhance::mode(&page.settings.read(cx).storage);
+    let choices: Vec<_> = Mode::ALL
+        .into_iter()
+        .map(|mode| (mode.key(), mode.label()))
+        .collect();
+    let choose = {
+        let settings = page.settings.clone();
+        move |key: &'static str, window: &mut Window, cx: &mut App| {
+            if let Some(mode) = Mode::from_key(key) {
+                settings.update(cx, |me, cx| me.set_enhance_mode(mode, window, cx));
+            }
+        }
+    };
+    let adjust = (mode == Mode::Custom).then(|| {
+        let settings = page.settings.clone();
+        let back = page.focus[slots::ENHANCE_ADJUST].clone();
+        ui::button(
+            page.palette,
+            super::settings_id("audio.enhance.adjust"),
+            "Adjust…",
+            Kind::Plain,
+            Some(&page.focus[slots::ENHANCE_ADJUST]),
+            true,
+            move |window, cx| {
+                settings.update(cx, |me, cx| me.open_tuning(back.clone(), window, cx))
+            },
+        )
+    });
+    let trailing = div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(space::SM))
+        .child(ui::segmented(
+            page.palette,
+            super::settings_id("audio.enhance"),
+            "Audio enhance",
+            &choices,
+            size::ROW_SEGMENT_WIDTH,
+            mode.key(),
+            &page.focus[slots::ENHANCE],
+            choose,
+        ))
+        .children(adjust);
+    ui::labeled_row(
+        page.palette,
+        super::settings_id("audio.enhance.row"),
+        "Audio enhance",
+        Some("Makes speech clearer for the transcript.".to_owned()),
+        trailing,
     )
 }
 

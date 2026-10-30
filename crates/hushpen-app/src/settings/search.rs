@@ -18,6 +18,7 @@ pub enum RowId {
     ResetShortcuts,
     Microphone,
     InputGain,
+    Enhance,
     Sounds,
     CueVolume,
     MaxLength,
@@ -190,6 +191,23 @@ pub static ROWS: &[RowMeta] = &[
             "louder",
             "quiet",
             "level",
+        ],
+    ),
+    RowMeta::new(
+        Enhance,
+        Audio,
+        "audio.enhance",
+        "Audio enhance",
+        &[
+            "enhance",
+            "equalizer",
+            "eq",
+            "bass",
+            "treble",
+            "low cut",
+            "noise",
+            "clearer",
+            "accent",
         ],
     ),
     RowMeta::new(
@@ -448,6 +466,17 @@ mod tests {
         );
         assert_eq!(keys("hotkey").len(), 6);
         assert_eq!(keys("speak"), ["shortcut.readAloud"]);
+        for alias in [
+            "enhance",
+            "equalizer",
+            "eq",
+            "bass",
+            "treble",
+            "low cut",
+            "noise",
+        ] {
+            assert_eq!(keys(alias), ["audio.enhance"], "{alias}");
+        }
     }
 
     #[test]

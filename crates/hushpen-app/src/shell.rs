@@ -266,6 +266,13 @@ impl Shell {
             if let Some(models) = &self.models {
                 models.update(cx, |models, cx| models.dismiss_details(cx));
             }
+            if let Some(tuning) = self
+                .settings
+                .as_ref()
+                .and_then(|s| s.read(cx).tuning.clone())
+            {
+                tuning.update(cx, |tuning, cx| tuning.dismiss(cx));
+            }
             // The Settings view re-reads launch at login from the system.
             if view == View::Settings
                 && let Some(settings) = &self.settings
@@ -684,7 +691,15 @@ impl Render for Shell {
                     .models
                     .as_ref()
                     .filter(|_| self.active == View::Models)
-                    .and_then(|models| models::sheet::render(models, window, cx));
+                    .and_then(|models| models::sheet::render(models, window, cx))
+                    .or_else(|| {
+                        let tuning = self
+                            .settings
+                            .as_ref()
+                            .filter(|_| self.active == View::Settings)
+                            .and_then(|settings| settings.read(cx).tuning.clone())?;
+                        crate::enhance::sheet::render(&tuning, window, cx)
+                    });
                 // The content of a newly picked view fades in and rises into place; the sidebar
                 // and the title bar stay still.
                 let arrival = motion::change(
