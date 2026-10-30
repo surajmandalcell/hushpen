@@ -14,14 +14,33 @@ const CHUNK_SAMPLES: usize = SAMPLE_RATE as usize / 10;
 struct FakeVoice {
     voices: Result<Vec<Voice>, SpeechError>,
     spoken: Mutex<Vec<(String, Option<String>, f32)>>,
+    /// The code each chunk fails with, if any.
+    fail: Mutex<Option<&'static str>>,
+}
+
+impl FakeVoice {
+    fn new(voices: Result<Vec<Voice>, SpeechError>) -> Arc<Self> {
+        Arc::new(Self {
+            voices,
+            spoken: Mutex::default(),
+            fail: Mutex::default(),
+        })
+    }
 }
 
 impl SpeechEngine for FakeVoice {
+    fn available(&self) -> bool {
+        self.voices.is_ok()
+    }
+
     fn voices(&self) -> Result<Vec<Voice>, SpeechError> {
         self.voices.clone()
     }
 
     fn speak(&self, text: &str, voice: Option<&str>, speed: f32) -> Result<Pcm, SpeechError> {
+        if let Some(code) = *self.fail.lock().unwrap() {
+            return Err(SpeechError::new(code, "fake"));
+        }
         self.spoken
             .lock()
             .unwrap()
@@ -48,6 +67,8 @@ struct Fixture {
     read: Entity<ReadAloud>,
     storage: Rc<Storage>,
     system: Arc<FakeVoice>,
+    turbo: Arc<FakeVoice>,
+    library: Entity<VoiceLibrary>,
     work: Work,
     folder: tempfile::TempDir,
 }
@@ -57,18 +78,15 @@ fn open(cx: &mut TestAppContext) -> (Fixture, &mut VisualTestContext) {
     let folder = tempfile::tempdir().unwrap();
     let storage =
         Rc::new(storage::open(DataDir::open(folder.path().join("data")).unwrap()).unwrap());
-    let system = Arc::new(FakeVoice {
-        voices: Ok(vec![
-            voice("en-1", "en-US"),
-            voice("en-2", "en-GB"),
-            voice("de-1", "de-DE"),
-        ]),
-        spoken: Mutex::default(),
-    });
-    let kokoro = Arc::new(FakeVoice {
-        voices: Err(SpeechError::new(SPEECH_UNAVAILABLE, "no model")),
-        spoken: Mutex::default(),
-    });
+    let system = FakeVoice::new(Ok(vec![
+        voice("en-1", "en-US"),
+        voice("en-2", "en-GB"),
+        voice("de-1", "de-DE"),
+    ]));
+    let no_model = || Err(SpeechError::new(SPEECH_UNAVAILABLE, "no model"));
+    let kokoro = FakeVoice::new(no_model());
+    let turbo = FakeVoice::new(Ok(vec![voice(BUILT_IN_VOICE, "en")]));
+    let nano = FakeVoice::new(no_model());
     let work: Work = Rc::default();
     let spawn: Spawner = {
         let work = Rc::clone(&work);
@@ -77,19 +95,33 @@ fn open(cx: &mut TestAppContext) -> (Fixture, &mut VisualTestContext) {
             Ok(())
         })
     };
+    let window = cx.add_empty_window();
+    let library = window.update(|window, cx| {
+        let parts = crate::voices::Parts {
+            storage: Rc::clone(&storage),
+            mic: None,
+            spawn: Rc::clone(&spawn),
+            silent: true,
+        };
+        cx.new(|cx| VoiceLibrary::new(parts, window, cx))
+    });
     let parts = Parts {
         storage: Rc::clone(&storage),
         system: Arc::clone(&system) as Arc<dyn SpeechEngine>,
         kokoro,
+        turbo: Arc::clone(&turbo) as Arc<dyn SpeechEngine>,
+        nano,
+        library: Some(library.clone()),
         spawn,
         silent: true,
     };
-    let window = cx.add_empty_window();
     let read = window.update(|window, cx| cx.new(|cx| ReadAloud::new(parts, window, cx)));
     let fixture = Fixture {
         read,
         storage,
         system,
+        turbo,
+        library,
         work,
         folder,
     };
@@ -256,4 +288,137 @@ fn a_text_file_opens_in_the_text_area(cx: &mut TestAppContext) {
         .read
         .update(cx, |read, cx| read.open_text_file(missing, cx));
     assert!(fixture.read.read_with(cx, |read, _| read.error().is_some()));
+}
+
+/// Keeps a cloned voice in the library as the sheet would, without a clip worth hearing.
+fn clone_voice(cx: &mut VisualTestContext, fixture: &Fixture, name: &str) -> String {
+    let dir = fixture.storage.data.voices_dir();
+    let entry = hushpen_store::voices::Library::new(dir)
+        .add(name, 6_000, 1, |path| std::fs::write(path, b"clip"))
+        .unwrap();
+    fixture.library.update(cx, |library, cx| library.reload(cx));
+    entry.id
+}
+
+#[gpui_kit::test]
+fn chatterbox_reads_with_the_default_voice_of_the_library_unless_one_is_chosen(
+    cx: &mut TestAppContext,
+) {
+    let (fixture, cx) = open(cx);
+    fixture
+        .read
+        .update(cx, |read, cx| {
+            read.set_engine(EngineKind::ChatterboxTurbo, cx)
+        })
+        .unwrap();
+    run_all(cx, &fixture);
+    let built_in = state(cx, &fixture);
+    assert_eq!(built_in["engine"], "chatterbox-turbo");
+    assert_eq!(built_in["spoken_voice"], BUILT_IN_VOICE);
+    assert_eq!(built_in["default_voice_name"], "Built-in");
+    let anna = clone_voice(cx, &fixture, "Anna");
+    fixture
+        .library
+        .update(cx, |library, cx| library.set_default(Some(&anna), cx))
+        .unwrap();
+    run_all(cx, &fixture);
+    let cloned = state(cx, &fixture);
+    assert_eq!(cloned["voice"], Value::Null, "the menu stays on Default");
+    assert_eq!(cloned["spoken_voice"], json!(anna));
+    assert_eq!(cloned["default_voice_name"], "Anna");
+    type_text(cx, &fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    let spoken = fixture.turbo.spoken.lock().unwrap().clone();
+    assert!(!spoken.is_empty());
+    assert!(
+        spoken
+            .iter()
+            .all(|(_, voice, _)| voice.as_deref() == Some(anna.as_str()))
+    );
+    fixture
+        .read
+        .update(cx, |read, cx| read.set_voice(Some(BUILT_IN_VOICE), cx))
+        .unwrap();
+    assert_eq!(state(cx, &fixture)["spoken_voice"], BUILT_IN_VOICE);
+    assert_eq!(
+        fixture.storage.settings.get(CHATTERBOX_VOICE_SETTING),
+        Some(json!(BUILT_IN_VOICE))
+    );
+}
+
+#[gpui_kit::test]
+fn text_chatterbox_cannot_read_offers_the_system_voice(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    *fixture.turbo.fail.lock().unwrap() = Some(SPEECH_NOT_ENGLISH);
+    fixture
+        .read
+        .update(cx, |read, cx| {
+            read.set_engine(EngineKind::ChatterboxTurbo, cx)
+        })
+        .unwrap();
+    run_all(cx, &fixture);
+    type_text(cx, &fixture, "Guten Tag, wie geht es dir heute?");
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    let failed = state(cx, &fixture);
+    assert!(failed["error"].as_str().unwrap().contains("English only"));
+    assert_eq!(failed["offers_other_engine"], true);
+    fixture
+        .read
+        .update(cx, |read, cx| read.set_engine(EngineKind::System, cx))
+        .unwrap();
+    let moved = state(cx, &fixture);
+    assert_eq!(moved["engine"], "system");
+    assert_eq!(moved["error"], Value::Null);
+    assert_eq!(moved["offers_other_engine"], false);
+}
+
+#[gpui_kit::test]
+fn the_engine_menu_marks_the_models_that_are_not_downloaded(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    fixture
+        .read
+        .update(cx, |read, cx| read.toggle_menu(Menu::Engine, cx));
+    fixture.read.read_with(cx, |read, _| {
+        assert!(read.missing(EngineKind::Kokoro));
+        assert!(read.missing(EngineKind::ChatterboxNano));
+        assert!(!read.missing(EngineKind::ChatterboxTurbo));
+        assert!(!read.missing(EngineKind::System));
+    });
+    fixture
+        .read
+        .update(cx, |read, cx| {
+            read.set_engine(EngineKind::ChatterboxNano, cx)
+        })
+        .unwrap();
+    run_all(cx, &fixture);
+    let state = state(cx, &fixture);
+    assert_eq!(state["needs_model"], true);
+    assert_eq!(
+        state["unavailable"],
+        "Chatterbox Nano needs its voice model. Download it in Models."
+    );
+    let engines: Vec<&str> = state["engines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|engine| engine["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        engines,
+        ["system", "kokoro", "chatterbox-turbo", "chatterbox-nano"]
+    );
+}
+
+#[gpui_kit::test]
+fn manage_voices_opens_the_library_sheet(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    fixture
+        .read
+        .update_in(cx, |read, window, cx| read.manage_voices(window, cx));
+    assert_eq!(
+        fixture.library.read_with(cx, |library, _| library.page()),
+        Some(VoicesPage::List)
+    );
 }

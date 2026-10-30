@@ -42,18 +42,43 @@ pub fn render(read: &Entity<ReadAloud>, cx: &mut App) -> impl IntoElement + use<
         ));
     let notices: Vec<AnyElement> = {
         let view = read.read(cx);
-        [
-            view.error()
-                .map(|text| ("error", text.to_owned(), Notice::Failure)),
-            view.info()
-                .map(|text| ("info", text.to_owned(), Notice::Info)),
-        ]
-        .into_iter()
-        .flatten()
-        .map(|(name, text, notice)| {
-            ui::notice_row(palette, hook::id("read", name), text, notice, None)
-        })
-        .collect()
+        // Chatterbox reads English only; the system voice reads the rest.
+        let other_engine = view.offers_other_engine().then(|| {
+            let read = read.clone();
+            ui::button(
+                palette,
+                hook::id("read", "otherEngine"),
+                "Use System Voice",
+                Kind::Plain,
+                Some(&view.focus.other_engine),
+                true,
+                move |_: &mut Window, cx: &mut App| {
+                    // The system voice is always a choice of the setting.
+                    let _ = read.update(cx, |read, cx| read.set_engine(EngineKind::System, cx));
+                },
+            )
+            .into_any_element()
+        });
+        let mut notices = Vec::new();
+        if let Some(text) = view.error() {
+            notices.push(ui::notice_row(
+                palette,
+                hook::id("read", "error"),
+                text.to_owned(),
+                Notice::Failure,
+                other_engine,
+            ));
+        }
+        if let Some(text) = view.info() {
+            notices.push(ui::notice_row(
+                palette,
+                hook::id("read", "info"),
+                text.to_owned(),
+                Notice::Info,
+                None,
+            ));
+        }
+        notices
     };
     if !notices.is_empty() {
         page = page.child(ui::group(hook::id("read", "notices"), palette, notices));
@@ -112,7 +137,8 @@ fn text_group(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> impl Into
     ui::group(hook::id("read", "text.group"), palette, vec![area, footer])
 }
 
-/// Engine, then Language and Voice from the engine's voices, then Speed and Format.
+/// Engine, then Language and Voice from the engine's voices (and the voice library for
+/// Chatterbox), then Speed and Format.
 fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyElement> {
     let view = read.read(cx);
     let engine = view.engine();
@@ -131,7 +157,7 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
                 (
                     kind.key().to_owned(),
                     kind.label().to_owned(),
-                    None,
+                    view.missing(kind).then(|| "Not downloaded".to_owned()),
                     kind == engine,
                 )
             })
@@ -141,10 +167,15 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
         palette,
         hook::id("read", "engine.row"),
         "Engine",
-        Some(match engine {
-            EngineKind::System => "The voices of this computer".to_owned(),
-            EngineKind::Kokoro => "Natural voices from a downloaded model".to_owned(),
-        }),
+        Some(
+            match engine {
+                EngineKind::System => "The voices of this computer",
+                EngineKind::Kokoro => "Natural voices from a downloaded model",
+                EngineKind::ChatterboxTurbo => "Natural English voices, and voices you clone",
+                EngineKind::ChatterboxNano => "Quick English voices, and voices you clone",
+            }
+            .to_owned(),
+        ),
         ui::pop_up(
             palette,
             ui::PopUp {
@@ -219,8 +250,15 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
         .as_ref()
         .and_then(|id| voices.iter().find(|found| &found.id == id))
         .map_or_else(|| "Default".to_owned(), |found| found.name.clone());
+    // Chatterbox's default is the default voice of the library.
+    let default_name = engine.is_chatterbox().then(|| view.default_voice_name(cx));
     let voice_menu = open(Menu::Voice, &|| {
-        let mut choices = vec![(String::new(), "Default".to_owned(), None, voice.is_none())];
+        let mut choices = vec![(
+            String::new(),
+            "Default".to_owned(),
+            default_name.clone(),
+            voice.is_none(),
+        )];
         choices.extend(voices.iter().map(|found| {
             let chosen = Some(&found.id) == voice.as_ref();
             let detail = match found.quality {
@@ -236,9 +274,10 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
         palette,
         hook::id("read", "voice.row"),
         "Voice",
-        Some(match view.voices() {
-            None => "Looking for voices\u{2026}".to_owned(),
-            Some(_) => "Default is the engine's own choice".to_owned(),
+        Some(match (view.voices(), &default_name) {
+            (None, _) => "Looking for voices\u{2026}".to_owned(),
+            (Some(_), Some(name)) => format!("Default is {name}"),
+            (Some(_), None) => "Default is the engine's own choice".to_owned(),
         }),
         ui::pop_up(
             palette,
@@ -253,6 +292,36 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
             toggle(Menu::Voice),
         ),
     ));
+    if engine.is_chatterbox()
+        && let Some(library) = view.library()
+    {
+        let cloned = library.read(cx).voices().len();
+        let manage = {
+            let read = read.clone();
+            move |window: &mut Window, cx: &mut App| {
+                read.update(cx, |read, cx| read.manage_voices(window, cx))
+            }
+        };
+        rows.push(ui::labeled_row(
+            palette,
+            hook::id("read", "library.row"),
+            "Voice library",
+            Some(match cloned {
+                0 => "Clone a voice from a recording or a file".to_owned(),
+                1 => "1 cloned voice".to_owned(),
+                count => format!("{count} cloned voices"),
+            }),
+            ui::button(
+                palette,
+                hook::id("read", "manage"),
+                "Manage Voices\u{2026}",
+                Kind::Plain,
+                Some(&view.focus.manage),
+                true,
+                manage,
+            ),
+        ));
+    }
     let speed = view.speed();
     let slider = {
         let read = read.clone();

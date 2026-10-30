@@ -18,6 +18,8 @@ pub const LANGUAGE_MODEL_FILE: &str = "language_model_q4.onnx";
 pub const DECODER_FILE: &str = "conditional_decoder_q4.onnx";
 /// The clip of the voice a model reads with when no other voice is chosen.
 pub const DEFAULT_VOICE_FILE: &str = "default_voice.wav";
+/// The voice id of that clip, beside the ids of the voices the user cloned.
+pub const BUILT_IN_VOICE: &str = "built-in";
 /// The four graphs. ONNX Runtime reads each one's weights from `<graph>_data` beside it.
 pub const GRAPHS: [&str; 4] = [
     SPEECH_ENCODER_FILE,

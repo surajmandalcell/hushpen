@@ -50,6 +50,7 @@ pub mod ui;
 pub mod update_apply;
 pub mod updater;
 pub mod views;
+pub mod voices;
 pub mod window_chrome;
 #[cfg(not(target_os = "macos"))]
 pub mod window_controls;

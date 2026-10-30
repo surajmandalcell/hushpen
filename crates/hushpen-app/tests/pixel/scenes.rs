@@ -797,7 +797,10 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                                     ReadParts {
                                         storage: Rc::clone(&storage),
                                         system: Arc::clone(&voices),
-                                        kokoro: voices,
+                                        kokoro: Arc::clone(&voices),
+                                        turbo: Arc::clone(&voices),
+                                        nano: voices,
+                                        library: None,
                                         spawn: models::thread_spawner(),
                                         silent: true,
                                     },
