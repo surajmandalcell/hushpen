@@ -158,26 +158,26 @@ fn tune_page(palette: Palette, tuning: &Entity<Tuning>, me: &Tuning, cx: &App) -
         act(tuning, |me, cx| me.toggle_take(false, cx)),
     );
     let playing = me.playing() == Some(Playing::Sample);
-    let play = (me.sample_seconds().is_some() && !busy).then(|| {
-        ui::icon_button(
-            palette,
-            id("play"),
-            if playing {
-                IconName::Square
-            } else {
-                IconName::Play
-            },
-            if playing {
-                "Stop the sample"
-            } else {
-                "Play the sample"
-            }
-            .to_owned(),
-            if playing { "Stop" } else { "Play" },
-            &focus.play,
-            act(tuning, |me, cx| me.toggle_play(Playing::Sample, cx)),
-        )
-    });
+    // Off until a take exists, rather than missing, so the record button never moves.
+    let play = ui::icon_button_enabled(
+        palette,
+        id("play"),
+        if playing {
+            IconName::Square
+        } else {
+            IconName::Play
+        },
+        if playing {
+            "Stop the sample"
+        } else {
+            "Play the sample"
+        }
+        .to_owned(),
+        if playing { "Stop" } else { "Play" },
+        &focus.play,
+        me.sample_seconds().is_some() && !busy,
+        act(tuning, |me, cx| me.toggle_play(Playing::Sample, cx)),
+    );
     let sample = ui::row(palette)
         .id(id("sample.row"))
         .test_support()
@@ -192,9 +192,9 @@ fn tune_page(palette: Palette, tuning: &Entity<Tuning>, me: &Tuning, cx: &App) -
                 .flex_none()
                 .flex()
                 .items_center()
-                .gap(px(space::XS))
+                .gap(px(space::SM))
                 .child(record)
-                .children(play),
+                .child(play),
         )
         .into_any_element();
     let mut sample_rows = vec![sample];
@@ -308,7 +308,7 @@ fn find_page(palette: Palette, tuning: &Entity<Tuning>, me: &Tuning, cx: &App) -
     let mut page = vec![header(
         palette,
         "Find best settings",
-        "Read the lines aloud. The test then tries many settings, which takes a few minutes.",
+        "Read the lines aloud. The test then takes a few minutes.",
     )];
     let reading = matches!(me.take(), Take::Recording { find: true, .. });
     match me.find() {
@@ -345,7 +345,7 @@ fn find_page(palette: Palette, tuning: &Entity<Tuning>, me: &Tuning, cx: &App) -
                 palette,
                 id("reading.record"),
                 if reading { "Stop" } else { "Record" },
-                Kind::Default,
+                Kind::Plain,
                 Some(&focus.record),
                 me.take() == Take::Idle || reading,
                 act(tuning, |me, cx| me.toggle_take(true, cx)),
