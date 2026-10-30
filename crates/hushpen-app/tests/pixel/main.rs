@@ -279,13 +279,17 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::Shell | Scene::History | Scene::HistoryDetail | Scene::HistorySelect => {
             Some(View::History)
         }
-        Scene::HistoryClear => Some(View::History),
+        Scene::HistoryClear | Scene::HistoryRead | Scene::HistoryReadDetail => Some(View::History),
         Scene::Home => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
         Scene::Files(_) => Some(View::Manual),
         Scene::Models | Scene::ModelsBottom => Some(View::Models),
         // The scrim dims the whole window, so the shell colors do not hold under a sheet.
-        Scene::ModelsDetails | Scene::EnhanceTune | Scene::EnhanceFind => None,
+        Scene::ModelsDetails
+        | Scene::EnhanceTune
+        | Scene::EnhanceFind
+        | Scene::Voices
+        | Scene::VoicesAdd => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
             Some(View::Settings)
