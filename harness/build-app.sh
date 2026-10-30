@@ -7,7 +7,8 @@
 # for packaging/smoke/start-latency.sh. It is never shipped and it replaces target/release/hushpen.
 # Builds the debug app (features test-automation and update-test-feed; the debug app is never shipped), hookctl, and the hushpen-llm and hushpen-tts workers for the harness platform (linux/arm64 unless HUSHPEN_PLATFORM says otherwise) in the hushpen-build
 # container and copies them to $HUSHPEN_ROOT/harness-bin, the folder every slot mounts as /app.
-# The repo mounts read-only. Heavy (4 CPUs): counts as 2 busy slots.
+# `cargo xtask tts-runtime` puts the pinned sherpa-onnx and ONNX Runtime libraries there too, which
+# the voice worker opens (Chatterbox needs libonnxruntime.so). The repo mounts read-only. Heavy (4 CPUs): counts as 2 busy slots.
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 docker image inspect "$HARNESS_IMAGE" >/dev/null 2>&1 || die "no image $HARNESS_IMAGE; run harness-image"
@@ -25,6 +26,7 @@ docker run --rm --platform "$HARNESS_PLATFORM" --name hushpen-build --cpus 4 --m
   -e BUILD_RELEASE="${HUSHPEN_BUILD_RELEASE:-0}" -e BUILD_HOOKREL="${HUSHPEN_BUILD_HOOKREL:-0}" \
   -w /src "$HARNESS_IMAGE" \
   sh -c 'cargo build --locked -j 4 -p hushpen-app --features test-automation,update-test-feed -p hushpen-testhook -p hushpen-llm -p hushpen-tts &&
+         cargo xtask tts-runtime --dir /harness-bin >/dev/null &&
          cp /target/debug/hushpen /target/debug/hookctl /target/debug/hushpen-llm /target/debug/hushpen-tts /src/assets/THIRD-PARTY-NOTICES.html /src/assets/ggml-silero-v5.1.2.bin /harness-bin/ &&
          if [ "$BUILD_RELEASE" = 1 ]; then
            cargo build --release --locked -j 4 -p hushpen-app &&
