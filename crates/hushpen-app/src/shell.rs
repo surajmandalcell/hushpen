@@ -449,7 +449,7 @@ impl Shell {
 
     /// The title sits in the title bar area, on the chrome center line with the window controls,
     /// and has no line under it. Settings puts its search field at the right end, on the same
-    /// line.
+    /// line. Manual puts its mode control in the middle of the pane width.
     fn toolbar(&self, shell: &Entity<Shell>, palette: Palette, cx: &App) -> impl IntoElement {
         let search = self
             .settings
@@ -467,9 +467,31 @@ impl Shell {
                     })
                     .child(field)
             });
+        // Centered on the pane width, not on the space the title leaves. The wrapper has no
+        // handler, so a drag on the empty band still moves the window.
+        let mode = self
+            .files
+            .as_ref()
+            .filter(|_| self.active == View::Manual)
+            .map(|files| {
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .mt(px(theme::chrome_top(size::BUTTON_HEIGHT)))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child(files::panel::mode_switch(files, cx)),
+                    )
+            });
         div()
             .id(hook::id("toolbar", "drag"))
             .test_support()
+            .relative()
             .flex()
             .items_start()
             .justify_between()
@@ -491,6 +513,7 @@ impl Shell {
                     .text_color(palette.label)
                     .child(self.active.title()),
             )
+            .children(mode)
             .children(search)
     }
 

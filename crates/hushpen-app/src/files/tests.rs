@@ -193,6 +193,51 @@ fn read_aloud_window(cx: &mut TestAppContext) -> (Fixture, gpui_kit::AnyWindowHa
 }
 
 #[gpui_kit::test]
+fn the_mode_control_sits_in_the_title_bar_centered_on_the_pane(cx: &mut TestAppContext) {
+    let (_fixture, handle) = read_aloud_window(cx);
+    let (control, pane, title, page) = cx
+        .update_window(handle, |_, window, _| {
+            (
+                window.find("files.mode").bounds(),
+                window.find("toolbar.drag").bounds(),
+                window.find("view.title").bounds(),
+                window.find("files.view").bounds(),
+            )
+        })
+        .unwrap();
+    let center_x = f32::from(control.origin.x) + f32::from(control.size.width) / 2.0;
+    let pane_x = f32::from(pane.origin.x) + f32::from(pane.size.width) / 2.0;
+    assert!((center_x - pane_x).abs() < 0.5, "{center_x} vs {pane_x}");
+    let center_y = f32::from(control.origin.y) + f32::from(control.size.height) / 2.0;
+    assert!(
+        (center_y - crate::theme::size::CHROME_CENTER).abs() < 0.5,
+        "on the chrome line: {center_y}"
+    );
+    assert!(control.left() > title.right(), "right of the view title");
+    assert!(
+        page.top() >= control.bottom(),
+        "the page starts under the title bar band"
+    );
+}
+
+#[gpui_kit::test]
+fn left_and_right_in_the_title_bar_control_switch_the_mode(cx: &mut TestAppContext) {
+    let (fixture, handle) = read_aloud_window(cx);
+    cx.update_window(handle, |_, window, cx| window.click("files.mode", cx))
+        .unwrap();
+    for (key, expected) in [("left", Mode::Transcribe), ("right", Mode::ReadAloud)] {
+        cx.update_window(handle, |_, window, cx| window.press(key, cx))
+            .unwrap();
+        frame(cx, handle);
+        assert_eq!(
+            fixture.files.read_with(cx, |files, _| files.mode()),
+            expected,
+            "{key}"
+        );
+    }
+}
+
+#[gpui_kit::test]
 fn a_read_aloud_menu_floats_over_the_page_and_esc_closes_it(cx: &mut TestAppContext) {
     use crate::theme::space;
     use gpui_kit::px;
