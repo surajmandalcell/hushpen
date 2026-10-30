@@ -72,65 +72,62 @@ impl Controller {
     /// "Paste last transcript".
     pub(super) fn record_history(
         &mut self,
+        session: u64,
         status: RowStatus,
         text: &Option<String>,
         code: Option<&'static str>,
     ) {
-        let session = self.machine.session();
-        let wav = self.wav.clone().filter(|path| path.is_file());
+        let (insert_outcome, target_app) = self.insert_summary(session, text.is_some());
+        let retention = self.retention();
+        let run = self.run_of(session);
+        let wav = run.wav.clone().filter(|path| path.is_file());
         if wav.is_none() && text.is_none() {
             return;
         }
         let created_at = history::now_ms();
         let id = history::new_id(u64::try_from(created_at).unwrap_or(0));
-        let (insert_outcome, target_app) = self.insert_summary(session, text.is_some());
-        let detected = self
-            .detected
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone()
-            .filter(|(owner, _)| *owner == session)
-            .map(|(_, language)| language);
+        let (detected, ai, segments) = {
+            let mut found = super::runs::lock(&run.found);
+            (
+                found.language.clone(),
+                found.ai.clone(),
+                std::mem::take(&mut found.segments),
+            )
+        };
+        let pending = &run.pending;
         let non_empty = |text: &str| Some(text.to_owned()).filter(|text| !text.is_empty());
         let status_key = match status {
             RowStatus::Done => "completed",
             RowStatus::Cancelled => "cancelled",
             RowStatus::Failed => "failed",
         };
-        let keep_audio = wav.is_some() && self.retention().keeps(status_key);
+        let keep_audio = wav.is_some() && retention.keeps(status_key);
         let dropped_audio = wav.is_some() && !keep_audio;
         let raw_text = match status {
-            RowStatus::Cancelled => text.clone().or_else(|| non_empty(&self.pending.raw)),
-            _ => non_empty(&self.pending.raw),
+            RowStatus::Cancelled => text.clone().or_else(|| non_empty(&pending.raw)),
+            _ => non_empty(&pending.raw),
         };
-        let ai = self
-            .last_ai
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone()
-            .filter(|(owner, _)| *owner == session)
-            .map(|(_, record)| record);
-        let command = self.is_command();
+        let command = run.command;
         let row = Row {
             id: id.clone(),
             created_at,
             kind: if command { "command" } else { "dictation" }.to_owned(),
             status: status_key.to_owned(),
             error_code: code.map(str::to_owned),
-            duration_ms: self.pending.duration_ms,
-            model_id: self.pending.model_id.clone(),
-            language_requested: self.pending.language_requested.clone(),
+            duration_ms: pending.duration_ms,
+            model_id: pending.model_id.clone(),
+            language_requested: pending.language_requested.clone(),
             language_detected: detected,
-            prompt: self.last_prompt.clone(),
+            prompt: run.prompt.clone(),
             // A command row keeps the instruction and the edited text only: the selection is
             // never saved, and the model's text is the final text.
             raw_text: raw_text.filter(|_| !command),
-            rule_text: non_empty(&self.pending.rule).filter(|_| !command),
+            rule_text: non_empty(&pending.rule).filter(|_| !command),
             llm_text: ai
                 .as_ref()
                 .and_then(|record| record.text.clone())
                 .filter(|_| !command),
-            instruction: self.pending.instruction.clone().filter(|_| command),
+            instruction: pending.instruction.clone().filter(|_| command),
             llm_outcome: ai.as_ref().map(|record| record.outcome.key().to_owned()),
             final_text: match status {
                 RowStatus::Cancelled => None,
@@ -142,28 +139,21 @@ impl Controller {
             audio_removed_at: dropped_audio.then_some(created_at),
             ..Row::default()
         };
-        let segments = self
-            .segments
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .take()
-            .filter(|(owner, _)| *owner == session)
-            .map(|(_, segments)| segments)
-            .unwrap_or_default();
         if let Err(error) = history::save(&self.storage.database, &row, &segments) {
             log::error!("{HISTORY_WRITE_FAILED} the history row was not saved: {error}");
             hook::record_event("history", &format!("write-failed {HISTORY_WRITE_FAILED}"));
             return;
         }
         if let Some(wav) = wav {
-            if keep_audio {
-                self.wav = Some(self.archive_audio(&wav, &id));
+            let kept = if keep_audio {
+                Some(self.archive_audio(&wav, &id))
             } else {
                 if let Err(error) = fs::remove_file(&wav) {
                     log::warn!("the audio of a finished run was not removed: {error}");
                 }
-                self.wav = None;
-            }
+                None
+            };
+            self.run_of(session).wav = kept;
         }
         self.history_revision += 1;
         self.last_row = Some(id);
@@ -172,12 +162,13 @@ impl Controller {
 
     /// The text the model produced for `session` and that went in, if its AI step ended `used`.
     pub(super) fn ai_text_of(&self, session: u64) -> Option<String> {
-        let slot = self.last_ai.lock().unwrap_or_else(|p| p.into_inner());
-        slot.as_ref()
-            .filter(|(owner, record)| {
-                *owner == session && record.outcome == hushpen_core::cleanup::outcome::Outcome::Used
-            })
-            .and_then(|(_, record)| record.text.clone())
+        let run = self.runs.get(&session)?;
+        let found = super::runs::lock(&run.found);
+        found
+            .ai
+            .as_ref()
+            .filter(|record| record.outcome == hushpen_core::cleanup::outcome::Outcome::Used)
+            .and_then(|record| record.text.clone())
     }
 
     /// What the insertion of this session did: the outcome key and the app that got the text.

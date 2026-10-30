@@ -137,13 +137,16 @@ fn variant_index(event: &AppEvent) -> usize {
 
 const VARIANTS: usize = 19;
 
-fn start_effects() -> Vec<Effect> {
-    vec![Effect::StartCapture { session: 1 }, Effect::Cue(Cue::Start)]
+fn start_effects(session: u64) -> Vec<Effect> {
+    vec![Effect::StartCapture { session }, Effect::Cue(Cue::Start)]
 }
 
 fn stop_effects() -> Vec<Effect> {
     vec![
-        Effect::StopCapture { keep: true },
+        Effect::StopCapture {
+            session: 1,
+            keep: true,
+        },
         Effect::Cue(Cue::Stop),
         Effect::Transcribe { session: 1 },
     ]
@@ -151,30 +154,45 @@ fn stop_effects() -> Vec<Effect> {
 
 fn failed_row(text: Option<&str>, code: &'static str) -> Effect {
     Effect::SaveRow {
+        session: 1,
         status: RowStatus::Failed,
         text: text.map(str::to_owned),
         code: Some(code),
     }
 }
 
+fn notify(code: &'static str) -> Effect {
+    Effect::Notify { session: 1, code }
+}
+
+const STARTS: [AppEvent; 5] = [
+    AppEvent::HoldDown,
+    AppEvent::CommandDown,
+    AppEvent::HandsFreeToggle,
+    AppEvent::HomeToggle,
+    AppEvent::FlowBarClick,
+];
+
 /// Every pair that is not a no-op. The test below checks all other pairs change nothing.
 fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
     use AppEvent as E;
     let mut rows = Vec::new();
-    for start in [
-        E::HoldDown,
-        E::HandsFreeToggle,
-        E::HomeToggle,
-        E::FlowBarClick,
-    ] {
-        rows.push((State::Idle, start, State::Listening, start_effects()));
+    for start in STARTS {
+        rows.push((State::Idle, start, State::Listening, start_effects(1)));
     }
-    rows.push((
-        State::Idle,
-        E::CommandDown,
-        State::Listening,
-        start_effects(),
-    ));
+    // A start never waits for the session before it, whatever that one is doing.
+    for from in [
+        State::Transcribing,
+        State::Cleaning,
+        State::Inserting,
+        State::Done,
+        State::Cancelled,
+        State::Failed,
+    ] {
+        for start in STARTS {
+            rows.push((from, start, State::Listening, start_effects(2)));
+        }
+    }
     rows.push((State::Listening, E::CommandDown, State::Listening, vec![]));
     rows.push((
         State::Cleaning,
@@ -183,10 +201,7 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
             code: LLM_TIMEOUT,
         },
         State::Failed,
-        vec![
-            failed_row(None, LLM_TIMEOUT),
-            Effect::Notify { code: LLM_TIMEOUT },
-        ],
+        vec![failed_row(None, LLM_TIMEOUT), notify(LLM_TIMEOUT)],
     ));
     for resting in [State::Idle, State::Done, State::Cancelled, State::Failed] {
         rows.push((resting, E::PasteLast, resting, vec![Effect::PasteLast]));
@@ -211,7 +226,10 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         E::Esc,
         State::Cancelled,
         vec![
-            Effect::StopCapture { keep: false },
+            Effect::StopCapture {
+                session: 1,
+                keep: false,
+            },
             Effect::Cue(Cue::Cancel),
         ],
     ));
@@ -222,11 +240,12 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         },
         State::Failed,
         vec![
-            Effect::StopCapture { keep: true },
-            failed_row(None, CAPTURE_FAILED),
-            Effect::Notify {
-                code: CAPTURE_FAILED,
+            Effect::StopCapture {
+                session: 1,
+                keep: true,
             },
+            failed_row(None, CAPTURE_FAILED),
+            notify(CAPTURE_FAILED),
         ],
     ));
     rows.push((
@@ -234,9 +253,10 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         E::Esc,
         State::Cancelled,
         vec![
-            Effect::CancelTranscribe,
+            Effect::CancelTranscribe { session: 1 },
             Effect::Cue(Cue::Cancel),
             Effect::SaveRow {
+                session: 1,
                 status: RowStatus::Cancelled,
                 text: None,
                 code: None,
@@ -259,21 +279,17 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
             code: ENGINE_CRASHED,
         },
         State::Failed,
-        vec![
-            failed_row(None, ENGINE_CRASHED),
-            Effect::Notify {
-                code: ENGINE_CRASHED,
-            },
-        ],
+        vec![failed_row(None, ENGINE_CRASHED), notify(ENGINE_CRASHED)],
     ));
     rows.push((
         State::Cleaning,
         E::Esc,
         State::Cancelled,
         vec![
-            Effect::StopLlm,
+            Effect::StopLlm { session: 1 },
             Effect::Cue(Cue::Cancel),
             Effect::SaveRow {
+                session: 1,
                 status: RowStatus::Cancelled,
                 text: Some(RAW.into()),
                 code: None,
@@ -296,6 +312,7 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         State::Done,
         vec![
             Effect::SaveRow {
+                session: 1,
                 status: RowStatus::Done,
                 text: Some(CLEAN.into()),
                 code: None,
@@ -312,9 +329,7 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         State::Failed,
         vec![
             failed_row(Some(CLEAN), INSERT_SECURE_FIELD),
-            Effect::Notify {
-                code: INSERT_SECURE_FIELD,
-            },
+            notify(INSERT_SECURE_FIELD),
         ],
     ));
     rows
@@ -355,27 +370,301 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
 }
 
 #[test]
-fn a_start_event_outside_idle_never_begins_a_second_session() {
-    for state in State::ALL.into_iter().filter(|s| *s != State::Idle) {
-        for start in [
-            AppEvent::HoldDown,
-            AppEvent::CommandDown,
-            AppEvent::HandsFreeToggle,
-            AppEvent::HomeToggle,
-            AppEvent::FlowBarClick,
-        ] {
+fn a_start_event_while_listening_never_begins_a_second_session() {
+    for start in STARTS {
+        let mut m = reach(State::Listening);
+        let effects = handle(&mut m, start.clone(), LATER);
+        assert_eq!(m.session(), 1, "{start:?}");
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::StartCapture { .. })),
+            "{start:?}"
+        );
+    }
+}
+
+#[test]
+fn a_start_50_ms_after_a_stop_begins_the_next_session_at_once() {
+    for (state, still_running) in [
+        (State::Transcribing, true),
+        (State::Cleaning, true),
+        (State::Inserting, true),
+        (State::Done, false),
+        (State::Cancelled, false),
+        (State::Failed, false),
+    ] {
+        for start in STARTS {
             let mut m = reach(state);
-            let before = m.session();
-            let effects = handle(&mut m, start.clone(), LATER);
-            assert_eq!(m.session(), before, "{state:?} on {start:?}");
-            assert!(
-                !effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::StartCapture { .. })),
+            let effects = handle(&mut m, start.clone(), LATER + 50);
+            assert_eq!(effects, start_effects(2), "{state:?} on {start:?}");
+            assert_eq!(m.state(), State::Listening, "{state:?} on {start:?}");
+            assert_eq!(m.session(), 2, "{state:?} on {start:?}");
+            assert_eq!(
+                m.behind(),
+                usize::from(still_running),
                 "{state:?} on {start:?}"
             );
         }
     }
+}
+
+fn said(session: u64, text: &str) -> AppEvent {
+    AppEvent::Transcribed {
+        session,
+        text: text.into(),
+    }
+}
+
+fn polished(session: u64, text: &str) -> AppEvent {
+    AppEvent::Cleaned {
+        session,
+        text: text.into(),
+    }
+}
+
+fn done_row(session: u64, text: &str) -> Effect {
+    Effect::SaveRow {
+        session,
+        status: RowStatus::Done,
+        text: Some(text.into()),
+        code: None,
+    }
+}
+
+fn paste(session: u64, text: &str) -> Effect {
+    Effect::Insert {
+        session,
+        text: text.into(),
+        delivery: Delivery::Paste,
+    }
+}
+
+/// Session 1 stops at `LATER` and is transcribing; session 2 starts 30 ms later and listens.
+fn two_quick_holds() -> DictationMachine {
+    let mut m = reach(State::Transcribing);
+    handle(&mut m, AppEvent::HoldDown, LATER + 30);
+    assert_eq!(
+        (m.state(), m.session(), m.behind()),
+        (State::Listening, 2, 1)
+    );
+    m
+}
+
+#[test]
+fn two_quick_dictations_both_go_in_in_the_order_they_were_spoken() {
+    let mut m = two_quick_holds();
+    handle(&mut m, AppEvent::HoldUp, 2 * LATER);
+    // The second one is quicker, but its text waits for the first one.
+    assert_eq!(
+        handle(&mut m, said(2, "second take"), 2 * LATER),
+        vec![Effect::Clean {
+            session: 2,
+            raw: "second take".into()
+        }]
+    );
+    assert!(handle(&mut m, polished(2, "Second."), 2 * LATER).is_empty());
+    assert_eq!(m.state(), State::Inserting);
+    handle(&mut m, said(1, "first take"), 2 * LATER + 10);
+    assert_eq!(
+        handle(&mut m, polished(1, "First."), 2 * LATER + 20),
+        vec![paste(1, "First.")]
+    );
+    assert_eq!(
+        handle(&mut m, AppEvent::Inserted { session: 1 }, 2 * LATER + 30),
+        vec![
+            done_row(1, "First."),
+            Effect::UpdatePasteLast {
+                text: "First.".into()
+            },
+            paste(2, "Second."),
+        ]
+    );
+    assert_eq!(
+        m.state(),
+        State::Inserting,
+        "no result flash for the first one"
+    );
+    assert_eq!(
+        handle(&mut m, AppEvent::Inserted { session: 2 }, 2 * LATER + 40),
+        vec![
+            done_row(2, "Second."),
+            Effect::UpdatePasteLast {
+                text: "Second.".into()
+            },
+        ]
+    );
+    assert_eq!((m.state(), m.behind()), (State::Done, 0));
+}
+
+#[test]
+fn the_new_session_shows_listening_while_the_older_one_finishes() {
+    let mut m = reach(State::Inserting);
+    handle(&mut m, AppEvent::HandsFreeToggle, LATER + 20);
+    assert_eq!(
+        handle(&mut m, AppEvent::Inserted { session: 1 }, LATER + 40),
+        vec![
+            done_row(1, CLEAN),
+            Effect::UpdatePasteLast { text: CLEAN.into() }
+        ]
+    );
+    assert_eq!(
+        (m.state(), m.session(), m.behind()),
+        (State::Listening, 2, 0)
+    );
+    assert!(handle(&mut m, AppEvent::Tick, LATER + 5_000).is_empty());
+    assert_eq!(m.state(), State::Listening, "the old result never flashes");
+}
+
+#[test]
+fn cancelling_the_new_session_leaves_the_older_one_running() {
+    let mut m = two_quick_holds();
+    assert_eq!(
+        handle(&mut m, AppEvent::Esc, LATER + 600),
+        vec![
+            Effect::StopCapture {
+                session: 2,
+                keep: false
+            },
+            Effect::Cue(Cue::Cancel),
+        ]
+    );
+    assert_eq!((m.state(), m.behind()), (State::Cancelled, 1));
+    handle(&mut m, transcribed(1), LATER + 700);
+    assert_eq!(
+        handle(&mut m, cleaned(1), LATER + 700),
+        vec![paste(1, CLEAN)]
+    );
+    assert_eq!(
+        handle(&mut m, AppEvent::Inserted { session: 1 }, LATER + 800),
+        vec![
+            done_row(1, CLEAN),
+            Effect::UpdatePasteLast { text: CLEAN.into() }
+        ]
+    );
+    assert_eq!((m.state(), m.behind()), (State::Cancelled, 0));
+}
+
+#[test]
+fn esc_cancels_the_newest_session_and_never_an_older_one_behind_it() {
+    let mut m = reach(State::Cleaning);
+    handle(&mut m, AppEvent::HoldDown, LATER + 10);
+    handle(&mut m, AppEvent::HoldUp, 2 * LATER);
+    assert_eq!(
+        handle(&mut m, AppEvent::Esc, 2 * LATER + 10),
+        vec![
+            Effect::CancelTranscribe { session: 2 },
+            Effect::Cue(Cue::Cancel),
+            Effect::SaveRow {
+                session: 2,
+                status: RowStatus::Cancelled,
+                text: None,
+                code: None
+            },
+        ]
+    );
+    assert_eq!(
+        handle(&mut m, cleaned(1), 2 * LATER + 20),
+        vec![paste(1, CLEAN)]
+    );
+}
+
+#[test]
+fn once_the_newest_session_ends_the_older_one_comes_back_and_esc_cancels_it() {
+    let mut m = two_quick_holds();
+    handle(&mut m, AppEvent::Esc, LATER + 600);
+    handle(
+        &mut m,
+        AppEvent::Tick,
+        LATER + 600 + Config::default().cancelled_ms,
+    );
+    assert_eq!(
+        (m.state(), m.session(), m.behind()),
+        (State::Transcribing, 1, 0)
+    );
+    assert_eq!(
+        handle(&mut m, AppEvent::Esc, 3 * LATER),
+        vec![
+            Effect::CancelTranscribe { session: 1 },
+            Effect::Cue(Cue::Cancel),
+            Effect::SaveRow {
+                session: 1,
+                status: RowStatus::Cancelled,
+                text: None,
+                code: None
+            },
+        ]
+    );
+    assert!(handle(&mut m, transcribed(1), 3 * LATER).is_empty());
+    assert_eq!(
+        handle(&mut m, AppEvent::HomeToggle, 3 * LATER + 10),
+        start_effects(3),
+        "a new session never reuses an id"
+    );
+}
+
+#[test]
+fn an_older_session_that_fails_lets_the_next_text_go_in() {
+    let mut m = two_quick_holds();
+    handle(&mut m, AppEvent::HoldUp, 2 * LATER);
+    handle(&mut m, transcribed(2), 2 * LATER);
+    assert!(handle(&mut m, cleaned(2), 2 * LATER).is_empty());
+    let failed = AppEvent::TranscribeFailed {
+        session: 1,
+        code: ENGINE_CRASHED,
+    };
+    assert_eq!(
+        handle(&mut m, failed, 2 * LATER + 10),
+        vec![
+            failed_row(None, ENGINE_CRASHED),
+            notify(ENGINE_CRASHED),
+            paste(2, CLEAN),
+        ]
+    );
+    assert_eq!((m.state(), m.session()), (State::Inserting, 2));
+}
+
+#[test]
+fn a_tap_while_the_older_session_finishes_brings_it_back_and_a_double_tap_starts_hands_free() {
+    let mut m = reach(State::Transcribing);
+    handle(&mut m, AppEvent::HoldDown, LATER + 100);
+    assert_eq!(
+        handle(&mut m, AppEvent::HoldUp, LATER + 150),
+        vec![Effect::StopCapture {
+            session: 2,
+            keep: false
+        }]
+    );
+    assert_eq!(
+        (m.state(), m.session(), m.behind()),
+        (State::Transcribing, 1, 0)
+    );
+    assert_eq!(
+        handle(&mut m, AppEvent::HoldDown, LATER + 300),
+        start_effects(3)
+    );
+    assert_eq!((m.mode(), m.behind()), (Mode::HandsFree, 1));
+}
+
+#[test]
+fn paste_last_waits_until_no_older_session_finishes() {
+    let mut m = two_quick_holds();
+    handle(
+        &mut m,
+        AppEvent::CaptureError {
+            code: CAPTURE_FAILED,
+        },
+        LATER + 40,
+    );
+    assert_eq!(m.state(), State::Failed);
+    assert!(handle(&mut m, AppEvent::PasteLast, LATER + 50).is_empty());
+    handle(&mut m, transcribed(1), LATER + 60);
+    handle(&mut m, cleaned(1), LATER + 60);
+    handle(&mut m, AppEvent::Inserted { session: 1 }, LATER + 70);
+    assert_eq!(
+        handle(&mut m, AppEvent::PasteLast, LATER + 80),
+        vec![Effect::PasteLast]
+    );
 }
 
 #[test]
@@ -384,7 +673,13 @@ fn a_hold_released_after_249_ms_is_a_discarded_tap() {
     hold(&mut m);
     let effects = handle(&mut m, AppEvent::HoldUp, 249);
     assert_eq!(m.state(), State::Idle);
-    assert_eq!(effects, vec![Effect::StopCapture { keep: false }]);
+    assert_eq!(
+        effects,
+        vec![Effect::StopCapture {
+            session: 1,
+            keep: false
+        }]
+    );
     assert!(
         !effects
             .iter()
@@ -548,7 +843,10 @@ fn in_hands_free_the_next_press_goes_to_transcribing() {
     assert_eq!(
         effects,
         vec![
-            Effect::StopCapture { keep: true },
+            Effect::StopCapture {
+                session: 2,
+                keep: true
+            },
             Effect::Cue(Cue::Stop),
             Effect::Transcribe { session: 2 }
         ]
@@ -614,7 +912,10 @@ fn hands_free_warns_at_five_minutes_then_stops_at_six_keeping_the_audio() {
     let effects = handle(&mut m, AppEvent::Tick, 10_000 + 360_000);
     assert_eq!(m.state(), State::Transcribing);
     assert_eq!(effects, stop_effects());
-    assert!(!effects.contains(&Effect::StopCapture { keep: false }));
+    assert!(!effects.contains(&Effect::StopCapture {
+        session: 1,
+        keep: false
+    }));
 }
 
 #[test]
@@ -656,7 +957,10 @@ fn escape_in_listening_discards_and_a_later_release_starts_nothing() {
     hold(&mut m);
     let effects = handle(&mut m, AppEvent::Esc, 600);
     assert_eq!(m.state(), State::Cancelled);
-    assert!(effects.contains(&Effect::StopCapture { keep: false }));
+    assert!(effects.contains(&Effect::StopCapture {
+        session: 1,
+        keep: false
+    }));
     assert!(handle(&mut m, AppEvent::HoldUp, 900).is_empty());
     assert_eq!(m.state(), State::Cancelled);
 }
@@ -666,8 +970,9 @@ fn escape_in_cleaning_stops_the_llm_saves_raw_text_and_never_inserts() {
     let mut m = reach(State::Cleaning);
     let effects = handle(&mut m, AppEvent::Esc, LATER);
     assert_eq!(m.state(), State::Cancelled);
-    assert!(effects.contains(&Effect::StopLlm));
+    assert!(effects.contains(&Effect::StopLlm { session: 1 }));
     assert!(effects.contains(&Effect::SaveRow {
+        session: 1,
         status: RowStatus::Cancelled,
         text: Some(RAW.into()),
         code: None
@@ -768,12 +1073,7 @@ fn a_transcript_with_no_words_fails_with_no_speech_and_saves_a_failed_row() {
         assert_eq!(m.state(), State::Failed, "{text:?}");
         assert_eq!(
             effects,
-            vec![
-                failed_row(None, ENGINE_NO_SPEECH),
-                Effect::Notify {
-                    code: ENGINE_NO_SPEECH
-                }
-            ]
+            vec![failed_row(None, ENGINE_NO_SPEECH), notify(ENGINE_NO_SPEECH)]
         );
     }
 }
@@ -859,7 +1159,10 @@ fn a_command_tap_is_discarded_and_is_not_half_of_a_double_tap() {
     let mut m = command_session();
     assert_eq!(
         handle(&mut m, AppEvent::CommandUp, 249),
-        vec![Effect::StopCapture { keep: false }]
+        vec![Effect::StopCapture {
+            session: 1,
+            keep: false
+        }]
     );
     assert_eq!(m.state(), State::Idle);
     let effects = handle(&mut m, AppEvent::HoldDown, 300);
@@ -906,6 +1209,7 @@ fn the_edited_text_is_pasted_and_saved_like_a_dictation() {
     let done = handle(&mut m, AppEvent::Inserted { session: 1 }, LATER);
     assert_eq!(m.state(), State::Done);
     assert!(done.contains(&Effect::SaveRow {
+        session: 1,
         status: RowStatus::Done,
         text: Some(CLEAN.into()),
         code: None
@@ -948,6 +1252,6 @@ fn esc_while_the_model_edits_stops_it_and_pastes_nothing() {
     handle(&mut m, transcribed(1), LATER);
     let effects = handle(&mut m, AppEvent::Esc, LATER);
     assert_eq!(m.state(), State::Cancelled);
-    assert!(effects.contains(&Effect::StopLlm));
+    assert!(effects.contains(&Effect::StopLlm { session: 1 }));
     assert!(handle(&mut m, cleaned(1), LATER).is_empty());
 }

@@ -2,15 +2,16 @@
 //! the cleanup, and the history row. The run loop lives here too: the tick, the hook report of
 //! a state change, and the microphone and engine watchers.
 
+use super::runs::{Found, lock};
 use super::{
     CUE_SOUNDS_SETTING, CUE_VOLUME_SETTING, CancelToken, Controller, LastAi, Notice, Phase, arm,
     command, config_from, failure_for, history,
 };
 use crate::ai_cleanup;
 use crate::hook;
-use crate::mic::CaptureState;
+use crate::mic::{self, CaptureState};
 use gpui_kit::Context;
-use hushpen_core::dictation::{AppEvent, Cue, RowStatus, State};
+use hushpen_core::dictation::{AppEvent, Cue, Mode, RowStatus, State};
 use hushpen_core::error::{CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, LLM_UNAVAILABLE};
 use hushpen_core::onboarding::KeyGate;
 use hushpen_core::{cleanup, dictionary, language};
@@ -18,11 +19,8 @@ use hushpen_engine::{JobOutcome, TranscribeSpec};
 use hushpen_store::dictionary as store_dictionary;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-/// A Home start never waits for a result flash. This is added to the clock to end one.
-const FLASH_END_MS: u64 = 60_000;
 
 const CLEANUP_RULES_SETTING: &str = "cleanup.rules";
 
@@ -68,9 +66,14 @@ impl Controller {
     /// can fail leaves the rule text as the answer; the pipeline hears `Cleaned` either way.
     pub(super) fn clean(&mut self, session: u64, raw: String, queue: &mut VecDeque<AppEvent>) {
         let rule = self.rule_cleanup(&raw);
-        self.pending.raw = raw;
-        self.pending.rule = rule.clone();
+        let found = {
+            let run = self.run_of(session);
+            run.pending.raw = raw;
+            run.pending.rule = rule.clone();
+            Arc::clone(&run.found)
+        };
         let store = |last: &LastAi, record: ai_cleanup::Record| {
+            lock(&found).ai = Some(record.clone());
             *last.lock().unwrap_or_else(|p| p.into_inner()) = Some((session, record));
         };
         if !self.ai_wanted() || rule.trim().is_empty() {
@@ -84,9 +87,10 @@ impl Controller {
         let cleaner = self.ai.as_ref().and_then(|source| source());
         let timeout = self.ai_timeout();
         let token = Arc::new(CancelToken::default());
-        self.ai_cancel = Some(Arc::clone(&token));
+        self.run_of(session).ai_cancel = Some(Arc::clone(&token));
         let progress = Arc::clone(&self.ai_progress);
         let last = Arc::clone(&self.last_ai);
+        let mine = Arc::clone(&found);
         let events = self.events.clone();
         let for_thread = rule.clone();
         let keep = dictionary::phrases_in(&rule, &self.dictionary());
@@ -113,6 +117,7 @@ impl Controller {
                     record.ms
                 ),
             );
+            lock(&mine).ai = Some(record.clone());
             {
                 // A step that finished after its session ended must not hide a newer one.
                 let mut slot = last.lock().unwrap_or_else(|p| p.into_inner());
@@ -124,7 +129,7 @@ impl Controller {
         }));
         if let Err(error) = spawned {
             log::warn!("{LLM_UNAVAILABLE} could not start the AI cleanup: {error}");
-            self.ai_cancel = None;
+            self.run_of(session).ai_cancel = None;
             store(
                 &self.last_ai,
                 ai_cleanup::Record {
@@ -223,8 +228,8 @@ impl Controller {
         cues(cue, volume);
     }
 
-    /// The checks before a start: Home never waits for a result flash, and a start with no
-    /// usable model or engine is refused before the microphone opens.
+    /// The checks before a start: a start with no usable model or engine is refused before the
+    /// microphone opens. A start never waits for the session before it.
     pub(super) fn preflight(
         &mut self,
         event: &AppEvent,
@@ -253,21 +258,8 @@ impl Controller {
         if command {
             return self.command_preflight(now, adopted, cx);
         }
-        if !starts {
-            return Ok(command::Pass::Go);
-        }
-        if matches!(event, AppEvent::HomeToggle)
-            && matches!(
-                self.machine.state(),
-                State::Done | State::Cancelled | State::Failed
-            )
-        {
-            let before = self.machine.state();
-            self.machine
-                .handle(AppEvent::Tick, now.saturating_add(FLASH_END_MS));
-            self.record(before);
-        }
-        if self.machine.state() != State::Idle {
+        // While a session listens, these keys stop it or do nothing; they never start one.
+        if !starts || self.machine.state() == State::Listening {
             return Ok(command::Pass::Go);
         }
         if let Some(blocker) = self.blocker(cx) {
@@ -283,6 +275,7 @@ impl Controller {
 
     pub(super) fn start_capture(
         &mut self,
+        session: u64,
         queue: &mut VecDeque<AppEvent>,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
@@ -291,15 +284,12 @@ impl Controller {
         self.notice = None;
         self.result = None;
         self.warned = false;
-        self.wav = None;
-        self.pending = history::Pending::default();
-        *self.detected.lock().unwrap_or_else(|p| p.into_inner()) = None;
-        *self.segments.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        self.runs.insert(session, super::runs::Run::default());
         match self.mic.update(cx, |mic, cx| {
             mic.start(crate::mic::CaptureUse::Dictation, cx)
         }) {
             Ok(path) => {
-                self.wav = Some(path);
+                self.run_of(session).wav = Some(path);
                 Ok(())
             }
             Err(error) => {
@@ -308,7 +298,7 @@ impl Controller {
                     .read(cx)
                     .notice()
                     .map_or_else(|| error.to_string(), |notice| notice.message.clone());
-                self.detail = Some(message);
+                self.run_of(session).detail = Some(message);
                 self.start_failed = true;
                 queue.push_back(AppEvent::CaptureError { code: error.code });
                 Err(error.to_string())
@@ -316,52 +306,59 @@ impl Controller {
         }
     }
 
+    /// Ends the recording of `session`. The microphone is free at once for the next start; the
+    /// old WAV is finished on a worker thread, by the transcription when one follows.
     pub(super) fn stop_capture(
         &mut self,
+        session: u64,
         keep: bool,
         queue: &mut VecDeque<AppEvent>,
         cx: &mut Context<Self>,
     ) {
-        let session = self.machine.session();
-        let stopped = self.mic.update(cx, |mic, cx| mic.stop(keep, cx));
+        let detached = self.mic.update(cx, |mic, cx| mic.detach(keep, cx));
+        let command = self.machine.session() == session && self.machine.mode() == Mode::Command;
+        let selection = self.selection.take();
+        let run = self.run_of(session);
         if !keep {
-            self.wav = None;
+            run.wav = None;
+            run.ended = true;
+            if let Some(detached) = detached {
+                let spawned = (self.spawn)(Box::new(move || {
+                    let _ = detached.finish();
+                }));
+                if let Err(error) = spawned {
+                    log::warn!("could not finish a discarded recording: {error}");
+                }
+            }
             return;
         }
-        match stopped {
-            Ok(Some(finished)) => {
-                self.pending.duration_ms = i64::try_from(finished.duration_ms).unwrap_or(0);
-                self.wav = Some(finished.path);
-            }
-            Ok(None) => {
-                self.detail = Some("The recording ended before it could be transcribed.".into());
+        run.command = command;
+        run.selection = selection;
+        match detached {
+            Some(detached) => run.stopping = Some(detached),
+            None => {
+                run.detail = Some("The recording ended before it could be transcribed.".into());
                 queue.push_back(AppEvent::TranscribeFailed {
                     session,
                     code: CAPTURE_FAILED,
-                });
-            }
-            Err(error) => {
-                self.detail = Some(
-                    self.mic
-                        .read(cx)
-                        .notice()
-                        .map_or_else(|| error.to_string(), |notice| notice.message.clone()),
-                );
-                queue.push_back(AppEvent::TranscribeFailed {
-                    session,
-                    code: error.code,
                 });
             }
         }
     }
 
     pub(super) fn transcribe(&mut self, session: u64, queue: &mut VecDeque<AppEvent>) {
-        let Some(wav) = self.wav.clone() else {
+        let language = self.language();
+        let prompt = Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
+        let token = Arc::new(CancelToken::default());
+        let run = self.run_of(session);
+        let Some(wav) = run.wav.clone() else {
             return;
         };
-        let language = self.language();
-        self.pending.language_requested = Some(language.clone());
-        let prompt = Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
+        run.pending.language_requested = Some(language.clone());
+        run.prompt = prompt.clone();
+        run.cancel = Some(Arc::clone(&token));
+        let stopping = run.stopping.take();
+        let found = Arc::clone(&run.found);
         hook::record_event(
             "transcribe",
             &format!("prompt {}", prompt.as_deref().unwrap_or("")),
@@ -372,20 +369,29 @@ impl Controller {
             language: (language != language::AUTO).then_some(language),
             prompt,
         };
-        let token = Arc::new(CancelToken::default());
-        self.cancel = Some(Arc::clone(&token));
-        let run = Arc::clone(&self.engine.run);
+        let engine = Arc::clone(&self.engine.run);
         let events = self.events.clone();
-        let detected = Arc::clone(&self.detected);
-        let segments = Arc::clone(&self.segments);
         let spawned = (self.spawn)(Box::new(move || {
-            let event = match run(spec, token) {
+            if let Some(stopping) = stopping
+                && let Err(error) = finish_recording(stopping, &found)
+            {
+                let _ = events.unbounded_send((
+                    AppEvent::TranscribeFailed {
+                        session,
+                        code: error,
+                    },
+                    None,
+                ));
+                return;
+            }
+            let event = match engine(spec, token) {
                 JobOutcome::Done(done) => {
-                    *segments.lock().unwrap_or_else(|p| p.into_inner()) =
-                        Some((session, history::segments_of(&done)));
-                    if done.language != "und" {
-                        *detected.lock().unwrap_or_else(|p| p.into_inner()) =
-                            Some((session, done.language));
+                    {
+                        let mut found = lock(&found);
+                        found.segments = history::segments_of(&done);
+                        if done.language != "und" {
+                            found.language = Some(done.language);
+                        }
                     }
                     AppEvent::Transcribed {
                         session,
@@ -414,7 +420,8 @@ impl Controller {
         }));
         if let Err(error) = spawned {
             log::warn!("{ENGINE_CRASHED} could not start the transcription: {error}");
-            self.detail = Some("Transcription could not start. The recording was kept.".into());
+            self.run_of(session).detail =
+                Some("Transcription could not start. The recording was kept.".into());
             queue.push_back(AppEvent::TranscribeFailed {
                 session,
                 code: ENGINE_CRASHED,
@@ -424,39 +431,43 @@ impl Controller {
 
     pub(super) fn save_row(
         &mut self,
+        session: u64,
         status: RowStatus,
         text: Option<String>,
         code: Option<&'static str>,
     ) {
+        let run = self.run_of(session);
+        run.ended = true;
+        // Only a session that failed while it listened can still hold its recording here.
+        if let Some(stopping) = run.stopping.take() {
+            let _ = finish_recording(stopping, &run.found);
+        }
+        if let Some(ms) = lock(&run.found).duration_ms {
+            run.pending.duration_ms = ms;
+        }
+        let command = run.command;
         if self.gate == KeyGate::Practice {
             // A practice run is not the user's dictation: no row, and no audio kept.
-            if let Some(wav) = self.wav.take() {
+            if let Some(wav) = self.run_of(session).wav.take() {
                 let _ = std::fs::remove_file(wav);
             }
         } else {
             let saved = self.history_revision;
-            self.record_history(status, &text, code);
+            self.record_history(session, status, &text, code);
             if status == RowStatus::Done
-                && !self.is_command()
+                && !command
                 && self.history_revision != saved
                 && let Some(row_id) = self.last_row.clone()
             {
-                let ai_text = self.ai_text_of(self.machine.session());
-                self.offer_undo(self.machine.session(), row_id, ai_text.as_deref());
+                let ai_text = self.ai_text_of(session);
+                self.offer_undo(session, row_id, ai_text.as_deref());
             }
         }
         match status {
             RowStatus::Done => {
                 self.transcript = text.unwrap_or_default();
-                let session = self.machine.session();
-                let detected = self
-                    .detected
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .take();
-                self.language = detected
-                    .filter(|(owner, _)| *owner == session)
-                    .map(|(_, code)| code);
+                let language = lock(&self.run_of(session).found).language.clone();
+                self.language = language;
                 self.result = Some(Phase::Done);
                 self.last_result = Some("done");
                 self.copy_notice(session);
@@ -469,10 +480,9 @@ impl Controller {
         }
     }
 
-    pub(super) fn notify(&mut self, code: &'static str) {
+    pub(super) fn notify(&mut self, session: u64, code: &'static str) {
         let message = self
-            .detail
-            .take()
+            .take_detail(session)
             .unwrap_or_else(|| failure_for(code).1.to_owned());
         self.notice = Some(Notice { code, message });
         let result = if code == ENGINE_NO_SPEECH {
@@ -532,10 +542,12 @@ impl Controller {
         if self.machine.state() == State::Listening
             && self.mic.read(cx).state() != CaptureState::Listening
         {
-            self.detail = Some(self.mic.read(cx).notice().map_or_else(
+            let detail = self.mic.read(cx).notice().map_or_else(
                 || "Recording stopped because of an error.".to_owned(),
                 |notice| notice.message.clone(),
-            ));
+            );
+            let session = self.machine.session();
+            self.run_of(session).detail = Some(detail);
             let _ = self.dispatch(
                 AppEvent::CaptureError {
                     code: CAPTURE_FAILED,
@@ -551,6 +563,25 @@ impl Controller {
         if current != self.problem {
             self.problem = current;
             cx.notify();
+        }
+    }
+}
+
+/// Finishes the WAV of a stopped recording and notes its length. A failure says why on the
+/// notice and gives the code for the session.
+fn finish_recording(
+    stopping: crate::mic::Detached,
+    found: &Mutex<Found>,
+) -> Result<(), &'static str> {
+    match stopping.finish() {
+        Ok(finished) => {
+            lock(found).duration_ms = Some(i64::try_from(finished.duration_ms).unwrap_or(0));
+            Ok(())
+        }
+        Err(error) => {
+            log::warn!("{error}");
+            lock(found).detail = Some(mic::stop_message(&error));
+            Err(error.code)
         }
     }
 }

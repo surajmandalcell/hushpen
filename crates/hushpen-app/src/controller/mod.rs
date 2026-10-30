@@ -30,8 +30,8 @@ use hushpen_platform::insert::{Inserter, Target};
 use hushpen_platform::keys::{Reason, Unavailable};
 use permissions::PermissionWatch;
 use serde_json::{Value, json};
-use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, VecDeque};
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -57,9 +57,12 @@ mod insert;
 mod keys;
 #[cfg(test)]
 mod keys_tests;
+#[cfg(test)]
+mod overlap_tests;
 pub use keys::{KeysRestart, RETRIES as KEYS_RETRIES};
 mod permissions;
 mod pipeline;
+mod runs;
 mod speak;
 pub use speak::Speaker;
 #[cfg(test)]
@@ -249,8 +252,6 @@ pub enum InsertSupport {
 /// happened. A worker thread writes it as the steps go by.
 type LastInsert = Arc<Mutex<Option<(u64, u64, Report)>>>;
 
-type TimedSegments = (u64, Vec<hushpen_store::history::Segment>);
-
 pub const CUE_SOUNDS_SETTING: &str = "audio.cueSounds";
 
 pub const CUE_VOLUME_SETTING: &str = "audio.cueVolume";
@@ -273,18 +274,11 @@ pub struct Controller {
     clock: Clock,
     machine: DictationMachine,
     events: UnboundedSender<Queued>,
-    /// The session audio: the live file while listening, the finished file after.
-    wav: Option<PathBuf>,
-    cancel: Option<Arc<CancelToken>>,
-    /// The language the engine detected, with the session that it belongs to.
-    detected: Arc<Mutex<Option<(u64, String)>>>,
-    /// The timed pieces of the shown words, with the session that they belong to.
-    segments: Arc<Mutex<Option<TimedSegments>>>,
+    /// Each session the controller still keeps, by id.
+    runs: BTreeMap<u64, runs::Run>,
     transcript: String,
     language: Option<String>,
     notice: Option<Notice>,
-    /// Text for the next notice, when the failing part knows more than the code.
-    detail: Option<String>,
     result: Option<Phase>,
     last_result: Option<&'static str>,
     refused: Option<&'static str>,
@@ -301,13 +295,14 @@ pub struct Controller {
     last_phase: Phase,
     insert: InsertSupport,
     last_insert: LastInsert,
+    /// Held by a paste thread from its clipboard snapshot to the restore, so two pastes never
+    /// share the clipboard.
+    paste_turn: Arc<Mutex<()>>,
     permissions: Option<PermissionWatch>,
     cues: Option<CueSink>,
     ai: Option<CleanerSource>,
     /// Whether the local cleanup model is loading right now.
     ai_loading: Option<Rc<dyn Fn() -> bool>>,
-    /// Stops the AI step of the running session.
-    ai_cancel: Option<Arc<CancelToken>>,
     ai_progress: Arc<ai_cleanup::Progress>,
     /// The AI phase the views last drew.
     shown_ai: Option<ai_cleanup::Phase>,
@@ -323,7 +318,8 @@ pub struct Controller {
     undo: Option<undo::Standby>,
     /// An undo whose paste `pasting_last` waits for.
     undoing: Option<undo::Undoing>,
-    /// The text Command Mode edits: in memory for the one session, never logged or saved.
+    /// The text Command Mode edits, while its session listens: in memory only, never logged
+    /// or saved.
     selection: Option<String>,
     /// The Command Mode start that waits for its selection read.
     selecting: Option<command::Selecting>,
@@ -342,8 +338,6 @@ pub struct Controller {
     /// The hold key is down and the command chord may still follow.
     armed: Option<arm::Armed>,
     arm_seq: u64,
-    /// What the history row of the running session needs from the steps before the save.
-    pending: history::Pending,
     /// Counts the saved and changed history rows, so the History view reloads only when needed.
     history_revision: u64,
     /// The id of the newest row a run saved.
@@ -449,14 +443,10 @@ impl Controller {
             clock,
             machine: DictationMachine::new(config),
             events,
-            wav: None,
-            cancel: None,
-            detected: Arc::default(),
-            segments: Arc::default(),
+            runs: BTreeMap::new(),
             transcript: String::new(),
             language: None,
             notice: None,
-            detail: None,
             result: None,
             last_result: None,
             refused: None,
@@ -472,11 +462,11 @@ impl Controller {
             last_phase: Phase::Idle,
             insert: InsertSupport::Detached,
             last_insert: Arc::default(),
+            paste_turn: Arc::default(),
             permissions: None,
             cues: None,
             ai: None,
             ai_loading: None,
-            ai_cancel: None,
             ai_progress: Arc::default(),
             shown_ai: None,
             last_ai: Arc::default(),
@@ -497,7 +487,6 @@ impl Controller {
             flash_seq: 0,
             armed: None,
             arm_seq: 0,
-            pending: history::Pending::default(),
             history_revision: 0,
             last_row: None,
             reprocess: None,
@@ -584,12 +573,14 @@ impl Controller {
     }
 
     /// True from the moment the microphone stops until the row of the run is saved: the one
-    /// stretch in which a data folder move would lose the result.
+    /// stretch in which a data folder move would lose the result. An older session that
+    /// finishes behind a new one counts too.
     pub fn in_flight(&self) -> bool {
         matches!(
             self.machine.state(),
             State::Transcribing | State::Cleaning | State::Inserting
-        ) || matches!(self.reprocess, Some((_, ReprocessState::Running)))
+        ) || self.machine.behind() > 0
+            || matches!(self.reprocess, Some((_, ReprocessState::Running)))
     }
 
     pub fn phase(&self) -> Phase {
@@ -626,8 +617,11 @@ impl Controller {
         self.last_row.as_deref()
     }
 
+    /// The audio of the newest session.
     pub fn session(&self) -> Option<&Path> {
-        self.wav.as_deref()
+        self.runs
+            .get(&self.machine.session())
+            .and_then(|run| run.wav.as_deref())
     }
 
     pub fn last_result(&self) -> Option<&'static str> {
@@ -677,12 +671,9 @@ impl Controller {
         })
     }
 
+    /// A start never waits for the session before it, so only a blocker stops one.
     pub fn can_record(&self, cx: &gpui_kit::App) -> bool {
-        match self.phase() {
-            Phase::Listening => true,
-            Phase::Transcribing => false,
-            _ => self.blocker(cx).is_none(),
-        }
+        self.phase() == Phase::Listening || self.blocker(cx).is_none()
     }
 
     /// Runs one event through the pipeline at the controller's clock. Returns the reason when a
@@ -763,6 +754,7 @@ impl Controller {
         if let Some(armed) = adopted {
             self.release_unused_capture(armed, cx);
         }
+        self.prune_runs();
         if changed {
             cx.notify();
         }
@@ -776,8 +768,8 @@ impl Controller {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         match effect {
-            Effect::StartCapture { .. } => return self.start_capture(queue, cx),
-            Effect::StopCapture { keep } => self.stop_capture(keep, queue, cx),
+            Effect::StartCapture { session } => return self.start_capture(session, queue, cx),
+            Effect::StopCapture { session, keep } => self.stop_capture(session, keep, queue, cx),
             Effect::Cue(cue) => {
                 let failed_start = cue == Cue::Start && std::mem::take(&mut self.start_failed);
                 if !failed_start {
@@ -787,11 +779,12 @@ impl Controller {
             }
             Effect::PasteLast => self.paste_last(cx),
             Effect::Transcribe { session } => {
-                self.pending.model_id = Some(self.models.read(cx).effective());
+                let model = self.models.read(cx).effective();
+                self.run_of(session).pending.model_id = Some(model);
                 self.transcribe(session, queue);
             }
-            Effect::CancelTranscribe => {
-                if let Some(token) = self.cancel.take() {
+            Effect::CancelTranscribe { session } => {
+                if let Some(token) = self.run_of(session).cancel.take() {
                     token.cancel();
                 }
             }
@@ -800,8 +793,8 @@ impl Controller {
                 session,
                 instruction,
             } => self.edit(session, instruction, queue),
-            Effect::StopLlm => {
-                if let Some(token) = self.ai_cancel.take() {
+            Effect::StopLlm { session } => {
+                if let Some(token) = self.run_of(session).ai_cancel.take() {
                     token.cancel();
                 }
             }
@@ -810,7 +803,12 @@ impl Controller {
                 text,
                 delivery,
             } => self.insert(session, text, delivery, queue, cx),
-            Effect::SaveRow { status, text, code } => self.save_row(status, text, code),
+            Effect::SaveRow {
+                session,
+                status,
+                text,
+                code,
+            } => self.save_row(session, status, text, code),
             Effect::UpdatePasteLast { text } => {
                 if self.gate != KeyGate::Practice {
                     self.last_text = Some(text);
@@ -820,8 +818,8 @@ impl Controller {
                 self.warned = true;
                 hook::record_event("pipeline", &format!("warning {seconds_left}s left"));
             }
-            Effect::Notify { code } => {
-                self.notify(code);
+            Effect::Notify { session, code } => {
+                self.notify(session, code);
                 if code == INSERT_NO_PERMISSION
                     && let Some(text) = self.last_text.clone()
                 {
@@ -840,6 +838,7 @@ impl Controller {
             "state": state.key(),
             "mode": (state != State::Idle).then(|| self.machine.mode().key()),
             "session": self.machine.session(),
+            "behind": self.machine.behind(),
             "phase": self.phase().key(),
             "refused": self.refused,
             "warning": self.warned,

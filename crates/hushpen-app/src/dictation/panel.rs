@@ -167,7 +167,7 @@ fn header(
             });
         }
     };
-    let enabled = view.can_record && view.phase != Phase::Transcribing;
+    let enabled = view.can_record;
     ui::icon_row(
         palette,
         IconName::AudioLines,

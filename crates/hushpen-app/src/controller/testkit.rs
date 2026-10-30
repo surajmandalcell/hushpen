@@ -330,6 +330,9 @@ pub struct FakeInserter {
     pub selection_reads: std::sync::atomic::AtomicUsize,
     /// How long a selection read takes, as a Cmd+C copy can on macOS.
     pub selection_delay: Mutex<std::time::Duration>,
+    /// While set, the next `insert` waits after it settled for a message or 5 s, as the
+    /// clipboard restore does.
+    pub restore_wait: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
 }
 
 impl FakeInserter {
@@ -358,6 +361,7 @@ impl FakeInserter {
             selected: Mutex::new(None),
             selection_reads: std::sync::atomic::AtomicUsize::new(0),
             selection_delay: Mutex::new(std::time::Duration::ZERO),
+            restore_wait: Mutex::new(None),
         })
     }
 }
@@ -387,6 +391,10 @@ impl Inserter for FakeInserter {
             observe(Step::ChordSent(&report));
         }
         observe(Step::Settled(&report));
+        let wait = self.restore_wait.lock().unwrap().take();
+        if let Some(wait) = wait {
+            let _ = wait.recv_timeout(std::time::Duration::from_secs(5));
+        }
         observe(Step::Restored(&report));
         report
     }

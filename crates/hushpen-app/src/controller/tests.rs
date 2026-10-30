@@ -185,6 +185,8 @@ fn esc_in_listening_cancels_and_discards_the_audio_and_the_release_does_nothing(
 
     send_at(cx, &rig, 1_800, AppEvent::Esc).unwrap();
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
+    // A worker finishes the stopped recording, here by deleting it.
+    settle(cx, &rig);
     assert!(session_wavs(&rig).is_empty(), "the audio is gone");
 
     send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
