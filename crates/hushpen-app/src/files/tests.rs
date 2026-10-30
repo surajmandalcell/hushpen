@@ -158,7 +158,7 @@ fn frame(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) {
         .unwrap();
 }
 
-/// The Files view in Read aloud, in a window of the app's size.
+/// The Manual view in Read aloud, in a window of the app's size.
 fn read_aloud_window(cx: &mut TestAppContext) -> (Fixture, gpui_kit::AnyWindowHandle) {
     use crate::shell::Shell;
     use crate::theme::space;

@@ -1,4 +1,4 @@
-//! The Read aloud side of the Files view: the text, the voice options, and Play and Export.
+//! The Read aloud side of the Manual view: the text, the voice options, and Play and Export.
 
 use super::{EngineKind, Menu, ReadAloud, language_name};
 use crate::hook;

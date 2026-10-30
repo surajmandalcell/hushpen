@@ -1,4 +1,4 @@
-//! The import queue of the Files view: audio files go into a queue, the speech engine reads
+//! The import queue of the Manual view: audio files go into a queue, the speech engine reads
 //! them one at a time, and each result becomes a History row of type Import.
 //!
 //! The engine child decodes the file, so a damaged file can only fail its own item. The

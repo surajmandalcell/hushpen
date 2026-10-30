@@ -127,7 +127,7 @@ impl Files {
         };
         // The mode shows even when the setting cannot be written.
         if let Err(error) = self.set_mode(mode, cx) {
-            log::warn!("the Files mode was not saved: {error}");
+            log::warn!("the Manual mode was not saved: {error}");
         }
     }
 

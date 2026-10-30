@@ -274,14 +274,14 @@ pub mod size {
     pub const MODEL_SIZE_WIDTH: f32 = 56.0;
     pub const MODEL_STATUS_WIDTH: f32 = 108.0;
     pub const MODEL_ACTIONS_WIDTH: f32 = 124.0;
-    /// One segment of a segmented control, such as Transcribe and Read aloud on Files.
+    /// One segment of a segmented control, such as Transcribe and Read aloud on Manual.
     pub const SEGMENT_WIDTH: f32 = 120.0;
-    /// The drop zone at the top of Files, and the icon in its middle.
+    /// The drop zone at the top of Manual, and the icon in its middle.
     pub const DROP_ZONE_HEIGHT: f32 = 152.0;
     pub const DROP_ICON: f32 = 28.0;
     /// The text to read aloud: about seven lines before it scrolls.
     pub const TEXT_AREA_HEIGHT: f32 = 132.0;
-    /// The progress bar of a file in the Files queue, and the percent and time left after it.
+    /// The progress bar of a file in the Manual queue, and the percent and time left after it.
     pub const QUEUE_PROGRESS_WIDTH: f32 = 120.0;
     pub const QUEUE_STATUS_WIDTH: f32 = 96.0;
 }

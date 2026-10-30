@@ -1,5 +1,5 @@
 #!/bin/bash
-# File import end to end: VAL-IMP-001 to 008 and 010, VAL-CROSS-003 and 004, the Files view (a
+# File import end to end: VAL-IMP-001 to 008 and 010, VAL-CROSS-003 and 004, the Manual view (a
 # window drop, Copy, Export, Retry, Translate, and a Read aloud WAV with espeak-ng), a real XDND
 # drop from slot/drag-source.py (skipped when the drag source cannot run), and the thread
 # count of the X11 flow bar watcher over 20 hide and show cycles (a hp4 scrutiny item folded into
@@ -70,7 +70,7 @@ ms_clock() {
   }'
 }
 
-echo "== setup: base.en and base, the Files view"
+echo "== setup: base.en and base, the Manual view"
 fresh base.en base
 use_model base.en
 open_view
@@ -376,7 +376,7 @@ cp "$OUT/es.json" "$RUN_OUT/cross-004-row.json"
 [ "$(jq -r '.rows[0].language_detected' "$OUT/es.json")" = es ] || failures+="the JSON language is $(jq -r '.rows[0].language_detected' "$OUT/es.json"); "
 check_failures "VAL-CROSS-004 language" "text '$text'; the row, the detail, and the JSON export say es" "$failures"
 
-echo "== the Files view: a drop, the length, Copy, Export, Retry, Translate, and Read aloud"
+echo "== the Manual view: a drop, the length, Copy, Export, Retry, Translate, and Read aloud"
 failures=""
 files() { $HC state | jq -r ".files$1"; }
 read_state() { $HC state | jq -r ".read$1"; }
@@ -433,7 +433,7 @@ $HC action read-engine '{"engine":"kokoro"}' >/dev/null
 wait_until 10 sh -c "[ \"\$($HC state | jq -r '.read.loading')\" = false ]"
 kokoro=$(read_state .needs_model)
 $HC action read-engine '{"engine":"system"}' >/dev/null
-check_failures "Files view" "the drop queued and finished the WAV; Copy, an SRT export, Show in History, and Retry worked; translate is off for base.en; Read aloud wrote a $wav_bytes byte WAV with espeak-ng; Kokoro needs its model: $kokoro" "$failures"
+check_failures "Manual view" "the drop queued and finished the WAV; Copy, an SRT export, Show in History, and Retry worked; translate is off for base.en; Read aloud wrote a $wav_bytes byte WAV with espeak-ng; Kokoro needs its model: $kokoro" "$failures"
 
 echo "== a real XDND drop: a WAV from a GTK drag source lands in the queue, a .txt opens Read aloud"
 failures=""

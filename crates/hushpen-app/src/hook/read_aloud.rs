@@ -1,4 +1,4 @@
-//! Test hook for the Files view in Read aloud mode: the `read` state section and the actions
+//! Test hook for the Manual view in Read aloud mode: the `read` state section and the actions
 //! that set the text and the voice, and play, stop, or export like the view's controls do.
 //! Compiled only with the `test-automation` feature.
 

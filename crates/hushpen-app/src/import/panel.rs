@@ -1,4 +1,4 @@
-//! The Transcribe side of the Files view: the drop zone, the options for the next file, and
+//! The Transcribe side of the Manual view: the drop zone, the options for the next file, and
 //! the queue with a row for each file. Files dropped anywhere on the window land here.
 
 use super::item::BUTTONS;
