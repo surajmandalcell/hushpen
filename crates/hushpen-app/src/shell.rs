@@ -12,7 +12,7 @@ use crate::mic::{self, Mic};
 use crate::models::{self, Models};
 use crate::motion;
 use crate::onboarding::{self, Onboarding};
-use crate::read_aloud::ReadRequest;
+use crate::read_aloud::{ReadAloud, ReadRequest};
 use crate::settings::{self, Settings};
 use crate::shortcuts::Shortcuts;
 use crate::storage::Storage;
@@ -193,9 +193,18 @@ impl Shell {
                 ReadRequest::OpenModels => shell.select(View::Models, cx),
             })
             .detach();
+            // The voice library sheet draws over the window.
+            if let Some(library) = read.read(cx).library().cloned() {
+                cx.observe(&library, |_, _, cx| cx.notify()).detach();
+            }
         }
         self.files = Some(files);
         cx.notify();
+    }
+
+    /// Read aloud of the Manual view, when the window gave it a text area.
+    fn read_aloud(&self, cx: &App) -> Option<Entity<ReadAloud>> {
+        self.files.as_ref()?.read(cx).read_aloud().cloned()
     }
 
     fn show_in_history(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -272,6 +281,15 @@ impl Shell {
                 .and_then(|s| s.read(cx).tuning.clone())
             {
                 tuning.update(cx, |tuning, cx| tuning.dismiss(cx));
+            }
+            if let Some(read) = self.read_aloud(cx) {
+                if let Some(library) = read.read(cx).library().cloned() {
+                    library.update(cx, |library, cx| library.dismiss(cx));
+                }
+                // A voice model may have downloaded in Models since Read aloud last looked.
+                if view == View::Manual {
+                    read.update(cx, |read, cx| read.refresh(cx));
+                }
             }
             // The Settings view re-reads launch at login from the system.
             if view == View::Settings
@@ -722,6 +740,15 @@ impl Render for Shell {
                             .filter(|_| self.active == View::Settings)
                             .and_then(|settings| settings.read(cx).tuning.clone())?;
                         crate::enhance::sheet::render(&tuning, window, cx)
+                    })
+                    .or_else(|| {
+                        let library = self
+                            .read_aloud(cx)
+                            .filter(|_| self.active == View::Manual)?
+                            .read(cx)
+                            .library()
+                            .cloned()?;
+                        crate::voices::sheet::render(&library, window, cx)
                     });
                 // The content of a newly picked view fades in and rises into place; the sidebar
                 // and the title bar stay still.

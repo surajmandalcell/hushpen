@@ -73,6 +73,8 @@ pub enum CaptureUse {
     /// A take for the audio enhance sheet. It records the microphone as it is, with no enhance
     /// and no boost, so a preview can apply any setting to it later.
     Sample,
+    /// A take a voice is cloned from. Like a sample, it records the microphone as it is.
+    Voice,
 }
 
 impl CaptureUse {
@@ -81,7 +83,13 @@ impl CaptureUse {
             CaptureUse::Test => "test",
             CaptureUse::Dictation => "dictation",
             CaptureUse::Sample => "sample",
+            CaptureUse::Voice => "voice",
         }
+    }
+
+    /// The take records the microphone with no enhance and no boost.
+    fn is_raw(self) -> bool {
+        matches!(self, CaptureUse::Sample | CaptureUse::Voice)
     }
 }
 
@@ -454,7 +462,7 @@ impl Mic {
     fn shaped_session(&self) -> Option<&Session> {
         self.session
             .as_ref()
-            .filter(|session| session.used_for != CaptureUse::Sample)
+            .filter(|session| !session.used_for.is_raw())
     }
 
     /// Who the running session serves, if one runs.
@@ -482,6 +490,7 @@ impl Mic {
                         CaptureUse::Dictation => "dictation",
                         CaptureUse::Test => "the microphone test",
                         CaptureUse::Sample => "the audio enhance sample",
+                        CaptureUse::Voice => "a voice recording",
                     }
                 ),
             };
@@ -498,7 +507,7 @@ impl Mic {
         let path = new_session_path(&self.storage.data.sessions_dir(), now_unix_ms());
         match self.backend.start(&device, path.clone(), sink) {
             Ok(inner) => {
-                if used_for == CaptureUse::Sample {
+                if used_for.is_raw() {
                     inner.set_gain(1.0);
                     inner.set_enhance(Enhance::OFF);
                 } else {

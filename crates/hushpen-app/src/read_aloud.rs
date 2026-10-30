@@ -1,7 +1,7 @@
 //! Read aloud on the Manual view: typed text, or a `.txt` or `.md` file, spoken by the system
-//! voice or by Kokoro. The audio plays while the rest is still being spoken, and it exports as
-//! a WAV. The engine, the voice of each engine, the speed, and the format the user picks are
-//! kept in settings.
+//! voice, by Kokoro, or by Chatterbox Turbo or Nano with a voice of the voice library. The audio
+//! plays while the rest is still being spoken, and it exports as a WAV. The engine, the voice of
+//! each engine, the speed, and the format the user picks are kept in settings.
 
 pub mod panel;
 
@@ -10,14 +10,16 @@ use crate::history::save_dialog;
 use crate::hook;
 use crate::models::Spawner;
 use crate::storage::Storage;
+use crate::voices::{Changed as VoicesChanged, Page as VoicesPage, VoiceLibrary};
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle};
 use hushpen_audio::Player;
+use hushpen_core::chatterbox::BUILT_IN_VOICE;
 use hushpen_core::error::{
-    SPEECH_NO_TEXT, SPEECH_TEXT_TOO_LONG, SPEECH_TEXT_UNREADABLE, SPEECH_UNAVAILABLE,
-    SPEECH_VOICE_MISSING,
+    SPEECH_NO_TEXT, SPEECH_NOT_ENGLISH, SPEECH_TEXT_TOO_LONG, SPEECH_TEXT_UNREADABLE,
+    SPEECH_UNAVAILABLE, SPEECH_VOICE_CLIP, SPEECH_VOICE_MISSING,
 };
 use hushpen_speech::{
     MAX_SPEED, MIN_SPEED, SAMPLE_RATE, SpeechEngine, SpeechError, SpeechEvent, TextFormat, Voice,
@@ -50,6 +52,8 @@ pub fn speaker(read: &Entity<ReadAloud>) -> crate::controller::Speaker {
 pub const ENGINE_SETTING: &str = "readAloud.engine";
 pub const SPEED_SETTING: &str = "readAloud.speed";
 pub const FORMAT_SETTING: &str = "readAloud.format";
+/// The voice both Chatterbox models read with; empty for the default voice of the library.
+pub const CHATTERBOX_VOICE_SETTING: &str = "readAloud.voice.chatterbox";
 
 /// How often the thread that carries a synthesis looks for a Stop between two chunks.
 const STOP_POLL: Duration = Duration::from_millis(100);
@@ -60,15 +64,24 @@ const PLAYING_TICK: Duration = Duration::from_millis(250);
 pub enum EngineKind {
     System,
     Kokoro,
+    ChatterboxTurbo,
+    ChatterboxNano,
 }
 
 impl EngineKind {
-    pub const ALL: [EngineKind; 2] = [EngineKind::System, EngineKind::Kokoro];
+    pub const ALL: [EngineKind; 4] = [
+        EngineKind::System,
+        EngineKind::Kokoro,
+        EngineKind::ChatterboxTurbo,
+        EngineKind::ChatterboxNano,
+    ];
 
     pub fn key(self) -> &'static str {
         match self {
             EngineKind::System => "system",
             EngineKind::Kokoro => "kokoro",
+            EngineKind::ChatterboxTurbo => "chatterbox-turbo",
+            EngineKind::ChatterboxNano => "chatterbox-nano",
         }
     }
 
@@ -80,7 +93,22 @@ impl EngineKind {
         match self {
             EngineKind::System => "System voice",
             EngineKind::Kokoro => "Kokoro",
+            EngineKind::ChatterboxTurbo => "Chatterbox Turbo",
+            EngineKind::ChatterboxNano => "Chatterbox Nano",
         }
+    }
+
+    /// Chatterbox reads with the voices of the voice library.
+    pub fn is_chatterbox(self) -> bool {
+        matches!(
+            self,
+            EngineKind::ChatterboxTurbo | EngineKind::ChatterboxNano
+        )
+    }
+
+    /// The engine runs a voice model that downloads in Models.
+    pub fn has_model(self) -> bool {
+        self != EngineKind::System
     }
 
     /// The setting that keeps the chosen voice of this engine.
@@ -88,6 +116,7 @@ impl EngineKind {
         match self {
             EngineKind::System => "readAloud.voice.system",
             EngineKind::Kokoro => "readAloud.voice.kokoro",
+            EngineKind::ChatterboxTurbo | EngineKind::ChatterboxNano => CHATTERBOX_VOICE_SETTING,
         }
     }
 }
@@ -95,7 +124,7 @@ impl EngineKind {
 /// What Read aloud asks of the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadRequest {
-    /// Kokoro needs its voice model: open Models.
+    /// The engine needs its voice model: open Models.
     OpenModels,
 }
 
@@ -151,6 +180,11 @@ pub struct Parts {
     pub storage: Rc<Storage>,
     pub system: Arc<dyn SpeechEngine>,
     pub kokoro: Arc<dyn SpeechEngine>,
+    pub turbo: Arc<dyn SpeechEngine>,
+    pub nano: Arc<dyn SpeechEngine>,
+    /// The cloned voices of Chatterbox; `None` where the window could not give the sheet its
+    /// fields.
+    pub library: Option<Entity<VoiceLibrary>>,
     pub spawn: Spawner,
     /// Tests keep the sound off.
     pub silent: bool,
@@ -160,6 +194,11 @@ pub struct ReadAloud {
     storage: Rc<Storage>,
     system: Arc<dyn SpeechEngine>,
     kokoro: Arc<dyn SpeechEngine>,
+    turbo: Arc<dyn SpeechEngine>,
+    nano: Arc<dyn SpeechEngine>,
+    library: Option<Entity<VoiceLibrary>>,
+    /// The engines whose voice model is not downloaded, as the engine menu last found them.
+    missing: Vec<EngineKind>,
     spawn: Spawner,
     silent: bool,
     window: AnyWindowHandle,
@@ -193,6 +232,8 @@ pub(crate) struct Focus {
     pub speed: FocusHandle,
     pub format: FocusHandle,
     pub models: FocusHandle,
+    pub manage: FocusHandle,
+    pub other_engine: FocusHandle,
     pub play: FocusHandle,
     pub export: FocusHandle,
     /// The rows of the open menu.
@@ -225,14 +266,29 @@ impl ReadAloud {
             speed: tab(cx),
             format: tab(cx),
             models: tab(cx),
+            manage: tab(cx),
+            other_engine: tab(cx),
             play: tab(cx),
             export: tab(cx),
             options: Vec::new(),
         };
+        if let Some(library) = &parts.library {
+            cx.subscribe(library, |me, _, _: &VoicesChanged, cx| {
+                if me.engine().is_chatterbox() {
+                    me.fetch_voices(cx);
+                }
+                cx.notify();
+            })
+            .detach();
+        }
         let mut me = Self {
             storage: parts.storage,
             system: parts.system,
             kokoro: parts.kokoro,
+            turbo: parts.turbo,
+            nano: parts.nano,
+            library: parts.library,
+            missing: Vec::new(),
             spawn: parts.spawn,
             silent: parts.silent,
             window: window.window_handle(),
@@ -284,6 +340,48 @@ impl ReadAloud {
             .get(self.engine().voice_setting())
             .and_then(|value| value.as_str().map(str::to_owned))
             .filter(|id| !id.is_empty())
+    }
+
+    /// The voice a read speaks with: the chosen one, else for Chatterbox the default voice of
+    /// the library, which is the voice of the model when no cloned voice is the default.
+    pub fn spoken_voice(&self, cx: &App) -> Option<String> {
+        self.voice().or_else(|| {
+            self.engine().is_chatterbox().then(|| {
+                self.default_voice(cx)
+                    .unwrap_or_else(|| BUILT_IN_VOICE.to_owned())
+            })
+        })
+    }
+
+    /// The default voice of the library, or `None` for the voice of the model.
+    pub fn default_voice(&self, cx: &App) -> Option<String> {
+        self.library
+            .as_ref()
+            .and_then(|library| library.read(cx).default_id())
+    }
+
+    /// The name of the voice Chatterbox reads with by default.
+    pub fn default_voice_name(&self, cx: &App) -> String {
+        self.library.as_ref().map_or_else(
+            || crate::voices::BUILT_IN_NAME.to_owned(),
+            |library| library.read(cx).default_name(),
+        )
+    }
+
+    pub fn library(&self) -> Option<&Entity<VoiceLibrary>> {
+        self.library.as_ref()
+    }
+
+    /// Opens the voice library sheet on its list, from Manage Voices.
+    pub fn manage_voices(&mut self, window: &mut gpui_kit::Window, cx: &mut Context<Self>) {
+        self.menu = None;
+        let back = self.focus.manage.clone();
+        if let Some(library) = &self.library {
+            library.update(cx, |library, cx| {
+                library.open(VoicesPage::List, Some(back), window, cx)
+            });
+        }
+        cx.notify();
     }
 
     pub fn voices(&self) -> Option<&Result<Vec<Voice>, SpeechError>> {
@@ -339,8 +437,11 @@ impl ReadAloud {
     pub fn unavailable(&self) -> Option<String> {
         match &self.voices {
             Some(Err(error)) => Some(match (self.engine(), error.code) {
-                (EngineKind::Kokoro, SPEECH_UNAVAILABLE) => {
-                    "Kokoro needs its voice model. Download it in Models.".to_owned()
+                (engine, SPEECH_UNAVAILABLE) if engine.has_model() => {
+                    format!(
+                        "{} needs its voice model. Download it in Models.",
+                        engine.label()
+                    )
                 }
                 (_, SPEECH_UNAVAILABLE) => error.detail.clone(),
                 _ => "The voices could not be listed. Try again in a moment.".to_owned(),
@@ -349,10 +450,28 @@ impl ReadAloud {
         }
     }
 
-    /// Kokoro is chosen and its model is not downloaded.
+    /// An engine with a voice model is chosen and its model is not downloaded.
     pub fn needs_model(&self) -> bool {
-        self.engine() == EngineKind::Kokoro
+        self.engine().has_model()
             && matches!(&self.voices, Some(Err(error)) if error.code == SPEECH_UNAVAILABLE)
+    }
+
+    /// Whether the voice model of `engine` was missing when the engine menu last opened.
+    pub fn missing(&self, engine: EngineKind) -> bool {
+        self.missing.contains(&engine)
+    }
+
+    /// The last read failed on text Chatterbox cannot read, so the error offers another engine.
+    pub fn offers_other_engine(&self) -> bool {
+        self.error.as_deref() == Some(NOT_ENGLISH)
+    }
+
+    /// Reads the voices again when the engine could not list them, as after its model
+    /// downloaded in Models.
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.voices, Some(Err(_))) {
+            self.load_voices(cx);
+        }
     }
 
     pub fn menu(&self) -> Option<Menu> {
@@ -391,6 +510,12 @@ impl ReadAloud {
 
     pub fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
         self.menu = (self.menu != Some(menu)).then_some(menu);
+        if self.menu == Some(Menu::Engine) {
+            self.missing = EngineKind::ALL
+                .into_iter()
+                .filter(|kind| !self.engine_of(*kind).available())
+                .collect();
+        }
         let rows = match menu {
             Menu::Engine => EngineKind::ALL.len(),
             Menu::Language => self.languages().len(),
@@ -412,6 +537,9 @@ impl ReadAloud {
         self.set(ENGINE_SETTING, json!(engine.key()))?;
         self.menu = None;
         self.language = None;
+        if self.offers_other_engine() {
+            self.error = None;
+        }
         self.load_voices(cx);
         cx.notify();
         Ok(())
@@ -642,16 +770,18 @@ impl ReadAloud {
         Ok(Request {
             text,
             engine: self.engine(),
-            voice: self.voice(),
+            voice: self.spoken_voice(cx),
             speed: self.speed(),
         })
     }
 
     fn engine_of(&self, kind: EngineKind) -> Arc<dyn SpeechEngine> {
-        match kind {
-            EngineKind::System => Arc::clone(&self.system),
-            EngineKind::Kokoro => Arc::clone(&self.kokoro),
-        }
+        Arc::clone(match kind {
+            EngineKind::System => &self.system,
+            EngineKind::Kokoro => &self.kokoro,
+            EngineKind::ChatterboxTurbo => &self.turbo,
+            EngineKind::ChatterboxNano => &self.nano,
+        })
     }
 
     /// Starts a new synthesis; the old one stops.
@@ -747,6 +877,11 @@ impl ReadAloud {
 
     fn load_voices(&mut self, cx: &mut Context<Self>) {
         self.voices = None;
+        self.fetch_voices(cx);
+    }
+
+    /// Lists the voices of the engine again. The old list shows until the new one comes.
+    fn fetch_voices(&mut self, cx: &mut Context<Self>) {
         let engine = self.engine();
         let speech = self.engine_of(engine);
         let events = self.events.clone();
@@ -842,7 +977,17 @@ impl ReadAloud {
         let voices = self.listed();
         json!({
             "engine": self.engine().key(),
+            "engines": EngineKind::ALL.iter().map(|kind| json!({
+                "key": kind.key(),
+                "label": kind.label(),
+                "available": self.engine_of(*kind).available(),
+            })).collect::<Vec<_>>(),
             "voice": self.voice(),
+            "spoken_voice": self.spoken_voice(cx),
+            "default_voice": self.default_voice(cx),
+            "default_voice_name": self.default_voice_name(cx),
+            "library": self.library.is_some(),
+            "offers_other_engine": self.offers_other_engine(),
             "speed": self.speed(),
             "format": self.format(),
             "language": self.language(),
@@ -881,6 +1026,8 @@ pub fn language_name(code: &str) -> String {
     hushpen_core::language::name(code).map_or_else(|| code.to_owned(), str::to_owned)
 }
 
+const NOT_ENGLISH: &str = "Chatterbox reads English only. Use the system voice for this text.";
+
 /// What the view says for a failure. The code and the detail stay in the log.
 fn message_of(error: &SpeechError) -> String {
     match error.code {
@@ -889,6 +1036,10 @@ fn message_of(error: &SpeechError) -> String {
         SPEECH_TEXT_UNREADABLE => "That file could not be read as text.".to_owned(),
         SPEECH_VOICE_MISSING => "That voice is not installed. Choose another voice.".to_owned(),
         SPEECH_UNAVAILABLE => "This voice engine is not available here.".to_owned(),
+        SPEECH_NOT_ENGLISH => NOT_ENGLISH.to_owned(),
+        SPEECH_VOICE_CLIP => {
+            "The clip of this voice could not be used. Choose another voice.".to_owned()
+        }
         _ => "The voice stopped while reading. Try again.".to_owned(),
     }
 }

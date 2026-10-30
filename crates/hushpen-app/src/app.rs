@@ -27,9 +27,10 @@ use crate::shortcuts::Shortcuts;
 use crate::storage;
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
-use crate::tts_host::TtsHost;
+use crate::tts_host::{TtsHost, VoiceModel};
 use crate::updater::{self, FeedChecker, Parts as UpdaterParts, SystemInstaller, Updater};
 use crate::views::View;
+use crate::voices::{Parts as VoiceParts, VoiceLibrary};
 use crate::window_chrome::main_window_options;
 use futures::StreamExt;
 use futures::channel::mpsc;
@@ -119,7 +120,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
         .unwrap_or_default();
     let engine = Rc::new(EngineHost::start(&storage.data, &default_model));
     let llm = Rc::new(LlmHost::new(&storage.data));
-    let kokoro = Arc::new(TtsHost::new(&storage.data));
+    let voice_models = Arc::new(TtsHost::new(&storage.data));
     llm.apply_settings(&storage.settings.values());
     let recovered = mic::sweep_orphans(&storage.data);
     let mic_storage = Rc::clone(&storage);
@@ -151,12 +152,12 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             let quit_engine = Rc::clone(&engine);
             let quit_llm = Rc::clone(&llm);
             let ai_llm = Rc::clone(&llm);
-            let quit_kokoro = Arc::clone(&kokoro);
+            let quit_voice_models = Arc::clone(&voice_models);
             cx.on_app_quit(move |_| {
                 hushpen_store::log_file::begin_quit();
                 quit_engine.shutdown();
                 quit_llm.shutdown();
-                quit_kokoro.shutdown();
+                quit_voice_models.shutdown();
                 log::logger().flush();
                 async {}
             })
@@ -263,12 +264,27 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             });
             let read_aloud = handle
                 .update(cx, |_, window, cx| {
+                    let library = cx.new(|cx| {
+                        VoiceLibrary::new(
+                            VoiceParts {
+                                storage: Rc::clone(&dictation_storage),
+                                mic: Some(mic.clone()),
+                                spawn: models::thread_spawner(),
+                                silent: false,
+                            },
+                            window,
+                            cx,
+                        )
+                    });
                     cx.new(|cx| {
                         ReadAloud::new(
                             ReadParts {
                                 storage: Rc::clone(&dictation_storage),
                                 system: Arc::from(hushpen_speech::system_engine()),
-                                kokoro,
+                                kokoro: voice_models.engine(VoiceModel::Kokoro),
+                                turbo: voice_models.engine(VoiceModel::ChatterboxTurbo),
+                                nano: voice_models.engine(VoiceModel::ChatterboxNano),
+                                library: Some(library),
                                 spawn: models::thread_spawner(),
                                 silent: false,
                             },
