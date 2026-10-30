@@ -146,7 +146,7 @@ fn list_page(
             index: 0,
             id: BUILT_IN_VOICE.to_owned(),
             name: BUILT_IN_NAME.to_owned(),
-            detail: "The voice that comes with the model".to_owned(),
+            detail: "Comes with the model".to_owned(),
             cloned: false,
             default: default.is_none(),
             playable: me.built_in_clip().is_some(),
@@ -569,7 +569,7 @@ fn add_page(
         palette,
         id("name"),
         "Name",
-        "How the voice shows in the Voice menu",
+        "Shown in the Voice menu",
         &me.name,
         None,
     );
