@@ -1,18 +1,20 @@
 //! The rows of a group. A row is one line: an optional icon, the title with at most one short
 //! line under it, then a value or controls on the right.
 
-use super::controls::{field, slider, switch};
+use super::controls::{Slider, field, slider, switch};
 use super::menu::{PopUp, pop_up};
-use super::{ROW_GAP, icon, secondary, text_column, title};
+use super::{ROW_GAP, icon, secondary, text_column, title, value};
 use crate::hook;
 use crate::theme::{BODY, Palette, StyledType, radius, size, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, ClickEvent, Div, Entity, FocusHandle, FontFeatures, InteractiveElement,
+    IntoElement, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px,
 };
+use std::sync::Arc;
 
 /// One line of a group: icon, text, then a value or controls on the right.
 pub fn row(palette: Palette) -> Div {
@@ -112,22 +114,38 @@ pub fn toggle_row(
     )
 }
 
-/// A row with a slider from 0 to 1 on the right. The slider takes `id`, the row `<id>.row`.
+/// A row with a slider on the right, titled with the label of the slider, and the reading of its
+/// value just left of the track. The reading has a fixed width and tabular digits, so neither it
+/// nor the track moves while the value changes. The slider takes `<id>`, the reading
+/// `<id>.value`, the row `<id>.row`.
 pub fn slider_row(
     palette: Palette,
-    id: SharedString,
-    title: &'static str,
     detail: &str,
-    value: f32,
-    focus: &FocusHandle,
+    control: Slider,
     set: impl Fn(f32, &mut App) + 'static,
 ) -> AnyElement {
+    let (id, title) = (control.id.clone(), control.label);
+    let reading = value(palette)
+        .id(SharedString::from(format!("{id}.value")))
+        .test_support()
+        .aria_label(control.reading.clone())
+        .w(px(size::SLIDER_VALUE_WIDTH))
+        .text_right()
+        .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+        .child(control.reading.clone());
+    let trailing = div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(space::XS))
+        .child(reading)
+        .child(slider(palette, control, set));
     labeled_row(
         palette,
         format!("{id}.row").into(),
         title,
         Some(detail.to_owned()),
-        slider(palette, id, title, value, focus, set),
+        trailing,
     )
 }
 

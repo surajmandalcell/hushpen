@@ -264,11 +264,15 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
     };
     rows.push(ui::slider_row(
         palette,
-        hook::id("read", "speed"),
-        "Speed",
-        &format!("{speed:.2}\u{d7}"),
-        (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED),
-        &view.focus.speed,
+        "How fast the voice reads",
+        ui::Slider {
+            id: hook::id("read", "speed"),
+            label: "Speed",
+            position: (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED),
+            // The setting keeps a twentieth, so two decimals show it whole.
+            reading: format!("{speed:.2}\u{d7}"),
+            focus: &view.focus.speed,
+        },
         slider,
     ));
     let format_menu = open(Menu::Format, &|| {

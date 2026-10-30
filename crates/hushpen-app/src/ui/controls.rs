@@ -191,17 +191,35 @@ pub fn switch<F: Fn(&mut Window, &mut App) + 'static>(
 /// How far Left or Right moves a slider: one 5% step.
 const SLIDER_STEP: f32 = 0.05;
 
+/// A slider and what its value reads.
+pub struct Slider<'a> {
+    /// The slider. [`super::slider_row`] puts the reading at `<id>.value` and the row at
+    /// `<id>.row`.
+    pub id: SharedString,
+    /// The title of the row and the name of the slider in the accessibility tree.
+    pub label: &'static str,
+    /// Where the knob stands, from 0 to 1.
+    pub position: f32,
+    /// The value in words, such as `150%` or `1.25×`. It is the accessibility value too.
+    pub reading: String,
+    pub focus: &'a FocusHandle,
+}
+
 /// A slider from 0 to 1: the accent fills the track up to a round knob. A press or a drag along
 /// it sets the value; Left, Right, Home, and End move it from the keyboard.
-pub fn slider<F: Fn(f32, &mut App) + 'static>(
+pub(super) fn slider<F: Fn(f32, &mut App) + 'static>(
     palette: Palette,
-    id: SharedString,
-    label: &'static str,
-    value: f32,
-    focus: &FocusHandle,
+    slider: Slider,
     set: F,
 ) -> impl IntoElement + use<F> {
-    let value = value.clamp(0.0, 1.0);
+    let Slider {
+        id,
+        label,
+        position,
+        reading,
+        focus,
+    } = slider;
+    let value = position.clamp(0.0, 1.0);
     let travel = size::SLIDER_WIDTH - size::SWITCH_KNOB;
     let rail = div()
         .relative()
@@ -255,6 +273,7 @@ pub fn slider<F: Fn(f32, &mut App) + 'static>(
         .test_support()
         .role(Role::Slider)
         .aria_label(label)
+        .aria_value(reading)
         .aria_numeric_value(f64::from(value))
         .aria_min_numeric_value(0.0)
         .aria_max_numeric_value(1.0)

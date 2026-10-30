@@ -242,8 +242,10 @@ pub mod size {
     pub const FIELD_WIDTH: f32 = 220.0;
     /// The search field at the right end of the toolbar.
     pub const SEARCH_FIELD_WIDTH: f32 = 300.0;
-    /// A slider at the end of a row.
+    /// A slider at the end of a row, and the reading of its value left of it, wide enough for
+    /// `200%` and `2.00×`.
     pub const SLIDER_WIDTH: f32 = 160.0;
+    pub const SLIDER_VALUE_WIDTH: f32 = 40.0;
     /// The widest a pop-up button grows before its text is cut.
     pub const POP_UP_MAX_WIDTH: f32 = 240.0;
     /// An open menu: its narrowest, its widest before its options are cut, one option, and the
