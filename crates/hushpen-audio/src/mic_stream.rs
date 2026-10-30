@@ -11,6 +11,10 @@
 //! stream that only delivered exact zeros is not reported (a muted microphone does the same,
 //! and that run ends as "no speech"), but it is not reused either.
 //!
+//! A recording can start while the one before it is still stopping. The stream then keeps
+//! playing for the new session, and the old one goes on hearing it until its stop has the
+//! audio the host still held, so neither file loses the words around the change.
+//!
 //! One thread owns each stream, because streams are not `Send` on every host.
 
 use crate::capture::{CaptureEvent, EventSink, Msg, Source};
@@ -51,6 +55,9 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[derive(Default)]
 pub(crate) struct Route {
     session: Mutex<Option<(Sender<Msg>, EventSink)>>,
+    /// Sessions that handed the stream to a newer one and still take its audio until they
+    /// detach, by attachment id.
+    tails: Mutex<Vec<(u64, Sender<Msg>)>>,
     failed: AtomicBool,
     /// Set when the stream reported a failure: the mic thread then tears the stream down, so
     /// the next recording opens a fresh one instead of reusing a dead one.
@@ -69,6 +76,16 @@ impl Route {
         self.broken.store(false, Ordering::SeqCst);
         self.zero_ms.store(0, Ordering::SeqCst);
         self.dead_input.store(false, Ordering::SeqCst);
+    }
+
+    /// Gives the stream to `next` while `previous` keeps hearing it until it detaches.
+    fn hand_over(&self, previous: &Attachment, next: &Attachment) {
+        lock(&self.tails).push((previous.id, previous.tx.clone()));
+        self.attach(next);
+    }
+
+    fn drop_tail(&self, id: u64) {
+        lock(&self.tails).retain(|(owner, _)| *owner != id);
     }
 
     fn detach(&self) {
@@ -90,14 +107,19 @@ impl Route {
             self.zero_ms.store(0, Ordering::SeqCst);
             self.dead_input.store(false, Ordering::SeqCst);
         }
+        let at = Instant::now();
+        let frames = |data| Msg::Frames {
+            source: Source::Mic,
+            rate,
+            channels,
+            data,
+            at,
+        };
+        for (_, tx) in lock(&self.tails).iter() {
+            let _ = tx.send(frames(data.clone()));
+        }
         if let Some((tx, _)) = &*lock(&self.session) {
-            let _ = tx.send(Msg::Frames {
-                source: Source::Mic,
-                rate,
-                channels,
-                data,
-                at: Instant::now(),
-            });
+            let _ = tx.send(frames(data));
         }
     }
 
@@ -157,7 +179,11 @@ pub(crate) trait Backend {
 
 type Factory = Arc<dyn Fn() -> Box<dyn Backend> + Send + Sync>;
 
+/// Numbers the attachments, so a late stop of one session never ends the next one's use.
+static NEXT_ATTACHMENT: AtomicU64 = AtomicU64::new(1);
+
 pub(crate) struct Attachment {
+    id: u64,
     tx: Sender<Msg>,
     sink: EventSink,
     done: Sender<()>,
@@ -173,12 +199,14 @@ impl Attachment {
 
 pub(crate) enum Command {
     Attach(Attachment),
-    Detach,
+    /// Ends the use of the attachment with this id.
+    Detach(u64),
     Close,
 }
 
 /// Ends a session's use of the stream.
 pub(crate) struct MicHandle {
+    pub(crate) id: u64,
     pub(crate) stop: Sender<Command>,
     pub(crate) done: Receiver<()>,
 }
@@ -187,7 +215,7 @@ impl MicHandle {
     /// Waits briefly. A host that hangs while pausing a stream must not hang the app; the
     /// thread is left to finish on its own.
     pub(crate) fn shut_down(self) {
-        let _ = self.stop.send(Command::Detach);
+        let _ = self.stop.send(Command::Detach(self.id));
         let _ = self.done.recv_timeout(MIC_STOP_TIMEOUT);
     }
 }
@@ -294,7 +322,9 @@ impl MicHub {
         for _ in 0..2 {
             let warm = self.ensure(&mut slot, selection)?;
             let (done, done_rx) = mpsc::channel();
+            let id = NEXT_ATTACHMENT.fetch_add(1, Ordering::SeqCst);
             let attachment = Attachment {
+                id,
                 tx: tx.clone(),
                 sink: Arc::clone(sink),
                 done,
@@ -307,6 +337,7 @@ impl MicHub {
             drop(phase);
             if sent {
                 return Ok(MicHandle {
+                    id,
                     stop: warm.commands.clone(),
                     done: done_rx,
                 });
@@ -334,9 +365,20 @@ fn run(selection: &str, queue: &Receiver<Command>, phase: &Mutex<Phase>, factory
     };
     *lock(phase) = Phase::Ready;
     let mut attached: Option<Attachment> = None;
+    // Sessions that a newer one took the stream from while they were still stopping.
+    let mut handed: Vec<Attachment> = Vec::new();
     let mut next_poll = Instant::now() + DEVICE_POLL;
     loop {
         match queue.recv_timeout(COMMAND_WAIT) {
+            Ok(Command::Attach(attachment)) if attached.is_some() => {
+                // The stream is playing already, so the new session starts at once.
+                if let Some(previous) = attached.take() {
+                    route.hand_over(&previous, &attachment);
+                    handed.push(previous);
+                }
+                (attachment.sink)(CaptureEvent::Started);
+                attached = Some(attachment);
+            }
             Ok(Command::Attach(attachment)) => {
                 route.attach(&attachment);
                 last_data.store(now_ms(epoch), Ordering::SeqCst);
@@ -352,7 +394,13 @@ fn run(selection: &str, queue: &Receiver<Command>, phase: &Mutex<Phase>, factory
                     }
                 }
             }
-            Ok(Command::Detach) => {
+            Ok(Command::Detach(id)) if attached.as_ref().is_none_or(|live| live.id != id) => {
+                if let Some(at) = handed.iter().position(|previous| previous.id == id) {
+                    route.drop_tail(id);
+                    let _ = handed.swap_remove(at).done.send(());
+                }
+            }
+            Ok(Command::Detach(_)) => {
                 if let Some(attachment) = attached.take() {
                     let paused = stream.pause();
                     route.detach();

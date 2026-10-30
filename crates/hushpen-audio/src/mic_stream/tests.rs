@@ -187,6 +187,37 @@ fn audio_reaches_the_session_only_while_it_is_attached() {
 }
 
 #[test]
+fn a_start_before_the_last_stop_takes_the_stream_and_both_sessions_keep_their_audio() {
+    let world = World::default();
+    let hub = hub(&world);
+    let old = session();
+    let old_handle = hub.attach("default", &old.tx, &old.sink).unwrap();
+    assert_eq!(next_event(&old), CaptureEvent::Started);
+
+    // The new session starts while the old one still waits for its tail.
+    let new = session();
+    let new_handle = hub.attach("default", &new.tx, &new.sink).unwrap();
+    assert_eq!(next_event(&new), CaptureEvent::Started);
+    push(&world);
+    assert!(old.frames.recv_timeout(Duration::from_secs(1)).is_ok());
+    assert!(new.frames.recv_timeout(Duration::from_secs(1)).is_ok());
+
+    let before = Instant::now();
+    old_handle.shut_down();
+    assert!(before.elapsed() < Duration::from_millis(500));
+    push(&world);
+    assert!(new.frames.recv_timeout(Duration::from_secs(1)).is_ok());
+    assert!(
+        old.frames.recv_timeout(Duration::from_millis(100)).is_err(),
+        "the old session hears nothing once it let go"
+    );
+    assert_eq!(*lock(&world.log), ["play"], "the new session is not paused");
+
+    new_handle.shut_down();
+    assert_eq!(*lock(&world.log), ["play", "pause"]);
+}
+
+#[test]
 fn a_failed_open_reaches_the_session_and_the_next_start_opens_again() {
     let world = World::default();
     *lock(&world.fail) = Some(CaptureError::unavailable("no microphone"));
