@@ -72,7 +72,63 @@ CREATE TRIGGER transcript_fts_update AFTER UPDATE ON transcript BEGIN
 END;
 ";
 
-const MIGRATIONS: &[&str] = &[SCHEMA_V1];
+/// Version 2 lets a row be a read aloud (`kind = 'read'`). SQLite cannot change a CHECK in
+/// place, so the table is built again under its name. The rows keep their rowids, which the
+/// search index and its triggers go by.
+const SCHEMA_V2: &str = "
+CREATE TABLE transcript_v2 (
+  id TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('dictation','command','import','read')),
+  status TEXT NOT NULL CHECK (status IN ('completed','cancelled','failed')),
+  error_code TEXT,
+  duration_ms INTEGER NOT NULL,
+  model_id TEXT,
+  language_requested TEXT,
+  language_detected TEXT,
+  prompt TEXT,
+  raw_text TEXT,
+  rule_text TEXT,
+  llm_text TEXT,
+  llm_outcome TEXT,
+  final_text TEXT,
+  instruction TEXT,
+  insert_outcome TEXT,
+  target_app TEXT,
+  source_name TEXT,
+  audio_path TEXT,
+  audio_removed_at INTEGER
+);
+INSERT INTO transcript_v2 (rowid, id, created_at, kind, status, error_code, duration_ms,
+  model_id, language_requested, language_detected, prompt, raw_text, rule_text, llm_text,
+  llm_outcome, final_text, instruction, insert_outcome, target_app, source_name, audio_path,
+  audio_removed_at)
+SELECT rowid, id, created_at, kind, status, error_code, duration_ms, model_id,
+  language_requested, language_detected, prompt, raw_text, rule_text, llm_text, llm_outcome,
+  final_text, instruction, insert_outcome, target_app, source_name, audio_path,
+  audio_removed_at
+FROM transcript;
+DROP TABLE transcript;
+ALTER TABLE transcript_v2 RENAME TO transcript;
+CREATE INDEX transcript_created ON transcript(created_at DESC);
+CREATE TRIGGER transcript_fts_insert AFTER INSERT ON transcript BEGIN
+  INSERT INTO transcript_fts(rowid, final_text, source_name)
+  VALUES (new.rowid, new.final_text, new.source_name);
+END;
+CREATE TRIGGER transcript_fts_delete AFTER DELETE ON transcript BEGIN
+  INSERT INTO transcript_fts(transcript_fts, rowid, final_text, source_name)
+  VALUES ('delete', old.rowid, old.final_text, old.source_name);
+END;
+CREATE TRIGGER transcript_fts_update AFTER UPDATE ON transcript BEGIN
+  INSERT INTO transcript_fts(transcript_fts, rowid, final_text, source_name)
+  VALUES ('delete', old.rowid, old.final_text, old.source_name);
+  INSERT INTO transcript_fts(rowid, final_text, source_name)
+  VALUES (new.rowid, new.final_text, new.source_name);
+END;
+INSERT INTO transcript_fts(transcript_fts) VALUES ('rebuild');
+";
+
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
 
 /// The `user_version` this build writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -197,10 +253,33 @@ impl Database {
 }
 
 fn migrate(conn: &Connection, sql: &str, version: i64) -> Result<()> {
-    let transaction = format!("BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;");
-    if let Err(error) = conn.execute_batch(&transaction) {
+    // A migration may build a table again, and while foreign keys are on, dropping the old
+    // table deletes the rows of other tables that point at it. The check before the commit
+    // proves every reference still finds its row.
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    let transaction = format!("BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version = {version};");
+    let done = conn
+        .execute_batch(&transaction)
+        .and_then(|()| references_whole(conn))
+        .and_then(|()| conn.execute_batch("COMMIT"));
+    if done.is_err() {
         let _ = conn.execute_batch("ROLLBACK");
-        return Err(error.into());
+    }
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    done.map_err(Into::into)
+}
+
+fn references_whole(conn: &Connection) -> rusqlite::Result<()> {
+    let broken = conn
+        .prepare("PRAGMA foreign_key_check")?
+        .query([])?
+        .next()?
+        .is_some();
+    if broken {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY),
+            Some("a migration left a row that points at nothing".to_owned()),
+        ));
     }
     Ok(())
 }
