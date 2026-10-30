@@ -5206,10 +5206,12 @@ void whisper_vad_reset_state(whisper_vad_context * vctx) {
     ggml_backend_buffer_clear(vctx->buffer, 0);
 }
 
-bool whisper_vad_detect_speech_no_reset(
+static bool whisper_vad_detect_speech_with_abort(
         struct whisper_vad_context * vctx,
         const float * samples,
-        int n_samples) {
+        int n_samples,
+        ggml_abort_callback abort_callback,
+        void * abort_callback_user_data) {
     int n_chunks = n_samples / vctx->n_window;
     if (n_samples % vctx->n_window != 0) {
         n_chunks += 1;  // Add one more chunk for remaining samples.
@@ -5239,6 +5241,10 @@ bool whisper_vad_detect_speech_no_reset(
     const int64_t t_start_vad_us = ggml_time_us();
 
     for (int i = 0; i < n_chunks; i++) {
+        if (abort_callback && abort_callback(abort_callback_user_data)) {
+            ggml_backend_sched_reset(sched);
+            return false;
+        }
         const int idx_start = i * vctx->n_window;
         const int idx_end = std::min(idx_start + vctx->n_window, n_samples);
 
@@ -5283,6 +5289,13 @@ bool whisper_vad_detect_speech_no_reset(
     ggml_backend_sched_reset(sched);
 
     return true;
+}
+
+bool whisper_vad_detect_speech_no_reset(
+        struct whisper_vad_context * vctx,
+        const float * samples,
+        int n_samples) {
+    return whisper_vad_detect_speech_with_abort(vctx, samples, n_samples, nullptr, nullptr);
 }
 
 bool whisper_vad_detect_speech(
@@ -6768,6 +6781,7 @@ static bool whisper_vad(
 
     if (state->vad_context == nullptr) {
         struct whisper_vad_context_params vad_ctx_params = whisper_vad_default_context_params();
+        vad_ctx_params.n_threads = params.n_threads;
         struct whisper_vad_context * vctx = whisper_vad_init_from_file_with_params(params.vad_model_path, vad_ctx_params);
         if (vctx == nullptr) {
             WHISPER_LOG_ERROR("%s: failed to initialize VAD context\n", __func__);
@@ -6779,7 +6793,12 @@ static bool whisper_vad(
 
     const whisper_vad_params & vad_params = params.vad_params;
 
-    whisper_vad_segments * vad_segments = whisper_vad_segments_from_samples(vctx, vad_params, samples, n_samples);
+    whisper_vad_reset_state(vctx);
+    if (!whisper_vad_detect_speech_with_abort(vctx, samples, n_samples,
+            params.abort_callback, params.abort_callback_user_data)) {
+        return false;
+    }
+    whisper_vad_segments * vad_segments = whisper_vad_segments_from_probs(vctx, vad_params);
 
     if (!vad_segments) {
         return false;
