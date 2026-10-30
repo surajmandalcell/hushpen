@@ -41,7 +41,7 @@ const PLAY_POLL: Duration = Duration::from_millis(100);
 
 /// What the guided take asks the user to read: plain lines with many of the sounds of English.
 pub const READING: [&str; 4] = [
-    "The north wind and the sun argued about which was stronger.",
+    "The wind and the sun argued about who was stronger.",
     "A traveler came along, wrapped in a warm cloak.",
     "They agreed that whoever made him take it off would win.",
     "The wind blew hard, but the traveler held his cloak tighter.",
@@ -805,11 +805,14 @@ impl VoiceLibrary {
         self.set_input(&self.name.clone(), name, cx);
     }
 
-    /// Puts `text` in a field of the sheet.
+    /// Puts `text` in a field of the sheet. A click runs inside an update of the window, which
+    /// cannot be entered again, so the field takes the text once that update ends.
     fn set_input(&self, input: &Entity<InputState>, text: String, cx: &mut Context<Self>) {
-        let input = input.clone();
-        let _ = self.window.update(cx, |_, window, cx| {
-            input.update(cx, |state, cx| state.set_value(text, window, cx));
+        let (window, input) = (self.window, input.clone());
+        cx.defer(move |cx: &mut App| {
+            let _ = window.update(cx, |_, window, cx| {
+                input.update(cx, |state, cx| state.set_value(text, window, cx));
+            });
         });
     }
 
@@ -847,6 +850,7 @@ impl VoiceLibrary {
             })),
             "name": self.name.read(cx).value().to_string(),
             "renaming": self.renaming,
+            "rename": self.rename.read(cx).value().to_string(),
             "deleting": self.deleting,
             "playing": self.playing().map(|playing| match playing {
                 Playing::Voice(id) => json!(id),

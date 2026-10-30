@@ -231,6 +231,26 @@ fn a_rename_keeps_names_unique_and_not_empty(cx: &mut TestAppContext) {
     assert_eq!(names, ["Anna at home", "Ben"]);
 }
 
+/// A click runs inside an update of the window, as these do.
+#[gpui_kit::test]
+fn add_and_rename_fill_their_fields_when_a_click_opens_them(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    let anna = add(cx, &fixture, "Anna", 6.0);
+    let library = fixture.library.clone();
+    cx.update(|_, cx| library.update(cx, |me, cx| me.show(Page::Add, cx)));
+    cx.run_until_parked();
+    assert_eq!(state(cx, &fixture)["name"], "Voice 1");
+    cx.update(|_, cx| {
+        library.update(cx, |me, cx| {
+            me.show(Page::List, cx);
+            me.start_rename(&anna.id, cx)
+        })
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert_eq!(state(cx, &fixture)["rename"], "Anna");
+}
+
 #[gpui_kit::test]
 fn the_sheet_opens_on_a_page_and_a_dismiss_drops_the_new_clip(cx: &mut TestAppContext) {
     let (fixture, cx) = open(cx);
