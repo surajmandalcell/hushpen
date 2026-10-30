@@ -2,8 +2,8 @@
 # usage: harness/icons.sh [classic|sari|waves]
 # Builds every app icon file from assets/icons/<name>/: mark.svg is the full line art on the
 # 1024 tile, and mark-small.svg the bold head-and-pen crop for 48 and 64 px, where the full art
-# turns gray. Sizes up to 32 px show the solid head and pen of the menu bar glyph instead. It
-# also renders the menu bar and Linux tray glyphs from
+# turns gray. Sizes up to 32 px show the solid head and pen of assets/icons/mark-tiny.svg instead.
+# It also renders the menu bar and Linux tray glyphs from
 # assets/hushpen-menubar.svg. classic ships; sari and waves are kept for seasonal use. Writes into
 # assets/ (or $ICON_OUT). Needs rsvg-convert, ImageMagick, iconutil, and Xcode 26 or later for
 # Assets.car, which macOS 26 and later draw; without it they shrink the .icns into a gray tile.
@@ -48,7 +48,7 @@ tile "$SRC/mark-small.svg" > "$T/small.svg"
 {
   echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
   echo '<g transform="translate(71 192) scale(20)">'
-  art "$REPO/assets/hushpen-menubar.svg" | sed 's/#000000/#1B2228/'
+  art "$REPO/assets/icons/mark-tiny.svg" | sed 's/#000000/#1B2228/'
   echo '</g>'
   echo '</svg>'
 } > "$T/tiny-mark.svg"
@@ -129,9 +129,10 @@ xcrun actool "$T/Hushpen.icon" --compile "$T/car" \
 cp "$T/car/Assets.car" "$OUT/hushpen-app-icon.car"
 
 # The menu bar glyph is a template image of 22 by 16 points at 2x. The Linux tray takes the
-# same glyph on a 32 px square, black for light panels and white for dark ones.
+# same glyph scaled to fit a 32 px square, black for light panels and white for dark ones.
 rsvg-convert -w 44 -h 32 "$REPO/assets/hushpen-menubar.svg" -o "$T/menubar.png"
 magick "$T/menubar.png" PNG32:"$OUT/hushpen-menubar.png"
-magick "$T/menubar.png" -crop 32x32+6+0 +repage PNG32:"$OUT/hushpen-tray-dark.png"
+rsvg-convert -w 32 -h 23 "$REPO/assets/hushpen-menubar.svg" -o "$T/tray.png"
+magick "$T/tray.png" -background none -gravity center -extent 32x32 PNG32:"$OUT/hushpen-tray-dark.png"
 magick "$OUT/hushpen-tray-dark.png" -fill white -colorize 100 PNG32:"$OUT/hushpen-tray-light.png"
 echo "built the $NAME icon into $OUT"

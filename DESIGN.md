@@ -193,7 +193,7 @@ The app icon is a Roman statue drawn in outline: a young woman in profile, eyes 
 Each icon design lives in `assets/icons/<name>/`: `mark.svg` is the full drawing on the 1024 tile, and `mark-small.svg` a bold crop of the head and pen. `classic` ships. `sari` (braided bun, jhumka, sari pallu) and `waves` (long loose hair) are kept for seasonal use. `harness/icons.sh <name>` builds every icon file from one design:
 
 - `assets/hushpen-app-icon.svg` and `.png`: the drawing on an 824px squircle at 100px on the 1024 canvas (the macOS grid), with the template shadow (10px down, 30% black).
-- `assets/hushpen-app-icon.icns` and `assets/linux-icons/*.png`: 128px and up show the full drawing, 48 and 64px the bold crop, and 16 to 32px the solid head and pen of the menu bar glyph, because finer lines turn gray there.
+- `assets/hushpen-app-icon.icns` and `assets/linux-icons/*.png`: 128px and up show the full drawing, 48 and 64px the bold crop, and 16 to 32px the solid head and pen of `assets/icons/mark-tiny.svg`, because finer lines turn gray there.
 - `assets/hushpen-app-icon.icon` and `assets/hushpen-app-icon.car`: the Icon Composer source and its compiled catalog, shipped as `Assets.car` with `CFBundleIconName`. macOS 26 and later draw it in the Dock and Finder; without it they shrink the .icns into a gray tile. In the Dark icon style the system draws a dark tile and the lines turn light.
 - `assets/hushpen-app-icon-192.png`: About draws the tile without its margin at 96px, with the 16px app-icon corner, at 2x.
 - The menu bar and Linux tray glyphs, from `assets/hushpen-menubar.svg`.
@@ -204,7 +204,7 @@ The app follows the system appearance, Light or Dark, and changes live when the 
 
 The flow bar pill is the one exception. It stays a dark HUD (`#2B2B2B`, light text) in both appearances, because it floats over other apps.
 
-The macOS menu bar item is the glyph alone, with no name beside it: the solid head with its bun and an upright pen, 1.5pt wide with a 1pt gap before the lips so the two never merge. It is a template image (`assets/hushpen-menubar.png`, 22 by 16 points at 2x), so macOS tints it for Light, Dark, and a highlighted menu bar. Linux panels get the same glyph on a 32px square, black or white for their appearance.
+The macOS menu bar item is the glyph alone, with no name beside it: a solid quill writing a sound wave (a 1.5pt line of two waves along the bottom left, the quill rising to the top right). It is a template image (`assets/hushpen-menubar.png`, 22 by 16 points at 2x), so macOS tints it for Light, Dark, and a highlighted menu bar. Linux panels get the same glyph scaled to fit a 32px square, black or white for their appearance.
 
 ## Colors
 
