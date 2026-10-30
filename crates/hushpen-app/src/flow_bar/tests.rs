@@ -283,6 +283,47 @@ fn the_native_window_work_runs_after_the_app_is_free(cx: &mut TestAppContext) {
     assert_eq!(native_calls.get(), 2);
 }
 
+/// Counts the times the bar asked for its window.
+struct Counting {
+    shows: Rc<Cell<u32>>,
+}
+
+impl Host for Counting {
+    fn screen(&self, _: &App) -> Screen {
+        SCREEN
+    }
+
+    fn show(&mut self, _: Bounds<Pixels>, _: &mut App) -> Option<Native> {
+        self.shows.set(self.shows.get() + 1);
+        None
+    }
+
+    fn hide(&mut self, _: &mut App) {}
+
+    fn window(&self) -> Option<AnyWindowHandle> {
+        None
+    }
+}
+
+#[gpui_kit::test]
+fn a_start_shows_the_bar_without_waiting_for_the_next_tick(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let bar = build(cx, &rig);
+    bar.update(cx, |bar, _| bar.animate = false);
+    let shows = Rc::new(Cell::new(0));
+    let host = Counting {
+        shows: Rc::clone(&shows),
+    };
+    let entity = bar.clone();
+    cx.update(|cx| run(cx, entity, Box::new(host)));
+    cx.run_until_parked();
+    assert_eq!(shows.get(), 0, "no bar at rest");
+
+    send_at(cx, &rig, 11_000, AppEvent::HomeToggle).unwrap();
+    cx.run_until_parked();
+    assert_eq!(shows.get(), 1, "the bar shows before the clock moves");
+}
+
 #[gpui_kit::test]
 fn a_click_starts_and_stops_a_dictation_and_the_bar_follows_each_step(cx: &mut TestAppContext) {
     let bar = bar(cx, &["base"], "base");

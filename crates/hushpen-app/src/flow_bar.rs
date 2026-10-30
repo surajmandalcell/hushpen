@@ -4,7 +4,7 @@
 //!
 //! [`FlowBar`] is the model and the view. It never owns a window: a [`Host`] opens, moves, and
 //! closes the native pop-up, and [`run`] feeds the host from the bar: every frame while the bar
-//! moves, twenty times a second while it rests.
+//! moves, twenty times a second while it rests, and at once when the pipeline changes state.
 
 mod motion;
 pub mod view;
@@ -16,6 +16,9 @@ use crate::hook;
 use crate::mic::Mic;
 use crate::native::native_handle;
 use crate::storage::Storage;
+use futures::StreamExt as _;
+use futures::channel::mpsc::{UnboundedReceiver, unbounded};
+use futures::future::{Either, select};
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, WeakEntity, Window,
     point, px,
@@ -507,21 +510,53 @@ impl Render for FlowBar {
 pub fn run(cx: &mut App, bar: Entity<FlowBar>, host: Box<dyn Host>) -> SharedHost {
     let host: SharedHost = Rc::new(RefCell::new(host));
     let driver = Rc::clone(&host);
+    let mut woken = wake_on_pipeline_change(cx, &bar.read(cx).controller.clone());
     // The task lives until the app is dropped, so it holds the bar weakly: a strong handle would
     // outlive the entity map and fail the leak check when the app quits.
     let bar = bar.downgrade();
     cx.spawn(async move |cx| {
+        let mut wakes = true;
         loop {
             let step = cx.update(|cx| drive(cx, &driver, &bar));
             let Some((wait, native)) = step else { break };
             if let Some(native) = native {
                 native();
             }
-            cx.background_executor().timer(wait).await;
+            let timer = cx.background_executor().timer(wait);
+            if wakes {
+                if let Either::Right((None, _)) = select(timer, woken.next()).await {
+                    wakes = false;
+                }
+                while woken.try_recv().is_ok() {}
+            } else {
+                timer.await;
+            }
         }
     })
     .detach();
     host
+}
+
+/// Wakes the run loop when the pipeline changes state, so a new dictation shows the bar on the
+/// next frame and not on the next tick, up to 50 ms later.
+fn wake_on_pipeline_change(cx: &mut App, controller: &Entity<Controller>) -> UnboundedReceiver<()> {
+    let (wake, woken) = unbounded();
+    let key = |controller: &Controller| {
+        (
+            controller.state(),
+            controller.flash().map(|flash| flash.seq),
+        )
+    };
+    let mut seen = key(controller.read(cx));
+    cx.observe(controller, move |controller, cx| {
+        let now = key(controller.read(cx));
+        if now != seen {
+            seen = now;
+            let _ = wake.unbounded_send(());
+        }
+    })
+    .detach();
+    woken
 }
 
 /// One tick: reads the bar and opens, plans, or closes the window. Returns how long to wait and
