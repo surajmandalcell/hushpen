@@ -4,7 +4,7 @@
 //! a fixed text, prints the timings and the real-time factor (synthesis time over audio time,
 //! under 1 is faster than real time), and exits; it opens no data folder and no socket.
 
-use crate::backend::{Backend, CancelFlag, LoadSpec};
+use crate::backend::{Backend, CancelFlag, LoadSpec, TtsEngine};
 use crate::kokoro::SherpaBackend;
 use crate::runtime;
 use crate::server::{ServerConfig, serve};
@@ -126,12 +126,13 @@ fn run_smoke(backend: &SherpaBackend, smoke: &Smoke) -> ExitCode {
 }
 
 fn smoke_runs(backend: &SherpaBackend, smoke: &Smoke) -> Result<(), String> {
-    let speaker = find_voice(&smoke.voice)
-        .ok_or_else(|| format!("unknown voice '{}'", smoke.voice))?
-        .speaker;
+    if find_voice(&smoke.voice).is_none() {
+        return Err(format!("unknown voice '{}'", smoke.voice));
+    }
     let cpus = std::thread::available_parallelism().map_or(2, usize::from);
     let spec = LoadSpec {
         dir: smoke.dir.clone(),
+        engine: TtsEngine::Kokoro,
         threads: smoke.threads.unwrap_or_else(|| auto_threads(cpus)),
         idle: None,
     };
@@ -149,7 +150,7 @@ fn smoke_runs(backend: &SherpaBackend, smoke: &Smoke) -> Result<(), String> {
         session
             .speak(
                 &smoke.text,
-                speaker,
+                Some(&smoke.voice),
                 1.0,
                 &CancelFlag::new(),
                 &mut |samples| {

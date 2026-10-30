@@ -1,6 +1,7 @@
-//! What the worker needs from a voice model, apart from sherpa-onnx.
+//! What the worker needs from a voice model, whatever runs it.
 
 pub use hushpen_core::cancel::CancelFlag;
+pub use hushpen_core::tts_protocol::TtsEngine;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -9,6 +10,7 @@ use std::time::Duration;
 pub struct LoadSpec {
     /// The model's folder, such as `models/tts/kokoro-82m-int8`.
     pub dir: PathBuf,
+    pub engine: TtsEngine,
     pub threads: usize,
     /// `None` keeps the model until the app unloads it.
     pub idle: Option<Duration>,
@@ -39,12 +41,13 @@ pub struct LoadError {
 pub trait Session: Send {
     fn sample_rate(&self) -> u32;
 
-    /// Speaks `text` as the model's speaker number `speaker`. `sink` gets the audio piece by
-    /// piece while it is made.
+    /// Speaks `text` with `voice`, or with the model's default voice for `None`. For Kokoro
+    /// the voice is the id of a speaker, for Chatterbox the path of the clip to clone. `sink`
+    /// gets the audio piece by piece while it is made.
     fn speak(
         &mut self,
         text: &str,
-        speaker: i32,
+        voice: Option<&str>,
         speed: f32,
         cancel: &CancelFlag,
         sink: &mut dyn FnMut(&[f32]),

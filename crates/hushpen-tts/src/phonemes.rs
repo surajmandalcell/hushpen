@@ -91,7 +91,7 @@ impl Lexicon {
         while at < chars.len() {
             let c = chars[at];
             if c.is_ascii_digit() {
-                let (words, end) = number(&chars, at);
+                let (words, end) = numbers::read(&chars, at);
                 for word in words.split_whitespace() {
                     self.word(word, &mut pieces);
                 }
@@ -353,7 +353,7 @@ fn undouble<'a>(word: &'a str, ending: &str) -> Option<&'a str> {
 
 /// Typographic quotes and dashes become the plain ones the rest of the code reads, and a Latin
 /// letter with a mark becomes the plain letter: the lexicon spells `cafe`, not `café`.
-fn fold(c: char) -> char {
+pub(crate) fn fold(c: char) -> char {
     match c {
         '\u{2018}' | '\u{2019}' | '\u{02bc}' => '\'',
         '\u{2013}' => '—',
@@ -433,107 +433,6 @@ fn parts(word: &str) -> Vec<String> {
     parts.push(current);
     parts.retain(|part| !part.is_empty());
     parts
-}
-
-/// Reads the number at `start` as words, with a currency sign before it and an ordinal ending
-/// after it. Returns the words and where the text goes on.
-fn number(chars: &[char], start: usize) -> (String, usize) {
-    let mut end = start;
-    while end < chars.len() {
-        let c = chars[end];
-        let inner = matches!(c, ',' | '.' | ':')
-            && end > start
-            && chars.get(end + 1).is_some_and(char::is_ascii_digit);
-        if !(c.is_ascii_digit() || inner) {
-            break;
-        }
-        end += 1;
-    }
-    let raw: String = chars[start..end].iter().collect();
-    let suffix: String = chars[end..chars.len().min(end + 2)]
-        .iter()
-        .collect::<String>()
-        .to_lowercase();
-    let ordinal = matches!(suffix.as_str(), "st" | "nd" | "rd" | "th")
-        && !chars.get(end + 2).is_some_and(|c| c.is_alphanumeric());
-    let currency = start
-        .checked_sub(1)
-        .and_then(|before| currency(chars[before]));
-    let words = read_number(&raw, currency, ordinal);
-    (words, if ordinal { end + 2 } else { end })
-}
-
-/// The names of one unit and its hundredth.
-struct Currency {
-    one: &'static str,
-    many: &'static str,
-    cents: &'static str,
-}
-
-fn currency(sign: char) -> Option<Currency> {
-    let (one, many, cents) = match sign {
-        '$' => ("dollar", "dollars", "cents"),
-        '€' => ("euro", "euros", "cents"),
-        '£' => ("pound", "pounds", "pence"),
-        _ => return None,
-    };
-    Some(Currency { one, many, cents })
-}
-
-fn read_number(raw: &str, currency: Option<Currency>, ordinal: bool) -> String {
-    if let Some((hours, minutes)) = raw.split_once(':') {
-        return match (hours.parse::<u64>(), minutes.parse::<u64>()) {
-            (Ok(h), Ok(m)) if h <= 24 && m <= 59 && minutes.len() == 2 => numbers::time(h, m),
-            _ => raw
-                .split(':')
-                .map(|part| read_number(part, None, false))
-                .collect::<Vec<_>>()
-                .join(" "),
-        };
-    }
-    let (whole, fraction) = match raw.split_once('.') {
-        Some((whole, fraction)) if !fraction.contains('.') => (whole, Some(fraction)),
-        Some(_) => {
-            return raw
-                .split('.')
-                .map(|part| read_number(part, None, false))
-                .collect::<Vec<_>>()
-                .join(" point ");
-        }
-        None => (raw, None),
-    };
-    let grouped = whole.contains(',');
-    let whole: String = whole.chars().filter(char::is_ascii_digit).collect();
-    let Ok(n) = whole.parse::<u64>() else {
-        return numbers::digits(raw);
-    };
-    if whole.len() > 1 && whole.starts_with('0') && fraction.is_none() {
-        return numbers::digits(&whole);
-    }
-    if let Some(money) = currency {
-        let unit = if n == 1 { money.one } else { money.many };
-        let mut words = format!("{} {unit}", numbers::cardinal(n));
-        if let Some(cents) = fraction.filter(|cents| cents.len() == 2)
-            && let Ok(cents) = cents.parse::<u64>()
-            && cents > 0
-        {
-            words = format!("{words} and {} {}", numbers::cardinal(cents), money.cents);
-        }
-        return words;
-    }
-    if ordinal && fraction.is_none() {
-        return numbers::ordinal(n);
-    }
-    let words = match fraction {
-        None if !grouped && whole.len() == 4 => {
-            numbers::year(n).unwrap_or_else(|| numbers::cardinal(n))
-        }
-        _ => numbers::cardinal(n),
-    };
-    match fraction {
-        Some(fraction) => format!("{words} point {}", numbers::digits(fraction)),
-        None => words,
-    }
 }
 
 /// The sentences being written.
