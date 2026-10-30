@@ -591,6 +591,7 @@ mod tests {
             let _ = done_tx.send(());
         });
         capture.mic = Some(MicHandle {
+            id: 0,
             stop: stop_tx,
             done: done_rx,
         });
