@@ -5,6 +5,8 @@ use super::{History, ROW_HEIGHT};
 
 use crate::hook;
 
+use crate::read_aloud::EngineKind;
+
 use crate::theme::{self, Palette, size, space};
 
 use crate::ui::{self, Kind, Notice};
@@ -91,13 +93,20 @@ pub fn meta(row: &Row) -> String {
     if is_import(row) {
         parts.push(FILE_SOURCE.to_owned());
         parts.extend(row.source_name.clone());
+    } else if is_read(row) {
+        parts.push(READ_SOURCE.to_owned());
+        parts.extend(row.model_id.as_deref().map(engine_name));
+        parts.extend(row.source_name.clone());
     } else if let Some(app) = &row.target_app {
         parts.push(app.clone());
     }
     if row.duration_ms > 0 {
         parts.push(seconds(row.duration_ms));
     }
-    parts.push(outcome(row));
+    // A read is always spoken to the end; the source word says what it was.
+    if !is_read(row) {
+        parts.push(outcome(row));
+    }
     if row.audio_removed_at.is_some() {
         parts.push(AUDIO_REMOVED.to_owned());
     }
@@ -113,6 +122,18 @@ pub(super) fn is_import(row: &Row) -> bool {
     row.kind == "import"
 }
 
+/// The source word of a row spoken by Read aloud.
+pub const READ_SOURCE: &str = "Read aloud";
+
+pub(super) fn is_read(row: &Row) -> bool {
+    row.kind == "read"
+}
+
+/// The name Read aloud gives the engine of a read, such as Chatterbox Turbo.
+pub(super) fn engine_name(key: &str) -> String {
+    EngineKind::from_key(key).map_or_else(|| key.to_owned(), |engine| engine.label().to_owned())
+}
+
 /// What the detail view says in place of the player, or `None` when the audio plays.
 pub fn audio_note(row: &Row, available: bool) -> Option<String> {
     if available {
@@ -121,6 +142,13 @@ pub fn audio_note(row: &Row, available: bool) -> Option<String> {
     Some(if is_import(row) {
         "The audio of an imported file is not kept, so it cannot be played or reprocessed."
             .to_owned()
+    } else if is_read(row) {
+        let gone = if row.audio_removed_at.is_some() {
+            AUDIO_REMOVED
+        } else {
+            "The audio of this read is not available"
+        };
+        format!("{gone}. Read aloud again speaks the text once more.")
     } else if row.audio_removed_at.is_some() {
         format!("{AUDIO_REMOVED}. This transcript cannot be played or reprocessed.")
     } else {
@@ -600,6 +628,7 @@ fn entry_row(
         (Some(false), _) => IconName::Square,
         (None, "failed") => IconName::CircleAlert,
         (None, "cancelled") => IconName::X,
+        (None, _) if is_read(&row) => IconName::Volume2,
         (None, _) => IconName::Clock,
     };
     let mut element = div()

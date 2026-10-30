@@ -13,6 +13,7 @@ use std::fs;
 
 mod export;
 mod import;
+mod read;
 
 struct Fixture {
     handle: AnyWindowHandle,

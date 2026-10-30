@@ -5,7 +5,7 @@ use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::files::{self, DROP_GROUP, Files};
 use crate::flow_bar::FlowBar;
-use crate::history::{self, History};
+use crate::history::{self, History, HistoryRequest};
 use crate::hook;
 use crate::import::ImportRequest;
 use crate::mic::{self, Mic};
@@ -164,9 +164,17 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shows the transcript history in the History view and repaints when it changes.
+    /// Shows the transcript history in the History view and repaints when it changes. Read
+    /// aloud again opens Read aloud on the text.
     pub fn attach_history(&mut self, history: Entity<History>, cx: &mut Context<Self>) {
         cx.observe(&history, |_, _, cx| cx.notify()).detach();
+        cx.subscribe(
+            &history,
+            |shell, _, request: &HistoryRequest, cx| match request {
+                HistoryRequest::ReadAloud(text) => shell.read_again(text, cx),
+            },
+        )
+        .detach();
         let scroll = self.content_scroll.clone();
         history.update(cx, |history, _| history.use_scroll(scroll));
         self.history = Some(history);
@@ -191,6 +199,7 @@ impl Shell {
         if let Some(read) = read {
             cx.subscribe(&read, |shell, _, request: &ReadRequest, cx| match request {
                 ReadRequest::OpenModels => shell.select(View::Models, cx),
+                ReadRequest::Saved => shell.history_changed(cx),
             })
             .detach();
             // The voice library sheet draws over the window.
@@ -216,6 +225,26 @@ impl Shell {
                 }
             });
         }
+    }
+
+    /// A read went into the history outside the controller, so History reads its list again.
+    fn history_changed(&mut self, cx: &mut Context<Self>) {
+        if let Some(history) = &self.history {
+            let controller = history.read(cx).controller().clone();
+            controller.update(cx, |controller, cx| controller.history_changed(cx));
+        }
+    }
+
+    /// Read aloud again in History: the text goes in Read aloud and plays there.
+    fn read_again(&mut self, text: &str, cx: &mut Context<Self>) {
+        let Some(files) = self.files.clone() else {
+            return;
+        };
+        self.select(View::Manual, cx);
+        let text = text.to_owned();
+        // As with a drop, the press runs inside the window's own update, which Read aloud
+        // needs to fill its text area.
+        cx.defer(move |cx| files.update(cx, |files, cx| files.read_text(&text, cx)));
     }
 
     /// Files dropped anywhere on the window open the Manual view and land there.

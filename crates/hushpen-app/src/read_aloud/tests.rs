@@ -422,3 +422,130 @@ fn manage_voices_opens_the_library_sheet(cx: &mut TestAppContext) {
         Some(VoicesPage::List)
     );
 }
+
+/// The rows of the history, newest first.
+fn rows(fixture: &Fixture) -> Vec<Row> {
+    history::page(&fixture.storage.database, "", None, 50)
+        .unwrap()
+        .rows
+}
+
+/// Counts the reads that went into the history, as the window hears of them.
+fn count_saved(cx: &mut VisualTestContext, fixture: &Fixture) -> Rc<std::cell::Cell<usize>> {
+    let saved = Rc::new(std::cell::Cell::new(0));
+    let counter = Rc::clone(&saved);
+    cx.update(|_, cx| {
+        cx.subscribe(&fixture.read, move |_, request: &ReadRequest, _| {
+            if *request == ReadRequest::Saved {
+                counter.set(counter.get() + 1);
+            }
+        })
+        .detach();
+    });
+    saved
+}
+
+#[gpui_kit::test]
+fn a_read_spoken_to_the_end_goes_in_history_with_its_audio(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    let saved = count_saved(cx, &fixture);
+    type_text(cx, &fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| {
+        read.set_voice(Some("en-2"), cx).unwrap();
+        read.play(cx).unwrap();
+    });
+    run_all(cx, &fixture);
+
+    let saved_rows = rows(&fixture);
+    assert_eq!(saved_rows.len(), 1);
+    let row = &saved_rows[0];
+    assert_eq!(row.kind, "read");
+    assert_eq!(row.status, "completed");
+    assert_eq!(row.final_text.as_deref(), Some("Hello there."));
+    assert_eq!(row.model_id.as_deref(), Some("system"));
+    assert_eq!(row.source_name.as_deref(), Some("en-2"));
+    assert_eq!(row.language_requested.as_deref(), Some("en"));
+    assert_eq!(row.insert_outcome.as_deref(), Some("none"));
+    assert!(row.duration_ms >= 100, "{} ms", row.duration_ms);
+    assert_eq!(row.audio_removed_at, None);
+    let audio = fixture
+        .storage
+        .data
+        .root()
+        .join(row.audio_path.as_deref().unwrap());
+    assert_eq!(&std::fs::read(audio).unwrap()[..4], b"RIFF");
+    assert_eq!(saved.get(), 1);
+
+    // Play again of the same speech is the same read.
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    assert_eq!(rows(&fixture).len(), 1);
+    assert_eq!(saved.get(), 1);
+}
+
+#[gpui_kit::test]
+fn the_default_voice_of_an_engine_is_named_default_in_history(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    type_text(cx, &fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    let row = rows(&fixture).remove(0);
+    assert_eq!(row.source_name.as_deref(), Some(DEFAULT_VOICE));
+    assert_eq!(row.language_requested, None);
+}
+
+#[gpui_kit::test]
+fn with_audio_kept_never_a_read_keeps_its_text_but_not_its_audio(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    fixture
+        .storage
+        .settings
+        .set(hushpen_store::retention::SETTING, json!("never"))
+        .unwrap();
+    type_text(cx, &fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    let row = rows(&fixture).remove(0);
+    assert_eq!(row.final_text.as_deref(), Some("Hello there."));
+    assert_eq!(row.audio_path, None);
+    assert!(row.audio_removed_at.is_some());
+    let kept = std::fs::read_dir(fixture.storage.data.audio_dir())
+        .map(|entries| entries.count())
+        .unwrap_or(0);
+    assert_eq!(kept, 0);
+}
+
+#[gpui_kit::test]
+fn a_stopped_or_failed_read_leaves_no_history_row(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    type_text(cx, &fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| {
+        read.play(cx).unwrap();
+        read.stop(cx);
+    });
+    run_all(cx, &fixture);
+    *fixture.system.fail.lock().unwrap() = Some(SPEECH_VOICE_MISSING);
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    assert!(state(cx, &fixture)["error"].is_string());
+    assert!(rows(&fixture).is_empty());
+}
+
+#[gpui_kit::test]
+fn an_export_of_new_speech_goes_in_history_once(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    type_text(cx, &fixture, "Hello there.");
+    for name in ["first.wav", "second.wav"] {
+        let path = fixture.folder.path().join(name);
+        fixture.read.update(cx, |read, cx| read.export(cx)).unwrap();
+        cx.run_until_parked();
+        cx.simulate_new_path_selection(move |_| Some(path.clone()));
+        run_all(cx, &fixture);
+    }
+    assert!(fixture.folder.path().join("second.wav").is_file());
+    assert_eq!(
+        rows(&fixture).len(),
+        1,
+        "the second export reused the speech"
+    );
+}

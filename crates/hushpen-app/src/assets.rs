@@ -63,7 +63,8 @@ icon_assets!(
         Trash,
         Pencil,
         Play,
-        Pause
+        Pause,
+        Volume2
     ]
 );
 

@@ -13,6 +13,7 @@ use hushpen_core::transcript::strip_blank_markers;
 use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
 use hushpen_store::history::{self, Reprocessed, Row, Segment};
 use hushpen_store::retention::{self, Retention};
+use hushpen_store::settings::SettingsStore;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -48,19 +49,14 @@ impl Controller {
     }
 
     /// Tells the History view that a row came from somewhere other than a dictation, such as an
-    /// import, so it reads the list again.
+    /// import or a read aloud, so it reads the list again.
     pub fn history_changed(&mut self, cx: &mut Context<Self>) {
         self.history_revision += 1;
         cx.notify();
     }
 
-    /// The audio retention setting, read each time so a change applies to the next run.
     pub fn retention(&self) -> Retention {
-        self.storage
-            .settings
-            .get(retention::SETTING)
-            .and_then(|value| value.as_str().map(Retention::from_setting))
-            .unwrap_or(Retention::Days(retention::DEFAULT_DAYS))
+        retention_of(&self.storage.settings)
     }
 
     pub fn reprocess_state(&self) -> Option<&(String, ReprocessState)> {
@@ -209,6 +205,9 @@ impl Controller {
         let row = history::get(&self.storage.database, id)
             .map_err(|error| error.to_string())?
             .ok_or("That transcript is no longer in the history.")?;
+        if row.kind == "read" {
+            return Err("A read aloud has no recording to transcribe.".into());
+        }
         let wav = self
             .audio_file(&row)
             .ok_or("The audio of this transcript is not available.")?;
@@ -322,6 +321,14 @@ impl Controller {
             log::warn!("the audio of a reprocessed row was not removed: {error}");
         }
     }
+}
+
+/// The audio retention setting, read each time so a change applies to the next run.
+pub(crate) fn retention_of(settings: &SettingsStore) -> Retention {
+    settings
+        .get(retention::SETTING)
+        .and_then(|value| value.as_str().map(Retention::from_setting))
+        .unwrap_or(Retention::Days(retention::DEFAULT_DAYS))
 }
 
 /// The timed pieces of a transcription, in the shape of the `segment` table.
