@@ -198,7 +198,7 @@ impl History {
 }
 
 /// The text of one export file and the name the save dialog suggests for it. History and the
-/// Files queue both write their exports through it.
+/// Manual queue both write their exports through it.
 pub(crate) struct ExportFile {
     format: Format,
     content: String,

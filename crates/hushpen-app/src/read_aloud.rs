@@ -1,4 +1,4 @@
-//! Read aloud on the Files view: typed text, or a `.txt` or `.md` file, spoken by the system
+//! Read aloud on the Manual view: typed text, or a `.txt` or `.md` file, spoken by the system
 //! voice or by Kokoro. The audio plays while the rest is still being spoken, and it exports as
 //! a WAV. The engine, the voice of each engine, the speed, and the format the user picks are
 //! kept in settings.

@@ -1,5 +1,5 @@
 //! The read-aloud shortcut: the text selected in the focused app is read out loud with the
-//! voice of Files > Read aloud, and the same shortcut stops a reading that plays. Like Command
+//! voice of Manual > Read aloud, and the same shortcut stops a reading that plays. Like Command
 //! Mode, the selection is read on a worker thread and is never logged.
 
 use super::command::{SELECTION_WAIT, SelectionRead};
