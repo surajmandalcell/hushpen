@@ -26,7 +26,8 @@ fn sha(body: &[u8]) -> String {
 }
 
 fn details(speed: u8) -> Value {
-    json!({"description": "What it is.", "speed": speed, "accuracy": 3, "ram_bytes": 300_000_000,
+    json!({"description": "What it is.", "speed": speed, "accuracy": 3, "quantization": "INT8",
+        "ram_idle_bytes": 210_000_000, "ram_peak_bytes": 1_300_000_000,
         "recommended_for": "Tests", "source_page": "https://huggingface.co/test/repo"})
 }
 
@@ -413,7 +414,14 @@ fn the_details_sheet_shows_the_facts_and_its_actions_work(cx: &mut TestAppContex
     assert_eq!(label(cx, handle, "models.sheet.title"), "Voice");
     assert_eq!(label(cx, handle, "models.sheet.speed"), "Slow (2 of 5)");
     assert_eq!(label(cx, handle, "models.sheet.accuracy"), "Good (3 of 5)");
-    assert_eq!(label(cx, handle, "models.sheet.memory"), "About 300 MB");
+    assert_eq!(
+        label(cx, handle, "models.sheet.quantization"),
+        "INT8 (8-bit)"
+    );
+    assert_eq!(
+        label(cx, handle, "models.sheet.memory"),
+        "About 210 MB idle, up to 1.3 GB"
+    );
     assert_eq!(label(cx, handle, "models.sheet.size"), "0 KB in 2 files");
     assert_eq!(label(cx, handle, "models.sheet.languages"), "English only");
     assert_eq!(label(cx, handle, "models.sheet.license"), "Apache-2.0");

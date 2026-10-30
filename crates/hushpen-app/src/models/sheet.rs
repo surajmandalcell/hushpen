@@ -60,11 +60,11 @@ pub fn render(models: &Entity<Models>, window: &mut Window, cx: &mut App) -> Opt
         ),
         fact(
             palette,
-            "memory",
-            "Memory",
-            info.as_ref()
-                .map(|i| format!("About {}", format_size(i.ram_bytes))),
+            "quantization",
+            "Quantization",
+            info.as_ref().map(|i| quantization_text(&i.quantization)),
         ),
+        fact(palette, "memory", "Memory", info.as_ref().map(memory_text)),
         fact(palette, "size", "Size on disk", size_text(row)),
         fact(palette, "license", "License", row.entry.license.clone()),
         fact(palette, "status", "Status", status),
@@ -225,6 +225,33 @@ fn scale(value: u8, words: [&str; 5]) -> String {
     format!("{word} ({value} of 5)")
 }
 
+/// `Q4_K_M (4-bit)`: the format and the bits of most weights, which is the first number in it.
+fn quantization_text(name: &str) -> String {
+    let bits: String = name
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(char::is_ascii_digit)
+        .collect();
+    if bits.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{name} ({bits}-bit)")
+    }
+}
+
+/// `About 320 MB idle, up to 470 MB`, or `About 1.5 GB, idle or busy` when the two round alike.
+fn memory_text(info: &ModelInfo) -> String {
+    let (idle, peak) = (
+        format_size(info.ram_idle_bytes),
+        format_size(info.ram_peak_bytes),
+    );
+    if idle == peak {
+        format!("About {idle}, idle or busy")
+    } else {
+        format!("About {idle} idle, up to {peak}")
+    }
+}
+
 fn size_text(row: &Row) -> String {
     let size = format_size(row.entry.bytes());
     match row.entry.files.len() {
@@ -287,4 +314,43 @@ fn sheet_button(
         move |_: &mut Window, cx: &mut App| models.update(cx, act),
     )
     .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ModelInfo, memory_text, quantization_text};
+
+    fn memory(idle: u64, peak: u64) -> String {
+        memory_text(&ModelInfo {
+            description: String::new(),
+            speed: 3,
+            accuracy: 3,
+            quantization: "F16".into(),
+            ram_idle_bytes: idle,
+            ram_peak_bytes: peak,
+            recommended_for: String::new(),
+            source_page: String::new(),
+        })
+    }
+
+    #[test]
+    fn memory_names_the_idle_and_the_peak_use_or_one_figure_when_they_round_alike() {
+        assert_eq!(
+            memory(320_000_000, 470_000_000),
+            "About 320 MB idle, up to 470 MB"
+        );
+        assert_eq!(
+            memory(1_500_000_000, 1_540_000_000),
+            "About 1.5 GB, idle or busy"
+        );
+    }
+
+    #[test]
+    fn the_quantization_names_the_bits_of_its_first_number() {
+        assert_eq!(quantization_text("F16"), "F16 (16-bit)");
+        assert_eq!(quantization_text("Q5_1"), "Q5_1 (5-bit)");
+        assert_eq!(quantization_text("Q4_K_M"), "Q4_K_M (4-bit)");
+        assert_eq!(quantization_text("INT8"), "INT8 (8-bit)");
+        assert_eq!(quantization_text("BF"), "BF");
+    }
 }

@@ -61,7 +61,22 @@ fn every_embedded_model_has_its_kind_and_its_details() {
             assert!(!info.recommended_for.is_empty(), "{}", entry.id);
             assert!((1..=5).contains(&info.speed), "{}", entry.id);
             assert!((1..=5).contains(&info.accuracy), "{}", entry.id);
-            assert!(info.ram_bytes > 100_000_000, "{}", entry.id);
+            assert!(info.ram_idle_bytes > 100_000_000, "{}", entry.id);
+            assert!(info.ram_peak_bytes >= info.ram_idle_bytes, "{}", entry.id);
+            assert!(
+                ["F16", "Q5_0", "Q5_1", "Q4_K_M", "INT8"].contains(&info.quantization.as_str()),
+                "{} has an unknown quantization",
+                entry.id
+            );
+            // A quantized file names its format; a plain whisper.cpp file is F16 and names none.
+            let first = entry.files[0].url.to_ascii_lowercase();
+            let named = first.contains(&info.quantization.to_ascii_lowercase());
+            assert!(
+                named || (info.quantization == "F16" && !first.contains("-q")),
+                "{} is not {}",
+                entry.id,
+                info.quantization
+            );
             assert!(
                 info.source_page.starts_with("https://huggingface.co/"),
                 "{}",
@@ -229,7 +244,7 @@ fn old_entry(id: &str, sha: &str, file: &str) -> Value {
 fn new_entry(id: &str, file: &str) -> Value {
     let mut entry = old_entry(id, &"a".repeat(64), file);
     let details = json!({"kind": "speech", "description": "D", "speed": 3, "accuracy": 4,
-        "ram_bytes": 1000, "recommended_for": "R",
+        "quantization": "F16", "ram_idle_bytes": 1000, "ram_peak_bytes": 2000, "recommended_for": "R",
         "source_page": "https://huggingface.co/ggerganov/whisper.cpp"});
     for (key, value) in details.as_object().unwrap() {
         entry[key] = value.clone();
@@ -272,7 +287,9 @@ fn a_schema_1_catalog_parses_without_kinds_or_details() {
 fn schema_2_reads_the_details_and_requires_them() {
     let catalog = parse(json!({"schema": 2, "whisper": [new_entry("x", "f")]})).unwrap();
     let info = catalog.whisper[0].info.clone().unwrap();
-    assert_eq!((info.speed, info.accuracy, info.ram_bytes), (3, 4, 1000));
+    assert_eq!((info.speed, info.accuracy), (3, 4));
+    assert_eq!(info.quantization, "F16");
+    assert_eq!((info.ram_idle_bytes, info.ram_peak_bytes), (1000, 2000));
     assert_eq!(info.recommended_for, "R");
 
     let without = |key: &str| {
@@ -285,7 +302,9 @@ fn schema_2_reads_the_details_and_requires_them() {
         "description",
         "speed",
         "accuracy",
-        "ram_bytes",
+        "quantization",
+        "ram_idle_bytes",
+        "ram_peak_bytes",
         "recommended_for",
         "source_page",
     ] {
@@ -298,6 +317,10 @@ fn schema_2_reads_the_details_and_requires_them() {
     };
     assert!(with("speed", json!(0)).is_err());
     assert!(with("accuracy", json!(6)).is_err());
+    assert!(
+        with("ram_peak_bytes", json!(999)).is_err(),
+        "the peak is never under the idle memory"
+    );
     assert!(
         with("kind", json!("cleanup")).is_err(),
         "kind matches its list"
