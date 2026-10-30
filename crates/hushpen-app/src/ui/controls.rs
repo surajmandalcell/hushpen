@@ -1,7 +1,7 @@
 //! The controls of a row: the push button, the switch, the slider, the pop-up button, the text
 //! field, and the progress track.
 
-use super::{glyph, icon};
+use super::glyph;
 use crate::theme::{self, BUTTON, Palette, StyledType, radius, size, space};
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
@@ -13,7 +13,7 @@ use gpui_kit::gpui::accesskit::Toggled;
 use gpui_kit::{
     App, Bounds, ClickEvent, Div, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, Role,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative, svg,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -97,7 +97,115 @@ pub fn icon_button<F: Fn(&mut Window, &mut App) + 'static>(
     focus: &FocusHandle,
     press: F,
 ) -> impl IntoElement + use<F> {
-    let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx);
+    icon_button_enabled(palette, id, name, label, tooltip, focus, true, press)
+}
+
+/// An [`icon_button`] that can be off. An off one draws its icon in the tertiary label color and
+/// takes no click and no focus; its tooltip still names it.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the arguments of icon_button and its state"
+)]
+pub fn icon_button_enabled<F: Fn(&mut Window, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    name: IconName,
+    label: String,
+    tooltip: &'static str,
+    focus: &FocusHandle,
+    enabled: bool,
+    press: F,
+) -> impl IntoElement + use<F> {
+    let tone = if enabled {
+        palette.label_secondary
+    } else {
+        palette.label_tertiary
+    };
+    icon_frame(palette, id, label, tooltip, focus, enabled, press).child(
+        svg()
+            .path(name.path())
+            .size(px(size::NAV_ICON))
+            .flex_none()
+            .text_color(tone),
+    )
+}
+
+/// An icon button for one of two states, such as Play and Pause: it shows `icons[1]` while
+/// `on`. A change cross-fades the two icons, the new one growing into place.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the arguments of icon_button and its state"
+)]
+pub fn swap_icon_button<F: Fn(&mut Window, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    icons: [IconName; 2],
+    on: bool,
+    label: &'static str,
+    tooltip: &'static str,
+    focus: &FocusHandle,
+    press: F,
+) -> impl IntoElement + use<F> {
+    let place = SharedString::from(format!("{id}.icon"));
+    let swap = motion::moving(
+        place.clone(),
+        if on { 1.0 } else { 0.0 },
+        motion::FAST,
+        move |at| {
+            // A settled frame draws only the icon of the state, as `icon_button` draws it.
+            let layer = move |index: usize, shown: f32| {
+                (shown > 0.0).then(|| {
+                    let scale = SWAP_ICON_FROM + (1.0 - SWAP_ICON_FROM) * shown;
+                    let icon = div()
+                        .id(SharedString::from(format!("{place}.{index}")))
+                        .test_support()
+                        .flex_none()
+                        .size(px(size::NAV_ICON * scale))
+                        .child(
+                            svg()
+                                .path(icons[index].path())
+                                .size_full()
+                                .text_color(palette.label_secondary),
+                        );
+                    let icon = if shown < 1.0 {
+                        icon.opacity(shown)
+                    } else {
+                        icon
+                    };
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(icon)
+                })
+            };
+            div()
+                .relative()
+                .flex_none()
+                .size(px(size::NAV_ICON))
+                .children(layer(0, 1.0 - at))
+                .children(layer(1, at))
+        },
+    );
+    icon_frame(palette, id, label.to_owned(), tooltip, focus, true, press).child(swap)
+}
+
+/// The scale an icon of a [`swap_icon_button`] grows from as it comes in.
+const SWAP_ICON_FROM: f32 = 0.25;
+
+/// The 22 px square of an icon button, with its ring, hover fill, tooltip, and click.
+fn icon_frame<F: Fn(&mut Window, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    label: String,
+    tooltip: &'static str,
+    focus: &FocusHandle,
+    enabled: bool,
+    press: F,
+) -> impl IntoElement + ParentElement + use<F> {
+    hook::mark_disabled(&id, !enabled);
     let element = div()
         .id(id)
         .test_support()
@@ -110,14 +218,19 @@ pub fn icon_button<F: Fn(&mut Window, &mut App) + 'static>(
         .size(px(size::BUTTON_HEIGHT))
         .rounded(px(radius::BUTTON))
         .border_2()
-        .border_color(gpui_kit::transparent_black())
-        .track_focus(focus)
-        .focus_visible(move |style| style.border_color(palette.accent))
-        .cursor_pointer()
-        .hover(move |style| style.bg(palette.selection));
-    super::tooltip(element, tooltip)
-        .on_click(on_click)
-        .child(icon(palette, name))
+        .border_color(gpui_kit::transparent_black());
+    let element = super::tooltip(element, tooltip);
+    if enabled {
+        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx);
+        element
+            .track_focus(focus)
+            .focus_visible(move |style| style.border_color(palette.accent))
+            .cursor_pointer()
+            .hover(move |style| style.bg(palette.selection))
+            .on_click(on_click)
+    } else {
+        element
+    }
 }
 
 /// The ring of a switch or a slider and its gap sit this far outside the track. The control is
@@ -622,5 +735,101 @@ mod tests {
         assert!(frame(cx, handle, 50) > 0, "the slide asks for frames");
         frame(cx, handle, motion::SLIDE.as_millis() as u64);
         assert_eq!(frame(cx, handle, 0), 0, "at rest it asks for none");
+    }
+
+    struct Swap {
+        on: bool,
+        focus: FocusHandle,
+    }
+
+    impl Render for Swap {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let name = if self.on { "Pause" } else { "Play" };
+            div().child(swap_icon_button(
+                theme::palette(cx),
+                "probe.play".into(),
+                [IconName::Play, IconName::Pause],
+                self.on,
+                name,
+                name,
+                &self.focus,
+                |_, _| {},
+            ))
+        }
+    }
+
+    /// Opens a swap button that shows Play, and turns it to Pause.
+    fn swap_to_pause(cx: &mut TestAppContext) -> AnyWindowHandle {
+        cx.update(gpui_kit::init);
+        let window: WindowHandle<Swap> = cx.open_window(size(px(100.0), px(100.0)), |_, cx| Swap {
+            on: false,
+            focus: cx.focus_handle(),
+        });
+        let handle: AnyWindowHandle = window.into();
+        frame(cx, handle, 0);
+        assert_eq!(layers(cx, handle), [Some(ICON), None], "it rests on Play");
+        window
+            .update(cx, |swap, _, cx| {
+                swap.on = true;
+                cx.notify();
+            })
+            .unwrap();
+        frame(cx, handle, 0);
+        let label = cx
+            .update_window(handle, |_, window, _| {
+                window.find("probe.play").label().map(str::to_owned)
+            })
+            .unwrap();
+        assert_eq!(
+            label.as_deref(),
+            Some("Pause"),
+            "the new state reads at once"
+        );
+        handle
+    }
+
+    const ICON: f32 = crate::theme::size::NAV_ICON;
+
+    /// The width of the Play and the Pause icon of the swap button, when it draws them.
+    fn layers(cx: &mut TestAppContext, handle: AnyWindowHandle) -> [Option<f32>; 2] {
+        cx.update_window(handle, |_, window, _| {
+            ["probe.play.icon.0", "probe.play.icon.1"].map(|id| {
+                window
+                    .try_find(id)
+                    .map(|icon| f32::from(icon.bounds().size.width))
+            })
+        })
+        .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn a_swap_icon_button_cross_fades_to_the_icon_of_its_new_state(cx: &mut TestAppContext) {
+        cx.update(|cx| cx.set_global(motion::tests::Play));
+        let handle = swap_to_pause(cx);
+        frame(cx, handle, motion::FAST.as_millis() as u64 / 2);
+        let [play, pause] = layers(cx, handle);
+        let (play, pause) = (
+            play.expect("Play fades out"),
+            pause.expect("Pause comes in"),
+        );
+        assert!(
+            0.0 < pause && pause < ICON,
+            "Pause grows into place: {pause}"
+        );
+        assert!(0.0 < play && play < ICON, "Play shrinks away: {play}");
+        frame(cx, handle, motion::FAST.as_millis() as u64);
+        assert_eq!(layers(cx, handle), [None, Some(ICON)], "it rests on Pause");
+        assert_eq!(frame(cx, handle, 0), 0, "at rest it asks for no frames");
+    }
+
+    #[gpui_kit::test]
+    fn under_reduce_motion_a_swap_icon_button_changes_at_once(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(motion::tests::Play);
+            cx.set_reduce_motion(true);
+        });
+        let handle = swap_to_pause(cx);
+        assert_eq!(layers(cx, handle), [None, Some(ICON)]);
+        assert_eq!(frame(cx, handle, 0), 0, "no frame is asked for");
     }
 }

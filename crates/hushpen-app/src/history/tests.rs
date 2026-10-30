@@ -558,36 +558,225 @@ fn a_terminal_row_still_offers_copy_original_and_it_copies_the_rule_text(cx: &mu
     );
 }
 
+/// A row whose AI text was used, with a recording of `seconds`.
+fn seed_cleaned_with_wav(view: &Fixture, seconds: u32) {
+    let mut row = row_of("A", 1_000, "the AI words");
+    row.rule_text = Some("the rule words".into());
+    row.llm_text = Some("the AI words".into());
+    row.llm_outcome = Some("used".into());
+    row.duration_ms = i64::from(seconds) * 1000;
+    let relative = "audio/A.wav".to_owned();
+    let path = view.rig.storage.data.root().join(&relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, silence_wav(seconds)).unwrap();
+    row.audio_path = Some(relative);
+    history::save(&view.rig.storage.database, &row, &[]).unwrap();
+}
+
+fn bounds(cx: &mut TestAppContext, view: &Fixture, id: &str) -> Bounds<gpui_kit::Pixels> {
+    let id = gpui_kit::SharedString::from(id.to_owned());
+    cx.update_window(view.handle, move |_, window, _| window.find(id).bounds())
+        .unwrap()
+}
+
+fn label(cx: &mut TestAppContext, view: &Fixture, id: &str) -> Option<String> {
+    let id = gpui_kit::SharedString::from(id.to_owned());
+    cx.update_window(view.handle, move |_, window, _| {
+        window.find(id).label().map(str::to_owned)
+    })
+    .unwrap()
+}
+
 #[gpui_kit::test]
-fn re_paste_hides_the_main_window_so_the_focus_returns_to_the_app_that_had_it(
-    cx: &mut TestAppContext,
-) {
+fn copy_is_an_icon_at_the_right_end_of_the_top_row_and_re_paste_is_gone(cx: &mut TestAppContext) {
     let view = open(cx);
-    seed(&view, "A", 1_000, "again please");
+    seed_cleaned(&view, "A", "GtkTarget");
     reload(cx, &view);
-    let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, view.handle, true));
-
+    crate::controller::testkit::put_on_clipboard(cx, "OLD");
     click(cx, &view, "history.row.0");
-    click(cx, &view, "history.repaste");
 
-    assert_eq!(calls.hidden.get(), 1);
+    let header = bounds(cx, &view, "history.detail-header");
+    let back = bounds(cx, &view, "history.back");
+    let original = bounds(cx, &view, "history.copy-original");
+    let copy = bounds(cx, &view, "history.copy");
+    for (name, button) in [("back", back), ("original", original), ("copy", copy)] {
+        assert!(
+            button.top() >= header.top() && button.bottom() <= header.bottom(),
+            "{name} is in the top row"
+        );
+    }
+    assert!(back.right() < original.left(), "Back stays on the left");
+    assert!(original.right() < copy.left(), "Copy comes last");
     assert_eq!(
-        cx.update(|cx| crate::main_window::away(cx)),
-        Some(crate::main_window::Away::Hidden)
+        f32::from(header.right() - copy.right()),
+        crate::theme::size::ROW_PADDING,
+        "Copy ends at the row padding"
+    );
+    for icon in [original, copy] {
+        let side = crate::theme::size::BUTTON_HEIGHT;
+        assert_eq!(
+            (f32::from(icon.size.width), f32::from(icon.size.height)),
+            (side, side)
+        );
+    }
+    assert!(!present(cx, &view, "history.repaste"));
+
+    click(cx, &view, "history.copy");
+    assert_eq!(
+        crate::controller::testkit::clipboard(cx).as_deref(),
+        Some("the AI words")
     );
 }
 
 #[gpui_kit::test]
-fn re_paste_with_no_tray_minimizes_the_window_instead_of_hiding_it(cx: &mut TestAppContext) {
+fn copy_is_off_for_a_row_with_no_text(cx: &mut TestAppContext) {
     let view = open(cx);
-    seed(&view, "A", 1_000, "again please");
+    let mut row = row_of("A", 1_000, "");
+    row.raw_text = None;
+    row.rule_text = None;
+    row.final_text = None;
+    history::save(&view.rig.storage.database, &row, &[]).unwrap();
     reload(cx, &view);
-    let calls = cx.update(|cx| crate::main_window::testkit::install_fake(cx, view.handle, false));
+    crate::controller::testkit::put_on_clipboard(cx, "OLD");
 
     click(cx, &view, "history.row.0");
-    click(cx, &view, "history.repaste");
+    click(cx, &view, "history.copy");
 
-    assert_eq!((calls.hidden.get(), calls.minimized.get()), (0, 1));
+    assert_eq!(
+        crate::controller::testkit::clipboard(cx).as_deref(),
+        Some("OLD")
+    );
+}
+
+/// Opens the detail of a cleaned row with a recording, and checks that each `(id, name,
+/// tooltip)` is a square icon button with that name that shows that tooltip on hover. Each
+/// tooltip waits out its delay on the test clock, which must stay short of the 2 s device poll
+/// of the microphone, so one test checks at most three.
+fn assert_icon_buttons(cx: &mut TestAppContext, icons: &[(&str, &str, &str)]) {
+    const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
+    assert!(
+        icons.len() <= 3,
+        "the test clock would reach the device poll"
+    );
+    let view = open(cx);
+    seed_cleaned_with_wav(&view, 4);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+
+    for &(id, name, tip) in icons {
+        assert_eq!(label(cx, &view, id).as_deref(), Some(name), "{id}");
+        let side = bounds(cx, &view, id).size;
+        let expected = crate::theme::size::BUTTON_HEIGHT;
+        assert_eq!(
+            (f32::from(side.width), f32::from(side.height)),
+            (expected, expected),
+            "{id}"
+        );
+        let target = gpui_kit::SharedString::from(id.to_owned());
+        cx.update_window(view.handle, move |_, window, cx| window.hover(target, cx))
+            .unwrap();
+        frame(cx, &view);
+        cx.executor().advance_clock(TOOLTIP_DELAY);
+        frame(cx, &view);
+        assert_eq!(
+            label(cx, &view, "tooltip.text").as_deref(),
+            Some(tip),
+            "{id}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn the_copy_buttons_are_icons_with_a_tooltip_and_a_name(cx: &mut TestAppContext) {
+    assert_icon_buttons(
+        cx,
+        &[
+            (
+                "history.copy-original",
+                "Copy original text",
+                "Copy original",
+            ),
+            ("history.copy", "Copy text", "Copy"),
+        ],
+    );
+}
+
+#[gpui_kit::test]
+fn the_recording_buttons_are_icons_with_a_tooltip_and_a_name(cx: &mut TestAppContext) {
+    assert_icon_buttons(
+        cx,
+        &[
+            ("history.export", "Export", "Export"),
+            ("history.reprocess", "Reprocess", "Reprocess"),
+            ("history.delete", "Delete transcript", "Delete"),
+        ],
+    );
+}
+
+#[gpui_kit::test]
+fn play_and_undo_cleanup_are_icons_with_a_tooltip_and_a_name(cx: &mut TestAppContext) {
+    assert_icon_buttons(
+        cx,
+        &[
+            ("history.play", "Play", "Play"),
+            ("history.undo-cleanup", "Undo AI cleanup", "Undo cleanup"),
+        ],
+    );
+}
+
+#[gpui_kit::test]
+fn undo_cleanup_sits_on_the_row_of_the_ai_text(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_cleaned(&view, "A", "GtkTarget");
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+
+    let row = bounds(cx, &view, "history.detail.llm.row");
+    let undo = bounds(cx, &view, "history.undo-cleanup");
+    assert!(undo.top() >= row.top() && undo.bottom() <= row.bottom());
+    assert_eq!(
+        f32::from(row.right() - undo.right()),
+        crate::theme::size::ROW_PADDING
+    );
+}
+
+#[gpui_kit::test]
+fn the_focus_moves_through_the_detail_in_the_order_it_is_drawn(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed_cleaned_with_wav(&view, 4);
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+    let history = view.history.clone();
+    cx.update_window(view.handle, move |_, window, cx| {
+        let back = history.read(cx).focus.back.clone();
+        window.focus(&back, cx);
+    })
+    .unwrap();
+    frame(cx, &view);
+
+    let order = [
+        "history.back",
+        "history.copy-original",
+        "history.copy",
+        "history.export",
+        "history.reprocess",
+        "history.delete",
+        "history.play",
+        "history.seek",
+        "history.undo-cleanup",
+    ];
+    for (index, id) in order.into_iter().enumerate() {
+        let target = gpui_kit::SharedString::from(id.to_owned());
+        let focused = cx
+            .update_window(view.handle, move |_, window, _| {
+                window.find(target).focused() == Some(true)
+            })
+            .unwrap();
+        assert!(focused, "Tab {index} lands on {id}");
+        cx.update_window(view.handle, |_, window, cx| window.press("tab", cx))
+            .unwrap();
+        frame(cx, &view);
+    }
 }
 
 #[gpui_kit::test]

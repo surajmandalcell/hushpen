@@ -190,27 +190,16 @@ shot hist-011-detail
 $HC tree >"$RUN_OUT/hist-011-tree.json"
 check_failures "VAL-HIST-011 detail fields" "raw, rule, final, app, model, language, and duration equal the SQLite row" "$failures"
 
-echo "== VAL-HIST-012 Copy and Re-paste from the detail view"
+echo "== VAL-HIST-012 Copy from the detail view"
 failures=""
 final=$(newest final_text)
+set_clip OLD
 $HC click history.copy >/dev/null
 sleep 0.5
 [ "$(clip)" = "$final" ] || failures+="after Copy the clipboard reads '$(clip)'; "
-set_clip OLD
-gtk_clear
-focus "$GT"
-T0=$(now_ms)
-hook_action history-repaste "{\"id\":\"$first_id\"}" >/dev/null
-sleep 1
-[ "$(gtk_commit)" = "$final" ] || failures+="the entry did not get the text; "
-wait_until 3 test "$(clip)" = OLD || failures+="the clipboard reads '$(clip)' instead of OLD; "
-[ "$(count)" = "$after" ] || failures+="Re-paste changed the row count; "
-shot hist-012-repaste
+shot hist-012-copy
 $HC click history.back >/dev/null
-# Re-paste with Hushpen focused hides the window to the tray; a restart brings it back.
-/harness/slot/app.sh restart >/dev/null
-wait_until 20 $HC state
-check_failures "VAL-HIST-012 copy and re-paste" "Copy put '$final' on the clipboard; Re-paste typed it into the entry and the clipboard came back to OLD" "$failures"
+check_failures "VAL-HIST-012 copy" "Copy put '$final' on the clipboard" "$failures"
 
 echo "== VAL-HIST-003 cancelled runs: Esc in transcribing makes a row, Esc in listening and a tap make none"
 failures=""

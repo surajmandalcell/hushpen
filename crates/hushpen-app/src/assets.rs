@@ -54,7 +54,15 @@ icon_assets!(
         Search,
         AudioLines,
         ClipboardPaste,
-        RotateCcw
+        RotateCcw,
+        Copy,
+        ClipboardClock,
+        Undo2,
+        Share,
+        RefreshCw,
+        Trash,
+        Play,
+        Pause
     ]
 );
 

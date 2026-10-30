@@ -303,25 +303,6 @@ fn reprocess_of_a_row_without_audio_is_refused_and_a_silent_result_changes_nothi
 }
 
 #[gpui_kit::test]
-fn re_paste_puts_the_text_in_the_focused_app_and_adds_no_row(cx: &mut TestAppContext) {
-    let rig = rig(cx, &["base"], "base");
-    let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
-    attach_inserter(cx, &rig, &inserter);
-    say(&rig, outcome_text("first words", "en"));
-    hold_run(cx, &rig, 1_000);
-    send_at(cx, &rig, 6_000, AppEvent::Tick).unwrap();
-
-    rig.controller.update(cx, |controller, cx| {
-        controller.repaste("older words".into(), cx)
-    });
-    settle(cx, &rig);
-
-    assert_eq!(paste_texts(&inserter), ["first words", "older words"]);
-    assert_eq!(rows(&rig).len(), 1);
-    assert_eq!(machine_state(cx, &rig), State::Idle);
-}
-
-#[gpui_kit::test]
 fn the_row_keeps_the_timed_segments_of_the_transcript(cx: &mut TestAppContext) {
     let rig = rig(cx, &["base"], "base");
     say(

@@ -1,7 +1,7 @@
 //! Where the main window goes when it is not in front: hidden to the tray, or minimized when no
 //! tray can show it again.
 //!
-//! The close button, the window manager's close request, and History's Re-paste call
+//! The close button, the window manager's close request, and a hidden start call
 //! [`close_requested`] or [`step_aside`]. The tray menu, a second start of the app, and the
 //! flow bar's "Open history" call [`show`]. The app menu's Hide calls [`hide_app`].
 //!

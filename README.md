@@ -38,8 +38,8 @@ runs whisper.cpp in a child process.
 - Command Mode: hold a key, speak an instruction, and the model edits the
   selected text.
 - Personal dictionary of words and replacements.
-- History with search, re-paste, reprocess, delete with undo, and export to
-  TXT, SRT, VTT, and JSON.
+- History with search, copy, reprocess, delete with undo, and export to TXT,
+  SRT, VTT, and JSON.
 - Manual: drop audio files anywhere on the window to transcribe or translate
   them in a queue (WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF, up to 12 hours
   each), with the time left, Copy, Export, Show in History, and Retry.

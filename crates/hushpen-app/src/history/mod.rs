@@ -1,10 +1,10 @@
 //! The History view: a paged, searchable list of every dictation outcome, and the detail view
-//! of one row with Copy, Re-paste, Reprocess, and Delete.
+//! of one row with Copy, Export, Reprocess, Delete, and the player.
 //!
-//! The rows live in the history database. The controller writes them and redoes the engine and
-//! paste work; this view reads, searches, and deletes. A delete takes the row out of the
-//! database at once and keeps it, with its audio, for the undo window. When the window ends,
-//! or the app quits, or the app starts again, the audio file goes too.
+//! The rows live in the history database. The controller writes them and redoes the engine
+//! work; this view reads, searches, and deletes. A delete takes the row out of the database at
+//! once and keeps it, with its audio, for the undo window. When the window ends, or the app
+//! quits, or the app starts again, the audio file goes too.
 
 mod delete;
 mod detail;
@@ -49,7 +49,6 @@ pub struct Focus {
     pub play: FocusHandle,
     pub seek: FocusHandle,
     pub copy: FocusHandle,
-    pub repaste: FocusHandle,
     pub undo_cleanup: FocusHandle,
     pub copy_original: FocusHandle,
     pub reprocess: FocusHandle,
@@ -131,7 +130,6 @@ impl History {
             play: handle(cx),
             seek: handle(cx),
             copy: handle(cx),
-            repaste: handle(cx),
             undo_cleanup: handle(cx),
             copy_original: handle(cx),
             reprocess: handle(cx),
@@ -373,25 +371,6 @@ impl History {
                 cx,
             ),
             Err(error) => self.refuse(format!("The cleanup could not be undone: {error}"), cx),
-        }
-    }
-
-    /// Puts the text of the row into the app that has the focus, as soon as Hushpen no longer
-    /// has it.
-    pub fn repaste(&mut self, id: Option<&str>, cx: &mut Context<Self>) -> Result<(), String> {
-        let text = self.row(id).and_then(|row| Self::text_of(&row));
-        match text {
-            Ok(text) => {
-                self.message = None;
-                // The click that got here runs inside the window's own update, so the window
-                // steps aside once that ends. The controller then waits for the focus to leave.
-                cx.defer(crate::main_window::step_aside);
-                self.controller
-                    .update(cx, |controller, cx| controller.repaste(text, cx));
-                cx.notify();
-                Ok(())
-            }
-            Err(message) => self.refuse(message, cx),
         }
     }
 

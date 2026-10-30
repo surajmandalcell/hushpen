@@ -1,8 +1,8 @@
 //! The controller's part of the history: one row for each dictation outcome, the audio that
-//! goes with it, and the two actions that need the engine or the paste path (reprocess and
-//! re-paste). The rows themselves are read and changed by the History view.
+//! goes with it, and the reprocess that needs the engine. The rows themselves are read and
+//! changed by the History view.
 
-use super::{Controller, InsertSupport, failure_for};
+use super::{Controller, failure_for};
 use crate::hook;
 use futures::channel::oneshot;
 use gpui_kit::Context;
@@ -16,11 +16,6 @@ use hushpen_store::retention::{self, Retention};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
-
-/// How long a re-paste waits for the focus to leave Hushpen before it pastes anyway.
-const FOCUS_WAIT: Duration = Duration::from_millis(500);
-const FOCUS_STEP: Duration = Duration::from_millis(50);
 
 /// What the steps before the save learned, kept until the row is written.
 #[derive(Default)]
@@ -335,35 +330,6 @@ impl Controller {
         {
             log::warn!("the audio of a reprocessed row was not removed: {error}");
         }
-    }
-
-    /// True while the focused window is Hushpen's own, so a paste would only copy.
-    pub fn target_is_own(&self) -> bool {
-        match &self.insert {
-            InsertSupport::Ready(inserter) => inserter.target().own,
-            _ => false,
-        }
-    }
-
-    /// Puts `text` into the app that has the focus once Hushpen no longer has it: waits up to
-    /// 500 ms for the focus to leave, then pastes. It does not touch the pipeline or add a row.
-    pub fn repaste(&mut self, text: String, cx: &mut Context<Self>) {
-        self.notice = None;
-        hook::record_event("insert", "repaste");
-        cx.spawn(async move |this, cx| {
-            let mut waited = Duration::ZERO;
-            while waited < FOCUS_WAIT
-                && this.update(cx, |me, _| me.target_is_own()).unwrap_or(false)
-            {
-                cx.background_executor().timer(FOCUS_STEP).await;
-                waited += FOCUS_STEP;
-            }
-            let _ = this.update(cx, |me, cx| {
-                me.paste_text(text, None, cx);
-                cx.notify();
-            });
-        })
-        .detach();
     }
 }
 

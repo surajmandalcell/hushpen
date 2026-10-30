@@ -1,6 +1,6 @@
 #!/bin/bash
-# The tray icon and its menu: VAL-TRAY-001 to 008, VAL-CROSS-009, and the History Re-paste hide
-# (architecture 5.5). The StatusNotifier item is read and clicked over D-Bus like a panel does it
+# The tray icon and its menu: VAL-TRAY-001 to 008 and VAL-CROSS-009. The StatusNotifier item is
+# read and clicked over D-Bus like a panel does it
 # (tray-menu.py: the watcher stub's item list, the dbusmenu layout, and the `clicked` event). The
 # main window is the 940x600 window of class hushpen; its map state comes from xwininfo and its
 # minimized state from xprop WM_STATE. The words come from the virtual microphone. Needs
@@ -290,37 +290,6 @@ sleep 0.4
 shot 004-settings
 [ "$(win_size "$(main_wid)")" = 940x600 ] || failures+="the window is $(win_size "$(main_wid)") after Settings; "
 check_failures "VAL-TRAY-004 close hides" "close click unmapped window $wid; UI $ui0 and engine $engine_pid kept running; item still registered; hold dictation typed '$hidden_got' while hidden; Show Hushpen mapped 940x600; Settings opened the settings view" "$failures"
-
-echo "== History Re-paste (architecture 5.5) hides the window and pastes into the app behind it"
-failures=""
-tray_click "Show Hushpen"
-wait_until 5 is_mapped
-$HC action open-view '{"view":"history"}' >/dev/null
-wait_until 10 is view = history || failures+="no History view; "
-sleep 0.5
-hist_text=$(q "select final_text from transcript order by created_at desc, id desc limit 1")
-$HC click history.row.0 >/dev/null
-has_repaste() { [ -n "$($HC tree | jq -r '.[] | select(.id == "history.repaste") | .id')" ]; }
-wait_until 5 has_repaste || failures+="no Re-paste control; "
-gtk_clear
-focus "$GT"
-focus "$(main_wid)"
-sleep 0.4
-[ "$(fid)" = "$(main_wid)" ] || failures+="Hushpen does not hold the focus before Re-paste; "
-read -r ox oy < <(settled_origin "$(main_wid)")
-read -r rx ry < <($HC tree | jq -r '.[] | select(.id == "history.repaste") | .bounds | "\(.x + .width / 2 | floor) \(.y + .height / 2 | floor)"')
-xdotool mousemove $((ox + rx)) $((oy + ry))
-sleep 0.4
-xdotool click 1
-wait_until 5 is_unmapped || failures+="the window did not hide after Re-paste; "
-sleep 2
-repaste_got=$(gtk_commit)
-[ "$repaste_got" = "$hist_text" ] || failures+="the entry holds '$repaste_got', not '$hist_text'; "
-is_unmapped || failures+="the window is $(map_state "$(main_wid)") after the paste; "
-shot repaste-after
-tray_click "Show Hushpen"
-wait_until 5 is_mapped || failures+="Show Hushpen did not bring the window back after Re-paste; "
-check_failures "History Re-paste" "Re-paste with Hushpen focused hid the window; '$repaste_got' landed in the GTK entry; Show Hushpen reopened it" "$failures"
 
 echo "== VAL-TRAY-005 a second start while hidden shows the window"
 failures=""
