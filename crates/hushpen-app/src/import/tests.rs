@@ -802,7 +802,7 @@ mod view {
         });
         shell.update(cx, |shell, cx| {
             shell.attach_files(files, cx);
-            shell.select(View::Files, cx);
+            shell.select(View::Manual, cx);
         });
         frame(cx, handle);
         handle

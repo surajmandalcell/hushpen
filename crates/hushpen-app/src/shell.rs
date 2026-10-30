@@ -151,7 +151,7 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shows the Files view and repaints when it changes. Show in History opens History on its
+    /// Shows the Manual view and repaints when it changes. Show in History opens History on its
     /// row; Download in Models opens Models.
     pub fn attach_files(&mut self, files: Entity<Files>, cx: &mut Context<Self>) {
         cx.observe(&files, |_, _, cx| cx.notify()).detach();
@@ -187,12 +187,12 @@ impl Shell {
         }
     }
 
-    /// Files dropped anywhere on the window open the Files view and land there.
+    /// Files dropped anywhere on the window open the Manual view and land there.
     fn dropped(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
         let Some(files) = self.files.clone() else {
             return;
         };
-        self.select(View::Files, cx);
+        self.select(View::Manual, cx);
         let paths = paths.paths().to_vec();
         // The drop runs inside the window's own update, so Read aloud could not reach the
         // window to fill its text area until that ends.
@@ -526,7 +526,7 @@ impl Shell {
             (_, _, Some(dictionary), _, View::Dictionary) => {
                 dictionary::panel::render(dictionary, cx).into_any_element()
             }
-            (_, _, _, _, View::Files) => match &self.files {
+            (_, _, _, _, View::Manual) => match &self.files {
                 Some(files) => files::panel::render(files, cx).into_any_element(),
                 None => placeholder(view, palette).into_any_element(),
             },
@@ -858,8 +858,8 @@ mod tests {
         for (view, id) in View::ALL.into_iter().zip([
             "sidebar.home",
             "sidebar.history",
-            "sidebar.dictionary",
             "sidebar.files",
+            "sidebar.dictionary",
             "sidebar.models",
             "sidebar.settings",
             "sidebar.about",
@@ -895,11 +895,11 @@ mod tests {
         assert_eq!(active(cx), View::History);
         press(cx, handle, "tab");
         assert!(
-            focused(cx, handle, "sidebar.dictionary"),
+            focused(cx, handle, "sidebar.files"),
             "Tab also moves between items"
         );
         press(cx, handle, "space");
-        assert_eq!(active(cx), View::Dictionary);
+        assert_eq!(active(cx), View::Manual);
         press(cx, handle, "end");
         assert!(focused(cx, handle, "sidebar.about"));
         press(cx, handle, "down");

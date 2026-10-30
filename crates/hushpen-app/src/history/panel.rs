@@ -106,7 +106,7 @@ pub fn meta(row: &Row) -> String {
 
 pub const AUDIO_REMOVED: &str = "Audio removed";
 
-/// The source word of a row transcribed in the Files view, in place of the app name.
+/// The source word of a row transcribed in the Manual view, in place of the app name.
 pub const FILE_SOURCE: &str = "File";
 
 pub(super) fn is_import(row: &Row) -> bool {

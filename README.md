@@ -40,7 +40,7 @@ runs whisper.cpp in a child process.
 - Personal dictionary of words and replacements.
 - History with search, re-paste, reprocess, delete with undo, and export to
   TXT, SRT, VTT, and JSON.
-- Files: drop audio files anywhere on the window to transcribe or translate
+- Manual: drop audio files anywhere on the window to transcribe or translate
   them in a queue (WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF, up to 12 hours
   each), with the time left, Copy, Export, Show in History, and Retry.
 - Read aloud: typed text or a `.txt` or `.md` file, spoken by the system

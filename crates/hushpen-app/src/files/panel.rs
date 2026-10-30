@@ -1,4 +1,4 @@
-//! The Files view: the mode switch at the top, then Transcribe or Read aloud under it.
+//! The Manual view: the mode switch at the top, then Transcribe or Read aloud under it.
 
 use super::{Files, Mode};
 use crate::hook;

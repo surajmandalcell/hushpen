@@ -1,6 +1,6 @@
-//! The Files view: one place for audio files and for text. A segmented control at the top picks
-//! Transcribe (the import queue) or Read aloud, and the choice is kept in settings. Files
-//! dropped anywhere on the window land here.
+//! The Manual view (code name Files): one place for audio files and for text. A segmented
+//! control at the top picks Transcribe (the import queue) or Read aloud, and the choice is kept
+//! in settings. Files dropped anywhere on the window land here.
 
 pub mod panel;
 

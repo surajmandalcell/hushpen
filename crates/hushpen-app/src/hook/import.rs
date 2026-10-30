@@ -1,4 +1,4 @@
-//! Test hook for the Files view in Transcribe mode: the `files` and `import` state sections and
+//! Test hook for the Manual view in Transcribe mode: the `files` and `import` state sections and
 //! the actions that drop files, switch the mode, and drive the queue like the view's controls do.
 //! Compiled only with the `test-automation` feature.
 
@@ -43,7 +43,7 @@ pub fn attach(cx: &mut App, files: Entity<Files>, import: Entity<Import>) {
     let _ = register_action(
         cx,
         "files-mode",
-        "Pick a mode in the Files view. Args: {\"mode\": \"transcribe\" | \"readAloud\"}.",
+        "Pick a mode in the Manual view. Args: {\"mode\": \"transcribe\" | \"readAloud\"}.",
         {
             let files = files.clone();
             move |cx, args| {

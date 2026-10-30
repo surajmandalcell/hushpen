@@ -128,7 +128,7 @@ pub enum SettingsShot {
     NoMatch,
 }
 
-/// What a Files baseline shows.
+/// What a Manual baseline shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilesShot {
     /// Transcribe with no files: the drop zone and the options.
