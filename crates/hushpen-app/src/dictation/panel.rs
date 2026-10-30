@@ -276,7 +276,9 @@ fn transcript_row(palette: Palette, view: &Snapshot) -> impl IntoElement + use<>
         } else {
             palette.label
         })
-        .child(text)
+        // The text is a flex item of the centering row: without a width cap it keeps one line of
+        // its full length and the group clips it on both sides.
+        .child(div().max_w_full().child(text))
 }
 
 fn language_row(

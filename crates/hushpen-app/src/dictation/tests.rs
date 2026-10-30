@@ -330,6 +330,37 @@ fn a_failed_dictation_says_nothing_was_transcribed(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_long_transcript_wraps_into_centered_lines_inside_the_group(cx: &mut TestAppContext) {
+    use crate::theme::size;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{AppContext as _, px};
+    let rig = rig(cx, &["base"], "base");
+    let handle = home_window(cx, &rig);
+    let words: Vec<String> = (0..160).map(|n| format!("word{n}")).collect();
+    dictate(cx, &rig, outcome_text(&words.join(" "), "en"));
+    let (group, block) = cx
+        .update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            (
+                window.find("home.dictation").bounds(),
+                window.find("home.transcript").bounds(),
+            )
+        })
+        .unwrap();
+    assert!(
+        block.size.height > px(size::TRANSCRIPT_MIN_HEIGHT * 2.0),
+        "160 words are one clipped line: the block is {:?} high",
+        block.size.height
+    );
+    assert!(
+        block.bottom() <= group.bottom(),
+        "the transcript block ends at {:?}, below its group at {:?}",
+        block.bottom(),
+        group.bottom()
+    );
+}
+
+#[gpui_kit::test]
 fn a_failed_command_shows_only_the_error_line(cx: &mut TestAppContext) {
     use crate::ai_cleanup::Attempt;
     use crate::controller::ai_tests::ai_answers;
