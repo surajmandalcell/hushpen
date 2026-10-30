@@ -276,7 +276,10 @@ fn picking_custom_opens_the_sheet_and_esc_gives_focus_back(cx: &mut TestAppConte
         label(cx, &rig, "enhance.noiseReduction.row.detail"),
         "Can make the text worse. Use it only in a noisy room."
     );
-    assert!(!present(cx, &rig, "enhance.play"), "no sample yet");
+    assert!(
+        present(cx, &rig, "enhance.play"),
+        "play is off but keeps its place"
+    );
     press(cx, &rig, "escape");
     assert!(!present(cx, &rig, "enhance.sheet"));
     assert!(focused(cx, &rig, "settings.audio.enhance"));
