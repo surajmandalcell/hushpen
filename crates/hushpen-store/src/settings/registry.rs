@@ -174,6 +174,16 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("dictation.maxMinutes", Kind::Int(2, 60), |_| json!(6)),
     spec!("audio.inputDeviceId", Kind::Text(256), |_| json!("default")),
     spec!("audio.inputGain", Kind::Float(1.0, 2.0), |_| json!(1.5)),
+    spec!(
+        "audio.enhance",
+        Kind::Choice(&["off", "auto", "custom"]),
+        |_| json!("auto")
+    ),
+    // The Custom values start at the Auto preset. A low cut of 0 is off.
+    spec!("audio.enhance.lowCutHz", Kind::Int(0, 200), |_| json!(80)),
+    spec!("audio.enhance.bassDb", Kind::Int(-12, 6), |_| json!(-6)),
+    spec!("audio.enhance.trebleDb", Kind::Int(-6, 12), |_| json!(0)),
+    spec!("audio.enhance.noiseReduction", Kind::Bool, |_| json!(false)),
     spec!("audio.cueSounds", Kind::Bool, |_| json!(true)),
     spec!("audio.cueVolume", Kind::Float(0.0, 1.0), |_| json!(0.25)),
     spec!("cleanup.rules", Kind::Bool, |_| json!(true)),
@@ -340,6 +350,9 @@ mod tests {
         assert_eq!(range("dictation.maxMinutes"), Some(2.0..=60.0));
         assert_eq!(range("audio.cueVolume"), Some(0.0..=1.0));
         assert_eq!(range("audio.inputGain"), Some(1.0..=2.0));
+        assert_eq!(range("audio.enhance.lowCutHz"), Some(0.0..=200.0));
+        assert_eq!(range("audio.enhance.bassDb"), Some(-12.0..=6.0));
+        assert_eq!(range("audio.enhance.trebleDb"), Some(-6.0..=12.0));
         assert_eq!(range("engine.threads"), Some(1.0..=64.0));
         assert_eq!(range("audio.cueSounds"), None);
     }
@@ -367,6 +380,24 @@ mod tests {
         assert_eq!(spec.sanitize(&json!("files")), Some(json!("files")));
         assert_eq!(spec.sanitize(&json!("manual")), None);
         assert_eq!(spec.sanitize(&json!("onboarding")), None);
+    }
+
+    #[test]
+    fn audio_enhance_defaults_to_auto_and_custom_starts_at_the_auto_values() {
+        let default = |key| find(key).unwrap().default_value(Os::MacOs);
+        assert_eq!(default("audio.enhance"), json!("auto"));
+        assert_eq!(default("audio.enhance.lowCutHz"), json!(80));
+        assert_eq!(default("audio.enhance.bassDb"), json!(-6));
+        assert_eq!(default("audio.enhance.trebleDb"), json!(0));
+        assert_eq!(default("audio.enhance.noiseReduction"), json!(false));
+        let sanitize = |key, value| find(key).unwrap().sanitize(&value);
+        assert_eq!(sanitize("audio.enhance", json!("loud")), None);
+        assert_eq!(sanitize("audio.enhance.lowCutHz", json!(201)), None);
+        assert_eq!(sanitize("audio.enhance.bassDb", json!(-13)), None);
+        assert_eq!(
+            sanitize("audio.enhance.trebleDb", json!(12)),
+            Some(json!(12))
+        );
     }
 
     #[test]
