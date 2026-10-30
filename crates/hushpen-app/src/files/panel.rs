@@ -26,7 +26,7 @@ pub fn render(files: &Entity<Files>, cx: &mut App) -> impl IntoElement + use<> {
         .collect();
     let switch = {
         let files = files.clone();
-        move |key: &'static str, cx: &mut App| {
+        move |key: &'static str, _: &mut gpui_kit::Window, cx: &mut App| {
             if let Some(mode) = Mode::from_key(key) {
                 // A refusal is a settings file that cannot be written; the view stays.
                 let _ = files.update(cx, |files, cx| files.set_mode(mode, cx));
@@ -48,6 +48,7 @@ pub fn render(files: &Entity<Files>, cx: &mut App) -> impl IntoElement + use<> {
             hook::id("files", "mode"),
             "Mode",
             &choices,
+            theme::size::SEGMENT_WIDTH,
             mode.key(),
             &focus,
             switch,
