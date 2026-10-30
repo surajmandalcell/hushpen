@@ -145,13 +145,15 @@ impl Enhancer {
         boost(&mut out[start..], gain);
     }
 
-    /// Appends what the noise reduction still holds, at the end of a stream.
+    /// Appends what the noise reduction still holds, at the end of a stream. A later call to
+    /// [`Enhancer::process`] starts a new stream.
     pub fn finish(&mut self, gain: f32, out: &mut Vec<f32>) {
         if let Some(mut denoiser) = self.denoiser.take() {
             let start = out.len();
             denoiser.finish(out);
             boost(&mut out[start..], gain);
         }
+        self.config.noise_reduction = false;
     }
 
     fn configure(&mut self, config: Enhance, gain: f32, out: &mut Vec<f32>) {
