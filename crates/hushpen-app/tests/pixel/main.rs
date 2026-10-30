@@ -53,7 +53,8 @@ fn updating() -> bool {
     std::env::var_os("HUSHPEN_PIXEL_UPDATE").is_some_and(|value| value == "1")
 }
 
-/// A headless app with the palette forced, so a capture does not depend on the desktop.
+/// A headless app with the palette forced, so a capture does not depend on the desktop. Reduce
+/// Motion is on, so every animation shows its final state and a capture is a settled frame.
 fn headless_in(appearance: Appearance) -> HeadlessAppContext {
     // The fallback family is only for glyphs Inter lacks; the app embeds Inter.
     let text = Arc::new(CosmicTextSystem::new("DejaVu Sans"));
@@ -65,6 +66,7 @@ fn headless_in(appearance: Appearance) -> HeadlessAppContext {
         register_fonts(cx);
         theme::install(cx);
         theme::force(Some(appearance), cx);
+        cx.set_reduce_motion(true);
     });
     cx
 }

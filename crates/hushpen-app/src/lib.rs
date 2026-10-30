@@ -29,6 +29,7 @@ pub mod llm_host;
 pub mod main_window;
 pub mod mic;
 pub mod models;
+pub mod motion;
 pub mod native;
 #[cfg(test)]
 mod native_window_calls;
