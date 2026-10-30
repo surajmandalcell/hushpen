@@ -72,8 +72,19 @@ pub struct ModelInfo {
     pub speed: u8,
     /// From 1 to 5, the most accurate, against the other models of its kind.
     pub accuracy: u8,
-    /// About the most memory the model takes while it runs.
-    pub ram_bytes: u64,
+    /// How most weights are stored, by the name whisper.cpp, llama.cpp, or ONNX gives it: `F16`,
+    /// `Q5_1`, `Q4_K_M`, `INT8`.
+    pub quantization: String,
+    /// Memory of the worker process that holds the model, right after the load.
+    ///
+    /// Both figures are measured, not estimated: the release workers on an M4 Pro Mac with 24 GB,
+    /// driven through their pipes the way the app drives them (GPU on for speech and cleanup, 8
+    /// threads), as the larger of the resident size and the physical footprint. Linux and other
+    /// Macs differ somewhat.
+    pub ram_idle_bytes: u64,
+    /// The most memory of that process during a long job: 5 minutes of audio, a cleanup of 500
+    /// words, or a paragraph read aloud.
+    pub ram_peak_bytes: u64,
     /// Who or what the model suits, as one short line.
     pub recommended_for: String,
     /// The model's page on Hugging Face.
@@ -320,19 +331,29 @@ fn parse_info(item: &Value, id: &str) -> Result<ModelInfo, String> {
             .map(|value| value as u8)
             .ok_or_else(|| format!("model `{id}` needs a `{key}` from 1 to 5"))
     };
+    let bytes = |key: &str| {
+        item.get(key)
+            .and_then(Value::as_u64)
+            .filter(|bytes| *bytes > 0)
+            .ok_or_else(|| format!("model `{id}` needs `{key}`"))
+    };
     let source_page = text(item, "source_page")?;
     if !source_page.starts_with("https://huggingface.co/") {
         return Err(format!("model `{id}` needs a Hugging Face `source_page`"));
+    }
+    let (ram_idle_bytes, ram_peak_bytes) = (bytes("ram_idle_bytes")?, bytes("ram_peak_bytes")?);
+    if ram_peak_bytes < ram_idle_bytes {
+        return Err(format!(
+            "model `{id}` has a peak memory under its idle memory"
+        ));
     }
     Ok(ModelInfo {
         description: text(item, "description")?,
         speed: scale("speed")?,
         accuracy: scale("accuracy")?,
-        ram_bytes: item
-            .get("ram_bytes")
-            .and_then(Value::as_u64)
-            .filter(|bytes| *bytes > 0)
-            .ok_or_else(|| format!("model `{id}` needs `ram_bytes`"))?,
+        quantization: text(item, "quantization")?,
+        ram_idle_bytes,
+        ram_peak_bytes,
         recommended_for: text(item, "recommended_for")?,
         source_page,
     })
