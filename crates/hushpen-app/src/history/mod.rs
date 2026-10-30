@@ -1,5 +1,6 @@
-//! The History view: a paged, searchable list of every dictation outcome, and the detail view
-//! of one row with Copy, Export, Reprocess, Delete, and the player.
+//! The History view: a paged, searchable list of every dictation outcome, import, and read
+//! aloud, and the detail view of one row with Copy, Export, Reprocess (Read aloud again for a
+//! read), Delete, and the player.
 //!
 //! The rows live in the history database. The controller writes them and redoes the engine
 //! work; this view reads, searches, and deletes. A delete takes the row out of the database at
@@ -21,8 +22,8 @@ use crate::storage::Storage;
 use delete::{Undo, sweep_trash};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FocusHandle, Pixels,
-    ScrollHandle, Window,
+    App, AppContext as _, Bounds, ClipboardItem, Context, Entity, EventEmitter, FocusHandle,
+    Pixels, ScrollHandle, Window,
 };
 use hushpen_store::history::{self, Cursor, Row};
 use serde_json::{Value, json};
@@ -52,6 +53,7 @@ pub struct Focus {
     pub undo_cleanup: FocusHandle,
     pub copy_original: FocusHandle,
     pub reprocess: FocusHandle,
+    pub read_again: FocusHandle,
     pub delete: FocusHandle,
     pub select: FocusHandle,
     pub select_all: FocusHandle,
@@ -102,6 +104,15 @@ pub struct History {
     pub(crate) row_focus: Vec<FocusHandle>,
 }
 
+/// What History asks of the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HistoryRequest {
+    /// Read this text aloud again in the Manual view.
+    ReadAloud(String),
+}
+
+impl EventEmitter<HistoryRequest> for History {}
+
 impl History {
     pub fn new(
         storage: Rc<Storage>,
@@ -133,6 +144,7 @@ impl History {
             undo_cleanup: handle(cx),
             copy_original: handle(cx),
             reprocess: handle(cx),
+            read_again: handle(cx),
             delete: handle(cx),
             select: handle(cx),
             select_all: handle(cx),
@@ -382,6 +394,28 @@ impl History {
         match started {
             Ok(()) => {
                 self.message = None;
+                cx.notify();
+                Ok(())
+            }
+            Err(message) => self.refuse(message, cx),
+        }
+    }
+
+    /// Reads the text of a read aloud row again in the Manual view, with the voice that is
+    /// chosen there now.
+    pub fn read_again(&mut self, id: Option<&str>, cx: &mut Context<Self>) -> Result<(), String> {
+        let text = self.row(id).and_then(|row| {
+            if panel::is_read(&row) {
+                Self::text_of(&row)
+            } else {
+                Err("Only a read aloud can be read again.".to_owned())
+            }
+        });
+        match text {
+            Ok(text) => {
+                self.message = None;
+                hook::record_event("history", "read-again");
+                cx.emit(HistoryRequest::ReadAloud(text));
                 cx.notify();
                 Ok(())
             }

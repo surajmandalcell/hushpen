@@ -141,6 +141,13 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
     );
     action(
         cx,
+        "history-read-again",
+        "Read the text of a read aloud row again in the Manual view with the voice chosen \
+         there, like Read aloud again. Args as history-copy.",
+        |history, id, cx| history.read_again(id.as_deref(), cx),
+    );
+    action(
+        cx,
         "history-delete",
         "Delete a transcript and start the undo window, like Delete. Args as history-copy.",
         |history, id, cx| history.delete(id.as_deref(), cx),

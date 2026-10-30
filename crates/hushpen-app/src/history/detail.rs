@@ -3,7 +3,8 @@
 
 use super::History;
 use super::panel::{
-    audio_note, banner, format_buttons, is_import, meta, notice_row, outcome, seconds, when,
+    audio_note, banner, engine_name, format_buttons, is_import, is_read, meta, notice_row, outcome,
+    seconds, when,
 };
 use super::playback::{self, KEY_STEP_MS, PlaybackInfo};
 use crate::controller::ReprocessState;
@@ -54,8 +55,9 @@ struct Icon {
 }
 
 /// The detail of one row. The header holds Back, the facts of the row, and the copy buttons; the
-/// Recording row Export, Reprocess, and Delete; the player Play and the seek bar. Each group of
-/// buttons runs from lightest to heaviest, and the focus moves in the order they are drawn.
+/// Recording row Export, Reprocess (Read aloud again for a read), and Delete; the player Play
+/// and the seek bar. Each group of buttons runs from lightest to heaviest, and the focus moves
+/// in the order they are drawn.
 pub(super) fn detail_view(
     history: &Entity<History>,
     row: Row,
@@ -71,6 +73,7 @@ pub(super) fn detail_view(
                 view.focus.undo_cleanup.clone(),
                 view.focus.copy_original.clone(),
                 view.focus.reprocess.clone(),
+                view.focus.read_again.clone(),
                 view.focus.delete.clone(),
             ],
             view.audio_available(&row, cx),
@@ -97,6 +100,7 @@ pub(super) fn detail_view(
         undo_cleanup_focus,
         copy_original_focus,
         reprocess_focus,
+        read_again_focus,
         delete_focus,
     ] = focus;
     let has_text = [&row.final_text, &row.rule_text, &row.raw_text]
@@ -169,6 +173,36 @@ pub(super) fn detail_view(
             let _ = history.copy(Some(id), cx);
         })),
     ));
+    let read = is_read(&row);
+    let redo = if read {
+        button(
+            Icon {
+                id: "read-again",
+                name: IconName::Volume2,
+                label: "Read aloud again",
+                tooltip: "Read aloud again",
+            },
+            &read_again_focus,
+            has_text,
+            Box::new(act(|history, id, cx| {
+                let _ = history.read_again(Some(id), cx);
+            })),
+        )
+    } else {
+        button(
+            Icon {
+                id: "reprocess",
+                name: IconName::RefreshCw,
+                label: "Reprocess",
+                tooltip: "Reprocess",
+            },
+            &reprocess_focus,
+            audio && !running,
+            Box::new(act(|history, id, cx| {
+                let _ = history.reprocess(Some(id), cx);
+            })),
+        )
+    };
     let file_buttons = vec![
         button(
             Icon {
@@ -186,19 +220,7 @@ pub(super) fn detail_view(
                 }
             }),
         ),
-        button(
-            Icon {
-                id: "reprocess",
-                name: IconName::RefreshCw,
-                label: "Reprocess",
-                tooltip: "Reprocess",
-            },
-            &reprocess_focus,
-            audio && !running,
-            Box::new(act(|history, id, cx| {
-                let _ = history.reprocess(Some(id), cx);
-            })),
-        ),
+        redo,
         button(
             Icon {
                 id: "delete",
@@ -297,25 +319,37 @@ pub(super) fn detail_view(
         ("failed", Some(code)) => format!("Failed: {}", History::failure_message(code)),
         _ => outcome(&row),
     };
-    let fields: [(&'static str, &'static str, Option<String>); 10] = [
-        ("raw", "Raw text", row.raw_text.clone()),
-        ("rule", "After the rules", row.rule_text.clone()),
-        ("llm", "After AI cleanup", row.llm_text.clone()),
-        ("final", "Final text", row.final_text.clone()),
-        ("app", "App", row.target_app.clone()),
-        ("duration", "Duration", Some(seconds(row.duration_ms))),
-        ("model", "Model", row.model_id.as_deref().map(model_name)),
-        ("language", "Language", language),
-        ("status", "Result", Some(status)),
-        ("when", "When", Some(when(row.created_at))),
-    ];
+    let fields: Vec<(&'static str, &'static str, Option<String>)> = if read {
+        vec![
+            ("final", "Text", row.final_text.clone()),
+            ("engine", "Engine", row.model_id.as_deref().map(engine_name)),
+            ("voice", "Voice", row.source_name.clone()),
+            ("language", "Language", language),
+            ("duration", "Duration", Some(seconds(row.duration_ms))),
+            ("when", "When", Some(when(row.created_at))),
+        ]
+    } else {
+        vec![
+            ("raw", "Raw text", row.raw_text.clone()),
+            ("rule", "After the rules", row.rule_text.clone()),
+            ("llm", "After AI cleanup", row.llm_text.clone()),
+            ("final", "Final text", row.final_text.clone()),
+            ("app", "App", row.target_app.clone()),
+            ("duration", "Duration", Some(seconds(row.duration_ms))),
+            ("model", "Model", row.model_id.as_deref().map(model_name)),
+            ("language", "Language", language),
+            ("status", "Result", Some(status)),
+            ("when", "When", Some(when(row.created_at))),
+        ]
+    };
     for (key, label, value) in fields {
         // The AI row appears only when there is AI text.
         if key == "llm" && value.is_none() {
             continue;
         }
-        // An import has no target app and no rule pass to show.
-        if is_import(&row) && matches!(key, "app" | "rule") && value.is_none() {
+        // An import has no target app and no rule pass to show, and the default voice of a
+        // read names no language.
+        if ((is_import(&row) && matches!(key, "app" | "rule")) || read) && value.is_none() {
             continue;
         }
         let trailing = if key == "llm" {

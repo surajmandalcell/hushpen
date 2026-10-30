@@ -8,6 +8,7 @@ use crate::import::Import;
 use crate::read_aloud::ReadAloud;
 use crate::storage::Storage;
 use gpui_kit::{App, Context, Entity, FocusHandle};
+use hushpen_speech::TextFormat;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -127,6 +128,21 @@ impl Files {
         };
         // The mode shows even when the setting cannot be written.
         if let Err(error) = self.set_mode(mode, cx) {
+            log::warn!("the Manual mode was not saved: {error}");
+        }
+    }
+
+    /// Puts a text in Read aloud and plays it, for Read aloud again in History. A refusal
+    /// shows in Read aloud.
+    pub fn read_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        let Some(read) = self.read_aloud.clone() else {
+            return;
+        };
+        read.update(cx, |read, cx| {
+            read.set_text(text, TextFormat::Plain, cx);
+            let _ = read.play(cx);
+        });
+        if let Err(error) = self.set_mode(Mode::ReadAloud, cx) {
             log::warn!("the Manual mode was not saved: {error}");
         }
     }

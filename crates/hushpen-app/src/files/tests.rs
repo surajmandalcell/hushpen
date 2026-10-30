@@ -163,6 +163,18 @@ fn frame(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) {
 
 /// The Manual view in Read aloud, in a window of the app's size.
 fn read_aloud_window(cx: &mut TestAppContext) -> (Fixture, gpui_kit::AnyWindowHandle) {
+    let (fixture, handle, _) = read_aloud_shell(cx);
+    (fixture, handle)
+}
+
+/// The same, with the shell of the window.
+fn read_aloud_shell(
+    cx: &mut TestAppContext,
+) -> (
+    Fixture,
+    gpui_kit::AnyWindowHandle,
+    Entity<crate::shell::Shell>,
+) {
     use crate::shell::Shell;
     use crate::theme::space;
     use crate::views::View;
@@ -192,7 +204,7 @@ fn read_aloud_window(cx: &mut TestAppContext) -> (Fixture, gpui_kit::AnyWindowHa
         shell.select(View::Manual, cx);
     });
     frame(cx, handle);
-    (fixture, handle)
+    (fixture, handle, shell)
 }
 
 #[gpui_kit::test]
@@ -314,4 +326,77 @@ fn the_speed_slider_reads_its_value_beside_the_track(cx: &mut TestAppContext) {
         Some("1.35\u{d7}"),
         "one step to the right"
     );
+}
+
+#[gpui_kit::test]
+fn read_aloud_again_in_history_reads_the_text_in_read_aloud(cx: &mut TestAppContext) {
+    use crate::history::History;
+    use crate::read_aloud::ReadRequest;
+    use crate::views::View;
+    use hushpen_store::history::{self, Row};
+
+    let (fixture, handle, shell) = read_aloud_shell(cx);
+    fixture
+        .files
+        .update(cx, |files, cx| files.set_mode(Mode::Transcribe, cx))
+        .unwrap();
+    let read_row = |id: &str, text: &str| Row {
+        id: id.to_owned(),
+        created_at: 1_000,
+        kind: "read".to_owned(),
+        status: "completed".to_owned(),
+        duration_ms: 2_000,
+        model_id: Some("system".to_owned()),
+        final_text: Some(text.to_owned()),
+        insert_outcome: Some("none".to_owned()),
+        source_name: Some("Default".to_owned()),
+        ..Row::default()
+    };
+    history::save(
+        &fixture.storage.database,
+        &read_row("R", "Read me again."),
+        &[],
+    )
+    .unwrap();
+    let history = {
+        let storage = Rc::clone(&fixture.storage);
+        let controller = fixture._rig.controller.clone();
+        cx.update_window(handle, move |_, window, cx| {
+            cx.new(|cx| History::new(storage, controller, window, cx))
+        })
+        .unwrap()
+    };
+    shell.update(cx, |shell, cx| {
+        shell.attach_history(history.clone(), cx);
+        shell.select(View::History, cx);
+    });
+    history
+        .update(cx, |history, cx| history.open("R", cx))
+        .unwrap();
+    frame(cx, handle);
+
+    let button = gpui_kit::SharedString::from("history.read-again");
+    cx.update_window(handle, move |_, window, cx| window.click(button, cx))
+        .unwrap();
+    frame(cx, handle);
+    assert_eq!(shell.read_with(cx, |shell, _| shell.active()), View::Manual);
+    assert_eq!(
+        fixture.files.read_with(cx, |files, _| files.mode()),
+        Mode::ReadAloud
+    );
+    let read = cx.update(|cx| fixture.read.read(cx).state_json(cx));
+    assert_eq!(read["text_chars"], 14);
+    assert_eq!(read["playing"], true, "the text plays at once");
+
+    // A read that Read aloud saved shows in History without a dictation in between.
+    history::save(
+        &fixture.storage.database,
+        &read_row("S", "Saved next."),
+        &[],
+    )
+    .unwrap();
+    fixture.read.update(cx, |_, cx| cx.emit(ReadRequest::Saved));
+    frame(cx, handle);
+    let listed = history.read_with(cx, |history, _| history.rows().len());
+    assert_eq!(listed, 2);
 }

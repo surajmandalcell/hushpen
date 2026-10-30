@@ -1,6 +1,6 @@
 //! The Read aloud side of the Manual view: the text, the voice options, and Play and Export.
 
-use super::{EngineKind, Menu, ReadAloud, language_name};
+use super::{DEFAULT_VOICE, EngineKind, Menu, ReadAloud, language_name};
 use crate::hook;
 use crate::theme::{self, Palette, radius, size, space};
 use crate::ui::{self, Kind, Notice};
@@ -249,13 +249,13 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
     let current = voice
         .as_ref()
         .and_then(|id| voices.iter().find(|found| &found.id == id))
-        .map_or_else(|| "Default".to_owned(), |found| found.name.clone());
+        .map_or_else(|| DEFAULT_VOICE.to_owned(), |found| found.name.clone());
     // Chatterbox's default is the default voice of the library.
     let default_name = engine.is_chatterbox().then(|| view.default_voice_name(cx));
     let voice_menu = open(Menu::Voice, &|| {
         let mut choices = vec![(
             String::new(),
-            "Default".to_owned(),
+            DEFAULT_VOICE.to_owned(),
             default_name.clone(),
             voice.is_none(),
         )];

@@ -1,7 +1,9 @@
 //! Read aloud on the Manual view: typed text, or a `.txt` or `.md` file, spoken by the system
 //! voice, by Kokoro, or by Chatterbox Turbo or Nano with a voice of the voice library. The audio
 //! plays while the rest is still being spoken, and it exports as a WAV. The engine, the voice of
-//! each engine, the speed, and the format the user picks are kept in settings.
+//! each engine, the speed, and the format the user picks are kept in settings. Each text that is
+//! spoken to the end goes in History as a row of kind `read`, with its audio while the audio
+//! retention keeps it.
 
 pub mod panel;
 
@@ -18,15 +20,17 @@ use gpui_kit::{AnyWindowHandle, App, AppContext as _, Context, Entity, EventEmit
 use hushpen_audio::Player;
 use hushpen_core::chatterbox::BUILT_IN_VOICE;
 use hushpen_core::error::{
-    SPEECH_NO_TEXT, SPEECH_NOT_ENGLISH, SPEECH_TEXT_TOO_LONG, SPEECH_TEXT_UNREADABLE,
-    SPEECH_UNAVAILABLE, SPEECH_VOICE_CLIP, SPEECH_VOICE_MISSING,
+    HISTORY_WRITE_FAILED, SPEECH_NO_TEXT, SPEECH_NOT_ENGLISH, SPEECH_TEXT_TOO_LONG,
+    SPEECH_TEXT_UNREADABLE, SPEECH_UNAVAILABLE, SPEECH_VOICE_CLIP, SPEECH_VOICE_MISSING,
 };
 use hushpen_speech::{
     MAX_SPEED, MIN_SPEED, SAMPLE_RATE, SpeechEngine, SpeechError, SpeechEvent, TextFormat, Voice,
     prepare, read_text_file, synthesize,
 };
+use hushpen_store::history::{self, Row};
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -126,6 +130,8 @@ impl EngineKind {
 pub enum ReadRequest {
     /// The engine needs its voice model: open Models.
     OpenModels,
+    /// A read went into the history, so History reads its list again.
+    Saved,
 }
 
 /// The pop-up list that is open.
@@ -151,6 +157,9 @@ struct Audio {
     request: Request,
     player: Player,
     complete: bool,
+    /// The name of the voice and the language it speaks, such as `en`, for the History row.
+    voice_name: String,
+    language: Option<String>,
 }
 
 /// A synthesis on its way.
@@ -836,10 +845,13 @@ impl ReadAloud {
             return;
         }
         hook::record_event("read", if play { "speak play" } else { "speak export" });
+        let (voice_name, language) = self.voice_facts(request.voice.as_deref());
         self.audio = Some(Audio {
             request,
             player,
             complete: false,
+            voice_name,
+            language,
         });
         self.job = Some(Job {
             id,
@@ -906,14 +918,14 @@ impl ReadAloud {
             ReadEvent::Voices { .. } => {}
             ReadEvent::Speech { job, event } => {
                 if self.job.as_ref().is_some_and(|running| running.id == job) {
-                    self.speech(event);
+                    self.speech(event, cx);
                 }
             }
         }
         cx.notify();
     }
 
-    fn speech(&mut self, event: SpeechEvent) {
+    fn speech(&mut self, event: SpeechEvent, cx: &mut Context<Self>) {
         let (Some(job), Some(audio)) = (&mut self.job, &mut self.audio) else {
             return;
         };
@@ -937,6 +949,7 @@ impl ReadAloud {
                 if let Some(path) = export {
                     self.write(&path);
                 }
+                self.keep_in_history(cx);
             }
             SpeechEvent::Cancelled => {
                 self.job = None;
@@ -952,9 +965,69 @@ impl ReadAloud {
         }
     }
 
-    // ponytail: the WAV is written on the UI thread, a pause of about a second for an hour of
-    // speech; move it to a thread when texts that long are common.
-    fn write(&mut self, path: &std::path::Path) {
+    /// The name of a voice of the engine and the language it speaks, or "Default" for the
+    /// default voice of the System voice and Kokoro.
+    fn voice_facts(&self, voice: Option<&str>) -> (String, Option<String>) {
+        let Some(id) = voice else {
+            return (DEFAULT_VOICE.to_owned(), None);
+        };
+        self.listed()
+            .iter()
+            .find(|found| found.id == id)
+            .map_or_else(
+                || (id.to_owned(), None),
+                |found| (found.name.clone(), Some(primary(&found.language))),
+            )
+    }
+
+    /// Puts the read in History: the text, the engine, the voice, and the audio while the
+    /// retention setting keeps the audio of a finished dictation.
+    fn keep_in_history(&mut self, cx: &mut Context<Self>) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        if audio.player.duration_ms() == 0 {
+            return;
+        }
+        let storage = &self.storage;
+        let created_at = history::now_ms();
+        let id = history::new_id(u64::try_from(created_at).unwrap_or(0));
+        let keep = crate::controller::retention_of(&storage.settings).keeps("completed");
+        let folder = storage.data.audio_dir();
+        let file = folder.join(format!("{id}.wav"));
+        let kept = keep && write_kept(&audio.player, &folder, &file);
+        let request = &audio.request;
+        let row = Row {
+            id: id.clone(),
+            created_at,
+            kind: "read".to_owned(),
+            status: "completed".to_owned(),
+            duration_ms: i64::try_from(audio.player.duration_ms()).unwrap_or(i64::MAX),
+            model_id: Some(request.engine.key().to_owned()),
+            language_requested: audio.language.clone(),
+            final_text: Some(request.text.clone()),
+            insert_outcome: Some("none".to_owned()),
+            source_name: Some(audio.voice_name.clone()),
+            audio_path: kept.then(|| format!("audio/{id}.wav")),
+            audio_removed_at: (!keep).then_some(created_at),
+            ..Row::default()
+        };
+        if let Err(error) = history::save(&storage.database, &row, &[]) {
+            log::error!("{HISTORY_WRITE_FAILED} the history row of a read was not saved: {error}");
+            hook::record_event("history", &format!("write-failed {HISTORY_WRITE_FAILED}"));
+            if kept && let Err(error) = fs::remove_file(&file) {
+                log::warn!("the audio of an unsaved read was not removed: {error}");
+            }
+            return;
+        }
+        hook::record_event("history", "saved read");
+        cx.emit(ReadRequest::Saved);
+    }
+
+    // ponytail: the WAV of an export and the copy History keeps are written on the UI thread,
+    // a pause of about a second for an hour of speech; move them to a thread when texts that
+    // long are common.
+    fn write(&mut self, path: &Path) {
         let Some(audio) = &self.audio else {
             return;
         };
@@ -1013,6 +1086,17 @@ impl ReadAloud {
     }
 }
 
+/// Writes the audio History keeps of a read; `false` when it could not be written.
+fn write_kept(player: &Player, folder: &Path, file: &Path) -> bool {
+    let written = fs::create_dir_all(folder)
+        .map_err(|error| error.to_string())
+        .and_then(|()| player.write_wav(file).map_err(|error| error.to_string()));
+    if let Err(error) = &written {
+        log::warn!("the audio of a read aloud was not kept: {error}");
+    }
+    written.is_ok()
+}
+
 /// `en` for `en-US`, `en_GB`, or `en`.
 fn primary(tag: &str) -> String {
     tag.split(['-', '_'])
@@ -1027,6 +1111,9 @@ pub fn language_name(code: &str) -> String {
 }
 
 const NOT_ENGLISH: &str = "Chatterbox reads English only. Use the system voice for this text.";
+
+/// What the voice menu and History call the default voice of the System voice and Kokoro.
+pub const DEFAULT_VOICE: &str = "Default";
 
 /// What the view says for a failure. The code and the detail stay in the log.
 fn message_of(error: &SpeechError) -> String {
