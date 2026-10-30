@@ -64,16 +64,18 @@ Hushpen
   `kokoro-82m-int8`). Every model file has a pinned sha256 and downloads only
   when the user asks. The catalog (`assets/models.json`) lists every model.
 - **model kind**: what a model does: speech (Whisper, turns speech into
-  text), cleanup (an LLM, fixes the text), or voice (Kokoro, reads text
-  aloud). The Models page has one section for each kind.
+  text), cleanup (an LLM, fixes the text), or voice (Kokoro, Chatterbox
+  Turbo, or Chatterbox Nano, reads text aloud). The Models page has one
+  section for each kind.
 - **recommended model**: the one model of a kind that the Models page marks
   "Recommended": the default speech and voice models, and the first cleanup
   model this machine is offered.
 - **details sheet**: the sheet that the details button of a model row opens.
   It shows what the model is for, its facts, its source page, its folder,
   and its checksum.
-- **partial download**: a `<file>.download` file in the downloads folder that
-  a stopped download leaves behind. The next download resumes it. The app
+- **partial download**: a `<file>.download` file (`<model id>.<file>.download`
+  for a voice model) in the downloads folder that a stopped download leaves
+  behind. The next download resumes it. The app
   deletes a partial download older than 7 days at start.
 - **flow bar**: the always-on-top pill that never takes focus. It stays dark
   in Light and Dark appearance. It shows only while a dictation is active

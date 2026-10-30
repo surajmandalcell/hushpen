@@ -25,18 +25,19 @@ pub const GRAPHS: [&str; 4] = [
     LANGUAGE_MODEL_FILE,
     DECODER_FILE,
 ];
-/// Every file the worker opens, in the order the catalog lists them.
+/// Every file the worker opens, in the order the catalog lists them: the largest graph first,
+/// since the catalog reads the quantization from the first file.
 pub const FILES: [&str; 10] = [
-    TOKENIZER_FILE,
-    DEFAULT_VOICE_FILE,
-    SPEECH_ENCODER_FILE,
-    "speech_encoder_q4.onnx_data",
-    EMBED_TOKENS_FILE,
-    "embed_tokens_q4.onnx_data",
     LANGUAGE_MODEL_FILE,
     "language_model_q4.onnx_data",
+    EMBED_TOKENS_FILE,
+    "embed_tokens_q4.onnx_data",
+    SPEECH_ENCODER_FILE,
+    "speech_encoder_q4.onnx_data",
     DECODER_FILE,
     "conditional_decoder_q4.onnx_data",
+    TOKENIZER_FILE,
+    DEFAULT_VOICE_FILE,
 ];
 
 /// The rate the models speak at, and the rate of a saved voice clip.

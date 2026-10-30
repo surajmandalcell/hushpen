@@ -332,6 +332,160 @@
           "url": "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0/resolve/2a360693d79b88b49b88e29aec2b53577f41f206/lexicon-us-en.txt"
         }
       ]
+    },
+    {
+      "id": "chatterbox-turbo",
+      "kind": "voice",
+      "name": "Chatterbox Turbo",
+      "license": "MIT",
+      "languages": "english",
+      "description": "Reads English aloud in a voice it copies from a short clip.",
+      "speed": 3,
+      "accuracy": 5,
+      "quantization": "Q4",
+      "ram_idle_bytes": 660000000,
+      "ram_peak_bytes": 850000000,
+      "recommended_for": "Reading aloud in English with a voice you clone",
+      "source_page": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX",
+      "files": [
+        {
+          "file": "language_model_q4.onnx",
+          "bytes": 274572,
+          "sha256": "b39d03d3f8b943b9e60c6fce3fb41191dbc1df4589f913291db1e214eef669b1",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/language_model_q4.onnx"
+        },
+        {
+          "file": "language_model_q4.onnx_data",
+          "bytes": 204456572,
+          "sha256": "2c029dc0acf48752473d8c74c72b5ceaaad76b9886fe106eaf2022142d5b5d5e",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/language_model_q4.onnx_data"
+        },
+        {
+          "file": "embed_tokens_q4.onnx",
+          "bytes": 2844,
+          "sha256": "fd6ba1d22902e8f539d3dd6d7c1c44b98ebb4c84ebbb5e47fcb826ddcf667561",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/embed_tokens_q4.onnx"
+        },
+        {
+          "file": "embed_tokens_q4.onnx_data",
+          "bytes": 37286384,
+          "sha256": "f54a51e234b509b64c3a03bb79e1149fba7e2eba6c2d9c222f18883379e1f5d8",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/embed_tokens_q4.onnx_data"
+        },
+        {
+          "file": "speech_encoder_q4.onnx",
+          "bytes": 1200346,
+          "sha256": "37956c20b67bed85a0da4bc83509d67b5969a1b257d1c546516a5236a17ad71e",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/speech_encoder_q4.onnx"
+        },
+        {
+          "file": "speech_encoder_q4.onnx_data",
+          "bytes": 229560112,
+          "sha256": "58956db217c6443e49c91bdd54d7cf76b4a243f225c748b7bf746459fc27bc7d",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/speech_encoder_q4.onnx_data"
+        },
+        {
+          "file": "conditional_decoder_q4.onnx",
+          "bytes": 2179022,
+          "sha256": "dccb7a6cea3472dc7f7d070eeb70ade18e6327fb4ec61a3d62cf211bfed90ea2",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/conditional_decoder_q4.onnx"
+        },
+        {
+          "file": "conditional_decoder_q4.onnx_data",
+          "bytes": 246397384,
+          "sha256": "b5c5317e0b79a1a19dd3d5e2b2091ea06b15716716ab801a54eaeb906c6971ec",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/onnx/conditional_decoder_q4.onnx_data"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 3562272,
+          "sha256": "3f04e34bea22f9144d1a19151154095bc9ce0430bf421304f5797e716288a906",
+          "url": "https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX/resolve/d21799bd0354adb85e348b8a0442a8405110a2cf/tokenizer.json"
+        },
+        {
+          "file": "default_voice.wav",
+          "bytes": 714320,
+          "sha256": "3ebc531cdaba358a327099c1c4f0448026719957bcf4d8e9868767f227e02f4e",
+          "url": "https://huggingface.co/onnx-community/chatterbox-ONNX/resolve/3cab09af388d3f02bba43443fce88c1f4525ac43/default_voice.wav"
+        }
+      ]
+    },
+    {
+      "id": "chatterbox-nano",
+      "kind": "voice",
+      "name": "Chatterbox Nano",
+      "license": "MIT",
+      "languages": "english",
+      "description": "A smaller Chatterbox: copies a voice and reads English aloud.",
+      "speed": 4,
+      "accuracy": 4,
+      "quantization": "Q4",
+      "ram_idle_bytes": 470000000,
+      "ram_peak_bytes": 690000000,
+      "recommended_for": "Cloned voices in English on a slower computer",
+      "source_page": "https://huggingface.co/Masterx/chatterbox-nano-ONNX",
+      "files": [
+        {
+          "file": "language_model_q4.onnx",
+          "bytes": 108402,
+          "sha256": "1949cc7ffbd240f6d2aada650655e628bbdc49adb786c8c7a6fcceffa463f059",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/language_model_q4.onnx"
+        },
+        {
+          "file": "language_model_q4.onnx_data",
+          "bytes": 83330000,
+          "sha256": "22cb15777c54596b4676a84036ddf20cf0d1bdb3ad66b2527b4817ec011851f7",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/language_model_q4.onnx_data"
+        },
+        {
+          "file": "embed_tokens_q4.onnx",
+          "bytes": 3197,
+          "sha256": "c506a66346fdd64cd43c15bb1ce3815a21839017a6bc37a76578e7d1fc44ab3a",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/embed_tokens_q4.onnx"
+        },
+        {
+          "file": "embed_tokens_q4.onnx_data",
+          "bytes": 27964788,
+          "sha256": "0e872b16aa420b3113767e1520535b3959063584bc3499a2a4bcf2d5359b193f",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/embed_tokens_q4.onnx_data"
+        },
+        {
+          "file": "speech_encoder_q4.onnx",
+          "bytes": 1105930,
+          "sha256": "6baedcdbab54c07bcad345a343b8dceecfeb5893c955096ceb7e2024513ea283",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/speech_encoder_q4.onnx"
+        },
+        {
+          "file": "speech_encoder_q4.onnx_data",
+          "bytes": 130857924,
+          "sha256": "15f4e52b0bd202275c5d70e922b8f9eeb9fec3ce1f7a3410144e68c45b6a2900",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/speech_encoder_q4.onnx_data"
+        },
+        {
+          "file": "conditional_decoder_q4.onnx",
+          "bytes": 2179022,
+          "sha256": "dccb7a6cea3472dc7f7d070eeb70ade18e6327fb4ec61a3d62cf211bfed90ea2",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/conditional_decoder_q4.onnx"
+        },
+        {
+          "file": "conditional_decoder_q4.onnx_data",
+          "bytes": 246397384,
+          "sha256": "b5c5317e0b79a1a19dd3d5e2b2091ea06b15716716ab801a54eaeb906c6971ec",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/onnx/conditional_decoder_q4.onnx_data"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 3562272,
+          "sha256": "3f04e34bea22f9144d1a19151154095bc9ce0430bf421304f5797e716288a906",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/tokenizer.json"
+        },
+        {
+          "file": "default_voice.wav",
+          "bytes": 714320,
+          "sha256": "3ebc531cdaba358a327099c1c4f0448026719957bcf4d8e9868767f227e02f4e",
+          "url": "https://huggingface.co/Masterx/chatterbox-nano-ONNX/resolve/dd54e272a5706eebebcd781d69cfb47463441218/default_voice.wav"
+        }
+      ]
     }
   ]
 }

@@ -1,7 +1,8 @@
 //! Downloads one model file: host policy on every hop, resume or clean restart, a streamed
 //! sha256, and the final rename with the `.verified` stamp.
 //!
-//! The partial file lives in `cache/downloads/<file>.download`. It is removed on cancel, on a
+//! The partial file lives in `cache/downloads/` (`<file>.download`, or
+//! `<model id>.<file>.download` for a file of a voice model). It is removed on cancel, on a
 //! blocked host, and on a hash or size mismatch. A network failure keeps it so the next try can
 //! resume.
 

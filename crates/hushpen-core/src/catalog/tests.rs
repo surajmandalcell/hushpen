@@ -64,7 +64,8 @@ fn every_embedded_model_has_its_kind_and_its_details() {
             assert!(info.ram_idle_bytes > 100_000_000, "{}", entry.id);
             assert!(info.ram_peak_bytes >= info.ram_idle_bytes, "{}", entry.id);
             assert!(
-                ["F16", "Q5_0", "Q5_1", "Q4_K_M", "INT8"].contains(&info.quantization.as_str()),
+                ["F16", "Q5_0", "Q5_1", "Q4_K_M", "INT8", "Q4"]
+                    .contains(&info.quantization.as_str()),
                 "{} has an unknown quantization",
                 entry.id
             );
@@ -86,8 +87,15 @@ fn every_embedded_model_has_its_kind_and_its_details() {
                 let repo = info
                     .source_page
                     .trim_start_matches("https://huggingface.co");
+                // The Turbo repository ships no voice clip, so its default voice comes from
+                // another Chatterbox export.
+                let from = if file.file == crate::chatterbox::DEFAULT_VOICE_FILE {
+                    "https://huggingface.co/"
+                } else {
+                    repo
+                };
                 assert!(
-                    file.url.contains(&format!("{repo}/resolve/")),
+                    file.url.contains(from) && file.url.contains("/resolve/"),
                     "{} is not from its source page",
                     file.file
                 );
@@ -374,6 +382,47 @@ fn the_kokoro_voice_is_pinned_file_by_file_with_every_file_the_worker_opens() {
 }
 
 #[test]
+fn the_chatterbox_voices_are_pinned_with_every_file_the_worker_opens() {
+    let repos = [
+        (
+            crate::chatterbox::TURBO_ID,
+            "ResembleAI/chatterbox-turbo-ONNX",
+            725_633_828,
+        ),
+        (
+            crate::chatterbox::NANO_ID,
+            "Masterx/chatterbox-nano-ONNX",
+            496_223_239,
+        ),
+    ];
+    for (id, repo, total) in repos {
+        let entry = embedded().voice(id).unwrap();
+        let files: Vec<_> = entry.files.iter().map(|f| f.file.as_str()).collect();
+        assert_eq!(files, crate::chatterbox::FILES, "{id}");
+        for file in &entry.files {
+            let pinned = format!("https://huggingface.co/{repo}/resolve/");
+            let clip = "https://huggingface.co/onnx-community/chatterbox-ONNX/resolve/";
+            assert!(
+                file.url.starts_with(&pinned) || file.url.starts_with(clip),
+                "{}",
+                file.url
+            );
+            assert!(
+                file.url.ends_with(&format!("/{}", file.file)),
+                "{}",
+                file.url
+            );
+        }
+        assert_eq!(entry.bytes(), total, "{id}");
+        assert_eq!(
+            (entry.license.as_str(), entry.languages),
+            ("MIT", Languages::English)
+        );
+        assert!(!entry.default, "Kokoro stays the voice the app proposes");
+    }
+}
+
+#[test]
 fn a_voice_model_needs_its_kind_its_files_and_a_safe_folder() {
     let good = "a".repeat(64);
     let voice = |id: &str, kind: &str, files: Vec<Value>| {
@@ -390,6 +439,16 @@ fn a_voice_model_needs_its_kind_its_files_and_a_safe_folder() {
     assert!(voice("v", "voice", vec![]).is_err());
     assert!(voice("v", "voice", vec![file("../a.onnx")]).is_err());
     assert!(voice("v", "voice", vec![file("a.onnx"), file("a.onnx")]).is_err());
+    let two = parse(json!({"whisper": [], "voice": [
+        {"id": "a", "kind": "voice", "name": "A", "license": "MIT", "languages": "english",
+            "files": [file("tokenizer.json")]},
+        {"id": "b", "kind": "voice", "name": "B", "license": "MIT", "languages": "english",
+            "files": [file("tokenizer.json")]},
+    ]}));
+    assert!(
+        two.is_ok(),
+        "two voice folders may hold a file of the same name"
+    );
     let old = parse(json!({"whisper": []})).unwrap();
     assert!(
         old.voice.is_empty(),

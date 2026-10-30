@@ -112,6 +112,12 @@ pub const SECTIONS: &[Section] = &[
         note: "The voice model Hushpen downloads on request for Read aloud: Kokoro 82M, int8 build (by hexgrad, from https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0). Apache License 2.0.",
         texts: &[APACHE],
     },
+    Section {
+        id: "chatterbox-models",
+        title: "Chatterbox voice models",
+        note: "The voice models Hushpen downloads on request for Read aloud: Chatterbox Turbo and Chatterbox Nano by Resemble AI (https://github.com/resemble-ai/chatterbox), as ONNX builds with 4-bit weights from https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX and https://huggingface.co/Masterx/chatterbox-nano-ONNX, with the default voice clip from https://huggingface.co/onnx-community/chatterbox-ONNX. MIT license.",
+        texts: &["packaging/licenses/manual/mit-chatterbox.txt"],
+    },
 ];
 
 pub fn escape(text: &str) -> String {
@@ -235,7 +241,7 @@ mod tests {
     fn section_ids_are_unique() {
         let ids: BTreeSet<_> = SECTIONS.iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), SECTIONS.len());
-        assert_eq!(SECTIONS.len(), 13);
+        assert_eq!(SECTIONS.len(), 14);
     }
 
     #[test]

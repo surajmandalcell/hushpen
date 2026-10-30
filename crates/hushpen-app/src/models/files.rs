@@ -39,10 +39,19 @@ pub(super) fn missing_specs(data: &DataDir, entry: &ModelEntry) -> Vec<Spec> {
             url: file.url.clone(),
             bytes: file.bytes,
             sha256: file.sha256.clone(),
-            partial: data.downloads_dir().join(format!("{}.download", file.file)),
+            partial: data.downloads_dir().join(partial_name(entry, file)),
             dest: path,
         })
         .collect()
+}
+
+/// `<file>.download`, with the model id in front for a voice model: two voice folders may
+/// hold a file of the same name, such as `tokenizer.json`.
+fn partial_name(entry: &ModelEntry, file: &ModelFile) -> String {
+    match entry.kind {
+        ModelKind::Voice => format!("{}.{}.download", entry.id, file.file),
+        ModelKind::Speech | ModelKind::Cleanup => format!("{}.download", file.file),
+    }
 }
 
 /// The bytes still to come: each file, less what its partial already holds.
