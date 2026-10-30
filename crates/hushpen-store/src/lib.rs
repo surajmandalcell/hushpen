@@ -13,5 +13,6 @@ pub mod retention;
 pub mod secrets;
 pub mod settings;
 pub mod time;
+pub mod voices;
 
 pub use error::{Error, Result};

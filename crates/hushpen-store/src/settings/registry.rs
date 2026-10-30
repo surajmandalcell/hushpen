@@ -243,7 +243,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("files.translate", Kind::Bool, |_| json!(false)),
     spec!(
         "readAloud.engine",
-        Kind::Choice(&["system", "kokoro"]),
+        Kind::Choice(&["system", "kokoro", "chatterbox-turbo", "chatterbox-nano"]),
         |_| json!("system")
     ),
     spec!(
@@ -256,6 +256,17 @@ pub(super) static REGISTRY: &[Spec] = &[
         Kind::OptionalText(256),
         |_| json!("")
     ),
+    // One choice for both Chatterbox models, which read with the same voices. Empty is the
+    // default voice of the voice library.
+    spec!(
+        "readAloud.voice.chatterbox",
+        Kind::OptionalText(256),
+        |_| json!("")
+    ),
+    // The voice library's default voice, by id. Empty is the voice that comes with the model.
+    spec!("readAloud.defaultVoice", Kind::OptionalText(64), |_| json!(
+        ""
+    )),
     spec!("readAloud.speed", Kind::Float(0.5, 2.0), |_| json!(1.0)),
     spec!("readAloud.format", Kind::Choice(&["wav"]), |_| json!("wav")),
     spec!("engine.useGpu", Kind::Bool, |os| json!(mac(os))),
@@ -368,6 +379,14 @@ mod tests {
         assert_eq!(sanitize("files.language", json!("es")), Some(json!("es")));
         assert_eq!(sanitize("files.language", json!("xx")), None);
         assert_eq!(sanitize("readAloud.engine", json!("piper")), None);
+        assert_eq!(
+            sanitize("readAloud.engine", json!("chatterbox-nano")),
+            Some(json!("chatterbox-nano"))
+        );
+        assert_eq!(
+            sanitize("readAloud.defaultVoice", json!("")),
+            Some(json!(""))
+        );
         assert_eq!(sanitize("readAloud.speed", json!(2.5)), None);
         assert_eq!(sanitize("readAloud.speed", json!(0.5)), Some(json!(0.5)));
         assert_eq!(sanitize("readAloud.format", json!("mp3")), None);

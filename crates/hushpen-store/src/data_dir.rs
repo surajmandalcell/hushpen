@@ -246,6 +246,11 @@ impl DataDir {
         self.root.join("cache").join("sessions")
     }
 
+    /// `voices/<id>/`: the voices cloned for Chatterbox. Created by the first voice added.
+    pub fn voices_dir(&self) -> PathBuf {
+        self.root.join("voices")
+    }
+
     /// `audio/<id>.wav`: the audio of each history row.
     pub fn audio_dir(&self) -> PathBuf {
         self.root.join("audio")
