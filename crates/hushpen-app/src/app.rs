@@ -347,6 +347,24 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 )
             });
             follow_activation(cx, onboarding.clone(), settings_view.clone());
+            let tuning = {
+                let (run, spawn) = {
+                    let controller = controller.read(cx);
+                    (controller.runner(), controller.spawner())
+                };
+                cx.new(|cx| {
+                    crate::enhance::Tuning::new(
+                        crate::enhance::Parts {
+                            storage: Rc::clone(&storage),
+                            mic: mic.clone(),
+                            run,
+                            spawn,
+                        },
+                        cx,
+                    )
+                })
+            };
+            settings_view.update(cx, |settings, cx| settings.attach_tuning(tuning.clone(), cx));
             {
                 let dictating = controller.clone();
                 let importing = import.clone();

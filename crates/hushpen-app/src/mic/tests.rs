@@ -13,12 +13,14 @@ struct Fake {
     stopped: Arc<Mutex<u32>>,
     warmed: Mutex<Vec<String>>,
     gains: Arc<Mutex<Vec<f32>>>,
+    enhances: Arc<Mutex<Vec<Enhance>>>,
 }
 
 struct FakeSession {
     path: PathBuf,
     stopped: Arc<Mutex<u32>>,
     gains: Arc<Mutex<Vec<f32>>>,
+    enhances: Arc<Mutex<Vec<Enhance>>>,
 }
 
 impl Fake {
@@ -55,6 +57,7 @@ impl MicBackend for Fake {
             path,
             stopped: Arc::clone(&self.stopped),
             gains: Arc::clone(&self.gains),
+            enhances: Arc::clone(&self.enhances),
         }))
     }
 }
@@ -79,6 +82,10 @@ impl MicSession for FakeSession {
 
     fn set_gain(&self, gain: f32) {
         self.gains.lock().unwrap().push(gain);
+    }
+
+    fn set_enhance(&self, enhance: Enhance) {
+        self.enhances.lock().unwrap().push(enhance);
     }
 }
 
@@ -590,4 +597,54 @@ fn a_session_gets_the_saved_boost_at_start_and_each_change_after(cx: &mut TestAp
     rig.storage.settings.set(GAIN_SETTING, json!(2.0)).unwrap();
     rig.mic.read_with(cx, |mic, _| mic.apply_gain());
     assert_eq!(*rig.backend.gains.lock().unwrap(), [1.5, 2.0]);
+}
+
+#[gpui_kit::test]
+fn a_session_gets_the_saved_enhance_at_start_and_each_change_after(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap();
+    let custom = Enhance {
+        low_cut_hz: 120,
+        bass_db: 3.0,
+        treble_db: 6.0,
+        noise_reduction: true,
+    };
+    let settings = &rig.storage.settings;
+    settings.set("audio.enhance", json!("custom")).unwrap();
+    settings.set("audio.enhance.lowCutHz", json!(120)).unwrap();
+    settings.set("audio.enhance.bassDb", json!(3)).unwrap();
+    settings.set("audio.enhance.trebleDb", json!(6)).unwrap();
+    settings
+        .set("audio.enhance.noiseReduction", json!(true))
+        .unwrap();
+    rig.mic.read_with(cx, |mic, _| mic.apply_enhance());
+    settings.set("audio.enhance", json!("off")).unwrap();
+    rig.mic.read_with(cx, |mic, _| mic.apply_enhance());
+    assert_eq!(
+        *rig.backend.enhances.lock().unwrap(),
+        [Enhance::AUTO, custom, Enhance::OFF],
+        "Auto by default, then Custom, then Off"
+    );
+}
+
+#[gpui_kit::test]
+fn a_sample_take_records_the_microphone_as_it_is(cx: &mut TestAppContext) {
+    let rig = rig(cx, None);
+    rig.storage.settings.set(GAIN_SETTING, json!(2.0)).unwrap();
+    rig.mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Sample, cx))
+        .unwrap();
+    rig.mic.read_with(cx, |mic, _| {
+        mic.apply_gain();
+        mic.apply_enhance();
+    });
+    assert_eq!(*rig.backend.gains.lock().unwrap(), [1.0]);
+    assert_eq!(*rig.backend.enhances.lock().unwrap(), [Enhance::OFF]);
+    let busy = rig
+        .mic
+        .update(cx, |mic, cx| mic.start(CaptureUse::Dictation, cx))
+        .unwrap_err();
+    assert_eq!(busy.code, hushpen_core::error::MIC_BUSY);
 }

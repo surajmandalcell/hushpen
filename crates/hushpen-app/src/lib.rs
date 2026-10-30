@@ -17,6 +17,7 @@ pub mod controller;
 pub mod dictation;
 pub mod dictionary;
 pub mod engine_host;
+pub mod enhance;
 pub mod files;
 pub mod flow_bar;
 #[cfg(test)]

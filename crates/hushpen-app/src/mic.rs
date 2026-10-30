@@ -15,8 +15,8 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{Context, FocusHandle};
 use hushpen_audio::{
-    CaptureError, CaptureEvent, DEFAULT_ID, EventSink, Finished, InputDevice, RecoveredSession,
-    Selection, Sweep, new_session_path, recover_orphans, resolve_selection,
+    CaptureError, CaptureEvent, DEFAULT_ID, Enhance, EventSink, Finished, InputDevice,
+    RecoveredSession, Selection, Sweep, new_session_path, recover_orphans, resolve_selection,
 };
 use hushpen_core::error::{CAPTURE_FAILED, CAPTURE_RECOVERED, MIC_PERMISSION, MIC_UNAVAILABLE};
 use hushpen_store::data_dir::DataDir;
@@ -70,6 +70,9 @@ pub struct Notice {
 pub enum CaptureUse {
     Test,
     Dictation,
+    /// A take for the audio enhance sheet. It records the microphone as it is, with no enhance
+    /// and no boost, so a preview can apply any setting to it later.
+    Sample,
 }
 
 impl CaptureUse {
@@ -77,6 +80,7 @@ impl CaptureUse {
         match self {
             CaptureUse::Test => "test",
             CaptureUse::Dictation => "dictation",
+            CaptureUse::Sample => "sample",
         }
     }
 }
@@ -406,11 +410,30 @@ impl Mic {
             .map_or(1.5, |gain| gain as f32)
     }
 
-    /// Gives the running session the saved boost, so a change is heard at once.
+    /// Gives the running session the saved boost, so a change is heard at once. A sample take
+    /// stays as the microphone gave it.
     pub fn apply_gain(&self) {
-        if let Some(session) = &self.session {
+        if let Some(session) = self.shaped_session() {
             session.inner.set_gain(self.gain());
         }
+    }
+
+    /// The saved audio enhance, as Off, Auto, or the Custom values make it.
+    pub fn enhance(&self) -> Enhance {
+        crate::enhance::effective(&self.storage)
+    }
+
+    /// Gives the running session the saved enhance, so a change is heard at once.
+    pub fn apply_enhance(&self) {
+        if let Some(session) = self.shaped_session() {
+            session.inner.set_enhance(self.enhance());
+        }
+    }
+
+    fn shaped_session(&self) -> Option<&Session> {
+        self.session
+            .as_ref()
+            .filter(|session| session.used_for != CaptureUse::Sample)
     }
 
     /// Who the running session serves, if one runs.
@@ -437,6 +460,7 @@ impl Mic {
                     match session.used_for {
                         CaptureUse::Dictation => "dictation",
                         CaptureUse::Test => "the microphone test",
+                        CaptureUse::Sample => "the audio enhance sample",
                     }
                 ),
             };
@@ -453,7 +477,13 @@ impl Mic {
         let path = new_session_path(&self.storage.data.sessions_dir(), now_unix_ms());
         match self.backend.start(&device, path.clone(), sink) {
             Ok(inner) => {
-                inner.set_gain(self.gain());
+                if used_for == CaptureUse::Sample {
+                    inner.set_gain(1.0);
+                    inner.set_enhance(Enhance::OFF);
+                } else {
+                    inner.set_gain(self.gain());
+                    inner.set_enhance(self.enhance());
+                }
                 self.session = Some(Session {
                     inner,
                     path: path.clone(),

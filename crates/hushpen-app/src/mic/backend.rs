@@ -1,7 +1,7 @@
 //! The audio side of [`super::Mic`], behind a trait so tests never open a
 //! real microphone (on macOS that shows a permission prompt).
 
-use hushpen_audio::{Capture, CaptureError, EventSink, FeedInfo, Finished, InputDevice};
+use hushpen_audio::{Capture, CaptureError, Enhance, EventSink, FeedInfo, Finished, InputDevice};
 use hushpen_core::permission::Access;
 use std::path::{Path, PathBuf};
 
@@ -24,6 +24,8 @@ pub trait MicSession {
     fn feed_wav(&self, path: &Path) -> Result<FeedInfo, CaptureError>;
     /// Boosts the microphone by `gain`, 1.0 to 2.0, from now on.
     fn set_gain(&self, _gain: f32) {}
+    /// Runs the microphone through `enhance` from now on.
+    fn set_enhance(&self, _enhance: Enhance) {}
 }
 
 /// The real microphones, through cpal.
@@ -66,5 +68,9 @@ impl MicSession for CpalSession {
 
     fn set_gain(&self, gain: f32) {
         self.0.set_gain(gain);
+    }
+
+    fn set_enhance(&self, enhance: Enhance) {
+        self.0.set_enhance(enhance);
     }
 }

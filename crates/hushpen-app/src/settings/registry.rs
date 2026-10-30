@@ -1,8 +1,9 @@
 //! The settings registry rows: the toggles and setters that write one value, and the stored reads.
 
 use super::Settings;
+use crate::enhance::Mode;
 use crate::hook;
-use gpui_kit::Context;
+use gpui_kit::{Context, FocusHandle, Window};
 use serde_json::{Value, json};
 
 impl Settings {
@@ -32,6 +33,27 @@ impl Settings {
         if stored.is_none_or(|stored| (stored - stepped).abs() > f64::EPSILON) {
             self.set(crate::mic::GAIN_SETTING, json!(stepped), cx);
             self.mic.read(cx).apply_gain();
+        }
+    }
+
+    /// Saves the audio enhance mode and gives it to a running microphone. Picking Custom opens
+    /// the tuning sheet, as the Adjust button does.
+    pub fn set_enhance_mode(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
+        let before = crate::enhance::mode(&self.storage);
+        self.set(crate::enhance::MODE, json!(mode.key()), cx);
+        self.mic.read(cx).apply_enhance();
+        if mode == Mode::Custom && before != Mode::Custom {
+            let back = self.control_focus[super::slots::ENHANCE].clone();
+            self.open_tuning(back, window, cx);
+        }
+    }
+
+    /// Opens the audio enhance sheet on its tuning page; `back` has the focus once it closes.
+    pub fn open_tuning(&mut self, back: FocusHandle, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tuning) = self.tuning.clone() {
+            tuning.update(cx, |tuning, cx| {
+                tuning.open(crate::enhance::Page::Tune, Some(back), window, cx)
+            });
         }
     }
 
