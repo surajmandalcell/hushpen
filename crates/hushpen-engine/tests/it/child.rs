@@ -5,6 +5,7 @@
 
 use super::{assert_expected_words, model_path, short_wav, words};
 use hushpen_core::error;
+use hushpen_core::idle::{Idle, IdleAction};
 use hushpen_core::protocol::{
     Event, FrameKind, PROTOCOL_VERSION, Request, read_frame, write_frame, write_json,
 };
@@ -66,6 +67,7 @@ pub(super) fn load_spec(path: &Path) -> LoadSpec {
         path: path.to_path_buf(),
         gpu: false,
         threads: 2,
+        idle: Idle::KEEP,
     }
 }
 
@@ -182,6 +184,8 @@ impl Raw {
             path: model.to_string_lossy().into_owned(),
             gpu: false,
             threads: 2,
+            idle_secs: 0,
+            idle_action: IdleAction::Unload,
         });
         assert!(matches!(self.next(), Event::Loading { .. }));
         assert!(matches!(self.next(), Event::Loaded { .. }));

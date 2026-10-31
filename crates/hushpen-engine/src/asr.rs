@@ -155,6 +155,13 @@ pub trait AsrEngine {
         progress: &mut dyn FnMut(f32),
     ) -> Result<Transcript, EngineError>;
 
+    /// Hands the pages of the model's weights to the system and returns how many bytes it
+    /// advised. The model keeps working: the next job reads the pages back. An engine that
+    /// cannot do this advises nothing.
+    fn page_out(&mut self) -> std::io::Result<u64> {
+        Ok(0)
+    }
+
     /// [`AsrEngine::transcribe_stream`] over one buffer, such as a dictation.
     fn transcribe(
         &mut self,

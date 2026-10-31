@@ -4,6 +4,7 @@
 
 use crate::engine_log::EngineLog;
 use crate::manager;
+use hushpen_core::idle::Idle;
 use hushpen_core::protocol::Segment;
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -74,6 +75,8 @@ pub struct LoadSpec {
     pub path: PathBuf,
     pub gpu: bool,
     pub threads: usize,
+    /// What the child does with the model after a stretch without a job.
+    pub idle: Idle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

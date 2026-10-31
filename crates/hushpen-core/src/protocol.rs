@@ -7,6 +7,7 @@
 //! Control messages are JSON objects with a `type` field. Errors carry a code from
 //! [`crate::error`] and a `params` object; the UI never matches English text.
 
+use crate::idle::IdleAction;
 use serde_json::{Map, Value, json};
 use std::fmt;
 use std::io::{self, Read, Write};
@@ -165,10 +166,15 @@ pub enum Request {
     Hello {
         protocol: u32,
     },
+    /// Loads a model, or with the model already loaded and only `idle_secs` or `idle_action`
+    /// changed, takes the new idle rule and keeps the model.
     LoadModel {
         path: String,
         gpu: bool,
         threads: u32,
+        /// Seconds without a job before `idle_action`. `0` keeps the model as it is.
+        idle_secs: u64,
+        idle_action: IdleAction,
     },
     Transcribe {
         job: u64,
@@ -199,9 +205,16 @@ impl Request {
     pub fn to_json(&self) -> Value {
         match self {
             Self::Hello { protocol } => json!({"type": "hello", "protocol": protocol}),
-            Self::LoadModel { path, gpu, threads } => {
-                json!({"type": "load_model", "path": path, "gpu": gpu, "threads": threads})
-            }
+            Self::LoadModel {
+                path,
+                gpu,
+                threads,
+                idle_secs,
+                idle_action,
+            } => json!({
+                "type": "load_model", "path": path, "gpu": gpu, "threads": threads,
+                "idle_secs": idle_secs, "idle_action": idle_action.as_str(),
+            }),
             Self::Transcribe {
                 job,
                 wav_path,
@@ -237,6 +250,8 @@ impl Request {
                 path: fields.string("path")?,
                 gpu: fields.bool("gpu")?,
                 threads: fields.u32("threads")?,
+                idle_secs: fields.optional_u64("idle_secs")?.unwrap_or(0),
+                idle_action: fields.idle_action()?,
             }),
             "transcribe" => Ok(Self::Transcribe {
                 job: fields.u64("job")?,
@@ -532,6 +547,16 @@ impl<'a> Fields<'a> {
             .ok_or_else(|| Self::wrong(name, "true or false"))
     }
 
+    /// `idle_action`, or unload when it is missing.
+    pub(crate) fn idle_action(&self) -> Result<IdleAction, DecodeError> {
+        match self.optional_string("idle_action")? {
+            None => Ok(IdleAction::default()),
+            Some(name) => {
+                IdleAction::parse(&name).ok_or_else(|| Self::wrong("idle_action", "an idle action"))
+            }
+        }
+    }
+
     pub(crate) fn optional_bool(&self, name: &str) -> Result<Option<bool>, DecodeError> {
         match self.0.get(name) {
             None | Some(Value::Null) => Ok(None),
@@ -645,6 +670,15 @@ mod tests {
                 path: "/m/ggml-tiny.en.bin".into(),
                 gpu: true,
                 threads: 4,
+                idle_secs: 0,
+                idle_action: IdleAction::Unload,
+            },
+            Request::LoadModel {
+                path: "/m/ggml-base.bin".into(),
+                gpu: false,
+                threads: 2,
+                idle_secs: 900,
+                idle_action: IdleAction::PageOut,
             },
             Request::Transcribe {
                 job: 7,
@@ -666,6 +700,21 @@ mod tests {
         for request in requests {
             assert_eq!(Request::from_json(&request.to_json()), Ok(request));
         }
+    }
+
+    #[test]
+    fn a_load_without_an_idle_rule_keeps_the_model_and_a_bad_action_is_refused() {
+        let value = json!({"type": "load_model", "path": "/m", "gpu": false, "threads": 2});
+        assert!(matches!(
+            Request::from_json(&value),
+            Ok(Request::LoadModel {
+                idle_secs: 0,
+                idle_action: IdleAction::Unload,
+                ..
+            })
+        ));
+        let bad = json!({"type": "load_model", "path": "/m", "gpu": false, "threads": 2, "idle_action": "discard"});
+        assert!(Request::from_json(&bad).is_err());
     }
 
     #[test]

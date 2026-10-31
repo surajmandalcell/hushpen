@@ -9,6 +9,9 @@ mod engine_log;
 mod entry;
 mod llm_client;
 mod manager;
+// madvise on the model's own mappings (see the module comment).
+#[allow(unsafe_code)]
+mod pageout;
 mod server;
 mod tts_client;
 mod vad;
