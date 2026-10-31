@@ -15,6 +15,22 @@ impl Settings {
         self.flip("audio.cueSounds", cx);
     }
 
+    pub fn toggle_output_mute(&mut self, cx: &mut Context<Self>) {
+        self.flip("audio.muteWhileDictating", cx);
+    }
+
+    pub fn set_idle_policy(&mut self, value: &str, cx: &mut Context<Self>) {
+        self.set("engine.idlePolicy", json!(value), cx);
+        self.picker = None;
+        cx.notify();
+    }
+
+    pub fn set_idle_minutes(&mut self, value: i64, cx: &mut Context<Self>) {
+        self.set("engine.idleMinutes", json!(value), cx);
+        self.picker = None;
+        cx.notify();
+    }
+
     /// Sets the cue volume, from 0 to 1, in steps of 5%, so a drag writes the file only when
     /// the step changes.
     pub fn set_cue_volume(&mut self, volume: f32, cx: &mut Context<Self>) {

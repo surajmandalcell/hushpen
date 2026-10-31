@@ -185,6 +185,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("audio.enhance.trebleDb", Kind::Int(-6, 12), |_| json!(0)),
     spec!("audio.enhance.noiseReduction", Kind::Bool, |_| json!(false)),
     spec!("audio.cueSounds", Kind::Bool, |_| json!(true)),
+    spec!("audio.muteWhileDictating", Kind::Bool, |_| json!(true)),
     spec!("audio.cueVolume", Kind::Float(0.0, 1.0), |_| json!(0.25)),
     spec!("cleanup.rules", Kind::Bool, |_| json!(true)),
     spec!("cleanup.spokenPunctuation", Kind::Bool, |_| json!(true)),
@@ -271,6 +272,12 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("readAloud.format", Kind::Choice(&["wav"]), |_| json!("wav")),
     spec!("engine.useGpu", Kind::Bool, |os| json!(mac(os))),
     spec!("engine.threads", Kind::AutoOrInt(1, 64), |_| json!("auto")),
+    spec!(
+        "engine.idlePolicy",
+        Kind::Choice(&["current", "keep", "pageout", "unload"]),
+        |_| json!("current")
+    ),
+    spec!("engine.idleMinutes", Kind::Int(5, 60), |_| json!(15)),
     spec!("startup.launchAtLogin", Kind::Bool, |_| json!(false)),
     spec!("startup.startHidden", Kind::Bool, |_| json!(false)),
     spec!("updates.check", Kind::Bool, |_| json!(false)),
@@ -306,6 +313,41 @@ pub(super) fn find(key: &str) -> Option<&'static Spec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_mute_and_idle_defaults_preserve_the_retention_policy() {
+        for os in [Os::MacOs, Os::Linux] {
+            assert_eq!(
+                find("audio.muteWhileDictating").unwrap().default_value(os),
+                json!(true)
+            );
+            assert_eq!(
+                find("engine.idlePolicy").unwrap().default_value(os),
+                json!("current")
+            );
+            assert_eq!(
+                find("engine.idleMinutes").unwrap().default_value(os),
+                json!(15)
+            );
+        }
+        let policy = find("engine.idlePolicy").unwrap();
+        for value in ["current", "keep", "pageout", "unload"] {
+            assert_eq!(policy.sanitize(&json!(value)), Some(json!(value)));
+        }
+        assert_eq!(policy.sanitize(&json!("discard")), None);
+        let minutes = find("engine.idleMinutes").unwrap();
+        assert_eq!(minutes.sanitize(&json!(4)), None);
+        assert_eq!(minutes.sanitize(&json!(61)), None);
+        for value in [5, 15, 30, 60] {
+            assert_eq!(minutes.sanitize(&json!(value)), Some(json!(value)));
+        }
+        assert_eq!(
+            find("audio.muteWhileDictating")
+                .unwrap()
+                .sanitize(&json!("true")),
+            None
+        );
+    }
 
     #[test]
     fn every_default_passes_its_own_rule_on_both_systems() {

@@ -208,6 +208,56 @@ fn typing_filters_to_the_matching_rows_under_their_headings(cx: &mut TestAppCont
 }
 
 #[gpui_kit::test]
+fn the_output_mute_switch_and_idle_pickers_write_the_selected_values(cx: &mut TestAppContext) {
+    let shown = shown(cx);
+    search(cx, &shown, "music");
+    assert!(has(cx, &shown, "settings.audio.muteWhileDictating"));
+    assert!(!has(cx, &shown, "settings.engine.idlePolicy"));
+    cx.update_window(shown.handle, |_, window, cx| {
+        window.click("settings.audio.muteWhileDictating", cx)
+    })
+    .unwrap();
+    frame(cx, &shown);
+    assert_eq!(value(&shown.rig, "audio.muteWhileDictating"), json!(false));
+
+    search(cx, &shown, "memory");
+    for policy in ["keep", "pageout", "unload"] {
+        cx.update_window(shown.handle, |_, window, cx| {
+            window.click("settings.engine.idlePolicy", cx)
+        })
+        .unwrap();
+        frame(cx, &shown);
+        for choice in ["keep", "pageout", "unload"] {
+            assert!(
+                cx.update_window(shown.handle, |_, window, _| {
+                    window
+                        .try_find(format!("settings.engine.idlePolicy.option.{choice}"))
+                        .is_some()
+                })
+                .unwrap()
+            );
+        }
+        cx.update_window(shown.handle, |_, window, cx| {
+            window.click(format!("settings.engine.idlePolicy.option.{policy}"), cx)
+        })
+        .unwrap();
+        frame(cx, &shown);
+        assert_eq!(value(&shown.rig, "engine.idlePolicy"), json!(policy));
+    }
+    cx.update_window(shown.handle, |_, window, cx| {
+        window.click("settings.engine.idleMinutes", cx)
+    })
+    .unwrap();
+    frame(cx, &shown);
+    cx.update_window(shown.handle, |_, window, cx| {
+        window.click("settings.engine.idleMinutes.option.30", cx)
+    })
+    .unwrap();
+    frame(cx, &shown);
+    assert_eq!(value(&shown.rig, "engine.idleMinutes"), json!(30));
+}
+
+#[gpui_kit::test]
 fn a_query_with_no_match_says_so_and_clear_brings_the_list_back(cx: &mut TestAppContext) {
     let shown = shown(cx);
     search(cx, &shown, "zebra");

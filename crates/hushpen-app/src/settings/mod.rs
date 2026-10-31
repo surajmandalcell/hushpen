@@ -60,7 +60,10 @@ pub(crate) mod slots {
     pub const INPUT_GAIN: usize = 27;
     pub const ENHANCE: usize = 28;
     pub const ENHANCE_ADJUST: usize = 29;
-    pub const COUNT: usize = 30;
+    pub const MUTE_OUTPUT: usize = 30;
+    pub const IDLE_POLICY: usize = 31;
+    pub const IDLE_MINUTES: usize = 32;
+    pub const COUNT: usize = 33;
     /// The options of the open picker. One picker is open at a time, so they share a pool.
     pub const OPTIONS: usize = 12;
 }

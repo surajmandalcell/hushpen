@@ -232,3 +232,24 @@ fn back_up_corrupt(path: &Path) -> Result<()> {
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mute_and_idle_choices_survive_reopening_the_settings() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = SettingsStore::open(root.path()).unwrap();
+        settings
+            .set("audio.muteWhileDictating", json!(false))
+            .unwrap();
+        settings.set("engine.idlePolicy", json!("pageout")).unwrap();
+        settings.set("engine.idleMinutes", json!(30)).unwrap();
+        drop(settings);
+        let settings = SettingsStore::open(root.path()).unwrap();
+        assert_eq!(settings.get("audio.muteWhileDictating"), Some(json!(false)));
+        assert_eq!(settings.get("engine.idlePolicy"), Some(json!("pageout")));
+        assert_eq!(settings.get("engine.idleMinutes"), Some(json!(30)));
+    }
+}

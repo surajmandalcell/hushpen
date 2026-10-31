@@ -8,6 +8,93 @@ use gpui_kit::{AnyElement, App};
 /// The thread counts offered besides Automatic, up to the CPUs of this computer.
 const THREAD_CHOICES: [i64; 7] = [1, 2, 4, 6, 8, 12, 16];
 
+const IDLE_CHOICES: [(&str, &str); 3] = [
+    ("keep", "Keep in memory"),
+    ("pageout", "Let the system page out"),
+    ("unload", "Unload"),
+];
+
+pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
+    let stored = page.settings.read(cx).stored_str("engine.idlePolicy");
+    let current = IDLE_CHOICES
+        .iter()
+        .find(|(key, _)| *key == stored)
+        .map_or("Current behavior", |(_, label)| *label);
+    let detail = match stored.as_str() {
+        "keep" => "Keeps models loaded until you quit or choose another model.",
+        "pageout" if cfg!(target_os = "macos") => {
+            "macOS decides when idle memory is compressed or swapped."
+        }
+        "pageout" => "Pages idle CPU weights to swap; mapped files may be read again.",
+        "unload" => "Releases idle models. The next use loads them again.",
+        _ => "Speech stays loaded; cleanup and voices keep their current idle limits.",
+    };
+    let menu = page.picker_open("engine.idlePolicy", cx).then(|| {
+        page.options(
+            "engine.idlePolicy",
+            IDLE_CHOICES
+                .into_iter()
+                .map(|(key, label)| (key.to_owned(), label.to_owned(), stored == key))
+                .collect(),
+            &page.options,
+            Settings::set_idle_policy,
+        )
+    });
+    page.menu(
+        "engine.idlePolicy",
+        "When idle",
+        detail,
+        current.to_owned(),
+        slots::IDLE_POLICY,
+        menu,
+    )
+}
+
+pub fn idle_minutes(page: &Page, cx: &mut App) -> AnyElement {
+    let me = page.settings.read(cx);
+    let stored = me.stored_f64("engine.idleMinutes").unwrap_or(15.0) as i64;
+    let detail = if matches!(
+        me.stored_str("engine.idlePolicy").as_str(),
+        "pageout" | "unload"
+    ) {
+        "Counted from the end of the last model job."
+    } else {
+        "Used when you choose page out or unload."
+    };
+    let menu = page.picker_open("engine.idleMinutes", cx).then(|| {
+        let mut values = vec![5, 15, 30, 60, stored];
+        values.sort_unstable();
+        values.dedup();
+        page.options(
+            "engine.idleMinutes",
+            values
+                .into_iter()
+                .map(|minutes| {
+                    (
+                        minutes.to_string(),
+                        format!("{minutes} minutes"),
+                        minutes == stored,
+                    )
+                })
+                .collect(),
+            &page.options,
+            |me, value, cx| {
+                if let Ok(minutes) = value.parse() {
+                    me.set_idle_minutes(minutes, cx);
+                }
+            },
+        )
+    });
+    page.menu(
+        "engine.idleMinutes",
+        "Idle time",
+        detail,
+        format!("{stored} minutes"),
+        slots::IDLE_MINUTES,
+        menu,
+    )
+}
+
 pub fn gpu(page: &Page, cx: &mut App) -> AnyElement {
     let on = page.settings.read(cx).stored_bool("engine.useGpu");
     page.toggle(
