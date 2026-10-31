@@ -169,7 +169,12 @@ new decision, add it here in the same change (D-21).
   and abbreviation rules) and passes phoneme codepoints, so words outside
   the lexicon are still spoken instead of silently dropped. The model is
   Kokoro-82M int8 (four pinned files, catalog kind `voice`, stored under
-  `models/tts/`). It runs on the CPU only: the CoreML provider aborts the
+  `models/tts/`), v1.0 int8 pinned to revision
+  `57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2`, an export that keeps the STFT
+  convolutions in float32 (the older export gave invalid samples). Synthesis
+  keeps the model's pauses (`silence_scale` 1.0). A voice model counts as
+  installed only when its stamp matches the current catalog size and hash.
+  The sherpa C API takes a speaker ID, not a blended style vector. It runs on the CPU only: the CoreML provider aborts the
   process on this model's dynamic shapes (an uncatchable C++ exception from
   ONNX Runtime). Measured real-time factors: about 0.5 on an Apple M4 Pro,
   0.44 to 0.46 on four vCPUs of a Linux arm64 container. The library is
