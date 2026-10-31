@@ -132,12 +132,33 @@ jobs:
           mkdir -p models
           curl -fsSL --retry 3 -o models/ggml-tiny.en.bin \
             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin
+      - name: Cache the Parakeet test model
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        id: parakeet-cache
+        uses: actions/cache@v4
+        with:
+          path: models/ggml-parakeet-tdt-0.6b-v3-q4_k.bin
+          key: parakeet-v3-q4_k-8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e
+      - name: Download the Parakeet test model
+        if: (inputs.suite == 'engine' || inputs.suite == 'full') && steps.parakeet-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -fsSL --retry 3 -o models/ggml-parakeet-tdt-0.6b-v3-q4_k.bin \
+            https://huggingface.co/ggml-org/parakeet-GGUF/resolve/35156454d1a39de06863303dd209fd2bed6ee079/ggml-parakeet-tdt-0.6b-v3-q4_k.bin
+      # A release build finds the speech detector only beside its own binary, as in a package.
+      - name: Put the speech detector beside the test binaries
+        if: inputs.suite == 'engine' || inputs.suite == 'full'
+        run: |
+          cp assets/ggml-silero-v5.1.2.bin target/release/
+          cp assets/ggml-silero-v5.1.2.bin target/release/deps/
       - name: Engine smoke (CPU, 2 threads)
         if: inputs.suite == 'engine' || inputs.suite == 'full'
         env:
           HUSHPEN_TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
+          HUSHPEN_TEST_PARAKEET_MODEL: ${{ github.workspace }}/models/ggml-parakeet-tdt-0.6b-v3-q4_k.bin
         run: |
           echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  models/ggml-tiny.en.bin" | shasum -a 256 -c -
+          echo "8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e  models/ggml-parakeet-tdt-0.6b-v3-q4_k.bin" | shasum -a 256 -c -
           # The import tests and the Spanish translate test read fixtures and the base models from
           # the owner's test-assets folders, which a runner does not have.
           cargo test --release -p hushpen-engine --features heavy --test it --locked -- --test-threads=1 --nocapture --skip import:: --skip a_spanish_clip_translates_to_english
