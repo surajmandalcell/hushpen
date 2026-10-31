@@ -496,6 +496,27 @@ fn unload_drops_the_model_and_a_second_load_of_it_answers_at_once() {
 }
 
 #[test]
+fn a_new_idle_time_for_the_loaded_model_keeps_it_and_applies_at_once() {
+    let mut worker = Worker::start(0);
+    worker.load_with("kokoro-82m-int8", 0);
+    worker.send(&TtsRequest::LoadModel {
+        dir: "/models/tts/kokoro-82m-int8".into(),
+        engine: TtsEngine::Kokoro,
+        threads: 2,
+        idle_secs: 1,
+    });
+    assert!(matches!(worker.next(), TtsEvent::Loaded { ms: 0, .. }));
+    assert_eq!(
+        worker.next(),
+        TtsEvent::Unloaded {
+            reason: UnloadReason::Idle
+        }
+    );
+    assert_eq!(worker.loads.load(Ordering::SeqCst), 1);
+    assert_eq!(worker.finish(), 0);
+}
+
+#[test]
 fn the_end_of_the_input_ends_the_worker_even_during_a_job() {
     let mut worker = Worker::start(5000);
     worker.load();
