@@ -115,6 +115,7 @@ fn run_smoke(runtime: &LlamaRuntime, smoke: &Smoke) -> ExitCode {
         gpu: smoke.gpu,
         threads: smoke.threads.unwrap_or_else(|| auto_threads(cpus)),
         idle: None,
+        idle_action: hushpen_core::idle::IdleAction::Unload,
     };
     let mut outcome = None;
     let loaded = runtime.with_session(&spec, &mut |session: &mut dyn Session, info| {

@@ -4,6 +4,7 @@
 //! `type` field. The text of a dictation travels inside `Cleanup` and `Result`; no log line
 //! ever holds it.
 
+use crate::idle::IdleAction;
 use crate::protocol::{DecodeError, Fields, Frame, Params, parse_payload};
 use serde_json::{Map, Value, json};
 
@@ -27,8 +28,9 @@ pub enum LlmRequest {
         family: Option<String>,
         gpu: bool,
         threads: u32,
-        /// Seconds without a job before the model is dropped. `0` keeps it for good.
+        /// Seconds without a job before `idle_action`. `0` keeps the model for good.
         idle_secs: u64,
+        idle_action: IdleAction,
     },
     /// Cleans one dictation. `system` is the fixed prompt, which the worker caches.
     Cleanup {
@@ -63,9 +65,10 @@ impl LlmRequest {
                 gpu,
                 threads,
                 idle_secs,
+                idle_action,
             } => json!({
                 "type": "load_model", "path": path, "family": family, "gpu": gpu,
-                "threads": threads, "idle_secs": idle_secs,
+                "threads": threads, "idle_secs": idle_secs, "idle_action": idle_action.as_str(),
             }),
             Self::Cleanup {
                 job,
@@ -106,6 +109,7 @@ impl LlmRequest {
                 idle_secs: fields
                     .optional_u64("idle_secs")?
                     .unwrap_or(DEFAULT_IDLE_SECS),
+                idle_action: fields.idle_action()?,
             }),
             "cleanup" => Ok(Self::Cleanup {
                 job: fields.u64("job")?,
@@ -338,6 +342,7 @@ mod tests {
                 gpu: true,
                 threads: 4,
                 idle_secs: 300,
+                idle_action: IdleAction::Unload,
             },
             LlmRequest::LoadModel {
                 path: "/m/x.gguf".into(),
@@ -345,6 +350,7 @@ mod tests {
                 gpu: false,
                 threads: 2,
                 idle_secs: 0,
+                idle_action: IdleAction::PageOut,
             },
             LlmRequest::Cleanup {
                 job: 3,
@@ -371,10 +377,18 @@ mod tests {
     #[test]
     fn a_load_without_an_idle_time_uses_the_default() {
         let value = json!({"type": "load_model", "path": "/m", "gpu": false, "threads": 2});
-        let Ok(LlmRequest::LoadModel { idle_secs, .. }) = LlmRequest::from_json(&value) else {
+        let Ok(LlmRequest::LoadModel {
+            idle_secs,
+            idle_action,
+            ..
+        }) = LlmRequest::from_json(&value)
+        else {
             panic!("a load request");
         };
-        assert_eq!(idle_secs, DEFAULT_IDLE_SECS);
+        assert_eq!(
+            (idle_secs, idle_action),
+            (DEFAULT_IDLE_SECS, IdleAction::Unload)
+        );
     }
 
     #[test]

@@ -7,6 +7,7 @@
 #![cfg(feature = "heavy")]
 
 use hushpen_core::cleanup::guard;
+use hushpen_core::idle::IdleAction;
 use hushpen_core::llm_prompt::{CLEANUP_SYSTEM, cleanup_system_keeping};
 use hushpen_core::llm_protocol::{
     JobStats, LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason,
@@ -140,12 +141,22 @@ impl Worker {
     }
 
     fn load(&mut self, model: &std::path::Path, idle_secs: u64) -> (u64, bool) {
+        self.load_rule(model, idle_secs, IdleAction::Unload)
+    }
+
+    fn load_rule(
+        &mut self,
+        model: &std::path::Path,
+        idle_secs: u64,
+        idle_action: IdleAction,
+    ) -> (u64, bool) {
         self.send(&LlmRequest::LoadModel {
             path: model.to_string_lossy().into_owned(),
             family: None,
             gpu: gpu(),
             threads: threads(),
             idle_secs,
+            idle_action,
         });
         assert!(matches!(self.next(), LlmEvent::Loading { .. }));
         match self.next() {
@@ -490,6 +501,41 @@ fn an_idle_model_unloads_and_the_next_job_loads_it_again() {
     assert!(stats.load_ms > 0, "the reload is not counted");
 }
 
+/// On Linux the page-out hands the mapped weights back (`madvise(MADV_PAGEOUT)`); elsewhere it
+/// advises nothing. Either way the model stays loaded and writes the same text.
+#[test]
+fn a_paged_out_model_stays_loaded_and_writes_the_same_text() {
+    let mut worker = Worker::start();
+    worker.load_rule(&default_model(), 2, IdleAction::PageOut);
+    worker.cleanup(1, FILLER, 128);
+    let (before_text, _) = worker.result(1);
+    let before = resident_kib(worker.child.id());
+    let started = Instant::now();
+    let line = loop {
+        match worker.stderr.recv_timeout(Duration::from_secs(20)) {
+            Ok(line) if line.contains("idle pageout") => break line,
+            Ok(_) => {}
+            Err(_) => panic!("no page-out within 20 s: {}", worker.stderr_text()),
+        }
+    };
+    let after = resident_kib(worker.child.id());
+    eprintln!(
+        "{line} after {:?}; resident {before:?} kB -> {after:?} kB",
+        started.elapsed()
+    );
+    if cfg!(target_os = "linux") {
+        assert!(
+            !line.contains("bytes=0") && !line.contains("failed"),
+            "{line}"
+        );
+        assert!(after < before, "the page-out freed nothing");
+    }
+    worker.cleanup(2, FILLER, 128);
+    let (after_text, stats) = worker.result(2);
+    assert_eq!(stats.load_ms, 0, "a page-out keeps the model loaded");
+    assert_eq!(after_text, before_text);
+}
+
 #[test]
 fn cancel_settles_a_running_job_in_under_a_second() {
     let mut worker = Worker::start();
@@ -521,6 +567,7 @@ fn a_missing_model_file_is_a_load_error_and_the_worker_lives() {
         gpu: false,
         threads: 2,
         idle_secs: 300,
+        idle_action: IdleAction::Unload,
     });
     assert!(matches!(worker.next(), LlmEvent::Loading { .. }));
     assert!(matches!(

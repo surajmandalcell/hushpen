@@ -8,6 +8,7 @@ use crate::worker::{
     WorkerStatus,
 };
 use hushpen_core::error;
+use hushpen_core::idle::{Idle, IdleAction};
 use hushpen_core::llm_protocol::{
     DEFAULT_IDLE_SECS, JobStats, LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest,
 };
@@ -24,8 +25,8 @@ pub struct LlmSpec {
     pub family: Option<String>,
     pub gpu: bool,
     pub threads: usize,
-    /// Seconds without a job before the worker drops the model. `0` keeps it.
-    pub idle_secs: u64,
+    /// What the worker does with the model after a stretch without a job.
+    pub idle: Idle,
 }
 
 impl LlmSpec {
@@ -35,7 +36,10 @@ impl LlmSpec {
             family: None,
             gpu: false,
             threads: 4,
-            idle_secs: DEFAULT_IDLE_SECS,
+            idle: Idle {
+                secs: DEFAULT_IDLE_SECS,
+                action: IdleAction::Unload,
+            },
         }
     }
 }
@@ -117,7 +121,8 @@ impl Protocol for LlmWorker {
             family: spec.family.clone(),
             gpu: spec.gpu,
             threads: u32::try_from(spec.threads).unwrap_or(u32::MAX),
-            idle_secs: spec.idle_secs,
+            idle_secs: spec.idle.secs,
+            idle_action: spec.idle.action,
         }
         .to_json()
     }

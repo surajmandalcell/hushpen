@@ -5,12 +5,14 @@
 //! during a load or a long job, and a cancel settles a queued job at once.
 //!
 //! The worker thread keeps the last `LoadModel` after it drops an idle model, so the next job
-//! loads the model again without a new request from the app.
+//! loads the model again without a new request from the app. With the page-out action it keeps
+//! the model and hands its weight pages to the system once per idle stretch instead.
 
 use crate::backend::{
     Backend, CancelFlag, JobError, JobKind, JobSpec, LoadError, LoadSpec, Session, SessionEnd,
 };
 use hushpen_core::error;
+use hushpen_core::idle::IdleAction;
 use hushpen_core::llm_prompt::{COMMAND_SYSTEM, PromptFamily, command_user};
 use hushpen_core::llm_protocol::{LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason};
 use hushpen_core::protocol::{DecodeError, Frame, FrameError, FrameKind, read_frame, write_json};
@@ -140,9 +142,13 @@ fn read_requests(
                 gpu,
                 threads,
                 idle_secs,
+                idle_action,
             } => match load_spec(path, family.as_deref(), gpu, threads, idle_secs) {
                 Ok(spec) => {
-                    let _ = work.send(Work::Load(spec));
+                    let _ = work.send(Work::Load(LoadSpec {
+                        idle_action,
+                        ..spec
+                    }));
                 }
                 Err(detail) => send(
                     output,
@@ -220,6 +226,7 @@ fn load_spec(
         gpu,
         threads: threads.max(1) as usize,
         idle: (idle_secs > 0).then(|| Duration::from_secs(idle_secs)),
+        idle_action: IdleAction::Unload,
     })
 }
 
@@ -314,7 +321,7 @@ impl Worker {
                     continue;
                 }
             };
-            match self.session(&spec, first_job, work) {
+            match self.session(&spec, first_job, work, &mut remembered) {
                 Ok(SessionEnd::Quit) => return,
                 Ok(SessionEnd::Reload(spec)) => next = Some(Work::Load(spec)),
                 Ok(SessionEnd::Unload(reason)) => {
@@ -337,12 +344,15 @@ impl Worker {
     }
 
     /// Loads `spec`, runs `first_job` and everything after it, and returns when the model is to
-    /// be dropped. On a failed load the error carries the id of the job that waited for it.
+    /// be dropped. On a failed load the error carries the id of the job that waited for it. A
+    /// `LoadModel` for the same model with a new idle rule keeps the model and updates
+    /// `remembered`.
     fn session(
         &self,
         spec: &LoadSpec,
         first_job: Option<(u64, JobSpec)>,
         work: &Receiver<Work>,
+        remembered: &mut Option<LoadSpec>,
     ) -> Result<SessionEnd, (LoadError, Option<u64>)> {
         let model = spec.model_name();
         send(
@@ -365,20 +375,40 @@ impl Worker {
                 },
             );
             let mut load_ms = if first_job.is_some() { info.ms } else { 0 };
+            let (mut idle, mut action) = (spec.idle, spec.idle_action);
+            // A page-out happens once per idle stretch; the next job or rule starts a new one.
+            let mut paged_out = false;
             loop {
                 let item = match first_job.take() {
                     Some((job, job_spec)) => Work::Job {
                         job,
                         spec: job_spec,
                     },
-                    None => match wait_for_work(work, spec.idle) {
+                    None => match wait_for_work(work, idle.filter(|_| !paged_out)) {
                         Ok(item) => item,
+                        Err(RecvTimeoutError::Timeout) if action == IdleAction::PageOut => {
+                            paged_out = true;
+                            match session.page_out() {
+                                Ok(bytes) => {
+                                    eprintln!(
+                                        "hushpen-llm: idle pageout model={model} bytes={bytes}"
+                                    );
+                                }
+                                Err(failure) => {
+                                    eprintln!(
+                                        "hushpen-llm: idle pageout model={model} failed: {failure}"
+                                    );
+                                }
+                            }
+                            continue;
+                        }
                         Err(RecvTimeoutError::Timeout) => {
                             return SessionEnd::Unload(UnloadReason::Idle);
                         }
                         Err(RecvTimeoutError::Disconnected) => return SessionEnd::Quit,
                     },
                 };
+                paged_out = false;
                 match item {
                     Work::Job {
                         job,
@@ -387,15 +417,19 @@ impl Worker {
                         self.run_job(session, job, &job_spec, load_ms);
                         load_ms = 0;
                     }
-                    Work::Load(new) if new == *spec => send(
-                        &self.output,
-                        &LlmEvent::Loaded {
-                            model: model.clone(),
-                            ms: 0,
-                            gpu: info.gpu,
-                            backend: backend_name.clone(),
-                        },
-                    ),
+                    Work::Load(new) if new.same_model(spec) => {
+                        (idle, action) = (new.idle, new.idle_action);
+                        *remembered = Some(new);
+                        send(
+                            &self.output,
+                            &LlmEvent::Loaded {
+                                model: model.clone(),
+                                ms: 0,
+                                gpu: info.gpu,
+                                backend: backend_name.clone(),
+                            },
+                        );
+                    }
                     Work::Load(new) => return SessionEnd::Reload(new),
                     Work::Unload => return SessionEnd::Unload(UnloadReason::Requested),
                 }
