@@ -532,8 +532,19 @@ impl Worker {
     }
 }
 
-/// `ggml-tiny.en.bin` is the model `tiny.en`.
+/// The catalog id of the model file `path`: `ggml-parakeet-tdt-0.6b-v3-q4_k.bin` is
+/// `parakeet-v3-q4_k`. A file the catalog does not list is its stem without `ggml-`:
+/// `ggml-tiny.en.bin` is `tiny.en`.
 pub fn model_name(path: &Path) -> String {
+    let file = path.file_name().map(|name| name.to_string_lossy());
+    if let Some(entry) = file.as_deref().and_then(|file| {
+        hushpen_core::catalog::embedded()
+            .whisper
+            .iter()
+            .find(|entry| entry.files.iter().any(|f| f.file == file))
+    }) {
+        return entry.id.clone();
+    }
     let stem = path
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
@@ -1261,5 +1272,19 @@ mod tests {
             "large-v3-turbo"
         );
         assert_eq!(model_name(Path::new("/m/custom.bin")), "custom");
+    }
+
+    #[test]
+    fn a_catalog_file_is_named_by_its_catalog_id() {
+        let catalog = hushpen_core::catalog::embedded();
+        assert!(!catalog.whisper.is_empty());
+        for entry in &catalog.whisper {
+            let path = Path::new("/m").join(&entry.files[0].file);
+            assert_eq!(model_name(&path), entry.id, "{}", path.display());
+        }
+        assert_eq!(
+            model_name(Path::new("/m/ggml-parakeet-tdt-0.6b-v3-q4_k.bin")),
+            hushpen_core::catalog::SPEECH_DEFAULT
+        );
     }
 }

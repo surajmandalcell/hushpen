@@ -38,12 +38,13 @@ extern "C" fn native_log(level: u32, text: *const std::ffi::c_char, _user_data: 
     eprint!("{}", text.to_string_lossy());
 }
 
-/// Routes whisper.cpp and ggml logging through a filter that drops everything below a warning.
-/// Call it once in the engine child before any model loads.
+/// Routes whisper.cpp, Parakeet, and ggml logging through a filter that drops everything below
+/// a warning. Call it once in the engine child before any model loads.
 pub fn quiet_native_logs() {
     // SAFETY: `native_log` is a plain function that ignores its user data.
     unsafe {
         whisper_rs_sys::whisper_log_set(Some(native_log), std::ptr::null_mut());
+        whisper_rs_sys::parakeet_log_set(Some(native_log), std::ptr::null_mut());
         whisper_rs_sys::ggml_log_set(Some(native_log), std::ptr::null_mut());
     }
 }
@@ -53,7 +54,7 @@ pub fn whisper_cpp_version() -> &'static str {
     whisper_rs::get_whisper_version()
 }
 
-fn gpu_backend_present() -> bool {
+pub(crate) fn gpu_backend_present() -> bool {
     // SAFETY: a pure lookup in the ggml backend registry.
     unsafe {
         !whisper_rs_sys::ggml_backend_dev_by_type(
@@ -71,6 +72,8 @@ pub struct WhisperEngine {
     threads: usize,
     gpu: bool,
     multilingual: bool,
+    /// Whisper Turbo was trained without the translate task, like the English-only models.
+    translates: bool,
     vad_model: String,
     /// The mappings that hold the weights, for a page-out. Empty where none is possible.
     weights: Vec<std::ops::Range<usize>>,
@@ -93,9 +96,11 @@ impl WhisperEngine {
             .create_state()
             .map_err(|err| EngineError::LoadFailed(err.to_string()))?;
         let vad_model = crate::vad::model_path()?;
+        let multilingual = context.is_multilingual();
         Ok(Self {
             state,
-            multilingual: context.is_multilingual(),
+            multilingual,
+            translates: multilingual && !crate::server::model_name(model).contains("turbo"),
             _context: context,
             threads: options.threads.max(1),
             gpu: options.gpu && gpu_backend_present(),
@@ -133,7 +138,7 @@ impl AsrEngine for WhisperEngine {
         {
             return Err(EngineError::BadLanguage(code.to_owned()));
         }
-        if options.translate && !self.multilingual {
+        if options.translate && !self.translates {
             return Err(EngineError::TranslateUnsupported);
         }
 

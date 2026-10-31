@@ -11,7 +11,8 @@ pub use hushpen_core::protocol::Segment;
 pub struct Transcript {
     /// All segment texts joined, trimmed.
     pub text: String,
-    /// Language code whisper used or detected, for example `en`.
+    /// Language code whisper used or detected, for example `en`. `und` when the model does not
+    /// say, as Parakeet never does.
     pub language: String,
     pub segments: Vec<Segment>,
 }
@@ -28,11 +29,12 @@ pub struct LoadOptions {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TranscribeOptions {
     /// A language code such as `en`; `None` detects the language (needs a multilingual model).
+    /// Parakeet always detects; it only refuses a code outside its 25 languages.
     pub language: Option<String>,
-    /// Text that biases the decoder toward the user's words.
+    /// Text that biases the decoder toward the user's words. Only Whisper reads it.
     pub prompt: Option<String>,
-    /// Write the transcript in English, whatever language is spoken. English-only models
-    /// cannot do this.
+    /// Write the transcript in English, whatever language is spoken. English-only Whisper
+    /// models, Whisper Turbo, and Parakeet cannot do this.
     pub translate: bool,
 }
 
@@ -82,11 +84,12 @@ pub enum EngineError {
     UnsupportedCpu(&'static str),
     /// The job was stopped through its [`CancelFlag`].
     Cancelled,
-    /// The language code is not one whisper knows.
+    /// The language code is not one the model knows.
     BadLanguage(String),
     /// The audio has no samples.
     NoAudio,
-    /// Translate was asked of an English-only model.
+    /// Translate was asked of a model without the task: English-only Whisper, Whisper Turbo,
+    /// or Parakeet.
     TranslateUnsupported,
     /// The imported file could not be decoded while it was transcribed. `code` is an `IMPORT_`
     /// code and `text` a sentence for the user.
@@ -126,11 +129,9 @@ impl fmt::Display for EngineError {
                 write!(f, "this CPU lacks {feature}, which the speech engine needs")
             }
             Self::Cancelled => f.write_str("job cancelled"),
-            Self::BadLanguage(code) => write!(f, "unknown language code: {code}"),
+            Self::BadLanguage(code) => write!(f, "language code the model does not know: {code}"),
             Self::NoAudio => f.write_str("no audio samples"),
-            Self::TranslateUnsupported => {
-                f.write_str("this model knows only English, so it cannot translate")
-            }
+            Self::TranslateUnsupported => f.write_str("this model cannot translate"),
             Self::Decode { text, .. } => f.write_str(text),
             Self::Failed(detail) => write!(f, "transcription failed: {detail}"),
         }
