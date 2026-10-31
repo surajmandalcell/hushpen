@@ -257,6 +257,18 @@ pub(super) static REGISTRY: &[Spec] = &[
         Kind::OptionalText(256),
         |_| json!("")
     ),
+    // The Kokoro voice blended into the chosen one, by id. Empty is no mix.
+    spec!(
+        "readAloud.voice.kokoroMix",
+        Kind::OptionalText(64),
+        |_| json!("")
+    ),
+    // The share of the blended voice, in percent.
+    spec!(
+        "readAloud.voice.kokoroMixPercent",
+        Kind::Int(10, 90),
+        |_| json!(50)
+    ),
     // One choice for both Chatterbox models, which read with the same voices. Empty is the
     // default voice of the voice library.
     spec!(
@@ -433,6 +445,14 @@ mod tests {
         assert_eq!(sanitize("readAloud.speed", json!(2.5)), None);
         assert_eq!(sanitize("readAloud.speed", json!(0.5)), Some(json!(0.5)));
         assert_eq!(sanitize("readAloud.format", json!("mp3")), None);
+        assert_eq!(
+            sanitize("readAloud.voice.kokoroMixPercent", json!(95)),
+            None
+        );
+        assert_eq!(
+            sanitize("readAloud.voice.kokoroMixPercent", json!(30)),
+            Some(json!(30))
+        );
     }
 
     #[test]
