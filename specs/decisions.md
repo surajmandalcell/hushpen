@@ -7,7 +7,7 @@ new decision, add it here in the same change (D-21).
   `LICENSE` file, and `THIRD-PARTY-NOTICES.html` inside every package. The
   About "Open-source licenses" row links to it. Every dependency license
   must be compatible with AGPL-3.0-or-later (`deny.toml` allow list).
-- **D-02 Version.** 2.2.0. A GitHub release is published only after every
+- **D-02 Version.** 2.3.0. A GitHub release is published only after every
   validation passed and every release file was checked. `CHANGELOG.md` holds
   the notes of each version, and the release text is its section.
 - **D-03 Manual CI.** Every workflow runs by `workflow_dispatch` only.
