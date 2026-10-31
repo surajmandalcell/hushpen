@@ -9,6 +9,7 @@ use crate::backend::{
     Backend, CancelFlag, JobError, JobKind, JobOutput, JobSpec, LoadError, LoadInfo, LoadSpec,
     Session, SessionBody, SessionEnd,
 };
+use crate::pageout;
 use hushpen_core::error;
 use hushpen_core::llm_prompt::{PromptFamily, clean_output};
 use hushpen_core::llm_protocol::JobStats;
@@ -22,6 +23,7 @@ use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::token::LlamaToken;
 use llama_cpp_2::{LlamaStateSeqFlags, SeqState};
 use std::num::NonZeroU32;
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 /// Context size in tokens. A cleanup prompt and its reply are far smaller.
@@ -77,12 +79,14 @@ impl Backend for LlamaRuntime {
         } else {
             0
         };
-        let model = LlamaModel::load_from_file(
-            &self.backend,
-            &spec.path,
-            &LlamaModelParams::default().with_n_gpu_layers(layers),
-        )
-        .map_err(|failure| load_error(failure.to_string()))?;
+        let (model, weights) = pageout::track(&spec.path, || {
+            LlamaModel::load_from_file(
+                &self.backend,
+                &spec.path,
+                &LlamaModelParams::default().with_n_gpu_layers(layers),
+            )
+        });
+        let model = model.map_err(|failure| load_error(failure.to_string()))?;
         let threads = i32::try_from(spec.threads).unwrap_or(i32::MAX);
         let context = model
             .new_context(
@@ -100,6 +104,7 @@ impl Backend for LlamaRuntime {
             batch: LlamaBatch::new(MAX_CHUNK, 1),
             chunk: MIN_CHUNK,
             cache: None,
+            weights,
         };
         let info = LoadInfo {
             ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -123,6 +128,8 @@ struct LlamaSession<'a> {
     /// The size of the next prompt chunk.
     chunk: usize,
     cache: Option<PrefixCache>,
+    /// The mapped weights, for a page-out. llama.cpp maps the file by default.
+    weights: Vec<Range<usize>>,
 }
 
 impl LlamaSession<'_> {
@@ -267,6 +274,10 @@ impl Session for LlamaSession<'_> {
                 load_ms: 0,
             },
         })
+    }
+
+    fn page_out(&mut self) -> std::io::Result<u64> {
+        pageout::page_out(&self.weights)
     }
 }
 

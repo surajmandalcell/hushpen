@@ -1,6 +1,7 @@
 //! The worker's request loop with a fake model: ordering, cancel, idle unload, lazy reload.
 
 use hushpen_core::error;
+use hushpen_core::idle::IdleAction;
 use hushpen_core::llm_protocol::{
     JobStats, LLM_PROTOCOL_VERSION, LlmEvent, LlmRequest, UnloadReason,
 };
@@ -21,11 +22,13 @@ use std::time::{Duration, Instant};
 struct Fake {
     job_ms: u64,
     loads: Arc<AtomicUsize>,
+    page_outs: Arc<AtomicUsize>,
 }
 
 struct FakeSession {
     job_ms: u64,
     jobs_run: u32,
+    page_outs: Arc<AtomicUsize>,
 }
 
 impl Session for FakeSession {
@@ -54,6 +57,11 @@ impl Session for FakeSession {
             },
         })
     }
+
+    fn page_out(&mut self) -> std::io::Result<u64> {
+        self.page_outs.fetch_add(1, Ordering::SeqCst);
+        Ok(1)
+    }
 }
 
 impl Backend for Fake {
@@ -79,6 +87,7 @@ impl Backend for Fake {
         let mut session = FakeSession {
             job_ms: self.job_ms,
             jobs_run: 0,
+            page_outs: Arc::clone(&self.page_outs),
         };
         Ok(body(&mut session, LoadInfo { ms: 7, gpu: false }))
     }
@@ -89,6 +98,7 @@ struct Worker {
     from_worker: PipeReader,
     exit: thread::JoinHandle<u8>,
     loads: Arc<AtomicUsize>,
+    page_outs: Arc<AtomicUsize>,
 }
 
 impl Worker {
@@ -96,11 +106,13 @@ impl Worker {
         let (worker_in, to_worker) = std::io::pipe().unwrap();
         let (from_worker, worker_out) = std::io::pipe().unwrap();
         let loads = Arc::new(AtomicUsize::new(0));
+        let page_outs = Arc::new(AtomicUsize::new(0));
         let config = ServerConfig {
             version: "test".into(),
             backend: Arc::new(Fake {
                 job_ms,
                 loads: Arc::clone(&loads),
+                page_outs: Arc::clone(&page_outs),
             }),
         };
         let exit = thread::spawn(move || serve(worker_in, worker_out, config));
@@ -109,6 +121,7 @@ impl Worker {
             from_worker,
             exit,
             loads,
+            page_outs,
         }
     }
 
@@ -121,16 +134,25 @@ impl Worker {
         LlmEvent::from_frame(&frame).unwrap()
     }
 
-    fn load_with(&mut self, name: &str, idle_secs: u64) -> LlmEvent {
+    fn send_load(&mut self, name: &str, idle_secs: u64, idle_action: IdleAction) {
         self.send(&LlmRequest::LoadModel {
             path: format!("/models/{name}"),
             family: None,
             gpu: false,
             threads: 2,
             idle_secs,
+            idle_action,
         });
+    }
+
+    fn load_with(&mut self, name: &str, idle_secs: u64) -> LlmEvent {
+        self.send_load(name, idle_secs, IdleAction::Unload);
         assert!(matches!(self.next(), LlmEvent::Loading { .. }));
         self.next()
+    }
+
+    fn page_outs(&self) -> usize {
+        self.page_outs.load(Ordering::SeqCst)
     }
 
     fn load(&mut self, name: &str) -> LlmEvent {
@@ -204,6 +226,7 @@ fn a_bad_frame_ends_the_worker_with_the_bad_frame_code() {
                 backend: Arc::new(Fake {
                     job_ms: 0,
                     loads: Arc::default(),
+                    page_outs: Arc::default(),
                 }),
             },
         )
@@ -277,6 +300,7 @@ fn a_family_the_name_does_not_tell_is_refused_at_the_load() {
         gpu: false,
         threads: 2,
         idle_secs: 300,
+        idle_action: IdleAction::Unload,
     });
     assert!(matches!(
         worker.next(),
@@ -294,6 +318,7 @@ fn a_failed_load_reports_the_load_code_and_fails_the_waiting_job() {
         gpu: false,
         threads: 2,
         idle_secs: 300,
+        idle_action: IdleAction::Unload,
     });
     assert!(matches!(worker.next(), LlmEvent::Loading { .. }));
     assert!(matches!(
@@ -438,6 +463,68 @@ fn an_idle_time_of_zero_keeps_the_model_for_good() {
     assert_eq!(worker.finish(), 0);
 }
 
+/// True when `check` holds within two seconds.
+fn eventually(check: impl Fn() -> bool) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(2) {
+        if check() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    check()
+}
+
+#[test]
+fn an_idle_model_pages_out_once_per_idle_stretch_and_keeps_working() {
+    let mut worker = Worker::start(0);
+    worker.send_load("Qwen3.5-2B-Q4_K_M.gguf", 1, IdleAction::PageOut);
+    assert!(matches!(worker.next(), LlmEvent::Loading { .. }));
+    assert!(matches!(worker.next(), LlmEvent::Loaded { .. }));
+    assert!(eventually(|| worker.page_outs() == 1));
+    thread::sleep(Duration::from_millis(1300));
+    assert_eq!(worker.page_outs(), 1, "one page-out until the next job");
+    worker.send(&LlmRequest::Ping);
+    assert_eq!(worker.next(), LlmEvent::Pong, "the model stays loaded");
+
+    worker.cleanup(1, "after");
+    match worker.next() {
+        LlmEvent::Result { job: 1, stats, .. } => assert_eq!(stats.load_ms, 0),
+        other => panic!("expected a result, got {other:?}"),
+    }
+    assert!(eventually(|| worker.page_outs() == 2));
+    assert_eq!(worker.loads.load(Ordering::SeqCst), 1);
+    assert_eq!(worker.finish(), 0);
+}
+
+#[test]
+fn a_new_idle_rule_for_the_loaded_model_applies_without_a_reload_and_survives_one() {
+    let mut worker = Worker::start(0);
+    worker.load_with("Qwen3.5-2B-Q4_K_M.gguf", 0);
+    worker.send_load("Qwen3.5-2B-Q4_K_M.gguf", 1, IdleAction::Unload);
+    assert!(matches!(worker.next(), LlmEvent::Loaded { ms: 0, .. }));
+    assert_eq!(
+        worker.next(),
+        LlmEvent::Unloaded {
+            reason: UnloadReason::Idle
+        }
+    );
+    // The job loads the model again with the new rule, so it is dropped again when idle.
+    worker.cleanup(1, "again");
+    assert!(matches!(worker.next(), LlmEvent::Loading { .. }));
+    assert!(matches!(worker.next(), LlmEvent::Loaded { .. }));
+    assert!(matches!(worker.next(), LlmEvent::Result { job: 1, .. }));
+    assert_eq!(
+        worker.next(),
+        LlmEvent::Unloaded {
+            reason: UnloadReason::Idle
+        }
+    );
+    assert_eq!(worker.loads.load(Ordering::SeqCst), 2);
+    assert_eq!(worker.page_outs(), 0);
+    assert_eq!(worker.finish(), 0);
+}
+
 #[test]
 fn unload_drops_the_model_at_once() {
     let mut worker = Worker::start(0);
@@ -462,6 +549,7 @@ fn a_second_load_of_the_same_model_answers_without_loading_again() {
         gpu: false,
         threads: 2,
         idle_secs: 300,
+        idle_action: IdleAction::Unload,
     });
     assert!(matches!(worker.next(), LlmEvent::Loaded { ms: 0, .. }));
     assert_eq!(worker.loads.load(Ordering::SeqCst), 1);

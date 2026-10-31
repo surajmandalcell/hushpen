@@ -5,6 +5,7 @@
 //! drops the model when the body returns. The server loop runs inside that body.
 
 pub use hushpen_core::cancel::CancelFlag;
+use hushpen_core::idle::IdleAction;
 use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::llm_protocol::JobStats;
 use std::path::PathBuf;
@@ -19,9 +20,16 @@ pub struct LoadSpec {
     pub threads: usize,
     /// `None` keeps the model until the app unloads it.
     pub idle: Option<Duration>,
+    pub idle_action: IdleAction,
 }
 
 impl LoadSpec {
+    /// True when `other` names the same model and differs at most in its idle rule.
+    pub fn same_model(&self, other: &Self) -> bool {
+        (&self.path, self.family, self.gpu, self.threads)
+            == (&other.path, other.family, other.gpu, other.threads)
+    }
+
     /// The name shown in logs: the file name without its extension.
     pub fn model_name(&self) -> String {
         model_name(&self.path)
@@ -84,6 +92,13 @@ impl JobError {
 /// A loaded model that can run jobs one at a time.
 pub trait Session {
     fn run(&mut self, job: &JobSpec, cancel: &CancelFlag) -> Result<JobOutput, JobError>;
+
+    /// Hands the pages of the model's weights to the system and returns how many bytes it
+    /// advised. The model keeps working: the next job reads the pages back. A session that
+    /// cannot do this advises nothing.
+    fn page_out(&mut self) -> std::io::Result<u64> {
+        Ok(0)
+    }
 }
 
 /// Why the body of a session ended.
