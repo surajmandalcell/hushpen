@@ -1,9 +1,9 @@
 //! Read aloud on the Manual view: typed text, or a `.txt` or `.md` file, spoken by the system
 //! voice, by Kokoro, or by Chatterbox Turbo or Nano with a voice of the voice library. The audio
 //! plays while the rest is still being spoken, and it exports as a WAV. The engine, the voice of
-//! each engine, the speed, and the format the user picks are kept in settings. Each text that is
-//! spoken to the end goes in History as a row of kind `read`, with its audio while the audio
-//! retention keeps it.
+//! each engine, a second Kokoro voice to blend in and its share, the speed, and the format the
+//! user picks are kept in settings. Each text that is spoken to the end goes in History as a row
+//! of kind `read`, with its audio while the audio retention keeps it.
 
 pub mod panel;
 
@@ -23,6 +23,7 @@ use hushpen_core::error::{
     HISTORY_WRITE_FAILED, SPEECH_NO_TEXT, SPEECH_NOT_ENGLISH, SPEECH_TEXT_TOO_LONG,
     SPEECH_TEXT_UNREADABLE, SPEECH_UNAVAILABLE, SPEECH_VOICE_CLIP, SPEECH_VOICE_MISSING,
 };
+use hushpen_core::kokoro::VoiceMix;
 use hushpen_speech::{
     MAX_SPEED, MIN_SPEED, SAMPLE_RATE, SpeechEngine, SpeechError, SpeechEvent, TextFormat, Voice,
     prepare, read_text_file, synthesize,
@@ -58,6 +59,16 @@ pub const SPEED_SETTING: &str = "readAloud.speed";
 pub const FORMAT_SETTING: &str = "readAloud.format";
 /// The voice both Chatterbox models read with; empty for the default voice of the library.
 pub const CHATTERBOX_VOICE_SETTING: &str = "readAloud.voice.chatterbox";
+/// The Kokoro voice blended into the chosen one; empty for none.
+pub const KOKORO_MIX_SETTING: &str = "readAloud.voice.kokoroMix";
+/// The share of the blended voice, in percent.
+pub const KOKORO_MIX_PERCENT_SETTING: &str = "readAloud.voice.kokoroMixPercent";
+/// The shares the Mix slider offers, in percent.
+pub const MIX_MIN: u8 = 10;
+pub const MIX_MAX: u8 = 90;
+pub const MIX_STEP: u8 = 10;
+/// How far one Left or Right moves a slider of `ui`: 5% of its track.
+const SLIDER_KEY_STEP: f32 = 0.05;
 
 /// How often the thread that carries a synthesis looks for a Stop between two chunks.
 const STOP_POLL: Duration = Duration::from_millis(100);
@@ -140,6 +151,8 @@ pub enum Menu {
     Engine,
     Language,
     Voice,
+    /// The voice Kokoro blends into the chosen one.
+    Mix,
     Format,
 }
 
@@ -238,6 +251,8 @@ pub(crate) struct Focus {
     pub engine: FocusHandle,
     pub language: FocusHandle,
     pub voice: FocusHandle,
+    pub mix: FocusHandle,
+    pub mix_share: FocusHandle,
     pub speed: FocusHandle,
     pub format: FocusHandle,
     pub models: FocusHandle,
@@ -272,6 +287,8 @@ impl ReadAloud {
             engine: tab(cx),
             language: tab(cx),
             voice: tab(cx),
+            mix: tab(cx),
+            mix_share: tab(cx),
             speed: tab(cx),
             format: tab(cx),
             models: tab(cx),
@@ -354,6 +371,9 @@ impl ReadAloud {
     /// The voice a read speaks with: the chosen one, else for Chatterbox the default voice of
     /// the library, which is the voice of the model when no cloned voice is the default.
     pub fn spoken_voice(&self, cx: &App) -> Option<String> {
+        if let Some(mix) = self.mix() {
+            return Some(mix.id());
+        }
         self.voice().or_else(|| {
             self.engine().is_chatterbox().then(|| {
                 self.default_voice(cx)
@@ -391,6 +411,63 @@ impl ReadAloud {
             });
         }
         cx.notify();
+    }
+
+    /// The Kokoro voice a mix starts from: the chosen one, else the model's default.
+    fn mix_base(&self) -> String {
+        self.voice()
+            .unwrap_or_else(|| hushpen_core::kokoro::DEFAULT_VOICE.to_owned())
+    }
+
+    /// The voices Kokoro can blend into the chosen one: the others of its language.
+    pub fn mix_voices(&self) -> Vec<Voice> {
+        if self.engine() != EngineKind::Kokoro {
+            return Vec::new();
+        }
+        let base = self.mix_base();
+        let Some(language) = self
+            .listed()
+            .iter()
+            .find(|found| found.id == base)
+            .map(|found| primary(&found.language))
+        else {
+            return Vec::new();
+        };
+        self.listed()
+            .iter()
+            .filter(|found| found.id != base && primary(&found.language) == language)
+            .cloned()
+            .collect()
+    }
+
+    /// The voice chosen in Mix with, while it is one of [`Self::mix_voices`].
+    pub fn mix_voice(&self) -> Option<String> {
+        let id = self
+            .storage
+            .settings
+            .get(KOKORO_MIX_SETTING)
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .filter(|id| !id.is_empty())?;
+        self.mix_voices()
+            .iter()
+            .any(|found| found.id == id)
+            .then_some(id)
+    }
+
+    /// The share of the Mix with voice, in percent: a step of the Mix slider.
+    pub fn mix_percent(&self) -> u8 {
+        let percent = self
+            .storage
+            .settings
+            .get(KOKORO_MIX_PERCENT_SETTING)
+            .and_then(|value| value.as_i64())
+            .unwrap_or(i64::from(hushpen_core::kokoro::DEFAULT_MIX_PERCENT));
+        snap_percent(percent as f32)
+    }
+
+    /// The blend Kokoro reads with, or `None` without a Mix with voice.
+    pub fn mix(&self) -> Option<VoiceMix> {
+        VoiceMix::new(&self.mix_base(), &self.mix_voice()?, self.mix_percent())
     }
 
     pub fn voices(&self) -> Option<&Result<Vec<Voice>, SpeechError>> {
@@ -529,6 +606,7 @@ impl ReadAloud {
             Menu::Engine => EngineKind::ALL.len(),
             Menu::Language => self.languages().len(),
             Menu::Voice => self.language_voices().len() + 1,
+            Menu::Mix => self.mix_voices().len() + 1,
             Menu::Format => 1,
         };
         while self.focus.options.len() < rows {
@@ -575,6 +653,36 @@ impl ReadAloud {
         self.menu = None;
         cx.notify();
         Ok(())
+    }
+
+    /// Chooses the voice to blend into the Kokoro voice, or no mix with `None`.
+    pub fn set_mix(&mut self, id: Option<&str>, cx: &mut Context<Self>) -> Result<(), String> {
+        if let Some(id) = id
+            && !self.mix_voices().iter().any(|voice| voice.id == id)
+        {
+            return Err(format!("Kokoro cannot mix this voice with `{id}`."));
+        }
+        self.set(KOKORO_MIX_SETTING, json!(id.unwrap_or("")))?;
+        self.menu = None;
+        cx.notify();
+        Ok(())
+    }
+
+    /// Sets the share of the Mix with voice, rounded to a step of the slider.
+    pub fn set_mix_percent(&mut self, percent: f32, cx: &mut Context<Self>) -> Result<(), String> {
+        if !percent.is_finite() {
+            return Err("The mix must be a number.".into());
+        }
+        self.set(KOKORO_MIX_PERCENT_SETTING, json!(snap_percent(percent)))?;
+        cx.notify();
+        Ok(())
+    }
+
+    /// Sets the share from a place on the Mix slider, from 0 to 1.
+    pub fn set_mix_position(&mut self, position: f32, cx: &mut Context<Self>) {
+        let percent = percent_at(position, self.mix_percent());
+        // Every share `percent_at` gives is one the setting takes.
+        let _ = self.set_mix_percent(f32::from(percent), cx);
     }
 
     /// Sets the speed, rounded to a twentieth (1.05, 1.1).
@@ -971,6 +1079,15 @@ impl ReadAloud {
         let Some(id) = voice else {
             return (DEFAULT_VOICE.to_owned(), None);
         };
+        if let Some(mix) = VoiceMix::parse(id) {
+            let name = format!(
+                "{} with {}% {}",
+                mix.base.name(),
+                mix.percent,
+                mix.with.name()
+            );
+            return (name, Some(primary(mix.base.language())));
+        }
         self.listed()
             .iter()
             .find(|found| found.id == id)
@@ -1056,6 +1173,9 @@ impl ReadAloud {
                 "available": self.engine_of(*kind).available(),
             })).collect::<Vec<_>>(),
             "voice": self.voice(),
+            "mix": self.mix_voice(),
+            "mix_percent": self.mix_percent(),
+            "mix_voices": self.mix_voices().iter().map(|voice| voice.id.clone()).collect::<Vec<_>>(),
             "spoken_voice": self.spoken_voice(cx),
             "default_voice": self.default_voice(cx),
             "default_voice_name": self.default_voice_name(cx),
@@ -1095,6 +1215,33 @@ fn write_kept(player: &Player, folder: &Path, file: &Path) -> bool {
         log::warn!("the audio of a read aloud was not kept: {error}");
     }
     written.is_ok()
+}
+
+/// `percent` as a share the Mix slider offers: the nearest step from 10% to 90%.
+fn snap_percent(percent: f32) -> u8 {
+    let steps = (percent / f32::from(MIX_STEP)).round() as u8;
+    (steps.saturating_mul(MIX_STEP)).clamp(MIX_MIN, MIX_MAX)
+}
+
+/// Where `percent` stands on the Mix slider, from 0 to 1.
+pub fn mix_position(percent: u8) -> f32 {
+    f32::from(percent.clamp(MIX_MIN, MIX_MAX) - MIX_MIN) / f32::from(MIX_MAX - MIX_MIN)
+}
+
+/// The share a place on the Mix slider stands for. A key moves the slider by less than half a
+/// share step, so rounding alone would keep `current`: a move of exactly one key step goes to
+/// the next share in its direction.
+fn percent_at(position: f32, current: u8) -> u8 {
+    let moved = position - mix_position(current);
+    if (moved.abs() - SLIDER_KEY_STEP).abs() < 1e-3 {
+        let next = if moved > 0.0 {
+            current.saturating_add(MIX_STEP)
+        } else {
+            current.saturating_sub(MIX_STEP)
+        };
+        return next.clamp(MIX_MIN, MIX_MAX);
+    }
+    snap_percent(f32::from(MIX_MIN) + position.clamp(0.0, 1.0) * f32::from(MIX_MAX - MIX_MIN))
 }
 
 /// `en` for `en-US`, `en_GB`, or `en`.
