@@ -164,6 +164,8 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::EndpointModel => endpoint::model(page, cx),
         RowId::EndpointKey => endpoint::key(page, cx),
         RowId::EndpointTest => endpoint::test(page, cx),
+        RowId::Profile => vec![cleanup::profile(page, cx)],
+        RowId::Prompt => vec![cleanup::prompt(page, cx)],
         RowId::Gpu => vec![engine::gpu(page, cx)],
         RowId::Threads => vec![engine::threads(page, cx)],
         RowId::IdlePolicy => vec![engine::idle_policy(page, cx)],

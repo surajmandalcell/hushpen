@@ -6,6 +6,7 @@ mod data_folder;
 pub mod endpoint;
 mod login;
 mod panel;
+mod prompt;
 mod registry;
 pub mod search;
 
@@ -27,6 +28,7 @@ pub use data_folder::MoveState;
 use login::LoginCache;
 pub use login::LoginToggle;
 pub(crate) use panel::{render, search_field};
+pub(crate) use prompt::render as prompt_sheet;
 
 /// Focus slots in [`Settings::control_focus`], shared with the panel.
 pub(crate) mod slots {
@@ -63,7 +65,9 @@ pub(crate) mod slots {
     pub const MUTE_OUTPUT: usize = 30;
     pub const IDLE_POLICY: usize = 31;
     pub const IDLE_MINUTES: usize = 32;
-    pub const COUNT: usize = 33;
+    pub const PROFILE: usize = 33;
+    pub const PROMPT: usize = 34;
+    pub const COUNT: usize = 35;
     /// The options of the open picker. One picker is open at a time, so they share a pool.
     pub const OPTIONS: usize = 12;
 }
@@ -160,6 +164,8 @@ pub struct Settings {
     pub(crate) updater: Option<Entity<Updater>>,
     /// The audio enhance sheet, which the Audio enhance row opens.
     pub(crate) tuning: Option<Entity<Tuning>>,
+    /// The prompt sheet, which the Prompt row of Cleanup opens.
+    pub(crate) prompt: prompt::PromptSheet,
     in_flight: Option<InFlight>,
 }
 
@@ -217,6 +223,7 @@ impl Settings {
             endpoint: None,
             updater: None,
             tuning: None,
+            prompt: prompt::PromptSheet::new(cx),
             in_flight: None,
         };
         me.refresh_login(cx);
@@ -369,6 +376,7 @@ impl Settings {
                 "offered": self.ai_offered().into_iter().map(|model| model.id).collect::<Vec<_>>(),
                 "status": self.ai_status(cx).map(AiStatus::key),
             },
+            "profile": self.profile_state_json(cx),
             "launch_at_login": self.launch_at_login(),
             "data_folder": self.storage.data.root().display().to_string(),
             "move": match &self.move_state {
@@ -385,5 +393,7 @@ impl Settings {
 mod endpoint_tests;
 #[cfg(test)]
 mod list_tests;
+#[cfg(test)]
+mod prompt_tests;
 #[cfg(test)]
 mod tests;

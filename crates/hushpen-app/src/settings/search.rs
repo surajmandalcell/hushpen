@@ -33,6 +33,8 @@ pub enum RowId {
     EndpointModel,
     EndpointKey,
     EndpointTest,
+    Profile,
+    Prompt,
     Gpu,
     Threads,
     IdlePolicy,
@@ -332,6 +334,31 @@ pub static ROWS: &[RowMeta] = &[
         &["endpoint", "check", "connection"],
     )
     .under(AiSource),
+    RowMeta::new(
+        Profile,
+        Cleanup,
+        "cleanup.profile",
+        "Profile",
+        &[
+            "profile", "prompt", "style", "tone", "formal", "casual", "message", "email", "notes",
+            "list",
+        ],
+    ),
+    RowMeta::new(
+        Prompt,
+        Cleanup,
+        "cleanup.prompt",
+        "Prompt",
+        &[
+            "prompt",
+            "profile",
+            "system prompt",
+            "instructions",
+            "control line",
+            "s1-mini",
+            "qwen",
+        ],
+    ),
     RowMeta::new(
         Gpu,
         Engine,

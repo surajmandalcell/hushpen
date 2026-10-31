@@ -313,6 +313,9 @@ impl Shell {
             {
                 tuning.update(cx, |tuning, cx| tuning.dismiss(cx));
             }
+            if let Some(settings) = &self.settings {
+                settings.update(cx, |settings, cx| settings.dismiss_prompt(cx));
+            }
             if let Some(read) = self.read_aloud(cx) {
                 if let Some(library) = read.read(cx).library().cloned() {
                     library.update(cx, |library, cx| library.dismiss(cx));
@@ -805,6 +808,13 @@ impl Render for Shell {
                             .filter(|_| self.active == View::Settings)
                             .and_then(|settings| settings.read(cx).tuning.clone())?;
                         crate::enhance::sheet::render(&tuning, window, cx)
+                    })
+                    .or_else(|| {
+                        let settings = self
+                            .settings
+                            .as_ref()
+                            .filter(|_| self.active == View::Settings)?;
+                        crate::settings::prompt_sheet(settings, window, cx)
                     })
                     .or_else(|| {
                         let library = self

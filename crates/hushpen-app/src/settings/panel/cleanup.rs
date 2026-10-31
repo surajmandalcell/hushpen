@@ -1,10 +1,13 @@
-//! Cleanup: the rules, spoken punctuation, AI cleanup, where it runs, and the local model with
-//! its download status. The endpoint rows are in [`super::endpoint`].
+//! Cleanup: the rules, spoken punctuation, AI cleanup, where it runs, the local model with its
+//! download status, and the profile with its prompt. The endpoint rows are in
+//! [`super::endpoint`].
 
 use super::Page;
+use crate::ai_cleanup;
 use crate::settings::{AiStatus, Settings, slots};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::{AnyElement, App, IntoElement};
+use hushpen_core::llm_prompt::{Profile, PromptFamily, Target};
 
 pub fn rules(page: &Page, cx: &mut App) -> AnyElement {
     let on = page.settings.read(cx).stored_bool("cleanup.rules");
@@ -145,6 +148,98 @@ pub fn ai_model(page: &Page, cx: &mut App) -> Vec<AnyElement> {
     rows
 }
 
+/// The profile pop-up: how the cleaned text reads. A profile the user changed says so.
+pub fn profile(page: &Page, cx: &mut App) -> AnyElement {
+    let (current, edited) = {
+        let me = page.settings.read(cx);
+        let storage = &me.storage;
+        let current = me.cleanup_profile();
+        let edited: Vec<bool> = Profile::ALL
+            .iter()
+            .map(|profile| ai_cleanup::profile_of(storage, *profile).edited())
+            .collect();
+        (current, edited)
+    };
+    let menu = page.picker_open("cleanup.profile", cx).then(|| {
+        let close = page.settings.clone();
+        let menu = ui::Menu::new(super::settings_id("cleanup.profile.list"), move |cx| {
+            close.update(cx, |me, cx| me.close_picker(cx))
+        });
+        Profile::ALL
+            .into_iter()
+            .zip(&edited)
+            .zip(&page.options)
+            .fold(menu, |menu, ((profile, edited), focus)| {
+                let settings = page.settings.clone();
+                menu.option(
+                    super::settings_id(&format!("cleanup.profile.option.{}", profile.key())),
+                    profile.label(),
+                    edited.then(|| "Edited".to_owned()),
+                    profile == current,
+                    focus,
+                    move |_, cx| {
+                        settings.update(cx, |me, cx| me.set_cleanup_profile(profile.key(), cx))
+                    },
+                )
+            })
+    });
+    let index = Profile::ALL.iter().position(|p| *p == current).unwrap_or(0);
+    let detail = if edited[index] {
+        "How the cleaned text reads. Edited."
+    } else {
+        "How the cleaned text reads."
+    };
+    page.menu(
+        "cleanup.profile",
+        "Profile",
+        detail,
+        current.label().to_owned(),
+        slots::PROFILE,
+        menu,
+    )
+}
+
+/// The prompt the cleanup model reads, with the button that opens it: View for S1-mini, whose
+/// prompt is fixed, and Edit for the others.
+pub fn prompt(page: &Page, cx: &mut App) -> AnyElement {
+    let (target, tuned) = {
+        let me = page.settings.read(cx);
+        (me.cleanup_target(), ai_cleanup::profile(&me.storage))
+    };
+    let fixed = target == Target::Local(PromptFamily::S1Mini);
+    let detail = if fixed {
+        let controls = tuned.controls;
+        format!(
+            "S1-mini: {}, {}, {}.",
+            controls.styling.label(),
+            controls.structure.key(),
+            controls.context.key()
+        )
+    } else {
+        "What the model reads before your text.".to_owned()
+    };
+    let settings = page.settings.clone();
+    let button = ui::button(
+        page.palette,
+        super::settings_id("cleanup.prompt"),
+        if fixed {
+            "View\u{2026}"
+        } else {
+            "Edit\u{2026}"
+        },
+        Kind::Plain,
+        Some(&page.focus[slots::PROMPT]),
+        true,
+        move |window, cx| settings.update(cx, |me, cx| me.open_prompt(window, cx)),
+    );
+    ui::labeled_row(
+        page.palette,
+        super::settings_id("cleanup.prompt.row"),
+        "Prompt",
+        Some(detail),
+        button,
+    )
+}
 fn status_text(status: Option<AiStatus>, on: bool) -> String {
     match status {
         None => "No AI model is available.".into(),

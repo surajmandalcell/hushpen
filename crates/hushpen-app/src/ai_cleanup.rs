@@ -262,6 +262,27 @@ pub fn profile_of(storage: &Storage, profile: Profile) -> Tuned {
     })
 }
 
+/// The stored changes with `tuned` in place of what they hold for its profile. A field with the
+/// built-in value is dropped, so a reset profile leaves nothing behind.
+pub fn edits_with(storage: &Storage, tuned: &Tuned) -> serde_json::Value {
+    let mut edits = storage
+        .settings
+        .get(PROFILE_EDITS_SETTING)
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    for (key, value) in tuned.edits() {
+        match value {
+            Some(value) => {
+                edits.insert(key, serde_json::Value::String(value));
+            }
+            None => {
+                edits.remove(&key);
+            }
+        }
+    }
+    serde_json::Value::Object(edits)
+}
+
 /// The prompt family of a local cleanup model, by its catalog id or file name.
 pub fn family_of(model: &str) -> PromptFamily {
     let name = if model.ends_with(".gguf") {
