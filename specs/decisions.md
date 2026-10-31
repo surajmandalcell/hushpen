@@ -211,7 +211,9 @@ new decision, add it here in the same change (D-21).
   Before a download the app reads the free space of the downloads folder
   (statvfs) and refuses
   when it is less than the bytes still to fetch plus 10%. At start it deletes
-  partial downloads older than 7 days.
+  partial downloads older than 7 days. A file entry may carry
+  `replaces: [{bytes, sha256}]`, earlier pins of the same file; files that
+  match one are updated in the background instead of failing verification.
 - **D-31 Manual view.** Manual, third in the sidebar after History, is one
   place for audio files and text that the user starts by hand, with a
   segmented control for Transcribe (the import queue) and Read aloud. "Files"
