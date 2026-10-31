@@ -372,6 +372,14 @@ fn every_view_and_dialog_matches_its_approved_light_baseline() {
     check_scenes(&Scene::views(), Appearance::Light);
 }
 
+#[test]
+fn speech_models_match_their_approved_baselines() {
+    let scenes = [Scene::Models, Scene::ModelsBottom, Scene::ModelsDetails];
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        check_scenes(&scenes, appearance);
+    }
+}
+
 /// Every scene has one Light and one Dark baseline, at 940x600 at scale two, that differ and
 /// follow the palette; no baseline of the old window size or of a scene that is gone is left.
 #[test]

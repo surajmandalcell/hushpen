@@ -560,6 +560,7 @@ fn nodes_of(window: &gpui_kit::Window) -> Vec<Node> {
         .map(|snapshot| {
             let bounds = snapshot.bounds();
             Node {
+                path: snapshot.path().iter().map(ToString::to_string).collect(),
                 id: snapshot
                     .path()
                     .last()
@@ -734,6 +735,7 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                         cx,
                     )
                 });
+                models.update(cx, |models, cx| models.attach_search(window, cx));
                 let engine = Engine::new(Arc::new(|_, _| JobOutcome::Cancelled), Rc::new(|| None));
                 let controller = cx.new(|cx| {
                     Controller::new(
@@ -1060,7 +1062,12 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
         }
         Scene::ModelsDetails => {
             click(cx, handle, "sidebar.models");
-            click(cx, handle, "models.info.2");
+            let index = hushpen_core::catalog::embedded()
+                .whisper
+                .iter()
+                .position(|entry| entry.default)
+                .expect("a default speech model");
+            click(cx, handle, &format!("models.info.{index}"));
         }
         Scene::About => click(cx, handle, "sidebar.about"),
         Scene::AboutBottom => {

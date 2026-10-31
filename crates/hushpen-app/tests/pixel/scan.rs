@@ -39,6 +39,7 @@ impl Rect {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub id: String,
+    pub path: Vec<String>,
     pub role: Option<String>,
     pub rect: Rect,
     pub focused: bool,
@@ -338,8 +339,9 @@ pub fn rows_of(nodes: &[Node]) -> Vec<(String, String, f32)> {
                 node.visible
                     && !node.is("Group")
                     && !node.id.starts_with("toolbar.")
-                    // A sheet floats over the page, so a page row can lie inside a sheet group.
+                    // A sheet can overlap a page from the same view.
                     && node.id.split('.').next() == view
+                    && node.path.starts_with(&group.path)
                     && node.rect.x <= rect.x + 1.5
                     && node.rect.w >= rect.w - 3.0
                     && node.rect.y >= rect.y - 0.5
@@ -403,4 +405,57 @@ pub fn row_report(nodes: &[Node]) -> (String, Vec<String>) {
         }
     }
     (report, problems)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sheet_group_does_not_own_the_page_rows_behind_it() {
+        let node = |id: &str, path: &[&str], role: Option<&str>, height| Node {
+            id: id.into(),
+            path: path.iter().map(|part| (*part).into()).collect(),
+            role: role.map(str::to_owned),
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 400.0,
+                h: height,
+            },
+            focused: false,
+            checked: None,
+            visible: true,
+        };
+        let group = node(
+            "models.sheet.facts",
+            &["models.sheet", "models.sheet.facts"],
+            Some("Group"),
+            80.0,
+        );
+        let row = node(
+            "models.sheet.row.language",
+            &[
+                "models.sheet",
+                "models.sheet.facts",
+                "models.sheet.row.language",
+            ],
+            None,
+            36.0,
+        );
+        let behind = node(
+            "models.heading.cleanup",
+            &["models.list", "models.heading.cleanup"],
+            None,
+            17.0,
+        );
+        assert_eq!(
+            rows_of(&[group, row, behind]),
+            [(
+                "models.sheet.facts".into(),
+                "models.sheet.row.language".into(),
+                36.0
+            )]
+        );
+    }
 }
