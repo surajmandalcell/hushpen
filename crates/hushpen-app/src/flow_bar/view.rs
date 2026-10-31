@@ -2,7 +2,7 @@
 //! each state from plain data and the live bar builds the same props from the pipeline.
 
 use super::FlowBar;
-use super::working::{self, BEAD_GAP, BEAD_WIDTH, Stage};
+use super::working::{self, BEAD_GAP, BEAD_WIDTH, Mix, Stage};
 use crate::hook;
 use crate::theme::hud::{BODY_SM, color, radius, size};
 use crate::theme::{StyledType, space};
@@ -49,10 +49,11 @@ pub struct Props {
     pub state: BarState,
     /// The height of each waveform bar, 0 to 1. Only the listening state draws them.
     pub levels: Vec<f32>,
-    /// What the processing pill waits for, and the stage before it.
+    /// What the processing pill waits for, and what the wave showed when it began.
     pub stage: Stage,
-    pub from: Option<Stage>,
-    /// How long the stage and the whole processing have run, for the wave.
+    pub from: Option<Mix>,
+    /// How long the stage and the whole processing have run: the stage picks the look, the
+    /// whole processing moves it.
     pub stage_ms: u64,
     pub work_ms: u64,
     /// Reduce Motion: the wave is one still frame.
@@ -357,7 +358,7 @@ fn working_wave(props: &Props) -> Div {
         (working::still(props.stage), 0.0)
     } else {
         (
-            working::beads(props.stage, props.from, props.stage_ms),
+            working::beads(props.stage, props.from, props.stage_ms, props.work_ms),
             working::bob(props.work_ms),
         )
     };

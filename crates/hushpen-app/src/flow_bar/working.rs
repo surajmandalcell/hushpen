@@ -1,7 +1,7 @@
 //! The processing animation of the flow bar: a small wave of beads that floats and flows
-//! while the words are transcribed and cleaned up. Each stage has its own look and speed, and
-//! a wait that runs long moves through the other looks, so the pill never seems stuck. Every
-//! frame is a pure function of the time, so the pixel tests draw any moment from plain data.
+//! while the words are transcribed and cleaned up. Each stage has its own look, and a wait
+//! that runs long turns once to a calmer look, so the pill never seems stuck. Every frame is a
+//! pure function of the time, so the pixel tests draw any moment from plain data.
 
 use std::f32::consts::{PI, TAU};
 
@@ -21,11 +21,13 @@ pub enum Style {
     Flow,
     /// A dotted line that traces a moving sine.
     Ribbon,
-    /// Rings that move out from the middle.
+    /// Rings that move out from the middle, slower than the flow.
     Ripple,
     /// The whole wave swells and settles, slowly.
     Breathe,
 }
+
+const STYLES: [Style; 4] = [Style::Flow, Style::Ribbon, Style::Ripple, Style::Breathe];
 
 /// The beads of the wave.
 pub const BEADS: usize = 9;
@@ -35,17 +37,13 @@ const REST: f32 = 3.0;
 const TALL: f32 = 16.0;
 /// How far the ribbon's dots move up and down.
 const RIBBON_LIFT: f32 = 5.0;
-/// After this long in one stage the wave starts to change its look.
+/// After this long in one stage the wave turns to the calmer look of the stage.
 pub const LONG_WAIT_MS: u64 = 2_000;
-/// How long each look shows during a long wait.
-const TURN_MS: u64 = 2_400;
 /// One look turns into the next over this time.
 const BLEND_MS: f32 = 420.0;
 /// The gentle float of the whole wave.
 const BOB_MS: f32 = 2_600.0;
 const BOB_PX: f32 = 1.5;
-/// The order of the looks in a long wait. Each one has its own speed.
-const CYCLE: [Style; 4] = [Style::Flow, Style::Ripple, Style::Ribbon, Style::Breathe];
 
 /// One bead on one frame: its height, how far it sits above the middle line, and its opacity.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,6 +51,43 @@ pub struct Bead {
     pub height: f32,
     pub lift: f32,
     pub glow: f32,
+}
+
+/// How much of each look the wave shows, in the order of [`STYLES`]. The parts add up to 1.
+/// A new stage starts from the mix the wave showed last, so it never jumps, even when the
+/// stage changes in the middle of a turn.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Mix([f32; 4]);
+
+impl Mix {
+    pub fn of(style: Style) -> Self {
+        let mut parts = [0.0; 4];
+        parts[index(style)] = 1.0;
+        Self(parts)
+    }
+
+    pub fn part(self, style: Style) -> f32 {
+        self.0[index(style)]
+    }
+
+    /// `done` (0 to 1) of the way from this mix to `style`, eased.
+    fn toward(self, style: Style, done: f32) -> Self {
+        let goal = Self::of(style);
+        let mix = smooth(done);
+        Self(std::array::from_fn(|i| {
+            self.0[i] + (goal.0[i] - self.0[i]) * mix
+        }))
+    }
+}
+
+impl From<Stage> for Mix {
+    fn from(stage: Stage) -> Self {
+        Self::of(base(stage))
+    }
+}
+
+fn index(style: Style) -> usize {
+    STYLES.iter().position(|each| *each == style).unwrap_or(0)
 }
 
 /// The look each stage starts with.
@@ -64,48 +99,55 @@ pub fn base(stage: Stage) -> Style {
     }
 }
 
-/// The look `ms` into a stage, and the one it is turning from with how far the turn is (0 to
-/// 1), while a turn runs.
-pub fn style_at(stage: Stage, from: Option<Stage>, ms: u64) -> (Style, Option<(Style, f32)>) {
-    let first = base(stage);
-    if ms < LONG_WAIT_MS {
-        let turn = from
-            .map(base)
-            .filter(|style| *style != first)
-            .map(|style| (style, ms as f32 / BLEND_MS))
-            .filter(|(_, done)| *done < 1.0);
-        return (first, turn);
+/// The calmer look a stage turns to once it runs past [`LONG_WAIT_MS`].
+pub fn long(stage: Stage) -> Style {
+    match stage {
+        Stage::Transcribing => Style::Ripple,
+        Stage::Cleaning | Stage::Preparing => Style::Breathe,
     }
-    let start = CYCLE.iter().position(|style| *style == first).unwrap_or(0);
-    let turns = (ms - LONG_WAIT_MS) / TURN_MS;
-    let pick = |turn: u64| CYCLE[(start + 1 + turn as usize) % CYCLE.len()];
-    let now = pick(turns);
-    let previous = turns.checked_sub(1).map_or(first, pick);
-    let into = ((ms - LONG_WAIT_MS) % TURN_MS) as f32 / BLEND_MS;
-    (now, (into < 1.0).then_some((previous, into)))
 }
 
-/// The beads `ms` into `stage`. `from` is the stage before it, so the wave turns from that
-/// look instead of jumping.
-pub fn beads(stage: Stage, from: Option<Stage>, ms: u64) -> Vec<Bead> {
-    let t = ms as f32;
-    match style_at(stage, from, ms) {
-        (style, None) => frame(style, t),
-        (style, Some((previous, done))) => {
-            let mix = smooth(done);
-            frame(previous, t)
-                .into_iter()
-                .zip(frame(style, t))
-                .map(|(a, b)| Bead {
-                    height: a.height + (b.height - a.height) * mix,
-                    lift: a.lift + (b.lift - a.lift) * mix,
-                    glow: a.glow + (b.glow - a.glow) * mix,
-                })
-                .collect()
+/// What the wave shows `ms` into `stage`. `from` is what it showed when the stage began.
+pub fn mix_at(stage: Stage, from: Option<Mix>, ms: u64) -> Mix {
+    let first = base(stage);
+    let start = from.map_or(Mix::of(first), |from| {
+        from.toward(first, ms as f32 / BLEND_MS)
+    });
+    if ms < LONG_WAIT_MS {
+        return start;
+    }
+    start.toward(long(stage), (ms - LONG_WAIT_MS) as f32 / BLEND_MS)
+}
+
+/// The beads `ms` into `stage`. `phase_ms` is the time since the processing began: every
+/// look keeps moving on that one clock, so a new stage does not restart a look that was
+/// already showing.
+pub fn beads(stage: Stage, from: Option<Mix>, ms: u64, phase_ms: u64) -> Vec<Bead> {
+    blend(mix_at(stage, from, ms), phase_ms as f32)
+}
+
+fn blend(mix: Mix, t: f32) -> Vec<Bead> {
+    let mut beads = vec![
+        Bead {
+            height: 0.0,
+            lift: 0.0,
+            glow: 0.0,
+        };
+        BEADS
+    ];
+    for style in STYLES {
+        let part = mix.part(style);
+        if part <= 0.0 {
+            continue;
+        }
+        for (bead, look) in beads.iter_mut().zip(frame(style, t)) {
+            bead.height += look.height * part;
+            bead.lift += look.lift * part;
+            bead.glow += look.glow * part;
         }
     }
+    beads
 }
-
 /// The whole wave's float above the middle line, `ms` into the processing.
 pub fn bob(ms: u64) -> f32 {
     BOB_PX * (TAU * ms as f32 / BOB_MS).sin()
@@ -130,7 +172,9 @@ fn still_ms(style: Style) -> f32 {
 
 const FLOW_MS: f32 = 1_300.0;
 const RIBBON_MS: f32 = 1_700.0;
-const RIPPLE_MS: f32 = 900.0;
+const RIPPLE_MS: f32 = 1_800.0;
+// The long wait is the calmer look: its ripple must be slower than the flow it follows.
+const _: () = assert!(RIPPLE_MS > FLOW_MS);
 const BREATHE_MS: f32 = 2_200.0;
 
 fn frame(style: Style, t: f32) -> Vec<Bead> {
@@ -195,71 +239,95 @@ pub fn width() -> f32 {
 mod tests {
     use super::*;
 
-    fn every_frame(stage: Stage, from: Option<Stage>, until_ms: u64) -> Vec<Vec<Bead>> {
+    /// The frames the live bar draws: `first` until `switch_ms`, then `then`, which starts
+    /// from what the wave showed at the switch. The clock of the looks never restarts.
+    fn live_frames(first: Stage, then: Stage, switch_ms: u64, until_ms: u64) -> Vec<Vec<Bead>> {
+        let from = mix_at(first, None, switch_ms);
         (0..until_ms)
             .step_by(16)
-            .map(|ms| beads(stage, from, ms))
+            .map(|ms| {
+                if ms < switch_ms {
+                    beads(first, None, ms, ms)
+                } else {
+                    beads(then, Some(from), ms - switch_ms, ms)
+                }
+            })
             .collect()
     }
 
     #[test]
     fn each_stage_starts_with_its_own_look() {
+        assert_eq!(mix_at(Stage::Transcribing, None, 100), Mix::of(Style::Flow));
+        assert_eq!(mix_at(Stage::Cleaning, None, 1_000), Mix::of(Style::Ribbon));
         assert_eq!(
-            style_at(Stage::Transcribing, None, 100),
-            (Style::Flow, None)
-        );
-        assert_eq!(
-            style_at(Stage::Cleaning, None, 1_000),
-            (Style::Ribbon, None)
-        );
-        assert_eq!(
-            style_at(Stage::Preparing, None, 1_000),
-            (Style::Breathe, None)
+            mix_at(Stage::Preparing, None, 1_000),
+            Mix::of(Style::Breathe)
         );
     }
 
     #[test]
-    fn a_long_wait_moves_through_every_other_look() {
-        let mut seen = Vec::new();
-        for ms in (LONG_WAIT_MS..LONG_WAIT_MS + 4 * TURN_MS).step_by(TURN_MS as usize) {
-            seen.push(style_at(Stage::Transcribing, None, ms + 500).0);
+    fn a_long_wait_turns_once_to_a_calmer_look_and_stays() {
+        for (stage, calm) in [
+            (Stage::Transcribing, Style::Ripple),
+            (Stage::Cleaning, Style::Breathe),
+            (Stage::Preparing, Style::Breathe),
+        ] {
+            let turning = mix_at(stage, None, LONG_WAIT_MS + 100).part(calm);
+            if calm != base(stage) {
+                assert!(turning > 0.0 && turning < 1.0, "{stage:?} {turning}");
+            }
+            for ms in [LONG_WAIT_MS + 500, LONG_WAIT_MS + 30_000] {
+                assert_eq!(mix_at(stage, None, ms), Mix::of(calm), "{stage:?} {ms}");
+            }
         }
-        assert_eq!(
-            seen,
-            [Style::Ripple, Style::Ribbon, Style::Breathe, Style::Flow]
-        );
-        let (now, turn) = style_at(Stage::Cleaning, None, LONG_WAIT_MS + 100);
-        assert_eq!(now, Style::Breathe);
-        assert_eq!(turn.map(|(from, _)| from), Some(Style::Ribbon));
     }
 
     #[test]
-    fn a_new_stage_turns_from_the_look_of_the_last_one() {
-        let (now, turn) = style_at(Stage::Cleaning, Some(Stage::Transcribing), 0);
-        assert_eq!((now, turn), (Style::Ribbon, Some((Style::Flow, 0.0))));
+    fn a_new_stage_turns_from_what_the_wave_showed() {
+        // The switch lands in the middle of the transcription's turn to the ripple.
+        let switch = LONG_WAIT_MS + 150;
+        let from = mix_at(Stage::Transcribing, None, switch);
+        assert!(from.part(Style::Flow) > 0.0 && from.part(Style::Ripple) > 0.0);
         assert_eq!(
-            beads(Stage::Cleaning, Some(Stage::Transcribing), 0),
-            beads(Stage::Transcribing, None, 0),
-            "the first frame of the turn is the old look"
+            beads(Stage::Cleaning, Some(from), 0, switch),
+            beads(Stage::Transcribing, None, switch, switch),
+            "the first frame of the new stage is the last frame of the old one"
         );
         assert_eq!(
-            style_at(Stage::Cleaning, Some(Stage::Transcribing), 500).1,
-            None
+            mix_at(Stage::Cleaning, Some(from), 500),
+            Mix::of(Style::Ribbon)
         );
+        assert_eq!(Mix::from(Stage::Cleaning), Mix::of(Style::Ribbon));
     }
 
     #[test]
     fn no_frame_jumps_and_every_bead_stays_inside_the_pill() {
-        for (stage, from) in [
-            (Stage::Transcribing, None),
-            (Stage::Cleaning, Some(Stage::Transcribing)),
-            (Stage::Preparing, None),
-        ] {
-            let frames = every_frame(stage, from, LONG_WAIT_MS + 5 * TURN_MS);
+        let end = LONG_WAIT_MS * 4;
+        let mut runs = vec![
+            live_frames(Stage::Transcribing, Stage::Transcribing, 0, end),
+            live_frames(Stage::Preparing, Stage::Preparing, 0, end),
+        ];
+        for switch in [300, LONG_WAIT_MS + 150, 5_000] {
+            runs.push(live_frames(
+                Stage::Transcribing,
+                Stage::Cleaning,
+                switch,
+                end,
+            ));
+            runs.push(live_frames(
+                Stage::Transcribing,
+                Stage::Preparing,
+                switch,
+                end,
+            ));
+        }
+        runs.push(live_frames(Stage::Preparing, Stage::Cleaning, 200, end));
+        for frames in &runs {
             for pair in frames.windows(2) {
                 for (a, b) in pair[0].iter().zip(&pair[1]) {
-                    assert!((a.height - b.height).abs() < 3.0, "{stage:?} {a:?} {b:?}");
-                    assert!((a.lift - b.lift).abs() < 2.0, "{stage:?} {a:?} {b:?}");
+                    assert!((a.height - b.height).abs() < 2.5, "{a:?} {b:?}");
+                    assert!((a.lift - b.lift).abs() < 1.0, "{a:?} {b:?}");
+                    assert!((a.glow - b.glow).abs() < 0.1, "{a:?} {b:?}");
                 }
             }
             for bead in frames.iter().flatten() {
@@ -280,8 +348,8 @@ mod tests {
     #[test]
     fn the_wave_moves_and_the_still_frame_is_a_calm_hump() {
         assert_ne!(
-            beads(Stage::Transcribing, None, 0),
-            beads(Stage::Transcribing, None, 300)
+            beads(Stage::Transcribing, None, 0, 0),
+            beads(Stage::Transcribing, None, 300, 300)
         );
         let still = still(Stage::Transcribing);
         assert_eq!(still.len(), BEADS);
