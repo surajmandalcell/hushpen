@@ -2,17 +2,14 @@
 //! page-out hands back to the system.
 //!
 //! `engine.idlePolicy` picks one rule for every worker: `keep`, `pageout`, or `unload` after
-//! `engine.idleMinutes`. `current` keeps the rule each worker had before the setting: the
-//! speech model stays loaded, the cleanup model unloads after `cleanup.llm.idleUnloadMinutes`,
-//! and a voice model unloads after five minutes.
+//! `engine.idleMinutes`. `keep` and `pageout` never unload a model. The default is `keep` on
+//! macOS and `pageout` on Linux, and an empty or unknown value reads as the default.
 //!
 //! A page-out keeps the model loaded. On Linux the worker calls `madvise(MADV_PAGEOUT)` on the
 //! ranges [`model_ranges`] finds: anonymous pages go to swap and clean file pages are dropped,
-//! and either comes back on the next touch with the same contents. Other systems have no public
-//! call for this, so the model stays as it is and the kernel compresses or swaps idle pages under
-//! memory pressure.
+//! and either comes back on the next touch with the same contents. macOS has no public call for
+//! this: the kernel compresses and swaps idle pages by itself, so there `pageout` reads as `keep`.
 
-use crate::tts_protocol;
 use serde_json::{Map, Value};
 use std::ops::Range;
 
@@ -65,39 +62,61 @@ pub enum Worker {
 }
 
 const DEFAULT_MINUTES: u64 = 15;
-const CLEANUP_DEFAULT_MINUTES: u64 = 5;
+
+/// What `engine.idlePolicy` asks for on this system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Policy {
+    Keep,
+    PageOut,
+    Unload,
+}
+
+impl Policy {
+    /// Whether this system takes a request to page a model out.
+    pub const CAN_PAGE_OUT: bool = !cfg!(target_os = "macos");
+
+    /// The policy a stored value means here. An empty or unknown value is the default.
+    pub fn parse(value: Option<&str>) -> Self {
+        Self::resolve(value, Self::CAN_PAGE_OUT)
+    }
+
+    fn resolve(value: Option<&str>, can_page_out: bool) -> Self {
+        match value {
+            Some("keep") => Self::Keep,
+            Some("unload") => Self::Unload,
+            _ if can_page_out => Self::PageOut,
+            _ => Self::Keep,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Keep => "keep",
+            Self::PageOut => "pageout",
+            Self::Unload => "unload",
+        }
+    }
+}
 
 /// The idle rule the settings give `worker`.
 pub fn for_worker(settings: &Map<String, Value>, worker: Worker) -> Idle {
-    let minutes = |key: &str, default: u64| {
-        settings
-            .get(key)
-            .and_then(Value::as_u64)
-            .unwrap_or(default)
-            .saturating_mul(60)
-    };
-    let after = minutes("engine.idleMinutes", DEFAULT_MINUTES);
-    let policy = settings.get("engine.idlePolicy").and_then(Value::as_str);
+    let after = settings
+        .get("engine.idleMinutes")
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_MINUTES)
+        .saturating_mul(60);
+    let policy = Policy::parse(settings.get("engine.idlePolicy").and_then(Value::as_str));
     match (policy, worker) {
-        (Some("keep"), _) => Idle::KEEP,
-        (Some("unload"), _) => Idle {
+        (Policy::Keep, _) => Idle::KEEP,
+        (Policy::Unload, _) => Idle {
             secs: after,
             action: IdleAction::Unload,
         },
         // ONNX Runtime gives no handle on the weights of a voice model, so the system decides.
-        (Some("pageout"), Worker::Voice) => Idle::KEEP,
-        (Some("pageout"), _) => Idle {
+        (Policy::PageOut, Worker::Voice) => Idle::KEEP,
+        (Policy::PageOut, _) => Idle {
             secs: after,
             action: IdleAction::PageOut,
-        },
-        (_, Worker::Speech) => Idle::KEEP,
-        (_, Worker::Cleanup) => Idle {
-            secs: minutes("cleanup.llm.idleUnloadMinutes", CLEANUP_DEFAULT_MINUTES),
-            action: IdleAction::Unload,
-        },
-        (_, Worker::Voice) => Idle {
-            secs: tts_protocol::DEFAULT_IDLE_SECS,
-            action: IdleAction::Unload,
         },
     }
 }
@@ -188,28 +207,38 @@ mod tests {
     const ALL: [Worker; 3] = [Worker::Speech, Worker::Cleanup, Worker::Voice];
 
     #[test]
-    fn current_keeps_the_rule_each_worker_had_before_the_setting() {
-        let unset = settings(json!({}));
-        let current = settings(json!({"engine.idlePolicy": "current", "engine.idleMinutes": 30}));
-        for values in [unset, current] {
-            assert_eq!(for_worker(&values, Worker::Speech), Idle::KEEP);
+    fn an_empty_or_unknown_value_reads_as_the_default_of_the_system() {
+        for value in [None, Some(""), Some("current"), Some("discard")] {
+            assert_eq!(Policy::resolve(value, true), Policy::PageOut);
+            assert_eq!(Policy::resolve(value, false), Policy::Keep);
+        }
+        assert_eq!(Policy::resolve(Some("pageout"), true), Policy::PageOut);
+        assert_eq!(Policy::resolve(Some("pageout"), false), Policy::Keep);
+        for can_page_out in [true, false] {
+            assert_eq!(Policy::resolve(Some("keep"), can_page_out), Policy::Keep);
             assert_eq!(
-                for_worker(&values, Worker::Cleanup),
-                Idle {
-                    secs: 300,
-                    action: IdleAction::Unload
-                }
-            );
-            assert_eq!(
-                for_worker(&values, Worker::Voice),
-                Idle {
-                    secs: 300,
-                    action: IdleAction::Unload
-                }
+                Policy::resolve(Some("unload"), can_page_out),
+                Policy::Unload
             );
         }
-        let cleanup = settings(json!({"cleanup.llm.idleUnloadMinutes": 7}));
-        assert_eq!(for_worker(&cleanup, Worker::Cleanup).secs, 420);
+    }
+
+    #[test]
+    fn nothing_stored_gives_the_default_rule_for_every_worker() {
+        let unset = settings(json!({}));
+        for worker in ALL {
+            let idle = for_worker(&unset, worker);
+            match Policy::parse(None) {
+                Policy::PageOut if worker != Worker::Voice => assert_eq!(
+                    idle,
+                    Idle {
+                        secs: 900,
+                        action: IdleAction::PageOut
+                    }
+                ),
+                _ => assert_eq!(idle, Idle::KEEP),
+            }
+        }
     }
 
     #[test]
@@ -232,13 +261,15 @@ mod tests {
     fn page_out_applies_to_the_ggml_workers_and_keeps_a_voice_model() {
         let values = settings(json!({"engine.idlePolicy": "pageout"}));
         for worker in [Worker::Speech, Worker::Cleanup] {
-            assert_eq!(
-                for_worker(&values, worker),
+            let expected = if Policy::CAN_PAGE_OUT {
                 Idle {
                     secs: 900,
-                    action: IdleAction::PageOut
+                    action: IdleAction::PageOut,
                 }
-            );
+            } else {
+                Idle::KEEP
+            };
+            assert_eq!(for_worker(&values, worker), expected);
         }
         assert_eq!(for_worker(&values, Worker::Voice), Idle::KEEP);
     }

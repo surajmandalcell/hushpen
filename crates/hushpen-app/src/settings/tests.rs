@@ -215,9 +215,15 @@ fn each_toggle_writes_its_key(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn idle_choices_save_without_changing_the_legacy_defaults(cx: &mut TestAppContext) {
+fn idle_choices_save_and_the_default_swaps_instead_of_unloading(cx: &mut TestAppContext) {
     let rig = rig(cx);
-    assert_eq!(value(&rig, "engine.idlePolicy"), json!("current"));
+    let default = if cfg!(target_os = "macos") {
+        "keep"
+    } else {
+        "pageout"
+    };
+    assert_eq!(value(&rig, "engine.idlePolicy"), json!(default));
+    assert_eq!(value(&rig, "engine.idleMinutes"), json!(15));
     for policy in ["keep", "pageout", "unload"] {
         rig.settings
             .update(cx, |me, cx| me.set_idle_policy(policy, cx));

@@ -353,7 +353,9 @@ pub static ROWS: &[RowMeta] = &[
         Engine,
         "engine.idlePolicy",
         "When idle",
-        &["memory", "ram", "swap", "page", "unload", "model", "keep"],
+        &[
+            "memory", "ram", "swap", "page out", "pageout", "unload", "model", "keep",
+        ],
     ),
     RowMeta::new(
         IdleMinutes,
@@ -361,7 +363,7 @@ pub static ROWS: &[RowMeta] = &[
         "engine.idleMinutes",
         "Idle time",
         &[
-            "memory", "ram", "swap", "page", "unload", "minutes", "timer",
+            "memory", "ram", "swap", "page out", "pageout", "unload", "minutes", "timer",
         ],
     ),
     RowMeta::new(
@@ -495,7 +497,7 @@ mod tests {
         for alias in ["mute", "silence", "music", "pause"] {
             assert_eq!(keys(alias), ["audio.muteWhileDictating"]);
         }
-        for alias in ["swap", "unload", "memory"] {
+        for alias in ["swap", "unload", "memory", "ram", "page out", "pageout"] {
             assert_eq!(keys(alias), ["engine.idlePolicy", "engine.idleMinutes"]);
         }
         for alias in [

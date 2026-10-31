@@ -4,37 +4,59 @@
 use super::Page;
 use crate::settings::{Settings, slots};
 use gpui_kit::{AnyElement, App};
+use hushpen_core::idle::Policy;
 
 /// The thread counts offered besides Automatic, up to the CPUs of this computer.
 const THREAD_CHOICES: [i64; 7] = [1, 2, 4, 6, 8, 12, 16];
 
-const IDLE_CHOICES: [(&str, &str); 3] = [
-    ("keep", "Keep in memory"),
-    ("pageout", "Let the system page out"),
-    ("unload", "Unload"),
+/// The choices of this system with the line under the row for each.
+const IDLE_CHOICES: &[(Policy, &str, &str)] = &[
+    (
+        Policy::Keep,
+        "Keep in memory",
+        if Policy::CAN_PAGE_OUT {
+            "Stays loaded in memory."
+        } else {
+            "Stays loaded. macOS swaps it out when memory runs low."
+        },
+    ),
+    #[cfg(not(target_os = "macos"))]
+    (
+        Policy::PageOut,
+        "Page out",
+        "After the idle time, the model moves to swap and stays loaded.",
+    ),
+    (
+        Policy::Unload,
+        "Unload",
+        "Frees the memory after the idle time. The next use loads it again.",
+    ),
 ];
 
-pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
+fn stored_policy(page: &Page, cx: &App) -> Policy {
     let stored = page.settings.read(cx).stored_str("engine.idlePolicy");
-    let current = IDLE_CHOICES
+    Policy::parse(Some(&stored))
+}
+
+pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
+    let policy = stored_policy(page, cx);
+    let (_, label, detail) = IDLE_CHOICES
         .iter()
-        .find(|(key, _)| *key == stored)
-        .map_or("Current behavior", |(_, label)| *label);
-    let detail = match stored.as_str() {
-        "keep" => "Keeps models loaded until you quit or choose another model.",
-        "pageout" if cfg!(target_os = "macos") => {
-            "macOS decides when idle memory is compressed or swapped."
-        }
-        "pageout" => "Speech and cleanup request pageout; voice paging is system-managed.",
-        "unload" => "Releases idle models. The next use loads them again.",
-        _ => "Speech stays loaded; cleanup and voices keep their current idle limits.",
-    };
+        .find(|(choice, ..)| *choice == policy)
+        .copied()
+        .unwrap_or(IDLE_CHOICES[0]);
     let menu = page.picker_open("engine.idlePolicy", cx).then(|| {
         page.options(
             "engine.idlePolicy",
             IDLE_CHOICES
-                .into_iter()
-                .map(|(key, label)| (key.to_owned(), label.to_owned(), stored == key))
+                .iter()
+                .map(|(choice, label, _)| {
+                    (
+                        choice.as_str().to_owned(),
+                        (*label).to_owned(),
+                        *choice == policy,
+                    )
+                })
                 .collect(),
             &page.options,
             Settings::set_idle_policy,
@@ -44,23 +66,23 @@ pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
         "engine.idlePolicy",
         "When idle",
         detail,
-        current.to_owned(),
+        label.to_owned(),
         slots::IDLE_POLICY,
         menu,
     )
 }
 
-pub fn idle_minutes(page: &Page, cx: &mut App) -> AnyElement {
-    let me = page.settings.read(cx);
-    let stored = me.stored_f64("engine.idleMinutes").unwrap_or(15.0) as i64;
-    let policy = me.stored_str("engine.idlePolicy");
-    let detail = match policy.as_str() {
-        "pageout" if cfg!(target_os = "macos") => {
-            "macOS controls paging. This time applies only to Unload."
-        }
-        "pageout" | "unload" => "Counted from the end of the last model job.",
-        _ => "Used when you choose page out or unload.",
-    };
+/// The idle time counts only for Page out and Unload, so Keep in memory hides the row.
+pub fn idle_minutes(page: &Page, cx: &mut App) -> Vec<AnyElement> {
+    if stored_policy(page, cx) == Policy::Keep {
+        return Vec::new();
+    }
+    let stored = page
+        .settings
+        .read(cx)
+        .stored_f64("engine.idleMinutes")
+        .unwrap_or(15.0) as i64;
+    let detail = "Counted from the end of the last dictation or read-aloud.";
     let menu = page.picker_open("engine.idleMinutes", cx).then(|| {
         let mut values = vec![5, 15, 30, 60, stored];
         values.sort_unstable();
@@ -85,14 +107,14 @@ pub fn idle_minutes(page: &Page, cx: &mut App) -> AnyElement {
             },
         )
     });
-    page.menu(
+    vec![page.menu(
         "engine.idleMinutes",
         "Idle time",
         detail,
         format!("{stored} minutes"),
         slots::IDLE_MINUTES,
         menu,
-    )
+    )]
 }
 
 pub fn gpu(page: &Page, cx: &mut App) -> AnyElement {

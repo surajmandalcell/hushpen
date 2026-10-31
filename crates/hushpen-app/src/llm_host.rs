@@ -265,7 +265,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = stamped_model(dir.path(), "Qwen3.5-2B-Q4_K_M");
         let mut values = on("Qwen3.5-2B-Q4_K_M");
-        values.insert("cleanup.llm.idleUnloadMinutes".into(), json!(7));
+        values.insert("engine.idlePolicy".into(), json!("unload"));
+        values.insert("engine.idleMinutes".into(), json!(7));
         values.insert("engine.useGpu".into(), json!(true));
         let wanted = wanted_load(&values, dir.path(), 16).unwrap();
         assert_eq!(wanted.path, path);
@@ -273,16 +274,14 @@ mod tests {
         assert!(wanted.gpu);
         assert_eq!(wanted.threads, 8);
         let default_idle = wanted_load(&on("Qwen3.5-2B-Q4_K_M"), dir.path(), 2).unwrap();
-        assert_eq!(default_idle.idle.secs, 300);
         assert_eq!(default_idle.threads, 2);
     }
 
     #[test]
-    fn shared_idle_policy_overrides_the_legacy_cleanup_timer() {
+    fn keep_and_page_out_never_unload_the_cleanup_model() {
         let dir = tempfile::tempdir().unwrap();
         stamped_model(dir.path(), "m");
         let mut values = on("m");
-        values.insert("cleanup.llm.idleUnloadMinutes".into(), json!(7));
         values.insert("engine.idlePolicy".into(), json!("keep"));
         assert_eq!(
             wanted_load(&values, dir.path(), 2).unwrap().idle,
@@ -291,8 +290,12 @@ mod tests {
         values.insert("engine.idlePolicy".into(), json!("pageout"));
         values.insert("engine.idleMinutes".into(), json!(30));
         let idle = wanted_load(&values, dir.path(), 2).unwrap().idle;
-        assert_eq!(idle.secs, 1800);
-        assert_eq!(idle.action, hushpen_core::idle::IdleAction::PageOut);
+        if cfg!(target_os = "macos") {
+            assert_eq!(idle, hushpen_core::idle::Idle::KEEP);
+        } else {
+            assert_eq!(idle.secs, 1800);
+            assert_eq!(idle.action, hushpen_core::idle::IdleAction::PageOut);
+        }
     }
 
     #[test]
