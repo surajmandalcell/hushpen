@@ -9,14 +9,15 @@
 // AppKit calls take a raw `NSView` address from the GPUI window handle.
 #![allow(unsafe_code)]
 
-use super::ChromeError;
+use super::{ChromeError, SizeLimits};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior};
+use objc2_foundation::NSSize;
 
-pub(super) fn lock(view: usize, _width: u16, _height: u16) -> Result<(), ChromeError> {
+pub(super) fn lock(view: usize, limits: SizeLimits) -> Result<(), ChromeError> {
     let window = window_of(view)?;
-    apply(&window);
+    apply(&window, limits);
     Ok(())
 }
 
@@ -42,8 +43,12 @@ fn window_of(view: usize) -> Result<Retained<NSWindow>, ChromeError> {
 }
 
 /// The zoom button cannot be pressed and is hidden, so VoiceOver does not announce a disabled
-/// control the window does not have. The window never goes full screen.
-fn apply(window: &NSWindow) {
+/// control the window does not have. The window never goes full screen. Its content keeps one
+/// width and a height between the two limits.
+fn apply(window: &NSWindow, limits: SizeLimits) {
+    let width = f64::from(limits.width);
+    window.setContentMinSize(NSSize::new(width, f64::from(limits.min_height)));
+    window.setContentMaxSize(NSSize::new(width, f64::from(limits.max_height)));
     if let Some(zoom) = window.standardWindowButton(NSWindowButton::ZoomButton) {
         zoom.setEnabled(false);
         zoom.setHidden(true);
@@ -58,6 +63,11 @@ mod tests {
     #[test]
     fn lock_refuses_a_null_view() {
         // Off the main thread the call fails before it reads the address.
-        assert!(lock(0, 940, 600).is_err());
+        let limits = SizeLimits {
+            width: 940,
+            min_height: 600,
+            max_height: 900,
+        };
+        assert!(lock(0, limits).is_err());
     }
 }

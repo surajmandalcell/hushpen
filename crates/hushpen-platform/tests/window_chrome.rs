@@ -6,7 +6,7 @@
 
 #[cfg(target_os = "macos")]
 fn main() {
-    use hushpen_platform::window::{WindowHandle, lock_chrome};
+    use hushpen_platform::window::{SizeLimits, WindowHandle, lock_chrome};
     use objc2::MainThreadMarker;
     use objc2_app_kit::{
         NSBackingStoreType, NSView, NSWindow, NSWindowButton, NSWindowCollectionBehavior,
@@ -36,7 +36,14 @@ fn main() {
     content.addSubview(&gpui);
     let handle = WindowHandle::AppKit(&*gpui as *const NSView as usize);
 
-    lock_chrome(handle, 940, 600).expect("lock the chrome");
+    let limits = SizeLimits {
+        width: 940,
+        min_height: 600,
+        max_height: 900,
+    };
+    lock_chrome(handle, limits).expect("lock the chrome");
+    assert_eq!(window.contentMinSize(), NSSize::new(940.0, 600.0));
+    assert_eq!(window.contentMaxSize(), NSSize::new(940.0, 900.0));
 
     let zoom = window
         .standardWindowButton(NSWindowButton::ZoomButton)

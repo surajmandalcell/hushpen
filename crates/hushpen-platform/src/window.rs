@@ -1,7 +1,7 @@
 //! Window chrome that GPUI does not control the same way on every OS.
 //!
-//! GPUI 0.3.7 ignores `is_resizable: false` on X11 (it writes a 16384 px
-//! `max_size`) and leaves the zoom button and full screen on macOS. The app calls
+//! GPUI 0.3.7 writes a 16384 px `max_size` on X11 and leaves the zoom button and full screen
+//! on macOS. The window resizes in height only, between two limits. The app calls
 //! [`lock_chrome`] once, right after the window opens, with the native handle. On X11 the lock
 //! stays on watch and writes the hints back if a later write replaces them.
 
@@ -58,52 +58,59 @@ impl std::error::Error for ChromeError {}
 /// `_MOTIF_WM_HINTS` flags: the `decorations` and `functions` fields are set.
 const MWM_HINTS_FUNCTIONS: u32 = 1 << 0;
 const MWM_HINTS_DECORATIONS: u32 = 1 << 1;
-/// Window functions the app allows: move, minimize, close. Not resize or maximize.
+/// Window functions the app allows: move, resize, minimize, close. Not maximize. The width
+/// cannot change, because the size hints give it one value.
+const MWM_FUNC_RESIZE: u32 = 1 << 1;
 const MWM_FUNC_MOVE: u32 = 1 << 2;
 const MWM_FUNC_MINIMIZE: u32 = 1 << 3;
 const MWM_FUNC_CLOSE: u32 = 1 << 5;
 
 /// Payload for `_MOTIF_WM_HINTS` (`flags, functions, decorations, input_mode,
-/// status`): no frame, and only move, minimize, and close allowed.
-pub const MOTIF_FRAMELESS_FIXED: [u32; 5] = [
+/// status`): no frame, and only move, resize, minimize, and close allowed.
+pub const MOTIF_FRAMELESS: [u32; 5] = [
     MWM_HINTS_FUNCTIONS | MWM_HINTS_DECORATIONS,
-    MWM_FUNC_MOVE | MWM_FUNC_MINIMIZE | MWM_FUNC_CLOSE,
+    MWM_FUNC_RESIZE | MWM_FUNC_MOVE | MWM_FUNC_MINIMIZE | MWM_FUNC_CLOSE,
     0,
     0,
     0,
 ];
 
-/// Whether a `WM_NORMAL_HINTS` read still pins the window: the program minimum and maximum both
-/// equal the fixed size. GPUI writes its own hints (maximum 16384) and any later write replaces ours.
-#[cfg(any(target_os = "linux", test))]
-fn size_hints_pinned(
-    min: Option<(i32, i32)>,
-    max: Option<(i32, i32)>,
-    width: u16,
-    height: u16,
-) -> bool {
-    let size = Some((i32::from(width), i32::from(height)));
-    min == size && max == size
+/// How far the window may resize: one width, and a height between two limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SizeLimits {
+    pub width: u16,
+    pub min_height: u16,
+    pub max_height: u16,
 }
 
-/// Whether a `_MOTIF_WM_HINTS` read still carries [`MOTIF_FRAMELESS_FIXED`]. GPUI writes
+/// Whether a `WM_NORMAL_HINTS` read still carries the limits: the program minimum is the
+/// width and the least height, the maximum the width and the greatest height. GPUI writes its
+/// own hints (maximum 16384) and any later write replaces ours.
+#[cfg(any(target_os = "linux", test))]
+fn size_hints_match(min: Option<(i32, i32)>, max: Option<(i32, i32)>, limits: SizeLimits) -> bool {
+    let width = i32::from(limits.width);
+    min == Some((width, i32::from(limits.min_height)))
+        && max == Some((width, i32::from(limits.max_height)))
+}
+
+/// Whether a `_MOTIF_WM_HINTS` read still carries [`MOTIF_FRAMELESS`]. GPUI writes
 /// `[2, 0, 0|1, 0, 0]` when it applies its decoration request, which brings the frame back.
 #[cfg(any(target_os = "linux", test))]
 fn motif_hints_locked(value: Option<&[u32]>) -> bool {
-    value == Some(MOTIF_FRAMELESS_FIXED.as_slice())
+    value == Some(MOTIF_FRAMELESS.as_slice())
 }
 
-/// Make the window frameless and fixed at `width` x `height`: no maximize, no
-/// full screen, no resize. Safe to call on any backend; backends it does not
+/// Make the window frameless, `width` wide, and resizable in height only, between the two
+/// limits: no maximize, no full screen. Safe to call on any backend; backends it does not
 /// know are left alone.
-pub fn lock_chrome(handle: WindowHandle, width: u16, height: u16) -> Result<(), ChromeError> {
+pub fn lock_chrome(handle: WindowHandle, limits: SizeLimits) -> Result<(), ChromeError> {
     match handle {
         #[cfg(target_os = "linux")]
-        WindowHandle::X11(window) => x11::lock(window, width, height),
+        WindowHandle::X11(window) => x11::lock(window, limits),
         #[cfg(target_os = "macos")]
-        WindowHandle::AppKit(view) => appkit::lock(view, width, height),
+        WindowHandle::AppKit(view) => appkit::lock(view, limits),
         _ => {
-            let _ = (width, height);
+            let _ = limits;
             Ok(())
         }
     }
@@ -383,34 +390,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn motif_hints_remove_the_frame_and_the_resize_functions() {
-        let [flags, functions, decorations, _, _] = MOTIF_FRAMELESS_FIXED;
+    fn motif_hints_remove_the_frame_and_the_maximize_function() {
+        let [flags, functions, decorations, _, _] = MOTIF_FRAMELESS;
         assert_eq!(flags & MWM_HINTS_DECORATIONS, MWM_HINTS_DECORATIONS);
         assert_eq!(decorations, 0, "no decorations at all");
         assert_eq!(flags & MWM_HINTS_FUNCTIONS, MWM_HINTS_FUNCTIONS);
-        const MWM_FUNC_RESIZE: u32 = 1 << 1;
         const MWM_FUNC_MAXIMIZE: u32 = 1 << 4;
-        assert_eq!(functions & MWM_FUNC_RESIZE, 0);
         assert_eq!(functions & MWM_FUNC_MAXIMIZE, 0);
+        assert_ne!(functions & MWM_FUNC_RESIZE, 0);
         assert_ne!(functions & MWM_FUNC_MINIMIZE, 0);
         assert_ne!(functions & MWM_FUNC_CLOSE, 0);
     }
 
     #[test]
-    fn size_hints_are_pinned_only_when_min_and_max_equal_the_window_size() {
-        let size = Some((940, 600));
-        assert!(size_hints_pinned(size, size, 940, 600));
+    fn size_hints_match_only_when_they_carry_the_width_and_both_heights() {
+        let limits = SizeLimits {
+            width: 940,
+            min_height: 600,
+            max_height: 900,
+        };
+        let min = Some((940, 600));
+        let max = Some((940, 900));
+        assert!(size_hints_match(min, max, limits));
         // What GPUI writes after the window is created.
-        assert!(!size_hints_pinned(None, Some((16384, 16384)), 940, 600));
-        assert!(!size_hints_pinned(size, Some((16384, 16384)), 940, 600));
-        assert!(!size_hints_pinned(size, None, 940, 600));
-        assert!(!size_hints_pinned(None, None, 940, 600));
-        assert!(!size_hints_pinned(Some((1, 1)), size, 940, 600));
+        assert!(!size_hints_match(None, Some((16384, 16384)), limits));
+        assert!(!size_hints_match(min, Some((16384, 16384)), limits));
+        assert!(!size_hints_match(min, None, limits));
+        assert!(!size_hints_match(None, None, limits));
+        assert!(!size_hints_match(Some((1, 1)), max, limits));
+        assert!(!size_hints_match(min, Some((940, 600)), limits));
     }
 
     #[test]
-    fn motif_hints_are_locked_only_when_they_match_the_fixed_payload() {
-        assert!(motif_hints_locked(Some(&MOTIF_FRAMELESS_FIXED)));
+    fn motif_hints_are_locked_only_when_they_match_the_payload() {
+        assert!(motif_hints_locked(Some(&MOTIF_FRAMELESS)));
         assert!(!motif_hints_locked(None));
         assert!(!motif_hints_locked(Some(&[1 << 1, 0, 1, 0, 0])));
         assert!(!motif_hints_locked(Some(&[1 << 1, 0, 0, 0, 0])));
@@ -419,7 +432,12 @@ mod tests {
 
     #[test]
     fn unknown_backends_are_left_alone() {
-        assert!(lock_chrome(WindowHandle::Other, 940, 600).is_ok());
+        let limits = SizeLimits {
+            width: 940,
+            min_height: 600,
+            max_height: 900,
+        };
+        assert!(lock_chrome(WindowHandle::Other, limits).is_ok());
         assert!(add_sidebar_material(WindowHandle::Other, 232.0).is_ok());
         assert_eq!(sidebar_material(WindowHandle::Other), None);
         let frame = Frame {
