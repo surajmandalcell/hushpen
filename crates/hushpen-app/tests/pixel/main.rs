@@ -493,6 +493,11 @@ fn the_light_and_dark_baselines_differ_and_follow_the_palette_for_every_scene() 
         known.push(format!("{name}-dark.png"));
         known.push(format!("{name}-light.png"));
     }
+    for scene in tall_scenes() {
+        for appearance in [Appearance::Dark, Appearance::Light] {
+            known.push(format!("{}-tall-{}.png", scene.name(), appearance.key()));
+        }
+    }
     let flow_bars: Vec<String> = flow_bar_states()
         .into_iter()
         .map(|(name, _)| format!("{name}.png"))
