@@ -259,6 +259,9 @@ pub const CUE_VOLUME_SETTING: &str = "audio.cueVolume";
 /// Plays one cue at a volume from 0.0 to 1.0 and returns at once.
 pub type CueSink = Arc<dyn Fn(Cue, f32) + Send + Sync>;
 
+/// Cue and output control on one audio thread. `None` restores without playing a sound.
+pub type DictationAudioSink = Arc<dyn Fn(Option<Cue>, Option<f32>, bool) + Send + Sync>;
+
 /// Gives the model worker for one dictation, or `None` while AI cleanup has no running worker.
 pub type CleanerSource = Rc<dyn Fn() -> Option<Box<dyn Cleaner>>>;
 
@@ -300,6 +303,7 @@ pub struct Controller {
     paste_turn: Arc<Mutex<()>>,
     permissions: Option<PermissionWatch>,
     cues: Option<CueSink>,
+    dictation_audio: Option<DictationAudioSink>,
     ai: Option<CleanerSource>,
     /// Whether the local cleanup model is loading right now.
     ai_loading: Option<Rc<dyn Fn() -> bool>>,
@@ -465,6 +469,7 @@ impl Controller {
             paste_turn: Arc::default(),
             permissions: None,
             cues: None,
+            dictation_audio: None,
             ai: None,
             ai_loading: None,
             ai_progress: Arc::default(),
@@ -501,6 +506,10 @@ impl Controller {
 
     pub fn attach_cues(&mut self, cues: CueSink) {
         self.cues = Some(cues);
+    }
+
+    pub fn attach_dictation_audio(&mut self, audio: DictationAudioSink) {
+        self.dictation_audio = Some(audio);
     }
 
     /// Tells the pipeline where the cleanup model worker comes from. Without it, AI cleanup

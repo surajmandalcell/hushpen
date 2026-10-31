@@ -231,22 +231,25 @@ impl Controller {
     /// Plays the cue unless the user turned the sounds off. The settings are read each time, so
     /// a change takes effect on the next cue.
     pub(super) fn play_cue(&self, cue: Cue) {
-        let Some(cues) = &self.cues else {
-            return;
-        };
         let settings = &self.storage.settings;
         let on = settings
             .get(CUE_SOUNDS_SETTING)
             .and_then(|value| value.as_bool())
             .unwrap_or(true);
-        if !on {
-            return;
-        }
         let volume = settings
             .get(CUE_VOLUME_SETTING)
             .and_then(|value| value.as_f64())
             .map_or(0.25, |volume| volume as f32);
-        cues(cue, volume);
+        if let Some(audio) = &self.dictation_audio {
+            let mute = settings
+                .get("audio.muteWhileDictating")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(true);
+            audio(Some(cue), on.then_some(volume), mute);
+        }
+        if on && let Some(cues) = &self.cues {
+            cues(cue, volume);
+        }
     }
 
     /// The checks before a start: a start with no usable model or engine is refused before the
@@ -336,6 +339,10 @@ impl Controller {
         queue: &mut VecDeque<AppEvent>,
         cx: &mut Context<Self>,
     ) {
+        // Also restore on a discarded tap or a capture failure, neither needs a finish cue.
+        if let Some(audio) = &self.dictation_audio {
+            audio(None, None, false);
+        }
         let detached = self.mic.update(cx, |mic, cx| mic.detach(keep, cx));
         let command = self.machine.session() == session && self.machine.mode() == Mode::Command;
         let selection = self.selection.take();
