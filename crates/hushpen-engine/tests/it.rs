@@ -18,6 +18,8 @@ use hushpen_engine::{
 mod child;
 #[path = "it/import.rs"]
 mod import;
+#[path = "it/parakeet.rs"]
+mod parakeet;
 #[path = "it/silence.rs"]
 mod silence;
 
@@ -95,7 +97,9 @@ fn assert_expected_words(text: &str) {
         "unexpected transcript: {got}"
     );
     assert!(
-        got.ends_with("1 2 3 4 5") || got.ends_with("one two three four five"),
+        ["1 2 3 4 5", "12345", "one two three four five"]
+            .iter()
+            .any(|tail| got.ends_with(tail)),
         "unexpected transcript tail: {got}"
     );
 }
