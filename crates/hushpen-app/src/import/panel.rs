@@ -79,6 +79,8 @@ fn snapshot(import: &Entity<Import>, cx: &App) -> Snapshot {
             .map(|text| ("notice", text.to_owned(), Notice::Alert)),
         view.info()
             .map(|text| ("info", text.to_owned(), Notice::Info)),
+        view.language_notice(cx)
+            .map(|text| ("language-notice", text.to_owned(), Notice::Info)),
     ]
     .into_iter()
     .flatten()

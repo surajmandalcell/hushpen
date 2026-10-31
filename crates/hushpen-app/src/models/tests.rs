@@ -7,6 +7,54 @@ const ALPHA: &[u8] = b"alpha model bytes";
 const BETA: &[u8] = b"beta model bytes!";
 const GAMMA: &[u8] = b"gamma model byte";
 
+#[test]
+fn startup_replaces_retired_speech_and_removes_only_retired_files() {
+    use hushpen_core::catalog::{RETIRED_SPEECH, SPEECH_DEFAULT};
+    use hushpen_store::data_dir::DataDir;
+
+    let dir = tempfile::tempdir().unwrap();
+    let storage = crate::storage::open(DataDir::open(dir.path().join("data")).unwrap()).unwrap();
+    let models = storage.data.whisper_models_dir();
+    std::fs::create_dir_all(&models).unwrap();
+    for id in RETIRED_SPEECH
+        .iter()
+        .copied()
+        .chain(["base-q5_1", "personal-model"])
+    {
+        let path = models.join(format!("ggml-{id}.bin"));
+        std::fs::write(&path, ALPHA).unwrap();
+        model_files::write_stamp(&path, &"a".repeat(64)).unwrap();
+    }
+    storage.settings.set(SETTING, json!("base.en")).unwrap();
+    sweep_retired_speech(&storage, hushpen_core::catalog::embedded());
+    assert_eq!(storage.settings.get(SETTING), Some(json!(SPEECH_DEFAULT)));
+    for id in RETIRED_SPEECH {
+        let path = models.join(format!("ggml-{id}.bin"));
+        assert!(!path.exists(), "{id}");
+        assert!(!model_files::stamp_path(&path).exists(), "{id}");
+    }
+    for id in ["base-q5_1", "personal-model"] {
+        let path = models.join(format!("ggml-{id}.bin"));
+        assert_eq!(std::fs::read(&path).unwrap(), ALPHA);
+        assert!(model_files::stamp_path(&path).exists(), "{id}");
+    }
+    storage.settings.set(SETTING, json!("small-q5_1")).unwrap();
+    sweep_retired_speech(&storage, hushpen_core::catalog::embedded());
+    assert_eq!(storage.settings.get(SETTING), Some(json!("small-q5_1")));
+}
+
+#[test]
+fn startup_removes_a_retired_stamp_even_if_the_model_is_gone() {
+    use hushpen_store::data_dir::DataDir;
+    let dir = tempfile::tempdir().unwrap();
+    let storage = crate::storage::open(DataDir::open(dir.path().join("data")).unwrap()).unwrap();
+    let path = storage.data.whisper_models_dir().join("ggml-tiny.bin");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(model_files::stamp_path(&path), b"old stamp").unwrap();
+    sweep_retired_speech(&storage, hushpen_core::catalog::embedded());
+    assert!(!model_files::stamp_path(&path).exists());
+}
+
 fn content(id: &str) -> &'static [u8] {
     match id {
         "alpha" => ALPHA,

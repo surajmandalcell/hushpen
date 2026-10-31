@@ -139,6 +139,16 @@ impl Dictation {
         english_only.then_some("This model understands English only.")
     }
 
+    pub fn language_notice(&self, cx: &gpui_kit::App) -> Option<&'static str> {
+        let models = self.models.read(cx);
+        let id = models.effective();
+        models
+            .rows()
+            .iter()
+            .find(|row| row.entry.id == id)
+            .and_then(|row| row.entry.language_notice(&self.language(cx)))
+    }
+
     /// Why Home cannot start a recording, or `None` while it can.
     pub fn blocker(&self, cx: &gpui_kit::App) -> Option<Blocker> {
         self.controller.read(cx).blocker(cx)
