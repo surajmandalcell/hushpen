@@ -6,7 +6,7 @@
 //! a channel and one task on the main thread applies them, so the UI never waits on a download.
 
 mod details;
-mod files;
+pub(crate) mod files;
 pub mod panel;
 mod search;
 pub mod sheet;
@@ -114,6 +114,9 @@ pub struct Row {
     /// The Recommended badge: the default speech or voice model, and the cleanup model this
     /// computer is offered first.
     pub recommended: bool,
+    /// The download in progress replaces an earlier version of the model's files, which the
+    /// app started on its own. The row shows Updating, never a failure.
+    pub updating: bool,
     /// Download or Cancel, Use, Delete, and the details button: see [`PRIMARY`] and the others.
     pub(crate) focus: [FocusHandle; 4],
 }
@@ -217,6 +220,7 @@ impl Models {
                     ModelKind::Cleanup => suggested.as_ref() == Some(&entry.id),
                     ModelKind::Speech | ModelKind::Voice => entry.default,
                 },
+                updating: false,
                 focus: std::array::from_fn(|_| cx.focus_handle().tab_stop(true)),
             })
             .collect();
@@ -236,9 +240,25 @@ impl Models {
             sheet_focus: SheetFocus::new(cx),
             search: search::Search::default(),
         };
-        models.scan();
+        for id in models.scan() {
+            models.update_files(&id, cx);
+        }
         models.load_active();
         models
+    }
+
+    /// Downloads the changed files of a model whose files on disk are an earlier pin. Only the
+    /// files that do not match the current pin are fetched; the others are kept.
+    fn update_files(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(index) = self.index_of(id) else {
+            return;
+        };
+        self.rows[index].updating = true;
+        hook::record_event("models", &format!("update {id}"));
+        if let Err(error) = self.download(id, cx) {
+            self.rows[index].updating = false;
+            log::warn!("MODELS_UPDATE could not start the update of {id}: {error}");
+        }
     }
 
     /// Every model, in the order of the Models view.
@@ -392,6 +412,7 @@ impl Models {
         let Some(index) = self.index_of(id) else {
             return;
         };
+        let was_update = std::mem::take(&mut self.rows[index].updating);
         let name = self.rows[index].entry.name.clone();
         if was_cancelled {
             // The state already says "not downloaded". A late success is dropped, so the
@@ -410,7 +431,12 @@ impl Models {
                 Ok(Outcome::Cancelled) => self.rows[index].state = ModelState::NotDownloaded,
                 Err(failure) => {
                     self.rows[index].state = ModelState::NotDownloaded;
-                    self.notice = Some(notice_for_failure(&failure, &name));
+                    // An update nobody asked for does not nag when the network is away; the
+                    // next start tries it again, and Download tries it now.
+                    let stopped = !matches!(failure.code, MODEL_HASH_MISMATCH | MODEL_HOST_BLOCKED);
+                    if !(was_update && stopped) {
+                        self.notice = Some(notice_for_failure(&failure, &name));
+                    }
                     hook::record_event("models", &format!("failed {id} {}", failure.code));
                 }
             }
@@ -516,6 +542,7 @@ impl Models {
         };
         job.cancel.store(true, Ordering::Relaxed);
         job.cancelled = true;
+        self.rows[index].updating = false;
         self.rows[index].state = ModelState::NotDownloaded;
         self.notice = None;
         hook::record_event("models", &format!("cancel {id}"));
@@ -597,6 +624,7 @@ impl Models {
                             Languages::European => "european",
                         },
                         "state": row.state.key(),
+                        "updating": row.updating,
                         "progress": row.state.percent(),
                         "active": kind == ModelKind::Speech && row.entry.id == active,
                         "default": row.entry.default,
@@ -753,3 +781,5 @@ mod sheet_tests;
 mod testkit;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod update_tests;

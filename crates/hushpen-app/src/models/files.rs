@@ -7,7 +7,7 @@ use hushpen_core::catalog::{ModelEntry, ModelFile, ModelKind};
 use hushpen_core::error::{DOWNLOAD_FAILED, MODEL_HASH_MISMATCH};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files::{self, Check, Verdict};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 /// The folder that holds the files of `entry`.
@@ -29,6 +29,34 @@ pub(super) fn paths<'a>(
         let path = folder.join(&file.file);
         (file, path)
     })
+}
+
+/// Whether the file at `path` is an earlier pin of `file`: the size of a pin it replaces, and a
+/// stamp, when there is one, that holds that pin's hash. The content is not hashed here, so a
+/// damaged file of the same size also counts; the update replaces it with the pinned file.
+fn is_old_copy(path: &Path, file: &ModelFile) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Some(pin) = file.old_pin_of_size(meta.len()) else {
+        return false;
+    };
+    model_files::read_stamp(path).is_none_or(|stamp| stamp.hash == pin.sha256)
+}
+
+/// Whether the model in `folder` is an update: a file is an earlier pin of its current file, and
+/// every other file is there, to be hashed, or missing. A file that is neither is damaged.
+pub(crate) fn is_update(folder: &Path, entry: &ModelEntry) -> bool {
+    let mut old = false;
+    for file in &entry.files {
+        let path = folder.join(&file.file);
+        if is_old_copy(&path, file) {
+            old = true;
+        } else if model_files::check(&path, file.bytes, &file.sha256) == Check::WrongSize {
+            return false;
+        }
+    }
+    old
 }
 
 /// A download for each file of `entry` that is not already on disk and stamped.
@@ -113,12 +141,19 @@ pub(super) fn remove(data: &DataDir, entry: &ModelEntry) -> std::io::Result<()> 
 impl Models {
     /// Reads every model's state. A model whose files all have stamps that still match is ready
     /// at once; one with an unstamped file is hashed on a worker thread and stays `Verifying`
-    /// until the hashes are known.
-    pub(super) fn scan(&mut self) {
+    /// until the hashes are known. Returns the models whose files are an earlier pin: they are
+    /// not failed, and the caller updates them.
+    pub(super) fn scan(&mut self) -> Vec<String> {
         let mut to_hash = Vec::new();
         let mut failed = Vec::new();
+        let mut stale = Vec::new();
         for row in &mut self.rows {
             if matches!(row.state, ModelState::Downloading { .. }) {
+                continue;
+            }
+            if is_update(&folder(&self.storage.data, &row.entry), &row.entry) {
+                row.state = ModelState::NotDownloaded;
+                stale.push(row.entry.id.clone());
                 continue;
             }
             let checks: Vec<_> = paths(&self.storage.data, &row.entry)
@@ -149,7 +184,7 @@ impl Models {
             self.set_notice(MODEL_HASH_MISMATCH, message);
         }
         if to_hash.is_empty() {
-            return;
+            return stale;
         }
         let events = self.events.clone();
         let spawned = (self.spawn)(Box::new(move || {
@@ -174,5 +209,6 @@ impl Models {
                 }
             }
         }
+        stale
     }
 }

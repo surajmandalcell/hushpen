@@ -523,6 +523,12 @@ impl ReadAloud {
     pub fn unavailable(&self) -> Option<String> {
         match &self.voices {
             Some(Err(error)) => Some(match (self.engine(), error.code) {
+                (engine, SPEECH_UNAVAILABLE) if engine.has_model() && self.updating() => {
+                    format!(
+                        "{} is updating its voice model. Progress shows in Models.",
+                        engine.label()
+                    )
+                }
                 (engine, SPEECH_UNAVAILABLE) if engine.has_model() => {
                     format!(
                         "{} needs its voice model. Download it in Models.",
@@ -534,6 +540,12 @@ impl ReadAloud {
             }),
             _ => None,
         }
+    }
+
+    /// The voice model of the engine is an earlier version that Models is replacing.
+    pub fn updating(&self) -> bool {
+        matches!(&self.voices, Some(Err(error))
+            if error.code == SPEECH_UNAVAILABLE && error.detail.ends_with(crate::tts_host::UPDATING))
     }
 
     /// An engine with a voice model is chosen and its model is not downloaded.

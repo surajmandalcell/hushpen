@@ -22,6 +22,7 @@ struct RowView {
     bytes: u64,
     recommended: bool,
     state: ModelState,
+    updating: bool,
     active: bool,
     focus: [FocusHandle; 4],
 }
@@ -211,6 +212,7 @@ fn row_view(index: usize, row: &Row, active: &str) -> RowView {
         bytes: row.entry.bytes(),
         recommended: row.recommended,
         state: row.state,
+        updating: row.updating,
         active: row.entry.kind == ModelKind::Speech && row.entry.id == active,
         focus: row.focus.clone(),
     }
@@ -254,7 +256,7 @@ fn model_row(palette: Palette, models: &Entity<Models>, view: RowView) -> AnyEle
         .into_iter()
         .map(|action| button(palette, models, index, action, &view.focus[action.slot()]))
         .collect();
-    let (status, tone) = status_text(palette, view.state, view.active);
+    let (status, tone) = status_text(palette, view.state, view.active, view.updating);
     let controls = div()
         .flex_none()
         .flex()
@@ -327,9 +329,21 @@ fn model_row(palette: Palette, models: &Entity<Models>, view: RowView) -> AnyEle
 
 /// The state of a model in words, with its color. Only the words that name a result take a
 /// status color.
-pub(super) fn status_text(palette: Palette, state: ModelState, active: bool) -> (String, Rgba) {
+pub(super) fn status_text(
+    palette: Palette,
+    state: ModelState,
+    active: bool,
+    updating: bool,
+) -> (String, Rgba) {
     match state {
         ModelState::NotDownloaded => ("Not downloaded".to_owned(), palette.label_secondary),
+        ModelState::Downloading { .. } if updating => (
+            state.percent().map_or_else(
+                || "Updating".into(),
+                |percent| format!("Updating {percent}%"),
+            ),
+            palette.label,
+        ),
         ModelState::Downloading { .. } => (
             state
                 .percent()
