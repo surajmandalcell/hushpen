@@ -5,7 +5,8 @@
 //! The manifest is the speech-model research manifest, with its `mine` array.
 //! Results contain speech text: keep the output outside the repository.
 //! An existing output resumes after its last complete clip. On macOS, wait for games
-//! to leave the front before loading Metal and before each clip (at most three hours).
+//! to leave the front, and League, Ryujinx, or Steam to quit, before loading Metal and before
+//! each clip (at most three hours).
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -97,6 +98,7 @@ fn game_in_front(info: &str) -> bool {
     let info = info.to_lowercase();
     [
         "league of legends",
+        "leagueclient",
         "zelda",
         "ryujinx",
         "steam",
@@ -113,7 +115,7 @@ fn wait_for_games(deadline: Instant) {
         let output = std::process::Command::new("/bin/sh")
             .args([
                 "-c",
-                r#"front=$(lsappinfo front) && lsappinfo info -only name "$front" && lsappinfo info -only bundlepath -only executablepath "$front""#,
+                r#"front=$(lsappinfo front) && lsappinfo info -only name "$front" && lsappinfo info -only bundlepath -only executablepath "$front" && for name in LeagueClient "League of Legends" Ryujinx steam_osx; do pgrep -xl "$name"; done; true"#,
             ])
             .output()
             .expect("check front app");
@@ -315,6 +317,7 @@ fn resume_keeps_completed_clips_and_rejects_a_different_run() {
 fn games_and_steam_installs_block_metal_but_work_apps_do_not() {
     for info in [
         "\"League Of Legends\"",
+        "123 LeagueClient",
         "\"Zelda\"",
         "\"Ryujinx\"",
         "\"Steam\"",
