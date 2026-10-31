@@ -491,7 +491,10 @@ fn a_retired_speech_model_keeps_its_original_id_in_history(cx: &mut TestAppConte
     assert_eq!(state(cx, &view)["detail"]["model_id"], "base");
     let label = cx
         .update_window(view.handle, |_, window, _| {
-            window.find("history.detail.model").label().map(str::to_owned)
+            window
+                .find("history.detail.model")
+                .label()
+                .map(str::to_owned)
         })
         .unwrap();
     assert_eq!(label.as_deref(), Some("base"));

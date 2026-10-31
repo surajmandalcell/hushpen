@@ -4,9 +4,11 @@ use super::{Attempt, Cleaner, Progress, edit_max_tokens, max_tokens};
 use crate::controller::CancelToken;
 use crate::net::endpoint::{Config, Kind, Transport};
 use crate::storage::Storage;
-use hushpen_core::endpoint::{cleanup_system, transcript_user};
+use hushpen_core::endpoint::transcript_user;
 use hushpen_core::error::ENDPOINT_FAILED;
-use hushpen_core::llm_prompt::{COMMAND_SYSTEM, command_user};
+use hushpen_core::llm_prompt::{
+    COMMAND_SYSTEM, Profile, Target, Tuned, cleanup_prompt, command_user,
+};
 use std::sync::Arc;
 use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::time::{Duration, Instant};
@@ -20,11 +22,21 @@ const GRACE: Duration = Duration::from_millis(500);
 pub struct EndpointCleaner {
     transport: Arc<dyn Transport>,
     config: Config,
+    profile: Tuned,
 }
 
 impl EndpointCleaner {
+    /// A cleaner with the General profile.
     pub fn new(transport: Arc<dyn Transport>, config: Config) -> Self {
-        Self { transport, config }
+        Self {
+            transport,
+            config,
+            profile: Tuned::built_in(Profile::General),
+        }
+    }
+
+    pub fn with_profile(self, profile: Tuned) -> Self {
+        Self { profile, ..self }
     }
 
     /// The endpoint as the settings and the secrets file hold it now.
@@ -45,6 +57,7 @@ impl EndpointCleaner {
                 timeout: Duration::ZERO,
             },
         )
+        .with_profile(super::profile(storage))
     }
 }
 
@@ -61,7 +74,7 @@ impl Cleaner for EndpointCleaner {
         token: &CancelToken,
     ) -> Attempt {
         self.ask(
-            cleanup_system(keep),
+            cleanup_prompt(Target::Endpoint, &self.profile, keep).system(),
             transcript_user(text),
             max_tokens(text),
             timeout,
@@ -209,7 +222,7 @@ mod tests {
         assert_eq!(config.model, "stub-model");
         assert_eq!(config.key.as_deref(), Some("sk-test-123"));
         assert_eq!(config.timeout, Duration::from_millis(6_000));
-        assert_eq!(system, &cleanup_system(&[]));
+        assert_eq!(system, &general(&[]));
         assert_eq!(user, "<transcript>a &lt;b&gt; c</transcript>");
         assert_eq!(*tokens, max_tokens("a <b> c"));
     }
@@ -224,7 +237,28 @@ mod tests {
             &CancelToken::default(),
         );
         let seen = transport.seen.lock().unwrap();
-        assert_eq!(seen[0].1, cleanup_system(&["Wednesbury".to_owned()]));
+        assert_eq!(seen[0].1, general(&["Wednesbury".to_owned()]));
+    }
+
+    fn general(keep: &[String]) -> String {
+        cleanup_prompt(Target::Endpoint, &Tuned::built_in(Profile::General), keep).system()
+    }
+
+    #[test]
+    fn the_profile_prompt_goes_to_the_endpoint_as_the_prompt_sheet_shows_it() {
+        let transport = Scripted::new(Ok("Hello.".into()), Duration::ZERO);
+        let mut tuned = Tuned::built_in(Profile::Notes);
+        tuned.prompt = "List what I say.".into();
+        cleaner(&transport).with_profile(tuned.clone()).clean(
+            "hello",
+            &[],
+            Duration::from_secs(6),
+            &CancelToken::default(),
+        );
+        let seen = transport.seen.lock().unwrap();
+        let shown = cleanup_prompt(Target::Endpoint, &tuned, &[]);
+        assert_eq!(seen[0].1, shown.system());
+        assert!(seen[0].1.starts_with("List what I say. The text to clean"));
     }
 
     #[test]

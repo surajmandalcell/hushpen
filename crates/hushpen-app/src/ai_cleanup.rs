@@ -13,11 +13,16 @@ use crate::storage::Storage;
 use hushpen_core::cleanup::guard;
 use hushpen_core::cleanup::outcome::Outcome;
 use hushpen_core::error::{LLM_GUARD_REJECTED, LLM_UNAVAILABLE};
-use hushpen_core::llm_prompt::cleanup_system_keeping;
+use hushpen_core::llm_prompt::{Profile, PromptFamily, Target, Tuned, cleanup_prompt};
 use hushpen_engine::{LlmClient, LlmLoaded, LlmOutcome, LlmSpec, LlmState, LlmWork};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
+
+/// The profile the cleanup uses, by key.
+pub const PROFILE_SETTING: &str = "cleanup.profile";
+/// The user's changes to the profiles: `<profile>.<field>` to the new value.
+pub const PROFILE_EDITS_SETTING: &str = "cleanup.profileEdits";
 
 const MIN_TOKENS: usize = 32;
 const MAX_TOKENS: usize = 1024;
@@ -236,8 +241,40 @@ fn edit_max_tokens(selection: &str) -> u32 {
         .min(MAX_TOKENS as u32)
 }
 
+/// The chosen profile with the user's changes.
+pub fn profile(storage: &Storage) -> Tuned {
+    let chosen = storage
+        .settings
+        .get(PROFILE_SETTING)
+        .and_then(|value| value.as_str().and_then(Profile::parse))
+        .unwrap_or(Profile::General);
+    profile_of(storage, chosen)
+}
+
+/// `profile` with the user's changes.
+pub fn profile_of(storage: &Storage, profile: Profile) -> Tuned {
+    let edits = storage.settings.get(PROFILE_EDITS_SETTING);
+    Tuned::from_edits(profile, |key| {
+        edits
+            .as_ref()
+            .and_then(|edits| edits.get(key))
+            .and_then(|value| value.as_str().map(str::to_owned))
+    })
+}
+
+/// The prompt family of a local cleanup model, by its catalog id or file name.
+pub fn family_of(model: &str) -> PromptFamily {
+    let name = if model.ends_with(".gguf") {
+        model.to_owned()
+    } else {
+        format!("{model}.gguf")
+    };
+    PromptFamily::from_model_name(&name).unwrap_or(PromptFamily::Qwen35)
+}
+
 /// The cleaner for the provider that the settings name, read at the start of each dictation so
-/// a change takes effect on the next one. `None` means the local worker is not running.
+/// a change of provider or profile takes effect on the next one. `None` means the local worker
+/// is not running.
 pub fn cleaner_for(
     storage: &Storage,
     host: &LlmHost,
@@ -253,20 +290,46 @@ pub fn cleaner_for(
             Arc::clone(transport),
         )));
     }
-    HostCleaner::of(host).map(|cleaner| Box::new(cleaner) as Box<dyn Cleaner>)
+    HostCleaner::of(host, profile(storage)).map(|cleaner| Box::new(cleaner) as Box<dyn Cleaner>)
 }
 
 /// The worker behind [`LlmHost`], with the load that brings its model back after an idle unload.
 pub struct HostCleaner {
     client: LlmClient,
     spec: LlmSpec,
+    profile: Tuned,
 }
 
 impl HostCleaner {
     /// `None` while AI cleanup is off or has no verified model, so no worker runs.
-    pub fn of(host: &LlmHost) -> Option<Self> {
+    pub fn of(host: &LlmHost, profile: Tuned) -> Option<Self> {
         let (client, spec) = host.running()?;
-        Some(Self { client, spec })
+        Some(Self {
+            client,
+            spec,
+            profile,
+        })
+    }
+
+    fn family(&self) -> PromptFamily {
+        self.spec
+            .family
+            .as_deref()
+            .and_then(PromptFamily::parse)
+            .unwrap_or_else(|| {
+                let name = self.spec.path.file_name().unwrap_or_default();
+                family_of(&name.to_string_lossy())
+            })
+    }
+
+    /// The job of a cleanup: the prompt the Prompt sheet shows for this model and profile.
+    fn cleanup_work(&self, text: &str, keep: &[String]) -> LlmWork {
+        let prompt = cleanup_prompt(Target::Local(self.family()), &self.profile, keep);
+        LlmWork::Cleanup {
+            system: prompt.job_system(),
+            user: text.to_owned(),
+            max_tokens: max_tokens(text),
+        }
     }
 
     fn load(&self) -> Result<LlmLoaded, String> {
@@ -304,15 +367,7 @@ impl Cleaner for HostCleaner {
         timeout: Duration,
         token: &CancelToken,
     ) -> Attempt {
-        self.work(
-            LlmWork::Cleanup {
-                system: cleanup_system_keeping(keep),
-                user: text.to_owned(),
-                max_tokens: max_tokens(text),
-            },
-            timeout,
-            token,
-        )
+        self.work(self.cleanup_work(text, keep), timeout, token)
     }
 
     fn edit(
@@ -684,6 +739,7 @@ mod tests {
         let cleaner = HostCleaner {
             client: client.clone(),
             spec: LlmSpec::new("/nonexistent/model.gguf".into()),
+            profile: Tuned::built_in(Profile::General),
         };
         let (done, answer) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -695,6 +751,94 @@ mod tests {
             prepared.expect("prepare returns at once while the model loads"),
             Err(LLM_UNAVAILABLE.to_owned())
         );
+    }
+
+    fn idle_cleaner(model: &str, profile: Tuned) -> (LlmClient, HostCleaner) {
+        use hushpen_engine::{ChildSpec, EngineLog, Timing};
+        let client = LlmClient::start(
+            ChildSpec {
+                program: "/bin/sh".into(),
+                args: vec!["-c".into(), "sleep 30".into()],
+            },
+            Timing::llm(),
+            EngineLog::discard(),
+        );
+        let cleaner = HostCleaner {
+            client: client.clone(),
+            spec: LlmSpec::new(std::path::PathBuf::from("/models").join(model)),
+            profile,
+        };
+        (client, cleaner)
+    }
+
+    fn job_system(work: LlmWork) -> String {
+        match work {
+            LlmWork::Cleanup { system, .. } => system,
+            other => panic!("expected a cleanup, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn s1_mini_gets_the_control_line_the_prompt_sheet_shows() {
+        let mut tuned = Tuned::built_in(Profile::Notes);
+        tuned.controls.styling = hushpen_core::llm_prompt::Styling::Casual;
+        let (client, cleaner) = idle_cleaner("s1-mini-q4_k_m.gguf", tuned.clone());
+        let keep = ["Wednesbury".to_owned()];
+        let system = job_system(cleaner.cleanup_work("um hi", &keep));
+        client.shutdown();
+        let shown = cleanup_prompt(Target::Local(PromptFamily::S1Mini), &tuned, &keep);
+        assert_eq!(system, shown.job_system());
+        assert_eq!(
+            system,
+            "[Styling: casual] [Structure: lists] [Context: general]"
+        );
+        assert_eq!(
+            PromptFamily::S1Mini.cleanup_prefix(&system),
+            format!("{}{system}\n", PromptFamily::S1Mini.prefix(&shown.system()))
+        );
+    }
+
+    #[test]
+    fn qwen_gets_the_profile_prompt_the_prompt_sheet_shows() {
+        let mut tuned = Tuned::built_in(Profile::Email);
+        tuned.prompt = "Clean the dictation my way.".into();
+        let (client, cleaner) = idle_cleaner("Qwen3.5-2B-Q4_K_M.gguf", tuned.clone());
+        let keep = ["Zorvath".to_owned()];
+        let system = job_system(cleaner.cleanup_work("um hi Zorvath", &keep));
+        client.shutdown();
+        let shown = cleanup_prompt(Target::Local(PromptFamily::Qwen35), &tuned, &keep);
+        assert_eq!(system, shown.system());
+        assert!(system.starts_with("Clean the dictation my way. These words"));
+    }
+
+    #[test]
+    fn the_stored_profile_and_its_edits_are_read_from_the_settings() {
+        use serde_json::json;
+        let tmp = tempfile::tempdir().unwrap();
+        let data = hushpen_store::data_dir::DataDir::open(tmp.path().join("data")).unwrap();
+        let storage = crate::storage::open(data).unwrap();
+        assert_eq!(profile(&storage), Tuned::built_in(Profile::General));
+        storage
+            .settings
+            .set(PROFILE_SETTING, json!("message"))
+            .unwrap();
+        storage
+            .settings
+            .set(
+                PROFILE_EDITS_SETTING,
+                json!({"message.styling": "casual", "general.prompt": "Other."}),
+            )
+            .unwrap();
+        let tuned = profile(&storage);
+        assert_eq!(tuned.profile, Profile::Message);
+        assert_eq!(
+            tuned.controls.styling,
+            hushpen_core::llm_prompt::Styling::Casual
+        );
+        assert_eq!(tuned.prompt, Profile::Message.prompt());
+        assert_eq!(profile_of(&storage, Profile::General).prompt, "Other.");
+        assert_eq!(family_of("s1-mini-q4_k_m"), PromptFamily::S1Mini);
+        assert_eq!(family_of("qwen3.5-2b"), PromptFamily::Qwen35);
     }
 
     #[test]
