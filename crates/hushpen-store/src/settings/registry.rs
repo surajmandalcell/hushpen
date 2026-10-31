@@ -206,11 +206,6 @@ pub(super) static REGISTRY: &[Spec] = &[
         Kind::Int(500, 120_000),
         |_| { json!(6000) }
     ),
-    spec!(
-        "cleanup.llm.idleUnloadMinutes",
-        Kind::Int(1, 1440),
-        |_| json!(5)
-    ),
     spec!("cleanup.llm.endpointPreset", Kind::Text(64), |_| json!(
         "custom"
     )),
@@ -286,8 +281,8 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("engine.threads", Kind::AutoOrInt(1, 64), |_| json!("auto")),
     spec!(
         "engine.idlePolicy",
-        Kind::Choice(&["current", "keep", "pageout", "unload"]),
-        |_| json!("current")
+        Kind::Choice(&["keep", "pageout", "unload"]),
+        |os| json!(if mac(os) { "keep" } else { "pageout" })
     ),
     spec!("engine.idleMinutes", Kind::Int(5, 60), |_| json!(15)),
     spec!("startup.launchAtLogin", Kind::Bool, |_| json!(false)),
@@ -327,15 +322,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn output_mute_and_idle_defaults_preserve_the_retention_policy() {
+    fn output_mute_and_idle_defaults_swap_models_instead_of_unloading_them() {
         for os in [Os::MacOs, Os::Linux] {
             assert_eq!(
                 find("audio.muteWhileDictating").unwrap().default_value(os),
                 json!(true)
-            );
-            assert_eq!(
-                find("engine.idlePolicy").unwrap().default_value(os),
-                json!("current")
             );
             assert_eq!(
                 find("engine.idleMinutes").unwrap().default_value(os),
@@ -343,10 +334,14 @@ mod tests {
             );
         }
         let policy = find("engine.idlePolicy").unwrap();
-        for value in ["current", "keep", "pageout", "unload"] {
+        assert_eq!(policy.default_value(Os::MacOs), json!("keep"));
+        assert_eq!(policy.default_value(Os::Linux), json!("pageout"));
+        for value in ["keep", "pageout", "unload"] {
             assert_eq!(policy.sanitize(&json!(value)), Some(json!(value)));
         }
-        assert_eq!(policy.sanitize(&json!("discard")), None);
+        for value in ["current", "discard"] {
+            assert_eq!(policy.sanitize(&json!(value)), None);
+        }
         let minutes = find("engine.idleMinutes").unwrap();
         assert_eq!(minutes.sanitize(&json!(4)), None);
         assert_eq!(minutes.sanitize(&json!(61)), None);

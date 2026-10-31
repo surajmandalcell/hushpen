@@ -167,7 +167,7 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::Gpu => vec![engine::gpu(page, cx)],
         RowId::Threads => vec![engine::threads(page, cx)],
         RowId::IdlePolicy => vec![engine::idle_policy(page, cx)],
-        RowId::IdleMinutes => vec![engine::idle_minutes(page, cx)],
+        RowId::IdleMinutes => engine::idle_minutes(page, cx),
         RowId::ShowFlowBar => vec![flow_bar::show(page, cx)],
         RowId::FlowBarIdle => vec![flow_bar::idle(page, cx)],
         RowId::FlowBarPosition => vec![flow_bar::position(page, cx)],

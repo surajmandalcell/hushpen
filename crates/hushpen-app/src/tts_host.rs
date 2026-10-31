@@ -2,7 +2,8 @@
 //! the first read aloud with a voice model, and only when every file of that model is there
 //! and verified. A user who never reads aloud with a model never starts the process. One worker
 //! serves Kokoro, Chatterbox Turbo, and Chatterbox Nano: a read with another model loads that
-//! model in place of the last. The worker drops the model by itself after five idle minutes.
+//! model in place of the last. The worker drops the model after the idle time of `engine.idlePolicy`
+//! only when that policy is Unload.
 //!
 //! [`TtsHost::engine`] gives each model as a [`SpeechEngine`], so Read aloud streams and cancels
 //! it the same way as the system voice. A worker crash or hang ends the chunk in a `SPEECH_*`
@@ -423,12 +424,7 @@ mod tests {
         let data_dir = tempfile::tempdir().unwrap();
         let data = DataDir::open(data_dir.path()).unwrap();
         let host = host(&data);
-        for (policy, secs) in [
-            ("current", 300),
-            ("keep", 0),
-            ("pageout", 0),
-            ("unload", 1800),
-        ] {
+        for (policy, secs) in [("keep", 0), ("pageout", 0), ("unload", 1800)] {
             let values = serde_json::json!({"engine.idlePolicy": policy, "engine.idleMinutes": 30});
             host.apply_settings(values.as_object().unwrap());
             assert_eq!(host.lock().idle_secs, secs);

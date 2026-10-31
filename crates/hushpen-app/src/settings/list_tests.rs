@@ -221,13 +221,18 @@ fn the_output_mute_switch_and_idle_pickers_write_the_selected_values(cx: &mut Te
     assert_eq!(value(&shown.rig, "audio.muteWhileDictating"), json!(false));
 
     search(cx, &shown, "memory");
-    for policy in ["keep", "pageout", "unload"] {
+    let choices: &[&str] = if cfg!(target_os = "macos") {
+        &["keep", "unload"]
+    } else {
+        &["keep", "pageout", "unload"]
+    };
+    for policy in choices {
         cx.update_window(shown.handle, |_, window, cx| {
             window.click("settings.engine.idlePolicy", cx)
         })
         .unwrap();
         frame(cx, &shown);
-        for choice in ["keep", "pageout", "unload"] {
+        for choice in choices {
             assert!(
                 cx.update_window(shown.handle, |_, window, _| {
                     window
@@ -243,6 +248,11 @@ fn the_output_mute_switch_and_idle_pickers_write_the_selected_values(cx: &mut Te
         .unwrap();
         frame(cx, &shown);
         assert_eq!(value(&shown.rig, "engine.idlePolicy"), json!(policy));
+        assert_eq!(
+            has(cx, &shown, "settings.engine.idleMinutes"),
+            *policy != "keep",
+            "the idle time shows for page out and unload only"
+        );
     }
     cx.update_window(shown.handle, |_, window, cx| {
         window.click("settings.engine.idleMinutes", cx)

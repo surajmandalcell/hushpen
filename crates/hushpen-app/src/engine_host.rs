@@ -252,15 +252,20 @@ mod tests {
 
     #[test]
     fn idle_policy_and_time_reach_the_speech_worker() {
+        use hushpen_core::idle::{Idle, IdleAction};
         let mut values = settings("base", json!("auto"), false);
-        assert_eq!(
-            wanted(&values, 2).unwrap().idle,
-            hushpen_core::idle::Idle::KEEP
-        );
-        values.insert("engine.idlePolicy".into(), json!("pageout"));
+        values.insert("engine.idlePolicy".into(), json!("keep"));
+        assert_eq!(wanted(&values, 2).unwrap().idle, Idle::KEEP);
         values.insert("engine.idleMinutes".into(), json!(30));
+        values.insert("engine.idlePolicy".into(), json!("unload"));
         let idle = wanted(&values, 2).unwrap().idle;
-        assert_eq!(idle.secs, 1800);
-        assert_eq!(idle.action, hushpen_core::idle::IdleAction::PageOut);
+        assert_eq!((idle.secs, idle.action), (1800, IdleAction::Unload));
+        values.insert("engine.idlePolicy".into(), json!("pageout"));
+        let idle = wanted(&values, 2).unwrap().idle;
+        if cfg!(target_os = "macos") {
+            assert_eq!(idle, Idle::KEEP);
+        } else {
+            assert_eq!((idle.secs, idle.action), (1800, IdleAction::PageOut));
+        }
     }
 }
