@@ -202,6 +202,7 @@ impl Models {
             log::info!("MODELS_SWEPT removed {swept} partial downloads older than 7 days");
         }
         sweep_retired_llm(&storage.data.llm_models_dir());
+        sweep_retired_speech(&storage, catalog);
         let offered = catalog.offered_llm();
         let suggested = offered.first().map(|entry| entry.id.clone());
         let rows = catalog
@@ -593,6 +594,7 @@ impl Models {
                         "languages": match row.entry.languages {
                             Languages::Multilingual => "multilingual",
                             Languages::English => "english",
+                            Languages::European => "european",
                         },
                         "state": row.state.key(),
                         "progress": row.state.percent(),
@@ -619,8 +621,6 @@ impl Models {
     }
 }
 
-/// What a failed row says. The row shows it on one line, so it can be cut short; the view
-/// notice shows all of it.
 /// Deletes the files of cleanup models an earlier version offered, such as Gemma 4 E2B (3.1 GB).
 /// Only `<id>.gguf` and its stamp go; nothing else in the folder is touched.
 fn sweep_retired_llm(dir: &std::path::Path) {
@@ -636,6 +636,41 @@ fn sweep_retired_llm(dir: &std::path::Path) {
     }
 }
 
+/// Moves a retired selection before the engine loads, then removes only its known model files.
+fn sweep_retired_speech(storage: &Storage, catalog: &Catalog) {
+    use hushpen_core::catalog::RETIRED_SPEECH;
+
+    let selected = storage
+        .settings
+        .get(SETTING)
+        .and_then(|v| v.as_str().map(str::to_owned));
+    if selected
+        .as_deref()
+        .is_some_and(|id| RETIRED_SPEECH.contains(&id) && catalog.whisper(id).is_none())
+        && let Some(default) = catalog.default_whisper()
+        && let Err(error) = storage.settings.set(SETTING, json!(default.id))
+    {
+        log::warn!("MODELS_RETIRED could not replace speech selection: {error}");
+        return;
+    }
+    for id in RETIRED_SPEECH {
+        if catalog.whisper(id).is_some() {
+            continue;
+        }
+        let path = storage
+            .data
+            .whisper_models_dir()
+            .join(format!("ggml-{id}.bin"));
+        if path.exists() || model_files::stamp_path(&path).exists() {
+            match model_files::remove(&path) {
+                Ok(()) => log::info!("MODELS_RETIRED removed ggml-{id}.bin"),
+                Err(error) => log::warn!("MODELS_RETIRED could not remove ggml-{id}.bin: {error}"),
+            }
+        }
+    }
+}
+
+/// What a failed row says. The view notice shows the full text.
 pub fn failure_text(entry: &ModelEntry) -> String {
     format!(
         "{} failed verification: what is on disk is not the pinned {} download, so it is never used. Download it again to replace it.",

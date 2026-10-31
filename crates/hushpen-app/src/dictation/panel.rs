@@ -25,6 +25,7 @@ struct Snapshot {
     notice: Option<(String, bool)>,
     /// Why the global keys are off, shown as plain information rather than an error.
     keys_notice: Option<String>,
+    language_notice: Option<&'static str>,
     can_record: bool,
     language: String,
     detail: String,
@@ -74,6 +75,7 @@ pub fn render(
                 && me.transcript(cx).is_empty()),
             notice,
             keys_notice: me.keys_notice(cx).map(str::to_owned),
+            language_notice: me.language_notice(cx),
             can_record: me.can_record(cx),
             language,
             detail,
@@ -115,6 +117,15 @@ pub fn render(
     rows.push(
         language_row(palette, dictation, &view, &language_focus, &option_focus).into_any_element(),
     );
+    if let Some(message) = view.language_notice {
+        rows.push(ui::notice_row(
+            palette,
+            hook::id("home", "language-notice"),
+            message.to_owned(),
+            Notice::Info,
+            None,
+        ));
+    }
     ui::group(hook::id("home", "dictation"), palette, rows)
 }
 

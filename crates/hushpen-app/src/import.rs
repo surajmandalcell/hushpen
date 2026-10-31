@@ -251,11 +251,23 @@ impl Import {
     pub fn translate_off_reason(&self, cx: &App) -> Option<&'static str> {
         if self.english_only(cx) {
             Some("English-only models cannot translate. Choose a multilingual model in Models.")
+        } else if self.models.read(cx).effective() == hushpen_core::catalog::SPEECH_DEFAULT {
+            Some("Parakeet cannot translate. Choose Whisper Small Q5 in Models.")
         } else if self.models.read(cx).effective().contains("turbo") {
             Some("Turbo models cannot translate. Choose another model in Models.")
         } else {
             None
         }
+    }
+
+    pub fn language_notice(&self, cx: &App) -> Option<&'static str> {
+        let models = self.models.read(cx);
+        let id = models.effective();
+        models
+            .rows()
+            .iter()
+            .find(|row| row.entry.id == id)
+            .and_then(|row| row.entry.language_notice(&self.language()))
     }
 
     fn english_only(&self, cx: &App) -> bool {

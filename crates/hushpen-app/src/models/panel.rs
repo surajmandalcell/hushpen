@@ -347,6 +347,7 @@ pub(super) fn languages_text(languages: Languages) -> &'static str {
     match languages {
         Languages::Multilingual => "Multilingual",
         Languages::English => "English only",
+        Languages::European => "25 European languages",
     }
 }
 
