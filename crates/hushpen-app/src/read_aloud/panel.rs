@@ -17,11 +17,9 @@ pub fn render(read: &Entity<ReadAloud>, cx: &mut App) -> impl IntoElement + use<
     let mut page = div()
         .flex()
         .flex_col()
-        .gap(px(space::XL))
-        .child(ui::titled_section(
+        .gap(px(space::MD))
+        .child(ui::section(
             palette,
-            hook::id("read", "text.heading"),
-            "Text",
             text_group(palette, read, cx),
             Some((
                 hook::id("read", "text.footer"),
@@ -83,14 +81,10 @@ pub fn render(read: &Entity<ReadAloud>, cx: &mut App) -> impl IntoElement + use<
     if !notices.is_empty() {
         page = page.child(ui::group(hook::id("read", "notices"), palette, notices));
     }
-    page.child(ui::group(
-        hook::id("read", "actions"),
-        palette,
-        vec![actions_row(palette, read, cx)],
-    ))
+    page
 }
 
-/// The text area, then the size of the text and Open Text File.
+/// Playback controls, the text area, then the size of the text and Open Text File.
 fn text_group(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> impl IntoElement {
     let view = read.read(cx);
     let chars = view.text.read(cx).value().chars().count();
@@ -134,7 +128,11 @@ fn text_group(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> impl Into
             open,
         ),
     );
-    ui::group(hook::id("read", "text.group"), palette, vec![area, footer])
+    ui::group(
+        hook::id("read", "text.group"),
+        palette,
+        vec![actions_row(palette, read, cx), area, footer],
+    )
 }
 
 /// Engine, then Language and Voice from the engine's voices (and the voice library for
