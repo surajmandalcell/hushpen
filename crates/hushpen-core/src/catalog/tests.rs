@@ -345,8 +345,8 @@ fn the_kokoro_voice_is_pinned_file_by_file_with_every_file_the_worker_opens() {
     assert_eq!(files, crate::kokoro::FILES);
     let expect = [
         (
-            114_203_756,
-            "4b86207ef680e394d8343bee22dfc4c512e5c707c6d9578e3f35ab09bffd6b36",
+            114_202_993,
+            "75635ea3b85a32d00094dcdd61a258aba87c160f7c264c304a7b3ae9d734195e",
         ),
         (
             28_200_960,
@@ -369,14 +369,20 @@ fn the_kokoro_voice_is_pinned_file_by_file_with_every_file_the_worker_opens() {
             "{}",
             file.file
         );
-        assert!(file.url.starts_with(repo), "{}", file.url);
+        assert!(
+            file.url
+                .starts_with(&format!("{repo}57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2/")),
+            "{}",
+            file.url
+        );
         assert!(
             file.url.ends_with(&format!("/{}", file.file)),
             "{}",
             file.url
         );
     }
-    assert_eq!(entry.bytes(), 148_362_288);
+    assert_eq!(entry.bytes(), 148_361_525);
+    assert!(entry.info.as_ref().unwrap().ram_peak_bytes < 1_500_000_000);
     assert_eq!(entry.license, "Apache-2.0");
     assert_eq!(entry.languages, Languages::English);
     assert!(entry.default);

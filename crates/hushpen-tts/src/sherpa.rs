@@ -283,7 +283,7 @@ impl Tts {
         config.model.provider = c"cpu".as_ptr();
         // One sentence per callback, so the first audio comes out after the first sentence.
         config.max_num_sentences = 1;
-        config.silence_scale = 0.2;
+        config.silence_scale = 1.0;
         // SAFETY: the config and the strings it points to live until the call returns; the
         // library copies what it keeps.
         let raw = unsafe { (api.create)(&config) };
@@ -330,7 +330,7 @@ impl Tts {
         let count = i32::try_from(lens.len()).map_err(|_| "the text is too long".to_owned())?;
         // SAFETY: as in `kokoro`, all zero bytes are a valid config.
         let mut config: GenerationConfig = unsafe { std::mem::zeroed() };
-        config.silence_scale = 0.2;
+        config.silence_scale = 1.0;
         config.speed = speed;
         config.sid = speaker;
         config.extra = c"{}".as_ptr();
@@ -390,6 +390,72 @@ unsafe extern "C" fn on_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static LOAD_SILENCE: AtomicU32 = AtomicU32::new(0);
+    static SPEAK_SILENCE: AtomicU32 = AtomicU32::new(0);
+
+    unsafe extern "C" fn create(config: *const TtsConfig) -> *const c_void {
+        // SAFETY: Tts::kokoro passes its live configuration.
+        LOAD_SILENCE.store(
+            unsafe { (*config).silence_scale }.to_bits(),
+            Ordering::Relaxed,
+        );
+        NonNull::<u8>::dangling().as_ptr().cast()
+    }
+
+    unsafe extern "C" fn destroy(_: *const c_void) {}
+
+    unsafe extern "C" fn count(_: *const c_void) -> i32 {
+        24_000
+    }
+
+    unsafe extern "C" fn generate(
+        _: *const c_void,
+        _: Text,
+        config: *const GenerationConfig,
+        _: Option<ProgressFn>,
+        _: *mut c_void,
+    ) -> *const GeneratedAudio {
+        // SAFETY: Tts::generate passes its live configuration.
+        SPEAK_SILENCE.store(
+            unsafe { (*config).silence_scale }.to_bits(),
+            Ordering::Relaxed,
+        );
+        Box::into_raw(Box::new(GeneratedAudio {
+            samples: std::ptr::null(),
+            n: 0,
+            sample_rate: 24_000,
+        }))
+    }
+
+    unsafe extern "C" fn destroy_audio(audio: *const GeneratedAudio) {
+        // SAFETY: generate allocates this value for Tts::generate to release.
+        drop(unsafe { Box::from_raw(audio.cast_mut()) });
+    }
+
+    #[test]
+    fn loading_and_speaking_preserve_the_models_punctuation_pauses() {
+        let api = Arc::new(Api {
+            create,
+            destroy,
+            sample_rate: count,
+            num_speakers: count,
+            generate,
+            destroy_audio,
+            version: VERSION.to_owned(),
+        });
+        let files = KokoroFiles {
+            model: Path::new("/model.onnx"),
+            voices: Path::new("/voices.bin"),
+            tokens: Path::new("/tokens.txt"),
+        };
+        let mut tts = Tts::kokoro(api, &files, 2).unwrap();
+        tts.generate(&["həlˈO, wˈɜɹld.".to_owned()], 3, 1.0, &mut |_| true)
+            .unwrap();
+        assert_eq!(f32::from_bits(LOAD_SILENCE.load(Ordering::Relaxed)), 1.0);
+        assert_eq!(f32::from_bits(SPEAK_SILENCE.load(Ordering::Relaxed)), 1.0);
+    }
 
     #[test]
     fn a_missing_library_is_an_error_not_a_crash() {
