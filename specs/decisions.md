@@ -399,6 +399,12 @@ new decision, add it here in the same change (D-21).
   text join the cleanup keep-list, and heard-as replacements run after
   cleanup.
 
+- **D-43 Whole-clip dictation.** Dictation transcribes the whole recording
+  after stop. Cutting at pauses and transcribing while the user speaks was
+  measured on 77 owner dictations and rejected against a 0.3-point WER
+  limit: Parakeet v3 Q4 lost 0.29 points (95% CI up to 0.85) to save
+  329 ms, and Whisper Turbo Q5 lost 0.36 points to save 937 ms.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the
