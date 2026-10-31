@@ -67,7 +67,7 @@ fn section_text(kind: ModelKind) -> (&'static str, &'static str) {
     match kind {
         ModelKind::Speech => (
             "Speech recognition",
-            "Turns speech into text for dictation and files. Larger models are more accurate and slower.",
+            "Parakeet is recommended. Use Whisper for other languages or translation.",
         ),
         ModelKind::Cleanup => (
             "Text cleanup",
@@ -81,7 +81,7 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
     let palette = theme::palette(cx);
     let (sections, notice, query, clear_focus, any_rows) = {
         let models = models.read(cx);
-        let active = models.active();
+        let active = models.effective();
         let query = models.query().to_owned();
         let sections: Vec<(ModelKind, Vec<RowView>)> = ModelKind::ALL
             .into_iter()

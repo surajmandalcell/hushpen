@@ -527,7 +527,7 @@ impl Models {
     pub fn delete(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
         let name = self.rows[index].entry.name.clone();
-        if self.rows[index].entry.kind == ModelKind::Speech && self.active() == id {
+        if self.rows[index].entry.kind == ModelKind::Speech && self.effective() == id {
             self.set_notice(
                 MODEL_IN_USE,
                 format!("{name} is in use. Choose another model first."),
@@ -581,7 +581,7 @@ impl Models {
     }
 
     pub fn state_json(&self) -> Value {
-        let active = self.active();
+        let active = self.effective();
         let list = |kind: ModelKind| {
             self.of_kind(kind)
                 .1

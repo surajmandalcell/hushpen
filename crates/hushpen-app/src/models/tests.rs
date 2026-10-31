@@ -107,6 +107,28 @@ fn instant() -> Arc<Transfer> {
     transfer(|spec, _, _| finish_download(spec, content(id_of(spec))))
 }
 
+#[gpui_kit::test]
+fn a_downloaded_default_is_active_without_a_saved_choice(cx: &mut TestAppContext) {
+    let mut catalog = catalog().clone();
+    catalog.whisper[0].default = true;
+    let rig = testkit::rig(cx, Box::leak(Box::new(catalog)), instant(), |storage| {
+        let path = storage.data.whisper_models_dir().join("ggml-alpha.bin");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, ALPHA).unwrap();
+    });
+    settle(cx, &rig);
+    rig.models.read_with(cx, |models, _| {
+        assert_eq!(models.effective(), "alpha");
+        assert_eq!(models.state_json()["models"][0]["active"], true);
+    });
+    let error = rig
+        .models
+        .update(cx, |models, cx| models.delete("alpha", cx))
+        .unwrap_err();
+    assert!(error.contains(MODEL_IN_USE));
+    assert!(rig.file("alpha").is_file());
+}
+
 /// The library with `files` already in the speech folder and `active` chosen.
 fn rig(
     cx: &mut TestAppContext,
