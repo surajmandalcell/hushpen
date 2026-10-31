@@ -188,9 +188,10 @@ pub(super) fn value(rig: &Rig, key: &str) -> Value {
 fn each_toggle_writes_its_key(cx: &mut TestAppContext) {
     let rig = rig(cx);
     type Toggle = fn(&mut Settings, &mut Context<Settings>);
-    let cases: [(&str, Toggle); 7] = [
+    let cases: [(&str, Toggle); 8] = [
         ("startup.startHidden", Settings::toggle_start_hidden),
         ("audio.cueSounds", Settings::toggle_sounds),
+        ("audio.muteWhileDictating", Settings::toggle_output_mute),
         ("cleanup.rules", Settings::toggle_rules),
         (
             "cleanup.spokenPunctuation",
@@ -210,6 +211,23 @@ fn each_toggle_writes_its_key(cx: &mut TestAppContext) {
         );
         rig.settings.update(cx, toggle);
         assert_eq!(value(&rig, key).as_bool().unwrap(), before, "{key}");
+    }
+}
+
+#[gpui_kit::test]
+fn idle_choices_save_without_changing_the_legacy_defaults(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    assert_eq!(value(&rig, "engine.idlePolicy"), json!("current"));
+    for policy in ["keep", "pageout", "unload"] {
+        rig.settings
+            .update(cx, |me, cx| me.set_idle_policy(policy, cx));
+        assert_eq!(value(&rig, "engine.idlePolicy"), json!(policy));
+        assert!(read(cx, &rig, |me| me.picker.is_none()));
+    }
+    for minutes in [5, 15, 30, 60] {
+        rig.settings
+            .update(cx, |me, cx| me.set_idle_minutes(minutes, cx));
+        assert_eq!(value(&rig, "engine.idleMinutes"), json!(minutes));
     }
 }
 

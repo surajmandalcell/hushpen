@@ -124,6 +124,24 @@ pub fn sounds(page: &Page, cx: &mut App) -> AnyElement {
     )
 }
 
+pub fn mute_output(page: &Page, cx: &mut App) -> AnyElement {
+    let detail = if hushpen_audio::output_mute::available() {
+        "Restores the output when you finish or cancel."
+    } else {
+        "Not available: install wpctl or pactl to control the output."
+    };
+    page.toggle(
+        "audio.muteWhileDictating",
+        "Mute other audio while dictating",
+        detail,
+        page.settings
+            .read(cx)
+            .stored_bool("audio.muteWhileDictating"),
+        slots::MUTE_OUTPUT,
+        Settings::toggle_output_mute,
+    )
+}
+
 pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
     let volume = page
         .settings

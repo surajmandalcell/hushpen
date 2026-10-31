@@ -19,6 +19,7 @@ pub enum RowId {
     Microphone,
     InputGain,
     Enhance,
+    MuteOutput,
     Sounds,
     CueVolume,
     MaxLength,
@@ -34,6 +35,8 @@ pub enum RowId {
     EndpointTest,
     Gpu,
     Threads,
+    IdlePolicy,
+    IdleMinutes,
     ShowFlowBar,
     FlowBarIdle,
     FlowBarPosition,
@@ -211,6 +214,13 @@ pub static ROWS: &[RowMeta] = &[
         ],
     ),
     RowMeta::new(
+        MuteOutput,
+        Audio,
+        "audio.muteWhileDictating",
+        "Mute other audio while dictating",
+        &["mute", "silence", "music", "pause"],
+    ),
+    RowMeta::new(
         Sounds,
         Audio,
         "audio.sounds",
@@ -337,6 +347,22 @@ pub static ROWS: &[RowMeta] = &[
         "engine.threads",
         "Threads",
         &["cpu", "cores", "threads", "speed", "performance"],
+    ),
+    RowMeta::new(
+        IdlePolicy,
+        Engine,
+        "engine.idlePolicy",
+        "When idle",
+        &["memory", "ram", "swap", "page", "unload", "model", "keep"],
+    ),
+    RowMeta::new(
+        IdleMinutes,
+        Engine,
+        "engine.idleMinutes",
+        "Idle time",
+        &[
+            "memory", "ram", "swap", "page", "unload", "minutes", "timer",
+        ],
     ),
     RowMeta::new(
         ShowFlowBar,
@@ -466,6 +492,12 @@ mod tests {
         );
         assert_eq!(keys("hotkey").len(), 6);
         assert_eq!(keys("speak"), ["shortcut.readAloud"]);
+        for alias in ["mute", "silence", "music", "pause"] {
+            assert_eq!(keys(alias), ["audio.muteWhileDictating"]);
+        }
+        for alias in ["swap", "unload", "memory"] {
+            assert_eq!(keys(alias), ["engine.idlePolicy", "engine.idleMinutes"]);
+        }
         for alias in [
             "enhance",
             "equalizer",
