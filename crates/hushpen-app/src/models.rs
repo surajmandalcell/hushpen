@@ -158,6 +158,9 @@ pub struct Models {
     jobs: HashMap<String, Job>,
     /// Downloads the user asked for again while the cancelled worker was still winding down.
     restart: HashSet<String>,
+    /// Models whose automatic update stopped on the network. Opening the Models view tries
+    /// them again.
+    stopped_updates: HashSet<String>,
     next_job: u64,
     /// The row whose details sheet is open.
     details: Option<usize>,
@@ -235,6 +238,7 @@ impl Models {
             notice: None,
             jobs: HashMap::new(),
             restart: HashSet::new(),
+            stopped_updates: HashSet::new(),
             next_job: 0,
             details: None,
             sheet_focus: SheetFocus::new(cx),
@@ -258,6 +262,24 @@ impl Models {
         if let Err(error) = self.download(id, cx) {
             self.rows[index].updating = false;
             log::warn!("MODELS_UPDATE could not start the update of {id}: {error}");
+        }
+    }
+
+    /// The Models view opened. An update that stopped on the network starts again, unless one
+    /// is running for that model or its files changed since.
+    pub fn opened(&mut self, cx: &mut Context<Self>) {
+        for id in std::mem::take(&mut self.stopped_updates) {
+            let Some(index) = self.index_of(&id) else {
+                continue;
+            };
+            let entry = &self.rows[index].entry;
+            if self.jobs.contains_key(&id)
+                || self.rows[index].state != ModelState::NotDownloaded
+                || !files::is_update(&files::folder(&self.storage.data, entry), entry)
+            {
+                continue;
+            }
+            self.update_files(&id, cx);
         }
     }
 
@@ -434,7 +456,9 @@ impl Models {
                     // An update nobody asked for does not nag when the network is away; the
                     // next start tries it again, and Download tries it now.
                     let stopped = !matches!(failure.code, MODEL_HASH_MISMATCH | MODEL_HOST_BLOCKED);
-                    if !(was_update && stopped) {
+                    if was_update && stopped {
+                        self.stopped_updates.insert(id.to_owned());
+                    } else {
                         self.notice = Some(notice_for_failure(&failure, &name));
                     }
                     hook::record_event("models", &format!("failed {id} {}", failure.code));

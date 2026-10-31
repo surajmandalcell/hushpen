@@ -193,6 +193,90 @@ fn cancelling_an_update_leaves_a_plain_not_downloaded_row(cx: &mut TestAppContex
     assert_eq!(row(cx, &rig), (ModelState::NotDownloaded, false));
 }
 
+/// Fails with a network error while `offline` is set, and fetches like [`fetching`] after.
+fn flaky(offline: &Arc<AtomicBool>, log: &Arc<Mutex<Vec<String>>>) -> Arc<Transfer> {
+    let (offline, online) = (Arc::clone(offline), fetching(log));
+    Arc::new(
+        move |spec: &Spec, cancel: &AtomicBool, progress: &mut dyn FnMut(Progress)| {
+            if offline.load(Ordering::Relaxed) {
+                return Err(Failure {
+                    code: DOWNLOAD_FAILED,
+                    detail: "offline".into(),
+                });
+            }
+            online(spec, cancel, progress)
+        },
+    )
+}
+
+fn open_models(cx: &mut TestAppContext, rig: &Rig) {
+    rig.models.update(cx, |models, cx| models.opened(cx));
+}
+
+#[gpui_kit::test]
+fn opening_models_retries_an_update_the_network_stopped(cx: &mut TestAppContext) {
+    let (offline, log) = (Arc::new(AtomicBool::new(true)), Arc::default());
+    let rig = rig(cx, flaky(&offline, &log), OLD, Some(&sha(OLD)));
+    settle(cx, &rig);
+    assert_eq!(row(cx, &rig), (ModelState::NotDownloaded, false));
+
+    offline.store(false, Ordering::Relaxed);
+    open_models(cx, &rig);
+    let (state, updating) = row(cx, &rig);
+    assert!(matches!(state, ModelState::Downloading { .. }), "{state:?}");
+    assert!(updating, "the retry shows Updating, not a plain download");
+    settle(cx, &rig);
+    assert_eq!(row(cx, &rig), (ModelState::Ready, false));
+    assert_eq!(notice(cx, &rig), None);
+    assert_eq!(*log.lock().unwrap(), ["a.onnx"]);
+}
+
+#[gpui_kit::test]
+fn opening_models_again_while_the_retry_runs_starts_nothing_more(cx: &mut TestAppContext) {
+    let (offline, log) = (Arc::new(AtomicBool::new(true)), Arc::default());
+    let rig = rig(cx, flaky(&offline, &log), OLD, Some(&sha(OLD)));
+    settle(cx, &rig);
+    offline.store(false, Ordering::Relaxed);
+    open_models(cx, &rig);
+    open_models(cx, &rig);
+    settle(cx, &rig);
+    assert_eq!(*log.lock().unwrap(), ["a.onnx"]);
+}
+
+#[gpui_kit::test]
+fn opening_models_while_still_offline_stays_quiet_and_tries_next_time(cx: &mut TestAppContext) {
+    let (offline, log) = (Arc::new(AtomicBool::new(true)), Arc::default());
+    let rig = rig(cx, flaky(&offline, &log), OLD, Some(&sha(OLD)));
+    settle(cx, &rig);
+    open_models(cx, &rig);
+    settle(cx, &rig);
+    assert_eq!(row(cx, &rig), (ModelState::NotDownloaded, false));
+    assert_eq!(notice(cx, &rig), None);
+
+    offline.store(false, Ordering::Relaxed);
+    open_models(cx, &rig);
+    settle(cx, &rig);
+    assert_eq!(row(cx, &rig), (ModelState::Ready, false));
+}
+
+#[gpui_kit::test]
+fn opening_models_does_not_retry_an_update_the_user_cancelled(cx: &mut TestAppContext) {
+    let rig = rig(cx, fetching(&Arc::default()), OLD, Some(&sha(OLD)));
+    rig.models
+        .update(cx, |models, cx| models.cancel("voice", cx))
+        .unwrap();
+    settle(cx, &rig);
+    open_models(cx, &rig);
+    assert_eq!(row(cx, &rig), (ModelState::NotDownloaded, false));
+}
+
+#[gpui_kit::test]
+fn opening_models_does_not_touch_a_model_that_never_had_an_update(cx: &mut TestAppContext) {
+    let rig = testkit::rig(cx, catalog(), fetching(&Arc::default()), |_| {});
+    open_models(cx, &rig);
+    assert_eq!(row(cx, &rig), (ModelState::NotDownloaded, false));
+}
+
 #[test]
 fn the_status_word_is_updating_with_the_percent_and_never_red() {
     let palette = crate::theme::Palette::of(crate::theme::Appearance::Dark);
