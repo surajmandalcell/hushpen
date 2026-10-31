@@ -406,6 +406,7 @@ mod linux {
     fn run(program: &str, args: &[&str]) -> io::Result<String> {
         let mut child = Command::new(program)
             .args(args)
+            .env("LC_ALL", "C")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -496,6 +497,43 @@ mod linux {
             )),
         }
         .map(|_| ())
+    }
+
+    #[cfg(test)]
+    #[test]
+    #[ignore = "requires an isolated Linux audio server and explicit opt-in"]
+    fn isolated_output_mute_restores_without_touching_the_microphone() {
+        assert_eq!(
+            std::env::var("HUSHPEN_TEST_OUTPUT_MUTE").as_deref(),
+            Ok("isolated")
+        );
+        let microphone = run("pactl", &["get-source-mute", "@DEFAULT_SOURCE@"]).unwrap();
+        assert!(
+            snapshot().unwrap().is_some(),
+            "the isolated sink must start unmuted"
+        );
+        let root = tempfile::tempdir().unwrap();
+        let mut mute = OutputMute::new(root.path(), System);
+        mute.mute(true).unwrap();
+        assert!(snapshot().unwrap().is_none());
+        assert!(mute.marker.exists());
+        assert_eq!(
+            run("pactl", &["get-source-mute", "@DEFAULT_SOURCE@"]).unwrap(),
+            microphone
+        );
+        mute.restore().unwrap();
+        assert!(snapshot().unwrap().is_some());
+        assert!(!mute.marker.exists());
+        mute.mute(true).unwrap();
+        mute.saved = None;
+        drop(mute);
+        let recovered = OutputMute::new(root.path(), System);
+        assert!(snapshot().unwrap().is_some());
+        assert!(!recovered.marker.exists());
+        assert_eq!(
+            run("pactl", &["get-source-mute", "@DEFAULT_SOURCE@"]).unwrap(),
+            microphone
+        );
     }
 }
 
