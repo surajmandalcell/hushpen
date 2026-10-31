@@ -17,12 +17,36 @@ const DETAILS_SCHEMA: u64 = 2;
 pub enum Languages {
     Multilingual,
     English,
+    European,
 }
+
+/// The languages NVIDIA Parakeet v3 can recognize. It always detects among these.
+pub const PARAKEET_LANGUAGES: [&str; 25] = [
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv", "lt", "mt",
+    "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+];
+
+pub const SPEECH_DEFAULT: &str = "parakeet-v3-q4_k";
+pub const SPEECH_TURBO: &str = "large-v3-turbo-q5_0";
+
+/// Speech models removed from the catalog. Only these known files are deleted at startup.
+pub const RETIRED_SPEECH: &[&str] = &[
+    "tiny",
+    "tiny.en",
+    "base",
+    "base.en",
+    "small",
+    "small.en",
+    "medium",
+    "medium.en",
+    "large-v3-turbo",
+    "large-v3",
+];
 
 /// What a model does. The order is the order of the Models view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModelKind {
-    /// A Whisper model (`models/whisper/<file>`).
+    /// A speech model (`models/whisper/<file>`, including Parakeet).
     Speech,
     /// An AI cleanup model (`models/llm/<id>.gguf`).
     Cleanup,
@@ -92,7 +116,7 @@ pub struct ModelInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelEntry {
-    /// Short id: `tiny.en`, `qwen3.5-2b`, `kokoro-82m-int8`. A speech model's id is also the
+    /// Short id: `parakeet-v3-q4_k`, `qwen3.5-2b`, `kokoro-82m-int8`. A speech model's id is also the
     /// value of `dictation.modelId`.
     pub id: String,
     pub kind: ModelKind,
@@ -113,6 +137,28 @@ impl ModelEntry {
     /// The size of every file together.
     pub fn bytes(&self) -> u64 {
         self.files.iter().map(|file| file.bytes).sum()
+    }
+
+    pub fn supports_language(&self, code: &str) -> bool {
+        code == "auto"
+            || match self.languages {
+                Languages::Multilingual => crate::language::is_setting_value(code),
+                Languages::English => code == "en",
+                Languages::European => PARAKEET_LANGUAGES.contains(&code),
+            }
+    }
+
+    /// No translate task exists in Parakeet, English-only Whisper, or Whisper Turbo.
+    pub fn supports_translation(&self) -> bool {
+        self.kind == ModelKind::Speech
+            && self.languages == Languages::Multilingual
+            && !self.id.contains("turbo")
+    }
+
+    pub fn language_notice(&self, code: &str) -> Option<&'static str> {
+        (self.languages == Languages::European && !self.supports_language(code)).then_some(
+            "Parakeet does not support this language. Choose Whisper Large v3 Turbo Q5 in Models.",
+        )
     }
 }
 
@@ -178,6 +224,11 @@ impl Catalog {
 
     pub fn default_whisper(&self) -> Option<&ModelEntry> {
         self.whisper.iter().find(|entry| entry.default)
+    }
+
+    /// Preserves a supported choice, or replaces a retired or missing choice with the default.
+    pub fn chosen_speech(&self, stored: &str) -> Option<&ModelEntry> {
+        self.whisper(stored).or_else(|| self.default_whisper())
     }
 
     pub fn llm(&self, id: &str) -> Option<&ModelEntry> {
@@ -380,6 +431,7 @@ fn parse_languages(item: &Value, id: &str) -> Result<Languages, String> {
     match text(item, "languages")?.as_str() {
         "multilingual" => Ok(Languages::Multilingual),
         "english" => Ok(Languages::English),
+        "european" => Ok(Languages::European),
         other => Err(format!("model `{id}` has unknown languages `{other}`")),
     }
 }

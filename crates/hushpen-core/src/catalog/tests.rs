@@ -1,24 +1,15 @@
 use super::*;
 use serde_json::json;
 
-const IDS: [&str; 13] = [
-    "tiny",
-    "tiny.en",
-    "base",
-    "base.en",
-    "base-q5_1",
-    "small",
-    "small.en",
-    "small-q5_1",
-    "medium",
-    "medium.en",
-    "large-v3-turbo",
+const IDS: [&str; 4] = [
+    SPEECH_DEFAULT,
     "large-v3-turbo-q5_0",
-    "large-v3",
+    "small-q5_1",
+    "base-q5_1",
 ];
 
 #[test]
-fn the_embedded_catalog_lists_the_whisper_models_in_order() {
+fn the_embedded_catalog_lists_the_four_speech_models_in_order() {
     let ids: Vec<_> = embedded().whisper.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, IDS);
 }
@@ -31,14 +22,28 @@ fn every_entry_has_a_hash_a_size_a_language_field_and_a_huggingface_url() {
         };
         assert_eq!(file.sha256.len(), 64, "{}", entry.id);
         assert!(file.bytes > 50_000_000, "{}", entry.id);
-        assert_eq!(file.file, format!("ggml-{}.bin", entry.id));
+        if entry.id == SPEECH_DEFAULT {
+            assert_eq!(file.file, "ggml-parakeet-tdt-0.6b-v3-q4_k.bin");
+            assert_eq!(entry.languages, Languages::European);
+            assert_eq!(entry.license, "CC-BY-4.0");
+        } else {
+            assert_eq!(file.file, format!("ggml-{}.bin", entry.id));
+            assert_eq!(entry.languages, Languages::Multilingual);
+        }
         let prefix = format!("https://{}/", "huggingface.co");
         assert!(file.url.starts_with(&prefix), "{}", entry.id);
         assert!(file.url.ends_with(&file.file), "{}", entry.id);
-        let english = entry.id.contains(".en");
-        assert_eq!(
-            entry.languages == Languages::English,
-            english,
+        let revision = file
+            .url
+            .split("/resolve/")
+            .nth(1)
+            .unwrap()
+            .split('/')
+            .next()
+            .unwrap();
+        assert_eq!(revision.len(), 40, "{}", entry.id);
+        assert!(
+            revision.bytes().all(|b| b.is_ascii_hexdigit()),
             "{}",
             entry.id
         );
@@ -64,7 +69,7 @@ fn every_embedded_model_has_its_kind_and_its_details() {
             assert!(info.ram_idle_bytes > 100_000_000, "{}", entry.id);
             assert!(info.ram_peak_bytes >= info.ram_idle_bytes, "{}", entry.id);
             assert!(
-                ["F16", "Q5_0", "Q5_1", "Q4_K_M", "INT8", "Q4"]
+                ["F16", "Q5_0", "Q5_1", "Q4_K", "Q4_K_M", "INT8", "Q4"]
                     .contains(&info.quantization.as_str()),
                 "{} has an unknown quantization",
                 entry.id
@@ -105,24 +110,12 @@ fn every_embedded_model_has_its_kind_and_its_details() {
 }
 
 #[test]
-fn the_three_local_models_match_the_known_hashes_and_sizes() {
-    let expect = [
-        (
-            "tiny.en",
-            77_704_715,
-            "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
-        ),
-        (
-            "base.en",
-            147_964_211,
-            "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
-        ),
-        (
-            "base",
-            147_951_465,
-            "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
-        ),
-    ];
+fn parakeet_matches_the_verified_download() {
+    let expect = [(
+        SPEECH_DEFAULT,
+        415_611_879,
+        "8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e",
+    )];
     assert_pinned(&expect);
 }
 
@@ -141,19 +134,9 @@ fn the_added_whisper_variants_match_the_hugging_face_files() {
             "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
         ),
         (
-            "medium.en",
-            1_533_774_781,
-            "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
-        ),
-        (
             "large-v3-turbo-q5_0",
             574_041_195,
             "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
-        ),
-        (
-            "large-v3",
-            3_095_033_483,
-            "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
         ),
     ];
     assert_pinned(&expect);
@@ -239,8 +222,58 @@ fn exactly_one_model_is_the_default() {
     let defaults: Vec<_> = embedded().whisper.iter().filter(|e| e.default).collect();
     assert_eq!(defaults.len(), 1);
     assert_eq!(embedded().default_whisper(), Some(defaults[0]));
-    // Chosen from the latency table in library/engine.md; change both together.
-    assert_eq!(defaults[0].id, "base");
+    assert_eq!(defaults[0].id, SPEECH_DEFAULT);
+}
+
+#[test]
+fn retired_speech_choices_fall_back_without_changing_supported_choices() {
+    let catalog = embedded();
+    for id in RETIRED_SPEECH.iter().copied().chain(["", "unknown"]) {
+        assert!(catalog.whisper(id).is_none(), "{id}");
+        assert_eq!(
+            catalog.chosen_speech(id).unwrap().id,
+            SPEECH_DEFAULT,
+            "{id}"
+        );
+    }
+    for id in IDS {
+        assert_eq!(catalog.chosen_speech(id).unwrap().id, id);
+    }
+}
+
+#[test]
+fn speech_capabilities_match_the_models() {
+    let parakeet = embedded().whisper(SPEECH_DEFAULT).unwrap();
+    assert_eq!(PARAKEET_LANGUAGES.len(), 25);
+    for code in PARAKEET_LANGUAGES.into_iter().chain(["auto"]) {
+        assert!(parakeet.supports_language(code), "{code}");
+        assert_eq!(parakeet.language_notice(code), None, "{code}");
+    }
+    for code in ["hi", "zh", "ja", "ta", "ar", "xx"] {
+        assert!(!parakeet.supports_language(code), "{code}");
+        assert!(
+            parakeet
+                .language_notice(code)
+                .unwrap()
+                .contains("Whisper Large v3 Turbo Q5")
+        );
+    }
+    assert!(!parakeet.supports_translation());
+    assert!(
+        !embedded()
+            .whisper(SPEECH_TURBO)
+            .unwrap()
+            .supports_translation()
+    );
+    for id in ["small-q5_1", "base-q5_1"] {
+        let model = embedded().whisper(id).unwrap();
+        assert!(model.supports_translation(), "{id}");
+        assert!(model.supports_language("hi"), "{id}");
+    }
+    for entry in &embedded().whisper {
+        assert!(entry.bytes() < 1_500_000_000, "{}", entry.id);
+        assert!(entry.info.as_ref().unwrap().ram_peak_bytes < 2_000_000_000);
+    }
 }
 
 /// A schema 1 speech entry: the field set before kinds and details.
