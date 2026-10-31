@@ -4,9 +4,11 @@
 //! `cargo test -p hushpen-engine --lib pause_bench::compare -- --ignored --nocapture`.
 //! The manifest is the speech-model research manifest, with its `mine` array.
 //! Results contain speech text: keep the output outside the repository.
+//! An existing output resumes after its last complete clip. On macOS, wait for games
+//! to leave the front before loading Metal and before each clip (at most three hours).
 
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Instant;
@@ -68,6 +70,67 @@ fn write_record(output: &mut BufWriter<File>, value: Value) {
     output.flush().unwrap();
 }
 
+fn completed_clips(path: &Path, header: &Value, clips: &[Value]) -> usize {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return 0,
+        Err(error) => panic!("read existing results: {error}"),
+    };
+    let mut lines = BufReader::new(file).lines();
+    let existing: Value = serde_json::from_str(&lines.next().expect("missing run header").unwrap())
+        .expect("invalid run header");
+    assert_eq!(&existing, header, "cannot resume a different measurement");
+    let mut count = 0;
+    for line in lines {
+        let record: Value =
+            serde_json::from_str(&line.unwrap()).expect("incomplete existing clip record");
+        assert!(count < clips.len(), "too many existing clips");
+        assert_eq!(record["type"], "clip");
+        assert_eq!(record["id"], clips[count]["id"], "clip order changed");
+        count += 1;
+    }
+    count
+}
+
+#[cfg(target_os = "macos")]
+fn game_in_front(info: &str) -> bool {
+    let info = info.to_lowercase();
+    [
+        "league of legends",
+        "zelda",
+        "ryujinx",
+        "steam",
+        "steamapps",
+    ]
+    .iter()
+    .any(|name| info.contains(name))
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_games(deadline: Instant) {
+    loop {
+        assert!(Instant::now() < deadline, "game wait deadline reached");
+        let output = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                r#"front=$(lsappinfo front) && lsappinfo info -only name "$front" && lsappinfo info -only bundlepath -only executablepath "$front""#,
+            ])
+            .output()
+            .expect("check front app");
+        assert!(output.status.success(), "front app check failed");
+        let info = String::from_utf8(output.stdout).expect("front app is UTF-8");
+        assert!(!info.trim().is_empty(), "front app check returned no app");
+        if !game_in_front(&info) {
+            return;
+        }
+        eprintln!("pause benchmark: game in front, waiting 60 seconds");
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn wait_for_games(_deadline: Instant) {}
+
 #[test]
 #[ignore = "requires the private speech corpus, a model, and Metal"]
 fn compare() {
@@ -78,11 +141,25 @@ fn compare() {
     let manifest: Value =
         serde_json::from_reader(File::open(required("HUSHPEN_PAUSE_MANIFEST")).unwrap()).unwrap();
     let clips = manifest["mine"].as_array().expect("mine clips");
-    let mut output = BufWriter::new(File::create(required("HUSHPEN_PAUSE_OUT")).unwrap());
+    let output_path = required("HUSHPEN_PAUSE_OUT");
     let options = LoadOptions {
         gpu: true,
         threads: 8,
     };
+    let header = json!({
+        "type": "run", "model": model, "model_bytes": size, "gpu": true,
+        "threads": options.threads, "clips": clips.len(), "frame_ms": 32,
+        "variants": [{"silence_ms": 300, "minimum_ms": 5000},
+                     {"silence_ms": 600, "minimum_ms": 10000}],
+    });
+    let completed = completed_clips(Path::new(&output_path), &header, clips);
+    eprintln!("pause benchmark: {completed}/{} reused", clips.len());
+    if completed == clips.len() {
+        return;
+    }
+    let deadline = Instant::now() + std::time::Duration::from_secs(3 * 60 * 60);
+    wait_for_games(deadline);
+    let new_output = !Path::new(&output_path).exists();
     let parakeet = Path::new(&model)
         .file_name()
         .unwrap()
@@ -106,16 +183,18 @@ fn compare() {
         .transcribe(&warm, &TranscribeOptions::default(), &CancelFlag::new())
         .unwrap();
     vad.detect_speech(&warm).unwrap();
-    write_record(
-        &mut output,
-        json!({
-            "type": "run", "model": model, "model_bytes": size, "gpu": engine.gpu_in_use(),
-            "threads": options.threads, "clips": clips.len(), "frame_ms": 32,
-            "variants": [{"silence_ms": 300, "minimum_ms": 5000},
-                         {"silence_ms": 600, "minimum_ms": 10000}],
-        }),
+    let mut output = BufWriter::new(
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(output_path)
+            .unwrap(),
     );
-    for (index, clip) in clips.iter().enumerate() {
+    if new_output {
+        write_record(&mut output, header);
+    }
+    for (index, clip) in clips.iter().enumerate().skip(completed) {
+        wait_for_games(deadline);
         let pcm = crate::wav::read_mono_16k(Path::new(clip["wav"].as_str().unwrap())).unwrap();
         let audio_s = pcm.len() as f64 / RATE as f64;
         let started = Instant::now();
@@ -209,4 +288,40 @@ fn no_speech_does_not_create_intermediate_parts_and_a_silent_tail_needs_no_decod
     let mut probs = vec![0.9; 40];
     probs.extend([0.1; 60]);
     assert_eq!(parts(&probs, 100 * FRAME, 300, 0), [0..50 * FRAME]);
+}
+
+#[test]
+fn resume_keeps_completed_clips_and_rejects_a_different_run() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("results.jsonl");
+    let header = json!({"type": "run", "model": "turbo"});
+    let clips = [json!({"id": "first"}), json!({"id": "second"})];
+    assert_eq!(completed_clips(&path, &header, &clips), 0);
+    let mut output = BufWriter::new(File::create(&path).unwrap());
+    write_record(&mut output, header.clone());
+    write_record(&mut output, json!({"type": "clip", "id": "first"}));
+    assert_eq!(completed_clips(&path, &header, &clips), 1);
+    assert!(std::panic::catch_unwind(|| completed_clips(&path, &json!({}), &clips)).is_err());
+    assert!(
+        std::panic::catch_unwind(|| {
+            completed_clips(&path, &header, &[json!({"id": "second"})])
+        })
+        .is_err()
+    );
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn games_and_steam_installs_block_metal_but_work_apps_do_not() {
+    for info in [
+        "\"League Of Legends\"",
+        "\"Zelda\"",
+        "\"Ryujinx\"",
+        "\"Steam\"",
+        "/Library/Application Support/Steam/steamapps/common/Portal 2",
+    ] {
+        assert!(game_in_front(info));
+    }
+    assert!(!game_in_front("\"Terminal\""));
+    assert!(!game_in_front("\"Orca\""));
 }
