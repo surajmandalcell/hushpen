@@ -124,6 +124,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
     let llm = Rc::new(LlmHost::new(&storage.data));
     let voice_models = Arc::new(TtsHost::new(&storage.data));
     llm.apply_settings(&storage.settings.values());
+    voice_models.apply_settings(&storage.settings.values());
     let recovered = mic::sweep_orphans(&storage.data);
     let mic_storage = Rc::clone(&storage);
     let models_storage = Rc::clone(&storage);
@@ -164,7 +165,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 async {}
             })
             .detach();
-            follow_llm_settings(cx, Rc::clone(&llm), Rc::clone(&storage));
+            follow_worker_settings(cx, Rc::clone(&llm), Arc::clone(&voice_models), Rc::clone(&storage));
             // Read inside the running app: the platform answer exists only then. A launch
             // behind the front app (`open -g`, a login item) must not activate the app.
             let launch = Launch::decide(
@@ -317,7 +318,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             });
             start_keys(&controller, &shortcuts, cx);
             start_insert(&controller, cx);
-            start_cues(&controller, cx);
+            start_cues(&controller, storage.data.root().to_path_buf(), cx);
             let llm_loading: Rc<dyn Fn() -> bool> = {
                 let llm = Rc::clone(&llm);
                 Rc::new(move || llm.loading())
@@ -621,16 +622,22 @@ fn follow_activation(cx: &mut App, onboarding: Entity<Onboarding>, settings: Ent
     .detach();
 }
 
-/// Applies a change of the AI cleanup settings to the worker, which starts only while the
-/// feature is on. The settings store has no change events, so this looks once a second; the
-/// call does nothing when the wanted load did not change.
-fn follow_llm_settings(cx: &mut App, llm: Rc<LlmHost>, storage: Rc<storage::Storage>) {
+/// The settings store has no change events. Apply cleanup and voice settings once a second;
+/// unchanged settings never reload a model or start an unused voice worker.
+fn follow_worker_settings(
+    cx: &mut App,
+    llm: Rc<LlmHost>,
+    voices: Arc<TtsHost>,
+    storage: Rc<storage::Storage>,
+) {
     cx.spawn(async move |cx| {
         loop {
             cx.background_executor()
                 .timer(std::time::Duration::from_secs(1))
                 .await;
-            llm.apply_settings(&storage.settings.values());
+            let values = storage.settings.values();
+            llm.apply_settings(&values);
+            voices.apply_settings(&values);
         }
     })
     .detach();
@@ -736,11 +743,22 @@ fn keys_starter(events: EventSender, shortcuts: Entity<Shortcuts>) -> KeysRestar
 }
 
 /// Gives the controller the sound player. The player opens the output on its own thread.
-fn start_cues(controller: &Entity<Controller>, cx: &mut App) {
-    let player = Arc::new(hushpen_audio::CuePlayer::new());
+fn start_cues(controller: &Entity<Controller>, data_root: std::path::PathBuf, cx: &mut App) {
+    let player = Arc::new(hushpen_audio::CuePlayer::with_output_mute(data_root));
     player.warm();
+    let quitting = Arc::clone(&player);
+    let executor = cx.background_executor().clone();
+    cx.on_app_quit(move |_| {
+        let done = quitting.restore_output();
+        executor.spawn(async move {
+            let _ = done.recv_timeout(std::time::Duration::from_secs(8));
+        })
+    })
+    .detach();
     controller.update(cx, |controller, _| {
-        controller.attach_cues(Arc::new(move |cue, volume| player.play(cue, volume)))
+        controller.attach_dictation_audio(Arc::new(move |cue, volume, mute| {
+            player.dictation(cue, volume, mute)
+        }))
     });
 }
 
