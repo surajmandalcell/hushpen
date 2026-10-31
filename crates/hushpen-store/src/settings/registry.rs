@@ -284,6 +284,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     }),
     spec!(internal "overlay.customPos", Kind::Position, |_| Value::Null),
     spec!(internal "ui.lastView", Kind::Choice(VIEWS), |_| json!("home")),
+    spec!(internal "ui.windowHeight", Kind::Int(600, 4000), |_| json!(600)),
 ];
 
 /// The keys of the sidebar views, which the app saves as the last view. Manual keeps `files`,
@@ -399,6 +400,16 @@ mod tests {
         assert_eq!(spec.sanitize(&json!("files")), Some(json!("files")));
         assert_eq!(spec.sanitize(&json!("manual")), None);
         assert_eq!(spec.sanitize(&json!("onboarding")), None);
+    }
+
+    #[test]
+    fn the_window_height_is_internal_and_stays_within_sane_bounds() {
+        let spec = find("ui.windowHeight").unwrap();
+        assert!(spec.internal);
+        assert_eq!(spec.default_value(Os::MacOs), json!(600));
+        assert_eq!(spec.sanitize(&json!(750)), Some(json!(750)));
+        assert_eq!(spec.sanitize(&json!(599)), None);
+        assert_eq!(spec.sanitize(&json!("tall")), None);
     }
 
     #[test]
