@@ -8,10 +8,12 @@
 //! second on PulseAudio, and a start cue that waits that long is no cue. It closes the stream
 //! when the app has been quiet for a long time.
 
+use crate::output_mute::{OutputMute, System};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use hushpen_core::dictation::Cue;
 use std::io::Cursor;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -112,7 +114,16 @@ impl Playing {
 }
 
 enum Request {
-    Play { cue: Cue, volume: f32 },
+    Play {
+        cue: Cue,
+        volume: f32,
+    },
+    Dictation {
+        cue: Option<Cue>,
+        volume: Option<f32>,
+        mute: bool,
+    },
+    Restore(Sender<()>),
     Warm,
 }
 
@@ -129,10 +140,19 @@ impl Default for CuePlayer {
 
 impl CuePlayer {
     pub fn new() -> Self {
+        Self::start(None)
+    }
+
+    /// Restores a crash marker at startup, then controls output only for dictation requests.
+    pub fn with_output_mute(data_root: PathBuf) -> Self {
+        Self::start(Some(data_root))
+    }
+
+    fn start(data_root: Option<PathBuf>) -> Self {
         let (requests, queue) = mpsc::channel();
         if let Err(error) = thread::Builder::new()
             .name("hushpen-cues".into())
-            .spawn(move || run(&queue))
+            .spawn(move || run(&queue, data_root))
         {
             log::warn!("the cue sound thread did not start: {error}");
         }
@@ -142,6 +162,18 @@ impl CuePlayer {
     /// Plays `cue` at `volume` (0.0 to 1.0) and returns at once.
     pub fn play(&self, cue: Cue, volume: f32) {
         let _ = self.requests.send(Request::Play { cue, volume });
+    }
+
+    /// `None` ends listening without a cue. Muting still works with cue sounds turned off.
+    pub fn dictation(&self, cue: Option<Cue>, volume: Option<f32>, mute: bool) {
+        let _ = self.requests.send(Request::Dictation { cue, volume, mute });
+    }
+
+    /// Acknowledges restoration on the audio thread, so quitting can wait off the UI thread.
+    pub fn restore_output(&self) -> mpsc::Receiver<()> {
+        let (done, wait) = mpsc::channel();
+        let _ = self.requests.send(Request::Restore(done));
+        wait
     }
 
     /// Opens the output ahead of the first cue and returns at once.
@@ -252,11 +284,33 @@ where
     )
 }
 
-fn run(queue: &mpsc::Receiver<Request>) {
+#[derive(Default)]
+struct MuteDelay(Option<Instant>);
+
+impl MuteDelay {
+    fn timeout(&self, now: Instant) -> Duration {
+        self.0.map_or(Duration::from_secs(1), |at| {
+            at.saturating_duration_since(now)
+        })
+    }
+
+    fn due(&mut self, now: Instant) -> bool {
+        if self.0.is_some_and(|at| now >= at) {
+            self.0 = None;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
     let host = cpal::default_host();
     let mut output: Option<Output> = None;
+    let mut mute = data_root.map(|root| OutputMute::new(&root, System));
+    let mut pending = MuteDelay::default();
     loop {
-        let request = match queue.recv_timeout(Duration::from_secs(1)) {
+        let request = match queue.recv_timeout(pending.timeout(Instant::now())) {
             Ok(request) => Some(request),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => return,
@@ -264,13 +318,69 @@ fn run(queue: &mpsc::Receiver<Request>) {
         if output.as_ref().is_some_and(Output::stale) {
             output = None;
         }
+        if request.is_none()
+            && pending.due(Instant::now())
+            && let Some(mute) = &mut mute
+            && let Err(error) = mute.mute(true)
+        {
+            log::warn!("could not mute the system output: {error}");
+        }
         let Some(request) = request else { continue };
-        if output.is_none() {
+        if output.is_none()
+            && matches!(
+                request,
+                Request::Play { .. }
+                    | Request::Warm
+                    | Request::Dictation {
+                        cue: Some(_),
+                        volume: Some(_),
+                        ..
+                    }
+            )
+        {
             output = Output::open(&host);
         }
-        match (request, output.as_mut()) {
-            (Request::Play { cue, volume }, Some(output)) => output.play(cue, volume),
-            (Request::Warm, _) | (Request::Play { .. }, None) => {}
+        match request {
+            Request::Play { cue, volume } => {
+                if let Some(output) = &mut output {
+                    output.play(cue, volume);
+                }
+            }
+            Request::Dictation {
+                cue,
+                volume,
+                mute: enabled,
+            } => {
+                pending.0 = None;
+                if let Some(mute) = &mut mute
+                    && let Err(error) = mute.restore()
+                {
+                    log::warn!("could not restore the system output: {error}");
+                }
+                if let (Some(cue), Some(volume), Some(output)) = (cue, volume, output.as_mut()) {
+                    output.play(cue, volume);
+                }
+                if cue == Some(Cue::Start) && enabled && mute.is_some() {
+                    // Allow the callback and the requested 20 ms output buffer to drain.
+                    let after_cue = output
+                        .as_ref()
+                        .filter(|_| volume.is_some())
+                        .map_or_else(Instant::now, |output| {
+                            output.quiet_since + Duration::from_millis(100)
+                        });
+                    pending.0 = Some(after_cue);
+                }
+            }
+            Request::Restore(done) => {
+                pending.0 = None;
+                if let Some(mute) = &mut mute
+                    && let Err(error) = mute.restore()
+                {
+                    log::warn!("could not restore the system output: {error}");
+                }
+                let _ = done.send(());
+            }
+            Request::Warm => {}
         }
     }
 }
@@ -278,6 +388,18 @@ fn run(queue: &mpsc::Receiver<Request>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mute_waits_for_the_cue_and_a_stop_cancels_the_pending_mute() {
+        let now = Instant::now();
+        let mut pending = MuteDelay(Some(now + Duration::from_millis(300)));
+        assert!(!pending.due(now + Duration::from_millis(299)));
+        assert!(pending.due(now + Duration::from_millis(300)));
+        assert!(!pending.due(now + Duration::from_secs(1)));
+        pending.0 = Some(now);
+        pending.0 = None;
+        assert!(!pending.due(now + Duration::from_secs(1)));
+    }
 
     fn peak(samples: &[f32]) -> f32 {
         samples.iter().fold(0.0, |peak, s| peak.max(s.abs()))

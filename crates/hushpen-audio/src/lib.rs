@@ -9,6 +9,7 @@ pub mod error;
 pub mod feed;
 pub mod levels;
 mod mic_stream;
+pub mod output_mute;
 pub mod playback;
 pub mod resample;
 pub mod session;

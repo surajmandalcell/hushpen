@@ -3404,6 +3404,7 @@ dependencies = [
  "log",
  "nnnoiseless",
  "rubato",
+ "serde_json",
  "symphonia",
  "tempfile",
 ]
