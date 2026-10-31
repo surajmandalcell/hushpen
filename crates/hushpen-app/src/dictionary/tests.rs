@@ -479,3 +479,82 @@ fn the_panel_fits_the_content_width_and_every_control_is_inside_it(cx: &mut Test
         assert!(bounds.left() >= list.left(), "{name} is inside the panel");
     }
 }
+
+#[gpui_kit::test]
+fn every_pack_is_off_until_its_switch_turns_it_on(cx: &mut TestAppContext) {
+    let rig = open(cx);
+    let state = rig.dictionary.read_with(cx, |me, cx| me.state_json(cx));
+    let packs = state["packs"].as_array().unwrap();
+    assert_eq!(packs.len(), 4);
+    assert!(packs.iter().all(|pack| pack["on"] == false));
+    assert!(dictation_entries(&rig.storage).is_empty());
+
+    click(cx, &rig, "dictionary.pack.hinglish.switch");
+    assert!(rig.dictionary.read_with(cx, |me, _| me.pack_on("hinglish")));
+    assert_eq!(
+        rig.storage.settings.get(packs::SETTING),
+        Some(serde_json::json!({"hinglish": true}))
+    );
+    assert!(
+        rows(&rig).is_empty(),
+        "pack words never join the user's entries"
+    );
+    let entries = dictation_entries(&rig.storage);
+    assert!(entries.iter().any(|entry| entry.phrase == "yaar"));
+
+    click(cx, &rig, "dictionary.pack.hinglish.switch");
+    assert_eq!(
+        rig.storage.settings.get(packs::SETTING),
+        Some(serde_json::json!({}))
+    );
+    assert!(dictation_entries(&rig.storage).is_empty());
+}
+
+#[gpui_kit::test]
+fn preview_shows_the_words_of_a_pack_and_esc_closes_it(cx: &mut TestAppContext) {
+    let rig = open(cx);
+    click(cx, &rig, "dictionary.pack.tech-terms.preview");
+    let pack = packs::all().iter().find(|p| p.id == "tech-terms").unwrap();
+    assert_eq!(
+        rig.dictionary
+            .read_with(cx, |me, _| me.preview().map(|pack| pack.id)),
+        Some("tech-terms")
+    );
+    assert!(present(cx, &rig, "dictionary.preview.title"));
+    let first = cx
+        .update_window(rig.handle, |_, window, _| {
+            window
+                .try_find("dictionary.preview.name.0")
+                .and_then(|found| found.label().map(str::to_owned))
+        })
+        .unwrap();
+    assert_eq!(first.as_deref(), Some(pack.words()[0]));
+    assert!(focused(cx, &rig, "dictionary.preview.done"));
+
+    press(cx, &rig, "escape");
+    assert!(!present(cx, &rig, "dictionary.preview"));
+    assert!(focused(cx, &rig, "dictionary.pack.tech-terms.preview"));
+}
+
+#[gpui_kit::test]
+fn the_user_words_come_before_pack_words_and_win_a_clash(cx: &mut TestAppContext) {
+    let rig = open(cx);
+    store::add(&rig.storage.database, "Zorvath", None).unwrap();
+    store::add(&rig.storage.database, "Acha Corp", Some("acha")).unwrap();
+    click(cx, &rig, "dictionary.pack.hinglish.switch");
+    let entries = dictation_entries(&rig.storage);
+    let prompt = hushpen_core::dictionary::build_prompt(&entries);
+    assert!(prompt.starts_with("Zorvath, Acha Corp, yaar"), "{prompt}");
+    assert!(
+        hushpen_core::dictionary::estimated_tokens(prompt.chars().count())
+            <= hushpen_core::dictionary::PROMPT_TOKEN_CAP
+    );
+    assert_eq!(
+        hushpen_core::dictionary::apply("acha, thik hai yar", &entries),
+        "Acha Corp, theek hai yaar"
+    );
+    assert_eq!(
+        hushpen_core::dictionary::phrases_in("chalo yaar", &entries),
+        ["yaar", "chalo"]
+    );
+}

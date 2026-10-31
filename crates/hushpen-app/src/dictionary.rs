@@ -1,9 +1,10 @@
 //! The Dictionary view: words for the whisper prompt, and "heard as" to "write as"
-//! replacements for the cleaned text.
+//! replacements for the cleaned text, and the word packs that add ready lists of them.
 //!
-//! The entries live in the history database. The dictation controller reads them from there at
+//! The entries live in the history database; which packs are on lives in the settings. The dictation controller reads them from there at
 //! the start of each dictation, so every change here applies to the next one.
 
+pub mod packs;
 pub mod panel;
 
 use crate::hook;
@@ -29,6 +30,23 @@ pub struct Dictionary {
     pub(crate) cancel_focus: FocusHandle,
     /// Edit and Delete of each row.
     pub(crate) row_focus: Vec<[FocusHandle; 2]>,
+    /// The switch and Preview of each pack.
+    pub(crate) pack_focus: Vec<[FocusHandle; 2]>,
+    /// The pack whose words the preview sheet shows, by its place in [`packs::all`].
+    preview: Option<usize>,
+    pub(crate) sheet_trap: FocusHandle,
+    pub(crate) sheet_done: FocusHandle,
+}
+
+/// The entries a dictation uses: the user's own, then the words of the packs that are on. A
+/// database that cannot be read counts as an empty one: a dictation must not fail because of it.
+pub fn dictation_entries(storage: &Storage) -> Vec<Entry> {
+    let mut entries = store::list(&storage.database).unwrap_or_else(|error| {
+        log::warn!("the dictionary could not be read: {error}");
+        Vec::new()
+    });
+    entries.extend(packs::entries_on(storage));
+    entries
 }
 
 impl Dictionary {
@@ -55,6 +73,18 @@ impl Dictionary {
             submit_focus: cx.focus_handle().tab_stop(true),
             cancel_focus: cx.focus_handle().tab_stop(true),
             row_focus: Vec::new(),
+            pack_focus: packs::all()
+                .iter()
+                .map(|_| {
+                    [
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                    ]
+                })
+                .collect(),
+            preview: None,
+            sheet_trap: cx.focus_handle(),
+            sheet_done: cx.focus_handle().tab_stop(true),
         };
         dictionary.reload(cx);
         dictionary
@@ -218,6 +248,64 @@ impl Dictionary {
         });
     }
 
+    pub fn pack_on(&self, id: &str) -> bool {
+        packs::is_on(&self.storage, id)
+    }
+
+    /// Turns the pack `id` on or off. The next dictation uses its words.
+    pub fn toggle_pack(&mut self, id: &str, cx: &mut Context<Self>) {
+        let on = !self.pack_on(id);
+        match self
+            .storage
+            .settings
+            .set(packs::SETTING, packs::turned(&self.storage, id, on))
+        {
+            Ok(()) => {
+                self.message = None;
+                hook::record_event(
+                    "dictionary",
+                    &format!("pack {id} {}", if on { "on" } else { "off" }),
+                );
+            }
+            Err(error) => self.message = Some(format!("The pack could not be saved: {error}")),
+        }
+        cx.notify();
+    }
+
+    /// The pack the preview sheet shows.
+    pub fn preview(&self) -> Option<&'static packs::Pack> {
+        self.preview.and_then(|index| packs::all().get(index))
+    }
+
+    /// Opens the preview sheet of the pack at `index` with the focus on Done.
+    pub fn open_preview(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index >= packs::all().len() {
+            return;
+        }
+        self.preview = Some(index);
+        window.focus(&self.sheet_done, cx);
+        hook::record_event("dictionary", "pack preview");
+        cx.notify();
+    }
+
+    /// Closes the preview and gives the focus back to its Preview button.
+    pub fn close_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.preview else {
+            return;
+        };
+        self.dismiss_preview(cx);
+        if let Some([_, preview]) = self.pack_focus.get(index) {
+            window.focus(preview, cx);
+        }
+    }
+
+    /// Closes the preview without moving the focus, for a view change that hides it.
+    pub fn dismiss_preview(&mut self, cx: &mut Context<Self>) {
+        if self.preview.take().is_some() {
+            cx.notify();
+        }
+    }
+
     pub fn state_json(&self, cx: &App) -> Value {
         json!({
             "count": self.entries.len(),
@@ -233,6 +321,12 @@ impl Dictionary {
                 "heard_as": self.heard.read(cx).value().to_string(),
             },
             "read_only": self.storage.database.read_only(),
+            "packs": packs::all().iter().map(|pack| json!({
+                "id": pack.id,
+                "on": self.pack_on(pack.id),
+                "words": pack.words().len(),
+            })).collect::<Vec<_>>(),
+            "preview": self.preview().map(|pack| pack.id),
         })
     }
 }

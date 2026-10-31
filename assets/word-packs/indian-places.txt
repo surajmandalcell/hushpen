@@ -1,0 +1,160 @@
+# Indian places
+# States, union territories, cities, and well-known areas of India.
+Delhi
+New Delhi
+Mumbai | mumbay
+Bengaluru | bangaluru
+Bengaluru | bengalooru
+Hyderabad | hydrabad
+Chennai | chenai
+Kolkata
+Pune
+Ahmedabad | ahmadabad
+Jaipur
+Lucknow
+Surat
+Kanpur
+Nagpur
+Indore
+Bhopal
+Patna
+Vadodara
+Thane
+Navi Mumbai
+Gurugram
+Noida
+Ghaziabad
+Faridabad
+Chandigarh
+Visakhapatnam | vishakapatnam
+Visakhapatnam | vishakhapatnam
+Kochi
+Thiruvananthapuram | thiruvanantapuram
+Kozhikode | kozikode
+Thrissur | trissur
+Coimbatore
+Madurai
+Tiruchirappalli
+Salem
+Mysuru | mysoru
+Mangaluru
+Vijayawada
+Guntur
+Tirupati
+Warangal
+Secunderabad
+Bhubaneswar | bhubaneshwar
+Ranchi
+Jamshedpur
+Dhanbad
+Raipur
+Bilaspur
+Guwahati
+Shillong
+Imphal
+Aizawl
+Kohima
+Agartala
+Gangtok
+Itanagar
+Dehradun | dehra dun
+Haridwar
+Rishikesh
+Shimla
+Manali
+Dharamshala
+Srinagar
+Jammu
+Leh
+Amritsar
+Ludhiana
+Jalandhar
+Patiala
+Agra
+Varanasi
+Prayagraj
+Meerut
+Mathura
+Ayodhya
+Gorakhpur
+Jodhpur
+Udaipur
+Kota
+Ajmer
+Bikaner
+Jaisalmer
+Rajkot
+Gandhinagar
+Bhavnagar
+Jamnagar
+Nashik
+Panaji
+Margao
+Siliguri
+Howrah
+Durgapur
+Asansol
+Darjeeling
+Jabalpur
+Gwalior
+Ujjain
+Vellore
+Ooty
+Kodaikanal
+Alappuzha
+Kollam
+Kannur
+Munnar
+Kanyakumari | kanya kumari
+Port Blair
+Silvassa
+Daman
+Kavaratti
+Puducherry
+Bandra
+Andheri
+Powai
+Koramangala
+Indiranagar
+Whitefield
+Hinjewadi
+Connaught Place
+Salt Lake
+Banjara Hills
+Gachibowli
+Jubilee Hills
+Electronic City
+Maharashtra
+Karnataka
+Tamil Nadu | tamilnadu
+Kerala
+Uttar Pradesh
+Gujarat
+Rajasthan
+West Bengal
+Telangana | telengana
+Andhra Pradesh | andra pradesh
+Madhya Pradesh
+Bihar
+Punjab
+Haryana
+Odisha | odissa
+Assam
+Jharkhand | jarkhand
+Chhattisgarh | chattisgarh
+Chhattisgarh | chhatisgarh
+Uttarakhand | uttrakhand
+Himachal Pradesh
+Goa
+Tripura
+Meghalaya
+Manipur
+Nagaland
+Mizoram
+Arunachal Pradesh
+Sikkim
+Jammu and Kashmir
+Ladakh
+Lakshadweep
+Andaman and Nicobar Islands
+Dadra and Nagar Haveli and Daman and Diu

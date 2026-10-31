@@ -17,7 +17,6 @@ use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::onboarding::KeyGate;
 use hushpen_core::{cleanup, dictionary, language};
 use hushpen_engine::{JobOutcome, TranscribeSpec};
-use hushpen_store::dictionary as store_dictionary;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -219,13 +218,9 @@ impl Controller {
         dictionary::apply(&cleaned, &self.dictionary())
     }
 
-    /// The personal dictionary. A database that cannot be read counts as an empty one: a
-    /// dictation must not fail because of it.
+    /// The personal dictionary with the words of the packs that are on.
     pub(super) fn dictionary(&self) -> Vec<dictionary::Entry> {
-        store_dictionary::list(&self.storage.database).unwrap_or_else(|error| {
-            log::warn!("the dictionary could not be read: {error}");
-            Vec::new()
-        })
+        crate::dictionary::dictation_entries(&self.storage)
     }
 
     /// Plays the cue unless the user turned the sounds off. The settings are read each time, so
