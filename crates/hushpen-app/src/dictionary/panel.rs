@@ -256,16 +256,20 @@ pub fn preview_sheet(
                 .truncate()
                 .child(line),
         );
-    let list = div()
+    // The list scrolls inside the frame, so the stroke and the corners of the group stay whole.
+    let mut scroll = div()
         .id(hook::id("dictionary", "preview.scroll"))
-        .test_support()
+        .flex()
+        .flex_col()
         .max_h(px(PREVIEW_HEIGHT))
-        .overflow_y_scroll()
-        .child(ui::group(
-            hook::id("dictionary", "preview.list"),
-            palette,
-            rows,
-        ));
+        .overflow_y_scroll();
+    for (index, row) in rows.into_iter().enumerate() {
+        if index > 0 {
+            scroll = scroll.child(ui::line(palette));
+        }
+        scroll = scroll.child(row);
+    }
+    let list = ui::group_frame(hook::id("dictionary", "preview.list"), palette).child(scroll);
     let sheet = div()
         .id(hook::id("dictionary", "preview"))
         .test_support()
