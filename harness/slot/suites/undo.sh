@@ -1,10 +1,11 @@
 #!/bin/bash
-# Undo cleanup: VAL-UNDO-001 to 007 and VAL-CROSS-002. Part one runs against the stub endpoint
-# (harness/slot/openai-stub.py on 127.0.0.1:11434): its default answer is the transcript with
-# " [stub]" added, so the AI text always differs from the rule text and no model is needed. Part
-# two (VAL-CROSS-002) uses the local Qwen3.5 2B model from the fixture folder, a dictionary
-# replacement, and the self-correction fixture. The words come from the virtual microphone and
-# the hold key's path goes through the hook (pipeline-event), so a keyboard grab cannot stop it.
+# Undo paste on the flow bar and Undo cleanup in History: VAL-UNDO-001 to 007 and VAL-CROSS-002.
+# Part one runs against the stub endpoint (harness/slot/openai-stub.py on 127.0.0.1:11434): its
+# default answer is the transcript with " [stub]" added, so the AI text always differs from the
+# rule text and no model is needed. Part two (VAL-CROSS-002) uses the local Qwen3.5 2B model
+# from the fixture folder, a dictionary replacement, and the self-correction fixture. The words
+# come from the virtual microphone and the hold key's path goes through the hook
+# (pipeline-event), so a keyboard grab cannot stop it.
 # The GTK target (target-gtk.py) steps back on Ctrl+Z like an editor's entry, keeps the live text
 # in /out/gtk-live.txt and one line for every Ctrl+Z in /out/gtk-undo.log. The xterm target is
 # stock xterm running `cat > /out/xterm.txt`; a Ctrl+Z that reached its terminal would stop cat.
@@ -133,7 +134,7 @@ hold_run() {
   hook_action pipeline-event '{"event":"hold-up"}' >/dev/null
 }
 # ai_run <wav>: one dictation into the GTK entry (clean, focused, sentinel on the clipboard)
-# that returns the moment the bar offers Undo cleanup. Sets ROW_*, AI_AT (ms of the offer).
+# that returns the moment the bar offers Undo paste. Sets ROW_*, AI_AT (ms of the offer).
 ai_run() {
   gtk_clear
   set_clip "$SENTINEL"
@@ -208,7 +209,7 @@ set_setting cleanup.llm.endpointUrl "\"$STUB_URL\""
 set_setting cleanup.llm.endpointModel '"stub-model"'
 set_setting cleanup.llm.enabled true
 
-echo "== VAL-UNDO-001 and 002 Undo cleanup in the flow bar replaces the AI text and updates History"
+echo "== VAL-UNDO-001 and 002 Undo paste in the flow bar replaces the AI text and updates History"
 failures=""
 ai_run "$FILLER_WAV" || failures+="no offer after the dictation; "
 AI_TEXT=$(live)
@@ -220,7 +221,7 @@ crop_bar undo-001-offered
 bar_is undo || failures+="the bar shows '$(bar .state)', not undo; "
 tree_has flowbar.undo || failures+="no flowbar.undo in the tree; "
 keys_before=$(undo_keys)
-click_el flowbar.undo || failures+="no Undo cleanup button to click; "
+click_el flowbar.undo || failures+="no Undo paste button to click; "
 park
 wait_until 10 live_is "$RULE_TEXT" || failures+="the entry is '$(live)' after the undo, not the rule text '$RULE_TEXT'; "
 shot undo-001-after
@@ -244,7 +245,7 @@ wait_until 10 live_is "$RULE_TEXT" || failures+="Paste last transcript put '$(li
 shot undo-002-paste-last
 check_failures "VAL-UNDO-001 and 002 undo in the bar" "AI text '$AI_TEXT' became rule text '$RULE_TEXT' in the entry, focus $focus_after, sentinel restored, row final=rule outcome undone, Paste last gives the rule text" "$failures"
 
-echo "== VAL-UNDO-003 the offer lasts 5 s and then the undo is rejected"
+echo "== VAL-UNDO-003 the offer lasts 4 s and then the undo is rejected"
 failures=""
 ai_run "$FILLER_WAV" || failures+="no offer after the dictation; "
 AI_TEXT=$(live)
@@ -252,7 +253,7 @@ keys_before=$(undo_keys)
 sleep 6
 shot undo-003-after-6s
 shown=$(undo_shown_ms)
-[ -n "$shown" ] && [ "$shown" -ge 4500 ] && [ "$shown" -le 5500 ] || failures+="the bar showed Undo cleanup for '${shown}' ms (events: $(overlay_since)); "
+[ -n "$shown" ] && [ "$shown" -ge 3500 ] && [ "$shown" -le 4500 ] || failures+="the bar showed Undo paste for '${shown}' ms (events: $(overlay_since)); "
 bar_is undo && failures+="the bar still shows undo after 6 s; "
 tree_has flowbar.undo && failures+="flowbar.undo is still in the tree; "
 rejected=$(undo_rejected) || failures+="the hook undo action was accepted after 6 s; "
@@ -260,7 +261,7 @@ sleep 0.5
 live_is "$AI_TEXT" || failures+="the entry changed to '$(live)'; "
 [ "$(undo_keys)" = "$keys_before" ] || failures+="the entry got Ctrl+Z after the offer ended; "
 [ "$(last_row llm_outcome)" = used ] || failures+="llm_outcome is '$(last_row llm_outcome)', not used; "
-check_failures "VAL-UNDO-003 expiry" "Undo cleanup showed ${shown} ms, then the hook undo was rejected ('$rejected'), entry and row unchanged" "$failures"
+check_failures "VAL-UNDO-003 expiry" "Undo paste showed ${shown} ms, then the hook undo was rejected ('$rejected'), entry and row unchanged" "$failures"
 
 echo "== VAL-UNDO-004 a change of focus withdraws the offer"
 failures=""
@@ -291,7 +292,7 @@ wait_until 10 grep -q 'grab status 0' "$RUN_OUT/grab-helper.log" || failures+="t
 quiet_run "$FILLER_WAV" || failures+="the run under the grab did not end; "
 sleep 1
 [ "$($HC state | jq -r .last_insert.outcome)" = blocked_grab ] || failures+="the receipt is '$($HC state | jq -c .last_insert)', not blocked_grab; "
-offered && failures+="Undo cleanup was offered after a blocked insertion; "
+offered && failures+="Undo paste was offered after a blocked insertion; "
 saw_undo_bar && failures+="the bar showed undo after a blocked insertion ($(overlay_since)); "
 shot undo-005-grab
 kill "$GRAB_PID" 2>/dev/null
@@ -304,7 +305,7 @@ quiet_run "$FILLER_WAV" || failures+="the run with the slow endpoint did not end
 [ "$ROW_OUTCOME" = timeout ] || failures+="the slow endpoint gave llm_outcome '$ROW_OUTCOME', not timeout; "
 sleep 1
 live_is "$ROW_RULE" || failures+="the entry '$(live)' is not the rule text '$ROW_RULE'; "
-offered && failures+="Undo cleanup was offered after a timeout; "
+offered && failures+="Undo paste was offered after a timeout; "
 saw_undo_bar && failures+="the bar showed undo after a timeout ($(overlay_since)); "
 shot undo-005-timeout
 stub_mode default
@@ -314,11 +315,11 @@ set_setting cleanup.llm.enabled false
 quiet_run "$FILLER_WAV" || failures+="the run with AI cleanup off did not end; "
 sleep 1
 [ "$ROW_OUTCOME" = off ] || failures+="llm_outcome is '$ROW_OUTCOME' with AI cleanup off; "
-offered && failures+="Undo cleanup was offered with AI cleanup off; "
+offered && failures+="Undo paste was offered with AI cleanup off; "
 saw_undo_bar && failures+="the bar showed undo with AI cleanup off ($(overlay_since)); "
 shot undo-005-off
 set_setting cleanup.llm.enabled true
-check_failures "VAL-UNDO-005 no confirmed AI insertion" "blocked grab, timeout, and AI cleanup off each left the bar without Undo cleanup" "$failures"
+check_failures "VAL-UNDO-005 no confirmed AI insertion" "blocked grab, timeout, and AI cleanup off each left the bar without Undo paste" "$failures"
 
 echo "== VAL-UNDO-006 Undo cleanup in the History detail"
 failures=""
@@ -359,7 +360,7 @@ live_is "$AI_TEXT" || failures+="the entry changed to '$(live)'; "
 [ ! -s "$XTERM_FILE" ] || failures+="the xterm got text; "
 check_failures "VAL-UNDO-006 undo in History" "detail final '$RULE_TEXT', outcome undone, search 'stub' $before_hits -> $after_hits, search '$word' $rule_hits, the entry '$AI_TEXT' untouched with no key sent" "$failures"
 
-echo "== VAL-UNDO-007 a terminal target hides Undo cleanup and never gets Ctrl+Z"
+echo "== VAL-UNDO-007 a terminal target hides Undo paste and never gets Ctrl+Z"
 failures=""
 # Fresh targets: cat holds /out/xterm.txt open, so deleting the file would not empty it.
 ids=$(/harness/slot/targets.sh)
@@ -381,7 +382,7 @@ for _ in $(seq 60); do
 done
 shot undo-007-terminal
 crop_bar undo-007-terminal
-[ "$shown_undo" = no ] || failures+="the bar offered Undo cleanup in the terminal; "
+[ "$shown_undo" = no ] || failures+="the bar offered Undo paste in the terminal; "
 saw_undo_bar && failures+="overlay events show undo ($(overlay_since)); "
 [ "$ROW_OUTCOME" = used ] && [ "$ROW_LLM" != "$ROW_RULE" ] || failures+="the run was not AI-cleaned with a different text (outcome '$ROW_OUTCOME'); "
 rejected=$(undo_rejected) || failures+="the hook undo action was accepted in a terminal; "
@@ -438,7 +439,7 @@ case "$AI_TEXT" in *"$REPLACEMENT"*) ;; *) failures+="the entry '$AI_TEXT' has n
 [ "$AI_TEXT" = "$ROW_LLM" ] && [ "$AI_TEXT" != "$RULE_TEXT" ] || failures+="the entry '$AI_TEXT' is not the AI text '$ROW_LLM' that differs from the rule text '$RULE_TEXT'; "
 case " $(norm <<<"$RULE_TEXT") " in *" um "* | *" uh "*) failures+="the rule text still has a filler: $RULE_TEXT; " ;; esac
 case "$RULE_TEXT" in *"$REPLACEMENT"*) ;; *) failures+="the rule text '$RULE_TEXT' has no replacement; " ;; esac
-click_el flowbar.undo || failures+="no Undo cleanup button to click; "
+click_el flowbar.undo || failures+="no Undo paste button to click; "
 park
 wait_until 10 live_is "$RULE_TEXT" || failures+="the entry is '$(live)' after the undo, not the rule text '$RULE_TEXT'; "
 cp "$LIVE" "$RUN_OUT/gtk-after-undo.txt"

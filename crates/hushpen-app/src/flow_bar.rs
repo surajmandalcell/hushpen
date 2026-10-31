@@ -9,6 +9,7 @@
 mod motion;
 pub mod view;
 mod window;
+pub mod working;
 
 use crate::ai_cleanup::Phase;
 use crate::controller::{Controller, monotonic_ms};
@@ -32,6 +33,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 use view::Props;
+use working::Stage;
 
 pub use window::PopUp;
 
@@ -76,6 +78,13 @@ pub type OpenHistory = Rc<dyn Fn(&str, &mut App)>;
 
 type PointerSource = Rc<dyn Fn(WindowHandle) -> Option<Pointer>>;
 
+#[derive(Debug, Clone, Copy)]
+struct Work {
+    stage: Stage,
+    since: u64,
+    from: Option<Stage>,
+}
+
 pub struct FlowBar {
     storage: Rc<Storage>,
     controller: Entity<Controller>,
@@ -93,6 +102,14 @@ pub struct FlowBar {
     refusal: Option<String>,
     /// The newest refused Command Mode start the bar has shown.
     seen_flash: u64,
+    /// The newest history row the bar has seen, so each new paste gets its own flash.
+    seen_row: Option<String>,
+    /// What the processing pill waits for, since when, and the stage before it.
+    work: Option<Work>,
+    /// When the processing began, for the float of the wave.
+    work_since: u64,
+    /// The pointer is on the round button of the undo or the notice pill.
+    hover: bool,
     props: Props,
     visible: bool,
     origin: (f32, f32),
@@ -124,6 +141,10 @@ impl FlowBar {
             last_failure: None,
             refusal: None,
             seen_flash: 0,
+            seen_row: None,
+            work: None,
+            work_since: 0,
+            hover: false,
             props: Props::new(BarState::Idle),
             visible: false,
             origin: (0.0, 0.0),
@@ -159,15 +180,14 @@ impl FlowBar {
         self.pressed
     }
 
-    /// The bar moves on its own: it changes size, fades, or draws a live waveform or dots.
+    /// The bar moves on its own: it changes size, fades, or draws a live waveform or the
+    /// processing wave. A still wave (Reduce Motion) needs no frames.
     fn needs_frames(&self) -> bool {
         self.animate
             && self.visible
             && (!self.motion.is_settled()
-                || matches!(
-                    self.props.state,
-                    BarState::Listening | BarState::Transcribing
-                ))
+                || self.props.state == BarState::Listening
+                || (self.props.state == BarState::Transcribing && !self.props.still))
     }
 
     fn flag(&self, key: &str, default: bool) -> bool {
@@ -204,19 +224,31 @@ impl FlowBar {
         }
         self.follow_pointer(cx);
 
-        let (derived, code, copied, offered, preparing, flash) = {
+        let (derived, code, copied, offered, stage, flash, row) = {
             let controller = self.controller.read(cx);
+            let stage = if controller.ai_phase() == Some(Phase::Preparing) {
+                Stage::Preparing
+            } else if controller.state() == State::Cleaning {
+                Stage::Cleaning
+            } else {
+                Stage::Transcribing
+            };
             (
                 state_for(controller.state(), controller.failure_code()),
                 controller.failure_code(),
                 controller.copied_only(),
                 controller.undo_offered(),
-                controller.ai_phase() == Some(Phase::Preparing),
+                stage,
                 controller
                     .flash()
                     .map(|flash| (flash.seq, flash.message.clone())),
+                controller.last_row_id().map(str::to_owned),
             )
         };
+        if row != self.seen_row {
+            self.seen_row = row;
+            self.display.renew_flash();
+        }
         if derived.is_failure() {
             self.last_failure = code;
         }
@@ -234,6 +266,32 @@ impl FlowBar {
         if !shown.is_failure() {
             self.refusal = None;
         }
+        if shown == BarState::Transcribing {
+            match self.work {
+                Some(work) if work.stage == stage => {}
+                Some(work) => {
+                    self.work = Some(Work {
+                        stage,
+                        since: now,
+                        from: Some(work.stage),
+                    })
+                }
+                None => {
+                    self.work_since = now;
+                    self.work = Some(Work {
+                        stage,
+                        since: now,
+                        from: None,
+                    });
+                }
+            }
+        } else {
+            self.work = None;
+        }
+        if shown != BarState::Undo && !shown.is_failure() {
+            self.hover = false;
+        }
+        let still = !(self.animate && !cx.reduce_motion());
 
         let wanted = self.flag("overlay.enabled", true)
             && (shown != BarState::Idle || self.pressed || self.flag("overlay.idleVisible", false));
@@ -251,13 +309,24 @@ impl FlowBar {
                     .unwrap_or_else(|| view::failure_text(self.last_failure).to_owned()),
                 _ => String::new(),
             };
+            let work = self.work.filter(|_| shown == BarState::Transcribing);
             Props {
                 state: shown,
                 message,
                 open_history: shown.is_failure()
                     && self.refusal.is_none()
                     && self.controller.read(cx).last_row_id().is_some(),
-                preparing: shown == BarState::Transcribing && preparing,
+                stage: work.map_or(Stage::Transcribing, |work| work.stage),
+                from: work.and_then(|work| work.from),
+                // A still wave keeps one frame, so the pill does not redraw on every tick.
+                stage_ms: work
+                    .filter(|_| !still)
+                    .map_or(0, |work| now.saturating_sub(work.since)),
+                work_ms: work
+                    .filter(|_| !still)
+                    .map_or(0, |_| now.saturating_sub(self.work_since)),
+                still,
+                hover: self.hover,
                 ..Props::new(shown)
             }
         } else {
@@ -277,11 +346,10 @@ impl FlowBar {
                 new_state: wanted && props.state != self.props.state,
                 wave: &wave,
             },
-            self.animate && !cx.reduce_motion(),
+            !still,
         );
         let size = self.motion.size();
         props.levels = self.motion.wave().to_vec();
-        props.phase = (now % view::DOT_CYCLE_MS) as f32 / view::DOT_CYCLE_MS as f32;
         props.frame = Some(size);
         props.presence = self.motion.presence();
         props.fade = self.motion.fade();
@@ -464,7 +532,17 @@ impl FlowBar {
         cx.notify();
     }
 
-    /// The "Undo cleanup" button: the app's undo key, then the rule text. A refusal shows on
+    /// The pointer came onto or left the round button of the undo or the notice pill. The
+    /// text of the pill names the button at once, without waiting for the next tick.
+    pub fn hover_button(&mut self, inside: bool, cx: &mut Context<Self>) {
+        self.hover = inside;
+        if self.props.hover != inside {
+            self.props.hover = inside;
+            cx.notify();
+        }
+    }
+
+    /// The "Undo paste" button: the app's undo key, then the rule text. A refusal shows on
     /// the bar like a refused start.
     pub fn press_undo(&mut self, cx: &mut Context<Self>) {
         if let Err(reason) = self.undo_cleanup(cx) {

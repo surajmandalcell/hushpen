@@ -1,4 +1,4 @@
-//! "Undo cleanup": for five seconds after an AI-cleaned text went into an app, the user can
+//! "Undo paste": for four seconds after an AI-cleaned text went into an app, the user can
 //! take the cleanup back. The app's own undo key removes the pasted text, then the rule text
 //! goes in through the same paste path, and the history row follows.
 //!

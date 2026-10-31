@@ -642,7 +642,7 @@ pub mod hud {
         pub const SURFACE_CONTROL_HOVER: u32 = 0x3A3A3A;
         pub const SURFACE_ROW_HOVER: u32 = 0x424242;
         pub const SURFACE_SELECTED: u32 = 0x5A5A5A;
-        pub const SURFACE_ELEVATED: u32 = 0x2B2B2B;
+        pub const SURFACE_ELEVATED: u32 = 0x1F1F1F;
         pub const BORDER_CONTROL: u32 = 0x5C5C5C;
         pub const DIVIDER: u32 = 0x474747;
         pub const TEXT_PRIMARY: u32 = 0xEEEEEE;
@@ -658,7 +658,7 @@ pub mod hud {
         pub const ROUND_FINISH_HOVER: u32 = 0xFFFFFF;
         pub const ON_ROUND_FINISH: u32 = 0x1A1A1A;
         pub const STATUS_ERROR: u32 = 0xFF9C8F;
-        pub const STATUS_WARNING: u32 = 0xFFB3AA;
+        pub const STATUS_WARNING: u32 = 0xFFC266;
     }
 
     pub mod size {
@@ -974,7 +974,7 @@ mod tests {
 
     #[test]
     fn the_flow_bar_is_a_dark_hud_whatever_the_window_shows() {
-        assert_eq!(hud::color::SURFACE_ELEVATED, 0x2B2B2B);
+        assert_eq!(hud::color::SURFACE_ELEVATED, 0x1F1F1F);
     }
 
     #[test]

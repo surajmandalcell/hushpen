@@ -1,4 +1,4 @@
-//! When "Undo cleanup" may be offered, and for how long.
+//! When "Undo paste" may be offered, and for how long.
 //!
 //! After an AI-cleaned text went into an app, the user has a few seconds to take it back for
 //! the rule text. The offer needs proof that the text really arrived and that the app is the
@@ -8,8 +8,9 @@
 use super::method::is_terminal;
 use super::report::{Outcome, Report};
 
-/// How long "Undo cleanup" stays on offer after the text went in.
-pub const UNDO_WINDOW_MS: u64 = 5_000;
+/// How long "Undo paste" stays on offer after the text went in: about a second to see the
+/// pill and two to reach it, with one to spare. A longer offer leaves the bar over the text.
+pub const UNDO_WINDOW_MS: u64 = 4_000;
 
 /// Why no undo is offered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,11 +203,11 @@ mod tests {
     }
 
     #[test]
-    fn an_offer_lasts_five_seconds_in_the_same_window() {
+    fn an_offer_lasts_four_seconds_in_the_same_window() {
         let offer = Offer::new("row".into(), "The quick fox.".into(), 7, 1_000);
         assert_eq!(offer.standing(1_000, Some(7)), Standing::Open);
-        assert_eq!(offer.standing(5_999, Some(7)), Standing::Open);
-        assert_eq!(offer.standing(6_000, Some(7)), Standing::Expired);
+        assert_eq!(offer.standing(4_999, Some(7)), Standing::Open);
+        assert_eq!(offer.standing(5_000, Some(7)), Standing::Expired);
     }
 
     #[test]
@@ -214,6 +215,6 @@ mod tests {
         let offer = Offer::new("row".into(), "The quick fox.".into(), 7, 0);
         assert_eq!(offer.standing(100, Some(8)), Standing::FocusChanged);
         assert_eq!(offer.standing(100, None), Standing::FocusChanged);
-        assert_eq!(offer.standing(5_000, Some(8)), Standing::Expired);
+        assert_eq!(offer.standing(4_000, Some(8)), Standing::Expired);
     }
 }
