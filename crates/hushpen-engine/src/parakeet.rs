@@ -48,6 +48,7 @@ extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
 /// One Parakeet model held in memory, with the speech detector that picks what it decodes.
 pub struct ParakeetEngine {
     context: NonNull<ffi::parakeet_context>,
+    state: NonNull<ffi::parakeet_state>,
     threads: i32,
     gpu: bool,
     vad: WhisperVadContext,
@@ -73,14 +74,26 @@ impl ParakeetEngine {
         // SAFETY: the library returns a fully initialized value.
         let mut params = unsafe { ffi::parakeet_context_default_params() };
         params.use_gpu = options.gpu;
+        // The state holds compute buffers sized for the whole audio context, more than the
+        // weights. It is made outside `track`, or the page-out finds too much and advises nothing.
         let (context, weights) = crate::pageout::track(model, || {
             // SAFETY: `path` lives through the load. The context returned has one owner.
-            unsafe { ffi::parakeet_init_from_file_with_params(path.as_ptr(), params) }
+            unsafe { ffi::parakeet_init_from_file_with_params_no_state(path.as_ptr(), params) }
         });
         let context = NonNull::new(context)
             .ok_or_else(|| EngineError::LoadFailed("could not load the Parakeet model".into()))?;
+        // SAFETY: `context` is a loaded model; the state returned has one owner.
+        let state = unsafe { ffi::parakeet_init_state(context.as_ptr()) };
+        let Some(state) = NonNull::new(state) else {
+            // SAFETY: the context has no state and no other owner.
+            unsafe { ffi::parakeet_free(context.as_ptr()) };
+            return Err(EngineError::LoadFailed(
+                "could not set up the Parakeet model".into(),
+            ));
+        };
         Ok(Self {
             context,
+            state,
             threads,
             gpu: options.gpu && crate::whisper::gpu_backend_present(),
             vad,
@@ -135,6 +148,7 @@ impl ParakeetEngine {
     /// One native call over `pcm`. Returns its words in `pcm` time.
     fn decode(&mut self, pcm: &[f32], cancel: &CancelFlag) -> Result<Vec<Segment>, EngineError> {
         let context = self.context.as_ptr();
+        let state = self.state.as_ptr();
         // SAFETY: the library initializes every field and leaves the callbacks null.
         let mut params = unsafe {
             ffi::parakeet_full_default_params(
@@ -148,8 +162,10 @@ impl ParakeetEngine {
             std::sync::Arc::as_ptr(cancel.as_atomic()).cast_mut().cast();
         let samples = i32::try_from(pcm.len())
             .map_err(|_| EngineError::Failed("audio span is too long".into()))?;
-        // SAFETY: `self` holds the context exclusively; `pcm` and `cancel` outlive the call.
-        let code = unsafe { ffi::parakeet_full(context, params, pcm.as_ptr(), samples) };
+        // SAFETY: `self` holds the context and the state exclusively; `pcm` and `cancel` outlive
+        // the call.
+        let code =
+            unsafe { ffi::parakeet_full_with_state(context, state, params, pcm.as_ptr(), samples) };
         // An abort returns -6 after the encoder or -7 in the decoder. The flag decides.
         if cancel.is_cancelled() {
             return Err(EngineError::Cancelled);
@@ -158,12 +174,14 @@ impl ParakeetEngine {
             return Err(EngineError::Failed(format!("Parakeet returned {code}")));
         }
         let mut words = Vec::new();
-        // SAFETY: the call succeeded, so the context holds its result; every index is in range.
+        // SAFETY: the call succeeded, so the state holds its result; every index is in range.
         unsafe {
-            for segment in 0..ffi::parakeet_full_n_segments(context) {
-                for token in 0..ffi::parakeet_full_n_tokens(context, segment) {
-                    let data = ffi::parakeet_full_get_token_data(context, segment, token);
-                    let text = ffi::parakeet_full_get_token_text(context, segment, token);
+            for segment in 0..ffi::parakeet_full_n_segments_from_state(state) {
+                for token in 0..ffi::parakeet_full_n_tokens_from_state(state, segment) {
+                    let data = ffi::parakeet_full_get_token_data_from_state(state, segment, token);
+                    let text = ffi::parakeet_full_get_token_text_from_state(
+                        context, state, segment, token,
+                    );
                     if text.is_null() {
                         return Err(EngineError::Failed("Parakeet returned a null token".into()));
                     }
@@ -178,8 +196,12 @@ impl ParakeetEngine {
 
 impl Drop for ParakeetEngine {
     fn drop(&mut self) {
-        // SAFETY: this value owns the context, and no native call can still use it.
-        unsafe { ffi::parakeet_free(self.context.as_ptr()) }
+        // SAFETY: this value owns the state and the context, and no native call can still use
+        // them. The context has no state of its own to free.
+        unsafe {
+            ffi::parakeet_free_state(self.state.as_ptr());
+            ffi::parakeet_free(self.context.as_ptr());
+        }
     }
 }
 
