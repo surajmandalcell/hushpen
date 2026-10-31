@@ -197,11 +197,12 @@ new decision, add it here in the same change (D-21).
   has a kind (`speech`, `cleanup`, `voice`), a description, speed and
   accuracy from 1 to 5, an approximate RAM need, what it is good for, and a
   `https://huggingface.co/` source page. A schema 1 catalog (no kind, no
-  details) still parses, and its models take the kind of their list. Only
-  variants whose size and sha256 come from the Hugging Face API are listed
-  (the q5 variants, `medium.en`, and `large-v3`). The Models page groups the
-  models by kind and opens a details sheet from each row. Before a download
-  the app reads the free space of the downloads folder (statvfs) and refuses
+  details) still parses, and its models take the kind of their list.
+  Only models whose exact size and SHA-256 are verified against their pinned
+  Hugging Face files are listed. The speech list is fixed by D-40. The Models
+  page groups the models by kind and opens a details sheet from each row.
+  Before a download the app reads the free space of the downloads folder
+  (statvfs) and refuses
   when it is less than the bytes still to fetch plus 10%. At start it deletes
   partial downloads older than 7 days.
 - **D-31 Manual view.** Manual, third in the sidebar after History, is one
@@ -218,8 +219,8 @@ new decision, add it here in the same change (D-21).
   of the import, so the UI process never parses an outside file (D-23) and
   adding a 12 hour file never blocks it; the time left is the pace so far,
   shown from 5% on. The import language (`files.language`) is separate from
-  the dictation language. Translate is refused for English-only models and
-  for turbo models, which were trained without the translate task. Read
+  the dictation language. Translate is refused for Parakeet, English-only
+  Whisper models, and Turbo models, which have no translation task. Read
   aloud streams: each chunk is appended to the player as it arrives and the
   first plays while the rest is spoken. Export Audio writes the samples the
   player holds as a 16-bit WAV, the only format for now. The settings keys
@@ -351,6 +352,35 @@ new decision, add it here in the same change (D-21).
   voices' [510, 1, 256] style blocks, and loads Kokoro with it. The pinned
   `voices.bin` is only read. A mix travels as the voice id
   `<base>:<100-p>+<with>:<p>`.
+
+- **D-40 Speech models.** Offer only Parakeet v3 Q4_K, Whisper Large v3
+  Turbo Q5_0, Whisper Small Q5_1, and Whisper Base Q5_1, in that order.
+  Parakeet is the default and the sole Recommended speech model. The owner's
+  77 Indian/British English dictations measured 4.14%, 8.44%, 11.01%, and
+  11.97% word error rate, respectively. Turbo is for languages outside
+  Parakeet's 25 European languages, Small for translation to English, and
+  Base for older or slower computers. Downloads use pinned Hugging Face
+  revisions, exact sizes, and SHA-256 checks. A retired selection moves to
+  Parakeet at startup. Only known retired speech files and their verification
+  stamps are deleted; History and other files stay.
+- **D-41 Parakeet engine.** The speech child selects Parakeet or Whisper
+  behind the existing AsrEngine interface. Both come from the vendored
+  whisper.cpp 1.9.4 tree, with Metal on macOS and CPU on Linux. Parakeet
+  always detects among its 25 supported languages. It takes no initial
+  prompt and cannot translate, so dictionary bias goes to Whisper only.
+  Parakeet and Turbo refuse translation in the engine and show a disabled
+  Translate to English switch with a tooltip in Manual. Home and Manual
+  suggest Whisper Large v3 Turbo Q5 when the selected language is outside
+  Parakeet's set. Speech filenames come from the catalog, not from the model
+  ID. Speech is decoded in spans of at most 20 seconds, cut near pauses with
+  one second of context on each side. The cancel flag is checked between
+  spans and during native decoding. The Parakeet C API gives timed subword
+  tokens and word starts, but no detected-language code. Hushpen groups those
+  tokens into word segments for History, SRT, and VTT, on the original audio
+  clock. It reports `und` for the unavailable language code, without
+  inventing a detected-language label. NVIDIA's model uses CC-BY-4.0; the
+  packaged notices identify NVIDIA, the original model, the quantized
+  conversion, and the license.
 
 ## History notes
 

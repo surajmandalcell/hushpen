@@ -22,8 +22,10 @@ runs whisper.cpp in a child process.
   the system reports can be a shortcut, media keys included; a shortcut that
   another app uses shows how to free it. Each shortcut has a switch to turn
   it off and a button to reset it.
-- Local transcription with Whisper models from Tiny to Large v3, with
-  English-only and compact variants. Metal on macOS, CPU on Linux.
+- Local transcription with Parakeet v3 Q4 (recommended), Whisper Large v3
+  Turbo Q5 for other languages, Whisper Small Q5 for translation to English,
+  and Whisper Base Q5 for older or slower computers. Metal on macOS, CPU on
+  Linux.
 - Models view in three sections: speech recognition, text cleanup, and
   voices. It marks the recommended model of each kind, and a details sheet
   shows what a model is for, its languages, speed, accuracy, memory, license,
