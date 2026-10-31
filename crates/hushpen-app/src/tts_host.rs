@@ -328,10 +328,16 @@ fn speech_error(failure: &Failure) -> SpeechError {
 /// Whether every file of `model` is there with a matching `.verified` stamp.
 pub fn downloaded(models_dir: &Path, model: VoiceModel) -> bool {
     let dir = models_dir.join(model.id());
-    model
-        .files()
-        .iter()
-        .all(|file| model_files::is_verified(&dir.join(file)))
+    let Some(entry) = hushpen_core::catalog::embedded().voice(model.id()) else {
+        return false;
+    };
+    model.files().iter().all(|name| {
+        entry.files.iter().any(|file| {
+            file.file == *name
+                && model_files::check(&dir.join(name), file.bytes, &file.sha256)
+                    == model_files::Check::Ready
+        })
+    })
 }
 
 /// The load for `model`, or `None` while it is not [`downloaded`].
@@ -349,12 +355,31 @@ mod tests {
     fn stamped_model(models_dir: &Path, model: VoiceModel) -> PathBuf {
         let dir = models_dir.join(model.id());
         std::fs::create_dir_all(&dir).unwrap();
-        for file in model.files() {
-            let path = dir.join(file);
-            std::fs::write(&path, file.as_bytes()).unwrap();
-            model_files::write_stamp(&path, "abc").unwrap();
+        let entry = hushpen_core::catalog::embedded().voice(model.id()).unwrap();
+        for file in &entry.files {
+            let path = dir.join(&file.file);
+            std::fs::File::create(&path)
+                .unwrap()
+                .set_len(file.bytes)
+                .unwrap();
+            model_files::write_stamp(&path, &file.sha256).unwrap();
         }
         dir
+    }
+
+    #[test]
+    fn a_stamp_from_an_older_kokoro_revision_does_not_enable_the_voice() {
+        let models = tempfile::tempdir().unwrap();
+        let dir = stamped_model(models.path(), VoiceModel::Kokoro);
+        let path = dir.join(kokoro::MODEL_FILE);
+        model_files::write_stamp(
+            &path,
+            "4b86207ef680e394d8343bee22dfc4c512e5c707c6d9578e3f35ab09bffd6b36",
+        )
+        .unwrap();
+        assert!(model_files::is_verified(&path), "the old stamp is intact");
+        assert!(!downloaded(models.path(), VoiceModel::Kokoro));
+        assert_eq!(wanted_load(models.path(), VoiceModel::Kokoro, 2), None);
     }
 
     fn host(data: &DataDir) -> Arc<TtsHost> {
