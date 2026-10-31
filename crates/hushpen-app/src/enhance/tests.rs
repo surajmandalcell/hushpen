@@ -524,7 +524,10 @@ fn the_search_and_the_reading_use_the_words_of_the_packs_that_are_on(cx: &mut Te
     speech
         .storage
         .settings
-        .set(packs::SETTING, packs::turned(&speech.storage, pack.id, true))
+        .set(
+            packs::SETTING,
+            packs::turned(&speech.storage, pack.id, true),
+        )
         .unwrap();
     let runs = Arc::default();
     let tuning = cx.new(|cx| {
