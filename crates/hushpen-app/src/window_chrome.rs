@@ -436,10 +436,9 @@ mod tests {
         })
         .unwrap();
         cx.simulate_window_resize(handle, size(px(space::WINDOW_WIDTH), px(1200.0)));
+        // The test platform takes the resize without reporting it back, so read its bounds.
         let height = cx
-            .update_window(handle, |_, window, _| {
-                f32::from(window.viewport_size().height)
-            })
+            .update_window(handle, |_, window, _| f32::from(window.bounds().size.height))
             .unwrap();
         assert_eq!(height, MAX_HEIGHT);
     }
