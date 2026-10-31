@@ -65,7 +65,13 @@ new decision, add it here in the same change (D-21).
   (English cleanup only) and Qwen3.5 2B second (other languages and Command
   Mode). Command Mode with S1-mini says it needs Qwen3.5 2B. An LLM timeout or a failed output check falls back to the
   rule-based text. The endpoint API key lives in a 0600 file, not in the
-  Keychain.
+  Keychain. Cleanup profiles (General, Message, Email, Notes) set S1-mini's
+  trained control values (General semi-formal/prose/general, Message
+  semi-casual/prose/general, Email semi-formal/prose/email, Notes
+  semi-formal/lists/general) and the prompt text Qwen and endpoints get; the
+  user's changes live in `cleanup.profileEdits`. One function,
+  `cleanup_prompt`, builds both what the Prompt sheet shows and what is sent.
+  Per-app profiles stay out (D-10).
 - **D-16 Insertion.** The app saves the clipboard, pastes, and restores the
   clipboard. It never types into a secure field. Terminals get their own
   paste key.
@@ -382,6 +388,14 @@ new decision, add it here in the same change (D-21).
   inventing a detected-language label. NVIDIA's model uses CC-BY-4.0; the
   packaged notices identify NVIDIA, the original model, the quantized
   conversion, and the license.
+
+- **D-42 Word packs.** The Dictionary offers hand-written word packs
+  (Indian names, Indian places, Hinglish words, Tech terms) under
+  `assets/word-packs/`, all off by default. Pack words never go into the
+  user's entries. In the Whisper prompt the user's words come first inside
+  the 150-token cap; Parakeet takes no prompt. Only pack words found in the
+  text join the cleanup keep-list, and heard-as replacements run after
+  cleanup.
 
 ## History notes
 
