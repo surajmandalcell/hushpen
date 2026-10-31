@@ -281,10 +281,12 @@ fn selected_view(scene: Scene) -> Option<View> {
             Some(View::History)
         }
         Scene::HistoryClear | Scene::HistoryRead | Scene::HistoryReadDetail => Some(View::History),
-        Scene::Home => Some(View::Home),
+        Scene::Home | Scene::Menu(_) => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
         Scene::Files(_) => Some(View::Manual),
-        Scene::Models | Scene::ModelsBottom => Some(View::Models),
+        Scene::Models | Scene::ModelsBottom | Scene::ModelsSearch | Scene::ModelsNoMatch => {
+            Some(View::Models)
+        }
         // The scrim dims the whole window, so the shell colors do not hold under a sheet.
         Scene::ModelsDetails
         | Scene::EnhanceTune
@@ -350,6 +352,69 @@ fn check_scenes(scenes: &[Scene], appearance: Appearance) {
         "pixel baselines failed:\n{}",
         failures.join("\n")
     );
+}
+
+/// The tallest window, in points: the views are checked here as well as at the least height.
+const TALL: f32 = 900.0;
+
+/// The views whose lists and scroll areas must stretch with the window.
+fn tall_scenes() -> Vec<Scene> {
+    vec![
+        Scene::Home,
+        Scene::Settings(SettingsShot::Top),
+        Scene::Models,
+        Scene::Files(FilesShot::Empty),
+        Scene::Files(FilesShot::Queue),
+        Scene::History,
+    ]
+}
+
+fn check_tall_scenes(appearance: Appearance) {
+    let mut failures = Vec::new();
+    for scene in tall_scenes() {
+        let shot = scenes::capture_at(scene, appearance, TALL);
+        let name = format!("{}-tall-{}", scene.name(), appearance.key());
+        assert_eq!(shot.image.dimensions(), (1880, 1800), "{name}");
+        check_image(&name, &shot.image, &mut failures);
+        scan_shot(scene, &name, &shot, &mut failures);
+        if let Some(view) = selected_view(scene) {
+            assert_shell_tokens(&shot.image, appearance, Some(view), false, &name);
+        }
+        // The content pane is painted to the bottom edge, not cut off at 600.
+        let content = match appearance {
+            Appearance::Dark => theme::dark::CONTENT,
+            Appearance::Light => theme::light::CONTENT,
+        };
+        // Inside the 24 pt margin, left of the groups, 3 pt above the window bottom.
+        assert_eq!(
+            hex_at(&shot.image, 240, 897),
+            format!("#{:06X}", content >> 8),
+            "{name}: content at the bottom"
+        );
+        let node = |id: &str| shot.nodes.iter().find(|node| node.id == id && node.visible);
+        if let Some(scroll) = node("content.scroll") {
+            assert!(
+                scroll.rect.bottom() > space::WINDOW_HEIGHT + 100.0,
+                "{name}: the scroll area ends at {} and does not follow the height",
+                scroll.rect.bottom()
+            );
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "pixel baselines failed:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn the_views_stretch_to_the_tallest_window_in_dark() {
+    check_tall_scenes(Appearance::Dark);
+}
+
+#[test]
+fn the_views_stretch_to_the_tallest_window_in_light() {
+    check_tall_scenes(Appearance::Light);
 }
 
 #[test]
