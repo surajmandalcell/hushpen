@@ -40,19 +40,22 @@ runs whisper.cpp in a child process.
   Ollama or LM Studio. Off until you turn it on.
 - Command Mode: hold a key, speak an instruction, and the model edits the
   selected text. It needs Qwen3.5 2B or the endpoint.
-- Personal dictionary of words and replacements.
+- Personal dictionary of words and replacements, with word packs for Indian
+  names and places, Hinglish words, and tech terms.
 - History with search, copy, reprocess, delete with undo, and export to TXT,
   SRT, VTT, and JSON.
 - Manual: drop audio files anywhere on the window to transcribe or translate
   them in a queue (WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF, up to 12 hours
   each), with the time left, Copy, Export, Show in History, and Retry.
 - Read aloud: typed text or a `.txt` or `.md` file, spoken by the system
-  voice or by Kokoro, with Play and Export Audio to WAV. A shortcut reads the
-  text selected in any app.
+  voice, by Kokoro (one voice or a mix of two), or by Chatterbox in a voice
+  you clone, with Play and Export Audio to WAV. A shortcut reads the text
+  selected in any app.
 - Settings in one list with a search field (Cmd+F on macOS, Ctrl+F on
   Linux).
 - Flow bar that shows the dictation state without taking focus, a tray menu,
-  and a fixed 940x600 window that follows the system Light or Dark setting.
+  and a 940 px wide window that grows in height and follows the system Light
+  or Dark setting.
 - Opt-in update check with signed updates. No telemetry.
 
 Platforms: macOS 13 or later on Apple silicon, and Linux x64 and arm64 on X11.
@@ -64,8 +67,8 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 ### macOS (Apple silicon)
 
-1. Download `Hushpen-2.2.0-macos-arm64.dmg` and drag Hushpen to Applications,
-   or unzip `Hushpen-2.2.0-macos-arm64.zip` and move `Hushpen.app` to
+1. Download `Hushpen-2.3.0-macos-arm64.dmg` and drag Hushpen to Applications,
+   or unzip `Hushpen-2.3.0-macos-arm64.zip` and move `Hushpen.app` to
    Applications.
 2. Open Hushpen. The app is signed with a Developer ID certificate and
    notarized by Apple, so macOS opens it after one standard confirmation.
@@ -74,10 +77,10 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 Replace `x64` with `arm64` on an Arm machine.
 
-- AppImage: `chmod +x Hushpen-2.2.0-linux-x64.AppImage`, then run it.
-- Debian and Ubuntu: `sudo apt install ./Hushpen-2.2.0-linux-x64.deb`
-- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.2.0-linux-x64.rpm`
-- tar.gz: `tar xzf Hushpen-2.2.0-linux-x64.tar.gz`, then run `hushpen` from
+- AppImage: `chmod +x Hushpen-2.3.0-linux-x64.AppImage`, then run it.
+- Debian and Ubuntu: `sudo apt install ./Hushpen-2.3.0-linux-x64.deb`
+- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.3.0-linux-x64.rpm`
+- tar.gz: `tar xzf Hushpen-2.3.0-linux-x64.tar.gz`, then run `hushpen` from
   the new folder.
 
 Every package holds three programs: `hushpen`, the `hushpen-llm` helper that

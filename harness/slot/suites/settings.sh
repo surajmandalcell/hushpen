@@ -445,7 +445,7 @@ wait_until 10 tree_has about.version || failures+="the About view did not render
 version=$(tree_get about.version text)
 cli_version=$(/app/hushpen --version 2>/dev/null | awk '{print $2}')
 [ "$version" = "$cli_version" ] || failures+="the version row reads '$version', --version says '$cli_version'; "
-case "$version" in 2.2.0*) ;; *) failures+="the version '$version' does not start with 2.2.0; " ;; esac
+case "$version" in 2.3.0*) ;; *) failures+="the version '$version' does not start with 2.3.0; " ;; esac
 folder=$(tree_get about.dataFolder text)
 [ "$folder" = "~/hp-moved" ] || failures+="the data folder row reads '$folder'; "
 engine=$(tree_get about.engine text)
