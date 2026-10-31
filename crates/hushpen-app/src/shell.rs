@@ -328,6 +328,11 @@ impl Shell {
                     read.update(cx, |read, cx| read.refresh(cx));
                 }
             }
+            if view == View::Models
+                && let Some(models) = &self.models
+            {
+                models.update(cx, |models, cx| models.opened(cx));
+            }
             // The Settings view re-reads launch at login from the system.
             if view == View::Settings
                 && let Some(settings) = &self.settings
