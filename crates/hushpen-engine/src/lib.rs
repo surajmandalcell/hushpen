@@ -9,6 +9,9 @@ mod engine_log;
 mod entry;
 mod llm_client;
 mod manager;
+// Calls the Parakeet C API of the vendored whisper.cpp tree (see the module comment).
+#[allow(unsafe_code)]
+mod parakeet;
 // madvise on the model's own mappings (see the module comment).
 #[allow(unsafe_code)]
 mod pageout;
@@ -38,6 +41,7 @@ pub use llm_client::{
     LlmClient, LlmDone, LlmJobHandle, LlmLoadHandle, LlmLoaded, LlmOutcome, LlmSpec, LlmState,
     LlmStatus, LlmWork, LlmWorker,
 };
+pub use parakeet::ParakeetEngine;
 pub use server::model_name;
 pub use tts_client::{
     TtsAudio, TtsClient, TtsJobHandle, TtsLoadHandle, TtsLoaded, TtsOutcome, TtsReply, TtsSpec,

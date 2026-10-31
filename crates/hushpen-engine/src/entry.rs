@@ -2,13 +2,15 @@
 //!
 //! No arguments serves the frame protocol on stdin and stdout. `--smoke <wav> --model <ggml file>`
 //! transcribes one file, prints the result, and exits; it opens no window and no data folder.
+//! Both load Parakeet for a `ggml-parakeet*` file and Whisper for any other.
 
-use crate::asr::{AsrEngine, CancelFlag, LoadOptions, TranscribeOptions};
+use crate::asr::{AsrEngine, CancelFlag, EngineError, LoadOptions, TranscribeOptions};
+use crate::parakeet::ParakeetEngine;
 use crate::server::{Loader, ServerConfig, serve};
 use crate::wav;
 use crate::whisper::WhisperEngine;
 use hushpen_core::threads::auto_threads;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -22,10 +24,21 @@ pub fn gpu_disabled_by_env() -> bool {
     std::env::var_os("HUSHPEN_DISABLE_GPU").is_some_and(|value| !value.is_empty() && value != "0")
 }
 
-fn whisper_loader() -> Arc<Loader> {
-    Arc::new(|path, options| {
-        WhisperEngine::load(path, options).map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
-    })
+fn is_parakeet(model: &Path) -> bool {
+    model
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().starts_with("ggml-parakeet"))
+}
+
+fn load_speech_model(
+    model: &Path,
+    options: LoadOptions,
+) -> Result<Box<dyn AsrEngine>, EngineError> {
+    if is_parakeet(model) {
+        ParakeetEngine::load(model, options).map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
+    } else {
+        WhisperEngine::load(model, options).map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
+    }
 }
 
 /// Runs the engine child. `args` are the arguments after `engine`.
@@ -35,7 +48,7 @@ pub fn engine_main(args: &[String]) -> ExitCode {
         let config = ServerConfig {
             version: hushpen_core::BUILD_VERSION.to_owned(),
             gpu_available: gpu_available(),
-            loader: whisper_loader(),
+            loader: Arc::new(load_speech_model) as Arc<Loader>,
         };
         return ExitCode::from(serve(std::io::stdin().lock(), std::io::stdout(), config));
     }
@@ -83,7 +96,7 @@ fn run_smoke(smoke: &Smoke) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut engine = match WhisperEngine::load(&smoke.model, options) {
+    let mut engine = match load_speech_model(&smoke.model, options) {
         Ok(engine) => engine,
         Err(problem) => {
             eprintln!("hushpen engine: {problem}");
@@ -121,5 +134,22 @@ mod tests {
         assert!(parse_smoke(&strings(&["--smoke", "a.wav"])).is_err());
         assert!(parse_smoke(&strings(&["--model", "m.bin"])).is_err());
         assert!(parse_smoke(&strings(&["--bogus"])).is_err());
+    }
+
+    #[test]
+    fn the_model_file_name_picks_the_engine() {
+        for parakeet in [
+            "/m/ggml-parakeet-tdt-0.6b-v3-q4_k.bin",
+            "ggml-parakeet-tdt-0.6b-v3-q8_0.bin",
+        ] {
+            assert!(is_parakeet(Path::new(parakeet)), "{parakeet}");
+        }
+        for whisper in [
+            "/m/ggml-base-q5_1.bin",
+            "/m/ggml-large-v3-turbo-q5_0.bin",
+            "/parakeet/ggml-small-q5_1.bin",
+        ] {
+            assert!(!is_parakeet(Path::new(whisper)), "{whisper}");
+        }
     }
 }
