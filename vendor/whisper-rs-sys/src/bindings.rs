@@ -6610,3 +6610,5 @@ pub type __builtin_va_list = *mut ::std::os::raw::c_char;
 pub struct ggml_backend_buffer {
     pub _address: u8,
 }
+
+include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/parakeet_bindings.rs"));
