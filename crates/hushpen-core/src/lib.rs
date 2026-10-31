@@ -10,6 +10,7 @@ pub mod endpoint;
 pub mod error;
 pub mod export;
 pub mod flow_bar;
+pub mod idle;
 pub mod insert;
 pub mod kokoro;
 pub mod language;
