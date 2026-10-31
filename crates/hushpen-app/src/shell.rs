@@ -741,6 +741,11 @@ impl Render for Shell {
             window.defer(cx, move |window, cx| window.focus(&home, cx));
         }
         self.onboarding_shown = onboarding.is_some();
+        // The window has no frame to resize by on Linux.
+        #[cfg(not(target_os = "macos"))]
+        let grip = Some(crate::window_chrome::resize_grip());
+        #[cfg(target_os = "macos")]
+        let grip: Option<gpui_kit::Div> = None;
         match onboarding {
             // Opaque: the window is transparent on macOS and onboarding has no sidebar.
             Some(onboarding) => frame
@@ -755,7 +760,9 @@ impl Render for Shell {
                         .min_h_0()
                         .overflow_y_scroll()
                         .child(onboarding::panel::render(&onboarding, window, cx)),
-                ),
+                )
+                .relative()
+                .children(grip),
             None => {
                 let sheet = self
                     .models
@@ -805,6 +812,7 @@ impl Render for Shell {
                     .child(sidebar)
                     .child(content)
                     .children(sheet)
+                    .children(grip)
             }
         }
     }

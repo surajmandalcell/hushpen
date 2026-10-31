@@ -1,4 +1,4 @@
-use super::{ChromeError, MOTIF_FRAMELESS_FIXED, motif_hints_locked, size_hints_pinned};
+use super::{ChromeError, MOTIF_FRAMELESS, SizeLimits, motif_hints_locked, size_hints_match};
 use crate::x11util::{fail, intern};
 use x11rb::connection::Connection;
 use x11rb::properties::WmSizeHints;
@@ -14,16 +14,15 @@ const NET_WM_STATE_REMOVE: u32 = 0;
 /// The sender is an application, not a pager (EWMH source indication).
 const SOURCE_APPLICATION: u32 = 1;
 
-/// Set min = max = `width` x `height` in `WM_NORMAL_HINTS`, remove the frame
-/// and the resize functions through `_MOTIF_WM_HINTS`, and keep the window out
-/// of full screen and maximized states. Uses a second connection (GPUI owns
-/// the first one).
+/// Set the width and the two heights in `WM_NORMAL_HINTS` (so only the height can change),
+/// remove the frame and the maximize function through `_MOTIF_WM_HINTS`, and keep the window
+/// out of full screen and maximized states. Uses a second connection (GPUI owns the first one).
 ///
 /// GPUI writes its own `WM_NORMAL_HINTS` (maximum 16384) and `_MOTIF_WM_HINTS`
 /// while it sets the window up, and which write comes last is a race with this
 /// call. A guard thread therefore watches both properties and writes ours back
 /// whenever they stop matching, so the window manager always ends on them.
-pub(super) fn lock(window: u32, width: u16, height: u16) -> Result<(), ChromeError> {
+pub(super) fn lock(window: u32, limits: SizeLimits) -> Result<(), ChromeError> {
     let (conn, screen) = x11rb::connect(None).map_err(|e| fail("x11 connect", e))?;
     let root = conn.setup().roots[screen].root;
 
@@ -32,8 +31,7 @@ pub(super) fn lock(window: u32, width: u16, height: u16) -> Result<(), ChromeErr
     let guard = Guard {
         window,
         root,
-        width,
-        height,
+        limits,
         motif: intern(&conn, b"_MOTIF_WM_HINTS")?,
         state: intern(&conn, b"_NET_WM_STATE")?,
         forbidden: [
@@ -56,15 +54,14 @@ pub(super) fn lock(window: u32, width: u16, height: u16) -> Result<(), ChromeErr
         .name("x11-chrome-guard".into())
         .spawn(move || guard.run(&conn))
         .map_err(|e| fail("start the state guard", e))?;
-    log::info!("window pinned to {width}x{height} on x11 window 0x{window:x}");
+    log::info!("window limited to {limits:?} on x11 window 0x{window:x}");
     Ok(())
 }
 
 struct Guard {
     window: Window,
     root: Window,
-    width: u16,
-    height: u16,
+    limits: SizeLimits,
     motif: Atom,
     state: Atom,
     forbidden: [Atom; 3],
@@ -98,14 +95,13 @@ impl Guard {
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .flatten();
-        let pinned = normal.is_some_and(|hints| {
-            size_hints_pinned(hints.min_size, hints.max_size, self.width, self.height)
-        });
-        if !pinned {
-            let size = (i32::from(self.width), i32::from(self.height));
+        let held = normal
+            .is_some_and(|hints| size_hints_match(hints.min_size, hints.max_size, self.limits));
+        if !held {
+            let width = i32::from(self.limits.width);
             let mut hints = WmSizeHints::new();
-            hints.min_size = Some(size);
-            hints.max_size = Some(size);
+            hints.min_size = Some((width, i32::from(self.limits.min_height)));
+            hints.max_size = Some((width, i32::from(self.limits.max_height)));
             hints
                 .set_normal_hints(conn, self.window)
                 .map_err(|e| fail("set WM_NORMAL_HINTS", e))?
@@ -125,7 +121,7 @@ impl Guard {
                 self.window,
                 self.motif,
                 self.motif,
-                &MOTIF_FRAMELESS_FIXED,
+                &MOTIF_FRAMELESS,
             )
             .map_err(|e| fail("set _MOTIF_WM_HINTS", e))?
             .check()

@@ -14,23 +14,162 @@ use crate::theme::{self, chrome, size as sizes, space};
 use gpui_kit::base::Root;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyWindowHandle, App, Bounds, Hsla, Point, Rgba, Styled as _, TitlebarOptions, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowOptions, point, px, size, transparent_black,
+    AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, Global, Hsla, PlatformDisplay,
+    Point, Rgba, Styled as _, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowOptions, point, px, size, transparent_black,
 };
-use hushpen_platform::window::Frame;
+use hushpen_platform::window::{Frame, SizeLimits};
+use std::rc::Rc;
 use std::time::Duration;
 
 /// How often the app reads whether a compositor runs. One selection-owner query, so cheap.
 const COMPOSITOR_POLL: Duration = Duration::from_secs(1);
 
-/// The options for the main window. The caller adds the app id.
-pub fn main_window_options(cx: &App) -> WindowOptions {
-    let window_size = size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT));
+/// The tallest the window grows, on a screen with room for it.
+pub const MAX_HEIGHT: f32 = 900.0;
+
+/// The setting that holds the height the window had at the last resize.
+pub const HEIGHT_KEY: &str = "ui.windowHeight";
+
+/// How long a height must hold still before it is saved, so a drag writes the file once.
+const SAVE_DELAY: Duration = Duration::from_millis(500);
+
+/// The tallest the window may be on a screen whose usable height is `screen`. A screen shorter
+/// than the least height still gets the least height.
+pub fn max_height(screen: f32) -> f32 {
+    MAX_HEIGHT.min(screen).max(space::WINDOW_HEIGHT)
+}
+
+/// The height the window opens with: the saved one, held between 600 and what the screen allows.
+/// Nothing saved, or a value that is not a number, gives the least height.
+pub fn clamp_height(saved: Option<f32>, screen: f32) -> f32 {
+    match saved {
+        Some(height) if height.is_finite() => {
+            height.clamp(space::WINDOW_HEIGHT, max_height(screen))
+        }
+        _ => space::WINDOW_HEIGHT,
+    }
+}
+
+/// What to write for the current height, or `None` when it is the height already saved.
+fn height_to_save(current: f32, saved: f32, screen: f32) -> Option<i64> {
+    let height = clamp_height(Some(current), screen).round();
+    (height != saved.round()).then_some(height as i64)
+}
+
+/// The width and height limits the platform gives the native window.
+pub fn size_limits(screen: f32) -> SizeLimits {
+    SizeLimits {
+        width: space::WINDOW_WIDTH as u16,
+        min_height: space::WINDOW_HEIGHT as u16,
+        max_height: max_height(screen) as u16,
+    }
+}
+
+/// The usable height of the screen the app opens on. With no screen known, the window is not
+/// held below its own limit.
+pub fn screen_height(cx: &App) -> f32 {
+    cx.primary_display().map_or(MAX_HEIGHT, visible_height)
+}
+
+fn visible_height(display: Rc<dyn PlatformDisplay>) -> f32 {
+    f32::from(display.visible_bounds().size.height)
+}
+
+/// The options for the main window, at `saved` height when there is one. The caller adds the
+/// app id.
+pub fn main_window_options(saved: Option<f32>, cx: &App) -> WindowOptions {
+    let height = clamp_height(saved, screen_height(cx));
+    let window_size = size(px(space::WINDOW_WIDTH), px(height));
     options(
         Bounds::centered(None, window_size, cx),
         cfg!(target_os = "macos"),
         chrome::sidebar(cx).see_through(),
     )
+}
+
+/// Writes the window height after it has held still, and holds the window inside its limits on
+/// a system that does not enforce them.
+struct HeightMemory {
+    saved: f32,
+    /// A resize that comes before the delay ends cancels the save of the one before it.
+    generation: u64,
+    save: Rc<dyn Fn(i64)>,
+}
+
+/// Keeps the memory alive: the window bounds observer ends when its entity is dropped.
+struct Kept(
+    #[expect(dead_code, reason = "held only to keep the entity alive")] Entity<HeightMemory>,
+);
+
+impl Global for Kept {}
+
+impl HeightMemory {
+    fn changed(&mut self, height: f32, screen: f32, cx: &mut Context<Self>) {
+        self.generation += 1;
+        let Some(next) = height_to_save(height, self.saved, screen) else {
+            return;
+        };
+        let generation = self.generation;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SAVE_DELAY).await;
+            let _ = this.update(cx, |memory, _| {
+                if memory.generation == generation {
+                    memory.saved = next as f32;
+                    (memory.save)(next);
+                }
+            });
+        })
+        .detach();
+    }
+}
+
+/// Saves the main window height with `save` once a resize settles. `saved` is the height the
+/// window opened with.
+pub fn remember_height(saved: f32, save: Rc<dyn Fn(i64)>, window: &mut Window, cx: &mut App) {
+    let memory = cx.new(|_| HeightMemory {
+        saved,
+        generation: 0,
+        save,
+    });
+    memory.update(cx, |_, cx| {
+        cx.observe_window_bounds(window, |memory, window, cx| {
+            let screen = window.display(cx).map_or(MAX_HEIGHT, visible_height);
+            let height = f32::from(window.viewport_size().height);
+            let tallest = max_height(screen);
+            if height > tallest + 0.5 {
+                window.resize(size(px(space::WINDOW_WIDTH), px(tallest)));
+                return;
+            }
+            // The blur follows the sidebar, which is as tall as the window.
+            #[cfg(target_os = "linux")]
+            apply_look(window, cx);
+            memory.changed(height, screen, cx);
+        })
+        .detach();
+    });
+    cx.set_global(Kept(memory));
+}
+
+/// How tall the resize strip is, in points.
+#[cfg(not(target_os = "macos"))]
+const RESIZE_GRIP: f32 = 4.0;
+
+/// The strip along the bottom edge that starts a resize. Linux draws no frame, so the window
+/// manager has no edge to grab. macOS resizes by the frame AppKit draws.
+#[cfg(not(target_os = "macos"))]
+pub fn resize_grip() -> impl gpui_kit::IntoElement {
+    use gpui_kit::{CursorStyle, InteractiveElement as _, MouseButton, ResizeEdge, div};
+    div()
+        .absolute()
+        .left_0()
+        .right_0()
+        .bottom_0()
+        .h(px(RESIZE_GRIP))
+        .cursor(CursorStyle::ResizeUpDown)
+        .on_mouse_down(MouseButton::Left, |_, window, _| {
+            window.start_window_resize(ResizeEdge::Bottom);
+        })
 }
 
 fn options(
@@ -47,9 +186,10 @@ fn options(
             traffic_light_position: Some(traffic_light_position(sizes::TRAFFIC_LIGHT)),
         }),
         window_background: background(see_through),
-        is_resizable: false,
+        // The native limits (see `size_limits`) keep the width and cap the height.
+        is_resizable: true,
         is_minimizable: true,
-        window_min_size: Some(bounds.size),
+        window_min_size: Some(size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT))),
         ..Default::default()
     }
 }
@@ -138,7 +278,7 @@ pub fn apply_look(window: &mut Window, cx: &mut App) {
             x: 0,
             y: 0,
             width: device(space::SIDEBAR_WIDTH),
-            height: device(space::WINDOW_HEIGHT),
+            height: device(f32::from(window.viewport_size().height)),
         };
         hushpen_platform::window::blur_behind(handle, sidebar)
     } else {
@@ -199,7 +339,6 @@ pub fn root_fill_name(window: &Window, cx: &mut App) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui_kit::AppContext as _;
     use gpui_kit::test::TestWindowExt as _;
 
     fn bounds() -> Bounds<gpui_kit::Pixels> {
@@ -210,16 +349,99 @@ mod tests {
     }
 
     #[test]
-    fn the_window_is_940_by_600_and_cannot_be_resized() {
+    fn the_window_is_940_wide_and_resizes_in_height_from_600() {
         let options = options(bounds(), true, true);
         assert_eq!((space::WINDOW_WIDTH, space::WINDOW_HEIGHT), (940.0, 600.0));
-        assert!(!options.is_resizable);
+        assert!(options.is_resizable);
         assert!(options.is_minimizable);
         assert_eq!(options.window_min_size, Some(bounds().size));
         assert_eq!(
             options.window_bounds,
             Some(WindowBounds::Windowed(bounds()))
         );
+    }
+
+    #[test]
+    fn the_tallest_window_is_900_or_the_screen_when_it_is_shorter() {
+        assert_eq!(max_height(1440.0), 900.0);
+        assert_eq!(max_height(900.0), 900.0);
+        assert_eq!(max_height(780.0), 780.0);
+        assert_eq!(max_height(500.0), 600.0, "never below the least height");
+    }
+
+    #[test]
+    fn a_saved_height_is_held_between_600_and_the_screen_limit() {
+        assert_eq!(clamp_height(None, 1000.0), 600.0);
+        assert_eq!(clamp_height(Some(720.0), 1000.0), 720.0);
+        assert_eq!(clamp_height(Some(300.0), 1000.0), 600.0);
+        assert_eq!(clamp_height(Some(2000.0), 1000.0), 900.0);
+        assert_eq!(clamp_height(Some(850.0), 700.0), 700.0, "a smaller screen");
+        assert_eq!(clamp_height(Some(f32::NAN), 1000.0), 600.0);
+        assert_eq!(clamp_height(Some(f32::INFINITY), 1000.0), 600.0);
+    }
+
+    #[test]
+    fn a_height_is_saved_only_when_it_differs_from_the_saved_one() {
+        assert_eq!(height_to_save(700.0, 600.0, 1000.0), Some(700));
+        assert_eq!(height_to_save(700.4, 700.0, 1000.0), None);
+        assert_eq!(height_to_save(600.0, 600.0, 1000.0), None);
+        assert_eq!(height_to_save(1200.0, 900.0, 1000.0), None, "held at 900");
+        assert_eq!(height_to_save(1200.0, 600.0, 1000.0), Some(900));
+    }
+
+    #[test]
+    fn the_native_limits_keep_the_width_and_cap_the_height() {
+        assert_eq!(
+            size_limits(1440.0),
+            SizeLimits {
+                width: 940,
+                min_height: 600,
+                max_height: 900
+            }
+        );
+        assert_eq!(size_limits(750.0).max_height, 750);
+    }
+
+    #[gpui_kit::test]
+    fn a_resize_saves_its_final_height_once_after_it_settles(cx: &mut gpui_kit::TestAppContext) {
+        use std::cell::RefCell;
+        let handle = open_shell(cx);
+        let saves = Rc::new(RefCell::new(Vec::new()));
+        let log = Rc::clone(&saves);
+        cx.update_window(handle, |_, window, cx| {
+            remember_height(
+                600.0,
+                Rc::new(move |height| log.borrow_mut().push(height)),
+                window,
+                cx,
+            );
+        })
+        .unwrap();
+        for height in [650.0, 700.0, 720.0] {
+            cx.simulate_window_resize(handle, size(px(space::WINDOW_WIDTH), px(height)));
+            cx.executor().advance_clock(SAVE_DELAY / 4);
+            cx.run_until_parked();
+        }
+        assert!(saves.borrow().is_empty(), "still moving");
+        cx.executor().advance_clock(SAVE_DELAY);
+        cx.run_until_parked();
+        assert_eq!(*saves.borrow(), [720]);
+    }
+
+    #[gpui_kit::test]
+    fn a_window_taller_than_the_limit_is_brought_back_to_it(cx: &mut gpui_kit::TestAppContext) {
+        let handle = open_shell(cx);
+        cx.update_window(handle, |_, window, cx| {
+            remember_height(600.0, Rc::new(|_| {}), window, cx);
+        })
+        .unwrap();
+        cx.simulate_window_resize(handle, size(px(space::WINDOW_WIDTH), px(1200.0)));
+        let height = cx
+            .update_window(handle, |_, window, _| {
+                f32::from(window.viewport_size().height)
+            })
+            .unwrap();
+        assert_eq!(height, MAX_HEIGHT);
     }
 
     #[test]

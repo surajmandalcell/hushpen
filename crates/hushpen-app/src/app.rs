@@ -24,14 +24,16 @@ use crate::read_aloud::{Parts as ReadParts, ReadAloud};
 use crate::settings::{AiParts, Parts as SettingsParts, Settings};
 use crate::shell::Shell;
 use crate::shortcuts::Shortcuts;
-use crate::storage;
+use crate::storage::{self, Storage};
 use crate::theme::{self, space};
 use crate::tray::{self, Surfaces};
 use crate::tts_host::{TtsHost, VoiceModel};
 use crate::updater::{self, FeedChecker, Parts as UpdaterParts, SystemInstaller, Updater};
 use crate::views::View;
 use crate::voices::{Parts as VoiceParts, VoiceLibrary};
-use crate::window_chrome::main_window_options;
+use crate::window_chrome::{
+    HEIGHT_KEY, clamp_height, main_window_options, remember_height, size_limits,
+};
 use futures::StreamExt;
 use futures::channel::mpsc;
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, Window, WindowOptions};
@@ -171,7 +173,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             );
             // Read before the window opens: its options follow the compositor.
             theme::chrome::set_compositor(hushpen_platform::window::compositor_running(), cx);
-            let (handle, shell) = match open_main_window(cx, launch) {
+            let (handle, shell) = match open_main_window(cx, launch, &storage) {
                 Ok(opened) => opened,
                 Err(error) => {
                     eprintln!("hushpen: could not open the window: {error:#}");
@@ -754,7 +756,13 @@ fn start_insert(controller: &Entity<Controller>, cx: &mut App) {
 fn open_main_window(
     cx: &mut App,
     launch: Launch,
+    storage: &Rc<Storage>,
 ) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
+    let saved = storage
+        .settings
+        .get(HEIGHT_KEY)
+        .and_then(|value| value.as_f64())
+        .map(|height| height as f32);
     // The window options follow the launch: only a normal start may take the focus, and a
     // hidden start does not put the window on the screen. Creating a key window would
     // activate the app even on `open -g`.
@@ -763,13 +771,29 @@ fn open_main_window(
             app_id: Some(APP_ID.into()),
             focus: launch == Launch::Shown,
             show: launch != Launch::Hidden,
-            ..main_window_options(cx)
+            ..main_window_options(saved, cx)
         },
         cx,
         |window, cx| cx.new(|cx| Shell::new(window, cx)),
     )?;
-    let _ = handle.update(cx, |_, window, _| {
-        lock_native_chrome(window);
+    let screen = crate::window_chrome::screen_height(cx);
+    let opened = clamp_height(saved, screen);
+    let settings = Rc::clone(storage);
+    let _ = handle.update(cx, |_, window, cx| {
+        lock_native_chrome(window, screen);
+        remember_height(
+            opened,
+            Rc::new(move |height| {
+                if let Err(error) = settings
+                    .settings
+                    .set_internal(HEIGHT_KEY, serde_json::json!(height))
+                {
+                    log::warn!("the window height could not be saved: {error}");
+                }
+            }),
+            window,
+            cx,
+        );
         #[cfg(target_os = "macos")]
         place_traffic_lights(window);
         add_sidebar_material(window);
@@ -796,12 +820,8 @@ fn place_traffic_lights(window: &Window) {
     }
 }
 
-fn lock_native_chrome(window: &Window) {
-    if let Err(error) = lock_chrome(
-        native_handle(window),
-        space::WINDOW_WIDTH as u16,
-        space::WINDOW_HEIGHT as u16,
-    ) {
+fn lock_native_chrome(window: &Window, screen: f32) {
+    if let Err(error) = lock_chrome(native_handle(window), size_limits(screen)) {
         log::warn!("could not lock the window chrome: {error}");
     }
 }

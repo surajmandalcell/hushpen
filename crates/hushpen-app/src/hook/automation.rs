@@ -600,7 +600,7 @@ mod tests {
                         origin: Point::default(),
                         size: size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
                     })),
-                    is_resizable: false,
+                    is_resizable: true,
                     ..Default::default()
                 },
                 cx,
@@ -777,7 +777,7 @@ mod tests {
                 state["window"]["root_fill"]
             );
         }
-        assert_eq!(state["window"]["resizable"], false);
+        assert_eq!(state["window"]["resizable"], true);
         assert_eq!(state["window"]["maximized"], false);
         assert_eq!(state["window"]["fullscreen"], false);
         assert_eq!(state["pipeline"]["state"], "idle");

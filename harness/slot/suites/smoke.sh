@@ -22,12 +22,14 @@ no_frame() {
   got=$(xprop -id "$wid" _NET_FRAME_EXTENTS 2>/dev/null | sed -n 's/.*= *//p')
   case "$got" in "" | "0, 0, 0, 0") return 0 ;; *) return 1 ;; esac
 }
+# The window may be as tall as 900 px, or the screen when it is shorter.
+MAXH=$(xdotool getdisplaygeometry | awk '{print ($2 < 900 ? $2 : 900)}')
 hints_locked() {
   local now
   now=$(hint_state)
   grep -q "program specified minimum size: 940 by 600" <<<"$now" &&
-    grep -q "program specified maximum size: 940 by 600" <<<"$now" &&
-    grep -Eq "_MOTIF_WM_HINTS\(_MOTIF_WM_HINTS\) = (0x3, 0x2c|3, 44), 0x?0, 0x?0, 0x?0" <<<"$now" &&
+    grep -q "program specified maximum size: 940 by $MAXH" <<<"$now" &&
+    grep -Eq "_MOTIF_WM_HINTS\(_MOTIF_WM_HINTS\) = (0x3, 0x2e|3, 46), 0x?0, 0x?0, 0x?0" <<<"$now" &&
     no_frame
 }
 # GPUI maps the window with its own hints (maximum 16384, a server frame) and the lock writes ours
@@ -43,8 +45,8 @@ failures=""
 [ "$size" = 940x600 ] || failures+="size is $size, want 940x600; "
 case "$extents" in "" | "0, 0, 0, 0") ;; *) failures+="_NET_FRAME_EXTENTS is $extents; " ;; esac
 grep -q "program specified minimum size: 940 by 600" <<<"$hints" || failures+="no program minimum of 940 by 600 in WM_NORMAL_HINTS; "
-grep -q "program specified maximum size: 940 by 600" <<<"$hints" || failures+="no program maximum of 940 by 600 in WM_NORMAL_HINTS; "
-check_failures "window maps" "wid=$wid size=$size mapped in ${map_ms} ms, lock settled ${lock_ms} ms later, frame extents '${extents:-absent}', min and max 940 by 600" "$failures"
+grep -q "program specified maximum size: 940 by $MAXH" <<<"$hints" || failures+="no program maximum of 940 by $MAXH in WM_NORMAL_HINTS; "
+check_failures "window maps" "wid=$wid size=$size mapped in ${map_ms} ms, lock settled ${lock_ms} ms later, frame extents '${extents:-absent}', min 940 by 600 and max 940 by $MAXH" "$failures"
 
 echo "== hint lock restores"
 # A later write of the hints, as GPUI does, must not win: overwrite both properties and expect
@@ -250,7 +252,11 @@ wmctrl -i -r "$wid" -b remove,fullscreen
 sleep 0.4
 xdotool windowsize "$wid" 1000 700
 sleep 0.8
-expect_size "xdotool windowsize 1000x700"
+# The width cannot change, the height can: a client resize lands at 940x700.
+[ "$(win_size "$wid")" = 940x700 ] || failures+="xdotool windowsize 1000x700 gave $(win_size "$wid"), want 940x700; "
+xdotool windowsize "$wid" 940 600
+sleep 0.8
+expect_size "xdotool windowsize back to 940x600"
 xdotool windowfocus "$wid"
 xdotool key alt+F10
 sleep 0.8
@@ -263,7 +269,33 @@ shot after-maximize-attempts
 case "$(state)" in
   *MAXIMIZED* | *FULLSCREEN*) failures+="final state is $(state); " ;;
 esac
-check_failures "maximize check" "5 paths (wmctrl maximize and fullscreen, xdotool windowsize, Alt+F10, toolbar double click) kept 940x600" "$failures"
+check_failures "maximize check" "5 paths (wmctrl maximize and fullscreen, xdotool windowsize, Alt+F10, toolbar double click) kept the width 940 and the height 600" "$failures"
+
+echo "== height resize and memory"
+failures=""
+SETTINGS=/data/config/settings.json
+hook_height() { /app/hookctl state | jq -r '.window.height | floor'; }
+saved_height() { jq -r '.values["ui.windowHeight"] // 600' "$SETTINGS" 2>/dev/null; }
+height_is() { [ "$(hook_height)" = "$1" ]; }
+height_saved() { [ "$(saved_height)" = "$1" ]; }
+xdotool windowsize "$wid" 940 720
+wait_until 3 height_is 720 || failures+="a client resize to 720 reads $(hook_height) in the hook state; "
+shot taller
+chrome_problems_taller=$(win_size "$wid")
+[ "$chrome_problems_taller" = 940x720 ] || failures+="the window is $chrome_problems_taller at 720; "
+wait_until 4 height_saved 720 || failures+="the height 720 was not saved (settings say $(saved_height)); "
+xdotool windowsize "$wid" 940 1100
+sleep 0.8
+[ "$(win_size "$wid")" = "940x$MAXH" ] || failures+="a client resize to 1100 gave $(win_size "$wid"), want 940x$MAXH; "
+xdotool windowsize "$wid" 940 660
+wait_until 3 height_is 660 || failures+="a client resize to 660 reads $(hook_height); "
+wait_until 4 height_saved 660 || failures+="the height 660 was not saved (settings say $(saved_height)); "
+app_out=$(/harness/slot/app.sh restart 2>&1)
+wid=$(app_window)
+[ "$(win_size "$wid")" = 940x660 ] || failures+="after a restart the window is $(win_size "$wid"), want 940x660; "
+xdotool windowsize "$wid" 940 600
+wait_until 4 height_saved 600 || failures+="the height 600 was not saved (settings say $(saved_height)); "
+check_failures "height resize and memory" "a client resize to 720 mapped at 940x720 and was saved, 1100 stopped at $MAXH, 660 came back after a restart, and 600 was saved again" "$failures"
 
 echo "== drawn lights act"
 failures=""
