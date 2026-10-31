@@ -57,6 +57,10 @@ pub(crate) fn failure_for(code: &str) -> (&'static str, &'static str) {
             error::COMMAND_NEEDS_AI,
             "Command mode needs AI cleanup or the endpoint",
         ),
+        error::COMMAND_NEEDS_GENERAL_MODEL => (
+            error::COMMAND_NEEDS_GENERAL_MODEL,
+            "Command mode needs Qwen3.5 2B. Choose it in Settings > Cleanup.",
+        ),
         error::LLM_TIMEOUT => (
             error::LLM_TIMEOUT,
             "The AI edit took too long. Your text was not changed.",

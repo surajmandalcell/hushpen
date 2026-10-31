@@ -61,7 +61,8 @@ impl Cleaner for Scripted {
     }
 }
 
-/// Turns AI cleanup on and answers every dictation with `attempt`.
+/// Turns AI cleanup on with Qwen3.5 2B, which also does Command Mode, and answers every
+/// dictation and edit with `attempt`.
 pub(crate) fn ai_answers(
     cx: &mut TestAppContext,
     rig: &Rig,
@@ -71,6 +72,10 @@ pub(crate) fn ai_answers(
     rig.storage
         .settings
         .set("cleanup.llm.enabled", json!(true))
+        .unwrap();
+    rig.storage
+        .settings
+        .set("cleanup.llm.modelId", json!("qwen3.5-2b"))
         .unwrap();
     let calls: Arc<Mutex<Calls>> = Arc::default();
     let seen = Arc::clone(&calls);

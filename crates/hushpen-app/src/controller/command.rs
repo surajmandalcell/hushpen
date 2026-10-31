@@ -11,9 +11,9 @@ use gpui_kit::Context;
 use hushpen_core::cleanup::outcome::Outcome;
 use hushpen_core::dictation::{AppEvent, Mode, State};
 use hushpen_core::error::{
-    COMMAND_NEEDS_AI, COMMAND_NO_SELECTION, ENDPOINT_FAILED, LLM_CRASHED, LLM_GENERATE_FAILED,
-    LLM_GUARD_REJECTED, LLM_LOAD_FAILED, LLM_NO_MODEL, LLM_PROMPT_TOO_LONG, LLM_PROTOCOL,
-    LLM_TIMEOUT, LLM_UNAVAILABLE,
+    COMMAND_NEEDS_AI, COMMAND_NEEDS_GENERAL_MODEL, COMMAND_NO_SELECTION, ENDPOINT_FAILED,
+    LLM_CRASHED, LLM_GENERATE_FAILED, LLM_GUARD_REJECTED, LLM_LOAD_FAILED, LLM_NO_MODEL,
+    LLM_PROMPT_TOO_LONG, LLM_PROTOCOL, LLM_TIMEOUT, LLM_UNAVAILABLE,
 };
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -112,6 +112,9 @@ impl Controller {
         }
         if !self.ai_wanted() {
             return Err(self.refuse_command(COMMAND_NEEDS_AI, now, cx));
+        }
+        if !self.ai_edits() {
+            return Err(self.refuse_command(COMMAND_NEEDS_GENERAL_MODEL, now, cx));
         }
         if starting && let Some(blocker) = self.blocker(cx) {
             self.refused = Some(blocker.code);

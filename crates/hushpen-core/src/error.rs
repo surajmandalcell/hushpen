@@ -60,6 +60,8 @@ pub const ENDPOINT_FAILED: &str = "ENDPOINT_FAILED";
 pub const COMMAND_NO_SELECTION: &str = "COMMAND_NO_SELECTION";
 /// Command Mode was started while AI cleanup is off, so no model can edit the selection.
 pub const COMMAND_NEEDS_AI: &str = "COMMAND_NEEDS_AI";
+/// Command Mode was started while the local model is one that only cleans text (S1-mini).
+pub const COMMAND_NEEDS_GENERAL_MODEL: &str = "COMMAND_NEEDS_GENERAL_MODEL";
 /// The read-aloud shortcut was pressed with nothing selected.
 pub const READ_NO_SELECTION: &str = "READ_NO_SELECTION";
 pub const HISTORY_NEWER_SCHEMA: &str = "HISTORY_NEWER_SCHEMA";

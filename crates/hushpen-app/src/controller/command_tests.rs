@@ -528,3 +528,35 @@ fn a_chord_released_before_the_selection_arrives_still_runs_the_command(cx: &mut
     assert_eq!(machine_state(cx, &rig), State::Done);
     assert_eq!(only_row(&rig).kind, "command");
 }
+
+#[gpui_kit::test]
+fn with_s1_mini_the_chord_says_command_mode_needs_qwen(cx: &mut TestAppContext) {
+    let (rig, inserter) = setup(cx);
+    let calls = answered(cx, &rig, Attempt::Done(EDITED.into()));
+    rig.storage
+        .settings
+        .set("cleanup.llm.modelId", json!("s1-mini"))
+        .unwrap();
+
+    chord_down(cx, &rig, 1_000).unwrap_err();
+
+    let (code, message) = flash(cx, &rig).unwrap();
+    assert_eq!(code, "COMMAND_NEEDS_GENERAL_MODEL");
+    assert!(message.contains("Qwen3.5 2B"), "{message}");
+    assert_eq!(machine_state(cx, &rig), State::Idle);
+    chord_up(cx, &rig, 3_000);
+    settle(cx, &rig);
+    assert!(pasted(&inserter).is_empty());
+    assert!(calls.lock().unwrap().edits.is_empty());
+
+    rig.storage
+        .settings
+        .set("cleanup.llm.provider", json!("endpoint"))
+        .unwrap();
+    command_run(cx, &rig, 10_000);
+    assert_eq!(
+        pasted(&inserter),
+        [EDITED],
+        "the endpoint edits with any local model"
+    );
+}
