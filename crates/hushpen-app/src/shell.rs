@@ -22,9 +22,9 @@ use crate::updater::{self, Updater};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
-    App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, Point, Render, Role, ScrollHandle,
-    StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
+    AnyElement, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, InteractiveElement,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, Point, Render, Role,
+    ScrollHandle, StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
 };
 use serde_json::json;
 use std::rc::Rc;
@@ -275,6 +275,8 @@ impl Shell {
     /// Shows the model library in the Models view and repaints when it changes.
     pub fn attach_models(&mut self, models: Entity<Models>, cx: &mut Context<Self>) {
         cx.observe(&models, |_, _, cx| cx.notify()).detach();
+        let scroll = self.content_scroll.clone();
+        models.update(cx, |models, _| models.use_scroll(scroll));
         self.models = Some(models);
         cx.notify();
     }
@@ -498,22 +500,17 @@ impl Shell {
     /// and has no line under it. Settings puts its search field at the right end, on the same
     /// line. Manual puts its mode control in the middle of the pane width.
     fn toolbar(&self, shell: &Entity<Shell>, palette: Palette, cx: &App) -> impl IntoElement {
-        let search = self
-            .settings
-            .as_ref()
-            .filter(|_| self.active == View::Settings)
-            .and_then(|settings| settings::search_field(settings, cx))
-            .map(|field| {
-                let shell = shell.clone();
-                div()
-                    .mt(px(theme::chrome_top(size::BUTTON_HEIGHT)))
-                    // A press in the field places the caret; it must not move the window.
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_key_down(move |event: &KeyDownEvent, window, cx| {
-                        shell.update(cx, |shell, cx| shell.search_key(event, window, cx))
-                    })
-                    .child(field)
-            });
+        let search = self.search_field(cx).map(|field| {
+            let shell = shell.clone();
+            div()
+                .mt(px(theme::chrome_top(size::BUTTON_HEIGHT)))
+                // A press in the field places the caret; it must not move the window.
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_key_down(move |event: &KeyDownEvent, window, cx| {
+                    shell.update(cx, |shell, cx| shell.search_key(event, window, cx))
+                })
+                .child(field)
+        });
         // Centered on the pane width, not on the space the title leaves. The wrapper has no
         // handler, so a drag on the empty band still moves the window.
         let mode = self
@@ -564,33 +561,65 @@ impl Shell {
             .children(search)
     }
 
-    /// Esc in the Settings search: the first clears the query, the next leaves the field.
+    /// The search field of the active view, for the right end of the title row: Settings and
+    /// Models have one.
+    fn search_field(&self, cx: &App) -> Option<AnyElement> {
+        match self.active {
+            View::Settings => self
+                .settings
+                .as_ref()
+                .and_then(|settings| settings::search_field(settings, cx))
+                .map(IntoElement::into_any_element),
+            View::Models => self
+                .models
+                .as_ref()
+                .and_then(|models| models::panel::search_field(models, cx))
+                .map(IntoElement::into_any_element),
+            _ => None,
+        }
+    }
+
+    /// Esc in the search: the first clears the query, the next leaves the field.
     fn search_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if event.keystroke.key.as_str() != "escape" {
             return;
         }
-        let Some(settings) = self.settings.clone() else {
+        let cleared = match self.active {
+            View::Settings => self.settings.clone().map(|settings| {
+                settings.update(cx, |settings, cx| settings.clear_search(window, cx))
+            }),
+            View::Models => self
+                .models
+                .clone()
+                .map(|models| models.update(cx, |models, cx| models.clear_search(window, cx))),
+            _ => None,
+        };
+        let Some(cleared) = cleared else {
             return;
         };
-        if !settings.update(cx, |settings, cx| settings.clear_search(window, cx)) {
+        if !cleared {
             window.focus(&self.shell_focus, cx);
         }
         cx.stop_propagation();
     }
 
-    /// Cmd+F on macOS, Ctrl+F on Linux: on the Settings view, the caret goes to its search.
+    /// Cmd+F on macOS, Ctrl+F on Linux: on a view with a search, the caret goes to it.
     fn find_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
-        if self.active != View::Settings
-            || keystroke.key.as_str() != "f"
-            || !keystroke.modifiers.secondary()
-        {
+        if keystroke.key.as_str() != "f" || !keystroke.modifiers.secondary() {
             return;
         }
-        let search = self
-            .settings
-            .as_ref()
-            .and_then(|settings| settings.read(cx).search.clone());
+        let search = match self.active {
+            View::Settings => self
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.read(cx).search.clone()),
+            View::Models => self
+                .models
+                .as_ref()
+                .and_then(|models| models.read(cx).search_field_state().cloned()),
+            _ => None,
+        };
         if let Some(search) = search {
             search.update(cx, |input, cx| input.focus(window, cx));
             cx.stop_propagation();

@@ -1,7 +1,7 @@
 //! The Models view: a section for each kind of model (speech recognition, text cleanup, voices),
 //! with a row for each model. A row's info button opens its details sheet ([`super::sheet`]).
 
-use super::{DELETE, INFO, ModelState, Models, PRIMARY, Row, USE};
+use super::{DELETE, INFO, ModelState, Models, PRIMARY, Row, USE, search};
 use crate::hook;
 use crate::theme::{self, Palette, SECONDARY, StyledType, size, space};
 use crate::ui::{self, Kind, Notice};
@@ -79,9 +79,10 @@ fn section_text(kind: ModelKind) -> (&'static str, &'static str) {
 
 pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
-    let (sections, notice) = {
+    let (sections, notice, query, clear_focus, any_rows) = {
         let models = models.read(cx);
         let active = models.active();
+        let query = models.query().to_owned();
         let sections: Vec<(ModelKind, Vec<RowView>)> = ModelKind::ALL
             .into_iter()
             .map(|kind| {
@@ -89,6 +90,7 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
                 let views = rows
                     .iter()
                     .enumerate()
+                    .filter(|(_, row)| search::matches(row, &query))
                     .map(|(offset, row)| row_view(start + offset, row, &active))
                     .collect();
                 (kind, views)
@@ -98,6 +100,9 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
         (
             sections,
             models.notice().map(|notice| notice.message.clone()),
+            query,
+            models.search.clear.clone(),
+            !models.all_rows().is_empty(),
         )
     };
 
@@ -114,6 +119,9 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
                 None,
             )],
         ));
+    }
+    if sections.is_empty() && any_rows && !query.is_empty() {
+        page = page.child(no_match(palette, models, &query, clear_focus.as_ref()));
     }
     for (kind, views) in sections {
         let (title, help) = section_text(kind);
@@ -137,6 +145,56 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
         ));
     }
     page
+}
+
+/// The group that says no model matches, with a button that clears the search.
+fn no_match(
+    palette: Palette,
+    models: &Entity<Models>,
+    query: &str,
+    focus: Option<&FocusHandle>,
+) -> AnyElement {
+    let models = models.clone();
+    let clear = ui::button(
+        palette,
+        hook::id("models", "search.clear"),
+        "Clear",
+        Kind::Plain,
+        focus,
+        true,
+        move |window, cx| {
+            models.update(cx, |models, cx| models.clear_search(window, cx));
+        },
+    );
+    ui::group(
+        hook::id("models", "search.empty.group"),
+        palette,
+        vec![ui::notice_row(
+            palette,
+            hook::id("models", "search.empty"),
+            format!("No models match \"{query}\""),
+            Notice::Info,
+            Some(clear.into_any_element()),
+        )],
+    )
+    .into_any_element()
+}
+
+/// The search field for the right end of the title row, or nothing before it is attached.
+pub fn search_field(models: &Entity<Models>, cx: &App) -> Option<impl IntoElement + use<>> {
+    let palette = theme::palette(cx);
+    let state = models.read(cx).search_field_state()?.clone();
+    Some(
+        div()
+            .w(px(size::SEARCH_FIELD_WIDTH))
+            .flex_none()
+            .child(ui::search_field(
+                palette,
+                hook::id("models", "search"),
+                "Search models",
+                &state,
+            )),
+    )
 }
 
 fn row_view(index: usize, row: &Row, active: &str) -> RowView {
