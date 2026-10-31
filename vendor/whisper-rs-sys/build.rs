@@ -342,11 +342,13 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", destination.display());
     if cfg!(feature = "intel-sycl") {
         println!("cargo:rustc-link-lib=whisper");
+        println!("cargo:rustc-link-lib=parakeet");
         println!("cargo:rustc-link-lib=ggml");
         println!("cargo:rustc-link-lib=ggml-base");
         println!("cargo:rustc-link-lib=ggml-cpu");
     } else {
         println!("cargo:rustc-link-lib=static=whisper");
+        println!("cargo:rustc-link-lib=static=parakeet");
         println!("cargo:rustc-link-lib=static=ggml");
         println!("cargo:rustc-link-lib=static=ggml-base");
         println!("cargo:rustc-link-lib=static=ggml-cpu");
