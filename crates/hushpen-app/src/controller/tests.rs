@@ -977,6 +977,60 @@ fn turning_the_cue_sounds_off_silences_every_cue(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn dictation_output_control_is_independent_of_the_cue_sound_setting(cx: &mut TestAppContext) {
+    for mute in [false, true] {
+        let rig = rig(cx, &["base"], "base");
+        rig.storage
+            .settings
+            .set("audio.cueSounds", json!(false))
+            .unwrap();
+        rig.storage
+            .settings
+            .set("audio.muteWhileDictating", json!(mute))
+            .unwrap();
+        let audio = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let heard = Arc::clone(&audio);
+        rig.controller.update(cx, |controller, _| {
+            controller.attach_dictation_audio(Arc::new(move |cue, volume, mute| {
+                heard.lock().unwrap().push((cue, volume, mute));
+            }));
+        });
+        say(&rig, outcome_text("words", "en"));
+        hold_run(cx, &rig, 1_000);
+        assert_eq!(
+            *audio.lock().unwrap(),
+            [
+                (Some(Cue::Start), None, mute),
+                (None, None, false),
+                (Some(Cue::Stop), None, mute),
+            ]
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn a_cancel_and_a_discarded_tap_both_restore_the_output(cx: &mut TestAppContext) {
+    for end in [AppEvent::Esc, AppEvent::HoldUp] {
+        let rig = rig(cx, &["base"], "base");
+        let audio = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let heard = Arc::clone(&audio);
+        rig.controller.update(cx, |controller, _| {
+            controller.attach_dictation_audio(Arc::new(move |cue, _, _| {
+                heard.lock().unwrap().push(cue);
+            }));
+        });
+        send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
+        send_at(cx, &rig, 1_050, end.clone()).unwrap();
+        let expected = if matches!(end, AppEvent::Esc) {
+            vec![Some(Cue::Start), None, Some(Cue::Cancel)]
+        } else {
+            vec![Some(Cue::Start), None]
+        };
+        assert_eq!(*audio.lock().unwrap(), expected);
+    }
+}
+
+#[gpui_kit::test]
 fn a_start_that_fails_plays_no_start_cue(cx: &mut TestAppContext) {
     let rig = rig(cx, &["base"], "base");
     let played = listen_for_cues(cx, &rig);
