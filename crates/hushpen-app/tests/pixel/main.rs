@@ -283,6 +283,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::HistoryClear | Scene::HistoryRead | Scene::HistoryReadDetail => Some(View::History),
         Scene::Home | Scene::Menu(_) => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
+        Scene::CleanupProfile => Some(View::Settings),
         Scene::Files(_) => Some(View::Manual),
         Scene::Models | Scene::ModelsBottom | Scene::ModelsSearch | Scene::ModelsNoMatch => {
             Some(View::Models)
@@ -291,6 +292,9 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::ModelsDetails
         | Scene::EnhanceTune
         | Scene::EnhanceFind
+        | Scene::PromptQwen
+        | Scene::PromptS1
+        | Scene::DictionaryPreview
         | Scene::Voices
         | Scene::VoicesAdd => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),

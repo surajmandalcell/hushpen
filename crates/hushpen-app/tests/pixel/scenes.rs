@@ -129,6 +129,14 @@ pub enum Scene {
     EnhanceTune,
     /// The audio enhance sheet on Find best settings, waiting for the reading.
     EnhanceFind,
+    /// Cleanup searched by "profile": an edited Notes profile and the Prompt row.
+    CleanupProfile,
+    /// The prompt sheet for Qwen3.5 2B: the editable prompt and what goes with it.
+    PromptQwen,
+    /// The prompt sheet for S1-mini: its fixed prompt and the three trained values.
+    PromptS1,
+    /// The Dictionary preview sheet of the Tech terms pack.
+    DictionaryPreview,
     /// The Manage Voices sheet on its list: the built-in voice and a cloned default voice.
     Voices,
     /// The Manage Voices sheet on Add Voice, before a take.
@@ -294,6 +302,10 @@ impl Scene {
             Scene::ShortcutRecorder => "shortcut-recorder".into(),
             Scene::EnhanceTune => "settings-enhance".into(),
             Scene::EnhanceFind => "settings-enhance-find".into(),
+            Scene::CleanupProfile => "settings-cleanup-profile".into(),
+            Scene::PromptQwen => "settings-prompt-qwen".into(),
+            Scene::PromptS1 => "settings-prompt-s1-mini".into(),
+            Scene::DictionaryPreview => "dictionary-pack-preview".into(),
             Scene::Voices => "voices".into(),
             Scene::VoicesAdd => "voices-add".into(),
         }
@@ -331,6 +343,10 @@ impl Scene {
         scenes.push(Scene::ShortcutRecorder);
         scenes.push(Scene::EnhanceTune);
         scenes.push(Scene::EnhanceFind);
+        scenes.push(Scene::CleanupProfile);
+        scenes.push(Scene::PromptQwen);
+        scenes.push(Scene::PromptS1);
+        scenes.push(Scene::DictionaryPreview);
         scenes.push(Scene::Voices);
         scenes.push(Scene::VoicesAdd);
         scenes
@@ -363,6 +379,9 @@ impl Scene {
             Scene::ModelsDetails
                 | Scene::EnhanceTune
                 | Scene::EnhanceFind
+                | Scene::PromptQwen
+                | Scene::PromptS1
+                | Scene::DictionaryPreview
                 | Scene::Voices
                 | Scene::VoicesAdd
         )
@@ -838,6 +857,26 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                     .expect("store the idle policy");
             }
         }
+        Scene::CleanupProfile => {
+            let settings = &storage.settings;
+            settings
+                .set("cleanup.profile", json!("notes"))
+                .expect("store the profile");
+            settings
+                .set("cleanup.profileEdits", json!({"notes.styling": "casual"}))
+                .expect("store an edit");
+        }
+        Scene::PromptQwen | Scene::PromptS1 => {
+            let model = if matches!(scene, Scene::PromptS1) {
+                "s1-mini"
+            } else {
+                "qwen3.5-2b"
+            };
+            storage
+                .settings
+                .set("cleanup.llm.modelId", json!(model))
+                .expect("store the cleanup model");
+        }
         Scene::EnhanceTune | Scene::EnhanceFind => {
             let settings = &storage.settings;
             settings
@@ -962,6 +1001,19 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                         settings.attach_updater(updater.clone(), cx);
                         settings.attach_search(window, cx);
                         settings.attach_tuning(tuning, cx);
+                        if matches!(
+                            scene,
+                            Scene::CleanupProfile | Scene::PromptQwen | Scene::PromptS1
+                        ) {
+                            settings.attach_ai(
+                                hushpen_app::settings::AiParts {
+                                    models: models.clone(),
+                                    catalog: hushpen_core::catalog::embedded(),
+                                    loading: Rc::new(|| false),
+                                },
+                                cx,
+                            );
+                        }
                     });
                     if matches!(scene, Scene::EndpointFailure) {
                         let form = cx.new(|cx| {
@@ -1264,6 +1316,19 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "sidebar.settings");
             click_scrolled(cx, handle, "settings.audio.enhance.adjust");
             click(cx, handle, "enhance.find");
+        }
+        Scene::CleanupProfile => {
+            click(cx, handle, "sidebar.settings");
+            type_search(cx, handle, "profile");
+        }
+        Scene::PromptQwen | Scene::PromptS1 => {
+            click(cx, handle, "sidebar.settings");
+            type_search(cx, handle, "profile");
+            click(cx, handle, "settings.cleanup.prompt");
+        }
+        Scene::DictionaryPreview => {
+            click(cx, handle, "sidebar.dictionary");
+            click(cx, handle, "dictionary.pack.tech-terms.preview");
         }
         Scene::Voices => {
             click(cx, handle, "sidebar.files");
