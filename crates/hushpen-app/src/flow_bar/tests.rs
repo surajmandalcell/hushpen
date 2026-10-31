@@ -834,7 +834,7 @@ fn the_processing_wave_runs_on_its_own_clock_and_stands_still_with_reduce_motion
     let props = bar.props(cx);
     assert_eq!(
         (props.stage, props.from, props.stage_ms, props.work_ms),
-        (Stage::Preparing, Some(Stage::Transcribing), 0, 800),
+        (Stage::Preparing, Some(Stage::Transcribing.into()), 0, 800),
         "a new stage starts its own clock, the float keeps going"
     );
 }

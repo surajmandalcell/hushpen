@@ -25,7 +25,7 @@ use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
 use hushpen_app::flow_bar::view::{Preview, Props, WAVE_BARS, result_text, size_of};
-use hushpen_app::flow_bar::working::{LONG_WAIT_MS, Stage};
+use hushpen_app::flow_bar::working::{LONG_WAIT_MS, Mix, Stage};
 use hushpen_app::mic::{MicBackend, MicSession};
 use hushpen_app::theme::{self, Appearance, chrome, space};
 use hushpen_app::views::View;
@@ -544,7 +544,7 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
         .map(|n| 0.35 + 0.35 * (n as f32 * 1.3).sin().abs())
         .collect();
     // The processing wave at a fixed moment of a stage, with the float at its high point.
-    let working = |stage: Stage, from: Option<Stage>, stage_ms: u64| Props {
+    let working = |stage: Stage, from: Option<Mix>, stage_ms: u64| Props {
         stage,
         from,
         stage_ms,
@@ -579,7 +579,7 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
         ),
         (
             "flowbar-cleaning",
-            working(Stage::Cleaning, Some(Stage::Transcribing), 900),
+            working(Stage::Cleaning, Some(Stage::Transcribing.into()), 900),
         ),
         (
             "flowbar-long-ripple",
@@ -587,7 +587,7 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
         ),
         (
             "flowbar-long-breathe",
-            working(Stage::Transcribing, None, LONG_WAIT_MS + 6_000),
+            working(Stage::Cleaning, None, LONG_WAIT_MS + 1_000),
         ),
         (
             "flowbar-transcribing-preparing",

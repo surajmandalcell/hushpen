@@ -33,7 +33,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 use view::Props;
-use working::Stage;
+use working::{Mix, Stage};
 
 pub use window::PopUp;
 
@@ -82,7 +82,8 @@ type PointerSource = Rc<dyn Fn(WindowHandle) -> Option<Pointer>>;
 struct Work {
     stage: Stage,
     since: u64,
-    from: Option<Stage>,
+    /// What the wave showed when this stage began.
+    from: Option<Mix>,
 }
 
 pub struct FlowBar {
@@ -273,7 +274,11 @@ impl FlowBar {
                     self.work = Some(Work {
                         stage,
                         since: now,
-                        from: Some(work.stage),
+                        from: Some(working::mix_at(
+                            work.stage,
+                            work.from,
+                            now.saturating_sub(work.since),
+                        )),
                     })
                 }
                 None => {

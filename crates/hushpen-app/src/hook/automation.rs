@@ -299,6 +299,18 @@ pub fn install(cx: &mut App, surface: &Surface) {
             move |cx, args| set_appearance(cx, &shell, &args)
         },
     );
+    let _ = hooks.actions.register(
+        "set-reduce-motion",
+        "Turn Reduce Motion on or off in this app, as the system setting would. Args: {\"on\": true|false}",
+        |cx, args| {
+            let on = args
+                .get("on")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| "needs args like {\"on\": true}".to_string())?;
+            cx.set_reduce_motion(on);
+            Ok(json!({"reduce_motion": on}))
+        },
+    );
     cx.set_global(hooks);
 }
 
