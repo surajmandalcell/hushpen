@@ -12,8 +12,8 @@ mod rows;
 mod tooltip;
 
 pub use controls::{
-    Kind, Slider, button, field, icon_button, icon_button_enabled, segmented, swap_icon_button,
-    switch, track,
+    Kind, Slider, button, field, icon_button, icon_button_enabled, search_field, segmented,
+    swap_icon_button, switch, track,
 };
 pub use group::{group, group_frame, heading, line, section, titled_section};
 pub use menu::{Menu, PopUp, pop_up};

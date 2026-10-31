@@ -303,3 +303,213 @@ fn the_language_menu_floats_over_the_microphone_group(cx: &mut TestAppContext) {
     assert!(find(cx, &home, "home.language.list").is_none());
     assert!(focused(cx, &home, "home.language"));
 }
+
+fn type_text(cx: &mut TestAppContext, home: &Home, text: &str) {
+    act(cx, home, |window, cx| window.input(text, cx));
+}
+
+fn present(cx: &mut TestAppContext, home: &Home, id: &str) -> bool {
+    find(cx, home, id).is_some()
+}
+
+const SEARCH: &str = "home.mic.list.search";
+
+#[gpui_kit::test]
+fn a_long_menu_opens_with_a_focused_search_field_the_width_of_the_menu(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    assert!(focused(cx, &home, SEARCH), "the search field has the focus");
+    let list = bounds(cx, &home, "home.mic.list");
+    let field = bounds(cx, &home, SEARCH);
+    assert_eq!(field.size.height, px(size::BUTTON_HEIGHT));
+    assert_eq!(field.size.width, list.size.width, "as wide as the options");
+    assert!(field.bottom() <= list.top(), "it sits above the options");
+    assert_eq!(
+        find(cx, &home, SEARCH).unwrap().label(),
+        Some("Search options")
+    );
+}
+
+#[gpui_kit::test]
+fn a_short_menu_has_no_search_field(cx: &mut TestAppContext) {
+    let home = home(cx);
+    let few = (1..=size::MENU_OPTIONS_SHOWN - 1)
+        .map(|n| InputDevice {
+            id: format!("mic{n}"),
+            name: format!("Microphone {n}"),
+            is_default: n == 1,
+        })
+        .collect();
+    home.rig
+        .mic
+        .update(cx, |mic, cx| mic.handle(MicEvent::Devices(Ok(few)), cx));
+    open_mics(cx, &home);
+    assert!(present(cx, &home, "home.mic.list"));
+    assert!(!present(cx, &home, SEARCH));
+    assert!(!focused(cx, &home, SEARCH));
+}
+
+#[gpui_kit::test]
+fn typing_keeps_the_options_that_have_the_text_in_any_case(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    type_text(cx, &home, "MICROPHONE 1");
+    for n in [1, 10, 11, 12] {
+        assert!(present(cx, &home, &mic(n)), "Microphone {n} stays");
+    }
+    for n in [2, 9] {
+        assert!(!present(cx, &home, &mic(n)), "Microphone {n} goes");
+    }
+    type_text(cx, &home, "2");
+    assert!(present(cx, &home, &mic(12)));
+    assert!(!present(cx, &home, &mic(11)));
+    assert!(!present(cx, &home, "home.mic.list.empty"));
+}
+
+#[gpui_kit::test]
+fn the_menu_keeps_its_width_while_a_query_leaves_shorter_options(cx: &mut TestAppContext) {
+    let home = home(cx);
+    let mics = (1..=MICS)
+        .map(|n| InputDevice {
+            id: format!("mic{n}"),
+            name: format!("Studio condenser microphone number {n}"),
+            is_default: n == 1,
+        })
+        .collect();
+    home.rig
+        .mic
+        .update(cx, |mic, cx| mic.handle(MicEvent::Devices(Ok(mics)), cx));
+    open_mics(cx, &home);
+    act(cx, &home, |_, _| {});
+    let before = bounds(cx, &home, "home.mic.list").size.width;
+    assert!(
+        before > px(size::MENU_MIN_WIDTH + 20.0),
+        "the names make it wide"
+    );
+    type_text(cx, &home, "zebra");
+    act(cx, &home, |_, _| {});
+    assert_eq!(bounds(cx, &home, "home.mic.list").size.width, before);
+    press(cx, &home, "escape");
+    type_text(cx, &home, "number 12");
+    act(cx, &home, |_, _| {});
+    assert_eq!(bounds(cx, &home, "home.mic.list").size.width, before);
+}
+
+#[gpui_kit::test]
+fn the_arrow_keys_and_enter_work_on_the_filtered_list(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    type_text(cx, &home, "microphone 1");
+    press(cx, &home, "down");
+    assert!(focused(cx, &home, &mic(0)), "Down starts at the chosen one");
+    press(cx, &home, "down");
+    assert!(focused(cx, &home, &mic(1)));
+    press(cx, &home, "down");
+    assert!(
+        focused(cx, &home, &mic(10)),
+        "the next one left, not Microphone 2"
+    );
+    press(cx, &home, "up");
+    press(cx, &home, "up");
+    assert!(focused(cx, &home, &mic(0)));
+    press(cx, &home, "up");
+    assert!(focused(cx, &home, SEARCH), "Up from the first goes back");
+    press(cx, &home, "down");
+    press(cx, &home, "down");
+    press(cx, &home, "down");
+    press(cx, &home, "enter");
+    assert_eq!(saved(cx, &home), "mic10");
+    assert!(!present(cx, &home, "home.mic.list"));
+    assert!(focused(cx, &home, "home.mic.picker"));
+}
+
+#[gpui_kit::test]
+fn enter_in_the_search_field_picks_the_first_option_left(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    press(cx, &home, "enter");
+    assert!(
+        present(cx, &home, "home.mic.list"),
+        "with nothing typed, Enter picks nothing"
+    );
+    type_text(cx, &home, "11");
+    press(cx, &home, "enter");
+    assert_eq!(saved(cx, &home), "mic11");
+    assert!(!present(cx, &home, "home.mic.list"));
+    assert!(focused(cx, &home, "home.mic.picker"));
+}
+
+#[gpui_kit::test]
+fn esc_clears_the_query_first_and_closes_the_menu_the_second_time(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    type_text(cx, &home, "12");
+    assert!(!present(cx, &home, &mic(2)));
+    press(cx, &home, "escape");
+    assert!(
+        present(cx, &home, "home.mic.list"),
+        "the first Esc keeps it open"
+    );
+    assert!(present(cx, &home, &mic(2)), "every option is back");
+    assert!(focused(cx, &home, SEARCH));
+    press(cx, &home, "escape");
+    assert!(!present(cx, &home, "home.mic.list"));
+    assert!(focused(cx, &home, "home.mic.picker"));
+    assert_eq!(saved(cx, &home), "default", "Esc picks nothing");
+}
+
+#[gpui_kit::test]
+fn a_query_with_no_option_shows_one_disabled_row(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    type_text(cx, &home, "zebra");
+    assert!(!present(cx, &home, &mic(1)));
+    let row = bounds(cx, &home, "home.mic.list.empty");
+    assert_eq!(row.size.height, px(size::MENU_ROW_HEIGHT));
+    press(cx, &home, "down");
+    press(cx, &home, "enter");
+    assert!(present(cx, &home, "home.mic.list"), "nothing to pick");
+    assert_eq!(saved(cx, &home), "default");
+    click(cx, &home, "home.mic.list.empty");
+    assert!(
+        present(cx, &home, "home.mic.list"),
+        "the row is not a choice"
+    );
+}
+
+#[gpui_kit::test]
+fn the_menu_opens_again_with_an_empty_search(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    type_text(cx, &home, "12");
+    press(cx, &home, "escape");
+    press(cx, &home, "escape");
+    open_mics(cx, &home);
+    assert!(present(cx, &home, &mic(2)), "no query is kept");
+    assert!(focused(cx, &home, SEARCH));
+    type_text(cx, &home, "12");
+    click(cx, &home, "home.mic.picker");
+    open_mics(cx, &home);
+    assert!(
+        present(cx, &home, &mic(2)),
+        "a closed menu forgets the query"
+    );
+}
+
+#[gpui_kit::test]
+fn shift_tab_in_the_search_field_closes_the_menu_and_goes_back_a_control(cx: &mut TestAppContext) {
+    let home = home(cx);
+    open_mics(cx, &home);
+    type_text(cx, &home, "12");
+    press(cx, &home, "shift-tab");
+    assert!(!present(cx, &home, "home.mic.list"));
+    assert!(
+        !focused(cx, &home, "home.mic.record"),
+        "not the next control"
+    );
+    assert!(
+        !focused(cx, &home, "sidebar.home"),
+        "no wrap to the sidebar"
+    );
+    assert_eq!(saved(cx, &home), "default");
+}
