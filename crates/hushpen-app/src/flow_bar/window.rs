@@ -6,19 +6,39 @@ use gpui_kit::{
     AnyWindowHandle, App, Bounds, Entity, Pixels, WeakEntity, WindowBackgroundAppearance,
     WindowBounds, WindowKind, WindowOptions,
 };
-use hushpen_platform::window::{Frame, pin_overlay, place_overlay};
+use hushpen_platform::window::{
+    ChromeError, Frame, WindowHandle, hide, pin_overlay, place_overlay, show_unfocused,
+};
+use std::cell::Cell;
+use std::rc::Rc;
 
 /// The window class of the pop-up. It must not contain `hushpen`: the harness finds the main
 /// window by that class.
 const APP_ID: &str = "flowbar";
 
+/// A native hide or show of the window.
+type Call = fn(WindowHandle) -> Result<(), ChromeError>;
+
 /// Opens the pop-up on first use, then moves and sizes it. The window never takes the focus:
 /// it opens unfocused, as a pop-up that the window manager does not manage (X11) or a
 /// non-activating panel (macOS).
+///
+/// On macOS the window stays open between dictations, off the screen, so a new dictation
+/// orders it front at once instead of building a window. Elsewhere it closes: the X11 suites
+/// count the window and its watcher thread per dictation, and an unmapped pop-up without a
+/// compositor is not proven clean.
 pub struct PopUp {
     /// Weak, because the app's frame task owns the host until the app is dropped.
     view: WeakEntity<FlowBar>,
     handle: Option<AnyWindowHandle>,
+    keep: bool,
+    /// The window is open but off the screen.
+    hidden: bool,
+    /// The platform refused a planned hide, so the window is on screen with nothing to show:
+    /// the next hide closes it.
+    refused: Rc<Cell<bool>>,
+    hide_call: Call,
+    show_call: Call,
 }
 
 impl PopUp {
@@ -26,6 +46,11 @@ impl PopUp {
         Self {
             view: view.downgrade(),
             handle: None,
+            keep: cfg!(target_os = "macos"),
+            hidden: false,
+            refused: Rc::default(),
+            hide_call: hide,
+            show_call: show_unfocused,
         }
     }
 
@@ -105,7 +130,14 @@ impl Host for PopUp {
 
     fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native> {
         if let Some(handle) = self.handle {
+            let was_hidden = std::mem::take(&mut self.hidden);
+            self.refused.set(false);
+            let show_call = self.show_call;
             let placed = handle.update(cx, |_, window, _| {
+                if was_hidden {
+                    // The window drew nothing while it was off the screen.
+                    window.refresh();
+                }
                 // X11 takes device pixels, AppKit takes points.
                 let scale = if cfg!(target_os = "linux") {
                     window.scale_factor()
@@ -124,6 +156,10 @@ impl Host for PopUp {
                     if let Err(error) = place_overlay(native, frame) {
                         log::warn!("the flow bar could not move: {error}");
                     }
+                    // Placed first, so the window comes up where it belongs.
+                    if was_hidden && let Err(error) = show_call(native) {
+                        log::warn!("the flow bar could not come back: {error}");
+                    }
                 }) as Native
             });
             if let Ok(native) = placed {
@@ -135,13 +171,36 @@ impl Host for PopUp {
         self.open(bounds, cx)
     }
 
-    fn hide(&mut self, cx: &mut App) {
-        if let Some(handle) = self.handle.take() {
-            let _ = handle.update(cx, |_, window, _| window.remove_window());
+    fn hide(&mut self, cx: &mut App) -> Option<Native> {
+        let handle = self.handle?;
+        if self.keep && !self.refused.get() {
+            if self.hidden {
+                return None;
+            }
+            let Ok(native) = handle.update(cx, |_, window, _| native_handle(window)) else {
+                self.handle = None;
+                return None;
+            };
+            self.hidden = true;
+            let (call, refused) = (self.hide_call, Rc::clone(&self.refused));
+            return Some(Box::new(move || {
+                if let Err(error) = call(native) {
+                    log::warn!("the flow bar could not be hidden, so it closes: {error}");
+                    refused.set(true);
+                }
+            }));
         }
+        self.handle = None;
+        self.hidden = false;
+        self.refused.set(false);
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+        None
     }
 
     fn window(&self) -> Option<AnyWindowHandle> {
-        self.handle
+        self.handle.filter(|_| !self.hidden)
     }
 }
+
+#[cfg(test)]
+mod tests;
