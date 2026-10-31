@@ -5,7 +5,7 @@
 # and HUSHPEN_UPDATE_TEST mounts. A release build has no test hook, so the proof is hushpen.log,
 # the files on disk, the feed log, xdotool, sqlite3, and screenshots; selfupdate-lib.sh has the
 # helpers. The feed (update-feed-server.py) offers rc.2 with the real AppImage ("good") or with a
-# wrong sha256 ("badsha"). Needs the tiny.en model in /assets; empties /data and /opt/hushpen-test,
+# wrong sha256 ("badsha"). Needs the base-q5_1 model in /assets; empties /data and /opt/hushpen-test,
 # so the slot must not be shared. The rpm half of VAL-AUP-005 runs in fedora:40 through
 # packaging/smoke/update-notice-in-container.sh.
 . /harness/slot/lib.sh
@@ -38,9 +38,9 @@ failures=""
 cross=""
 reset_data
 install_rc1
-seed '{"updates.check": false, "audio.cueVolume": 0.25, "dictation.modelId": "tiny.en"}'
+seed '{"updates.check": false, "audio.cueVolume": 0.25, "dictation.modelId": "base-q5_1"}'
 mkdir -p "$MODELS"
-cp /assets/models/whisper/ggml-tiny.en.bin "$MODELS/"
+cp /assets/models/whisper/ggml-base-q5_1.bin "$MODELS/"
 # The first start makes the History database; it runs with the check off, then data is added.
 launch "$INSTALLED" || failures+="rc.1 did not open a window; "
 wait_until 30 test -s "$DB"
@@ -111,7 +111,7 @@ GT=$(grep -o 'gtk=[0-9]*' "$RUN_OUT/targets.txt" | cut -d= -f2)
 set_clip OLD
 xdotool windowfocus --sync "$GT"
 for _ in $(seq 100); do
-  grep -q 'tiny.en' "$ENGINE_LOG" 2>/dev/null && break
+  grep -q 'base-q5_1' "$ENGINE_LOG" 2>/dev/null && break
   sleep 0.3
 done
 sleep 5

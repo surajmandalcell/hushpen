@@ -2,7 +2,7 @@
 # Insertion guards (VAL-GRD-001, 002, 003, 007). A helper holds an X11 keyboard grab while a
 # dictation finishes, and a Wayland session (XDG_SESSION_TYPE=wayland with an X display) gets
 # copy only. Runs are driven with the pipeline hook events, the same path the hold key feeds,
-# because a grab stops key delivery to the target. Busy: it transcribes with base. It empties
+# because a grab stops key delivery to the target. Busy: it transcribes with base-q5_1. It empties
 # /data and restarts the app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -61,9 +61,9 @@ gtk_clear() {
   sleep 0.2
 }
 
-echo "== setup: base model and the paste targets"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -124,7 +124,7 @@ failures=""
 /harness/slot/app.sh stop
 XDG_SESSION_TYPE=wayland /harness/slot/app.sh start >/dev/null
 wait_until 20 dict_is .state idle
-wait_until 90 engine_ready_with base || failures+="the engine did not load again; "
+wait_until 90 engine_ready_with base-q5_1 || failures+="the engine did not load again; "
 sleep 1
 gtk_clear
 before=$(gtk_commit)

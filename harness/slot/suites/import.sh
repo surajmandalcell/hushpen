@@ -8,7 +8,8 @@
 # other file goes in through the hook action import-add (the same call a drop makes). Words are
 # checked like the other suites do: at least 90% of the expected words, with one slip allowed.
 # Needs the fixtures in /assets/fixtures, speech-short.aiff and speech-short-alac.m4a in /fixtures,
-# and the base.en and base models in /assets/models/whisper.
+# and the base-q5_1 and Parakeet models in /assets/models/whisper (Parakeet is only selected, to
+# see that Translate turns off).
 # Busy: it transcribes a 10 minute file. It empties /data and restarts the app, so the slot must
 # not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
@@ -21,6 +22,7 @@ DIALOG_NAMES='^(Open File|Open Files|Select Files|Choose files|Choose audio file
 
 q() { sqlite3 "$DB" "$1"; }
 imp() { $HC state | jq -r ".import$1"; }
+model_active() { [ "$($HC state | jq -r .models.active)" = "$1" ]; }
 item() { # <name> <jq field>: the newest queue item with that file name
   $HC state | jq -r --arg name "$1" "[.import.items[] | select(.name == \$name)] | last | $2"
 }
@@ -70,9 +72,9 @@ ms_clock() {
   }'
 }
 
-echo "== setup: base.en and base, the Manual view"
-fresh base.en base
-use_model base.en
+echo "== setup: base-q5_1 and Parakeet, the Manual view"
+fresh base-q5_1 parakeet-v3-q4_k
+use_model base-q5_1
 open_view
 for file in "$FIX/speech-short.wav" "$FIX/speech-short.mp3" "$FIX/speech-short.flac" "$FIX/speech-short.m4a" \
   "$FIX/speech-short.ogg" "$EXTRA/speech-short.aiff" "$EXTRA/speech-short-alac.m4a" \
@@ -225,7 +227,7 @@ for name in corrupt-random.mp3 corrupt-text-as.wav empty.wav; do
 done
 shot imp-007-errors
 [ "$(ui_pid)" = "$ui" ] && kill -0 "$ui" 2>/dev/null || failures+="the UI pid changed; "
-wait_until 60 engine_ready_with base.en || failures+="the engine is not ready again; "
+wait_until 60 engine_ready_with base-q5_1 || failures+="the engine is not ready again; "
 import_one "$FIX/speech-short.wav" || failures+="the next import did not end; "
 item_is speech-short.wav done || failures+="the next import ended '$(item speech-short.wav .state)'; "
 missed=$(word_recall_ok "$(words_of "$(text_of speech-short.wav)")" "${SHORT_WORDS[@]}") || failures+="the next import misses: $missed; "
@@ -354,7 +356,6 @@ check_failures "VAL-IMP-003 long file" "lighthouse $lighthouse, harbor $harbor (
 
 echo "== VAL-CROSS-004 a Spanish import keeps its language"
 failures=""
-use_model base || failures+="base did not load; "
 hook_action dictation-language '{"code":"auto"}' >/dev/null
 open_view
 import_one "$FIX/speech-es.wav" || failures+="speech-es.wav did not end; "
@@ -412,11 +413,16 @@ $HC action import-retry "{\"id\":$bid}" >/dev/null
 wait_until 120 item_final broken.wav
 item_is broken.wav done || failures+="the retried file ended '$(item broken.wav .state)'; "
 rm -f "$broken"
-use_model base.en || failures+="base.en did not load; "
 open_view
-[ "$(imp .translate_off)" != null ] || failures+="translate is on offer for base.en; "
+[ "$(imp .translate_off)" = null ] || failures+="translate is off for base-q5_1: $(imp .translate_off); "
+hook_action model-select '{"id":"parakeet-v3-q4_k"}' >/dev/null
+wait_until 30 model_active parakeet-v3-q4_k || failures+="Parakeet did not become the active model; "
+open_view
+[ "$(imp .translate_off)" != null ] || failures+="translate is on offer for Parakeet; "
 $HC action import-translate '{"on":true}' >/dev/null 2>&1
-[ "$(imp .translate)" = false ] || failures+="translate was turned on for base.en; "
+[ "$(imp .translate)" = false ] || failures+="translate was turned on for Parakeet; "
+use_model base-q5_1 || failures+="base-q5_1 did not load again; "
+open_view
 $HC action files-mode '{"mode":"readAloud"}' >/dev/null
 $HC action read-text '{"text":"The quick brown fox jumps over the lazy dog."}' >/dev/null
 wait_until 10 sh -c "[ \"\$($HC state | jq -r '.read.loading')\" = false ]"
@@ -433,7 +439,7 @@ $HC action read-engine '{"engine":"kokoro"}' >/dev/null
 wait_until 10 sh -c "[ \"\$($HC state | jq -r '.read.loading')\" = false ]"
 kokoro=$(read_state .needs_model)
 $HC action read-engine '{"engine":"system"}' >/dev/null
-check_failures "Manual view" "the drop queued and finished the WAV; Copy, an SRT export, Show in History, and Retry worked; translate is off for base.en; Read aloud wrote a $wav_bytes byte WAV with espeak-ng; Kokoro needs its model: $kokoro" "$failures"
+check_failures "Manual view" "the drop queued and finished the WAV; Copy, an SRT export, Show in History, and Retry worked; translate is on offer for base-q5_1 and off for Parakeet; Read aloud wrote a $wav_bytes byte WAV with espeak-ng; Kokoro needs its model: $kokoro" "$failures"
 
 echo "== a real XDND drop: a WAV from a GTK drag source lands in the queue, a .txt opens Read aloud"
 failures=""

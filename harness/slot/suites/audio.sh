@@ -4,7 +4,7 @@
 # The hold key is Right Alt (X11 keycode 108); the words come from the virtual microphone. The
 # rows of the retention checks are seeded with sqlite3 and carry a copy of the audio that the
 # dictation of 001 kept, backdated by whole days. The output sink is cues, read as cues.monitor.
-# Needs speech-short.wav in /assets/fixtures and the tiny.en model in /assets/models/whisper.
+# Needs speech-short.wav in /assets/fixtures and the base-q5_1 model in /assets/models/whisper.
 # Busy: it transcribes. It empties /data and restarts the app, so the slot must not be shared.
 # Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
@@ -107,7 +107,7 @@ seed_row() {
   cp "$SOURCE_WAV" "/data/audio/$1.wav"
   q "insert into transcript (id, created_at, kind, status, duration_ms, model_id, language_detected,
        raw_text, rule_text, final_text, insert_outcome, audio_path)
-     values ('$1', $created, 'dictation', 'completed', $SOURCE_MS, 'tiny.en', 'en',
+     values ('$1', $created, 'dictation', 'completed', $SOURCE_MS, 'base-q5_1', 'en',
        'the $3 row', 'the $3 row', 'the $3 row', 'pasted', 'audio/$1.wav')"
 }
 restart_app() {
@@ -115,9 +115,9 @@ restart_app() {
   start_app
 }
 
-echo "== setup: tiny.en and the paste targets"
-fresh tiny.en
-use_model tiny.en
+echo "== setup: base-q5_1 and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -299,7 +299,7 @@ failures=""
 /harness/slot/app.sh stop
 set_retention never
 start_app
-engine_up tiny.en || failures+="the engine did not load; "
+engine_up base-q5_1 || failures+="the engine did not load; "
 [ "$(retention_of)" = never ] || failures+="the setting is $(retention_of); "
 [ -e /data/audio/NEW29.wav ] && failures+="the 29-day WAV survived the never sweep; "
 before=$(count)

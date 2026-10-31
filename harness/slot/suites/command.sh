@@ -11,7 +11,7 @@
 # answer to a Command Mode request is the selection plus " [edited]", mode `edited` answers
 # "EDITED TEXT", and mode `slow` answers after 30 s. Part two uses the local Qwen3.5 2B model for
 # a real edit and for the kill -9 and kill -STOP cases. Needs command-formal.wav in
-# HUSHPEN_TEST_FIXTURES (mounted at /fixtures), the llm folder there, and the base model in
+# HUSHPEN_TEST_FIXTURES (mounted at /fixtures), the llm folder there, and the base-q5_1 model in
 # /assets. Start the slot with VAL_CPUS=4 VAL_MEM=4g (the local model counts as 2 busy slots). It
 # empties /data, so the slot must not be shared.
 . /harness/slot/lib.sh
@@ -222,9 +222,9 @@ mentions_instruction() { # <text>: the spoken words "make this formal" are in th
 }
 stub_last_post() { jq -s '[.[] | select(.method == "POST")] | last' "$STUB_LOG"; }
 
-echo "== setup: base model, the paste targets, and the stub endpoint"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model, the paste targets, and the stub endpoint"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

@@ -17,7 +17,7 @@ INSERT INTO transcript
 SELECT
   printf('%010X%016X', $now - i * 1000, i),
   $now - i * 1000,
-  'dictation', 'completed', 1500, 'base', 'en',
+  'dictation', 'completed', 1500, 'base-q5_1', 'en',
   'seed row ' || i || ' ' || CASE i % 8
     WHEN 0 THEN 'harbor' WHEN 1 THEN 'lantern' WHEN 2 THEN 'quartz' WHEN 3 THEN 'meadow'
     WHEN 4 THEN 'orchard' WHEN 5 THEN 'violin' WHEN 6 THEN 'granite' ELSE 'saffron' END,

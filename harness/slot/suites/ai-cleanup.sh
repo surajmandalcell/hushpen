@@ -8,7 +8,7 @@
 # check uses that file. If the download fails, the suite copies the fixture GGUF so the rest still
 # runs, and the VAL-AIC-003 check fails. Needs filler-dictation.wav, ai-self-correction.wav,
 # ai-injection.wav, ai-question.wav, and ai-long-dictation.wav in HUSHPEN_TEST_FIXTURES (mounted at /fixtures), the llm
-# folder there, and speech-es.wav and the base model in /assets. Start the slot with
+# folder there, and speech-es.wav and the base-q5_1 model in /assets. Start the slot with
 # VAL_CPUS=4 VAL_MEM=4g (an LLM slot counts as 2 busy slots). It takes about 25 minutes (the idle
 # unload waits 5.5 minutes) and empties /data, so the slot must not be shared.
 . /harness/slot/lib.sh
@@ -152,9 +152,9 @@ open_home() {
   wait_until 10 view_is home
 }
 
-echo "== setup: base model and the paste targets"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

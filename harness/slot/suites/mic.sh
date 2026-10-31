@@ -1,6 +1,6 @@
 #!/bin/bash
 # Microphone capture checks (VAL-MIC-001 to 008). Busy: it plays audio into the virtual mic and
-# transcribes with tiny.en. Runs in one slot through with-env.sh; it restarts the app, empties
+# transcribes with base-q5_1. Runs in one slot through with-env.sh; it restarts the app, empties
 # /data, and loads and unloads PulseAudio modules, so the slot must not be shared.
 . /harness/slot/lib.sh
 # Sourced before the helpers below, which replace its hook_action, now_ms, start_app, and missing_words.
@@ -9,7 +9,7 @@
 HC=/app/hookctl
 SPEECH=/assets/fixtures/speech-short.wav
 DICTATION=/assets/fixtures/dictation-45s.wav
-MODEL=/assets/models/whisper/ggml-tiny.en.bin
+MODEL=/assets/models/whisper/ggml-base-q5_1.bin
 SESSIONS=/data/cache/sessions
 REST_HEIGHT=3
 
@@ -69,7 +69,7 @@ with wave.open(sys.argv[1], "rb") as w:
 PY
 }
 
-# words <wav> -> lower-case transcript from tiny.en
+# words <wav> -> lower-case transcript from base-q5_1
 transcript() {
   /app/hushpen engine --smoke "$1" --model "$MODEL" 2>/dev/null |
     sed -n 's/^text: //p' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9 \n' ' ' | tr -s ' '

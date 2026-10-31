@@ -7,7 +7,7 @@
 # `hookctl state` (pipeline.ai and settings_view.ai.endpoint), and the fields are typed into with
 # xdotool. The suite runs under umask 000, so a 0600 secrets.json shows that the app sets the
 # mode itself. No model download and no local model: the provider is the endpoint.
-# Needs filler-dictation.wav in HUSHPEN_TEST_FIXTURES (mounted at /fixtures) and the base model
+# Needs filler-dictation.wav in HUSHPEN_TEST_FIXTURES (mounted at /fixtures) and the base-q5_1 model
 # in /assets. It empties /data, so the slot must not be shared. The strace checks attach to the
 # app and need ptrace in the container.
 . /harness/slot/lib.sh
@@ -190,9 +190,9 @@ trace_stop() {
   wait "$TRACE_PID" 2>/dev/null
 }
 
-echo "== setup: base model, the paste targets, and the stub endpoint"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model, the paste targets, and the stub endpoint"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

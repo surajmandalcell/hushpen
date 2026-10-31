@@ -5,7 +5,7 @@
 # Every outcome is read back with sqlite3 from /data/history/history.db, and the History view
 # is read through the test hook (tree ids history.* and the state section history).
 # Needs speech-short.wav, dictation-45s.wav, and silence-5s.wav in /assets/fixtures and the
-# tiny.en and base.en models in /assets/models/whisper. Busy: it transcribes. It empties /data and
+# base-q5_1 and small-q5_1 models in /assets/models/whisper. Busy: it transcribes. It empties /data and
 # restarts the app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -117,9 +117,9 @@ recall() { # <text> <reference>: the share of the reference words that the text 
   }'
 }
 
-echo "== setup: tiny.en and base.en, and the paste targets"
-fresh tiny.en base.en
-use_model tiny.en
+echo "== setup: base-q5_1 and small-q5_1, and the paste targets"
+fresh base-q5_1 small-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -157,7 +157,7 @@ target=$(li .target)
 dur=$(newest duration_ms)
 diff=$((dur > HOLD_MS ? dur - HOLD_MS : HOLD_MS - dur))
 [ "$diff" -le 500 ] || failures+="duration_ms $dur is $diff ms from the hold time $HOLD_MS; "
-[ "$(newest model_id)" = tiny.en ] || failures+="model_id is $(newest model_id); "
+[ "$(newest model_id)" = base-q5_1 ] || failures+="model_id is $(newest model_id); "
 [ -n "$(newest language_detected)" ] || failures+="no language; "
 for column in raw_text rule_text final_text; do
   [ -n "$(newest $column)" ] || failures+="$column is empty; "
@@ -165,7 +165,7 @@ done
 [ -n "$inserted" ] && [ "$(newest final_text)" = "$inserted" ] || failures+="final_text '$(newest final_text)' is not the inserted '$inserted'; "
 /harness/slot/app.sh stop
 start_app
-engine_up tiny.en || failures+="the engine did not load again; "
+engine_up base-q5_1 || failures+="the engine did not load again; "
 open_history
 sleep 0.5
 shot hist-001-restarted
@@ -184,7 +184,8 @@ shot hist-011-detail
 [ "$(tree_text history.detail.final)" = "$(newest final_text)" ] || failures+="final shows '$(tree_text history.detail.final)'; "
 [ "$(tree_text history.detail.app)" = "$(newest target_app)" ] || failures+="app shows '$(tree_text history.detail.app)'; "
 # The detail view names the model and the language (assets/models.json, language.rs), not the ids.
-[ "$(tree_text history.detail.model)" = "Tiny English" ] || failures+="model shows '$(tree_text history.detail.model)'; "
+model_name=$($HC state | jq -r '.models.models[] | select(.id == "base-q5_1") | .name')
+{ [ -n "$model_name" ] && [ "$model_name" != base-q5_1 ] && [ "$(tree_text history.detail.model)" = "$model_name" ]; } || failures+="model shows '$(tree_text history.detail.model)', the catalog name is '$model_name'; "
 [ "$(tree_text history.detail.language)" = "English" ] || failures+="language shows '$(tree_text history.detail.language)'; "
 [ "$(tree_text history.detail.duration)" = "$(secs_of "$(newest duration_ms)")" ] || failures+="duration shows '$(tree_text history.detail.duration)'; "
 $HC tree >"$RUN_OUT/hist-011-tree.json"
@@ -262,7 +263,7 @@ meta=$($HC state | jq -r '.history.rows[0].meta')
 case "$meta" in *Failed*) ;; *) failures+="the newest row is not listed as failed: $meta; " ;; esac
 [ "$($HC state | jq -r '[.history.rows[] | select(.status == "failed")] | length')" -ge 2 ] || failures+="the list does not show two failed rows; "
 shot hist-004-failed
-engine_up tiny.en || failures+="the engine did not come back; "
+engine_up base-q5_1 || failures+="the engine did not come back; "
 engine_pid_after=$(engine .pid)
 [ "$engine_pid_after" != "$engine_pid_before" ] || failures+="the engine pid did not change; "
 check_failures "VAL-HIST-004 failed rows" "silence row ENGINE_NO_SPEECH and kill row '$(col "$kill_id" error_code)', both failed with audio; engine pid $engine_pid_before then $engine_pid_after" "$failures"
@@ -284,7 +285,7 @@ shot hist-002-grab
 /harness/slot/app.sh stop
 XDG_SESSION_TYPE=wayland /harness/slot/app.sh start >/dev/null
 wait_until 20 dict_is .state idle
-engine_up tiny.en || failures+="the engine did not load in the wayland run; "
+engine_up base-q5_1 || failures+="the engine did not load in the wayland run; "
 sleep 1
 set_clip OLD
 hook_run "$SHORT_WAV" || failures+="the wayland run did not end; "
@@ -293,23 +294,23 @@ hook_run "$SHORT_WAV" || failures+="the wayland run did not end; "
 shot hist-002-copied
 /harness/slot/app.sh stop
 start_app
-engine_up tiny.en || failures+="the engine did not load again; "
+engine_up base-q5_1 || failures+="the engine did not load again; "
 check_failures "VAL-HIST-002 outcomes" "grab row blocked_grab with text, clipboard OLD; wayland row completed/copied_only" "$failures"
 
 echo "== VAL-HIST-013 Reprocess uses the current model and recovers a failed row"
 failures=""
-use_model base.en || failures+="base.en did not load; "
+use_model small-q5_1 || failures+="small-q5_1 did not load; "
 c0=$(count)
 old_final=$(col "$first_id" final_text)
 hook_action history-reprocess "{\"id\":\"$first_id\"}" >/dev/null || failures+="reprocess of the dictation row was refused; "
-wait_until 120 reprocessed "$first_id" base.en || failures+="the dictation row did not get base.en; "
+wait_until 120 reprocessed "$first_id" small-q5_1 || failures+="the dictation row did not get small-q5_1; "
 [ -n "$(col "$first_id" final_text)" ] || failures+="the dictation row has no text; "
 hook_action history-reprocess "{\"id\":\"$kill_id\"}" >/dev/null || failures+="reprocess of the failed row was refused; "
-wait_until 240 reprocessed "$kill_id" base.en || failures+="the failed row did not become completed with base.en; "
+wait_until 240 reprocessed "$kill_id" small-q5_1 || failures+="the failed row did not become completed with small-q5_1; "
 kill_text=$(col "$kill_id" final_text)
 [ "$(col "$kill_id" error_code)" = "" ] || failures+="the failed row keeps error_code $(col "$kill_id" error_code); "
 case " $(norm <<<"$kill_text") " in *" lighthouse "*) ;; *) failures+="'lighthouse' is missing from '$kill_text'; " ;; esac
-reference=$(/app/hushpen engine --smoke "$kill_audio" --model /assets/models/whisper/ggml-base.en.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
+reference=$(/app/hushpen engine --smoke "$kill_audio" --model /assets/models/whisper/ggml-small-q5_1.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
 score=$(recall "$(norm <<<"$kill_text")" "$reference")
 awk -v s="$score" 'BEGIN {exit !(s >= 0.9)}' || failures+="word recall is $score; "
 [ "$(count)" = "$c0" ] || failures+="reprocess changed the row count from $c0 to $(count); "
@@ -322,7 +323,7 @@ focus "$GT"
 ptt_run "$SHORT_WAV" || failures+="the next run did not end; "
 next=$(gtk_commit)
 [ -z "$(missing_words "$(norm <<<"$next")" "${SHORT_WORDS[@]}")" ] || failures+="the next run inserted '$next'; "
-check_failures "VAL-HIST-013 reprocess" "both rows now base.en, failed row completed (recall $score), count unchanged at $c0, engine pid $engine_pid_before then $engine_pid_after, next run '$next'" "$failures"
+check_failures "VAL-HIST-013 reprocess" "both rows now small-q5_1, failed row completed (recall $score), count unchanged at $c0, engine pid $engine_pid_before then $engine_pid_after, next run '$next'" "$failures"
 
 echo "== VAL-HIST-014 Reprocess applies the current dictionary"
 failures=""
@@ -336,7 +337,7 @@ history_search "x jum"
 case ",$(row_ids)," in *",$fox_id,"*) ;; *) failures+="the old text is not found by 'x jum' before the reprocess; " ;; esac
 hook_action dictionary-add '{"phrase":"Foxtrel","heard_as":"fox"}' >/dev/null
 hook_action history-reprocess "{\"id\":\"$fox_id\"}" >/dev/null || failures+="the reprocess was refused; "
-wait_until 120 reprocessed "$fox_id" base.en || failures+="the reprocess did not finish; "
+wait_until 120 reprocessed "$fox_id" small-q5_1 || failures+="the reprocess did not finish; "
 after_rule=$(col "$fox_id" rule_text)
 after_final=$(col "$fox_id" final_text)
 case "$after_rule" in *Foxtrel*) ;; *) failures+="rule_text has no Foxtrel: '$after_rule'; " ;; esac
@@ -394,7 +395,7 @@ hook_action history-delete "{\"id\":\"$second_id\"}" >/dev/null
 sleep 1
 /harness/slot/app.sh stop
 start_app
-engine_up base.en || failures+="the engine did not load again; "
+engine_up small-q5_1 || failures+="the engine did not load again; "
 [ "$(col "$second_id" id)" = "" ] || failures+="after quit and start the row is still in SQLite; "
 [ "$(segs "$second_id")" = 0 ] || failures+="after quit and start its segments remain; "
 [ ! -e "$second_audio" ] || failures+="after quit and start its WAV still exists; "
@@ -454,7 +455,7 @@ failures=""
 /harness/slot/app.sh stop
 /harness/slot/seed-history.sh 10000 >"$RUN_OUT/hist-006-seed.log" 2>&1 || failures+="the seed failed: $(tail -1 "$RUN_OUT/hist-006-seed.log"); "
 start_app
-engine_up base.en || failures+="the engine did not load again; "
+engine_up small-q5_1 || failures+="the engine did not load again; "
 total=$(count)
 hook_action frames-reset >/dev/null
 open_history

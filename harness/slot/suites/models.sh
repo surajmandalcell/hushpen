@@ -1,7 +1,9 @@
 #!/bin/bash
-# Model library checks (VAL-MOD-002, 003, 004, 005, 008). Busy: it downloads base.en and small.en
-# from Hugging Face (the slot needs network), hashes model files, and runs the engine. It empties
-# /data and restarts the app, so the slot must not be shared. Runs in one slot through with-env.sh.
+# Model library checks (VAL-MOD-002, 003, 004, 005, 008). Busy: it downloads small-q5_1 (190 MB)
+# and large-v3-turbo-q5_0 (574 MB) from Hugging Face (the slot needs network), hashes model files,
+# and runs the engine. It needs ggml-base-q5_1.bin and ggml-small-q5_1.bin in /assets/models/whisper.
+# It empties /data and restarts the app, so the slot must not be shared. Runs in one slot through
+# with-env.sh.
 . /harness/slot/lib.sh
 
 HC=/app/hookctl
@@ -11,9 +13,11 @@ DOWNLOADS=/data/cache/downloads
 ENGINE_LOG=/data/logs/engine.log
 
 # Pinned in assets/models.json
-BASE_EN_SHA=a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002
-BASE_EN_BYTES=147964211
-SMALL_EN_SHA=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d
+SMALL_Q5_SHA=ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
+SMALL_Q5_BYTES=190085487
+TURBO_Q5_SHA=394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
+# The catalog lists four speech models, in this order.
+SPEECH_ORDER=parakeet-v3-q4_k,large-v3-turbo-q5_0,small-q5_1,base-q5_1
 
 hook_action() { $HC action "$@"; }
 # m <id> <jq expression on that model's state>
@@ -41,7 +45,7 @@ fresh() {
   /harness/slot/app.sh stop
   find /data -mindepth 1 -delete
   mkdir -p "$MODELS"
-  for name in "$@"; do cp "/assets/models/whisper/ggml-$name.bin" "$MODELS/"; done
+  for name in "$@"; do cp "/assets/models/whisper/$(model_file "$name")" "$MODELS/"; done
   start_app
 }
 
@@ -61,8 +65,8 @@ open_models() {
 }
 
 echo "== VAL-MOD-002 the view lists the catalog with state"
-fresh tiny.en
-select_model tiny.en
+fresh base-q5_1
+select_model base-q5_1
 open_models
 sleep 0.5
 shot 002-models
@@ -74,27 +78,29 @@ buttons=$(jq '[.[] | select(.id | test("^models\\.download\\.[0-9]+$"))] | lengt
 listed=$(jq -r '[.models[].id] | join(",")' "$RUN_OUT/002-state.json")
 # Speech rows come first; the cleanup rows this machine is offered and the voice rows follow.
 others=$(jq '(.llm_models | length) + (.voice_models | length)' "$RUN_OUT/002-state.json")
-[ "$rows" = $((13 + others)) ] || failures+="$rows rows in the tree, want $((13 + others)); "
-[ "$listed" = "tiny,tiny.en,base,base.en,base-q5_1,small,small.en,small-q5_1,medium,medium.en,large-v3-turbo,large-v3-turbo-q5_0,large-v3" ] || failures+="catalog order is $listed; "
-[ "$buttons" = $((12 + others)) ] || failures+="$buttons Download buttons, want $((12 + others)); "
-[ "$(jq -r '.models[] | select(.id == "tiny.en") | "\(.state) \(.active)"' "$RUN_OUT/002-state.json")" = "ready true" ] || failures+="tiny.en is not ready and active; "
-[ "$(jq '[.models[] | select(.state == "not_downloaded")] | length' "$RUN_OUT/002-state.json")" = 12 ] || failures+="not 12 speech models are not_downloaded; "
-[ "$(jq '[.models[] | select(.bytes > 0)] | length' "$RUN_OUT/002-state.json")" = 13 ] || failures+="a model has no size; "
-[ "$(jq '[.[] | select(.id == "models.download.1")] | length' "$RUN_OUT/002-tree.json")" = 0 ] || failures+="tiny.en has a Download button; "
-check_failures "VAL-MOD-002 catalog view" "13 speech rows in catalog order plus $others cleanup and voice rows, tiny.en ready and active, the rest not downloaded with a Download button" "$failures"
+[ "$rows" = $((4 + others)) ] || failures+="$rows rows in the tree, want $((4 + others)); "
+[ "$listed" = "$SPEECH_ORDER" ] || failures+="catalog order is $listed; "
+[ "$buttons" = $((3 + others)) ] || failures+="$buttons Download buttons, want $((3 + others)); "
+[ "$(jq -r '.models[] | select(.id == "base-q5_1") | "\(.state) \(.active)"' "$RUN_OUT/002-state.json")" = "ready true" ] || failures+="base-q5_1 is not ready and active; "
+[ "$(jq '[.models[] | select(.state == "not_downloaded")] | length' "$RUN_OUT/002-state.json")" = 3 ] || failures+="not 3 speech models are not_downloaded; "
+[ "$(jq '[.models[] | select(.bytes > 0)] | length' "$RUN_OUT/002-state.json")" = 4 ] || failures+="a model has no size; "
+[ "$(jq -c '[.models[] | select(.default) | .id]' "$RUN_OUT/002-state.json")" = '["parakeet-v3-q4_k"]' ] || failures+="the default speech model is not parakeet-v3-q4_k; "
+base_row=$(jq -r '.models | map(.id) | index("base-q5_1")' "$RUN_OUT/002-state.json")
+[ "$(jq --arg id "models.download.$base_row" '[.[] | select(.id == $id)] | length' "$RUN_OUT/002-tree.json")" = 0 ] || failures+="base-q5_1 has a Download button; "
+check_failures "VAL-MOD-002 catalog view" "4 speech rows in catalog order (Parakeet the default) plus $others cleanup and voice rows, base-q5_1 ready and active, the rest not downloaded with a Download button" "$failures"
 
 echo "== VAL-MOD-003 download with progress, verified stamp, responsive UI"
-fresh tiny.en
-select_model tiny.en
+fresh base-q5_1
+select_model base-q5_1
 open_models
-click_row download base.en
+click_row download small-q5_1
 samples=() part_seen=0 responsive="" h_ms=-1 m_ms=-1
 started=$(now_ms)
-# 148 MB: five minutes cover a link that slows to 0.5 MB/s.
-while [ $(($(now_ms) - started)) -lt 300000 ]; do
-  state=$(m base.en .state)
+# 190 MB: seven minutes cover a link that slows to 0.5 MB/s.
+while [ $(($(now_ms) - started)) -lt 420000 ]; do
+  state=$(m small-q5_1 .state)
   [ "$state" = ready ] && break
-  [ "$state" = downloading ] && samples+=("$(m base.en '.progress // 0')")
+  [ "$state" = downloading ] && samples+=("$(m small-q5_1 '.progress // 0')")
   download_files | grep -q '\.download$' && part_seen=1
   if [ -z "$responsive" ] && [ "${#samples[@]}" -ge 5 ]; then
     shot 003-during
@@ -108,7 +114,7 @@ while [ $(($(now_ms) - started)) -lt 300000 ]; do
   fi
   sleep 0.2
 done
-wait_until 10 m_is base.en .state ready
+wait_until 10 m_is small-q5_1 .state ready
 shot 003-done
 failures=""
 prev=-1 dropped=0
@@ -125,12 +131,12 @@ last=${samples[${#samples[@]} - 1]:--1}
 [ "$part_seen" = 1 ] || failures+="no *.download file while it ran; "
 [ -n "$responsive" ] || failures+="the UI was not tested during the download; "
 { [ "$h_ms" -ge 0 ] && [ "$h_ms" -le 1000 ] && [ "$m_ms" -ge 0 ] && [ "$m_ms" -le 1000 ]; } || failures+="a view change took over 1 s ($responsive); "
-size=$(stat -c %s "$MODELS/ggml-base.en.bin" 2>/dev/null)
-sum=$(sha256sum "$MODELS/ggml-base.en.bin" 2>/dev/null | awk '{print $1}')
-stamp="$MODELS/ggml-base.en.bin.verified"
-[ "$size" = "$BASE_EN_BYTES" ] || failures+="size is $size; "
-[ "$sum" = "$BASE_EN_SHA" ] || failures+="sha256 is $sum; "
-[ "$(jq -r '"\(.algo) \(.hash) \(.size)"' "$stamp" 2>/dev/null)" = "sha256 $BASE_EN_SHA $BASE_EN_BYTES" ] || failures+="stamp is wrong: $(cat "$stamp" 2>/dev/null); "
+size=$(stat -c %s "$MODELS/ggml-small-q5_1.bin" 2>/dev/null)
+sum=$(sha256sum "$MODELS/ggml-small-q5_1.bin" 2>/dev/null | awk '{print $1}')
+stamp="$MODELS/ggml-small-q5_1.bin.verified"
+[ "$size" = "$SMALL_Q5_BYTES" ] || failures+="size is $size; "
+[ "$sum" = "$SMALL_Q5_SHA" ] || failures+="sha256 is $sum; "
+[ "$(jq -r '"\(.algo) \(.hash) \(.size)"' "$stamp" 2>/dev/null)" = "sha256 $SMALL_Q5_SHA $SMALL_Q5_BYTES" ] || failures+="stamp is wrong: $(cat "$stamp" 2>/dev/null); "
 [ "$(jq -r '.mtime_ms | type' "$stamp" 2>/dev/null)" = number ] || failures+="stamp has no mtime; "
 downloads_empty || failures+="left in downloads: $(download_files | tr '\n' ' '); "
 $HC net >"$RUN_OUT/003-net.json"
@@ -139,30 +145,30 @@ $HC net >"$RUN_OUT/003-net.json"
 check_failures "VAL-MOD-003 download" "${#samples[@]} samples rose from $first% to $last% then ready; size, sha256, and stamp match; no *.download left; $responsive; net: $(jq -r '[.[] | .host + " " + .result] | join(", ")' "$RUN_OUT/003-net.json")" "$failures"
 
 echo "== VAL-MOD-004 cancel and kill -9"
-fresh tiny.en
-select_model tiny.en
+fresh base-q5_1
+select_model base-q5_1
 open_models
-click_row download small.en
-wait_until 60 progress_at_least small.en 10
-at_cancel=$(m small.en '.progress // 0')
+click_row download large-v3-turbo-q5_0
+wait_until 60 progress_at_least large-v3-turbo-q5_0 10
+at_cancel=$(m large-v3-turbo-q5_0 '.progress // 0')
 shot 004-before-cancel
 t0=$(now_ms)
-click_row cancel small.en
-wait_until 2 m_is small.en .state not_downloaded
+click_row cancel large-v3-turbo-q5_0
+wait_until 2 m_is large-v3-turbo-q5_0 .state not_downloaded
 cancel_ms=$(($(now_ms) - t0))
 sleep 1
 shot 004-after-cancel
 failures=""
-[ "$(m small.en .state)" = not_downloaded ] || failures+="state after cancel is $(m small.en .state); "
+[ "$(m large-v3-turbo-q5_0 .state)" = not_downloaded ] || failures+="state after cancel is $(m large-v3-turbo-q5_0 .state); "
 [ "$cancel_ms" -le 2000 ] || failures+="cancel took $cancel_ms ms; "
-[ "$(m small.en .progress)" = null ] || failures+="progress is still $(m small.en .progress); "
-[ ! -e "$MODELS/ggml-small.en.bin" ] || failures+="a model file exists after cancel; "
+[ "$(m large-v3-turbo-q5_0 .progress)" = null ] || failures+="progress is still $(m large-v3-turbo-q5_0 .progress); "
+[ ! -e "$MODELS/ggml-large-v3-turbo-q5_0.bin" ] || failures+="a model file exists after cancel; "
 wait_until 2 downloads_empty || failures+="left in downloads: $(download_files | tr '\n' ' '); "
 check_failures "VAL-MOD-004 cancel" "cancelled at ${at_cancel}%, not_downloaded after $cancel_ms ms, no file in downloads or models, progress null" "$failures"
 
-click_row download small.en
-wait_until 60 progress_at_least small.en 15
-at_kill=$(m small.en '.progress // 0')
+click_row download large-v3-turbo-q5_0
+wait_until 60 progress_at_least large-v3-turbo-q5_0 15
+at_kill=$(m large-v3-turbo-q5_0 '.progress // 0')
 partial_kb=$(du -k "$DOWNLOADS"/*.download 2>/dev/null | awk '{s += $1} END {print s + 0}')
 kill -9 "$(cat /tmp/app.pid)"
 sleep 1
@@ -171,34 +177,34 @@ start_app
 open_models
 shot 004-after-kill
 failures=""
-[ "$(m small.en .state)" = not_downloaded ] || failures+="state after the kill is $(m small.en .state); "
-[ ! -e "$MODELS/ggml-small.en.bin" ] || failures+="a model file exists after the kill; "
+[ "$(m large-v3-turbo-q5_0 .state)" = not_downloaded ] || failures+="state after the kill is $(m large-v3-turbo-q5_0 .state); "
+[ ! -e "$MODELS/ggml-large-v3-turbo-q5_0.bin" ] || failures+="a model file exists after the kill; "
 left=$(download_files | tr '\n' ' ')
-click_row download small.en
-wait_until 900 m_is small.en .state ready
+click_row download large-v3-turbo-q5_0
+wait_until 900 m_is large-v3-turbo-q5_0 .state ready
 shot 004-redownloaded
-sum=$(sha256sum "$MODELS/ggml-small.en.bin" 2>/dev/null | awk '{print $1}')
-[ "$(m small.en .state)" = ready ] || failures+="the new download ended as $(m small.en .state); "
-[ "$sum" = "$SMALL_EN_SHA" ] || failures+="sha256 after the new download is $sum; "
-[ -f "$MODELS/ggml-small.en.bin.verified" ] || failures+="no stamp after the new download; "
+sum=$(sha256sum "$MODELS/ggml-large-v3-turbo-q5_0.bin" 2>/dev/null | awk '{print $1}')
+[ "$(m large-v3-turbo-q5_0 .state)" = ready ] || failures+="the new download ended as $(m large-v3-turbo-q5_0 .state); "
+[ "$sum" = "$TURBO_Q5_SHA" ] || failures+="sha256 after the new download is $sum; "
+[ -f "$MODELS/ggml-large-v3-turbo-q5_0.bin.verified" ] || failures+="no stamp after the new download; "
 downloads_empty || failures+="left in downloads: $(download_files | tr '\n' ' '); "
 check_failures "VAL-MOD-004 kill -9" "killed at ${at_kill}% with ${partial_kb} KB partial (after restart: ${left:-nothing kept}); not_downloaded after restart; the new download matched sha256 and has a stamp" "$failures"
 
 echo "== VAL-MOD-005 a changed file fails the check"
-fresh tiny.en base.en
-select_model tiny.en
-wait_until 30 m_is base.en .state ready
+fresh base-q5_1 small-q5_1
+select_model base-q5_1
+wait_until 30 m_is small-q5_1 .state ready
 /harness/slot/app.sh stop
 # One byte flipped in the middle: same size, new mtime.
-middle=$((BASE_EN_BYTES / 2))
-orig=$(dd if="$MODELS/ggml-base.en.bin" bs=1 skip=$middle count=1 2>/dev/null | od -An -tx1 | tr -d ' ')
+middle=$((SMALL_Q5_BYTES / 2))
+orig=$(dd if="$MODELS/ggml-small-q5_1.bin" bs=1 skip=$middle count=1 2>/dev/null | od -An -tx1 | tr -d ' ')
 flip=$(printf '%02x' $(((0x$orig + 1) % 256)))
-printf "\\x$flip" | dd of="$MODELS/ggml-base.en.bin" bs=1 seek=$middle conv=notrunc 2>/dev/null
+printf "\\x$flip" | dd of="$MODELS/ggml-small-q5_1.bin" bs=1 seek=$middle conv=notrunc 2>/dev/null
 start_app
 open_models
-wait_until 60 m_is base.en .state failed
+wait_until 60 m_is small-q5_1 .state failed
 shot 005-failed
-click_row select base.en
+click_row select small-q5_1
 sleep 0.5
 shot 005-select-refused
 $HC state >"$RUN_OUT/005-state.json"
@@ -206,49 +212,49 @@ hook_action engine-transcribe "{\"wav\":\"$SPEECH\",\"language\":\"en\"}" >/dev/
 wait_until 30 job_done
 cp "$ENGINE_LOG" "$RUN_OUT/005-engine.log"
 failures=""
-[ "$(m base.en .state)" = failed ] || failures+="base.en is $(m base.en .state), want failed; "
+[ "$(m small-q5_1 .state)" = failed ] || failures+="small-q5_1 is $(m small-q5_1 .state), want failed; "
 code=$(jq -r .models.notice.code "$RUN_OUT/005-state.json")
 [ "$code" = MODEL_HASH_MISMATCH ] || failures+="notice code is $code; "
-[ "$(jq -r .models.active "$RUN_OUT/005-state.json")" = tiny.en ] || failures+="active is $(jq -r .models.active "$RUN_OUT/005-state.json"); "
-[ "$(jq -r '.values["dictation.modelId"]' /data/config/settings.json)" = tiny.en ] || failures+="settings.json does not name tiny.en; "
-loads=$(grep -c "LOADED.*base.en" "$RUN_OUT/005-engine.log")
-[ "$loads" = 0 ] || failures+="engine.log shows $loads loads of base.en; "
+[ "$(jq -r .models.active "$RUN_OUT/005-state.json")" = base-q5_1 ] || failures+="active is $(jq -r .models.active "$RUN_OUT/005-state.json"); "
+[ "$(jq -r '.values["dictation.modelId"]' /data/config/settings.json)" = base-q5_1 ] || failures+="settings.json does not name base-q5_1; "
+loads=$(grep -c "LOADED.*small-q5_1" "$RUN_OUT/005-engine.log")
+[ "$loads" = 0 ] || failures+="engine.log shows $loads loads of small-q5_1; "
 job=$(grep " JOB " "$RUN_OUT/005-engine.log" | tail -1)
-case "$job" in *tiny.en*) ;; *) failures+="the job did not use tiny.en: $job; " ;; esac
-check_failures "VAL-MOD-005 changed file" "base.en failed, select refused with $code, tiny.en stays active, no engine load of base.en; job: $job" "$failures"
+case "$job" in *base-q5_1*) ;; *) failures+="the job did not use base-q5_1: $job; " ;; esac
+check_failures "VAL-MOD-005 changed file" "small-q5_1 failed, select refused with $code, base-q5_1 stays active, no engine load of small-q5_1; job: $job" "$failures"
 
 echo "== VAL-MOD-008 delete, and the active model cannot be deleted"
-fresh tiny.en base.en
-select_model tiny.en
-wait_until 30 m_is base.en .state ready
+fresh base-q5_1 small-q5_1
+select_model base-q5_1
+wait_until 30 m_is small-q5_1 .state ready
 open_models
 shot 008-before
-click_row delete base.en
-wait_until 5 m_is base.en .state not_downloaded
+click_row delete small-q5_1
+wait_until 5 m_is small-q5_1 .state not_downloaded
 shot 008-after-delete
 failures=""
-[ ! -e "$MODELS/ggml-base.en.bin" ] || failures+="base.en .bin is still there; "
-[ ! -e "$MODELS/ggml-base.en.bin.verified" ] || failures+="base.en stamp is still there; "
-[ "$(m base.en .state)" = not_downloaded ] || failures+="base.en is $(m base.en .state); "
-click_row delete tiny.en
+[ ! -e "$MODELS/ggml-small-q5_1.bin" ] || failures+="small-q5_1 .bin is still there; "
+[ ! -e "$MODELS/ggml-small-q5_1.bin.verified" ] || failures+="small-q5_1 stamp is still there; "
+[ "$(m small-q5_1 .state)" = not_downloaded ] || failures+="small-q5_1 is $(m small-q5_1 .state); "
+click_row delete base-q5_1
 sleep 0.5
 shot 008-in-use
 code=$($HC state | jq -r .models.notice.code)
 [ "$code" = MODEL_IN_USE ] || failures+="notice code is $code; "
-{ [ -f "$MODELS/ggml-tiny.en.bin" ] && [ -f "$MODELS/ggml-tiny.en.bin.verified" ]; } || failures+="tiny.en file or stamp is gone; "
-[ "$(m tiny.en .state)" = ready ] || failures+="tiny.en is $(m tiny.en .state); "
-check_failures "VAL-MOD-008 delete" "base.en and its stamp deleted; deleting active tiny.en gave $code and kept its file and stamp" "$failures"
+{ [ -f "$MODELS/ggml-base-q5_1.bin" ] && [ -f "$MODELS/ggml-base-q5_1.bin.verified" ]; } || failures+="base-q5_1 file or stamp is gone; "
+[ "$(m base-q5_1 .state)" = ready ] || failures+="base-q5_1 is $(m base-q5_1 .state); "
+check_failures "VAL-MOD-008 delete" "small-q5_1 and its stamp deleted; deleting active base-q5_1 gave $code and kept its file and stamp" "$failures"
 
 echo "== select loads the model in the running engine"
-fresh tiny.en base.en
-select_model tiny.en
+fresh base-q5_1 small-q5_1
+select_model base-q5_1
 wait_until 20 engine_up
 pid=$($HC state | jq -r .engine.pid)
-wait_until 30 m_is base.en .state ready
-hook_action model-select '{"id":"base.en"}' >/dev/null
-wait_until 20 engine_has base.en
+wait_until 30 m_is small-q5_1 .state ready
+hook_action model-select '{"id":"small-q5_1"}' >/dev/null
+wait_until 20 engine_has small-q5_1
 failures=""
-engine_has base.en || failures+="engine model is $($HC state | jq -r .engine.model); "
+engine_has small-q5_1 || failures+="engine model is $($HC state | jq -r .engine.model); "
 [ "$($HC state | jq -r .engine.pid)" = "$pid" ] || failures+="engine pid changed; "
-[ "$(jq -r '.values["dictation.modelId"]' /data/config/settings.json)" = base.en ] || failures+="settings.json does not name base.en; "
-check_failures "model switch" "base.en loaded with engine pid $pid unchanged; settings.json names base.en" "$failures"
+[ "$(jq -r '.values["dictation.modelId"]' /data/config/settings.json)" = small-q5_1 ] || failures+="settings.json does not name small-q5_1; "
+check_failures "model switch" "small-q5_1 loaded with engine pid $pid unchanged; settings.json names small-q5_1" "$failures"

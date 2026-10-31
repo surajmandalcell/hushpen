@@ -3,7 +3,7 @@
 # GTK entry without um, uh, or er, and with cleanup.rules off the same dictation reaches it raw.
 # The hold key is Right Alt (X11 keycode 108); the words come from the virtual microphone.
 # Needs filler-dictation.wav in HUSHPEN_TEST_FIXTURES (mounted at /fixtures). Busy: it
-# transcribes with base. It empties /data and restarts the app, so the slot must not be shared.
+# transcribes with base-q5_1. It empties /data and restarts the app, so the slot must not be shared.
 # Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -52,9 +52,9 @@ ptt_run() { # <wav>: hold the key for the whole clip; waits until the run has en
   wait_until 240 run_ended
 }
 
-echo "== setup: base model and the paste targets"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

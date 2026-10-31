@@ -6,7 +6,7 @@
 # silence skipping (30 s of silence and of faint noise give no words), a Chatterbox Turbo export
 # with its Read aloud row in History, and the Manage Voices sheet. A dictation ends in the
 # clipboard here, like the Home suite: no paste target is in front.
-# Needs base from /assets/models/whisper, the chatterbox-turbo folder from /assets/models/tts, and
+# Needs base-q5_1 from /assets/models/whisper, the chatterbox-turbo folder from /assets/models/tts, and
 # speech-short.wav, speech-es.wav, and dictation-45s.wav in /assets/fixtures. Chatterbox wants
 # more than the default slot: start it as `VAL_CPUS=4 VAL_MEM=4g harness/run-suite.sh features
 # --slots 1` (a 4 CPU slot counts as 2 busy slots). It empties /data and restarts the app, so the
@@ -72,13 +72,13 @@ event_times() { # since RUN_T0: "<t_ms> <detail>" of the dictation events
   $HC events | jq -r --argjson t0 "$RUN_T0" '.[] | select(.kind == "dictation" and .t_ms >= $t0) | "\(.t_ms) \(.detail)"'
 }
 
-echo "== setup: base and the Chatterbox Turbo files, WAVs of silence and noise"
-fresh base
+echo "== setup: base-q5_1 and the Chatterbox Turbo files, WAVs of silence and noise"
+fresh base-q5_1
 /harness/slot/app.sh stop
 mkdir -p /data/models/tts "$RUN_OUT/padded" "$RUN_OUT/gen"
 cp -r "/assets/models/tts/$TTS_ID" /data/models/tts/
 start_app
-use_model base
+use_model base-q5_1
 python3 - "$SILENCE" "$NOISE" <<'PY'
 import random
 import struct

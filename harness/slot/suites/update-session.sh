@@ -8,7 +8,7 @@
 # Both runs set HUSHPEN_UPDATE_FEED and HUSHPEN_UPDATE_PUBKEY, so the off run also proves that
 # the override alone starts nothing. The feed is harness/slot/update-feed-server.py in its `same`
 # mode (the version that runs), see updates.sh.
-# Needs speech-short.wav and speech-short.flac in /assets/fixtures, the base model in /assets, and
+# Needs speech-short.wav and speech-short.flac in /assets/fixtures, the base-q5_1 model in /assets, and
 # filler-dictation.wav and llm/Qwen3.5-2B-Q4_K_M.gguf in /fixtures. Start the slot with
 # VAL_CPUS=4 VAL_MEM=4g (an LLM slot counts as 2 busy slots). It empties /data, so the slot must
 # not be shared.
@@ -120,7 +120,7 @@ session() {
   # The models stay between the two runs: the library hashes a copied model file only once.
   find /data -mindepth 1 -maxdepth 1 ! -name models -exec rm -rf {} +
   mkdir -p /data/models/whisper /data/models/llm /data/config
-  [ -e /data/models/whisper/ggml-base.bin ] || cp /assets/models/whisper/ggml-base.bin /data/models/whisper/
+  [ -e /data/models/whisper/ggml-base-q5_1.bin ] || cp /assets/models/whisper/ggml-base-q5_1.bin /data/models/whisper/
   [ -e "$MODEL_FILE" ] || cp "$FIXTURE_GGUF" "$MODEL_FILE"
   local check=false
   [ "$updates" = on ] && check=true
@@ -131,7 +131,7 @@ session() {
     /harness/slot/app.sh start >/dev/null || fail "the app did not start under strace"
   wait_until 20 hook_up || fail "no hook after the start"
   wait_until 600 test -e "$MODEL_FILE.verified" || fail "the LLM file was never verified"
-  use_model base || fail "the base model did not load"
+  use_model base-q5_1 || fail "the base-q5_1 model did not load"
   step "start, models verified"
 
   ids=$(/harness/slot/targets.sh --stock)

@@ -5,7 +5,7 @@
 # at a scratch folder before the first start. The Change data folder target is queued with
 # `hookctl paths`; the move restarts the app by itself and `app.sh adopt` points the pidfile at
 # the new process. Needs speech-short.wav in /assets/fixtures, filler-dictation.wav in
-# /fixtures, and the base model in /assets/models/whisper. Busy: it transcribes and restarts
+# /fixtures, and the base-q5_1 model in /assets/models/whisper. Busy: it transcribes and restarts
 # the app several times, so the slot must not be shared. Runs in one slot through with-env.sh.
 #
 # Trap: wait_until runs its command once per poll, so a `test "$(...)" = x` argument freezes the
@@ -133,10 +133,10 @@ first_control() { # <section key> -> the tree id of its first control (Linux has
 search_focused() { [ "$(tree_get settings.search focused)" = true ]; }
 query_is() { [ "$(sv .query)" = "$1" ]; }
 
-echo "== setup: base model, the paste targets, a scratch autostart folder"
+echo "== setup: base-q5_1 model, the paste targets, a scratch autostart folder"
 rm -rf /tmp/hp-xdg-config
-fresh base
-use_model base
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -346,14 +346,14 @@ DEF=${XDG_DATA_HOME:-$HOME/.local/share}/hushpen
 NEW=$HOME/hp-moved
 /harness/slot/app.sh stop >/dev/null
 rm -rf "$DEF" "$NEW"
-# The default folder with the base model in place before the first start, so the model scan
+# The default folder with the base-q5_1 model in place before the first start, so the model scan
 # finds it (a model copied in later is not picked up again).
 mkdir -p "$DEF/models/whisper"
-cp /assets/models/whisper/ggml-base.bin "$DEF/models/whisper/"
+cp /assets/models/whisper/ggml-base-q5_1.bin "$DEF/models/whisper/"
 APP_NO_DATA_DIR=1 /harness/slot/app.sh start >/dev/null
 wait_until 20 dict_is .state idle || failures+="the app did not start on the default folder; "
-use_model base || failures+="the base model never became ready; "
-[ -f "$DEF/models/whisper/ggml-base.bin.verified" ] || failures+="no .verified stamp for base; "
+use_model base-q5_1 || failures+="the base-q5_1 model never became ready; "
+[ -f "$DEF/models/whisper/ggml-base-q5_1.bin.verified" ] || failures+="no .verified stamp for base-q5_1; "
 # 3 history rows with audio, 1 dictionary entry, a changed cue volume.
 /harness/slot/app.sh stop >/dev/null
 /harness/slot/seed-history.sh 3 "$DEF/history/history.db" >/dev/null
@@ -384,8 +384,8 @@ wait_until 60 dict_is .state idle || failures+="the restarted app is not idle; "
 [ "$(sqlite3 "$NEW/history/history.db" 'select count(*) from transcript' 2>/dev/null)" = 3 ] || failures+="the new history.db does not hold 3 rows; "
 [ "$(find "$NEW/audio" -name '*.wav' 2>/dev/null | wc -l)" = 3 ] || failures+="the new audio folder holds $(find "$NEW/audio" -name '*.wav' 2>/dev/null | wc -l) WAVs; "
 [ "$(sqlite3 "$NEW/history/history.db" 'select phrase from dictionary_entry' 2>/dev/null)" = Hushpen ] || failures+="the dictionary entry did not move; "
-[ -f "$NEW/models/whisper/ggml-base.bin" ] || failures+="the model did not move; "
-[ -f "$NEW/models/whisper/ggml-base.bin.verified" ] || failures+="the .verified stamp did not move; "
+[ -f "$NEW/models/whisper/ggml-base-q5_1.bin" ] || failures+="the model did not move; "
+[ -f "$NEW/models/whisper/ggml-base-q5_1.bin.verified" ] || failures+="the .verified stamp did not move; "
 [ "$(jq -r '.values["audio.cueVolume"]' "$NEW/config/settings.json")" = 0.25 ] || failures+="cueVolume in the new settings.json is $(jq -r '.values["audio.cueVolume"]' "$NEW/config/settings.json"); "
 [ ! -e "$DEF/history/history.db" ] || failures+="the old folder still holds history.db; "
 [ ! -d "$DEF/audio" ] || failures+="the old folder still holds audio/; "
@@ -408,7 +408,7 @@ sleep 0.5
 rows=$($HC tree | jq -r '[.[] | select(.id | test("^history.row"))] | length')
 [ "$rows" = 3 ] || failures+="History lists $rows rows; "
 shot 006-moved
-wait_until 90 engine_ready_with base || failures+="the engine is not ready with base after the move; "
+wait_until 90 engine_ready_with base-q5_1 || failures+="the engine is not ready with base-q5_1 after the move; "
 gtk_clear
 ptt_run "$SHORT_WAV" || failures+="the post-move dictation did not end; "
 gtk_commit >/dev/null

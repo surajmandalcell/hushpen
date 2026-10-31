@@ -2,11 +2,12 @@
 # First-run onboarding: VAL-ONB-001 to 009 and VAL-CROSS-001. The Linux parts of VAL-ONB-008
 # (a finished data folder that starts with no microphone) and VAL-ONB-003 (a macOS component test)
 # are split: 003 is cargo test, 008 for Linux is here.
-# Busy: it transcribes, and VAL-CROSS-001 downloads the default model once from Hugging Face (the
-# slot needs network, about 150 MB). It empties /data, loads and unloads PulseAudio modules, and
-# restarts the app, so the slot must not be shared. Needs speech-short.wav and silence-5s.wav in
-# /assets/fixtures and ggml-base.bin in /assets/models/whisper. Runs in one slot through
-# with-env.sh. Pixel baselines of the five steps are cargo test (test-pixel), not this suite.
+# Busy: it transcribes, and VAL-CROSS-001 downloads the default model, Parakeet v3 Q4, once from
+# Hugging Face (the slot needs network, about 415 MB). It empties /data, loads and unloads
+# PulseAudio modules, and restarts the app, so the slot must not be shared. Needs speech-short.wav
+# and silence-5s.wav in /assets/fixtures and ggml-parakeet-tdt-0.6b-v3-q4_k.bin in
+# /assets/models/whisper. Runs in one slot through with-env.sh. Pixel baselines of the five steps
+# are cargo test (test-pixel), not this suite.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
 
@@ -19,9 +20,11 @@ SILENCE_WAV=$FIX/silence-5s.wav
 DB=/data/history/history.db
 DOWNLOADS=/data/cache/downloads
 HOLD=108
-# Pinned in assets/models.json
-BASE_SHA=60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
-BASE_BYTES=147951465
+# The catalog default, pinned in assets/models.json
+DEFAULT_MODEL=parakeet-v3-q4_k
+DEFAULT_FILE=$(model_file "$DEFAULT_MODEL")
+DEFAULT_SHA=8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e
+DEFAULT_BYTES=415611879
 
 ob() { $HC state | jq -r ".onboarding$1"; }
 ob_is() { [ "$(ob "$1")" = "$2" ]; }
@@ -76,7 +79,7 @@ begin() { # [model names from /assets]: empties /data, copies the models, starts
   /harness/slot/app.sh stop
   find /data -mindepth 1 -delete
   mkdir -p "$MODELS"
-  for name in "$@"; do cp "/assets/models/whisper/ggml-$name.bin" "$MODELS/"; done
+  for name in "$@"; do cp "/assets/models/whisper/$(model_file "$name")" "$MODELS/"; done
   /harness/slot/app.sh start >/dev/null
   wait_until 20 ob_is .active true
 }
@@ -198,7 +201,7 @@ failures=""
 next_step model || failures+="Continue did not open the model step; "
 shot 005-model-start
 $HC state | jq .onboarding >"$RUN_OUT/005-model-state.json"
-[ "$(ob .model.id)" = base ] || failures+="the step names model '$(ob .model.id)', not the default base; "
+[ "$(ob .model.id)" = "$DEFAULT_MODEL" ] || failures+="the step names model '$(ob .model.id)', not the default $DEFAULT_MODEL; "
 [ "$(ob .model.state)" = not_downloaded ] || failures+="model state is $(ob .model.state); "
 continue_enabled && failures+="Continue is open with no model; "
 gtk_clear
@@ -229,12 +232,12 @@ done
 [ "${#samples[@]}" -ge 5 ] || failures+="only ${#samples[@]} progress samples; "
 [ "$dropped" = 0 ] || failures+="progress fell $dropped times; "
 [ "${samples[0]:--1}" -lt 20 ] || failures+="the first progress was ${samples[0]:--1}; "
-size=$(stat -c %s "$MODELS/ggml-base.bin" 2>/dev/null)
-sum=$(sha256sum "$MODELS/ggml-base.bin" 2>/dev/null | awk '{print $1}')
-stamp="$MODELS/ggml-base.bin.verified"
-[ "$size" = "$BASE_BYTES" ] || failures+="size is $size; "
-[ "$sum" = "$BASE_SHA" ] || failures+="sha256 is $sum; "
-[ "$(jq -r '"\(.algo) \(.hash) \(.size)"' "$stamp" 2>/dev/null)" = "sha256 $BASE_SHA $BASE_BYTES" ] || failures+="the stamp is wrong: $(cat "$stamp" 2>/dev/null); "
+size=$(stat -c %s "$MODELS/$DEFAULT_FILE" 2>/dev/null)
+sum=$(sha256sum "$MODELS/$DEFAULT_FILE" 2>/dev/null | awk '{print $1}')
+stamp="$MODELS/$DEFAULT_FILE.verified"
+[ "$size" = "$DEFAULT_BYTES" ] || failures+="size is $size; "
+[ "$sum" = "$DEFAULT_SHA" ] || failures+="sha256 is $sum; "
+[ "$(jq -r '"\(.algo) \(.hash) \(.size)"' "$stamp" 2>/dev/null)" = "sha256 $DEFAULT_SHA $DEFAULT_BYTES" ] || failures+="the stamp is wrong: $(cat "$stamp" 2>/dev/null); "
 [ -z "$(ls "$DOWNLOADS" 2>/dev/null)" ] || failures+="left in downloads: $(ls "$DOWNLOADS" | tr '\n' ' '); "
 wait_until 5 continue_enabled || failures+="Continue is closed with a verified model; "
 $HC net >"$RUN_OUT/005-net.json"
@@ -245,7 +248,7 @@ check_failures "VAL-ONB-005 download" "${#samples[@]} samples rose from ${sample
 echo "== VAL-ONB-005 a cancelled second attempt leaves no partial file"
 failures=""
 # Delete the verified file the way the library does, then start over and cancel.
-$HC action model-delete '{"id":"base"}' >"$RUN_OUT/005-delete.txt" 2>&1 || failures+="the model could not be deleted: $(cat "$RUN_OUT/005-delete.txt"); "
+$HC action model-delete "{\"id\":\"$DEFAULT_MODEL\"}" >"$RUN_OUT/005-delete.txt" 2>&1 || failures+="the model could not be deleted: $(cat "$RUN_OUT/005-delete.txt"); "
 wait_until 10 ob_is .model.state not_downloaded || failures+="the model is $(ob .model.state) after the delete; "
 click onboarding.model.download
 for _ in $(seq 300); do
@@ -261,7 +264,7 @@ settled=$(($(now_ms) - t0))
 sleep 1
 shot 005-cancelled
 [ -z "$(ls "$DOWNLOADS" 2>/dev/null)" ] || failures+="left in downloads: $(ls "$DOWNLOADS" | tr '\n' ' '); "
-[ ! -e "$MODELS/ggml-base.bin" ] || failures+="a model file is there after the cancel; "
+[ ! -e "$MODELS/$DEFAULT_FILE" ] || failures+="a model file is there after the cancel; "
 continue_enabled && failures+="Continue is open after the cancel; "
 [ "$settled" -le 2000 ] || failures+="the cancel took $settled ms; "
 check_failures "VAL-ONB-005 cancel" "cancel settled in $settled ms, state not_downloaded, downloads empty, step not passed" "$failures"
@@ -269,7 +272,7 @@ check_failures "VAL-ONB-005 cancel" "cancel settled in $settled ms, state not_do
 echo "== VAL-ONB-005 and 007 a present verified model shows ready with no network; a restart resumes the step"
 failures=""
 /harness/slot/app.sh stop
-cp "/assets/models/whisper/ggml-base.bin" "$MODELS/"
+cp "/assets/models/whisper/$DEFAULT_FILE" "$MODELS/"
 relaunch
 wait_until 20 ob_is .active true
 wait_until 60 ob_is .model.state ready || failures+="the present model is $(ob .model.state); "
@@ -414,7 +417,7 @@ check_failures "VAL-ONB-008 lost microphone" "no source: repair at permissions, 
 
 echo "== VAL-ONB-004 the mic test shows the level and a test transcript"
 failures=""
-begin base
+begin "$DEFAULT_MODEL"
 wait_until 90 engine_ready || failures+="the engine did not load; "
 next_step mic || failures+="Continue did not open the mic test; "
 sleep 0.5
@@ -450,7 +453,7 @@ check_failures "VAL-ONB-004 mic test" "silence: level $top_silence, $verdict, hi
 
 echo "== VAL-ONB-009 the keyboard alone completes the five steps; no step has a skip control"
 failures=""
-begin base
+begin "$DEFAULT_MODEL"
 wait_until 90 engine_ready || failures+="the engine did not load; "
 focus "$(app_window)"
 tab_to() { # <id>: Tab until that element has focus

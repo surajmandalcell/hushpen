@@ -1,7 +1,7 @@
 #!/bin/bash
 # Capture tail checks: a clip that ends on speech, with no trailing silence, is played into the
 # virtual microphone and the recording is stopped the moment the player returns. The last word
-# must be in the transcript. Busy: it transcribes with base. It empties /data and restarts the
+# must be in the transcript. Busy: it transcribes with base-q5_1. It empties /data and restarts the
 # app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -13,8 +13,8 @@ trimmed() { # <fixture> -> path of the copy that ends on its last loud sample
 }
 
 echo "== the last word of a 45 s clip that ends on speech"
-fresh base
-use_model base
+fresh base-q5_1
+use_model base-q5_1
 text=""
 failures=""
 for run in 1 2 3; do
