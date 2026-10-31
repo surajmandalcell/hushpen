@@ -422,6 +422,97 @@ fn export_writes_a_wav_of_the_speech(cx: &mut TestAppContext) {
     assert!(fixture.read.read_with(cx, |read, _| read.info().is_some()));
 }
 
+/// Plays "Hello there." and runs only its speech job, so the audio is complete and any job the
+/// end of the speech queued still waits for a thread.
+fn speak_to_the_end(cx: &mut VisualTestContext, fixture: &Fixture) {
+    type_text(cx, fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    let speech = fixture.work.borrow_mut().pop_front().unwrap();
+    speech();
+    cx.run_until_parked();
+}
+
+/// Exports the complete audio to `path` and leaves the write job waiting.
+fn export_without_running(cx: &mut VisualTestContext, fixture: &Fixture, path: PathBuf) {
+    fixture.read.update(cx, |read, cx| read.export(cx)).unwrap();
+    cx.run_until_parked();
+    cx.simulate_new_path_selection(move |_| Some(path.clone()));
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn the_wav_of_an_export_is_written_off_the_ui_thread(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    speak_to_the_end(cx, &fixture);
+    run_all(cx, &fixture);
+    let path = fixture.folder.path().join("again.wav");
+    export_without_running(cx, &fixture, path.clone());
+
+    assert!(!path.exists(), "the UI thread wrote nothing");
+    assert_eq!(fixture.work.borrow().len(), 1, "one write job waits");
+    assert_eq!(state(cx, &fixture)["info"], Value::Null);
+
+    run_all(cx, &fixture);
+    assert_eq!(&std::fs::read(&path).unwrap()[..4], b"RIFF");
+    let info = state(cx, &fixture)["info"].as_str().unwrap().to_owned();
+    assert!(info.starts_with("Saved the audio to "), "{info}");
+    assert_eq!(state(cx, &fixture)["error"], Value::Null);
+}
+
+#[gpui_kit::test]
+fn a_failed_export_write_reaches_the_status_row(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    speak_to_the_end(cx, &fixture);
+    run_all(cx, &fixture);
+    let path = fixture.folder.path().join("no folder").join("again.wav");
+    export_without_running(cx, &fixture, path);
+    run_all(cx, &fixture);
+    let state = state(cx, &fixture);
+    let error = state["error"].as_str().unwrap();
+    assert!(
+        error.starts_with("The audio could not be saved to "),
+        "{error}"
+    );
+    assert_eq!(state["info"], Value::Null);
+}
+
+#[gpui_kit::test]
+fn the_audio_and_row_of_a_read_are_written_off_the_ui_thread(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    let saved = count_saved(cx, &fixture);
+    speak_to_the_end(cx, &fixture);
+    assert_eq!(fixture.work.borrow().len(), 1, "one write job waits");
+    assert!(rows(&fixture).is_empty(), "the row waits for its audio");
+    let waiting = std::fs::read_dir(fixture.storage.data.audio_dir()).map_or(0, Iterator::count);
+    assert_eq!(waiting, 0, "no audio on disk yet");
+
+    run_all(cx, &fixture);
+    let saved_rows = rows(&fixture);
+    assert_eq!(saved_rows.len(), 1);
+    let audio = fixture
+        .storage
+        .data
+        .root()
+        .join(saved_rows[0].audio_path.as_deref().unwrap());
+    assert_eq!(&std::fs::read(audio).unwrap()[..4], b"RIFF");
+    assert_eq!(saved.get(), 1);
+}
+
+#[gpui_kit::test]
+fn a_read_whose_audio_cannot_be_written_keeps_its_text_only(cx: &mut TestAppContext) {
+    let (fixture, cx) = open(cx);
+    // A file where the audio folder belongs makes the write fail.
+    let audio = fixture.storage.data.audio_dir();
+    let _ = std::fs::remove_dir_all(&audio);
+    std::fs::write(&audio, b"in the way").unwrap();
+    speak_to_the_end(cx, &fixture);
+    run_all(cx, &fixture);
+    let row = rows(&fixture).remove(0);
+    assert_eq!(row.final_text.as_deref(), Some("Hello there."));
+    assert_eq!(row.audio_path, None);
+    assert_eq!(row.audio_removed_at, None);
+}
+
 #[gpui_kit::test]
 fn a_text_file_opens_in_the_text_area(cx: &mut TestAppContext) {
     let (fixture, cx) = open(cx);

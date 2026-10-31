@@ -132,6 +132,12 @@ impl Player {
         write_wav(path, track.rate, &track.samples)
     }
 
+    /// A copy of the audio so far and its sample rate, for a write on another thread.
+    pub fn samples(&self) -> (u32, Vec<f32>) {
+        let track = lock(&self.track);
+        (track.rate, track.samples.clone())
+    }
+
     pub fn duration_ms(&self) -> u64 {
         self.duration_ms
     }
