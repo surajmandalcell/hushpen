@@ -260,7 +260,9 @@ impl Host for Reentrant {
         }))
     }
 
-    fn hide(&mut self, _: &mut App) {}
+    fn hide(&mut self, _: &mut App) -> Option<Native> {
+        None
+    }
 
     fn window(&self) -> Option<AnyWindowHandle> {
         None
@@ -299,7 +301,9 @@ impl Host for Counting {
         None
     }
 
-    fn hide(&mut self, _: &mut App) {}
+    fn hide(&mut self, _: &mut App) -> Option<Native> {
+        None
+    }
 
     fn window(&self) -> Option<AnyWindowHandle> {
         None

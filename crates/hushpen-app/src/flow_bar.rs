@@ -64,7 +64,9 @@ pub trait Host {
     /// resize while the call runs, and GPUI answers with an update of the App, which fails when
     /// the App is still borrowed (it logs `RefCell already borrowed` and loses the update).
     fn show(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native>;
-    fn hide(&mut self, cx: &mut App);
+    /// Takes the window off the screen, or closes it. Like [`Self::show`], it returns the
+    /// native call for after the App is free.
+    fn hide(&mut self, cx: &mut App) -> Option<Native>;
     fn window(&self) -> Option<AnyWindowHandle>;
 }
 
@@ -658,10 +660,7 @@ fn drive(
     };
     let native = match plan {
         Some(bounds) => driver.borrow_mut().show(bounds, cx),
-        None => {
-            driver.borrow_mut().hide(cx);
-            None
-        }
+        None => driver.borrow_mut().hide(cx),
     };
     Some((if fast { FRAME } else { TICK }, native))
 }
