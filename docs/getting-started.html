@@ -19,7 +19,7 @@
         <a class="brand" href="./index.html"><img src="./assets/hushpen-app-icon.png" alt="" width="28" height="28" />Hushpen</a>
         <nav class="nav-links" aria-label="Primary">
           <a class="is-active" href="./getting-started.html">Getting started</a>
-          <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.2.0" target="_blank" rel="noreferrer">Releases</a>
+          <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.3.0" target="_blank" rel="noreferrer">Releases</a>
           <a class="nav-cta" href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </div>
@@ -27,7 +27,7 @@
 
     <main class="shell">
       <section class="doc-hero">
-        <p class="prompt-line">Hushpen 2.2.0</p>
+        <p class="prompt-line">Hushpen 2.3.0</p>
         <h1>Getting started</h1>
         <p class="lead">
           Install Hushpen, allow it to hear and paste, and make your first dictation. Everything stays on your computer.
@@ -45,7 +45,7 @@
           <h2>Install</h2>
           <p>
             Download a file from the
-            <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.2.0" target="_blank" rel="noreferrer">release page</a>.
+            <a href="https://github.com/surajmandalcell/hushpen/releases/tag/v2.3.0" target="_blank" rel="noreferrer">release page</a>.
             Hushpen runs on macOS 13 or later on Apple silicon, and on Linux x64 and arm64 with an X11 session.
           </p>
           <div class="doc-table-wrap">
@@ -60,25 +60,25 @@
                 <tr>
                   <td><strong>macOS</strong></td>
                   <td>
-                    Open <code>Hushpen-2.2.0-macos-arm64.dmg</code> and drag Hushpen to Applications. Or unzip
-                    <code>Hushpen-2.2.0-macos-arm64.zip</code> and move <code>Hushpen.app</code> to Applications.
+                    Open <code>Hushpen-2.3.0-macos-arm64.dmg</code> and drag Hushpen to Applications. Or unzip
+                    <code>Hushpen-2.3.0-macos-arm64.zip</code> and move <code>Hushpen.app</code> to Applications.
                   </td>
                 </tr>
                 <tr>
                   <td><strong>Linux AppImage</strong></td>
-                  <td>Run <code>chmod +x Hushpen-2.2.0-linux-x64.AppImage</code>, then run the file.</td>
+                  <td>Run <code>chmod +x Hushpen-2.3.0-linux-x64.AppImage</code>, then run the file.</td>
                 </tr>
                 <tr>
                   <td><strong>Debian, Ubuntu</strong></td>
-                  <td><code>sudo apt install ./Hushpen-2.2.0-linux-x64.deb</code></td>
+                  <td><code>sudo apt install ./Hushpen-2.3.0-linux-x64.deb</code></td>
                 </tr>
                 <tr>
                   <td><strong>Fedora, openSUSE</strong></td>
-                  <td><code>sudo dnf install ./Hushpen-2.2.0-linux-x64.rpm</code></td>
+                  <td><code>sudo dnf install ./Hushpen-2.3.0-linux-x64.rpm</code></td>
                 </tr>
                 <tr>
                   <td><strong>Linux tar.gz</strong></td>
-                  <td>Run <code>tar xzf Hushpen-2.2.0-linux-x64.tar.gz</code>, then run <code>hushpen</code> from the new folder.</td>
+                  <td>Run <code>tar xzf Hushpen-2.3.0-linux-x64.tar.gz</code>, then run <code>hushpen</code> from the new folder.</td>
                 </tr>
               </tbody>
             </table>
@@ -161,7 +161,7 @@ tccutil reset Accessibility io.github.surajmandalcell.hushpen</pre>
           <ul>
             <li><strong>Permissions</strong>: each line shows where a system need stands</li>
             <li><strong>Microphone test</strong>: press Test, say a sentence, then press Stop to see the level move</li>
-            <li><strong>Speech model</strong>: download one Whisper model. Hushpen checks the file before it uses it.</li>
+            <li><strong>Speech model</strong>: download Parakeet v3 Q4, the recommended speech model. Hushpen checks the file before it uses it.</li>
             <li><strong>Shortcut practice</strong>: hold the hold key, say a sentence, then let go</li>
             <li><strong>Updates</strong>: the update check is off unless you turn it on, and you can change it later in Settings</li>
           </ul>
@@ -175,10 +175,12 @@ tccutil reset Accessibility io.github.surajmandalcell.hushpen</pre>
             The flow bar shows the dictation state without taking focus. To use another key, record it in the Shortcuts section of
             Settings. Any key or chord works. If another app already uses it, the field says how to free it. The switch on each row turns that shortcut off, and the reset button brings back its default. Select text in any app and press Ctrl+Cmd+S (Ctrl+Alt+S on Linux) to hear it read aloud; press it again to stop. Settings is one list with a search field: press Cmd+F (Ctrl+F on Linux) and type to find a setting. Home also
             has a Record button and a language choice. If your microphone is quiet, raise Input boost in the Audio section of
-            Settings, up to 200%.
+            Settings, up to 200%. Other audio goes quiet while you dictate; turn off Mute other audio while dictating in the same section to keep it playing.
           </p>
           <p>
-            The Models view lists speech, text cleanup, and voice models, and marks the recommended one of each kind.
+            The Models view lists speech, text cleanup, and voice models, marks the recommended one of each kind, and has a search field.
+            Parakeet v3 Q4 covers English and 24 other European languages. Use Whisper Large v3 Turbo Q5 for Hindi and other
+            languages, and Whisper Small Q5 to translate speech to English.
             The details button of a model shows what it is good for, its speed, accuracy, memory, and languages, the page it
             downloads from, its folder, and its checksum. A download starts only when the disk has room for it.
           </p>
