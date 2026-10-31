@@ -16,7 +16,7 @@
       "speed": 4,
       "accuracy": 5,
       "quantization": "Q4_K",
-      "ram_idle_bytes": 600000000,
+      "ram_idle_bytes": 550000000,
       "ram_peak_bytes": 685000000,
       "recommended_for": "Everyday dictation, including Indian and British English",
       "source_page": "https://huggingface.co/ggml-org/parakeet-GGUF"

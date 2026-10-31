@@ -98,15 +98,12 @@ pub struct ModelInfo {
     /// How most weights are stored, by the name whisper.cpp, llama.cpp, or ONNX gives it: `F16`,
     /// `Q5_1`, `Q4_K_M`, `INT8`.
     pub quantization: String,
-    /// Memory of the worker process that holds the model, right after the load.
-    ///
-    /// Both figures are measured, not estimated: the release workers on an M4 Pro Mac with 24 GB,
-    /// driven through their pipes the way the app drives them (GPU on for speech and cleanup, 8
-    /// threads), as the larger of the resident size and the physical footprint. Linux and other
-    /// Macs differ somewhat.
+    /// Approximate memory right after loading on an M4 Pro Mac with 24 GB and 8 threads.
+    /// Speech uses resident memory with Metal; cleanup and voices use the larger of resident
+    /// memory and physical footprint. Other computers and operating systems differ.
     pub ram_idle_bytes: u64,
-    /// The most memory of that process during a long job: 5 minutes of audio, a cleanup of 500
-    /// words, or a paragraph read aloud.
+    /// Peak memory in the reference workload: the speech dictation benchmark, a cleanup of
+    /// 500 words, or a paragraph read aloud. Longer jobs can use more.
     pub ram_peak_bytes: u64,
     /// Who or what the model suits, as one short line.
     pub recommended_for: String,
