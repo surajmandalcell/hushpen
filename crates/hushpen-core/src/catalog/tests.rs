@@ -495,3 +495,42 @@ fn a_voice_model_needs_its_kind_its_files_and_a_safe_folder() {
         "a catalog from before voice models parses"
     );
 }
+
+#[test]
+fn kokoro_replaces_the_first_weights_it_shipped_with() {
+    let entry = embedded().voice(crate::kokoro::MODEL_ID).unwrap();
+    let model = &entry.files[0];
+    assert_eq!(model.file, "model.int8.onnx");
+    let pin = model.old_pin_of_size(114_203_756).unwrap();
+    assert_eq!(
+        pin.sha256,
+        "4b86207ef680e394d8343bee22dfc4c512e5c707c6d9578e3f35ab09bffd6b36"
+    );
+    assert_eq!(model.old_pin_of_size(model.bytes), None);
+    assert!(
+        entry.files[1..].iter().all(|file| file.replaces.is_empty()),
+        "only the changed file lists an old pin"
+    );
+}
+
+#[test]
+fn a_file_lists_the_pins_it_replaces_and_never_its_own() {
+    let old = json!({"bytes": 4, "sha256": "b".repeat(64)});
+    let with = |replaces: Value| {
+        let mut entry = old_entry("x", &"a".repeat(64), "f");
+        entry["replaces"] = replaces;
+        parse(json!({"whisper": [entry]}))
+    };
+    let catalog = with(json!([old])).unwrap();
+    assert_eq!(catalog.whisper[0].files[0].replaces.len(), 1);
+    assert!(with(json!([{"bytes": 4, "sha256": "short"}])).is_err());
+    assert!(with(json!([{"sha256": "b".repeat(64)}])).is_err());
+    assert!(
+        with(json!([{"bytes": 9, "sha256": "a".repeat(64)}])).is_err(),
+        "the current hash is not an old pin"
+    );
+    assert!(
+        with(json!([{"bytes": 5, "sha256": "b".repeat(64)}])).is_err(),
+        "the current size is not an old pin"
+    );
+}
