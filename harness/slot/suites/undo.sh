@@ -9,7 +9,7 @@
 # in /out/gtk-live.txt and one line for every Ctrl+Z in /out/gtk-undo.log. The xterm target is
 # stock xterm running `cat > /out/xterm.txt`; a Ctrl+Z that reached its terminal would stop cat.
 # Needs filler-dictation.wav and ai-self-correction.wav in HUSHPEN_TEST_FIXTURES (mounted at
-# /fixtures), the llm folder there, and the base model in /assets. Start the slot with
+# /fixtures), the llm folder there, and the base-q5_1 model in /assets. Start the slot with
 # VAL_CPUS=4 VAL_MEM=4g (the local model counts as 2 busy slots). It empties /data, so the slot
 # must not be shared.
 . /harness/slot/lib.sh
@@ -191,9 +191,9 @@ open_history_detail() { # opens the detail of the newest row
 history_count() { $HC state | jq -r '.history.count'; }
 history_search() { hook_action history-search "{\"query\":\"$1\"}" >/dev/null; sleep 0.6; }
 
-echo "== setup: base model, the paste targets, and the stub endpoint"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model, the paste targets, and the stub endpoint"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
