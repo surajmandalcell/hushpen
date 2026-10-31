@@ -6,7 +6,7 @@
 # real X pointer input from xdotool. Screenshots are cropped to the bar's bounds and checked
 # for the dark pill and the colors of each state; the pixel baselines at scale 2 are held by the
 # `test-pixel` gate. The words come from the virtual microphone. Needs speech-short.wav,
-# dictation-45s.wav, and silence-5s.wav in /assets/fixtures and the base model in
+# dictation-45s.wav, and silence-5s.wav in /assets/fixtures and the base-q5_1 model in
 # /assets/models/whisper. Busy: it transcribes. It empties /data and restarts
 # the app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
@@ -175,9 +175,9 @@ focus_watch_stop() {
   wait "$WATCH" 2>/dev/null
 }
 
-echo "== setup: the base model, the paste targets"
-fresh base
-use_model base
+echo "== setup: the base-q5_1 model, the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -540,7 +540,7 @@ failures=""
 /harness/slot/app.sh stop
 XDG_SESSION_TYPE=wayland /harness/slot/app.sh start >/dev/null
 wait_until 20 dict_is .state idle
-wait_until 90 engine_ready_with base || failures+="the engine did not load again; "
+wait_until 90 engine_ready_with base-q5_1 || failures+="the engine did not load again; "
 wait_until 20 bar_visible true || failures+="the bar did not map on Wayland; "
 sleep 1
 keys=$($HC state | jq -c .global_keys)
