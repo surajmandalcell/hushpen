@@ -25,6 +25,7 @@ use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
 use hushpen_app::flow_bar::view::{Preview, Props, WAVE_BARS, result_text, size_of};
+use hushpen_app::flow_bar::working::{LONG_WAIT_MS, Stage};
 use hushpen_app::mic::{MicBackend, MicSession};
 use hushpen_app::theme::{self, Appearance, chrome, space};
 use hushpen_app::views::View;
@@ -465,30 +466,91 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
     listening.levels = (0..WAVE_BARS)
         .map(|n| 0.35 + 0.35 * (n as f32 * 1.3).sin().abs())
         .collect();
-    let mut transcribing = Props::new(BarState::Transcribing);
-    transcribing.phase = 0.4;
-    let mut preparing = Props::new(BarState::Transcribing);
-    preparing.phase = 0.4;
-    preparing.preparing = true;
-    let mut result = Props::new(BarState::Result);
-    result.message = result_text(false).into();
-    let mut undo = Props::new(BarState::Undo);
-    undo.message = result_text(false).into();
-    let mut error = Props::new(BarState::Error);
-    error.message = "No speech heard".into();
-    error.open_history = true;
-    let mut blocked = Props::new(BarState::Blocked);
-    blocked.message = "Another app holds the keyboard".into();
-    blocked.open_history = true;
+    // The processing wave at a fixed moment of a stage, with the float at its high point.
+    let working = |stage: Stage, from: Option<Stage>, stage_ms: u64| Props {
+        stage,
+        from,
+        stage_ms,
+        work_ms: 650,
+        ..Props::new(BarState::Transcribing)
+    };
+    let mut still = working(Stage::Transcribing, None, 0);
+    still.still = true;
+    let message = |state: BarState, text: &str, open_history: bool| Props {
+        message: text.into(),
+        open_history,
+        ..Props::new(state)
+    };
+    let mut hover = message(BarState::Undo, result_text(false), false);
+    hover.hover = true;
+    let mut history_hover = message(BarState::Error, "No speech heard", true);
+    history_hover.hover = true;
+    // A bar on its way in: a little more than a circle, the content still fading in.
+    let appearing = Props {
+        frame: Some((60.0, 32.0)),
+        presence: 0.6,
+        fade: 0.4,
+        ..listening.clone()
+    };
     vec![
         ("flowbar-idle", Props::new(BarState::Idle)),
+        ("flowbar-appearing", appearing),
         ("flowbar-listening", listening),
-        ("flowbar-transcribing", transcribing),
-        ("flowbar-transcribing-preparing", preparing),
-        ("flowbar-result", result),
-        ("flowbar-undo", undo),
-        ("flowbar-error", error),
-        ("flowbar-blocked", blocked),
+        (
+            "flowbar-transcribing",
+            working(Stage::Transcribing, None, 420),
+        ),
+        (
+            "flowbar-cleaning",
+            working(Stage::Cleaning, Some(Stage::Transcribing), 900),
+        ),
+        (
+            "flowbar-long-ripple",
+            working(Stage::Transcribing, None, LONG_WAIT_MS + 1_000),
+        ),
+        (
+            "flowbar-long-breathe",
+            working(Stage::Transcribing, None, LONG_WAIT_MS + 6_000),
+        ),
+        (
+            "flowbar-transcribing-preparing",
+            working(Stage::Preparing, None, 700),
+        ),
+        ("flowbar-transcribing-still", still),
+        (
+            "flowbar-result",
+            message(BarState::Result, result_text(false), false),
+        ),
+        (
+            "flowbar-copied",
+            message(BarState::Result, result_text(true), false),
+        ),
+        (
+            "flowbar-undo",
+            message(BarState::Undo, result_text(false), false),
+        ),
+        ("flowbar-undo-hover", hover),
+        (
+            "flowbar-error",
+            message(BarState::Error, "No speech heard", true),
+        ),
+        ("flowbar-error-hover", history_hover),
+        (
+            "flowbar-error-plain",
+            message(BarState::Error, "Transcription failed", false),
+        ),
+        (
+            "flowbar-blocked",
+            message(BarState::Blocked, "Another app holds the keyboard", true),
+        ),
+        (
+            "flowbar-blocked-command",
+            message(
+                BarState::Blocked,
+                "Command mode needs AI cleanup or the endpoint",
+                false,
+            ),
+        ),
     ]
 }
 
@@ -498,7 +560,7 @@ fn capture_flow_bar(props: Props) -> RgbaImage {
 
 fn capture_flow_bar_in(props: Props, appearance: Appearance) -> RgbaImage {
     let mut cx = headless_in(appearance);
-    let (width, height) = size_of(&props);
+    let (width, height) = props.frame.unwrap_or_else(|| size_of(&props));
     let handle = cx
         .open_window(size(px(width), px(height)), move |window, cx| {
             let bar = cx.new(|_| Preview(props));
@@ -526,12 +588,15 @@ fn every_flow_bar_state_matches_its_approved_baseline() {
 #[test]
 fn the_flow_bar_pill_stays_dark_in_a_light_appearance() {
     for (name, props) in flow_bar_states() {
+        if props.presence < 1.0 {
+            continue;
+        }
         let light = capture_flow_bar_in(props, Appearance::Light);
         // Inside the round left end, clear of the content.
         let [r, g, b, _] = light.get_pixel(8, light.height() / 2).0;
         assert_eq!(
             format!("#{r:02X}{g:02X}{b:02X}"),
-            "#2B2B2B",
+            "#1F1F1F",
             "{name}: the pill keeps its dark HUD color in Light"
         );
     }
@@ -544,7 +609,7 @@ fn the_flow_bar_is_a_compact_dark_pill_at_scale_two() {
     let [r, g, b, a] = image.get_pixel(8, 32).0;
     assert_eq!(
         format!("#{r:02X}{g:02X}{b:02X}"),
-        "#2B2B2B",
+        "#1F1F1F",
         "the pill is the elevated surface"
     );
     assert_eq!(a, 255);

@@ -1,5 +1,5 @@
 //! Test hook for the flow bar: the `overlay` state section, the bar's elements in the tree
-//! (so a test can click them), and the Undo cleanup action. Compiled only with the
+//! (so a test can click them), and the Undo paste action. Compiled only with the
 //! `test-automation` feature.
 
 use super::{ExtraWindow, record_event, register_action, register_window, set_state_section};
@@ -43,7 +43,7 @@ pub fn attach(cx: &mut App, bar: Entity<FlowBar>, host: SharedHost) {
     let _ = register_action(
         cx,
         "overlay-undo-cleanup",
-        "Press Undo cleanup on the flow bar. It is rejected, with the reason, when the offer ran \
+        "Press Undo paste on the flow bar. It is rejected, with the reason, when the offer ran \
          out, the focus changed, or the target is a terminal. State `pipeline.undo` says when \
          it is on offer.",
         move |cx, _| {

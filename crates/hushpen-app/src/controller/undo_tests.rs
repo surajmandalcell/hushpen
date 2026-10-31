@@ -91,11 +91,11 @@ fn paste_last_after_an_undo_inserts_the_rule_text(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_offer_ends_five_seconds_after_the_insertion(cx: &mut TestAppContext) {
+fn the_offer_ends_four_seconds_after_the_insertion(cx: &mut TestAppContext) {
     let (rig, inserter) = cleaned_run(cx);
-    rig.now.set(3_000 + 4_900);
-    assert!(offered(cx, &rig), "still on offer just before five seconds");
-    rig.now.set(3_000 + 5_100);
+    rig.now.set(3_000 + 3_900);
+    assert!(offered(cx, &rig), "still on offer just before four seconds");
+    rig.now.set(3_000 + 4_100);
     assert!(!offered(cx, &rig));
 
     let refused = undo(cx, &rig);

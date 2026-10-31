@@ -276,7 +276,7 @@ is_dark "$result_luma" || failures+="the result bar is not a dark pill (mean $re
 wait_until 240 run_ended || failures+="the run did not end; "
 wait_until 10 bar_is idle || failures+="the bar did not return to idle; "
 flash=$(flash_ms)
-[ -n "$flash" ] && [ "$flash" -ge 1200 ] && [ "$flash" -le 2500 ] || failures+="the result flash lasted '${flash}' ms ($(overlay_since)); "
+[ -n "$flash" ] && [ "$flash" -ge 800 ] && [ "$flash" -le 1800 ] || failures+="the result flash lasted '${flash}' ms ($(overlay_since)); "
 long_got=$(gtk_commit)
 case " $(norm <<<"$long_got") " in *" lighthouse "*) ;; *) failures+="the long dictation's last word is missing: $long_got; " ;; esac
 gtk_clear

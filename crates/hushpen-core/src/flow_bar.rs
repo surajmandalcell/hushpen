@@ -8,6 +8,10 @@ use crate::error::{INSERT_KEYBOARD_GRABBED, INSERT_SECURE_FIELD};
 /// The pipeline itself clears a failure after two seconds, which is too short to read the
 /// message and click "Open history".
 pub const ERROR_HOLD_MS: u64 = 8_000;
+/// How long the "Pasted" or "Copied" flash stays. The pipeline holds its done state longer
+/// (the tray and Home read it), but on the bar a second is enough to see that the words went
+/// in, and a longer flash sits over the text the user goes on to read.
+pub const RESULT_FLASH_MS: u64 = 1_000;
 /// How far the pointer must move after a press before the press is a drag and not a click.
 pub const DRAG_THRESHOLD: f32 = 4.0;
 /// The gap between the bar and the screen edge for the two presets.
@@ -23,7 +27,7 @@ pub enum BarState {
     Transcribing,
     /// A short flash after the text went in.
     Result,
-    /// The text went in and the user may still take the AI cleanup back.
+    /// The text went in and the user may still undo the paste.
     Undo,
     Error,
     /// The text was not inserted on purpose: a secure field or another app holds the keyboard.
@@ -64,7 +68,7 @@ pub fn state_for(pipeline: State, failure: Option<&str>) -> BarState {
     }
 }
 
-/// The bar offers "Undo cleanup" in place of the result flash and the idle pill. Every other
+/// The bar offers "Undo paste" in place of the result flash and the idle pill. Every other
 /// state wins over it: a new dictation or a failure is news.
 pub fn with_undo(shown: BarState, offered: bool) -> BarState {
     match shown {
@@ -73,15 +77,27 @@ pub fn with_undo(shown: BarState, offered: bool) -> BarState {
     }
 }
 
-/// Keeps a failure on the bar for [`ERROR_HOLD_MS`] after the pipeline went idle.
+/// Keeps a failure on the bar for [`ERROR_HOLD_MS`] after the pipeline went idle, and ends the
+/// result flash after [`RESULT_FLASH_MS`] while the pipeline still says done.
 #[derive(Debug, Default)]
 pub struct Display {
     held: Option<(BarState, u64)>,
+    flash_since: Option<u64>,
 }
 
 impl Display {
     /// What to draw now, given what the pipeline says at `now_ms` (any monotonic scale).
     pub fn update(&mut self, derived: BarState, now_ms: u64) -> BarState {
+        if derived == BarState::Result {
+            self.held = None;
+            let since = *self.flash_since.get_or_insert(now_ms);
+            return if now_ms.saturating_sub(since) < RESULT_FLASH_MS {
+                BarState::Result
+            } else {
+                BarState::Idle
+            };
+        }
+        self.flash_since = None;
         if derived.is_failure() {
             if self.held.is_none_or(|(state, _)| state != derived) {
                 self.held = Some((derived, now_ms));
@@ -104,6 +120,11 @@ impl Display {
     /// The failure goes away at once, for a click that dismisses it.
     pub fn clear(&mut self) {
         self.held = None;
+    }
+
+    /// Another dictation went in while the pipeline still says done: its flash starts over.
+    pub fn renew_flash(&mut self) {
+        self.flash_since = None;
     }
 }
 
@@ -321,6 +342,27 @@ mod tests {
         display.update(BarState::Error, 0);
         display.clear();
         assert_eq!(display.update(BarState::Idle, 100), BarState::Idle);
+    }
+
+    #[test]
+    fn the_result_flash_ends_after_a_second_while_the_pipeline_still_says_done() {
+        let mut display = Display::default();
+        assert_eq!(display.update(BarState::Result, 5_000), BarState::Result);
+        assert_eq!(display.update(BarState::Result, 5_999), BarState::Result);
+        assert_eq!(display.update(BarState::Result, 6_000), BarState::Idle);
+        assert_eq!(display.update(BarState::Idle, 6_500), BarState::Idle);
+        assert_eq!(display.update(BarState::Result, 9_000), BarState::Result);
+    }
+
+    #[test]
+    fn a_renewed_flash_counts_again_from_its_first_frame() {
+        let mut display = Display::default();
+        display.update(BarState::Result, 0);
+        assert_eq!(display.update(BarState::Result, 1_200), BarState::Idle);
+        display.renew_flash();
+        assert_eq!(display.update(BarState::Result, 1_300), BarState::Result);
+        assert_eq!(display.update(BarState::Result, 2_299), BarState::Result);
+        assert_eq!(display.update(BarState::Result, 2_300), BarState::Idle);
     }
 
     #[test]

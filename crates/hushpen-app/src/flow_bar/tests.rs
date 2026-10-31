@@ -4,7 +4,8 @@ use crate::controller::ai_tests::{RULE, ai_answers, only_row, pasted, setup};
 use crate::controller::testkit::*;
 use gpui_kit::{AppContext as _, TestAppContext};
 use hushpen_core::dictation::State;
-use hushpen_core::flow_bar::ERROR_HOLD_MS;
+use hushpen_core::flow_bar::{ERROR_HOLD_MS, RESULT_FLASH_MS};
+use hushpen_core::insert::undo::UNDO_WINDOW_MS;
 use hushpen_core::insert::{Chord, Outcome as InsertOutcome, Report, Restore};
 use hushpen_engine::{Failure, JobOutcome};
 use std::cell::{Cell, RefCell};
@@ -358,6 +359,26 @@ fn a_paste_says_pasted(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_pasted_flash_goes_after_a_second_while_the_pipeline_still_says_done(
+    cx: &mut TestAppContext,
+) {
+    let bar = bar(cx, &["base"], "base");
+    attach_inserter(
+        cx,
+        &bar.rig,
+        &FakeInserter::pasted_into("GtkTarget", Chord::CtrlV),
+    );
+    dictate(cx, &bar, outcome_text("hello there", "en"));
+    let start = bar.now.get();
+    assert_eq!(bar.state(cx), BarState::Result);
+    bar.at(start + RESULT_FLASH_MS - 100);
+    assert_eq!(bar.state(cx), BarState::Result);
+    bar.at(start + RESULT_FLASH_MS);
+    assert_eq!(machine_state(cx, &bar.rig), State::Done);
+    assert_eq!(bar.state(cx), BarState::Idle);
+}
+
+#[gpui_kit::test]
 fn the_waveform_follows_the_meter_only_while_listening(cx: &mut TestAppContext) {
     let bar = bar(cx, &["base"], "base");
     assert!(bar.state(cx) == BarState::Idle);
@@ -699,8 +720,8 @@ fn an_ai_cleaned_paste_offers_undo_cleanup_in_place_of_the_flash(cx: &mut TestAp
     assert_eq!(state["state"], "undo");
     assert_eq!(state["visible"], true);
 
-    bar.at(3_000 + 5_200);
-    assert_ne!(bar.state(cx), BarState::Undo, "gone after five seconds");
+    bar.at(3_000 + UNDO_WINDOW_MS + 200);
+    assert_ne!(bar.state(cx), BarState::Undo, "gone after four seconds");
 }
 
 #[gpui_kit::test]
@@ -721,7 +742,7 @@ fn an_expired_undo_offer_leaves_the_hidden_bar_idle(cx: &mut TestAppContext) {
         "the offer outlives the done state"
     );
 
-    bar.at(3_000 + 5_200);
+    bar.at(3_000 + UNDO_WINDOW_MS + 200);
     assert!(
         bar.tick(cx).is_none(),
         "the bar is hidden after the offer ran out"
@@ -761,7 +782,7 @@ fn the_transcribing_pill_says_when_the_ai_model_is_loading(cx: &mut TestAppConte
     bar.at(14_000);
     bar.click(cx);
     assert_eq!(bar.state(cx), BarState::Transcribing);
-    assert!(!bar.props(cx).preparing);
+    assert!(!bar.props(cx).preparing());
     assert_eq!(bar.props(cx).working_text(), "Transcribing");
 
     bar.rig.controller.read_with(cx, |controller, _| {
@@ -769,7 +790,7 @@ fn the_transcribing_pill_says_when_the_ai_model_is_loading(cx: &mut TestAppConte
     });
     bar.tick(cx);
     let props = bar.props(cx);
-    assert!(props.preparing);
+    assert!(props.preparing());
     assert_eq!(props.working_text(), "Preparing the AI model");
     assert_eq!(view::size_of(&props), view::PREPARING_SIZE);
 
@@ -778,6 +799,44 @@ fn the_transcribing_pill_says_when_the_ai_model_is_loading(cx: &mut TestAppConte
     });
     bar.tick(cx);
     assert_eq!(bar.props(cx).working_text(), "Transcribing");
+}
+
+#[gpui_kit::test]
+fn the_processing_wave_runs_on_its_own_clock_and_stands_still_with_reduce_motion(
+    cx: &mut TestAppContext,
+) {
+    let bar = bar(cx, &["base"], "base");
+    say(&bar.rig, outcome_text("hello there", "en"));
+    bar.at(11_000);
+    bar.click(cx);
+    bar.at(14_000);
+    bar.click(cx);
+    assert_eq!(bar.state(cx), BarState::Transcribing);
+    let props = bar.props(cx);
+    assert!(props.still, "no animation in tests, like Reduce Motion");
+    assert_eq!((props.stage_ms, props.work_ms), (0, 0));
+
+    bar.bar.update(cx, |bar, _| bar.animate = true);
+    bar.at(14_500);
+    bar.tick(cx);
+    let props = bar.props(cx);
+    assert!(!props.still);
+    assert_eq!(
+        (props.stage, props.stage_ms, props.work_ms),
+        (Stage::Transcribing, 500, 500)
+    );
+
+    bar.rig.controller.read_with(cx, |controller, _| {
+        controller.show_ai_phase(Some(Phase::Preparing))
+    });
+    bar.at(14_800);
+    bar.tick(cx);
+    let props = bar.props(cx);
+    assert_eq!(
+        (props.stage, props.from, props.stage_ms, props.work_ms),
+        (Stage::Preparing, Some(Stage::Transcribing), 0, 800),
+        "a new stage starts its own clock, the float keeps going"
+    );
 }
 
 mod in_a_window {
@@ -900,6 +959,7 @@ mod in_a_window {
         let bar = cleaned_bar(cx, Some(&target));
         let handle = open(cx, &bar);
         assert!(present(cx, handle, "flowbar.undo"));
+        assert!(!present(cx, handle, "flowbar.open-history"));
 
         click(cx, &bar, handle, "flowbar.undo");
         settle(cx, &bar.rig);
@@ -914,6 +974,31 @@ mod in_a_window {
         assert_ne!(machine_state(cx, &bar.rig), State::Listening);
         frame(cx, &bar, handle);
         assert!(!present(cx, handle, "flowbar.undo"));
+    }
+
+    #[gpui_kit::test]
+    fn the_pointer_on_the_undo_button_makes_the_pill_say_undo_paste(cx: &mut TestAppContext) {
+        let target = cleaned_target();
+        let bar = cleaned_bar(cx, Some(&target));
+        let handle = open(cx, &bar);
+        assert!(!bar.props(cx).hover);
+
+        cx.update_window(handle, |_, window, cx| window.hover("flowbar.undo", cx))
+            .unwrap();
+        frame(cx, &bar, handle);
+        assert!(bar.props(cx).hover);
+        let label = cx
+            .update_window(handle, |_, window, _| {
+                window
+                    .try_find("flowbar.undo")
+                    .and_then(|found| found.label().map(str::to_owned))
+            })
+            .unwrap();
+        assert_eq!(label.as_deref(), Some(view::UNDO_LABEL));
+
+        bar.bar.update(cx, |bar, cx| bar.hover_button(false, cx));
+        frame(cx, &bar, handle);
+        assert!(!bar.props(cx).hover);
     }
 
     #[gpui_kit::test]
