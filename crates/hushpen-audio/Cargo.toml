@@ -16,6 +16,7 @@ hushpen-core.workspace = true
 cpal.workspace = true
 hound.workspace = true
 log.workspace = true
+serde_json.workspace = true
 nnnoiseless.workspace = true
 rubato.workspace = true
 symphonia.workspace = true
