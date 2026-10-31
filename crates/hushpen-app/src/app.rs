@@ -149,6 +149,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             gpui_kit::init(cx);
             register_fonts(cx);
             theme::install(cx);
+            crate::motion::follow_system(cx);
             // The logger is a process-wide static, so `Drop` never runs for it.
             let endpoint_transport: Arc<dyn crate::net::endpoint::Transport> =
                 Arc::new(crate::net::endpoint::UreqTransport);
