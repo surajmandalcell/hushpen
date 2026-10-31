@@ -25,7 +25,7 @@ pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
         "pageout" if cfg!(target_os = "macos") => {
             "macOS decides when idle memory is compressed or swapped."
         }
-        "pageout" => "Pages idle CPU weights to swap; mapped files may be read again.",
+        "pageout" => "Speech and cleanup request pageout; voice paging is system-managed.",
         "unload" => "Releases idle models. The next use loads them again.",
         _ => "Speech stays loaded; cleanup and voices keep their current idle limits.",
     };

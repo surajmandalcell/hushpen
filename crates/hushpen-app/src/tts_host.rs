@@ -22,6 +22,7 @@ use hushpen_speech::{Pcm, SpeechEngine, SpeechError, Voice, VoiceQuality};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files;
 use hushpen_store::voices::Library;
+use serde_json::{Map, Value};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -76,6 +77,7 @@ struct State {
     client: Option<TtsClient>,
     /// The load the running worker was last given.
     applied: Option<TtsSpec>,
+    idle_secs: u64,
 }
 
 pub struct TtsHost {
@@ -101,6 +103,7 @@ impl TtsHost {
             state: Mutex::new(State {
                 client: None,
                 applied: None,
+                idle_secs: hushpen_core::tts_protocol::DEFAULT_IDLE_SECS,
             }),
         }
     }
@@ -124,12 +127,41 @@ impl TtsHost {
         self.lock().client.as_ref().map(TtsClient::status)
     }
 
+    /// Updates a loaded model's idle timer without starting an unused voice worker.
+    pub fn apply_settings(&self, settings: &Map<String, Value>) {
+        let secs = hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Voice).secs;
+        let update = {
+            let mut state = self.lock();
+            if state.idle_secs == secs {
+                return;
+            }
+            state.idle_secs = secs;
+            match (state.client.clone(), state.applied.clone()) {
+                (Some(client), Some(mut spec)) if client.status().model.is_some() => {
+                    spec.idle_secs = secs;
+                    state.applied = Some(spec.clone());
+                    Some((client, spec))
+                }
+                _ => None,
+            }
+        };
+        if let Some((client, spec)) = update {
+            let handle = client.load_model(spec);
+            std::thread::spawn(move || {
+                if let Err(failure) = handle.wait() {
+                    log::warn!("TTS_IDLE_FAILED {} {}", failure.code, failure.detail);
+                }
+            });
+        }
+    }
+
     /// The running worker with `model` loaded or loading. Starts the worker on first use.
     fn client(&self, model: VoiceModel) -> Result<TtsClient, SpeechError> {
         let cpus = std::thread::available_parallelism().map_or(2, usize::from);
-        let wanted =
+        let mut wanted =
             wanted_load(&self.models_dir, model, cpus).ok_or_else(|| not_installed(model))?;
         let mut state = self.lock();
+        wanted.idle_secs = state.idle_secs;
         let client = state
             .client
             .get_or_insert_with(|| self.start_client())
@@ -384,6 +416,24 @@ mod tests {
 
     fn host(data: &DataDir) -> Arc<TtsHost> {
         Arc::new(TtsHost::with_program(data, PathBuf::from("/bin/sh")))
+    }
+
+    #[test]
+    fn idle_settings_never_start_an_unused_voice_worker() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let data = DataDir::open(data_dir.path()).unwrap();
+        let host = host(&data);
+        for (policy, secs) in [
+            ("current", 300),
+            ("keep", 0),
+            ("pageout", 0),
+            ("unload", 1800),
+        ] {
+            let values = serde_json::json!({"engine.idlePolicy": policy, "engine.idleMinutes": 30});
+            host.apply_settings(values.as_object().unwrap());
+            assert_eq!(host.lock().idle_secs, secs);
+            assert!(host.status().is_none());
+        }
     }
 
     #[test]
