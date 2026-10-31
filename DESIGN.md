@@ -200,7 +200,7 @@ Each icon design lives in `assets/icons/<name>/`: `mark.svg` is the full drawing
 
 ## Appearance
 
-The app follows the system appearance, Light or Dark, and changes live when the system setting changes, with no restart. Every view reads its colors from one palette for the current appearance. If the appearance is unknown (Linux without a desktop setting), the app uses Dark.
+The app follows the system appearance, Light or Dark, and changes live when the system setting changes, with no restart. Every view reads its colors from one palette for the current appearance. If the appearance is unknown (Linux without a desktop setting), the app uses Dark. The app also follows the system Reduce Motion setting (macOS Accessibility, or GNOME `enable-animations` off on Linux): it reads it at start and once a second, and a change applies live. If the system does not say, motion plays.
 
 The flow bar pill is the one exception. It stays a dark HUD (`#1F1F1F`, light text) in both appearances, because it floats over other apps.
 
