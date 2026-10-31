@@ -59,8 +59,10 @@ new decision, add it here in the same change (D-21).
   the user starts, the update check the user turns on or starts from About,
   and the opt-in OpenAI-compatible endpoint. `xtask net-audit` scans for other calls.
 - **D-15 Cleanup.** Rule-based cleanup is on by default and runs offline. AI
-  cleanup is opt-in. It uses a local LLM chosen by RAM, or an endpoint the
-  user sets. An LLM timeout or a failed output check falls back to the
+  cleanup is opt-in. It uses a local LLM of at most 1.5 GB, or an endpoint
+  the user sets. Every machine is offered S1-mini by Superwhisper first
+  (English cleanup only) and Qwen3.5 2B second (other languages and Command
+  Mode). Command Mode with S1-mini says it needs Qwen3.5 2B. An LLM timeout or a failed output check falls back to the
   rule-based text. The endpoint API key lives in a 0600 file, not in the
   Keychain.
 - **D-16 Insertion.** The app saves the clipboard, pastes, and restores the

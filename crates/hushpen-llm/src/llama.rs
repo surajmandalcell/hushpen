@@ -6,8 +6,8 @@
 //! recurrent, which cannot drop the tail of their cache.
 
 use crate::backend::{
-    Backend, CancelFlag, JobError, JobOutput, JobSpec, LoadError, LoadInfo, LoadSpec, Session,
-    SessionBody, SessionEnd,
+    Backend, CancelFlag, JobError, JobKind, JobOutput, JobSpec, LoadError, LoadInfo, LoadSpec,
+    Session, SessionBody, SessionEnd,
 };
 use hushpen_core::error;
 use hushpen_core::llm_prompt::{PromptFamily, clean_output};
@@ -226,7 +226,10 @@ impl LlamaSession<'_> {
 
 impl Session for LlamaSession<'_> {
     fn run(&mut self, job: &JobSpec, cancel: &CancelFlag) -> Result<JobOutput, JobError> {
-        let prefix_text = self.family.prefix_with(&job.system, job.examples);
+        let prefix_text = match job.kind {
+            JobKind::Cleanup => self.family.cleanup_prefix(&job.system),
+            JobKind::Command => self.family.prefix(&job.system),
+        };
         let full_text = format!("{prefix_text}{}{}", job.user, self.family.suffix());
         let vocab = self.model.vocab();
         let prefix = vocab.tokenize(prefix_text.as_bytes(), true, true);

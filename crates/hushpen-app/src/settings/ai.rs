@@ -5,7 +5,6 @@ use crate::models::{ModelState, Models};
 use gpui_kit::{App, Context, Entity};
 use hushpen_core::catalog::{Catalog, ModelEntry};
 use hushpen_core::endpoint::Preset;
-use hushpen_core::shortcut::Platform;
 use serde_json::json;
 use std::rc::Rc;
 
@@ -13,8 +12,6 @@ use std::rc::Rc;
 pub struct AiParts {
     pub models: Entity<Models>,
     pub catalog: &'static Catalog,
-    pub platform: Platform,
-    pub ram_bytes: u64,
     /// Whether the model worker is loading the model right now.
     pub loading: Rc<dyn Fn() -> bool>,
 }
@@ -97,26 +94,19 @@ impl Settings {
         }
     }
 
-    /// The cleanup models this computer is offered, best first.
+    /// The cleanup models, best first.
     pub(crate) fn ai_offered(&self) -> Vec<ModelEntry> {
         self.ai.as_ref().map_or_else(Vec::new, |ai| {
-            ai.catalog
-                .offered_llm(ai.platform, ai.ram_bytes)
-                .into_iter()
-                .cloned()
-                .collect()
+            ai.catalog.offered_llm().into_iter().cloned().collect()
         })
     }
 
-    /// The model AI cleanup uses: the stored choice while this computer is offered it,
-    /// otherwise the first one offered.
+    /// The model AI cleanup uses: the stored choice while it is offered, otherwise the first
+    /// one offered.
     pub(crate) fn ai_model(&self) -> Option<ModelEntry> {
-        let offered = self.ai_offered();
-        let chosen = self.stored_str("cleanup.llm.modelId");
-        offered
-            .iter()
-            .find(|entry| entry.id == chosen)
-            .or_else(|| offered.first())
+        let ai = self.ai.as_ref()?;
+        ai.catalog
+            .chosen_llm(&self.stored_str("cleanup.llm.modelId"))
             .cloned()
     }
 

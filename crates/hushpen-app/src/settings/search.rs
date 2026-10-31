@@ -271,7 +271,7 @@ pub static ROWS: &[RowMeta] = &[
         Cleanup,
         "cleanup.aiModel",
         "AI model",
-        &["llm", "download", "gemma", "qwen"],
+        &["llm", "download", "qwen", "s1-mini", "superwhisper"],
     )
     .under(AiSource),
     RowMeta::new(

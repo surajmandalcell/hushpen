@@ -160,7 +160,7 @@ fn a_stamped_file_is_ready_without_hashing(cx: &mut TestAppContext) {
         Models::new(
             Rc::clone(&rig.storage),
             catalog(),
-            Machine::test(Platform::Linux, 8 << 30),
+            Machine::test(),
             instant(),
             Rc::new(|_| panic!("a stamped file needs no worker")),
             None,

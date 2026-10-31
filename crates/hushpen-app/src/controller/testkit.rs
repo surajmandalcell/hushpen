@@ -170,7 +170,7 @@ pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
         Models::new(
             Rc::clone(&storage),
             catalog(),
-            crate::models::Machine::test(hushpen_core::shortcut::Platform::Linux, 8 << 30),
+            crate::models::Machine::test(),
             Arc::new(
                 |_: &Spec, _: &std::sync::atomic::AtomicBool, _: &mut dyn FnMut(Progress)| {
                     Ok(Outcome::Cancelled)
