@@ -618,6 +618,16 @@ pub fn field(
         .border_color(gpui_kit::transparent_black())
 }
 
+/// A [`field`] that leads with the search glyph: the search of a view and of a long menu.
+pub fn search_field(
+    palette: Palette,
+    id: SharedString,
+    label: &'static str,
+    state: &Entity<InputState>,
+) -> Input {
+    field(palette, id, label, state).prefix(glyph(palette, IconName::Search))
+}
+
 /// A thin bar filled from the left to `fraction` (0 to 1): a download or a play position.
 pub fn track(palette: Palette, fraction: f32) -> Div {
     div()
