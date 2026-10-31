@@ -2,7 +2,8 @@
 //!
 //! The file pins every downloadable model by size and sha256. The app trusts a model file only
 //! when it matches its entry here. Schema 2 adds each model's kind and the details the Models view
-//! shows; a schema 1 file, without them, still parses.
+//! shows; a schema 1 file, without them, still parses. A file may list the earlier pins it
+//! `replaces`, so the app updates an old copy instead of calling it damaged.
 
 use serde_json::Value;
 use std::collections::HashSet;
@@ -84,6 +85,24 @@ pub struct ModelFile {
     /// Lower-case hex.
     pub sha256: String,
     pub url: String,
+    /// Earlier pins of this file. A file on disk that matches one is a good old copy that the
+    /// app replaces, not a damaged file.
+    pub replaces: Vec<OldPin>,
+}
+
+/// The size and hash of an earlier version of a [`ModelFile`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OldPin {
+    pub bytes: u64,
+    /// Lower-case hex.
+    pub sha256: String,
+}
+
+impl ModelFile {
+    /// The earlier pin that a file of `bytes` can be, judged by size alone.
+    pub fn old_pin_of_size(&self, bytes: u64) -> Option<&OldPin> {
+        self.replaces.iter().find(|pin| pin.bytes == bytes)
+    }
 }
 
 /// What the Models view tells about a model beyond its files.
@@ -358,6 +377,37 @@ fn parse_files(item: &Value, id: &str) -> Result<Vec<ModelFile>, String> {
 
 /// The pinned file fields of model `id`: a safe name, a size, a sha256, and a URL.
 fn parse_file(item: &Value, id: &str) -> Result<ModelFile, String> {
+    let OldPin { bytes, sha256 } = parse_pin(item, id)?;
+    let file = text(item, "file")?;
+    if !is_safe_name(&file) {
+        return Err(format!("model `{id}` has an unsafe file name"));
+    }
+    let replaces = item
+        .get("replaces")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|pin| parse_pin(pin, id))
+        .collect::<Result<Vec<_>, _>>()?;
+    if replaces
+        .iter()
+        .any(|pin| pin.sha256 == sha256 || pin.bytes == bytes)
+    {
+        return Err(format!(
+            "model `{id}` lists its current file as one it replaces"
+        ));
+    }
+    Ok(ModelFile {
+        file,
+        bytes,
+        sha256,
+        url: text(item, "url")?,
+        replaces,
+    })
+}
+
+/// A size and a sha256, which a file and each of its earlier versions carry.
+fn parse_pin(item: &Value, id: &str) -> Result<OldPin, String> {
     let sha256 = text(item, "sha256")?;
     if sha256.len() != 64
         || !sha256
@@ -371,16 +421,7 @@ fn parse_file(item: &Value, id: &str) -> Result<ModelFile, String> {
         .and_then(Value::as_u64)
         .filter(|bytes| *bytes > 0)
         .ok_or_else(|| format!("model `{id}` needs a byte size"))?;
-    let file = text(item, "file")?;
-    if !is_safe_name(&file) {
-        return Err(format!("model `{id}` has an unsafe file name"));
-    }
-    Ok(ModelFile {
-        file,
-        bytes,
-        sha256,
-        url: text(item, "url")?,
-    })
+    Ok(OldPin { bytes, sha256 })
 }
 
 fn parse_info(item: &Value, id: &str) -> Result<ModelInfo, String> {

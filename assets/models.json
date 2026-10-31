@@ -140,7 +140,13 @@
           "file": "model.int8.onnx",
           "bytes": 114202993,
           "sha256": "75635ea3b85a32d00094dcdd61a258aba87c160f7c264c304a7b3ae9d734195e",
-          "url": "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0/resolve/57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2/model.int8.onnx"
+          "url": "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_0/resolve/57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2/model.int8.onnx",
+          "replaces": [
+            {
+              "bytes": 114203756,
+              "sha256": "4b86207ef680e394d8343bee22dfc4c512e5c707c6d9578e3f35ab09bffd6b36"
+            }
+          ]
         },
         {
           "file": "voices.bin",
