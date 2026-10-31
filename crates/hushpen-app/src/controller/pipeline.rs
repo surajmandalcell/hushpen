@@ -13,6 +13,7 @@ use crate::mic::{self, CaptureState};
 use gpui_kit::Context;
 use hushpen_core::dictation::{AppEvent, Cue, Mode, RowStatus, State};
 use hushpen_core::error::{CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, LLM_UNAVAILABLE};
+use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::onboarding::KeyGate;
 use hushpen_core::{cleanup, dictionary, language};
 use hushpen_engine::{JobOutcome, TranscribeSpec};
@@ -30,6 +31,8 @@ const AI_ENABLED_SETTING: &str = "cleanup.llm.enabled";
 
 const AI_PROVIDER_SETTING: &str = "cleanup.llm.provider";
 
+const AI_MODEL_SETTING: &str = "cleanup.llm.modelId";
+
 const AI_TIMEOUT_SETTING: &str = "cleanup.llm.timeoutMs";
 
 const AI_ENDPOINT_TIMEOUT_SETTING: &str = "cleanup.llm.endpointTimeoutMs";
@@ -42,6 +45,24 @@ impl Controller {
             .get(AI_ENABLED_SETTING)
             .and_then(|value| value.as_bool())
             .unwrap_or(false)
+    }
+
+    /// Whether the AI source can edit by an instruction: the endpoint, or a local model that is
+    /// not cleanup-only.
+    pub(super) fn ai_edits(&self) -> bool {
+        if self.ai_uses_endpoint() {
+            return true;
+        }
+        let stored = self
+            .storage
+            .settings
+            .get(AI_MODEL_SETTING)
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        hushpen_core::catalog::embedded()
+            .chosen_llm(&stored)
+            .and_then(|entry| PromptFamily::from_model_name(&format!("{}.gguf", entry.id)))
+            .is_none_or(PromptFamily::follows_instructions)
     }
 
     pub(super) fn ai_uses_endpoint(&self) -> bool {

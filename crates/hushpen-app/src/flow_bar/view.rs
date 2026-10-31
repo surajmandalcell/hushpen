@@ -129,6 +129,7 @@ pub fn failure_text(code: Option<&str>) -> &'static str {
         Some(ENGINE_NO_MODEL | ENGINE_LOAD_FAILED) => "Speech model not ready",
         Some(COMMAND_NO_SELECTION | READ_NO_SELECTION) => "Select text first",
         Some(COMMAND_NEEDS_AI) => "Command mode needs AI cleanup or the endpoint",
+        Some(COMMAND_NEEDS_GENERAL_MODEL) => "Command mode needs Qwen3.5 2B",
         Some(LLM_TIMEOUT) => "AI edit timed out. Text unchanged",
         Some(
             LLM_GUARD_REJECTED | LLM_UNAVAILABLE | LLM_LOAD_FAILED | LLM_NO_MODEL | LLM_PROTOCOL
