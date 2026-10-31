@@ -53,13 +53,13 @@ pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
 pub fn idle_minutes(page: &Page, cx: &mut App) -> AnyElement {
     let me = page.settings.read(cx);
     let stored = me.stored_f64("engine.idleMinutes").unwrap_or(15.0) as i64;
-    let detail = if matches!(
-        me.stored_str("engine.idlePolicy").as_str(),
-        "pageout" | "unload"
-    ) {
-        "Counted from the end of the last model job."
-    } else {
-        "Used when you choose page out or unload."
+    let policy = me.stored_str("engine.idlePolicy");
+    let detail = match policy.as_str() {
+        "pageout" if cfg!(target_os = "macos") => {
+            "macOS controls paging. This time applies only to Unload."
+        }
+        "pageout" | "unload" => "Counted from the end of the last model job.",
+        _ => "Used when you choose page out or unload.",
     };
     let menu = page.picker_open("engine.idleMinutes", cx).then(|| {
         let mut values = vec![5, 15, 30, 60, stored];

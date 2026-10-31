@@ -126,7 +126,7 @@ impl Section {
             Section::Cleanup => Some(
                 "AI cleanup stays off until you turn it on. An endpoint is a server you choose, such as Ollama.",
             ),
-            Section::Engine => Some("The speech engine loads again with the new choice."),
+            Section::Engine => Some("GPU and thread changes reload the speech model."),
             Section::FlowBar => {
                 Some("Dragging the bar overrides the position until you pick again.")
             }
