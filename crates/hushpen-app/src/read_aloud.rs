@@ -196,6 +196,17 @@ enum ReadEvent {
         job: u64,
         event: SpeechEvent,
     },
+    /// The WAV of an export is on disk, or why it is not.
+    Exported {
+        path: PathBuf,
+        result: Result<(), String>,
+    },
+    /// The audio of a finished read is on disk or not, and its History row can go in.
+    Kept {
+        row: Box<Row>,
+        file: PathBuf,
+        written: bool,
+    },
 }
 
 pub struct Parts {
@@ -859,7 +870,7 @@ impl ReadAloud {
 
     fn export_to(&mut self, request: Request, path: PathBuf, cx: &mut Context<Self>) {
         if self.audio_fits(&request) && self.audio.as_ref().is_some_and(|audio| audio.complete) {
-            self.write(&path);
+            self.write(path);
             return;
         }
         match &mut self.job {
@@ -1041,6 +1052,8 @@ impl ReadAloud {
                     self.speech(event, cx);
                 }
             }
+            ReadEvent::Exported { path, result } => self.exported(&path, result),
+            ReadEvent::Kept { row, file, written } => self.save_read(*row, &file, written, cx),
         }
         cx.notify();
     }
@@ -1067,7 +1080,7 @@ impl ReadAloud {
                 let export = job.export_to.take();
                 self.job = None;
                 if let Some(path) = export {
-                    self.write(&path);
+                    self.write(path);
                 }
                 self.keep_in_history(cx);
             }
@@ -1124,7 +1137,6 @@ impl ReadAloud {
         let keep = crate::controller::retention_of(&storage.settings).keeps("completed");
         let folder = storage.data.audio_dir();
         let file = folder.join(format!("{id}.wav"));
-        let kept = keep && write_kept(&audio.player, &folder, &file);
         let request = &audio.request;
         let row = Row {
             id: id.clone(),
@@ -1137,14 +1149,40 @@ impl ReadAloud {
             final_text: Some(request.text.clone()),
             insert_outcome: Some("none".to_owned()),
             source_name: Some(audio.voice_name.clone()),
-            audio_path: kept.then(|| format!("audio/{id}.wav")),
             audio_removed_at: (!keep).then_some(created_at),
             ..Row::default()
         };
-        if let Err(error) = history::save(&storage.database, &row, &[]) {
+        if !keep {
+            self.save_read(row, &file, false, cx);
+            return;
+        }
+        // The row goes in once the file is on disk, so it never names audio that is not there.
+        let (rate, samples) = audio.player.samples();
+        let events = self.events.clone();
+        let (job_row, job_file) = (Box::new(row.clone()), file.clone());
+        let spawned = (self.spawn)(Box::new(move || {
+            let written = write_kept(rate, &samples, &folder, &job_file);
+            let _ = events.unbounded_send(ReadEvent::Kept {
+                row: job_row,
+                file: job_file,
+                written,
+            });
+        }));
+        if let Err(error) = spawned {
+            log::warn!("the audio of a read aloud was not kept: {error}");
+            self.save_read(row, &file, false, cx);
+        }
+    }
+
+    /// Saves the History row of a read; `written` says its audio is at `file`.
+    fn save_read(&mut self, mut row: Row, file: &Path, written: bool, cx: &mut Context<Self>) {
+        if written {
+            row.audio_path = Some(format!("audio/{}.wav", row.id));
+        }
+        if let Err(error) = history::save(&self.storage.database, &row, &[]) {
             log::error!("{HISTORY_WRITE_FAILED} the history row of a read was not saved: {error}");
             hook::record_event("history", &format!("write-failed {HISTORY_WRITE_FAILED}"));
-            if kept && let Err(error) = fs::remove_file(&file) {
+            if written && let Err(error) = fs::remove_file(file) {
                 log::warn!("the audio of an unsaved read was not removed: {error}");
             }
             return;
@@ -1153,14 +1191,30 @@ impl ReadAloud {
         cx.emit(ReadRequest::Saved);
     }
 
-    // ponytail: the WAV of an export and the copy History keeps are written on the UI thread,
-    // a pause of about a second for an hour of speech; move them to a thread when texts that
-    // long are common.
-    fn write(&mut self, path: &Path) {
+    /// Writes the audio to `path` on a thread of its own. The status row says what happened
+    /// once the file is done.
+    fn write(&mut self, path: PathBuf) {
         let Some(audio) = &self.audio else {
             return;
         };
-        match audio.player.write_wav(path) {
+        let (rate, samples) = audio.player.samples();
+        let events = self.events.clone();
+        let target = path.clone();
+        let spawned = (self.spawn)(Box::new(move || {
+            let result = hushpen_audio::write_wav(&target, rate, &samples)
+                .map_err(|error| error.to_string());
+            let _ = events.unbounded_send(ReadEvent::Exported {
+                path: target,
+                result,
+            });
+        }));
+        if let Err(error) = spawned {
+            self.exported(&path, Err(error.to_string()));
+        }
+    }
+
+    fn exported(&mut self, path: &Path, result: Result<(), String>) {
+        match result {
             Ok(()) => {
                 self.info = Some(format!("Saved the audio to {}.", shown_path(path)));
                 hook::record_event("read", &format!("exported {}", path.display()));
@@ -1219,10 +1273,12 @@ impl ReadAloud {
 }
 
 /// Writes the audio History keeps of a read; `false` when it could not be written.
-fn write_kept(player: &Player, folder: &Path, file: &Path) -> bool {
+fn write_kept(rate: u32, samples: &[f32], folder: &Path, file: &Path) -> bool {
     let written = fs::create_dir_all(folder)
         .map_err(|error| error.to_string())
-        .and_then(|()| player.write_wav(file).map_err(|error| error.to_string()));
+        .and_then(|()| {
+            hushpen_audio::write_wav(file, rate, samples).map_err(|error| error.to_string())
+        });
     if let Err(error) = &written {
         log::warn!("the audio of a read aloud was not kept: {error}");
     }
