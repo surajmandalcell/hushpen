@@ -306,10 +306,12 @@ mod tests {
         tokens.send(()).unwrap();
         let rest = collect(&synthesis);
         assert_eq!(rest.last(), Some(&SpeechEvent::Cancelled));
-        assert_eq!(
-            *engine.pieces.lock().unwrap(),
-            3,
-            "the chunk stopped after its third piece"
+        // The cancel can land before the second piece's sink reads the flag or while the third
+        // piece is made; either way the chunk stops long before its fifth piece.
+        let pieces = *engine.pieces.lock().unwrap();
+        assert!(
+            (2..=3).contains(&pieces),
+            "the chunk stopped after {pieces} pieces"
         );
     }
 
