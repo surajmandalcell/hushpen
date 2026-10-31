@@ -15,6 +15,8 @@ mod parakeet;
 // madvise on the model's own mappings (see the module comment).
 #[allow(unsafe_code)]
 mod pageout;
+#[cfg(test)]
+mod pause_bench;
 mod server;
 mod tts_client;
 mod vad;
