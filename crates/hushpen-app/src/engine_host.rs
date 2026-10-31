@@ -136,16 +136,9 @@ impl EngineHost {
     }
 }
 
-/// The model id in `ggml-<id>.bin`.
+/// The same catalog id the speech child reports for this file.
 fn model_id(path: &Path) -> String {
-    path.file_name()
-        .map(|name| name.to_string_lossy())
-        .and_then(|name| {
-            name.strip_prefix("ggml-")
-                .and_then(|rest| rest.strip_suffix(".bin"))
-                .map(str::to_owned)
-        })
-        .unwrap_or_default()
+    hushpen_engine::model_name(path)
 }
 
 /// The load the settings ask for, or `None` while no model is chosen and the catalog has no
@@ -172,8 +165,12 @@ pub fn wanted_load(
         .get("engine.useGpu")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let file = hushpen_core::catalog::embedded().whisper(id).map_or_else(
+        || format!("ggml-{id}.bin"),
+        |entry| entry.files[0].file.clone(),
+    );
     Some(LoadSpec {
-        path: models_dir.join(format!("ggml-{id}.bin")),
+        path: models_dir.join(file),
         gpu: use_gpu,
         threads: resolve_threads(settings.get("engine.threads"), cpus),
         idle: hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Speech),
@@ -232,6 +229,24 @@ mod tests {
         let spec = wanted(&settings("tiny.en", json!("auto"), false), 2);
         assert_eq!(spec.unwrap().path, Path::new("/m/ggml-tiny.en.bin"));
         assert_eq!(model_id(Path::new("/m/ggml-tiny.en.bin")), "tiny.en");
+    }
+
+    #[test]
+    fn speech_models_load_the_catalog_file_and_keep_the_catalog_id() {
+        for entry in &hushpen_core::catalog::embedded().whisper {
+            let path = Path::new("/m").join(&entry.files[0].file);
+            let selected = wanted(&settings(&entry.id, json!("auto"), false), 2).unwrap();
+            assert_eq!(selected.path, path, "selected {}", entry.id);
+            let default = wanted_load(
+                &settings("", json!("auto"), false),
+                Path::new("/m"),
+                &entry.id,
+                2,
+            )
+            .unwrap();
+            assert_eq!(default.path, path, "default {}", entry.id);
+            assert_eq!(model_id(&path), entry.id);
+        }
     }
 
     #[test]
