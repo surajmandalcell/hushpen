@@ -726,8 +726,6 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                         Rc::clone(&storage),
                         hushpen_core::catalog::embedded(),
                         models::Machine {
-                            platform: Platform::Linux,
-                            ram_bytes: 8 << 30,
                             opener: Rc::new(SystemOpener),
                         },
                         models::production_transfer(),
