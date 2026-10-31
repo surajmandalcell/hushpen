@@ -1,6 +1,6 @@
 //! The Read aloud side of the Manual view: the text, the voice options, and Play and Export.
 
-use super::{DEFAULT_VOICE, EngineKind, Menu, ReadAloud, language_name};
+use super::{DEFAULT_VOICE, EngineKind, Menu, ReadAloud, language_name, mix_position};
 use crate::hook;
 use crate::theme::{self, Palette, radius, size, space};
 use crate::ui::{self, Kind, Notice};
@@ -290,6 +290,9 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
             toggle(Menu::Voice),
         ),
     ));
+    if engine == EngineKind::Kokoro {
+        rows.extend(mix_rows(palette, read, cx));
+    }
     if engine.is_chatterbox()
         && let Some(library) = view.library()
     {
@@ -371,6 +374,76 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
     rows
 }
 
+/// Mix with, then the Mix slider while a voice is chosen there.
+fn mix_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyElement> {
+    let view = read.read(cx);
+    let voices = view.mix_voices();
+    let mix = view.mix_voice();
+    let mix_name = mix
+        .as_ref()
+        .and_then(|id| voices.iter().find(|found| &found.id == id))
+        .map(|found| found.name.clone());
+    let menu = (view.menu() == Some(Menu::Mix)).then(|| {
+        let mut choices = vec![(String::new(), "None".to_owned(), None, mix.is_none())];
+        choices.extend(voices.iter().map(|found| {
+            let chosen = Some(&found.id) == mix.as_ref();
+            (
+                found.id.clone(),
+                found.name.clone(),
+                Some(found.language.clone()),
+                chosen,
+            )
+        }));
+        options_menu(read, Menu::Mix, choices, &view.focus.options)
+    });
+    let toggle = {
+        let read = read.clone();
+        move |_: &mut Window, cx: &mut App| {
+            read.update(cx, |read, cx| read.toggle_menu(Menu::Mix, cx))
+        }
+    };
+    let mut rows = vec![ui::labeled_row(
+        palette,
+        hook::id("read", "mix.row"),
+        "Mix with",
+        Some("Blends a second voice into this one".to_owned()),
+        ui::pop_up(
+            palette,
+            ui::PopUp {
+                id: hook::id("read", "mix"),
+                label: "Mix with",
+                current: mix_name.clone().unwrap_or_else(|| "None".to_owned()),
+                enabled: !voices.is_empty(),
+                focus: &view.focus.mix,
+                menu,
+            },
+            toggle,
+        ),
+    )];
+    if let Some(name) = mix_name {
+        let percent = view.mix_percent();
+        let slider = {
+            let read = read.clone();
+            move |position: f32, cx: &mut App| {
+                read.update(cx, |read, cx| read.set_mix_position(position, cx))
+            }
+        };
+        rows.push(ui::slider_row(
+            palette,
+            &format!("How much of {name} the voice has"),
+            ui::Slider {
+                id: hook::id("read", "mixShare"),
+                label: "Mix",
+                position: mix_position(percent),
+                reading: format!("{percent}%"),
+                focus: &view.focus.mix_share,
+            },
+            slider,
+        ));
+    }
+    rows
+}
+
 /// One choice of an open menu: its value, label, note, and whether it is the current one.
 type Choice = (String, String, Option<String>, bool);
 
@@ -384,6 +457,7 @@ fn options_menu(
         Menu::Engine => "engine",
         Menu::Language => "language",
         Menu::Voice => "voice",
+        Menu::Mix => "mix",
         Menu::Format => "format",
     };
     let close = read.clone();
@@ -408,6 +482,9 @@ fn options_menu(
                         Menu::Language => read.set_language(&value, cx),
                         Menu::Voice => {
                             read.set_voice(Some(value.as_str()).filter(|id| !id.is_empty()), cx)
+                        }
+                        Menu::Mix => {
+                            read.set_mix(Some(value.as_str()).filter(|id| !id.is_empty()), cx)
                         }
                         Menu::Format => read.set_format(&value, cx),
                     });

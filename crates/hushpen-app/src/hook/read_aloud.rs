@@ -71,6 +71,26 @@ pub fn attach(cx: &mut App, read: Entity<ReadAloud>) {
     );
     let _ = register_action(
         cx,
+        "read-mix",
+        "Kokoro only: pick the Mix with voice by id, or no mix with {\"id\": null}, and the \
+         share like the Mix slider. Args: {\"id\": \"am_adam\", \"percent\": 30}; the choices \
+         are `read.mix_voices`, the share 10 to 90 in steps of 10.",
+        {
+            let read = read.clone();
+            move |cx, args| {
+                let id = args.get("id").and_then(Value::as_str).map(str::to_owned);
+                let percent = args.get("percent").and_then(Value::as_f64);
+                read.update(cx, |read, cx| {
+                    read.set_mix(id.as_deref(), cx)?;
+                    percent.map_or(Ok(()), |percent| read.set_mix_percent(percent as f32, cx))
+                })?;
+                let view = read.read(cx);
+                Ok(json!({"mix": view.mix_voice(), "percent": view.mix_percent()}))
+            }
+        },
+    );
+    let _ = register_action(
+        cx,
         "read-speed",
         "Set the speed like the slider. Args: {\"speed\": 1.25}, from 0.5 to 2.",
         {

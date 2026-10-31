@@ -74,6 +74,14 @@ struct Fixture {
 }
 
 fn open(cx: &mut TestAppContext) -> (Fixture, &mut VisualTestContext) {
+    open_with(cx, None)
+}
+
+/// The fixture with a Kokoro that speaks `kokoro`, or one without its model for `None`.
+fn open_with(
+    cx: &mut TestAppContext,
+    kokoro: Option<Arc<FakeVoice>>,
+) -> (Fixture, &mut VisualTestContext) {
     cx.update(gpui_kit::init);
     let folder = tempfile::tempdir().unwrap();
     let storage =
@@ -84,7 +92,7 @@ fn open(cx: &mut TestAppContext) -> (Fixture, &mut VisualTestContext) {
         voice("de-1", "de-DE"),
     ]));
     let no_model = || Err(SpeechError::new(SPEECH_UNAVAILABLE, "no model"));
-    let kokoro = FakeVoice::new(no_model());
+    let kokoro = kokoro.unwrap_or_else(|| FakeVoice::new(no_model()));
     let turbo = FakeVoice::new(Ok(vec![voice(BUILT_IN_VOICE, "en")]));
     let nano = FakeVoice::new(no_model());
     let work: Work = Rc::default();
@@ -194,6 +202,128 @@ fn the_engine_voice_and_speed_are_kept_in_settings(cx: &mut TestAppContext) {
     assert_eq!(settings.get(ENGINE_SETTING), Some(json!("kokoro")));
     // Each engine keeps its own voice.
     assert_eq!(state(cx, &fixture)["voice"], Value::Null);
+}
+
+fn kokoro_voices() -> Arc<FakeVoice> {
+    FakeVoice::new(Ok(vec![
+        voice("af_heart", "en-US"),
+        voice("am_adam", "en-US"),
+        voice("bf_emma", "en-GB"),
+    ]))
+}
+
+#[gpui_kit::test]
+fn kokoro_reads_a_mix_of_the_chosen_voice_and_another(cx: &mut TestAppContext) {
+    let kokoro = kokoro_voices();
+    let (fixture, cx) = open_with(cx, Some(Arc::clone(&kokoro)));
+    fixture
+        .read
+        .update(cx, |read, cx| read.set_engine(EngineKind::Kokoro, cx))
+        .unwrap();
+    run_all(cx, &fixture);
+    let first = state(cx, &fixture);
+    assert_eq!(first["mix"], Value::Null, "no mix by default");
+    assert_eq!(first["mix_percent"], 50);
+    // Mix with lists the other voices of the language of the default voice, Heart.
+    assert_eq!(first["mix_voices"], json!(["am_adam", "bf_emma"]));
+    assert_eq!(first["spoken_voice"], Value::Null);
+    fixture.read.update(cx, |read, cx| {
+        assert!(
+            read.set_mix(Some("af_heart"), cx).is_err(),
+            "not with itself"
+        );
+        read.set_mix(Some("am_adam"), cx).unwrap();
+        read.set_mix_percent(34.0, cx).unwrap();
+    });
+    let settings = &fixture.storage.settings;
+    assert_eq!(settings.get(KOKORO_MIX_SETTING), Some(json!("am_adam")));
+    assert_eq!(settings.get(KOKORO_MIX_PERCENT_SETTING), Some(json!(30)));
+    assert_eq!(
+        state(cx, &fixture)["spoken_voice"],
+        "af_heart:70+am_adam:30"
+    );
+
+    type_text(cx, &fixture, "Hello there.");
+    fixture.read.update(cx, |read, cx| read.play(cx)).unwrap();
+    run_all(cx, &fixture);
+    let spoken = kokoro.spoken.lock().unwrap().clone();
+    assert!(
+        spoken
+            .iter()
+            .all(|(_, voice, _)| voice.as_deref() == Some("af_heart:70+am_adam:30")),
+        "{spoken:?}"
+    );
+    let row = history::newest(&fixture.storage.database).unwrap().unwrap();
+    assert_eq!(row.source_name.as_deref(), Some("Heart with 30% Adam"));
+
+    // A voice that is the Mix with voice reads alone.
+    fixture
+        .read
+        .update(cx, |read, cx| read.set_voice(Some("am_adam"), cx))
+        .unwrap();
+    let alone = state(cx, &fixture);
+    assert_eq!(
+        (alone["mix"].clone(), alone["spoken_voice"].clone()),
+        (Value::Null, json!("am_adam"))
+    );
+    fixture
+        .read
+        .update(cx, |read, cx| read.set_mix(None, cx))
+        .unwrap();
+    assert_eq!(settings.get(KOKORO_MIX_SETTING), Some(json!("")));
+}
+
+#[gpui_kit::test]
+fn the_mix_belongs_to_kokoro_only(cx: &mut TestAppContext) {
+    let (fixture, cx) = open_with(cx, Some(kokoro_voices()));
+    fixture
+        .storage
+        .settings
+        .set(KOKORO_MIX_SETTING, json!("en-2"))
+        .unwrap();
+    let state = state(cx, &fixture);
+    assert_eq!(state["engine"], "system");
+    assert_eq!(state["mix_voices"], json!([]));
+    assert_eq!(state["mix"], Value::Null);
+    assert!(
+        fixture
+            .read
+            .update(cx, |read, cx| read.set_mix(Some("en-2"), cx))
+            .is_err()
+    );
+}
+
+#[test]
+fn the_mix_slider_moves_in_steps_of_ten_by_key_and_by_drag() {
+    assert_eq!(mix_position(10), 0.0);
+    assert_eq!(mix_position(90), 1.0);
+    assert_eq!(mix_position(50), 0.5);
+    for percent in (MIX_MIN..=MIX_MAX).step_by(usize::from(MIX_STEP)) {
+        let at = mix_position(percent);
+        let right = percent_at((at + SLIDER_KEY_STEP).clamp(0.0, 1.0), percent);
+        let left = percent_at((at - SLIDER_KEY_STEP).clamp(0.0, 1.0), percent);
+        assert_eq!(
+            right,
+            (percent + MIX_STEP).min(MIX_MAX),
+            "right from {percent}"
+        );
+        assert_eq!(
+            left,
+            percent.saturating_sub(MIX_STEP).max(MIX_MIN),
+            "left from {percent}"
+        );
+    }
+    assert_eq!(percent_at(0.0, 50), 10, "Home");
+    assert_eq!(percent_at(1.0, 50), 90, "End");
+    assert_eq!(
+        percent_at(0.53, 50),
+        50,
+        "a drag rounds to the nearest share"
+    );
+    assert_eq!(percent_at(0.6, 50), 60);
+    assert_eq!(snap_percent(95.0), 90);
+    assert_eq!(snap_percent(-5.0), 10);
+    assert_eq!(snap_percent(44.0), 40);
 }
 
 #[gpui_kit::test]
