@@ -4,7 +4,7 @@
 # (tray-menu.py: the watcher stub's item list, the dbusmenu layout, and the `clicked` event). The
 # main window is the 940x600 window of class hushpen; its map state comes from xwininfo and its
 # minimized state from xprop WM_STATE. The words come from the virtual microphone. Needs
-# speech-short.wav in /assets/fixtures and the base and tiny.en models in /assets/models/whisper.
+# speech-short.wav in /assets/fixtures and the base-q5_1 model in /assets/models/whisper.
 # Busy: it transcribes. It empties /data and restarts the app, and the last check stops the
 # watcher stub, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
@@ -107,9 +107,9 @@ ptt_run() { # <wav>
 }
 words_ok() { [ -z "$(missing_words "$(norm <<<"$1")" "${SHORT_WORDS[@]}")" ]; }
 
-echo "== setup: base and tiny.en models, the paste targets"
-fresh base tiny.en
-use_model base
+echo "== setup: base-q5_1 model, the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

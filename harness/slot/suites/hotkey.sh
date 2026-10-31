@@ -1,7 +1,7 @@
 #!/bin/bash
 # Hold-key checks (VAL-PTT-005 to 012, VAL-GRD-006, VAL-GRD-008). The real hold key is Right Alt
 # (X11 keycode 108), pressed with xdotool while a paste target has the focus. Busy: it plays
-# speech into the virtual microphone and transcribes with base. It empties /data and restarts
+# speech into the virtual microphone and transcribes with base-q5_1. It empties /data and restarts
 # the app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -51,8 +51,8 @@ ptt_run() {
 }
 
 echo "== VAL-PTT-005 the hold key starts and stops a dictation while another window has focus"
-fresh base
-use_model base
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh --stock)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

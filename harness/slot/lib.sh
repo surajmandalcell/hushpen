@@ -130,6 +130,15 @@ finish() { # <suite>
   [ "$passed" = true ]
 }
 
+# model_file <speech model id>: the file name in /assets/models/whisper and in the catalog.
+# Whisper files are ggml-<id>.bin; Parakeet keeps the name its publisher gave it.
+model_file() {
+  case "$1" in
+    parakeet-v3-q4_k) echo ggml-parakeet-tdt-0.6b-v3-q4_k.bin ;;
+    *) echo "ggml-$1.bin" ;;
+  esac
+}
+
 # Onboarding repair: a finished data folder that starts with no microphone opens the permissions
 # step. After the microphone is back, Continue returns to the main window.
 onboarding_field_is() { [ "$(/app/hookctl state | jq -r ".onboarding$1")" = "$2" ]; }

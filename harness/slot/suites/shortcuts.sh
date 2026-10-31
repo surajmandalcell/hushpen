@@ -3,7 +3,7 @@
 # unit tests of hushpen-core). The recorder is opened with a click on the field (hookctl click)
 # and the keys come from xdotool as keycodes: Right Alt 108, Right Ctrl 105, Right Shift 62, Esc 9.
 # Another X client that holds a chord is grab-chord.py. Needs speech-short.wav in /assets/fixtures
-# and the base model in /assets/models/whisper. Busy: it transcribes. It empties /data and
+# and the base-q5_1 model in /assets/models/whisper. Busy: it transcribes. It empties /data and
 # restarts the app, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -105,9 +105,9 @@ shortcut_texts() { # the visible text of the four fields
     | (.id | ltrimstr("settings.shortcut.")) + ": " + .text'
 }
 
-echo "== setup: base model, the paste targets, the Settings view"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model, the paste targets, the Settings view"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -328,7 +328,7 @@ words_ok "$got" || failures+="the default hold key typed '$got'; "
 /harness/slot/app.sh stop
 helper_up ctrl+alt+v || failures+="the helper did not grab Ctrl+Alt+V ($(cat "$HELPER_LOG")); "
 start_app
-wait_until 90 engine_ready_with base
+wait_until 90 engine_ready_with base-q5_1
 open_settings
 wait_until 10 error_is pasteLast SHORTCUT_IN_USE || failures+="after the restart the pasteLast error is '$(slot_error pasteLast)'; "
 $HC state | jq -c .shortcuts >"$RUN_OUT/008-restart-state.json"

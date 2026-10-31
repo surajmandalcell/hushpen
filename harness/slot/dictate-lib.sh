@@ -60,7 +60,7 @@ fresh() {
   /harness/slot/app.sh stop
   find /data -mindepth 1 -delete
   mkdir -p "$MODELS"
-  for name in "$@"; do cp "/assets/models/whisper/ggml-$name.bin" "$MODELS/"; done
+  for name in "$@"; do cp "/assets/models/whisper/$(model_file "$name")" "$MODELS/"; done
   start_app
 }
 

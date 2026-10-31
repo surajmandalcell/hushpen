@@ -3,7 +3,7 @@
 # checks of the warm microphone stream. The hold key is Right Alt (X11 keycode 108) and the
 # shortcut is Ctrl+Alt+V, both pressed with xdotool; the words come from the virtual microphone.
 # Cue sounds are read from `cues.monitor` and `vmic.monitor` with cue-record.py. Busy: it
-# transcribes with base. It empties /data and restarts the app, so the slot must not be shared.
+# transcribes with base-q5_1. It empties /data and restarts the app, so the slot must not be shared.
 # Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -125,9 +125,9 @@ above() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a > b) }'; }
 below() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a < b) }'; }
 median() { printf '%s\n' "$@" | sort -n | awk '{ v[NR] = $1 } END { print v[int((NR + 1) / 2)] }'; }
 
-echo "== setup: base model and the paste targets"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

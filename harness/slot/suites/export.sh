@@ -7,7 +7,7 @@
 # 007 takes the portal away (the processes end and a bare name owner holds the portal name on the
 # session bus) so rfd has to open zenity. 008 answers one dialog through the hook and cancels
 # another with Escape.
-# Needs speech-short.wav in /assets/fixtures and the tiny.en model in /assets/models/whisper.
+# Needs speech-short.wav in /assets/fixtures and the base-q5_1 model in /assets/models/whisper.
 # Busy: it transcribes. It empties /data and restarts the app, so the slot must not be shared.
 # Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
@@ -83,15 +83,15 @@ ms_clock() {
   }'
 }
 
-echo "== setup: three seeded rows with segments, then tiny.en and the paste targets"
-fresh tiny.en
+echo "== setup: three seeded rows with segments, then base-q5_1 and the paste targets"
+fresh base-q5_1
 /harness/slot/app.sh stop
 now=$(($(date +%s) * 1000))
 sqlite3 "$DB" <<SQL
 INSERT INTO transcript (id, created_at, kind, status, duration_ms, model_id, language_detected, raw_text, rule_text, final_text, insert_outcome, target_app) VALUES
-  ('SEED0000000000000000000001', $((now - 30000)), 'dictation', 'completed', 2000, 'base', 'en', 'first seeded row', 'first seeded row', 'First seeded row.', 'pasted', 'seed-target'),
-  ('SEED0000000000000000000002', $((now - 20000)), 'dictation', 'completed', 3000, 'base', 'en', 'second seeded row', 'second seeded row', 'Second seeded row.', 'pasted', 'seed-target'),
-  ('SEED0000000000000000000003', $((now - 10000)), 'dictation', 'completed', 1000, 'base', 'en', 'third seeded row', 'third seeded row', 'Third seeded row, café ☕.', 'pasted', 'seed-target');
+  ('SEED0000000000000000000001', $((now - 30000)), 'dictation', 'completed', 2000, 'base-q5_1', 'en', 'first seeded row', 'first seeded row', 'First seeded row.', 'pasted', 'seed-target'),
+  ('SEED0000000000000000000002', $((now - 20000)), 'dictation', 'completed', 3000, 'base-q5_1', 'en', 'second seeded row', 'second seeded row', 'Second seeded row.', 'pasted', 'seed-target'),
+  ('SEED0000000000000000000003', $((now - 10000)), 'dictation', 'completed', 1000, 'base-q5_1', 'en', 'third seeded row', 'third seeded row', 'Third seeded row, café ☕.', 'pasted', 'seed-target');
 INSERT INTO segment (transcript_id, idx, start_ms, end_ms, text) VALUES
   ('SEED0000000000000000000001', 0, 0, 900, 'First seeded'),
   ('SEED0000000000000000000001', 1, 900, 2000, 'row.'),
@@ -99,7 +99,7 @@ INSERT INTO segment (transcript_id, idx, start_ms, end_ms, text) VALUES
   ('SEED0000000000000000000003', 0, 0, 1000, 'Third seeded row, café ☕.');
 SQL
 start_app
-use_model tiny.en
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

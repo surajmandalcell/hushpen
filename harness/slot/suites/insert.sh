@@ -3,7 +3,7 @@
 # pressed with xdotool while a paste target has the focus; the words come from the virtual
 # microphone. Targets: a GTK entry (Ctrl+V), stock xterm (Shift+Insert with PRIMARY), xterm with
 # a Ctrl+Shift+V translation, and a window that never reads the clipboard. Busy: it transcribes
-# with base. It empties /data and restarts the app, so the slot must not be shared. Runs in one
+# with base-q5_1. It empties /data and restarts the app, so the slot must not be shared. Runs in one
 # slot through with-env.sh.
 . /harness/slot/lib.sh
 . /harness/slot/dictate-lib.sh
@@ -81,9 +81,9 @@ ptt_to_chord() {
 
 sentinel_ok() { [ "$(clip)" = OLD ]; }
 
-echo "== setup: base model and the paste targets"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh --stock)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)
@@ -134,7 +134,7 @@ failures=""
 jq '.values["insert.appChords"] = {"xterm": "ctrl+shift+v"}' "$SETTINGS" >"$SETTINGS.tmp" && cat "$SETTINGS.tmp" >"$SETTINGS"
 cp "$SETTINGS" "$RUN_OUT/003-settings.json"
 start_app
-wait_until 90 engine_ready_with base || failures+="the engine did not load again; "
+wait_until 90 engine_ready_with base-q5_1 || failures+="the engine did not load again; "
 [ "$($HC state | jq -c '.settings["insert.appChords"]')" = '{"xterm":"ctrl+shift+v"}' ] || failures+="the setting is $($HC state | jq -c '.settings["insert.appChords"]'); "
 set_clip OLD
 size=$(file_size "$OVERRIDE_FILE")

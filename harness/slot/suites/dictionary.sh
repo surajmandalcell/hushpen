@@ -5,7 +5,7 @@
 # while the clipboard comes back byte for byte.
 # The hold key is Right Alt (X11 keycode 108); the words come from the virtual microphone.
 # The history row columns (prompt, rule_text, final_text) are read with sqlite3 for VAL-DICT-003 and
-# VAL-DICT-006. Needs speech-short.wav in /assets/fixtures. Busy: it transcribes with base. It
+# VAL-DICT-006. Needs speech-short.wav in /assets/fixtures. Busy: it transcribes with base-q5_1. It
 # empties /data and restarts the app, so the slot must not be shared. Runs in one slot through
 # with-env.sh.
 . /harness/slot/lib.sh
@@ -75,9 +75,9 @@ open_dictionary() {
 }
 to_write_as() { for _ in 1 2 3 4; do tab; done; }
 
-echo "== setup: base model and the paste targets"
-fresh base
-use_model base
+echo "== setup: base-q5_1 model and the paste targets"
+fresh base-q5_1
+use_model base-q5_1
 ids=$(/harness/slot/targets.sh)
 echo "$ids"
 GT=$(grep -o 'gtk=[0-9]*' <<<"$ids" | cut -d= -f2)

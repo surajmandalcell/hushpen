@@ -1,15 +1,17 @@
 #!/bin/bash
 # Home dictation checks (VAL-HOME-001 to 010 and VAL-MOD-010). Busy: it plays speech into the
-# virtual microphone and transcribes with base, tiny.en, and base.en. It empties /data, restarts
-# the app, and kills the engine child, so the slot must not be shared. Runs in one slot through
-# with-env.sh.
+# virtual microphone and transcribes with base-q5_1 and small-q5_1; Parakeet is only selected, to
+# see how Home treats a language it does not read. It empties /data, restarts the app, and kills
+# the engine child, so the slot must not be shared. Runs in one slot through with-env.sh.
 . /harness/slot/lib.sh
 
 . /harness/slot/dictate-lib.sh
 
+model_active() { [ "$($HC state | jq -r .models.active)" = "$1" ]; }
+
 echo "== VAL-HOME-001 dictation shows the words and copies them"
-fresh base base.en tiny.en
-use_model base
+fresh base-q5_1 small-q5_1 parakeet-v3-q4_k
+use_model base-q5_1
 set_clip OLD
 dictate 001 "$FIX/speech-short.wav"
 events=$(run_events)
@@ -134,35 +136,44 @@ start_app
 [ "$(dict .picker.selected)" = auto ] || failures+="an invalid value gives picker $(dict .picker.selected); "
 hook_action capture-select '{"id":"default"}' >/dev/null
 [ "$(jq -r '.values["dictation.language"]' "$SETTINGS")" = auto ] || failures+="the file holds '$(jq -r '.values["dictation.language"]' "$SETTINGS")' after a settings write; "
-# An English-only model turns the picker off.
-use_model tiny.en || failures+="tiny.en did not load; "
+# Parakeet reads 25 European languages: Spanish needs no notice, Japanese gets one that names
+# the model, and the picker stays on. A Whisper model reads Japanese, so it shows no notice.
+hook_action model-select '{"id":"parakeet-v3-q4_k"}' >/dev/null
+wait_until 30 model_active parakeet-v3-q4_k || failures+="Parakeet did not become the active model; "
+hook_action dictation-language '{"code":"es"}' >/dev/null
 sleep 0.4
-shot 006-english-only
-$HC tree | jq '.[] | select(.id == "home.language" or .id == "home.language.detail")' >"$RUN_OUT/006-off.json"
-[ "$($HC tree | jq -r '.[] | select(.id == "home.language") | .enabled')" = false ] || failures+="the picker is still enabled with tiny.en; "
-case "$(tree_text home.language.detail)" in *English*only*) ;; *) failures+="no English-only reason ('$(tree_text home.language.detail)'); " ;; esac
-check_failures "VAL-HOME-006 language picker" "$options entries, Spanish saved and kept after a restart, xx-invalid gave auto and was rewritten, disabled with a reason on tiny.en" "$failures"
+[ -z "$(tree_text home.language-notice)" ] || failures+="Parakeet shows a notice for Spanish: '$(tree_text home.language-notice)'; "
+hook_action dictation-language '{"code":"ja"}' >/dev/null
+sleep 0.4
+shot 006-parakeet-japanese
+case "$(tree_text home.language-notice)" in *Parakeet*) ;; *) failures+="no Parakeet notice for Japanese ('$(tree_text home.language-notice)'); " ;; esac
+[ "$($HC tree | jq -r '.[] | select(.id == "home.language") | .enabled')" = true ] || failures+="the picker is off with Parakeet; "
+use_model base-q5_1 || failures+="base-q5_1 did not load again; "
+sleep 0.4
+[ -z "$(tree_text home.language-notice)" ] || failures+="base-q5_1 shows a language notice for Japanese: '$(tree_text home.language-notice)'; "
+hook_action dictation-language '{"code":"auto"}' >/dev/null
+check_failures "VAL-HOME-006 language picker" "$options entries, Spanish saved and kept after a restart, xx-invalid gave auto and was rewritten, Parakeet names itself for Japanese with the picker on, base-q5_1 shows no notice" "$failures"
 
 echo "== VAL-MOD-010 the active model is used by the next dictation"
-use_model tiny.en
+use_model base-q5_1
 pid_before=$(ui_pid)
-hook_action model-select '{"id":"base.en"}' >/dev/null
-wait_until 90 engine_ready_with base.en
+hook_action model-select '{"id":"small-q5_1"}' >/dev/null
+wait_until 90 engine_ready_with small-q5_1
 dictate mod010 "$FIX/speech-short.wav"
 text=$(dict .transcript)
 failures=""
 [ "$(ui_pid)" = "$pid_before" ] || failures+="the UI pid changed; "
 [ -z "$(missing_words "$(norm <<<"$text")" "${SHORT_WORDS[@]}")" ] || failures+="words missing: $text; "
-grep -q 'model=base.en' "$ENGINE_LOG" || failures+="engine.log never names base.en; "
-grep -E 'JOB ' "$ENGINE_LOG" | tail -1 | grep -q 'model=base.en' || failures+="the last JOB line is not base.en; "
-[ "$(jq -r '.values["dictation.modelId"]' "$SETTINGS")" = base.en ] || failures+="settings hold $(jq -r '.values["dictation.modelId"]' "$SETTINGS"); "
+grep -q 'model=small-q5_1' "$ENGINE_LOG" || failures+="engine.log never names small-q5_1; "
+grep -E 'JOB ' "$ENGINE_LOG" | tail -1 | grep -q 'model=small-q5_1' || failures+="the last JOB line is not small-q5_1; "
+[ "$(jq -r '.values["dictation.modelId"]' "$SETTINGS")" = small-q5_1 ] || failures+="settings hold $(jq -r '.values["dictation.modelId"]' "$SETTINGS"); "
 /harness/slot/app.sh restart >/dev/null
 wait_until 20 dict_is .state idle
-[ "$($HC state | jq -r '.models.models[] | select(.active) | .id')" = base.en ] || failures+="after a restart the active model is not base.en; "
+[ "$($HC state | jq -r '.models.models[] | select(.active) | .id')" = small-q5_1 ] || failures+="after a restart the active model is not small-q5_1; "
 $HC click sidebar.models >/dev/null
 sleep 0.4
 shot mod010-restart
-check_failures "VAL-MOD-010 active model in use" "base.en loaded with UI pid $pid_before, dictation '$text', settings and restart keep base.en" "$failures"
+check_failures "VAL-MOD-010 active model in use" "small-q5_1 loaded with UI pid $pid_before, dictation '$text', settings and restart keep small-q5_1" "$failures"
 
 echo "== VAL-HOME-007 no model: Home cannot start and points to Models"
 fresh
@@ -187,8 +198,8 @@ shot 007-models
 check_failures "VAL-HOME-007 no model" "record disabled, no session file, notice with an Open Models button that shows Models" "$failures"
 
 echo "== VAL-HOME-008 an engine crash during transcription"
-fresh base
-use_model base
+fresh base-q5_1
+use_model base-q5_1
 dictate 008a "$FIX/speech-short.wav"
 padded=$(pad "$FIX/dictation-45s.wav")
 hook_action dictation-record >/dev/null
@@ -214,9 +225,9 @@ failures=""
 [ -z "$(dict .transcript)" ] || failures+="the transcript still holds '$(dict .transcript)'; "
 [ -f "$session" ] || failures+="the session WAV is gone ($session); "
 [ "$(ui_pid)" = "$ui_before" ] || failures+="the UI pid changed; "
-wait_until 40 engine_ready_with base || failures+="the engine did not come back ready; "
+wait_until 40 engine_ready_with base-q5_1 || failures+="the engine did not come back ready; "
 [ "$(engine .pid)" != "$engine_pid" ] || failures+="the engine pid did not change; "
-offline=$(/app/hushpen engine --smoke "$session" --model /assets/models/whisper/ggml-base.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
+offline=$(/app/hushpen engine --smoke "$session" --model /assets/models/whisper/ggml-base-q5_1.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
 case " $offline " in *" lighthouse "*) ;; *) failures+="the kept WAV transcribes to '$offline'; " ;; esac
 dictate 008b "$FIX/speech-short.wav"
 text=$(dict .transcript)
