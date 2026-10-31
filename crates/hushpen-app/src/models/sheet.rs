@@ -38,7 +38,12 @@ pub fn render(models: &Entity<Models>, window: &mut Window, cx: &mut App) -> Opt
     let row = me.details()?;
     let info = row.entry.info.clone();
     let focus = &me.sheet_focus;
-    let (status, _) = status_text(palette, row.state, me.active() == row.entry.id);
+    let (status, _) = status_text(
+        palette,
+        row.state,
+        me.active() == row.entry.id,
+        row.updating,
+    );
     let facts = vec![
         fact(
             palette,

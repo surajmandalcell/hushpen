@@ -193,7 +193,11 @@ fn voice_rows(palette: Palette, read: &Entity<ReadAloud>, cx: &App) -> Vec<AnyEl
             ui::button(
                 palette,
                 hook::id("read", "models"),
-                "Download in Models",
+                if view.updating() {
+                    "Open Models"
+                } else {
+                    "Download in Models"
+                },
                 Kind::Plain,
                 Some(&view.focus.models),
                 true,

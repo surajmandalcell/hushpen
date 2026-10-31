@@ -159,8 +159,8 @@ impl TtsHost {
     /// The running worker with `model` loaded or loading. Starts the worker on first use.
     fn client(&self, model: VoiceModel) -> Result<TtsClient, SpeechError> {
         let cpus = std::thread::available_parallelism().map_or(2, usize::from);
-        let mut wanted =
-            wanted_load(&self.models_dir, model, cpus).ok_or_else(|| not_installed(model))?;
+        let mut wanted = wanted_load(&self.models_dir, model, cpus)
+            .ok_or_else(|| not_installed(&self.models_dir, model))?;
         let mut state = self.lock();
         wanted.idle_secs = state.idle_secs;
         let client = state
@@ -240,7 +240,7 @@ impl SpeechEngine for ModelVoice {
 
     fn voices(&self) -> Result<Vec<Voice>, SpeechError> {
         if !downloaded(&self.host.models_dir, self.model) {
-            return Err(not_installed(self.model));
+            return Err(not_installed(&self.host.models_dir, self.model));
         }
         Ok(match self.model {
             VoiceModel::Kokoro => VOICES
@@ -336,11 +336,24 @@ pub fn built_in_voice() -> Voice {
     }
 }
 
-fn not_installed(model: VoiceModel) -> SpeechError {
-    SpeechError::new(
-        error::SPEECH_UNAVAILABLE,
-        format!("the {} voice model is not downloaded", model.name()),
-    )
+/// The end of the detail of an unavailable voice model whose files are an earlier version that
+/// Models is replacing. Read aloud tells it from a model that is not downloaded.
+pub const UPDATING: &str = "is updating";
+
+fn not_installed(models_dir: &Path, model: VoiceModel) -> SpeechError {
+    let detail = if updating(models_dir, model) {
+        format!("the {} voice model {UPDATING}", model.name())
+    } else {
+        format!("the {} voice model is not downloaded", model.name())
+    };
+    SpeechError::new(error::SPEECH_UNAVAILABLE, detail)
+}
+
+/// Whether the files of `model` on disk are an earlier pin, so Models replaces them.
+fn updating(models_dir: &Path, model: VoiceModel) -> bool {
+    hushpen_core::catalog::embedded()
+        .voice(model.id())
+        .is_some_and(|entry| crate::models::files::is_update(&models_dir.join(model.id()), entry))
 }
 
 /// The worker's code as a Read aloud code. The worker's own code stays in the detail.
@@ -413,6 +426,36 @@ mod tests {
         assert!(model_files::is_verified(&path), "the old stamp is intact");
         assert!(!downloaded(models.path(), VoiceModel::Kokoro));
         assert_eq!(wanted_load(models.path(), VoiceModel::Kokoro, 2), None);
+    }
+
+    #[test]
+    fn the_first_kokoro_weights_read_as_updating_and_other_files_as_not_downloaded() {
+        let models = tempfile::tempdir().unwrap();
+        let dir = stamped_model(models.path(), VoiceModel::Kokoro);
+        let path = dir.join(kokoro::MODEL_FILE);
+        let old = hushpen_core::catalog::embedded()
+            .voice(kokoro::MODEL_ID)
+            .unwrap()
+            .files[0]
+            .replaces[0]
+            .clone();
+        let detail = |models: &Path| not_installed(models, VoiceModel::Kokoro).detail;
+
+        std::fs::File::create(&path)
+            .unwrap()
+            .set_len(old.bytes)
+            .unwrap();
+        model_files::write_stamp(&path, &old.sha256).unwrap();
+        assert!(!downloaded(models.path(), VoiceModel::Kokoro));
+        assert!(detail(models.path()).ends_with(UPDATING));
+
+        std::fs::File::create(&path).unwrap().set_len(10).unwrap();
+        assert!(detail(models.path()).ends_with("is not downloaded"));
+        assert!(
+            not_installed(models.path(), VoiceModel::ChatterboxNano)
+                .detail
+                .ends_with("is not downloaded")
+        );
     }
 
     fn host(data: &DataDir) -> Arc<TtsHost> {

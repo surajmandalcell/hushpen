@@ -343,6 +343,25 @@ fn kokoro_without_its_model_says_to_download_it_and_play_is_refused(cx: &mut Tes
 }
 
 #[gpui_kit::test]
+fn kokoro_that_is_updating_says_updating_and_points_to_models(cx: &mut TestAppContext) {
+    let updating = FakeVoice::new(Err(SpeechError::new(
+        SPEECH_UNAVAILABLE,
+        format!("the Kokoro voice model {}", crate::tts_host::UPDATING),
+    )));
+    let (fixture, cx) = open_with(cx, Some(updating));
+    fixture
+        .read
+        .update(cx, |read, cx| read.set_engine(EngineKind::Kokoro, cx))
+        .unwrap();
+    run_all(cx, &fixture);
+    let state = state(cx, &fixture);
+    assert_eq!(state["needs_model"], true);
+    let why = state["unavailable"].as_str().unwrap();
+    assert!(why.contains("updating") && why.contains("Models"), "{why}");
+    assert!(!why.contains("Download"), "{why}");
+}
+
+#[gpui_kit::test]
 fn play_speaks_the_text_with_the_chosen_voice_and_speed(cx: &mut TestAppContext) {
     let (fixture, cx) = open(cx);
     type_text(cx, &fixture, "One sentence. Another sentence.");
