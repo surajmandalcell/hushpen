@@ -1,4 +1,4 @@
-//! `config/settings.json`: `{"schemaVersion": 1, "values": {...}}`.
+//! `config/settings.json`: `{"schemaVersion": 2, "values": {...}}`.
 //!
 //! Values are flat dotted keys from the registry. Keys the registry does not
 //! know are kept under `values._unknown`. Every write goes through a temp
@@ -17,8 +17,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-const SCHEMA_VERSION: i64 = 1;
+/// 2: the Input boost default went from 100% to 150% and the Sound volume default from 50% to
+/// 25%. Older files stored every default, so [`OLD_DEFAULTS`] values are dropped once.
+const SCHEMA_VERSION: i64 = 2;
 const UNKNOWN_KEY: &str = "_unknown";
+
+/// Defaults that changed in schema version 2. A stored value that still equals one was never
+/// chosen by the user, so the new default applies.
+const OLD_DEFAULTS: [(&str, f64); 2] = [("audio.inputGain", 1.0), ("audio.cueVolume", 0.5)];
 
 /// The smallest and the largest number the registry accepts for `key`, or `None` when the key
 /// is not numeric.
@@ -178,7 +184,9 @@ fn parse(bytes: &[u8]) -> Option<(State, bool)> {
 
     let mut changed = false;
     let mut state = State::defaults();
-    state.schema_version = schema_version;
+    // A file from a newer build keeps its version; an older one is migrated and stamped.
+    state.schema_version = schema_version.max(SCHEMA_VERSION);
+    changed |= schema_version < SCHEMA_VERSION;
     if let Some(Value::Object(previous)) = stored.get(UNKNOWN_KEY) {
         state.unknown = previous.clone();
     } else if stored.contains_key(UNKNOWN_KEY) {
@@ -190,6 +198,14 @@ fn parse(bytes: &[u8]) -> Option<(State, bool)> {
         }
         match registry::find(key) {
             Some(spec) => match spec.sanitize(value) {
+                Some(_)
+                    if schema_version < SCHEMA_VERSION
+                        && OLD_DEFAULTS.iter().any(|(old_key, old)| {
+                            key == old_key && value.as_f64() == Some(*old)
+                        }) =>
+                {
+                    changed = true;
+                }
                 Some(cleaned) => {
                     changed |= &cleaned != value;
                     state.values.insert(key.clone(), cleaned);
