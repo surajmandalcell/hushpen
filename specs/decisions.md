@@ -174,7 +174,7 @@ new decision, add it here in the same change (D-21).
   convolutions in float32 (the older export gave invalid samples). Synthesis
   keeps the model's pauses (`silence_scale` 1.0). A voice model counts as
   installed only when its stamp matches the current catalog size and hash.
-  The sherpa C API takes a speaker ID, not a blended style vector. It runs on the CPU only: the CoreML provider aborts the
+  Mixed voices are D-39. It runs on the CPU only: the CoreML provider aborts the
   process on this model's dynamic shapes (an uncatchable C++ exception from
   ONNX Runtime). Measured real-time factors: about 0.5 on an Apple M4 Pro,
   0.44 to 0.46 on four vCPUs of a Linux arm64 container. The library is
@@ -324,6 +324,33 @@ new decision, add it here in the same change (D-21).
   the same rowids, with foreign keys off and `foreign_key_check` before the
   commit. Reprocess is refused for a read; Read aloud again speaks the text
   once more with the voice chosen now.
+
+- **D-37 Mute other audio while dictating.** On by default. After the start
+  cue has played, Hushpen mutes the default system output (CoreAudio mute,
+  or volume 0 when the device has no mute; `wpctl` or `pactl` on Linux) and
+  restores it before the finish or cancel cue. It restores only output it
+  changed, so output the user had muted stays muted. A marker in the data
+  folder records a mute in progress; the next start restores the output and
+  removes it, so a crash does not leave the system muted. The microphone is
+  never muted.
+
+- **D-38 Idle models.** Settings > Engine > When idle applies to the speech,
+  cleanup, and voice workers. Keep in memory leaves the model loaded; on
+  macOS it is the default, because macOS compresses and swaps idle memory by
+  itself (a kept Whisper base fell from 323 to 178 MiB resident while idle)
+  and has no public page-out call. Page out (Linux only, the Linux default)
+  calls `madvise(MADV_PAGEOUT)` on the weight mappings after the idle time;
+  the model stays loaded and its pages come back from swap. Unload frees the
+  model after the idle time. `MADV_FREE_REUSABLE` is never used, because it
+  discards the weights. A stored value the system cannot do reads as its
+  default.
+
+- **D-39 Kokoro voice mix.** The sherpa C API takes only a speaker id, so
+  the worker writes a copy of `voices.bin` (cached in `models/tts/mixes`, at
+  most three) whose last speaker holds the weighted average of the two
+  voices' [510, 1, 256] style blocks, and loads Kokoro with it. The pinned
+  `voices.bin` is only read. A mix travels as the voice id
+  `<base>:<100-p>+<with>:<p>`.
 
 ## History notes
 
