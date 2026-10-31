@@ -219,6 +219,16 @@ pub(super) static REGISTRY: &[Spec] = &[
         Kind::OptionalText(256),
         |_| json!("")
     ),
+    spec!(
+        "cleanup.profile",
+        Kind::Choice(&["general", "message", "email", "notes"]),
+        |_| json!("general")
+    ),
+    // The user's changes to the built-in profiles, as "<profile>.<field>": the prompt and the
+    // three S1-mini controls. A missing field is the built-in value.
+    spec!("cleanup.profileEdits", Kind::TextMap, |_| json!({})),
+    // The word packs that are on, by id. All are off until the user turns one on.
+    spec!("dictionary.packs", Kind::BoolMap, |_| json!({})),
     spec!("insert.appChords", Kind::TextMap, |_| json!({})),
     spec!("overlay.enabled", Kind::Bool, |_| json!(true)),
     spec!("overlay.idleVisible", Kind::Bool, |_| json!(false)),

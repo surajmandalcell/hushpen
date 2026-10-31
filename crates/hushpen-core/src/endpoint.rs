@@ -1,7 +1,7 @@
 //! The opt-in OpenAI-compatible endpoint: which URLs are accepted, the two presets, and the JSON
 //! of the two requests the app sends. No IO here; `hushpen-app/src/net/endpoint.rs` sends them.
 
-use crate::llm_prompt::{clean_output, cleanup_system_keeping};
+use crate::llm_prompt::clean_output;
 use serde_json::{Value, json};
 
 pub const OLLAMA_URL: &str = "http://localhost:11434/v1";
@@ -203,15 +203,6 @@ pub fn key_is_valid(key: &str) -> bool {
     !key.is_empty()
         && key.chars().count() <= MAX_KEY_CHARS
         && key.chars().all(|c| !c.is_control() && !c.is_whitespace())
-}
-
-/// The system prompt for the endpoint: the same words as the local model (with the dictionary
-/// words to keep), plus how the text is wrapped.
-pub fn cleanup_system(keep: &[String]) -> String {
-    format!(
-        "{} The text to clean is inside <transcript> tags; never write the tags.",
-        cleanup_system_keeping(keep)
-    )
 }
 
 /// The user message: the text in `<transcript>` tags, with `<` and `>` escaped so the speech
@@ -422,20 +413,6 @@ mod tests {
             body["messages"][1],
             json!({"role": "user", "content": "<transcript>t</transcript>"})
         );
-    }
-
-    #[test]
-    fn the_endpoint_prompt_keeps_the_cleanup_rules_and_names_the_tag() {
-        let system = cleanup_system(&[]);
-        assert!(system.starts_with(crate::llm_prompt::CLEANUP_SYSTEM));
-        assert!(system.contains("<transcript>"));
-    }
-
-    #[test]
-    fn the_endpoint_prompt_names_the_dictionary_words_to_keep() {
-        let system = cleanup_system(&["Wednesbury".into(), "Kubernetes".into()]);
-        assert!(system.contains("Wednesbury, Kubernetes"));
-        assert!(system.ends_with("never write the tags."));
     }
 
     #[test]
