@@ -23,7 +23,6 @@ use hushpen_core::catalog::{Catalog, Languages, ModelEntry, ModelKind};
 use hushpen_core::error::{
     DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, MODEL_IN_USE, MODEL_NO_SPACE,
 };
-use hushpen_core::shortcut::Platform;
 use hushpen_store::model_files;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -98,8 +97,6 @@ pub struct Notice {
 
 /// What the library needs to know about the computer it runs on.
 pub struct Machine {
-    pub platform: Platform,
-    pub ram_bytes: u64,
     /// Opens a model's source page and its folder.
     pub opener: Rc<dyn Opener>,
 }
@@ -202,7 +199,8 @@ impl Models {
         if swept > 0 {
             log::info!("MODELS_SWEPT removed {swept} partial downloads older than 7 days");
         }
-        let offered = catalog.offered_llm(machine.platform, machine.ram_bytes);
+        sweep_retired_llm(&storage.data.llm_models_dir());
+        let offered = catalog.offered_llm();
         let suggested = offered.first().map(|entry| entry.id.clone());
         let rows = catalog
             .whisper
@@ -619,6 +617,21 @@ impl Models {
 
 /// What a failed row says. The row shows it on one line, so it can be cut short; the view
 /// notice shows all of it.
+/// Deletes the files of cleanup models an earlier version offered, such as Gemma 4 E2B (3.1 GB).
+/// Only `<id>.gguf` and its stamp go; nothing else in the folder is touched.
+fn sweep_retired_llm(dir: &std::path::Path) {
+    for id in hushpen_core::catalog::RETIRED_LLM {
+        let path = dir.join(format!("{id}.gguf"));
+        if !path.exists() {
+            continue;
+        }
+        match model_files::remove(&path) {
+            Ok(()) => log::info!("MODELS_RETIRED removed {id}.gguf"),
+            Err(error) => log::warn!("MODELS_RETIRED could not remove {id}.gguf: {error}"),
+        }
+    }
+}
+
 pub fn failure_text(entry: &ModelEntry) -> String {
     format!(
         "{} failed verification: what is on disk is not the pinned {} download, so it is never used. Download it again to replace it.",
@@ -686,10 +699,8 @@ impl Opener for Opened {
 #[cfg(test)]
 impl Machine {
     /// A computer whose opener only records.
-    pub(crate) fn test(platform: Platform, ram_bytes: u64) -> Self {
+    pub(crate) fn test() -> Self {
         Self {
-            platform,
-            ram_bytes,
             opener: Rc::new(Opened::default()),
         }
     }

@@ -109,7 +109,7 @@ pub const SECTIONS: &[Section] = &[
     Section {
         id: "llm-models",
         title: "LLM models",
-        note: "The cleanup models Hushpen downloads on request: Gemma 4 E2B (Google, from https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF) and Qwen3.5 2B (Alibaba Cloud Qwen team, from https://huggingface.co/unsloth/Qwen3.5-2B-GGUF). Both are published under the Apache License 2.0.",
+        note: "The cleanup models Hushpen downloads on request: S1-mini by Superwhisper (a fine-tune of Qwen3-0.6B by the Alibaba Cloud Qwen team, from https://huggingface.co/superwhisper/s1-mini-GGUF) and Qwen3.5 2B (Alibaba Cloud Qwen team, from https://huggingface.co/unsloth/Qwen3.5-2B-GGUF). Both are published under the Apache License 2.0. S1-mini adds one term: any use, distribution, or integration of the model must identify it by its original name, \"S1-mini\" by \"Superwhisper\".",
         texts: &[APACHE],
     },
     Section {

@@ -241,7 +241,7 @@ fn load_then_cleanup_gives_a_result_with_counts_and_times() {
 #[test]
 fn command_mode_builds_its_own_prompt() {
     let mut worker = Worker::start(0);
-    worker.load("gemma-4-E2B-it-Q4_K_M.gguf");
+    worker.load("Qwen3.5-0.8B-Q4_K_M.gguf");
     worker.send(&LlmRequest::Command {
         job: 2,
         instruction: "shorter".into(),
@@ -472,10 +472,10 @@ fn a_second_load_of_the_same_model_answers_without_loading_again() {
 fn a_different_model_replaces_the_loaded_one() {
     let mut worker = Worker::start(0);
     worker.load("Qwen3.5-2B-Q4_K_M.gguf");
-    let second = worker.load("gemma-4-E2B-it-Q4_K_M.gguf");
+    let second = worker.load("Qwen3.5-0.8B-Q4_K_M.gguf");
     assert!(matches!(
         &second,
-        LlmEvent::Loaded { model, .. } if model == "gemma-4-E2B-it-Q4_K_M"
+        LlmEvent::Loaded { model, .. } if model == "Qwen3.5-0.8B-Q4_K_M"
     ));
     assert_eq!(worker.loads.load(Ordering::SeqCst), 2);
     assert_eq!(worker.finish(), 0);

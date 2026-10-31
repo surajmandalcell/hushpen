@@ -217,8 +217,6 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     models_storage,
                     hushpen_core::catalog::embedded(),
                     models::Machine {
-                        platform: Platform::current(),
-                        ram_bytes: hushpen_platform::memory::total_ram_bytes().unwrap_or(0),
                         opener: Rc::new(SystemOpener),
                     },
                     models::production_transfer(),
@@ -395,8 +393,6 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     AiParts {
                         models: models.clone(),
                         catalog: hushpen_core::catalog::embedded(),
-                        platform: Platform::current(),
-                        ram_bytes: hushpen_platform::memory::total_ram_bytes().unwrap_or(0),
                         loading: Rc::clone(&llm_loading),
                     },
                     cx,

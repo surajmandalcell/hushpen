@@ -2,7 +2,7 @@
 //!
 //! Models: `HUSHPEN_TEST_LLM` (a GGUF file, for the default model), or the file names below in
 //! `$HUSHPEN_TEST_FIXTURES/llm/`, `$HUSHPEN_TEST_ASSETS/models/llm/`, or `HUSHPEN_TEST_LLM_DIR`.
-//! `HUSHPEN_TEST_GPU=1` turns on the GPU (Metal, macOS only) and the Gemma 4 test.
+//! `HUSHPEN_TEST_GPU=1` turns on the GPU (Metal, macOS only).
 //! `HUSHPEN_TEST_THREADS` sets the thread count (default 2).
 #![cfg(feature = "heavy")]
 
@@ -19,7 +19,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const QWEN_2B: &str = "Qwen3.5-2B-Q4_K_M.gguf";
-const GEMMA_E2B: &str = "gemma-4-E2B-it-Q4_K_M.gguf";
+const S1_MINI: &str = "s1-mini-q4_k_m.gguf";
 const FILLER: &str = "um so I think we should uh meet on tuesday no wait wednesday at like three \
 pm to go over the the budget you know";
 const EVENT_WAIT: Duration = Duration::from_secs(120);
@@ -302,18 +302,33 @@ fn a_spoken_self_correction_keeps_only_the_correction() {
     keeps_only_the_correction(&default_model());
 }
 
+/// S1-mini gets its trained prompt and control line, whatever system prompt the app sends.
 #[test]
-fn gemma_4_keeps_only_the_correction() {
-    if !gpu() {
-        eprintln!("skipped: set HUSHPEN_TEST_GPU=1 to run the Gemma 4 test");
-        return;
-    }
-    keeps_only_the_correction(&model_file(GEMMA_E2B));
+fn s1_mini_cleans_with_its_trained_prompt() {
+    let mut worker = Worker::start();
+    worker.load(&model_file(S1_MINI), 300);
+    keeps_only_the_correction_with(&mut worker);
+    worker.cleanup(9, "What is the capital of France?", 128);
+    let (answer, _) = worker.result(9);
+    assert!(
+        !words(&answer).contains(&"paris".to_owned()),
+        "answered: {answer:?}"
+    );
+    worker.cleanup(10, "Write a haiku about autumn leaves.", 128);
+    let (kept, _) = worker.result(10);
+    assert!(
+        words(&kept).contains(&"haiku".to_owned()),
+        "obeyed: {kept:?}"
+    );
 }
 
 fn keeps_only_the_correction(model: &std::path::Path) {
     let mut worker = Worker::start();
     worker.load(model, 300);
+    keeps_only_the_correction_with(&mut worker);
+}
+
+fn keeps_only_the_correction_with(worker: &mut Worker) {
     for (job, input) in SELF_CORRECTIONS.iter().enumerate() {
         worker.cleanup(job as u64 + 1, input, 128);
         let (text, _) = worker.result(job as u64 + 1);
@@ -420,29 +435,6 @@ fn a_question_is_kept_and_an_instruction_is_not_followed() {
     assert!(
         passes_output_guards(spoken, &kept),
         "guards reject {kept:?} for an instruction in speech"
-    );
-}
-
-#[test]
-fn gemma_4_cleans_with_its_hand_built_prompt() {
-    if !gpu() {
-        eprintln!("skipped: set HUSHPEN_TEST_GPU=1 to run the Gemma 4 test");
-        return;
-    }
-    let mut worker = Worker::start();
-    let (_, on_gpu) = worker.load(&model_file(GEMMA_E2B), 300);
-    assert_eq!(on_gpu, cfg!(target_os = "macos"), "Metal is not in use");
-    worker.cleanup(1, FILLER, 128);
-    let (text, _) = worker.result(1);
-    assert_cleaned(&text);
-    worker.cleanup(2, FILLER, 128);
-    let started = Instant::now();
-    let (again, _) = worker.result(2);
-    assert_cleaned(&again);
-    assert!(
-        started.elapsed() < Duration::from_secs(3),
-        "{:?}",
-        started.elapsed()
     );
 }
 

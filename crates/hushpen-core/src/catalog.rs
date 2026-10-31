@@ -4,7 +4,6 @@
 //! when it matches its entry here. Schema 2 adds each model's kind and the details the Models view
 //! shows; a schema 1 file, without them, still parses.
 
-use crate::shortcut::Platform;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -125,12 +124,12 @@ pub struct Catalog {
     pub voice: Vec<ModelEntry>,
 }
 
-/// The cleanup model for Macs with enough memory to hold it.
-pub const LLM_LARGE: &str = "gemma-4-e2b";
-/// The cleanup model for every other machine.
-pub const LLM_SMALL: &str = "qwen3.5-2b";
-/// Memory a Mac needs before it is offered [`LLM_LARGE`].
-pub const LLM_LARGE_MIN_RAM_BYTES: u64 = 16 << 30;
+/// The suggested cleanup model: small and fast, English only, cleanup only.
+pub const LLM_CLEANUP: &str = "s1-mini";
+/// The cleanup model that also does Command Mode and other languages.
+pub const LLM_GENERAL: &str = "qwen3.5-2b";
+/// Cleanup models an earlier version offered. Their files are deleted.
+pub const RETIRED_LLM: &[&str] = &["gemma-4-e2b"];
 
 impl Catalog {
     pub fn parse(json: &str) -> Result<Self, String> {
@@ -189,21 +188,29 @@ impl Catalog {
         self.voice.iter().find(|entry| entry.id == id)
     }
 
-    /// The AI cleanup models this machine can run, best first. A Mac with 16 GB or more gets
-    /// [`LLM_LARGE`] ahead of [`LLM_SMALL`]; every other machine gets [`LLM_SMALL`] only. No
-    /// model under 1B parameters is ever listed.
-    pub fn offered_llm(&self, platform: Platform, ram_bytes: u64) -> Vec<&ModelEntry> {
-        let large = platform == Platform::MacOs && ram_bytes >= LLM_LARGE_MIN_RAM_BYTES;
-        [(large, LLM_LARGE), (true, LLM_SMALL)]
+    /// The AI cleanup models, best first: [`LLM_CLEANUP`], then [`LLM_GENERAL`]. Every machine
+    /// gets both; neither is over 1.5 GB.
+    pub fn offered_llm(&self) -> Vec<&ModelEntry> {
+        [LLM_CLEANUP, LLM_GENERAL]
             .into_iter()
-            .filter(|(offered, _)| *offered)
-            .filter_map(|(_, id)| self.llm(id))
+            .filter_map(|id| self.llm(id))
             .collect()
     }
 
     /// The model Settings proposes first.
-    pub fn suggested_llm(&self, platform: Platform, ram_bytes: u64) -> Option<&ModelEntry> {
-        self.offered_llm(platform, ram_bytes).into_iter().next()
+    pub fn suggested_llm(&self) -> Option<&ModelEntry> {
+        self.offered_llm().into_iter().next()
+    }
+
+    /// The model AI cleanup uses: the stored choice while it is offered, otherwise the
+    /// suggested one, so a retired choice moves to it.
+    pub fn chosen_llm(&self, stored: &str) -> Option<&ModelEntry> {
+        let offered = self.offered_llm();
+        offered
+            .iter()
+            .find(|entry| entry.id == stored)
+            .or_else(|| offered.first())
+            .copied()
     }
 }
 

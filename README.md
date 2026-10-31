@@ -33,10 +33,11 @@ runs whisper.cpp in a child process.
   and never types into a secure field.
 - Rule-based cleanup, on by default: fillers, repeats, spoken punctuation,
   "scratch that", and "X, no wait, Y".
-- Optional AI cleanup with a local model, or with an OpenAI-compatible
-  endpoint such as Ollama or LM Studio. Off until you turn it on.
+- Optional AI cleanup with a local model (S1-mini by Superwhisper for
+  English, or Qwen3.5 2B), or with an OpenAI-compatible endpoint such as
+  Ollama or LM Studio. Off until you turn it on.
 - Command Mode: hold a key, speak an instruction, and the model edits the
-  selected text.
+  selected text. It needs Qwen3.5 2B or the endpoint.
 - Personal dictionary of words and replacements.
 - History with search, copy, reprocess, delete with undo, and export to TXT,
   SRT, VTT, and JSON.

@@ -105,7 +105,7 @@ impl Rig {
             Models::new(
                 Rc::clone(&self.storage),
                 hushpen_core::catalog::embedded(),
-                crate::models::Machine::test(hushpen_core::shortcut::Platform::Linux, 8 << 30),
+                crate::models::Machine::test(),
                 crate::models::production_transfer(),
                 crate::models::thread_spawner(),
                 None,

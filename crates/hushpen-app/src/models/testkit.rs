@@ -4,7 +4,6 @@
 use super::{Catalog, Machine, Models, Opened, Spawner, Transfer};
 use crate::storage::{self, Storage};
 use gpui_kit::{AppContext as _, Entity, TestAppContext};
-use hushpen_core::shortcut::Platform;
 use hushpen_store::data_dir::DataDir;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -73,8 +72,6 @@ pub(super) fn rig(
     let (work, spawn) = queue();
     let opened = Rc::new(Opened::default());
     let machine = Machine {
-        platform: Platform::Linux,
-        ram_bytes: 8 << 30,
         opener: opened.clone(),
     };
     let models = cx.new(|cx| {

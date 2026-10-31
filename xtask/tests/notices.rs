@@ -57,7 +57,7 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
         "Apache License",
         "MIT License",
         "May you do good and not evil",
-        "Gemma 4 E2B",
+        "S1-mini by Superwhisper",
         "Qwen3.5 2B",
         "Kokoro 82M",
         "Chatterbox Turbo",

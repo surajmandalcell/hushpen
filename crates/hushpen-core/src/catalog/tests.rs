@@ -167,11 +167,9 @@ fn assert_pinned(expect: &[(&str, u64, &str)]) {
     }
 }
 
-const GIB: u64 = 1 << 30;
-
-fn offered(platform: Platform, ram: u64) -> Vec<&'static str> {
+fn offered() -> Vec<&'static str> {
     embedded()
-        .offered_llm(platform, ram)
+        .offered_llm()
         .iter()
         .map(|entry| entry.id.as_str())
         .collect()
@@ -181,12 +179,12 @@ fn offered(platform: Platform, ram: u64) -> Vec<&'static str> {
 fn the_two_cleanup_models_are_pinned_by_size_and_hash() {
     let expect = [
         (
-            LLM_LARGE,
-            3_106_738_272,
-            "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
+            LLM_CLEANUP,
+            484_219_808,
+            "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634",
         ),
         (
-            LLM_SMALL,
+            LLM_GENERAL,
             1_280_835_840,
             "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
         ),
@@ -203,33 +201,36 @@ fn the_two_cleanup_models_are_pinned_by_size_and_hash() {
 }
 
 #[test]
-fn a_mac_with_16_gb_or_more_gets_gemma_first() {
-    assert_eq!(offered(Platform::MacOs, 16 * GIB), [LLM_LARGE, LLM_SMALL]);
-    assert_eq!(offered(Platform::MacOs, 64 * GIB), [LLM_LARGE, LLM_SMALL]);
-    let suggested = embedded().suggested_llm(Platform::MacOs, 24 * GIB).unwrap();
-    assert_eq!(suggested.id, LLM_LARGE);
+fn every_machine_gets_s1_mini_first_and_qwen_second() {
+    assert_eq!(offered(), [LLM_CLEANUP, LLM_GENERAL]);
+    assert_eq!(embedded().suggested_llm().unwrap().id, LLM_CLEANUP);
+    // The license asks for this exact name wherever the model is used.
+    assert_eq!(
+        embedded().llm(LLM_CLEANUP).unwrap().name,
+        "S1-mini by Superwhisper"
+    );
 }
 
 #[test]
-fn a_mac_with_8_gb_gets_qwen() {
-    assert_eq!(offered(Platform::MacOs, 8 * GIB), [LLM_SMALL]);
-    assert_eq!(offered(Platform::MacOs, 16 * GIB - 1), [LLM_SMALL]);
-}
-
-#[test]
-fn linux_gets_qwen_at_any_memory_and_never_gemma() {
-    for ram in [4 * GIB, 16 * GIB, 128 * GIB] {
-        assert_eq!(offered(Platform::Linux, ram), [LLM_SMALL], "{ram}");
+fn a_retired_or_unknown_choice_moves_to_the_suggested_model() {
+    let catalog = embedded();
+    assert_eq!(catalog.chosen_llm(LLM_GENERAL).unwrap().id, LLM_GENERAL);
+    for stored in ["gemma-4-e2b", "", "nope"] {
+        assert_eq!(
+            catalog.chosen_llm(stored).unwrap().id,
+            LLM_CLEANUP,
+            "{stored}"
+        );
     }
-    let suggested = embedded().suggested_llm(Platform::Linux, 64 * GIB).unwrap();
-    assert_eq!(suggested.name, "Qwen3.5 2B");
+    for retired in RETIRED_LLM {
+        assert!(catalog.llm(retired).is_none(), "{retired}");
+    }
 }
 
 #[test]
-fn no_model_under_1b_is_in_the_cleanup_list() {
+fn no_cleanup_model_is_over_1_5_gb() {
     for entry in &embedded().llm {
-        assert!(entry.bytes() > 1_000_000_000, "{}", entry.id);
-        assert!(!entry.id.contains("0.8b"), "{}", entry.id);
+        assert!(entry.bytes() <= 1_500_000_000, "{}", entry.id);
     }
 }
 

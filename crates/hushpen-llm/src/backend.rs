@@ -42,13 +42,19 @@ pub struct LoadInfo {
     pub gpu: bool,
 }
 
+/// What a job asks of the model. The model family builds the prompt of a cleanup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobKind {
+    Cleanup,
+    Command,
+}
+
 /// One cleanup or command job, with the prompt parts already split.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobSpec {
+    pub kind: JobKind,
     /// The fixed part. The session keeps the model state of its prompt for the next job.
     pub system: String,
-    /// Worked examples, as turns between the system prompt and the user's text.
-    pub examples: &'static [(&'static str, &'static str)],
     pub user: String,
     pub max_tokens: u32,
 }

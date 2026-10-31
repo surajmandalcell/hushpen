@@ -5,7 +5,6 @@ use crate::storage;
 use gpui_kit::{Entity, TestAppContext};
 use hushpen_audio::{CaptureError, EventSink, FeedInfo, Finished, InputDevice};
 use hushpen_core::error::DATA_FOLDER_MOVE_FAILED;
-use hushpen_core::shortcut::Platform;
 use hushpen_store::data_dir::DataDir;
 use serde_json::json;
 use std::sync::Mutex;
@@ -685,7 +684,7 @@ fn a_finished_move_restarts_into_the_new_folder(cx: &mut TestAppContext) {
 
 type Queue = Rc<std::cell::RefCell<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>>;
 
-/// Settings with the real catalog, on a machine of the given platform and memory. Downloads
+/// Settings with the real catalog. Downloads
 /// are queued, then run by `run_work`.
 struct AiRig {
     rig: Rig,
@@ -694,7 +693,7 @@ struct AiRig {
     loading: Rc<std::cell::Cell<bool>>,
 }
 
-fn ai_rig(cx: &mut TestAppContext, platform: Platform, gib: u64) -> AiRig {
+fn ai_rig(cx: &mut TestAppContext) -> AiRig {
     let rig = rig(cx);
     let work: Queue = Rc::default();
     let queue = Rc::clone(&work);
@@ -719,7 +718,7 @@ fn ai_rig(cx: &mut TestAppContext, platform: Platform, gib: u64) -> AiRig {
         Models::new(
             Rc::clone(&rig.storage),
             hushpen_core::catalog::embedded(),
-            crate::models::Machine::test(platform, gib << 30),
+            crate::models::Machine::test(),
             transfer,
             spawn,
             None,
@@ -733,8 +732,6 @@ fn ai_rig(cx: &mut TestAppContext, platform: Platform, gib: u64) -> AiRig {
             AiParts {
                 models: models.clone(),
                 catalog: hushpen_core::catalog::embedded(),
-                platform,
-                ram_bytes: gib << 30,
                 loading: Rc::new(move || probe.get()),
             },
             cx,
@@ -765,46 +762,27 @@ fn offered(cx: &TestAppContext, ai: &AiRig) -> Vec<String> {
 }
 
 #[gpui_kit::test]
-fn a_mac_with_16_gib_is_offered_gemma_first_and_qwen_second(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::MacOs, 16);
-    assert_eq!(offered(cx, &ai), ["gemma-4-e2b", "qwen3.5-2b"]);
-    assert_eq!(
-        read(cx, &ai.rig, |me| me.ai_model().unwrap().id),
-        "gemma-4-e2b"
-    );
+fn every_computer_is_offered_s1_mini_first_and_qwen_second(cx: &mut TestAppContext) {
+    let ai = ai_rig(cx);
+    assert_eq!(offered(cx, &ai), ["s1-mini", "qwen3.5-2b"]);
+    assert_eq!(read(cx, &ai.rig, |me| me.ai_model().unwrap().id), "s1-mini");
 }
 
 #[gpui_kit::test]
-fn a_mac_with_8_gib_and_linux_are_offered_only_qwen(cx: &mut TestAppContext) {
-    for (platform, gib) in [(Platform::MacOs, 8), (Platform::Linux, 64)] {
-        let ai = ai_rig(cx, platform, gib);
-        assert_eq!(offered(cx, &ai), ["qwen3.5-2b"], "{platform:?} {gib} GiB");
-        assert_eq!(
-            read(cx, &ai.rig, |me| me.ai_model().unwrap().id),
-            "qwen3.5-2b"
-        );
-    }
-}
-
-#[gpui_kit::test]
-fn a_stored_model_this_computer_is_not_offered_is_ignored(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::Linux, 64);
+fn a_retired_stored_model_moves_to_s1_mini(cx: &mut TestAppContext) {
+    let ai = ai_rig(cx);
     ai.rig
         .storage
         .settings
         .set("cleanup.llm.modelId", json!("gemma-4-e2b"))
         .unwrap();
-    assert_eq!(
-        read(cx, &ai.rig, |me| me.ai_model().unwrap().id),
-        "qwen3.5-2b"
-    );
+    assert_eq!(read(cx, &ai.rig, |me| me.ai_model().unwrap().id), "s1-mini");
 }
-
 #[gpui_kit::test]
 fn ai_cleanup_is_off_by_default_and_turning_it_on_picks_and_downloads_the_model(
     cx: &mut TestAppContext,
 ) {
-    let ai = ai_rig(cx, Platform::Linux, 16);
+    let ai = ai_rig(cx);
     assert_eq!(value(&ai.rig, "cleanup.llm.enabled"), json!(false));
     assert!(
         ai.started.lock().unwrap().is_empty(),
@@ -817,15 +795,15 @@ fn ai_cleanup_is_off_by_default_and_turning_it_on_picks_and_downloads_the_model(
     run_work(cx, &ai);
 
     assert_eq!(value(&ai.rig, "cleanup.llm.enabled"), json!(true));
-    assert_eq!(value(&ai.rig, "cleanup.llm.modelId"), json!("qwen3.5-2b"));
+    assert_eq!(value(&ai.rig, "cleanup.llm.modelId"), json!("s1-mini"));
     let urls = ai.started.lock().unwrap().clone();
     assert_eq!(urls.len(), 1);
-    assert!(urls[0].contains("Qwen3.5-2B"), "{urls:?}");
+    assert!(urls[0].contains("s1-mini"), "{urls:?}");
 }
 
 #[gpui_kit::test]
 fn turning_it_off_keeps_the_model_and_starts_no_download(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::Linux, 16);
+    let ai = ai_rig(cx);
     ai.rig
         .settings
         .update(cx, |me, cx| me.toggle_ai_cleanup(cx));
@@ -836,13 +814,13 @@ fn turning_it_off_keeps_the_model_and_starts_no_download(cx: &mut TestAppContext
     run_work(cx, &ai);
 
     assert_eq!(value(&ai.rig, "cleanup.llm.enabled"), json!(false));
-    assert_eq!(value(&ai.rig, "cleanup.llm.modelId"), json!("qwen3.5-2b"));
+    assert_eq!(value(&ai.rig, "cleanup.llm.modelId"), json!("s1-mini"));
     assert_eq!(ai.started.lock().unwrap().len(), 1);
 }
 
 #[gpui_kit::test]
 fn the_status_follows_the_download_and_the_load(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::Linux, 16);
+    let ai = ai_rig(cx);
     let status = |cx: &mut TestAppContext| read_status(cx, &ai);
     assert_eq!(status(cx), Some(AiStatus::NotDownloaded));
 
@@ -868,14 +846,14 @@ fn the_status_follows_the_download_and_the_load(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_missing_file_offers_the_download_again(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::Linux, 16);
+    let ai = ai_rig(cx);
     ai.rig
         .settings
         .update(cx, |me, cx| me.toggle_ai_cleanup(cx));
     run_work(cx, &ai);
     assert_eq!(read_status(cx, &ai), Some(AiStatus::Ready));
 
-    let path = ai.rig.storage.data.llm_models_dir().join("qwen3.5-2b.gguf");
+    let path = ai.rig.storage.data.llm_models_dir().join("s1-mini.gguf");
     hushpen_store::model_files::remove(&path).unwrap();
     cx.executor()
         .advance_clock(std::time::Duration::from_millis(1_100));
@@ -896,17 +874,17 @@ fn read_status(cx: &TestAppContext, ai: &AiRig) -> Option<AiStatus> {
 
 #[gpui_kit::test]
 fn the_ai_rows_show_the_model_and_its_status_in_the_tree_state(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::Linux, 16);
+    let ai = ai_rig(cx);
     ai.loading.set(true);
     let state = cx.read(|app| ai.rig.settings.read(app).hook_state_json(app));
-    assert_eq!(state["ai"]["offered"], json!(["qwen3.5-2b"]));
-    assert_eq!(state["ai"]["model"], "qwen3.5-2b");
+    assert_eq!(state["ai"]["offered"], json!(["s1-mini", "qwen3.5-2b"]));
+    assert_eq!(state["ai"]["model"], "s1-mini");
     assert_eq!(state["ai"]["enabled"], false);
 }
 
 #[gpui_kit::test]
 fn picking_another_offered_model_saves_it_and_an_unoffered_one_is_ignored(cx: &mut TestAppContext) {
-    let ai = ai_rig(cx, Platform::MacOs, 32);
+    let ai = ai_rig(cx);
     ai.rig
         .settings
         .update(cx, |me, cx| me.set_ai_model("qwen3.5-2b", cx));

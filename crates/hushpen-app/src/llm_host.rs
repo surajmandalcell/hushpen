@@ -6,6 +6,7 @@
 //! outcome the cleanup provider turns into the rule text.
 
 use crate::worker_bin::worker_path;
+use hushpen_core::catalog;
 use hushpen_engine::{ChildSpec, EngineLog, LlmClient, LlmSpec, LlmState, LlmStatus, Timing};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files;
@@ -164,6 +165,12 @@ pub fn wanted_load(
     if id.is_empty() || id.contains(['/', '\\']) {
         return None;
     }
+    // A retired model's file is gone; Settings shows the suggested model in its place.
+    let id = if catalog::RETIRED_LLM.contains(&id) {
+        catalog::LLM_CLEANUP
+    } else {
+        id
+    };
     let path = models_dir.join(format!("{id}.gguf"));
     if !model_files::is_verified(&path) {
         return None;
@@ -235,6 +242,17 @@ mod tests {
         assert_eq!(wanted_load(&on("m"), dir.path(), 4), None);
         assert_eq!(wanted_load(&on(""), dir.path(), 4), None);
         assert_eq!(wanted_load(&on("../m"), dir.path(), 4), None);
+    }
+
+    #[test]
+    fn a_retired_model_choice_loads_s1_mini() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(wanted_load(&on("gemma-4-e2b"), dir.path(), 4), None);
+        let path = stamped_model(dir.path(), "s1-mini");
+        assert_eq!(
+            wanted_load(&on("gemma-4-e2b"), dir.path(), 4).unwrap().path,
+            path
+        );
     }
 
     #[test]
