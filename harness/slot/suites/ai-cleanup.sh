@@ -187,7 +187,7 @@ offered=$(sv .ai.offered | jq -c .)
 [ "$(sv .ai.model)" = "$MODEL_ID" ] || failures+="the suggested model is '$(sv .ai.model)'; "
 hclick settings.cleanup.aiModel || failures+="the model picker could not be scrolled into view; "
 sleep 0.5
-options=$($HC tree | jq -r '[.[] | select(.id | startswith("settings.cleanup.aiModel.option.")) | .id | ltrimstr("settings.cleanup.aiModel.option.")] | join(",")')
+options=$($HC tree | jq -r '[.[] | select(.id | startswith("settings.cleanup.aiModel.option."))] | sort_by(.bounds.y) | map(.id | ltrimstr("settings.cleanup.aiModel.option.")) | join(",")')
 shot aic-002-picker
 [ "$options" = "$MODEL_ID,qwen3.5-2b" ] || failures+="the picker lists '$options'; "
 case "$options" in *gemma*) failures+="the picker lists a model it must not: $options; " ;; esac
