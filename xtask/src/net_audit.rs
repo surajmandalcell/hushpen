@@ -13,6 +13,12 @@ const NET_DIR: &str = "crates/hushpen-app/src/net/";
 const HOOK_DIR: &str = "crates/hushpen-testhook/src/";
 const DECODE_DIR: &str = "crates/hushpen-engine/src/child/";
 const AUDIO_DIR: &str = "crates/hushpen-audio/";
+/// App files that decode audio themselves: the Audio enhance take is a WAV the app wrote, and a
+/// voice clip reads at most 60 s of a file on a worker thread that catches a decoder panic.
+const APP_DECODE_FILES: [&str; 2] = [
+    "crates/hushpen-app/src/enhance.rs",
+    "crates/hushpen-app/src/voices/clip.rs",
+];
 
 const CALL_TOKENS: [&str; 6] = [
     "ureq::",
@@ -201,6 +207,7 @@ pub fn scan_source(rel_path: &str, text: &str) -> (Vec<Site>, Vec<Violation>) {
         if line.contains("hushpen_audio::decode")
             && !rel_path.starts_with(DECODE_DIR)
             && !rel_path.starts_with(AUDIO_DIR)
+            && !APP_DECODE_FILES.contains(&rel_path)
         {
             violate(format!("`hushpen_audio::decode` outside {DECODE_DIR}"));
         }
@@ -504,6 +511,11 @@ mod tests {
         let line = "use hushpen_audio::decode::Windows;";
         assert!(violations("crates/hushpen-engine/src/child/import.rs", line).is_empty());
         assert_eq!(violations("crates/hushpen-app/src/main.rs", line).len(), 1);
+        assert!(violations("crates/hushpen-app/src/voices/clip.rs", line).is_empty());
+        assert_eq!(
+            violations("crates/hushpen-app/src/voices/mod.rs", line).len(),
+            1
+        );
     }
 
     #[test]
