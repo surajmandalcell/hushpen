@@ -431,7 +431,9 @@ fn the_detail_view_shows_the_fields_of_the_row_and_back_returns_to_the_list(
     cx: &mut TestAppContext,
 ) {
     let view = open(cx);
-    seed(&view, "A", 1_000, "hello there");
+    let mut row = row_of("A", 1_000, "hello there");
+    row.model_id = Some("base-q5_1".into());
+    history::save(&view.rig.storage.database, &row, &[]).unwrap();
     reload(cx, &view);
 
     click(cx, &view, "history.row.0");
@@ -444,7 +446,7 @@ fn the_detail_view_shows_the_fields_of_the_row_and_back_returns_to_the_list(
     assert_eq!(detail["final_text"], "hello there");
     assert_eq!(detail["target_app"], "GtkTarget");
     assert_eq!(detail["duration_ms"], 2_000);
-    assert_eq!(detail["model_id"], "base");
+    assert_eq!(detail["model_id"], "base-q5_1");
     assert_eq!(detail["language"], "en");
     for field in [
         "raw", "rule", "final", "app", "duration", "model", "language",
@@ -470,7 +472,7 @@ fn the_detail_view_shows_the_fields_of_the_row_and_back_returns_to_the_list(
     assert_eq!(
         shown,
         [
-            Some("Base".to_owned()),
+            Some("Whisper Base Q5".to_owned()),
             Some("English".to_owned()),
             Some("Pasted".to_owned())
         ]
@@ -478,6 +480,21 @@ fn the_detail_view_shows_the_fields_of_the_row_and_back_returns_to_the_list(
 
     click(cx, &view, "history.back");
     assert!(present(cx, &view, "history.row.0"));
+}
+
+#[gpui_kit::test]
+fn a_retired_speech_model_keeps_its_original_id_in_history(cx: &mut TestAppContext) {
+    let view = open(cx);
+    seed(&view, "A", 1_000, "older recording");
+    reload(cx, &view);
+    click(cx, &view, "history.row.0");
+    assert_eq!(state(cx, &view)["detail"]["model_id"], "base");
+    let label = cx
+        .update_window(view.handle, |_, window, _| {
+            window.find("history.detail.model").label().map(str::to_owned)
+        })
+        .unwrap();
+    assert_eq!(label.as_deref(), Some("base"));
 }
 
 #[gpui_kit::test]
