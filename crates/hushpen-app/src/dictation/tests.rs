@@ -385,3 +385,92 @@ fn a_failed_command_shows_only_the_error_line(cx: &mut TestAppContext) {
         "no empty-transcript line for a command"
     );
 }
+
+fn detail(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> Option<String> {
+    use gpui_kit::AppContext as _;
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window
+            .find("home.language.detail")
+            .label()
+            .map(str::to_owned)
+    })
+    .unwrap()
+}
+
+fn choose_model(cx: &mut TestAppContext, rig: &Rig, id: &str) {
+    rig.models
+        .update(cx, |models, cx| models.select(id, cx))
+        .unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn parakeet_shows_no_language_notice_for_auto_or_a_language_it_knows(cx: &mut TestAppContext) {
+    let rig = rig(cx, &[PARAKEET_ID], PARAKEET_ID);
+    let handle = home_window(cx, &rig);
+    assert!(!shown(cx, handle, "home.language-notice"), "auto");
+    for code in ["es", "de", "en"] {
+        act(cx, &rig, |me, cx| me.set_language(code, cx)).unwrap();
+        assert!(!shown(cx, handle, "home.language-notice"), "{code}");
+    }
+}
+
+#[gpui_kit::test]
+fn parakeet_names_whisper_turbo_for_a_language_it_lacks_and_the_picker_stays_on(
+    cx: &mut TestAppContext,
+) {
+    let rig = rig(cx, &[PARAKEET_ID, SMALL_ID], PARAKEET_ID);
+    let handle = home_window(cx, &rig);
+    for code in ["hi", "ja"] {
+        act(cx, &rig, |me, cx| me.set_language(code, cx)).unwrap();
+        assert!(shown(cx, handle, "home.language-notice"), "{code}");
+        let notice = cx.update(|cx| rig.dictation.read(cx).language_notice(cx));
+        assert!(
+            notice.unwrap().contains("Whisper Large v3 Turbo Q5"),
+            "{code}"
+        );
+        let state = state(cx, &rig);
+        assert_eq!(state["picker"]["enabled"], true, "{code}");
+        assert!(
+            act(cx, &rig, |me, cx| me.toggle_picker(cx)).is_ok(),
+            "{code}"
+        );
+        act(cx, &rig, |me, cx| me.toggle_picker(cx)).unwrap();
+    }
+
+    choose_model(cx, &rig, SMALL_ID);
+    assert!(!shown(cx, handle, "home.language-notice"));
+    choose_model(cx, &rig, PARAKEET_ID);
+    assert!(shown(cx, handle, "home.language-notice"));
+}
+
+#[gpui_kit::test]
+fn an_undetermined_language_from_parakeet_gives_no_detected_label(cx: &mut TestAppContext) {
+    let rig = rig(cx, &[PARAKEET_ID], PARAKEET_ID);
+    let handle = home_window(cx, &rig);
+    dictate(cx, &rig, outcome_text("hello there", "und"));
+    assert_eq!(phase(cx, &rig), Phase::Done);
+    assert_eq!(
+        detail(cx, handle).as_deref(),
+        Some("Detects the language you speak")
+    );
+
+    dictate(cx, &rig, outcome_text("hello there", "en"));
+    assert_eq!(detail(cx, handle).as_deref(), Some("Detected: English"));
+}
+
+#[gpui_kit::test]
+fn the_dictionary_prompt_goes_to_whisper_and_not_to_parakeet(cx: &mut TestAppContext) {
+    let rig = rig(cx, &[PARAKEET_ID, SMALL_ID], PARAKEET_ID);
+    hushpen_store::dictionary::add(&rig.storage.database, "Hushpen", None).unwrap();
+
+    dictate(cx, &rig, outcome_text("hello", "en"));
+    choose_model(cx, &rig, SMALL_ID);
+    dictate(cx, &rig, outcome_text("hello", "en"));
+
+    let specs = rig.specs.lock().unwrap();
+    assert_eq!(specs[0].prompt, None);
+    assert_eq!(specs[1].prompt.as_deref(), Some("Hushpen"));
+}

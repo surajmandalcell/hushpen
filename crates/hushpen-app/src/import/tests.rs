@@ -1,5 +1,5 @@
 use super::*;
-use crate::controller::testkit::{Rig, rig, settle};
+use crate::controller::testkit::{PARAKEET_ID, Rig, SMALL_ID, TURBO_ID, rig, settle};
 use gpui_kit::{AppContext as _, TestAppContext};
 use hushpen_core::error;
 use hushpen_engine::{Failure, JobOutcome, Segment as EngineSegment, Transcription};
@@ -768,6 +768,114 @@ fn an_english_only_model_turns_translate_and_the_language_off(cx: &mut TestAppCo
     assert_eq!(state["translate"], false);
 }
 
+fn choose_model(cx: &mut TestAppContext, fixture: &Fixture, id: &str) {
+    fixture
+        .rig
+        .models
+        .update(cx, |models, cx| models.select(id, cx))
+        .unwrap();
+    cx.run_until_parked();
+}
+
+fn state_json(cx: &mut TestAppContext, fixture: &Fixture) -> Value {
+    cx.update(|cx| fixture.import.read(cx).state_json(cx))
+}
+
+fn language_notice(cx: &mut TestAppContext, fixture: &Fixture) -> Option<&'static str> {
+    cx.update(|cx| fixture.import.read(cx).language_notice(cx))
+}
+
+#[gpui_kit::test]
+fn translate_is_off_for_parakeet_and_turbo_and_comes_back_with_small(cx: &mut TestAppContext) {
+    let fixture = open_with(cx, &[SMALL_ID, PARAKEET_ID, TURBO_ID], vec![]);
+    fixture
+        .import
+        .update(cx, |import, cx| import.set_translate(true, cx))
+        .unwrap();
+    assert_eq!(state_json(cx, &fixture)["translate"], true);
+
+    for (index, id) in [PARAKEET_ID, TURBO_ID].into_iter().enumerate() {
+        choose_model(cx, &fixture, id);
+        let state = state_json(cx, &fixture);
+        assert_eq!(state["translate"], false, "{id}");
+        assert!(state["translate_off"].is_string(), "{id}");
+        assert!(
+            !cx.update(|cx| fixture.import.read(cx).translate(cx)),
+            "{id}"
+        );
+        assert_eq!(
+            fixture.rig.storage.settings.get(TRANSLATE_SETTING),
+            Some(serde_json::json!(true)),
+            "{id} keeps the choice"
+        );
+
+        say(&fixture, done("Hello.", "en"));
+        add(
+            cx,
+            &fixture,
+            vec![file(&fixture, &format!("speech-{index}.wav"))],
+        );
+        run_one(cx, &fixture);
+        assert!(!fixture.fake.specs.lock().unwrap()[index].translate, "{id}");
+    }
+
+    choose_model(cx, &fixture, SMALL_ID);
+    let state = state_json(cx, &fixture);
+    assert_eq!(state["translate"], true);
+    assert!(state["translate_off"].is_null());
+    say(&fixture, done("Hello.", "en"));
+    add(cx, &fixture, vec![file(&fixture, "speech-small.wav")]);
+    run_one(cx, &fixture);
+    assert!(fixture.fake.specs.lock().unwrap()[2].translate);
+}
+
+#[gpui_kit::test]
+fn the_dictionary_prompt_goes_to_whisper_files_and_not_to_parakeet(cx: &mut TestAppContext) {
+    let fixture = open_with(cx, &[PARAKEET_ID, SMALL_ID], vec![]);
+    hushpen_store::dictionary::add(&fixture.rig.storage.database, "Hushpen", None).unwrap();
+    for (name, id) in [("a.wav", PARAKEET_ID), ("b.wav", SMALL_ID)] {
+        choose_model(cx, &fixture, id);
+        say(&fixture, done("Hello.", "en"));
+        add(cx, &fixture, vec![file(&fixture, name)]);
+        run_one(cx, &fixture);
+    }
+    let specs = fixture.fake.specs.lock().unwrap();
+    assert_eq!(specs[0].prompt, None);
+    assert_eq!(specs[1].prompt.as_deref(), Some("Hushpen"));
+}
+
+#[gpui_kit::test]
+fn parakeet_has_no_language_notice_for_auto_or_spanish(cx: &mut TestAppContext) {
+    let fixture = open_with(cx, &[PARAKEET_ID], vec![]);
+    assert_eq!(language_notice(cx, &fixture), None);
+    fixture
+        .import
+        .update(cx, |import, cx| import.set_language("es", cx))
+        .unwrap();
+    assert_eq!(language_notice(cx, &fixture), None);
+}
+
+#[gpui_kit::test]
+fn parakeet_names_whisper_turbo_for_hindi_and_japanese_and_whisper_clears_it(
+    cx: &mut TestAppContext,
+) {
+    let fixture = open_with(cx, &[PARAKEET_ID, SMALL_ID], vec![]);
+    for code in ["hi", "ja"] {
+        fixture
+            .import
+            .update(cx, |import, cx| import.set_language(code, cx))
+            .unwrap();
+        let notice = language_notice(cx, &fixture);
+        assert!(
+            notice.unwrap().contains("Whisper Large v3 Turbo Q5"),
+            "{code}"
+        );
+        assert!(state_json(cx, &fixture)["language_off"].is_null(), "{code}");
+    }
+    choose_model(cx, &fixture, SMALL_ID);
+    assert_eq!(language_notice(cx, &fixture), None);
+}
+
 mod view {
     use super::*;
     use crate::shell::Shell;
@@ -841,6 +949,34 @@ mod view {
         }
         assert!(!present(cx, window, "import.queue"));
         assert!(!present(cx, window, "import.blocker"));
+    }
+
+    #[gpui_kit::test]
+    fn the_language_notice_shows_for_parakeet_with_hindi_and_the_picker_stays_on(
+        cx: &mut TestAppContext,
+    ) {
+        let fixture = open_with(cx, &[PARAKEET_ID, SMALL_ID], vec![]);
+        let window = shown(cx, &fixture);
+        assert!(!present(cx, window, "import.language-notice"), "auto");
+        fixture
+            .import
+            .update(cx, |import, cx| import.set_language("es", cx))
+            .unwrap();
+        frame(cx, window);
+        assert!(!present(cx, window, "import.language-notice"), "es");
+
+        fixture
+            .import
+            .update(cx, |import, cx| import.set_language("hi", cx))
+            .unwrap();
+        frame(cx, window);
+        assert!(present(cx, window, "import.language-notice"));
+        click(cx, window, "import.language");
+        assert!(present(cx, window, "import.language.list"));
+
+        choose_model(cx, &fixture, SMALL_ID);
+        frame(cx, window);
+        assert!(!present(cx, window, "import.language-notice"));
     }
 
     #[gpui_kit::test]

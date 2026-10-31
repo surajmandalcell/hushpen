@@ -237,8 +237,13 @@ impl Import {
             .then_some("This model understands English only.")
     }
 
-    /// Whether the next file is translated to English, as the user last chose.
-    pub fn translate(&self) -> bool {
+    /// Whether the next file is translated to English: the user's last choice, kept while the
+    /// model cannot translate so that choosing a model that can brings it back.
+    pub fn translate(&self, cx: &App) -> bool {
+        self.translate_choice() && self.translate_off_reason(cx).is_none()
+    }
+
+    fn translate_choice(&self) -> bool {
         self.storage
             .settings
             .get(TRANSLATE_SETTING)
@@ -247,16 +252,19 @@ impl Import {
     }
 
     /// Why the model cannot translate, or `None` while it can. Whisper's English-only models
-    /// have no translate task, and the turbo models were trained without it.
+    /// have no translate task, the turbo models were trained without it, and Parakeet has none.
     pub fn translate_off_reason(&self, cx: &App) -> Option<&'static str> {
-        if self.english_only(cx) {
-            Some("English-only models cannot translate. Choose a multilingual model in Models.")
-        } else if self.models.read(cx).effective() == hushpen_core::catalog::SPEECH_DEFAULT {
-            Some("Parakeet cannot translate. Choose Whisper Small Q5 in Models.")
-        } else if self.models.read(cx).effective().contains("turbo") {
-            Some("Turbo models cannot translate. Choose another model in Models.")
-        } else {
+        let models = self.models.read(cx);
+        let id = models.effective();
+        let entry = &models.rows().iter().find(|row| row.entry.id == id)?.entry;
+        if entry.supports_translation() {
             None
+        } else if entry.languages == Languages::English {
+            Some("English-only models cannot translate. Choose a multilingual model in Models.")
+        } else if entry.languages == Languages::European {
+            Some("Parakeet cannot translate. Choose Whisper Small Q5 in Models.")
+        } else {
+            Some("Turbo models cannot translate. Choose another model in Models.")
         }
     }
 
@@ -555,10 +563,9 @@ impl Import {
             }
             let language = self.language();
             let language = (language != language::AUTO).then_some(language);
-            let translate = self.translate() && self.translate_off_reason(cx).is_none();
-            let prompt =
-                Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
+            let translate = self.translate(cx);
             let model = self.models.read(cx).effective();
+            let prompt = dictionary::prompt_for_model(&model, &self.dictionary());
             let token = Arc::new(CancelToken::default());
             let now = self.now_ms();
             let item = &mut self.items[index];
@@ -714,7 +721,7 @@ impl Import {
             "model": self.model_name(cx),
             "language": self.language(),
             "language_off": self.language_off_reason(cx),
-            "translate": self.translate(),
+            "translate": self.translate(cx),
             "translate_off": self.translate_off_reason(cx),
             "menu": match self.menu {
                 Some(Menu::Language) => json!("language"),

@@ -15,7 +15,7 @@ pub use bench::{Candidate, Outcome, Scored, signed_db};
 use crate::controller::{CancelToken, LANGUAGE_SETTING, Runner};
 use crate::hook;
 use crate::mic::{CaptureState, CaptureUse, Mic};
-use crate::models::Spawner;
+use crate::models::{Models, Spawner};
 use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
@@ -261,6 +261,9 @@ pub struct Tuning {
     notice: Option<String>,
     /// Where focus goes when the sheet closes.
     return_focus: Option<FocusHandle>,
+    /// Tells which speech model the search runs on, so only a Whisper model gets the
+    /// dictionary prompt.
+    models: Option<Entity<Models>>,
     /// Plays into no device, for tests.
     silent: bool,
     pub(crate) focus: SheetFocus,
@@ -313,9 +316,14 @@ impl Tuning {
             cancel: None,
             notice: None,
             return_focus: None,
+            models: None,
             silent: false,
             focus: SheetFocus::new(cx),
         }
+    }
+
+    pub fn attach_models(&mut self, models: Entity<Models>) {
+        self.models = Some(models);
     }
 
     #[cfg(test)]
@@ -757,8 +765,12 @@ impl Tuning {
             .and_then(|value| value.as_str().map(str::to_owned))
             .filter(|language| language != language::AUTO);
         let entries = hushpen_store::dictionary::list(&self.storage.database).unwrap_or_default();
-        let prompt =
-            Some(hushpen_core::dictionary::build_prompt(&entries)).filter(|p| !p.is_empty());
+        let model = self
+            .models
+            .as_ref()
+            .map(|models| models.read(cx).effective())
+            .unwrap_or_default();
+        let prompt = hushpen_core::dictionary::prompt_for_model(&model, &entries);
         let path = sample_path(&self.storage).with_file_name("candidate.wav");
         let token = Arc::new(CancelToken::default());
         self.cancel = Some(Arc::clone(&token));

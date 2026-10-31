@@ -216,7 +216,7 @@ impl Controller {
         }
         let model = self.models.read(cx).effective();
         let language = self.language();
-        let prompt = Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
+        let prompt = dictionary::prompt_for_model(&model, &self.dictionary());
         let spec = TranscribeSpec {
             wav_path: wav,
             language: (language != hushpen_core::language::AUTO).then_some(language),
