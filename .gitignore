@@ -26,3 +26,7 @@ data/
 
 # Agent directories
 .claude
+
+# Local work ledger
+/goals.md
+/goals.archive.md
