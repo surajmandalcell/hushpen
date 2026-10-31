@@ -98,6 +98,7 @@ pub fn render(cue: Cue, rate: u32, volume: f32) -> Vec<f32> {
 struct Playing {
     samples: Vec<f32>,
     position: usize,
+    finishes_at: Option<Instant>,
 }
 
 impl Playing {
@@ -110,6 +111,18 @@ impl Playing {
     fn start(&mut self, samples: Vec<f32>) {
         self.samples = samples;
         self.position = 0;
+        self.finishes_at = None;
+    }
+
+    fn rendered_frame(&mut self, first_playback: Instant, frame: usize, rate: u32) {
+        if !self.samples.is_empty()
+            && self.position == self.samples.len()
+            && self.finishes_at.is_none()
+        {
+            self.finishes_at = Some(
+                first_playback + Duration::from_secs_f64((frame + 1) as f64 / f64::from(rate)),
+            );
+        }
     }
 }
 
@@ -265,15 +278,20 @@ where
 {
     let playing = Arc::clone(playing);
     let failed = Arc::clone(failed);
+    let rate = config.sample_rate;
     device.build_output_stream(
         config,
-        move |data: &mut [T], _| {
+        move |data: &mut [T], info| {
+            let timestamps = info.timestamp();
+            let first_playback =
+                Instant::now() + timestamps.playback.duration_since(timestamps.callback);
             let mut playing = playing
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            for frame in data.chunks_mut(channels.max(1)) {
+            for (index, frame) in data.chunks_mut(channels.max(1)).enumerate() {
                 let value = T::from_sample_(playing.next());
                 frame.fill(value);
+                playing.rendered_frame(first_playback, index, rate);
             }
         },
         move |error| {
@@ -309,6 +327,7 @@ fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
     let mut output: Option<Output> = None;
     let mut mute = data_root.map(|root| OutputMute::new(&root, System));
     let mut pending = MuteDelay::default();
+    let mut waiting_playback: Option<(Arc<Mutex<Playing>>, Instant)> = None;
     loop {
         let request = match queue.recv_timeout(pending.timeout(Instant::now())) {
             Ok(request) => Some(request),
@@ -318,12 +337,29 @@ fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
         if output.as_ref().is_some_and(Output::stale) {
             output = None;
         }
-        if request.is_none()
-            && pending.due(Instant::now())
-            && let Some(mute) = &mut mute
-            && let Err(error) = mute.mute(true)
-        {
-            log::warn!("could not mute the system output: {error}");
+        if request.is_none() && pending.due(Instant::now()) {
+            let now = Instant::now();
+            if let Some((playing, deadline)) = &waiting_playback {
+                let finished = playing
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .finishes_at;
+                if !finished.is_some_and(|at| now >= at) {
+                    if now < *deadline {
+                        pending.0 = Some(now + Duration::from_millis(10));
+                    } else {
+                        waiting_playback = None;
+                        log::warn!("the start cue did not finish; output mute was skipped");
+                    }
+                    continue;
+                }
+            }
+            waiting_playback = None;
+            if let Some(mute) = &mut mute
+                && let Err(error) = mute.mute(true)
+            {
+                log::warn!("could not mute the system output: {error}");
+            }
         }
         let Some(request) = request else { continue };
         if output.is_none()
@@ -352,6 +388,7 @@ fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
                 mute: enabled,
             } => {
                 pending.0 = None;
+                waiting_playback = None;
                 if let Some(mute) = &mut mute
                     && let Err(error) = mute.restore()
                 {
@@ -361,18 +398,18 @@ fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
                     output.play(cue, volume);
                 }
                 if cue == Some(Cue::Start) && enabled && mute.is_some() {
-                    // Allow the callback and the requested 20 ms output buffer to drain.
-                    let after_cue = output
-                        .as_ref()
-                        .filter(|_| volume.is_some())
-                        .map_or_else(Instant::now, |output| {
-                            output.quiet_since + Duration::from_millis(100)
-                        });
-                    pending.0 = Some(after_cue);
+                    waiting_playback = output.as_ref().filter(|_| volume.is_some()).map(|output| {
+                        (
+                            Arc::clone(&output.playing),
+                            Instant::now() + Duration::from_secs(5),
+                        )
+                    });
+                    pending.0 = Some(Instant::now());
                 }
             }
             Request::Restore(done) => {
                 pending.0 = None;
+                waiting_playback = None;
                 if let Some(mute) = &mut mute
                     && let Err(error) = mute.restore()
                 {
@@ -399,6 +436,30 @@ mod tests {
         pending.0 = Some(now);
         pending.0 = None;
         assert!(!pending.due(now + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn playback_completion_includes_the_device_latency_and_the_last_frame() {
+        let now = Instant::now();
+        let playback = now + Duration::from_secs(2);
+        let mut playing = Playing::default();
+        playing.start(vec![0.5, -0.5]);
+        playing.next();
+        playing.rendered_frame(playback, 0, 100);
+        assert!(playing.finishes_at.is_none());
+        playing.next();
+        playing.rendered_frame(playback, 1, 100);
+        assert_eq!(
+            playing.finishes_at,
+            Some(playback + Duration::from_millis(20))
+        );
+        playing.rendered_frame(playback, 2, 100);
+        assert_eq!(
+            playing.finishes_at,
+            Some(playback + Duration::from_millis(20))
+        );
+        playing.start(vec![0.25]);
+        assert!(playing.finishes_at.is_none());
     }
 
     fn peak(samples: &[f32]) -> f32 {
