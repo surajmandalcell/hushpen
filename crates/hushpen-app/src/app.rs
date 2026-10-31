@@ -373,7 +373,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     (controller.runner(), controller.spawner())
                 };
                 cx.new(|cx| {
-                    crate::enhance::Tuning::new(
+                    let mut tuning = crate::enhance::Tuning::new(
                         crate::enhance::Parts {
                             storage: Rc::clone(&storage),
                             mic: mic.clone(),
@@ -381,7 +381,9 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                             spawn,
                         },
                         cx,
-                    )
+                    );
+                    tuning.attach_models(models.clone());
+                    tuning
                 })
             };
             settings_view.update(cx, |settings, cx| settings.attach_tuning(tuning.clone(), cx));

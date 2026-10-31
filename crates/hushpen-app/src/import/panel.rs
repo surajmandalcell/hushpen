@@ -95,7 +95,7 @@ fn snapshot(import: &Entity<Import>, cx: &App) -> Snapshot {
         model: view.model_name(cx),
         language: view.language(),
         language_off: view.language_off_reason(cx),
-        translate: view.translate(),
+        translate: view.translate(cx),
         translate_off: view.translate_off_reason(cx),
         choose_focus: view.choose_focus.clone(),
         clear_focus: view.clear_focus.clone(),
@@ -253,11 +253,10 @@ fn option_rows(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> Ve
             toggle_language,
         ),
     ));
-    let on = view.translate && view.translate_off.is_none();
+    let on = view.translate;
     let toggle = {
         let import = import.clone();
         move |_: &mut Window, cx: &mut App| {
-            // A refusal is a model that cannot translate; the switch is off then.
             let _ = import.update(cx, |import, cx| import.set_translate(!on, cx));
         }
     };

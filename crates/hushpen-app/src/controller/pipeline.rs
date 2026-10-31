@@ -374,9 +374,9 @@ impl Controller {
         }
     }
 
-    pub(super) fn transcribe(&mut self, session: u64, queue: &mut VecDeque<AppEvent>) {
+    pub(super) fn transcribe(&mut self, session: u64, model: &str, queue: &mut VecDeque<AppEvent>) {
         let language = self.language();
-        let prompt = Some(dictionary::build_prompt(&self.dictionary())).filter(|p| !p.is_empty());
+        let prompt = dictionary::prompt_for_model(model, &self.dictionary());
         let token = Arc::new(CancelToken::default());
         let run = self.run_of(session);
         let Some(wav) = run.wav.clone() else {

@@ -789,8 +789,8 @@ impl Controller {
             Effect::PasteLast => self.paste_last(cx),
             Effect::Transcribe { session } => {
                 let model = self.models.read(cx).effective();
-                self.run_of(session).pending.model_id = Some(model);
-                self.transcribe(session, queue);
+                self.run_of(session).pending.model_id = Some(model.clone());
+                self.transcribe(session, &model, queue);
             }
             Effect::CancelTranscribe { session } => {
                 if let Some(token) = self.run_of(session).cancel.take() {

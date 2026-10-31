@@ -47,6 +47,7 @@ pub fn render(
         let phase = me.phase(cx);
         let detected = me
             .detected(cx)
+            .filter(|code| *code != "und")
             .map(|code| language::label(code).to_owned())
             .filter(|_| phase == Phase::Done);
         let detail = match (off, detected) {

@@ -82,6 +82,25 @@ impl MicSession for FakeSession {
 
 pub const BASE: &[u8] = b"base model bytes";
 pub const TINY_EN: &[u8] = b"tiny english model";
+const PARAKEET: &[u8] = b"parakeet model";
+const TURBO: &[u8] = b"turbo model";
+const SMALL: &[u8] = b"small model";
+
+/// The ids of the shipped models that the option tests choose. Like `base` and `tiny.en`, their
+/// files are fake bodies that nothing loads.
+pub const PARAKEET_ID: &str = hushpen_core::catalog::SPEECH_DEFAULT;
+pub const TURBO_ID: &str = hushpen_core::catalog::SPEECH_TURBO;
+pub const SMALL_ID: &str = "small-q5_1";
+
+fn body_of(id: &str) -> &'static [u8] {
+    match id {
+        "base" => BASE,
+        PARAKEET_ID => PARAKEET,
+        TURBO_ID => TURBO,
+        SMALL_ID => SMALL,
+        _ => TINY_EN,
+    }
+}
 
 fn catalog() -> &'static Catalog {
     let entry = |id: &str, body: &[u8], languages: &str, default: bool| {
@@ -100,6 +119,9 @@ fn catalog() -> &'static Catalog {
     let text = json!({"whisper": [
         entry("base", BASE, "multilingual", true),
         entry("tiny.en", TINY_EN, "english", false),
+        entry(PARAKEET_ID, PARAKEET, "european", false),
+        entry(TURBO_ID, TURBO, "multilingual", false),
+        entry(SMALL_ID, SMALL, "multilingual", false),
     ]})
     .to_string();
     Box::leak(Box::new(Catalog::parse(&text).unwrap()))
@@ -133,13 +155,14 @@ pub struct Rig {
     _tmp: tempfile::TempDir,
 }
 
-/// `files` are the models on disk (`base`, `tiny.en`); `chosen` is `dictation.modelId`.
+/// `files` are the models on disk (`base`, `tiny.en`, `PARAKEET_ID`, `TURBO_ID`, `SMALL_ID`);
+/// `chosen` is `dictation.modelId`.
 pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
     std::fs::create_dir_all(storage.data.whisper_models_dir()).unwrap();
     for id in files {
-        let body = if *id == "base" { BASE } else { TINY_EN };
+        let body = body_of(id);
         let path = storage
             .data
             .whisper_models_dir()
