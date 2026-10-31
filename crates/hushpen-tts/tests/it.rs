@@ -208,6 +208,36 @@ fn the_real_lexicon_reads_numbers_names_and_endings() {
 }
 
 #[test]
+fn kokoro_short_texts_stay_finite_at_every_speed() {
+    let mut worker = Worker::start();
+    let mut job = 100;
+    for voice in ["af_heart", "bm_george"] {
+        for speed in [0.5, 1.0, 1.5, 2.0] {
+            for text in ["Hello.", "Good morning."] {
+                job += 1;
+                worker.send(&TtsRequest::Speak {
+                    job,
+                    text: text.to_owned(),
+                    voice: Some(voice.to_owned()),
+                    speed,
+                });
+                let (samples, end) = worker.spoken(job);
+                assert!(matches!(end, TtsEvent::Done { .. }), "{end:?}");
+                assert!(
+                    !samples.is_empty() && samples.iter().all(|sample| sample.is_finite()),
+                    "{voice} at {speed}: audio must contain only finite samples"
+                );
+                assert!(
+                    samples.iter().any(|sample| sample.abs() > 0.01),
+                    "{voice} at {speed}: audio must not be silent"
+                );
+            }
+        }
+    }
+    worker.finish();
+}
+
+#[test]
 fn the_worker_speaks_every_word_and_streams_the_audio() {
     let mut worker = Worker::start();
     for (job, voice) in [(1, "af_heart"), (2, "bm_george")] {

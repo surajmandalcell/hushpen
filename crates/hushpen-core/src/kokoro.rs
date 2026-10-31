@@ -3,6 +3,9 @@
 //! sherpa-onnx 2.0 has no espeak-ng, so the worker turns text into phonemes itself with the US
 //! English lexicon the entry ships, and only the English voices are offered. The British voices
 //! read with the same lexicon.
+//!
+//! The v1.0 weights include the 2026-10-26 int8 fix: the two STFT convolutions stay in
+//! float32, so their phase calculation cannot divide quantized zero by zero.
 
 /// The catalog id of the model, also its folder in `models/tts/`.
 pub const MODEL_ID: &str = "kokoro-82m-int8";
