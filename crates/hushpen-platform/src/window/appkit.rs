@@ -2,8 +2,9 @@
 //! nothing here moves a standard button; it only reads the close button frame, and hides the
 //! zoom button. The window can neither zoom nor enter full screen.
 //!
-//! GPUI already builds the style mask (titled, closable, miniaturizable, not resizable, full
-//! size content), so this module leaves the mask alone: changing it on a live window makes
+//! GPUI already builds the style mask (titled, closable, miniaturizable, full size content),
+//! while the window keeps a fixed width and resizes in height only, so this module leaves the
+//! mask alone: changing it on a live window makes
 //! AppKit rebuild the title bar and a second row of buttons appears.
 
 // AppKit calls take a raw `NSView` address from the GPUI window handle.
