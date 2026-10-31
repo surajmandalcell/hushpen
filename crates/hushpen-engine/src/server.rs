@@ -4,11 +4,16 @@
 //! `LoadModel`, `Transcribe`, and `ImportFile` for one worker thread that owns the loaded model. That is why a
 //! ping still gets its pong during a load or a long job, and why a cancel can settle a job that
 //! has not started yet without waiting for the job in front of it.
+//!
+//! The worker thread also runs the idle rule of the last `LoadModel`: after `idle_secs` with no
+//! job it pages the model out or drops it. A dropped model loads again, without a word to the
+//! app, when the next job comes.
 
 use crate::asr::{AsrEngine, CancelFlag, EngineError, LoadOptions, TranscribeOptions};
 use crate::child;
 use crate::wav;
 use hushpen_core::error;
+use hushpen_core::idle::{Idle, IdleAction};
 use hushpen_core::protocol::{
     DecodeError, Event, Frame, FrameError, FrameKind, PROTOCOL_VERSION, Request, read_frame,
     write_json,
@@ -18,7 +23,7 @@ use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -51,11 +56,18 @@ struct JobEntry {
 
 type Jobs = Arc<Mutex<HashMap<u64, JobEntry>>>;
 
+/// The model a load asks for. A new idle rule alone does not load the model again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ModelSpec {
+    path: PathBuf,
+    gpu: bool,
+    threads: usize,
+}
+
 enum Work {
     Load {
-        path: PathBuf,
-        gpu: bool,
-        threads: usize,
+        model: ModelSpec,
+        idle: Idle,
     },
     Transcribe {
         job: u64,
@@ -153,11 +165,23 @@ fn read_requests(
                 );
                 return EXIT_BAD_PROTOCOL;
             }
-            Request::LoadModel { path, gpu, threads } => {
+            Request::LoadModel {
+                path,
+                gpu,
+                threads,
+                idle_secs,
+                idle_action,
+            } => {
                 let _ = work.send(Work::Load {
-                    path: PathBuf::from(path),
-                    gpu,
-                    threads: threads as usize,
+                    model: ModelSpec {
+                        path: PathBuf::from(path),
+                        gpu,
+                        threads: threads as usize,
+                    },
+                    idle: Idle {
+                        secs: idle_secs,
+                        action: idle_action,
+                    },
                 });
             }
             Request::Transcribe {
@@ -258,22 +282,116 @@ struct Worker {
     held_model: Mutex<Option<File>>,
 }
 
+/// The model of the worker thread and what to do with it when no job comes.
+#[derive(Default)]
+struct Held {
+    engine: Option<Box<dyn AsrEngine>>,
+    /// The model `engine` holds, or held before an idle unload.
+    model: Option<ModelSpec>,
+    idle: Idle,
+    /// The idle rule ran since the last job, so the worker waits for work without a timer.
+    idle_done: bool,
+}
+
 impl Worker {
     fn run(&self, work: &Receiver<Work>) {
-        let mut engine: Option<Box<dyn AsrEngine>> = None;
-        while let Ok(item) = work.recv() {
+        let mut held = Held::default();
+        loop {
+            let timer = (held.engine.is_some() && held.idle.secs > 0 && !held.idle_done)
+                .then(|| Duration::from_secs(held.idle.secs));
+            let item = match timer {
+                Some(timer) => match work.recv_timeout(timer) {
+                    Ok(item) => item,
+                    Err(RecvTimeoutError::Timeout) => {
+                        self.on_idle(&mut held);
+                        continue;
+                    }
+                    Err(RecvTimeoutError::Disconnected) => return,
+                },
+                None => match work.recv() {
+                    Ok(item) => item,
+                    Err(_) => return,
+                },
+            };
+            held.idle_done = false;
             match item {
-                Work::Load { path, gpu, threads } => self.load(&mut engine, &path, gpu, threads),
+                Work::Load { model, idle } => {
+                    held.idle = idle;
+                    self.load(&mut held, model);
+                }
                 Work::Transcribe {
                     job,
                     wav_path,
                     options,
-                } => self.transcribe(engine.as_deref_mut(), job, &wav_path, &options),
+                } => {
+                    self.reload_for(&mut held, job);
+                    self.transcribe(held.engine.as_deref_mut(), job, &wav_path, &options);
+                }
                 Work::Import { job, path, options } => {
-                    self.import(engine.as_deref_mut(), job, &path, &options);
+                    self.reload_for(&mut held, job);
+                    self.import(held.engine.as_deref_mut(), job, &path, &options);
                 }
             }
         }
+    }
+
+    fn on_idle(&self, held: &mut Held) {
+        held.idle_done = true;
+        let model = held
+            .model
+            .as_ref()
+            .map_or_else(String::new, |m| model_name(&m.path));
+        match held.idle.action {
+            IdleAction::Unload => {
+                held.engine = None;
+                *lock(&self.held_model) = None;
+                eprintln!("engine: idle unload model={model}");
+            }
+            IdleAction::PageOut => {
+                let Some(engine) = held.engine.as_mut() else {
+                    return;
+                };
+                match engine.page_out() {
+                    Ok(bytes) => eprintln!("engine: idle pageout model={model} bytes={bytes}"),
+                    Err(failure) => {
+                        eprintln!("engine: idle pageout model={model} failed: {failure}")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Loads the model again after an idle unload, when job `job` still waits for it. The app
+    /// hears nothing of it but a longer job.
+    fn reload_for(&self, held: &mut Held, job: u64) {
+        if held.engine.is_some() || !lock(&self.jobs).contains_key(&job) {
+            return;
+        }
+        let Some(model) = held.model.clone() else {
+            return;
+        };
+        let started = Instant::now();
+        match self.open(&model) {
+            Ok(engine) => {
+                held.engine = Some(engine);
+                eprintln!(
+                    "engine: reloaded model={} ms={}",
+                    model_name(&model.path),
+                    elapsed_ms(started)
+                );
+            }
+            Err(failure) => eprintln!("engine: reload failed: {failure}"),
+        }
+    }
+
+    fn open(&self, model: &ModelSpec) -> Result<Box<dyn AsrEngine>, EngineError> {
+        let options = LoadOptions {
+            gpu: model.gpu && self.gpu_available,
+            threads: model.threads.max(1),
+        };
+        let engine = (self.loader)(&model.path, options)?;
+        *lock(&self.held_model) = File::open(&model.path).ok();
+        Ok(engine)
     }
 
     fn import(
@@ -293,15 +411,23 @@ impl Worker {
         send(&self.output, &event);
     }
 
-    /// A failed load leaves the old model in place.
-    fn load(
-        &self,
-        engine: &mut Option<Box<dyn AsrEngine>>,
-        path: &Path,
-        gpu: bool,
-        threads: usize,
-    ) {
-        let model = model_name(path);
+    /// A failed load leaves the old model in place. The model already loaded only takes the new
+    /// idle rule.
+    fn load(&self, held: &mut Held, spec: ModelSpec) {
+        let model = model_name(&spec.path);
+        if let Some(engine) = held.engine.as_ref()
+            && held.model.as_ref() == Some(&spec)
+        {
+            send(
+                &self.output,
+                &Event::Loaded {
+                    model,
+                    ms: 0,
+                    gpu: engine.gpu_in_use(),
+                },
+            );
+            return;
+        }
         send(
             &self.output,
             &Event::Loading {
@@ -309,15 +435,11 @@ impl Worker {
             },
         );
         let started = Instant::now();
-        let options = LoadOptions {
-            gpu: gpu && self.gpu_available,
-            threads: threads.max(1),
-        };
-        match (self.loader)(path, options) {
+        match self.open(&spec) {
             Ok(loaded) => {
                 let gpu = loaded.gpu_in_use();
-                *engine = Some(loaded);
-                *lock(&self.held_model) = File::open(path).ok();
+                held.engine = Some(loaded);
+                held.model = Some(spec);
                 send(
                     &self.output,
                     &Event::Loaded {
@@ -442,15 +564,29 @@ mod tests {
     use serde_json::json;
     use std::io::PipeReader;
     use std::io::PipeWriter;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// How often the fake loader loaded and the fake models paged out.
+    #[derive(Default)]
+    struct Counts {
+        loads: AtomicUsize,
+        page_outs: AtomicUsize,
+    }
 
     struct Fake {
         /// How long a job takes if nobody cancels it.
         job_ms: u64,
+        counts: Arc<Counts>,
     }
 
     impl AsrEngine for Fake {
         fn gpu_in_use(&self) -> bool {
             false
+        }
+
+        fn page_out(&mut self) -> std::io::Result<u64> {
+            self.counts.page_outs.fetch_add(1, Ordering::SeqCst);
+            Ok(1)
         }
 
         fn transcribe_stream(
@@ -494,7 +630,7 @@ mod tests {
     }
 
     /// A loader where a path with `bad` fails and a path with `slow` takes 300 ms.
-    fn fake_loader(job_ms: u64) -> Arc<Loader> {
+    fn fake_loader(job_ms: u64, counts: Arc<Counts>) -> Arc<Loader> {
         Arc::new(move |path, _options| {
             let name = path.to_string_lossy();
             if name.contains("slow") {
@@ -506,7 +642,11 @@ mod tests {
             if name.contains("oldcpu") {
                 return Err(EngineError::UnsupportedCpu("AVX2"));
             }
-            Ok(Box::new(Fake { job_ms }) as Box<dyn AsrEngine>)
+            counts.loads.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(Fake {
+                job_ms,
+                counts: Arc::clone(&counts),
+            }) as Box<dyn AsrEngine>)
         })
     }
 
@@ -515,16 +655,18 @@ mod tests {
         from_engine: PipeReader,
         exit: thread::JoinHandle<u8>,
         dir: tempfile::TempDir,
+        counts: Arc<Counts>,
     }
 
     impl Session {
         fn start(job_ms: u64) -> Self {
             let (engine_in, to_engine) = std::io::pipe().unwrap();
             let (from_engine, engine_out) = std::io::pipe().unwrap();
+            let counts = Arc::new(Counts::default());
             let config = ServerConfig {
                 version: "test".into(),
                 gpu_available: false,
-                loader: fake_loader(job_ms),
+                loader: fake_loader(job_ms, Arc::clone(&counts)),
             };
             let exit = thread::spawn(move || serve(engine_in, engine_out, config));
             Self {
@@ -532,6 +674,7 @@ mod tests {
                 from_engine,
                 exit,
                 dir: tempfile::tempdir().unwrap(),
+                counts,
             }
         }
 
@@ -561,13 +704,44 @@ mod tests {
         }
 
         fn load(&mut self, name: &str) -> Event {
+            self.load_with(name, Idle::KEEP)
+        }
+
+        fn send_load(&mut self, name: &str, idle: Idle) {
             self.send(&Request::LoadModel {
                 path: format!("/models/{name}"),
                 gpu: false,
                 threads: 2,
+                idle_secs: idle.secs,
+                idle_action: idle.action,
             });
+        }
+
+        fn load_with(&mut self, name: &str, idle: Idle) -> Event {
+            self.send_load(name, idle);
             assert!(matches!(self.next(), Event::Loading { .. }));
             self.next()
+        }
+
+        fn loads(&self) -> usize {
+            self.counts.loads.load(Ordering::SeqCst)
+        }
+
+        fn page_outs(&self) -> usize {
+            self.counts.page_outs.load(Ordering::SeqCst)
+        }
+
+        /// The events up to and with the result of job `job`.
+        fn until_result(&mut self, job: u64) -> Vec<Event> {
+            let mut seen = Vec::new();
+            loop {
+                let event = self.next();
+                let done = matches!(&event, Event::Result { job: id, .. } if *id == job);
+                seen.push(event);
+                if done {
+                    return seen;
+                }
+            }
         }
 
         fn transcribe(&mut self, job: u64, language: Option<&str>) {
@@ -765,11 +939,7 @@ mod tests {
     #[test]
     fn a_cancel_settles_a_queued_job_without_waiting_for_the_load_in_front() {
         let mut session = Session::start(0);
-        session.send(&Request::LoadModel {
-            path: "/models/ggml-slow.bin".into(),
-            gpu: false,
-            threads: 2,
-        });
+        session.send_load("ggml-slow.bin", Idle::KEEP);
         assert!(matches!(session.next(), Event::Loading { .. }));
         session.transcribe(1, None);
         let asked = Instant::now();
@@ -973,11 +1143,7 @@ mod tests {
     #[test]
     fn a_cancel_settles_a_queued_import_without_running_it() {
         let mut session = Session::start(0);
-        session.send(&Request::LoadModel {
-            path: "/models/ggml-slow.bin".into(),
-            gpu: false,
-            threads: 2,
-        });
+        session.send_load("ggml-slow.bin", Idle::KEEP);
         assert!(matches!(session.next(), Event::Loading { .. }));
         let path = session.wav();
         session.import(1, &path);
@@ -1012,6 +1178,79 @@ mod tests {
         header.push(0);
         session.to_engine.write_all(&header).unwrap();
         assert_eq!(session.exit.join().unwrap(), EXIT_BAD_FRAME);
+    }
+
+    /// Waits up to 3 s for `done`, so an idle timer of 1 s has fired.
+    fn eventually(done: impl Fn() -> bool) -> bool {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(3) {
+            if done() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        done()
+    }
+
+    const PAGE_OUT_AFTER_1S: Idle = Idle {
+        secs: 1,
+        action: IdleAction::PageOut,
+    };
+
+    #[test]
+    fn an_idle_model_pages_out_once_per_idle_stretch_and_keeps_working() {
+        let mut session = Session::start(0);
+        session.load_with("ggml-tiny.en.bin", PAGE_OUT_AFTER_1S);
+        assert!(eventually(|| session.page_outs() == 1));
+        thread::sleep(Duration::from_millis(1300));
+        assert_eq!(session.page_outs(), 1, "one page-out until the next job");
+        session.transcribe(1, None);
+        session.until_result(1);
+        assert!(eventually(|| session.page_outs() == 2));
+        assert_eq!(session.loads(), 1);
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn an_idle_unload_drops_the_model_and_the_next_job_loads_it_without_a_word() {
+        let mut session = Session::start(0);
+        session.load_with(
+            "ggml-tiny.en.bin",
+            Idle {
+                secs: 1,
+                action: IdleAction::Unload,
+            },
+        );
+        thread::sleep(Duration::from_millis(1400));
+        assert_eq!(session.loads(), 1);
+        session.transcribe(1, Some("en"));
+        let events = session.until_result(1);
+        assert!(
+            events
+                .iter()
+                .all(|e| matches!(e, Event::Segment { .. } | Event::Result { .. })),
+            "{events:?}"
+        );
+        assert_eq!(session.loads(), 2);
+        assert_eq!(session.page_outs(), 0);
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn a_new_idle_rule_for_the_loaded_model_keeps_it_and_starts_the_timer() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        thread::sleep(Duration::from_millis(1200));
+        assert_eq!(
+            session.page_outs(),
+            0,
+            "an idle time of 0 keeps the model as it is"
+        );
+        session.send_load("ggml-tiny.en.bin", PAGE_OUT_AFTER_1S);
+        assert!(matches!(session.next(), Event::Loaded { ms: 0, .. }));
+        assert!(eventually(|| session.page_outs() == 1));
+        assert_eq!(session.loads(), 1);
+        assert_eq!(session.finish(), 0);
     }
 
     #[test]

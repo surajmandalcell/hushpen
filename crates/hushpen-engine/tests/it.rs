@@ -101,6 +101,29 @@ fn assert_expected_words(text: &str) {
 }
 
 #[test]
+fn a_paged_out_model_gives_the_same_transcript() {
+    let mut engine = load(false);
+    let pcm = read_wav(&short_wav());
+    let first = engine
+        .transcribe(&pcm, &english(), &CancelFlag::new())
+        .expect("transcribe");
+    let advised = engine.page_out().expect("page out");
+    if cfg!(target_os = "linux") {
+        let file = std::fs::metadata(model_path()).unwrap().len();
+        assert!(
+            advised >= file / 2,
+            "advised {advised} of a {file} byte model"
+        );
+    } else {
+        assert_eq!(advised, 0, "only Linux has MADV_PAGEOUT");
+    }
+    let again = engine
+        .transcribe(&pcm, &english(), &CancelFlag::new())
+        .expect("transcribe after the page-out");
+    assert_eq!(again.text, first.text);
+}
+
+#[test]
 fn transcribes_short_clip_on_cpu() {
     let mut engine = load(false);
     assert!(!engine.gpu_in_use());

@@ -73,6 +73,8 @@ impl Manager {
             path: entry.spec.path.to_string_lossy().into_owned(),
             gpu: entry.spec.gpu,
             threads: u32::try_from(entry.spec.threads).unwrap_or(u32::MAX),
+            idle_secs: entry.spec.idle.secs,
+            idle_action: entry.spec.idle.action,
         };
         self.sent_loads.push_back(entry);
         self.write(&request);

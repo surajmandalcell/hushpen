@@ -72,6 +72,8 @@ pub struct WhisperEngine {
     gpu: bool,
     multilingual: bool,
     vad_model: String,
+    /// The mappings that hold the weights, for a page-out. Empty where none is possible.
+    weights: Vec<std::ops::Range<usize>>,
 }
 
 impl WhisperEngine {
@@ -84,8 +86,9 @@ impl WhisperEngine {
             .ok_or_else(|| EngineError::LoadFailed("model path is not valid UTF-8".into()))?;
         let mut params = WhisperContextParameters::default();
         params.use_gpu(options.gpu);
-        let context = WhisperContext::new_with_params(path, params)
-            .map_err(|err| EngineError::LoadFailed(err.to_string()))?;
+        let (context, weights) =
+            crate::pageout::track(model, || WhisperContext::new_with_params(path, params));
+        let context = context.map_err(|err| EngineError::LoadFailed(err.to_string()))?;
         let state = context
             .create_state()
             .map_err(|err| EngineError::LoadFailed(err.to_string()))?;
@@ -97,6 +100,7 @@ impl WhisperEngine {
             threads: options.threads.max(1),
             gpu: options.gpu && gpu_backend_present(),
             vad_model,
+            weights,
         })
     }
 }
@@ -104,6 +108,10 @@ impl WhisperEngine {
 impl AsrEngine for WhisperEngine {
     fn gpu_in_use(&self) -> bool {
         self.gpu
+    }
+
+    fn page_out(&mut self) -> std::io::Result<u64> {
+        crate::pageout::page_out(&self.weights)
     }
 
     fn transcribe_stream(
