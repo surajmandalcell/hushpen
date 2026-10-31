@@ -97,8 +97,14 @@ pub const SECTIONS: &[Section] = &[
     Section {
         id: "whisper-models",
         title: "Whisper models",
-        note: "The speech models Hushpen downloads on request (Tiny, Base, Small, Medium, Large v3 Turbo; the files are the GGML conversions from https://huggingface.co/ggerganov/whisper.cpp). OpenAI Whisper, MIT license.",
+        note: "The Whisper speech models Hushpen downloads on request: Large v3 Turbo Q5_0, Small Q5_1, and Base Q5_1, converted by ggml-org (https://huggingface.co/ggerganov/whisper.cpp). OpenAI Whisper, MIT license.",
         texts: &["packaging/licenses/manual/mit-openai-whisper.txt"],
+    },
+    Section {
+        id: "parakeet-model",
+        title: "Parakeet speech model",
+        note: "NVIDIA Parakeet TDT 0.6B v3 (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), Copyright NVIDIA Corporation. Creative Commons Attribution 4.0 International (https://creativecommons.org/licenses/by/4.0/). Hushpen downloads the Q4_K quantized conversion by ggml-org from https://huggingface.co/ggml-org/parakeet-GGUF on request. The conversion changes the weight format and precision. NVIDIA does not endorse Hushpen.",
+        texts: &["packaging/licenses/manual/cc-by-4.0.txt"],
     },
     Section {
         id: "silero-vad",
@@ -247,7 +253,7 @@ mod tests {
     fn section_ids_are_unique() {
         let ids: BTreeSet<_> = SECTIONS.iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), SECTIONS.len());
-        assert_eq!(SECTIONS.len(), 15);
+        assert_eq!(SECTIONS.len(), 16);
     }
 
     #[test]
