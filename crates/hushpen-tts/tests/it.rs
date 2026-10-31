@@ -5,12 +5,15 @@
 //! the Chatterbox folders are `$HUSHPEN_TEST_ASSETS/models/tts/chatterbox-turbo` and
 //! `chatterbox-nano`. The library folder is `HUSHPEN_TTS_RUNTIME_DIR` (see
 //! `cargo xtask tts-runtime`).
-//! `HUSHPEN_TEST_THREADS` sets the thread count (default 2).
+//! `HUSHPEN_TEST_THREADS` sets the thread count (default 2). With `HUSHPEN_TEST_WAV_DIR` the mix
+//! test writes the audio of its two voices and their mix there.
 #![cfg(feature = "heavy")]
 
 use hushpen_core::chatterbox::{self, DEFAULT_VOICE_FILE, NANO_ID, TOKENIZER_FILE, TURBO_ID};
 use hushpen_core::error;
-use hushpen_core::kokoro::{LEXICON_FILE, MODEL_ID, SAMPLE_RATE};
+use hushpen_core::kokoro::{
+    FILES, LEXICON_FILE, MIX_DIR, MODEL_ID, SAMPLE_RATE, VOICES_BYTES, VoiceMix,
+};
 use hushpen_core::protocol::write_json;
 use hushpen_core::tts_protocol::{
     TTS_PROTOCOL_VERSION, TtsEngine, TtsEvent, TtsRequest, read_event,
@@ -294,6 +297,85 @@ fn the_runtime_check_loads_the_bundled_library() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "sherpa-onnx 2.0.0\nonnxruntime 1.28.2"
     );
+}
+
+/// A model folder of links to the real files, so a mix file goes in a scratch `mixes` folder
+/// next to it and never in the test assets.
+fn linked_model(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("hushpen-tts-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join(MODEL_ID);
+    std::fs::create_dir_all(&dir).unwrap();
+    for file in FILES {
+        std::os::unix::fs::symlink(model_dir().join(file), dir.join(file)).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn a_mix_of_two_voices_speaks_and_the_plain_voices_still_do() {
+    let dir = linked_model("mix");
+    let mut worker = Worker::start_with(TtsEngine::Kokoro, &dir);
+    let mix = VoiceMix::new("af_heart", "am_adam", 50).unwrap();
+    let text = "The quiet river carried seven paper boats past the old mill.";
+    let mut spoken = Vec::new();
+    for (job, voice) in [
+        (1, "af_heart"),
+        (2, "am_adam"),
+        (3, mix.id().as_str()),
+        (4, "af_heart"),
+    ] {
+        worker.speak(job, text, voice);
+        let (samples, end) = worker.spoken(job);
+        assert!(matches!(end, TtsEvent::Done { .. }), "{voice}: {end:?}");
+        assert!(samples.len() > SAMPLE_RATE as usize, "{voice}: too short");
+        assert!(samples.iter().all(|sample| sample.is_finite()), "{voice}");
+        assert!(samples.iter().any(|sample| sample.abs() > 0.05), "{voice}");
+        spoken.push(samples);
+    }
+    if let Some(out) = std::env::var_os("HUSHPEN_TEST_WAV_DIR") {
+        let out = PathBuf::from(out);
+        for (name, samples) in ["a-af_heart", "b-am_adam", "mix-50"].iter().zip(&spoken) {
+            write_wav(&out.join(format!("{name}.wav")), samples);
+        }
+    }
+    let file = dir.parent().unwrap().join(MIX_DIR).join(mix.file_name());
+    assert_eq!(std::fs::metadata(&file).unwrap().len(), VOICES_BYTES as u64);
+    // The vocoder adds noise, so two runs of one voice differ in their samples; the length
+    // comes from the style vectors alone.
+    assert_eq!(
+        spoken[3].len(),
+        spoken[0].len(),
+        "a plain voice keeps its timing in the mix file"
+    );
+    worker.send(&TtsRequest::Speak {
+        job: 5,
+        text: text.into(),
+        voice: Some("af_heart:50+af_heart:50".into()),
+        speed: 1.0,
+    });
+    match worker.next() {
+        TtsEvent::Error { job, code, .. } => {
+            assert_eq!((job, code.as_str()), (Some(5), error::SPEECH_VOICE_MISSING));
+        }
+        other => panic!("expected the refusal, got {other:?}"),
+    }
+    worker.finish();
+    let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+}
+
+fn write_wav(path: &Path, samples: &[f32]) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: SAMPLE_RATE,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut wav = hound::WavWriter::create(path, spec).expect("create the WAV");
+    for sample in samples {
+        wav.write_sample(*sample).expect("write a sample");
+    }
+    wav.finalize().expect("finish the WAV");
 }
 
 #[test]

@@ -95,8 +95,9 @@ pub enum TtsRequest {
     },
     /// The voices of the Kokoro model.
     ListVoices,
-    /// Speaks one chunk of plain text. For Kokoro `voice` is a `VoiceInfo::id`; for Chatterbox
-    /// it is the path of the WAV clip to clone. `None` is the model's default voice.
+    /// Speaks one chunk of plain text. For Kokoro `voice` is a `VoiceInfo::id` or the id of a
+    /// mix of two of them (`af_heart:70+am_adam:30`, see [`crate::kokoro::VoiceMix`]); for
+    /// Chatterbox it is the path of the WAV clip to clone. `None` is the model's default voice.
     Speak {
         job: u64,
         text: String,
@@ -490,6 +491,26 @@ mod tests {
         for request in requests {
             assert_eq!(TtsRequest::from_json(&request.to_json()), Ok(request));
         }
+    }
+
+    #[test]
+    fn a_kokoro_mix_travels_as_its_voice_id() {
+        let mix = crate::kokoro::VoiceMix::new("af_heart", "bm_george", 40).unwrap();
+        let request = TtsRequest::Speak {
+            job: 7,
+            text: "Hello there.".into(),
+            voice: Some(mix.id()),
+            speed: 1.0,
+        };
+        let json = request.to_json();
+        assert_eq!(json["voice"], "af_heart:60+bm_george:40");
+        let Ok(TtsRequest::Speak { voice, .. }) = TtsRequest::from_json(&json) else {
+            panic!("a speak request");
+        };
+        assert_eq!(
+            voice.as_deref().and_then(crate::kokoro::VoiceMix::parse),
+            Some(mix)
+        );
     }
 
     #[test]
