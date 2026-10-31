@@ -227,6 +227,9 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     cx,
                 )
             });
+            let _ = handle.update(cx, |_, window, cx| {
+                models.update(cx, |models, cx| models.attach_search(window, cx))
+            });
             shell.update(cx, |shell, cx| shell.attach_models(models.clone(), cx));
             let dictionary = handle
                 .update(cx, |_, window, cx| {
