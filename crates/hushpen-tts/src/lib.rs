@@ -6,6 +6,7 @@ pub mod backend;
 pub mod chatterbox;
 pub mod entry;
 pub mod kokoro;
+pub mod mix;
 mod numbers;
 pub mod onnx;
 pub mod phonemes;

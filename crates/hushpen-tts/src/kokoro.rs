@@ -1,14 +1,15 @@
 //! The Kokoro model on sherpa-onnx: the worker's real backend.
 
 use crate::backend::{Backend, CancelFlag, JobError, LoadError, LoadSpec, Session};
+use crate::mix;
 use crate::phonemes::Lexicon;
 use crate::sherpa::{Api, KokoroFiles, Tts};
 use hushpen_core::error::{SPEECH_FAILED, SPEECH_VOICE_MISSING};
 use hushpen_core::kokoro::{
-    DEFAULT_VOICE, FILES, LEXICON_FILE, MODEL_FILE, SAMPLE_RATE, TOKENS_FILE, VOICES, VOICES_FILE,
-    find_voice,
+    DEFAULT_VOICE, FILES, LEXICON_FILE, MIX_DIR, MIX_SPEAKER, MODEL_FILE, SAMPLE_RATE, TOKENS_FILE,
+    VOICES, VOICES_FILE, VoiceMix, find_voice,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// Opens the library on the first load, so a worker without it still starts and answers.
@@ -47,20 +48,25 @@ impl Backend for SherpaBackend {
             return Err(failed(format!("{} has no {missing}", spec.dir.display())));
         }
         let api = self.api().map_err(failed)?;
-        let (model, voices, tokens, lexicon) = (
-            spec.dir.join(MODEL_FILE),
-            spec.dir.join(VOICES_FILE),
-            spec.dir.join(TOKENS_FILE),
-            spec.dir.join(LEXICON_FILE),
-        );
-        let lexicon = Lexicon::read(&lexicon).map_err(failed)?;
-        let files = KokoroFiles {
-            model: &model,
-            voices: &voices,
-            tokens: &tokens,
+        let lexicon = Lexicon::read(&spec.dir.join(LEXICON_FILE)).map_err(failed)?;
+        let voices = spec.dir.join(VOICES_FILE);
+        let mut session = KokoroSession {
+            api,
+            model: spec.dir.join(MODEL_FILE),
+            tokens: spec.dir.join(TOKENS_FILE),
+            mixes: spec
+                .dir
+                .parent()
+                .map_or_else(|| spec.dir.join(MIX_DIR), |tts| tts.join(MIX_DIR)),
+            threads: i32::try_from(spec.threads).unwrap_or(i32::MAX),
+            tts: None,
+            loaded: voices.clone(),
+            voices,
+            lexicon,
         };
-        let threads = i32::try_from(spec.threads).unwrap_or(i32::MAX);
-        let tts = Tts::kokoro(api, &files, threads).map_err(failed)?;
+        let tts = session
+            .load_voices(&session.voices.clone())
+            .map_err(failed)?;
         let speakers = tts.speakers();
         if usize::try_from(speakers).unwrap_or(0) < VOICES.len() || tts.sample_rate() != SAMPLE_RATE
         {
@@ -69,18 +75,71 @@ impl Backend for SherpaBackend {
                 tts.sample_rate()
             )));
         }
-        Ok(Box::new(KokoroSession { tts, lexicon }))
+        Ok(Box::new(session))
     }
 }
 
 struct KokoroSession {
-    tts: Tts,
+    api: Arc<Api>,
+    model: PathBuf,
+    tokens: PathBuf,
+    /// The pinned `voices.bin`, never written.
+    voices: PathBuf,
+    /// Where the voices files of mixes go: `models/tts/mixes`.
+    mixes: PathBuf,
+    threads: i32,
+    /// `None` after a failed reload; the next job loads again.
+    tts: Option<Tts>,
+    /// The voices file `tts` was loaded with: `voices` or a mix file. Every offered voice
+    /// speaks the same from either, because a mix file changes only [`MIX_SPEAKER`].
+    loaded: PathBuf,
     lexicon: Lexicon,
+}
+
+impl KokoroSession {
+    /// The model with `voices` as its voices file, loaded again only when it was loaded with
+    /// another one.
+    fn load_voices(&mut self, voices: &Path) -> Result<&mut Tts, String> {
+        if self.loaded != voices {
+            // The model leaves memory before it comes back with the other file.
+            self.tts = None;
+        }
+        if self.tts.is_none() {
+            let files = KokoroFiles {
+                model: &self.model,
+                voices,
+                tokens: &self.tokens,
+            };
+            self.tts = Some(Tts::kokoro(Arc::clone(&self.api), &files, self.threads)?);
+            self.loaded = voices.to_path_buf();
+        }
+        self.tts
+            .as_mut()
+            .ok_or_else(|| "the model did not load".to_owned())
+    }
+
+    /// The speaker of `voice` and the voices file that holds it: `None` for whichever file is
+    /// loaded.
+    fn speaker(&self, voice: &str) -> Result<(i32, Option<PathBuf>), JobError> {
+        if let Some(found) = find_voice(voice) {
+            return Ok((found.speaker, None));
+        }
+        let mix = VoiceMix::parse(voice).ok_or_else(|| JobError::Failed {
+            code: SPEECH_VOICE_MISSING,
+            detail: voice.to_owned(),
+        })?;
+        let file =
+            mix::ensure(&self.voices, &self.mixes, &mix).map_err(|detail| JobError::Failed {
+                code: SPEECH_FAILED,
+                detail,
+            })?;
+        Ok((MIX_SPEAKER, Some(file)))
+    }
 }
 
 impl Session for KokoroSession {
     fn sample_rate(&self) -> u32 {
-        self.tts.sample_rate()
+        SAMPLE_RATE
     }
 
     fn speak(
@@ -91,33 +150,32 @@ impl Session for KokoroSession {
         cancel: &CancelFlag,
         sink: &mut dyn FnMut(&[f32]),
     ) -> Result<(), JobError> {
-        let id = voice.unwrap_or(DEFAULT_VOICE);
-        let speaker = find_voice(id)
-            .ok_or_else(|| JobError::Failed {
-                code: SPEECH_VOICE_MISSING,
-                detail: id.to_owned(),
-            })?
-            .speaker;
+        let (speaker, file) = self.speaker(voice.unwrap_or(DEFAULT_VOICE))?;
         let sentences = self.lexicon.sentences(text);
         if sentences.is_empty() {
             return Ok(());
         }
-        let result = self
-            .tts
-            .generate(&sentences, speaker, speed, &mut |samples| {
+        let file = file.unwrap_or_else(|| self.loaded.clone());
+        let failed = |detail| JobError::Failed {
+            code: SPEECH_FAILED,
+            detail,
+        };
+        let result = self.load_voices(&file).map_err(failed)?.generate(
+            &sentences,
+            speaker,
+            speed,
+            &mut |samples| {
                 if cancel.is_cancelled() {
                     return false;
                 }
                 sink(samples);
                 true
-            });
+            },
+        );
         if cancel.is_cancelled() {
             return Err(JobError::Cancelled);
         }
-        result.map_err(|detail| JobError::Failed {
-            code: SPEECH_FAILED,
-            detail,
-        })
+        result.map_err(failed)
     }
 }
 
