@@ -290,7 +290,12 @@ impl Worker {
             match item {
                 Work::Load(spec) => {
                     remembered = Some(spec.clone());
-                    if loaded.as_ref().is_some_and(|model| model.spec == spec) {
+                    if let Some(model) = loaded
+                        .as_mut()
+                        .filter(|model| same_model(&model.spec, &spec))
+                    {
+                        // A new idle time keeps the model; the next wait uses it.
+                        model.spec.idle = spec.idle;
                         self.loaded(&spec, 0);
                         continue;
                     }
@@ -441,6 +446,14 @@ impl Worker {
         if lock(&self.jobs).remove(&job).is_some() {
             send(&self.output, event);
         }
+    }
+}
+
+/// True when `a` and `b` differ at most in their idle time.
+fn same_model(a: &LoadSpec, b: &LoadSpec) -> bool {
+    *a == LoadSpec {
+        idle: a.idle,
+        ..b.clone()
     }
 }
 
