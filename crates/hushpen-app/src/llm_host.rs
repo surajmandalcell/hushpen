@@ -175,10 +175,6 @@ pub fn wanted_load(
     if !model_files::is_verified(&path) {
         return None;
     }
-    let minutes = settings
-        .get("cleanup.llm.idleUnloadMinutes")
-        .and_then(Value::as_u64)
-        .unwrap_or(5);
     let gpu = settings
         .get("engine.useGpu")
         .and_then(Value::as_bool)
@@ -188,7 +184,7 @@ pub fn wanted_load(
         family: None,
         gpu,
         threads: cpus.clamp(1, 8),
-        idle_secs: minutes.saturating_mul(60),
+        idle: hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Cleanup),
     })
 }
 
@@ -273,12 +269,30 @@ mod tests {
         values.insert("engine.useGpu".into(), json!(true));
         let wanted = wanted_load(&values, dir.path(), 16).unwrap();
         assert_eq!(wanted.path, path);
-        assert_eq!(wanted.idle_secs, 420);
+        assert_eq!(wanted.idle.secs, 420);
         assert!(wanted.gpu);
         assert_eq!(wanted.threads, 8);
         let default_idle = wanted_load(&on("Qwen3.5-2B-Q4_K_M"), dir.path(), 2).unwrap();
-        assert_eq!(default_idle.idle_secs, 300);
+        assert_eq!(default_idle.idle.secs, 300);
         assert_eq!(default_idle.threads, 2);
+    }
+
+    #[test]
+    fn shared_idle_policy_overrides_the_legacy_cleanup_timer() {
+        let dir = tempfile::tempdir().unwrap();
+        stamped_model(dir.path(), "m");
+        let mut values = on("m");
+        values.insert("cleanup.llm.idleUnloadMinutes".into(), json!(7));
+        values.insert("engine.idlePolicy".into(), json!("keep"));
+        assert_eq!(
+            wanted_load(&values, dir.path(), 2).unwrap().idle,
+            hushpen_core::idle::Idle::KEEP
+        );
+        values.insert("engine.idlePolicy".into(), json!("pageout"));
+        values.insert("engine.idleMinutes".into(), json!(30));
+        let idle = wanted_load(&values, dir.path(), 2).unwrap().idle;
+        assert_eq!(idle.secs, 1800);
+        assert_eq!(idle.action, hushpen_core::idle::IdleAction::PageOut);
     }
 
     #[test]

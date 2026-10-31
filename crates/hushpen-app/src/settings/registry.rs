@@ -21,12 +21,14 @@ impl Settings {
 
     pub fn set_idle_policy(&mut self, value: &str, cx: &mut Context<Self>) {
         self.set("engine.idlePolicy", json!(value), cx);
+        self.engine_changed(cx);
         self.picker = None;
         cx.notify();
     }
 
     pub fn set_idle_minutes(&mut self, value: i64, cx: &mut Context<Self>) {
         self.set("engine.idleMinutes", json!(value), cx);
+        self.engine_changed(cx);
         self.picker = None;
         cx.notify();
     }

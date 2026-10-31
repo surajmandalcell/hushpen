@@ -176,6 +176,7 @@ pub fn wanted_load(
         path: models_dir.join(format!("ggml-{id}.bin")),
         gpu: use_gpu,
         threads: resolve_threads(settings.get("engine.threads"), cpus),
+        idle: hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Speech),
     })
 }
 
@@ -247,5 +248,19 @@ mod tests {
         assert!(on.gpu);
         let off = wanted(&settings("t", json!("auto"), false), 2).unwrap();
         assert!(!off.gpu);
+    }
+
+    #[test]
+    fn idle_policy_and_time_reach_the_speech_worker() {
+        let mut values = settings("base", json!("auto"), false);
+        assert_eq!(
+            wanted(&values, 2).unwrap().idle,
+            hushpen_core::idle::Idle::KEEP
+        );
+        values.insert("engine.idlePolicy".into(), json!("pageout"));
+        values.insert("engine.idleMinutes".into(), json!(30));
+        let idle = wanted(&values, 2).unwrap().idle;
+        assert_eq!(idle.secs, 1800);
+        assert_eq!(idle.action, hushpen_core::idle::IdleAction::PageOut);
     }
 }
