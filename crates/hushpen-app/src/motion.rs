@@ -33,6 +33,54 @@ pub fn animates(cx: &App) -> bool {
     !cx.reduce_motion() && plays(cx)
 }
 
+/// How often the system Reduce Motion setting is read again.
+const SYSTEM_POLL: Duration = Duration::from_secs(1);
+
+/// Turns system readings into changes. An unknown reading means motion on. Only a new answer
+/// goes through, so a reading that stays the same never undoes a choice made in between (the
+/// test hook sets Reduce Motion by hand).
+#[derive(Default)]
+struct SystemReading(Option<bool>);
+
+impl SystemReading {
+    fn changed(&mut self, reading: Option<bool>) -> Option<bool> {
+        let reduce = reading.unwrap_or(false);
+        (self.0.replace(reduce) != Some(reduce)).then_some(reduce)
+    }
+}
+
+/// Follows the system Reduce Motion setting: read now, and again every second, because the
+/// user can change it while the app runs.
+pub fn follow_system(cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let mut reading = SystemReading::default();
+        loop {
+            let system = read_system(cx).await;
+            cx.update(|cx| {
+                if let Some(reduce) = reading.changed(system) {
+                    cx.set_reduce_motion(reduce);
+                    cx.refresh_windows();
+                }
+            });
+            cx.background_executor().timer(SYSTEM_POLL).await;
+        }
+    })
+    .detach();
+}
+
+#[cfg(target_os = "macos")]
+async fn read_system(_: &gpui_kit::AsyncApp) -> Option<bool> {
+    hushpen_platform::reduce_motion::system_reduce_motion()
+}
+
+/// `gsettings` can take a moment, so the UI thread never waits for it.
+#[cfg(not(target_os = "macos"))]
+async fn read_system(cx: &gpui_kit::AsyncApp) -> Option<bool> {
+    cx.background_executor()
+        .spawn(async { hushpen_platform::reduce_motion::system_reduce_motion() })
+        .await
+}
+
 #[cfg(not(test))]
 fn plays(_: &App) -> bool {
     true
@@ -310,6 +358,21 @@ pub(crate) mod tests {
             fixture.after(cx, 0),
             done,
             "a re-render does not play it again"
+        );
+    }
+
+    #[test]
+    fn the_system_reading_changes_motion_only_when_the_answer_changes() {
+        let mut reading = SystemReading::default();
+        assert_eq!(reading.changed(None), Some(false), "unknown plays motion");
+        assert_eq!(reading.changed(None), None);
+        assert_eq!(reading.changed(Some(false)), None, "unknown equals off");
+        assert_eq!(reading.changed(Some(true)), Some(true));
+        assert_eq!(reading.changed(Some(true)), None);
+        assert_eq!(
+            reading.changed(None),
+            Some(false),
+            "a lost answer plays motion"
         );
     }
 
