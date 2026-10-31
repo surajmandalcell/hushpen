@@ -359,7 +359,7 @@ fn focused(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) -> bool {
 }
 
 #[gpui_kit::test]
-fn the_view_has_a_section_for_each_kind_and_only_speech_rows_offer_use(cx: &mut TestAppContext) {
+fn the_view_groups_models_and_keeps_use_off_for_active_or_non_speech_rows(cx: &mut TestAppContext) {
     let (rig, _) = rig(cx);
     for id in ["speech", "qwen3.5-2b", "voice"] {
         rig.models
@@ -388,8 +388,8 @@ fn the_view_has_a_section_for_each_kind_and_only_speech_rows_offer_use(cx: &mut 
         assert!(present(cx, handle, &format!("models.delete.{index}")));
     }
     assert!(
-        present(cx, handle, "models.select.0"),
-        "a speech model is put to use"
+        !present(cx, handle, "models.select.0"),
+        "the default speech model is already active"
     );
     assert!(
         !present(cx, handle, "models.select.1"),
