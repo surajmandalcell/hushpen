@@ -732,8 +732,7 @@ impl Tuning {
     /// The lines the search asks the user to read: [`SENTENCES`], then a few Dictionary words.
     pub fn reading(&self) -> Vec<String> {
         let mut lines: Vec<String> = SENTENCES.iter().map(|line| (*line).to_owned()).collect();
-        let words: Vec<String> = hushpen_store::dictionary::list(&self.storage.database)
-            .unwrap_or_default()
+        let words: Vec<String> = crate::dictionary::dictation_entries(&self.storage)
             .into_iter()
             .map(|entry| entry.phrase)
             .filter(|phrase| phrase.split_whitespace().count() <= 2)
@@ -764,7 +763,7 @@ impl Tuning {
             .get(LANGUAGE_SETTING)
             .and_then(|value| value.as_str().map(str::to_owned))
             .filter(|language| language != language::AUTO);
-        let entries = hushpen_store::dictionary::list(&self.storage.database).unwrap_or_default();
+        let entries = crate::dictionary::dictation_entries(&self.storage);
         let model = self
             .models
             .as_ref()
