@@ -159,9 +159,10 @@ jobs:
         run: |
           echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  models/ggml-tiny.en.bin" | shasum -a 256 -c -
           echo "8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e  models/ggml-parakeet-tdt-0.6b-v3-q4_k.bin" | shasum -a 256 -c -
-          # The import tests and the Spanish translate test read fixtures and the base models from
-          # the owner's test-assets folders, which a runner does not have.
-          cargo test --release -p hushpen-engine --features heavy --test it --locked -- --test-threads=1 --nocapture --skip import:: --skip a_spanish_clip_translates_to_english
+          # The import tests, the Spanish translate test, and the Parakeet-to-Whisper switch read
+          # fixtures and the base models from the owner's test-assets folders, which a runner does
+          # not have.
+          cargo test --release -p hushpen-engine --features heavy --test it --locked -- --test-threads=1 --nocapture --skip import:: --skip a_spanish_clip_translates_to_english --skip parakeet::parakeet_dictation_and_files_work_through_the_child
       - name: Engine smoke (Metal, best effort)
         if: (inputs.suite == 'engine' || inputs.suite == 'full') && matrix.target == 'macos-arm64'
         continue-on-error: true
@@ -312,12 +313,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Free disk space for the debug build and the image
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-      - name: Fetch the base model and the speech clip
+      - name: Fetch the Base Q5 model and the speech clip
         run: |
           mkdir -p "$HUSHPEN_TEST_ASSETS/models/whisper" "$HUSHPEN_TEST_ASSETS/fixtures"
-          curl -fsSL --retry 3 -o "$HUSHPEN_TEST_ASSETS/models/whisper/ggml-base.bin" \
-            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-          echo "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe  $HUSHPEN_TEST_ASSETS/models/whisper/ggml-base.bin" | sha256sum -c -
+          curl -fsSL --retry 3 -o "$HUSHPEN_TEST_ASSETS/models/whisper/ggml-base-q5_1.bin" \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base-q5_1.bin
+          echo "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898  $HUSHPEN_TEST_ASSETS/models/whisper/ggml-base-q5_1.bin" | sha256sum -c -
           cp crates/hushpen-engine/tests/fixtures/speech-short.wav "$HUSHPEN_TEST_ASSETS/fixtures/"
           echo "8fc4dec907177d271433fbe06ec67f457f2735bc986dbed8325d57280c4f6131  $HUSHPEN_TEST_ASSETS/fixtures/speech-short.wav" | sha256sum -c -
       # The insertion suite kills the engine during a long clip and feeds it silence; neither needs real words.
