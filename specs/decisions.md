@@ -46,9 +46,10 @@ new decision, add it here in the same change (D-21).
   than English, speaker labels, live captions, bundles, notes, stats,
   snippets, per-app styles, video import, Opus or WebM import, code signing,
   and app stores.
-- **D-11 Window.** Fixed at 940x600 on every OS: not resizable, no zoom, no
-  full screen. On X11 the size hints set min equal to max. One app instance
-  runs at a time.
+- **D-11 Window.** 940 px wide on every OS. The height can change from 600 px
+  to 900 px, or to the screen height when that is smaller; the app keeps the
+  last height in an internal setting and restores it inside the current
+  screen. No zoom, no full screen.
 - **D-12 Appearance.** The app follows the system Light or Dark setting and
   changes live. Without a system setting it uses Dark. `DESIGN.md` is the
   binding design system.
