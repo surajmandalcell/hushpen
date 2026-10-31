@@ -316,6 +316,9 @@ impl Shell {
             if let Some(settings) = &self.settings {
                 settings.update(cx, |settings, cx| settings.dismiss_prompt(cx));
             }
+            if let Some(dictionary) = &self.dictionary {
+                dictionary.update(cx, |dictionary, cx| dictionary.dismiss_preview(cx));
+            }
             if let Some(read) = self.read_aloud(cx) {
                 if let Some(library) = read.read(cx).library().cloned() {
                     library.update(cx, |library, cx| library.dismiss(cx));
@@ -815,6 +818,13 @@ impl Render for Shell {
                             .as_ref()
                             .filter(|_| self.active == View::Settings)?;
                         crate::settings::prompt_sheet(settings, window, cx)
+                    })
+                    .or_else(|| {
+                        let dictionary = self
+                            .dictionary
+                            .as_ref()
+                            .filter(|_| self.active == View::Dictionary)?;
+                        dictionary::panel::preview_sheet(dictionary, window, cx)
                     })
                     .or_else(|| {
                         let library = self

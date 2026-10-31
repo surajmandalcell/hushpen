@@ -1,0 +1,223 @@
+# Tech terms
+# Software, tools, and AI names with their official spelling.
+GitHub | git hub
+JavaScript | java script
+TypeScript | type script
+Python
+macOS | mac os
+iOS | ios
+iPhone | i phone
+iPad | i pad
+Linux
+Windows
+Android
+API | a p i
+JSON | j son
+YAML
+SQL | s q l
+HTML
+CSS
+HTTP
+HTTPS
+URL
+CLI | c l i
+SDK
+UI
+UX
+PDF
+Hushpen
+Rust
+Swift
+SwiftUI | swift ui
+Node.js | node js
+React
+Next.js | next js
+Vite
+npm | n p m
+pnpm | p n p m
+Docker
+Kubernetes | cooper netties
+PostgreSQL | postgres sql
+MySQL
+SQLite | sq lite
+MongoDB | mongo db
+Redis
+Kafka
+GraphQL | graph ql
+gRPC | g rpc
+WebSocket | web socket
+OAuth | o auth
+Terraform
+AWS
+Azure
+GCP
+Google Cloud
+Vercel
+Supabase | supa base
+Firebase
+Cloudflare
+Netlify
+Heroku
+Xcode | x code
+VS Code | vs code
+Neovim | neo vim
+Vim
+Emacs
+Ubuntu
+Debian
+Fedora
+Arch Linux
+Wayland
+KDE
+GNOME
+Hugging Face
+GGUF | gguf
+Whisper
+whisper.cpp
+llama.cpp
+Parakeet
+Ollama | o llama
+LLM | l l m
+PyTorch | pie torch
+TensorFlow
+CUDA
+NVIDIA
+ChatGPT | chat gpt
+OpenAI
+Anthropic
+Claude
+Gemini
+Llama
+Mistral
+DeepSeek
+Qwen
+Copilot
+Cursor
+Kokoro
+Chatterbox
+Git
+GitLab
+Bitbucket
+GitHub Actions
+Jira
+Confluence
+Slack
+Notion
+Figma
+Linear
+Postman
+Raycast
+Homebrew
+Cargo
+Golang
+Kotlin
+Java
+C++
+C#
+PHP
+Ruby
+Django
+Flask
+FastAPI
+NestJS
+Vue.js
+Svelte
+SvelteKit
+Angular
+Tailwind CSS
+Bootstrap
+Tauri
+Flutter
+Expo
+Redux
+Prisma
+Jest
+Vitest
+Playwright
+Cypress
+Webpack
+ESLint
+Prettier
+Babel
+Deno
+WebAssembly
+Elasticsearch
+RabbitMQ
+Nginx
+Grafana
+Prometheus
+Datadog
+Sentry
+Stripe
+Twilio
+Razorpay
+Paytm
+PhonePe
+UPI
+Aadhaar
+OpenSSL
+systemd
+Bash
+zsh
+tmux
+SSH
+TCP
+UDP
+DNS
+VPN
+CPU
+GPU
+SSD
+USB
+CSV
+REST
+CI/CD
+DevOps
+Wi-Fi
+Bluetooth
+YouTube | you tube
+LinkedIn
+WhatsApp | whats app
+Gmail
+iCloud | i cloud
+AirPods
+MacBook | mac book
+watchOS
+Apple Silicon
+Raspberry Pi
+Arduino
+Ansible
+Jenkins
+NumPy
+pandas
+Jupyter
+FFmpeg
+WebRTC
+Markdown
+LaTeX
+OpenAPI
+JWT
+BigQuery
+Snowflake
+Databricks
+Airflow
+Laravel
+Spring Boot
+.NET
+Unity
+Obsidian
+JetBrains
+IntelliJ IDEA
+Ghostty
+Zoom
+Microsoft Teams
+Google Meet
+Chrome
+Firefox
+Safari
+Core ML
+ONNX
+Tokio
+Pydantic
+Gradio
+LangChain

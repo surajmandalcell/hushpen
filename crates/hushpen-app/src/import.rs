@@ -33,7 +33,6 @@ use hushpen_core::export::Format;
 use hushpen_core::language;
 use hushpen_core::transcript::strip_blank_markers;
 use hushpen_engine::{ImportProgress, ImportSpec, JobOutcome, ProgressSink, Transcription};
-use hushpen_store::dictionary as store_dictionary;
 use hushpen_store::history::{self, Row, Segment};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -608,10 +607,7 @@ impl Import {
     }
 
     fn dictionary(&self) -> Vec<dictionary::Entry> {
-        store_dictionary::list(&self.storage.database).unwrap_or_else(|error| {
-            log::warn!("the dictionary could not be read: {error}");
-            Vec::new()
-        })
+        crate::dictionary::dictation_entries(&self.storage)
     }
 
     fn fail(&mut self, index: usize, code: &str, message: String) {
