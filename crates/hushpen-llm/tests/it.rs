@@ -333,6 +333,50 @@ fn s1_mini_cleans_with_its_trained_prompt() {
     );
 }
 
+/// Each cleanup profile reaches S1-mini only as its line of trained values, and every one of
+/// them still cleans the rule text a dictation hands it. The outputs print, so a run shows how
+/// the profiles read.
+#[test]
+fn s1_mini_cleans_with_the_control_line_of_each_profile() {
+    use hushpen_core::llm_prompt::{Profile, PromptFamily, Target, Tuned, cleanup_prompt};
+    const SENTENCES: [&str; 5] = [
+        "um so I think we should uh meet on tuesday no wait wednesday at like three pm",
+        "hey can you send me the report by friday thanks",
+        "hi sarah I wanted to follow up on the budget meeting let me know if monday works best \
+         regards tom",
+        "for the trip we need uh tickets passports and the hotel booking",
+        "so basically the the build failed because uh the cache was stale",
+    ];
+    let mut worker = Worker::start();
+    worker.load(&model_file(S1_MINI), 300);
+    let mut job = 100;
+    let mut wrong = Vec::new();
+    for profile in Profile::ALL {
+        let sent = cleanup_prompt(
+            Target::Local(PromptFamily::S1Mini),
+            &Tuned::built_in(profile),
+            &[],
+        );
+        for raw in SENTENCES {
+            let text = &hushpen_core::cleanup::clean(raw, &Default::default());
+            job += 1;
+            worker.cleanup_with(job, &sent.job_system(), text, 160);
+            let (cleaned, stats) = worker.result(job);
+            eprintln!(
+                "{} | {text} => {cleaned:?} ({} ms)",
+                profile.key(),
+                stats.ms
+            );
+            let filler = words(&cleaned)
+                .iter()
+                .any(|word| word == "um" || word == "uh");
+            if filler || !passes_output_guards(text, &cleaned) {
+                wrong.push(format!("{}: {cleaned:?}", profile.key()));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "not cleaned: {wrong:#?}");
+}
 fn keeps_only_the_correction(model: &std::path::Path) {
     let mut worker = Worker::start();
     worker.load(model, 300);
