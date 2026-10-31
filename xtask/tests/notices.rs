@@ -15,7 +15,7 @@ fn notices() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
-const SECTIONS: [(&str, &str); 15] = [
+const SECTIONS: [(&str, &str); 16] = [
     ("whisper-cpp", "whisper.cpp"),
     ("llama-cpp", "llama.cpp"),
     ("ggml", "ggml"),
@@ -27,6 +27,7 @@ const SECTIONS: [(&str, &str); 15] = [
     ("sqlite", "SQLite"),
     ("inter", "Inter"),
     ("whisper-models", "Whisper models"),
+    ("parakeet-model", "Parakeet speech model"),
     ("silero-vad", "Silero VAD"),
     ("llm-models", "LLM models"),
     ("kokoro-model", "Kokoro voice model"),
@@ -63,6 +64,9 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
         "Chatterbox Turbo",
         "Resemble AI",
         "Mark Borgerding",
+        "NVIDIA Parakeet TDT 0.6B v3",
+        "Creative Commons Attribution 4.0 International",
+        "Q4_K quantized conversion",
     ] {
         assert!(html.contains(needle), "the notices lack {needle:?}");
     }
