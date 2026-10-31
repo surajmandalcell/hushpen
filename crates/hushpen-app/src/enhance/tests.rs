@@ -513,3 +513,52 @@ fn the_search_gives_the_dictionary_prompt_to_whisper_and_not_to_parakeet(cx: &mu
         );
     }
 }
+
+#[gpui_kit::test]
+fn the_search_and_the_reading_use_the_words_of_the_packs_that_are_on(cx: &mut TestAppContext) {
+    use crate::controller::testkit::{PARAKEET_ID, SMALL_ID, rig as speech_rig};
+    use crate::dictionary::packs;
+    let speech = speech_rig(cx, &[PARAKEET_ID, SMALL_ID], SMALL_ID);
+    hushpen_store::dictionary::add(&speech.storage.database, "Hushpen", None).unwrap();
+    let pack = &packs::all()[0];
+    speech
+        .storage
+        .settings
+        .set(packs::SETTING, packs::turned(&speech.storage, pack.id, true))
+        .unwrap();
+    let runs = Arc::default();
+    let tuning = cx.new(|cx| {
+        let mut tuning = Tuning::new(
+            Parts {
+                storage: Rc::clone(&speech.storage),
+                mic: speech.mic.clone(),
+                run: runner(Ear::Same, Arc::clone(&runs)),
+                spawn: Rc::new(|job| {
+                    job();
+                    Ok(())
+                }),
+            },
+            cx,
+        );
+        tuning.attach_models(speech.models.clone());
+        tuning
+    });
+    let reading = tuning.read_with(cx, |me, _| me.reading());
+    let last = reading.last().unwrap();
+    assert!(last.starts_with("Hushpen, "), "{last}");
+    tuning.update(cx, |me, cx| {
+        me.keep_samples(tone()).unwrap();
+        me.start_search(None, cx);
+    });
+    cx.run_until_parked();
+    let specs = runs.lock().unwrap().clone();
+    assert!(!specs.is_empty());
+    let first_word = pack.words()[0];
+    assert!(
+        specs.iter().all(|spec| spec
+            .prompt
+            .as_deref()
+            .is_some_and(|prompt| prompt.contains("Hushpen") && prompt.contains(first_word))),
+        "{first_word}"
+    );
+}
