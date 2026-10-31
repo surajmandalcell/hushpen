@@ -108,6 +108,12 @@ pub enum Scene {
     ModelsBottom,
     /// The details sheet of the default speech model.
     ModelsDetails,
+    /// "dictation" in the Models search field: rows from two sections, and the third hidden.
+    ModelsSearch,
+    /// A Models query no model matches.
+    ModelsNoMatch,
+    /// The Home language pop-up, which has a hundred options, so it has a search field.
+    Menu(MenuShot),
     About,
     /// About scrolled to the end: the links and the copyright line.
     AboutBottom,
@@ -142,6 +148,35 @@ pub enum SettingsShot {
     Search,
     /// A query no row matches.
     NoMatch,
+    /// "memory" in the search field with the default idle policy of this system.
+    Memory,
+    /// "memory" with Keep in memory: the Idle time row is hidden.
+    MemoryKeep,
+    /// "memory" with Unload: the longest line under the policy row.
+    MemoryUnload,
+}
+
+/// What an open long pop-up shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuShot {
+    /// Just opened: the empty search field above the first eight options.
+    Open,
+    /// "ch" in the field: the four languages that have it.
+    Query,
+    /// A query no option has: the one disabled row.
+    NoMatch,
+}
+
+impl MenuShot {
+    pub const ALL: [MenuShot; 3] = [MenuShot::Open, MenuShot::Query, MenuShot::NoMatch];
+
+    fn key(self) -> &'static str {
+        match self {
+            MenuShot::Open => "open",
+            MenuShot::Query => "search",
+            MenuShot::NoMatch => "empty",
+        }
+    }
 }
 
 /// What a Manual baseline shows.
@@ -157,16 +192,39 @@ pub enum FilesShot {
     ReadAloud,
     /// Read aloud on Chatterbox Turbo with a cloned default voice and the voice library row.
     ReadChatterbox,
+    /// Read aloud on Kokoro with Heart blended with 30% of Adam: the Mix with and Mix rows.
+    ReadKokoroMix,
+    /// The open Mix with pop-up: nineteen voices, so it has a search field.
+    ReadKokoroMixMenu,
 }
 
 impl FilesShot {
-    pub const ALL: [FilesShot; 5] = [
+    pub const ALL: [FilesShot; 7] = [
         FilesShot::Empty,
         FilesShot::DragOver,
         FilesShot::Queue,
         FilesShot::ReadAloud,
         FilesShot::ReadChatterbox,
+        FilesShot::ReadKokoroMix,
+        FilesShot::ReadKokoroMixMenu,
     ];
+
+    fn reads_aloud(self) -> bool {
+        matches!(
+            self,
+            FilesShot::ReadAloud
+                | FilesShot::ReadChatterbox
+                | FilesShot::ReadKokoroMix
+                | FilesShot::ReadKokoroMixMenu
+        )
+    }
+
+    fn on_kokoro(self) -> bool {
+        matches!(
+            self,
+            FilesShot::ReadKokoroMix | FilesShot::ReadKokoroMixMenu
+        )
+    }
 
     fn name(self) -> &'static str {
         match self {
@@ -175,17 +233,22 @@ impl FilesShot {
             FilesShot::Queue => "files-queue",
             FilesShot::ReadAloud => "files-read-aloud",
             FilesShot::ReadChatterbox => "files-read-aloud-chatterbox",
+            FilesShot::ReadKokoroMix => "files-read-aloud-kokoro-mix",
+            FilesShot::ReadKokoroMixMenu => "files-read-aloud-kokoro-mix-menu",
         }
     }
 }
 
 impl SettingsShot {
-    pub const ALL: [SettingsShot; 5] = [
+    pub const ALL: [SettingsShot; 8] = [
         SettingsShot::Top,
         SettingsShot::Middle,
         SettingsShot::Bottom,
         SettingsShot::Search,
         SettingsShot::NoMatch,
+        SettingsShot::Memory,
+        SettingsShot::MemoryKeep,
+        SettingsShot::MemoryUnload,
     ];
 
     fn key(self) -> &'static str {
@@ -195,6 +258,9 @@ impl SettingsShot {
             SettingsShot::Bottom => "bottom",
             SettingsShot::Search => "search",
             SettingsShot::NoMatch => "search-empty",
+            SettingsShot::Memory => "memory",
+            SettingsShot::MemoryKeep => "memory-keep",
+            SettingsShot::MemoryUnload => "memory-unload",
         }
     }
 }
@@ -217,6 +283,9 @@ impl Scene {
             Scene::Models => "models".into(),
             Scene::ModelsBottom => "models-bottom".into(),
             Scene::ModelsDetails => "models-details".into(),
+            Scene::ModelsSearch => "models-search".into(),
+            Scene::ModelsNoMatch => "models-search-empty".into(),
+            Scene::Menu(shot) => format!("menu-{}", shot.key()),
             Scene::About => "about".into(),
             Scene::AboutBottom => "about-bottom".into(),
             Scene::AboutChecked => "about-checked".into(),
@@ -249,10 +318,13 @@ impl Scene {
             Scene::Models,
             Scene::ModelsBottom,
             Scene::ModelsDetails,
+            Scene::ModelsSearch,
+            Scene::ModelsNoMatch,
             Scene::About,
             Scene::AboutBottom,
             Scene::AboutChecked,
         ];
+        scenes.extend(MenuShot::ALL.into_iter().map(Scene::Menu));
         scenes.extend(FilesShot::ALL.into_iter().map(Scene::Files));
         scenes.extend(SettingsShot::ALL.into_iter().map(Scene::Settings));
         scenes.push(Scene::EndpointFailure);
@@ -276,7 +348,11 @@ impl Scene {
     pub fn has_rows(self) -> bool {
         !matches!(
             self,
-            Scene::Shell | Scene::Home | Scene::Onboarding(_) | Scene::PermissionsChanged
+            Scene::Shell
+                | Scene::Home
+                | Scene::Menu(_)
+                | Scene::Onboarding(_)
+                | Scene::PermissionsChanged
         )
     }
 
@@ -413,6 +489,19 @@ fn seed_chatterbox(storage: &Storage) {
         .expect("store the default voice");
 }
 
+/// Read aloud on Kokoro: Heart with 30% of Adam.
+fn seed_kokoro_mix(storage: &Storage) {
+    let settings = &storage.settings;
+    for (key, value) in [
+        ("readAloud.engine", json!("kokoro")),
+        ("readAloud.voice.kokoro", json!("af_heart")),
+        ("readAloud.voice.kokoroMix", json!("am_adam")),
+        ("readAloud.voice.kokoroMixPercent", json!(30)),
+    ] {
+        settings.set(key, value).expect("store a Kokoro setting");
+    }
+}
+
 fn seed_dictionary(storage: &Storage) {
     for (phrase, heard) in [
         ("Hushpen", "hush pen"),
@@ -483,6 +572,27 @@ impl SpeechEngine for ChatterboxVoices {
             quality: VoiceQuality::Default,
         });
         Ok(std::iter::once(built_in_voice()).chain(cloned).collect())
+    }
+
+    fn speak(&self, _: &str, _: Option<&str>, _: f32) -> Result<Pcm, SpeechError> {
+        Err(SpeechError::failed("the scenes play no sound"))
+    }
+}
+
+/// Kokoro as the app lists it: the English voices of the model.
+struct KokoroVoices;
+
+impl SpeechEngine for KokoroVoices {
+    fn voices(&self) -> Result<Vec<Voice>, SpeechError> {
+        Ok(hushpen_core::kokoro::VOICES
+            .iter()
+            .map(|voice| Voice {
+                id: voice.id.into(),
+                name: voice.name(),
+                language: voice.language().into(),
+                quality: VoiceQuality::Default,
+            })
+            .collect())
     }
 
     fn speak(&self, _: &str, _: Option<&str>, _: f32) -> Result<Pcm, SpeechError> {
@@ -633,8 +743,13 @@ fn click_scrolled(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle
 /// About reads the same in every baseline.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
-/// The main window showing `scene` in `appearance`.
+/// The main window at its least height showing `scene` in `appearance`.
 pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
+    capture_at(scene, appearance, space::WINDOW_HEIGHT)
+}
+
+/// The main window `height` points tall showing `scene` in `appearance`.
+pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
     let _guard = ONE_AT_A_TIME
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -680,7 +795,7 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
         }
         Scene::Files(shot) => {
             seed_model(&storage);
-            if matches!(shot, FilesShot::ReadAloud | FilesShot::ReadChatterbox) {
+            if shot.reads_aloud() {
                 storage
                     .settings
                     .set("files.mode", json!("readAloud"))
@@ -688,6 +803,9 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
             }
             if shot == FilesShot::ReadChatterbox {
                 seed_chatterbox(&storage);
+            }
+            if shot.on_kokoro() {
+                seed_kokoro_mix(&storage);
             }
         }
         Scene::Voices | Scene::VoicesAdd => {
@@ -697,12 +815,29 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
                 .expect("store the mode");
             seed_chatterbox(&storage);
         }
-        Scene::Models | Scene::ModelsBottom | Scene::ModelsDetails => seed_model(&storage),
+        Scene::Models
+        | Scene::ModelsBottom
+        | Scene::ModelsDetails
+        | Scene::ModelsSearch
+        | Scene::ModelsNoMatch => seed_model(&storage),
         // Automatic names the CPU count, which differs between machines.
-        Scene::Settings(_) => storage
-            .settings
-            .set("engine.threads", json!(4))
-            .expect("store the thread count"),
+        Scene::Settings(shot) => {
+            storage
+                .settings
+                .set("engine.threads", json!(4))
+                .expect("store the thread count");
+            let policy = match shot {
+                SettingsShot::MemoryKeep => Some("keep"),
+                SettingsShot::MemoryUnload => Some("unload"),
+                _ => None,
+            };
+            if let Some(policy) = policy {
+                storage
+                    .settings
+                    .set("engine.idlePolicy", json!(policy))
+                    .expect("store the idle policy");
+            }
+        }
         Scene::EnhanceTune | Scene::EnhanceFind => {
             let settings = &storage.settings;
             settings
@@ -716,237 +851,229 @@ pub fn capture(scene: Scene, appearance: Appearance) -> Shot {
     }
     let mut cx = headless_in(appearance);
     let handle = cx
-        .open_window(
-            size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
-            |window, cx| {
-                let shell = cx.new(|cx| Shell::new(window, cx));
-                let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(OneMicrophone), cx));
-                mic.update(cx, |mic, cx| mic.refresh(cx));
-                let models = cx.new(|cx| {
-                    Models::new(
-                        Rc::clone(&storage),
-                        hushpen_core::catalog::embedded(),
-                        models::Machine {
-                            opener: Rc::new(SystemOpener),
-                        },
-                        models::production_transfer(),
-                        models::thread_spawner(),
-                        None,
-                        cx,
-                    )
-                });
-                models.update(cx, |models, cx| models.attach_search(window, cx));
-                let engine = Engine::new(Arc::new(|_, _| JobOutcome::Cancelled), Rc::new(|| None));
-                let controller = cx.new(|cx| {
-                    Controller::new(
-                        Rc::clone(&storage),
-                        mic.clone(),
-                        models.clone(),
-                        engine,
-                        models::thread_spawner(),
-                        monotonic_clock(),
-                        cx,
-                    )
-                });
-                controller.update(cx, |controller, cx| {
-                    if mac {
-                        controller.attach_permissions(Arc::new(Revoked), cx);
-                    }
-                    controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
-                });
-                match scene {
-                    Scene::Onboarding(_) | Scene::PermissionsChanged => {
-                        let onboarding = cx.new(|cx| {
-                            Onboarding::new(
-                                OnboardingParts {
-                                    storage: Rc::clone(&storage),
-                                    mic,
-                                    models,
-                                    controller,
-                                    guide: Rc::new(SystemGuide),
-                                    platform: if mac {
-                                        Platform::MacOs
-                                    } else {
-                                        Platform::Linux
-                                    },
-                                    session: Session::X11,
-                                },
-                                cx,
-                            )
-                        });
-                        shell.update(cx, |shell, cx| shell.attach_onboarding(onboarding, cx));
-                    }
-                    Scene::Shell => {}
-                    _ => {
-                        let dictation = cx.new(|cx| {
-                            Dictation::new(
-                                Rc::clone(&storage),
-                                models.clone(),
-                                controller.clone(),
-                                cx,
-                            )
-                        });
-                        let shortcuts =
-                            cx.new(|cx| Shortcuts::new(Rc::clone(&storage), Platform::Linux, cx));
-                        shortcuts.update(cx, |shortcuts, cx| {
-                            shortcuts.attach_keys(Ok(Rc::new(QuietKeys)), cx)
-                        });
-                        let settings = cx.new(|cx| {
-                            Settings::new(
-                                SettingsParts {
-                                    storage: Rc::clone(&storage),
-                                    mic: mic.clone(),
-                                    login: None,
-                                    default_data_dir: None,
-                                    restart: None,
-                                },
-                                cx,
-                            )
-                        });
-                        let updater = cx.new(|cx| {
-                            Updater::new(
-                                UpdaterParts {
-                                    storage: Rc::clone(&storage),
-                                    checker: Arc::new(NoFeed),
-                                    opener: Rc::new(SystemOpener),
-                                    installer: Arc::new(SystemInstaller::detect(
-                                        storage.data.logs_dir(),
-                                    )),
-                                    quit: Rc::new(|cx| cx.quit()),
-                                    clock: wall_clock(),
-                                    current: Version::parse("2.0.0").expect("a version"),
-                                },
-                                cx,
-                            )
-                        });
-                        let tuning = cx.new(|cx| {
-                            Tuning::new(
-                                EnhanceParts {
-                                    storage: Rc::clone(&storage),
-                                    mic: mic.clone(),
-                                    run: Arc::new(|_, _| JobOutcome::Cancelled),
-                                    spawn: models::thread_spawner(),
-                                },
-                                cx,
-                            )
-                        });
-                        settings.update(cx, |settings, cx| {
-                            settings.attach_updater(updater.clone(), cx);
-                            settings.attach_search(window, cx);
-                            settings.attach_tuning(tuning, cx);
-                        });
-                        if matches!(scene, Scene::EndpointFailure) {
-                            let form = cx.new(|cx| {
-                                EndpointForm::new(
-                                    Rc::clone(&storage),
-                                    Arc::new(UreqTransport),
-                                    window,
-                                    cx,
-                                )
-                            });
-                            settings.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
-                        }
-                        // A fixed commit and date, so the baselines do not change with each commit.
-                        let build = Build {
-                            commit: Some("1a2b3c4"),
-                            date: Some("2026-05-15"),
-                            ..Build::current()
-                        };
-                        let about = cx.new(|cx| {
-                            About::new(Rc::clone(&storage), Rc::new(SystemOpener), build, cx)
-                        });
-                        about.update(cx, |about, cx| {
-                            about.attach_models(models.clone(), cx);
-                            about.attach_updater(updater, cx);
-                        });
-                        let history = cx.new(|cx| {
-                            History::new(Rc::clone(&storage), controller.clone(), window, cx)
-                        });
-                        let dictionary =
-                            cx.new(|cx| Dictionary::new(Rc::clone(&storage), window, cx));
-                        let manual =
-                            matches!(scene, Scene::Files(_) | Scene::Voices | Scene::VoicesAdd);
-                        let files = manual.then(|| {
-                            let import = cx.new(|cx| {
-                                Import::new(
-                                    ImportParts {
-                                        storage: Rc::clone(&storage),
-                                        models: models.clone(),
-                                        controller: controller.clone(),
-                                        run: queue_runner(),
-                                        spawn: models::thread_spawner(),
-                                        // A still clock: the time left reads the same each run.
-                                        clock: Rc::new(|| 0),
-                                    },
-                                    cx,
-                                )
-                            });
-                            if matches!(scene, Scene::Files(FilesShot::Queue)) {
-                                let folder = data.join("files");
-                                std::fs::create_dir_all(&folder).expect("create the files folder");
-                                let paths = QUEUE_FILES
-                                    .iter()
-                                    .map(|(name, bytes)| {
-                                        let path = folder.join(name);
-                                        std::fs::File::create(&path)
-                                            .and_then(|file| file.set_len(*bytes))
-                                            .expect("write a file");
-                                        path
-                                    })
-                                    .collect();
-                                import.update(cx, |import, cx| import.add_paths(paths, cx));
-                            }
-                            let voices: Arc<dyn SpeechEngine> = Arc::new(FixedVoices);
-                            let chatterbox: Arc<dyn SpeechEngine> =
-                                Arc::new(ChatterboxVoices(storage.data.voices_dir()));
-                            let library = cx.new(|cx| {
-                                VoiceLibrary::new(
-                                    VoiceParts {
-                                        storage: Rc::clone(&storage),
-                                        mic: Some(mic.clone()),
-                                        spawn: models::thread_spawner(),
-                                        silent: true,
-                                    },
-                                    window,
-                                    cx,
-                                )
-                            });
-                            let read = cx.new(|cx| {
-                                ReadAloud::new(
-                                    ReadParts {
-                                        storage: Rc::clone(&storage),
-                                        system: Arc::clone(&voices),
-                                        kokoro: voices,
-                                        turbo: Arc::clone(&chatterbox),
-                                        nano: chatterbox,
-                                        library: Some(library),
-                                        spawn: models::thread_spawner(),
-                                        silent: true,
-                                    },
-                                    window,
-                                    cx,
-                                )
-                            });
-                            cx.new(|cx| Files::new(Rc::clone(&storage), import, Some(read), cx))
-                        });
-                        shell.update(cx, |shell, cx| {
-                            shell.attach_mic(mic, cx);
-                            shell.attach_dictation(dictation, cx);
-                            shell.attach_shortcuts(shortcuts, cx);
-                            shell.attach_settings(settings, cx);
-                            shell.attach_about(about, cx);
-                            shell.attach_history(history, cx);
-                            shell.attach_dictionary(dictionary, cx);
-                            if let Some(files) = files {
-                                shell.attach_files(files, cx);
-                            }
-                            shell.attach_models(models, cx);
-                        });
-                    }
+        .open_window(size(px(space::WINDOW_WIDTH), px(height)), |window, cx| {
+            let shell = cx.new(|cx| Shell::new(window, cx));
+            let mic = cx.new(|cx| Mic::new(Rc::clone(&storage), Arc::new(OneMicrophone), cx));
+            mic.update(cx, |mic, cx| mic.refresh(cx));
+            let models = cx.new(|cx| {
+                Models::new(
+                    Rc::clone(&storage),
+                    hushpen_core::catalog::embedded(),
+                    models::Machine {
+                        opener: Rc::new(SystemOpener),
+                    },
+                    models::production_transfer(),
+                    models::thread_spawner(),
+                    None,
+                    cx,
+                )
+            });
+            models.update(cx, |models, cx| models.attach_search(window, cx));
+            let engine = Engine::new(Arc::new(|_, _| JobOutcome::Cancelled), Rc::new(|| None));
+            let controller = cx.new(|cx| {
+                Controller::new(
+                    Rc::clone(&storage),
+                    mic.clone(),
+                    models.clone(),
+                    engine,
+                    models::thread_spawner(),
+                    monotonic_clock(),
+                    cx,
+                )
+            });
+            controller.update(cx, |controller, cx| {
+                if mac {
+                    controller.attach_permissions(Arc::new(Revoked), cx);
                 }
-                cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
-            },
-        )
+                controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
+            });
+            match scene {
+                Scene::Onboarding(_) | Scene::PermissionsChanged => {
+                    let onboarding = cx.new(|cx| {
+                        Onboarding::new(
+                            OnboardingParts {
+                                storage: Rc::clone(&storage),
+                                mic,
+                                models,
+                                controller,
+                                guide: Rc::new(SystemGuide),
+                                platform: if mac {
+                                    Platform::MacOs
+                                } else {
+                                    Platform::Linux
+                                },
+                                session: Session::X11,
+                            },
+                            cx,
+                        )
+                    });
+                    shell.update(cx, |shell, cx| shell.attach_onboarding(onboarding, cx));
+                }
+                Scene::Shell => {}
+                _ => {
+                    let dictation = cx.new(|cx| {
+                        Dictation::new(Rc::clone(&storage), models.clone(), controller.clone(), cx)
+                    });
+                    let shortcuts =
+                        cx.new(|cx| Shortcuts::new(Rc::clone(&storage), Platform::Linux, cx));
+                    shortcuts.update(cx, |shortcuts, cx| {
+                        shortcuts.attach_keys(Ok(Rc::new(QuietKeys)), cx)
+                    });
+                    let settings = cx.new(|cx| {
+                        Settings::new(
+                            SettingsParts {
+                                storage: Rc::clone(&storage),
+                                mic: mic.clone(),
+                                login: None,
+                                default_data_dir: None,
+                                restart: None,
+                            },
+                            cx,
+                        )
+                    });
+                    let updater = cx.new(|cx| {
+                        Updater::new(
+                            UpdaterParts {
+                                storage: Rc::clone(&storage),
+                                checker: Arc::new(NoFeed),
+                                opener: Rc::new(SystemOpener),
+                                installer: Arc::new(SystemInstaller::detect(
+                                    storage.data.logs_dir(),
+                                )),
+                                quit: Rc::new(|cx| cx.quit()),
+                                clock: wall_clock(),
+                                current: Version::parse("2.0.0").expect("a version"),
+                            },
+                            cx,
+                        )
+                    });
+                    let tuning = cx.new(|cx| {
+                        Tuning::new(
+                            EnhanceParts {
+                                storage: Rc::clone(&storage),
+                                mic: mic.clone(),
+                                run: Arc::new(|_, _| JobOutcome::Cancelled),
+                                spawn: models::thread_spawner(),
+                            },
+                            cx,
+                        )
+                    });
+                    settings.update(cx, |settings, cx| {
+                        settings.attach_updater(updater.clone(), cx);
+                        settings.attach_search(window, cx);
+                        settings.attach_tuning(tuning, cx);
+                    });
+                    if matches!(scene, Scene::EndpointFailure) {
+                        let form = cx.new(|cx| {
+                            EndpointForm::new(
+                                Rc::clone(&storage),
+                                Arc::new(UreqTransport),
+                                window,
+                                cx,
+                            )
+                        });
+                        settings.update(cx, |settings, cx| settings.attach_endpoint(form, cx));
+                    }
+                    // A fixed commit and date, so the baselines do not change with each commit.
+                    let build = Build {
+                        commit: Some("1a2b3c4"),
+                        date: Some("2026-05-15"),
+                        ..Build::current()
+                    };
+                    let about = cx.new(|cx| {
+                        About::new(Rc::clone(&storage), Rc::new(SystemOpener), build, cx)
+                    });
+                    about.update(cx, |about, cx| {
+                        about.attach_models(models.clone(), cx);
+                        about.attach_updater(updater, cx);
+                    });
+                    let history = cx.new(|cx| {
+                        History::new(Rc::clone(&storage), controller.clone(), window, cx)
+                    });
+                    let dictionary = cx.new(|cx| Dictionary::new(Rc::clone(&storage), window, cx));
+                    let manual =
+                        matches!(scene, Scene::Files(_) | Scene::Voices | Scene::VoicesAdd);
+                    let files = manual.then(|| {
+                        let import = cx.new(|cx| {
+                            Import::new(
+                                ImportParts {
+                                    storage: Rc::clone(&storage),
+                                    models: models.clone(),
+                                    controller: controller.clone(),
+                                    run: queue_runner(),
+                                    spawn: models::thread_spawner(),
+                                    // A still clock: the time left reads the same each run.
+                                    clock: Rc::new(|| 0),
+                                },
+                                cx,
+                            )
+                        });
+                        if matches!(scene, Scene::Files(FilesShot::Queue)) {
+                            let folder = data.join("files");
+                            std::fs::create_dir_all(&folder).expect("create the files folder");
+                            let paths = QUEUE_FILES
+                                .iter()
+                                .map(|(name, bytes)| {
+                                    let path = folder.join(name);
+                                    std::fs::File::create(&path)
+                                        .and_then(|file| file.set_len(*bytes))
+                                        .expect("write a file");
+                                    path
+                                })
+                                .collect();
+                            import.update(cx, |import, cx| import.add_paths(paths, cx));
+                        }
+                        let voices: Arc<dyn SpeechEngine> = Arc::new(FixedVoices);
+                        let kokoro: Arc<dyn SpeechEngine> = Arc::new(KokoroVoices);
+                        let chatterbox: Arc<dyn SpeechEngine> =
+                            Arc::new(ChatterboxVoices(storage.data.voices_dir()));
+                        let library = cx.new(|cx| {
+                            VoiceLibrary::new(
+                                VoiceParts {
+                                    storage: Rc::clone(&storage),
+                                    mic: Some(mic.clone()),
+                                    spawn: models::thread_spawner(),
+                                    silent: true,
+                                },
+                                window,
+                                cx,
+                            )
+                        });
+                        let read = cx.new(|cx| {
+                            ReadAloud::new(
+                                ReadParts {
+                                    storage: Rc::clone(&storage),
+                                    system: voices,
+                                    kokoro,
+                                    turbo: Arc::clone(&chatterbox),
+                                    nano: chatterbox,
+                                    library: Some(library),
+                                    spawn: models::thread_spawner(),
+                                    silent: true,
+                                },
+                                window,
+                                cx,
+                            )
+                        });
+                        cx.new(|cx| Files::new(Rc::clone(&storage), import, Some(read), cx))
+                    });
+                    shell.update(cx, |shell, cx| {
+                        shell.attach_mic(mic, cx);
+                        shell.attach_dictation(dictation, cx);
+                        shell.attach_shortcuts(shortcuts, cx);
+                        shell.attach_settings(settings, cx);
+                        shell.attach_about(about, cx);
+                        shell.attach_history(history, cx);
+                        shell.attach_dictionary(dictionary, cx);
+                        if let Some(files) = files {
+                            shell.attach_files(files, cx);
+                        }
+                        shell.attach_models(models, cx);
+                    });
+                }
+            }
+            cx.new(|cx| gpui_kit::base::Root::new(shell, window, cx))
+        })
         .expect("open the headless window");
     let handle: gpui_kit::AnyWindowHandle = handle.into();
     // The microphone list is read on a thread and arrives through a channel.
@@ -1021,7 +1148,12 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             .expect("drag a file over the window");
             cx.run_until_parked();
         }
-        Scene::Files(FilesShot::ReadAloud | FilesShot::ReadChatterbox) => {
+        Scene::Files(
+            shot @ (FilesShot::ReadAloud
+            | FilesShot::ReadChatterbox
+            | FilesShot::ReadKokoroMix
+            | FilesShot::ReadKokoroMixMenu),
+        ) => {
             click(cx, handle, "sidebar.files");
             click(cx, handle, "read.text");
             // The text area lets go of the focus, so the baseline shows it at rest.
@@ -1031,6 +1163,9 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             })
             .expect("type the text");
             cx.run_until_parked();
+            if shot == FilesShot::ReadKokoroMixMenu {
+                click(cx, handle, "read.mix");
+            }
         }
         Scene::Files(FilesShot::Queue) => {
             click(cx, handle, "sidebar.files");
@@ -1069,6 +1204,32 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
                 .expect("a default speech model");
             click(cx, handle, &format!("models.info.{index}"));
         }
+        Scene::ModelsSearch | Scene::ModelsNoMatch => {
+            click(cx, handle, "sidebar.models");
+            click(cx, handle, "models.search");
+            let query = if matches!(scene, Scene::ModelsSearch) {
+                "dictation"
+            } else {
+                "zebra"
+            };
+            cx.update_window(handle, |_, window, cx| window.input(query, cx))
+                .expect("type the query");
+            cx.run_until_parked();
+        }
+        Scene::Menu(shot) => {
+            click(cx, handle, "home.language");
+            // The search field of the open menu already has the focus.
+            let query = match shot {
+                MenuShot::Open => None,
+                MenuShot::Query => Some("ch"),
+                MenuShot::NoMatch => Some("zebra"),
+            };
+            if let Some(query) = query {
+                cx.update_window(handle, |_, window, cx| window.input(query, cx))
+                    .expect("type the query");
+                cx.run_until_parked();
+            }
+        }
         Scene::About => click(cx, handle, "sidebar.about"),
         Scene::AboutBottom => {
             click(cx, handle, "sidebar.about");
@@ -1086,6 +1247,9 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
                 SettingsShot::Bottom => scroll_by(cx, handle, -5_000.0),
                 SettingsShot::Search => type_search(cx, handle, "audio"),
                 SettingsShot::NoMatch => type_search(cx, handle, "zebra"),
+                SettingsShot::Memory | SettingsShot::MemoryKeep | SettingsShot::MemoryUnload => {
+                    type_search(cx, handle, "memory")
+                }
             }
         }
         Scene::ShortcutRecorder => {

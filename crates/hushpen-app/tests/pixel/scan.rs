@@ -212,10 +212,56 @@ fn lines_of(image: &RgbaImage) -> Vec<Line> {
     found
 }
 
+/// The surface of each open pop-up menu: its list, the search field above it, and the 4 px of
+/// padding with the hairline around both.
+fn menu_surfaces(nodes: &[Node]) -> Vec<Rect> {
+    const PADDING: f32 = 5.0;
+    nodes
+        .iter()
+        .filter(|node| node.visible && node.is("ListBox") && node.id.ends_with(".list"))
+        .map(|list| {
+            let search = format!("{}.search", list.id);
+            let top = nodes
+                .iter()
+                .find(|node| node.visible && node.id == search)
+                .map_or(list.rect.y, |field| field.rect.y);
+            Rect {
+                x: list.rect.x - PADDING,
+                y: top - PADDING,
+                w: list.rect.w + 2.0 * PADDING,
+                h: list.rect.bottom() + PADDING - (top - PADDING),
+            }
+        })
+        .collect()
+}
+
 /// Why a line may be there, or `None` when it may not.
 fn reason(line: Line, nodes: &[Node]) -> Option<&'static str> {
     const TOLERANCE: f32 = 1.5;
     let visible = || nodes.iter().filter(|node| node.visible);
+    // An open menu floats over the page: it has a hairline edge, and it hides the end of the
+    // lines of the group under it.
+    for menu in menu_surfaces(nodes) {
+        let (low, high, start, end) = if line.horizontal {
+            (menu.y, menu.bottom(), menu.x, menu.right())
+        } else {
+            (menu.x, menu.right(), menu.y, menu.bottom())
+        };
+        let (near_low, near_high) = (
+            (line.at - low).abs() <= TOLERANCE + 1.0,
+            (line.at - high).abs() <= TOLERANCE + 1.0,
+        );
+        if (near_low || near_high) && line.from >= start - TOLERANCE && line.to <= end + TOLERANCE {
+            return Some("the edge of a menu");
+        }
+        if line.horizontal
+            && line.at > low
+            && line.at < high
+            && ((line.to - start).abs() <= TOLERANCE || (line.from - end).abs() <= TOLERANCE)
+        {
+            return Some("a group line that an open menu cuts");
+        }
+    }
     if visible()
         .filter(|node| node.is("Slider"))
         .any(|node| node.rect.inflated(BLEED).has(line.from + 1.0, line.at))
