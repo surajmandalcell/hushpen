@@ -12,7 +12,7 @@ fn a_missing_file_is_created_with_defaults() {
     let tmp = tempfile::tempdir().unwrap();
     let store = SettingsStore::open(tmp.path()).unwrap();
     let doc = read(&tmp.path().join("settings.json"));
-    assert_eq!(doc["schemaVersion"], 1);
+    assert_eq!(doc["schemaVersion"], 2);
     assert!(doc["values"].is_object());
     assert_eq!(store.get("dictation.maxMinutes"), Some(json!(6)));
     assert_eq!(store.get("dictation.language"), Some(json!("auto")));
@@ -67,7 +67,7 @@ fn thirty_two_parallel_writes_leave_one_complete_file_and_no_temp_file() {
     }
 
     let doc = read(&tmp.path().join("settings.json"));
-    assert_eq!(doc["schemaVersion"], 1);
+    assert_eq!(doc["schemaVersion"], 2);
     let minutes = doc["values"]["dictation.maxMinutes"].as_i64().unwrap();
     assert!((2..34).contains(&minutes));
     assert_eq!(doc["values"]["audio.cueVolume"], json!(0.25));
@@ -98,7 +98,7 @@ fn a_corrupt_file_is_backed_up_and_defaults_return() {
     );
     let suffix = backups[0].trim_start_matches("settings.json.corrupt-");
     assert!(suffix.parse::<u64>().is_ok(), "{suffix}");
-    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 1);
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 2);
 
     drop(store);
     SettingsStore::open(tmp.path()).unwrap();
@@ -270,4 +270,59 @@ fn a_refused_position_keeps_the_dragged_position() {
         store.get("overlay.customPos"),
         Some(json!({"x": 1.0, "y": 2.0}))
     );
+}
+
+fn open_stored(version: i64, values: Value) -> (tempfile::TempDir, SettingsStore) {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("settings.json"),
+        json!({"schemaVersion": version, "values": values}).to_string(),
+    )
+    .unwrap();
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    (tmp, store)
+}
+
+#[test]
+fn an_old_default_boost_and_volume_take_the_new_default_once() {
+    let (tmp, store) = open_stored(1, json!({"audio.inputGain": 1.0, "audio.cueVolume": 0.5}));
+    assert_eq!(store.get("audio.inputGain"), Some(json!(1.5)));
+    assert_eq!(store.get("audio.cueVolume"), Some(json!(0.25)));
+    let doc = read(&tmp.path().join("settings.json"));
+    assert_eq!(doc["schemaVersion"], 2);
+    assert_eq!(doc["values"]["audio.inputGain"], json!(1.5));
+
+    // After the migration, 100% is a choice and stays.
+    store.set("audio.inputGain", json!(1.0)).unwrap();
+    drop(store);
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    assert_eq!(store.get("audio.inputGain"), Some(json!(1.0)));
+}
+
+#[test]
+fn a_boost_or_volume_the_user_chose_survives_the_migration() {
+    let (_tmp, store) = open_stored(1, json!({"audio.inputGain": 1.25, "audio.cueVolume": 0.75}));
+    assert_eq!(store.get("audio.inputGain"), Some(json!(1.25)));
+    assert_eq!(store.get("audio.cueVolume"), Some(json!(0.75)));
+}
+
+#[test]
+fn a_file_without_a_boost_gets_the_new_default_and_the_version_mark() {
+    let (tmp, store) = open_stored(1, json!({"audio.cueVolume": 0.5}));
+    assert_eq!(store.get("audio.inputGain"), Some(json!(1.5)));
+    assert_eq!(store.get("audio.cueVolume"), Some(json!(0.25)));
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 2);
+}
+
+#[test]
+fn a_current_file_keeps_an_old_default_value_the_user_picked() {
+    let (_tmp, store) = open_stored(2, json!({"audio.inputGain": 1.0, "audio.cueVolume": 0.5}));
+    assert_eq!(store.get("audio.inputGain"), Some(json!(1.0)));
+    assert_eq!(store.get("audio.cueVolume"), Some(json!(0.5)));
+}
+
+#[test]
+fn a_file_from_a_newer_build_keeps_its_version() {
+    let (tmp, _store) = open_stored(3, json!({"audio.inputGain": 1.0}));
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 3);
 }
