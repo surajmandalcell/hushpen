@@ -78,10 +78,11 @@ mod tests {
         });
         assert!(!ranges.is_empty(), "the 64 MiB buffer is a new mapping");
         let start = buffer.as_ptr() as usize;
+        // Other tests run in parallel and may map memory too, so look for the range that holds it.
         assert!(
             ranges
                 .iter()
-                .all(|r| r.start <= start + len && r.end >= start)
+                .any(|r| r.start <= start && r.end >= start + len)
         );
         let before = resident_kb();
         let advised = page_out(&ranges).expect("MADV_PAGEOUT needs Linux 5.4");
