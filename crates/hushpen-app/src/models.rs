@@ -8,6 +8,7 @@
 mod details;
 mod files;
 pub mod panel;
+mod search;
 pub mod sheet;
 
 use crate::about::Opener;
@@ -158,6 +159,7 @@ pub struct Models {
     /// The row whose details sheet is open.
     details: Option<usize>,
     pub(crate) sheet_focus: SheetFocus,
+    search: search::Search,
 }
 
 impl Models {
@@ -231,6 +233,7 @@ impl Models {
             next_job: 0,
             details: None,
             sheet_focus: SheetFocus::new(cx),
+            search: search::Search::default(),
         };
         models.scan();
         models.load_active();
@@ -608,6 +611,7 @@ impl Models {
                 "message": notice.message,
             })),
             "details": self.details().map(|row| row.entry.id.clone()),
+            "query": self.search.query,
             "models": list(ModelKind::Speech),
             "llm_models": list(ModelKind::Cleanup),
             "voice_models": list(ModelKind::Voice),

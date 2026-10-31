@@ -472,3 +472,302 @@ fn a_ready_model_cannot_be_downloaded_again(cx: &mut TestAppContext) {
     settle(cx, &rig);
     assert!(act(cx, &rig, |models, cx| models.download("alpha", cx)).is_err());
 }
+
+/// The search of the Models view: which rows a query keeps, and the field in the title row.
+mod search_tests {
+    use super::super::search::matches;
+    use super::testkit::{self, Rig};
+    use super::*;
+    use crate::shell::Shell;
+    use crate::theme::space;
+    use crate::views::View;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{
+        AnyWindowHandle, Bounds, Point, SharedString, WindowBounds, WindowOptions, px, size,
+    };
+
+    fn sha(body: &[u8]) -> String {
+        model_files::hex(&Sha256::digest(body))
+    }
+
+    /// Two speech models, a cleanup model, and a voice, each with its own words and size.
+    fn library() -> &'static Catalog {
+        let entry = |id: &str, kind: &str, name: &str, languages: &str, bytes: u64, text: &str| {
+            json!({"id": id, "kind": kind, "name": name, "file": format!("{id}.{}", if kind == "cleanup" { "gguf" } else { "bin" }),
+                "bytes": bytes, "sha256": sha(id.as_bytes()),
+                "url": format!("https://huggingface.co/test/{id}.bin"),
+                "license": "MIT", "languages": languages, "default": id == "base",
+                "description": text, "speed": 3, "accuracy": 3, "quantization": "INT8",
+                "ram_idle_bytes": 1, "ram_peak_bytes": 2, "recommended_for": "Tests",
+                "source_page": "https://huggingface.co/test/repo"})
+        };
+        let mut voice = entry(
+            "kokoro",
+            "voice",
+            "Kokoro",
+            "english",
+            0,
+            "Reads text aloud.",
+        );
+        let object = voice.as_object_mut().unwrap();
+        for key in ["file", "bytes", "sha256", "url"] {
+            object.remove(key);
+        }
+        object.insert(
+            "files".into(),
+            json!([{"file": "kokoro.onnx", "bytes": 330_000_000, "sha256": sha(b"kokoro"),
+                "url": "https://huggingface.co/test/kokoro.onnx"}]),
+        );
+        testkit::leak(json!({
+            "schema": 2,
+            "whisper": [
+                entry("base", "speech", "Base", "multilingual", 148_000_000,
+                    "Quick, for everyday dictation."),
+                entry("large", "speech", "Large v3", "multilingual", 3_100_000_000,
+                    "The most accurate, and slow."),
+            ],
+            "llm": [entry("qwen3.5-2b", "cleanup", "Qwen Tidy", "english", 1_600_000_000,
+                "Fixes grammar and punctuation.")],
+            "voice": [voice],
+        }))
+    }
+
+    fn rig(cx: &mut TestAppContext) -> Rig {
+        testkit::rig(cx, library(), instant(), |_| {})
+    }
+
+    fn shown(cx: &mut TestAppContext, rig: &Rig, query: &str) -> Vec<String> {
+        rig.models.read_with(cx, |models, _| {
+            models
+                .all_rows()
+                .iter()
+                .filter(|row| matches(row, query))
+                .map(|row| row.entry.id.clone())
+                .collect()
+        })
+    }
+
+    #[gpui_kit::test]
+    fn a_query_finds_a_model_by_name_description_language_or_size(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        assert_eq!(
+            shown(cx, &rig, "").len(),
+            4,
+            "an empty query keeps every row"
+        );
+        assert_eq!(shown(cx, &rig, "  ").len(), 4);
+        assert_eq!(shown(cx, &rig, "KOKO"), ["kokoro"], "name, in any case");
+        assert_eq!(shown(cx, &rig, "large v3"), ["large"], "two words");
+        assert_eq!(shown(cx, &rig, "accurate"), ["large"], "description");
+        assert_eq!(shown(cx, &rig, "grammar"), ["qwen3.5-2b"]);
+        assert_eq!(
+            shown(cx, &rig, "multilingual"),
+            ["base", "large"],
+            "language"
+        );
+        assert_eq!(shown(cx, &rig, "english"), ["qwen3.5-2b", "kokoro"]);
+        assert_eq!(
+            shown(cx, &rig, "3.1 gb"),
+            ["large"],
+            "size, as the row shows it"
+        );
+        assert_eq!(shown(cx, &rig, "mb"), ["base", "kokoro"], "size unit");
+        assert_eq!(shown(cx, &rig, "recommended"), ["base", "qwen3.5-2b"]);
+        assert!(shown(cx, &rig, "zebra").is_empty());
+        assert!(
+            shown(cx, &rig, "kokoro zebra").is_empty(),
+            "every word must match"
+        );
+    }
+
+    fn window(cx: &mut TestAppContext, rig: &Rig) -> AnyWindowHandle {
+        cx.update(gpui_kit::init);
+        cx.update(crate::theme::install);
+        let (handle, shell) = cx.update(|cx| {
+            gpui_kit::open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: Point::default(),
+                        size: size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT)),
+                    })),
+                    ..Default::default()
+                },
+                cx,
+                |window, cx| cx.new(|cx| Shell::new(window, cx)),
+            )
+            .expect("open test window")
+        });
+        cx.update_window(handle, |_, window, cx| {
+            rig.models
+                .update(cx, |models, cx| models.attach_search(window, cx))
+        })
+        .unwrap();
+        shell.update(cx, |shell, cx| {
+            shell.attach_models(rig.models.clone(), cx);
+            shell.select(View::Models, cx);
+        });
+        render(cx, handle);
+        handle
+    }
+
+    fn render(cx: &mut TestAppContext, handle: AnyWindowHandle) {
+        cx.run_until_parked();
+        cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+    }
+
+    fn present(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) -> bool {
+        let id = SharedString::from(id.to_owned());
+        cx.update_window(handle, |_, window, _| window.try_find(id).is_some())
+            .unwrap()
+    }
+
+    fn focused(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) -> bool {
+        let id = SharedString::from(id.to_owned());
+        cx.update_window(handle, |_, window, _| {
+            window.try_find(id).and_then(|found| found.focused()) == Some(true)
+        })
+        .unwrap()
+    }
+
+    fn click(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) {
+        let id = SharedString::from(id.to_owned());
+        cx.update_window(handle, |_, window, cx| window.click(id, cx))
+            .unwrap();
+        render(cx, handle);
+    }
+
+    fn press(cx: &mut TestAppContext, handle: AnyWindowHandle, key: &str) {
+        cx.update_window(handle, |_, window, cx| window.press(key, cx))
+            .unwrap();
+        render(cx, handle);
+    }
+
+    fn type_text(cx: &mut TestAppContext, handle: AnyWindowHandle, text: &str) {
+        cx.update_window(handle, |_, window, cx| window.input(text, cx))
+            .unwrap();
+        render(cx, handle);
+    }
+
+    fn rows_shown(cx: &mut TestAppContext, handle: AnyWindowHandle) -> Vec<usize> {
+        (0..4)
+            .filter(|index| present(cx, handle, &format!("models.row.{index}")))
+            .collect()
+    }
+
+    fn query(cx: &mut TestAppContext, rig: &Rig) -> String {
+        rig.models
+            .read_with(cx, |models, _| models.query().to_owned())
+    }
+
+    #[gpui_kit::test]
+    fn the_search_field_sits_at_the_right_end_of_the_title_row(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        let handle = window(cx, &rig);
+        let id = SharedString::from("models.search");
+        let (field, title) = cx
+            .update_window(handle, |_, window, _| {
+                (window.find(id).bounds(), window.find("view.title").bounds())
+            })
+            .unwrap();
+        assert_eq!(field.size.width, px(crate::theme::size::SEARCH_FIELD_WIDTH));
+        assert_eq!(field.size.height, px(crate::theme::size::BUTTON_HEIGHT));
+        assert_eq!(
+            field.right(),
+            px(space::WINDOW_WIDTH - space::XXL),
+            "24px from the edge"
+        );
+        assert_eq!(field.center().y, title.center().y, "on the chrome line");
+        assert!(title.right() < field.left());
+    }
+
+    #[gpui_kit::test]
+    fn typing_keeps_the_matching_rows_and_hides_empty_sections(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        let handle = window(cx, &rig);
+        assert_eq!(rows_shown(cx, handle), [0, 1, 2, 3]);
+        click(cx, handle, "models.search");
+        type_text(cx, handle, "kokoro");
+        assert_eq!(query(cx, &rig), "kokoro");
+        assert_eq!(rows_shown(cx, handle), [3]);
+        assert!(present(cx, handle, "models.heading.voice"));
+        assert!(present(cx, handle, "models.help.voice"));
+        assert!(
+            !present(cx, handle, "models.heading.speech"),
+            "empty sections hide"
+        );
+        assert!(!present(cx, handle, "models.heading.cleanup"));
+        assert!(!present(cx, handle, "models.search.empty"));
+        let state = rig.models.read_with(cx, |models, _| models.state_json());
+        assert_eq!(state["query"], "kokoro");
+    }
+
+    #[gpui_kit::test]
+    fn no_match_says_so_and_clear_brings_every_row_back(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        let handle = window(cx, &rig);
+        click(cx, handle, "models.search");
+        type_text(cx, handle, "zebra");
+        assert_eq!(rows_shown(cx, handle), Vec::<usize>::new());
+        let message = cx
+            .update_window(handle, |_, window, _| {
+                window
+                    .find("models.search.empty")
+                    .label()
+                    .map(str::to_owned)
+            })
+            .unwrap();
+        assert_eq!(message.as_deref(), Some("No models match \"zebra\""));
+        click(cx, handle, "models.search.clear");
+        assert_eq!(query(cx, &rig), "");
+        assert_eq!(rows_shown(cx, handle), [0, 1, 2, 3]);
+        assert!(!present(cx, handle, "models.search.empty"));
+    }
+
+    #[gpui_kit::test]
+    fn esc_clears_the_query_first_and_leaves_the_field_the_second_time(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        let handle = window(cx, &rig);
+        click(cx, handle, "models.search");
+        type_text(cx, handle, "large");
+        assert_eq!(rows_shown(cx, handle), [1]);
+        press(cx, handle, "escape");
+        assert_eq!(query(cx, &rig), "");
+        assert_eq!(rows_shown(cx, handle), [0, 1, 2, 3]);
+        assert!(
+            focused(cx, handle, "models.search"),
+            "the first Esc keeps the caret"
+        );
+        press(cx, handle, "escape");
+        assert!(
+            !focused(cx, handle, "models.search"),
+            "the second leaves it"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_find_key_puts_the_caret_in_the_search_field(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        let handle = window(cx, &rig);
+        assert!(!focused(cx, handle, "models.search"));
+        press(
+            cx,
+            handle,
+            if cfg!(target_os = "macos") {
+                "cmd-f"
+            } else {
+                "ctrl-f"
+            },
+        );
+        assert!(focused(cx, handle, "models.search"));
+    }
+
+    #[gpui_kit::test]
+    fn other_views_have_no_models_search_field(cx: &mut TestAppContext) {
+        let rig = rig(cx);
+        let handle = window(cx, &rig);
+        assert!(present(cx, handle, "models.search"));
+        click(cx, handle, "sidebar.history");
+        assert!(!present(cx, handle, "models.search"));
+    }
+}
