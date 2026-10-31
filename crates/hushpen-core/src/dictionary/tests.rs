@@ -283,3 +283,20 @@ fn a_phrase_inside_a_longer_word_does_not_count_as_present() {
     assert!(phrases_in("category and bobcat", &entries).is_empty());
     assert_eq!(phrases_in("the Cat sat", &entries), ["cat"]);
 }
+
+#[test]
+fn only_whisper_models_get_a_prompt() {
+    let entries = [word(1, "Hushpen"), replace(2, "cat", "Kat")];
+    for id in ["large-v3-turbo-q5_0", "small-q5_1", "base-q5_1", "base"] {
+        assert_eq!(
+            prompt_for_model(id, &entries).as_deref(),
+            Some("Hushpen, Kat"),
+            "{id}"
+        );
+        assert_eq!(prompt_for_model(id, &[]), None, "{id} with no entries");
+    }
+    assert_eq!(
+        prompt_for_model(crate::catalog::SPEECH_DEFAULT, &entries),
+        None
+    );
+}

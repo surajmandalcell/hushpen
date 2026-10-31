@@ -116,6 +116,16 @@ pub fn build_prompt(entries: &[Entry]) -> String {
     prompt
 }
 
+/// The initial prompt to give the speech model `model_id`, or `None` when there is nothing to
+/// say or the model takes no prompt. Parakeet has no prompt input, so only Whisper is biased
+/// by the dictionary; the replacements still run on the text of every model.
+pub fn prompt_for_model(model_id: &str, entries: &[Entry]) -> Option<String> {
+    if model_id == crate::catalog::SPEECH_DEFAULT {
+        return None;
+    }
+    Some(build_prompt(entries)).filter(|prompt| !prompt.is_empty())
+}
+
 fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
