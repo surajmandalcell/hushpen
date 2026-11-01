@@ -114,6 +114,21 @@ fn the_macos_icon_is_a_template_image_of_22_by_16_points(cx: &mut TestAppContext
     }
 }
 
+/// VoiceOver and other accessibility clients find the menu bar item by this name.
+#[cfg(target_os = "macos")]
+#[gpui_kit::test]
+fn the_macos_icon_is_named_hushpen_for_accessibility(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let icon = cx
+        .update(|cx| icon_for(WindowAppearance::Dark, cx))
+        .expect("the glyph becomes an icon");
+    let image = icon.to_ns_image().expect("the icon becomes an NSImage");
+    assert_eq!(
+        image.accessibilityDescription().map(|name| name.to_string()),
+        Some("Hushpen".to_owned())
+    );
+}
+
 struct Fixture {
     rig: Rig,
     shell: Entity<Shell>,
