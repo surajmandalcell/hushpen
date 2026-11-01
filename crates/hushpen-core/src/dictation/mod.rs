@@ -10,6 +10,10 @@
 //! inserts, it finishes behind the new one: it still inserts its text and saves its row, and
 //! texts go in the order they were spoken. Esc and the flow bar follow the newest session.
 //! When it ends, the newest older session that still runs comes back to the front.
+//!
+//! A cancelled session waits [`RECOVER_MS`] for Recover before its audio goes or its row is
+//! saved; a new start ends the wait at once. Command Mode has no recover: its selection may
+//! have changed by then.
 
 mod machine;
 #[cfg(test)]
@@ -26,6 +30,9 @@ pub const DOUBLE_TAP_MS: u64 = 500;
 pub const ARM_WINDOW_MS: u64 = 120;
 /// How long the pipeline warns before the maximum duration.
 pub const WARN_BEFORE_MAX_MS: u64 = 60_000;
+/// How long a cancelled dictation keeps its audio, so Recover can still bring it back. A new
+/// start ends the wait at once.
+pub const RECOVER_MS: u64 = 4_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum State {
@@ -118,6 +125,10 @@ pub enum AppEvent {
     /// A click on the flow bar or the tray entry.
     FlowBarClick,
     Esc,
+    /// Recover on the flow bar: the session cancelled in the last [`RECOVER_MS`] is transcribed
+    /// and goes in as if the user had finished it. The controller sends it only while the
+    /// session still has its audio.
+    Recover,
     /// The "Paste last transcript" shortcut.
     PasteLast,
     /// The "Read aloud" shortcut. The controller answers it; no session starts.
@@ -187,6 +198,16 @@ pub enum Effect {
     StopCapture {
         session: u64,
         keep: bool,
+    },
+    /// Stops the recording of a session cancelled while it listened, and keeps its audio for
+    /// a recover.
+    HoldCapture {
+        session: u64,
+    },
+    /// The recover time of a session cancelled while it listened ran out: its audio is
+    /// deleted, and it leaves no row.
+    DropAudio {
+        session: u64,
     },
     Cue(Cue),
     Transcribe {

@@ -210,7 +210,8 @@ focus "$GT"
 long_run_until_transcribing "$LONG_WAV" || failures+="never reached transcribing; "
 xdotool key $ESC
 wait_until 15 pstate_is idle || failures+="the run did not go back to idle; "
-sleep 1
+# The row comes once Recover is over, 4 s after the Esc.
+sleep 4
 [ "$(count)" = $((c0 + 1)) ] || failures+="Esc in transcribing made $(($(count) - c0)) rows; "
 cancel_id=$(newest id)
 [ "$(newest status)" = cancelled ] || failures+="status is $(newest status); "

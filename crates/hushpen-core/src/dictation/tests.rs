@@ -107,6 +107,7 @@ fn every_event() -> Vec<AppEvent> {
             code: LLM_TIMEOUT,
         },
         AppEvent::ReadAloud,
+        AppEvent::Recover,
     ]
 }
 
@@ -132,10 +133,11 @@ fn variant_index(event: &AppEvent) -> usize {
         AppEvent::EditFailed { .. } => 16,
         AppEvent::HoldArm => 17,
         AppEvent::ReadAloud => 18,
+        AppEvent::Recover => 19,
     }
 }
 
-const VARIANTS: usize = 19;
+const VARIANTS: usize = 20;
 
 fn start_effects(session: u64) -> Vec<Effect> {
     vec![Effect::StartCapture { session }, Effect::Cue(Cue::Start)]
@@ -186,13 +188,24 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         State::Cleaning,
         State::Inserting,
         State::Done,
-        State::Cancelled,
         State::Failed,
     ] {
         for start in STARTS {
             rows.push((from, start, State::Listening, start_effects(2)));
         }
     }
+    // A start ends the wait for Recover: the cancelled recording goes first.
+    for start in STARTS {
+        let mut effects = vec![Effect::DropAudio { session: 1 }];
+        effects.extend(start_effects(2));
+        rows.push((State::Cancelled, start, State::Listening, effects));
+    }
+    rows.push((
+        State::Cancelled,
+        E::Recover,
+        State::Transcribing,
+        vec![Effect::Transcribe { session: 1 }],
+    ));
     rows.push((State::Listening, E::CommandDown, State::Listening, vec![]));
     rows.push((
         State::Cleaning,
@@ -225,13 +238,7 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         State::Listening,
         E::Esc,
         State::Cancelled,
-        vec![
-            Effect::StopCapture {
-                session: 1,
-                keep: false,
-            },
-            Effect::Cue(Cue::Cancel),
-        ],
+        vec![Effect::HoldCapture { session: 1 }, Effect::Cue(Cue::Cancel)],
     ));
     rows.push((
         State::Listening,
@@ -255,12 +262,6 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         vec![
             Effect::CancelTranscribe { session: 1 },
             Effect::Cue(Cue::Cancel),
-            Effect::SaveRow {
-                session: 1,
-                status: RowStatus::Cancelled,
-                text: None,
-                code: None,
-            },
         ],
     ));
     rows.push((
@@ -285,16 +286,7 @@ fn expected() -> Vec<(State, AppEvent, State, Vec<Effect>)> {
         State::Cleaning,
         E::Esc,
         State::Cancelled,
-        vec![
-            Effect::StopLlm { session: 1 },
-            Effect::Cue(Cue::Cancel),
-            Effect::SaveRow {
-                session: 1,
-                status: RowStatus::Cancelled,
-                text: Some(RAW.into()),
-                code: None,
-            },
-        ],
+        vec![Effect::StopLlm { session: 1 }, Effect::Cue(Cue::Cancel)],
     ));
     rows.push((
         State::Cleaning,
@@ -366,7 +358,7 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
         }
     }
     assert_eq!(pairs, State::ALL.len() * VARIANTS);
-    assert_eq!(pairs, 152);
+    assert_eq!(pairs, 160);
 }
 
 #[test]
@@ -396,7 +388,10 @@ fn a_start_50_ms_after_a_stop_begins_the_next_session_at_once() {
     ] {
         for start in STARTS {
             let mut m = reach(state);
-            let effects = handle(&mut m, start.clone(), LATER + 50);
+            let mut effects = handle(&mut m, start.clone(), LATER + 50);
+            if state == State::Cancelled {
+                assert_eq!(effects.remove(0), Effect::DropAudio { session: 1 });
+            }
             assert_eq!(effects, start_effects(2), "{state:?} on {start:?}");
             assert_eq!(m.state(), State::Listening, "{state:?} on {start:?}");
             assert_eq!(m.session(), 2, "{state:?} on {start:?}");
@@ -521,13 +516,7 @@ fn cancelling_the_new_session_leaves_the_older_one_running() {
     let mut m = two_quick_holds();
     assert_eq!(
         handle(&mut m, AppEvent::Esc, LATER + 600),
-        vec![
-            Effect::StopCapture {
-                session: 2,
-                keep: false
-            },
-            Effect::Cue(Cue::Cancel),
-        ]
+        vec![Effect::HoldCapture { session: 2 }, Effect::Cue(Cue::Cancel)]
     );
     assert_eq!((m.state(), m.behind()), (State::Cancelled, 1));
     handle(&mut m, transcribed(1), LATER + 700);
@@ -555,12 +544,6 @@ fn esc_cancels_the_newest_session_and_never_an_older_one_behind_it() {
         vec![
             Effect::CancelTranscribe { session: 2 },
             Effect::Cue(Cue::Cancel),
-            Effect::SaveRow {
-                session: 2,
-                status: RowStatus::Cancelled,
-                text: None,
-                code: None
-            },
         ]
     );
     assert_eq!(
@@ -585,20 +568,23 @@ fn once_the_newest_session_ends_the_older_one_comes_back_and_esc_cancels_it() {
     assert_eq!(
         handle(&mut m, AppEvent::Esc, 3 * LATER),
         vec![
+            Effect::DropAudio { session: 2 },
             Effect::CancelTranscribe { session: 1 },
             Effect::Cue(Cue::Cancel),
-            Effect::SaveRow {
-                session: 1,
-                status: RowStatus::Cancelled,
-                text: None,
-                code: None
-            },
-        ]
+        ],
+        "a second cancel ends the wait of the first"
     );
     assert!(handle(&mut m, transcribed(1), 3 * LATER).is_empty());
+    let mut effects = vec![Effect::SaveRow {
+        session: 1,
+        status: RowStatus::Cancelled,
+        text: None,
+        code: None,
+    }];
+    effects.extend(start_effects(3));
     assert_eq!(
         handle(&mut m, AppEvent::HomeToggle, 3 * LATER + 10),
-        start_effects(3),
+        effects,
         "a new session never reuses an id"
     );
 }
@@ -952,15 +938,12 @@ fn the_warning_follows_the_configured_maximum() {
 }
 
 #[test]
-fn escape_in_listening_discards_and_a_later_release_starts_nothing() {
+fn escape_in_listening_keeps_the_audio_for_recover_and_a_later_release_starts_nothing() {
     let mut m = machine();
     hold(&mut m);
     let effects = handle(&mut m, AppEvent::Esc, 600);
     assert_eq!(m.state(), State::Cancelled);
-    assert!(effects.contains(&Effect::StopCapture {
-        session: 1,
-        keep: false
-    }));
+    assert!(effects.contains(&Effect::HoldCapture { session: 1 }));
     assert!(handle(&mut m, AppEvent::HoldUp, 900).is_empty());
     assert_eq!(m.state(), State::Cancelled);
 }
@@ -971,16 +954,147 @@ fn escape_in_cleaning_stops_the_llm_saves_raw_text_and_never_inserts() {
     let effects = handle(&mut m, AppEvent::Esc, LATER);
     assert_eq!(m.state(), State::Cancelled);
     assert!(effects.contains(&Effect::StopLlm { session: 1 }));
-    assert!(effects.contains(&Effect::SaveRow {
-        session: 1,
-        status: RowStatus::Cancelled,
-        text: Some(RAW.into()),
-        code: None
-    }));
     assert!(!effects.iter().any(|e| matches!(e, Effect::Insert { .. })));
     // The AI answer that arrives afterwards is dropped.
     assert!(handle(&mut m, cleaned(1), LATER + 5).is_empty());
     assert_eq!(m.state(), State::Cancelled);
+    assert_eq!(
+        handle(&mut m, AppEvent::Tick, LATER + RECOVER_MS),
+        vec![Effect::SaveRow {
+            session: 1,
+            status: RowStatus::Cancelled,
+            text: Some(RAW.into()),
+            code: None
+        }],
+        "the row comes once Recover can no longer bring the run back"
+    );
+}
+
+#[test]
+fn recover_in_time_transcribes_the_cancelled_recording_and_it_goes_in() {
+    let mut m = machine();
+    hold(&mut m);
+    handle(&mut m, AppEvent::Esc, LATER);
+    assert_eq!(m.recoverable(LATER + RECOVER_MS - 1), Some(1));
+    handle(
+        &mut m,
+        AppEvent::Tick,
+        LATER + Config::default().cancelled_ms,
+    );
+    assert_eq!(m.state(), State::Idle, "the cancel itself ends as before");
+    assert_eq!(
+        handle(&mut m, AppEvent::Recover, LATER + RECOVER_MS - 1),
+        vec![Effect::Transcribe { session: 1 }]
+    );
+    assert_eq!((m.state(), m.session()), (State::Transcribing, 1));
+    assert!(!m.holds());
+    handle(&mut m, transcribed(1), LATER + RECOVER_MS);
+    assert_eq!(
+        handle(&mut m, cleaned(1), LATER + RECOVER_MS),
+        vec![paste(1, CLEAN)]
+    );
+    assert_eq!(
+        handle(
+            &mut m,
+            AppEvent::Inserted { session: 1 },
+            LATER + RECOVER_MS
+        ),
+        vec![
+            done_row(1, CLEAN),
+            Effect::UpdatePasteLast { text: CLEAN.into() }
+        ]
+    );
+    assert!(
+        handle(&mut m, AppEvent::Recover, LATER + RECOVER_MS).is_empty(),
+        "a recover works once"
+    );
+}
+
+#[test]
+fn recover_too_late_does_nothing_and_the_wait_drops_the_audio() {
+    let mut m = machine();
+    hold(&mut m);
+    handle(&mut m, AppEvent::Esc, LATER);
+    assert_eq!(m.recoverable(LATER + RECOVER_MS), None);
+    assert!(handle(&mut m, AppEvent::Recover, LATER + RECOVER_MS).is_empty());
+    assert_eq!(m.state(), State::Cancelled);
+    assert_eq!(
+        handle(&mut m, AppEvent::Tick, LATER + RECOVER_MS),
+        vec![Effect::DropAudio { session: 1 }]
+    );
+    assert!(!m.holds());
+    assert!(handle(&mut m, AppEvent::Tick, LATER + RECOVER_MS + 100).is_empty());
+}
+
+#[test]
+fn a_new_dictation_in_between_drops_the_kept_audio_and_recover_does_nothing() {
+    let mut m = machine();
+    hold(&mut m);
+    handle(&mut m, AppEvent::Esc, LATER);
+    let effects = handle(&mut m, AppEvent::HandsFreeToggle, LATER + 100);
+    assert_eq!(effects[0], Effect::DropAudio { session: 1 });
+    assert_eq!(&effects[1..], start_effects(2));
+    assert_eq!(m.recoverable(LATER + 200), None);
+    assert!(handle(&mut m, AppEvent::Recover, LATER + 200).is_empty());
+    assert_eq!((m.state(), m.session()), (State::Listening, 2));
+}
+
+#[test]
+fn recover_after_a_cancel_while_transcribing_starts_the_transcription_again() {
+    let mut m = reach(State::Transcribing);
+    handle(&mut m, AppEvent::Esc, LATER);
+    assert_eq!(
+        handle(&mut m, AppEvent::Recover, LATER + 10),
+        vec![Effect::Transcribe { session: 1 }]
+    );
+    assert_eq!(m.state(), State::Transcribing);
+    handle(&mut m, transcribed(1), LATER + 20);
+    handle(&mut m, cleaned(1), LATER + 20);
+    let effects = handle(&mut m, AppEvent::Inserted { session: 1 }, LATER + 30);
+    assert_eq!(effects[0], done_row(1, CLEAN), "one row, and it is done");
+    assert!(handle(&mut m, AppEvent::Tick, LATER + RECOVER_MS + 10).is_empty());
+}
+
+#[test]
+fn a_recovered_session_goes_in_after_the_older_one_that_came_back() {
+    let mut m = two_quick_holds();
+    handle(&mut m, AppEvent::Esc, LATER + 600);
+    handle(
+        &mut m,
+        AppEvent::Tick,
+        LATER + 600 + Config::default().cancelled_ms,
+    );
+    assert_eq!((m.state(), m.session()), (State::Transcribing, 1));
+    assert_eq!(
+        handle(&mut m, AppEvent::Recover, LATER + 1_200),
+        vec![Effect::Transcribe { session: 2 }]
+    );
+    assert_eq!(
+        (m.state(), m.session(), m.behind()),
+        (State::Transcribing, 2, 1)
+    );
+    handle(&mut m, said(2, "second"), LATER + 1_300);
+    assert!(
+        handle(&mut m, polished(2, "Second."), LATER + 1_300).is_empty(),
+        "the recovered text waits for the older one"
+    );
+    handle(&mut m, transcribed(1), LATER + 1_400);
+    assert_eq!(
+        handle(&mut m, cleaned(1), LATER + 1_400),
+        vec![paste(1, CLEAN)]
+    );
+}
+
+#[test]
+fn a_command_has_no_recover() {
+    let mut m = command_session();
+    let effects = handle(&mut m, AppEvent::Esc, LATER);
+    assert!(effects.contains(&Effect::StopCapture {
+        session: 1,
+        keep: false
+    }));
+    assert!(!m.holds());
+    assert!(handle(&mut m, AppEvent::Recover, LATER + 10).is_empty());
 }
 
 #[test]

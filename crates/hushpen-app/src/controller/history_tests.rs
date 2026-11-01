@@ -1,7 +1,7 @@
 use super::testkit::*;
 use super::tests::{blocked_inserter, hold_run};
 use gpui_kit::TestAppContext;
-use hushpen_core::dictation::{AppEvent, State};
+use hushpen_core::dictation::{AppEvent, RECOVER_MS, State};
 use hushpen_core::insert::{Chord, Outcome as InsertOutcome};
 use hushpen_engine::{Failure, JobOutcome};
 use hushpen_store::dictionary as store_dictionary;
@@ -134,6 +134,12 @@ fn esc_while_transcribing_saves_a_cancelled_row_with_audio_and_no_text(cx: &mut 
     send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
 
     send_at(cx, &rig, 3_100, AppEvent::Esc).unwrap();
+    settle(cx, &rig);
+    assert!(
+        rows(&rig).is_empty(),
+        "no row while Recover can bring it back"
+    );
+    send_at(cx, &rig, 3_100 + RECOVER_MS, AppEvent::Tick).unwrap();
     settle(cx, &rig);
 
     let row = only_row(&rig);
