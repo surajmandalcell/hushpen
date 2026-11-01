@@ -1,48 +1,100 @@
-//! How the flow bar moves. The bar's frame, its fade, and its waveform are springs and easings
-//! that [`Motion::update`] steps from the bar's own clock, so a test drives every frame with
-//! plain numbers and the pixel tests draw a still frame.
+//! How the flow bar moves. [`Motion::frame`] steps the bar's size, its coming and going, the
+//! change from one state to the next, and the waveform from the bar's own clock, and dresses
+//! the props of the state for that frame. A test drives every frame with plain numbers, and the
+//! pixel tests draw any moment.
+//!
+//! A change of state is one calm move: the size eases to the new state with a critically damped
+//! spring, the old content fades out before the new content fades in, a waveform turns into
+//! the next one in place, and the marks and round buttons of the new state come in once the
+//! size has settled.
 
+use super::view::{self, Props, WaveBar};
 use gpui_kit::{SpringConfig, SpringState};
 
-/// The frame follows a new state size with a short, slightly soft spring: it settles in about
-/// 160 ms.
-const SIZE: SpringConfig = SpringConfig::new(1500.0, 70.0, 1.0);
-/// Coming and going in about 180 ms, with no overshoot, so the opacity never passes 1.
-const PRESENCE: SpringConfig = SpringConfig::new(1500.0, 78.0, 1.0);
-/// The content of a new state fades in over this time.
-const FADE_MS: f32 = 90.0;
-/// The content starts to fade in once the bar is this far there.
-const CONTENT_FROM: f32 = 0.3;
+/// How much of the motion plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Every change shows at once. For the tests of what the bar shows.
+    Instant,
+    /// Reduce Motion: nothing moves or scales. The content crossfades, and the size changes
+    /// while the pill is empty between the two.
+    Crossfade,
+    Full,
+}
+
+/// The size follows a new state with a critically damped spring: it never overshoots, is 95%
+/// there after about 210 ms, and settles in about 300 ms.
+const SIZE: SpringConfig = SpringConfig::new(500.0, 44.721_36, 1.0);
+/// The bar comes and goes over this time: its opacity and a small scale, eased out.
+pub const PRESENCE_MS: f32 = 160.0;
+/// The scale of the bar as it starts to come, and as it is gone.
+pub const SCALE_FROM: f32 = 0.96;
+/// The old content fades out over this time, then the new content fades in over
+/// [`IN_MS`], so the two never show at once.
+pub const OUT_MS: f32 = 100.0;
+pub const IN_MS: f32 = 160.0;
+/// The marks and round buttons of a new state come in once its size has settled: they fade
+/// in and grow from [`MARK_FROM`] of their size.
+pub const MARKS_AFTER_MS: f32 = 240.0;
+pub const MARKS_MS: f32 = 180.0;
+pub const MARK_FROM: f32 = 0.9;
+/// A waveform turns into the next one over this time.
+pub const MORPH_MS: f32 = 280.0;
 /// A waveform bar rises fast and falls slower, so speech reads as a pulse and not as noise.
 const WAVE_RISE_MS: f32 = 40.0;
 const WAVE_FALL_MS: f32 = 140.0;
 /// A step longer than this is a stall (a sleep, a busy main thread): the motion jumps on
 /// instead of replaying it.
 const MAX_STEP_S: f32 = 0.05;
-/// Below this the bar counts as gone and its window can close.
-const GONE: f32 = 0.01;
+/// One frame at 60 frames a second.
+const FRAME_S: f32 = 1.0 / 60.0;
 /// Half a logical pixel is less than any frame change a user can see.
 const SETTLED_PX: f32 = 0.5;
 
-/// What the bar wants to look like on this frame.
-pub struct Goal<'a> {
-    pub size: (f32, f32),
-    pub shown: bool,
-    /// The bar shows a new state: its content fades in again.
-    pub new_state: bool,
-    /// Where each waveform bar wants to be, 0 to 1. Empty when no waveform shows.
-    pub wave: &'a [f32],
+/// One change from a look to the next.
+#[derive(Debug, Clone)]
+struct Change {
+    since: u64,
+    /// The content that goes, and the opacity it had when the change began.
+    prev: Option<(Box<Props>, f32)>,
+    /// The waveform as it was drawn when the change began, when both looks have one.
+    morph_from: Option<Vec<WaveBar>>,
+    /// The size changes, so the marks wait for it to settle.
+    resized: bool,
+    /// The size the bar keeps while the old content fades out (Reduce Motion).
+    hold: (f32, f32),
+}
+
+impl Change {
+    fn elapsed(&self, now: u64) -> f32 {
+        now.saturating_sub(self.since) as f32
+    }
+
+    fn marks_from(&self) -> f32 {
+        if self.resized { MARKS_AFTER_MS } else { OUT_MS }
+    }
+
+    fn is_done(&self, now: u64) -> bool {
+        let e = self.elapsed(now);
+        e >= OUT_MS + IN_MS
+            && e >= self.marks_from() + MARKS_MS
+            && (self.morph_from.is_none() || e >= MORPH_MS)
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct Motion {
     width: SpringState,
     height: SpringState,
-    presence: SpringState,
-    fade: f32,
+    /// How far the bar is there, 0 to 1, at an even pace. The drawn opacity eases it.
+    there: f32,
+    leaving: bool,
     wave: Vec<f32>,
     last_ms: Option<u64>,
     size_goal: (f32, f32),
+    change: Option<Change>,
+    /// The props drawn on the last frame: the look a new change starts from.
+    drawn: Option<Props>,
 }
 
 fn at(position: f32) -> SpringState {
@@ -52,64 +104,232 @@ fn at(position: f32) -> SpringState {
     }
 }
 
+/// Fast at first, then slow into place: the bar coming and going.
+pub fn ease_out(done: f32) -> f32 {
+    1.0 - (1.0 - done.clamp(0.0, 1.0)).powi(3)
+}
+
+/// Slow at both ends. The content fades use it, so a short fade has no hard first frame.
+pub fn smooth(done: f32) -> f32 {
+    let t = done.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn ease_in_out(done: f32) -> f32 {
+    let t = done.clamp(0.0, 1.0);
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+    }
+}
+
+/// Whether two props show the same thing, apart from the hover and the moment of the wave.
+fn same_look(a: &Props, b: &Props) -> bool {
+    a.state == b.state
+        && a.preparing() == b.preparing()
+        && a.message == b.message
+        && a.open_history == b.open_history
+}
+
+/// A look without the change it was part of, to keep as the content that goes.
+fn bare(props: &Props) -> Props {
+    Props {
+        prev: None,
+        prev_fade: 0.0,
+        morph: None,
+        fade: 1.0,
+        marks: 1.0,
+        mark_scale: 1.0,
+        ..props.clone()
+    }
+}
+
 impl Motion {
-    /// Steps every value to `now_ms`. With `animate` off (Reduce Motion, tests) every value
-    /// jumps to its goal.
-    pub fn update(&mut self, now_ms: u64, goal: Goal, animate: bool) {
+    /// Steps every value to `now_ms` and returns `props`, the look the bar wants, dressed for
+    /// this frame. `shown` false sends the bar away with the look it has. `wave` is where each
+    /// waveform bar wants to be, 0 to 1, and is empty when no waveform shows.
+    pub fn frame(
+        &mut self,
+        now_ms: u64,
+        mut props: Props,
+        shown: bool,
+        wave: &[f32],
+        mode: Mode,
+    ) -> Props {
+        // A bar at rest ticks slowly, so the first step of a new move would be a long one: it
+        // moves one frame instead.
+        let resting = self.is_settled();
         let dt = match self.last_ms.replace(now_ms) {
-            Some(last) => (now_ms.saturating_sub(last) as f32 / 1000.0).min(MAX_STEP_S),
+            Some(last) => {
+                let dt = (now_ms.saturating_sub(last) as f32 / 1000.0).min(MAX_STEP_S);
+                if resting { dt.min(FRAME_S) } else { dt }
+            }
             None => 0.0,
         };
-        if goal.shown && self.is_gone() {
-            // A bar that appears grows out of a circle of its own height.
-            self.width = at(goal.size.1);
-            self.height = at(goal.size.1);
-            self.fade = 0.0;
+        let goal = view::size_of(&props);
+        if shown && self.is_gone() {
+            // A bar that appears starts at the size of its state and fades in.
+            self.width = at(goal.0);
+            self.height = at(goal.1);
+            self.change = None;
+            self.wave = wave.to_vec();
+        } else if shown
+            && mode != Mode::Instant
+            && let Some(drawn) = self
+                .drawn
+                .as_ref()
+                .filter(|drawn| !same_look(drawn, &props))
+        {
+            self.begin_change(now_ms, drawn.clone(), &props, goal, mode);
         }
-        if goal.new_state {
-            self.fade = 0.0;
+        if mode == Mode::Instant {
+            self.change = None;
         }
-        // A bar that goes away shrinks back to a circle while it fades.
-        let width_goal = if goal.shown {
-            goal.size.0
-        } else {
-            self.height.position
-        };
-        self.size_goal = (width_goal, goal.size.1);
-        let presence_goal = if goal.shown { 1.0 } else { 0.0 };
-        self.wave.resize(goal.wave.len(), 0.0);
+        if self
+            .change
+            .as_ref()
+            .is_some_and(|change| change.is_done(now_ms))
+        {
+            self.change = None;
+        }
+        self.size_goal = goal;
+        self.wave.resize(wave.len(), 0.0);
 
-        if !animate {
-            self.width = at(width_goal);
-            self.height = at(goal.size.1);
-            self.presence = at(presence_goal);
-            self.fade = 1.0;
-            self.wave.copy_from_slice(goal.wave);
+        match mode {
+            Mode::Instant | Mode::Crossfade => {
+                let size = match &self.change {
+                    Some(change) if mode == Mode::Crossfade && change.elapsed(now_ms) < OUT_MS => {
+                        change.hold
+                    }
+                    _ => goal,
+                };
+                self.width = at(size.0);
+                self.height = at(size.1);
+                self.there = if shown { 1.0 } else { 0.0 };
+                self.leaving = !shown;
+                self.wave.copy_from_slice(wave);
+            }
+            Mode::Full => {
+                self.width = SIZE.step(self.width, goal.0, dt);
+                self.height = SIZE.step(self.height, goal.1, dt);
+                // A settled bar stops ticking, so it must land on whole goal values.
+                if SIZE.is_settled(self.width, goal.0, SETTLED_PX) {
+                    self.width = at(goal.0);
+                }
+                if SIZE.is_settled(self.height, goal.1, SETTLED_PX) {
+                    self.height = at(goal.1);
+                }
+                self.step_presence(shown, dt);
+                for (drawn, wanted) in self.wave.iter_mut().zip(wave) {
+                    let ms = if wanted > drawn {
+                        WAVE_RISE_MS
+                    } else {
+                        WAVE_FALL_MS
+                    };
+                    *drawn += (wanted - *drawn) * (1.0 - (-dt * 1000.0 / ms).exp());
+                }
+            }
+        }
+
+        props.levels = self.wave.clone();
+        props.frame = Some(self.size());
+        let presence = self.presence();
+        props.presence = presence;
+        props.scale = if mode == Mode::Full {
+            SCALE_FROM + (1.0 - SCALE_FROM) * presence
+        } else {
+            1.0
+        };
+        self.dress(&mut props, now_ms, mode);
+        if shown {
+            self.drawn = Some(props.clone());
+        }
+        props
+    }
+
+    fn begin_change(&mut self, now: u64, drawn: Props, next: &Props, goal: (f32, f32), mode: Mode) {
+        let morphs = mode == Mode::Full && view::morphs(&drawn) && view::morphs(next);
+        let resized =
+            (self.size_goal.0 - goal.0).abs() >= 1.0 || (self.size_goal.1 - goal.1).abs() >= 1.0;
+        // A change that comes while the old content is still fading out goes on from there:
+        // the look in between never showed.
+        if let Some(change) = self.change.as_mut()
+            && change.elapsed(now) < OUT_MS
+            && change.prev.is_some()
+            && !morphs
+        {
+            change.resized |= resized;
+            change.morph_from = None;
             return;
         }
-        self.width = SIZE.step(self.width, width_goal, dt);
-        self.height = SIZE.step(self.height, goal.size.1, dt);
-        self.presence = PRESENCE.step(self.presence, presence_goal, dt);
-        // A settled bar stops ticking, so it must land on whole goal values: 111.6 px stays
-        // 111 px wide on screen.
-        if SIZE.is_settled(self.width, width_goal, SETTLED_PX) {
-            self.width = at(width_goal);
-        }
-        if SIZE.is_settled(self.height, goal.size.1, SETTLED_PX) {
-            self.height = at(goal.size.1);
-        }
-        if PRESENCE.is_settled(self.presence, presence_goal, GONE) {
-            self.presence = at(presence_goal);
-        }
-        self.fade = (self.fade + dt * 1000.0 / FADE_MS).min(1.0);
-        for (shown, wanted) in self.wave.iter_mut().zip(goal.wave) {
-            let ms = if wanted > shown {
-                WAVE_RISE_MS
+        let shown_fade = if drawn.prev_fade > 0.0 {
+            0.0
+        } else {
+            drawn.fade
+        };
+        let morph_from = morphs.then(|| view::drawn_wave(&drawn)).flatten();
+        let hold = self.size();
+        self.change = Some(Change {
+            since: now,
+            prev: Some((Box::new(bare(&drawn)), shown_fade)),
+            morph_from,
+            resized,
+            hold,
+        });
+    }
+
+    fn step_presence(&mut self, shown: bool, dt: f32) {
+        let leaving = !shown;
+        if leaving != self.leaving {
+            // The opacity goes on from where it is, on the curve of the new direction.
+            let opacity = self.presence();
+            self.there = if leaving {
+                opacity.cbrt()
             } else {
-                WAVE_FALL_MS
+                1.0 - (1.0 - opacity).cbrt()
             };
-            *shown += (wanted - *shown) * (1.0 - (-dt * 1000.0 / ms).exp());
+            self.leaving = leaving;
         }
+        let step = dt * 1000.0 / PRESENCE_MS;
+        self.there = if shown {
+            (self.there + step).min(1.0)
+        } else {
+            (self.there - step).max(0.0)
+        };
+    }
+
+    /// The timed parts of a change: the old and the new content, the marks, and the wave.
+    fn dress(&self, props: &mut Props, now: u64, mode: Mode) {
+        let Some(change) = &self.change else {
+            props.fade = 1.0;
+            props.prev = None;
+            props.prev_fade = 0.0;
+            props.marks = 1.0;
+            props.mark_scale = 1.0;
+            props.morph = None;
+            return;
+        };
+        let e = change.elapsed(now);
+        let out = 1.0 - smooth(e / OUT_MS);
+        props.prev = change.prev.as_ref().map(|(prev, _)| prev.clone());
+        props.prev_fade = change.prev.as_ref().map_or(0.0, |(_, alpha)| alpha * out);
+        if e >= OUT_MS {
+            props.prev = None;
+            props.prev_fade = 0.0;
+        }
+        props.fade = smooth((e - OUT_MS) / IN_MS);
+        let marks = smooth((e - change.marks_from()) / MARKS_MS);
+        props.marks = marks;
+        props.mark_scale = if mode == Mode::Full {
+            MARK_FROM + (1.0 - MARK_FROM) * marks
+        } else {
+            1.0
+        };
+        props.morph = change
+            .morph_from
+            .as_ref()
+            .map(|from| (from.clone(), ease_in_out(e / MORPH_MS)));
     }
 
     /// The window size on this frame. Never smaller than one pixel.
@@ -117,198 +337,32 @@ impl Motion {
         (self.width.position.max(1.0), self.height.position.max(1.0))
     }
 
-    /// 0 when gone, 1 when fully shown.
+    /// The opacity of the whole bar: 0 when gone, 1 when fully shown.
     pub fn presence(&self) -> f32 {
-        self.presence.position.clamp(0.0, 1.0)
+        if self.leaving {
+            self.there.powi(3)
+        } else {
+            ease_out(self.there)
+        }
     }
 
-    /// The opacity of the content: it waits for the bar to be partly there, then fades in.
-    pub fn fade(&self) -> f32 {
-        let ease = 1.0 - (1.0 - self.fade).powi(3);
-        ease * ((self.presence() - CONTENT_FROM) / (1.0 - CONTENT_FROM)).clamp(0.0, 1.0)
-    }
-
-    pub fn wave(&self) -> &[f32] {
-        &self.wave
-    }
-
+    /// The bar has faded out to nothing, so its window can go.
     pub fn is_gone(&self) -> bool {
-        self.presence.position <= GONE && self.presence.velocity.abs() <= GONE
+        self.there <= 0.0
     }
 
     /// Nothing moves until the goal changes, so the bar can tick slowly again.
     pub fn is_settled(&self) -> bool {
         SIZE.is_settled(self.width, self.size_goal.0, SETTLED_PX)
             && SIZE.is_settled(self.height, self.size_goal.1, SETTLED_PX)
-            && (PRESENCE.is_settled(self.presence, 1.0, GONE) || self.is_gone())
-            && self.fade >= 1.0
+            && if self.leaving {
+                self.is_gone()
+            } else {
+                self.there >= 1.0
+            }
+            && self.change.is_none()
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const FRAME_MS: u64 = 16;
-
-    fn shown(size: (f32, f32)) -> Goal<'static> {
-        Goal {
-            size,
-            shown: true,
-            new_state: false,
-            wave: &[],
-        }
-    }
-
-    /// Steps `frames` frames of 16 ms from `from_ms` and returns the time after them.
-    fn run(
-        motion: &mut Motion,
-        from_ms: u64,
-        frames: u64,
-        goal: impl Fn() -> Goal<'static>,
-    ) -> u64 {
-        let mut now = from_ms;
-        for _ in 0..frames {
-            now += FRAME_MS;
-            motion.update(now, goal(), true);
-        }
-        now
-    }
-
-    #[test]
-    fn a_new_bar_grows_out_of_a_circle_and_settles_at_its_size() {
-        let mut motion = Motion::default();
-        motion.update(0, shown((112.0, 32.0)), true);
-        assert_eq!(motion.size(), (32.0, 32.0));
-        assert_eq!(motion.fade(), 0.0);
-
-        let now = run(&mut motion, 0, 3, || shown((112.0, 32.0)));
-        let (width, _) = motion.size();
-        assert!(width > 32.0 && width < 112.0, "on its way: {width}");
-
-        run(&mut motion, now, 40, || shown((112.0, 32.0)));
-        assert_eq!(motion.size(), (112.0, 32.0), "it lands on the goal exactly");
-        assert_eq!(motion.presence(), 1.0);
-        assert!(motion.fade() > 0.99);
-        assert!(motion.is_settled());
-    }
-
-    #[test]
-    fn a_new_bar_is_fully_there_within_180_ms_and_never_overshoots() {
-        let mut motion = Motion::default();
-        motion.update(0, shown((112.0, 32.0)), true);
-        let mut now = 0;
-        let mut last = 0.0;
-        while !motion.is_settled() {
-            now = run(&mut motion, now, 1, || shown((112.0, 32.0)));
-            assert!(now <= 180, "still moving after {now} ms");
-            assert!(motion.presence() >= last, "the presence goes back");
-            assert!(motion.presence.position <= 1.0, "it overshoots");
-            last = motion.presence();
-        }
-        assert_eq!(motion.size(), (112.0, 32.0));
-    }
-
-    #[test]
-    fn the_content_shows_while_the_bar_still_grows() {
-        let mut motion = Motion::default();
-        motion.update(0, shown((112.0, 32.0)), true);
-        run(&mut motion, 0, 3, || shown((112.0, 32.0)));
-        assert!(motion.presence() < 1.0, "still on its way");
-        assert!(motion.fade() > 0.0, "the content is already fading in");
-    }
-
-    #[test]
-    fn a_new_state_size_settles_within_180_ms() {
-        let mut motion = Motion::default();
-        let start = run(&mut motion, 0, 40, || shown((112.0, 32.0)));
-        let mut now = start;
-        loop {
-            now = run(&mut motion, now, 1, || shown((236.0, 32.0)));
-            if motion.is_settled() {
-                break;
-            }
-            assert!(now - start <= 180, "still moving after {} ms", now - start);
-        }
-        assert_eq!(motion.size(), (236.0, 32.0));
-    }
-
-    #[test]
-    fn a_bar_that_goes_shrinks_fades_and_is_gone_within_half_a_second() {
-        let mut motion = Motion::default();
-        let now = run(&mut motion, 0, 40, || shown((112.0, 32.0)));
-        let hidden = || Goal {
-            size: (112.0, 32.0),
-            shown: false,
-            new_state: false,
-            wave: &[],
-        };
-        let mut t = now;
-        while !motion.is_gone() {
-            t = run(&mut motion, t, 1, hidden);
-            assert!(t - now < 500, "still there after {} ms", t - now);
-        }
-        assert!(motion.size().0 < 40.0, "it shrank: {:?}", motion.size());
-        assert_eq!(motion.fade(), 0.0);
-    }
-
-    #[test]
-    fn a_new_state_fades_its_content_in_and_moves_the_size_without_a_jump() {
-        let mut motion = Motion::default();
-        let now = run(&mut motion, 0, 40, || shown((112.0, 32.0)));
-        motion.update(
-            now + FRAME_MS,
-            Goal {
-                size: (236.0, 32.0),
-                shown: true,
-                new_state: true,
-                wave: &[],
-            },
-            true,
-        );
-        let (width, _) = motion.size();
-        assert!(width < 140.0, "the first frame moves a little: {width}");
-        assert!(motion.fade() < 0.5);
-        run(&mut motion, now + FRAME_MS, 40, || shown((236.0, 32.0)));
-        assert_eq!(motion.size(), (236.0, 32.0));
-    }
-
-    #[test]
-    fn the_waveform_rises_fast_and_falls_slow() {
-        let mut motion = Motion::default();
-        let loud = || Goal {
-            size: (112.0, 32.0),
-            shown: true,
-            new_state: false,
-            wave: &[1.0],
-        };
-        motion.update(0, loud(), true);
-        run(&mut motion, 0, 4, loud);
-        let up = motion.wave()[0];
-        assert!(up > 0.7, "rose to {up}");
-        let quiet = || Goal {
-            size: (112.0, 32.0),
-            shown: true,
-            new_state: false,
-            wave: &[0.0],
-        };
-        run(&mut motion, 64, 4, quiet);
-        let down = motion.wave()[0];
-        assert!(down > 0.2 && down < up, "fell to {down}");
-    }
-
-    #[test]
-    fn a_stall_does_not_replay_and_no_animation_jumps_to_the_goal() {
-        let mut motion = Motion::default();
-        motion.update(0, shown((112.0, 32.0)), true);
-        motion.update(10_000, shown((112.0, 32.0)), true);
-        assert!(motion.size().0 < 112.0, "one stalled step is at most 50 ms");
-
-        let mut still = Motion::default();
-        still.update(0, shown((236.0, 32.0)), false);
-        assert_eq!(still.size(), (236.0, 32.0));
-        assert_eq!(still.presence(), 1.0);
-        assert_eq!(still.fade(), 1.0);
-        assert!(still.is_settled());
-    }
-}
+mod tests;

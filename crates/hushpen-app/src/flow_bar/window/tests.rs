@@ -2,9 +2,11 @@
 
 use super::*;
 use crate::controller::testkit::{Rig, rig, send_at};
+use crate::flow_bar::view::Props;
 use crate::flow_bar::{SharedHost, TICK, run};
 use gpui_kit::{AppContext as _, TestAppContext, point, px, size};
 use hushpen_core::dictation::{AppEvent, RECOVER_MS};
+use hushpen_core::flow_bar::BarState;
 use serde_json::json;
 use std::cell::RefCell;
 use std::time::Instant;
@@ -241,7 +243,10 @@ fn the_idle_pill_comes_back_when_it_is_turned_on_after_a_dictation(cx: &mut Test
     next_tick(cx);
     assert!(on_screen(&host), "Cancelled with Recover shows");
     rig.now.set(11_500 + RECOVER_MS);
-    next_tick(cx);
+    // The window goes once it drew its clear frame, or after a few ticks without one.
+    for _ in 0..=CLEAR_WAITS {
+        next_tick(cx);
+    }
     assert!(!on_screen(&host));
     assert_eq!(windows(cx), 1, "kept open off the screen");
     assert_eq!(calls(), ["hide"]);
@@ -267,4 +272,53 @@ fn the_idle_pill_opens_its_window_when_it_is_turned_on_live(cx: &mut TestAppCont
     next_tick(cx);
     assert!(on_screen(&host));
     assert_eq!(windows(cx), 1);
+}
+
+#[gpui_kit::test]
+fn a_kept_window_goes_only_after_it_drew_a_clear_frame(cx: &mut TestAppContext) {
+    let (mut pop_up, view) = pop_up(cx, true, hid);
+    show(&mut pop_up, cx);
+    let showing = |cx: &mut TestAppContext, look: Props| {
+        view.update(cx, |bar, _| {
+            bar.painted_clear = look.presence <= 0.0;
+            bar.props = look;
+        })
+    };
+    showing(cx, Props::new(BarState::Idle));
+    hide_now(&mut pop_up, cx);
+    assert!(
+        pop_up.window().is_some(),
+        "the last frame still showed the bar"
+    );
+    assert_eq!(calls(), Vec::<&str>::new());
+    showing(cx, Props::gone());
+    hide_now(&mut pop_up, cx);
+    assert!(pop_up.window().is_none());
+    assert_eq!(calls(), ["hide"]);
+
+    // A window the system does not draw goes after a few tries anyway.
+    show(&mut pop_up, cx);
+    calls();
+    showing(cx, Props::new(BarState::Idle));
+    for _ in 0..CLEAR_WAITS {
+        hide_now(&mut pop_up, cx);
+        assert!(pop_up.window().is_some());
+    }
+    hide_now(&mut pop_up, cx);
+    assert!(pop_up.window().is_none());
+    assert_eq!(calls(), ["hide"]);
+}
+
+#[gpui_kit::test]
+fn a_gone_bar_draws_nothing_so_a_kept_window_holds_a_clear_frame(cx: &mut TestAppContext) {
+    let (rig, view, _host) = running(cx, false);
+    send_at(cx, &rig, 11_000, AppEvent::FlowBarClick).unwrap();
+    cx.run_until_parked();
+    assert_eq!(view.read_with(cx, |bar, _| bar.props().presence), 1.0);
+    send_at(cx, &rig, 11_500, AppEvent::Esc).unwrap();
+    rig.now.set(11_500 + RECOVER_MS);
+    next_tick(cx);
+    let props = view.read_with(cx, |bar, _| bar.props().clone());
+    assert_eq!(props, Props::gone());
+    assert_eq!(props.presence, 0.0);
 }

@@ -19,6 +19,10 @@ const APP_ID: &str = "flowbar";
 /// A native hide or show of the window.
 type Call = fn(WindowHandle) -> Result<(), ChromeError>;
 
+/// How many hides a kept window waits for its clear frame before it goes anyway, for a window
+/// the system does not draw (it is covered, or the screen sleeps).
+const CLEAR_WAITS: u32 = 3;
+
 /// Opens the pop-up on first use, then moves and sizes it. The window never takes the focus:
 /// it opens unfocused, as a pop-up that the window manager does not manage (X11) or a
 /// non-activating panel (macOS).
@@ -37,6 +41,8 @@ pub struct PopUp {
     /// The platform refused a planned hide, so the window is on screen with nothing to show:
     /// the next hide closes it.
     refused: Rc<Cell<bool>>,
+    /// Hides that waited for the window to draw a clear frame.
+    waits: u32,
     hide_call: Call,
     show_call: Call,
 }
@@ -49,6 +55,7 @@ impl PopUp {
             keep: cfg!(target_os = "macos"),
             hidden: false,
             refused: Rc::default(),
+            waits: 0,
             hide_call: hide,
             show_call: show_unfocused,
         }
@@ -132,6 +139,7 @@ impl Host for PopUp {
         if let Some(handle) = self.handle {
             let was_hidden = std::mem::take(&mut self.hidden);
             self.refused.set(false);
+            self.waits = 0;
             let show_call = self.show_call;
             let placed = handle.update(cx, |_, window, _| {
                 if was_hidden {
@@ -177,6 +185,21 @@ impl Host for PopUp {
             if self.hidden {
                 return None;
             }
+            // The window shows the last frame it drew again when it comes back, and AppKit may
+            // still draw a changed view once more after the window went: so it goes only after
+            // it drew a frame with nothing of the bar on it.
+            let clear = self
+                .view
+                .upgrade()
+                .is_none_or(|view| view.read(cx).painted_clear());
+            if !clear && self.waits < CLEAR_WAITS {
+                self.waits += 1;
+                if handle.update(cx, |_, window, _| window.refresh()).is_err() {
+                    self.handle = None;
+                }
+                return None;
+            }
+            self.waits = 0;
             let Ok(native) = handle.update(cx, |_, window, _| native_handle(window)) else {
                 self.handle = None;
                 return None;
