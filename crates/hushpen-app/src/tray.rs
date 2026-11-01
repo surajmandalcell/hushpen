@@ -157,14 +157,29 @@ fn icon_for(appearance: WindowAppearance, cx: &App) -> Option<Icon> {
     // The glyph is 44 by 32 pixels, drawn at 2x (22 by 16 points). The template flag lets macOS
     // tint it for a Light or Dark menu bar; without it the glyph stays black.
     #[cfg(target_os = "macos")]
-    let builder = builder.scale_factor(2.0).template(true);
-    match builder.build() {
+    let built = builder
+        .scale_factor(2.0)
+        .template(true)
+        .build()
+        .and_then(named);
+    #[cfg(not(target_os = "macos"))]
+    let built = builder.build();
+    match built {
         Ok(icon) => Some(icon),
         Err(error) => {
             log::warn!("the tray icon could not be read: {error}");
             None
         }
     }
+}
+
+/// An image-only status item takes its accessibility name from its image; the tooltip is only
+/// help text, so without a description VoiceOver finds an unnamed button.
+#[cfg(target_os = "macos")]
+fn named(icon: Icon) -> gpui_tray::Result<Icon> {
+    let image = icon.to_ns_image()?;
+    image.setAccessibilityDescription(Some(&objc2_foundation::NSString::from_str(TITLE)));
+    Ok(Icon::from_ns_image(image))
 }
 
 /// What the actions need to reach.
