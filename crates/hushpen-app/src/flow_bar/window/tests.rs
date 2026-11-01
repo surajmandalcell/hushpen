@@ -1,8 +1,11 @@
 //! The pop-up keeps its window between dictations where it can, and closes it where it cannot.
 
 use super::*;
-use crate::controller::testkit::rig;
+use crate::controller::testkit::{Rig, rig, send_at};
+use crate::flow_bar::{SharedHost, TICK, run};
 use gpui_kit::{AppContext as _, TestAppContext, point, px, size};
+use hushpen_core::dictation::AppEvent;
+use serde_json::json;
 use std::cell::RefCell;
 use std::time::Instant;
 
@@ -159,4 +162,102 @@ fn showing_a_kept_window_costs_less_than_building_one(cx: &mut TestAppContext) {
     let kept = time(true, cx);
     eprintln!("SHOW_TIMING build-per-dictation={built:?} keep-alive={kept:?}");
     assert!(kept <= built * 2, "kept {kept:?}, built {built:?}");
+}
+
+/// The bar's own task drives a kept pop-up, as the app runs it, from a start with the idle pill
+/// on or off.
+fn running(cx: &mut TestAppContext, idle: bool) -> (Rig, Entity<FlowBar>, SharedHost) {
+    cx.update(gpui_kit::init);
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("overlay.idleVisible", json!(idle))
+        .unwrap();
+    let view = cx.new(|_| {
+        FlowBar::new(
+            Rc::clone(&rig.storage),
+            rig.controller.clone(),
+            rig.mic.clone(),
+        )
+    });
+    view.update(cx, |bar, _| bar.animate = false);
+    let mut pop_up = PopUp::new(&view);
+    pop_up.keep = true;
+    pop_up.hide_call = hid;
+    pop_up.show_call = shown;
+    calls();
+    let host = cx.update(|cx| run(cx, view.clone(), Box::new(pop_up)));
+    cx.run_until_parked();
+    (rig, view, host)
+}
+
+fn next_tick(cx: &mut TestAppContext) {
+    cx.executor().advance_clock(TICK);
+    cx.run_until_parked();
+}
+
+fn on_screen(host: &SharedHost) -> bool {
+    host.borrow().window().is_some()
+}
+
+#[gpui_kit::test]
+fn the_idle_pill_shows_at_start(cx: &mut TestAppContext) {
+    let (_rig, _view, host) = running(cx, true);
+    assert_eq!(windows(cx), 1);
+    assert!(on_screen(&host));
+    next_tick(cx);
+    assert!(on_screen(&host));
+    assert_eq!(calls(), Vec::<&str>::new(), "opened once, never hidden");
+}
+
+#[gpui_kit::test]
+fn the_idle_pill_stays_after_a_dictation(cx: &mut TestAppContext) {
+    let (rig, _view, host) = running(cx, true);
+    send_at(cx, &rig, 11_000, AppEvent::FlowBarClick).unwrap();
+    cx.run_until_parked();
+    send_at(cx, &rig, 11_500, AppEvent::Esc).unwrap();
+    cx.run_until_parked();
+    for _ in 0..5 {
+        next_tick(cx);
+    }
+    assert!(on_screen(&host));
+    assert_eq!(windows(cx), 1);
+    assert_eq!(calls(), Vec::<&str>::new(), "the window never left the screen");
+}
+
+#[gpui_kit::test]
+fn the_idle_pill_comes_back_when_it_is_turned_on_after_a_dictation(cx: &mut TestAppContext) {
+    let (rig, _view, host) = running(cx, false);
+    assert_eq!(windows(cx), 0, "no bar at rest");
+    send_at(cx, &rig, 11_000, AppEvent::FlowBarClick).unwrap();
+    cx.run_until_parked();
+    assert!(on_screen(&host));
+    send_at(cx, &rig, 11_500, AppEvent::Esc).unwrap();
+    cx.run_until_parked();
+    next_tick(cx);
+    assert!(!on_screen(&host));
+    assert_eq!(windows(cx), 1, "kept open off the screen");
+    assert_eq!(calls(), ["hide"]);
+
+    rig.storage
+        .settings
+        .set("overlay.idleVisible", json!(true))
+        .unwrap();
+    next_tick(cx);
+    assert!(on_screen(&host));
+    assert_eq!(windows(cx), 1);
+    assert_eq!(calls(), ["show"]);
+}
+
+#[gpui_kit::test]
+fn the_idle_pill_opens_its_window_when_it_is_turned_on_live(cx: &mut TestAppContext) {
+    let (rig, _view, host) = running(cx, false);
+    assert_eq!(windows(cx), 0);
+    rig.storage
+        .settings
+        .set("overlay.idleVisible", json!(true))
+        .unwrap();
+    next_tick(cx);
+    assert!(on_screen(&host));
+    assert_eq!(windows(cx), 1);
 }
