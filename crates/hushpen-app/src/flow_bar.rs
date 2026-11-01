@@ -25,7 +25,9 @@ use gpui_kit::{
     point, px,
 };
 use hushpen_core::dictation::{AppEvent, State};
-use hushpen_core::flow_bar::{BarState, Display, Drag, Release, Spot, place, state_for, with_undo};
+use hushpen_core::flow_bar::{
+    BarState, Display, Drag, Release, Spot, place, state_for, with_recover, with_undo,
+};
 use hushpen_platform::window::{Pointer, WindowHandle};
 use motion::{Goal, Motion};
 use serde_json::{Value, json};
@@ -227,7 +229,7 @@ impl FlowBar {
         }
         self.follow_pointer(cx);
 
-        let (derived, code, copied, offered, stage, flash, row) = {
+        let (derived, code, copied, offered, recover, stage, flash, row) = {
             let controller = self.controller.read(cx);
             let stage = if controller.ai_phase() == Some(Phase::Preparing) {
                 Stage::Preparing
@@ -241,6 +243,7 @@ impl FlowBar {
                 controller.failure_code(),
                 controller.copied_only(),
                 controller.undo_offered(),
+                controller.recover_offered(),
                 stage,
                 controller
                     .flash()
@@ -265,7 +268,10 @@ impl FlowBar {
             self.refusal = Some(message);
             self.display.update(BarState::Blocked, now);
         }
-        let shown = with_undo(self.display.update(derived, now), offered);
+        let shown = with_recover(
+            with_undo(self.display.update(derived, now), offered),
+            recover,
+        );
         if !shown.is_failure() {
             self.refusal = None;
         }
@@ -295,7 +301,7 @@ impl FlowBar {
         } else {
             self.work = None;
         }
-        if shown != BarState::Undo && !shown.is_failure() {
+        if !matches!(shown, BarState::Undo | BarState::Cancelled) && !shown.is_failure() {
             self.hover = false;
         }
         let still = !(self.animate && !cx.reduce_motion());
@@ -310,6 +316,7 @@ impl FlowBar {
         let mut props = if wanted {
             let message = match shown {
                 BarState::Result | BarState::Undo => view::result_text(copied).to_owned(),
+                BarState::Cancelled => view::CANCELLED_TEXT.to_owned(),
                 BarState::Error | BarState::Blocked => self
                     .refusal
                     .clone()
@@ -537,6 +544,23 @@ impl FlowBar {
             cx.defer(move |cx| open(&id, cx));
         }
         cx.notify();
+    }
+
+    /// The Recover button after a cancel: the cancelled dictation goes on as if it had been
+    /// finished. A refusal shows on the bar like a refused start.
+    pub fn press_recover(&mut self, cx: &mut Context<Self>) {
+        if let Err(reason) = self.recover_dictation(cx) {
+            self.refusal = Some(reason);
+            self.display.update(BarState::Error, (self.clock)());
+        }
+        cx.notify();
+    }
+
+    /// The same without a notice on the bar, for the test hook.
+    pub fn recover_dictation(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        hook::record_event("flowbar", "recover");
+        self.controller
+            .update(cx, |controller, cx| controller.recover(cx))
     }
 
     /// The pointer came onto or left the round button of the undo or the notice pill. The

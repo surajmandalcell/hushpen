@@ -3,7 +3,7 @@ use crate::ai_cleanup::{Attempt, Phase};
 use crate::controller::ai_tests::{RULE, ai_answers, only_row, pasted, setup};
 use crate::controller::testkit::*;
 use gpui_kit::{AppContext as _, TestAppContext};
-use hushpen_core::dictation::State;
+use hushpen_core::dictation::{RECOVER_MS, State};
 use hushpen_core::flow_bar::{ERROR_HOLD_MS, RESULT_FLASH_MS};
 use hushpen_core::insert::undo::UNDO_WINDOW_MS;
 use hushpen_core::insert::{Chord, Outcome as InsertOutcome, Report, Restore};
@@ -407,7 +407,9 @@ fn a_fresh_install_shows_no_bar_until_a_dictation_starts(cx: &mut TestAppContext
     send_at(cx, &rig, 11_000, AppEvent::FlowBarClick).unwrap();
     assert!(tick(cx).is_some(), "the listening bar shows");
     send_at(cx, &rig, 11_500, AppEvent::Esc).unwrap();
-    assert!(tick(cx).is_none(), "gone again after a cancel");
+    assert!(tick(cx).is_some(), "Cancelled with Recover shows");
+    rig.now.set(11_500 + RECOVER_MS);
+    assert!(tick(cx).is_none(), "gone again once Recover is over");
 }
 
 #[gpui_kit::test]
@@ -432,18 +434,20 @@ fn a_bar_that_goes_away_fades_out_before_its_window_closes(cx: &mut TestAppConte
         .settings
         .set("overlay.idleVisible", json!(false))
         .unwrap();
-    bar.at(11_700);
+    assert_eq!(bar.state(cx), BarState::Cancelled);
+    let gone = 11_640 + RECOVER_MS;
+    bar.at(gone);
     assert!(bar.tick(cx).is_some(), "still fading on the first frame");
     assert_eq!(
         bar.props(cx).state,
-        BarState::Listening,
+        BarState::Cancelled,
         "it keeps its last look while it goes"
     );
-    let mut now = 11_700;
+    let mut now = gone;
     while bar.tick(cx).is_some() {
         now += 16;
         bar.at(now);
-        assert!(now < 12_300, "the window is still open after 600 ms");
+        assert!(now < gone + 600, "the window is still open after 600 ms");
     }
 }
 
@@ -1003,6 +1007,46 @@ mod in_a_window {
         bar.bar.update(cx, |bar, cx| bar.hover_button(false, cx));
         frame(cx, &bar, handle);
         assert!(!bar.props(cx).hover);
+    }
+
+    #[gpui_kit::test]
+    fn the_cancelled_pill_has_a_recover_button_that_pastes_the_dictation(cx: &mut TestAppContext) {
+        let bar = bar(cx, &["base"], "base");
+        let inserter = FakeInserter::pasted_into("GtkTarget", Chord::CtrlV);
+        attach_inserter(cx, &bar.rig, &inserter);
+        let handle = open(cx, &bar);
+        say(&bar.rig, outcome_text("hello", "en"));
+        bar.at(11_000);
+        click(cx, &bar, handle, "flowbar.bar");
+        bar.at(12_000);
+        click(cx, &bar, handle, "flowbar.cancel");
+        settle(cx, &bar.rig);
+        frame(cx, &bar, handle);
+
+        let props = bar.props(cx);
+        assert_eq!(props.state, BarState::Cancelled);
+        assert_eq!(props.message, view::CANCELLED_TEXT);
+        assert!(present(cx, handle, "flowbar.mark"));
+        let label = cx
+            .update_window(handle, |_, window, _| {
+                window
+                    .try_find("flowbar.recover")
+                    .and_then(|found| found.label().map(str::to_owned))
+            })
+            .unwrap();
+        assert_eq!(label.as_deref(), Some(view::RECOVER_LABEL));
+
+        bar.at(13_000);
+        click(cx, &bar, handle, "flowbar.recover");
+        assert_ne!(
+            machine_state(cx, &bar.rig),
+            State::Listening,
+            "no new dictation"
+        );
+        settle(cx, &bar.rig);
+        assert_eq!(*inserter.log.lock().unwrap(), ["insert hello"]);
+        frame(cx, &bar, handle);
+        assert!(!present(cx, handle, "flowbar.recover"));
     }
 
     #[gpui_kit::test]

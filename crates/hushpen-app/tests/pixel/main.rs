@@ -24,7 +24,9 @@ use compare::{Outcome, compare, diff_image};
 use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
-use hushpen_app::flow_bar::view::{Preview, Props, WAVE_BARS, result_text, size_of};
+use hushpen_app::flow_bar::view::{
+    CANCELLED_TEXT, Preview, Props, WAVE_BARS, result_text, size_of,
+};
 use hushpen_app::flow_bar::working::{LONG_WAIT_MS, Mix, Stage};
 use hushpen_app::mic::{MicBackend, MicSession};
 use hushpen_app::theme::{self, Appearance, chrome, space};
@@ -567,6 +569,8 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
     hover.hover = true;
     let mut history_hover = message(BarState::Error, "No speech heard", true);
     history_hover.hover = true;
+    let mut recover_hover = message(BarState::Cancelled, CANCELLED_TEXT, false);
+    recover_hover.hover = true;
     // A bar on its way in: a little more than a circle, the content still fading in.
     let appearing = Props {
         frame: Some((60.0, 32.0)),
@@ -612,6 +616,11 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
             message(BarState::Undo, result_text(false), false),
         ),
         ("flowbar-undo-hover", hover),
+        (
+            "flowbar-cancelled",
+            message(BarState::Cancelled, CANCELLED_TEXT, false),
+        ),
+        ("flowbar-cancelled-hover", recover_hover),
         (
             "flowbar-error",
             message(BarState::Error, "No speech heard", true),
@@ -674,8 +683,8 @@ fn the_flow_bar_pill_stays_dark_in_a_light_appearance() {
             continue;
         }
         let light = capture_flow_bar_in(props, Appearance::Light);
-        // Inside the round left end, clear of the content.
-        let [r, g, b, _] = light.get_pixel(8, light.height() / 2).0;
+        // Inside the round left end, clear of the edge and of the content.
+        let [r, g, b, _] = light.get_pixel(4, light.height() / 2).0;
         assert_eq!(
             format!("#{r:02X}{g:02X}{b:02X}"),
             "#1F1F1F",
@@ -687,8 +696,8 @@ fn the_flow_bar_pill_stays_dark_in_a_light_appearance() {
 #[test]
 fn the_flow_bar_is_a_compact_dark_pill_at_scale_two() {
     let image = capture_flow_bar(Props::new(BarState::Listening));
-    assert_eq!(image.dimensions(), (224, 64), "112x32 at scale two");
-    let [r, g, b, a] = image.get_pixel(8, 32).0;
+    assert_eq!(image.dimensions(), (236, 56), "118x28 at scale two");
+    let [r, g, b, a] = image.get_pixel(4, 28).0;
     assert_eq!(
         format!("#{r:02X}{g:02X}{b:02X}"),
         "#1F1F1F",

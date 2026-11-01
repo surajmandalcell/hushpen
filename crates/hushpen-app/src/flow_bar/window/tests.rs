@@ -4,7 +4,7 @@ use super::*;
 use crate::controller::testkit::{Rig, rig, send_at};
 use crate::flow_bar::{SharedHost, TICK, run};
 use gpui_kit::{AppContext as _, TestAppContext, point, px, size};
-use hushpen_core::dictation::AppEvent;
+use hushpen_core::dictation::{AppEvent, RECOVER_MS};
 use serde_json::json;
 use std::cell::RefCell;
 use std::time::Instant;
@@ -238,6 +238,9 @@ fn the_idle_pill_comes_back_when_it_is_turned_on_after_a_dictation(cx: &mut Test
     assert!(on_screen(&host));
     send_at(cx, &rig, 11_500, AppEvent::Esc).unwrap();
     cx.run_until_parked();
+    next_tick(cx);
+    assert!(on_screen(&host), "Cancelled with Recover shows");
+    rig.now.set(11_500 + RECOVER_MS);
     next_tick(cx);
     assert!(!on_screen(&host));
     assert_eq!(windows(cx), 1, "kept open off the screen");

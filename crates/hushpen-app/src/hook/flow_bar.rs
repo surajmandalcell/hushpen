@@ -1,5 +1,5 @@
 //! Test hook for the flow bar: the `overlay` state section, the bar's elements in the tree
-//! (so a test can click them), and the Undo paste action. Compiled only with the
+//! (so a test can click them), and the Undo paste and Recover actions. Compiled only with the
 //! `test-automation` feature.
 
 use super::{ExtraWindow, record_event, register_action, register_window, set_state_section};
@@ -40,6 +40,19 @@ pub fn attach(cx: &mut App, bar: Entity<FlowBar>, host: SharedHost) {
             })
         }
     });
+    let _ = register_action(
+        cx,
+        "overlay-recover",
+        "Press Recover on the flow bar after a cancel. It is rejected, with the reason, when \
+         the four seconds ran out, a new dictation started, or the recording had no audio.",
+        {
+            let bar = bar.clone();
+            move |cx, _| {
+                bar.update(cx, |bar, cx| bar.recover_dictation(cx))?;
+                Ok(Value::Null)
+            }
+        },
+    );
     let _ = register_action(
         cx,
         "overlay-undo-cleanup",
