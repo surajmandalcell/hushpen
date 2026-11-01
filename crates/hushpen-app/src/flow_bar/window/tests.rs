@@ -222,7 +222,11 @@ fn the_idle_pill_stays_after_a_dictation(cx: &mut TestAppContext) {
     }
     assert!(on_screen(&host));
     assert_eq!(windows(cx), 1);
-    assert_eq!(calls(), Vec::<&str>::new(), "the window never left the screen");
+    assert_eq!(
+        calls(),
+        Vec::<&str>::new(),
+        "the window never left the screen"
+    );
 }
 
 #[gpui_kit::test]

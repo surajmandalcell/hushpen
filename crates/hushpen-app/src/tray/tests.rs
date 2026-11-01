@@ -124,7 +124,9 @@ fn the_macos_icon_is_named_hushpen_for_accessibility(cx: &mut TestAppContext) {
         .expect("the glyph becomes an icon");
     let image = icon.to_ns_image().expect("the icon becomes an NSImage");
     assert_eq!(
-        image.accessibilityDescription().map(|name| name.to_string()),
+        image
+            .accessibilityDescription()
+            .map(|name| name.to_string()),
         Some("Hushpen".to_owned())
     );
 }
