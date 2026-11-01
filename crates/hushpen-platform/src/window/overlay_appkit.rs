@@ -8,7 +8,7 @@
 use super::{ChromeError, Frame, Layout, Pointer, ScreenRect};
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
-    NSEvent, NSScreen, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSColor, NSEvent, NSScreen, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
@@ -105,6 +105,13 @@ pub(super) fn pin(view: usize) -> Result<(), ChromeError> {
             | NSWindowStyleMask::NonactivatingPanel
             | NSWindowStyleMask::FullSizeContentView,
     );
+    // The pill draws its own edge. A system shadow is worked out from the window's content
+    // and lags behind it, so as the pill faded out the shadow of an older frame (the whole
+    // window, or the round end) stayed on screen for a moment. A clear background leaves
+    // nothing of the window outside the pill.
+    window.setHasShadow(false);
+    window.setOpaque(false);
+    window.setBackgroundColor(Some(&NSColor::clearColor()));
     window.setHidesOnDeactivate(false);
     window.setCollectionBehavior(
         NSWindowCollectionBehavior::CanJoinAllSpaces
