@@ -67,8 +67,8 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 ### macOS (Apple silicon)
 
-1. Download `Hushpen-2.3.2-macos-arm64.dmg` and drag Hushpen to Applications,
-   or unzip `Hushpen-2.3.2-macos-arm64.zip` and move `Hushpen.app` to
+1. Download `Hushpen-2.3.3-macos-arm64.dmg` and drag Hushpen to Applications,
+   or unzip `Hushpen-2.3.3-macos-arm64.zip` and move `Hushpen.app` to
    Applications.
 2. Open Hushpen. The app is signed with a Developer ID certificate and
    notarized by Apple, so macOS opens it after one standard confirmation.
@@ -77,10 +77,10 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 Replace `x64` with `arm64` on an Arm machine.
 
-- AppImage: `chmod +x Hushpen-2.3.2-linux-x64.AppImage`, then run it.
-- Debian and Ubuntu: `sudo apt install ./Hushpen-2.3.2-linux-x64.deb`
-- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.3.2-linux-x64.rpm`
-- tar.gz: `tar xzf Hushpen-2.3.2-linux-x64.tar.gz`, then run `hushpen` from
+- AppImage: `chmod +x Hushpen-2.3.3-linux-x64.AppImage`, then run it.
+- Debian and Ubuntu: `sudo apt install ./Hushpen-2.3.3-linux-x64.deb`
+- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.3.3-linux-x64.rpm`
+- tar.gz: `tar xzf Hushpen-2.3.3-linux-x64.tar.gz`, then run `hushpen` from
   the new folder.
 
 Every package holds four programs: `hushpen`, the `hushpen-asr` speech
