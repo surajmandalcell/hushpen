@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.1
+
+### Fixed
+
+- The menu bar item now has a name that VoiceOver reads: "Hushpen".
+
 ## 2.3.0
 
 ### New
