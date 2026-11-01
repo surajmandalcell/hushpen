@@ -33,6 +33,7 @@ run_ended() {
 }
 focus() { xdotool windowfocus --sync "$1"; }
 li() { $HC state | jq -r ".last_insert$1"; }
+fresh_paste() { [ "$(li .outcome)" = pasted ] && [ "$(li .ready_unix_ms)" -ge "$T0" ]; }
 gtk_commit() { # Enter in the GTK entry writes what it holds to /out/gtk.txt; prints it
   rm -f "$GTK_FILE"
   focus "$GT"
@@ -515,7 +516,9 @@ hits=$(grep -rih -E 'quick|brown|lazy' "$APP_LOG" /data/logs/ 2>/dev/null | head
 [ -z "$hits" ] || failures+="transcript words in the log: $hits; "
 gtk_clear
 focus "$GT"
+T0=$(now_ms)
 xdotool key ctrl+alt+v
+wait_until 10 fresh_paste || failures+="no paste receipt for Paste last: $($HC state | jq -c .last_insert); "
 again=$(gtk_commit)
 [ "$again" = "$written" ] || failures+="Paste last transcript gave '$again', not '$written'; "
 chmod 0644 "$DB"
