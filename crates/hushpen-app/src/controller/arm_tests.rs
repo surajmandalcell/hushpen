@@ -99,7 +99,11 @@ fn the_window_timer_does_nothing_after_the_chord_took_the_hold(cx: &mut TestAppC
     past_the_window(cx);
 
     assert_eq!(machine_state(cx, &rig), State::Idle);
-    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.125)], "one cue");
+    assert_eq!(
+        *played.lock().unwrap(),
+        vec![(Cue::Start, 0.125)],
+        "one cue"
+    );
 }
 
 #[gpui_kit::test]

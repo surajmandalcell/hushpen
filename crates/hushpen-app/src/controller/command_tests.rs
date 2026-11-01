@@ -237,7 +237,11 @@ fn a_chord_key_that_comes_after_the_window_turns_the_running_hold_into_the_comma
 
     assert_eq!(machine_state(cx, &rig), State::Listening);
     assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Command);
-    assert_eq!(*played.lock().unwrap(), vec![(Cue::Start, 0.125)], "one cue");
+    assert_eq!(
+        *played.lock().unwrap(),
+        vec![(Cue::Start, 0.125)],
+        "one cue"
+    );
     assert_eq!(rig.mic_backend.starts.load(Ordering::SeqCst), 1);
 }
 
