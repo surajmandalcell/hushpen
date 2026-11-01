@@ -18,6 +18,8 @@ use hushpen_engine::{
 mod child;
 #[path = "it/import.rs"]
 mod import;
+#[path = "it/memory.rs"]
+mod memory;
 #[path = "it/parakeet.rs"]
 mod parakeet;
 #[path = "it/silence.rs"]
