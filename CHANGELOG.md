@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.3.3
+
+### Improved
+
+- The cue sounds are half as loud by default: Sound volume starts at 12.5%
+  instead of 25%. If you never changed it, the new default applies; a volume
+  you picked stays. The slider now moves in 2.5% steps.
+- The cue sounds play 1.25x faster, so they are a fifth shorter and a little
+  higher. Mute other audio while dictating starts sooner after the start cue.
+- Every cue sound fades in and out, so none clicks at its start or end.
+- The flow bar fits its text. Pasted, Copied, Cancelled, and notices no
+  longer sit in wide pills, and the pill keeps its size under the pointer.
+- The flow bar moves calmly between states. Its width eases to the new size,
+  the old content fades out before the new one fades in, and the listening
+  bars turn into the processing wave where they stand.
+
+### Fixed
+
+- On macOS, a square and a round shape no longer flash as the flow bar
+  hides. The bar fades out in place and has no window shadow.
+
 ## 2.3.2
 
 ### New
