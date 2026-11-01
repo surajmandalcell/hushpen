@@ -409,12 +409,23 @@ new decision, add it here in the same change (D-21).
   circle at both ends or at neither, 4 pt in from the edge, and centers its
   text between them. The pill is 28 pt high with radius h/2; on macOS its
   panel is borderless, because a titled panel clips it to 17 pt corners.
-  Widths: 118 for Listening, Transcribing, Cleaning, and Pasted; 126 for
-  Pasted with Undo and Cancelled; 222 for Preparing; notices up to 366; idle
-  67 by 22. Esc or the cross keeps the recording 4 s (`RECOVER_MS`) for
-  Recover, which transcribes it again and pastes it as if it were finished.
-  The audio goes, or the cancelled row is saved, when the 4 s end or a new
-  dictation starts. Command Mode has no Recover.
+  Listening, Transcribing, and Cleaning are 118 wide and idle 67 by 22.
+  Every other pill fits its measured line: 4 + 20 + 8 + line + 8 + 20 + 4
+  with circles, 12 + line + 12 without, at most 366. The line is the widest
+  the pill can show (Undo or Recover on hover too), so hover never resizes
+  it. Motion: the size follows a critically damped spring (about 280 ms, no
+  overshoot); old content fades out in 100 ms before new content fades in
+  over 160 ms; the listening bars become the processing wave in place
+  (same 11 bars, 280 ms); marks and circles fade and grow from 0.9 once the
+  size settles. Show and hide fade the pill in place over 160 ms with scale
+  0.96 to 1, never a shrink to a circle. On macOS the panel has a clear
+  background and no shadow, and it is ordered out only after it drew a
+  clear frame, so a kept window never flashes old content. Reduce Motion
+  crossfades, resizes while the pill is empty, and hides at once. Esc or
+  the cross keeps the recording 4 s (`RECOVER_MS`) for Recover, which
+  transcribes it again and pastes it as if it were finished. The audio
+  goes, or the cancelled row is saved, when the 4 s end or a new dictation
+  starts. Command Mode has no Recover.
 
 ## History notes
 
