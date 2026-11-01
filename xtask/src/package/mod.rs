@@ -25,11 +25,12 @@ use names::{Format, Target};
 pub use verify::run_verify;
 
 const APP_BINARY: &str = "hushpen";
+const ASR_BINARY: &str = "hushpen-asr";
 const LLM_BINARY: &str = "hushpen-llm";
 const TTS_BINARY: &str = "hushpen-tts";
-/// Every program a package ships. The app starts the two workers from the folder of its own
+/// Every program a package ships. The app starts the three workers from the folder of its own
 /// executable, so they always travel together.
-const BINARIES: [&str; 3] = [APP_BINARY, LLM_BINARY, TTS_BINARY];
+const BINARIES: [&str; 4] = [APP_BINARY, ASR_BINARY, LLM_BINARY, TTS_BINARY];
 const NOTICES: &str = "THIRD-PARTY-NOTICES.html";
 const VAD_MODEL: &str = "ggml-silero-v5.1.2.bin";
 const VAD_SHA256: &str = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
@@ -235,6 +236,8 @@ fn build_binaries(root: &Path, test_feed: bool) -> Result<(), String> {
         "-p",
         "hushpen-app",
         "-p",
+        "hushpen-engine",
+        "-p",
         "hushpen-llm",
         "-p",
         "hushpen-tts",
@@ -321,7 +324,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     // packaging steps are held to the release rules as usual.
     let checked: &[&str] = if options.test_feed {
         println!("test-feed build: never publish these files");
-        &[LLM_BINARY, TTS_BINARY]
+        &[ASR_BINARY, LLM_BINARY, TTS_BINARY]
     } else {
         &BINARIES
     };

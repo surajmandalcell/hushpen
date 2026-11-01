@@ -71,7 +71,7 @@ PY
 
 # words <wav> -> lower-case transcript from base-q5_1
 transcript() {
-  /app/hushpen engine --smoke "$1" --model "$MODEL" 2>/dev/null |
+  /app/hushpen-asr --smoke "$1" --model "$MODEL" 2>/dev/null |
     sed -n 's/^text: //p' | tr 'A-Z' 'a-z' | tr -c 'a-z0-9 \n' ' ' | tr -s ' '
 }
 

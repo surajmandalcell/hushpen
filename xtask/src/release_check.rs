@@ -30,9 +30,17 @@ const WHISPER_MARKER: &str = "whisper_full";
 const LLAMA_MARKER: &str = "llama_decode";
 
 const APP_BINARY: &str = "hushpen";
+const ASR_BINARY: &str = "hushpen-asr";
 const LLM_BINARY: &str = "hushpen-llm";
 const TTS_BINARY: &str = "hushpen-tts";
-const BINARIES: [&str; 3] = [APP_BINARY, LLM_BINARY, TTS_BINARY];
+const BINARIES: [&str; 4] = [APP_BINARY, ASR_BINARY, LLM_BINARY, TTS_BINARY];
+/// The packages that build `BINARIES`: the speech worker is a binary of `hushpen-engine`.
+const PACKAGES: [&str; 4] = [
+    "hushpen-app",
+    "hushpen-engine",
+    "hushpen-llm",
+    "hushpen-tts",
+];
 
 const GUARD_MESSAGE: &str = "the test hook is for debug builds only";
 
@@ -131,14 +139,14 @@ pub fn scan_bytes(bytes: &[u8], markers: &[&str]) -> Vec<Finding> {
         .collect()
 }
 
-/// Markers a binary named `name` must not contain: the hook markers for all three programs,
-/// plus the engine symbol of every engine that lives in another binary. The app links
-/// whisper.cpp, the LLM worker llama.cpp, and the voice worker neither (it dlopens
+/// Markers a binary named `name` must not contain: the hook markers for every program, plus
+/// the engine symbol of every engine that lives in another binary. The app and the speech
+/// worker link whisper.cpp, the LLM worker llama.cpp, and the voice worker neither (it dlopens
 /// sherpa-onnx), so each is scanned for the symbols it must not carry.
 fn markers_for(name: &str) -> Vec<&'static str> {
     let mut markers = HOOK_MARKERS.to_vec();
     match name {
-        APP_BINARY => markers.push(LLAMA_MARKER),
+        APP_BINARY | ASR_BINARY => markers.push(LLAMA_MARKER),
         LLM_BINARY => markers.push(WHISPER_MARKER),
         _ => markers.extend([WHISPER_MARKER, LLAMA_MARKER]),
     }
@@ -197,7 +205,7 @@ fn target_dir(root: &Path) -> PathBuf {
 
 fn check_tree(root: &Path, features: Option<&str>) -> Result<(), String> {
     let mut violations = Vec::new();
-    for package in ["hushpen-app", "hushpen-llm", "hushpen-tts"] {
+    for package in PACKAGES {
         // The format puts the features of the package itself on its first line: `-e features`
         // alone prints a feature node only for a dependency, never for the root.
         let mut args = vec![
@@ -275,17 +283,10 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
 
     check_tree(root, options.features.as_deref())?;
 
-    let mut build = vec![
-        "build",
-        "--release",
-        "--locked",
-        "-p",
-        "hushpen-app",
-        "-p",
-        "hushpen-llm",
-        "-p",
-        "hushpen-tts",
-    ];
+    let mut build = vec!["build", "--release", "--locked"];
+    for package in PACKAGES {
+        build.extend(["-p", package]);
+    }
     if let Some(list) = &options.features {
         build.extend(["--features", list]);
     }
@@ -383,8 +384,10 @@ mod tests {
 
     #[test]
     fn each_binary_is_scanned_for_the_engines_it_must_not_carry() {
-        assert!(markers_for(APP_BINARY).contains(&LLAMA_MARKER));
-        assert!(!markers_for(APP_BINARY).contains(&WHISPER_MARKER));
+        for whisper_binary in [APP_BINARY, ASR_BINARY] {
+            assert!(markers_for(whisper_binary).contains(&LLAMA_MARKER));
+            assert!(!markers_for(whisper_binary).contains(&WHISPER_MARKER));
+        }
         assert!(markers_for(LLM_BINARY).contains(&WHISPER_MARKER));
         assert!(!markers_for(LLM_BINARY).contains(&LLAMA_MARKER));
         for marker in [WHISPER_MARKER, LLAMA_MARKER] {

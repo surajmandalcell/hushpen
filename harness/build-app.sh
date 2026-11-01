@@ -5,7 +5,7 @@
 # HUSHPEN_BUILD_HOOKREL=1 also builds an optimized app that keeps the test hook (release profile
 # with debug assertions on, which the hook's compile guard allows) as harness-bin/hushpen-hookrel,
 # for packaging/smoke/start-latency.sh. It is never shipped and it replaces target/release/hushpen.
-# Builds the debug app (features test-automation and update-test-feed; the debug app is never shipped), hookctl, and the hushpen-llm and hushpen-tts workers for the harness platform (linux/arm64 unless HUSHPEN_PLATFORM says otherwise) in the hushpen-build
+# Builds the debug app (features test-automation and update-test-feed; the debug app is never shipped), hookctl, and the hushpen-asr, hushpen-llm, and hushpen-tts workers for the harness platform (linux/arm64 unless HUSHPEN_PLATFORM says otherwise) in the hushpen-build
 # container and copies them to $HUSHPEN_ROOT/harness-bin, the folder every slot mounts as /app.
 # `cargo xtask tts-runtime` puts the pinned sherpa-onnx and ONNX Runtime libraries there too, which
 # the voice worker opens (Chatterbox needs libonnxruntime.so). The repo mounts read-only. Heavy (4 CPUs): counts as 2 busy slots.
@@ -25,9 +25,9 @@ docker run --rm --platform "$HARNESS_PLATFORM" --name hushpen-build --cpus 4 --m
   -e CARGO_TARGET_DIR=/target -e TMPDIR=/scratch -e GGML_NATIVE=OFF -e LANG=C.UTF-8 \
   -e BUILD_RELEASE="${HUSHPEN_BUILD_RELEASE:-0}" -e BUILD_HOOKREL="${HUSHPEN_BUILD_HOOKREL:-0}" \
   -w /src "$HARNESS_IMAGE" \
-  sh -c 'cargo build --locked -j 4 -p hushpen-app --features test-automation,update-test-feed -p hushpen-testhook -p hushpen-llm -p hushpen-tts &&
+  sh -c 'cargo build --locked -j 4 -p hushpen-app --features test-automation,update-test-feed -p hushpen-testhook -p hushpen-engine -p hushpen-llm -p hushpen-tts &&
          cargo xtask tts-runtime --dir /harness-bin >/dev/null &&
-         cp /target/debug/hushpen /target/debug/hookctl /target/debug/hushpen-llm /target/debug/hushpen-tts /src/assets/THIRD-PARTY-NOTICES.html /src/assets/ggml-silero-v5.1.2.bin /harness-bin/ &&
+         cp /target/debug/hushpen /target/debug/hookctl /target/debug/hushpen-asr /target/debug/hushpen-llm /target/debug/hushpen-tts /src/assets/THIRD-PARTY-NOTICES.html /src/assets/ggml-silero-v5.1.2.bin /harness-bin/ &&
          if [ "$BUILD_RELEASE" = 1 ]; then
            cargo build --release --locked -j 4 -p hushpen-app &&
            cp /target/release/hushpen /harness-bin/hushpen-release

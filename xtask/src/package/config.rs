@@ -71,7 +71,7 @@ fn common(input: &Common) -> String {
          description = {description}\nlong-description = {description}\npublisher = {publisher}\n\
          authors = [{publisher}]\nhomepage = {homepage}\ncategory = \"Utility\"\n\
          out-dir = {work}\nbinaries-dir = {work}\nicons = {icons}\n\
-         binaries = [{{ path = \"hushpen\", main = true }}, {{ path = \"hushpen-llm\" }}, {{ path = \"hushpen-tts\" }}]\n\
+         binaries = [{{ path = \"hushpen\", main = true }}, {{ path = \"hushpen-asr\" }}, {{ path = \"hushpen-llm\" }}, {{ path = \"hushpen-tts\" }}]\n\
          resources = [{resources}]\n",
         product = quote(PRODUCT),
         version = quote(input.version),
@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn the_mac_config_names_both_binaries_the_plist_and_the_signing_hook() {
+    fn the_mac_config_names_every_binary_the_plist_and_the_signing_hook() {
         let work = PathBuf::from("/w");
         let icons = [PathBuf::from("/a/icon.icns")];
         let resources = [(PathBuf::from("/a/N.html"), "N.html".to_string())];
@@ -228,6 +228,7 @@ mod tests {
             Some("io.github.surajmandalcell.hushpen")
         );
         assert!(text.contains("path = \"hushpen\", main = true"));
+        assert!(text.contains("path = \"hushpen-asr\""));
         assert!(text.contains("path = \"hushpen-llm\""));
         assert!(text.contains("path = \"hushpen-tts\""));
         assert!(text.contains("minimum-system-version = \"13.0\""));

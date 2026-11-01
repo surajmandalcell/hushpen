@@ -17,13 +17,13 @@ die() { echo "mac-test-app: $*" >&2; exit 1; }
 [ -n "$IDENTITY" ] || die "no Apple Development identity in the keychain"
 
 cd "$REPO"
-cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-llm -p hushpen-tts
+cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-engine -p hushpen-llm -p hushpen-tts
 cargo xtask tts-runtime --target macos-arm64
 ps -axo command | grep -q "^$APP/Contents/MacOS/hushpen" && die "built; Hushpen is running, quit it and run again"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 # The voice worker loads the voice runtime from Contents/Frameworks, as in the shipped bundle.
 cp "$CARGO_TARGET_DIR"/tts-runtime/macos-arm64/*.dylib "$APP/Contents/Frameworks/"
-cp "$CARGO_TARGET_DIR/debug/hushpen" "$CARGO_TARGET_DIR/debug/hushpen-llm" "$CARGO_TARGET_DIR/debug/hushpen-tts" "$APP/Contents/MacOS/"
+cp "$CARGO_TARGET_DIR/debug/hushpen" "$CARGO_TARGET_DIR/debug/hushpen-asr" "$CARGO_TARGET_DIR/debug/hushpen-llm" "$CARGO_TARGET_DIR/debug/hushpen-tts" "$APP/Contents/MacOS/"
 cp assets/hushpen-app-icon.icns "$APP/Contents/Resources/Hushpen.icns"
 cp assets/hushpen-app-icon.car "$APP/Contents/Resources/Assets.car"
 cp assets/ggml-silero-v5.1.2.bin "$APP/Contents/Resources/"
@@ -49,6 +49,7 @@ cat >"$APP/Contents/Info.plist" <<PLIST
 PLIST
 # The helpers first: a bundle signature covers its nested code but does not sign it.
 for lib in "$APP"/Contents/Frameworks/*.dylib; do codesign --force --timestamp=none --sign "$IDENTITY" "$lib"; done
+codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-asr"
 codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-llm"
 codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-tts"
 codesign --force --timestamp=none --sign "$IDENTITY" "$APP"

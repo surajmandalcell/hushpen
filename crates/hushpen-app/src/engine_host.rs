@@ -1,9 +1,10 @@
-//! The app's side of the speech engine: starts the `hushpen engine` child through the
+//! The app's side of the speech engine: starts the `hushpen-asr` child through the
 //! supervisor, and loads the model the settings name once the model library has verified it.
 //!
 //! The UI never loads a model itself. A crash of the child fails the running job and nothing
 //! else; the supervisor restarts it and reloads the last model.
 
+use crate::worker_bin::worker_path;
 use hushpen_core::threads::resolve_threads;
 use hushpen_engine::{ChildSpec, EngineClient, EngineLog, LoadSpec, Status, Timing};
 use hushpen_store::data_dir::DataDir;
@@ -39,13 +40,8 @@ impl EngineHost {
             log::warn!("ENGINE_LOG_OFF could not open engine.log: {error}");
             EngineLog::discard()
         });
-        let program = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hushpen"));
-        let spec = ChildSpec {
-            program,
-            args: vec![OsString::from("engine")],
-        };
         Self {
-            client: EngineClient::start(spec, Timing::default(), log),
+            client: EngineClient::start(engine_spec(), Timing::default(), log),
             models_dir: data.whisper_models_dir(),
             default_model: default_model.to_owned(),
             loaded: Mutex::new(None),
@@ -136,6 +132,15 @@ impl EngineHost {
     }
 }
 
+/// The `hushpen-asr` worker beside the app, with no arguments. Activity Monitor and ps name a
+/// process after its executable file, so the engine has a file of its own.
+fn engine_spec() -> ChildSpec {
+    ChildSpec {
+        program: worker_path("hushpen-asr", "HUSHPEN_ASR_BIN"),
+        args: Vec::<OsString>::new(),
+    }
+}
+
 /// The same catalog id the speech child reports for this file.
 fn model_id(path: &Path) -> String {
     hushpen_engine::model_name(path)
@@ -195,6 +200,17 @@ mod tests {
 
     fn wanted(settings: &Map<String, Value>, cpus: usize) -> Option<LoadSpec> {
         wanted_load(settings, Path::new("/m"), "", cpus)
+    }
+
+    #[test]
+    fn the_engine_child_is_the_hushpen_asr_worker_beside_the_app() {
+        let spec = engine_spec();
+        assert!(spec.args.is_empty(), "{:?}", spec.args);
+        if std::env::var_os("HUSHPEN_ASR_BIN").is_none() {
+            let exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
+            let name = format!("hushpen-asr{}", std::env::consts::EXE_SUFFIX);
+            assert_eq!(spec.program, exe.with_file_name(name));
+        }
     }
 
     #[test]

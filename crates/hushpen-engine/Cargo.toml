@@ -30,6 +30,11 @@ whisper-rs = { workspace = true, features = ["metal"] }
 [dev-dependencies]
 tempfile.workspace = true
 
+# The speech engine child the app starts. Activity Monitor and ps show this file name.
+[[bin]]
+name = "hushpen-asr"
+path = "src/main.rs"
+
 # A scripted stand-in for hushpen-llm that the supervisor tests start as the child.
 [[bin]]
 name = "fake-llm"

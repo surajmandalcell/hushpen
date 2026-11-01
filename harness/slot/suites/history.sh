@@ -310,7 +310,7 @@ wait_until 240 reprocessed "$kill_id" small-q5_1 || failures+="the failed row di
 kill_text=$(col "$kill_id" final_text)
 [ "$(col "$kill_id" error_code)" = "" ] || failures+="the failed row keeps error_code $(col "$kill_id" error_code); "
 case " $(norm <<<"$kill_text") " in *" lighthouse "*) ;; *) failures+="'lighthouse' is missing from '$kill_text'; " ;; esac
-reference=$(/app/hushpen engine --smoke "$kill_audio" --model /assets/models/whisper/ggml-small-q5_1.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
+reference=$(/app/hushpen-asr --smoke "$kill_audio" --model /assets/models/whisper/ggml-small-q5_1.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
 score=$(recall "$(norm <<<"$kill_text")" "$reference")
 awk -v s="$score" 'BEGIN {exit !(s >= 0.9)}' || failures+="word recall is $score; "
 [ "$(count)" = "$c0" ] || failures+="reprocess changed the row count from $c0 to $(count); "

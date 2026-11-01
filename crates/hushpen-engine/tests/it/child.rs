@@ -1,7 +1,8 @@
-//! The real `hushpen engine` child and the supervisor around it, with a real model.
+//! The real engine child and the supervisor around it, with a real model.
 //!
-//! The child is the `hushpen` binary of the workspace; the tests build it once with cargo
-//! (`HUSHPEN_BIN` names another build). Models and WAVs come from the helpers in `it.rs`.
+//! The supervised child is `hushpen-asr`, the worker the app starts. The raw protocol tests
+//! run `hushpen engine`, the same code behind the app binary, which the tests build once with
+//! cargo (`HUSHPEN_BIN` names another build). Models and WAVs come from the helpers in `it.rs`.
 
 use super::{assert_expected_words, model_path, short_wav, words};
 use hushpen_core::error;
@@ -50,8 +51,8 @@ fn hushpen_binary() -> PathBuf {
 
 fn engine_spec() -> ChildSpec {
     ChildSpec {
-        program: hushpen_binary(),
-        args: vec!["engine".into()],
+        program: PathBuf::from(env!("CARGO_BIN_EXE_hushpen-asr")),
+        args: Vec::new(),
     }
 }
 

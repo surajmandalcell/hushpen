@@ -1,4 +1,4 @@
-//! `hushpen engine`: the entry point of the engine child.
+//! `hushpen-asr`: the entry point of the engine child. `hushpen engine` runs the same code.
 //!
 //! No arguments serves the frame protocol on stdin and stdout. `--smoke <wav> --model <ggml file>`
 //! transcribes one file, prints the result, and exits; it opens no window and no data folder.
@@ -41,8 +41,12 @@ fn load_speech_model(
     }
 }
 
-/// Runs the engine child. `args` are the arguments after `engine`.
+/// Runs the engine child. `args` are the arguments after the program name (or after `engine`).
 pub fn engine_main(args: &[String]) -> ExitCode {
+    if args.first().map(String::as_str) == Some("--version") {
+        println!("{}", version_line());
+        return ExitCode::SUCCESS;
+    }
     crate::whisper::quiet_native_logs();
     if args.is_empty() {
         let config = ServerConfig {
@@ -55,10 +59,14 @@ pub fn engine_main(args: &[String]) -> ExitCode {
     match parse_smoke(args) {
         Ok(smoke) => run_smoke(&smoke),
         Err(problem) => {
-            eprintln!("hushpen engine: {problem}");
+            eprintln!("hushpen-asr: {problem}");
             ExitCode::from(2)
         }
     }
+}
+
+fn version_line() -> String {
+    format!("hushpen-asr {}", hushpen_core::BUILD_VERSION)
 }
 
 struct Smoke {
@@ -79,7 +87,7 @@ fn parse_smoke(args: &[String]) -> Result<Smoke, String> {
     }
     match (wav, model) {
         (Some(wav), Some(model)) => Ok(Smoke { wav, model }),
-        _ => Err("usage: hushpen engine --smoke <file.wav> --model <ggml file>".into()),
+        _ => Err("usage: hushpen-asr [--version] [--smoke <file.wav> --model <ggml file>]".into()),
     }
 }
 
@@ -92,14 +100,14 @@ fn run_smoke(smoke: &Smoke) -> ExitCode {
     let pcm = match wav::read_mono_16k(&smoke.wav) {
         Ok(pcm) => pcm,
         Err(problem) => {
-            eprintln!("hushpen engine: {}: {problem}", smoke.wav.display());
+            eprintln!("hushpen-asr: {}: {problem}", smoke.wav.display());
             return ExitCode::FAILURE;
         }
     };
     let mut engine = match load_speech_model(&smoke.model, options) {
         Ok(engine) => engine,
         Err(problem) => {
-            eprintln!("hushpen engine: {problem}");
+            eprintln!("hushpen-asr: {problem}");
             return ExitCode::FAILURE;
         }
     };
@@ -107,7 +115,7 @@ fn run_smoke(smoke: &Smoke) -> ExitCode {
         match engine.transcribe(&pcm, &TranscribeOptions::default(), &CancelFlag::new()) {
             Ok(transcript) => transcript,
             Err(problem) => {
-                eprintln!("hushpen engine: {problem}");
+                eprintln!("hushpen-asr: {problem}");
                 return ExitCode::FAILURE;
             }
         };
@@ -134,6 +142,14 @@ mod tests {
         assert!(parse_smoke(&strings(&["--smoke", "a.wav"])).is_err());
         assert!(parse_smoke(&strings(&["--model", "m.bin"])).is_err());
         assert!(parse_smoke(&strings(&["--bogus"])).is_err());
+    }
+
+    #[test]
+    fn the_version_line_names_the_worker_and_the_build_version() {
+        assert_eq!(
+            version_line(),
+            format!("hushpen-asr {}", hushpen_core::BUILD_VERSION)
+        );
     }
 
     #[test]

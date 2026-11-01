@@ -1,7 +1,7 @@
 //! Linux: AppImage and deb through cargo-packager, rpm through
 //! cargo-generate-rpm, and the tar.gz from here.
 //!
-//! The deb and rpm keep the three programs and the sherpa-onnx libraries of
+//! The deb and rpm keep the four programs and the sherpa-onnx libraries of
 //! the voice worker together in `/usr/lib/hushpen/`, because the app starts
 //! its workers from the folder of its own executable. `/usr/bin/hushpen`
 //! points there.

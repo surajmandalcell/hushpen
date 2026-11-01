@@ -74,7 +74,7 @@ items() { python3 /harness/slot/sni-host.py --items; }
 tray_click() { $TM click "$1" >>"$RUN_OUT/tray-clicks.log" 2>&1; }
 ui_alive() { kill -0 "$(ui_pid)" 2>/dev/null; }
 engine_alive() { local pid; pid=$(engine .pid); [ -n "$pid" ] && [ "$pid" != null ] && kill -0 "$pid" 2>/dev/null; }
-hushpen_procs() { pgrep -ax hushpen | grep -vc ' engine$'; }
+hushpen_procs() { pgrep -xc hushpen; }
 hushpen_any() { pgrep -x hushpen | wc -l; }
 
 close_click() { # a real pointer click on the close traffic light
@@ -332,9 +332,10 @@ rm -f /tmp/app.pid
 wait_until 3 bash -c "! kill -0 $engine_pid 2>/dev/null" || failures+="the engine child $engine_pid still runs; "
 wait_until 3 test "$(items | wc -l)" = 0 || failures+="the watcher still lists $(items | wc -l) items; "
 [ "$(hushpen_any)" = 0 ] || failures+="a hushpen process is left; "
+pgrep -x hushpen-asr >/dev/null && failures+="hushpen-asr is left; "
 pgrep -f hushpen-llm >/dev/null && failures+="hushpen-llm is left; "
 items >"$RUN_OUT/006-items.txt" 2>&1
-check_failures "VAL-TRAY-006 Quit" "exit code $rc about $quit_ms ms after the click; engine $engine_pid gone; the item left the watcher; no hushpen or hushpen-llm process" "$failures"
+check_failures "VAL-TRAY-006 Quit" "exit code $rc about $quit_ms ms after the click; engine $engine_pid gone; the item left the watcher; no hushpen, hushpen-asr, or hushpen-llm process" "$failures"
 
 echo "== VAL-TRAY-008 with no tray host the close button minimizes the window"
 failures=""
