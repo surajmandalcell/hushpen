@@ -32,6 +32,8 @@ pub enum BarState {
     Error,
     /// The text was not inserted on purpose: a secure field or another app holds the keyboard.
     Blocked,
+    /// A dictation was cancelled and Recover can still bring it back.
+    Cancelled,
 }
 
 impl BarState {
@@ -44,6 +46,7 @@ impl BarState {
             BarState::Undo => "undo",
             BarState::Error => "error",
             BarState::Blocked => "blocked",
+            BarState::Cancelled => "cancelled",
         }
     }
 
@@ -73,6 +76,15 @@ pub fn state_for(pipeline: State, failure: Option<&str>) -> BarState {
 pub fn with_undo(shown: BarState, offered: bool) -> BarState {
     match shown {
         BarState::Idle | BarState::Result if offered => BarState::Undo,
+        other => other,
+    }
+}
+
+/// The bar offers Recover after a cancel in place of the idle pill, for as long as the pipeline
+/// keeps the cancelled audio. Any other state is news and wins.
+pub fn with_recover(shown: BarState, offered: bool) -> BarState {
+    match shown {
+        BarState::Idle if offered => BarState::Cancelled,
         other => other,
     }
 }
@@ -292,6 +304,24 @@ mod tests {
         assert_eq!(with_undo(BarState::Result, false), BarState::Result);
         assert_eq!(BarState::Undo.key(), "undo");
         assert!(!BarState::Undo.is_failure());
+    }
+
+    #[test]
+    fn a_recover_offer_replaces_only_the_idle_pill() {
+        assert_eq!(with_recover(BarState::Idle, true), BarState::Cancelled);
+        assert_eq!(with_recover(BarState::Idle, false), BarState::Idle);
+        for state in [
+            BarState::Listening,
+            BarState::Transcribing,
+            BarState::Result,
+            BarState::Undo,
+            BarState::Error,
+            BarState::Blocked,
+        ] {
+            assert_eq!(with_recover(state, true), state);
+        }
+        assert_eq!(BarState::Cancelled.key(), "cancelled");
+        assert!(!BarState::Cancelled.is_failure());
     }
 
     #[test]

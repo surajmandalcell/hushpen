@@ -1,5 +1,8 @@
 //! What the flow bar draws. [`Props`] holds everything a frame needs, so the pixel tests draw
 //! each state from plain data and the live bar builds the same props from the pipeline.
+//!
+//! Every pill is balanced: it has a round circle at both ends or at neither, and its line sits
+//! in the middle of the room between them, or of the whole pill.
 
 use super::FlowBar;
 use super::working::{self, BEAD_GAP, BEAD_WIDTH, Mix, Stage};
@@ -9,30 +12,33 @@ use crate::theme::{StyledType, space};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, ClickEvent, Div, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb, svg,
+    AnyElement, App, ClickEvent, Div, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb,
+    svg,
 };
 use hushpen_core::flow_bar::{BarState, bar_heights};
 
-const HEIGHT: f32 = 32.0;
-pub const IDLE_SIZE: (f32, f32) = (64.0, 24.0);
-/// Cancel, the waveform, and finish: 5 + 22 + 8 + 42 + 8 + 22 + 5.
-pub const LISTENING_SIZE: (f32, f32) = (112.0, HEIGHT);
+const HEIGHT: f32 = 28.0;
+pub const IDLE_SIZE: (f32, f32) = (67.0, 22.0);
+/// Cancel, the waveform, and finish.
+pub const LISTENING_SIZE: (f32, f32) = (118.0, HEIGHT);
 /// The processing wave keeps the listening size, so the pill does not jump when the words
 /// stop.
 pub const TRANSCRIBING_SIZE: (f32, f32) = LISTENING_SIZE;
-pub const RESULT_SIZE: (f32, f32) = (112.0, HEIGHT);
+pub const RESULT_SIZE: (f32, f32) = (118.0, HEIGHT);
 /// The widest notice. A notice is as wide as its line, up to this; a longer line truncates.
-pub const NOTICE_SIZE: (f32, f32) = (360.0, HEIGHT);
+pub const NOTICE_SIZE: (f32, f32) = (366.0, HEIGHT);
 /// What a character of the notice text takes on average, and room on top for a short line
 /// of wide letters, so a line fits its pill on Inter and on the system font.
 const NOTICE_CHAR: f32 = 6.3;
 const NOTICE_SLACK: f32 = 12.0;
-/// The tick and "Pasted", or "Undo paste" while the pointer is on the button, then the round
+/// The done mark, "Pasted" or "Undo paste" while the pointer is on the button, then the round
 /// undo button.
-pub const UNDO_SIZE: (f32, f32) = (120.0, HEIGHT);
+pub const UNDO_SIZE: (f32, f32) = (126.0, HEIGHT);
+/// The cancel mark, "Cancelled" or "Recover", then the round Recover button.
+pub const CANCELLED_SIZE: (f32, f32) = UNDO_SIZE;
 /// The processing pill while the cleanup model loads: it says why the wait is longer.
-pub const PREPARING_SIZE: (f32, f32) = (216.0, HEIGHT);
+pub const PREPARING_SIZE: (f32, f32) = (222.0, HEIGHT);
 
 /// The bars of the listening waveform.
 pub const WAVE_BARS: usize = 11;
@@ -40,9 +46,14 @@ const IDLE_BARS: usize = 9;
 const WAVE_REST: f32 = 3.0;
 const WAVE_MAX: f32 = 18.0;
 const BAR_WIDTH: f32 = 2.0;
-const ROUND_BUTTON: f32 = 22.0;
+const ROUND_BUTTON: f32 = 20.0;
+/// How much lower the first, second, and third bar from each end of a wave stand, so the wave
+/// tapers into the round ends.
+const PINCH: [f32; 3] = [0.70, 0.85, 0.95];
 pub const UNDO_LABEL: &str = "Undo paste";
 pub const HISTORY_LABEL: &str = "Open history";
+pub const RECOVER_LABEL: &str = "Recover";
+pub const CANCELLED_TEXT: &str = "Cancelled";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Props {
@@ -58,11 +69,11 @@ pub struct Props {
     pub work_ms: u64,
     /// Reduce Motion: the wave is one still frame.
     pub still: bool,
-    /// The text of the result, undo, error, and blocked states.
+    /// The text of the result, undo, cancelled, error, and blocked states.
     pub message: String,
     pub open_history: bool,
-    /// The pointer is on the round button of the undo or notice pill: the text names what it
-    /// does, because the pop-up is too small for a tooltip.
+    /// The pointer is on the round button of the undo, cancelled, or notice pill: the text
+    /// names what it does, because the pop-up is too small for a tooltip.
     pub hover: bool,
     /// The window size on this frame while the bar moves; `None` is the size of the state.
     pub frame: Option<(f32, f32)>,
@@ -115,24 +126,31 @@ pub fn size_of(props: &Props) -> (f32, f32) {
         BarState::Transcribing => TRANSCRIBING_SIZE,
         BarState::Result => RESULT_SIZE,
         BarState::Undo => UNDO_SIZE,
+        BarState::Cancelled => CANCELLED_SIZE,
         BarState::Error | BarState::Blocked => notice_size(props),
     }
 }
 
-/// The inset, the icon, the line, then the round button or the inset again.
+/// The line between the insets, or between the status mark and the round button.
 fn notice_size(props: &Props) -> (f32, f32) {
     let mut chars = props.message.chars().count();
     if props.open_history {
         chars = chars.max(HISTORY_LABEL.len());
     }
     let end = if props.open_history {
-        space::SM + ROUND_BUTTON + size::LISTENING_INSET
+        size::BUTTON_INSET + ROUND_BUTTON + space::SM
     } else {
         size::INSET
     };
-    let width =
-        size::INSET + size::ICON + space::SM + chars as f32 * NOTICE_CHAR + NOTICE_SLACK + end;
+    let width = 2.0 * end + chars as f32 * NOTICE_CHAR + NOTICE_SLACK;
     (width.ceil().min(NOTICE_SIZE.0), HEIGHT)
+}
+
+/// How much of its height bar `index` of `count` keeps: the three bars nearest each end stand
+/// a little lower.
+pub fn pinch(index: usize, count: usize) -> f32 {
+    let from_end = index.min(count.saturating_sub(index + 1));
+    PINCH.get(from_end).copied().unwrap_or(1.0)
 }
 
 /// Where each waveform bar wants to be, from the meter (oldest value first). The newest level
@@ -181,14 +199,6 @@ pub fn failure_text(code: Option<&str>) -> &'static str {
     }
 }
 
-fn tone(state: BarState) -> u32 {
-    match state {
-        BarState::Error => color::STATUS_ERROR,
-        BarState::Blocked => color::STATUS_WARNING,
-        _ => color::TEXT_PRIMARY,
-    }
-}
-
 /// The whole bar. `bar` is the live entity the controls call; the pixel tests pass `None`.
 pub fn content(
     props: &Props,
@@ -216,8 +226,8 @@ pub fn content(
         .overflow_hidden()
         .opacity(props.presence)
         .bg(rgb(color::SURFACE_ELEVATED))
-        .border_1()
-        .border_color(rgb(color::DIVIDER))
+        .border(px(0.5))
+        .border_color(rgb(color::BAR_EDGE))
         .cursor_pointer();
     // Without a compositor the window cannot be see-through and pill corners would render
     // black, so the bar fills its window as a rectangle.
@@ -254,7 +264,14 @@ pub fn content(
 }
 
 fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
-    let base = div().flex().items_center().px(px(size::INSET));
+    let base = div().flex().items_center();
+    let centered = || {
+        div()
+            .flex()
+            .items_center()
+            .px(px(size::INSET))
+            .justify_center()
+    };
     match props.state {
         BarState::Idle => base
             .justify_center()
@@ -262,85 +279,104 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>) -> Div {
             .children((0..IDLE_BARS).map(|_| wave_bar(WAVE_REST, color::TEXT_SUBTLE))),
         BarState::Listening => {
             let heights = bar_heights(&props.levels_padded(), WAVE_REST, WAVE_MAX);
-            base.px(px(size::LISTENING_INSET))
+            let count = heights.len();
+            base.px(px(size::BUTTON_INSET))
                 .justify_between()
                 .child(round_button(Round::Cancel, bar))
                 .child(
                     div()
+                        .id(hook::id("flowbar", "wave"))
+                        .test_support()
                         .flex()
                         .items_center()
                         .justify_center()
                         .gap(px(BAR_WIDTH))
-                        .children(heights.into_iter().map(|height| {
+                        .children(heights.into_iter().enumerate().map(|(index, height)| {
                             let tone = if height > WAVE_REST + 0.5 {
                                 color::TEXT_PRIMARY
                             } else {
                                 color::TEXT_MUTED
                             };
-                            wave_bar(height, tone)
+                            wave_bar((height * pinch(index, count)).max(BAR_WIDTH), tone)
                         })),
                 )
                 .child(round_button(Round::Finish, bar))
         }
         BarState::Transcribing => {
-            let row = base
-                .justify_center()
-                .gap(px(space::SM))
-                .child(working_wave(props));
+            let row = centered().gap(px(space::SM)).child(working_wave(props));
             if props.preparing() {
                 row.child(status_text(props.working_text(), color::TEXT_BODY))
             } else {
                 row
             }
         }
-        BarState::Result => base
-            .justify_center()
-            .gap(px(space::SM))
-            .child(icon(IconName::Check, color::TEXT_PRIMARY))
-            .child(status_text(&props.message, color::TEXT_PRIMARY)),
+        BarState::Result => centered().child(status_text(&props.message, color::TEXT_PRIMARY)),
         BarState::Undo => {
-            let said = div()
+            let line = if props.hover {
+                UNDO_LABEL
+            } else {
+                &props.message
+            };
+            balanced(
+                Mark::Done,
+                &props.message,
+                (line, color::TEXT_PRIMARY),
+                Round::Undo,
+                bar,
+            )
+        }
+        BarState::Cancelled => {
+            let line = if props.hover {
+                (RECOVER_LABEL, color::TEXT_PRIMARY)
+            } else {
+                (props.message.as_str(), color::TEXT_BODY)
+            };
+            balanced(Mark::Cancelled, CANCELLED_TEXT, line, Round::Recover, bar)
+        }
+        BarState::Error | BarState::Blocked if props.open_history => {
+            let line = if props.hover {
+                (HISTORY_LABEL, color::TEXT_PRIMARY)
+            } else {
+                (props.message.as_str(), color::TEXT_BODY)
+            };
+            let (mark, said) = if props.state == BarState::Error {
+                (Mark::Error, "Error")
+            } else {
+                (Mark::Blocked, "Not pasted")
+            };
+            balanced(mark, said, line, Round::History, bar)
+        }
+        BarState::Error | BarState::Blocked => {
+            centered().child(status_text(&props.message, color::TEXT_BODY))
+        }
+    }
+}
+
+/// A status mark at the left end, the line in the middle of the room between the two circles,
+/// and one round button at the right end.
+fn balanced(
+    mark: Mark,
+    said: &str,
+    (line, tone): (&str, u32),
+    round: Round,
+    bar: Option<&Entity<FlowBar>>,
+) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .px(px(size::BUTTON_INSET))
+        .gap(px(space::XS))
+        .child(status_mark(mark, said))
+        .child(
+            div()
                 .flex_1()
                 .min_w_0()
                 .flex()
                 .items_center()
                 .justify_center()
-                .gap(px(space::SM));
-            let said = if props.hover {
-                said.child(status_text(UNDO_LABEL, color::TEXT_PRIMARY))
-            } else {
-                said.child(icon(IconName::Check, color::TEXT_PRIMARY))
-                    .child(status_text(&props.message, color::TEXT_PRIMARY))
-            };
-            base.pr(px(size::LISTENING_INSET))
-                .gap(px(space::XS))
-                .child(said)
-                .child(round_button(Round::Undo, bar))
-        }
-        BarState::Error | BarState::Blocked => {
-            let (line, tone_of_line) = if props.open_history && props.hover {
-                (HISTORY_LABEL, color::TEXT_PRIMARY)
-            } else {
-                (props.message.as_str(), color::TEXT_BODY)
-            };
-            let notice = base
-                .gap(px(space::SM))
-                .child(icon(IconName::CircleAlert, tone(props.state)))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(status_text(line, tone_of_line)),
-                );
-            if props.open_history {
-                notice
-                    .pr(px(size::LISTENING_INSET))
-                    .child(round_button(Round::History, bar))
-            } else {
-                notice
-            }
-        }
-    }
+                .child(status_text(line, tone)),
+        )
+        .child(round_button(round, bar))
 }
 
 impl Props {
@@ -353,7 +389,7 @@ impl Props {
 }
 
 /// The processing wave: beads that flow, floating a little up and down as a whole.
-fn working_wave(props: &Props) -> Div {
+fn working_wave(props: &Props) -> impl IntoElement {
     let (beads, bob) = if props.still {
         (working::still(props.stage), 0.0)
     } else {
@@ -362,7 +398,10 @@ fn working_wave(props: &Props) -> Div {
             working::bob(props.work_ms),
         )
     };
+    let count = beads.len();
     div()
+        .id(hook::id("flowbar", "wave"))
+        .test_support()
         .flex()
         .flex_none()
         .items_center()
@@ -371,13 +410,14 @@ fn working_wave(props: &Props) -> Div {
         .gap(px(BEAD_GAP))
         .relative()
         .top(px(-bob))
-        .children(beads.into_iter().map(|bead| {
+        .children(beads.into_iter().enumerate().map(|(index, bead)| {
+            let pinch = pinch(index, count);
             div()
                 .w(px(BEAD_WIDTH))
-                .h(px(bead.height))
+                .h(px((bead.height * pinch).max(BEAD_WIDTH)))
                 .flex_none()
                 .relative()
-                .top(px(-bead.lift))
+                .top(px(-bead.lift * pinch))
                 .rounded(px(BEAD_WIDTH / 2.0))
                 .bg(rgb(color::TEXT_PRIMARY))
                 .opacity(bead.glow)
@@ -393,12 +433,38 @@ fn wave_bar(height: f32, tone: u32) -> Div {
         .bg(rgb(tone))
 }
 
-fn icon(name: IconName, tone: u32) -> impl IntoElement {
+fn glyph(name: IconName, tone: u32) -> AnyElement {
     svg()
         .path(name.path())
-        .size(px(size::ICON))
+        .size(px(size::ROUND_GLYPH))
         .flex_none()
         .text_color(rgb(tone))
+        .into_any_element()
+}
+
+/// The "!" of an error or blocked mark. The icon set has no bare one, only one in a circle,
+/// which would be a circle in a circle here.
+fn exclamation(tone: u32) -> AnyElement {
+    let stroke = 1.5;
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap(px(stroke))
+        .child(
+            div()
+                .w(px(stroke))
+                .h(px(5.0))
+                .rounded(px(stroke / 2.0))
+                .bg(rgb(tone)),
+        )
+        .child(
+            div()
+                .size(px(stroke))
+                .rounded(px(stroke / 2.0))
+                .bg(rgb(tone)),
+        )
+        .into_any_element()
 }
 
 fn status_text(text: &str, tone: u32) -> impl IntoElement {
@@ -407,6 +473,7 @@ fn status_text(text: &str, tone: u32) -> impl IntoElement {
         .test_support()
         .role(Role::Status)
         .aria_label(text.to_owned())
+        .min_w_0()
         .truncate()
         .text_token(BODY_SM)
         .text_color(rgb(tone))
@@ -414,17 +481,56 @@ fn status_text(text: &str, tone: u32) -> impl IntoElement {
 }
 
 #[derive(Clone, Copy)]
+enum Mark {
+    Done,
+    Cancelled,
+    Error,
+    Blocked,
+}
+
+/// The round mark at the left end of a pill that has a button at the right end, so both ends
+/// match. It only shows a status: no hover, no press, no pointer, and it takes no focus.
+fn status_mark(mark: Mark, said: &str) -> impl IntoElement {
+    let (fill, inner) = match mark {
+        Mark::Done => (
+            color::MARK_DONE,
+            glyph(IconName::Check, color::STATUS_SUCCESS),
+        ),
+        Mark::Cancelled => (color::MARK_CANCELLED, glyph(IconName::X, color::TEXT_MUTED)),
+        Mark::Error => (color::MARK_ERROR, exclamation(color::STATUS_ERROR)),
+        Mark::Blocked => (color::MARK_BLOCKED, exclamation(color::STATUS_WARNING)),
+    };
+    div()
+        .id(hook::id("flowbar", "mark"))
+        .test_support()
+        .role(Role::Image)
+        .aria_label(said.to_owned())
+        .size(px(ROUND_BUTTON))
+        .flex_none()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(radius::FULL))
+        .bg(rgb(fill))
+        .cursor_default()
+        // A press on the mark is not a press on the bar either: the mark does nothing.
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(inner)
+}
+
+#[derive(Clone, Copy)]
 enum Round {
     Cancel,
     Finish,
     Undo,
+    Recover,
     History,
 }
 
-/// The round cross and tick of the listening state, and the one button of the undo and the
-/// notice pills.
+/// The round cross and tick of the listening state, and the one button of the undo, the
+/// cancelled, and the notice pills.
 fn round_button(kind: Round, bar: Option<&Entity<FlowBar>>) -> impl IntoElement {
-    let (id, label, name, fill, hover, glyph) = match kind {
+    let (id, label, name, fill, hover, tone) = match kind {
         Round::Cancel => (
             "cancel",
             "Cancel dictation",
@@ -444,6 +550,14 @@ fn round_button(kind: Round, bar: Option<&Entity<FlowBar>>) -> impl IntoElement 
         Round::Undo => (
             "undo",
             UNDO_LABEL,
+            IconName::Undo2,
+            color::ROUND_CANCEL,
+            color::ROUND_CANCEL_HOVER,
+            color::TEXT_PRIMARY,
+        ),
+        Round::Recover => (
+            "recover",
+            RECOVER_LABEL,
             IconName::Undo2,
             color::ROUND_CANCEL,
             color::ROUND_CANCEL_HOVER,
@@ -470,18 +584,12 @@ fn round_button(kind: Round, bar: Option<&Entity<FlowBar>>) -> impl IntoElement 
         .justify_center()
         .rounded(px(radius::FULL))
         .bg(rgb(fill))
-        .child(
-            svg()
-                .path(name.path())
-                .size(px(size::ROUND_GLYPH))
-                .flex_none()
-                .text_color(rgb(glyph)),
-        )
+        .child(glyph(name, tone))
         // A press on the button is not a press on the bar: no drag and no toggle.
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     if let Some(bar) = bar {
         let bar = bar.clone();
-        if matches!(kind, Round::Undo | Round::History) {
+        if matches!(kind, Round::Undo | Round::Recover | Round::History) {
             // The pop-up is only as big as the pill, so a tooltip would be cut off: the
             // pill's own text names the button while the pointer is on it.
             let hovered = bar.clone();
@@ -495,6 +603,7 @@ fn round_button(kind: Round, bar: Option<&Entity<FlowBar>>) -> impl IntoElement 
                     Round::Cancel => bar.cancel(cx),
                     Round::Finish => bar.finish(cx),
                     Round::Undo => bar.press_undo(cx),
+                    Round::Recover => bar.press_recover(cx),
                     Round::History => bar.open_history(cx),
                 });
             },
@@ -515,82 +624,4 @@ impl gpui_kit::Render for Preview {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn each_state_has_its_own_size_and_every_pill_but_idle_is_one_height() {
-        let mut props = Props::new(BarState::Idle);
-        assert_eq!(size_of(&props), IDLE_SIZE);
-        for (state, size) in [
-            (BarState::Listening, LISTENING_SIZE),
-            (BarState::Transcribing, TRANSCRIBING_SIZE),
-            (BarState::Result, RESULT_SIZE),
-            (BarState::Undo, UNDO_SIZE),
-        ] {
-            props.state = state;
-            assert_eq!(size_of(&props), size);
-            assert_eq!(size.1, HEIGHT, "{state:?}");
-        }
-    }
-
-    #[test]
-    fn a_notice_is_as_wide_as_its_line_and_never_wider_than_the_widest() {
-        let mut props = Props::new(BarState::Blocked);
-        props.message = "Select text first".into();
-        let short = size_of(&props);
-        assert!(short.0 < 200.0, "{short:?}");
-        assert_eq!(short.1, HEIGHT);
-        props.open_history = true;
-        assert!(size_of(&props).0 > short.0, "room for the button");
-        props.message = "x".repeat(200);
-        assert_eq!(size_of(&props), NOTICE_SIZE);
-    }
-
-    #[test]
-    fn the_listening_pill_fits_the_cross_the_wave_and_the_tick() {
-        let wave = WAVE_BARS as f32 * BAR_WIDTH + (WAVE_BARS - 1) as f32 * BAR_WIDTH;
-        let inner = 2.0 * 5.0 + 2.0 * ROUND_BUTTON + 2.0 * space::SM + wave;
-        assert!(inner <= LISTENING_SIZE.0, "{inner}");
-        assert!(ROUND_BUTTON < LISTENING_SIZE.1);
-    }
-
-    #[test]
-    fn the_newest_level_is_in_the_middle_and_older_ones_spread_out() {
-        let mut meter = vec![0.0; 32];
-        meter[31] = 1.0;
-        meter[30] = 0.5;
-        let goal = wave_goal(&meter);
-        assert_eq!(goal.len(), WAVE_BARS);
-        let center = WAVE_BARS / 2;
-        assert_eq!(goal[center], 1.0);
-        assert_eq!(goal[center - 1], goal[center + 1]);
-        assert!(goal[center - 1] > 0.4 && goal[center - 1] < 0.5);
-        assert_eq!(goal[0], 0.0);
-        assert_eq!(wave_goal(&[]), vec![0.0; WAVE_BARS]);
-    }
-
-    #[test]
-    fn the_processing_wave_fits_the_listening_pill_and_only_the_model_wait_has_text() {
-        assert!(working::width() + 2.0 * size::INSET <= TRANSCRIBING_SIZE.0);
-        let mut props = Props::new(BarState::Transcribing);
-        assert_eq!(size_of(&props), LISTENING_SIZE);
-        assert_eq!(props.working_text(), "Transcribing");
-        props.stage = Stage::Preparing;
-        assert_eq!(size_of(&props), PREPARING_SIZE);
-        assert_eq!(props.working_text(), "Preparing the AI model");
-    }
-
-    #[test]
-    fn failures_have_short_lines() {
-        assert_eq!(failure_text(Some("ENGINE_NO_SPEECH")), "No speech heard");
-        assert_eq!(
-            failure_text(Some("INSERT_KEYBOARD_GRABBED")),
-            "Another app holds the keyboard"
-        );
-        assert_eq!(failure_text(Some("ENGINE_CRASHED")), "Transcription failed");
-        assert_eq!(failure_text(None), "Transcription failed");
-        assert_eq!(result_text(true), "Copied");
-        assert_eq!(result_text(false), "Pasted");
-    }
-}
+mod tests;

@@ -659,17 +659,23 @@ pub mod hud {
         pub const ON_ROUND_FINISH: u32 = 0x1A1A1A;
         pub const STATUS_ERROR: u32 = 0xFF9C8F;
         pub const STATUS_WARNING: u32 = 0xFFC266;
+        pub const STATUS_SUCCESS: u32 = 0x30D158;
+        /// The edge of the pill: white 10% on the pill fill, the separator of DESIGN.md.
+        pub const BAR_EDGE: u32 = 0x353535;
+        /// The status marks: their glyph color at 18% on the pill fill.
+        pub const MARK_DONE: u32 = 0x223F29;
+        pub const MARK_CANCELLED: u32 = 0x383838;
+        pub const MARK_ERROR: u32 = 0x473633;
+        pub const MARK_BLOCKED: u32 = 0x473C2C;
     }
 
     pub mod size {
-        /// The side inset of the pill, and the smaller ones of the listening pill and of a
-        /// pill that ends in a button.
+        /// The side inset of the text of the pill, and the inset of a round circle at its
+        /// ends: the same on every side, so the circle sits concentric with the round end.
         pub const INSET: f32 = 12.0;
-        pub const LISTENING_INSET: f32 = 5.0;
         pub const BUTTON_INSET: f32 = 4.0;
         pub const DOT: f32 = 6.0;
-        pub const ICON: f32 = 14.0;
-        pub const ROUND_GLYPH: f32 = 12.0;
+        pub const ROUND_GLYPH: f32 = 11.0;
         pub const TEXT_BUTTON_HEIGHT: f32 = 24.0;
         pub const TEXT_BUTTON_PADDING: f32 = 10.0;
     }
