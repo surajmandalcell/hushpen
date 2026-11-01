@@ -411,8 +411,9 @@ impl Worker {
         send(&self.output, &event);
     }
 
-    /// A failed load leaves the old model in place. The model already loaded only takes the new
-    /// idle rule.
+    /// The old model goes before the new one loads, so a switch or a reload with new threads
+    /// never holds two models in memory. A failed load opens the old model again. The model
+    /// already loaded only takes the new idle rule.
     fn load(&self, held: &mut Held, spec: ModelSpec) {
         let model = model_name(&spec.path);
         if let Some(engine) = held.engine.as_ref()
@@ -435,6 +436,8 @@ impl Worker {
             },
         );
         let started = Instant::now();
+        let old = held.engine.take().and(held.model.clone());
+        *lock(&self.held_model) = None;
         match self.open(&spec) {
             Ok(loaded) => {
                 let gpu = loaded.gpu_in_use();
@@ -457,6 +460,13 @@ impl Worker {
                     }
                     None => Event::error(None, code, failure.to_string()),
                 };
+                // Without the old model the next job loads it, as after an idle unload.
+                if let Some(old) = old {
+                    match self.open(&old) {
+                        Ok(engine) => held.engine = Some(engine),
+                        Err(again) => eprintln!("engine: reopen failed: {again}"),
+                    }
+                }
                 send(&self.output, &event);
             }
         }
@@ -577,17 +587,26 @@ mod tests {
     use std::io::PipeWriter;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    /// How often the fake loader loaded and the fake models paged out.
+    /// How often the fake loader loaded and the fake models paged out, and how many fake models
+    /// were alive at once.
     #[derive(Default)]
     struct Counts {
         loads: AtomicUsize,
         page_outs: AtomicUsize,
+        alive: AtomicUsize,
+        most_alive: AtomicUsize,
     }
 
     struct Fake {
         /// How long a job takes if nobody cancels it.
         job_ms: u64,
         counts: Arc<Counts>,
+    }
+
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            self.counts.alive.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 
     impl AsrEngine for Fake {
@@ -654,6 +673,8 @@ mod tests {
                 return Err(EngineError::UnsupportedCpu("AVX2"));
             }
             counts.loads.fetch_add(1, Ordering::SeqCst);
+            let alive = counts.alive.fetch_add(1, Ordering::SeqCst) + 1;
+            counts.most_alive.fetch_max(alive, Ordering::SeqCst);
             Ok(Box::new(Fake {
                 job_ms,
                 counts: Arc::clone(&counts),
@@ -896,6 +917,25 @@ mod tests {
                 other => panic!("unexpected {other:?}"),
             }
         }
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn a_model_switch_frees_the_old_model_before_the_new_one_loads() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        assert!(matches!(
+            session.load("ggml-base.en.bin"),
+            Event::Loaded { .. }
+        ));
+        assert!(matches!(session.load("ggml-bad.bin"), Event::Error { .. }));
+        assert_eq!(session.counts.most_alive.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            session.loads(),
+            3,
+            "the failed load opened the old model again"
+        );
+        assert_eq!(session.counts.alive.load(Ordering::SeqCst), 1);
         assert_eq!(session.finish(), 0);
     }
 
