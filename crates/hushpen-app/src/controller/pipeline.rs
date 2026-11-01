@@ -234,7 +234,7 @@ impl Controller {
         let volume = settings
             .get(CUE_VOLUME_SETTING)
             .and_then(|value| value.as_f64())
-            .map_or(0.25, |volume| volume as f32);
+            .map_or(0.125, |volume| volume as f32);
         if let Some(audio) = &self.dictation_audio {
             let mute = settings
                 .get("audio.muteWhileDictating")

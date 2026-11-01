@@ -186,7 +186,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("audio.enhance.noiseReduction", Kind::Bool, |_| json!(false)),
     spec!("audio.cueSounds", Kind::Bool, |_| json!(true)),
     spec!("audio.muteWhileDictating", Kind::Bool, |_| json!(true)),
-    spec!("audio.cueVolume", Kind::Float(0.0, 1.0), |_| json!(0.25)),
+    spec!("audio.cueVolume", Kind::Float(0.0, 1.0), |_| json!(0.125)),
     spec!("cleanup.rules", Kind::Bool, |_| json!(true)),
     spec!("cleanup.spokenPunctuation", Kind::Bool, |_| json!(true)),
     spec!("cleanup.llm.enabled", Kind::Bool, |_| json!(false)),

@@ -38,7 +38,7 @@ failures=""
 cross=""
 reset_data
 install_rc1
-seed '{"updates.check": false, "audio.cueVolume": 0.25, "dictation.modelId": "base-q5_1"}'
+seed '{"updates.check": false, "audio.cueVolume": 0.3, "dictation.modelId": "base-q5_1"}'
 mkdir -p "$MODELS"
 cp /assets/models/whisper/ggml-base-q5_1.bin "$MODELS/"
 # The first start makes the History database; it runs with the check off, then data is added.
@@ -101,7 +101,7 @@ cp "$SETTINGS_FILE" "$RUN_OUT/settings-after.json"
 diff <(jq -S 'del(.values["updates.lastCheckAt"])' "$RUN_OUT/settings-before.json") \
   <(jq -S 'del(.values["updates.lastCheckAt"])' "$RUN_OUT/settings-after.json") >"$RUN_OUT/settings.diff" ||
   cross+="settings.json changed across the update: $(tr '\n' ' ' <"$RUN_OUT/settings.diff"); "
-[ "$(jq -r '.values["audio.cueVolume"]' "$SETTINGS_FILE")" = 0.25 ] || cross+="audio.cueVolume is $(jq -r '.values["audio.cueVolume"]' "$SETTINGS_FILE"); "
+[ "$(jq -r '.values["audio.cueVolume"]' "$SETTINGS_FILE")" = 0.3 ] || cross+="audio.cueVolume is $(jq -r '.values["audio.cueVolume"]' "$SETTINGS_FILE"); "
 [ "$(jq -r '.values["onboarding.completed"]' "$SETTINGS_FILE")" = true ] || cross+="onboarding.completed is not true; "
 [ "$size" = 940x600 ] || cross+="the window after the relaunch is '$size'; "
 sqlite3 "$DB" "select 'transcript', count(*) from transcript union all select 'dictionary_entry', count(*) from dictionary_entry" >"$RUN_OUT/cross-008-counts.txt"
@@ -133,7 +133,7 @@ text=$(norm <"$RUN_OUT/gtk.txt" 2>/dev/null)
 echo "gtk.txt: $text"
 missed=$(word_recall_ok "$text" "${SHORT_WORDS[@]}") || cross+="the GTK entry misses: $missed; "
 shot cross-008-after
-check_failures "VAL-CROSS-008 data and core loop" "rc.1 to rc.2 with 3 History rows, 1 dictionary entry, audio.cueVolume 0.25: after the relaunch 3 rows (4 after the dictation), 1 entry, settings.json identical, onboarding done, window 940x600, and push-to-talk put the speech into the GTK entry (gtk.txt: $text)" "$cross"
+check_failures "VAL-CROSS-008 data and core loop" "rc.1 to rc.2 with 3 History rows, 1 dictionary entry, audio.cueVolume 0.3: after the relaunch 3 rows (4 after the dictation), 1 entry, settings.json identical, onboarding done, window 940x600, and push-to-talk put the speech into the GTK entry (gtk.txt: $text)" "$cross"
 pkill -x xterm 2>/dev/null
 pkill -f target-gtk.py 2>/dev/null
 

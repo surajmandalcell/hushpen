@@ -147,7 +147,7 @@ pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
         .settings
         .read(cx)
         .stored_f64("audio.cueVolume")
-        .unwrap_or(0.25);
+        .unwrap_or(0.125);
     let settings = page.settings.clone();
     let volume = volume as f32;
     ui::slider_row(
@@ -157,7 +157,7 @@ pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
             id: super::settings_id("audio.cueVolume"),
             label: "Sound volume",
             position: volume,
-            reading: percent(volume),
+            reading: fine_percent(volume),
             focus: &page.focus[slots::CUE_VOLUME],
         },
         move |volume, cx| settings.update(cx, |me, cx| me.set_cue_volume(volume, cx)),
@@ -167,6 +167,11 @@ pub fn cue_volume(page: &Page, cx: &mut App) -> AnyElement {
 /// `1.5` reads `150%`.
 fn percent(fraction: f32) -> String {
     format!("{:.0}%", fraction * 100.0)
+}
+
+/// Like [`percent`] in steps of 2.5%: `0.125` reads `12.5%`, `0.15` reads `15%`.
+fn fine_percent(fraction: f32) -> String {
+    format!("{}%", (fraction * 1000.0).round() / 10.0)
 }
 
 pub fn max_length(page: &Page, cx: &mut App) -> AnyElement {

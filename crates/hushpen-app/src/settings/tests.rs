@@ -578,11 +578,15 @@ fn a_new_query_closes_the_open_picker_and_is_never_saved(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
-fn the_cue_volume_moves_in_steps_of_five_percent(cx: &mut TestAppContext) {
+fn the_cue_volume_moves_in_steps_of_two_and_a_half_percent(cx: &mut TestAppContext) {
     let rig = rig(cx);
+    assert_eq!(value(&rig, "audio.cueVolume"), json!(0.125));
     rig.settings
         .update(cx, |me, cx| me.set_cue_volume(0.62, cx));
-    assert_eq!(value(&rig, "audio.cueVolume"), json!(0.6));
+    assert_eq!(value(&rig, "audio.cueVolume"), json!(0.625));
+    rig.settings
+        .update(cx, |me, cx| me.set_cue_volume(0.13, cx));
+    assert_eq!(value(&rig, "audio.cueVolume"), json!(0.125));
     rig.settings.update(cx, |me, cx| me.set_cue_volume(1.7, cx));
     assert_eq!(value(&rig, "audio.cueVolume"), json!(1.0));
 }

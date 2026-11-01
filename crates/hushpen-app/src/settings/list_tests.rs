@@ -364,6 +364,11 @@ fn a_new_query_puts_the_list_back_at_the_top(cx: &mut TestAppContext) {
 fn the_volume_slider_follows_a_press_and_the_arrow_keys(cx: &mut TestAppContext) {
     let shown = shown(cx);
     search(cx, &shown, "volume");
+    assert_eq!(
+        reading(cx, &shown, "audio.cueVolume").as_deref(),
+        Some("12.5%"),
+        "the default"
+    );
     cx.update_window(shown.handle, |_, window, cx| {
         window.click("settings.audio.cueVolume", cx)
     })
