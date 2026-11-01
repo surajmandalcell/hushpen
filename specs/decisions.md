@@ -405,6 +405,17 @@ new decision, add it here in the same change (D-21).
   limit: Parakeet v3 Q4 lost 0.29 points (95% CI up to 0.85) to save
   329 ms, and Whisper Turbo Q5 lost 0.36 points to save 937 ms.
 
+- **D-44 Flow bar balance and Recover.** Every flow bar state has a 20 pt
+  circle at both ends or at neither, 4 pt in from the edge, and centers its
+  text between them. The pill is 28 pt high with radius h/2; on macOS its
+  panel is borderless, because a titled panel clips it to 17 pt corners.
+  Widths: 118 for Listening, Transcribing, Cleaning, and Pasted; 126 for
+  Pasted with Undo and Cancelled; 222 for Preparing; notices up to 366; idle
+  67 by 22. Esc or the cross keeps the recording 4 s (`RECOVER_MS`) for
+  Recover, which transcribes it again and pastes it as if it were finished.
+  The audio goes, or the cancelled row is saved, when the 4 s end or a new
+  dictation starts. Command Mode has no Recover.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the
