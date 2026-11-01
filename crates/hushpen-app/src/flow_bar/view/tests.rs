@@ -2,55 +2,87 @@ use super::*;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext as _, Bounds, Pixels, TestAppContext, WindowBounds, WindowOptions};
 
-#[test]
-fn each_state_has_its_own_size_and_every_pill_but_idle_is_one_height() {
-    let mut props = Props::new(BarState::Idle);
-    assert_eq!(size_of(&props), IDLE_SIZE);
-    for (state, size) in [
-        (BarState::Listening, LISTENING_SIZE),
-        (BarState::Transcribing, TRANSCRIBING_SIZE),
-        (BarState::Result, RESULT_SIZE),
-        (BarState::Undo, UNDO_SIZE),
-        (BarState::Cancelled, CANCELLED_SIZE),
-    ] {
-        props.state = state;
-        assert_eq!(size_of(&props), size);
-        assert_eq!(size.1, HEIGHT, "{state:?}");
+/// A look with a line of `width` points.
+fn line(state: BarState, message: &str, width: f32) -> Props {
+    Props {
+        message: message.into(),
+        text_width: width,
+        ..Props::new(state)
     }
+}
+
+#[test]
+fn every_pill_fits_its_content_with_fixed_insets() {
     assert_eq!(HEIGHT, 28.0);
     assert_eq!(IDLE_SIZE, (67.0, 22.0));
+    assert_eq!(ROUND_END, 4.0 + 20.0 + 8.0);
+    assert_eq!(size::INSET, 12.0);
+    assert_eq!(size_of(&Props::new(BarState::Idle)), IDLE_SIZE);
+    assert_eq!(size_of(&Props::new(BarState::Listening)), (118.0, HEIGHT));
     assert_eq!(
-        (
-            LISTENING_SIZE.0,
-            RESULT_SIZE.0,
-            UNDO_SIZE.0,
-            PREPARING_SIZE.0
-        ),
-        (118.0, 118.0, 126.0, 222.0)
+        size_of(&Props::new(BarState::Transcribing)),
+        (118.0, HEIGHT)
+    );
+    let preparing = Props {
+        stage: Stage::Preparing,
+        text_width: 128.4,
+        ..Props::new(BarState::Transcribing)
+    };
+    assert_eq!(
+        size_of(&preparing).0,
+        (12.0 + working::width() + 8.0 + 128.4_f32 + 12.0).ceil()
+    );
+    for (state, ends) in [
+        (BarState::Result, 2.0 * 12.0),
+        (BarState::Error, 2.0 * 12.0),
+        (BarState::Blocked, 2.0 * 12.0),
+        (BarState::Undo, 2.0 * ROUND_END),
+        (BarState::Cancelled, 2.0 * ROUND_END),
+    ] {
+        let props = line(state, "Pasted", 38.6);
+        assert_eq!(
+            size_of(&props),
+            ((ends + 38.6_f32).ceil(), HEIGHT),
+            "{state:?}"
+        );
+    }
+    let history = Props {
+        open_history: true,
+        ..line(BarState::Error, "No speech heard", 92.2)
+    };
+    assert_eq!(size_of(&history).0, (2.0 * ROUND_END + 92.2_f32).ceil());
+}
+
+#[test]
+fn a_long_line_stops_at_the_widest_pill() {
+    let props = line(BarState::Blocked, &"x".repeat(200), 1_200.0);
+    assert_eq!(size_of(&props), (MAX_WIDTH, HEIGHT));
+    assert_eq!(MAX_WIDTH, 366.0);
+    assert_eq!(
+        line_room(&props),
+        MAX_WIDTH - 24.0,
+        "the line truncates there"
     );
 }
 
 #[test]
-fn a_notice_is_as_wide_as_its_line_and_never_wider_than_the_widest() {
-    let mut props = Props::new(BarState::Blocked);
-    props.message = "Select text first".into();
-    let short = size_of(&props);
-    assert!(short.0 < 200.0, "{short:?}");
-    assert_eq!(short.1, HEIGHT);
-    props.open_history = true;
-    assert!(
-        size_of(&props).0 > short.0,
-        "room for the mark and the button"
-    );
-    props.message = "x".repeat(200);
-    assert_eq!(size_of(&props), NOTICE_SIZE);
-    assert_eq!(NOTICE_SIZE.0, 366.0);
+fn the_room_fits_every_line_the_pill_can_show_so_a_hover_never_resizes_it() {
+    let undo = line(BarState::Undo, "Pasted", 0.0);
+    assert_eq!(undo.lines(), ["Pasted", UNDO_HOVER]);
+    assert!(UNDO_HOVER.len() < "Pasted".len().min("Copied".len()));
+    let cancelled = line(BarState::Cancelled, CANCELLED_TEXT, 0.0);
+    assert_eq!(cancelled.lines(), [CANCELLED_TEXT, RECOVER_LABEL]);
+    let history = Props {
+        open_history: true,
+        ..line(BarState::Error, "No speech heard", 0.0)
+    };
+    assert_eq!(history.lines(), ["No speech heard", HISTORY_LABEL]);
+    assert!(Props::new(BarState::Listening).lines().is_empty());
 }
 
 #[test]
 fn the_listening_pill_fits_the_cross_the_wave_and_the_tick() {
-    let wave = WAVE_BARS as f32 * BAR_WIDTH + (WAVE_BARS - 1) as f32 * BAR_WIDTH;
-    let inner = 2.0 * size::BUTTON_INSET + 2.0 * ROUND_BUTTON + 2.0 * space::SM + wave;
+    let inner = 2.0 * ROUND_END + working::width();
     assert!(inner <= LISTENING_SIZE.0, "{inner}");
     assert_eq!(
         HEIGHT - ROUND_BUTTON,
@@ -93,7 +125,7 @@ fn the_processing_wave_fits_the_listening_pill_and_only_the_model_wait_has_text(
     assert_eq!(size_of(&props), LISTENING_SIZE);
     assert_eq!(props.working_text(), "Transcribing");
     props.stage = Stage::Preparing;
-    assert_eq!(size_of(&props), PREPARING_SIZE);
+    assert_eq!(props.lines(), ["Preparing the AI model"]);
     assert_eq!(props.working_text(), "Preparing the AI model");
 }
 
@@ -246,6 +278,18 @@ fn the_line_sits_in_the_middle_between_the_circles_or_of_the_whole_pill(cx: &mut
             "{name}: {left} pt on the left, {right} pt on the right"
         );
         assert!(left >= 0.0 && right >= 0.0, "{name}: the line overflows");
+        // The pill is as wide as its content: the line has its fixed gap and no more.
+        if wave.is_none() && name != "blocked long" && !name.contains("hover") {
+            let gap = if ends.is_empty() {
+                size::INSET
+            } else {
+                space::SM
+            };
+            assert!(
+                left >= gap - 0.01 && left < gap + 1.0,
+                "{name}: {left} pt beside the line, want {gap}"
+            );
+        }
         for (id, (l, r, t, b)) in ends {
             let inset = if id == "mark" { l - bar.0 } else { bar.1 - r };
             assert_eq!(inset, size::BUTTON_INSET, "{name}: {id} side inset");
@@ -282,4 +326,36 @@ fn the_status_marks_are_images_and_not_buttons(cx: &mut TestAppContext) {
         .expect("the Recover button");
     assert_eq!(recover.role(), Some(Role::Button));
     assert_eq!(recover.label(), Some(RECOVER_LABEL));
+}
+
+#[gpui_kit::test]
+fn the_processing_wave_stands_where_the_listening_wave_stood(cx: &mut TestAppContext) {
+    let mut listening = Props::new(BarState::Listening);
+    listening.levels = vec![0.6; WAVE_BARS];
+    let listened = Drawn::open(cx, listening).edges(cx, "wave").unwrap();
+    let mut transcribing = Props::new(BarState::Transcribing);
+    transcribing.still = true;
+    let processed = Drawn::open(cx, transcribing).edges(cx, "wave").unwrap();
+    assert_eq!(listened.0, processed.0);
+    assert_eq!(listened.1, processed.1);
+}
+
+#[test]
+fn a_turning_wave_starts_from_the_old_bars_and_ends_on_the_new_ones() {
+    let mut listening = Props::new(BarState::Listening);
+    listening.levels = vec![0.9; WAVE_BARS];
+    let from = drawn_wave(&listening).unwrap();
+    let mut turning = Props::new(BarState::Transcribing);
+    turning.still = true;
+    let to = drawn_wave(&turning).unwrap();
+    turning.morph = Some((from.clone(), 0.0));
+    assert_eq!(drawn_wave(&turning).unwrap(), from);
+    turning.morph = Some((from, 1.0));
+    assert_eq!(drawn_wave(&turning).unwrap(), to);
+    assert!(morphs(&listening) && morphs(&turning));
+    turning.stage = Stage::Preparing;
+    assert!(
+        !morphs(&turning),
+        "the model wait has its line beside the wave"
+    );
 }

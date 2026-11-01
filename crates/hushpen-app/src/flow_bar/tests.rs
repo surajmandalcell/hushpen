@@ -723,7 +723,12 @@ fn an_ai_cleaned_paste_offers_undo_cleanup_in_place_of_the_flash(cx: &mut TestAp
     assert_eq!(bar.state(cx), BarState::Undo);
     let props = bar.props(cx);
     assert_eq!(props.message, "Pasted");
-    assert_eq!(view::size_of(&props), view::UNDO_SIZE);
+    assert!(props.text_width > 0.0, "the line is measured");
+    assert_eq!(
+        view::size_of(&props).0,
+        (2.0 * view::ROUND_END + props.text_width).ceil(),
+        "the pill fits the mark, the line, and the button"
+    );
     let state = bar.bar.read_with(cx, |bar, _| bar.state_json());
     assert_eq!(state["state"], "undo");
     assert_eq!(state["visible"], true);
@@ -800,7 +805,11 @@ fn the_transcribing_pill_says_when_the_ai_model_is_loading(cx: &mut TestAppConte
     let props = bar.props(cx);
     assert!(props.preparing());
     assert_eq!(props.working_text(), "Preparing the AI model");
-    assert_eq!(view::size_of(&props), view::PREPARING_SIZE);
+    assert!(props.text_width > 0.0, "the line is measured");
+    assert!(
+        view::size_of(&props).0 > view::LISTENING_SIZE.0,
+        "room for the wave and the line"
+    );
 
     bar.rig.controller.read_with(cx, |controller, _| {
         controller.show_ai_phase(Some(Phase::Cleaning))

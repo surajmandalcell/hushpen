@@ -29,10 +29,11 @@ pub enum Style {
 
 const STYLES: [Style; 4] = [Style::Flow, Style::Ribbon, Style::Ripple, Style::Breathe];
 
-/// The beads of the wave.
-pub const BEADS: usize = 9;
-pub const BEAD_WIDTH: f32 = 3.0;
-pub const BEAD_GAP: f32 = 3.0;
+/// The beads of the wave: the bars of the listening waveform, in the same places, so the one
+/// turns into the other where it stands.
+pub const BEADS: usize = 11;
+pub const BEAD_WIDTH: f32 = 2.0;
+pub const BEAD_GAP: f32 = 2.0;
 const REST: f32 = 3.0;
 const TALL: f32 = 16.0;
 /// How far the ribbon's dots move up and down.

@@ -25,7 +25,7 @@ use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
 use hushpen_app::flow_bar::view::{
-    CANCELLED_TEXT, Preview, Props, WAVE_BARS, result_text, size_of,
+    CANCELLED_TEXT, Preview, Props, WAVE_BARS, measure_in, result_text, size_of,
 };
 use hushpen_app::flow_bar::working::{LONG_WAIT_MS, Mix, Stage};
 use hushpen_app::mic::{MicBackend, MicSession};
@@ -571,12 +571,23 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
     history_hover.hover = true;
     let mut recover_hover = message(BarState::Cancelled, CANCELLED_TEXT, false);
     recover_hover.hover = true;
-    // A bar on its way in: a little more than a circle, the content still fading in.
+    // A bar on its way in and one on its way out: the whole pill fades and scales a little in
+    // place, at the size of its state.
     let appearing = Props {
-        frame: Some((60.0, 32.0)),
         presence: 0.6,
-        fade: 0.4,
+        scale: 0.984,
         ..listening.clone()
+    };
+    let leaving = Props {
+        presence: 0.3,
+        scale: 0.972,
+        ..message(BarState::Undo, result_text(false), false)
+    };
+    // The done mark and the undo button grow in after the size has settled.
+    let marks_in = Props {
+        marks: 0.5,
+        mark_scale: 0.95,
+        ..message(BarState::Undo, result_text(false), false)
     };
     vec![
         ("flowbar-idle", Props::new(BarState::Idle)),
@@ -616,6 +627,8 @@ fn flow_bar_states() -> Vec<(&'static str, Props)> {
             message(BarState::Undo, result_text(false), false),
         ),
         ("flowbar-undo-hover", hover),
+        ("flowbar-undo-marks-in", marks_in),
+        ("flowbar-leaving", leaving),
         (
             "flowbar-cancelled",
             message(BarState::Cancelled, CANCELLED_TEXT, false),
@@ -649,8 +662,10 @@ fn capture_flow_bar(props: Props) -> RgbaImage {
     capture_flow_bar_in(props, Appearance::Dark)
 }
 
-fn capture_flow_bar_in(props: Props, appearance: Appearance) -> RgbaImage {
+fn capture_flow_bar_in(mut props: Props, appearance: Appearance) -> RgbaImage {
     let mut cx = headless_in(appearance);
+    // The window takes the size of the pill, so the line is measured before it opens.
+    cx.update(|cx| measure_in(&mut props, cx));
     let (width, height) = props.frame.unwrap_or_else(|| size_of(&props));
     let handle = cx
         .open_window(size(px(width), px(height)), move |window, cx| {

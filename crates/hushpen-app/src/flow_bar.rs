@@ -22,14 +22,14 @@ use futures::channel::mpsc::{UnboundedReceiver, unbounded};
 use futures::future::{Either, select};
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, WeakEntity, Window,
-    point, px,
+    WindowTextSystem, point, px,
 };
 use hushpen_core::dictation::{AppEvent, State};
 use hushpen_core::flow_bar::{
     BarState, Display, Drag, Release, Spot, place, state_for, with_recover, with_undo,
 };
 use hushpen_platform::window::{Pointer, WindowHandle};
-use motion::{Goal, Motion};
+use motion::{Mode, Motion};
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -115,7 +115,14 @@ pub struct FlowBar {
     work_since: u64,
     /// The pointer is on the round button of the undo or the notice pill.
     hover: bool,
+    /// The look the bar wanted last. A bar on its way out keeps it.
+    target: Props,
+    /// What the bar draws on this frame.
     props: Props,
+    /// The last frame drawn showed nothing of the bar.
+    painted_clear: bool,
+    /// Measures the line of the pill, for its width.
+    text: Option<WindowTextSystem>,
     visible: bool,
     origin: (f32, f32),
     /// The screen the bar is on. It is chosen when the bar appears or a dictation starts, so
@@ -150,7 +157,10 @@ impl FlowBar {
             work: None,
             work_since: 0,
             hover: false,
-            props: Props::new(BarState::Idle),
+            target: Props::new(BarState::Idle),
+            props: Props::gone(),
+            painted_clear: false,
+            text: None,
             visible: false,
             origin: (0.0, 0.0),
             screen: FALLBACK_SCREEN,
@@ -183,6 +193,12 @@ impl FlowBar {
 
     pub fn is_pressed(&self) -> bool {
         self.pressed
+    }
+
+    /// The last frame the window drew showed nothing of the bar, so the window can go without
+    /// a flash and holds a clear frame for the next show.
+    pub fn painted_clear(&self) -> bool {
+        self.painted_clear
     }
 
     /// The bar moves on its own: it changes size, fades, or draws a live waveform or the
@@ -305,6 +321,13 @@ impl FlowBar {
             self.hover = false;
         }
         let still = !(self.animate && !cx.reduce_motion());
+        let mode = if !self.animate {
+            Mode::Instant
+        } else if cx.reduce_motion() {
+            Mode::Crossfade
+        } else {
+            Mode::Full
+        };
 
         let wanted = self.flag("overlay.enabled", true)
             && (shown != BarState::Idle || self.pressed || self.flag("overlay.idleVisible", false));
@@ -313,7 +336,7 @@ impl FlowBar {
         }
         // A bar on its way out keeps what it showed last: the idle pill must not flash up as
         // a result fades.
-        let mut props = if wanted {
+        let target = if wanted {
             let message = match shown {
                 BarState::Result | BarState::Undo => view::result_text(copied).to_owned(),
                 BarState::Cancelled => view::CANCELLED_TEXT.to_owned(),
@@ -324,7 +347,7 @@ impl FlowBar {
                 _ => String::new(),
             };
             let work = self.work.filter(|_| shown == BarState::Transcribing);
-            Props {
+            let mut target = Props {
                 state: shown,
                 message,
                 open_history: shown.is_failure()
@@ -342,41 +365,35 @@ impl FlowBar {
                 still,
                 hover: self.hover,
                 ..Props::new(shown)
-            }
+            };
+            let text = self
+                .text
+                .get_or_insert_with(|| WindowTextSystem::new(cx.text_system().clone()));
+            view::measure(&mut target, text);
+            self.target = target.clone();
+            target
         } else {
-            self.props.clone()
+            self.target.clone()
         };
-        let wave = if props.state == BarState::Listening {
+        let wave = if target.state == BarState::Listening {
             view::wave_goal(&self.mic.read(cx).meter())
         } else {
             Vec::new()
         };
-        let goal_size = view::size_of(&props);
-        self.motion.update(
-            now,
-            Goal {
-                size: goal_size,
-                shown: wanted,
-                new_state: wanted && props.state != self.props.state,
-                wave: &wave,
-            },
-            !still,
-        );
+        let goal_size = view::size_of(&target);
+        let props = self.motion.frame(now, target, wanted, &wave, mode);
         let size = self.motion.size();
-        props.levels = self.motion.wave().to_vec();
-        props.frame = Some(size);
-        props.presence = self.motion.presence();
-        props.fade = self.motion.fade();
         if props != self.props {
             self.props = props;
             cx.notify();
         }
 
         self.visible = wanted || !self.motion.is_gone();
-        // The last look is only kept while the bar fades: a gone bar is idle, so the state
-        // section and its change event do not keep reporting a result or an expired offer.
-        if !self.visible && self.props.state != BarState::Idle {
-            self.props = Props::new(BarState::Idle);
+        // A gone bar is idle, so the state section and its change event do not keep reporting
+        // a result or an expired offer, and it draws nothing, so a kept window holds a clear
+        // frame.
+        if !self.visible && self.props != Props::gone() {
+            self.props = Props::gone();
             cx.notify();
         }
         // The spot comes from the goal size, so the bar grows and shrinks around a still
@@ -609,6 +626,7 @@ impl FlowBar {
 
 impl Render for FlowBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.painted_clear = self.props.presence <= 0.0;
         let composited = crate::theme::chrome::compositor(cx);
         view::content(&self.props, Some(&cx.entity()), composited)
     }
