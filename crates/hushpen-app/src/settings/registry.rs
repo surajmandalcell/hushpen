@@ -33,10 +33,10 @@ impl Settings {
         cx.notify();
     }
 
-    /// Sets the cue volume, from 0 to 1, in steps of 5%, so a drag writes the file only when
-    /// the step changes.
+    /// Sets the cue volume, from 0 to 1, in steps of 2.5%, so a drag writes the file only when
+    /// the step changes. The default, 12.5%, sits on the grid.
     pub fn set_cue_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
-        let stepped = (f64::from(volume.clamp(0.0, 1.0)) * 20.0).round() / 20.0;
+        let stepped = (f64::from(volume.clamp(0.0, 1.0)) * 40.0).round() / 40.0;
         let stored = self.stored_f64("audio.cueVolume");
         if stored.is_none_or(|stored| (stored - stepped).abs() > f64::EPSILON) {
             self.set("audio.cueVolume", json!(stepped), cx);
