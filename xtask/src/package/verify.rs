@@ -1,8 +1,8 @@
 //! `cargo xtask package-verify --target <t> [--dir <dist>] [--formats ...]`:
 //! opens every artifact in a dist folder and checks it against the plan: the
 //! file set, `SHA256SUMS`, the metadata, the dependency lines, the notices, the
-//! install kind, the ad-hoc signature, and the release-check scan of both
-//! binaries inside. The dmg is only read with `hdiutil imageinfo` unless this
+//! install kind, the ad-hoc signature, and the release-check scan of every
+//! binary inside. The dmg is only read with `hdiutil imageinfo` unless this
 //! is the CI runner, which may mount it.
 
 use std::fs;
@@ -12,7 +12,8 @@ use std::process::Command;
 use super::names::{self, Format, Target};
 use super::target_dir;
 use super::{
-    APP_BINARY, BINARIES, LLM_BINARY, NOTICES, TTS_BINARY, VAD_MODEL, build_version, sha256_hex,
+    APP_BINARY, ASR_BINARY, BINARIES, LLM_BINARY, NOTICES, TTS_BINARY, VAD_MODEL, build_version,
+    sha256_hex,
 };
 
 const DEB_DEPENDS: &[&str] = &[
@@ -161,6 +162,7 @@ fn verify_tar(
     let root = scratch.join(&top);
     let mut wanted = vec![
         APP_BINARY,
+        ASR_BINARY,
         LLM_BINARY,
         TTS_BINARY,
         NOTICES,
@@ -186,6 +188,7 @@ fn verify_tar(
     scan_binaries(&root, &mut problems);
     check_vad(&root, &mut problems);
     check_version_line(&root.join(APP_BINARY), version, &mut problems);
+    check_version_line(&root.join(ASR_BINARY), version, &mut problems);
     check_version_line(&root.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&root, target, None, &mut problems);
     check_tts_runtime(&root, &mut problems);
@@ -241,6 +244,7 @@ fn verify_deb(
     )?;
     for want in [
         "./usr/lib/hushpen/hushpen\n",
+        "./usr/lib/hushpen/hushpen-asr\n",
         "./usr/lib/hushpen/hushpen-llm\n",
         "./usr/lib/hushpen/hushpen-tts\n",
         "./usr/lib/hushpen/libsherpa-onnx-c-api.so\n",
@@ -274,6 +278,7 @@ fn verify_deb(
     scan_binaries(&lib, &mut problems);
     check_vad(&lib, &mut problems);
     check_version_line(&scratch.join("usr/bin/hushpen"), version, &mut problems);
+    check_version_line(&lib.join(ASR_BINARY), version, &mut problems);
     check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&lib, target, None, &mut problems);
     check_tts_runtime(&lib, &mut problems);
@@ -320,6 +325,7 @@ fn verify_rpm(
     let files = query(&["-l"])?;
     for want in [
         "/usr/lib/hushpen/hushpen",
+        "/usr/lib/hushpen/hushpen-asr",
         "/usr/lib/hushpen/hushpen-llm",
         "/usr/lib/hushpen/hushpen-tts",
         "/usr/lib/hushpen/libsherpa-onnx-c-api.so",
@@ -355,6 +361,7 @@ fn verify_rpm(
     scan_binaries(&lib, &mut problems);
     check_vad(&lib, &mut problems);
     check_version_line(&lib.join(APP_BINARY), version, &mut problems);
+    check_version_line(&lib.join(ASR_BINARY), version, &mut problems);
     check_version_line(&lib.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&lib, target, None, &mut problems);
     check_tts_runtime(&lib, &mut problems);
@@ -386,6 +393,7 @@ fn verify_appimage(
     check_vad(&root.join("usr/lib/hushpen"), &mut problems);
     scan_binaries(&bin, &mut problems);
     check_version_line(&bin.join(APP_BINARY), version, &mut problems);
+    check_version_line(&bin.join(ASR_BINARY), version, &mut problems);
     check_version_line(&bin.join(TTS_BINARY), version, &mut problems);
     check_tts_libs(&bin, target, Some(pinned), &mut problems);
     check_tts_runtime(&bin, &mut problems);
@@ -500,6 +508,7 @@ fn verify_app_bundle(
         Err(error) => problems.push(error),
     }
     check_version_line(&macos.join(APP_BINARY), version, &mut problems);
+    check_version_line(&macos.join(ASR_BINARY), version, &mut problems);
     check_version_line(&macos.join(LLM_BINARY), version, &mut problems);
     check_version_line(&macos.join(TTS_BINARY), version, &mut problems);
     check_tts_runtime(&macos, &mut problems);

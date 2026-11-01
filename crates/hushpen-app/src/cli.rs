@@ -12,7 +12,8 @@ pub enum Command {
         show_window: bool,
     },
     Version,
-    /// The speech engine child, with the arguments after `engine`.
+    /// The speech engine, with the arguments after `engine`. The app starts `hushpen-asr`
+    /// instead; this runs the same code for scripts and tests.
     Engine(Vec<String>),
     /// The update helper that swaps a staged version in after the app quit.
     UpdateApply(Vec<String>),

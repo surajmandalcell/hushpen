@@ -227,7 +227,7 @@ failures=""
 [ "$(ui_pid)" = "$ui_before" ] || failures+="the UI pid changed; "
 wait_until 40 engine_ready_with base-q5_1 || failures+="the engine did not come back ready; "
 [ "$(engine .pid)" != "$engine_pid" ] || failures+="the engine pid did not change; "
-offline=$(/app/hushpen engine --smoke "$session" --model /assets/models/whisper/ggml-base-q5_1.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
+offline=$(/app/hushpen-asr --smoke "$session" --model /assets/models/whisper/ggml-base-q5_1.bin 2>/dev/null | sed -n 's/^text: //p' | norm)
 case " $offline " in *" lighthouse "*) ;; *) failures+="the kept WAV transcribes to '$offline'; " ;; esac
 dictate 008b "$FIX/speech-short.wav"
 text=$(dict .transcript)

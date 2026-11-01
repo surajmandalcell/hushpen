@@ -1,15 +1,17 @@
 //! `cargo xtask two-binary`: whisper.cpp and llama.cpp each bring their own ggml, and two ggml
 //! copies in one binary link without an error while one silently replaces the other. So the
-//! speech engine lives only in the `hushpen` binary (package `hushpen-app`), the language
-//! model only in `hushpen-llm`, and the voice worker `hushpen-tts` links neither (it opens the
-//! pinned sherpa-onnx library with dlopen). This reads `cargo tree` for the three packages and
-//! fails when a sys crate crosses over, or when an expected crate is missing (the check would
-//! pass for the wrong reason).
+//! speech engine lives only in the `hushpen` binary (package `hushpen-app`) and the
+//! `hushpen-asr` worker (package `hushpen-engine`), the language model only in `hushpen-llm`,
+//! and the voice worker `hushpen-tts` links neither (it opens the pinned sherpa-onnx library
+//! with dlopen). This reads `cargo tree` for the four packages and fails when a sys crate
+//! crosses over, or when an expected crate is missing (the check would pass for the wrong
+//! reason).
 
 use std::path::Path;
 use std::process::Command;
 
 const APP: &str = "hushpen-app";
+const ASR: &str = "hushpen-engine";
 const LLM: &str = "hushpen-llm";
 const TTS: &str = "hushpen-tts";
 
@@ -20,7 +22,7 @@ struct Rule {
     absent: &'static [&'static str],
 }
 
-const RULES: [Rule; 3] = [
+const RULES: [Rule; 4] = [
     Rule {
         package: APP,
         present: &["whisper-rs-sys"],
@@ -43,6 +45,11 @@ const RULES: [Rule; 3] = [
             APP,
             LLM,
         ],
+    },
+    Rule {
+        package: ASR,
+        present: &["whisper-rs-sys"],
+        absent: &["llama-cpp-sys-2", "llama-cpp-2", APP, LLM, TTS],
     },
 ];
 
@@ -117,7 +124,7 @@ pub fn run(root: &Path) -> Result<(), String> {
     }
     if found.is_empty() {
         println!(
-            "two-binary: whisper-rs-sys only in {APP}, llama-cpp-sys-2 only in {LLM}, neither in {TTS}"
+            "two-binary: whisper-rs-sys only in {APP} and {ASR}, llama-cpp-sys-2 only in {LLM}, neither in {TTS}"
         );
         Ok(())
     } else {
@@ -146,11 +153,27 @@ mod tests {
         hushpen-core v2.0.0 (/r/crates/hushpen-core)\n\
         libloading v0.8.9\n";
 
+    const ASR_TREE: &str = "hushpen-engine v2.0.0 (/r/crates/hushpen-engine)\n\
+        whisper-rs v0.16.0\n\
+        whisper-rs-sys v0.15.0 (/r/vendor/whisper-rs-sys)\n\
+        hushpen-core v2.0.0 (/r/crates/hushpen-core)\n";
+
     #[test]
     fn the_expected_trees_pass() {
         assert!(problems(&RULES[0], APP_TREE).is_empty());
         assert!(problems(&RULES[1], LLM_TREE).is_empty());
         assert!(problems(&RULES[2], TTS_TREE).is_empty());
+        assert!(problems(&RULES[3], ASR_TREE).is_empty());
+    }
+
+    #[test]
+    fn llama_or_the_app_in_the_speech_worker_tree_fails() {
+        let tree = format!("{ASR_TREE}llama-cpp-sys-2 v0.1.158\nhushpen-app v2.0.0 (/r)\n");
+        let found = problems(&RULES[3], &tree);
+        assert_eq!(found.len(), 2, "{found:?}");
+        let found = problems(&RULES[3], "hushpen-engine v2.0.0 (/r)\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("must depend on whisper-rs-sys"));
     }
 
     #[test]

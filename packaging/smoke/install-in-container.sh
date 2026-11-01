@@ -40,7 +40,8 @@ docker run --rm --name "${HUSHPEN_PKG_CONTAINER:-hushpen-build}" --platform "$pl
       files=$(rpm -ql hushpen)
     fi
     echo "$files"
-    for want in /usr/lib/hushpen/hushpen /usr/lib/hushpen/hushpen-llm /usr/lib/hushpen/hushpen-tts \
+    for want in /usr/lib/hushpen/hushpen /usr/lib/hushpen/hushpen-asr /usr/lib/hushpen/hushpen-llm \
+      /usr/lib/hushpen/hushpen-tts \
       /usr/lib/hushpen/libsherpa-onnx-c-api.so /usr/lib/hushpen/libonnxruntime.so /usr/bin/hushpen \
       /usr/share/applications/hushpen.desktop /usr/share/icons/hicolor/512x512/apps/hushpen.png \
       /usr/lib/hushpen/THIRD-PARTY-NOTICES.html; do
@@ -50,6 +51,7 @@ docker run --rm --name "${HUSHPEN_PKG_CONTAINER:-hushpen-build}" --platform "$pl
     got=$(hushpen --version)
     echo "hushpen --version: $got"
     [ "$got" = "hushpen $VERSION" ]
+    [ "$(/usr/lib/hushpen/hushpen-asr --version)" = "hushpen-asr $VERSION" ]
     [ "$(/usr/lib/hushpen/hushpen-llm --version)" = "hushpen-llm $VERSION" ]
     [ "$(/usr/lib/hushpen/hushpen-tts --version)" = "hushpen-tts $VERSION" ]
     [ "$(/usr/lib/hushpen/hushpen-tts --check-runtime)" = "$(printf "sherpa-onnx 2.0.0\nonnxruntime 1.28.2")" ]
