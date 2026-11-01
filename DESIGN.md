@@ -204,7 +204,7 @@ The app follows the system appearance, Light or Dark, and changes live when the 
 
 The flow bar pill is the one exception. It stays a dark HUD (`#1F1F1F`, light text) in both appearances, because it floats over other apps.
 
-The macOS menu bar item is the glyph alone, with no name beside it: a solid quill writing a sound wave (a 1.5pt line of two waves along the bottom left, the quill rising to the top right). It is a template image (`assets/hushpen-menubar.png`, 22 by 16 points at 2x), so macOS tints it for Light, Dark, and a highlighted menu bar. Linux panels get the same glyph scaled to fit a 32px square, black or white for their appearance.
+The macOS menu bar item is the glyph alone, with no name beside it: a solid quill writing a sound wave (a 1.5pt line of two waves along the bottom left, the quill rising to the top right). It is a template image (`assets/hushpen-menubar.png`, 22 by 16 points at 2x), so macOS tints it for Light, Dark, and a highlighted menu bar. Its accessibility name is "Hushpen". Linux panels get the same glyph scaled to fit a 32px square, black or white for their appearance.
 
 ## Colors
 
