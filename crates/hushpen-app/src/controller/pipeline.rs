@@ -369,6 +369,64 @@ impl Controller {
         }
     }
 
+    /// Ends the recording of a session cancelled while it listened, and keeps its audio for
+    /// Recover. A recording that cannot be finished leaves nothing to recover.
+    pub(super) fn hold_capture(&mut self, session: u64, cx: &mut Context<Self>) {
+        if let Some(audio) = &self.dictation_audio {
+            audio(None, None, false);
+        }
+        let detached = self.mic.update(cx, |mic, cx| mic.detach(true, cx));
+        self.selection = None;
+        let run = self.run_of(session);
+        match detached {
+            Some(detached) => run.stopping = Some(detached),
+            None => run.wav = None,
+        }
+    }
+
+    /// The cancelled recording can no longer be recovered: its file goes, on a worker thread,
+    /// because finishing it waits for the tail of the audio.
+    pub(super) fn drop_audio(&mut self, session: u64) {
+        let run = self.run_of(session);
+        run.ended = true;
+        let stopping = run.stopping.take();
+        let wav = run.wav.take();
+        let spawned = (self.spawn)(Box::new(move || {
+            if let Some(stopping) = stopping {
+                let _ = stopping.finish();
+            }
+            if let Some(wav) = wav {
+                let _ = std::fs::remove_file(wav);
+            }
+        }));
+        if let Err(error) = spawned {
+            log::warn!("could not remove a cancelled recording: {error}");
+        }
+    }
+
+    /// The session Recover would bring back now: cancelled in the last few seconds, with its
+    /// audio still here.
+    fn recover_session(&self) -> Option<u64> {
+        let session = self.machine.recoverable((self.clock)())?;
+        let run = self.runs.get(&session)?;
+        (run.stopping.is_some() || run.wav.is_some()).then_some(session)
+    }
+
+    /// Whether the flow bar may offer Recover. A read: it ends nothing.
+    pub fn recover_offered(&self) -> bool {
+        self.recover_session().is_some()
+    }
+
+    /// The flow bar's Recover: the cancelled dictation is transcribed and goes in as if the
+    /// user had finished it.
+    pub fn recover(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        if self.recover_session().is_none() {
+            return Err("There is no cancelled dictation to recover.".into());
+        }
+        hook::record_event("dictation", "recover");
+        self.dispatch(AppEvent::Recover, cx)
+    }
+
     pub(super) fn transcribe(&mut self, session: u64, model: &str, queue: &mut VecDeque<AppEvent>) {
         let language = self.language();
         let prompt = dictionary::prompt_for_model(model, &self.dictionary());
@@ -525,7 +583,7 @@ impl Controller {
             cx.notify();
         }
         self.watch_undo(cx);
-        if self.machine.state() != State::Idle {
+        if self.machine.state() != State::Idle || self.machine.holds() {
             let _ = self.dispatch(AppEvent::Tick, cx);
         }
     }

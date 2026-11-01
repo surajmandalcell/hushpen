@@ -180,7 +180,8 @@ for mode in hold hands-free; do
   cancelled=$(pevent_time cancelled)
   [ -z "$cancelled" ] || [ $((cancelled - t_esc)) -lt 1000 ] || failures+="$mode: cancelled came $((cancelled - t_esc)) ms after Esc; "
   [ "$mode" != hold ] || xdotool keyup $HOLD
-  sleep 1.5
+  # The audio waits 4 s for Recover before it goes.
+  sleep 4.5
   shot "ptt-010-$mode"
   case ",$(pevents)," in *,transcribing,*) failures+="$mode: a transcription started; " ;; esac
   [ "$(sessions)" = "$files" ] || failures+="$mode: a session file remains; "

@@ -66,6 +66,8 @@ mod runs;
 mod speak;
 pub use speak::Speaker;
 #[cfg(test)]
+mod recover_tests;
+#[cfg(test)]
 mod speak_tests;
 #[cfg(test)]
 pub(crate) mod testkit;
@@ -583,12 +585,14 @@ impl Controller {
 
     /// True from the moment the microphone stops until the row of the run is saved: the one
     /// stretch in which a data folder move would lose the result. An older session that
-    /// finishes behind a new one counts too.
+    /// finishes behind a new one counts too, and so does a cancelled one that waits for
+    /// Recover.
     pub fn in_flight(&self) -> bool {
         matches!(
             self.machine.state(),
             State::Transcribing | State::Cleaning | State::Inserting
         ) || self.machine.behind() > 0
+            || self.machine.holds()
             || matches!(self.reprocess, Some((_, ReprocessState::Running)))
     }
 
@@ -779,6 +783,8 @@ impl Controller {
         match effect {
             Effect::StartCapture { session } => return self.start_capture(session, queue, cx),
             Effect::StopCapture { session, keep } => self.stop_capture(session, keep, queue, cx),
+            Effect::HoldCapture { session } => self.hold_capture(session, cx),
+            Effect::DropAudio { session } => self.drop_audio(session),
             Effect::Cue(cue) => {
                 let failed_start = cue == Cue::Start && std::mem::take(&mut self.start_failed);
                 if !failed_start {

@@ -3,7 +3,7 @@
 
 use super::testkit::*;
 use gpui_kit::TestAppContext;
-use hushpen_core::dictation::{AppEvent, State};
+use hushpen_core::dictation::{AppEvent, RECOVER_MS, State};
 use hushpen_core::insert::Chord;
 use hushpen_store::history;
 use std::sync::atomic::Ordering;
@@ -89,6 +89,8 @@ fn cancelling_the_new_dictation_leaves_the_older_one_to_finish(cx: &mut TestAppC
     send_at(cx, &rig, 3_040, AppEvent::HoldDown).unwrap();
     send_at(cx, &rig, 3_500, AppEvent::Esc).unwrap();
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
+    settle(cx, &rig);
+    send_at(cx, &rig, 3_500 + RECOVER_MS, AppEvent::Tick).unwrap();
     settle(cx, &rig);
 
     assert!(!rig.tokens.lock().unwrap()[0].is_cancelled());

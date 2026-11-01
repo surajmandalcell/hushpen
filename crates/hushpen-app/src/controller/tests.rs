@@ -2,7 +2,7 @@ use super::testkit::*;
 use super::{InsertSupport, KeysStatus, Phase};
 use gpui_kit::TestAppContext;
 use hushpen_audio::CaptureError;
-use hushpen_core::dictation::{AppEvent, Cue, Mode, State};
+use hushpen_core::dictation::{AppEvent, Cue, Mode, RECOVER_MS, State};
 use hushpen_core::insert::{Chord, Method, Outcome as InsertOutcome, Report, choose_x11};
 use hushpen_engine::{Failure, JobOutcome};
 use hushpen_platform::keys::Unavailable;
@@ -176,7 +176,7 @@ fn a_double_tap_starts_hands_free_and_the_next_press_stops_it(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
-fn esc_in_listening_cancels_and_discards_the_audio_and_the_release_does_nothing(
+fn esc_in_listening_cancels_keeps_the_audio_for_recover_and_then_discards_it(
     cx: &mut TestAppContext,
 ) {
     let rig = rig(cx, &["base"], "base");
@@ -185,14 +185,23 @@ fn esc_in_listening_cancels_and_discards_the_audio_and_the_release_does_nothing(
 
     send_at(cx, &rig, 1_800, AppEvent::Esc).unwrap();
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
-    // A worker finishes the stopped recording, here by deleting it.
     settle(cx, &rig);
-    assert!(session_wavs(&rig).is_empty(), "the audio is gone");
+    assert_eq!(session_wavs(&rig).len(), 1, "kept for Recover");
 
     send_at(cx, &rig, 3_000, AppEvent::HoldUp).unwrap();
     settle(cx, &rig);
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
     assert!(rig.specs.lock().unwrap().is_empty(), "no transcribe job");
+
+    // A worker finishes the stopped recording once the recover time is over, here by
+    // deleting it.
+    send_at(cx, &rig, 1_800 + RECOVER_MS, AppEvent::Tick).unwrap();
+    settle(cx, &rig);
+    assert!(session_wavs(&rig).is_empty(), "the audio is gone");
+    assert!(
+        rig.specs.lock().unwrap().is_empty(),
+        "still no transcribe job"
+    );
 }
 
 #[gpui_kit::test]
@@ -209,12 +218,7 @@ fn esc_in_transcribing_cancels_the_job_keeps_the_audio_and_the_next_run_works(
 
     send_at(cx, &rig, 3_100, AppEvent::Esc).unwrap();
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
-    assert_eq!(
-        kept_wavs(&rig).len(),
-        1,
-        "a cancelled run keeps its audio with its history row"
-    );
-    assert!(session_wavs(&rig).is_empty());
+    assert_eq!(session_wavs(&rig).len(), 1, "kept for Recover");
 
     // The engine answers late; the answer must change nothing.
     settle(cx, &rig);
@@ -225,7 +229,13 @@ fn esc_in_transcribing_cancels_the_job_keeps_the_audio_and_the_next_run_works(
 
     send_at(cx, &rig, 3_700, AppEvent::Tick).unwrap();
     assert_eq!(machine_state(cx, &rig), State::Idle);
+    // A new dictation ends the recover time: the cancelled run saves its row with its audio.
     hold_run(cx, &rig, 4_000);
+    assert_eq!(
+        kept_wavs(&rig).len(),
+        2,
+        "the cancelled run keeps its audio with its history row"
+    );
     assert_eq!(machine_state(cx, &rig), State::Done);
     assert_eq!(transcript(cx, &rig), "the next words");
 }

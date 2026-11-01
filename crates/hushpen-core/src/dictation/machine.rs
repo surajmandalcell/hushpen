@@ -1,6 +1,6 @@
 use super::{
-    AppEvent, Config, Cue, DOUBLE_TAP_MS, Delivery, Effect, MIN_HOLD_MS, Mode, RowStatus, State,
-    WARN_BEFORE_MAX_MS,
+    AppEvent, Config, Cue, DOUBLE_TAP_MS, Delivery, Effect, MIN_HOLD_MS, Mode, RECOVER_MS,
+    RowStatus, State, WARN_BEFORE_MAX_MS,
 };
 use crate::error::ENGINE_NO_SPEECH;
 use crate::transcript::strip_blank_markers;
@@ -37,6 +37,16 @@ impl Run {
     }
 }
 
+/// A cancelled session that Recover can still bring back.
+struct Held {
+    session: u64,
+    mode: Mode,
+    /// The state it was cancelled in, which decides what is left once the wait ends.
+    from: State,
+    raw: String,
+    until: u64,
+}
+
 #[derive(Clone, Copy)]
 enum Slot {
     Front,
@@ -58,6 +68,7 @@ pub struct DictationMachine {
     /// When the hold key went down while it does not record, to tell a tap from a hold.
     pressed_at: Option<u64>,
     warned: bool,
+    held: Option<Held>,
 }
 
 impl DictationMachine {
@@ -72,7 +83,21 @@ impl DictationMachine {
             tap_at: None,
             pressed_at: None,
             warned: false,
+            held: None,
         }
+    }
+
+    /// The session that Recover would bring back at `now`.
+    pub fn recoverable(&self, now: u64) -> Option<u64> {
+        self.held
+            .as_ref()
+            .filter(|held| now < held.until)
+            .map(|held| held.session)
+    }
+
+    /// A cancelled session still waits for Recover. Its audio is on disk until the wait ends.
+    pub fn holds(&self) -> bool {
+        self.held.is_some()
     }
 
     /// The state of the newest session.
@@ -179,6 +204,7 @@ impl DictationMachine {
                 _ => self.start(Mode::HandsFree, now),
             },
             AppEvent::Esc => self.escape(now),
+            AppEvent::Recover => self.recover(now),
             AppEvent::PasteLast => match self.run.state {
                 State::Idle | State::Done | State::Cancelled | State::Failed
                     if self.behind.is_empty() =>
@@ -380,7 +406,9 @@ impl DictationMachine {
         self.state_since = now;
         self.tap_at = None;
         self.warned = false;
-        vec![Effect::StartCapture { session }, Effect::Cue(Cue::Start)]
+        let mut effects = self.release_held();
+        effects.extend([Effect::StartCapture { session }, Effect::Cue(Cue::Start)]);
+        effects
     }
 
     fn stop_listening(&mut self, now: u64) -> Vec<Effect> {
@@ -419,33 +447,77 @@ impl DictationMachine {
     }
 
     /// Cancels the newest session only: an older one that finishes behind it is the text of
-    /// an earlier dictation, and it still goes in.
+    /// an earlier dictation, and it still goes in. The cancelled session waits for Recover;
+    /// its row, or the end of its audio, comes when the wait ends.
     fn escape(&mut self, now: u64) -> Vec<Effect> {
         let session = self.run.session;
-        let effects = match self.run.state {
-            State::Listening => vec![
-                Effect::StopCapture {
-                    session,
-                    keep: false,
-                },
-                Effect::Cue(Cue::Cancel),
-            ],
-            State::Transcribing => vec![
-                Effect::CancelTranscribe { session },
-                Effect::Cue(Cue::Cancel),
-                cancelled_row(session, None),
-            ],
-            State::Cleaning => vec![
-                Effect::StopLlm { session },
-                Effect::Cue(Cue::Cancel),
-                cancelled_row(session, Some(self.run.raw.clone())),
-            ],
-            _ => return Vec::new(),
+        let from = self.run.state;
+        if !matches!(
+            from,
+            State::Listening | State::Transcribing | State::Cleaning
+        ) {
+            return Vec::new();
+        }
+        let recover = self.run.mode != Mode::Command;
+        let mut effects = self.release_held();
+        effects.push(match from {
+            State::Listening if recover => Effect::HoldCapture { session },
+            State::Listening => Effect::StopCapture {
+                session,
+                keep: false,
+            },
+            State::Transcribing => Effect::CancelTranscribe { session },
+            _ => Effect::StopLlm { session },
+        });
+        effects.push(Effect::Cue(Cue::Cancel));
+        let held = Held {
+            session,
+            mode: self.run.mode,
+            from,
+            raw: self.run.raw.clone(),
+            until: now + RECOVER_MS,
         };
+        if recover {
+            self.held = Some(held);
+        } else {
+            effects.extend(left_of(held));
+        }
         self.finish(Slot::Front, State::Cancelled, effects, now)
     }
 
+    /// Ends the wait of the cancelled session: what it leaves behind is settled now.
+    fn release_held(&mut self) -> Vec<Effect> {
+        self.held.take().and_then(left_of).into_iter().collect()
+    }
+
+    /// Recover: the cancelled session transcribes its audio again and goes on as if the user
+    /// had finished it. An older session that came to the front meanwhile goes back behind it.
+    fn recover(&mut self, now: u64) -> Vec<Effect> {
+        let Some(held) = self.held.take_if(|held| now < held.until) else {
+            return Vec::new();
+        };
+        let run = Run::new(held.session, State::Transcribing, held.mode);
+        let previous = std::mem::replace(&mut self.run, run);
+        if previous.finishing() {
+            self.behind.push(previous);
+        }
+        self.state_since = now;
+        vec![Effect::Transcribe {
+            session: held.session,
+        }]
+    }
+
     fn tick(&mut self, now: u64) -> Vec<Effect> {
+        let mut effects = if self.held.as_ref().is_some_and(|held| now >= held.until) {
+            self.release_held()
+        } else {
+            Vec::new()
+        };
+        effects.extend(self.tick_front(now));
+        effects
+    }
+
+    fn tick_front(&mut self, now: u64) -> Vec<Effect> {
         let since = now.saturating_sub(self.state_since);
         match self.run.state {
             State::Listening => {
@@ -489,6 +561,18 @@ fn failed_row(session: u64, text: Option<String>, code: &'static str) -> Effect 
         status: RowStatus::Failed,
         text,
         code: Some(code),
+    }
+}
+
+/// What a cancelled session leaves once nothing can bring it back: no row for a recording that
+/// never got to the engine, a cancelled row for one that did.
+fn left_of(held: Held) -> Option<Effect> {
+    match held.from {
+        State::Listening => (held.mode != Mode::Command).then_some(Effect::DropAudio {
+            session: held.session,
+        }),
+        State::Cleaning => Some(cancelled_row(held.session, Some(held.raw))),
+        _ => Some(cancelled_row(held.session, None)),
     }
 }
 

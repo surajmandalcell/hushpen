@@ -4,7 +4,7 @@ use super::tests::hold_run;
 use crate::ai_cleanup::{Attempt, Cleaner, Progress};
 use crate::controller::CancelToken;
 use gpui_kit::TestAppContext;
-use hushpen_core::dictation::{AppEvent, State};
+use hushpen_core::dictation::{AppEvent, RECOVER_MS, State};
 use hushpen_core::insert::Chord;
 use hushpen_store::history::{self, Row};
 use serde_json::json;
@@ -356,6 +356,8 @@ fn esc_while_cleaning_cancels_and_a_late_answer_changes_nothing(cx: &mut TestApp
     settle(cx, &rig);
 
     assert_eq!(machine_state(cx, &rig), State::Cancelled);
+    send_at(cx, &rig, 3_100 + RECOVER_MS, AppEvent::Tick).unwrap();
+    settle(cx, &rig);
     assert!(pasted(&inserter).is_empty(), "nothing was inserted");
     assert!(
         calls.lock().unwrap().seen.is_empty(),
