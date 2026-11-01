@@ -1,13 +1,15 @@
 //! The flow bar on macOS. GPUI already opens a pop-up as a non-activating panel at the pop-up
-//! window level; what is left is to keep it on screen when another app is in front, and to
-//! move it, because the app dragged it itself.
+//! window level; what is left is to drop the title bar style that clips its corners, keep it
+//! on screen when another app is in front, and move it, because the app dragged it itself.
 
 // AppKit calls take a raw `NSView` address from the GPUI window handle.
 #![allow(unsafe_code)]
 
 use super::{ChromeError, Frame, Layout, Pointer, ScreenRect};
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSEvent, NSScreen, NSView, NSWindow, NSWindowCollectionBehavior};
+use objc2_app_kit::{
+    NSEvent, NSScreen, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
+};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 fn window_of(view: usize) -> Result<objc2::rc::Retained<NSWindow>, ChromeError> {
@@ -94,6 +96,15 @@ pub(super) fn screens() -> Result<Layout, ChromeError> {
 
 pub(super) fn pin(view: usize) -> Result<(), ChromeError> {
     let window = window_of(view)?;
+    // GPUI opens a pop-up as a titled panel with a full-size content view. AppKit clips a
+    // titled window to its corner radius (about 17 pt), which is more than half the pill's
+    // height, so the round ends came out pointed. A borderless panel has no such clip; the
+    // full-size flag stays so GPUI's frame math is unchanged.
+    window.setStyleMask(
+        NSWindowStyleMask::Borderless
+            | NSWindowStyleMask::NonactivatingPanel
+            | NSWindowStyleMask::FullSizeContentView,
+    );
     window.setHidesOnDeactivate(false);
     window.setCollectionBehavior(
         NSWindowCollectionBehavior::CanJoinAllSpaces
