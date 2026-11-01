@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.3.2
+
+### New
+
+- **Recover a cancelled dictation.** After Esc or the cross, the flow bar
+  shows Cancelled with a Recover button for 4 seconds. Recover transcribes
+  the dictation and pastes it as if you had finished it.
+
+### Improved
+
+- The flow bar has truly round ends, also on macOS, and every state is
+  balanced: a round button or mark at both ends or at neither, with the text
+  or the wave centered between them. Its sizes changed a little.
+- Pasted with Undo paste leads with a soft green done tick.
+- The wave is a little shorter at its ends, so it tapers into the round ends.
+- The speech engine runs as its own program, `hushpen-asr`, so Activity
+  Monitor and `ps` show it by name next to `hushpen-llm` and `hushpen-tts`.
+
+### Fixed
+
+- A switch of the speech model uses less memory. Hushpen now frees the old
+  model before it loads the next one, so the two are never in memory at
+  once.
+
 ## 2.3.1
 
 ### Fixed

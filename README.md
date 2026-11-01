@@ -67,8 +67,8 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 ### macOS (Apple silicon)
 
-1. Download `Hushpen-2.3.1-macos-arm64.dmg` and drag Hushpen to Applications,
-   or unzip `Hushpen-2.3.1-macos-arm64.zip` and move `Hushpen.app` to
+1. Download `Hushpen-2.3.2-macos-arm64.dmg` and drag Hushpen to Applications,
+   or unzip `Hushpen-2.3.2-macos-arm64.zip` and move `Hushpen.app` to
    Applications.
 2. Open Hushpen. The app is signed with a Developer ID certificate and
    notarized by Apple, so macOS opens it after one standard confirmation.
@@ -77,15 +77,15 @@ Each name follows `Hushpen-<version>-<target>.<ext>`.
 
 Replace `x64` with `arm64` on an Arm machine.
 
-- AppImage: `chmod +x Hushpen-2.3.1-linux-x64.AppImage`, then run it.
-- Debian and Ubuntu: `sudo apt install ./Hushpen-2.3.1-linux-x64.deb`
-- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.3.1-linux-x64.rpm`
-- tar.gz: `tar xzf Hushpen-2.3.1-linux-x64.tar.gz`, then run `hushpen` from
+- AppImage: `chmod +x Hushpen-2.3.2-linux-x64.AppImage`, then run it.
+- Debian and Ubuntu: `sudo apt install ./Hushpen-2.3.2-linux-x64.deb`
+- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.3.2-linux-x64.rpm`
+- tar.gz: `tar xzf Hushpen-2.3.2-linux-x64.tar.gz`, then run `hushpen` from
   the new folder.
 
-Every package holds three programs: `hushpen`, the `hushpen-llm` helper that
-runs the local AI cleanup model, and the `hushpen-tts` helper that runs the
-Kokoro voice for Read aloud.
+Every package holds four programs: `hushpen`, the `hushpen-asr` speech
+engine, the `hushpen-llm` helper that runs the local AI cleanup model, and
+the `hushpen-tts` helper that runs the voices for Read aloud.
 
 ### Linux requirements
 
@@ -145,19 +145,20 @@ and C++ toolchain, CMake, and Clang with libclang.
     libpulse-dev
   ```
 
-Clone and build the three programs. The whisper.cpp source is vendored, so
+Clone and build the four programs. The whisper.cpp source is vendored, so
 there are no submodules:
 
 ```sh
 git clone https://github.com/surajmandalcell/hushpen.git
 cd hushpen
-cargo build --release --locked -p hushpen-app -p hushpen-llm -p hushpen-tts
+cargo build --release --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
 cp assets/ggml-silero-v5.1.2.bin "${CARGO_TARGET_DIR:-target}/release/"
 ```
 
-The programs are `target/release/hushpen`, `target/release/hushpen-llm`, and
-`target/release/hushpen-tts`. Keep them in the same folder; `hushpen` starts
-the two workers from there. Keep the small Silero speech detector beside
+The programs are `target/release/hushpen`, `target/release/hushpen-asr`,
+`target/release/hushpen-llm`, and `target/release/hushpen-tts`. Keep them in
+the same folder; `hushpen` starts the three workers from there. Keep the
+small Silero speech detector beside
 them too; it skips silence without a download. The first build compiles
 whisper.cpp and llama.cpp and takes several minutes.
 
