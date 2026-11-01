@@ -483,9 +483,23 @@ mod tests {
     #[test]
     fn each_cue_is_the_1_25x_render_of_the_first_cue_sounds() {
         // The first cue files held 19781, 13455, and 14495 samples; 1.25x shortens each by 4/5.
+        // The fades leave the length and the full-scale peak as they were.
         for (bytes, first) in [(START, 19_781_f32), (SUCCESS, 13_455.0), (CANCEL, 14_495.0)] {
             let (_, samples) = decode(bytes);
             assert!((samples.len() as f32 - first / 1.25).abs() <= 1.0);
+            assert!(peak(&samples) >= 0.999, "{}", peak(&samples));
+        }
+    }
+
+    #[test]
+    fn each_cue_fades_in_and_out_so_neither_end_clicks() {
+        for (name, bytes) in [("start", START), ("success", SUCCESS), ("cancel", CANCEL)] {
+            let (rate, samples) = decode(bytes);
+            let edge = rate as usize * 2 / 1000;
+            let first = peak(&samples[..edge]);
+            let last = peak(&samples[samples.len() - edge..]);
+            assert!(first < 0.04, "{name} first 2 ms peak {first}");
+            assert!(last < 0.005, "{name} last 2 ms peak {last}");
         }
     }
 
