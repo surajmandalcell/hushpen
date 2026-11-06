@@ -58,6 +58,8 @@ fi
 export CARGO_HOME="$root/cargo" RUSTUP_HOME="$root/rustup" CARGO_TARGET_DIR="$root/target"
 export PATH="$CARGO_HOME/bin:$root/tools/usr/bin:$root/tools/bin:$PATH"
 export CARGO_BUILD_JOBS=4
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$root/cache}" TMPDIR="${TMPDIR:-$root/tmp}"
+mkdir -p "$XDG_CACHE_HOME" "$TMPDIR"
 export HUSHPEN_BUILD_VERSION="$version" GGML_NATIVE=OFF APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=1
 case ${CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS:-false} in false|0) ;; *) die 'Release debug assertions must stay off.' ;; esac
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=false
@@ -97,6 +99,8 @@ cat >"$HOME/.local/bin/hushpen" <<'LAUNCHER'
 #!/bin/sh
 export HUSHPEN_DATA_DIR=/mnt/nvme1/data/hushpen/app-data
 export APPIMAGE_EXTRACT_AND_RUN=1
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/mnt/nvme1/data/hushpen/cache}"
+export TMPDIR="${TMPDIR:-/mnt/nvme1/data/hushpen/tmp}"
 export PATH="/mnt/nvme1/data/hushpen/tools/usr/bin:$PATH"
 export LD_LIBRARY_PATH="/mnt/nvme1/data/hushpen/tools/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export ESPEAK_DATA_PATH=/mnt/nvme1/data/hushpen/tools/usr/share/espeak-ng-data
