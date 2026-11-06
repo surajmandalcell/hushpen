@@ -61,6 +61,9 @@ export CARGO_BUILD_JOBS=4
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$root/cache}" TMPDIR="${TMPDIR:-$root/tmp}"
 mkdir -p "$XDG_CACHE_HOME" "$TMPDIR"
 export HUSHPEN_BUILD_VERSION="$version" GGML_NATIVE=OFF APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=1
+# Reuse the verified installed runtime instead of downloading it for every package.
+export LDAI_RUNTIME_FILE="$root/tools/runtime-x86_64"
+[[ -f $LDAI_RUNTIME_FILE ]] || die "Missing cached AppImage runtime: $LDAI_RUNTIME_FILE"
 case ${CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS:-false} in false|0) ;; *) die 'Release debug assertions must stay off.' ;; esac
 export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=false
 for tool in cargo cargo-packager mksquashfs unsquashfs patchelf flock timeout pgrep desktop-file-validate update-desktop-database sha256sum; do
