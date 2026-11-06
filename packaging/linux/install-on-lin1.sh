@@ -111,7 +111,7 @@ export ESPEAK_DATA_PATH=/mnt/nvme1/data/hushpen/tools/usr/share/espeak-ng-data
 exec /mnt/nvme1/data/hushpen/install/Hushpen.AppImage "$@"
 LAUNCHER
 chmod +x "$HOME/.local/bin/hushpen"
-desktop="$HOME/.local/share/applications/io.github.surajmandalcell.hushpen.desktop"
+desktop="$HOME/.local/share/applications/hushpen.desktop"
 cat >"$desktop" <<DESKTOP
 [Desktop Entry]
 Name=Hushpen
@@ -121,6 +121,7 @@ Icon=$root/install/hushpen.png
 Terminal=false
 Type=Application
 Categories=Utility;
+StartupWMClass=hushpen
 DESKTOP
 desktop-file-validate "$desktop"
 update-desktop-database "$HOME/.local/share/applications"
