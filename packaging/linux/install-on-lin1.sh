@@ -76,6 +76,10 @@ for pair in "$HOME/Downloads/Hushpen|$root/downloads" "$HOME/dev/personal/hushpe
   fi
 done
 mkdir -p "$root/install" "$root/downloads" "$root/app-data" "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/Downloads" "$HOME/dev/personal"
+mkdir -p "$CARGO_TARGET_DIR"
+if [[ ! -e $repo/target && ! -L $repo/target ]]; then
+  ln -s "$CARGO_TARGET_DIR" "$repo/target"
+fi
 exec 9>"$root/install/install.lock"
 flock -n 9 || die 'Another Hushpen install is running.'
 du -sh "$CARGO_TARGET_DIR" 2>/dev/null || true
