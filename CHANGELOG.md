@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Linux microphone checks reuse one audio-server connection, so repeated
+  checks do not exhaust the server's client limit.
+
 ## 2.3.3
 
 ### Improved

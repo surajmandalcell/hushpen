@@ -289,7 +289,7 @@ fn run(queue: &Receiver<()>, track: &Arc<Mutex<Track>>) {
 }
 
 fn open_output(track: &Arc<Mutex<Track>>) -> Result<cpal::Stream, String> {
-    let host = cpal::default_host();
+    let host = crate::host::default_host();
     let device = host
         .default_output_device()
         .ok_or("there is no output device")?;

@@ -42,7 +42,7 @@ fn is_monitor(id: &str) -> bool {
 
 /// Lists microphones. Opens no stream, so macOS shows no permission prompt.
 pub fn list_inputs() -> Result<Vec<InputDevice>, CaptureError> {
-    let host = cpal::default_host();
+    let host = crate::host::default_host();
     inputs_of(&host)
 }
 

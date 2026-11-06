@@ -490,12 +490,12 @@ fn retire(phase: &Mutex<Phase>, queue: &Receiver<Command>, error: &CaptureError)
 /// The real microphones, through cpal.
 #[derive(Default)]
 struct CpalBackend {
-    host: Option<cpal::Host>,
+    host: Option<Arc<cpal::Host>>,
 }
 
 impl CpalBackend {
     fn host(&mut self) -> &cpal::Host {
-        self.host.get_or_insert_with(cpal::default_host)
+        self.host.get_or_insert_with(crate::host::default_host)
     }
 
     fn device(&mut self, selection: &str) -> Result<cpal::Device, CaptureError> {
