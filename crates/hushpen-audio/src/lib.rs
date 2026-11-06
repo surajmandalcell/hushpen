@@ -7,6 +7,7 @@ pub mod devices;
 pub mod enhance;
 pub mod error;
 pub mod feed;
+mod host;
 pub mod levels;
 mod mic_stream;
 pub mod output_mute;

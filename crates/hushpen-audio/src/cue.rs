@@ -323,7 +323,7 @@ impl MuteDelay {
 }
 
 fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
-    let host = cpal::default_host();
+    let host = crate::host::default_host();
     let mut output: Option<Output> = None;
     let mut mute = data_root.map(|root| OutputMute::new(&root, System));
     let mut pending = MuteDelay::default();
