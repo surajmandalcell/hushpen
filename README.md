@@ -169,6 +169,14 @@ checksummed copies with `cargo xtask tts-runtime --dir target/release`.
 To keep build output out of the clone, set `CARGO_TARGET_DIR` to a folder
 outside it, for example `export CARGO_TARGET_DIR="$HOME/.cache/hushpen-target"`.
 
+For the permanent lin1 test installation, run
+`bash packaging/linux/install-on-lin1.sh` on lin1 from
+`/mnt/nvme1/data/hushpen/repo`. Run it before each major or minor release
+is complete. It builds on lin1, verifies the AppImage, installs the app,
+and keeps installers in `~/Downloads/Hushpen`. Patch-only changes skip
+the build; use `--force` for a requested patch install. See
+[the release decision](specs/decisions.md) for the retained source and data paths.
+
 ## Test
 
 ```sh
