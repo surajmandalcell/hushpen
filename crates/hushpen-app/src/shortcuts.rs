@@ -191,7 +191,7 @@ impl Shortcuts {
         !self.off.contains(&slot)
             || (slot == Slot::Hold
                 && self.is_on(Slot::HandsFree)
-                && *self.value(Slot::HandsFree) == Setting::HandsFree(HandsFree::Default))
+                && *self.value(Slot::HandsFree) == Setting::HandsFree(HandsFree::BuiltIn))
     }
 
     /// A shortcut that does not run is never asked about: nothing can clash with it.

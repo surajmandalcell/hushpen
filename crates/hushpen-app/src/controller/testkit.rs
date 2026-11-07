@@ -14,6 +14,7 @@ use hushpen_core::catalog::Catalog;
 use hushpen_core::dictation::{AppEvent, State};
 use hushpen_core::insert::flow::Step;
 use hushpen_core::insert::{Chord, Outcome as InsertOutcome, Overrides, Report, Restore};
+use hushpen_core::shortcut::BUILT_IN_HANDS_FREE;
 use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
 use hushpen_platform::insert::{Inserter, Target, UndoError};
 use hushpen_store::data_dir::DataDir;
@@ -177,6 +178,12 @@ pub fn rig(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Rig {
     // The pipeline tests compare the engine's words with the inserted words; the cleanup tests
     // turn the rules on.
     storage.settings.set("cleanup.rules", json!(false)).unwrap();
+    // The store seeds the defaults of the system the test runs on. The double-tap tests need
+    // the built-in hands-free gestures, which only Linux has by default.
+    storage
+        .settings
+        .set("shortcut.handsFree", json!(BUILT_IN_HANDS_FREE))
+        .unwrap();
     let work: Work = Rc::default();
     let queue = Rc::clone(&work);
     let spawn: Spawner = Rc::new(move |job| {

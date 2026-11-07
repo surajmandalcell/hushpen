@@ -1,7 +1,7 @@
 //! The settings registry: every key, its default, and its validation rule.
 
 use crate::data_dir::Os;
-use hushpen_core::shortcut::{Platform, Slot};
+use hushpen_core::shortcut::{Combo, Platform, Slot};
 use serde_json::{Map, Value, json};
 use std::ops::RangeInclusive;
 
@@ -118,13 +118,33 @@ fn mac(os: Os) -> bool {
     os == Os::MacOs
 }
 
-fn shortcut_default(slot: Slot, os: Os) -> Value {
-    let platform = if mac(os) {
+fn platform(os: Os) -> Platform {
+    if mac(os) {
         Platform::MacOs
     } else {
         Platform::Linux
+    }
+}
+
+fn shortcut_default(slot: Slot, os: Os) -> Value {
+    json!(slot.default_text(platform(os)))
+}
+
+/// Whether the default of the shortcut setting `key` is a chord that another shortcut in
+/// `stored` holds, so taking that default would give two shortcuts the same keys.
+pub(super) fn default_is_taken(key: &str, stored: &Map<String, Value>, os: Os) -> bool {
+    let platform = platform(os);
+    let Some(slot) = Slot::ALL.into_iter().find(|slot| slot.setting_key() == key) else {
+        return false;
     };
-    json!(slot.default_text(platform))
+    let Ok(default) = Combo::parse(slot.default_text(platform), platform) else {
+        return false;
+    };
+    Slot::ALL
+        .into_iter()
+        .filter(|other| *other != slot)
+        .filter_map(|other| stored.get(other.setting_key())?.as_str())
+        .any(|text| Combo::parse(text, platform).is_ok_and(|combo| combo == default))
 }
 
 macro_rules! spec {
@@ -405,6 +425,12 @@ mod tests {
         let read = find("shortcut.readAloud").unwrap();
         assert_eq!(read.default_value(Os::MacOs), json!("Ctrl+Cmd+S"));
         assert_eq!(read.default_value(Os::Linux), json!("Ctrl+Alt+S"));
+        let hands_free = find("shortcut.handsFree").unwrap();
+        assert_eq!(hands_free.default_value(Os::MacOs), json!("Option+Tab"));
+        assert_eq!(
+            hands_free.default_value(Os::Linux),
+            json!(hushpen_core::shortcut::BUILT_IN_HANDS_FREE)
+        );
     }
 
     #[test]

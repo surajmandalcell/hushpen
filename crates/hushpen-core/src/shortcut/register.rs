@@ -156,7 +156,7 @@ pub fn bindings(
     });
     let hold = if off.contains(&Slot::Hold) {
         saved(Slot::Hold)
-            .filter(|_| hands_free == Some(HandsFree::Default))
+            .filter(|_| hands_free == Some(HandsFree::BuiltIn))
             .and_then(Setting::combo)
             .cloned()
     } else {

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Improved
+
+- On macOS, hands-free starts and stops with Option+Tab by default, in place
+  of a double tap of Right Option or Right Option+Space. If you never changed
+  the hands-free shortcut, Option+Tab applies; a shortcut you picked stays,
+  and so do the gestures if another shortcut already uses Option+Tab. Linux
+  keeps the double tap, because Alt+Tab switches windows there.
+
 ### Fixed
 
 - Linux microphone checks reuse one audio-server connection, so repeated

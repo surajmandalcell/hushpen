@@ -176,6 +176,21 @@ fn a_double_tap_starts_hands_free_and_the_next_press_stops_it(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
+fn with_a_recorded_hands_free_shortcut_a_double_tap_is_two_holds(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    rig.storage
+        .settings
+        .set("shortcut.handsFree", json!("Option+Tab"))
+        .unwrap();
+    send_at(cx, &rig, 1_000, AppEvent::HoldDown).unwrap();
+    send_at(cx, &rig, 1_100, AppEvent::HoldUp).unwrap();
+    send_at(cx, &rig, 1_250, AppEvent::HoldDown).unwrap();
+
+    assert_eq!(machine_state(cx, &rig), State::Listening);
+    assert_eq!(rig.controller.read_with(cx, |c, _| c.mode()), Mode::Hold);
+}
+
+#[gpui_kit::test]
 fn esc_in_listening_cancels_keeps_the_audio_for_recover_and_then_discards_it(
     cx: &mut TestAppContext,
 ) {
