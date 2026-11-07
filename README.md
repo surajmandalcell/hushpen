@@ -1,211 +1,186 @@
-# Hushpen
-
 <p align="center">
-  <img src="./assets/hushpen-app-icon.png" alt="Hushpen app icon" width="128" height="128" />
+  <img src="assets/hushpen-app-icon.png" alt="Hushpen app icon" width="128" height="128">
 </p>
 
-## What Hushpen is
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/wordmark-dark.svg">
+    <img src="assets/readme/wordmark-light.svg" alt="hushpen" height="44">
+  </picture>
+</p>
 
-Hushpen is a private, local dictation app. Hold a key and speak. Hushpen
-transcribes your speech on your own computer, cleans up the text, and pastes
-it into the app you are using. It is an open-source, local-first take on
-tools like Wispr Flow. Your audio and text never leave the machine unless you
-choose an endpoint yourself.
+<p align="center">
+  <b>Free dictation for Mac and Linux.</b><br>
+  No subscription. No account. No word limit.
+</p>
 
-Hushpen 2.0 is written in Rust. The window uses GPUI, and the speech engine
-runs whisper.cpp in a child process.
+<p align="center">
+  <a href="https://github.com/surajmandalcell/hushpen/releases/latest"><b>Download</b></a> &nbsp;·&nbsp;
+  <a href="https://hushpen.mandalsuraj.com/">Website</a> &nbsp;·&nbsp;
+  <a href="https://github.com/surajmandalcell/hushpen/issues">Report a problem</a>
+</p>
 
-## Features
+<p align="center">
+  <picture>
+    <source type="image/avif" media="(prefers-color-scheme: dark)" srcset="assets/readme/cover-dark.avif">
+    <source type="image/avif" media="(prefers-color-scheme: light)" srcset="assets/readme/cover-light.avif">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/cover-dark.webp">
+    <img src="assets/readme/cover-light.webp" alt="Four tiles with a caption under each: Beautifully designed, Press a key. Talk. Text appears., Transcribe audio files, and Pick speed or accuracy" width="880">
+  </picture>
+</p>
 
-- Hold-to-talk dictation with a global key (Right Option on macOS, Right Alt
-  on Linux by default). Tap, double-tap, and Esc to cancel. Any key or chord
-  the system reports can be a shortcut, media keys included; a shortcut that
-  another app uses shows how to free it. Each shortcut has a switch to turn
-  it off and a button to reset it.
-- Local transcription with Parakeet v3 Q4 (recommended), Whisper Large v3
-  Turbo Q5 for other languages, Whisper Small Q5 for translation to English,
-  and Whisper Base Q5 for older or slower computers. Metal on macOS, CPU on
-  Linux.
-- Models view in three sections: speech recognition, text cleanup, and
-  voices. It marks the recommended model of each kind, and a details sheet
-  shows what a model is for, its languages, speed, accuracy, memory, license,
-  source page, folder, and checksum. Models download only when you ask,
-  after a free-disk check, and Hushpen checks the hash of every file.
-- Paste into the focused app. Hushpen saves your clipboard and restores it,
-  and never types into a secure field.
-- Rule-based cleanup, on by default: fillers, repeats, spoken punctuation,
-  "scratch that", and "X, no wait, Y".
-- Optional AI cleanup with a local model (S1-mini by Superwhisper for
-  English, or Qwen3.5 2B), or with an OpenAI-compatible endpoint such as
-  Ollama or LM Studio. Off until you turn it on.
-- Command Mode: hold a key, speak an instruction, and the model edits the
-  selected text. It needs Qwen3.5 2B or the endpoint.
-- Personal dictionary of words and replacements, with word packs for Indian
-  names and places, Hinglish words, and tech terms.
-- History with search, copy, reprocess, delete with undo, and export to TXT,
-  SRT, VTT, and JSON.
-- Manual: drop audio files anywhere on the window to transcribe or translate
-  them in a queue (WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF, up to 12 hours
-  each), with the time left, Copy, Export, Show in History, and Retry.
-- Read aloud: typed text or a `.txt` or `.md` file, spoken by the system
-  voice, by Kokoro (one voice or a mix of two), or by Chatterbox in a voice
-  you clone, with Play and Export Audio to WAV. A shortcut reads the text
-  selected in any app.
-- Settings in one list with a search field (Cmd+F on macOS, Ctrl+F on
-  Linux).
-- Flow bar that shows the dictation state without taking focus, a tray menu,
-  and a 940 px wide window that grows in height and follows the system Light
-  or Dark setting.
-- Opt-in update check with signed updates. No telemetry.
+## Why Hushpen
 
-Platforms: macOS 13 or later on Apple silicon, and Linux x64 and arm64 on X11.
+Hushpen turns your voice into text, on your own computer.
 
-## Install
+- **Simple.** Press a key, talk, and press it again. The text is typed where your cursor is.
+- **Private.** Nothing goes online. It keeps working with Wi-Fi off.
+- **Clean.** "Um", repeats, and take-backs are removed.
+- **Yours.** The code is open (AGPL-3.0). Add your own words. Pick any key.
+- **Light.** A small native app, with no browser inside.
 
-Download a file from the [releases page](https://github.com/surajmandalcell/hushpen/releases).
-Each name follows `Hushpen-<version>-<target>.<ext>`.
+There is more: edit text by voice, read text aloud, drop in audio files, and search everything you said in History.
 
-### macOS (Apple silicon)
+### How it compares
 
-1. Download `Hushpen-2.3.3-macos-arm64.dmg` and drag Hushpen to Applications,
-   or unzip `Hushpen-2.3.3-macos-arm64.zip` and move `Hushpen.app` to
-   Applications.
-2. Open Hushpen. The app is signed with a Developer ID certificate and
-   notarized by Apple, so macOS opens it after one standard confirmation.
+| | Hushpen | Wispr Flow | Aqua Voice | Superwhisper | VoiceInk |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| Fully free | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> | ✗ | ✗ | ◐ | ◐ |
+| No account | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> | ✗ | ✗ | ? | ? |
+| Works offline | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> | ✗ | ? | ✓ | ✓ |
+| Open source | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> | ✗ | ✗ | ✗ | ✓ |
+| Mac and Linux | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> | ✗ | ? | ✗ | ? |
+| Native app, no browser engine | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> | ✗ | ✗ | ? | ✓ |
+| Polished design | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/tick-dark.svg"><img src="assets/readme/tick-light.svg" width="16" alt="Yes"></picture> |  |  | ◐ | ◐ |
 
-### Linux
+<details>
+<summary><b>How we compared</b></summary>
 
-Replace `x64` with `arm64` on an Arm machine.
+<br>
 
-- AppImage: `chmod +x Hushpen-2.3.3-linux-x64.AppImage`, then run it.
-- Debian and Ubuntu: `sudo apt install ./Hushpen-2.3.3-linux-x64.deb`
-- Fedora and openSUSE: `sudo dnf install ./Hushpen-2.3.3-linux-x64.rpm`
-- tar.gz: `tar xzf Hushpen-2.3.3-linux-x64.tar.gz`, then run `hushpen` from
-  the new folder.
+✓ yes · ✗ no · ◐ partly · ? not confirmed. We checked each app's own website and documentation on 7 Nov 2026.
 
-Every package holds four programs: `hushpen`, the `hushpen-asr` speech
-engine, the `hushpen-llm` helper that runs the local AI cleanup model, and
-the `hushpen-tts` helper that runs the voices for Read aloud.
+- Fully free means no payment and no word limit.
+- Polished design is our opinion, not a fact. We marked Superwhisper and VoiceInk ◐ and left Wispr Flow and Aqua Voice blank.
+- Hushpen runs on Apple silicon Macs only.
+- Superwhisper: the free plan has local Whisper only. We could not confirm what its Mac app is built with.
+- VoiceInk: free only as a source build. The signed app is paid after a trial. It is a native Swift app.
+- Wispr Flow and Aqua Voice use Electron in the Mac builds we checked ([Wispr Flow](https://www.wensenwu.com/thoughts/wispr-flow-investigation), [Aqua Voice](https://github.com/dan-dr/aquarium/blob/main/docs/AQUA-PROTOCOLS.md)).
 
-### Linux requirements
+Sources: [Wispr Flow](https://wisprflow.ai/pricing), [Aqua Voice](https://aquavoice.com/pricing), [Superwhisper](https://superwhisper.com/docs/billing/plans), [VoiceInk](https://github.com/Beingpax/VoiceInk).
 
-- An X11 session. On Wayland the global key and paste show "not available".
-- A Vulkan or OpenGL driver. On Debian and Ubuntu, `mesa-vulkan-drivers` or
-  `libgl1-mesa-dri` is enough. GPUI draws the window with it. A machine with
-  no driver cannot open the window.
-- A system tray host if you want the tray icon (StatusNotifier, which most
-  desktops include).
+</details>
 
-## macOS permissions
+## Get started
 
-Hushpen asks for three permissions in its first-run setup. Each row has
-Allow and Open Settings buttons, and the status updates live.
+<details open>
+<summary><b>Mac</b> (Apple silicon, macOS 13 or later)</summary>
 
-| Permission       | Used for                               |
-| ---------------- | -------------------------------------- |
-| Microphone       | Recording your voice                   |
-| Input Monitoring | Seeing the hold key while you use other apps |
-| Accessibility    | Pasting the text into the focused app  |
+<br>
 
-Hushpen adds itself to the matching lists in System Settings when it starts,
-and the stable signature keeps your grants across updates and reinstalls.
-On macOS 27, the Accessibility switch also covers Input Monitoring. macOS
-forgets the grants only when the signing certificate changes, or when you
-remove them yourself. Hushpen notices at start and opens the setup step
-again. To grant them again:
+Run this in Terminal:
 
-1. Open the setup step (it opens by itself), or System Settings > Privacy &
-   Security.
-2. For each of the three permissions, select Hushpen and remove it with the
-   minus button if it is listed, then press Allow in Hushpen.
-3. If a row stays stuck, reset it in Terminal and press Allow again:
+```sh
+curl -fsSL https://hushpen.mandalsuraj.com/install.sh | sh
+```
 
-   ```sh
-   tccutil reset Microphone io.github.surajmandalcell.hushpen
-   tccutil reset ListenEvent io.github.surajmandalcell.hushpen
-   tccutil reset Accessibility io.github.surajmandalcell.hushpen
-   ```
+Or [download the `.dmg`](https://github.com/surajmandalcell/hushpen/releases/latest), open it, and drag **Hushpen** to **Applications**.
 
-## Build from source
+Then open Hushpen and:
 
-You need Rust 1.99 (rustup reads `rust-toolchain.toml` and installs it), a C
-and C++ toolchain, CMake, and Clang with libclang.
+1. Press **Allow** for **Microphone** and **Accessibility**. Allow **Input Monitoring** too if it is off.
+2. Press **Download**. Hushpen starts with Parakeet v3 (416 MB, one time). You can switch to any other model in **Models**.
+3. Click in any app where you can type. Press **Option + Tab**, say something, and press **Option + Tab** again to stop.
 
-- macOS: `xcode-select --install`, then `brew install cmake`.
-- Debian and Ubuntu 24.04:
+You can also hold **Right Option** while you talk, and let go to stop.
 
-  ```sh
-  sudo apt install build-essential clang libclang-dev cmake pkg-config \
-    libfontconfig-dev libfreetype-dev libwayland-dev libxkbcommon-dev \
-    libxkbcommon-x11-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-xkb-dev \
-    libxi-dev libxrandr-dev libssl-dev libzstd-dev libasound2-dev \
-    libvulkan-dev libdbus-1-dev libgtk-3-dev libxdo-dev \
-    libayatana-appindicator3-dev libxtst-dev libxcb-xinput-dev \
-    libxcb-xtest0-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-    libpulse-dev
-  ```
+</details>
 
-Clone and build the four programs. The whisper.cpp source is vendored, so
-there are no submodules:
+<details>
+<summary><b>Linux</b> (x64 or arm64, X11)</summary>
+
+<br>
+
+Run this in a terminal:
+
+```sh
+curl -fsSL https://hushpen.mandalsuraj.com/install.sh | sh
+```
+
+Or download a file from the [latest release](https://github.com/surajmandalcell/hushpen/releases/latest). Use `arm64` instead of `x64` on an Arm machine.
+
+| Your system | Command |
+| --- | --- |
+| Any | `chmod +x Hushpen-*-linux-x64.AppImage`, then run it |
+| Debian and Ubuntu | `sudo apt install ./Hushpen-*-linux-x64.deb` |
+| Fedora and openSUSE | `sudo dnf install ./Hushpen-*-linux-x64.rpm` |
+
+Then open Hushpen and press **Download**. Hushpen starts with Parakeet v3 (416 MB, one time), and you can switch to any other model in **Models**. Click in any app, double tap **Right Alt** (or press **Right Alt + Space**), talk, and press **Right Alt** again to stop. You can also hold **Right Alt** while you talk, and let go to stop.
+
+> [!NOTE]
+> On Wayland, the key and the paste do not work. Use an X11 session.
+
+</details>
+
+## Learn more
+
+<details>
+<summary><b>Speech models</b></summary>
+
+<br>
+
+Hushpen starts with Parakeet v3 Q4. You can switch to any other model in the **Models** view.
+
+| Model | Size | Good for |
+| --- | --- | --- |
+| Parakeet v3 Q4 | 416 MB | English and 24 other European languages. Hushpen starts with this one. |
+| Whisper Large v3 Turbo Q5 | 574 MB | Hindi and other languages Parakeet does not know. |
+| Whisper Small Q5 | 190 MB | Translating speech to English. |
+| Whisper Base Q5 | 60 MB | Older or slower computers. |
+
+Models download only when you ask.
+
+</details>
+
+<details>
+<summary><b>The permissions do not work</b></summary>
+
+<br>
+
+macOS can forget a permission. Open **System Settings > Privacy & Security**, remove Hushpen from the list, and press **Allow** in Hushpen again. If a row stays stuck, run this in Terminal and press **Allow** again:
+
+```sh
+tccutil reset Microphone io.github.surajmandalcell.hushpen
+tccutil reset ListenEvent io.github.surajmandalcell.hushpen
+tccutil reset Accessibility io.github.surajmandalcell.hushpen
+```
+
+</details>
+
+<details>
+<summary><b>Build it yourself</b></summary>
+
+<br>
+
+You need [Rust](https://rustup.rs), CMake, and a C and C++ compiler. Then run:
 
 ```sh
 git clone https://github.com/surajmandalcell/hushpen.git
 cd hushpen
 cargo build --release --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
-cp assets/ggml-silero-v5.1.2.bin "${CARGO_TARGET_DIR:-target}/release/"
 ```
 
-The programs are `target/release/hushpen`, `target/release/hushpen-asr`,
-`target/release/hushpen-llm`, and `target/release/hushpen-tts`. Keep them in
-the same folder; `hushpen` starts the three workers from there. Keep the
-small Silero speech detector beside
-them too; it skips silence without a download. The first build compiles
-whisper.cpp and llama.cpp and takes several minutes.
+The first build takes several minutes. See [docs/building.md](docs/building.md) for the full steps, the Linux packages, and the tests.
 
-Read aloud with the Kokoro voice also needs the sherpa-onnx libraries next to
-`hushpen-tts` (in `Contents/Frameworks` of an `.app`). Fetch the pinned,
-checksummed copies with `cargo xtask tts-runtime --dir target/release`.
+</details>
 
-To keep build output out of the clone, set `CARGO_TARGET_DIR` to a folder
-outside it, for example `export CARGO_TARGET_DIR="$HOME/.cache/hushpen-target"`.
+<br>
 
-For the permanent lin1 test installation, run
-`bash packaging/linux/install-on-lin1.sh` on lin1 from
-`/mnt/nvme1/data/hushpen/repo`. Run it before each major or minor release
-is complete. It builds on lin1, verifies the AppImage, installs the app,
-and keeps installers in `~/Downloads/Hushpen`. Patch-only changes skip
-the build; use `--force` for a requested patch install. See
-[the release decision](specs/decisions.md) for the retained source and data paths.
-
-## Test
-
-```sh
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
-```
-
-Warnings are errors. The gate runs every check in one step: format, the
-two-binary check, clippy, tests, `cargo deny`, and the network audit. It needs
-`cargo-deny` (`cargo install cargo-deny --locked`) and a `CARGO_TARGET_DIR`
-outside the clone:
-
-```sh
-export CARGO_TARGET_DIR="$HOME/.cache/hushpen-target"
-cargo xtask gate
-```
-
-The unit and component tests open no window and need no models. The tests
-that run the real speech engine and the pixel tests are opt-in, and the Linux
-end-to-end suite runs in the containers under `harness/` (see
-`harness/README.md`).
-
-Design rules live in `DESIGN.md`, and project decisions and names in
-`specs/decisions.md` and `specs/ddd.md`.
+<p align="center">
+  Open source apps can look this good. If you agree, a star on GitHub helps more people find Hushpen.<br>
+  <a href="https://github.com/surajmandalcell/hushpen"><b>⭐ Star Hushpen on GitHub</b></a>
+</p>
 
 ## License
 
-Hushpen is free software under the GNU Affero General Public License, version
-3 or later (AGPL-3.0-or-later). See `LICENSE`. Third-party notices are in
-`assets/THIRD-PARTY-NOTICES.html`, inside every package, and in the About
-view.
+Free software under the [AGPL-3.0-or-later](LICENSE).
