@@ -316,7 +316,7 @@ cp "$XDG_LOG" "$RUN_OUT/xdg-open-calls.txt" 2>/dev/null
 [ "$(wc -l <"$XDG_LOG" | tr -d ' ')" = 6 ] || failures+="xdg-open was called $(wc -l <"$XDG_LOG" | tr -d ' ') times for 6 rows: $(tr '\n' ' ' <"$XDG_LOG"); "
 grep -qxF /data "$XDG_LOG" || failures+="no xdg-open call for the data folder; "
 grep -qxF /data/logs "$XDG_LOG" || failures+="no xdg-open call for the log folder; "
-grep -qxF https://asrpro.mandalsuraj.com/ "$XDG_LOG" || failures+="no xdg-open call for the website; "
+grep -qxF https://hushpen.mandalsuraj.com/ "$XDG_LOG" || failures+="no xdg-open call for the website; "
 grep -q 'github.com/.*hushpen$' "$XDG_LOG" || failures+="no xdg-open call for the repository; "
 grep -q '/issues$' "$XDG_LOG" || failures+="no xdg-open call for the issues page; "
 grep -qxF /app/THIRD-PARTY-NOTICES.html "$XDG_LOG" || failures+="no xdg-open call for the licenses file; "
