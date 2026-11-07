@@ -1,4 +1,4 @@
-//! `config/settings.json`: `{"schemaVersion": 3, "values": {...}}`.
+//! `config/settings.json`: `{"schemaVersion": 4, "values": {...}}`.
 //!
 //! Values are flat dotted keys from the registry. Keys the registry does not
 //! know are kept under `values._unknown`. Every write goes through a temp
@@ -8,6 +8,7 @@ mod registry;
 
 use crate::data_dir::Os;
 use crate::{Error, Result, atomic, time};
+use hushpen_core::shortcut::BUILT_IN_HANDS_FREE;
 use registry::{REGISTRY, Spec};
 use serde_json::{Map, Value, json};
 use std::fs;
@@ -20,16 +21,34 @@ use std::time::Duration;
 /// 2: the Input boost default went from 100% to 150% and the Sound volume default from 50% to
 /// 25%. Older files stored every default, so [`OLD_DEFAULTS`] values are dropped once.
 /// 3: the Sound volume default went from 25% to 12.5%.
-const SCHEMA_VERSION: i64 = 3;
+/// 4: the hands-free default on macOS went from the built-in gestures to Option+Tab.
+const SCHEMA_VERSION: i64 = 4;
 const UNKNOWN_KEY: &str = "_unknown";
+
+/// A stored value, as it was written when it was the default.
+enum Old {
+    Number(f64),
+    Text(&'static str),
+}
+
+impl Old {
+    fn is(&self, value: &Value) -> bool {
+        match self {
+            Old::Number(old) => value.as_f64() == Some(*old),
+            Old::Text(old) => value.as_str() == Some(*old),
+        }
+    }
+}
 
 /// Defaults that changed: the key, the old default, and the schema version that replaced it. A
 /// file older than that version that still stores the old default never had it chosen by the
-/// user, so the new default applies.
-const OLD_DEFAULTS: [(&str, f64, i64); 3] = [
-    ("audio.inputGain", 1.0, 2),
-    ("audio.cueVolume", 0.5, 2),
-    ("audio.cueVolume", 0.25, 3),
+/// user, so the new default applies, unless another shortcut already holds its keys.
+const OLD_DEFAULTS: [(&str, Old, i64); 4] = [
+    ("audio.inputGain", Old::Number(1.0), 2),
+    ("audio.cueVolume", Old::Number(0.5), 2),
+    ("audio.cueVolume", Old::Number(0.25), 3),
+    // Linux keeps the gestures as its default, so there this changes nothing.
+    ("shortcut.handsFree", Old::Text(BUILT_IN_HANDS_FREE), 4),
 ];
 
 /// The smallest and the largest number the registry accepts for `key`, or `None` when the key
@@ -51,12 +70,12 @@ struct State {
 }
 
 impl State {
-    fn defaults() -> Self {
+    fn defaults(os: Os) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             values: REGISTRY
                 .iter()
-                .map(|spec| (spec.key.to_string(), spec.default_value(Os::CURRENT)))
+                .map(|spec| (spec.key.to_string(), spec.default_value(os)))
                 .collect(),
             unknown: Map::new(),
         }
@@ -81,14 +100,16 @@ impl SettingsStore {
             .map_err(|e| Error::io(format!("could not create {}", config_dir.display()), e))?;
         let path = config_dir.join("settings.json");
         let (state, needs_write) = match fs::read(&path) {
-            Ok(bytes) => match parse(&bytes) {
+            Ok(bytes) => match parse(&bytes, Os::CURRENT) {
                 Some((state, changed)) => (state, changed),
                 None => {
                     back_up_corrupt(&path)?;
-                    (State::defaults(), true)
+                    (State::defaults(Os::CURRENT), true)
                 }
             },
-            Err(error) if error.kind() == io::ErrorKind::NotFound => (State::defaults(), true),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                (State::defaults(Os::CURRENT), true)
+            }
             Err(error) => {
                 return Err(Error::io(
                     format!("could not read {}", path.display()),
@@ -178,9 +199,9 @@ impl SettingsStore {
     }
 }
 
-/// Parses a settings document. `None` means it is not one (corrupt). The flag
-/// says whether cleaning changed anything, so the file should be rewritten.
-fn parse(bytes: &[u8]) -> Option<(State, bool)> {
+/// Parses a settings document with the defaults of `os`. `None` means it is not one (corrupt).
+/// The flag says whether cleaning changed anything, so the file should be rewritten.
+fn parse(bytes: &[u8], os: Os) -> Option<(State, bool)> {
     let document: Value = serde_json::from_slice(bytes).ok()?;
     let schema_version = document
         .get("schemaVersion")?
@@ -189,7 +210,7 @@ fn parse(bytes: &[u8]) -> Option<(State, bool)> {
     let stored = document.get("values")?.as_object()?;
 
     let mut changed = false;
-    let mut state = State::defaults();
+    let mut state = State::defaults(os);
     // A file from a newer build keeps its version; an older one is migrated and stamped.
     state.schema_version = schema_version.max(SCHEMA_VERSION);
     changed |= schema_version < SCHEMA_VERSION;
@@ -206,10 +227,8 @@ fn parse(bytes: &[u8]) -> Option<(State, bool)> {
             Some(spec) => match spec.sanitize(value) {
                 Some(_)
                     if OLD_DEFAULTS.iter().any(|(old_key, old, replaced_in)| {
-                        key == old_key
-                            && schema_version < *replaced_in
-                            && value.as_f64() == Some(*old)
-                    }) =>
+                        key == old_key && schema_version < *replaced_in && old.is(value)
+                    }) && !registry::default_is_taken(key, stored, os) =>
                 {
                     changed = true;
                 }
@@ -274,5 +293,51 @@ mod tests {
         assert_eq!(settings.get("audio.muteWhileDictating"), Some(json!(false)));
         assert_eq!(settings.get("engine.idlePolicy"), Some(json!("pageout")));
         assert_eq!(settings.get("engine.idleMinutes"), Some(json!(30)));
+    }
+
+    fn stored_hands_free(version: i64, values: Value, os: Os) -> Value {
+        let bytes = json!({"schemaVersion": version, "values": values}).to_string();
+        let (state, _) = parse(bytes.as_bytes(), os).unwrap();
+        state.values["shortcut.handsFree"].clone()
+    }
+
+    #[test]
+    fn the_old_hands_free_default_becomes_option_tab_on_a_mac_and_stays_on_linux() {
+        let old = json!({"shortcut.handsFree": BUILT_IN_HANDS_FREE});
+        assert_eq!(
+            stored_hands_free(3, old.clone(), Os::MacOs),
+            json!("Option+Tab")
+        );
+        assert_eq!(
+            stored_hands_free(3, old, Os::Linux),
+            json!(BUILT_IN_HANDS_FREE)
+        );
+    }
+
+    #[test]
+    fn a_hands_free_shortcut_the_user_picked_survives_the_migration() {
+        let recorded = json!({"shortcut.handsFree": "Ctrl+Option+H"});
+        assert_eq!(
+            stored_hands_free(3, recorded, Os::MacOs),
+            json!("Ctrl+Option+H")
+        );
+        // After the migration, the gestures are a choice and stay.
+        let gestures = json!({"shortcut.handsFree": BUILT_IN_HANDS_FREE});
+        assert_eq!(
+            stored_hands_free(4, gestures, Os::MacOs),
+            json!(BUILT_IN_HANDS_FREE)
+        );
+    }
+
+    #[test]
+    fn the_gestures_stay_when_another_shortcut_holds_option_tab() {
+        let values = json!({
+            "shortcut.handsFree": BUILT_IN_HANDS_FREE,
+            "shortcut.pasteLast": "Option+Tab",
+        });
+        assert_eq!(
+            stored_hands_free(3, values, Os::MacOs),
+            json!(BUILT_IN_HANDS_FREE)
+        );
     }
 }

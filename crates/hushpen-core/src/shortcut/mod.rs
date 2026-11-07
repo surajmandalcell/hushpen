@@ -20,8 +20,9 @@ pub use register::{Conflict, Opener, Refusal, Setting, bindings, check};
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-/// The default hands-free setting: a double tap of the hold key, and the hold key with Space.
-pub const DEFAULT_HANDS_FREE: &str = "DoubleTap+Hold+Space";
+/// The setting text of the built-in hands-free gestures: a double tap of the hold key, and the
+/// hold key with Space.
+pub const BUILT_IN_HANDS_FREE: &str = "DoubleTap+Hold+Space";
 
 /// The setting that says which shortcuts are off: an object from a slot key to `false`. An off
 /// shortcut keeps its keys, so turning it on again brings them back.
@@ -127,7 +128,9 @@ impl Slot {
         match self {
             Slot::Hold if mac => "RightOption",
             Slot::Hold => "RightAlt",
-            Slot::HandsFree => DEFAULT_HANDS_FREE,
+            Slot::HandsFree if mac => "Option+Tab",
+            // Alt+Tab switches windows on every Linux desktop, so Linux keeps the gestures.
+            Slot::HandsFree => BUILT_IN_HANDS_FREE,
             Slot::PasteLast if mac => "Ctrl+Cmd+V",
             Slot::PasteLast => "Ctrl+Alt+V",
             Slot::Command if mac => "RightOption+RightShift",
@@ -501,14 +504,14 @@ fn parse_key(token: &str) -> Result<Key, Problem> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandsFree {
     /// A double tap of the hold key, and the hold key with Space.
-    Default,
+    BuiltIn,
     Custom(Combo),
 }
 
 impl HandsFree {
     pub fn parse(text: &str, platform: Platform) -> Result<Self, Problem> {
-        if text.trim().eq_ignore_ascii_case(DEFAULT_HANDS_FREE) {
-            Ok(HandsFree::Default)
+        if text.trim().eq_ignore_ascii_case(BUILT_IN_HANDS_FREE) {
+            Ok(HandsFree::BuiltIn)
         } else {
             Combo::parse(text, platform).map(HandsFree::Custom)
         }
@@ -516,7 +519,7 @@ impl HandsFree {
 
     pub fn to_setting(&self, platform: Platform) -> String {
         match self {
-            HandsFree::Default => DEFAULT_HANDS_FREE.to_owned(),
+            HandsFree::BuiltIn => BUILT_IN_HANDS_FREE.to_owned(),
             HandsFree::Custom(combo) => combo.to_setting(platform),
         }
     }
@@ -524,14 +527,14 @@ impl HandsFree {
     /// `hold` is how the hold key is named for the user.
     pub fn display(&self, hold: &Combo, platform: Platform) -> String {
         match self {
-            HandsFree::Default => names::default_hands_free(hold, platform),
+            HandsFree::BuiltIn => names::built_in_hands_free(hold, platform),
             HandsFree::Custom(combo) => combo.display(platform),
         }
     }
 
     pub fn combo(&self) -> Option<&Combo> {
         match self {
-            HandsFree::Default => None,
+            HandsFree::BuiltIn => None,
             HandsFree::Custom(combo) => Some(combo),
         }
     }

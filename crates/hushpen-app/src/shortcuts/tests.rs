@@ -6,6 +6,7 @@ use hushpen_store::data_dir::DataDir;
 use std::cell::RefCell;
 
 const LINUX: Platform = Platform::Linux;
+const MAC: Platform = Platform::MacOs;
 
 #[derive(Default)]
 struct FakeKeys {
@@ -51,30 +52,45 @@ struct Rig {
     _tmp: tempfile::TempDir,
 }
 
-fn storage_in(tmp: &tempfile::TempDir) -> Rc<storage::Storage> {
-    Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap())
+/// A store with the shortcut defaults of `platform`. The store itself seeds the defaults of the
+/// system the test runs on.
+fn storage_in(tmp: &tempfile::TempDir, platform: Platform) -> Rc<storage::Storage> {
+    let storage = Rc::new(storage::open(DataDir::open(tmp.path().join("data")).unwrap()).unwrap());
+    for slot in Slot::ALL {
+        storage
+            .settings
+            .set(slot.setting_key(), json!(slot.default_text(platform)))
+            .unwrap();
+    }
+    storage
 }
 
 fn combo(text: &str) -> Combo {
     Combo::parse(text, LINUX).unwrap()
 }
 
+/// A Linux session, unless a test asks for a Mac one with [`rig_on`].
 fn rig_with(cx: &mut TestAppContext, held: &[&str], saved: &[(&str, &str)]) -> Rig {
+    rig_on(cx, LINUX, held, saved)
+}
+
+fn rig_on(
+    cx: &mut TestAppContext,
+    platform: Platform,
+    held: &[&str],
+    saved: &[(&str, &str)],
+) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
-    let storage = storage_in(&tmp);
-    // The store seeds the defaults of the system the test runs on; the rig is a Linux session.
-    for slot in Slot::ALL {
-        storage
-            .settings
-            .set(slot.setting_key(), json!(slot.default_text(LINUX)))
-            .unwrap();
-    }
+    let storage = storage_in(&tmp, platform);
     for (key, text) in saved {
         storage.settings.set(key, json!(text)).unwrap();
     }
     let keys = Rc::new(FakeKeys::default());
-    *keys.held.borrow_mut() = held.iter().map(|text| combo(text)).collect();
-    let shortcuts = cx.new(|cx| Shortcuts::new(Rc::clone(&storage), LINUX, cx));
+    *keys.held.borrow_mut() = held
+        .iter()
+        .map(|text| Combo::parse(text, platform).unwrap())
+        .collect();
+    let shortcuts = cx.new(|cx| Shortcuts::new(Rc::clone(&storage), platform, cx));
     let control: Rc<dyn KeyControl> = keys.clone();
     shortcuts.update(cx, |shortcuts, cx| shortcuts.attach_keys(Ok(control), cx));
     Rig {
@@ -348,7 +364,7 @@ fn reset_puts_all_four_back_to_the_defaults(cx: &mut TestAppContext) {
     }
     let live = rig.keys.live();
     assert_eq!(live.hold, Some(combo("RightAlt")));
-    assert_eq!(live.hands_free, Some(HandsFree::Default));
+    assert_eq!(live.hands_free, Some(HandsFree::BuiltIn));
 }
 
 fn switch(cx: &mut TestAppContext, rig: &Rig, slot: Slot, on: bool) -> Result<(), String> {
@@ -393,7 +409,7 @@ fn with_the_hold_key_off_the_key_stays_live_for_hands_free_only(cx: &mut TestApp
     let rig = rig(cx);
     switch(cx, &rig, Slot::Hold, false).unwrap();
     assert_eq!(rig.keys.live().hold, Some(combo("RightAlt")));
-    assert_eq!(rig.keys.live().hands_free, Some(HandsFree::Default));
+    assert_eq!(rig.keys.live().hands_free, Some(HandsFree::BuiltIn));
     switch(cx, &rig, Slot::HandsFree, false).unwrap();
     assert_eq!(
         rig.keys.live(),
@@ -494,7 +510,7 @@ fn a_saved_value_that_is_not_a_shortcut_falls_back_to_the_default(cx: &mut TestA
 #[gpui_kit::test]
 fn a_saved_shortcut_is_what_the_listener_starts_with(cx: &mut TestAppContext) {
     let tmp = tempfile::tempdir().unwrap();
-    let storage = storage_in(&tmp);
+    let storage = storage_in(&tmp, LINUX);
     storage
         .settings
         .set("shortcut.hold", json!("RightCtrl"))
@@ -502,13 +518,44 @@ fn a_saved_shortcut_is_what_the_listener_starts_with(cx: &mut TestAppContext) {
     let shortcuts = cx.new(|cx| Shortcuts::new(Rc::clone(&storage), LINUX, cx));
     let bindings = shortcuts.read_with(cx, |shortcuts, _| shortcuts.bindings());
     assert_eq!(bindings.hold, Some(combo("RightCtrl")));
-    assert_eq!(bindings.hands_free, Some(HandsFree::Default));
+    assert_eq!(bindings.hands_free, Some(HandsFree::BuiltIn));
+}
+
+#[gpui_kit::test]
+fn on_a_mac_hands_free_is_option_tab_and_an_off_hold_key_stays_off(cx: &mut TestAppContext) {
+    let rig = rig_on(cx, MAC, &[], &[]);
+    let state = state(cx, &rig);
+    assert_eq!(state["slots"]["handsFree"]["display"], "⌥⇥");
+    assert_eq!(state["slots"]["handsFree"]["setting"], "Option+Tab");
+    assert_eq!(state["slots"]["handsFree"]["default"], true);
+    assert!(!panel::needs_tooltip("⌥⇥"));
+    let option_tab = Combo::parse("Option+Tab", MAC).unwrap();
+    assert_eq!(
+        rig.keys.live().hands_free,
+        Some(HandsFree::Custom(option_tab.clone()))
+    );
+
+    // No built-in gesture needs the hold key, so turning it off takes it out of the listener.
+    switch(cx, &rig, Slot::Hold, false).unwrap();
+    assert_eq!(rig.keys.live().hold, None);
+    assert_eq!(
+        rig.keys.live().hands_free,
+        Some(HandsFree::Custom(option_tab))
+    );
+
+    // A recorded shortcut resets to Option+Tab.
+    record(cx, &rig, Slot::HandsFree, &chord('h'));
+    assert_eq!(saved_text(&rig, Slot::HandsFree), "Ctrl+Option+H");
+    rig.shortcuts
+        .update(cx, |shortcuts, cx| shortcuts.reset(Slot::HandsFree, cx))
+        .unwrap();
+    assert_eq!(saved_text(&rig, Slot::HandsFree), "Option+Tab");
 }
 
 #[gpui_kit::test]
 fn with_no_key_listener_nothing_can_be_recorded_and_the_reason_shows(cx: &mut TestAppContext) {
     let tmp = tempfile::tempdir().unwrap();
-    let storage = storage_in(&tmp);
+    let storage = storage_in(&tmp, LINUX);
     let shortcuts = cx.new(|cx| Shortcuts::new(Rc::clone(&storage), LINUX, cx));
     shortcuts.update(cx, |shortcuts, cx| {
         shortcuts.attach_keys(Err("Not available on Wayland.".to_owned()), cx)

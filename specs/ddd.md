@@ -44,8 +44,11 @@ Hushpen
   transcribing, cleaning, inserting, then done, cancelled, or failed. A
   dictation starts from the hold key, the flow bar, the tray, or Home.
 - **hold key**: the key the user holds to talk (Right Option on macOS, Right
-  Alt on Linux by default). Tap and double-tap rules decide hold and
-  hands-free mode. Esc cancels.
+  Alt on Linux by default). Esc cancels.
+- **hands-free shortcut**: starts a dictation that runs until the next press:
+  Option+Tab on macOS by default. The **built-in gestures**, a double tap of
+  the hold key or the hold key with Space, are the Linux default, because
+  Alt+Tab switches windows there.
 - **recording**: the microphone audio of one dictation. It streams to a
   session WAV, so an engine crash keeps the audio.
 - **transcript**: the text of a history row. The raw engine text and the

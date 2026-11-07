@@ -12,7 +12,7 @@ fn a_missing_file_is_created_with_defaults() {
     let tmp = tempfile::tempdir().unwrap();
     let store = SettingsStore::open(tmp.path()).unwrap();
     let doc = read(&tmp.path().join("settings.json"));
-    assert_eq!(doc["schemaVersion"], 3);
+    assert_eq!(doc["schemaVersion"], 4);
     assert_eq!(doc["values"]["audio.cueVolume"], json!(0.125));
     assert!(doc["values"].is_object());
     assert_eq!(store.get("dictation.maxMinutes"), Some(json!(6)));
@@ -68,7 +68,7 @@ fn thirty_two_parallel_writes_leave_one_complete_file_and_no_temp_file() {
     }
 
     let doc = read(&tmp.path().join("settings.json"));
-    assert_eq!(doc["schemaVersion"], 3);
+    assert_eq!(doc["schemaVersion"], 4);
     let minutes = doc["values"]["dictation.maxMinutes"].as_i64().unwrap();
     assert!((2..34).contains(&minutes));
     assert_eq!(doc["values"]["audio.cueVolume"], json!(0.25));
@@ -99,7 +99,7 @@ fn a_corrupt_file_is_backed_up_and_defaults_return() {
     );
     let suffix = backups[0].trim_start_matches("settings.json.corrupt-");
     assert!(suffix.parse::<u64>().is_ok(), "{suffix}");
-    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 3);
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 4);
 
     drop(store);
     SettingsStore::open(tmp.path()).unwrap();
@@ -290,7 +290,7 @@ fn an_old_default_boost_and_volume_take_the_new_default_once() {
     assert_eq!(store.get("audio.inputGain"), Some(json!(1.5)));
     assert_eq!(store.get("audio.cueVolume"), Some(json!(0.125)));
     let doc = read(&tmp.path().join("settings.json"));
-    assert_eq!(doc["schemaVersion"], 3);
+    assert_eq!(doc["schemaVersion"], 4);
     assert_eq!(doc["values"]["audio.inputGain"], json!(1.5));
 
     // After the migration, 100% is a choice and stays.
@@ -312,7 +312,7 @@ fn a_file_without_a_boost_gets_the_new_default_and_the_version_mark() {
     let (tmp, store) = open_stored(1, json!({"audio.cueVolume": 0.5}));
     assert_eq!(store.get("audio.inputGain"), Some(json!(1.5)));
     assert_eq!(store.get("audio.cueVolume"), Some(json!(0.125)));
-    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 3);
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 4);
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn a_version_2_volume_equal_to_the_old_default_takes_the_new_default_once() {
     assert_eq!(store.get("audio.cueVolume"), Some(json!(0.125)));
     assert_eq!(store.get("audio.inputGain"), Some(json!(1.5)));
     let doc = read(&tmp.path().join("settings.json"));
-    assert_eq!(doc["schemaVersion"], 3);
+    assert_eq!(doc["schemaVersion"], 4);
     assert_eq!(doc["values"]["audio.cueVolume"], json!(0.125));
 
     // After the migration, 25% is a choice and stays.
@@ -335,7 +335,7 @@ fn a_version_2_volume_equal_to_the_old_default_takes_the_new_default_once() {
 fn a_version_2_volume_the_user_picked_survives() {
     let (tmp, store) = open_stored(2, json!({"audio.cueVolume": 0.1}));
     assert_eq!(store.get("audio.cueVolume"), Some(json!(0.1)));
-    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 3);
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 4);
 }
 
 #[test]
@@ -346,13 +346,28 @@ fn a_version_1_volume_of_25_percent_takes_the_new_default() {
 
 #[test]
 fn a_current_file_keeps_an_old_default_value_the_user_picked() {
-    let (_tmp, store) = open_stored(3, json!({"audio.inputGain": 1.0, "audio.cueVolume": 0.25}));
+    let (_tmp, store) = open_stored(4, json!({"audio.inputGain": 1.0, "audio.cueVolume": 0.25}));
     assert_eq!(store.get("audio.inputGain"), Some(json!(1.0)));
     assert_eq!(store.get("audio.cueVolume"), Some(json!(0.25)));
 }
 
 #[test]
 fn a_file_from_a_newer_build_keeps_its_version() {
-    let (tmp, _store) = open_stored(4, json!({"audio.inputGain": 1.0}));
-    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 4);
+    let (tmp, _store) = open_stored(5, json!({"audio.inputGain": 1.0}));
+    assert_eq!(read(&tmp.path().join("settings.json"))["schemaVersion"], 5);
+}
+
+#[test]
+fn a_version_3_file_with_the_gestures_takes_the_hands_free_default_of_this_system() {
+    let gestures = hushpen_core::shortcut::BUILT_IN_HANDS_FREE;
+    let (tmp, store) = open_stored(3, json!({"shortcut.handsFree": gestures}));
+    let default = if cfg!(target_os = "macos") {
+        "Option+Tab"
+    } else {
+        gestures
+    };
+    assert_eq!(store.get("shortcut.handsFree"), Some(json!(default)));
+    let doc = read(&tmp.path().join("settings.json"));
+    assert_eq!(doc["schemaVersion"], 4);
+    assert_eq!(doc["values"]["shortcut.handsFree"], json!(default));
 }

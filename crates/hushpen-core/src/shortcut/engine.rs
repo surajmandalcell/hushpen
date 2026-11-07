@@ -332,7 +332,7 @@ impl Engine {
         self.bindings.chords().any(exact)
             || (key == Phys::Char(' ')
                 && self.hold_on
-                && self.bindings.hands_free == Some(HandsFree::Default))
+                && self.bindings.hands_free == Some(HandsFree::BuiltIn))
     }
 
     pub fn press(&mut self, key: Phys) -> Vec<Output> {
@@ -370,7 +370,7 @@ impl Engine {
         if key == Phys::Char(' ')
             && self.hold_on
             && !self.command_on
-            && self.bindings.hands_free == Some(HandsFree::Default)
+            && self.bindings.hands_free == Some(HandsFree::BuiltIn)
         {
             out.push(Output::App(AppEvent::HandsFreeToggle));
         }

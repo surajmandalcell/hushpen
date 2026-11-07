@@ -28,7 +28,6 @@ fn the_factory_defaults_parse_on_their_own_system_and_print_back_the_same() {
             match slot {
                 Slot::HandsFree => {
                     let parsed = HandsFree::parse(text, platform).unwrap();
-                    assert_eq!(parsed, HandsFree::Default);
                     assert_eq!(parsed.to_setting(platform), text);
                 }
                 _ => assert_eq!(combo(text, platform).to_setting(platform), text, "{slot:?}"),
@@ -83,11 +82,34 @@ fn linux_names_use_words_and_no_mac_symbols_or_option_and_command() {
 }
 
 #[test]
-fn the_default_hands_free_names_the_hold_key_of_each_system() {
-    let linux = HandsFree::Default.display(&combo("RightAlt", LINUX), LINUX);
+fn the_built_in_hands_free_names_the_hold_key_of_each_system() {
+    let linux = HandsFree::BuiltIn.display(&combo("RightAlt", LINUX), LINUX);
     assert_eq!(linux, "Right Alt ×2 or Right Alt+Space");
-    let mac = HandsFree::Default.display(&combo("RightOption", MAC), MAC);
+    let mac = HandsFree::BuiltIn.display(&combo("RightOption", MAC), MAC);
     assert_eq!(mac, "Right ⌥ ×2 or Right ⌥+Space");
+}
+
+#[test]
+fn hands_free_is_option_tab_on_a_mac_and_the_gestures_on_linux() {
+    let hold = |platform| combo(Slot::Hold.default_text(platform), platform);
+    let mac = Setting::default_for(Slot::HandsFree, MAC);
+    assert_eq!(
+        mac.combo().map(Combo::keys),
+        Some([Key::Any(Modifier::Alt), Key::Named(Named::Tab)].as_slice())
+    );
+    assert_eq!(mac.to_text(MAC), "Option+Tab");
+    assert_eq!(mac.display(&hold(MAC), MAC), "⌥⇥");
+    let linux = Setting::default_for(Slot::HandsFree, LINUX);
+    assert_eq!(linux, Setting::HandsFree(HandsFree::BuiltIn));
+    assert_eq!(
+        linux.display(&hold(LINUX), LINUX),
+        "Right Alt ×2 or Right Alt+Space"
+    );
+    // The gestures stay a choice on a Mac.
+    assert_eq!(
+        HandsFree::parse(BUILT_IN_HANDS_FREE, MAC),
+        Ok(HandsFree::BuiltIn)
+    );
 }
 
 #[test]
@@ -278,7 +300,7 @@ fn every_problem_has_a_message_and_a_linux_one_has_no_mac_words() {
 fn hands_free_is_the_default_gestures_or_one_recorded_shortcut() {
     assert_eq!(
         HandsFree::parse("doubletap+hold+space", LINUX).unwrap(),
-        HandsFree::Default
+        HandsFree::BuiltIn
     );
     let custom = HandsFree::parse("Ctrl+Alt+H", LINUX).unwrap();
     assert_eq!(custom, HandsFree::Custom(ctrl_alt('h')));
@@ -320,7 +342,7 @@ const L_SHIFT: Phys = Phys::Modifier(Modifier::Shift, Side::Left);
 fn defaults() -> Bindings {
     Bindings {
         hold: Some(combo("RightAlt", LINUX)),
-        hands_free: Some(HandsFree::Default),
+        hands_free: Some(HandsFree::BuiltIn),
         paste_last: Some(combo("Ctrl+Alt+V", LINUX)),
         command: Some(combo("RightAlt+RightShift", LINUX)),
         read_aloud: Some(combo("Ctrl+Alt+S", LINUX)),
@@ -893,7 +915,7 @@ fn with_the_hold_key_off_it_stays_live_only_for_the_built_in_hands_free() {
     let off = BTreeSet::from([Slot::Hold]);
     let live = bindings(&values, &BTreeSet::new(), &off);
     assert_eq!(live.hold, defaults().hold);
-    assert_eq!(live.hands_free, Some(HandsFree::Default));
+    assert_eq!(live.hands_free, Some(HandsFree::BuiltIn));
 
     let both = BTreeSet::from([Slot::Hold, Slot::HandsFree]);
     assert_eq!(bindings(&values, &BTreeSet::new(), &both).hold, None);
@@ -905,6 +927,28 @@ fn with_the_hold_key_off_it_stays_live_only_for_the_built_in_hands_free() {
     let custom = bindings(&values, &BTreeSet::new(), &off);
     assert_eq!(custom.hold, None);
     assert_eq!(custom.hands_free, Some(HandsFree::Custom(ctrl_alt('h'))));
+}
+
+#[test]
+fn the_mac_default_option_tab_toggles_hands_free_and_keeps_its_tab_from_the_app() {
+    let mut engine = Engine::new(bindings(&held(MAC), &BTreeSet::new(), &BTreeSet::new()));
+    engine.press(L_ALT);
+    assert_eq!(app(engine.press(TAB)), []);
+    assert!(engine.swallows(TAB), "the front app gets no Tab");
+    assert!(!engine.swallows(L_ALT), "a modifier always reaches the app");
+    assert_eq!(app(engine.release(TAB)), []);
+    assert_eq!(app(engine.release(L_ALT)), [AppEvent::HandsFreeToggle]);
+
+    // Right Option is the hold key, so Right Option+Tab is no hands-free chord, and the
+    // gestures are off: Space with the hold key is a plain key.
+    assert_eq!(app(engine.press(R_ALT)), [AppEvent::HoldArm]);
+    engine.press(TAB);
+    assert!(!engine.swallows(TAB));
+    assert_eq!(app(engine.release(TAB)), []);
+    assert_eq!(app(engine.press(Phys::Char(' '))), []);
+    assert!(!engine.swallows(Phys::Char(' ')));
+    engine.release(Phys::Char(' '));
+    assert_eq!(app(engine.release(R_ALT)), [AppEvent::HoldUp]);
 }
 
 #[test]

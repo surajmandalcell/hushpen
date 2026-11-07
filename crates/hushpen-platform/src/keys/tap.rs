@@ -399,11 +399,15 @@ impl<T: Tap> TapGuard<T> {
 mod tests {
     use super::*;
     use hushpen_core::dictation::AppEvent;
-    use hushpen_core::shortcut::{Bindings, Combo, Engine, HandsFree, Output, Platform};
+    use hushpen_core::shortcut::{
+        Bindings, Combo, Engine, Output, Platform, Setting, Slot, bindings,
+    };
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     const KEYCODE_RIGHT_OPTION: i64 = 61;
+    const KEYCODE_LEFT_OPTION: i64 = 58;
+    const KEYCODE_TAB: i64 = 48;
     const KEYCODE_V: i64 = 9;
     const CTRL_CMD: u64 = FLAG_CONTROL | FLAG_COMMAND;
 
@@ -662,15 +666,13 @@ mod tests {
         out
     }
 
+    /// The factory defaults of a Mac, as the app makes them live.
     fn mac_bindings() -> Bindings {
-        let mac = |text: &str| Combo::parse(text, Platform::MacOs).unwrap();
-        Bindings {
-            hold: Some(mac("RightOption")),
-            hands_free: Some(HandsFree::Default),
-            paste_last: Some(mac("Ctrl+Cmd+V")),
-            command: Some(mac("RightOption+RightShift")),
-            read_aloud: Some(mac("Ctrl+Cmd+S")),
-        }
+        let values = Slot::ALL
+            .into_iter()
+            .map(|slot| (slot, Setting::default_for(slot, Platform::MacOs)))
+            .collect();
+        bindings(&values, &BTreeSet::new(), &BTreeSet::new())
     }
 
     #[test]
@@ -699,6 +701,27 @@ mod tests {
             ],
         );
         assert_eq!(pasted, [AppEvent::PasteLast]);
+
+        let left_option = FLAG_ALTERNATE | 0x0020;
+        let pressed = run(
+            &mut engine,
+            &mut decoder,
+            &[
+                flags(KEYCODE_LEFT_OPTION, left_option),
+                key_down(KEYCODE_TAB),
+            ],
+        );
+        assert_eq!(pressed, []);
+        assert!(
+            engine.swallows(Phys::Named(Named::Tab)),
+            "the tap drops the Tab of Option+Tab"
+        );
+        let toggled = run(
+            &mut engine,
+            &mut decoder,
+            &[key_up(KEYCODE_TAB), flags(KEYCODE_LEFT_OPTION, 0)],
+        );
+        assert_eq!(toggled, [AppEvent::HandsFreeToggle]);
     }
 
     #[test]

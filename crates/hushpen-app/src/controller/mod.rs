@@ -882,7 +882,7 @@ fn cue_key(cue: Cue) -> &'static str {
 }
 
 fn config_from(storage: &Storage) -> Config {
-    use hushpen_core::shortcut::{DEFAULT_HANDS_FREE, ENABLED_SETTING, Slot};
+    use hushpen_core::shortcut::{BUILT_IN_HANDS_FREE, ENABLED_SETTING, Platform, Slot};
     let minutes = storage
         .settings
         .get(MAX_MINUTES_SETTING)
@@ -893,7 +893,9 @@ fn config_from(storage: &Storage) -> Config {
         .settings
         .get(Slot::HandsFree.setting_key())
         .and_then(|value| value.as_str().map(str::to_owned))
-        .is_none_or(|text| text.trim().eq_ignore_ascii_case(DEFAULT_HANDS_FREE));
+        .unwrap_or_else(|| Slot::HandsFree.default_text(Platform::current()).to_owned())
+        .trim()
+        .eq_ignore_ascii_case(BUILT_IN_HANDS_FREE);
     Config {
         hold_to_talk: Slot::Hold.is_on(enabled.as_ref()),
         double_tap: built_in && Slot::HandsFree.is_on(enabled.as_ref()),

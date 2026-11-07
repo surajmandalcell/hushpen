@@ -254,8 +254,8 @@ new decision, add it here in the same change (D-21).
   buttons, and rows keep the 2px accent ring inside their bounds. A switch or
   a slider draws its ring outside its track and is offset by that ring, so
   its track ends on the same line as the buttons above and below. Shortcut
-  fields have one fixed width; the default hands-free reads `Right Alt ×2 or
-  Right Alt+Space` (`Right ⌥ ×2 or Right ⌥+Space` on macOS). Home picks the
+  fields have one fixed width; the default hands-free reads `⌥⇥` (Option+Tab)
+  on macOS and `Right Alt ×2 or Right Alt+Space` on Linux. Home picks the
   microphone with one pop-up row like Language, shared with Settings
   through `Mic::choices`, and shows the level meter only while a test runs.
 - **D-33 Pop-up menus.** Every choice of fixed values is a pop-up button
@@ -275,16 +275,21 @@ new decision, add it here in the same change (D-21).
   (hold, hands-free, paste last, Command Mode, read aloud); the footer says how
   to change one: "Click a shortcut, then press the keys. Esc cancels." Each
   row has a reset button (only while the slot is not its default), the field,
-  and a switch. A slot that is off keeps its keys but is not live
-  (`shortcut.enabled` maps a slot key to `false`); with hold off, the hold key
-  still starts the built-in hands-free (double tap, Hold+Space). Read aloud
-  (Ctrl+Cmd+S, Ctrl+Alt+S on Linux) reads the selection like Command Mode and
-  plays it with the Read aloud voice; pressed while it plays, it stops, and
-  with nothing selected the flow bar says "Select text first". Hushpen keeps no
-  list of allowed chords: any keys the system reports, held together, are a
-  shortcut. That covers a bare key (a letter, F13, Caps Lock), a media key
-  (Play/Pause, Volume Up), a keypad key, a key with no name (saved as
-  `Key<number>`: the macOS key code, or the X11 keysym, named by X11), a
+  and a switch. Hands-free defaults to Option+Tab on macOS (Left Option: Right
+  Option is the hold key). Linux keeps the built-in gestures (a double tap of
+  the hold key, or the hold key with Space), because Alt+Tab switches windows
+  on every Linux desktop. Settings schema 4 replaces the stored gestures text
+  of an older file with the new default once, unless another shortcut holds
+  Option+Tab; the gestures stay a choice. A slot that is off keeps its keys
+  but is not live (`shortcut.enabled` maps a slot key to `false`); with hold
+  off, the hold key still starts the built-in gestures when hands-free uses
+  them. Read aloud (Ctrl+Cmd+S, Ctrl+Alt+S on Linux) reads the selection like
+  Command Mode and plays it with the Read aloud voice; pressed while it plays,
+  it stops, and with nothing selected the flow bar says "Select text first".
+  Hushpen keeps no list of allowed chords: any keys the system reports, held
+  together, are a shortcut. That covers a bare key (a letter, F13, Caps Lock),
+  a media key (Play/Pause, Volume Up), a keypad key, a key with no name (saved
+  as `Key<number>`: the macOS key code, or the X11 keysym, named by X11), a
   plain modifier, both sides of one modifier (Left Ctrl+Right Ctrl), and up
   to 6 keys. Esc alone closes the recorder; with other keys down it is part
   of the shortcut. Hushpen refuses, and keeps the old one, only a chord that
