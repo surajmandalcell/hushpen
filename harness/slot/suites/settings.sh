@@ -480,7 +480,7 @@ check_req() { # <index> <target> <url substring>
 }
 check_req 0 data-folder "$NEW"
 check_req 1 log-folder "$NEW/logs"
-check_req 2 website asrpro.mandalsuraj.com
+check_req 2 website hushpen.mandalsuraj.com
 check_req 3 github github.com
 check_req 4 issues issues
 [ -d "$NEW/logs" ] || failures+="logs/ did not come back in the data folder; "

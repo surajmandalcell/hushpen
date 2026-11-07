@@ -2,7 +2,7 @@
 //! app's `net/update.rs`.
 
 /// The project website.
-pub const SITE_URL: &str = "https://asrpro.mandalsuraj.com/";
+pub const SITE_URL: &str = "https://hushpen.mandalsuraj.com/";
 
 /// The repository.
 pub const REPO_URL: &str = "https://github.com/surajmandalcell/hushpen";
@@ -16,7 +16,7 @@ mod tests {
 
     #[test]
     fn the_project_urls_are_these_constants() {
-        assert_eq!(SITE_URL, "https://asrpro.mandalsuraj.com/");
+        assert_eq!(SITE_URL, "https://hushpen.mandalsuraj.com/");
         assert_eq!(REPO_URL, "https://github.com/surajmandalcell/hushpen");
         assert_eq!(ISSUES_URL, format!("{REPO_URL}/issues"));
     }
