@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: Comma-separated build targets (macos-arm64, linux-x64, linux-arm64)
+        description: Comma-separated build targets (macos-arm64, linux-x64, linux-arm64, windows-x64)
         type: string
         default: macos-arm64,linux-x64,linux-arm64
       suite:
@@ -30,7 +30,7 @@ env:
 
 jobs:
   gate:
-    if: inputs.suite == 'gate' || inputs.suite == 'full'
+    if: (inputs.suite == 'gate' || inputs.suite == 'full') && inputs.targets != 'windows-x64'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -52,6 +52,37 @@ jobs:
       - name: Gate
         run: cargo xtask gate
 
+  windows-x64:
+    if: (inputs.suite == 'gate' || inputs.suite == 'full') && contains(format(',{0},', inputs.targets), ',windows-x64,')
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+      CARGO_BUILD_JOBS: "4"
+      RUST_TEST_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-x64
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Unit and component tests
+        run: cargo test --workspace --locked
+      - name: Build the four programs
+        run: cargo build --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
+      - name: Run the four programs
+        run: |
+          foreach ($program in 'hushpen', 'hushpen-asr', 'hushpen-llm', 'hushpen-tts') {
+            & ".\target\debug\$program.exe" --version
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
   plan:
     if: inputs.suite != 'gate' && inputs.suite != 'e2e' && inputs.suite != 'updater'
     runs-on: ubuntu-24.04
@@ -65,12 +96,13 @@ jobs:
           all='[
             {"target":"macos-arm64","os":"macos-15"},
             {"target":"linux-x64","os":"ubuntu-22.04"},
-            {"target":"linux-arm64","os":"ubuntu-22.04-arm"}
+            {"target":"linux-arm64","os":"ubuntu-22.04-arm"},
+            {"target":"windows-x64","os":"windows-2025"}
           ]'
           picked=$(jq -c --arg wanted ",${TARGETS// /}," \
             '[.[] | select(.target as $t | $wanted | contains("," + $t + ","))]' <<<"$all")
           if [ "$picked" = "[]" ]; then
-            echo "::error::targets '$TARGETS' matches none of macos-arm64, linux-x64, linux-arm64"
+            echo "::error::targets '$TARGETS' matches none of macos-arm64, linux-x64, linux-arm64, windows-x64"
             exit 1
           fi
           echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
@@ -85,8 +117,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Configure libclang on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV'
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -103,11 +144,13 @@ jobs:
       - name: Release build
         run: cargo build --release --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
       - name: Run the four programs
+        env:
+          EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
         run: |
-          ./target/release/hushpen --version
-          ./target/release/hushpen-asr --version
-          ./target/release/hushpen-llm --version
-          ./target/release/hushpen-tts --version
+          ./target/release/hushpen${EXE_SUFFIX} --version
+          ./target/release/hushpen-asr${EXE_SUFFIX} --version
+          ./target/release/hushpen-llm${EXE_SUFFIX} --version
+          ./target/release/hushpen-tts${EXE_SUFFIX} --version
       - name: Show the whisper.cpp build settings
         if: inputs.suite == 'engine' || inputs.suite == 'full'
         run: |
