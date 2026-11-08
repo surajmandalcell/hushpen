@@ -122,7 +122,7 @@ impl Drop for WindowsKeys {
 fn run(hub: Arc<Hub>, ready: mpsc::SyncSender<Result<u32, Unavailable>>) {
     let mut message = MSG::default();
     // SAFETY: the message is writable, and PeekMessage creates this thread's message queue.
-    unsafe { PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE) };
+    let _ = unsafe { PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE) };
     LISTENER.with(|slot| {
         *slot.borrow_mut() = Some(Listener {
             hub,
