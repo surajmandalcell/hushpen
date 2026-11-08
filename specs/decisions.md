@@ -463,8 +463,22 @@ new decision, add it here in the same change (D-21).
   in memory; Page out is Linux only. Core owns model download/default,
   updater, flow-bar result/refusal, and microphone purpose/generation rules.
   GPUI shells feed facts and apply effects through the existing service
-  traits. macOS and Linux behavior stays unchanged. Windows native backends
-  and packaging are not available yet.
+  traits. macOS and Linux behavior stays unchanged.
+
+- **D-47 Windows backends.** Windows x64 builds and unit tests run on the
+  `windows-2025` CI runner. Native adapters use the pinned `windows` crate
+  behind the existing service traits. Low-level keyboard hooks feed the core
+  shortcut engine. Paste checks the foreground window, process, secure field,
+  and integrity level; a target with higher privileges gets a copy and a notice.
+  Clipboard restore preserves copyable formats and respects newer copies.
+  The flow bar stays topmost without activation. Windows 11 build 22621+
+  uses Mica; older builds use an opaque sidebar. Data uses roaming AppData,
+  private keys use a current-user-only DACL, and a private named pipe carries
+  second-launch requests. A data move clears old files only after process
+  exit. System voices use WinRT. Model workers default to CPU with an AVX2
+  baseline; Vulkan is an optional build feature, off by default. Page out is
+  unavailable. Speech runtime DLLs are pinned by size and SHA-256. Native
+  runtime behavior needs Windows hardware checks; packaging is separate.
 
 ## History notes
 

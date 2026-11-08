@@ -180,11 +180,13 @@ components:
 
 ## Overview
 
-Hushpen is a quiet, fixed-width desktop workspace for private dictation, file transcription, local model selection, and playback. It follows the system: it looks like a native macOS app, in Light or Dark, and it stays out of the way.
+Hushpen is a fixed-width app for private dictation, file transcription, models, and playback. It follows system Light or Dark.
 
-The first screen is the working app. Keep layouts calm and compact. Do not show framework names or internal architecture in the UI.
+Open on the working app. Keep it calm and compact. Hide internal names.
 
-Platform defaults come from core OS capabilities. Windows uses Right Alt hands-free gestures and Keep in memory; Page out is Linux only. macOS and Linux keep their existing appearance and behavior.
+Core OS capabilities set defaults. Windows uses Right Alt gestures, CPU, and Keep in memory; only Linux offers Page out. macOS and Linux behavior stays unchanged.
+
+Windows uses Inter and custom window controls. Windows 11 build 22621+ shows Mica behind the sidebar; older builds use an opaque sidebar. The flow bar never takes focus. Apps with higher privileges get a copy and a notice.
 
 ## App Icon
 
