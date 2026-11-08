@@ -8,6 +8,7 @@ mod backend;
 pub mod panel;
 
 pub use backend::{CpalBackend, MicBackend, MicSession};
+pub use hushpen_core::mic_session::{CaptureState, CaptureUse};
 
 use crate::hook;
 use crate::storage::Storage;
@@ -19,6 +20,7 @@ use hushpen_audio::{
     RecoveredSession, Selection, Sweep, new_session_path, recover_orphans, resolve_selection,
 };
 use hushpen_core::error::{CAPTURE_FAILED, CAPTURE_RECOVERED, MIC_PERMISSION, MIC_UNAVAILABLE};
+use hushpen_core::mic_session::{Machine, Start};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::time::now_unix_ms;
 use serde_json::{Value, json};
@@ -40,57 +42,10 @@ pub const MAX_DEVICE_ROWS: usize = 16;
 /// How often the idle app looks for plugged or unplugged microphones.
 const DEVICE_POLL: Duration = Duration::from_secs(2);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CaptureState {
-    Idle,
-    Listening,
-    /// The last start or session failed. A new start is allowed.
-    Failed,
-}
-
-impl CaptureState {
-    pub fn key(self) -> &'static str {
-        match self {
-            CaptureState::Idle => "idle",
-            CaptureState::Listening => "listening",
-            CaptureState::Failed => "failed",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Notice {
     pub code: &'static str,
     pub message: String,
-}
-
-/// Who the running capture session serves. A dictation and the test panel
-/// never share one microphone stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CaptureUse {
-    Test,
-    Dictation,
-    /// A take for the audio enhance sheet. It records the microphone as it is, with no enhance
-    /// and no boost, so a preview can apply any setting to it later.
-    Sample,
-    /// A take a voice is cloned from. Like a sample, it records the microphone as it is.
-    Voice,
-}
-
-impl CaptureUse {
-    pub fn key(self) -> &'static str {
-        match self {
-            CaptureUse::Test => "test",
-            CaptureUse::Dictation => "dictation",
-            CaptureUse::Sample => "sample",
-            CaptureUse::Voice => "voice",
-        }
-    }
-
-    /// The take records the microphone with no enhance and no boost.
-    fn is_raw(self) -> bool {
-        matches!(self, CaptureUse::Sample | CaptureUse::Voice)
-    }
 }
 
 pub enum MicEvent {
@@ -104,8 +59,6 @@ pub enum MicEvent {
 struct Session {
     inner: Box<dyn MicSession>,
     path: PathBuf,
-    generation: u64,
-    used_for: CaptureUse,
 }
 
 /// A session that no longer holds the microphone but still has to finish its WAV. Finishing
@@ -141,11 +94,10 @@ pub struct Mic {
     /// The current notice says the saved microphone is missing.
     gone_notice: bool,
     refreshing: bool,
-    state: CaptureState,
+    machine: Machine,
     levels: VecDeque<f32>,
     notice: Option<Notice>,
     session: Option<Session>,
-    generation: u64,
     last_session: Option<PathBuf>,
     recovered: Vec<RecoveredSession>,
     pub(crate) button_focus: FocusHandle,
@@ -191,11 +143,10 @@ impl Mic {
             selection: Selection::Default,
             gone_notice: false,
             refreshing: false,
-            state: CaptureState::Idle,
+            machine: Machine::default(),
             levels: VecDeque::new(),
             notice: None,
             session: None,
-            generation: 0,
             last_session: None,
             recovered: Vec::new(),
             button_focus: cx.focus_handle().tab_stop(true),
@@ -213,7 +164,7 @@ impl Mic {
     }
 
     pub fn state(&self) -> CaptureState {
-        self.state
+        self.machine.state()
     }
 
     pub fn devices(&self) -> &[InputDevice] {
@@ -315,7 +266,7 @@ impl Mic {
     }
 
     fn poll(&mut self, cx: &mut Context<Self>) {
-        if self.state != CaptureState::Listening {
+        if self.state() != CaptureState::Listening {
             self.refresh(cx);
         }
     }
@@ -327,11 +278,7 @@ impl Mic {
                 self.apply_devices(result, cx);
             }
             MicEvent::Capture { generation, event } => {
-                let live = self
-                    .session
-                    .as_ref()
-                    .is_some_and(|session| session.generation == generation);
-                if !live {
+                if !self.machine.accepts(generation) {
                     return;
                 }
                 match event {
@@ -460,14 +407,16 @@ impl Mic {
     }
 
     fn shaped_session(&self) -> Option<&Session> {
-        self.session
-            .as_ref()
-            .filter(|session| !session.used_for.is_raw())
+        self.session.as_ref().filter(|_| {
+            self.machine
+                .used_for()
+                .is_some_and(|purpose| !purpose.is_raw())
+        })
     }
 
     /// Who the running session serves, if one runs.
     pub fn session_use(&self) -> Option<CaptureUse> {
-        self.session.as_ref().map(|session| session.used_for)
+        self.machine.used_for()
     }
 
     /// Starts one capture session into `cache/sessions`. A session serves one
@@ -478,28 +427,28 @@ impl Mic {
         used_for: CaptureUse,
         cx: &mut Context<Self>,
     ) -> Result<PathBuf, CaptureError> {
-        if let Some(session) = &self.session {
-            if session.used_for == used_for {
-                return Ok(session.path.clone());
+        let generation = match self.machine.start(used_for) {
+            Ok(Start::Shared) => {
+                return self
+                    .session
+                    .as_ref()
+                    .map(|session| session.path.clone())
+                    .ok_or_else(|| CaptureError {
+                        code: CAPTURE_FAILED,
+                        detail: "the capture session is missing".into(),
+                    });
             }
-            let error = CaptureError {
-                code: hushpen_core::error::MIC_BUSY,
-                detail: format!(
-                    "the microphone is in use by {}",
-                    match session.used_for {
-                        CaptureUse::Dictation => "dictation",
-                        CaptureUse::Test => "the microphone test",
-                        CaptureUse::Sample => "the audio enhance sample",
-                        CaptureUse::Voice => "a voice recording",
-                    }
-                ),
-            };
-            hook::record_event("capture", &format!("busy {}", used_for.key()));
-            return Err(error);
-        }
+            Ok(Start::Open { generation }) => generation,
+            Err(owner) => {
+                let error = CaptureError {
+                    code: hushpen_core::error::MIC_BUSY,
+                    detail: format!("the microphone is in use by {}", owner.description()),
+                };
+                hook::record_event("capture", &format!("busy {}", used_for.key()));
+                return Err(error);
+            }
+        };
         let device = self.device_id();
-        self.generation += 1;
-        let generation = self.generation;
         let events = self.events.clone();
         let sink: EventSink = Arc::new(move |event| {
             let _ = events.unbounded_send(MicEvent::Capture { generation, event });
@@ -517,10 +466,8 @@ impl Mic {
                 self.session = Some(Session {
                     inner,
                     path: path.clone(),
-                    generation,
-                    used_for,
                 });
-                self.state = CaptureState::Listening;
+                self.machine.opened(generation, used_for);
                 self.levels.clear();
                 if !self.gone_notice {
                     self.notice = None;
@@ -530,7 +477,7 @@ impl Mic {
                 Ok(path)
             }
             Err(error) => {
-                self.state = CaptureState::Failed;
+                self.machine.ended(true);
                 self.levels.clear();
                 self.notice = Some(notice_for(&error, true));
                 self.gone_notice = false;
@@ -552,6 +499,7 @@ impl Mic {
         let Some(session) = self.session.take() else {
             return Ok(None);
         };
+        self.machine.ended(false);
         self.levels.clear();
         let result = session.inner.stop();
         // A stream that ended its session on dead input is gone; open the next one now, so a
@@ -559,7 +507,6 @@ impl Mic {
         self.warm();
         match &result {
             Ok(finished) => {
-                self.state = CaptureState::Idle;
                 if keep {
                     self.last_session = Some(finished.path.clone());
                 } else {
@@ -568,7 +515,7 @@ impl Mic {
                 hook::record_event("capture", "idle");
             }
             Err(error) => {
-                self.state = CaptureState::Failed;
+                self.machine.ended(true);
                 self.notice = Some(notice_for(error, false));
                 log::warn!("{error}");
                 hook::record_event("capture", &format!("failed {}", error.code));
@@ -583,7 +530,7 @@ impl Mic {
     pub fn detach(&mut self, keep: bool, cx: &mut Context<Self>) -> Option<Detached> {
         let session = self.session.take()?;
         self.levels.clear();
-        self.state = CaptureState::Idle;
+        self.machine.ended(false);
         if keep {
             self.last_session = Some(session.path.clone());
         }
@@ -610,7 +557,7 @@ impl Mic {
             Ok(finished) => self.last_session = Some(finished.path),
             Err(close) => log::warn!("{close}"),
         }
-        self.state = CaptureState::Failed;
+        self.machine.ended(true);
         self.notice = Some(notice_for(error, starting));
         self.gone_notice = false;
         log::warn!("{error}");
@@ -642,7 +589,7 @@ impl Mic {
             Selection::Default | Selection::Missing(_) => DEFAULT_ID,
         };
         json!({
-            "state": self.state.key(),
+            "state": self.state().key(),
             "level": self.levels.back().copied().unwrap_or(0.0),
             "levels": self.meter(),
             "saved_device": self.saved,
@@ -657,7 +604,7 @@ impl Mic {
                 "message": notice.message,
             })),
             "session": self.session.as_ref().map(|session| session.path.to_string_lossy().into_owned()),
-            "session_use": self.session.as_ref().map(|session| session.used_for.key()),
+            "session_use": self.machine.used_for().map(CaptureUse::key),
             "recovered": self.recovered.iter().map(|session| json!({
                 "id": session.id,
                 "path": session.path.to_string_lossy(),
