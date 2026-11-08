@@ -17,6 +17,7 @@ pub mod language;
 pub mod links;
 pub mod llm_prompt;
 pub mod llm_protocol;
+pub mod models;
 pub mod onboarding;
 pub mod os;
 pub mod paths;

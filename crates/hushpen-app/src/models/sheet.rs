@@ -17,7 +17,7 @@ use gpui_kit::{
 use hushpen_core::catalog::{ModelInfo, ModelKind};
 
 /// What the folder button says on this system.
-const SHOW_FILES: &str = if cfg!(target_os = "macos") {
+const SHOW_FILES: &str = if matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac) {
     "Show in Finder"
 } else {
     "Show in Files"

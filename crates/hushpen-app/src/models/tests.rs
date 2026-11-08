@@ -423,7 +423,10 @@ fn a_late_success_after_cancel_is_dropped(cx: &mut TestAppContext) {
     assert_eq!(state_of(cx, &rig, "alpha"), ModelState::NotDownloaded);
     assert!(!rig.file("alpha").exists());
     assert!(!model_files::stamp_path(&rig.file("alpha")).exists());
-    assert!(rig.models.read_with(cx, |models, _| models.jobs.is_empty()));
+    assert!(
+        rig.models
+            .read_with(cx, |models, _| models.cancels.is_empty())
+    );
 }
 
 #[gpui_kit::test]
@@ -933,7 +936,7 @@ mod search_tests {
         press(
             cx,
             handle,
-            if cfg!(target_os = "macos") {
+            if matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac) {
                 "cmd-f"
             } else {
                 "ctrl-f"

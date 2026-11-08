@@ -5,6 +5,7 @@ use super::{ModelEvent, ModelState, Models, Transfer, failure_text};
 use crate::net::download::{Failure, Outcome, Progress, Spec};
 use hushpen_core::catalog::{ModelEntry, ModelFile, ModelKind};
 use hushpen_core::error::{DOWNLOAD_FAILED, MODEL_HASH_MISMATCH};
+use hushpen_core::models::scan_state;
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::model_files::{self, Check, Verdict};
 use std::path::{Path, PathBuf};
@@ -152,7 +153,7 @@ impl Models {
                 continue;
             }
             if is_update(&folder(&self.storage.data, &row.entry), &row.entry) {
-                row.state = ModelState::NotDownloaded;
+                row.state = scan_state(true, false, false, false);
                 stale.push(row.entry.id.clone());
                 continue;
             }
@@ -163,22 +164,24 @@ impl Models {
                 })
                 .collect();
             let any = |wanted: Check| checks.iter().any(|(check, _)| *check == wanted);
-            row.state = if any(Check::WrongSize) {
-                failed.push(failure_text(&row.entry));
-                ModelState::Failed
-            } else if any(Check::Missing) {
-                ModelState::NotDownloaded
-            } else if any(Check::NeedsHash) {
-                let files = checks
-                    .into_iter()
-                    .filter(|(check, _)| *check == Check::NeedsHash)
-                    .map(|(_, file)| file)
-                    .collect::<Vec<_>>();
-                to_hash.push((row.entry.id.clone(), files));
-                ModelState::Verifying
-            } else {
-                ModelState::Ready
-            };
+            row.state = scan_state(
+                false,
+                any(Check::WrongSize),
+                any(Check::Missing),
+                any(Check::NeedsHash),
+            );
+            match row.state {
+                ModelState::Failed => failed.push(failure_text(&row.entry)),
+                ModelState::Verifying => {
+                    let files = checks
+                        .into_iter()
+                        .filter(|(check, _)| *check == Check::NeedsHash)
+                        .map(|(_, file)| file)
+                        .collect::<Vec<_>>();
+                    to_hash.push((row.entry.id.clone(), files));
+                }
+                _ => {}
+            }
         }
         if let Some(message) = failed.pop() {
             self.set_notice(MODEL_HASH_MISMATCH, message);

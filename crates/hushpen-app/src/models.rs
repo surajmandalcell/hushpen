@@ -21,12 +21,14 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{Context, FocusHandle};
 use hushpen_core::catalog::{Catalog, Languages, ModelEntry, ModelKind};
-use hushpen_core::error::{
-    DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, MODEL_NO_SPACE,
-};
+#[cfg(test)]
+use hushpen_core::error::{DOWNLOAD_FAILED, MODEL_HOST_BLOCKED};
+use hushpen_core::error::{MODEL_HASH_MISMATCH, MODEL_NO_SPACE};
+use hushpen_core::models::{self as policy, Completion, Downloads};
+pub use hushpen_core::models::{ModelState, Notice};
 use hushpen_store::model_files;
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -56,45 +58,6 @@ pub fn thread_spawner() -> Spawner {
 /// Runs one download. The real one talks to Hugging Face; tests pass a fake.
 pub type Transfer =
     dyn Fn(&Spec, &AtomicBool, &mut dyn FnMut(Progress)) -> Result<Outcome, Failure> + Send + Sync;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModelState {
-    NotDownloaded,
-    Downloading {
-        done: u64,
-        total: u64,
-    },
-    /// The files are being hashed: at start-up, or the last step of a download.
-    Verifying,
-    Ready,
-    /// A file on disk is not the pinned file. The model is never used.
-    Failed,
-}
-
-impl ModelState {
-    pub fn key(self) -> &'static str {
-        match self {
-            ModelState::NotDownloaded => "not_downloaded",
-            ModelState::Downloading { .. } => "downloading",
-            ModelState::Verifying => "verifying",
-            ModelState::Ready => "ready",
-            ModelState::Failed => "failed",
-        }
-    }
-
-    pub fn percent(self) -> Option<u64> {
-        match self {
-            ModelState::Downloading { done, total } if total > 0 => Some(done * 100 / total),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Notice {
-    pub code: &'static str,
-    pub message: String,
-}
 
 /// What the library needs to know about the computer it runs on.
 pub struct Machine {
@@ -139,13 +102,6 @@ pub enum ModelEvent {
     },
 }
 
-struct Job {
-    number: u64,
-    cancel: Arc<AtomicBool>,
-    /// The user cancelled. The worker may still be inside a network call.
-    cancelled: bool,
-}
-
 pub struct Models {
     storage: Rc<Storage>,
     opener: Rc<dyn Opener>,
@@ -156,13 +112,8 @@ pub struct Models {
     /// In [`ModelKind`] order: speech, then cleanup, then voice.
     rows: Vec<Row>,
     notice: Option<Notice>,
-    jobs: HashMap<String, Job>,
-    /// Downloads the user asked for again while the cancelled worker was still winding down.
-    restart: HashSet<String>,
-    /// Models whose automatic update stopped on the network. Opening the Models view tries
-    /// them again.
-    stopped_updates: HashSet<String>,
-    next_job: u64,
+    downloads: Downloads,
+    cancels: HashMap<String, Arc<AtomicBool>>,
     /// The row whose details sheet is open.
     details: Option<usize>,
     pub(crate) sheet_focus: SheetFocus,
@@ -237,10 +188,8 @@ impl Models {
             events,
             rows,
             notice: None,
-            jobs: HashMap::new(),
-            restart: HashSet::new(),
-            stopped_updates: HashSet::new(),
-            next_job: 0,
+            downloads: Downloads::default(),
+            cancels: HashMap::new(),
             details: None,
             sheet_focus: SheetFocus::new(cx),
             search: search::Search::default(),
@@ -269,15 +218,16 @@ impl Models {
     /// The Models view opened. An update that stopped on the network starts again, unless one
     /// is running for that model or its files changed since.
     pub fn opened(&mut self, cx: &mut Context<Self>) {
-        for id in std::mem::take(&mut self.stopped_updates) {
+        for id in self.downloads.retry_updates() {
             let Some(index) = self.index_of(&id) else {
                 continue;
             };
             let entry = &self.rows[index].entry;
-            if self.jobs.contains_key(&id)
-                || self.rows[index].state != ModelState::NotDownloaded
-                || !files::is_update(&files::folder(&self.storage.data, entry), entry)
-            {
+            if !self.downloads.can_retry(
+                &id,
+                self.rows[index].state,
+                files::is_update(&files::folder(&self.storage.data, entry), entry),
+            ) {
                 continue;
             }
             self.update_files(&id, cx);
@@ -350,14 +300,12 @@ impl Models {
     /// catalog default while none is chosen.
     pub fn effective(&self) -> String {
         let chosen = self.active();
-        if !chosen.trim().is_empty() {
-            return chosen;
-        }
-        self.rows()
+        let default = self
+            .rows()
             .iter()
             .find(|row| row.entry.default)
-            .map(|row| row.entry.id.clone())
-            .unwrap_or_default()
+            .map(|row| row.entry.id.as_str());
+        policy::effective(&chosen, default).to_owned()
     }
 
     /// The effective model, once its file is verified. Home records only with this.
@@ -381,11 +329,7 @@ impl Models {
     pub fn handle(&mut self, event: ModelEvent, cx: &mut Context<Self>) {
         match event {
             ModelEvent::Progress { id, job, step } => {
-                if self
-                    .jobs
-                    .get(&id)
-                    .is_none_or(|current| current.number != job || current.cancelled)
-                {
+                if !self.downloads.progress(&id, job) {
                     return;
                 }
                 if let Some(index) = self.index_of(&id) {
@@ -399,16 +343,13 @@ impl Models {
             ModelEvent::Finished { id, job, result } => self.finished(&id, job, result, cx),
             ModelEvent::Verified { id, ready } => {
                 if let Some(index) = self.index_of(&id)
-                    && self.rows[index].state == ModelState::Verifying
-                    && !self.jobs.contains_key(&id)
+                    && let Some(state) = self.downloads.verified(&id, self.rows[index].state, ready)
                 {
-                    self.rows[index].state = if ready {
-                        ModelState::Ready
-                    } else {
+                    self.rows[index].state = state;
+                    if state == ModelState::Failed {
                         let message = failure_text(&self.rows[index].entry);
                         self.set_notice(MODEL_HASH_MISMATCH, message);
-                        ModelState::Failed
-                    };
+                    }
                     hook::record_event("models", &format!("verified {id} ready={ready}"));
                     self.load_active();
                     cx.notify();
@@ -424,52 +365,51 @@ impl Models {
         result: Result<Outcome, Failure>,
         cx: &mut Context<Self>,
     ) {
-        if self
-            .jobs
-            .get(id)
-            .is_none_or(|current| current.number != job)
-        {
-            return;
-        }
-        let was_cancelled = self.jobs.remove(id).is_some_and(|job| job.cancelled);
         let Some(index) = self.index_of(id) else {
             return;
         };
-        let was_update = std::mem::take(&mut self.rows[index].updating);
-        let name = self.rows[index].entry.name.clone();
-        if was_cancelled {
-            // The state already says "not downloaded". A late success is dropped, so the
-            // user's cancel wins.
-            if matches!(result, Ok(Outcome::Done)) {
-                let _ = files::remove(&self.storage.data, &self.rows[index].entry);
-            }
-        } else {
-            match result {
-                Ok(Outcome::Done) => {
-                    self.rows[index].state = ModelState::Ready;
-                    self.notice = None;
-                    hook::record_event("models", &format!("downloaded {id}"));
-                    if !was_update {
-                        self.adopt(index);
-                    }
-                    self.load_active();
+        let completion = match &result {
+            Ok(Outcome::Done) => Completion::Done,
+            Ok(Outcome::Cancelled) => Completion::Cancelled,
+            Err(failure) => Completion::Failed(failure.code),
+        };
+        let Some(done) = self.downloads.finished(
+            id,
+            job,
+            completion,
+            self.rows[index].updating,
+            &self.rows[index].entry.name,
+        ) else {
+            return;
+        };
+        self.cancels.remove(id);
+        self.rows[index].updating = false;
+        if let Some(state) = done.state {
+            self.rows[index].state = state;
+            match completion {
+                Completion::Done => hook::record_event("models", &format!("downloaded {id}")),
+                Completion::Failed(code) => {
+                    hook::record_event("models", &format!("failed {id} {code}"))
                 }
-                Ok(Outcome::Cancelled) => self.rows[index].state = ModelState::NotDownloaded,
-                Err(failure) => {
-                    self.rows[index].state = ModelState::NotDownloaded;
-                    // An update nobody asked for does not nag when the network is away; the
-                    // next start tries it again, and Download tries it now.
-                    let stopped = !matches!(failure.code, MODEL_HASH_MISMATCH | MODEL_HOST_BLOCKED);
-                    if was_update && stopped {
-                        self.stopped_updates.insert(id.to_owned());
-                    } else {
-                        self.notice = Some(notice_for_failure(&failure, &name));
-                    }
-                    hook::record_event("models", &format!("failed {id} {}", failure.code));
-                }
+                Completion::Cancelled => {}
             }
         }
-        if self.restart.remove(id) {
+        if done.remove_files {
+            let _ = files::remove(&self.storage.data, &self.rows[index].entry);
+        }
+        if done.clear_notice {
+            self.notice = None;
+        }
+        if let Some(notice) = done.notice {
+            self.notice = Some(notice);
+        }
+        if done.adopt {
+            self.adopt(index);
+        }
+        if done.load {
+            self.load_active();
+        }
+        if done.restart {
             self.rows[index].state = ModelState::NotDownloaded;
             let _ = self.download(id, cx);
         }
@@ -485,17 +425,17 @@ impl Models {
     /// download is the default at once.
     fn adopt(&mut self, index: usize) {
         let row = &self.rows[index];
-        if row.entry.kind != ModelKind::Speech {
-            return;
-        }
         let id = row.entry.id.clone();
         let default = self.effective();
-        let kept = self.rows().iter().any(|other| {
-            other.entry.id == default
-                && other.entry.id != id
-                && (other.state == ModelState::Ready || other.updating)
-        });
-        if kept || self.active() == id {
+        if !policy::should_adopt(
+            row.entry.kind,
+            &id,
+            &self.active(),
+            &default,
+            self.rows()
+                .iter()
+                .map(|other| (other.entry.id.as_str(), other.state, other.updating)),
+        ) {
             return;
         }
         match self.storage.settings.set(SETTING, json!(id)) {
@@ -507,11 +447,13 @@ impl Models {
     /// The default was deleted: the first other downloaded speech model becomes the default, or
     /// none is chosen while no other is downloaded.
     fn move_default(&mut self, deleted: &str) {
-        let next = self
-            .rows()
-            .iter()
-            .find(|row| row.entry.id != deleted && row.state == ModelState::Ready)
-            .map(|row| row.entry.id.clone());
+        let next = policy::replacement(
+            deleted,
+            self.rows()
+                .iter()
+                .map(|row| (row.entry.id.as_str(), row.state)),
+        )
+        .map(str::to_owned);
         match self
             .storage
             .settings
@@ -538,20 +480,10 @@ impl Models {
     /// has less room than the files still to fetch, plus 10%.
     pub fn download(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
-        match self.rows[index].state {
-            ModelState::NotDownloaded | ModelState::Failed => {}
-            ModelState::Downloading { .. } | ModelState::Verifying => {
-                return Err(format!("{id} is already being downloaded or checked"));
-            }
-            ModelState::Ready => return Err(format!("{id} is already downloaded")),
-        }
+        self.rows[index].state.download(id)?;
         let entry = self.rows[index].entry.clone();
-        if self.jobs.get(id).is_some_and(|job| job.cancelled) {
-            self.restart.insert(id.to_owned());
-            self.rows[index].state = ModelState::Downloading {
-                done: 0,
-                total: entry.bytes(),
-            };
+        if let Some(state) = self.downloads.queue_restart(id, entry.bytes()) {
+            self.rows[index].state = state;
             cx.notify();
             return Ok(());
         }
@@ -565,8 +497,7 @@ impl Models {
             cx.notify();
             return Err(format!("{MODEL_NO_SPACE}: {id} needs {needed} bytes"));
         }
-        self.next_job += 1;
-        let number = self.next_job;
+        let number = self.downloads.next_job();
         let cancel = Arc::new(AtomicBool::new(false));
         let (events, transfer, flag) = (
             self.events.clone(),
@@ -591,15 +522,8 @@ impl Models {
             });
         }))
         .map_err(|error| format!("could not start the download: {error}"))?;
-        self.jobs.insert(
-            id.to_owned(),
-            Job {
-                number,
-                cancel,
-                cancelled: false,
-            },
-        );
-        self.rows[index].state = ModelState::Downloading { done: 0, total };
+        self.rows[index].state = self.downloads.started(id, number, total);
+        self.cancels.insert(id.to_owned(), cancel);
         self.notice = None;
         hook::record_event("models", &format!("download {id}"));
         cx.notify();
@@ -610,14 +534,11 @@ impl Models {
     /// partial file as soon as it sees the flag.
     pub fn cancel(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
-        self.restart.remove(id);
-        let Some(job) = self.jobs.get_mut(id) else {
-            return Err(format!("{id} is not being downloaded"));
-        };
-        job.cancel.store(true, Ordering::Relaxed);
-        job.cancelled = true;
+        self.rows[index].state = self.downloads.cancel(id)?;
+        if let Some(cancel) = self.cancels.get(id) {
+            cancel.store(true, Ordering::Relaxed);
+        }
         self.rows[index].updating = false;
-        self.rows[index].state = ModelState::NotDownloaded;
         self.notice = None;
         hook::record_event("models", &format!("cancel {id}"));
         cx.notify();
@@ -628,18 +549,13 @@ impl Models {
     /// downloaded one the default.
     pub fn delete(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
-        if matches!(
-            self.rows[index].state,
-            ModelState::Downloading { .. } | ModelState::Verifying
-        ) {
-            return Err(format!("{id} is busy; cancel the download first"));
-        }
+        self.rows[index].state.delete(id)?;
         files::remove(&self.storage.data, &self.rows[index].entry)
             .map_err(|error| format!("could not delete {id}: {error}"))?;
         self.rows[index].state = ModelState::NotDownloaded;
         self.notice = None;
         hook::record_event("models", &format!("delete {id}"));
-        if self.rows[index].entry.kind == ModelKind::Speech && self.effective() == id {
+        if policy::deletes_default(self.rows[index].entry.kind, id, &self.effective()) {
             self.move_default(id);
         }
         cx.notify();
@@ -651,20 +567,18 @@ impl Models {
     pub fn select(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
         let name = self.rows[index].entry.name.clone();
-        if self.rows[index].entry.kind != ModelKind::Speech {
-            return Err(format!("{id} is not a speech model"));
-        }
-        match self.rows[index].state {
-            ModelState::Ready => {}
-            ModelState::Failed => {
-                self.set_notice(
-                    MODEL_HASH_MISMATCH,
-                    format!("{name} failed verification and cannot be used. Download it again."),
-                );
+        if let Err(error) = self.rows[index]
+            .state
+            .select(id, self.rows[index].entry.kind)
+        {
+            if let Some(notice) = self.rows[index]
+                .state
+                .selection_notice(self.rows[index].entry.kind, &name)
+            {
+                self.notice = Some(notice);
                 cx.notify();
-                return Err(format!("{MODEL_HASH_MISMATCH}: {id} failed verification"));
             }
-            _ => return Err(format!("{id} is not downloaded yet")),
+            return Err(error);
         }
         self.storage
             .settings
@@ -783,26 +697,6 @@ fn no_space_text(name: &str, needed: u64, free: u64) -> String {
         panel::format_size(needed),
         panel::format_size(free)
     )
-}
-
-fn notice_for_failure(failure: &Failure, name: &str) -> Notice {
-    let message = match failure.code {
-        MODEL_HASH_MISMATCH => {
-            format!("The download of {name} did not match its checksum. It was removed.")
-        }
-        MODEL_HOST_BLOCKED => {
-            "The download was refused because it did not come from an approved host.".to_owned()
-        }
-        _ => format!("The download of {name} stopped. Try again to continue it."),
-    };
-    Notice {
-        code: match failure.code {
-            MODEL_HASH_MISMATCH => MODEL_HASH_MISMATCH,
-            MODEL_HOST_BLOCKED => MODEL_HOST_BLOCKED,
-            _ => DOWNLOAD_FAILED,
-        },
-        message,
-    }
 }
 
 /// The transfer the app uses: Hugging Face only, over the real HTTP client.
