@@ -14,6 +14,7 @@ workspace = true
 [features]
 # Integration tests with a real model (tests/it.rs). Off by default.
 heavy = []
+vulkan = ["llama-cpp-2/vulkan"]
 
 [dependencies]
 hushpen-core.workspace = true

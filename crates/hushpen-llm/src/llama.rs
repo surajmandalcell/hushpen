@@ -62,6 +62,8 @@ impl Backend for LlamaRuntime {
             .metal
         {
             "metal"
+        } else if cfg!(feature = "vulkan") {
+            "vulkan"
         } else {
             "cpu"
         }
