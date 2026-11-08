@@ -68,6 +68,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: windows-x64
+          cache-on-failure: true
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
@@ -80,7 +81,7 @@ jobs:
           if ($failed) { exit 1 }
           cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and component tests
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
       - name: Build the four programs
         run: cargo build --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
       - name: Run the four programs

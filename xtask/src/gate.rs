@@ -131,16 +131,19 @@ mod tests {
 
     #[test]
     fn target_dir_inside_the_repo_is_refused() {
-        let root = Path::new("/repo");
-        assert!(target_dir_problem(root, Some("/repo/target"), false).is_some());
-        assert!(target_dir_problem(root, None, false).is_some());
-        assert!(target_dir_problem(root, Some("target"), false).is_some());
+        let root = std::env::temp_dir().join("hushpen-gate-repo");
+        let target = root.join("target");
+        assert!(target_dir_problem(&root, Some(target.to_str().unwrap()), false).is_some());
+        assert!(target_dir_problem(&root, None, false).is_some());
+        assert!(target_dir_problem(&root, Some("target"), false).is_some());
     }
 
     #[test]
     fn target_dir_elsewhere_or_on_ci_is_accepted() {
-        let root = Path::new("/repo");
-        assert!(target_dir_problem(root, Some("/data/target"), false).is_none());
-        assert!(target_dir_problem(root, None, true).is_none());
+        let base = std::env::temp_dir();
+        let root = base.join("hushpen-gate-repo");
+        let target = base.join("hushpen-target");
+        assert!(target_dir_problem(&root, Some(target.to_str().unwrap()), false).is_none());
+        assert!(target_dir_problem(&root, None, true).is_none());
     }
 }

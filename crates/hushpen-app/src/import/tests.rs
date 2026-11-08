@@ -461,23 +461,26 @@ fn an_engine_that_dies_fails_the_item_and_the_next_one_runs(cx: &mut TestAppCont
 }
 
 #[gpui_kit::test]
-fn a_device_a_folder_and_a_pipe_are_refused_without_a_job(cx: &mut TestAppContext) {
+fn non_regular_files_are_refused_without_a_job(cx: &mut TestAppContext) {
     let fixture = open(cx);
-    let fifo = fixture.folder.path().join("in.wav");
-    assert!(
-        std::process::Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap()
-            .success()
-    );
     let folder = fixture.folder.path().to_path_buf();
-    for refused in [
-        PathBuf::from("/dev/zero"),
-        fifo,
-        folder,
-        PathBuf::from("/no/such/file.wav"),
-    ] {
+    let refused = vec![folder, fixture.folder.path().join("missing.wav")];
+    #[cfg(unix)]
+    let refused = {
+        let fifo = fixture.folder.path().join("in.wav");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        refused
+            .into_iter()
+            .chain([PathBuf::from("/dev/zero"), fifo])
+            .collect::<Vec<_>>()
+    };
+    for refused in refused {
         let name = refused.file_name().unwrap().to_string_lossy().into_owned();
         assert_eq!(add(cx, &fixture, vec![refused]), 0, "{name}");
         let said = notice(cx, &fixture).expect("a notice");
@@ -502,7 +505,10 @@ fn a_good_file_next_to_a_refused_one_is_still_queued(cx: &mut TestAppContext) {
     let queued = add(
         cx,
         &fixture,
-        vec![PathBuf::from("/dev/zero"), file(&fixture, "ok.wav")],
+        vec![
+            fixture.folder.path().join("missing.wav"),
+            file(&fixture, "ok.wav"),
+        ],
     );
     assert_eq!(queued, 1);
     assert!(notice(cx, &fixture).is_some());
@@ -1092,7 +1098,11 @@ mod view {
     fn the_notice_of_a_refused_file_is_a_line_of_the_view(cx: &mut TestAppContext) {
         let fixture = open(cx);
         let window = shown(cx, &fixture);
-        add(cx, &fixture, vec![PathBuf::from("/dev/zero")]);
+        add(
+            cx,
+            &fixture,
+            vec![fixture.folder.path().join("missing.wav")],
+        );
         frame(cx, window);
         assert!(present(cx, window, "import.notice"));
         assert!(!present(cx, window, "import.row.0"));

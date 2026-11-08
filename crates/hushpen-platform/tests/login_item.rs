@@ -8,8 +8,9 @@ fn os(value: &str) -> Option<&OsStr> {
 
 #[test]
 fn the_autostart_folder_follows_xdg_config_home() {
-    let dir = login_item::autostart_dir(os("/tmp/xdg-config"), Some(Path::new("/home/u")));
-    assert_eq!(dir, PathBuf::from("/tmp/xdg-config/autostart"));
+    let config = std::env::temp_dir().join("hushpen-xdg-config");
+    let dir = login_item::autostart_dir(Some(config.as_os_str()), Some(Path::new("/home/u")));
+    assert_eq!(dir, config.join("autostart"));
 }
 
 #[test]

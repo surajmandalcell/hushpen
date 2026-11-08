@@ -196,6 +196,7 @@ pub fn wanted_load(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[cfg(unix)]
     use std::time::Duration;
 
     fn settings(values: Value) -> Map<String, Value> {
@@ -306,6 +307,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_worker_starts_only_when_asked_and_stops_when_turned_off() {
         let data_dir = tempfile::tempdir().unwrap();
         let data = DataDir::open(data_dir.path()).unwrap();

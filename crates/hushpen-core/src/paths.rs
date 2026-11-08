@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn without_a_known_home_everything_shows_in_full() {
-        let path = home().join("hp-data");
+        let path = PathBuf::from("/home/ada/hp-data");
         assert_eq!(display(&path, None), "/home/ada/hp-data");
     }
 
