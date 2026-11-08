@@ -199,6 +199,7 @@ fn an_engine_failure_and_a_silent_run_each_save_a_failed_row_with_a_code_and_aud
 }
 
 #[gpui_kit::test]
+#[cfg(unix)]
 fn a_history_that_cannot_be_written_never_loses_the_text(cx: &mut TestAppContext) {
     use std::os::unix::fs::PermissionsExt;
     let rig = rig(cx, &["base"], "base");

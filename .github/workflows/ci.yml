@@ -71,7 +71,14 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: |
+          $failed = $false
+          foreach ($package in 'hushpen-store', 'hushpen-platform', 'hushpen-audio', 'hushpen-speech', 'hushpen-testhook', 'xtask') {
+            cargo clippy -p $package --all-targets --locked -- -D warnings
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+          cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and component tests
         run: cargo test --workspace --locked
       - name: Build the four programs

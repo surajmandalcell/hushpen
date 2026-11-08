@@ -1,2 +1,5 @@
 [alias]
 xtask = "run -p xtask --locked --"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+avx2,+fma,+f16c,+bmi2"]

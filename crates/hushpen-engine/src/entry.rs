@@ -16,9 +16,10 @@ use std::sync::Arc;
 
 /// True when a GPU backend is built in and `HUSHPEN_DISABLE_GPU` does not switch it off.
 pub fn gpu_available() -> bool {
-    hushpen_core::os::Os::current()
+    (hushpen_core::os::Os::current()
         .capabilities(false, false)
         .metal
+        || cfg!(feature = "vulkan"))
         && !gpu_disabled_by_env()
 }
 
