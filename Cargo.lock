@@ -3408,6 +3408,7 @@ dependencies = [
  "serde_json",
  "symphonia",
  "tempfile",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3456,6 +3457,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-service-management",
  "tempfile",
+ "windows 0.62.2",
  "x11rb 0.14.0",
  "xkeysym",
  "zbus 5.19.0",
@@ -3466,6 +3468,7 @@ name = "hushpen-speech"
 version = "2.4.0"
 dependencies = [
  "block2 0.6.2",
+ "hound",
  "hushpen-audio",
  "hushpen-core",
  "markdown",
@@ -3474,6 +3477,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "tempfile",
  "unicode-segmentation",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3488,6 +3492,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
+ "windows 0.62.2",
 ]
 
 [[package]]
