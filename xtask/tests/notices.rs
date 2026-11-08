@@ -77,7 +77,7 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
 }
 
 /// `name version` of every third-party crate in the normal dependency tree of the three
-/// programs, for the three release targets.
+/// programs, for every supported build target.
 fn linked_crates() -> BTreeSet<String> {
     let output = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
         .current_dir(root())
@@ -94,6 +94,7 @@ fn linked_crates() -> BTreeSet<String> {
         .args(["--target", "aarch64-apple-darwin"])
         .args(["--target", "x86_64-unknown-linux-gnu"])
         .args(["--target", "aarch64-unknown-linux-gnu"])
+        .args(["--target", "x86_64-pc-windows-msvc"])
         .output()
         .expect("cargo tree did not start");
     assert!(output.status.success(), "cargo tree failed");
