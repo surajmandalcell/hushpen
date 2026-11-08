@@ -17,7 +17,7 @@ pub trait LoginToggle: Send + Sync {
     fn set(&self, enabled: bool) -> Result<(), String>;
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 impl LoginToggle for hushpen_platform::login_item::LoginItem {
     fn is_enabled(&self) -> bool {
         self.is_enabled()
