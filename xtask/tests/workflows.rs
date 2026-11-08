@@ -7,6 +7,10 @@ fn workflows_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows")
 }
 
+fn source(path: impl AsRef<Path>) -> String {
+    fs::read_to_string(path).unwrap().replace("\r\n", "\n")
+}
+
 /// Trigger names under the top-level `on:` key (block form).
 fn triggers(text: &str) -> Vec<String> {
     let mut lines = text.lines();
@@ -63,7 +67,7 @@ fn every_workflow_but_deploy_docs_is_dispatch_only() {
         if !name.ends_with(".yml") || name == "deploy-docs.yml" {
             continue;
         }
-        let text = fs::read_to_string(&path).unwrap();
+        let text = source(&path);
         assert_eq!(triggers(&text), ["workflow_dispatch"], "{name}");
         checked += 1;
     }
@@ -72,13 +76,13 @@ fn every_workflow_but_deploy_docs_is_dispatch_only() {
 
 #[test]
 fn ci_yml_takes_targets_and_suite_inputs() {
-    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    let text = source(workflows_dir().join("ci.yml"));
     assert_eq!(input_names(&text), ["targets", "suite"]);
 }
 
 #[test]
 fn ci_yml_has_a_gate_job_and_the_three_runner_build_matrix() {
-    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    let text = source(workflows_dir().join("ci.yml"));
     assert!(text.contains("\n  gate:\n"));
     assert!(text.contains("\n  build:\n"));
     for runner in ["macos-15", "ubuntu-22.04", "ubuntu-22.04-arm"] {
@@ -95,7 +99,7 @@ fn trigger_parser_reads_block_form() {
 
 #[test]
 fn ci_yml_packages_each_target_and_smokes_the_installers() {
-    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    let text = source(workflows_dir().join("ci.yml"));
     assert!(text.contains("\n  package:\n"));
     assert!(text.contains("\n  smoke:\n"));
     assert!(text.contains("- package-smoke"));
@@ -109,14 +113,14 @@ fn ci_yml_packages_each_target_and_smokes_the_installers() {
 #[test]
 fn the_dmg_mount_script_refuses_to_run_off_the_ci_runner() {
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packaging/smoke/mac.sh");
-    let text = fs::read_to_string(script).unwrap();
+    let text = source(script);
     assert!(text.contains(r#"[ "${CI:-}" != "true" ]"#));
     assert!(text.contains(r#"[ "${GITHUB_ACTIONS:-}" != "true" ]"#));
 }
 
 #[test]
 fn ci_yml_has_an_updater_suite_that_checks_the_update_from_a_test_feed() {
-    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    let text = source(workflows_dir().join("ci.yml"));
     assert!(text.contains("- updater"));
     assert!(text.contains("\n  updater-x64:\n"));
     assert!(text.contains("inputs.suite == 'updater'"));
@@ -135,7 +139,7 @@ fn ci_yml_has_an_updater_suite_that_checks_the_update_from_a_test_feed() {
 
 #[test]
 fn the_other_suites_skip_the_updater_job_and_the_updater_skips_theirs() {
-    let text = fs::read_to_string(workflows_dir().join("ci.yml")).unwrap();
+    let text = source(workflows_dir().join("ci.yml"));
     assert!(
         text.contains(
             "inputs.suite != 'gate' && inputs.suite != 'e2e' && inputs.suite != 'updater'"
@@ -147,7 +151,7 @@ fn the_other_suites_skip_the_updater_job_and_the_updater_skips_theirs() {
 }
 
 fn release_yml() -> String {
-    fs::read_to_string(workflows_dir().join("release.yml")).expect("release.yml")
+    source(workflows_dir().join("release.yml"))
 }
 
 /// The lines of one top-level job, from `  <name>:` to the next job.
@@ -303,7 +307,7 @@ fn release_yml_verifies_the_draft_after_it_exists() {
     }
     let script =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../packaging/release/download-draft.sh");
-    let script = fs::read_to_string(script).unwrap();
+    let script = source(script);
     assert!(
         script.contains("is published, not a draft"),
         "the draft check is in the script"
