@@ -12,8 +12,7 @@ pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     write_with_mode(path, bytes, None)
 }
 
-/// Like [`write`], but the file is created with `mode` (Unix permission bits) from the start,
-/// so the bytes are never readable through a wider mode, whatever the process umask says.
+/// Like [`write`], with `mode` on Unix or current-user-only access on Windows from creation.
 pub(crate) fn write_private(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
     write_with_mode(path, bytes, Some(mode))
 }
@@ -48,14 +47,24 @@ fn write_and_rename(
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(mode);
     }
-    let mut file = options
-        .open(temp)
-        .map_err(|e| Error::io(context("could not create a temp file for"), e))?;
+    #[cfg(target_os = "windows")]
+    let opened = if mode.is_some() {
+        crate::data_dir::windows::create_private(temp)
+    } else {
+        options.open(temp)
+    };
+    #[cfg(not(target_os = "windows"))]
+    let opened = options.open(temp);
+    let mut file = opened.map_err(|e| Error::io(context("could not create a temp file for"), e))?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|e| Error::io(context("could not write"), e))?;
     drop(file);
-    fs::rename(temp, path).map_err(|e| Error::io(context("could not replace"), e))?;
+    #[cfg(target_os = "windows")]
+    let renamed = crate::data_dir::windows::replace(temp, path);
+    #[cfg(not(target_os = "windows"))]
+    let renamed = fs::rename(temp, path);
+    renamed.map_err(|e| Error::io(context("could not replace"), e))?;
     // The rename is durable only once the directory entry is flushed.
     if let Ok(dir_handle) = File::open(dir) {
         let _ = dir_handle.sync_all();
