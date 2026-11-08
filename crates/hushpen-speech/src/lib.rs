@@ -10,6 +10,8 @@ mod espeak;
 mod macos;
 mod synthesis;
 pub mod text;
+#[cfg(target_os = "windows")]
+mod windows;
 
 pub use synthesis::{SpeechEvent, Synthesis, synthesize};
 pub use text::{MAX_TEXT_BYTES, TextFormat, prepare, read_text_file};
@@ -115,4 +117,6 @@ pub fn system_engine() -> Box<dyn SpeechEngine> {
     return Box::new(macos::SystemVoice);
     #[cfg(target_os = "linux")]
     return Box::new(espeak::Espeak::default());
+    #[cfg(target_os = "windows")]
+    return Box::new(windows::SystemVoice);
 }
