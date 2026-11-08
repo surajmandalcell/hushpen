@@ -20,7 +20,7 @@ hound.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true, features = [
-    "Foundation", "Media_SpeechSynthesis", "Storage_Streams", "Win32_System_WinRT",
+    "Foundation", "Media_Core", "Media_SpeechSynthesis", "Storage_Streams", "Win32_System_WinRT",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
