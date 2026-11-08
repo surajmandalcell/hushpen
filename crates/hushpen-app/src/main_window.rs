@@ -72,7 +72,7 @@ impl Native for Platform {
     }
 
     fn minimize(&self, window: AnyWindowHandle, cx: &AsyncApp) {
-        if matches!(self.0, WindowHandle::AppKit(_)) {
+        if matches!(self.0, WindowHandle::AppKit(_) | WindowHandle::Win32(_)) {
             if let Err(error) = window::minimize(self.0) {
                 log::warn!("the window could not be minimized: {error}");
             }
