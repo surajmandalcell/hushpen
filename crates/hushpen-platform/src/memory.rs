@@ -1,19 +1,24 @@
 //! How much memory the machine has, to pick the AI cleanup model.
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 /// Total physical memory in bytes, or `None` when the system does not say.
 pub fn total_ram_bytes() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
         Some(objc2_foundation::NSProcessInfo::processInfo().physicalMemory())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
         parse_meminfo(&std::fs::read_to_string("/proc/meminfo").ok()?)
     }
+    #[cfg(target_os = "windows")]
+    windows::total_ram_bytes()
 }
 
 /// The `MemTotal` line of `/proc/meminfo`, which counts kibibytes.
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(any(target_os = "linux", test))]
 fn parse_meminfo(text: &str) -> Option<u64> {
     let line = text.lines().find(|line| line.starts_with("MemTotal:"))?;
     let kib: u64 = line

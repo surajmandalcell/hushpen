@@ -3,6 +3,9 @@
 // One plain C call on memory this module owns.
 #![allow(unsafe_code)]
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 /// Seconds to add to a Unix time to get the local wall-clock time at that moment, so daylight
 /// saving of that date counts. It is 0 when the system does not say.
 pub fn utc_offset_seconds(unix_seconds: i64) -> i64 {
@@ -10,11 +13,8 @@ pub fn utc_offset_seconds(unix_seconds: i64) -> i64 {
     {
         local::offset(unix_seconds)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = unix_seconds;
-        0
-    }
+    #[cfg(target_os = "windows")]
+    windows::offset(unix_seconds).unwrap_or(0)
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]

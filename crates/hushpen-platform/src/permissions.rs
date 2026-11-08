@@ -15,6 +15,9 @@ mod reader;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 #[cfg(any(target_os = "linux", test))]
 mod xdg;
 
@@ -34,7 +37,7 @@ fn spawn_and_reap(mut command: std::process::Command) -> std::io::Result<()> {
 
 /// Runs `command` with no input or output and waits at most `limit` for it to end. A child that
 /// runs longer is killed and the answer is a `TimedOut` error.
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", all(test, unix)))]
 fn run_bounded(
     mut command: std::process::Command,
     limit: std::time::Duration,
@@ -117,7 +120,9 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
         xdg::check_url(url)?;
         xdg::open(std::ffi::OsStr::new(url), spawn_and_reap)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    return windows::open_url(url);
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         let _ = url;
         Ok(())
@@ -131,11 +136,21 @@ pub fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     return macos::open_path(path);
     #[cfg(target_os = "linux")]
     return xdg::open(path.as_os_str(), spawn_and_reap);
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    return windows::open_path(path);
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         let _ = path;
         Ok(())
     }
+}
+
+/// Selects a file in the system file browser, or opens a folder.
+pub fn reveal_path(path: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    return windows::reveal_path(path);
+    #[cfg(not(target_os = "windows"))]
+    open_path(path)
 }
 
 /// Calls `callback` from the main thread each time the user brings Hushpen to the front
@@ -194,6 +209,7 @@ mod tests {
     use std::fs;
 
     #[test]
+    #[cfg(unix)]
     fn a_spawned_open_returns_before_its_child_ends() {
         let mut command = std::process::Command::new("/bin/sleep");
         command.arg("2");
@@ -209,6 +225,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_bounded_run_returns_the_exit_status_of_a_quick_child() {
         let mut command = std::process::Command::new("/bin/sh");
         command.args(["-c", "exit 3"]);
@@ -219,6 +236,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_bounded_run_kills_a_child_that_outlives_the_limit() {
         let mut command = std::process::Command::new("/bin/sleep");
         command.arg("5");
