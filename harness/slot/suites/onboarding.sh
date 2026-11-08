@@ -25,6 +25,8 @@ DEFAULT_MODEL=parakeet-v3-q4_k
 DEFAULT_FILE=$(model_file "$DEFAULT_MODEL")
 DEFAULT_SHA=8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e
 DEFAULT_BYTES=415611879
+# The speech rows of the model step follow the catalog, with the default first.
+DEFAULT_ROW=0
 
 ob() { $HC state | jq -r ".onboarding$1"; }
 ob_is() { [ "$(ob "$1")" = "$2" ]; }
@@ -204,6 +206,10 @@ $HC state | jq .onboarding >"$RUN_OUT/005-model-state.json"
 [ "$(ob .model.id)" = "$DEFAULT_MODEL" ] || failures+="the step names model '$(ob .model.id)', not the default $DEFAULT_MODEL; "
 [ "$(ob .model.state)" = not_downloaded ] || failures+="model state is $(ob .model.state); "
 continue_enabled && failures+="Continue is open with no model; "
+speech_rows=$($HC tree | jq '[.[] | select(.id | test("^onboarding\\.model\\.row\\.[0-9]+$"))] | length')
+[ "$speech_rows" = 4 ] || failures+="the step shows $speech_rows speech rows, not 4; "
+[ "$($HC state | jq -r ".models.models[$DEFAULT_ROW].id")" = "$DEFAULT_MODEL" ] || failures+="the first speech row is not $DEFAULT_MODEL; "
+tree_has "onboarding.model.download.$DEFAULT_ROW" || failures+="the default row has no Download button; "
 gtk_clear
 focus "$GT"
 ptt "$SHORT_WAV" && failures+="a push to talk started on the model step; "
@@ -213,7 +219,7 @@ check_failures "VAL-ONB-006 keys closed before practice" "on the model step the 
 
 echo "== VAL-ONB-005 the model step downloads the default model through the library"
 failures=""
-click onboarding.model.download
+click "onboarding.model.download.$DEFAULT_ROW"
 samples=()
 for _ in $(seq 6000); do
   p=$(ob .model.progress)
@@ -240,6 +246,8 @@ stamp="$MODELS/$DEFAULT_FILE.verified"
 [ "$(jq -r '"\(.algo) \(.hash) \(.size)"' "$stamp" 2>/dev/null)" = "sha256 $DEFAULT_SHA $DEFAULT_BYTES" ] || failures+="the stamp is wrong: $(cat "$stamp" 2>/dev/null); "
 [ -z "$(ls "$DOWNLOADS" 2>/dev/null)" ] || failures+="left in downloads: $(ls "$DOWNLOADS" | tr '\n' ' '); "
 wait_until 5 continue_enabled || failures+="Continue is closed with a verified model; "
+chosen=$(jq -r '.values["dictation.modelId"] // ""' "$SETTINGS")
+[ "$chosen" = "$DEFAULT_MODEL" ] || failures+="the first download is not the default: settings.json names '$chosen'; "
 $HC net >"$RUN_OUT/005-net.json"
 [ "$(jq '[.[] | select(.purpose == "model_download" and .host == "huggingface.co")] | length' "$RUN_OUT/005-net.json")" -ge 1 ] || failures+="hookctl net lists no huggingface.co request; "
 [ "$(jq '[.[] | select(.purpose != "model_download" or (.host != "huggingface.co" and (.host | endswith(".hf.co") | not)))] | length' "$RUN_OUT/005-net.json")" = 0 ] || failures+="hookctl net lists a request outside the allow-list; "
@@ -250,14 +258,15 @@ failures=""
 # Delete the verified file the way the library does, then start over and cancel.
 $HC action model-delete "{\"id\":\"$DEFAULT_MODEL\"}" >"$RUN_OUT/005-delete.txt" 2>&1 || failures+="the model could not be deleted: $(cat "$RUN_OUT/005-delete.txt"); "
 wait_until 10 ob_is .model.state not_downloaded || failures+="the model is $(ob .model.state) after the delete; "
-click onboarding.model.download
+continue_enabled && failures+="Continue is open after the only model was deleted; "
+click "onboarding.model.download.$DEFAULT_ROW"
 for _ in $(seq 300); do
   p=$(ob .model.progress)
   [ "$p" != null ] && [ "$p" -ge 3 ] && break
   sleep 0.1
 done
 shot 005-cancel-running
-click onboarding.model.cancel
+click "onboarding.model.cancel.$DEFAULT_ROW"
 t0=$(now_ms)
 wait_until 10 ob_is .model.state not_downloaded || failures+="the model is $(ob .model.state) after Cancel; "
 settled=$(($(now_ms) - t0))
@@ -458,7 +467,8 @@ wait_until 90 engine_ready || failures+="the engine did not load; "
 focus "$(app_window)"
 tab_to() { # <id>: Tab until that element has focus
   local id=$1
-  for _ in $(seq 12); do
+  # The model step has two icon buttons in each of its four rows before Continue.
+  for _ in $(seq 20); do
     [ "$(tree_get "$id" .focused)" = true ] && return 0
     xdotool key Tab
     sleep 0.25
