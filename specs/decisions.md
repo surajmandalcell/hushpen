@@ -442,6 +442,21 @@ new decision, add it here in the same change (D-21).
   goes, or the cancelled row is saved, when the 4 s end or a new dictation
   starts. Command Mode has no Recover.
 
+- **D-45 Models rows and the default model.** The sections are Speech to
+  Text, Text cleanup, and Text to Speech; the search also matches the old
+  names Speech recognition and Voices. A speech row shows the catalog's
+  accuracy and speed as two lines of five 6px dots. There is no status
+  column: one quiet word after the name says Default, the download percent,
+  Updating N%, Checking, or Failed verification, the only one in a status
+  color. Every action is a 22px icon button in a fixed slot: Details,
+  Download or Cancel, Set as default (a star, speech only, which replaced
+  Use), and Delete. The first speech download that finishes becomes the
+  default while no other default is downloaded, and deleting the default
+  makes the first other downloaded speech model the default, or leaves none
+  chosen. So the default can be deleted (`MODEL_IN_USE` is gone). The
+  onboarding model step shows the same four speech rows, and Continue opens
+  once one speech model is downloaded.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

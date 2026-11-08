@@ -73,7 +73,14 @@ Hushpen
 - **model kind**: what a model does: speech (Whisper, turns speech into
   text), cleanup (an LLM, fixes the text), or voice (Kokoro, Chatterbox
   Turbo, or Chatterbox Nano, reads text aloud). The Models page has one
-  section for each kind.
+  section for each kind: Speech to Text, Text cleanup, and Text to Speech.
+- **default model**: the speech model a dictation uses: `dictation.modelId`,
+  or the catalog default while none is chosen. The first speech model that
+  finishes downloading becomes it, and deleting it makes another downloaded
+  speech model the default (D-45). Its row says "Default".
+- **state word**: the small word after a model's name: Default, the download
+  percent, Updating N%, Checking, or Failed verification. A model that is
+  downloaded, or not, has none.
 - **recommended model**: the one model of a kind that the Models page marks
   "Recommended": the default speech and voice models, and the first cleanup
   model this machine is offered.
