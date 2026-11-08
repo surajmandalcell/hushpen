@@ -283,14 +283,8 @@ impl Controller {
         if *owner != session || report.outcome != Outcome::CopiedOnly {
             return;
         }
-        let message = match report.note {
-            Some("no-target") => "No app had the focus, so the text is on your clipboard.",
-            Some("override") => "Paste is off for this app, so the text is on your clipboard.",
-            Some("own-window") => "Hushpen had the focus, so the text is on your clipboard.",
-            Some("no-paste") => {
-                "Hushpen could not press the paste key, so the text is on your clipboard."
-            }
-            _ => return,
+        let Some(message) = report.copy_notice() else {
+            return;
         };
         drop(slot);
         self.notice = Some(Notice {
