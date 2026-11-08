@@ -71,3 +71,25 @@ fn write_and_rename(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    #[test]
+    fn replacement_keeps_an_open_reader_and_publishes_the_complete_new_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        write(&path, b"old complete document").unwrap();
+        let mut reader = File::open(&path).unwrap();
+
+        write(&path, b"new complete document").unwrap();
+
+        let mut old = String::new();
+        reader.read_to_string(&mut old).unwrap();
+        assert_eq!(old, "old complete document");
+        assert_eq!(fs::read(&path).unwrap(), b"new complete document");
+        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 1);
+    }
+}

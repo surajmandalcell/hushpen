@@ -1,7 +1,6 @@
 use hushpen_store::settings::SettingsStore;
 use serde_json::{Value, json};
 use std::path::Path;
-use std::sync::Arc;
 
 fn read(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
@@ -51,21 +50,19 @@ fn a_change_survives_a_restart() {
 #[test]
 fn thirty_two_parallel_writes_leave_one_complete_file_and_no_temp_file() {
     let tmp = tempfile::tempdir().unwrap();
-    let store = Arc::new(SettingsStore::open(tmp.path()).unwrap());
-    let mut handles = Vec::new();
-    for minutes in 2..34 {
-        let shared = Arc::clone(&store);
-        let dir = tmp.path().to_path_buf();
-        handles.push(std::thread::spawn(move || {
-            shared.set("dictation.maxMinutes", json!(minutes)).unwrap();
-            // A second store on the same file races the first one.
-            let other = SettingsStore::open(&dir).unwrap();
-            other.set("audio.cueVolume", json!(0.25)).unwrap();
-        }));
-    }
-    for handle in handles {
-        handle.join().unwrap();
-    }
+    let store = SettingsStore::open(tmp.path()).unwrap();
+    std::thread::scope(|scope| {
+        for minutes in 2..34 {
+            let shared = &store;
+            let dir = tmp.path();
+            scope.spawn(move || {
+                shared.set("dictation.maxMinutes", json!(minutes)).unwrap();
+                // A second store on the same file races the first one.
+                let other = SettingsStore::open(dir).unwrap();
+                other.set("audio.cueVolume", json!(0.25)).unwrap();
+            });
+        }
+    });
 
     let doc = read(&tmp.path().join("settings.json"));
     assert_eq!(doc["schemaVersion"], 4);
