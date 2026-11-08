@@ -4,11 +4,13 @@ use crate::endpoint::Endpoint;
 use crate::protocol::{Request, Response};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, TcpStream};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 pub fn send(endpoint: &Endpoint, request: &Request, timeout: Duration) -> io::Result<Response> {
     match endpoint {
+        #[cfg(unix)]
         Endpoint::Unix(path) => {
             let stream = UnixStream::connect(path)?;
             stream.set_read_timeout(Some(timeout))?;
@@ -16,6 +18,11 @@ pub fn send(endpoint: &Endpoint, request: &Request, timeout: Duration) -> io::Re
             let reader = stream.try_clone()?;
             exchange(reader, stream, request)
         }
+        #[cfg(not(unix))]
+        Endpoint::Unix(_) => Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "use the loopback TCP hook on this system",
+        )),
         Endpoint::Tcp(port) => {
             let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, *port))?;
             stream.set_read_timeout(Some(timeout))?;

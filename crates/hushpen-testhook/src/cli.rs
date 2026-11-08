@@ -53,13 +53,18 @@ pub struct Env {
 
 impl Env {
     pub fn from_process() -> Self {
+        let tcp = std::env::var("HUSHPEN_TESTHOOK_TCP").ok();
+        #[cfg(windows)]
+        let tcp = tcp
+            .filter(|value| !value.is_empty())
+            .or_else(|| Some(endpoint::TCP_PORTS.start().to_string()));
         Self {
             socket: std::env::var("HUSHPEN_TESTHOOK_SOCKET").ok(),
-            tcp: std::env::var("HUSHPEN_TESTHOOK_TCP").ok(),
+            tcp,
             data_dir: std::env::var_os("HUSHPEN_DATA_DIR")
                 .filter(|dir| !dir.is_empty())
                 .map(PathBuf::from),
-            in_container: endpoint::in_container(),
+            in_container: endpoint::local_tcp_allowed(),
             cwd: std::env::current_dir().unwrap_or_default(),
         }
     }
@@ -436,15 +441,26 @@ mod tests {
     fn live(name: &str) -> Live {
         let dir = std::env::temp_dir().join(format!("hp-ctl-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
+        #[cfg(unix)]
         let socket = dir.join("hook.sock");
-        let server = HookServer::start(
-            Endpoint::Unix(socket.clone()),
-            Arc::new(Counting(AtomicUsize::new(0))),
-        )
-        .unwrap();
+        #[cfg(windows)]
+        let port = {
+            static NEXT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(4340);
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        };
+        #[cfg(unix)]
+        let endpoint = Endpoint::Unix(socket.clone());
+        #[cfg(windows)]
+        let endpoint = Endpoint::Tcp(port);
+        let server = HookServer::start(endpoint, Arc::new(Counting(AtomicUsize::new(0)))).unwrap();
         Live {
             env: Env {
+                #[cfg(unix)]
                 socket: Some(socket.to_string_lossy().into_owned()),
+                #[cfg(windows)]
+                tcp: Some(port.to_string()),
+                #[cfg(windows)]
+                in_container: true,
                 cwd: dir.clone(),
                 ..Env::default()
             },
