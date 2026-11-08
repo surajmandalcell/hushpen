@@ -76,11 +76,23 @@ pub fn in_container() -> bool {
     Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
 }
 
+pub(crate) fn local_tcp_allowed() -> bool {
+    #[cfg(windows)]
+    return true;
+    #[cfg(not(windows))]
+    in_container()
+}
+
 pub fn resolve_from_env(data_dir: Option<&Path>) -> Result<Endpoint, String> {
+    let tcp = std::env::var(TCP_ENV).ok();
+    #[cfg(windows)]
+    let tcp = tcp
+        .filter(|value| !value.is_empty())
+        .or_else(|| Some(TCP_PORTS.start().to_string()));
     resolve(
         std::env::var(SOCKET_ENV).ok().as_deref(),
-        std::env::var(TCP_ENV).ok().as_deref(),
-        in_container(),
+        tcp.as_deref(),
+        local_tcp_allowed(),
         data_dir,
     )
 }

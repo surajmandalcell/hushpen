@@ -2,11 +2,15 @@
 
 use crate::endpoint::Endpoint;
 use crate::protocol::{Request, Response};
+#[cfg(unix)]
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,6 +34,7 @@ impl HookServer {
     pub fn start(endpoint: Endpoint, handler: Arc<dyn Handler>) -> io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let accept = match &endpoint {
+            #[cfg(unix)]
             Endpoint::Unix(path) => {
                 let listener = bind_unix(path)?;
                 spawn_accept(stop.clone(), handler, move || {
@@ -37,6 +42,13 @@ impl HookServer {
                     let writer = stream.try_clone()?;
                     Ok((stream, writer))
                 })?
+            }
+            #[cfg(not(unix))]
+            Endpoint::Unix(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "use the loopback TCP hook on this system",
+                ));
             }
             Endpoint::Tcp(port) => {
                 let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, *port))?;
@@ -66,7 +78,10 @@ impl Drop for HookServer {
         // connect (the socket file is already gone) the thread stays blocked,
         // so it is left to die with the process instead of joined.
         let woke = match &self.endpoint {
+            #[cfg(unix)]
             Endpoint::Unix(path) => UnixStream::connect(path).is_ok(),
+            #[cfg(not(unix))]
+            Endpoint::Unix(_) => false,
             Endpoint::Tcp(port) => TcpStream::connect((Ipv4Addr::LOCALHOST, *port)).is_ok(),
         };
         if let Some(accept) = self.accept.take()
@@ -74,12 +89,14 @@ impl Drop for HookServer {
         {
             let _ = accept.join();
         }
+        #[cfg(unix)]
         if let Endpoint::Unix(path) = &self.endpoint {
             let _ = fs::remove_file(path);
         }
     }
 }
 
+#[cfg(unix)]
 fn bind_unix(path: &Path) -> io::Result<UnixListener> {
     if let Some(parent) = path.parent() {
         fs::DirBuilder::new()
@@ -156,6 +173,7 @@ mod tests {
     use super::*;
     use crate::client;
     use serde_json::json;
+    #[cfg(unix)]
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -171,20 +189,24 @@ mod tests {
     }
 
     /// Removed on drop. Declare it before the server so the server goes first.
+    #[cfg(unix)]
     struct Scratch(PathBuf);
 
+    #[cfg(unix)]
     impl Scratch {
         fn join(&self, part: &str) -> PathBuf {
             self.0.join(part)
         }
     }
 
+    #[cfg(unix)]
     impl Drop for Scratch {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
 
+    #[cfg(unix)]
     fn scratch(name: &str) -> Scratch {
         let dir = std::env::temp_dir().join(format!("hp-hook-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -197,6 +219,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_socket_answers_requests_and_carries_arguments() {
         let dir = scratch("answers");
         let endpoint = Endpoint::Unix(dir.join("run").join("hook.sock"));
@@ -214,6 +237,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_socket_is_private_to_the_user() {
         let dir = scratch("private");
         let path = dir.join("run").join("hook.sock");
@@ -224,6 +248,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn malformed_lines_get_an_error_and_the_connection_stays_usable() {
         let dir = scratch("malformed");
         let path = dir.join("hook.sock");
@@ -244,6 +269,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn dropping_the_server_removes_the_socket_file() {
         let dir = scratch("drop");
         let path = dir.join("hook.sock");
@@ -254,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_leftover_socket_file_does_not_block_a_new_server() {
         let dir = scratch("stale");
         let path = dir.join("hook.sock");
@@ -266,6 +293,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn dropping_the_server_after_its_socket_file_vanished_does_not_hang() {
         let dir = scratch("vanished");
         let path = dir.join("hook.sock");
@@ -277,7 +305,7 @@ mod tests {
     /// The Mac host must never open a port, so this runs only in a container.
     #[test]
     fn the_tcp_endpoint_binds_loopback_only() {
-        if !crate::endpoint::in_container() {
+        if !crate::endpoint::local_tcp_allowed() {
             return;
         }
         let endpoint = Endpoint::Tcp(4359);
