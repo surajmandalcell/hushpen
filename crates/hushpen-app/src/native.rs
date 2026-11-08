@@ -14,6 +14,7 @@ pub fn native_handle(window: &Window) -> WindowHandle {
         Ok(RawWindowHandle::AppKit(handle)) => {
             WindowHandle::AppKit(handle.ns_view.as_ptr() as usize)
         }
+        Ok(RawWindowHandle::Win32(handle)) => WindowHandle::Win32(handle.hwnd.get() as usize),
         _ => WindowHandle::Other,
     }
 }

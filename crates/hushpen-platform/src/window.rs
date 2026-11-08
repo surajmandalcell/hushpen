@@ -25,6 +25,8 @@ mod sidebar_appkit;
 mod visibility_appkit;
 #[cfg(target_os = "linux")]
 mod visibility_x11;
+#[cfg(target_os = "windows")]
+mod windows;
 
 /// The native window behind a GPUI window, as plain integers so the platform
 /// layer never depends on GPUI.
@@ -34,6 +36,8 @@ pub enum WindowHandle {
     X11(u32),
     /// The address of the `NSView` that GPUI draws into.
     AppKit(usize),
+    /// A Win32 HWND.
+    Win32(usize),
     /// Wayland and every other backend.
     Other,
 }
@@ -109,6 +113,8 @@ pub fn lock_chrome(handle: WindowHandle, limits: SizeLimits) -> Result<(), Chrom
         WindowHandle::X11(window) => x11::lock(window, limits),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => appkit::lock(view, limits),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::lock(window, limits),
         _ => {
             let _ = limits;
             Ok(())
@@ -132,6 +138,11 @@ pub fn add_sidebar_material(handle: WindowHandle, width: f64) -> Result<(), Chro
     match handle {
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => sidebar_appkit::add(view, width),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => {
+            let _ = width;
+            windows::add_sidebar_material(window)
+        }
         _ => {
             let _ = width;
             Ok(())
@@ -155,7 +166,9 @@ pub fn compositor_running() -> bool {
             Session::NoDisplay => false,
         }
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    return windows::mica_supported();
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     return false;
 }
 
@@ -188,6 +201,8 @@ pub fn sidebar_material(handle: WindowHandle) -> Option<&'static str> {
     match handle {
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => sidebar_appkit::material(view),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(_) => windows::mica_supported().then_some("mica"),
         _ => None,
     }
 }
@@ -200,6 +215,8 @@ pub fn hide(handle: WindowHandle) -> Result<(), ChromeError> {
         WindowHandle::X11(window) => visibility_x11::hide(window),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => visibility_appkit::hide(view),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::hide(window),
         _ => Err(ChromeError::new("this window backend cannot be hidden")),
     }
 }
@@ -211,6 +228,8 @@ pub fn show(handle: WindowHandle) -> Result<(), ChromeError> {
         WindowHandle::X11(window) => visibility_x11::show(window),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => visibility_appkit::show(view),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::show(window),
         _ => Err(ChromeError::new("this window backend cannot be shown")),
     }
 }
@@ -221,6 +240,8 @@ pub fn minimize(handle: WindowHandle) -> Result<(), ChromeError> {
     match handle {
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => visibility_appkit::minimize(view),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::minimize(window),
         _ => Err(ChromeError::new(
             "this window backend minimizes through GPUI",
         )),
@@ -235,6 +256,8 @@ pub fn show_unfocused(handle: WindowHandle) -> Result<(), ChromeError> {
         WindowHandle::X11(window) => visibility_x11::show_unfocused(window),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => visibility_appkit::show_unfocused(view),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::show(window),
         _ => Err(ChromeError::new("this window backend cannot be shown")),
     }
 }
@@ -264,7 +287,7 @@ pub fn hide_app() -> Result<(), ChromeError> {
     Ok(())
 }
 
-/// A window rectangle in screen pixels, origin at the top left of the primary screen.
+/// A window rectangle from the primary screen origin: device pixels on X11, logical points elsewhere.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Frame {
     pub x: i32,
@@ -281,6 +304,8 @@ pub fn place_overlay(handle: WindowHandle, frame: Frame) -> Result<(), ChromeErr
         WindowHandle::X11(window) => overlay_x11::place(window, frame),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => overlay_appkit::place(view, frame),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::place(window, frame),
         _ => {
             let _ = frame;
             Ok(())
@@ -288,8 +313,8 @@ pub fn place_overlay(handle: WindowHandle, frame: Frame) -> Result<(), ChromeErr
     }
 }
 
-/// Where the pointer is on the screen and whether the left button is down. Pixels on X11,
-/// points on macOS, from the top left of the screen.
+/// Where the pointer is and whether the left button is down. Device pixels on X11,
+/// logical points elsewhere, from the primary screen origin.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pointer {
     pub x: f32,
@@ -304,11 +329,13 @@ pub fn pointer(handle: WindowHandle) -> Option<Pointer> {
         WindowHandle::X11(_) => overlay_x11::pointer().ok(),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(_) => overlay_appkit::pointer().ok(),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::pointer(window).ok(),
         _ => None,
     }
 }
 
-/// A screen rectangle from the top left of the primary screen. Pixels on X11, points on macOS.
+/// A screen rectangle from the primary screen origin. Device pixels on X11, logical points elsewhere.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScreenRect {
     pub x: f32,
@@ -355,7 +382,9 @@ pub fn pointer_screen() -> Option<PointerScreen> {
     let layout = overlay_x11::screens();
     #[cfg(target_os = "macos")]
     let layout = overlay_appkit::screens();
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    let layout = windows::screens();
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     let layout: Result<Layout, ChromeError> = Err(ChromeError::new("no screens here"));
     let layout = layout
         .map_err(|error| log::debug!("the screens could not be read: {error}"))
@@ -381,6 +410,8 @@ pub fn pin_overlay(handle: WindowHandle) -> Result<(), ChromeError> {
         WindowHandle::X11(window) => overlay_x11::pin(window),
         #[cfg(target_os = "macos")]
         WindowHandle::AppKit(view) => overlay_appkit::pin(view),
+        #[cfg(target_os = "windows")]
+        WindowHandle::Win32(window) => windows::pin(window),
         _ => Ok(()),
     }
 }
