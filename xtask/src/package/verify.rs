@@ -94,7 +94,7 @@ fn check_tts_libs(
     rewritten: Option<&Path>,
     problems: &mut Vec<String>,
 ) {
-    for lib in &crate::tts_runtime::archive_for(target).libs {
+    for lib in crate::tts_runtime::archive_for(target).libs {
         let path = dir.join(lib.name);
         let same = match rewritten {
             Some(pinned) => crate::tts_runtime::same_code(&path, &pinned.join(lib.name)),
@@ -169,7 +169,7 @@ fn verify_tar(
         "install-kind",
         "icons/512x512.png",
     ];
-    for lib in &crate::tts_runtime::archive_for(target).libs {
+    for lib in crate::tts_runtime::archive_for(target).libs {
         wanted.push(lib.name);
     }
     for file in wanted {
@@ -645,6 +645,9 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
         Some(target) => target,
         None => Target::host()?,
     };
+    if target == Target::WindowsX64 {
+        return Err("Windows packaging is not available".into());
+    }
     let version = build_version();
     let dir = options
         .dir

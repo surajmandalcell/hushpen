@@ -26,14 +26,14 @@ pub struct Lib {
     pub sha256: &'static str,
 }
 
-/// A pinned release archive: the two libraries the worker needs out of its `lib/` folder.
+/// A pinned release archive: the libraries the worker needs out of its `lib/` folder.
 /// The cxx API library of the same folder is not shipped; nothing calls it.
 pub struct Archive {
     pub target: Target,
     pub file: &'static str,
     pub bytes: u64,
     pub sha256: &'static str,
-    pub libs: [Lib; 2],
+    pub libs: &'static [Lib],
 }
 
 const fn lib(name: &'static str, bytes: u64, sha256: &'static str) -> Lib {
@@ -44,13 +44,13 @@ const fn lib(name: &'static str, bytes: u64, sha256: &'static str) -> Lib {
     }
 }
 
-const ARCHIVES: [Archive; 3] = [
+const ARCHIVES: [Archive; 4] = [
     Archive {
         target: Target::MacosArm64,
         file: "sherpa-onnx-v2.0.0-osx-arm64-shared-lib.tar.bz2",
         bytes: 8_704_036,
         sha256: "a28dfdbf62677f712f29116271880a2552c09b6f06b485e6dad64ea56ad9fffe",
-        libs: [
+        libs: &[
             lib(
                 "libsherpa-onnx-c-api.dylib",
                 4_095_008,
@@ -68,7 +68,7 @@ const ARCHIVES: [Archive; 3] = [
         file: "sherpa-onnx-v2.0.0-linux-x64-shared-lib.tar.bz2",
         bytes: 9_690_703,
         sha256: "e95f0bb7dbf838d45b0c2831be780b5236fa4c2f891e8bc95b1859dd3311d392",
-        libs: [
+        libs: &[
             lib(
                 "libsherpa-onnx-c-api.so",
                 4_838_888,
@@ -86,7 +86,7 @@ const ARCHIVES: [Archive; 3] = [
         file: "sherpa-onnx-v2.0.0-linux-aarch64-shared-cpu-lib.tar.bz2",
         bytes: 12_468_072,
         sha256: "833848c29192f137ced0cd9670699e5ad5ad524dead39baa4925c0e1d52275d0",
-        libs: [
+        libs: &[
             lib(
                 "libsherpa-onnx-c-api.so",
                 4_374_312,
@@ -97,6 +97,29 @@ const ARCHIVES: [Archive; 3] = [
                 bytes: 34_606_912,
                 sha256: "cfc800d4438f15e8d9017521326776ca7117d8783cb847ccccc2fc61ac4d540f",
             },
+        ],
+    },
+    Archive {
+        target: Target::WindowsX64,
+        file: "sherpa-onnx-v2.0.0-win-x64-shared-MT-Release-lib.tar.bz2",
+        bytes: 7_878_613,
+        sha256: "7a83c48e6c07754028d99e8304da42e184b12223b9a4d15d0e0fd4b707d1cff5",
+        libs: &[
+            lib(
+                "sherpa-onnx-c-api.dll",
+                4_249_088,
+                "9b6dc14bfab0378fc4569d6b9785cd06036d36efd3a90f0842e42b9e12f0b1ce",
+            ),
+            lib(
+                "onnxruntime.dll",
+                17_799_168,
+                "7f66f939a881baf4f46a2216496798edf4a1429878b646d12674aa62f27d8a25",
+            ),
+            lib(
+                "onnxruntime_providers_shared.dll",
+                104_960,
+                "551d0e1fe4c227d8542314ba718d52f4379e0c7bfe729a37c59833a884e27b4d",
+            ),
         ],
     },
 ];
@@ -204,7 +227,7 @@ pub fn same_code(packaged: &Path, pinned: &Path) -> Result<bool, String> {
 pub fn ensure(dir: &Path, target: Target) -> Result<bool, String> {
     let archive = archive_for(target);
     let mut ready = true;
-    for (path, lib) in libs_in(dir, target).iter().zip(&archive.libs) {
+    for (path, lib) in libs_in(dir, target).iter().zip(archive.libs) {
         if !matches_pinned(path, lib)? {
             ready = false;
             break;
@@ -264,7 +287,7 @@ fn fetch_into(dir: &Path, scratch: &Path, archive: &Archive) -> Result<(), Strin
         .file
         .strip_suffix(".tar.bz2")
         .ok_or("the archive name lost its .tar.bz2 suffix")?;
-    for lib in &archive.libs {
+    for lib in archive.libs {
         let extracted = scratch.join(top).join("lib").join(lib.name);
         let to = dir.join(lib.name);
         copy(&extracted, &to)?;
@@ -326,7 +349,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_packaging_target_has_an_archive_of_two_libraries() {
+    fn every_target_has_its_runtime_libraries() {
         for target in [Target::MacosArm64, Target::LinuxX64, Target::LinuxArm64] {
             let archive = archive_for(target);
             assert!(archive.file.ends_with(".tar.bz2"));
@@ -338,6 +361,23 @@ mod tests {
             let extension = if target.is_linux() { "so" } else { "dylib" };
             assert!(names.iter().all(|name| name.ends_with(extension)));
         }
+        let windows = archive_for(Target::WindowsX64);
+        assert_eq!(windows.sha256.len(), 64);
+        let names: Vec<&str> = windows.libs.iter().map(|lib| lib.name).collect();
+        assert_eq!(
+            names,
+            [
+                "sherpa-onnx-c-api.dll",
+                "onnxruntime.dll",
+                "onnxruntime_providers_shared.dll"
+            ]
+        );
+        assert!(
+            windows
+                .libs
+                .iter()
+                .all(|lib| lib.bytes > 0 && lib.sha256.len() == 64)
+        );
     }
 
     #[test]

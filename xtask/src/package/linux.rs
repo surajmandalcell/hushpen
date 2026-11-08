@@ -7,15 +7,16 @@
 //! points there.
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(unix)]
+use super::APP_BINARY;
 use super::deps::{self, Deps};
 use super::names::{self, Format};
-use super::{
-    APP_BINARY, BINARIES, Ctx, NOTICES, VAD_MODEL, config, copy, first_file_with_extension,
-};
+use super::{BINARIES, Ctx, NOTICES, VAD_MODEL, config, copy, first_file_with_extension};
 use super::{run_packager, run_tool};
 
 const ICON_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256, 512];
@@ -123,6 +124,7 @@ fn relayout_deb(
         let to = lib.join(binary);
         fs::rename(bin.join(binary), &to)
             .map_err(|e| format!("cannot move {binary} into {}: {e}", lib.display()))?;
+        #[cfg(unix)]
         fs::set_permissions(&to, fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("cannot set the mode of {}: {e}", to.display()))?;
     }
@@ -130,9 +132,11 @@ fn relayout_deb(
         let name = library.file_name().ok_or("a runtime library has no name")?;
         let to = lib.join(name);
         copy(library, &to)?;
+        #[cfg(unix)]
         fs::set_permissions(&to, fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("cannot set the mode of {}: {e}", to.display()))?;
     }
+    #[cfg(unix)]
     symlink("../lib/hushpen/hushpen", bin.join(APP_BINARY))
         .map_err(|e| format!("cannot link /usr/bin/hushpen: {e}"))?;
 
