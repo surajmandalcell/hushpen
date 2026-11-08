@@ -583,7 +583,9 @@ impl FlowBar {
 impl Render for FlowBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.painted_clear = self.props.presence <= 0.0;
-        let composited = crate::theme::chrome::compositor(cx);
+        let composited = Os::current()
+            .capabilities(false, crate::theme::chrome::compositor(cx))
+            .overlay_translucent;
         view::content(&self.props, Some(&cx.entity()), composited)
     }
 }
