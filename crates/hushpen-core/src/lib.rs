@@ -44,16 +44,16 @@ mod tests {
 
     #[test]
     fn version_is_the_release_version() {
-        assert_eq!(VERSION, "2.3.3");
+        assert_eq!(VERSION, "2.4.0");
     }
 
     #[test]
     fn debug_builds_print_the_dev_version() {
         if option_env!("HUSHPEN_BUILD_VERSION").is_none() {
             let expected = if cfg!(debug_assertions) {
-                "2.3.3-dev"
+                "2.4.0-dev"
             } else {
-                "2.3.3"
+                "2.4.0"
             };
             assert_eq!(BUILD_VERSION, expected);
         }

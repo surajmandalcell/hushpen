@@ -1,9 +1,31 @@
 # Changelog
 
-## Unreleased
+## 2.4.0
+
+### New
+
+- **Pick a speech model during setup.** The model step shows the four speech
+  models, Parakeet first, each with its accuracy and speed. Download the one
+  that suits you; Continue opens once one speech model is downloaded, and
+  Details tells you more about each model.
+- **Install with one command.** `curl -fsSL
+  https://hushpen.mandalsuraj.com/install.sh | sh` installs the latest
+  release on macOS or Linux. It checks the download against `SHA256SUMS`
+  before it installs anything.
 
 ### Improved
 
+- Models shows how accurate and how fast each speech model is, as five dots
+  each. Every action is an icon button with a tooltip: Details, Download or
+  Cancel, Set as default (a star), and Delete. One quiet word after the name
+  says Default, the download percent, or Failed verification.
+- The Models sections are now Speech to Text, Text cleanup, and Text to
+  Speech. The search still finds the old names.
+- The first speech model you download becomes the default by itself. You
+  can now delete the default model: another downloaded speech model becomes
+  the default.
+- The Website link in About opens https://hushpen.mandalsuraj.com/.
+- The README says in plain words what Hushpen does and how to install it.
 - On macOS, hands-free starts and stops with Option+Tab by default, in place
   of a double tap of Right Option or Right Option+Space. If you never changed
   the hands-free shortcut, Option+Tab applies; a shortcut you picked stays,

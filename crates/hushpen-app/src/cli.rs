@@ -122,6 +122,6 @@ mod tests {
             version_line(),
             format!("hushpen {}", hushpen_core::BUILD_VERSION)
         );
-        assert!(version_line().starts_with("hushpen 2.3.3"));
+        assert!(version_line().starts_with("hushpen 2.4.0"));
     }
 }
