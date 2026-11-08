@@ -24,7 +24,11 @@ extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
     unsafe { (*(user_data as *const AtomicBool)).load(Ordering::Relaxed) }
 }
 
-extern "C" fn native_log(level: u32, text: *const std::ffi::c_char, _user_data: *mut c_void) {
+extern "C" fn native_log(
+    level: whisper_rs_sys::ggml_log_level,
+    text: *const std::ffi::c_char,
+    _user_data: *mut c_void,
+) {
     // Debug builds of whisper.cpp print every decoded token at DEBUG level, which is transcript
     // text. Only warnings and errors may reach stderr, and so engine.log.
     if text.is_null()
