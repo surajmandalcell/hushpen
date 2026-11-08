@@ -65,9 +65,35 @@ The unit and component tests open no window and need no models. The tests that r
 
 Core tests exercise macOS, Linux, and Windows policy on every host. They cover
 platform defaults, model downloads and defaults, updater states, flow-bar
-results, and microphone session rules without native services. Windows native
-backends and packages are not available yet; these tests do not prove Windows
-runtime support.
+results, and microphone session rules without native services.
+
+## Windows build checks
+
+Windows builds and unit tests run on GitHub Actions with the `windows-2025`
+runner. Select `targets=windows-x64` and `suite=gate` in `ci.yml`. The runner
+uses MSVC, CMake, and LLVM/libclang. Native C dependencies prevent checking
+this target from macOS. The four programs end in `.exe`.
+
+Inference defaults to CPU, with `GGML_NATIVE=OFF` and an AVX2/FMA/F16C/BMI2
+baseline. The `vulkan` feature in the engine and LLM crates is optional and
+off by default. Windows supports Unload; it does not support Page out.
+
+Fetch the pinned Windows speech DLLs with:
+
+```sh
+cargo xtask tts-runtime --target windows-x64 --dir target/debug
+```
+
+Keep all three DLLs beside `hushpen-tts.exe`: `sherpa-onnx-c-api.dll`,
+`onnxruntime.dll`, and `onnxruntime_providers_shared.dll`. Downloads verify
+the archive and each DLL by size and SHA-256.
+
+Windows stores data in the roaming AppData known folder under `Hushpen`.
+`HUSHPEN_DATA_DIR` and the saved folder choice still override it. Endpoint
+keys and the single-instance pipe allow only the current user. Text for an
+app with higher privileges stays on the clipboard with an administrator
+notice. Windows packages are not available yet. A green runner proves a
+build and unit tests, not interactive behavior on Windows hardware.
 
 ## Linux notes
 
