@@ -457,6 +457,15 @@ new decision, add it here in the same change (D-21).
   onboarding model step shows the same four speech rows, and Continue opens
   once one speech model is downloaded.
 
+- **D-46 Platform policy and state.** `hushpen_core::os::Os` is the shared
+  OS identity. Pure capabilities combine it with supplied display and
+  compositor facts. Windows defaults to Right Alt gestures, CPU, and Keep
+  in memory; Page out is Linux only. Core owns model download/default,
+  updater, flow-bar result/refusal, and microphone purpose/generation rules.
+  GPUI shells feed facts and apply effects through the existing service
+  traits. macOS and Linux behavior stays unchanged. Windows native backends
+  and packaging are not available yet.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

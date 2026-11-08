@@ -143,6 +143,14 @@ Hushpen
 - **test hook**: the debug-only socket that reports the element tree and the
   state and runs actions. Release builds do not contain it (D-08).
 
+## Core modules
+
+- **os**: the core OS identity and capabilities, with display and compositor facts supplied by the platform.
+- **models**: pure download, verification, cancellation, retry, and default-model rules.
+- **update**: pure update states and offer, download, restart, and stale-response rules.
+- **flow_bar**: pure result, refusal, recovery, and history-button choice from supplied state and time.
+- **mic_session**: pure microphone purpose, sharing, state, and generation rules; the backend owns streams.
+
 ## Process names
 
 - **hushpen**: the UI process. It owns the windows, the tray, the hold key,

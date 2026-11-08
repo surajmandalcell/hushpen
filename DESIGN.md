@@ -182,7 +182,9 @@ components:
 
 Hushpen is a quiet, fixed-width desktop workspace for private dictation, file transcription, local model selection, and playback. It follows the system: it looks like a native macOS app, in Light or Dark, and it stays out of the way.
 
-The product is not a marketing site. It has no hero layout, no promotional panels, and no decorative compositions. The first screen is the working app. Layouts are dense enough for daily use and calm enough that recording and transcription states stay easy to read. Avoid exposing implementation details such as framework names or internal architecture in the UI.
+The first screen is the working app. Keep layouts calm and compact. Do not show framework names or internal architecture in the UI.
+
+Platform defaults come from core OS capabilities. Windows uses Right Alt hands-free gestures and Keep in memory; Page out is Linux only. macOS and Linux keep their existing appearance and behavior.
 
 ## App Icon
 

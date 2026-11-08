@@ -63,6 +63,12 @@ cargo xtask gate
 
 The unit and component tests open no window and need no models. The tests that run the real speech engine, and the pixel tests, are opt-in. The Linux end-to-end tests run in the containers under `harness/`. See `harness/README.md`.
 
+Core tests exercise macOS, Linux, and Windows policy on every host. They cover
+platform defaults, model downloads and defaults, updater states, flow-bar
+results, and microphone session rules without native services. Windows native
+backends and packages are not available yet; these tests do not prove Windows
+runtime support.
+
 ## Linux notes
 
 - Hushpen needs an X11 session. On Wayland, the global key and the paste show "not available".
