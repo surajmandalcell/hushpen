@@ -24,15 +24,13 @@ use compare::{Outcome, compare, diff_image};
 use gpui_kit::{AppContext as _, HeadlessAppContext, px, size};
 use gpui_wgpu::CosmicTextSystem;
 use hushpen_app::assets::{AppAssets, register_fonts};
-use hushpen_app::flow_bar::view::{
-    CANCELLED_TEXT, Preview, Props, WAVE_BARS, measure_in, result_text, size_of,
-};
+use hushpen_app::flow_bar::view::{CANCELLED_TEXT, Preview, Props, WAVE_BARS, measure_in, size_of};
 use hushpen_app::flow_bar::working::{LONG_WAIT_MS, Mix, Stage};
 use hushpen_app::mic::{MicBackend, MicSession};
 use hushpen_app::theme::{self, Appearance, chrome, space};
 use hushpen_app::views::View;
 use hushpen_audio::{CaptureError, EventSink, InputDevice};
-use hushpen_core::flow_bar::BarState;
+use hushpen_core::flow_bar::{BarState, result_text};
 use hushpen_core::onboarding::Step;
 use hushpen_core::permission::{Access, Preflight};
 use image::RgbaImage;
