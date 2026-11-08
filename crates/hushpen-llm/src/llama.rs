@@ -57,7 +57,10 @@ impl LlamaRuntime {
 
 impl Backend for LlamaRuntime {
     fn backend_name(&self) -> &'static str {
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current()
+            .capabilities(false, false)
+            .metal
+        {
             "metal"
         } else {
             "cpu"

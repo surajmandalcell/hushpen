@@ -18,7 +18,7 @@ use std::rc::Rc;
 pub(crate) use panel::render;
 
 /// The line under the name.
-pub const TAGLINE: &str = if cfg!(target_os = "macos") {
+pub const TAGLINE: &str = if matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac) {
     "Private dictation that stays on this Mac"
 } else {
     "Private dictation that stays on this computer"

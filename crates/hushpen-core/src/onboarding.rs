@@ -107,6 +107,7 @@ pub fn key_gate(completed: bool, step: Step, practice_passed: bool) -> KeyGate {
 /// Which display session Hushpen runs in (Linux).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Session {
+    Native,
     X11,
     Wayland,
     NoDisplay,
@@ -211,7 +212,22 @@ pub fn permission_rows(facts: &Facts) -> Vec<Row> {
             ),
             microphone_row(facts, None),
         ],
-        Platform::MacOs => vec![
+        Platform::Windows => vec![
+            microphone_row(facts, None),
+            availability_row(
+                RowKey::GlobalKeys,
+                "Global keys",
+                &facts.keys,
+                "The hold key can start a dictation from any app.",
+            ),
+            availability_row(
+                RowKey::Paste,
+                "Paste",
+                &facts.paste,
+                "Finished text can be pasted into the app you use.",
+            ),
+        ],
+        Platform::Mac => vec![
             microphone_row(facts, Some(Permission::Microphone)),
             mac_row(
                 RowKey::Accessibility,
@@ -259,7 +275,7 @@ fn x11_row(facts: &Facts) -> Row {
             RowState::Unavailable,
             "This is a Wayland session. Global keys and paste need X11.",
         ),
-        Session::NoDisplay => row(
+        Session::Native | Session::NoDisplay => row(
             RowKey::X11Session,
             "X11 session",
             RowState::Unavailable,

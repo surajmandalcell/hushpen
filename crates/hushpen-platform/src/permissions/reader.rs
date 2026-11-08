@@ -327,7 +327,7 @@ mod tests {
             "a grant that reads there is never lost"
         );
         let rows = permission_rows(&Facts {
-            platform: Platform::MacOs,
+            platform: Platform::Mac,
             session: Session::X11,
             keys: Availability::Ready,
             paste: Availability::Ready,

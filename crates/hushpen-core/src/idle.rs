@@ -10,6 +10,7 @@
 //! and either comes back on the next touch with the same contents. macOS has no public call for
 //! this: the kernel compresses and swaps idle pages by itself, so there `pageout` reads as `keep`.
 
+use crate::os::Capabilities;
 use serde_json::{Map, Value};
 use std::ops::Range;
 
@@ -72,12 +73,9 @@ pub enum Policy {
 }
 
 impl Policy {
-    /// Whether this system takes a request to page a model out.
-    pub const CAN_PAGE_OUT: bool = !cfg!(target_os = "macos");
-
     /// The policy a stored value means here. An empty or unknown value is the default.
-    pub fn parse(value: Option<&str>) -> Self {
-        Self::resolve(value, Self::CAN_PAGE_OUT)
+    pub fn parse(value: Option<&str>, capabilities: Capabilities) -> Self {
+        Self::resolve(value, capabilities.page_out)
     }
 
     fn resolve(value: Option<&str>, can_page_out: bool) -> Self {
@@ -99,13 +97,20 @@ impl Policy {
 }
 
 /// The idle rule the settings give `worker`.
-pub fn for_worker(settings: &Map<String, Value>, worker: Worker) -> Idle {
+pub fn for_worker(
+    settings: &Map<String, Value>,
+    worker: Worker,
+    capabilities: Capabilities,
+) -> Idle {
     let after = settings
         .get("engine.idleMinutes")
         .and_then(Value::as_u64)
         .unwrap_or(DEFAULT_MINUTES)
         .saturating_mul(60);
-    let policy = Policy::parse(settings.get("engine.idlePolicy").and_then(Value::as_str));
+    let policy = Policy::parse(
+        settings.get("engine.idlePolicy").and_then(Value::as_str),
+        capabilities,
+    );
     match (policy, worker) {
         (Policy::Keep, _) => Idle::KEEP,
         (Policy::Unload, _) => Idle {
@@ -226,17 +231,24 @@ mod tests {
     #[test]
     fn nothing_stored_gives_the_default_rule_for_every_worker() {
         let unset = settings(json!({}));
-        for worker in ALL {
-            let idle = for_worker(&unset, worker);
-            match Policy::parse(None) {
-                Policy::PageOut if worker != Worker::Voice => assert_eq!(
-                    idle,
-                    Idle {
-                        secs: 900,
-                        action: IdleAction::PageOut
-                    }
-                ),
-                _ => assert_eq!(idle, Idle::KEEP),
+        for os in [
+            crate::os::Os::Mac,
+            crate::os::Os::Linux,
+            crate::os::Os::Windows,
+        ] {
+            let capabilities = os.capabilities(false, false);
+            for worker in ALL {
+                let idle = for_worker(&unset, worker, capabilities);
+                match Policy::parse(None, capabilities) {
+                    Policy::PageOut if worker != Worker::Voice => assert_eq!(
+                        idle,
+                        Idle {
+                            secs: 900,
+                            action: IdleAction::PageOut
+                        }
+                    ),
+                    _ => assert_eq!(idle, Idle::KEEP),
+                }
             }
         }
     }
@@ -245,33 +257,47 @@ mod tests {
     fn keep_and_unload_apply_to_every_worker_with_the_idle_minutes() {
         let keep = settings(json!({"engine.idlePolicy": "keep", "engine.idleMinutes": 5}));
         let unload = settings(json!({"engine.idlePolicy": "unload", "engine.idleMinutes": 30}));
-        for worker in ALL {
-            assert_eq!(for_worker(&keep, worker), Idle::KEEP);
-            assert_eq!(
-                for_worker(&unload, worker),
-                Idle {
-                    secs: 1800,
-                    action: IdleAction::Unload
-                }
-            );
+        for os in [
+            crate::os::Os::Mac,
+            crate::os::Os::Linux,
+            crate::os::Os::Windows,
+        ] {
+            let capabilities = os.capabilities(false, false);
+            for worker in ALL {
+                assert_eq!(for_worker(&keep, worker, capabilities), Idle::KEEP);
+                assert_eq!(
+                    for_worker(&unload, worker, capabilities),
+                    Idle {
+                        secs: 1800,
+                        action: IdleAction::Unload
+                    }
+                );
+            }
         }
     }
 
     #[test]
     fn page_out_applies_to_the_ggml_workers_and_keeps_a_voice_model() {
         let values = settings(json!({"engine.idlePolicy": "pageout"}));
-        for worker in [Worker::Speech, Worker::Cleanup] {
-            let expected = if Policy::CAN_PAGE_OUT {
-                Idle {
-                    secs: 900,
-                    action: IdleAction::PageOut,
-                }
-            } else {
-                Idle::KEEP
-            };
-            assert_eq!(for_worker(&values, worker), expected);
+        for os in [
+            crate::os::Os::Mac,
+            crate::os::Os::Linux,
+            crate::os::Os::Windows,
+        ] {
+            let capabilities = os.capabilities(false, false);
+            for worker in [Worker::Speech, Worker::Cleanup] {
+                let expected = if capabilities.page_out {
+                    Idle {
+                        secs: 900,
+                        action: IdleAction::PageOut,
+                    }
+                } else {
+                    Idle::KEEP
+                };
+                assert_eq!(for_worker(&values, worker, capabilities), expected);
+            }
+            assert_eq!(for_worker(&values, Worker::Voice, capabilities), Idle::KEEP);
         }
-        assert_eq!(for_worker(&values, Worker::Voice), Idle::KEEP);
     }
 
     #[test]

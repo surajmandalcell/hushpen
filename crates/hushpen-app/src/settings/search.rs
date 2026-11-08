@@ -92,7 +92,9 @@ impl RowMeta {
 
     const fn macos_only(self) -> Self {
         Self {
-            here: cfg!(target_os = "macos"),
+            here: hushpen_core::os::Os::current()
+                .capabilities(false, false)
+                .metal,
             ..self
         }
     }
@@ -575,7 +577,10 @@ mod tests {
 
     #[test]
     fn the_gpu_row_is_found_on_macos_only() {
-        let expected: &[&str] = if cfg!(target_os = "macos") {
+        let expected: &[&str] = if hushpen_core::os::Os::current()
+            .capabilities(false, false)
+            .metal
+        {
             &["engine.gpu"]
         } else {
             &[]

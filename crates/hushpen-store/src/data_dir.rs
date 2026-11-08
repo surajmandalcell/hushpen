@@ -15,19 +15,7 @@ use std::path::{Path, PathBuf};
 const PRODUCT: &str = "hushpen";
 pub(crate) const MARKER_NAME: &str = ".hushpen-data";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Os {
-    MacOs,
-    Linux,
-}
-
-impl Os {
-    pub const CURRENT: Os = if cfg!(target_os = "macos") {
-        Os::MacOs
-    } else {
-        Os::Linux
-    };
-}
+pub use hushpen_core::os::Os;
 
 pub fn resolve(
     os: Os,
@@ -40,12 +28,13 @@ pub fn resolve(
     }
     let home = home.unwrap_or_else(|| Path::new("."));
     match os {
-        Os::MacOs => home.join("Library/Application Support/Hushpen"),
+        Os::Mac => home.join("Library/Application Support/Hushpen"),
         Os::Linux => xdg_data_home
             .map(Path::new)
             .filter(|dir| dir.is_absolute())
             .map_or_else(|| home.join(".local/share"), Path::to_path_buf)
             .join("hushpen"),
+        Os::Windows => home.join("AppData/Roaming/Hushpen"),
     }
 }
 
@@ -53,7 +42,7 @@ pub fn resolve(
 pub fn resolve_from_env() -> PathBuf {
     let base_dirs = BaseDirs::new();
     resolve(
-        Os::CURRENT,
+        Os::current(),
         std::env::var_os("HUSHPEN_DATA_DIR").as_deref(),
         std::env::var_os("XDG_DATA_HOME").as_deref(),
         base_dirs.as_ref().map(BaseDirs::home_dir),
@@ -79,7 +68,7 @@ pub fn resolve_effective(
 pub fn resolve_effective_from_env() -> Result<PathBuf> {
     let base_dirs = BaseDirs::new();
     resolve_effective(
-        Os::CURRENT,
+        Os::current(),
         std::env::var_os("HUSHPEN_DATA_DIR").as_deref(),
         std::env::var_os("XDG_DATA_HOME").as_deref(),
         base_dirs.as_ref().map(BaseDirs::home_dir),

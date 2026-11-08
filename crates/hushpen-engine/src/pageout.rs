@@ -14,7 +14,10 @@ fn mappings() -> Vec<idle::Mapping> {
 
 /// Runs `load` and returns its value with the ranges it mapped for the model file `path`.
 pub fn track<T>(path: &Path, load: impl FnOnce() -> T) -> (T, Vec<Range<usize>>) {
-    if !cfg!(target_os = "linux") {
+    if !hushpen_core::os::Os::current()
+        .capabilities(false, false)
+        .page_out
+    {
         return (load(), Vec::new());
     }
     let before = mappings();

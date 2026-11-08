@@ -696,7 +696,7 @@ fn display_session() -> hushpen_core::onboarding::Session {
 
 #[cfg(not(target_os = "linux"))]
 fn display_session() -> hushpen_core::onboarding::Session {
-    hushpen_core::onboarding::Session::X11
+    hushpen_core::onboarding::Session::Native
 }
 
 /// Starts the key listener with the saved shortcuts and hands the controller and the Shortcuts

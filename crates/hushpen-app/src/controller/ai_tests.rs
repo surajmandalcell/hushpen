@@ -241,10 +241,10 @@ fn the_model_gets_the_timeout_setting_and_the_platform_default(cx: &mut TestAppC
     let (rig, _) = setup(cx);
     let calls = ai_answers(cx, &rig, Attempt::TimedOut, Ok(()));
     hold_run(cx, &rig, 1_000);
-    let default = if cfg!(target_os = "linux") {
-        8_000
-    } else {
+    let default = if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         3_000
+    } else {
+        8_000
     };
     assert_eq!(
         calls.lock().unwrap().seen[0].1,

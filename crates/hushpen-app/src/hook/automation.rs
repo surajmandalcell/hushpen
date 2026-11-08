@@ -698,7 +698,7 @@ mod tests {
             .filter(|element| element.id.starts_with("window."))
             .map(|element| element.id.as_str())
             .collect();
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
             assert!(controls.is_empty(), "AppKit draws the lights: {controls:?}");
         } else {
             assert_eq!(controls, ["window.close", "window.minimize"]);
@@ -767,7 +767,9 @@ mod tests {
         assert_eq!(state["settings"]["dictation.maxMinutes"], 6);
         assert_eq!(state["window"]["width"], 940.0);
         assert_eq!(state["window"]["height"], 600.0);
-        let translucent = cfg!(target_os = "macos");
+        let translucent = hushpen_core::os::Os::current()
+            .capabilities(false, false)
+            .translucent;
         assert_eq!(
             state["window"]["background"],
             if translucent { "transparent" } else { "opaque" }
@@ -811,12 +813,18 @@ mod tests {
             };
             ask(cx, &fixture, call)
         };
-        let fill = |light: bool| match (cfg!(target_os = "macos"), light) {
+        let fill = |light: bool| match (
+            hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac,
+            light,
+        ) {
             (true, _) => "none",
             (false, true) => "#E8E8EA",
             (false, false) => "#2B2B2D",
         };
-        let root_fill = |light: bool| match (cfg!(target_os = "macos"), light) {
+        let root_fill = |light: bool| match (
+            hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac,
+            light,
+        ) {
             (true, _) => "none",
             (false, true) => "#F5F5F5",
             (false, false) => "#1E1E1E",

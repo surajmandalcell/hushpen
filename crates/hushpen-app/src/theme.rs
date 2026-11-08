@@ -133,7 +133,7 @@ pub mod chrome {
     /// The sidebar look for a compositing state. macOS always has the native material; Linux is
     /// translucent with a compositor and solid without one.
     pub fn sidebar_for(compositor: bool) -> Sidebar {
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
             Sidebar::Native
         } else if compositor {
             Sidebar::Blurred
@@ -152,7 +152,7 @@ pub mod chrome {
     /// Whether a compositor draws the screen. macOS always has one; on Linux it is the reading
     /// of `hushpen_platform::window::compositor_running`, or false before it ran.
     pub fn compositor(cx: &super::App) -> bool {
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
             return true;
         }
         cx.try_global::<Compositor>()
@@ -162,7 +162,7 @@ pub mod chrome {
     /// A new compositor reading. Returns true when the look changed, and repaints the windows
     /// so the sidebar and the window corners follow.
     pub fn set_compositor(running: bool, cx: &mut super::App) -> bool {
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
             return false;
         }
         let changed = running != compositor(cx);
@@ -302,11 +302,12 @@ pub const fn chrome_top(height: f32) -> f32 {
 
 /// The font of the views: the system font on macOS, and the embedded Inter on Linux, where no
 /// system font can be assumed.
-pub const FONT_FAMILY: &str = if cfg!(target_os = "macos") {
-    ".SystemUIFont"
-} else {
-    "Inter"
-};
+pub const FONT_FAMILY: &str =
+    if matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac) {
+        ".SystemUIFont"
+    } else {
+        "Inter"
+    };
 
 /// One row of the `typography` block.
 #[derive(Debug, Clone, Copy)]
@@ -909,7 +910,7 @@ mod tests {
     #[test]
     fn the_sidebar_look_follows_the_platform_and_the_compositor() {
         use chrome::Sidebar;
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
             assert_eq!(chrome::sidebar_for(true), Sidebar::Native);
             assert_eq!(chrome::sidebar_for(false), Sidebar::Native);
         } else {
@@ -928,7 +929,7 @@ mod tests {
     fn the_compositor_reading_starts_unset_and_only_a_change_repaints(
         cx: &mut gpui_kit::TestAppContext,
     ) {
-        if cfg!(target_os = "macos") {
+        if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
             return;
         }
         cx.update(|cx| {

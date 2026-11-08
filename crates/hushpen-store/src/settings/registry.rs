@@ -1,7 +1,7 @@
 //! The settings registry: every key, its default, and its validation rule.
 
 use crate::data_dir::Os;
-use hushpen_core::shortcut::{Combo, Platform, Slot};
+use hushpen_core::shortcut::{Combo, Slot};
 use serde_json::{Map, Value, json};
 use std::ops::RangeInclusive;
 
@@ -115,25 +115,17 @@ fn filtered_map(value: &Value, keep: fn(&Value) -> bool) -> Option<Value> {
 }
 
 fn mac(os: Os) -> bool {
-    os == Os::MacOs
-}
-
-fn platform(os: Os) -> Platform {
-    if mac(os) {
-        Platform::MacOs
-    } else {
-        Platform::Linux
-    }
+    os == Os::Mac
 }
 
 fn shortcut_default(slot: Slot, os: Os) -> Value {
-    json!(slot.default_text(platform(os)))
+    json!(slot.default_text(os))
 }
 
 /// Whether the default of the shortcut setting `key` is a chord that another shortcut in
 /// `stored` holds, so taking that default would give two shortcuts the same keys.
 pub(super) fn default_is_taken(key: &str, stored: &Map<String, Value>, os: Os) -> bool {
-    let platform = platform(os);
+    let platform = os;
     let Some(slot) = Slot::ALL.into_iter().find(|slot| slot.setting_key() == key) else {
         return false;
     };
@@ -307,12 +299,18 @@ pub(super) static REGISTRY: &[Spec] = &[
     )),
     spec!("readAloud.speed", Kind::Float(0.5, 2.0), |_| json!(1.0)),
     spec!("readAloud.format", Kind::Choice(&["wav"]), |_| json!("wav")),
-    spec!("engine.useGpu", Kind::Bool, |os| json!(mac(os))),
+    spec!("engine.useGpu", Kind::Bool, |os| json!(
+        os.capabilities(false, false).metal
+    )),
     spec!("engine.threads", Kind::AutoOrInt(1, 64), |_| json!("auto")),
     spec!(
         "engine.idlePolicy",
         Kind::Choice(&["keep", "pageout", "unload"]),
-        |os| json!(if mac(os) { "keep" } else { "pageout" })
+        |os| json!(if os.capabilities(false, false).page_out {
+            "pageout"
+        } else {
+            "keep"
+        })
     ),
     spec!("engine.idleMinutes", Kind::Int(5, 60), |_| json!(15)),
     spec!("startup.launchAtLogin", Kind::Bool, |_| json!(false)),
@@ -353,7 +351,7 @@ mod tests {
 
     #[test]
     fn output_mute_and_idle_defaults_swap_models_instead_of_unloading_them() {
-        for os in [Os::MacOs, Os::Linux] {
+        for os in [Os::Mac, Os::Linux, Os::Windows] {
             assert_eq!(
                 find("audio.muteWhileDictating").unwrap().default_value(os),
                 json!(true)
@@ -364,8 +362,9 @@ mod tests {
             );
         }
         let policy = find("engine.idlePolicy").unwrap();
-        assert_eq!(policy.default_value(Os::MacOs), json!("keep"));
+        assert_eq!(policy.default_value(Os::Mac), json!("keep"));
         assert_eq!(policy.default_value(Os::Linux), json!("pageout"));
+        assert_eq!(policy.default_value(Os::Windows), json!("keep"));
         for value in ["keep", "pageout", "unload"] {
             assert_eq!(policy.sanitize(&json!(value)), Some(json!(value)));
         }
@@ -388,7 +387,7 @@ mod tests {
 
     #[test]
     fn every_default_passes_its_own_rule_on_both_systems() {
-        for os in [Os::MacOs, Os::Linux] {
+        for os in [Os::Mac, Os::Linux, Os::Windows] {
             for spec in REGISTRY {
                 let default = spec.default_value(os);
                 assert_eq!(
@@ -417,16 +416,16 @@ mod tests {
     #[test]
     fn platform_defaults_differ_where_the_plan_says() {
         let timeout = find("cleanup.llm.timeoutMs").unwrap();
-        assert_eq!(timeout.default_value(Os::MacOs), json!(3000));
+        assert_eq!(timeout.default_value(Os::Mac), json!(3000));
         assert_eq!(timeout.default_value(Os::Linux), json!(8000));
         let hold = find("shortcut.hold").unwrap();
-        assert_eq!(hold.default_value(Os::MacOs), json!("RightOption"));
+        assert_eq!(hold.default_value(Os::Mac), json!("RightOption"));
         assert_eq!(hold.default_value(Os::Linux), json!("RightAlt"));
         let read = find("shortcut.readAloud").unwrap();
-        assert_eq!(read.default_value(Os::MacOs), json!("Ctrl+Cmd+S"));
+        assert_eq!(read.default_value(Os::Mac), json!("Ctrl+Cmd+S"));
         assert_eq!(read.default_value(Os::Linux), json!("Ctrl+Alt+S"));
         let hands_free = find("shortcut.handsFree").unwrap();
-        assert_eq!(hands_free.default_value(Os::MacOs), json!("Option+Tab"));
+        assert_eq!(hands_free.default_value(Os::Mac), json!("Option+Tab"));
         assert_eq!(
             hands_free.default_value(Os::Linux),
             json!(hushpen_core::shortcut::BUILT_IN_HANDS_FREE)
@@ -499,7 +498,7 @@ mod tests {
     fn the_window_height_is_internal_and_stays_within_sane_bounds() {
         let spec = find("ui.windowHeight").unwrap();
         assert!(spec.internal);
-        assert_eq!(spec.default_value(Os::MacOs), json!(600));
+        assert_eq!(spec.default_value(Os::Mac), json!(600));
         assert_eq!(spec.sanitize(&json!(750)), Some(json!(750)));
         assert_eq!(spec.sanitize(&json!(599)), None);
         assert_eq!(spec.sanitize(&json!("tall")), None);
@@ -507,7 +506,7 @@ mod tests {
 
     #[test]
     fn audio_enhance_defaults_to_auto_and_custom_starts_at_the_auto_values() {
-        let default = |key| find(key).unwrap().default_value(Os::MacOs);
+        let default = |key| find(key).unwrap().default_value(Os::Mac);
         assert_eq!(default("audio.enhance"), json!("auto"));
         assert_eq!(default("audio.enhance.lowCutHz"), json!(80));
         assert_eq!(default("audio.enhance.bassDb"), json!(-6));

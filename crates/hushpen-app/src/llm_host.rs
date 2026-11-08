@@ -184,7 +184,11 @@ pub fn wanted_load(
         family: None,
         gpu,
         threads: cpus.clamp(1, 8),
-        idle: hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Cleanup),
+        idle: hushpen_core::idle::for_worker(
+            settings,
+            hushpen_core::idle::Worker::Cleanup,
+            hushpen_core::os::Os::current().capabilities(false, false),
+        ),
     })
 }
 
@@ -290,7 +294,10 @@ mod tests {
         values.insert("engine.idlePolicy".into(), json!("pageout"));
         values.insert("engine.idleMinutes".into(), json!(30));
         let idle = wanted_load(&values, dir.path(), 2).unwrap().idle;
-        if cfg!(target_os = "macos") {
+        if !hushpen_core::os::Os::current()
+            .capabilities(false, false)
+            .page_out
+        {
             assert_eq!(idle, hushpen_core::idle::Idle::KEEP);
         } else {
             assert_eq!(idle.secs, 1800);

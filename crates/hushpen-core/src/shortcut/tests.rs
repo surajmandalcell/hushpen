@@ -1,7 +1,7 @@
 use super::*;
 use crate::dictation::AppEvent;
 
-const MAC: Platform = Platform::MacOs;
+const MAC: Platform = Platform::Mac;
 const LINUX: Platform = Platform::Linux;
 
 fn combo(text: &str, platform: Platform) -> Combo {
@@ -22,7 +22,7 @@ fn ctrl_alt(letter: char) -> Combo {
 
 #[test]
 fn the_factory_defaults_parse_on_their_own_system_and_print_back_the_same() {
-    for platform in [MAC, LINUX] {
+    for platform in [MAC, LINUX, Platform::Windows] {
         for slot in Slot::ALL {
             let text = slot.default_text(platform);
             match slot {
@@ -34,6 +34,27 @@ fn the_factory_defaults_parse_on_their_own_system_and_print_back_the_same() {
             }
         }
     }
+}
+
+#[test]
+fn windows_uses_hold_gestures_and_names_the_windows_key() {
+    let windows = Platform::Windows;
+    let hold = combo(Slot::Hold.default_text(windows), windows);
+    let hands_free = Setting::default_for(Slot::HandsFree, windows);
+    assert_eq!(hold.display(windows), "Right Alt");
+    assert_eq!(hands_free.to_text(windows), BUILT_IN_HANDS_FREE);
+    assert_eq!(
+        HandsFree::BuiltIn.display(&hold, windows),
+        "Right Alt ×2 or Right Alt+Space"
+    );
+    for text in ["Ctrl+Win+V", "RightWin", "Ctrl+Alt+Shift+Win+9"] {
+        let parsed = combo(text, windows);
+        let setting = parsed.to_setting(windows);
+        assert_eq!(Combo::parse(&setting, windows), Ok(parsed.clone()));
+        assert!(parsed.display(windows).contains("Win"));
+        assert!(!setting.contains("Super"));
+    }
+    assert_eq!(Combo::parse("Fn", windows), Err(Problem::NoFn));
 }
 
 #[test]
@@ -705,7 +726,7 @@ fn the_recorder_blocks_every_live_shortcut_and_esc_alone_closes_it() {
 
 #[test]
 fn a_bare_key_a_media_key_and_both_sides_of_ctrl_are_live_shortcuts() {
-    let mac = |text: &str| Combo::parse(text, Platform::MacOs).unwrap();
+    let mac = |text: &str| Combo::parse(text, Platform::Mac).unwrap();
     let mut engine = Engine::new(Bindings {
         hold: Some(mac("PlayPause")),
         hands_free: None,

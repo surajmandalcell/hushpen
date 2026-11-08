@@ -178,7 +178,11 @@ pub fn wanted_load(
         path: models_dir.join(file),
         gpu: use_gpu,
         threads: resolve_threads(settings.get("engine.threads"), cpus),
-        idle: hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Speech),
+        idle: hushpen_core::idle::for_worker(
+            settings,
+            hushpen_core::idle::Worker::Speech,
+            hushpen_core::os::Os::current().capabilities(false, false),
+        ),
     })
 }
 
@@ -293,7 +297,10 @@ mod tests {
         assert_eq!((idle.secs, idle.action), (1800, IdleAction::Unload));
         values.insert("engine.idlePolicy".into(), json!("pageout"));
         let idle = wanted(&values, 2).unwrap().idle;
-        if cfg!(target_os = "macos") {
+        if !hushpen_core::os::Os::current()
+            .capabilities(false, false)
+            .page_out
+        {
             assert_eq!(idle, Idle::KEEP);
         } else {
             assert_eq!((idle.secs, idle.action), (1800, IdleAction::PageOut));
