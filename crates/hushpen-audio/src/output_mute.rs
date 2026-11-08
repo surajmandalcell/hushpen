@@ -7,9 +7,12 @@ use std::path::{Path, PathBuf};
 
 const MARKER: &str = "output-mute.json";
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 /// Whether this platform has a way to control the default output.
 pub fn available() -> bool {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         true
     }
@@ -17,7 +20,7 @@ pub fn available() -> bool {
     {
         linux::has_tool("wpctl") || linux::has_tool("pactl")
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         false
     }
@@ -39,7 +42,7 @@ impl Restore {
         let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid output mute marker");
         let value: Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
         let kind = value["kind"].as_str().ok_or_else(invalid)?;
-        if !["mac-mute", "mac-volume", "wpctl", "pactl"].contains(&kind) {
+        if !["mac-mute", "mac-volume", "wpctl", "pactl", "windows-mute"].contains(&kind) {
             return Err(invalid());
         }
         let device = value["device"]
@@ -89,7 +92,11 @@ impl Backend for System {
         {
             linux::snapshot()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(target_os = "windows")]
+        {
+            windows::snapshot()
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
             Err(io::Error::other("output mute is not available"))
         }
@@ -104,7 +111,11 @@ impl Backend for System {
         {
             linux::apply(saved, restore)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(target_os = "windows")]
+        {
+            windows::apply(saved, restore)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         {
             let _ = (saved, restore);
             Err(io::Error::other("output mute is not available"))
