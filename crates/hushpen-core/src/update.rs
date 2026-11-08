@@ -305,19 +305,20 @@ impl InstallKind {
     }
 }
 
-/// The manifest key of an operating system and CPU, as `std::env::consts` names them.
-pub fn target_key(os: &str, arch: &str) -> Option<&'static str> {
+/// The manifest key of an operating system and CPU.
+pub fn target_key(os: crate::os::Os, arch: &str) -> Option<&'static str> {
+    use crate::os::Os;
     match (os, arch) {
-        ("macos", "aarch64") => Some("macos-arm64"),
-        ("linux", "x86_64") => Some("linux-x64"),
-        ("linux", "aarch64") => Some("linux-arm64"),
+        (Os::Mac, "aarch64") => Some("macos-arm64"),
+        (Os::Linux, "x86_64") => Some("linux-x64"),
+        (Os::Linux, "aarch64") => Some("linux-arm64"),
         _ => None,
     }
 }
 
 /// The manifest key of the running build.
 pub fn current_target() -> Option<&'static str> {
-    target_key(std::env::consts::OS, std::env::consts::ARCH)
+    target_key(crate::os::Os::current(), std::env::consts::ARCH)
 }
 
 /// What the app does with an offered version.
@@ -341,6 +342,210 @@ pub fn delivery(kind: InstallKind, target: Option<&str>, manifest: &Manifest) ->
             .map_or(Delivery::Notice, |artifact| {
                 Delivery::Artifact(artifact.clone())
             }),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckError {
+    pub code: &'static str,
+    /// Names a host or a field, without private request values.
+    pub detail: String,
+}
+
+impl CheckError {
+    pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum State {
+    #[default]
+    Idle,
+    Checking,
+    UpToDate,
+    Available(Manifest),
+    Downloading(Manifest, Option<u8>),
+    Ready(Manifest),
+    Error(CheckError),
+}
+
+impl State {
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Checking => "checking",
+            Self::UpToDate => "up_to_date",
+            Self::Available(_) => "available",
+            Self::Downloading(..) => "downloading",
+            Self::Ready(_) => "ready",
+            Self::Error(_) => "error",
+        }
+    }
+
+    pub fn manifest(&self) -> Option<&Manifest> {
+        match self {
+            Self::Available(manifest) | Self::Downloading(manifest, _) | Self::Ready(manifest) => {
+                Some(manifest)
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BannerKind {
+    Install,
+    Notice,
+    Downloading(Option<u8>),
+    Restart,
+}
+
+#[derive(Debug, Default)]
+pub struct Machine {
+    state: State,
+    runs: u64,
+    restart_dismissed: bool,
+}
+
+impl Machine {
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    pub fn can_check(&self) -> bool {
+        !matches!(
+            self.state,
+            State::Checking | State::Downloading(..) | State::Ready(_)
+        )
+    }
+
+    pub fn check_due(&self, checks_on: bool, last: u64, now: u64) -> bool {
+        checks_on && check_due(last, now) && self.can_check()
+    }
+
+    pub fn begin_check(&mut self) -> Option<u64> {
+        if !self.can_check() {
+            return None;
+        }
+        self.runs += 1;
+        self.state = State::Checking;
+        Some(self.runs)
+    }
+
+    pub fn checks_changed(&mut self, checks_on: bool) {
+        if !checks_on && self.state == State::Checking {
+            self.runs += 1;
+            self.state = State::Idle;
+        }
+    }
+
+    /// Returns false for an answer from a cancelled check.
+    pub fn finish_check(&mut self, run: u64, result: Result<Offer, CheckError>) -> bool {
+        if run != self.runs {
+            return false;
+        }
+        self.state = match result {
+            Ok(Offer::UpToDate) => State::UpToDate,
+            Ok(Offer::Available(manifest)) => State::Available(manifest),
+            Err(error) => State::Error(error),
+        };
+        true
+    }
+
+    pub fn should_install(&self, auto_install: bool) -> bool {
+        auto_install && matches!(self.state, State::Available(_))
+    }
+
+    /// A notice never starts an install; a source build records the request only.
+    pub fn install(&mut self, kind: InstallKind, target: Option<&str>) -> Option<Delivery> {
+        let State::Available(manifest) = &self.state else {
+            return None;
+        };
+        let result = delivery(kind, target, manifest);
+        match &result {
+            Delivery::Notice => return None,
+            Delivery::Artifact(_) => self.state = State::Downloading(manifest.clone(), None),
+            Delivery::Unpackaged => {}
+        }
+        Some(result)
+    }
+
+    pub fn downloading(&mut self, percent: Option<u8>) -> bool {
+        let State::Downloading(manifest, _) = &self.state else {
+            return false;
+        };
+        self.state = State::Downloading(manifest.clone(), percent);
+        true
+    }
+
+    pub fn ready(&mut self) -> bool {
+        let State::Downloading(manifest, _) = &self.state else {
+            return false;
+        };
+        self.state = State::Ready(manifest.clone());
+        self.restart_dismissed = false;
+        true
+    }
+
+    pub fn finish_stage(&mut self, result: Result<(), CheckError>) -> bool {
+        if !matches!(self.state, State::Downloading(..)) {
+            return false;
+        }
+        match result {
+            Ok(()) => {
+                self.ready();
+            }
+            Err(error) => self.failed(error),
+        }
+        true
+    }
+
+    pub fn can_restart(&self) -> bool {
+        matches!(self.state, State::Ready(_))
+    }
+
+    pub fn failed(&mut self, error: CheckError) {
+        self.state = State::Error(error);
+    }
+
+    /// Returns a version to persist, or hides this session's restart banner.
+    pub fn dismiss(&mut self) -> Option<String> {
+        let manifest = self.state.manifest()?;
+        if matches!(self.state, State::Ready(_)) {
+            self.restart_dismissed = true;
+            None
+        } else {
+            Some(manifest.version.as_str().to_owned())
+        }
+    }
+
+    pub fn banner_kind(
+        &self,
+        kind: InstallKind,
+        target: Option<&str>,
+        auto_install: bool,
+        dismissed: Option<&str>,
+    ) -> Option<BannerKind> {
+        match &self.state {
+            State::Available(manifest) => {
+                if dismissed == Some(manifest.version.as_str()) {
+                    return None;
+                }
+                match delivery(kind, target, manifest) {
+                    Delivery::Notice => Some(BannerKind::Notice),
+                    _ => (!auto_install).then_some(BannerKind::Install),
+                }
+            }
+            State::Downloading(_, percent) => {
+                (!auto_install).then_some(BannerKind::Downloading(*percent))
+            }
+            State::Ready(_) => (!self.restart_dismissed).then_some(BannerKind::Restart),
+            _ => None,
+        }
     }
 }
 

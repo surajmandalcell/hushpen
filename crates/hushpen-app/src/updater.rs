@@ -25,9 +25,9 @@ use gpui_kit::{App, Context, FocusHandle};
 use hushpen_core::error::{
     UPDATE_DOWNLOAD_FAILED, UPDATE_HASH_MISMATCH, UPDATE_SIGNATURE_INVALID, UPDATE_SWAP_FAILED,
 };
-use hushpen_core::update::{
-    Delivery, Manifest, Offer, Version, check_due, current_target, delivery,
-};
+pub(crate) use hushpen_core::update::BannerKind;
+pub use hushpen_core::update::State;
+use hushpen_core::update::{Delivery, Machine, Manifest, Offer, Version, current_target, delivery};
 use serde_json::{Value, json};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -62,53 +62,6 @@ impl Checker for FeedChecker {
     }
 }
 
-/// What the banner above the content pane says and offers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BannerKind {
-    /// "Download and install", for a version this install replaces itself with.
-    Install,
-    /// The release link, for an install that a package manager or the user owns.
-    Notice,
-    Downloading(Option<u8>),
-    Restart,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum State {
-    /// No check ran in this session.
-    Idle,
-    Checking,
-    UpToDate,
-    Available(Manifest),
-    Downloading(Manifest, Option<u8>),
-    Ready(Manifest),
-    Error(CheckError),
-}
-
-impl State {
-    pub fn key(&self) -> &'static str {
-        match self {
-            State::Idle => "idle",
-            State::Checking => "checking",
-            State::UpToDate => "up_to_date",
-            State::Available(_) => "available",
-            State::Downloading(..) => "downloading",
-            State::Ready(_) => "ready",
-            State::Error(_) => "error",
-        }
-    }
-
-    /// The newer version this state is about, if any.
-    pub fn manifest(&self) -> Option<&Manifest> {
-        match self {
-            State::Available(manifest)
-            | State::Downloading(manifest, _)
-            | State::Ready(manifest) => Some(manifest),
-            _ => None,
-        }
-    }
-}
-
 pub struct Parts {
     pub storage: Rc<Storage>,
     pub checker: Arc<dyn Checker>,
@@ -138,14 +91,10 @@ pub struct Updater {
     quit: Rc<dyn Fn(&mut App)>,
     clock: Rc<dyn Fn() -> u64>,
     current: Version,
-    state: State,
-    /// Counts the checks, so the answer to an older one is ignored.
-    runs: u64,
+    machine: Machine,
     installs: u32,
     /// The new version that is downloaded, checked, and staged, once the state is `Ready`.
     staged: Option<Staged>,
-    /// "Not now" on the restart banner, for this session only.
-    restart_dismissed: bool,
     /// The last release notes open, for `hookctl state`.
     last_open: Option<Value>,
     /// The banner buttons, keyboard reachable.
@@ -162,11 +111,9 @@ impl Updater {
             quit: parts.quit,
             clock: parts.clock,
             current: parts.current,
-            state: State::Idle,
-            runs: 0,
+            machine: Machine::default(),
             installs: 0,
             staged: None,
-            restart_dismissed: false,
             last_open: None,
             focus: (0..2).map(|_| cx.focus_handle().tab_stop(true)).collect(),
         }
@@ -188,7 +135,7 @@ impl Updater {
     }
 
     pub fn state(&self) -> &State {
-        &self.state
+        self.machine.state()
     }
 
     pub fn current(&self) -> &Version {
@@ -223,19 +170,22 @@ impl Updater {
     pub fn settings_changed(&mut self, cx: &mut Context<Self>) {
         if self.checks_on() {
             self.check_if_due(cx);
-        } else if self.state == State::Checking {
-            // The answer to this check is ignored, and the person said no more requests.
-            self.runs += 1;
-            self.set_state(State::Idle, cx);
+        } else {
+            let previous = self.state().key();
+            self.machine.checks_changed(false);
+            self.state_changed(previous, cx);
         }
-        if self.auto_install() {
+        if self.machine.should_install(self.auto_install()) {
             self.install(cx);
         }
         cx.notify();
     }
 
     fn check_if_due(&mut self, cx: &mut Context<Self>) {
-        if self.checks_on() && check_due(self.last_check(), (self.clock)()) {
+        if self
+            .machine
+            .check_due(self.checks_on(), self.last_check(), (self.clock)())
+        {
             self.begin_check(cx);
         }
     }
@@ -259,24 +209,20 @@ impl Updater {
 
     /// No check, download, or restart is under way.
     pub fn can_check_once(&self) -> bool {
-        !matches!(
-            self.state,
-            State::Checking | State::Downloading(..) | State::Ready(_)
-        )
+        self.machine.can_check()
     }
 
     fn begin_check(&mut self, cx: &mut Context<Self>) {
-        if !self.can_check_once() {
+        let previous = self.state().key();
+        let Some(run) = self.machine.begin_check() else {
             return;
-        }
-        self.runs += 1;
-        let run = self.runs;
+        };
         // Stored when the request starts, so a failing network is not asked again on every start.
         let now = json!((self.clock)());
         if let Err(error) = self.storage.settings.set_internal(LAST_CHECK, now) {
             log::warn!("the time of the update check could not be saved: {error}");
         }
-        self.set_state(State::Checking, cx);
+        self.state_changed(previous, cx);
         let (checker, current) = (Arc::clone(&self.checker), self.current.clone());
         cx.spawn(async move |this, cx| {
             let result = cx
@@ -294,30 +240,23 @@ impl Updater {
         result: Result<Offer, CheckError>,
         cx: &mut Context<Self>,
     ) {
-        if run != self.runs {
+        let previous = self.state().key();
+        if !self.machine.finish_check(run, result) {
             return;
         }
-        let state = match result {
-            Ok(Offer::UpToDate) => State::UpToDate,
-            Ok(Offer::Available(manifest)) => State::Available(manifest),
-            Err(error) => {
-                log::warn!("{} {}", error.code, error.detail);
-                State::Error(error)
-            }
-        };
-        let available = matches!(state, State::Available(_));
-        self.set_state(state, cx);
-        if available && self.auto_install() {
+        if let State::Error(error) = self.state() {
+            log::warn!("{} {}", error.code, error.detail);
+        }
+        self.state_changed(previous, cx);
+        if self.machine.should_install(self.auto_install()) {
             self.install(cx);
         }
     }
 
-    fn set_state(&mut self, state: State, cx: &mut Context<Self>) {
-        let changed = self.state.key() != state.key();
-        self.state = state;
-        if changed {
-            hook::record_event("updates", &format!("state {}", self.state.key()));
-            match &self.state {
+    fn state_changed(&mut self, previous: &str, cx: &mut Context<Self>) {
+        if previous != self.state().key() {
+            hook::record_event("updates", &format!("state {}", self.state().key()));
+            match self.state() {
                 State::Error(error) => log::info!("updates: state error {}", error.code),
                 State::Available(_) => log::info!(
                     "updates: state available install_kind={} delivery={}",
@@ -332,17 +271,9 @@ impl Updater {
 
     /// The download has begun.
     fn downloading(&mut self, percent: Option<u8>, cx: &mut Context<Self>) {
-        if let State::Downloading(manifest, _) = &self.state {
-            let manifest = manifest.clone();
-            self.set_state(State::Downloading(manifest, percent), cx);
-        }
-    }
-
-    /// The new version is downloaded, checked, and staged. It starts after a restart.
-    fn ready(&mut self, cx: &mut Context<Self>) {
-        if let Some(manifest) = self.state.manifest().cloned() {
-            self.restart_dismissed = false;
-            self.set_state(State::Ready(manifest), cx);
+        let previous = self.state().key();
+        if self.machine.downloading(percent) {
+            self.state_changed(previous, cx);
         }
     }
 
@@ -350,7 +281,9 @@ impl Updater {
     fn failed(&mut self, error: CheckError, cx: &mut Context<Self>) {
         log::warn!("update failed: {} {}", error.code, error.detail);
         self.staged = None;
-        self.set_state(State::Error(error), cx);
+        let previous = self.state().key();
+        self.machine.failed(error);
+        self.state_changed(previous, cx);
     }
 
     /// What an offered version leads to on this install.
@@ -360,7 +293,7 @@ impl Updater {
 
     /// What the offered version leads to, if one is offered.
     fn delivery_now(&self) -> Option<Delivery> {
-        self.state
+        self.state()
             .manifest()
             .map(|manifest| self.delivery_of(manifest))
     }
@@ -377,11 +310,14 @@ impl Updater {
     /// only where the app replaces itself: a package manager or the user owns the other
     /// installs, which show the release link instead.
     pub fn install(&mut self, cx: &mut Context<Self>) {
-        let State::Available(manifest) = &self.state else {
+        let previous = self.state().key();
+        let Some(result) = self
+            .machine
+            .install(self.installer.kind(), current_target())
+        else {
             return;
         };
-        let manifest = manifest.clone();
-        let artifact = match self.delivery_of(&manifest) {
+        let artifact = match result {
             Delivery::Notice => return,
             Delivery::Unpackaged => None,
             Delivery::Artifact(artifact) => Some(artifact),
@@ -389,7 +325,12 @@ impl Updater {
         self.installs += 1;
         hook::record_event(
             "updates",
-            &format!("install requested {}", manifest.version.as_str()),
+            &format!(
+                "install requested {}",
+                self.state()
+                    .manifest()
+                    .map_or("", |manifest| manifest.version.as_str())
+            ),
         );
         let Some(artifact) = artifact else {
             log::info!(
@@ -398,7 +339,7 @@ impl Updater {
             cx.notify();
             return;
         };
-        self.set_state(State::Downloading(manifest, None), cx);
+        self.state_changed(previous, cx);
         let installer = Arc::clone(&self.installer);
         let (sender, mut receiver) = mpsc::unbounded::<Progress>();
         cx.spawn(async move |this, cx| {
@@ -438,23 +379,31 @@ impl Updater {
     }
 
     fn finish_stage(&mut self, result: Result<Staged, CheckError>, cx: &mut Context<Self>) {
-        if !matches!(self.state, State::Downloading(..)) {
+        let previous = self.state().key();
+        if !self
+            .machine
+            .finish_stage(result.as_ref().map(|_| ()).map_err(Clone::clone))
+        {
             return;
         }
         match result {
-            Ok(staged) => {
-                self.staged = Some(staged);
-                self.ready(cx);
+            Ok(staged) => self.staged = Some(staged),
+            Err(error) => {
+                log::warn!("update failed: {} {}", error.code, error.detail);
+                self.staged = None;
             }
-            Err(error) => self.failed(error, cx),
         }
+        self.state_changed(previous, cx);
     }
 
     /// "Restart to update": a helper swaps the staged version in after this app quits, and starts
     /// it. The new copy stays behind the front app; it puts its window back up only when the
     /// window was on screen. If the helper cannot start, the app keeps running with an error.
     pub fn restart_to_update(&mut self, cx: &mut Context<Self>) {
-        let (State::Ready(_), Some(staged)) = (&self.state, self.staged.clone()) else {
+        if !self.machine.can_restart() {
+            return;
+        }
+        let Some(staged) = self.staged.clone() else {
             return;
         };
         let show_window = crate::main_window::away(cx).is_none();
@@ -471,15 +420,10 @@ impl Updater {
 
     /// "Not now" on the banner: the banner stays away for this version.
     pub fn dismiss(&mut self, cx: &mut Context<Self>) {
-        let Some(manifest) = self.state.manifest() else {
-            return;
-        };
-        if matches!(self.state, State::Ready(_)) {
-            self.restart_dismissed = true;
+        let Some(version) = self.machine.dismiss() else {
             cx.notify();
             return;
-        }
-        let version = manifest.version.as_str().to_owned();
+        };
         let stored = json!(version);
         if let Err(error) = self.storage.settings.set_internal(DISMISSED, stored) {
             log::warn!("the dismissed update could not be saved: {error}");
@@ -492,25 +436,17 @@ impl Updater {
     /// hand and has not sent it away; a notice shows whatever the switch says, because nothing
     /// installs by itself there; a finished download asks for the restart.
     pub(crate) fn banner_kind(&self) -> Option<BannerKind> {
-        let dismissed = |manifest: &Manifest| {
-            self.storage
-                .settings
-                .get(DISMISSED)
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .as_deref()
-                == Some(manifest.version.as_str())
-        };
-        match &self.state {
-            State::Available(manifest) => match self.delivery_of(manifest) {
-                Delivery::Notice => (!dismissed(manifest)).then_some(BannerKind::Notice),
-                _ => (!self.auto_install() && !dismissed(manifest)).then_some(BannerKind::Install),
-            },
-            State::Downloading(_, percent) => {
-                (!self.auto_install()).then_some(BannerKind::Downloading(*percent))
-            }
-            State::Ready(_) => (!self.restart_dismissed).then_some(BannerKind::Restart),
-            _ => None,
-        }
+        let dismissed = self
+            .storage
+            .settings
+            .get(DISMISSED)
+            .and_then(|value| value.as_str().map(str::to_owned));
+        self.machine.banner_kind(
+            self.installer.kind(),
+            current_target(),
+            self.auto_install(),
+            dismissed.as_deref(),
+        )
     }
 
     pub fn banner_visible(&self) -> bool {
@@ -519,7 +455,7 @@ impl Updater {
 
     /// Opens the release notes of the offered version in the browser.
     pub fn open_notes(&mut self, cx: &mut Context<Self>) {
-        let Some(manifest) = self.state.manifest() else {
+        let Some(manifest) = self.state().manifest() else {
             return;
         };
         let url = manifest.notes_url.clone();
@@ -534,7 +470,7 @@ impl Updater {
 
     /// The words under the status row of Settings > Updates.
     pub fn status_text(&self) -> String {
-        match &self.state {
+        match self.state() {
             State::Idle if self.checks_on() => "Not checked yet".to_owned(),
             State::Idle => "Update checks are off".to_owned(),
             State::Checking => "Checking for updates".to_owned(),
@@ -574,11 +510,11 @@ impl Updater {
     /// the view.
     pub fn hook_state_json(&self) -> Value {
         json!({
-            "state": self.state.key(),
+            "state": self.state().key(),
             "current": self.current.as_str(),
-            "version": self.state.manifest().map(|manifest| manifest.version.as_str().to_owned()),
-            "notes_url": self.state.manifest().map(|manifest| manifest.notes_url.clone()),
-            "error": match &self.state {
+            "version": self.state().manifest().map(|manifest| manifest.version.as_str().to_owned()),
+            "notes_url": self.state().manifest().map(|manifest| manifest.notes_url.clone()),
+            "error": match self.state() {
                 State::Error(error) => json!({"code": error.code, "detail": error.detail}),
                 _ => Value::Null,
             },
