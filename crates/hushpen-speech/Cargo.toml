@@ -16,6 +16,12 @@ hushpen-audio.workspace = true
 hushpen-core.workspace = true
 markdown.workspace = true
 unicode-segmentation.workspace = true
+hound.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Foundation", "Media_SpeechSynthesis", "Storage_Streams", "Win32_System_WinRT",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2.workspace = true

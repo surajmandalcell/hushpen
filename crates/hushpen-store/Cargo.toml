@@ -16,9 +16,18 @@ hushpen-core.workspace = true
 directories.workspace = true
 log = { workspace = true, features = ["std"] }
 rusqlite.workspace = true
-rustix.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security",
+    "Win32_Security_Authorization", "Win32_System_Threading", "Win32_System_Memory",
+    "Win32_UI_Shell", "Win32_System_Com",
+] }
 
 [dev-dependencies]
 tempfile.workspace = true
