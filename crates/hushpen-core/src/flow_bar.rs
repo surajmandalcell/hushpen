@@ -58,7 +58,7 @@ impl BarState {
 
 /// What the bar shows for a pipeline state. `failure` is the code of the failure that ended
 /// the run, when there is one.
-pub fn state_for(pipeline: State, failure: Option<&str>) -> BarState {
+fn pipeline_state(pipeline: State, failure: Option<&str>) -> BarState {
     match pipeline {
         State::Idle | State::Cancelled => BarState::Idle,
         State::Listening => BarState::Listening,
@@ -68,6 +68,95 @@ pub fn state_for(pipeline: State, failure: Option<&str>) -> BarState {
             Some(INSERT_KEYBOARD_GRABBED | INSERT_SECURE_FIELD) => BarState::Blocked,
             _ => BarState::Error,
         },
+    }
+}
+
+/// Pipeline facts for one frame. The caller supplies the clock and the newest saved row.
+pub struct Input<'a> {
+    pub pipeline: State,
+    pub failure: Option<&'static str>,
+    pub copied: bool,
+    pub undo: bool,
+    pub recover: bool,
+    pub flash: Option<(u64, &'a str)>,
+    pub row: Option<&'a str>,
+}
+
+pub struct Shown {
+    pub state: BarState,
+    pub message: String,
+    pub open_history: bool,
+}
+
+/// Chooses the result, refusal, and history action before the view draws them.
+pub fn state_for(display: &mut Display, input: Input<'_>, now_ms: u64) -> Shown {
+    let derived = pipeline_state(input.pipeline, input.failure);
+    if input.row != display.seen_row.as_deref() {
+        display.seen_row = input.row.map(str::to_owned);
+        display.renew_flash();
+    }
+    if derived.is_failure() {
+        display.last_failure = input.failure;
+    }
+    if derived != BarState::Idle {
+        display.refusal = None;
+    }
+    if let Some((seq, message)) = input.flash
+        && seq != display.seen_flash
+    {
+        display.seen_flash = seq;
+        display.refusal = Some(message.to_owned());
+        display.update(BarState::Blocked, now_ms);
+    }
+    let state = with_recover(
+        with_undo(display.update(derived, now_ms), input.undo),
+        input.recover,
+    );
+    if !state.is_failure() {
+        display.refusal = None;
+    }
+    let message = match state {
+        BarState::Result | BarState::Undo => result_text(input.copied).to_owned(),
+        BarState::Cancelled => CANCELLED_TEXT.to_owned(),
+        BarState::Error | BarState::Blocked => display
+            .refusal
+            .clone()
+            .unwrap_or_else(|| failure_text(display.last_failure).to_owned()),
+        _ => String::new(),
+    };
+    Shown {
+        state,
+        message,
+        open_history: state.is_failure() && display.refusal.is_none() && input.row.is_some(),
+    }
+}
+
+pub const CANCELLED_TEXT: &str = "Cancelled";
+
+pub fn result_text(copied: bool) -> &'static str {
+    if copied { "Copied" } else { "Pasted" }
+}
+
+/// A short line for a failure code; History shows the full message.
+pub fn failure_text(code: Option<&str>) -> &'static str {
+    use crate::error::*;
+    match code {
+        Some(ENGINE_NO_SPEECH) => "No speech heard",
+        Some(INSERT_KEYBOARD_GRABBED) => "Another app holds the keyboard",
+        Some(INSERT_SECURE_FIELD) => "Secure field. Text not pasted",
+        Some(INSERT_NO_RECEIPT) => "The app did not take the text",
+        Some(INSERT_NO_PERMISSION) => "Not allowed to paste. Text copied",
+        Some(CAPTURE_FAILED) => "Recording stopped",
+        Some(ENGINE_NO_MODEL | ENGINE_LOAD_FAILED) => "Speech model not ready",
+        Some(COMMAND_NO_SELECTION | READ_NO_SELECTION) => "Select text first",
+        Some(COMMAND_NEEDS_AI) => "Command mode needs AI cleanup or the endpoint",
+        Some(COMMAND_NEEDS_GENERAL_MODEL) => "Command mode needs Qwen3.5 2B",
+        Some(LLM_TIMEOUT) => "AI edit timed out. Text unchanged",
+        Some(
+            LLM_GUARD_REJECTED | LLM_UNAVAILABLE | LLM_LOAD_FAILED | LLM_NO_MODEL | LLM_PROTOCOL
+            | LLM_CRASHED | LLM_PROMPT_TOO_LONG | LLM_GENERATE_FAILED | ENDPOINT_FAILED,
+        ) => "AI edit failed. Text unchanged",
+        _ => "Transcription failed",
     }
 }
 
@@ -95,6 +184,10 @@ pub fn with_recover(shown: BarState, offered: bool) -> BarState {
 pub struct Display {
     held: Option<(BarState, u64)>,
     flash_since: Option<u64>,
+    last_failure: Option<&'static str>,
+    refusal: Option<String>,
+    seen_flash: u64,
+    seen_row: Option<String>,
 }
 
 impl Display {
@@ -132,6 +225,12 @@ impl Display {
     /// The failure goes away at once, for a click that dismisses it.
     pub fn clear(&mut self) {
         self.held = None;
+        self.last_failure = None;
+    }
+
+    pub fn refuse(&mut self, message: String, now_ms: u64) {
+        self.refusal = Some(message);
+        self.update(BarState::Error, now_ms);
     }
 
     /// Another dictation went in while the pipeline still says done: its flash starts over.
@@ -278,15 +377,126 @@ mod tests {
 
     const SCREEN: (f32, f32) = (1280.0, 800.0);
 
+    fn input(pipeline: State) -> Input<'static> {
+        Input {
+            pipeline,
+            failure: None,
+            copied: false,
+            undo: false,
+            recover: false,
+            flash: None,
+            row: None,
+        }
+    }
+
+    #[test]
+    fn failures_have_short_lines() {
+        assert_eq!(failure_text(Some("ENGINE_NO_SPEECH")), "No speech heard");
+        assert_eq!(
+            failure_text(Some("INSERT_KEYBOARD_GRABBED")),
+            "Another app holds the keyboard"
+        );
+        assert_eq!(failure_text(Some("ENGINE_CRASHED")), "Transcription failed");
+        assert_eq!(failure_text(None), "Transcription failed");
+        assert_eq!(result_text(true), "Copied");
+        assert_eq!(result_text(false), "Pasted");
+    }
+
+    #[test]
+    fn a_refusal_has_no_history_action_and_expires() {
+        let mut display = Display::default();
+        display.refuse("Choose a speech model".into(), 1_000);
+        let mut facts = input(State::Idle);
+        facts.row = Some("older-row");
+        let shown = state_for(&mut display, facts, 1_100);
+        assert_eq!(shown.state, BarState::Error);
+        assert_eq!(shown.message, "Choose a speech model");
+        assert!(!shown.open_history);
+        assert_eq!(
+            state_for(&mut display, input(State::Idle), 9_000).state,
+            BarState::Idle
+        );
+    }
+
+    #[test]
+    fn a_pipeline_failure_keeps_its_code_and_saved_row_after_idle() {
+        let mut display = Display::default();
+        let mut facts = input(State::Failed);
+        facts.failure = Some(INSERT_SECURE_FIELD);
+        facts.row = Some("failed-row");
+        let shown = state_for(&mut display, facts, 1_000);
+        assert_eq!(shown.state, BarState::Blocked);
+        assert_eq!(shown.message, "Secure field. Text not pasted");
+        assert!(shown.open_history);
+        let mut facts = input(State::Idle);
+        facts.row = Some("failed-row");
+        let shown = state_for(&mut display, facts, 3_000);
+        assert_eq!(shown.state, BarState::Blocked);
+        assert_eq!(shown.message, "Secure field. Text not pasted");
+        assert!(shown.open_history);
+    }
+
+    #[test]
+    fn each_refusal_flash_is_seen_once_and_a_new_run_clears_it() {
+        let mut display = Display::default();
+        let mut facts = input(State::Idle);
+        facts.flash = Some((1, "Select text first"));
+        assert_eq!(
+            state_for(&mut display, facts, 1_000).state,
+            BarState::Blocked
+        );
+        let mut facts = input(State::Idle);
+        facts.flash = Some((1, "Select text first"));
+        assert_eq!(state_for(&mut display, facts, 9_000).state, BarState::Idle);
+        let mut facts = input(State::Idle);
+        facts.flash = Some((2, "Choose a model"));
+        assert_eq!(
+            state_for(&mut display, facts, 10_000).message,
+            "Choose a model"
+        );
+        assert_eq!(
+            state_for(&mut display, input(State::Listening), 10_100).state,
+            BarState::Listening
+        );
+        assert_eq!(
+            state_for(&mut display, input(State::Idle), 10_200).state,
+            BarState::Idle
+        );
+    }
+
+    #[test]
+    fn new_results_renew_the_flash_and_offers_keep_their_priority() {
+        let mut display = Display::default();
+        let mut facts = input(State::Done);
+        facts.row = Some("first");
+        assert_eq!(state_for(&mut display, facts, 1_000).message, "Pasted");
+        let mut facts = input(State::Done);
+        facts.row = Some("first");
+        assert_eq!(state_for(&mut display, facts, 2_000).state, BarState::Idle);
+        let mut facts = input(State::Done);
+        facts.row = Some("second");
+        facts.copied = true;
+        facts.undo = true;
+        facts.recover = true;
+        let shown = state_for(&mut display, facts, 2_100);
+        assert_eq!(shown.state, BarState::Undo);
+        assert_eq!(shown.message, "Copied");
+        let mut facts = input(State::Cancelled);
+        facts.recover = true;
+        let shown = state_for(&mut display, facts, 2_200);
+        assert_eq!(shown.state, BarState::Cancelled);
+        assert_eq!(shown.message, CANCELLED_TEXT);
+    }
+
     #[test]
     fn each_pipeline_state_maps_to_a_bar_state() {
-        assert_eq!(state_for(State::Idle, None), BarState::Idle);
-        assert_eq!(state_for(State::Cancelled, None), BarState::Idle);
-        assert_eq!(state_for(State::Listening, None), BarState::Listening);
+        assert_eq!(pipeline_state(State::Idle, None), BarState::Idle);
+        assert_eq!(pipeline_state(State::Cancelled, None), BarState::Idle);
+        assert_eq!(pipeline_state(State::Listening, None), BarState::Listening);
         for state in [State::Transcribing, State::Cleaning, State::Inserting] {
-            assert_eq!(state_for(state, None), BarState::Transcribing);
+            assert_eq!(pipeline_state(state, None), BarState::Transcribing);
         }
-        assert_eq!(state_for(State::Done, None), BarState::Result);
+        assert_eq!(pipeline_state(State::Done, None), BarState::Result);
     }
 
     #[test]
@@ -327,12 +537,12 @@ mod tests {
     #[test]
     fn a_blocked_insert_is_not_a_plain_error() {
         for code in ["INSERT_KEYBOARD_GRABBED", "INSERT_SECURE_FIELD"] {
-            assert_eq!(state_for(State::Failed, Some(code)), BarState::Blocked);
+            assert_eq!(pipeline_state(State::Failed, Some(code)), BarState::Blocked);
         }
         for code in ["ENGINE_NO_SPEECH", "ENGINE_CRASHED", "INSERT_NO_RECEIPT"] {
-            assert_eq!(state_for(State::Failed, Some(code)), BarState::Error);
+            assert_eq!(pipeline_state(State::Failed, Some(code)), BarState::Error);
         }
-        assert_eq!(state_for(State::Failed, None), BarState::Error);
+        assert_eq!(pipeline_state(State::Failed, None), BarState::Error);
     }
 
     #[test]

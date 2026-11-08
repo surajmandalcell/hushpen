@@ -18,6 +18,7 @@ use gpui_kit::{
     MouseButton, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, TextRun,
     Window, WindowTextSystem, div, font, px, rgb, svg,
 };
+pub use hushpen_core::flow_bar::CANCELLED_TEXT;
 use hushpen_core::flow_bar::{BarState, bar_heights};
 
 const HEIGHT: f32 = 28.0;
@@ -52,7 +53,6 @@ pub const UNDO_LABEL: &str = "Undo paste";
 pub const UNDO_HOVER: &str = "Undo";
 pub const HISTORY_LABEL: &str = "Open history";
 pub const RECOVER_LABEL: &str = "Recover";
-pub const CANCELLED_TEXT: &str = "Cancelled";
 
 /// One bar of a waveform on one frame: its height, how far it sits above the middle line, and
 /// its opacity.
@@ -335,35 +335,6 @@ pub fn drawn_wave(props: &Props) -> Option<Vec<WaveBar>> {
             })
             .collect(),
     )
-}
-
-/// The text of the result flash: what happened to the words. History names the same outcomes
-/// "Pasted" and "Copied only".
-pub fn result_text(copied: bool) -> &'static str {
-    if copied { "Copied" } else { "Pasted" }
-}
-
-/// A short line for a failure code; the full text is in History.
-pub fn failure_text(code: Option<&str>) -> &'static str {
-    use hushpen_core::error::*;
-    match code {
-        Some(ENGINE_NO_SPEECH) => "No speech heard",
-        Some(INSERT_KEYBOARD_GRABBED) => "Another app holds the keyboard",
-        Some(INSERT_SECURE_FIELD) => "Secure field. Text not pasted",
-        Some(INSERT_NO_RECEIPT) => "The app did not take the text",
-        Some(INSERT_NO_PERMISSION) => "Not allowed to paste. Text copied",
-        Some(CAPTURE_FAILED) => "Recording stopped",
-        Some(ENGINE_NO_MODEL | ENGINE_LOAD_FAILED) => "Speech model not ready",
-        Some(COMMAND_NO_SELECTION | READ_NO_SELECTION) => "Select text first",
-        Some(COMMAND_NEEDS_AI) => "Command mode needs AI cleanup or the endpoint",
-        Some(COMMAND_NEEDS_GENERAL_MODEL) => "Command mode needs Qwen3.5 2B",
-        Some(LLM_TIMEOUT) => "AI edit timed out. Text unchanged",
-        Some(
-            LLM_GUARD_REJECTED | LLM_UNAVAILABLE | LLM_LOAD_FAILED | LLM_NO_MODEL | LLM_PROTOCOL
-            | LLM_CRASHED | LLM_PROMPT_TOO_LONG | LLM_GENERATE_FAILED | ENDPOINT_FAILED,
-        ) => "AI edit failed. Text unchanged",
-        _ => "Transcription failed",
-    }
 }
 
 /// The whole bar. `bar` is the live entity the controls call; the pixel tests pass `None`.

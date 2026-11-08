@@ -25,9 +25,8 @@ use gpui_kit::{
     WindowTextSystem, point, px,
 };
 use hushpen_core::dictation::{AppEvent, State};
-use hushpen_core::flow_bar::{
-    BarState, Display, Drag, Release, Spot, place, state_for, with_recover, with_undo,
-};
+use hushpen_core::flow_bar::{BarState, Display, Drag, Input, Release, Spot, place, state_for};
+use hushpen_core::os::Os;
 use hushpen_platform::window::{Pointer, WindowHandle};
 use motion::{Mode, Motion};
 use serde_json::{Value, json};
@@ -102,13 +101,6 @@ pub struct FlowBar {
     motion: Motion,
 
     display: Display,
-    last_failure: Option<&'static str>,
-    /// Why a click could not start a dictation. It shows like a failure, with no history row.
-    refusal: Option<String>,
-    /// The newest refused Command Mode start the bar has shown.
-    seen_flash: u64,
-    /// The newest history row the bar has seen, so each new paste gets its own flash.
-    seen_row: Option<String>,
     /// What the processing pill waits for, since when, and the stage before it.
     work: Option<Work>,
     /// When the processing began, for the float of the wave.
@@ -150,10 +142,6 @@ impl FlowBar {
             animate: true,
             motion: Motion::default(),
             display: Display::default(),
-            last_failure: None,
-            refusal: None,
-            seen_flash: 0,
-            seen_row: None,
             work: None,
             work_since: 0,
             hover: false,
@@ -245,7 +233,7 @@ impl FlowBar {
         }
         self.follow_pointer(cx);
 
-        let (derived, code, copied, offered, recover, stage, flash, row) = {
+        let (shown, stage) = {
             let controller = self.controller.read(cx);
             let stage = if controller.ai_phase() == Some(Phase::Preparing) {
                 Stage::Preparing
@@ -255,43 +243,26 @@ impl FlowBar {
                 Stage::Transcribing
             };
             (
-                state_for(controller.state(), controller.failure_code()),
-                controller.failure_code(),
-                controller.copied_only(),
-                controller.undo_offered(),
-                controller.recover_offered(),
+                state_for(
+                    &mut self.display,
+                    Input {
+                        pipeline: controller.state(),
+                        failure: controller.failure_code(),
+                        copied: controller.copied_only(),
+                        undo: controller.undo_offered(),
+                        recover: controller.recover_offered(),
+                        flash: controller
+                            .flash()
+                            .map(|flash| (flash.seq, flash.message.as_str())),
+                        row: controller.last_row_id(),
+                    },
+                    now,
+                ),
                 stage,
-                controller
-                    .flash()
-                    .map(|flash| (flash.seq, flash.message.clone())),
-                controller.last_row_id().map(str::to_owned),
             )
         };
-        if row != self.seen_row {
-            self.seen_row = row;
-            self.display.renew_flash();
-        }
-        if derived.is_failure() {
-            self.last_failure = code;
-        }
-        if derived != BarState::Idle {
-            self.refusal = None;
-        }
-        if let Some((seq, message)) = flash
-            && seq != self.seen_flash
-        {
-            self.seen_flash = seq;
-            self.refusal = Some(message);
-            self.display.update(BarState::Blocked, now);
-        }
-        let shown = with_recover(
-            with_undo(self.display.update(derived, now), offered),
-            recover,
-        );
-        if !shown.is_failure() {
-            self.refusal = None;
-        }
-        if shown == BarState::Transcribing {
+        let state = shown.state;
+        if state == BarState::Transcribing {
             match self.work {
                 Some(work) if work.stage == stage => {}
                 Some(work) => {
@@ -317,7 +288,7 @@ impl FlowBar {
         } else {
             self.work = None;
         }
-        if !matches!(shown, BarState::Undo | BarState::Cancelled) && !shown.is_failure() {
+        if !matches!(state, BarState::Undo | BarState::Cancelled) && !state.is_failure() {
             self.hover = false;
         }
         let still = !(self.animate && !cx.reduce_motion());
@@ -330,29 +301,18 @@ impl FlowBar {
         };
 
         let wanted = self.flag("overlay.enabled", true)
-            && (shown != BarState::Idle || self.pressed || self.flag("overlay.idleVisible", false));
-        if wanted && was_idle && shown != BarState::Idle && !self.pressed {
+            && (state != BarState::Idle || self.pressed || self.flag("overlay.idleVisible", false));
+        if wanted && was_idle && state != BarState::Idle && !self.pressed {
             self.screen = screen;
         }
         // A bar on its way out keeps what it showed last: the idle pill must not flash up as
         // a result fades.
         let target = if wanted {
-            let message = match shown {
-                BarState::Result | BarState::Undo => view::result_text(copied).to_owned(),
-                BarState::Cancelled => view::CANCELLED_TEXT.to_owned(),
-                BarState::Error | BarState::Blocked => self
-                    .refusal
-                    .clone()
-                    .unwrap_or_else(|| view::failure_text(self.last_failure).to_owned()),
-                _ => String::new(),
-            };
-            let work = self.work.filter(|_| shown == BarState::Transcribing);
+            let work = self.work.filter(|_| state == BarState::Transcribing);
             let mut target = Props {
-                state: shown,
-                message,
-                open_history: shown.is_failure()
-                    && self.refusal.is_none()
-                    && self.controller.read(cx).last_row_id().is_some(),
+                state,
+                message: shown.message,
+                open_history: shown.open_history,
                 stage: work.map_or(Stage::Transcribing, |work| work.stage),
                 from: work.and_then(|work| work.from),
                 // A still wave keeps one frame, so the pill does not redraw on every tick.
@@ -364,7 +324,7 @@ impl FlowBar {
                     .map_or(0, |_| now.saturating_sub(self.work_since)),
                 still,
                 hover: self.hover,
-                ..Props::new(shown)
+                ..Props::new(state)
             };
             let text = self
                 .text
@@ -450,7 +410,7 @@ impl FlowBar {
     /// The left button went down on the bar. It becomes a click or a drag when it comes up.
     pub fn press(&mut self, window: &Window, cx: &mut Context<Self>) {
         self.native = native_handle(window);
-        self.scale = if cfg!(target_os = "linux") {
+        self.scale = if Os::current() == Os::Linux {
             window.scale_factor()
         } else {
             1.0
@@ -542,8 +502,7 @@ impl FlowBar {
             .controller
             .update(cx, |controller, cx| controller.dispatch(event, cx));
         if let Err(reason) = result {
-            self.refusal = Some(reason);
-            self.display.update(BarState::Error, (self.clock)());
+            self.display.refuse(reason, (self.clock)());
         }
         cx.notify();
     }
@@ -555,7 +514,6 @@ impl FlowBar {
         };
         hook::record_event("flowbar", "open history");
         self.display.clear();
-        self.last_failure = None;
         if let Some(open) = self.open_history.clone() {
             // The main window reads state that this update holds, so it runs after the update.
             cx.defer(move |cx| open(&id, cx));
@@ -567,8 +525,7 @@ impl FlowBar {
     /// finished. A refusal shows on the bar like a refused start.
     pub fn press_recover(&mut self, cx: &mut Context<Self>) {
         if let Err(reason) = self.recover_dictation(cx) {
-            self.refusal = Some(reason);
-            self.display.update(BarState::Error, (self.clock)());
+            self.display.refuse(reason, (self.clock)());
         }
         cx.notify();
     }
@@ -594,8 +551,7 @@ impl FlowBar {
     /// the bar like a refused start.
     pub fn press_undo(&mut self, cx: &mut Context<Self>) {
         if let Err(reason) = self.undo_cleanup(cx) {
-            self.refusal = Some(reason);
-            self.display.update(BarState::Error, (self.clock)());
+            self.display.refuse(reason, (self.clock)());
         }
         cx.notify();
     }

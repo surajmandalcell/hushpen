@@ -6,6 +6,7 @@ use gpui_kit::{
     AnyWindowHandle, App, Bounds, Entity, Pixels, WeakEntity, WindowBackgroundAppearance,
     WindowBounds, WindowKind, WindowOptions,
 };
+use hushpen_core::os::Os;
 use hushpen_platform::window::{
     ChromeError, Frame, WindowHandle, hide, pin_overlay, place_overlay, show_unfocused,
 };
@@ -52,7 +53,7 @@ impl PopUp {
         Self {
             view: view.downgrade(),
             handle: None,
-            keep: cfg!(target_os = "macos"),
+            keep: Os::current() == Os::Mac,
             hidden: false,
             refused: Rc::default(),
             waits: 0,
@@ -123,7 +124,7 @@ impl Host for PopUp {
         };
         // X11 counts device pixels and GPUI logical ones: GPUI's display is the whole root
         // window divided by its scale. AppKit counts points on both sides.
-        let scale = if cfg!(target_os = "linux") && desktop.0 > 0.0 {
+        let scale = if Os::current() == Os::Linux && desktop.0 > 0.0 {
             (found.desktop_width / desktop.0).max(0.1)
         } else {
             1.0
@@ -147,7 +148,7 @@ impl Host for PopUp {
                     window.refresh();
                 }
                 // X11 takes device pixels, AppKit takes points.
-                let scale = if cfg!(target_os = "linux") {
+                let scale = if Os::current() == Os::Linux {
                     window.scale_factor()
                 } else {
                     1.0
