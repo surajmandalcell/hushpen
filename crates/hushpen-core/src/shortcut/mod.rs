@@ -49,21 +49,7 @@ fn code_name(code: u32) -> String {
         .unwrap_or_else(|| format!("Key {code}"))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Platform {
-    MacOs,
-    Linux,
-}
-
-impl Platform {
-    pub fn current() -> Self {
-        if cfg!(target_os = "macos") {
-            Platform::MacOs
-        } else {
-            Platform::Linux
-        }
-    }
-}
+pub use crate::os::Os as Platform;
 
 /// The shortcuts a user can change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -124,12 +110,12 @@ impl Slot {
 
     /// The setting text of the factory default, which is what the store writes too.
     pub fn default_text(self, platform: Platform) -> &'static str {
-        let mac = platform == Platform::MacOs;
+        let mac = platform == Platform::Mac;
         match self {
             Slot::Hold if mac => "RightOption",
             Slot::Hold => "RightAlt",
             Slot::HandsFree if mac => "Option+Tab",
-            // Alt+Tab switches windows on every Linux desktop, so Linux keeps the gestures.
+            // Alt+Tab switches windows on Linux and Windows, so both keep the gestures.
             Slot::HandsFree => BUILT_IN_HANDS_FREE,
             Slot::PasteLast if mac => "Ctrl+Cmd+V",
             Slot::PasteLast => "Ctrl+Alt+V",
@@ -304,7 +290,7 @@ impl Combo {
         if keys.len() > MAX_KEYS {
             return Err(Problem::TooMany);
         }
-        if keys.contains(&Key::Fn) && platform != Platform::MacOs {
+        if keys.contains(&Key::Fn) && platform != Platform::Mac {
             return Err(Problem::NoFn);
         }
         if !keys.iter().all(|key| exists(*key)) {
@@ -484,7 +470,7 @@ fn parse_key(token: &str) -> Result<Key, Problem> {
         "ctrl" | "control" => Some(Modifier::Ctrl),
         "alt" | "option" | "opt" => Some(Modifier::Alt),
         "shift" => Some(Modifier::Shift),
-        "cmd" | "command" | "super" => Some(Modifier::Cmd),
+        "cmd" | "command" | "super" | "win" => Some(Modifier::Cmd),
         _ => None,
     };
     if let Some(modifier) = modifier {

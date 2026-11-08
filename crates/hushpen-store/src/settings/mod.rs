@@ -100,15 +100,15 @@ impl SettingsStore {
             .map_err(|e| Error::io(format!("could not create {}", config_dir.display()), e))?;
         let path = config_dir.join("settings.json");
         let (state, needs_write) = match fs::read(&path) {
-            Ok(bytes) => match parse(&bytes, Os::CURRENT) {
+            Ok(bytes) => match parse(&bytes, Os::current()) {
                 Some((state, changed)) => (state, changed),
                 None => {
                     back_up_corrupt(&path)?;
-                    (State::defaults(Os::CURRENT), true)
+                    (State::defaults(Os::current()), true)
                 }
             },
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                (State::defaults(Os::CURRENT), true)
+                (State::defaults(Os::current()), true)
             }
             Err(error) => {
                 return Err(Error::io(
@@ -136,7 +136,7 @@ impl SettingsStore {
     pub fn millis(&self, key: &str) -> Duration {
         let ms = self
             .get(key)
-            .or_else(|| Some(registry::find(key)?.default_value(Os::CURRENT)))
+            .or_else(|| Some(registry::find(key)?.default_value(Os::current())))
             .and_then(|value| value.as_u64())
             .unwrap_or_default();
         Duration::from_millis(ms)
@@ -305,7 +305,7 @@ mod tests {
     fn the_old_hands_free_default_becomes_option_tab_on_a_mac_and_stays_on_linux() {
         let old = json!({"shortcut.handsFree": BUILT_IN_HANDS_FREE});
         assert_eq!(
-            stored_hands_free(3, old.clone(), Os::MacOs),
+            stored_hands_free(3, old.clone(), Os::Mac),
             json!("Option+Tab")
         );
         assert_eq!(
@@ -318,13 +318,13 @@ mod tests {
     fn a_hands_free_shortcut_the_user_picked_survives_the_migration() {
         let recorded = json!({"shortcut.handsFree": "Ctrl+Option+H"});
         assert_eq!(
-            stored_hands_free(3, recorded, Os::MacOs),
+            stored_hands_free(3, recorded, Os::Mac),
             json!("Ctrl+Option+H")
         );
         // After the migration, the gestures are a choice and stay.
         let gestures = json!({"shortcut.handsFree": BUILT_IN_HANDS_FREE});
         assert_eq!(
-            stored_hands_free(4, gestures, Os::MacOs),
+            stored_hands_free(4, gestures, Os::Mac),
             json!(BUILT_IN_HANDS_FREE)
         );
     }
@@ -336,7 +336,7 @@ mod tests {
             "shortcut.pasteLast": "Option+Tab",
         });
         assert_eq!(
-            stored_hands_free(3, values, Os::MacOs),
+            stored_hands_free(3, values, Os::Mac),
             json!(BUILT_IN_HANDS_FREE)
         );
     }

@@ -1328,7 +1328,7 @@ mod tests {
     fn the_chrome_shares_one_center_line(cx: &mut TestAppContext) {
         let (handle, _) = open(cx);
         let mut ids = vec!["view.title", "sidebar.name"];
-        if cfg!(not(target_os = "macos")) {
+        if hushpen_core::os::Os::current() != hushpen_core::os::Os::Mac {
             ids.extend(["window.close", "window.minimize"]);
         }
         for id in ids {

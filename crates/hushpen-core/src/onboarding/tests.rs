@@ -28,7 +28,7 @@ fn linux_facts() -> Facts {
 
 fn mac_facts(permissions: Permissions) -> Facts {
     Facts {
-        platform: Platform::MacOs,
+        platform: Platform::Mac,
         session: Session::X11,
         keys: Availability::Ready,
         paste: Availability::Ready,
@@ -41,6 +41,22 @@ fn mac_facts(permissions: Permissions) -> Facts {
 
 fn state_of(rows: &[Row], key: RowKey) -> RowState {
     rows.iter().find(|row| row.key == key).unwrap().state
+}
+
+#[test]
+fn windows_rows_do_not_require_a_linux_session_or_mac_permissions() {
+    let mut facts = linux_facts();
+    facts.platform = Platform::Windows;
+    facts.session = Session::NoDisplay;
+    let rows = permission_rows(&facts);
+    assert_eq!(
+        rows.iter().map(|row| row.key).collect::<Vec<_>>(),
+        [RowKey::Microphone, RowKey::GlobalKeys, RowKey::Paste]
+    );
+    assert!(rows.iter().all(|row| row.opens.is_none()));
+    assert!(rows_ready(&rows));
+    facts.mic_present = false;
+    assert!(!rows_ready(&permission_rows(&facts)));
 }
 
 #[test]

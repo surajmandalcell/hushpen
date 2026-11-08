@@ -9,7 +9,7 @@ fn os(value: &str) -> Option<&OsStr> {
 #[test]
 fn the_override_wins_over_every_default() {
     let home = Path::new("/home/u");
-    for target in [Os::Linux, Os::MacOs] {
+    for target in [Os::Linux, Os::Mac, Os::Windows] {
         let dir = resolve(target, os("/data"), os("/xdg"), Some(home));
         assert_eq!(dir, PathBuf::from("/data"));
     }
@@ -43,10 +43,19 @@ fn linux_ignores_a_relative_xdg_data_home() {
 
 #[test]
 fn macos_uses_application_support() {
-    let dir = resolve(Os::MacOs, None, os("/xdg"), Some(Path::new("/Users/u")));
+    let dir = resolve(Os::Mac, None, os("/xdg"), Some(Path::new("/Users/u")));
     assert_eq!(
         dir,
         PathBuf::from("/Users/u/Library/Application Support/Hushpen")
+    );
+}
+
+#[test]
+fn windows_has_its_own_roaming_data_default() {
+    let home = Path::new("/Users/u");
+    assert_eq!(
+        resolve(Os::Windows, None, os("/xdg"), Some(home)),
+        home.join("AppData/Roaming/Hushpen")
     );
 }
 

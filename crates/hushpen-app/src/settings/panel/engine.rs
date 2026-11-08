@@ -5,6 +5,7 @@ use super::Page;
 use crate::settings::{Settings, slots};
 use gpui_kit::{AnyElement, App};
 use hushpen_core::idle::Policy;
+use hushpen_core::os::Os;
 
 /// The thread counts offered besides Automatic, up to the CPUs of this computer.
 const THREAD_CHOICES: [i64; 7] = [1, 2, 4, 6, 8, 12, 16];
@@ -14,13 +15,12 @@ const IDLE_CHOICES: &[(Policy, &str, &str)] = &[
     (
         Policy::Keep,
         "Keep in memory",
-        if Policy::CAN_PAGE_OUT {
-            "Stays loaded in memory."
-        } else {
+        if matches!(Os::current(), Os::Mac) {
             "Stays loaded. macOS swaps it out when memory runs low."
+        } else {
+            "Stays loaded in memory."
         },
     ),
-    #[cfg(not(target_os = "macos"))]
     (
         Policy::PageOut,
         "Page out",
@@ -35,7 +35,7 @@ const IDLE_CHOICES: &[(Policy, &str, &str)] = &[
 
 fn stored_policy(page: &Page, cx: &App) -> Policy {
     let stored = page.settings.read(cx).stored_str("engine.idlePolicy");
-    Policy::parse(Some(&stored))
+    Policy::parse(Some(&stored), Os::current().capabilities(false, false))
 }
 
 pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
@@ -50,6 +50,9 @@ pub fn idle_policy(page: &Page, cx: &mut App) -> AnyElement {
             "engine.idlePolicy",
             IDLE_CHOICES
                 .iter()
+                .filter(|(choice, ..)| {
+                    *choice != Policy::PageOut || Os::current().capabilities(false, false).page_out
+                })
                 .map(|(choice, label, _)| {
                     (
                         choice.as_str().to_owned(),

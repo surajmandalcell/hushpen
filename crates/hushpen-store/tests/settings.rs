@@ -361,7 +361,7 @@ fn a_file_from_a_newer_build_keeps_its_version() {
 fn a_version_3_file_with_the_gestures_takes_the_hands_free_default_of_this_system() {
     let gestures = hushpen_core::shortcut::BUILT_IN_HANDS_FREE;
     let (tmp, store) = open_stored(3, json!({"shortcut.handsFree": gestures}));
-    let default = if cfg!(target_os = "macos") {
+    let default = if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         "Option+Tab"
     } else {
         gestures

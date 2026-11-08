@@ -136,7 +136,7 @@ pub fn listening(controller: &Entity<Controller>, cx: &App) -> bool {
 /// Which glyph reads on the panel. macOS gets the menu bar glyph as a template image, which the
 /// system tints for Light and Dark; Linux panels do not tint, so a dark panel gets the white glyph.
 pub fn glyph_for(appearance: WindowAppearance) -> &'static [u8] {
-    if cfg!(target_os = "macos") {
+    if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         return MENU_BAR_GLYPH;
     }
     match appearance {
@@ -148,7 +148,7 @@ pub fn glyph_for(appearance: WindowAppearance) -> &'static [u8] {
 /// The text next to the icon. macOS draws a status item title beside the glyph, so the menu bar
 /// gets none; a Linux StatusNotifier item uses it only as its name.
 pub fn panel_title() -> Option<&'static str> {
-    cfg!(not(target_os = "macos")).then_some(TITLE)
+    (hushpen_core::os::Os::current() != hushpen_core::os::Os::Mac).then_some(TITLE)
 }
 
 fn icon_for(appearance: WindowAppearance, cx: &App) -> Option<Icon> {
@@ -287,7 +287,7 @@ pub fn install(cx: &mut App, controller: &Entity<Controller>) -> Option<Tray> {
 /// Swaps the Linux glyph when the panel goes from light to dark. The window reports the
 /// system appearance. macOS tints the template glyph itself, so it needs no swap.
 pub fn follow_appearance(cx: &mut App, window: AnyWindowHandle, tray: &Tray) {
-    if cfg!(target_os = "macos") {
+    if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         return;
     }
     let tray = tray.clone();

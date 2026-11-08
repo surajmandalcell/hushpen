@@ -216,14 +216,14 @@ fn start(
 
 fn mac(cx: &mut TestAppContext, files: &[&str], chosen: &str) -> Fixture {
     let rig = rig(cx, files, chosen);
-    let fixture = start(cx, rig, Platform::MacOs, FakeSystem::all(Access::Granted));
+    let fixture = start(cx, rig, Platform::Mac, FakeSystem::all(Access::Granted));
     list_microphones(cx, &fixture, vec![device()]);
     fixture
 }
 
 fn mac_with(cx: &mut TestAppContext, system: Arc<FakeSystem>) -> Fixture {
     let rig = rig(cx, &["base"], "base");
-    let fixture = start(cx, rig, Platform::MacOs, system);
+    let fixture = start(cx, rig, Platform::Mac, system);
     list_microphones(cx, &fixture, vec![device()]);
     fixture
 }
@@ -316,7 +316,7 @@ fn a_finished_onboarding_does_not_open(cx: &mut TestAppContext) {
         .settings
         .set_internal(COMPLETED, json!(true))
         .unwrap();
-    let fixture = start(cx, rig, Platform::MacOs, FakeSystem::all(Access::Granted));
+    let fixture = start(cx, rig, Platform::Mac, FakeSystem::all(Access::Granted));
 
     assert_eq!(fixture.mode(cx), Mode::Hidden);
     assert!(!fixture.read(cx, |me, _| me.active()));
@@ -329,7 +329,7 @@ fn each_mac_button_opens_its_own_privacy_pane(cx: &mut TestAppContext) {
     let fixture = start(
         cx,
         rig,
-        Platform::MacOs,
+        Platform::Mac,
         FakeSystem::all(Access::NotDetermined),
     );
     let urls = [
@@ -749,7 +749,7 @@ fn lost_grant(cx: &mut TestAppContext, lost: Permission) -> Fixture {
     finished_with_every_grant_stored(&rig);
     let system = FakeSystem::all(Access::Granted);
     system.set(lost, Access::Denied);
-    let fixture = start(cx, rig, Platform::MacOs, system);
+    let fixture = start(cx, rig, Platform::Mac, system);
     list_microphones(cx, &fixture, vec![device()]);
     settle_start(cx);
     assert_eq!(fixture.mode(cx), Mode::Repair);
@@ -880,7 +880,7 @@ fn a_start_whose_grants_answer_only_after_500_ms_never_shows_the_permissions_pag
     finished_with_every_grant_stored(&rig);
     let system = FakeSystem::all(Access::Granted);
     system.answer_denied_for(Duration::from_millis(500));
-    let fixture = start(cx, rig, Platform::MacOs, system.clone());
+    let fixture = start(cx, rig, Platform::Mac, system.clone());
     assert_eq!(
         system.reads(),
         3,
@@ -911,7 +911,7 @@ fn a_start_whose_grant_stays_denied_for_two_seconds_still_opens_the_repair_page(
     finished_with_every_grant_stored(&rig);
     let system = FakeSystem::all(Access::Granted);
     system.set(Permission::Accessibility, Access::Denied);
-    let fixture = start(cx, rig, Platform::MacOs, system);
+    let fixture = start(cx, rig, Platform::Mac, system);
     list_microphones(cx, &fixture, vec![device()]);
     cx.executor().advance_clock(SETTLE_FOR - SETTLE_EVERY);
     cx.run_until_parked();
@@ -937,7 +937,7 @@ fn a_hidden_start_whose_grant_is_lost_after_the_settle_window_shows_the_window_a
     finished_with_every_grant_stored(&rig);
     let system = FakeSystem::all(Access::Granted);
     system.set(Permission::InputMonitoring, Access::Denied);
-    let fixture = start(cx, rig, Platform::MacOs, system);
+    let fixture = start(cx, rig, Platform::Mac, system);
     list_microphones(cx, &fixture, vec![device()]);
     let (window, _shell) = cx.update(|cx| {
         gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |window, cx| {
@@ -979,7 +979,7 @@ fn the_repair_page_reads_again_every_second_too(cx: &mut TestAppContext) {
         .unwrap();
     let system = FakeSystem::all(Access::Granted);
     system.set(Permission::Accessibility, Access::Denied);
-    let fixture = start(cx, rig, Platform::MacOs, system);
+    let fixture = start(cx, rig, Platform::Mac, system);
     list_microphones(cx, &fixture, vec![device()]);
     settle_start(cx);
     assert_eq!(fixture.mode(cx), Mode::Repair);
@@ -1138,7 +1138,7 @@ fn a_start_resumes_at_the_stored_step(cx: &mut TestAppContext) {
             .settings
             .set_internal(STEP, json!(step.key()))
             .unwrap();
-        let fixture = start(cx, rig, Platform::MacOs, FakeSystem::all(Access::Granted));
+        let fixture = start(cx, rig, Platform::Mac, FakeSystem::all(Access::Granted));
 
         assert_eq!(fixture.mode(cx), Mode::Setup);
         assert_eq!(fixture.step(cx), step);
@@ -1355,7 +1355,7 @@ fn finishing_with_the_default_keeps_update_checks_off_and_never_opens_again(
     let again = start(
         cx,
         fixture.rig,
-        Platform::MacOs,
+        Platform::Mac,
         FakeSystem::all(Access::Granted),
     );
     assert_eq!(
@@ -1395,7 +1395,7 @@ fn a_lost_mac_grant_reopens_the_permissions_step_and_nothing_else_changes(cx: &m
     let system = FakeSystem::all(Access::Granted);
     system.set(Permission::InputMonitoring, Access::Denied);
     let before = settings.values();
-    let fixture = start(cx, rig, Platform::MacOs, system);
+    let fixture = start(cx, rig, Platform::Mac, system);
     list_microphones(cx, &fixture, vec![device()]);
     settle_start(cx);
 
@@ -1613,7 +1613,7 @@ mod window {
         }
         assert_eq!(
             present(cx, handle, "window.close"),
-            !cfg!(target_os = "macos"),
+            Platform::current() != Platform::Mac,
             "the drawn lights stay on Linux; AppKit draws them on macOS"
         );
     }
@@ -1754,7 +1754,7 @@ mod window {
         let system = FakeSystem::all(Access::Granted);
         system.set(Permission::Accessibility, Access::Denied);
         system.set(Permission::InputMonitoring, Access::Denied);
-        let fixture = start(cx, rig, Platform::MacOs, system);
+        let fixture = start(cx, rig, Platform::Mac, system);
         list_microphones(cx, &fixture, vec![device()]);
         settle_start(cx);
         assert_eq!(fixture.mode(cx), Mode::Repair);
@@ -1810,7 +1810,7 @@ mod window {
         finished_with_every_grant_stored(&rig);
         let system = FakeSystem::all(Access::Granted);
         system.set(Permission::InputMonitoring, Access::Denied);
-        let fixture = start(cx, rig, Platform::MacOs, system);
+        let fixture = start(cx, rig, Platform::Mac, system);
         list_microphones(cx, &fixture, vec![device()]);
         settle_start(cx);
         assert_eq!(fixture.mode(cx), Mode::Repair);

@@ -130,7 +130,12 @@ impl TtsHost {
 
     /// Updates a loaded model's idle timer without starting an unused voice worker.
     pub fn apply_settings(&self, settings: &Map<String, Value>) {
-        let secs = hushpen_core::idle::for_worker(settings, hushpen_core::idle::Worker::Voice).secs;
+        let secs = hushpen_core::idle::for_worker(
+            settings,
+            hushpen_core::idle::Worker::Voice,
+            hushpen_core::os::Os::current().capabilities(false, false),
+        )
+        .secs;
         let update = {
             let mut state = self.lock();
             if state.idle_secs == secs {

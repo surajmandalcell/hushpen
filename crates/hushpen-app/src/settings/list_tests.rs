@@ -104,7 +104,7 @@ fn press(cx: &mut TestAppContext, shown: &Shown, key: &str) {
 
 /// Cmd+F on macOS, Ctrl+F on Linux.
 fn find_key() -> &'static str {
-    if cfg!(target_os = "macos") {
+    if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         "cmd-f"
     } else {
         "ctrl-f"
@@ -221,7 +221,10 @@ fn the_output_mute_switch_and_idle_pickers_write_the_selected_values(cx: &mut Te
     assert_eq!(value(&shown.rig, "audio.muteWhileDictating"), json!(false));
 
     search(cx, &shown, "memory");
-    let choices: &[&str] = if cfg!(target_os = "macos") {
+    let choices: &[&str] = if !hushpen_core::os::Os::current()
+        .capabilities(false, false)
+        .page_out
+    {
         &["keep", "unload"]
     } else {
         &["keep", "pageout", "unload"]

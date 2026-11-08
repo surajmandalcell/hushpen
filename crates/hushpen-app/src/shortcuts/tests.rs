@@ -6,7 +6,7 @@ use hushpen_store::data_dir::DataDir;
 use std::cell::RefCell;
 
 const LINUX: Platform = Platform::Linux;
-const MAC: Platform = Platform::MacOs;
+const MAC: Platform = Platform::Mac;
 
 #[derive(Default)]
 struct FakeKeys {

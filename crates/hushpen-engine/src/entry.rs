@@ -16,7 +16,10 @@ use std::sync::Arc;
 
 /// True when a GPU backend is built in and `HUSHPEN_DISABLE_GPU` does not switch it off.
 pub fn gpu_available() -> bool {
-    cfg!(target_os = "macos") && !gpu_disabled_by_env()
+    hushpen_core::os::Os::current()
+        .capabilities(false, false)
+        .metal
+        && !gpu_disabled_by_env()
 }
 
 /// `HUSHPEN_DISABLE_GPU` set to anything but empty or `0` forces the CPU.

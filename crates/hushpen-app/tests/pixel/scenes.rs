@@ -951,11 +951,7 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                                 models,
                                 controller,
                                 guide: Rc::new(SystemGuide),
-                                platform: if mac {
-                                    Platform::MacOs
-                                } else {
-                                    Platform::Linux
-                                },
+                                platform: if mac { Platform::Mac } else { Platform::Linux },
                                 session: Session::X11,
                             },
                             cx,

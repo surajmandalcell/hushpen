@@ -83,7 +83,7 @@ pub fn main_window_options(saved: Option<f32>, cx: &App) -> WindowOptions {
     let window_size = size(px(space::WINDOW_WIDTH), px(height));
     options(
         Bounds::centered(None, window_size, cx),
-        cfg!(target_os = "macos"),
+        matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac),
         chrome::sidebar(cx).see_through(),
     )
 }
@@ -292,7 +292,7 @@ pub fn apply_look(window: &mut Window, cx: &mut App) {
 /// Follows a compositor that starts or stops while the app runs, with one read a second, and
 /// repaints the main window in its new look. macOS always composites, so nothing runs there.
 pub fn follow_compositor(main: AnyWindowHandle, cx: &mut App) {
-    if cfg!(target_os = "macos") {
+    if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         return;
     }
     cx.spawn(async move |cx| {

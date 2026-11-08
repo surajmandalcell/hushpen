@@ -670,7 +670,7 @@ mod tests {
     fn mac_bindings() -> Bindings {
         let values = Slot::ALL
             .into_iter()
-            .map(|slot| (slot, Setting::default_for(slot, Platform::MacOs)))
+            .map(|slot| (slot, Setting::default_for(slot, Platform::Mac)))
             .collect();
         bindings(&values, &BTreeSet::new(), &BTreeSet::new())
     }
@@ -744,7 +744,7 @@ mod tests {
     #[test]
     fn fn_can_be_the_hold_key() {
         let mut engine = Engine::new(Bindings {
-            hold: Some(Combo::parse("Fn", Platform::MacOs).unwrap()),
+            hold: Some(Combo::parse("Fn", Platform::Mac).unwrap()),
             ..Bindings::default()
         });
         let mut decoder = decoder();

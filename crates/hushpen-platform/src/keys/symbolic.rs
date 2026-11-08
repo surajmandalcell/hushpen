@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn a_chord_matches_a_system_shortcut_only_when_that_shortcut_is_on() {
-        let combo = Combo::parse("Cmd+Shift+3", Platform::MacOs).unwrap();
+        let combo = Combo::parse("Cmd+Shift+3", Platform::Mac).unwrap();
         let bits = carbon_modifiers(&combo);
         assert_eq!(bits, CMD | SHIFT);
         let on = Hotkey {

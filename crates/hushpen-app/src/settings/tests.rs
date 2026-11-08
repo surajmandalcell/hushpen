@@ -217,7 +217,10 @@ fn each_toggle_writes_its_key(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn idle_choices_save_and_the_default_swaps_instead_of_unloading(cx: &mut TestAppContext) {
     let rig = rig(cx);
-    let default = if cfg!(target_os = "macos") {
+    let default = if !hushpen_core::os::Os::current()
+        .capabilities(false, false)
+        .page_out
+    {
         "keep"
     } else {
         "pageout"
