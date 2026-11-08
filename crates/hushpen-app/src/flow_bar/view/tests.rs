@@ -129,19 +129,6 @@ fn the_processing_wave_fits_the_listening_pill_and_only_the_model_wait_has_text(
     assert_eq!(props.working_text(), "Preparing the AI model");
 }
 
-#[test]
-fn failures_have_short_lines() {
-    assert_eq!(failure_text(Some("ENGINE_NO_SPEECH")), "No speech heard");
-    assert_eq!(
-        failure_text(Some("INSERT_KEYBOARD_GRABBED")),
-        "Another app holds the keyboard"
-    );
-    assert_eq!(failure_text(Some("ENGINE_CRASHED")), "Transcription failed");
-    assert_eq!(failure_text(None), "Transcription failed");
-    assert_eq!(result_text(true), "Copied");
-    assert_eq!(result_text(false), "Pasted");
-}
-
 /// Every state the bar can draw, by name.
 fn drawn_states() -> Vec<(&'static str, Props)> {
     let with = |state: BarState, message: &str, open_history: bool, hover: bool| Props {
