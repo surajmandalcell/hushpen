@@ -269,11 +269,17 @@ pub mod size {
     pub const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
     /// The app icon at the top of About.
     pub const APP_ICON: f32 = 96.0;
-    /// The size, status, and button columns of a Models row, so their right edges line up. The
-    /// status column fits "Not downloaded", and the button column fits Use and Delete.
+    /// The columns of a Models row, so they line up from row to row. The meters of a speech
+    /// model are a label and five dots on each of two lines; the four icon buttons have their
+    /// own slots.
+    pub const MODEL_METER_WIDTH: f32 =
+        MODEL_METER_LABEL + MODEL_METER_GAP + 5.0 * MODEL_DOT + 4.0 * MODEL_DOT_GAP;
+    pub const MODEL_METER_LABEL: f32 = 52.0;
+    pub const MODEL_METER_GAP: f32 = 10.0;
+    pub const MODEL_DOT: f32 = 6.0;
+    pub const MODEL_DOT_GAP: f32 = 5.0;
     pub const MODEL_SIZE_WIDTH: f32 = 56.0;
-    pub const MODEL_STATUS_WIDTH: f32 = 108.0;
-    pub const MODEL_ACTIONS_WIDTH: f32 = 124.0;
+    pub const MODEL_ICON_GAP: f32 = 6.0;
     /// One segment of a segmented control, such as Transcribe and Read aloud on Manual.
     pub const SEGMENT_WIDTH: f32 = 120.0;
     /// One segment of a segmented control inside a row, such as Off, Auto, and Custom of

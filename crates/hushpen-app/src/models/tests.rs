@@ -55,6 +55,51 @@ fn startup_removes_a_retired_stamp_even_if_the_model_is_gone() {
     assert!(!model_files::stamp_path(&path).exists());
 }
 
+// Here and not in the view file, because the scan of color tokens skips the test files.
+#[test]
+fn the_state_word_shows_only_what_is_happening_and_the_default() {
+    use super::panel::{state_word, status_text};
+    use crate::theme::{Appearance, Palette};
+    let palette = Palette::of(Appearance::Light);
+    let word = |state, default| state_word(palette, state, default, false);
+    assert_eq!(word(ModelState::NotDownloaded, false), None);
+    assert_eq!(word(ModelState::NotDownloaded, true), None);
+    assert_eq!(
+        word(ModelState::Ready, false),
+        None,
+        "no word for downloaded"
+    );
+    assert_eq!(
+        word(ModelState::Ready, true),
+        Some(("Default".to_owned(), palette.label_secondary)),
+        "quiet gray, not a status color"
+    );
+    assert_eq!(
+        word(ModelState::Verifying, false),
+        Some(("Checking".to_owned(), palette.label_secondary))
+    );
+    assert_eq!(
+        word(ModelState::Downloading { done: 1, total: 4 }, false),
+        Some(("25%".to_owned(), palette.label))
+    );
+    assert_eq!(
+        word(ModelState::Failed, true),
+        Some(("Failed verification".to_owned(), palette.error))
+    );
+    assert_eq!(
+        status_text(palette, ModelState::Ready, false, false),
+        "Downloaded"
+    );
+    assert_eq!(
+        status_text(palette, ModelState::NotDownloaded, true, false),
+        "Not downloaded"
+    );
+    assert_eq!(
+        status_text(palette, ModelState::Ready, true, false),
+        "Default"
+    );
+}
+
 fn content(id: &str) -> &'static [u8] {
     match id {
         "alpha" => ALPHA,
@@ -121,12 +166,19 @@ fn a_downloaded_default_is_active_without_a_saved_choice(cx: &mut TestAppContext
         assert_eq!(models.effective(), "alpha");
         assert_eq!(models.state_json()["models"][0]["active"], true);
     });
-    let error = rig
-        .models
+    rig.models
         .update(cx, |models, cx| models.delete("alpha", cx))
-        .unwrap_err();
-    assert!(error.contains(MODEL_IN_USE));
-    assert!(rig.file("alpha").is_file());
+        .unwrap();
+    assert!(!rig.file("alpha").exists());
+    assert_eq!(
+        rig.storage.settings.get(SETTING),
+        Some(json!("")),
+        "no other model to make the default"
+    );
+    rig.models.read_with(cx, |models, _| {
+        assert_eq!(models.effective(), "alpha", "the catalog default again");
+        assert!(models.usable().is_none(), "nothing to dictate with");
+    });
 }
 
 /// The library with `files` already in the speech folder and `active` chosen.
@@ -481,16 +533,61 @@ fn delete_removes_the_file_and_its_stamp(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_active_model_cannot_be_deleted(cx: &mut TestAppContext) {
-    let rig = rig(cx, &[("alpha", ALPHA)], Some("alpha"), instant());
+fn deleting_the_default_makes_another_downloaded_model_the_default(cx: &mut TestAppContext) {
+    let rig = rig(
+        cx,
+        &[("alpha", ALPHA), ("gamma", GAMMA)],
+        Some("alpha"),
+        instant(),
+    );
     settle(cx, &rig);
 
-    let refused = act(cx, &rig, |models, cx| models.delete("alpha", cx));
-    assert!(refused.unwrap_err().contains(MODEL_IN_USE));
-    assert_eq!(notice_code(cx, &rig), Some(MODEL_IN_USE));
-    assert!(rig.file("alpha").exists());
-    assert!(model_files::stamp_path(&rig.file("alpha")).exists());
+    act(cx, &rig, |models, cx| models.delete("alpha", cx)).unwrap();
+    assert!(!rig.file("alpha").exists());
+    assert!(!model_files::stamp_path(&rig.file("alpha")).exists());
+    assert_eq!(state_of(cx, &rig, "alpha"), ModelState::NotDownloaded);
+    assert_eq!(active(cx, &rig), "gamma", "the one still downloaded");
+    assert_eq!(notice_code(cx, &rig), None);
+
+    act(cx, &rig, |models, cx| models.delete("gamma", cx)).unwrap();
+    assert_eq!(active(cx, &rig), "", "none is left to be the default");
+    rig.models
+        .read_with(cx, |models, _| assert!(models.usable().is_none()));
+}
+
+#[gpui_kit::test]
+fn the_first_finished_download_becomes_the_default(cx: &mut TestAppContext) {
+    let rig = rig(cx, &[], None, instant());
+    act(cx, &rig, |models, cx| models.download("beta", cx)).unwrap();
+    act(cx, &rig, |models, cx| models.download("alpha", cx)).unwrap();
+    assert_eq!(
+        active(cx, &rig),
+        "",
+        "nothing is the default while both download"
+    );
+    settle(cx, &rig);
     assert_eq!(state_of(cx, &rig, "alpha"), ModelState::Ready);
+    assert_eq!(
+        active(cx, &rig),
+        "beta",
+        "the download that finished first, not the one after it"
+    );
+    let state = rig.models.read_with(cx, |models, _| models.state_json());
+    assert_eq!(state["models"][1]["active"], true);
+}
+
+#[gpui_kit::test]
+fn a_download_takes_the_default_only_from_a_model_that_is_gone(cx: &mut TestAppContext) {
+    let kept = rig(cx, &[("alpha", ALPHA)], Some("alpha"), instant());
+    settle(cx, &kept);
+    act(cx, &kept, |models, cx| models.download("beta", cx)).unwrap();
+    settle(cx, &kept);
+    assert_eq!(active(cx, &kept), "alpha", "a downloaded default stays");
+
+    let gone = rig(cx, &[], Some("gamma"), instant());
+    act(cx, &gone, |models, cx| models.download("beta", cx)).unwrap();
+    settle(cx, &gone);
+    assert_eq!(active(cx, &gone), "beta", "the chosen file is not on disk");
 }
 
 #[gpui_kit::test]
@@ -648,6 +745,19 @@ mod search_tests {
             shown(cx, &rig, "kokoro zebra").is_empty(),
             "every word must match"
         );
+        assert_eq!(shown(cx, &rig, "Speech to Text"), ["base", "large"]);
+        assert_eq!(
+            shown(cx, &rig, "speech recognition"),
+            ["base", "large"],
+            "the old name of the section"
+        );
+        assert_eq!(shown(cx, &rig, "text  cleanup"), ["qwen3.5-2b"]);
+        assert_eq!(
+            shown(cx, &rig, "text to speech"),
+            ["kokoro"],
+            "the section takes the whole query"
+        );
+        assert_eq!(shown(cx, &rig, "voices"), ["kokoro"]);
     }
 
     fn window(cx: &mut TestAppContext, rig: &Rig) -> AnyWindowHandle {

@@ -2,7 +2,7 @@
 //! is for, its facts, where it comes from and where it lives, and its checksum. Tab stays inside
 //! the sheet, Esc and Done close it, and focus goes back to the row's details button.
 
-use super::panel::{format_size, languages_text, status_text};
+use super::panel::{ACCURACY, SPEED, format_size, languages_text, scale, status_text};
 use super::{Models, Row, details::checksum_text};
 use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
 use crate::ui::{self, Kind};
@@ -14,7 +14,7 @@ use gpui_kit::{
     AnyElement, App, Entity, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Role,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
-use hushpen_core::catalog::ModelInfo;
+use hushpen_core::catalog::{ModelInfo, ModelKind};
 
 /// What the folder button says on this system.
 const SHOW_FILES: &str = if cfg!(target_os = "macos") {
@@ -38,12 +38,8 @@ pub fn render(models: &Entity<Models>, window: &mut Window, cx: &mut App) -> Opt
     let row = me.details()?;
     let info = row.entry.info.clone();
     let focus = &me.sheet_focus;
-    let (status, _) = status_text(
-        palette,
-        row.state,
-        me.active() == row.entry.id,
-        row.updating,
-    );
+    let default = row.entry.kind == ModelKind::Speech && me.effective() == row.entry.id;
+    let status = status_text(palette, row.state, default, row.updating);
     let facts = vec![
         fact(
             palette,
@@ -53,15 +49,15 @@ pub fn render(models: &Entity<Models>, window: &mut Window, cx: &mut App) -> Opt
         ),
         fact(
             palette,
-            "speed",
-            "Speed",
-            info.as_ref().map(|i| scale(i.speed, SPEED)),
-        ),
-        fact(
-            palette,
             "accuracy",
             "Accuracy",
             info.as_ref().map(|i| scale(i.accuracy, ACCURACY)),
+        ),
+        fact(
+            palette,
+            "speed",
+            "Speed",
+            info.as_ref().map(|i| scale(i.speed, SPEED)),
         ),
         fact(
             palette,
@@ -215,19 +211,6 @@ fn fact(
         value.into(),
         None,
     )
-}
-
-/// The words for 1 to 5 on the speed and the accuracy scales.
-const SPEED: [&str; 5] = ["Slowest", "Slow", "Moderate", "Fast", "Fastest"];
-const ACCURACY: [&str; 5] = ["Basic", "Fair", "Good", "High", "Highest"];
-
-/// `Fast (4 of 5)`.
-fn scale(value: u8, words: [&str; 5]) -> String {
-    let word = words
-        .get(usize::from(value.saturating_sub(1)))
-        .copied()
-        .unwrap_or_default();
-    format!("{word} ({value} of 5)")
 }
 
 /// `Q4_K_M (4-bit)`: the format and the bits of most weights, which is the first number in it.

@@ -1,5 +1,5 @@
 //! The model library: which speech, cleanup, and voice models are on disk, which speech model is
-//! active, and the downloads, deletes, and hash checks behind the Models view.
+//! the default, and the downloads, deletes, and hash checks behind the Models view.
 //!
 //! A model counts as downloaded only when every one of its files matches the pinned size and
 //! sha256. Slow work (downloads, hashing) runs on worker threads. They send [`ModelEvent`]s into
@@ -22,7 +22,7 @@ use futures::channel::mpsc::{UnboundedSender, unbounded};
 use gpui_kit::{Context, FocusHandle};
 use hushpen_core::catalog::{Catalog, Languages, ModelEntry, ModelKind};
 use hushpen_core::error::{
-    DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, MODEL_IN_USE, MODEL_NO_SPACE,
+    DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, MODEL_NO_SPACE,
 };
 use hushpen_store::model_files;
 use serde_json::{Value, json};
@@ -104,7 +104,7 @@ pub struct Machine {
 
 /// The slots of [`Row::focus`].
 pub(crate) const PRIMARY: usize = 0;
-pub(crate) const USE: usize = 1;
+pub(crate) const SET_DEFAULT: usize = 1;
 pub(crate) const DELETE: usize = 2;
 pub(crate) const INFO: usize = 3;
 
@@ -117,7 +117,8 @@ pub struct Row {
     /// The download in progress replaces an earlier version of the model's files, which the
     /// app started on its own. The row shows Updating, never a failure.
     pub updating: bool,
-    /// Download or Cancel, Use, Delete, and the details button: see [`PRIMARY`] and the others.
+    /// Download or Cancel, Set as default, Delete, and the details button: see [`PRIMARY`] and
+    /// the others.
     pub(crate) focus: [FocusHandle; 4],
 }
 
@@ -336,7 +337,7 @@ impl Models {
         self.notice.as_ref()
     }
 
-    /// The id the next dictation uses, or empty when none is chosen.
+    /// The id of the chosen default speech model, or empty when none is chosen.
     pub fn active(&self) -> String {
         self.storage
             .settings
@@ -345,8 +346,8 @@ impl Models {
             .unwrap_or_default()
     }
 
-    /// The id a dictation really uses: the chosen model, or the catalog default while none is
-    /// chosen.
+    /// The id of the default speech model, which a dictation uses: the chosen model, or the
+    /// catalog default while none is chosen.
     pub fn effective(&self) -> String {
         let chosen = self.active();
         if !chosen.trim().is_empty() {
@@ -448,6 +449,9 @@ impl Models {
                     self.rows[index].state = ModelState::Ready;
                     self.notice = None;
                     hook::record_event("models", &format!("downloaded {id}"));
+                    if !was_update {
+                        self.adopt(index);
+                    }
                     self.load_active();
                 }
                 Ok(Outcome::Cancelled) => self.rows[index].state = ModelState::NotDownloaded,
@@ -474,6 +478,52 @@ impl Models {
 
     fn set_notice(&mut self, code: &'static str, message: String) {
         self.notice = Some(Notice { code, message });
+    }
+
+    /// A speech model that just finished downloading becomes the default while no other model
+    /// can be: none is downloaded, or the default failed its check or is gone. So the first
+    /// download is the default at once.
+    fn adopt(&mut self, index: usize) {
+        let row = &self.rows[index];
+        if row.entry.kind != ModelKind::Speech {
+            return;
+        }
+        let id = row.entry.id.clone();
+        let default = self.effective();
+        let kept = self.rows().iter().any(|other| {
+            other.entry.id == default
+                && other.entry.id != id
+                && (other.state == ModelState::Ready || other.updating)
+        });
+        if kept || self.active() == id {
+            return;
+        }
+        match self.storage.settings.set(SETTING, json!(id)) {
+            Ok(()) => hook::record_event("models", &format!("default {id}")),
+            Err(error) => log::warn!("MODELS_DEFAULT could not make {id} the default: {error}"),
+        }
+    }
+
+    /// The default was deleted: the first other downloaded speech model becomes the default, or
+    /// none is chosen while no other is downloaded.
+    fn move_default(&mut self, deleted: &str) {
+        let next = self
+            .rows()
+            .iter()
+            .find(|row| row.entry.id != deleted && row.state == ModelState::Ready)
+            .map(|row| row.entry.id.clone());
+        match self
+            .storage
+            .settings
+            .set(SETTING, json!(next.clone().unwrap_or_default()))
+        {
+            Ok(()) => hook::record_event(
+                "models",
+                &format!("default {}", next.as_deref().unwrap_or("none")),
+            ),
+            Err(error) => log::warn!("MODELS_DEFAULT could not move the default: {error}"),
+        }
+        self.load_active();
     }
 
     /// Loads the active model into the engine, but only once its file is verified. The engine
@@ -574,18 +624,10 @@ impl Models {
         Ok(())
     }
 
-    /// Deletes the files and their stamps. The active speech model stays (`MODEL_IN_USE`).
+    /// Deletes the files and their stamps. Deleting the default speech model makes another
+    /// downloaded one the default.
     pub fn delete(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
-        let name = self.rows[index].entry.name.clone();
-        if self.rows[index].entry.kind == ModelKind::Speech && self.effective() == id {
-            self.set_notice(
-                MODEL_IN_USE,
-                format!("{name} is in use. Choose another model first."),
-            );
-            cx.notify();
-            return Err(format!("{MODEL_IN_USE}: {id} is the active model"));
-        }
         if matches!(
             self.rows[index].state,
             ModelState::Downloading { .. } | ModelState::Verifying
@@ -597,11 +639,15 @@ impl Models {
         self.rows[index].state = ModelState::NotDownloaded;
         self.notice = None;
         hook::record_event("models", &format!("delete {id}"));
+        if self.rows[index].entry.kind == ModelKind::Speech && self.effective() == id {
+            self.move_default(id);
+        }
         cx.notify();
         Ok(())
     }
 
-    /// Makes `id` the model of the next dictation. Only a verified speech model can be chosen.
+    /// Makes `id` the default speech model, which the next dictation uses. Only a verified
+    /// speech model can be chosen.
     pub fn select(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
         let index = self.index_or_err(id)?;
         let name = self.rows[index].entry.name.clone();

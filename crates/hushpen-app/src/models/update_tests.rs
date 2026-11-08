@@ -284,13 +284,14 @@ fn the_status_word_is_updating_with_the_percent_and_never_red() {
         done: 42,
         total: 100,
     };
-    let (text, tone) = panel::status_text(palette, state, false, true);
-    assert_eq!(text, "Updating 42%");
-    assert_eq!(tone, palette.label);
+    assert_eq!(
+        panel::state_word(palette, state, false, true),
+        Some(("Updating 42%".to_owned(), palette.label))
+    );
     let starting = ModelState::Downloading { done: 0, total: 0 };
     assert_eq!(
-        panel::status_text(palette, starting, false, true).0,
+        panel::status_text(palette, starting, false, true),
         "Updating"
     );
-    assert_eq!(panel::status_text(palette, state, false, false).0, "42%");
+    assert_eq!(panel::status_text(palette, state, false, false), "42%");
 }

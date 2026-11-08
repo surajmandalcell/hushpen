@@ -359,7 +359,9 @@ fn focused(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) -> bool {
 }
 
 #[gpui_kit::test]
-fn the_view_groups_models_and_keeps_use_off_for_active_or_non_speech_rows(cx: &mut TestAppContext) {
+fn the_view_groups_models_and_offers_set_as_default_only_for_other_speech_rows(
+    cx: &mut TestAppContext,
+) {
     let (rig, _) = rig(cx);
     for id in ["speech", "qwen3.5-2b", "voice"] {
         rig.models
@@ -389,8 +391,25 @@ fn the_view_groups_models_and_keeps_use_off_for_active_or_non_speech_rows(cx: &m
     }
     assert!(
         !present(cx, handle, "models.select.0"),
-        "the default speech model is already active"
+        "the speech model is already the default"
     );
+    assert_eq!(label(cx, handle, "models.state.0"), "Default");
+    for index in 1..3 {
+        assert!(
+            !present(cx, handle, &format!("models.state.{index}")),
+            "no word for a downloaded model"
+        );
+        assert!(
+            !present(cx, handle, &format!("models.accuracy.{index}")),
+            "only speech rows have meters"
+        );
+    }
+    assert_eq!(
+        label(cx, handle, "models.accuracy.0"),
+        "Accuracy: Good (3 of 5)"
+    );
+    assert_eq!(label(cx, handle, "models.speed.0"), "Speed: Fast (4 of 5)");
+    assert_eq!(label(cx, handle, "models.delete.0"), "Delete SPEECH");
     assert!(
         !present(cx, handle, "models.select.1"),
         "Settings picks the cleanup model"
@@ -400,6 +419,12 @@ fn the_view_groups_models_and_keeps_use_off_for_active_or_non_speech_rows(cx: &m
         "Read aloud picks the voice"
     );
     assert_eq!(label(cx, handle, "models.info.2"), "Details of Voice");
+
+    click(cx, handle, "models.info.0");
+    assert_eq!(label(cx, handle, "models.sheet.status"), "Default");
+    click(cx, handle, "models.sheet.done");
+    click(cx, handle, "models.info.1");
+    assert_eq!(label(cx, handle, "models.sheet.status"), "Downloaded");
 }
 
 #[gpui_kit::test]
