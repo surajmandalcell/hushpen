@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 16] = [
+const ALLOWED: [(&str, &str, &str); 14] = [
     // The drop zone outlines in it while files are dragged over the window, as a drop target.
     ("import/panel.rs", "drop_zone", "accent"),
     // The default button fills with it; the plain button is a link and takes it for text.
@@ -35,8 +35,6 @@ const ALLOWED: [(&str, &str, &str); 16] = [
         "permission_row",
         "warning",
     ),
-    ("onboarding/panel/model.rs", "view", "success"),
-    ("onboarding/panel/model.rs", "view", "error"),
     // What the last update check found on About; a failed check is a status word.
     ("about/panel.rs", "update_status", "error"),
 ];
