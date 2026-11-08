@@ -73,6 +73,25 @@ pub struct Report {
 }
 
 impl Report {
+    /// The words for a copy that could not press the paste key.
+    pub fn copy_notice(&self) -> Option<&'static str> {
+        if self.outcome != Outcome::CopiedOnly {
+            return None;
+        }
+        Some(match self.note {
+            Some("no-target") => "No app had the focus, so the text is on your clipboard.",
+            Some("override") => "Paste is off for this app, so the text is on your clipboard.",
+            Some("own-window") => "Hushpen had the focus, so the text is on your clipboard.",
+            Some("no-paste") => {
+                "Hushpen could not press the paste key, so the text is on your clipboard."
+            }
+            Some("higher-integrity") => {
+                "This app runs as administrator. The text is on the clipboard."
+            }
+            _ => return None,
+        })
+    }
+
     pub fn new(target: impl Into<String>) -> Self {
         Self {
             outcome: Outcome::Failed,
@@ -107,5 +126,23 @@ impl Report {
             "restore": self.restore.key(),
             "restored_ms": self.restored_ms,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_administrator_copy_has_the_notice_but_a_paste_does_not() {
+        let mut report = Report::new("admin.exe");
+        report.note = Some("higher-integrity");
+        report.outcome = Outcome::CopiedOnly;
+        assert_eq!(
+            report.copy_notice(),
+            Some("This app runs as administrator. The text is on the clipboard.")
+        );
+        report.outcome = Outcome::Pasted;
+        assert_eq!(report.copy_notice(), None);
     }
 }

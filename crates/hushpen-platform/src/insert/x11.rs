@@ -103,7 +103,7 @@ impl Inserter for X11Inserter {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         undo_guard(target, &self.target())?;
         board.send_undo().map_err(|error| match error {
-            ChordError::NoPermission => UndoError::NoPermission,
+            ChordError::NoPermission | ChordError::HigherIntegrity => UndoError::NoPermission,
             ChordError::Unavailable => UndoError::Unavailable,
         })
     }

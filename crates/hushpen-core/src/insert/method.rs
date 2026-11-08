@@ -137,12 +137,33 @@ const MAC_TERMINALS: [&str; 9] = [
     "co.zeit.hyper",
 ];
 
+const WINDOWS_TERMINALS: [&str; 12] = [
+    "windowsterminal.exe",
+    "cascadia_hosting_window_class",
+    "conhost.exe",
+    "consolewindowclass",
+    "openconsole.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "wezterm-gui.exe",
+    "alacritty.exe",
+    "mintty.exe",
+    "hyper.exe",
+];
+
+fn windows_terminal(class: &str) -> bool {
+    WINDOWS_TERMINALS.contains(&class)
+}
+
 /// Whether the target is a terminal: the X11 table above, or a macOS terminal bundle id. A
 /// terminal reads Ctrl+Z as a job stop, so nothing sends an undo key to one.
 pub fn is_terminal(classes: &[String]) -> bool {
     classes.iter().any(|class| {
         let class = class.to_lowercase();
-        terminal_chord(&class).is_some() || MAC_TERMINALS.contains(&class.as_str())
+        terminal_chord(&class).is_some()
+            || MAC_TERMINALS.contains(&class.as_str())
+            || windows_terminal(&class)
     })
 }
 
@@ -165,6 +186,22 @@ pub fn choose_mac(bundle_id: &str, overrides: &Overrides) -> Method {
         Some(Method::CopyOnly) => Method::CopyOnly,
         _ => Method::Paste(Chord::CmdV),
     }
+}
+
+/// Windows terminal windows use Ctrl+Shift+V. A setting wins over the table.
+pub fn choose_windows(classes: &[String], overrides: &Overrides) -> Method {
+    overrides.find(classes).unwrap_or_else(|| {
+        Method::Paste(
+            if classes
+                .iter()
+                .any(|class| windows_terminal(&class.to_lowercase()))
+            {
+                Chord::CtrlShiftV
+            } else {
+                Chord::CtrlV
+            },
+        )
+    })
 }
 
 #[cfg(test)]
@@ -308,5 +345,30 @@ mod tests {
         ] {
             assert_eq!(Chord::parse(chord.key()), Some(chord));
         }
+    }
+
+    #[test]
+    fn windows_terminals_get_the_terminal_chord_and_never_undo() {
+        for terminal in WINDOWS_TERMINALS {
+            let names = classes(&[&terminal.to_uppercase()]);
+            assert!(is_terminal(&names), "{terminal}");
+            assert_eq!(
+                choose_windows(&names, &Overrides::default()),
+                Method::Paste(Chord::CtrlShiftV)
+            );
+        }
+        let names = classes(&["notepad.exe"]);
+        assert!(!is_terminal(&names));
+        assert_eq!(
+            choose_windows(&names, &Overrides::default()),
+            Method::Paste(Chord::CtrlV)
+        );
+        assert_eq!(
+            choose_windows(
+                &names,
+                &Overrides::from_value(&json!({"NOTEPAD.EXE": "copy-only"}))
+            ),
+            Method::CopyOnly
+        );
     }
 }

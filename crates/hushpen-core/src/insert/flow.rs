@@ -35,6 +35,8 @@ pub enum ChordError {
     NoPermission,
     /// No way to send keys here (Wayland, no XTest). The text stays on the clipboard.
     Unavailable,
+    /// The target process has a higher integrity level than Hushpen.
+    HigherIntegrity,
 }
 
 pub trait Backend {
@@ -187,6 +189,10 @@ pub fn run<B: Backend>(
                 ChordError::Unavailable => {
                     report.outcome = Outcome::CopiedOnly;
                     report.note = Some("no-paste");
+                }
+                ChordError::HigherIntegrity => {
+                    report.outcome = Outcome::CopiedOnly;
+                    report.note = Some("higher-integrity");
                 }
             }
             observe(Step::Settled(&report));
@@ -590,6 +596,26 @@ mod tests {
         assert_eq!(report.outcome, Outcome::NoPermission);
         assert_eq!(report.code, Some("INSERT_NO_PERMISSION"));
         assert_eq!(report.restore, Restore::NotNeeded);
+    }
+
+    #[test]
+    fn a_higher_integrity_target_gets_a_copy_and_no_paste() {
+        let mut rig = rig();
+        rig.board.chord_error = Some(ChordError::HigherIntegrity);
+        let (report, steps) = paste(&mut rig, Chord::CtrlV);
+        assert_eq!(report.outcome, Outcome::CopiedOnly);
+        assert_eq!(report.note, Some("higher-integrity"));
+        assert_eq!(report.restore, Restore::NotNeeded);
+        assert_eq!(report.chord, None);
+        assert_eq!(steps, ["settled"]);
+        assert_eq!(
+            report.copy_notice(),
+            Some("This app runs as administrator. The text is on the clipboard.")
+        );
+        assert_eq!(
+            *rig.board.log.borrow(),
+            ["snapshot clipboard", "write clipboard hello"]
+        );
     }
 
     /// A blocked paste leaves the clipboard and the keyboard alone, and says so once.

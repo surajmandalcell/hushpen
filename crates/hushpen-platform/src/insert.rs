@@ -18,6 +18,9 @@ mod x11;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 #[cfg(feature = "test-automation")]
 pub mod test_target;
 
@@ -114,7 +117,12 @@ fn system_inserter() -> Result<Arc<dyn Inserter>, Unavailable> {
     Ok(Arc::new(macos::MacInserter::new()))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(target_os = "windows")]
+fn system_inserter() -> Result<Arc<dyn Inserter>, Unavailable> {
+    Ok(Arc::new(windows::WindowsInserter::default()))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn system_inserter() -> Result<Arc<dyn Inserter>, Unavailable> {
     Err(Unavailable::new(
         crate::keys::Reason::Unsupported,

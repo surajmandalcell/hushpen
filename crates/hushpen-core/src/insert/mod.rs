@@ -10,5 +10,7 @@ pub mod method;
 pub mod report;
 pub mod undo;
 
-pub use method::{Chord, Method, Overrides, Selection, choose_mac, choose_x11, is_terminal};
+pub use method::{
+    Chord, Method, Overrides, Selection, choose_mac, choose_windows, choose_x11, is_terminal,
+};
 pub use report::{Outcome, Report, Restore};
