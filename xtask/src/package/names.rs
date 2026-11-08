@@ -7,6 +7,7 @@ pub enum Target {
     MacosArm64,
     LinuxX64,
     LinuxArm64,
+    WindowsX64,
 }
 
 impl Target {
@@ -15,8 +16,9 @@ impl Target {
             "macos-arm64" => Ok(Self::MacosArm64),
             "linux-x64" => Ok(Self::LinuxX64),
             "linux-arm64" => Ok(Self::LinuxArm64),
+            "windows-x64" => Ok(Self::WindowsX64),
             other => Err(format!(
-                "unknown target {other:?}; use macos-arm64, linux-x64, or linux-arm64"
+                "unknown target {other:?}; use macos-arm64, linux-x64, linux-arm64, or windows-x64"
             )),
         }
     }
@@ -26,11 +28,12 @@ impl Target {
             Self::MacosArm64 => "macos-arm64",
             Self::LinuxX64 => "linux-x64",
             Self::LinuxArm64 => "linux-arm64",
+            Self::WindowsX64 => "windows-x64",
         }
     }
 
     pub fn is_linux(self) -> bool {
-        !matches!(self, Self::MacosArm64)
+        matches!(self, Self::LinuxX64 | Self::LinuxArm64)
     }
 
     /// The target that matches the machine xtask runs on.
@@ -39,6 +42,7 @@ impl Target {
             ("macos", "aarch64") => Ok(Self::MacosArm64),
             ("linux", "x86_64") => Ok(Self::LinuxX64),
             ("linux", "aarch64") => Ok(Self::LinuxArm64),
+            ("windows", "x86_64") => Ok(Self::WindowsX64),
             (os, arch) => Err(format!("no packaging target for {os} on {arch}")),
         }
     }
@@ -60,7 +64,10 @@ impl Target {
     pub fn formats(self) -> &'static [Format] {
         match self {
             Self::MacosArm64 => &[Format::Zip, Format::Dmg],
-            _ => &[Format::AppImage, Format::Deb, Format::Rpm, Format::TarGz],
+            Self::LinuxX64 | Self::LinuxArm64 => {
+                &[Format::AppImage, Format::Deb, Format::Rpm, Format::TarGz]
+            }
+            Self::WindowsX64 => &[],
         }
     }
 }
@@ -107,7 +114,7 @@ impl Format {
 
     fn works_on(self, target: Target) -> bool {
         match self {
-            Self::App | Self::Zip | Self::Dmg => !target.is_linux(),
+            Self::App | Self::Zip | Self::Dmg => target == Target::MacosArm64,
             _ => target.is_linux(),
         }
     }
@@ -212,8 +219,26 @@ mod tests {
     #[test]
     fn parse_round_trips_and_refuses_unknown_words() {
         assert_eq!(Target::parse("linux-x64"), Ok(Target::LinuxX64));
-        assert!(Target::parse("windows-x64").is_err());
+        assert_eq!(Target::parse("windows-x64"), Ok(Target::WindowsX64));
+        assert!(Target::parse("unknown").is_err());
         assert_eq!(Format::parse("tar.gz"), Ok(Format::TarGz));
         assert!(Format::parse("msi").is_err());
+    }
+
+    #[test]
+    fn windows_is_a_runtime_target_without_package_formats() {
+        assert!(!Target::WindowsX64.is_linux());
+        assert!(Target::WindowsX64.formats().is_empty());
+        for format in [
+            Format::App,
+            Format::Zip,
+            Format::Dmg,
+            Format::AppImage,
+            Format::Deb,
+            Format::Rpm,
+            Format::TarGz,
+        ] {
+            assert!(format.check_target(Target::WindowsX64).is_err());
+        }
     }
 }

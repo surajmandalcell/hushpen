@@ -277,6 +277,9 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         Some(target) => target,
         None => Target::host()?,
     };
+    if target == Target::WindowsX64 {
+        return Err("Windows packaging is not available".into());
+    }
     if Target::host()? != target {
         return Err(format!(
             "this machine builds {} only, not {}; build each target on its own runner",
