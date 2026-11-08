@@ -3,7 +3,7 @@
 //! `HUSHPEN_DATA_DIR` wins. Otherwise macOS uses
 //! `~/Library/Application Support/Hushpen` and Linux uses
 //! `$XDG_DATA_HOME/hushpen`, or `~/.local/share/hushpen` when `XDG_DATA_HOME`
-//! is unset, empty, or not an absolute path.
+//! is unset, empty, or not an absolute path. Windows uses the roaming AppData known folder.
 
 use crate::{Error, Result, atomic, time};
 use directories::BaseDirs;
@@ -11,6 +11,9 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+#[cfg(target_os = "windows")]
+pub(crate) mod windows;
 
 const PRODUCT: &str = "hushpen";
 pub(crate) const MARKER_NAME: &str = ".hushpen-data";
@@ -41,9 +44,17 @@ pub fn resolve(
 /// Resolves from the process environment.
 pub fn resolve_from_env() -> PathBuf {
     let base_dirs = BaseDirs::new();
+    let data_dir_override = std::env::var_os("HUSHPEN_DATA_DIR");
+    #[cfg(target_os = "windows")]
+    if data_dir_override.as_ref().is_none_or(|dir| dir.is_empty()) {
+        match windows::roaming_data() {
+            Ok(dir) => return dir.join("Hushpen"),
+            Err(error) => log::warn!("could not read the roaming data folder: {error}"),
+        }
+    }
     resolve(
         Os::current(),
-        std::env::var_os("HUSHPEN_DATA_DIR").as_deref(),
+        data_dir_override.as_deref(),
         std::env::var_os("XDG_DATA_HOME").as_deref(),
         base_dirs.as_ref().map(BaseDirs::home_dir),
     )
@@ -66,13 +77,11 @@ pub fn resolve_effective(
 
 /// `resolve_effective` from the process environment.
 pub fn resolve_effective_from_env() -> Result<PathBuf> {
-    let base_dirs = BaseDirs::new();
-    resolve_effective(
-        Os::current(),
-        std::env::var_os("HUSHPEN_DATA_DIR").as_deref(),
-        std::env::var_os("XDG_DATA_HOME").as_deref(),
-        base_dirs.as_ref().map(BaseDirs::home_dir),
-    )
+    let default = resolve_from_env();
+    if std::env::var_os("HUSHPEN_DATA_DIR").is_some_and(|dir| !dir.is_empty()) {
+        return Ok(default);
+    }
+    effective(&default)
 }
 
 /// The pointer lives in the default folder only, never in a moved one.

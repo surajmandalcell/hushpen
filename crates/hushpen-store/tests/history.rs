@@ -259,6 +259,7 @@ fn clearing_returns_every_audio_path_and_empties_the_tables() {
 }
 
 #[test]
+#[cfg(unix)]
 fn a_read_only_history_file_refuses_a_write_with_an_error() {
     use std::os::unix::fs::PermissionsExt;
     let tmp = tempfile::tempdir().unwrap();

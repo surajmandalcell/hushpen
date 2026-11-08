@@ -23,8 +23,15 @@ fn an_empty_override_is_ignored() {
 
 #[test]
 fn linux_uses_xdg_data_home() {
-    let dir = resolve(Os::Linux, None, os("/xdg"), Some(Path::new("/home/u")));
-    assert_eq!(dir, PathBuf::from("/xdg/hushpen"));
+    let tmp = tempfile::tempdir().unwrap();
+    let xdg = tmp.path().join("xdg");
+    let dir = resolve(
+        Os::Linux,
+        None,
+        Some(xdg.as_os_str()),
+        Some(Path::new("/home/u")),
+    );
+    assert_eq!(dir, xdg.join("hushpen"));
 }
 
 #[test]

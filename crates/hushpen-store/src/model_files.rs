@@ -174,8 +174,13 @@ pub fn remove(model: &Path) -> io::Result<()> {
 
 /// The bytes the user may still write on the volume that holds `path`.
 pub fn free_bytes(path: &Path) -> io::Result<u64> {
-    let stat = rustix::fs::statvfs(path)?;
-    Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
+    #[cfg(target_os = "windows")]
+    return crate::data_dir::windows::free_bytes(path);
+    #[cfg(not(target_os = "windows"))]
+    {
+        let stat = rustix::fs::statvfs(path)?;
+        Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
+    }
 }
 
 /// Whether `free` bytes hold a download of `needed` bytes with a 10% margin, so the download

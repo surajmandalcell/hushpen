@@ -124,6 +124,8 @@ fn a_move_copies_verifies_points_and_clears_the_old_folder() {
     fs::create_dir_all(&target).unwrap();
 
     let report = data_move::move_data(&default, &target, &default).unwrap();
+    #[cfg(target_os = "windows")]
+    data_move::finish_move_cleanup(&default, &target, &default).unwrap();
     assert!(report.files >= 5, "{report:?}");
 
     // The target holds the data set, minus runtime and journal files.
@@ -153,7 +155,10 @@ fn a_move_copies_verifies_points_and_clears_the_old_folder() {
     );
 
     // The pointer names the absolute target.
-    assert_eq!(data_dir::effective(&default).unwrap(), target);
+    assert_eq!(
+        data_dir::effective(&default).unwrap(),
+        fs::canonicalize(&target).unwrap()
+    );
 
     // The old folder holds only the pointer.
     assert_eq!(tree(&default), vec!["location.json".to_owned()]);
@@ -169,6 +174,8 @@ fn a_move_back_to_the_default_removes_the_pointer() {
     fs::create_dir_all(&default).unwrap();
 
     data_move::move_data(&away, &default, &default).unwrap();
+    #[cfg(target_os = "windows")]
+    data_move::finish_move_cleanup(&away, &default, &default).unwrap();
 
     assert!(!data_dir::location_file(&default).exists());
     assert_eq!(data_dir::effective(&default).unwrap(), default);
@@ -190,6 +197,8 @@ fn a_folder_with_our_marker_accepts_the_move() {
     .unwrap();
 
     data_move::move_data(&default, &target, &default).unwrap();
+    #[cfg(target_os = "windows")]
+    data_move::finish_move_cleanup(&default, &target, &default).unwrap();
     assert!(target.join("history/history.db").is_file());
     // The marker the folder already had stays.
     let marker = fs::read_to_string(target.join(".hushpen-data")).unwrap();
@@ -240,6 +249,55 @@ fn a_move_into_the_current_folder_is_refused() {
     let target = default.join("inside");
     assert!(data_move::move_data(&default, &target, &default).is_err());
     assert!(data_move::move_data(&default, &default, &default).is_err());
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn windows_cleanup_waits_for_open_files_and_keeps_the_new_pointer_on_failure() {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("source");
+    let target = tmp.path().join("target");
+    seed_data(&source);
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0)
+        .open(source.join("history/history.db"))
+        .unwrap();
+
+    data_move::move_data(&source, &target, &source).unwrap();
+    assert!(source.join("config/settings.json").exists());
+    assert!(data_move::finish_move_cleanup(&source, &target, &source).is_err());
+    assert_eq!(
+        data_dir::effective(&source).unwrap(),
+        fs::canonicalize(&target).unwrap()
+    );
+    assert_eq!(
+        fs::read(target.join("history/history.db")).unwrap(),
+        b"sqlite-bytes"
+    );
+
+    drop(held);
+    data_move::finish_move_cleanup(&source, &target, &source).unwrap();
+    assert_eq!(tree(&source), ["location.json"]);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn windows_cleanup_refuses_a_changed_pointer_before_deleting_old_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("source");
+    let target = tmp.path().join("target");
+    seed_data(&source);
+    data_move::move_data(&source, &target, &source).unwrap();
+    data_dir::write_location(&source, None).unwrap();
+
+    assert!(data_move::finish_move_cleanup(&source, &target, &source).is_err());
+    assert!(source.join("config/settings.json").exists());
+    assert!(source.join("history/history.db").exists());
+    assert!(target.join("history/history.db").exists());
 }
 
 #[cfg(unix)]

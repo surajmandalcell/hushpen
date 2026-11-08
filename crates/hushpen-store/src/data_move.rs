@@ -1,7 +1,8 @@
 //! Moving the data folder. The user picks a folder that is empty or already
 //! carries our marker; the move copies everything, verifies count, sizes, and
 //! the hashes of the two files the app cannot rebuild, writes the pointer in
-//! the default folder, and only then clears the old folder. A failure before
+//! the default folder, and only then clears the old folder. On Windows the restart helper
+//! clears it after the old process closes its database and log. A failure before
 //! the pointer write changes nothing; the old folder is never deleted without
 //! a verified copy.
 
@@ -41,6 +42,7 @@ pub fn move_data(current: &Path, target: &Path, default: &Path) -> Result<Report
     let kept = pre_existing(&target)?;
     match copy_verify_point(&current, &target, &default) {
         Ok(report) => {
+            #[cfg(not(target_os = "windows"))]
             clear_old(&current, &default)?;
             Ok(report)
         }
@@ -49,6 +51,26 @@ pub fn move_data(current: &Path, target: &Path, default: &Path) -> Result<Report
             Err(error)
         }
     }
+}
+
+/// Finishes a verified Windows move after the old process has closed its files.
+pub fn finish_move_cleanup(current: &Path, target: &Path, default: &Path) -> Result<()> {
+    let current = absolutize(current)?;
+    let target = absolutize(target)?;
+    let default = absolutize(default)?;
+    if target.starts_with(&current) || current.starts_with(&target) {
+        return Err(Error::MoveFailed(
+            "the old and new data folders overlap".into(),
+        ));
+    }
+    marker_check(&current)?;
+    marker_check(&target)?;
+    if absolutize(&data_dir::effective(&default)?)? != target {
+        return Err(Error::MoveFailed(
+            "the data folder pointer changed before cleanup".into(),
+        ));
+    }
+    clear_old(&current, &default)
 }
 
 fn copy_verify_point(current: &Path, target: &Path, default: &Path) -> Result<Report> {
@@ -180,7 +202,15 @@ fn copy_into(dir: &Path, root: &Path, target_root: &Path, report: &mut Report) -
             copy_into(&path, root, target_root, report)?;
         } else {
             // fs::copy follows links, so a dangling link stops the move here.
-            let bytes = fs::copy(&path, &dest).map_err(|e| failed(&path, "could not copy", e))?;
+            #[cfg(target_os = "windows")]
+            let copied = if rel == Path::new("config/secrets.json") {
+                data_dir::windows::copy_private(&path, &dest)
+            } else {
+                fs::copy(&path, &dest)
+            };
+            #[cfg(not(target_os = "windows"))]
+            let copied = fs::copy(&path, &dest);
+            let bytes = copied.map_err(|e| failed(&path, "could not copy", e))?;
             report.files += 1;
             report.bytes += bytes;
         }
@@ -291,21 +321,30 @@ fn clear_old(current: &Path, default: &Path) -> Result<()> {
         if keep_pointer && entry.file_name() == "location.json" {
             continue;
         }
+        #[cfg(target_os = "windows")]
+        if entry.file_name() == MARKER_NAME {
+            continue;
+        }
         let path = entry.path();
         let outcome = match path.is_dir() {
             true => fs::remove_dir_all(&path),
             false => fs::remove_file(&path),
         };
         if let Err(error) = outcome {
+            #[cfg(not(target_os = "windows"))]
             restore_pointer(current, default);
             return Err(failed(&path, "could not clear the old folder", error));
         }
     }
+    #[cfg(target_os = "windows")]
+    fs::remove_file(current.join(MARKER_NAME))
+        .map_err(|error| failed(current, "could not remove the old marker", error))?;
     Ok(())
 }
 
 /// A delete failure after the pointer moved puts the pointer back, so the
 /// data is duplicated instead of stranded.
+#[cfg(not(target_os = "windows"))]
 fn restore_pointer(current: &Path, default: &Path) {
     let result = match current == default {
         // The old folder is the default, so nothing pointed away before.

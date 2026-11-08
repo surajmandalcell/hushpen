@@ -30,7 +30,7 @@ impl Secrets {
         let path = config_dir.join("secrets.json");
         let state = match fs::read(&path) {
             Ok(bytes) => {
-                tighten(&path);
+                tighten(&path)?;
                 match serde_json::from_slice::<Value>(&bytes) {
                     Ok(Value::Object(map)) => map,
                     _ => {
@@ -101,19 +101,30 @@ impl Secrets {
 }
 
 #[cfg(unix)]
-fn tighten(path: &Path) {
+fn tighten(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    let Ok(meta) = fs::metadata(path) else { return };
+    let Ok(meta) = fs::metadata(path) else {
+        return Ok(());
+    };
     if meta.permissions().mode() & 0o777 != PRIVATE_MODE {
         match fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_MODE)) {
             Ok(()) => log::warn!("SECRETS_MODE_FIXED secrets.json was readable by others"),
             Err(error) => log::warn!("SECRETS_MODE_FIXED could not tighten the mode: {error}"),
         }
     }
+    Ok(())
 }
 
-#[cfg(not(unix))]
-fn tighten(_path: &Path) {}
+#[cfg(target_os = "windows")]
+fn tighten(path: &Path) -> Result<()> {
+    crate::data_dir::windows::tighten_private(path)
+        .map_err(|error| Error::io("could not make secrets.json private", error))
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
+fn tighten(_path: &Path) -> Result<()> {
+    Ok(())
+}
 
 #[cfg(all(test, unix))]
 mod tests {
