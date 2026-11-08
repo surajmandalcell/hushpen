@@ -1,17 +1,37 @@
-//! The Models view: a section for each kind of model (speech recognition, text cleanup, voices),
-//! with a row for each model. A row's info button opens its details sheet ([`super::sheet`]).
+//! The Models view: a section for each kind of model (speech to text, text cleanup, text to
+//! speech), with a row for each model. A row's details button opens its sheet
+//! ([`super::sheet`]). The model step of onboarding draws the speech rows with the same builder
+//! ([`speech_rows`]).
 
-use super::{DELETE, INFO, ModelState, Models, PRIMARY, Row, USE, search};
+use super::{DELETE, INFO, ModelState, Models, PRIMARY, Row, SET_DEFAULT, search};
 use crate::hook;
-use crate::theme::{self, Palette, SECONDARY, StyledType, size, space};
+use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, radius, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba,
-    Styled, Window, div, px,
+    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use hushpen_core::catalog::{Languages, ModelKind};
+
+/// Where a row is drawn. Its hook ids are `models.<part>.<index>` in the Models view and
+/// `onboarding.model.<part>.<index>` on the model step, with the index of
+/// [`Models::all_rows`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Place {
+    Models,
+    Onboarding,
+}
+
+impl Place {
+    fn id(self, part: &str, index: usize) -> SharedString {
+        match self {
+            Place::Models => hook::indexed("models", part, index),
+            Place::Onboarding => hook::indexed("onboarding", &format!("model.{part}"), index),
+        }
+    }
+}
 
 /// What one row shows, read out of [`Models`] before the elements are built.
 struct RowView {
@@ -23,25 +43,49 @@ struct RowView {
     recommended: bool,
     state: ModelState,
     updating: bool,
-    active: bool,
+    /// The speech model a dictation uses.
+    default: bool,
+    /// Accuracy and speed, 1 to 5, of a speech model with details.
+    meters: Option<(u8, u8)>,
     focus: [FocusHandle; 4],
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
     Download,
     Cancel,
-    Use,
+    SetDefault,
     Delete,
 }
 
 impl Action {
-    fn label(self) -> &'static str {
+    fn icon(self) -> IconName {
+        match self {
+            Action::Download => IconName::Download,
+            Action::Cancel => IconName::X,
+            Action::SetDefault => IconName::Star,
+            Action::Delete => IconName::Trash,
+        }
+    }
+
+    fn tooltip(self) -> &'static str {
         match self {
             Action::Download => "Download",
             Action::Cancel => "Cancel",
-            Action::Use => "Use",
+            Action::SetDefault => "Set as default",
             Action::Delete => "Delete",
+        }
+    }
+
+    /// The name in the accessibility tree, which says what the button does to which model.
+    fn label(self, view: &RowView) -> String {
+        let name = &view.name;
+        match self {
+            Action::Download => format!("Download {name}"),
+            Action::Cancel if view.updating => format!("Cancel the update of {name}"),
+            Action::Cancel => format!("Cancel the download of {name}"),
+            Action::SetDefault => format!("Set {name} as default"),
+            Action::Delete => format!("Delete {name}"),
         }
     }
 
@@ -49,15 +93,16 @@ impl Action {
         match self {
             Action::Download => "download",
             Action::Cancel => "cancel",
-            Action::Use => "select",
+            Action::SetDefault => "select",
             Action::Delete => "delete",
         }
     }
 
+    /// The slot of the button after Details, which is also its focus handle in [`Row::focus`].
     fn slot(self) -> usize {
         match self {
             Action::Download | Action::Cancel => PRIMARY,
-            Action::Use => USE,
+            Action::SetDefault => SET_DEFAULT,
             Action::Delete => DELETE,
         }
     }
@@ -67,14 +112,14 @@ impl Action {
 fn section_text(kind: ModelKind) -> (&'static str, &'static str) {
     match kind {
         ModelKind::Speech => (
-            "Speech recognition",
+            "Speech to Text",
             "Parakeet is recommended. Use Whisper for other languages or translation.",
         ),
         ModelKind::Cleanup => (
             "Text cleanup",
             "Fixes grammar and punctuation when AI cleanup is on. Choose the model in Settings.",
         ),
-        ModelKind::Voice => ("Voices", "Reads text and files aloud."),
+        ModelKind::Voice => ("Text to Speech", "Reads text and files aloud."),
     }
 }
 
@@ -82,7 +127,7 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
     let palette = theme::palette(cx);
     let (sections, notice, query, clear_focus, any_rows) = {
         let models = models.read(cx);
-        let active = models.effective();
+        let default = models.effective();
         let query = models.query().to_owned();
         let sections: Vec<(ModelKind, Vec<RowView>)> = ModelKind::ALL
             .into_iter()
@@ -92,7 +137,7 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
                     .iter()
                     .enumerate()
                     .filter(|(_, row)| search::matches(row, &query))
-                    .map(|(offset, row)| row_view(start + offset, row, &active))
+                    .map(|(offset, row)| row_view(start + offset, row, &default))
                     .collect();
                 (kind, views)
             })
@@ -128,7 +173,7 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
         let (title, help) = section_text(kind);
         let rows = views
             .into_iter()
-            .map(|view| model_row(palette, models, view))
+            .map(|view| model_row(palette, models, view, Place::Models))
             .collect();
         page = page.child(ui::titled_section(
             palette,
@@ -146,6 +191,24 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
         ));
     }
     page
+}
+
+/// The speech rows as the model step of onboarding shows them: the rows of the Models view,
+/// with a progress bar in place of the description while a model downloads.
+pub fn speech_rows(palette: Palette, models: &Entity<Models>, cx: &App) -> Vec<AnyElement> {
+    let views: Vec<RowView> = {
+        let models = models.read(cx);
+        let default = models.effective();
+        let (start, rows) = models.of_kind(ModelKind::Speech);
+        rows.iter()
+            .enumerate()
+            .map(|(offset, row)| row_view(start + offset, row, &default))
+            .collect()
+    };
+    views
+        .into_iter()
+        .map(|view| model_row(palette, models, view, Place::Onboarding))
+        .collect()
 }
 
 /// The group that says no model matches, with a button that clears the search.
@@ -198,12 +261,13 @@ pub fn search_field(models: &Entity<Models>, cx: &App) -> Option<impl IntoElemen
     )
 }
 
-fn row_view(index: usize, row: &Row, active: &str) -> RowView {
+fn row_view(index: usize, row: &Row, default: &str) -> RowView {
     let detail = match (&row.entry.info, row.state) {
         (_, ModelState::Failed) => super::failure_text(&row.entry),
         (Some(info), _) => info.description.clone(),
         (None, _) => languages_text(row.entry.languages).to_owned(),
     };
+    let speech = row.entry.kind == ModelKind::Speech;
     RowView {
         index,
         kind: row.entry.kind,
@@ -213,36 +277,223 @@ fn row_view(index: usize, row: &Row, active: &str) -> RowView {
         recommended: row.recommended,
         state: row.state,
         updating: row.updating,
-        active: row.entry.kind == ModelKind::Speech && row.entry.id == active,
+        default: speech && row.entry.id == default,
+        meters: row
+            .entry
+            .info
+            .as_ref()
+            .filter(|_| speech)
+            .map(|info| (info.accuracy, info.speed)),
         focus: row.focus.clone(),
     }
 }
 
-/// The buttons a row offers in its state. Only a speech model can be put to use here; Settings
-/// chooses the cleanup model, and Read aloud the voice.
+/// The buttons a row offers in its state, after Details. Only a speech model can be made the
+/// default here; Settings chooses the cleanup model, and Read aloud the voice. A failed row
+/// offers all three, so the user can replace it, choose it (which says why it cannot be used),
+/// or delete it.
 fn actions(view: &RowView) -> Vec<Action> {
-    let mut actions = match view.state {
-        ModelState::NotDownloaded | ModelState::Failed => vec![Action::Download],
+    let speech = view.kind == ModelKind::Speech;
+    match view.state {
+        ModelState::NotDownloaded => vec![Action::Download],
         ModelState::Downloading { .. } => vec![Action::Cancel],
-        ModelState::Verifying | ModelState::Ready => Vec::new(),
-    };
-    if matches!(view.state, ModelState::Ready | ModelState::Failed) {
-        if view.kind == ModelKind::Speech && !view.active {
-            actions.push(Action::Use);
+        ModelState::Verifying => Vec::new(),
+        ModelState::Ready if speech && !view.default => vec![Action::SetDefault, Action::Delete],
+        ModelState::Ready => vec![Action::Delete],
+        ModelState::Failed if speech => {
+            vec![Action::Download, Action::SetDefault, Action::Delete]
         }
-        actions.push(Action::Delete);
+        ModelState::Failed => vec![Action::Download, Action::Delete],
     }
-    actions
 }
 
-/// Lightest to heaviest: the size, the status, the details button, then the buttons.
-fn model_row(palette: Palette, models: &Entity<Models>, view: RowView) -> AnyElement {
+/// The name, Recommended, and the state word over the description; then, lightest to heaviest,
+/// the meters, the size, and the four icon slots. Every column has a fixed width, and a button
+/// keeps its slot in every row, so they line up from row to row.
+fn model_row(palette: Palette, models: &Entity<Models>, view: RowView, place: Place) -> AnyElement {
     let index = view.index;
-    let info = {
+    let word = state_word(palette, view.state, view.default, view.updating);
+    let name_line = div()
+        .flex()
+        .items_baseline()
+        .gap(px(space::SM))
+        .child(
+            ui::title(palette)
+                .id(place.id("name", index))
+                .test_support()
+                .child(view.name.clone()),
+        )
+        .children(view.recommended.then(|| {
+            div()
+                .id(place.id("recommended", index))
+                .test_support()
+                .flex_none()
+                .text_token(SECONDARY)
+                .text_color(palette.label_secondary)
+                .child("Recommended")
+        }))
+        .children(word.map(|(text, tone)| {
+            div()
+                .id(place.id("state", index))
+                .test_support()
+                .role(Role::Status)
+                .aria_label(text.clone())
+                .flex_none()
+                .whitespace_nowrap()
+                .text_token(SECONDARY)
+                .text_color(tone)
+                .child(text)
+        }));
+    let downloading = matches!(view.state, ModelState::Downloading { .. });
+    let under = if place == Place::Onboarding && downloading {
+        let fraction = view
+            .state
+            .percent()
+            .map_or(0.0, |percent| percent as f32 / 100.0);
+        div()
+            .flex()
+            .items_center()
+            .w_full()
+            .h(px(line_height(SECONDARY)))
+            .child(
+                ui::track(palette, fraction)
+                    .id(place.id("progress", index))
+                    .test_support()
+                    .role(Role::ProgressIndicator)
+                    .aria_label("Download progress"),
+            )
+            .into_any_element()
+    } else {
+        ui::secondary(palette)
+            .id(place.id("detail", index))
+            .test_support()
+            .w_full()
+            .child(view.detail.clone())
+            .into_any_element()
+    };
+    let controls = div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(space::SM))
+        .children(
+            view.meters
+                .map(|(accuracy, speed)| meters(palette, place, index, accuracy, speed)),
+        )
+        .child(
+            ui::value(palette)
+                .id(place.id("size", index))
+                .test_support()
+                .w(px(size::MODEL_SIZE_WIDTH))
+                .text_right()
+                .child(format_size(view.bytes)),
+        )
+        .child(icon_slots(palette, models, place, &view));
+
+    ui::row(palette)
+        .id(place.id("row", index))
+        .test_support()
+        .gap(px(space::MD))
+        .child(ui::text_column().child(name_line).child(under))
+        .child(controls)
+        .into_any_element()
+}
+
+/// The height of one line of `token` text.
+fn line_height(token: theme::TextToken) -> f32 {
+    token.size * token.line_height
+}
+
+/// Accuracy over speed, each a label and five dots, lined up with the name and the description.
+fn meters(palette: Palette, place: Place, index: usize, accuracy: u8, speed: u8) -> AnyElement {
+    div()
+        .flex_none()
+        .flex()
+        .flex_col()
+        .w(px(size::MODEL_METER_WIDTH))
+        .child(meter(
+            palette,
+            place.id("accuracy", index),
+            "Accuracy",
+            accuracy,
+            ACCURACY,
+            line_height(BODY),
+        ))
+        .child(meter(
+            palette,
+            place.id("speed", index),
+            "Speed",
+            speed,
+            SPEED,
+            line_height(SECONDARY),
+        ))
+        .into_any_element()
+}
+
+/// One meter: its label, then `value` of five dots filled. Its name and tooltip say it in
+/// words, such as `Accuracy: High (4 of 5)`.
+fn meter(
+    palette: Palette,
+    id: SharedString,
+    label: &'static str,
+    value: u8,
+    words: [&str; 5],
+    height: f32,
+) -> impl IntoElement {
+    let text = format!("{label}: {}", scale(value, words));
+    let dots = (1..=5).map(|dot| {
+        div()
+            .flex_none()
+            .size(px(size::MODEL_DOT))
+            .rounded(px(radius::FULL))
+            .bg(if dot <= value {
+                palette.label_secondary
+            } else {
+                palette.label_tertiary
+            })
+    });
+    let line = div()
+        .id(id)
+        .test_support()
+        .role(Role::Image)
+        .aria_label(text.clone())
+        .flex()
+        .items_center()
+        .gap(px(size::MODEL_METER_GAP))
+        .h(px(height))
+        .child(
+            div()
+                .flex_none()
+                .w(px(size::MODEL_METER_LABEL))
+                .whitespace_nowrap()
+                .text_token(SECONDARY)
+                .text_color(palette.label_secondary)
+                .child(label),
+        )
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .gap(px(size::MODEL_DOT_GAP))
+                .children(dots),
+        );
+    ui::tooltip(line, text)
+}
+
+/// Details, then Download or Cancel, Set as default, and Delete, each in its own slot. A slot
+/// with no button stays empty.
+fn icon_slots(
+    palette: Palette,
+    models: &Entity<Models>,
+    place: Place,
+    view: &RowView,
+) -> AnyElement {
+    let index = view.index;
+    let details = {
         let models = models.clone();
         ui::icon_button(
             palette,
-            hook::indexed("models", "info", index),
+            place.id("info", index),
             IconName::Info,
             format!("Details of {}", view.name),
             "Details",
@@ -251,110 +502,77 @@ fn model_row(palette: Palette, models: &Entity<Models>, view: RowView) -> AnyEle
                 models.update(cx, |models, cx| models.open_details(index, window, cx));
             },
         )
+        .into_any_element()
     };
-    let buttons: Vec<AnyElement> = actions(&view)
-        .into_iter()
-        .map(|action| button(palette, models, index, action, &view.focus[action.slot()]))
-        .collect();
-    let (status, tone) = status_text(palette, view.state, view.active, view.updating);
-    let controls = div()
+    let actions = actions(view);
+    let slots = [PRIMARY, SET_DEFAULT, DELETE].map(|slot| {
+        actions
+            .iter()
+            .find(|action| action.slot() == slot)
+            .map_or_else(
+                || {
+                    div()
+                        .flex_none()
+                        .size(px(size::BUTTON_HEIGHT))
+                        .into_any_element()
+                },
+                |action| button(palette, models, place, view, *action),
+            )
+    });
+    div()
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(space::SM))
-        .child(
-            ui::value(palette)
-                .id(hook::indexed("models", "size", index))
-                .test_support()
-                .min_w(px(size::MODEL_SIZE_WIDTH))
-                .text_right()
-                .child(format_size(view.bytes)),
-        )
-        .child(
-            ui::value(palette)
-                .id(hook::indexed("models", "status", index))
-                .test_support()
-                .min_w(px(size::MODEL_STATUS_WIDTH))
-                .text_right()
-                .text_color(tone)
-                .child(status),
-        )
-        .child(info)
-        .child(
-            div()
-                .min_w(px(size::MODEL_ACTIONS_WIDTH))
-                .flex()
-                .justify_end()
-                .gap(px(space::SM))
-                .children(buttons),
-        );
-
-    ui::row(palette)
-        .id(hook::indexed("models", "row", index))
-        .test_support()
-        .child(
-            ui::text_column()
-                .child(
-                    div()
-                        .flex()
-                        .items_baseline()
-                        .gap(px(space::SM))
-                        .child(
-                            ui::title(palette)
-                                .id(hook::indexed("models", "name", index))
-                                .test_support()
-                                .child(view.name),
-                        )
-                        .children(view.recommended.then(|| {
-                            div()
-                                .id(hook::indexed("models", "recommended", index))
-                                .test_support()
-                                .flex_none()
-                                .text_token(SECONDARY)
-                                .text_color(palette.label_secondary)
-                                .child("Recommended")
-                        })),
-                )
-                .child(
-                    ui::secondary(palette)
-                        .id(hook::indexed("models", "detail", index))
-                        .test_support()
-                        .w_full()
-                        .child(view.detail),
-                ),
-        )
-        .child(controls)
+        .gap(px(size::MODEL_ICON_GAP))
+        .child(details)
+        .children(slots)
         .into_any_element()
 }
 
-/// The state of a model in words, with its color. Only the words that name a result take a
-/// status color.
-pub(super) fn status_text(
+/// The word after the name of a row, with its color. A model that is downloaded, or not, has
+/// none; only a failure takes a status color.
+pub(super) fn state_word(
     palette: Palette,
     state: ModelState,
-    active: bool,
+    default: bool,
     updating: bool,
-) -> (String, Rgba) {
+) -> Option<(String, Rgba)> {
     match state {
-        ModelState::NotDownloaded => ("Not downloaded".to_owned(), palette.label_secondary),
-        ModelState::Downloading { .. } if updating => (
+        ModelState::NotDownloaded => None,
+        ModelState::Downloading { .. } if updating => Some((
             state.percent().map_or_else(
                 || "Updating".into(),
                 |percent| format!("Updating {percent}%"),
             ),
             palette.label,
-        ),
-        ModelState::Downloading { .. } => (
+        )),
+        ModelState::Downloading { .. } => Some((
             state
                 .percent()
                 .map_or_else(|| "Starting".into(), |percent| format!("{percent}%")),
             palette.label,
-        ),
-        ModelState::Verifying => ("Checking".to_owned(), palette.label_secondary),
-        ModelState::Ready if active => ("Active".to_owned(), palette.success),
-        ModelState::Ready => ("Downloaded".to_owned(), palette.label_secondary),
-        ModelState::Failed => ("Failed verification".to_owned(), palette.error),
+        )),
+        ModelState::Verifying => Some(("Checking".to_owned(), palette.label_secondary)),
+        ModelState::Ready if default => Some(("Default".to_owned(), palette.label_secondary)),
+        ModelState::Ready => None,
+        ModelState::Failed => Some(("Failed verification".to_owned(), palette.error)),
     }
+}
+
+/// The state of a model in words for the Status fact of its details sheet.
+pub(super) fn status_text(
+    palette: Palette,
+    state: ModelState,
+    default: bool,
+    updating: bool,
+) -> String {
+    state_word(palette, state, default, updating).map_or_else(
+        || match state {
+            ModelState::Ready => "Downloaded".to_owned(),
+            _ => "Not downloaded".to_owned(),
+        },
+        |(word, _)| word,
+    )
 }
 
 pub(super) fn languages_text(languages: Languages) -> &'static str {
@@ -365,13 +583,27 @@ pub(super) fn languages_text(languages: Languages) -> &'static str {
     }
 }
 
+/// The words for 1 to 5 on the speed and the accuracy scales.
+pub(super) const SPEED: [&str; 5] = ["Slowest", "Slow", "Moderate", "Fast", "Fastest"];
+pub(super) const ACCURACY: [&str; 5] = ["Basic", "Fair", "Good", "High", "Highest"];
+
+/// `Fast (4 of 5)`.
+pub(super) fn scale(value: u8, words: [&str; 5]) -> String {
+    let word = words
+        .get(usize::from(value.saturating_sub(1)))
+        .copied()
+        .unwrap_or_default();
+    format!("{word} ({value} of 5)")
+}
+
 fn button(
     palette: Palette,
     models: &Entity<Models>,
-    index: usize,
+    place: Place,
+    view: &RowView,
     action: Action,
-    focus: &FocusHandle,
 ) -> AnyElement {
+    let index = view.index;
     let press = {
         let models = models.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -383,19 +615,19 @@ fn button(
                 let _ = match action {
                     Action::Download => models.download(&id, cx),
                     Action::Cancel => models.cancel(&id, cx),
-                    Action::Use => models.select(&id, cx),
+                    Action::SetDefault => models.select(&id, cx),
                     Action::Delete => models.delete(&id, cx),
                 };
             });
         }
     };
-    ui::button(
+    ui::icon_button(
         palette,
-        hook::indexed("models", action.element(), index),
-        action.label(),
-        Kind::Plain,
-        Some(focus),
-        true,
+        place.id(action.element(), index),
+        action.icon(),
+        action.label(view),
+        action.tooltip(),
+        &view.focus[action.slot()],
         press,
     )
     .into_any_element()
@@ -415,9 +647,19 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+/// The names of the section a row is listed in, for the search: its heading, and the name it
+/// had before.
+pub(super) fn section_names(kind: ModelKind) -> &'static [&'static str] {
+    match kind {
+        ModelKind::Speech => &["speech to text", "speech recognition"],
+        ModelKind::Cleanup => &["text cleanup"],
+        ModelKind::Voice => &["text to speech", "voices"],
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::format_size;
+    use super::{ACCURACY, SPEED, format_size, scale};
 
     #[test]
     fn sizes_use_decimal_megabytes_then_gigabytes() {
@@ -425,5 +667,12 @@ mod tests {
         assert_eq!(format_size(1_624_555_275), "1.6 GB");
         assert_eq!(format_size(999_000_000), "999 MB");
         assert_eq!(format_size(48_200), "48 KB");
+    }
+
+    #[test]
+    fn a_scale_names_the_word_and_the_value_of_five() {
+        assert_eq!(scale(4, ACCURACY), "High (4 of 5)");
+        assert_eq!(scale(1, SPEED), "Slowest (1 of 5)");
+        assert_eq!(scale(5, SPEED), "Fastest (5 of 5)");
     }
 }

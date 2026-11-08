@@ -51,8 +51,8 @@ pub fn attach(cx: &mut App, models: Entity<Models>) {
     let _ = register_action(
         cx,
         "model-delete",
-        "Delete a downloaded model like the Delete button. The active model is refused with \
-         MODEL_IN_USE. Args: {\"id\": \"base.en\"}.",
+        "Delete a downloaded model like the Delete button. Deleting the default speech model \
+         makes the first other downloaded one the default. Args: {\"id\": \"base.en\"}.",
         {
             let models = models.clone();
             move |cx, args| {
@@ -65,8 +65,8 @@ pub fn attach(cx: &mut App, models: Entity<Models>) {
     let _ = register_action(
         cx,
         "model-select",
-        "Make a verified model the active one like the Use button. A model that failed \
-         verification is refused. Args: {\"id\": \"base.en\"}.",
+        "Make a verified speech model the default like the Set as default button. A model \
+         that failed verification is refused. Args: {\"id\": \"base.en\"}.",
         move |cx, args| {
             let id = model_id(&args)?;
             models.update(cx, |models, cx| models.select(&id, cx))?;

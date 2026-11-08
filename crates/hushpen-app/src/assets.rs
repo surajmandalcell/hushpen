@@ -61,6 +61,7 @@ icon_assets!(
         Share,
         RefreshCw,
         Trash,
+        Star,
         Pencil,
         Play,
         Pause,

@@ -1,7 +1,7 @@
 //! The search of the Models view: the field at the right end of the title row and the rows it
 //! keeps. The query is never saved.
 
-use super::panel::{format_size, languages_text};
+use super::panel::{format_size, languages_text, section_names};
 use super::{Models, Row};
 use crate::hook;
 use gpui_kit::component::input::{InputEvent, InputState};
@@ -18,8 +18,19 @@ pub(super) struct Search {
 }
 
 /// Whether `row` matches every word of `query`, in its name, description, languages, size, or
-/// the word Recommended. Case does not matter; an empty query matches every row.
+/// the word Recommended, or the whole query is part of the name of its section. The section
+/// takes the whole query, so "text to speech" keeps the voices and not the speech to text rows.
+/// Case does not matter; an empty query matches every row.
 pub fn matches(row: &Row, query: &str) -> bool {
+    let phrase = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    let phrase = phrase.to_lowercase();
+    if !phrase.is_empty()
+        && section_names(row.entry.kind)
+            .iter()
+            .any(|name| name.contains(&phrase))
+    {
+        return true;
+    }
     let mut haystack = format!(
         "{} {} {} {}",
         row.entry.name,

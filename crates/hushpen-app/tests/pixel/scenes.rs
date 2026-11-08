@@ -102,7 +102,7 @@ pub enum Scene {
     HistoryReadDetail,
     Dictionary,
     Files(FilesShot),
-    /// The speech models, with the default one downloaded and active.
+    /// The speech models, with the default one and Whisper Base downloaded.
     Models,
     /// Models scrolled to the end: the cleanup and voice sections.
     ModelsBottom,
@@ -663,8 +663,23 @@ fn queue_runner() -> ImportRunner {
 fn seed_model(storage: &Storage) {
     let entry = hushpen_core::catalog::embedded()
         .default_whisper()
-        .expect("a default model")
-        .clone();
+        .expect("a default model");
+    seed_speech(storage, entry);
+}
+
+/// The default speech model and Whisper Base, so the Models view shows the default and a
+/// downloaded model that can be made the default.
+fn seed_models(storage: &Storage) {
+    seed_model(storage);
+    let base = hushpen_core::catalog::embedded()
+        .whisper
+        .iter()
+        .find(|entry| entry.id == "base-q5_1")
+        .expect("Whisper Base in the catalog");
+    seed_speech(storage, base);
+}
+
+fn seed_speech(storage: &Storage, entry: &hushpen_core::catalog::ModelEntry) {
     let dir = storage.data.whisper_models_dir();
     std::fs::create_dir_all(&dir).expect("create the models folder");
     for file in &entry.files {
@@ -838,7 +853,7 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
         | Scene::ModelsBottom
         | Scene::ModelsDetails
         | Scene::ModelsSearch
-        | Scene::ModelsNoMatch => seed_model(&storage),
+        | Scene::ModelsNoMatch => seed_models(&storage),
         // Automatic names the CPU count, which differs between machines.
         Scene::Settings(shot) => {
             storage
