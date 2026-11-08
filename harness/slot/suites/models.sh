@@ -49,7 +49,7 @@ fresh() {
   start_app
 }
 
-# select_model <id>: waits until the model is verified, then chooses it like the Use button
+# select_model <id>: waits until the model is verified, then chooses it like Set as default
 select_model() {
   wait_until 30 m_is "$1" .state ready || return 1
   hook_action model-select "{\"id\":\"$1\"}" >/dev/null
@@ -223,27 +223,31 @@ job=$(grep " JOB " "$RUN_OUT/005-engine.log" | tail -1)
 case "$job" in *base-q5_1*) ;; *) failures+="the job did not use base-q5_1: $job; " ;; esac
 check_failures "VAL-MOD-005 changed file" "small-q5_1 failed, select refused with $code, base-q5_1 stays active, no engine load of small-q5_1; job: $job" "$failures"
 
-echo "== VAL-MOD-008 delete, and the active model cannot be deleted"
+echo "== VAL-MOD-008 delete, and deleting the default makes another downloaded model the default"
+chosen() { jq -r '.values["dictation.modelId"] // ""' /data/config/settings.json; }
+chosen_is() { [ "$(chosen)" = "$1" ]; }
 fresh base-q5_1 small-q5_1
 select_model base-q5_1
 wait_until 30 m_is small-q5_1 .state ready
 open_models
 shot 008-before
+click_row delete base-q5_1
+wait_until 5 m_is base-q5_1 .state not_downloaded
+shot 008-after-default-delete
+failures=""
+[ ! -e "$MODELS/ggml-base-q5_1.bin" ] || failures+="base-q5_1 .bin is still there; "
+[ ! -e "$MODELS/ggml-base-q5_1.bin.verified" ] || failures+="base-q5_1 stamp is still there; "
+moved=$($HC state | jq -r .models.active)
+[ "$moved" = small-q5_1 ] || failures+="the default is $moved after the delete, not small-q5_1; "
+wait_until 5 chosen_is small-q5_1 || failures+="settings.json names '$(chosen)', not small-q5_1; "
+[ "$($HC state | jq -r .models.notice)" = null ] || failures+="a notice shows: $($HC state | jq -c .models.notice); "
 click_row delete small-q5_1
 wait_until 5 m_is small-q5_1 .state not_downloaded
 shot 008-after-delete
-failures=""
 [ ! -e "$MODELS/ggml-small-q5_1.bin" ] || failures+="small-q5_1 .bin is still there; "
 [ ! -e "$MODELS/ggml-small-q5_1.bin.verified" ] || failures+="small-q5_1 stamp is still there; "
-[ "$(m small-q5_1 .state)" = not_downloaded ] || failures+="small-q5_1 is $(m small-q5_1 .state); "
-click_row delete base-q5_1
-sleep 0.5
-shot 008-in-use
-code=$($HC state | jq -r .models.notice.code)
-[ "$code" = MODEL_IN_USE ] || failures+="notice code is $code; "
-{ [ -f "$MODELS/ggml-base-q5_1.bin" ] && [ -f "$MODELS/ggml-base-q5_1.bin.verified" ]; } || failures+="base-q5_1 file or stamp is gone; "
-[ "$(m base-q5_1 .state)" = ready ] || failures+="base-q5_1 is $(m base-q5_1 .state); "
-check_failures "VAL-MOD-008 delete" "small-q5_1 and its stamp deleted; deleting active base-q5_1 gave $code and kept its file and stamp" "$failures"
+[ -z "$(chosen)" ] || failures+="settings.json still names '$(chosen)' with no model left; "
+check_failures "VAL-MOD-008 delete" "deleting the default base-q5_1 removed its file and stamp and made small-q5_1 the default; deleting small-q5_1 too left no model chosen" "$failures"
 
 echo "== select loads the model in the running engine"
 fresh base-q5_1 small-q5_1
