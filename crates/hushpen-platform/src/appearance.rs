@@ -11,6 +11,10 @@ pub enum Scheme {
     Light,
 }
 
+#[cfg(target_os = "windows")]
+#[path = "appearance/windows.rs"]
+mod imp;
+
 /// What the desktop prefers, or `None` when it does not say (no session bus, no portal, or "no
 /// preference"). The answer is read from the bus each time, because the user can change it while
 /// the app runs. It waits half a second at most for a portal that does not answer.
@@ -77,7 +81,7 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 mod imp {
     use super::Scheme;
 

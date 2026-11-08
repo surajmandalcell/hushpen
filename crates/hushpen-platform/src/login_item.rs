@@ -49,6 +49,11 @@ pub type LoginItem = LinuxLoginItem;
 #[cfg(target_os = "macos")]
 pub type LoginItem = MacLoginItem;
 
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::WindowsLoginItem as LoginItem;
+
 /// The XDG autostart file.
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone)]

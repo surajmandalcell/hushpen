@@ -11,6 +11,10 @@ pub fn system_reduce_motion() -> Option<bool> {
     imp::system_reduce_motion()
 }
 
+#[cfg(target_os = "windows")]
+#[path = "reduce_motion/windows.rs"]
+mod imp;
+
 /// The value `gsettings get ... enable-animations` prints: `true` or `false`. Animations off
 /// means reduce motion.
 pub fn reduce_motion_of_animations(output: &str) -> Option<bool> {
@@ -61,7 +65,7 @@ mod imp {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 mod imp {
     pub(super) fn system_reduce_motion() -> Option<bool> {
         None
