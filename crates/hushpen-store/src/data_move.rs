@@ -87,7 +87,7 @@ pub fn cancel_move_restart(current: &Path, target: &Path, default: &Path) -> Res
                 "the data folder pointer changed before restart".into(),
             ));
         }
-        return point(&default, &current);
+        point(&default, &current)
     }
     #[cfg(not(target_os = "windows"))]
     {
