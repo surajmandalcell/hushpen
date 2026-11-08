@@ -2,12 +2,14 @@
 
 pub mod appearance;
 pub mod insert;
+pub mod instance;
 pub mod keys;
 pub mod local_time;
 pub mod login_item;
 pub mod memory;
 pub mod permissions;
 pub mod reduce_motion;
+pub mod restart;
 pub mod tray_host;
 pub mod window;
 

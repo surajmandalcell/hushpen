@@ -170,7 +170,9 @@ pub struct Settings {
 }
 
 /// How the app hands over to a fresh copy after the move.
-pub type Restart = Rc<dyn Fn(&mut App)>;
+pub type Restart = Rc<
+    dyn Fn(&mut App, &std::path::Path, &std::path::Path, &std::path::Path) -> std::io::Result<()>,
+>;
 
 /// Whether a transcription is running: a dictation after the microphone stopped, or a file
 /// import. A data folder move waits for it, so no history row lands after the old

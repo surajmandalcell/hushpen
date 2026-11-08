@@ -73,6 +73,29 @@ pub fn finish_move_cleanup(current: &Path, target: &Path, default: &Path) -> Res
     clear_old(&current, &default)
 }
 
+/// Keeps the source active when a Windows restart helper did not become ready.
+pub fn cancel_move_restart(current: &Path, target: &Path, default: &Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        let current = absolutize(current)?;
+        let target = absolutize(target)?;
+        let default = absolutize(default)?;
+        marker_check(&current)?;
+        marker_check(&target)?;
+        if absolutize(&data_dir::effective(&default)?)? != target {
+            return Err(Error::MoveFailed(
+                "the data folder pointer changed before restart".into(),
+            ));
+        }
+        return point(&default, &current);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (current, target, default);
+        Ok(())
+    }
+}
+
 fn copy_verify_point(current: &Path, target: &Path, default: &Path) -> Result<Report> {
     fs::create_dir_all(target).map_err(|e| failed(target, "could not create the folder", e))?;
     let report = copy_tree(current, target)?;

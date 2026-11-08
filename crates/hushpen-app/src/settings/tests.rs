@@ -135,8 +135,9 @@ fn rig_with(cx: &mut TestAppContext, login: FakeLogin) -> Rig {
                 mic: mic.clone(),
                 login: Some(login.clone()),
                 default_data_dir: Some(default_dir.clone()),
-                restart: Some(Rc::new(move |_| {
+                restart: Some(Rc::new(move |_, _, _, _| {
                     *recorded.lock().unwrap() += 1;
+                    Ok(())
                 })),
             },
             cx,
@@ -710,7 +711,41 @@ fn a_finished_move_restarts_into_the_new_folder(cx: &mut TestAppContext) {
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
         .collect();
-    assert!(left.is_empty(), "{left:?}");
+    if hushpen_core::os::Os::current() == hushpen_core::os::Os::Windows {
+        assert!(rig.storage.data.root().join("history/history.db").is_file());
+    } else {
+        assert!(left.is_empty(), "{left:?}");
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[gpui_kit::test]
+fn a_failed_restart_keeps_the_original_data_folder_active(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let target = rig._tmp.path().join("failed-restart");
+    std::fs::create_dir_all(&target).unwrap();
+    rig.settings.update(cx, |me, cx| {
+        me.restart = Rc::new(|_, _, _, _| Err(std::io::Error::other("helper stopped")));
+        me.finish_move(Some(target.clone()), cx);
+    });
+    assert_eq!(
+        read(cx, &rig, |me| me.move_state.clone()),
+        MoveState::Failed(DATA_FOLDER_MOVE_FAILED)
+    );
+    assert_eq!(
+        hushpen_store::data_dir::effective(&rig.default_dir)
+            .unwrap()
+            .canonicalize()
+            .unwrap(),
+        rig.storage.data.root().canonicalize().unwrap()
+    );
+    assert!(rig.storage.data.root().join("history/history.db").is_file());
+    assert!(target.join("history/history.db").is_file());
+    assert!(
+        read(cx, &rig, |me| me.notice.clone())
+            .unwrap()
+            .contains("helper stopped")
+    );
 }
 
 type Queue = Rc<std::cell::RefCell<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>>;

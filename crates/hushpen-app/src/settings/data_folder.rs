@@ -86,7 +86,17 @@ impl Settings {
                 self.move_state = MoveState::Restarting;
                 cx.notify();
                 let restart = Rc::clone(&self.restart);
-                restart(cx);
+                if let Err(error) = restart(cx, &current, &target, &default) {
+                    let rollback =
+                        hushpen_store::data_move::cancel_move_restart(&current, &target, &default);
+                    let reason = match rollback {
+                        Ok(()) => format!("The restart could not start: {error}"),
+                        Err(rollback) => format!(
+                            "The restart could not start: {error}. The folder pointer could not be restored: {rollback}"
+                        ),
+                    };
+                    self.move_failed(&reason, cx);
+                }
             }
             Err(error) => {
                 log::warn!("the data folder move failed: {error}");
@@ -136,19 +146,13 @@ async fn pick_folder(cx: &mut gpui_kit::AsyncApp) -> Option<PathBuf> {
 /// Hands the process to a fresh copy of itself, so the store, the database,
 /// and the engine reopen on the new data folder. The helper waits for this
 /// process to end before the new one binds the single-instance socket.
-pub(super) fn restart_into(cx: &mut App) {
-    if let Ok(exe) = std::env::current_exe() {
-        let pid = std::process::id();
-        let _ = std::process::Command::new("/bin/sh")
-            .arg("-c")
-            .arg(format!(
-                "while kill -0 {pid} 2>/dev/null; do sleep 0.1; done; exec \"$0\"",
-            ))
-            .arg(exe)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-    }
+pub(super) fn restart_into(
+    cx: &mut App,
+    current: &std::path::Path,
+    target: &std::path::Path,
+    default: &std::path::Path,
+) -> std::io::Result<()> {
+    hushpen_platform::restart::after_exit(current, target, default)?;
     cx.quit();
+    Ok(())
 }
