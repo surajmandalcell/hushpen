@@ -788,21 +788,31 @@ impl Render for Shell {
         let grip: Option<gpui_kit::Div> = None;
         match onboarding {
             // Opaque: the window is transparent on macOS and onboarding has no sidebar.
-            Some(onboarding) => frame
-                .bg(palette.content)
-                .flex_col()
-                .child(self.title_bar(hook::id("onboarding", "title-bar"), palette, cx))
-                .child(
-                    div()
-                        .id(hook::id("onboarding", "scroll"))
-                        .test_support()
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .child(onboarding::panel::render(&onboarding, window, cx)),
-                )
-                .relative()
-                .children(grip),
+            Some(onboarding) => {
+                // The info button of a model row opens its details sheet on the model step.
+                let sheet = (onboarding.read(cx).step() == hushpen_core::onboarding::Step::Model)
+                    .then(|| onboarding.read(cx).models().clone())
+                    .and_then(|models| models::sheet::render(&models, window, cx));
+                let page = ui::covered(sheet.is_some(), || {
+                    onboarding::panel::render(&onboarding, window, cx).into_any_element()
+                });
+                frame
+                    .bg(palette.content)
+                    .flex_col()
+                    .child(self.title_bar(hook::id("onboarding", "title-bar"), palette, cx))
+                    .child(
+                        div()
+                            .id(hook::id("onboarding", "scroll"))
+                            .test_support()
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .child(page),
+                    )
+                    .relative()
+                    .children(sheet)
+                    .children(grip)
+            }
             None => {
                 let sheet = self
                     .models

@@ -109,7 +109,6 @@ pub struct Onboarding {
     pub(crate) relaunch_focus: FocusHandle,
     pub(crate) continue_focus: FocusHandle,
     pub(crate) mic_focus: FocusHandle,
-    pub(crate) download_focus: FocusHandle,
     pub(crate) practice_focus: FocusHandle,
     pub(crate) record_focus: FocusHandle,
     pub(crate) updates_focus: FocusHandle,
@@ -208,7 +207,6 @@ impl Onboarding {
             relaunch_focus: cx.focus_handle().tab_stop(true),
             continue_focus: cx.focus_handle().tab_stop(true),
             mic_focus: cx.focus_handle().tab_stop(true),
-            download_focus: cx.focus_handle().tab_stop(true),
             practice_focus: cx.focus_handle().tab_stop(true),
             record_focus: cx.focus_handle().tab_stop(true),
             updates_focus: cx.focus_handle().tab_stop(true),
@@ -361,6 +359,9 @@ impl Onboarding {
     fn go(&mut self, step: Step, cx: &mut Context<Self>) {
         self.step = step;
         self.notice = None;
+        // The details sheet of a model belongs to the model step.
+        self.models
+            .update(cx, |models, cx| models.dismiss_details(cx));
         if let Err(error) = self.storage.settings.set_internal(STEP, json!(step.key())) {
             log::warn!("the onboarding step could not be saved: {error}");
         }
@@ -430,6 +431,7 @@ impl Onboarding {
                 "id": self.model_id(cx),
                 "state": model_state.map(|state| state.key()),
                 "progress": model_state.and_then(|state| state.percent()),
+                "downloaded": self.downloaded_models(cx),
                 "ready": self.model_ready(cx),
             },
             "practice": {

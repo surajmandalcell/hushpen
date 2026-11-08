@@ -1,15 +1,22 @@
-//! The model step: the one speech model the step downloads, and its state.
+//! The model step: the speech models the user downloads, and the default among them.
 
 use super::Onboarding;
-use crate::models::ModelState;
-use gpui_kit::{App, Context};
+use crate::models::{ModelState, Models};
+use gpui_kit::{App, Context, Entity};
+use hushpen_core::catalog::ModelKind;
 
 impl Onboarding {
-    /// The id of the model the step downloads: the chosen one, else the catalog default.
+    /// The library the rows of the step act on.
+    pub fn models(&self) -> &Entity<Models> {
+        &self.models
+    }
+
+    /// The id of the default speech model: the chosen one, else the catalog default.
     pub fn model_id(&self, cx: &App) -> String {
         self.models.read(cx).effective()
     }
 
+    /// The state of the default speech model.
     pub fn model_state(&self, cx: &App) -> Option<ModelState> {
         let models = self.models.read(cx);
         let id = models.effective();
@@ -20,15 +27,15 @@ impl Onboarding {
             .map(|row| row.state)
     }
 
-    /// The name and size of the model the step downloads.
-    pub fn model_info(&self, cx: &App) -> Option<(String, u64)> {
-        let models = self.models.read(cx);
-        let id = models.effective();
-        models
+    /// The ids of the speech models that are downloaded and checked.
+    pub fn downloaded_models(&self, cx: &App) -> Vec<String> {
+        self.models
+            .read(cx)
             .rows()
             .iter()
-            .find(|row| row.entry.id == id)
-            .map(|row| (row.entry.name.clone(), row.entry.bytes()))
+            .filter(|row| row.entry.kind == ModelKind::Speech && row.state == ModelState::Ready)
+            .map(|row| row.entry.id.clone())
+            .collect()
     }
 
     /// The failure the Models service last reported, such as a bad checksum.
@@ -39,26 +46,23 @@ impl Onboarding {
             .map(|notice| notice.message.clone())
     }
 
+    /// The step passes once one speech model is downloaded.
     pub fn model_ready(&self, cx: &App) -> bool {
-        self.models.read(cx).usable().is_some()
+        !self.downloaded_models(cx).is_empty()
     }
 
-    pub fn download_model(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        let id = self.model_id(cx);
-        self.models
-            .update(cx, |models, cx| models.download(&id, cx))
-    }
-
-    pub fn cancel_model(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
-        let id = self.model_id(cx);
-        self.models.update(cx, |models, cx| models.cancel(&id, cx))
-    }
-
-    /// The downloaded model becomes the chosen one, so the Models view shows it as active.
+    /// The default becomes the chosen model, so the Models view shows it as the default. When
+    /// the default is not downloaded, the first downloaded speech model becomes the default.
     pub(super) fn choose_default_model(&mut self, cx: &mut Context<Self>) {
-        let id = self.model_id(cx);
+        let id = match self.models.read(cx).usable() {
+            Some(row) => row.entry.id.clone(),
+            None => match self.downloaded_models(cx).into_iter().next() {
+                Some(id) => id,
+                None => return,
+            },
+        };
         self.models.update(cx, |models, cx| {
-            if models.active().is_empty() {
+            if models.active() != id {
                 let _ = models.select(&id, cx);
             }
         });

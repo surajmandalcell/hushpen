@@ -1267,6 +1267,32 @@ fn the_model_step_is_ready_when_the_file_is_there_and_names_the_default(cx: &mut
     );
 }
 
+#[gpui_kit::test]
+fn any_downloaded_speech_model_passes_the_model_step_and_becomes_the_default(
+    cx: &mut TestAppContext,
+) {
+    let other = mac(cx, &["tiny.en"], "");
+    go_to_unchecked(cx, &other, Step::Model);
+    assert!(
+        other.read(cx, |me, cx| me.can_continue(cx)),
+        "one model is enough, even when it is not the catalog default"
+    );
+    other.act(cx, |me, cx| me.advance(cx)).unwrap();
+    assert_eq!(
+        other.settings().get("dictation.modelId"),
+        Some(json!("tiny.en"))
+    );
+
+    let chosen = mac(cx, &["base", "tiny.en"], "tiny.en");
+    go_to_unchecked(cx, &chosen, Step::Model);
+    chosen.act(cx, |me, cx| me.advance(cx)).unwrap();
+    assert_eq!(
+        chosen.settings().get("dictation.modelId"),
+        Some(json!("tiny.en")),
+        "a chosen model stays the default"
+    );
+}
+
 /// Opens a step the way a restart at that step does, without playing the earlier ones.
 fn go_to_unchecked(cx: &mut TestAppContext, fixture: &Fixture, step: Step) {
     fixture.act(cx, |me, cx| me.go(step, cx));
@@ -1890,5 +1916,91 @@ mod window {
         );
         let on = rect(cx, handle, "onboarding.updates.toggle".into());
         assert_eq!((on.2, on.3), (off.2, off.3));
+    }
+
+    /// The model step draws the speech rows of the Models view, with the same icon buttons in
+    /// the same slots, and a progress bar under the name while a model downloads.
+    #[gpui_kit::test]
+    fn the_model_step_shows_the_rows_of_the_models_view(cx: &mut TestAppContext) {
+        use crate::controller::testkit::PARAKEET_ID;
+        let fixture = mac(cx, &["base", "tiny.en"], "tiny.en");
+        go_to_unchecked(cx, &fixture, Step::Model);
+        let handle = open(cx, &fixture);
+
+        assert_eq!(
+            label(cx, handle, "onboarding.model.select.0").as_deref(),
+            Some("Set base as default")
+        );
+        assert!(
+            !present(cx, handle, "onboarding.model.state.0"),
+            "no word for a downloaded model"
+        );
+        assert_eq!(
+            label(cx, handle, "onboarding.model.state.1").as_deref(),
+            Some("Default")
+        );
+        assert!(
+            !present(cx, handle, "onboarding.model.select.1"),
+            "the default is not offered again"
+        );
+        assert_eq!(
+            label(cx, handle, "onboarding.model.delete.1").as_deref(),
+            Some("Delete tiny.en")
+        );
+        assert_eq!(
+            label(cx, handle, "onboarding.model.download.2"),
+            Some(format!("Download {PARAKEET_ID}"))
+        );
+        assert!(
+            !present(cx, handle, "onboarding.model.state.2"),
+            "no word for a model that is not downloaded"
+        );
+        let download = rect(cx, handle, "onboarding.model.download.2".into());
+        let select = rect(cx, handle, "onboarding.model.select.0".into());
+        let delete = rect(cx, handle, "onboarding.model.delete.0".into());
+        assert_eq!((download.2, download.3), (22.0, 22.0), "an icon button");
+        assert!(download.0 < select.0 && select.0 < delete.0);
+        assert_eq!(
+            rect(cx, handle, "onboarding.model.delete.1".into()).0,
+            delete.0,
+            "each button keeps its slot from row to row"
+        );
+
+        fixture
+            .rig
+            .models
+            .update(cx, |models, cx| models.download(PARAKEET_ID, cx))
+            .unwrap();
+        frame(cx, handle);
+        assert!(present(cx, handle, "onboarding.model.progress.2"));
+        assert!(!present(cx, handle, "onboarding.model.detail.2"));
+        assert_eq!(
+            rect(cx, handle, "onboarding.model.cancel.2".into()).0,
+            download.0,
+            "Cancel takes the place of Download"
+        );
+        assert!(
+            !fixture.read(cx, |me, cx| me
+                .downloaded_models(cx)
+                .contains(&PARAKEET_ID.to_owned())),
+            "a download in progress does not count"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn the_details_button_of_the_model_step_opens_the_sheet_and_esc_returns(
+        cx: &mut TestAppContext,
+    ) {
+        let fixture = mac(cx, &["tiny.en"], "tiny.en");
+        go_to_unchecked(cx, &fixture, Step::Model);
+        let handle = open(cx, &fixture);
+
+        tab_to(cx, handle, "onboarding.model.info.1");
+        press(cx, handle, "enter");
+        assert!(present(cx, handle, "models.sheet"));
+        assert!(focused(cx, handle, "models.sheet.done"));
+        press(cx, handle, "escape");
+        assert!(!present(cx, handle, "models.sheet"));
+        assert!(focused(cx, handle, "onboarding.model.info.1"));
     }
 }
