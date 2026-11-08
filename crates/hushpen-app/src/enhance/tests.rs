@@ -149,7 +149,7 @@ fn rig(cx: &mut TestAppContext, ear: Ear) -> Rig {
                 mic: mic.clone(),
                 login: None,
                 default_data_dir: Some(tmp.path().join("default")),
-                restart: Some(Rc::new(|_| {})),
+                restart: Some(Rc::new(|_, _, _, _| Ok(()))),
             },
             cx,
         )
