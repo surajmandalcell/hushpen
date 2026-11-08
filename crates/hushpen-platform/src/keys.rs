@@ -15,6 +15,8 @@ mod keymap;
 pub mod session;
 pub mod tap;
 
+#[cfg(target_os = "windows")]
+mod windows;
 #[cfg(target_os = "linux")]
 mod x11;
 
@@ -101,7 +103,9 @@ pub struct GlobalKeys {
     inner: x11::X11Keys,
     #[cfg(target_os = "macos")]
     inner: macos::MacKeys,
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    inner: windows::WindowsKeys,
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     inner: (),
 }
 
@@ -114,29 +118,29 @@ impl GlobalKeys {
 
     /// Swaps the live shortcuts. A hold that is on is let go first.
     pub fn set_bindings(&self, bindings: Bindings) {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         self.inner.set_bindings(bindings);
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         let _ = bindings;
     }
 
     /// Opens the recorder: no live shortcut fires until it reports a result or is stopped.
     pub fn start_recording(&self) {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         self.inner.start_recording();
     }
 
     pub fn stop_recording(&self) {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         self.inner.stop_recording();
     }
 
     /// What else already runs this chord, and how the user frees it: another X client that
     /// grabbed it, or a macOS system shortcut that is on.
     pub fn conflict(&self, combo: &Combo) -> Option<Conflict> {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         return self.inner.conflict(combo);
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         {
             let _ = combo;
             None
@@ -153,9 +157,9 @@ impl GlobalKeys {
     /// Esc belongs to the pipeline while a session runs and to the focused app otherwise.
     /// X11 grabs Esc only while `active`; macOS only listens, so Esc always reaches the app.
     pub fn set_session_active(&self, active: bool) {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         self.inner.set_session_active(active);
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         let _ = active;
     }
 }
@@ -184,7 +188,14 @@ fn start(bindings: Bindings, sink: Sink, record: RecordSink) -> Result<GlobalKey
     })
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(target_os = "windows")]
+fn start(bindings: Bindings, sink: Sink, record: RecordSink) -> Result<GlobalKeys, Unavailable> {
+    Ok(GlobalKeys {
+        inner: windows::WindowsKeys::start(bindings, sink, record)?,
+    })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn start(_bindings: Bindings, _sink: Sink, _record: RecordSink) -> Result<GlobalKeys, Unavailable> {
     Err(Unavailable::new(
         Reason::Unsupported,

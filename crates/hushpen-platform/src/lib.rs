@@ -13,5 +13,8 @@ pub mod window;
 
 #[cfg(target_os = "macos")]
 mod keyboard_layout;
+#[cfg(target_os = "windows")]
+#[path = "keyboard_layout/windows.rs"]
+mod keyboard_layout;
 #[cfg(target_os = "linux")]
 mod x11util;
