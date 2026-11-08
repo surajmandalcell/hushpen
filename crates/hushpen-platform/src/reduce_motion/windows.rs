@@ -1,9 +1,9 @@
 #![allow(unsafe_code)]
 
-use windows::core::BOOL;
 use windows::Win32::UI::WindowsAndMessaging::{
     SPI_GETCLIENTAREAANIMATION, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
 };
+use windows::core::BOOL;
 
 pub(super) fn system_reduce_motion() -> Option<bool> {
     let mut animations = BOOL(1);
