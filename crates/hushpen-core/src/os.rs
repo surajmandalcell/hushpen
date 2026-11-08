@@ -31,6 +31,7 @@ impl Os {
                 global_keys: true,
                 paste: true,
                 translucent: true,
+                overlay_translucent: true,
             },
             Self::Linux => Capabilities {
                 page_out: true,
@@ -38,6 +39,7 @@ impl Os {
                 global_keys: x11,
                 paste: x11,
                 translucent: compositor,
+                overlay_translucent: compositor,
             },
             Self::Windows => Capabilities {
                 page_out: false,
@@ -45,6 +47,7 @@ impl Os {
                 global_keys: true,
                 paste: true,
                 translucent: compositor,
+                overlay_translucent: true,
             },
         }
     }
@@ -58,6 +61,8 @@ pub struct Capabilities {
     pub global_keys: bool,
     pub paste: bool,
     pub translucent: bool,
+    /// Transparent overlay corners do not require a native sidebar material.
+    pub overlay_translucent: bool,
 }
 
 #[cfg(test)]
@@ -82,13 +87,20 @@ mod tests {
             for compositor in [false, true] {
                 let caps = Os::Linux.capabilities(x11, compositor);
                 assert_eq!(
-                    (caps.global_keys, caps.paste, caps.translucent),
-                    (x11, x11, compositor)
+                    (
+                        caps.global_keys,
+                        caps.paste,
+                        caps.translucent,
+                        caps.overlay_translucent
+                    ),
+                    (x11, x11, compositor, compositor)
                 );
-                assert!(Os::Mac.capabilities(x11, compositor).translucent);
+                let mac = Os::Mac.capabilities(x11, compositor);
+                assert_eq!((mac.translucent, mac.overlay_translucent), (true, true));
+                let windows = Os::Windows.capabilities(x11, compositor);
                 assert_eq!(
-                    Os::Windows.capabilities(x11, compositor).translucent,
-                    compositor
+                    (windows.translucent, windows.overlay_translucent),
+                    (compositor, true)
                 );
             }
         }
