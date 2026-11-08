@@ -20,7 +20,7 @@ use windows::Win32::Security::{
 };
 use windows::Win32::Storage::FileSystem::{
     CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ,
-    GetDiskFreeSpaceExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    GetDiskFreeSpaceExW,
 };
 use windows::Win32::System::Com::{
     COINIT_APARTMENTTHREADED, CoInitializeEx, CoTaskMemFree, CoUninitialize,
@@ -76,17 +76,8 @@ pub(crate) fn free_bytes(path: &Path) -> io::Result<u64> {
 }
 
 pub(crate) fn replace(temp: &Path, path: &Path) -> io::Result<()> {
-    let temp = wide(temp)?;
-    let path = wide(path)?;
-    // SAFETY: both paths are terminated. The caller closed and synced the temp file.
-    unsafe {
-        MoveFileExW(
-            PCWSTR(temp.as_ptr()),
-            PCWSTR(path.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    }
-    .map_err(io::Error::other)
+    // Rust also uses FileRenameInfoEx when MoveFileExW cannot replace an open reader's file.
+    std::fs::rename(temp, path)
 }
 
 fn current_user_sid() -> io::Result<String> {
@@ -308,7 +299,11 @@ mod tests {
             "an existing file must not be truncated"
         );
         crate::atomic::write_private(&path, b"first", 0o600).unwrap();
+        let mut reader = File::open(&path).unwrap();
         crate::atomic::write_private(&path, b"second", 0o600).unwrap();
+        let mut original = String::new();
+        std::io::Read::read_to_string(&mut reader, &mut original).unwrap();
+        assert_eq!(original, "first");
         assert_eq!(std::fs::read(&path).unwrap(), b"second");
         assert_private(&path);
     }
