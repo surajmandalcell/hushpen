@@ -1,5 +1,124 @@
 use super::*;
 
+fn machine_with_offer() -> Machine {
+    let mut machine = Machine::default();
+    let run = machine.begin_check().unwrap();
+    assert!(machine.finish_check(run, Ok(Offer::Available(manifest_with(&["macos-arm64"])))));
+    machine
+}
+
+#[test]
+fn cancelled_checks_ignore_late_answers_and_retry_with_a_new_generation() {
+    let mut machine = Machine::default();
+    assert_eq!(machine.state(), &State::Idle);
+    assert!(!machine.check_due(false, 0, 100));
+    assert!(machine.check_due(true, 0, 100));
+    let old = machine.begin_check().unwrap();
+    assert_eq!(machine.state(), &State::Checking);
+    assert!(!machine.can_check());
+    assert_eq!(machine.begin_check(), None);
+    machine.checks_changed(false);
+    assert_eq!(machine.state(), &State::Idle);
+    assert!(!machine.finish_check(old, Ok(Offer::UpToDate)));
+    let current = machine.begin_check().unwrap();
+    assert_ne!(old, current);
+    assert!(!machine.finish_check(old, Ok(Offer::UpToDate)));
+    let error = CheckError::new("test", "offline");
+    assert!(machine.finish_check(current, Err(error.clone())));
+    assert_eq!(machine.state(), &State::Error(error));
+    assert!(machine.can_check());
+    let retry = machine.begin_check().unwrap();
+    assert!(machine.finish_check(retry, Ok(Offer::UpToDate)));
+    assert_eq!(machine.state(), &State::UpToDate);
+}
+
+#[test]
+fn the_machine_stages_only_an_offer_and_waits_for_restart() {
+    let mut machine = machine_with_offer();
+    assert!(!machine.should_install(false));
+    assert!(machine.should_install(true));
+    assert!(matches!(
+        machine.install(InstallKind::App, Some("macos-arm64")),
+        Some(Delivery::Artifact(_))
+    ));
+    assert!(!machine.should_install(true));
+    assert!(!machine.can_check());
+    assert!(!machine.can_restart());
+    assert_eq!(machine.install(InstallKind::App, Some("macos-arm64")), None);
+    assert!(machine.downloading(Some(42)));
+    assert!(matches!(machine.state(), State::Downloading(_, Some(42))));
+    assert!(machine.finish_stage(Ok(())));
+    assert!(machine.can_restart());
+    assert!(!machine.downloading(Some(43)));
+    assert!(!machine.finish_stage(Err(CheckError::new("late", "ignored"))));
+    assert_eq!(
+        machine.banner_kind(InstallKind::App, Some("macos-arm64"), true, None),
+        Some(BannerKind::Restart)
+    );
+    assert_eq!(machine.dismiss(), None);
+    assert_eq!(
+        machine.banner_kind(InstallKind::App, Some("macos-arm64"), false, None),
+        None
+    );
+    let error = CheckError::new("swap", "helper could not start");
+    machine.failed(error.clone());
+    assert_eq!(machine.state(), &State::Error(error));
+    assert!(machine.can_check());
+}
+
+#[test]
+fn banner_and_install_choices_keep_package_ownership_and_dismissal() {
+    let mut machine = machine_with_offer();
+    let version = machine
+        .state()
+        .manifest()
+        .unwrap()
+        .version
+        .as_str()
+        .to_owned();
+    for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Tar] {
+        assert_eq!(machine.install(kind, Some("linux-x64")), None);
+        assert_eq!(
+            machine.banner_kind(kind, Some("linux-x64"), true, None),
+            Some(BannerKind::Notice)
+        );
+        assert_eq!(
+            machine.banner_kind(kind, Some("linux-x64"), true, Some(&version)),
+            None
+        );
+    }
+    assert_eq!(
+        machine.install(InstallKind::Unknown, None),
+        Some(Delivery::Unpackaged)
+    );
+    assert!(matches!(machine.state(), State::Available(_)));
+    assert_eq!(
+        machine.banner_kind(InstallKind::Unknown, None, false, None),
+        Some(BannerKind::Install)
+    );
+    assert_eq!(
+        machine.banner_kind(InstallKind::Unknown, None, true, None),
+        None
+    );
+    assert_eq!(machine.dismiss(), Some(version));
+    assert!(
+        machine
+            .install(InstallKind::App, Some("macos-arm64"))
+            .is_some()
+    );
+    assert_eq!(
+        machine.banner_kind(InstallKind::App, Some("macos-arm64"), false, None),
+        Some(BannerKind::Downloading(None))
+    );
+    assert_eq!(
+        machine.banner_kind(InstallKind::App, Some("macos-arm64"), true, None),
+        None
+    );
+    let error = CheckError::new("download", "network stopped");
+    assert!(machine.finish_stage(Err(error.clone())));
+    assert_eq!(machine.state(), &State::Error(error));
+}
+
 fn v(text: &str) -> Version {
     Version::parse(text).unwrap_or_else(|| panic!("{text} should parse"))
 }
@@ -235,11 +354,12 @@ fn an_install_kind_file_names_one_of_the_package_kinds() {
 
 #[test]
 fn the_manifest_key_follows_the_system_and_the_cpu() {
-    assert_eq!(target_key("macos", "aarch64"), Some("macos-arm64"));
-    assert_eq!(target_key("linux", "x86_64"), Some("linux-x64"));
-    assert_eq!(target_key("linux", "aarch64"), Some("linux-arm64"));
-    assert_eq!(target_key("macos", "x86_64"), None);
-    assert_eq!(target_key("windows", "x86_64"), None);
+    use crate::os::Os;
+    assert_eq!(target_key(Os::Mac, "aarch64"), Some("macos-arm64"));
+    assert_eq!(target_key(Os::Linux, "x86_64"), Some("linux-x64"));
+    assert_eq!(target_key(Os::Linux, "aarch64"), Some("linux-arm64"));
+    assert_eq!(target_key(Os::Mac, "x86_64"), None);
+    assert_eq!(target_key(Os::Windows, "x86_64"), None);
 }
 
 #[test]

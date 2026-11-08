@@ -25,39 +25,19 @@ const EMBEDDED_KEY: &str = include_str!("../../../../assets/update-key.pub");
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 const MAX_SIGNATURE_BYTES: u64 = 4 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckError {
-    pub code: &'static str,
-    /// Names a host or a field. It never holds a URL query or a manifest value.
-    pub detail: String,
+pub use hushpen_core::update::CheckError;
+
+fn failed(detail: impl Into<String>) -> CheckError {
+    CheckError::new(UPDATE_CHECK_FAILED, detail)
 }
 
-impl CheckError {
-    pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
-        Self {
-            code,
-            detail: detail.into(),
-        }
-    }
+fn signature_error(detail: impl Into<String>) -> CheckError {
+    CheckError::new(UPDATE_SIGNATURE_INVALID, detail)
+}
 
-    fn failed(detail: impl Into<String>) -> Self {
-        Self {
-            code: UPDATE_CHECK_FAILED,
-            detail: detail.into(),
-        }
-    }
-
-    fn signature(detail: impl Into<String>) -> Self {
-        Self {
-            code: UPDATE_SIGNATURE_INVALID,
-            detail: detail.into(),
-        }
-    }
-
-    fn blocked(blocked: &Blocked) -> Self {
-        record(Purpose::UpdateCheck, &blocked.host, "blocked");
-        Self::failed(blocked.reason.clone())
-    }
+fn blocked_error(blocked: &Blocked) -> CheckError {
+    record(Purpose::UpdateCheck, &blocked.host, "blocked");
+    failed(blocked.reason.clone())
 }
 
 /// Where the manifest is, which key signs it, and which hosts may be asked.
@@ -77,7 +57,7 @@ impl UpdateFeed {
         Ok(Self {
             manifest_url: FEED_URL.to_owned(),
             key: PublicKey::decode(EMBEDDED_KEY)
-                .map_err(|_| CheckError::failed("the built-in update key is not valid"))?,
+                .map_err(|_| failed("the built-in update key is not valid"))?,
             policy: UpdatePolicy::release(),
         })
     }
@@ -100,17 +80,16 @@ impl UpdateFeed {
                 } else {
                     PublicKey::from_base64(value)
                 }
-                .map_err(|_| CheckError::failed("the test update key is not valid"))?
+                .map_err(|_| failed("the test update key is not valid"))?
             }
-            _ => return Err(CheckError::failed("a test feed needs a test update key")),
+            _ => return Err(failed("a test feed needs a test update key")),
         };
         Self::with(url.trim(), key).map(Some)
     }
 
     #[cfg(any(test, feature = "update-test-feed"))]
     fn with(manifest_url: &str, key: PublicKey) -> Result<Self, CheckError> {
-        let policy =
-            UpdatePolicy::only(manifest_url).map_err(|blocked| CheckError::blocked(&blocked))?;
+        let policy = UpdatePolicy::only(manifest_url).map_err(|blocked| blocked_error(&blocked))?;
         Ok(Self {
             manifest_url: manifest_url.to_owned(),
             key,
@@ -174,14 +153,13 @@ impl UpdateFeed {
         let signature = std::str::from_utf8(&signature)
             .ok()
             .and_then(|text| Signature::decode(text).ok())
-            .ok_or_else(|| CheckError::signature("the signature file is not a signature"))?;
+            .ok_or_else(|| signature_error("the signature file is not a signature"))?;
         // A legacy signature signs the bytes themselves, which is what the release signer writes.
         self.key
             .verify(&manifest, &signature, true)
-            .map_err(|_| CheckError::signature("the signature does not match the update key"))?;
-        let manifest = parse_manifest(&manifest).map_err(|error| {
-            CheckError::failed(format!("the update manifest is not valid: {error:?}"))
-        })?;
+            .map_err(|_| signature_error("the signature does not match the update key"))?;
+        let manifest = parse_manifest(&manifest)
+            .map_err(|error| failed(format!("the update manifest is not valid: {error:?}")))?;
         Ok(offer(current, manifest))
     }
 
@@ -190,17 +168,14 @@ impl UpdateFeed {
         let mut current = self
             .policy
             .check_start(url)
-            .map_err(|blocked| CheckError::blocked(&blocked))?;
+            .map_err(|blocked| blocked_error(&blocked))?;
         let mut hops = 0;
         loop {
             let response = match fetcher.get(&current.url, None) {
                 Ok(response) => response,
                 Err(FetchError(error)) => {
                     record(Purpose::UpdateCheck, &current.host, "error");
-                    return Err(CheckError::failed(format!(
-                        "cannot reach {}: {error}",
-                        current.host
-                    )));
+                    return Err(failed(format!("cannot reach {}: {error}", current.host)));
                 }
             };
             record(
@@ -216,20 +191,17 @@ impl UpdateFeed {
                         .take(limit + 1)
                         .read_to_end(&mut body)
                         .map_err(|error| {
-                            CheckError::failed(format!("{} stopped sending: {error}", current.host))
+                            failed(format!("{} stopped sending: {error}", current.host))
                         })?;
                     if body.len() as u64 > limit {
-                        return Err(CheckError::failed(format!(
-                            "{} sent more than it should",
-                            current.host
-                        )));
+                        return Err(failed(format!("{} sent more than it should", current.host)));
                     }
                     return Ok(body);
                 }
                 301 | 302 | 303 | 307 | 308 => {
                     hops += 1;
                     if hops > MAX_REDIRECTS {
-                        return Err(CheckError::blocked(&Blocked::new(
+                        return Err(blocked_error(&Blocked::new(
                             current.host,
                             format!("more than {MAX_REDIRECTS} redirects"),
                         )));
@@ -238,17 +210,14 @@ impl UpdateFeed {
                         .location
                         .as_deref()
                         .and_then(|location| resolve(&current.url, location))
-                        .ok_or_else(|| CheckError::failed("a redirect had no usable location"))?;
+                        .ok_or_else(|| failed("a redirect had no usable location"))?;
                     current = self
                         .policy
                         .check_redirect(&target)
-                        .map_err(|blocked| CheckError::blocked(&blocked))?;
+                        .map_err(|blocked| blocked_error(&blocked))?;
                 }
                 status => {
-                    return Err(CheckError::failed(format!(
-                        "{} answered {status}",
-                        current.host
-                    )));
+                    return Err(failed(format!("{} answered {status}", current.host)));
                 }
             }
         }
