@@ -7,6 +7,7 @@ mod client;
 mod cpu;
 mod engine_log;
 mod entry;
+mod in_process;
 mod link;
 mod llm_client;
 mod manager;
@@ -18,7 +19,7 @@ mod parakeet;
 mod pageout;
 #[cfg(test)]
 mod pause_bench;
-mod server;
+pub mod server;
 mod tts_client;
 mod vad;
 mod wav;
@@ -39,7 +40,8 @@ pub use client::{
 };
 pub use cpu::missing_cpu_feature;
 pub use engine_log::{EngineLog, Level};
-pub use entry::{engine_main, gpu_available, gpu_disabled_by_env};
+pub use entry::{engine_main, gpu_available, gpu_disabled_by_env, server_config};
+pub use in_process::InProcess;
 pub use link::{Link, RemoteSpec};
 pub use llm_client::{
     LlmClient, LlmDone, LlmJobHandle, LlmLoadHandle, LlmLoaded, LlmOutcome, LlmSpec, LlmState,

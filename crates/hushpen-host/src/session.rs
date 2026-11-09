@@ -28,7 +28,7 @@ pub fn serve_session(
 ) -> io::Result<()> {
     let (kind, requested_rule) = read_worker_options(&mut stream)?;
     let rule = requested_rule.unwrap_or(rule);
-    if !rule.allowed_on(hushpen_core::os::Os::current()) {
+    if !rule.allowed_on(workers.os) {
         return Err(invalid("unload rule is unavailable on this host"));
     }
     let gate = match kind {
@@ -445,7 +445,11 @@ fn cleanup(
                     );
                 }
             };
-            let path = match model_path(data, &path, ModelKind::Cleanup) {
+            let path = match if workers.system_cleanup {
+                Ok(PathBuf::from("system"))
+            } else {
+                model_path(data, &path, ModelKind::Cleanup)
+            } {
                 Ok(path) => path,
                 Err(problem) => {
                     return send(
