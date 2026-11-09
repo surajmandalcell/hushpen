@@ -47,6 +47,8 @@
 <script src="mscene.js" defer></script>
 <link rel="stylesheet" href="lnx.css">
 <script src="lnx.js" defer></script>
+<link rel="stylesheet" href="wnx.css">
+<script src="wnx.js" defer></script>
 <script src="vendor/alpine-3.14.9.min.js" defer></script>
 <noscript><style>[data-reveal] { opacity: 1; transform: none; }</style></noscript>
 </head>
@@ -214,12 +216,13 @@
     </div>
   </section>
 
-  <section class="ln win grp" data-g="windows" id="windows">
-    <div class="sh ln-h" data-reveal><div><h2>The same app <span>on Windows.</span></h2><p class="ln-sub">Windows x64. Per-user setup, no admin.</p></div><a class="ln-dl" data-asset="windows-setup" href="https://github.com/surajmandalcell/hushpen/releases"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-windows"/></svg>Download for Windows<small data-asset-meta="windows-setup">Latest version</small><span class="win-preview" data-preview hidden>Preview</span></a></div>
-    <p class="win-note">Windows may show SmartScreen because the app is not signed yet. Choose More info, then Run anyway.</p>
-    <ol class="ln-steps"><li><b class="ln-n">1</b><div><b class="ln-tt">Download</b><span class="ln-ds">Open the setup file from Downloads.</span></div></li><li><b class="ln-n">2</b><div><b class="ln-tt">Install</b><span class="ln-ds">Hushpen installs for your Windows user.</span></div></li><li><b class="ln-n">3</b><div><b class="ln-tt">Talk</b><span class="ln-ds">Press <kbd>Right Alt</kbd> twice or <kbd>Right Alt + Space</kbd>. Hold <kbd>Right Alt</kbd> to talk.</span></div></li></ol>
-    <div class="ln-ft"><details class="ln-tm"><summary>Prefer PowerShell?<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.2 3.5 3.5 3.5-3.5"/></svg></summary><div class="ln-cmds"><p>The script checks SHA256SUMS before it runs setup.</p><div class="cmd"><code>irm https://hushpen.mandalsuraj.com/install.ps1 | iex</code><button type="button" class="k-copy" data-copy="irm https://hushpen.mandalsuraj.com/install.ps1 | iex" aria-label="Copy Windows install command"></button></div></div></details><div class="ln-more"><span>Other downloads</span><div class="lx"><a data-asset="windows-zip" href="https://github.com/surajmandalcell/hushpen/releases">Portable .zip</a></div></div></div>
-    <details class="ln-tm"><summary>SHA-256 checksums<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.2 3.5 3.5 3.5-3.5"/></svg></summary><div class="release-checks" data-checksums="windows"><a href="https://github.com/surajmandalcell/hushpen/releases">View release checksums</a></div></details>
+  <section class="ln grp" data-g="windows" id="windows">
+    <div class="sh ln-h" data-reveal><div><h2>The same app <span>on Windows.</span></h2><p class="ln-sub">Windows x64. No admin rights needed.</p></div><a class="ln-dl" data-asset="windows-setup" href="https://github.com/surajmandalcell/hushpen/releases"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>Download setup.exe<span class="ln-pv" data-preview hidden>Preview</span><small data-asset-meta="windows-setup">Latest version</small></a></div>
+    <div class="ln-v wx-v" data-reveal></div>
+    <div class="ln-ft" data-reveal>
+      <details class="ln-tm"><summary>Prefer PowerShell?<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.2 3.5 3.5 3.5-3.5"/></svg></summary><div class="ln-cmds"><p>Install Hushpen. The script checks SHA256SUMS.</p><div class="cmd"><code>irm https://hushpen.mandalsuraj.com/install.ps1 | iex</code><button type="button" class="k-copy" data-copy="irm https://hushpen.mandalsuraj.com/install.ps1 | iex" aria-label="Copy Windows install command"></button></div></div></details>
+      <div class="ln-more"><span>Other downloads</span><div class="lx"><div><b>x64</b><a data-asset="windows-zip" href="https://github.com/surajmandalcell/hushpen/releases">Portable .zip</a></div></div></div>
+    </div>
   </section>
 
   <section class="faqs grp" data-g="faq" id="faq"><div class="q" data-reveal><h2 class="h2">Questions.</h2><p>Answers on privacy, languages, and memory. Not here? Open an issue on GitHub.</p></div><div data-faq data-reveal style="--i:1"></div></section>
