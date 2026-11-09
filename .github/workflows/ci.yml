@@ -269,6 +269,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: package-${{ matrix.target }}
+          cache-on-failure: true
       - name: Install the GPUI build libraries and the packaging tools
         if: runner.os == 'Linux'
         run: |
