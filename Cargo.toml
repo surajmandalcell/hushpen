@@ -25,6 +25,7 @@ repository = "https://github.com/surajmandalcell/hushpen"
 publish = false
 
 [workspace.dependencies]
+embed-resource = "=3.0.11"
 # Workspace crates.
 hushpen-audio = { path = "crates/hushpen-audio" }
 hushpen-core = { path = "crates/hushpen-core" }
