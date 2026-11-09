@@ -29,7 +29,12 @@ function Start-Process {
     if ($FilePath.EndsWith('Hushpen.lnk')) { $script:launches++; return }
     if ($ArgumentList -ne '/S' -or -not $FilePath.EndsWith('-setup.exe')) { throw 'Wrong setup command.' }
     $script:installs++
-    $process = [PSCustomObject]@{ ExitCode = $script:exitCode }
+    $process = [PSCustomObject]@{ ExitValue = $script:exitCode; HasHandle = $false }
+    $process | Add-Member -MemberType ScriptProperty -Name Handle -Value { $this.HasHandle = $true; 1 }
+    $process | Add-Member -MemberType ScriptProperty -Name ExitCode -Value {
+        if (-not $this.HasHandle) { throw 'The process handle was not retained.' }
+        $this.ExitValue
+    }
     $process | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($Timeout) $true }
     $process
 }

@@ -35,6 +35,8 @@ function Install-Hushpen {
             throw "$name does not match its checksum. Nothing was installed."
         }
         $process = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru
+        # Windows PowerShell needs the handle to retain the exit code.
+        $null = $process.Handle
         if (-not $process.WaitForExit(300000)) {
             throw 'Hushpen setup did not finish within five minutes.'
         }
