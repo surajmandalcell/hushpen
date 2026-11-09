@@ -11,7 +11,7 @@ pub struct Storage {
     pub remote: std::sync::Arc<crate::remote_jobs::Router>,
     pub data: DataDir,
     pub settings: SettingsStore,
-    pub secrets: Secrets,
+    pub secrets: std::sync::Arc<Secrets>,
     pub database: Database,
 }
 
@@ -19,7 +19,7 @@ pub struct Storage {
 /// The file logger must be installed first, or the line goes nowhere.
 pub fn open(data: DataDir) -> Result<Storage> {
     let settings = SettingsStore::open(&data.config_dir())?;
-    let secrets = Secrets::open(&data.config_dir())?;
+    let secrets = std::sync::Arc::new(Secrets::open(&data.config_dir())?);
     let database = Database::open(&data.database_path())?;
     let report = database.report();
     log::info!(
