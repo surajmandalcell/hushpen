@@ -180,19 +180,15 @@ components:
 
 ## Overview
 
-Hushpen is a fixed-width app for private dictation, file transcription, models, and playback. It follows system Light or Dark.
+Hushpen is a fixed-width app for private dictation, file transcription, models, and playback. Follow system Light or Dark. Open on the working app. Keep it calm and compact. Hide internal names.
 
-Open on the working app. Keep it calm and compact. Hide internal names.
-
-Core OS capabilities set defaults. Windows uses Right Alt gestures, CPU, and Keep in memory; only Linux offers Page out. macOS and Linux behavior stays unchanged.
-
-Windows uses Inter and custom window controls. Windows 11 build 22621+ shows Mica behind the sidebar; older builds use an opaque sidebar. The flow bar never takes focus. Apps with higher privileges get a copy and a notice.
+Core capabilities set platform defaults. Windows uses Right Alt gestures, CPU, Keep in memory, Inter, and custom window controls. Only Linux offers Page out. Windows 11 build 22621+ uses Mica behind the sidebar; older builds use an opaque fill. The flow bar never takes focus. Higher-privilege apps get a copy and a notice.
 
 ## App Icon
 
-The app icon is a Roman statue drawn in outline: a young woman in profile, eyes closed, whispering into an upright fountain pen held just below her lips. Ink lines (`#1B2228`) sit on a warm marble tile (`#F7F4EF` to `#E8E3DA`, top to bottom), with no text and no other color.
+The icon outlines a Roman statue: a young woman in profile, eyes closed, whispering into an upright fountain pen below her lips. Ink (`#1B2228`) on marble (`#F7F4EF` to `#E8E3DA`, top to bottom), with no text or other color.
 
-Each icon design lives in `assets/icons/<name>/`: `mark.svg` is the full drawing on the 1024 tile, and `mark-small.svg` a bold crop of the head and pen. `classic` ships. `sari` (braided bun, jhumka, sari pallu) and `waves` (long loose hair) are kept for seasonal use. `harness/icons.sh <name>` builds every icon file from one design:
+Each design in `assets/icons/<name>/` has `mark.svg` (full 1024 tile) and `mark-small.svg` (bold head and pen crop). `classic` ships; `sari` (braided bun, jhumka, sari pallu) and `waves` (long loose hair) are seasonal. `harness/icons.sh <name>` builds all icon files:
 
 - `assets/hushpen-app-icon.svg` and `.png`: the drawing on an 824px squircle at 100px on the 1024 canvas (the macOS grid), with the template shadow (10px down, 30% black).
 - `assets/hushpen-app-icon.icns` and `assets/linux-icons/*.png`: 128px and up show the full drawing, 48 and 64px the bold crop, and 16 to 32px the solid head and pen of `assets/icons/mark-tiny.svg`, because finer lines turn gray there.
@@ -238,12 +234,7 @@ Do not add colored icon tiles, section accents, or tinted panels.
 
 macOS uses the system UI font (`.SystemUIFont`, SF Pro). Linux keeps the embedded Inter, so text looks the same on a machine with no system copy of it.
 
-- **Title:** 22px bold, on onboarding pages and for the app name on About.
-- **Toolbar title:** 13px semibold, in the title bar area.
-- **Heading:** 13px semibold, in the secondary label color, above each Settings group.
-- **Body:** 13px regular, for row titles and values.
-- **Button:** 13px medium.
-- **Secondary:** 11px regular, in the secondary label color, for descriptions and group footers.
+Use the typography tokens above: Title for onboarding and About, Toolbar title in chrome, Heading above Settings groups, Body for rows, Button for controls, and Secondary for descriptions and footers. Headings and secondary text use the secondary label color.
 
 ## Layout
 
@@ -272,7 +263,7 @@ Depth is tonal. Shadows are only for dropdowns and menus: 4px down, 12px of blur
 
 ## Shapes
 
-Radii are the `rounded` tokens: 8px for groups, 5px for push buttons, 6px for selection and list rows, 16px for the app icon tile, 10px for the Linux window with a compositor (like a macOS window), and fully round Linux window buttons.
+Use the `rounded` tokens for groups, controls, selection, icons, and window corners. Linux window buttons are fully round.
 
 ## Motion
 
@@ -301,6 +292,8 @@ The flow bar has its own motion, described under Recording overlay.
 **Sidebar:** 7 rows in this order: Home, History, Manual, Dictionary, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. The window opens on the view that was open at the last quit, and on Home the first time. Onboarding, while it is not done, shows first.
 
 **Toolbar:** the view title (toolbar title style) on the left of the title bar area. On Settings and Models the search field sits at the right end, 300px wide, 24px from the window edge, centered on the chrome line. On Manual the mode control sits in the middle of the band instead; it comes after the title and before the content in keyboard order. A press on an empty part of the band moves the window, but not a press on the search field or the control.
+
+**Permissions:** onboarding and Settings share core checks. In Settings, the group follows Updates. Keep the three macOS rows. Windows shows Microphone, Admin apps, and Global keys. Linux shows microphone information, an X11 warning on Wayland, and tray information without a watcher. Each row has one secondary line, a status word or attention icon, and at most two actions. Only microphone readiness blocks Continue on all systems; macOS also requires Accessibility and Input Monitoring. Missing keys never promise a working shortcut. Refused paste keeps the text copied with a notice.
 
 **Settings:** one scrolling list, grouped like macOS System Settings. Each section is a heading above its group, with an optional footer line under it, in this order: General, Shortcuts, Audio, Cleanup (with AI cleanup and the endpoint form), Engine, Flow bar, Storage, Updates. Audio holds Microphone, Input boost, Audio enhance, Sounds, Sound volume, Mute other audio while dictating (on by default), and Maximum length. Engine holds When idle (Keep in memory, Page out on Linux only, Unload; macOS defaults to Keep in memory, Linux to Page out) and Idle time (5, 15, 30, or 60 minutes, shown only for Page out and Unload). Cleanup holds Profile, a pop-up of General, Message, Email, and Notes, whose secondary line says "Edited" when the user changed that profile, and Prompt, with View… for S1-mini or Edit… for other models. Prompt opens a sheet titled "<Profile> prompt": the prompt in a 132px text area (read-only for S1-mini), a count or notice row, for S1-mini a group with the Styling, Structure, and Context pop-ups, then a group of what is also sent (the control line, the Dictionary words, and the examples), and the buttons Reset to Default and Done. The sheet shows exactly what is sent. Typing in the search field keeps only the matching rows under their headings; a row's label, its section, and its aliases all match. With no match the list shows `No settings match "<query>"` and a Clear button. Cmd+F (Ctrl+F on Linux) focuses the field. Esc clears it, and a second Esc leaves it. A new query scrolls the list to the top. The query is never saved. Numeric settings use a slider (160px track, 5% steps (2.5% for Sound volume, which defaults to 12.5%), arrow keys, Home and End) or a pop-up of fixed choices inside the registry range.
 
@@ -343,7 +336,7 @@ Each group of icons runs from lightest to heaviest. The focus moves in the order
 
 **Buttons:** 22px high, 5px radius. The default button has the accent fill and white text. Other buttons use the neutral control fill. A disabled button uses the tertiary label color. An icon button is a 22px square with a 16px lucide icon in the secondary label color and no fill until hovered. A tooltip names it, and its name in the accessibility tree says what it does, such as "Copy text" for Copy. An off icon button uses the tertiary label color and takes no focus. In a list, a button that a row lacks leaves its slot empty, so the others stay in place.
 
-**Text inputs:** the button height (22px) and radius (5px), with the control fill, so an input in one row with buttons aligns with them. The inner padding keeps the 13px text clear of the edges. A search field leads with the search glyph.
+**Text inputs:** use button size, radius, and control fill. Pad text clear of the edges. Search leads with its glyph.
 
 **Switches, sliders, and selection focus:** use the accent. The focus ring of a switch or a slider sits outside its track, and the control moves right by the ring, so the track ends on the same line as the buttons in the rows around it. A slider row shows its value, such as `150%`, `1.25×`, or `+12 dB`, just left of the track in a 48px right-aligned column: body text, the secondary label color, and tabular digits, so the number stays in place while a drag or an arrow key changes it. The line under the row title stays plain help.
 
@@ -358,6 +351,4 @@ Each group of icons runs from lightest to heaviest. The focus moves in the order
 
 ## Do's and Don'ts
 
-- Do use one group for each cluster of information.
-- Do use lucide-style monochrome icons.
-- Don't use gradients or blobs.
+Use one group per cluster and lucide-style monochrome icons. No gradients or blobs.

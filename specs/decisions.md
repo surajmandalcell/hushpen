@@ -480,6 +480,15 @@ new decision, add it here in the same change (D-21).
   unavailable. Speech runtime DLLs are pinned by size and SHA-256. Native
   runtime behavior needs Windows hardware checks; packaging is separate.
 
+- **D-48 Permission and capability checks.** Core builds one check list from
+  the OS, capabilities, and live facts. Onboarding and Settings share its
+  rows, statuses, and fixed actions. macOS keeps Microphone, Accessibility,
+  and Input Monitoring. Windows shows microphone consent, administrator-app
+  limits, and keyboard-hook status with Retry. Linux explains Wayland and a
+  missing tray watcher. Continue requires a microphone on every OS and the
+  two key permissions on macOS; other checks do not block it. Unavailable
+  keys show no shortcut promise. Paste refusal keeps Copied with a notice.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

@@ -146,6 +146,7 @@ Hushpen
 ## Core modules
 
 - **os**: the core OS identity and capabilities, with display and compositor facts supplied by the platform.
+- **permission**: pure permission and capability checks with an id, title, secondary line, status, and up to two actions, shared by onboarding and Settings.
 - **models**: pure download, verification, cancellation, retry, and default-model rules.
 - **update**: pure update states and offer, download, restart, and stale-response rules.
 - **flow_bar**: pure result, refusal, recovery, and history-button choice from supplied state and time.
