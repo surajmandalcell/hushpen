@@ -2,9 +2,6 @@
 xtask = "run -p xtask --locked --"
 
 [target.x86_64-pc-windows-msvc]
-# The window subclass helpers need Common Controls 6, including in test executables.
 rustflags = [
     "-C", "target-feature=+avx2,+fma,+f16c,+bmi2",
-    "-C", "link-arg=/MANIFEST:EMBED",
-    "-C", "link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'",
 ]
