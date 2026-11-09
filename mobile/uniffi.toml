@@ -1,6 +1,7 @@
 [crates.hushpen_mobile.bindings.kotlin]
 package_name = "com.mandalsuraj.hushpen.core"
 cdylib_name = "hushpen_mobile"
+android = true
 
 [crates.hushpen_mobile.bindings.swift]
 module_name = "HushpenCore"
