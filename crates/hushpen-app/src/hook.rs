@@ -10,6 +10,8 @@ mod about;
 #[cfg(feature = "test-automation")]
 mod automation;
 #[cfg(feature = "test-automation")]
+mod devices;
+#[cfg(feature = "test-automation")]
 mod dictation;
 #[cfg(feature = "test-automation")]
 mod dictionary;
@@ -52,6 +54,8 @@ pub use automation::{
     ExtraWindow, Hooks, Job, Surface, attach, mark_disabled, register_action, register_window,
     set_state_section, set_wav_feeder, start,
 };
+#[cfg(feature = "test-automation")]
+pub use devices::attach as attach_devices;
 #[cfg(feature = "test-automation")]
 pub use dictation::attach as attach_dictation;
 #[cfg(feature = "test-automation")]

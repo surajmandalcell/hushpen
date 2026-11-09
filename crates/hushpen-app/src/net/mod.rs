@@ -1,6 +1,7 @@
 //! The only module that opens network connections (architecture section 9). `xtask net-audit`
 //! lists every call site here with its purpose and host.
 
+pub mod devices;
 pub mod download;
 pub mod endpoint;
 pub mod fetch;

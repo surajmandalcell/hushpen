@@ -43,6 +43,61 @@ pub struct Router {
     health: Mutex<BTreeMap<String, Health>>,
 }
 
+impl Router {
+    pub fn snapshot(&self) -> BTreeMap<String, Health> {
+        let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+        for entry in health.values_mut() {
+            entry.tick(monotonic_ms());
+        }
+        health.clone()
+    }
+
+    pub fn probe(
+        &self,
+        identity: &Identity,
+        devices: &[RemoteDevice],
+        cancelled: &std::sync::atomic::AtomicBool,
+    ) {
+        for device in devices {
+            if cancelled.load(std::sync::atomic::Ordering::Acquire) {
+                break;
+            }
+            let due = self
+                .health
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .get(&device.device.id)
+                .is_none_or(|health| health.probe_due(monotonic_ms()));
+            if !due {
+                continue;
+            }
+            let start = Instant::now();
+            let probe = match RemoteStream::connect(
+                device.address.clone(),
+                identity,
+                device.static_public_key,
+                None,
+                CONNECT_TIMEOUT,
+                &self.resolver,
+            ) {
+                Ok(session) => {
+                    drop(session);
+                    Probe::Ready {
+                        latency_ms: u32::try_from(start.elapsed().as_millis()).unwrap_or(u32::MAX),
+                    }
+                }
+                Err(_) => Probe::Unreachable,
+            };
+            self.health
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .entry(device.device.id.clone())
+                .or_default()
+                .record(probe, monotonic_ms());
+        }
+    }
+}
+
 /// A job keeps the settings it started with, even if another session changes them.
 pub struct Routing {
     router: Arc<Router>,

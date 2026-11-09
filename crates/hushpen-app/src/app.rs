@@ -233,6 +233,12 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 models.update(cx, |models, cx| models.attach_search(window, cx))
             });
             shell.update(cx, |shell, cx| shell.attach_models(models.clone(), cx));
+            if let Ok(devices) = handle.update(cx, |_, window, cx| {
+                cx.new(|cx| crate::devices::Devices::new(Rc::clone(&storage), window, cx))
+            }) {
+                crate::net::devices::attach(&devices, Rc::clone(&storage), cx);
+                shell.update(cx, |shell, cx| shell.attach_devices(devices, cx));
+            }
             let dictionary = handle
                 .update(cx, |_, window, cx| {
                     cx.new(|cx| Dictionary::new(dictionary_storage, window, cx))
@@ -546,6 +552,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             #[cfg(feature = "test-automation")]
             if let Some(jobs) = hook_jobs {
                 let settings_storage = Rc::clone(&hook_storage);
+                let devices = shell.read(cx).devices.clone();
                 crate::hook::attach(
                     cx,
                     jobs,
@@ -558,6 +565,9 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 crate::hook::attach_settings(cx, Rc::clone(&hook_storage));
                 crate::hook::attach_engine(cx, Rc::clone(&engine), Rc::clone(&hook_storage));
                 crate::hook::attach_remote(cx, Rc::clone(&hook_storage));
+                if let Some(devices) = devices {
+                    crate::hook::attach_devices(cx, devices);
+                }
                 crate::hook::attach_llm(cx, Rc::clone(&llm), hook_storage);
                 crate::hook::attach_flow_bar(cx, flow_bar, flow_bar_host);
                 crate::hook::attach_tray(cx, tray_controller, tray.is_some());
