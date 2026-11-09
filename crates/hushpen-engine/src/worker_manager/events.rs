@@ -117,7 +117,7 @@ impl<P: Protocol> Manager<P> {
         running.ready = true;
         running.last_pong = now;
         running.next_ping = now + self.timing.ping_interval;
-        let pid = running.child.id();
+        let pid = running.child.as_ref().map_or(0, std::process::Child::id);
         self.log.write(
             Level::Info,
             "READY",

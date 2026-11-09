@@ -8,12 +8,13 @@ mod events;
 mod process;
 
 use crate::backoff::Backoff;
-use crate::client::{ChildSpec, Failure, Timing};
+use crate::client::{Failure, Timing};
 use crate::engine_log::EngineLog;
 use crate::worker::{Cmd, Loaded, Protocol, Reply, Shared, WorkerState};
 use hushpen_core::llm_protocol::UnloadReason;
 use std::collections::{HashMap, VecDeque};
-use std::process::{Child, ChildStdin};
+use std::io::Write;
+use std::process::Child;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -34,7 +35,7 @@ pub(crate) enum ChildEvent<E> {
 }
 
 pub(crate) struct Setup<P: Protocol> {
-    pub spec: ChildSpec,
+    pub spec: crate::Link,
     pub timing: Timing,
     pub log: Arc<EngineLog>,
     pub shared: Arc<Shared>,
@@ -61,8 +62,8 @@ enum Restart {
 }
 
 struct Running {
-    child: Child,
-    stdin: ChildStdin,
+    child: Option<Child>,
+    stdin: Box<dyn Write + Send>,
     spawned: Instant,
     ready: bool,
     /// This child has been told which model to use.
@@ -93,7 +94,7 @@ struct Inflight<P: Protocol> {
 }
 
 struct Manager<P: Protocol> {
-    spec: ChildSpec,
+    spec: crate::Link,
     timing: Timing,
     log: Arc<EngineLog>,
     shared: Arc<Shared>,
@@ -190,7 +191,10 @@ impl<P: Protocol> Manager<P> {
                 Some(_) => WorkerState::Ready,
             }
         };
-        let pid = self.running.as_ref().map(|running| running.child.id());
+        let pid = self
+            .running
+            .as_ref()
+            .and_then(|running| running.child.as_ref().map(Child::id));
         self.shared.update(|status| {
             status.pid = pid;
             status.state = state;

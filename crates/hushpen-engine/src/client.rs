@@ -217,6 +217,7 @@ pub(crate) enum Cmd {
     Cancel {
         job: u64,
     },
+    Unload,
     Shutdown,
 }
 
@@ -256,10 +257,14 @@ struct Inner {
     shared: Arc<Shared>,
     next_job: AtomicU64,
     thread: Mutex<Option<JoinHandle<()>>>,
+    control: Option<hushpen_remote::RemoteControl>,
 }
 
 impl Drop for Inner {
     fn drop(&mut self) {
+        if let Some(control) = &self.control {
+            let _ = control.shutdown();
+        }
         let _ = self.commands.send(manager::Msg::Cmd(Cmd::Shutdown));
     }
 }
@@ -271,8 +276,16 @@ pub struct EngineClient {
 }
 
 impl EngineClient {
+    pub fn unload(&self) {
+        let _ = self.inner.commands.send(manager::Msg::Cmd(Cmd::Unload));
+    }
     /// Starts the supervisor thread, which starts the child at once.
     pub fn start(spec: ChildSpec, timing: Timing, log: Arc<EngineLog>) -> Self {
+        Self::start_link(crate::Link::Child(spec), timing, log)
+    }
+
+    pub fn start_link(spec: crate::Link, timing: Timing, log: Arc<EngineLog>) -> Self {
+        let control = spec.control();
         let shared = Arc::new(Shared::new());
         let (sender, receiver) = mpsc::channel();
         let thread = manager::spawn(manager::Setup {
@@ -289,6 +302,7 @@ impl EngineClient {
                 shared,
                 next_job: AtomicU64::new(1),
                 thread: Mutex::new(Some(thread)),
+                control,
             }),
         }
     }
@@ -365,6 +379,9 @@ impl EngineClient {
     }
 
     pub fn cancel(&self, job: u64) {
+        if let Some(control) = &self.inner.control {
+            let _ = control.shutdown();
+        }
         let _ = self
             .inner
             .commands
@@ -373,6 +390,9 @@ impl EngineClient {
 
     /// Stops the child (a `Shutdown` frame, then a kill after 1 s) and the supervisor thread.
     pub fn shutdown(&self) {
+        if let Some(control) = &self.inner.control {
+            let _ = control.shutdown();
+        }
         let _ = self.inner.commands.send(manager::Msg::Cmd(Cmd::Shutdown));
         let thread = self
             .inner
@@ -392,6 +412,16 @@ pub struct LoadHandle {
 }
 
 impl LoadHandle {
+    pub fn wait_timeout(&self, timeout: Duration) -> Option<Result<Loaded, Failure>> {
+        match self.answer.recv_timeout(timeout) {
+            Ok(answer) => Some(answer),
+            Err(mpsc::RecvTimeoutError::Timeout) => None,
+            Err(mpsc::RecvTimeoutError::Disconnected) => Some(Err(Failure::new(
+                hushpen_core::error::ENGINE_UNAVAILABLE,
+                "the supervisor has stopped",
+            ))),
+        }
+    }
     fn failed(detail: &str) -> Self {
         let (reply, answer) = mpsc::channel();
         let _ = reply.send(Err(Failure::new(

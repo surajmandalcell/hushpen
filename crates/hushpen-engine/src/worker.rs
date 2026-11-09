@@ -12,7 +12,7 @@ use crate::worker_manager;
 use hushpen_core::llm_protocol::UnloadReason;
 use hushpen_core::protocol::Params;
 use serde_json::Value;
-use std::process::ChildStdout;
+use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -51,7 +51,7 @@ pub trait Protocol: Send + 'static {
     /// The job kind for log lines, such as `cleanup`.
     fn kind(work: &Self::Work) -> &'static str;
     /// Reads the next event. `Ok(None)` means the output ended.
-    fn read(stdout: &mut ChildStdout) -> Result<Option<Self::Event>, String>;
+    fn read(stdout: &mut dyn Read) -> Result<Option<Self::Event>, String>;
     fn signal(event: Self::Event) -> Signal<Self>;
 }
 
@@ -206,10 +206,14 @@ struct Inner<P: Protocol> {
     shared: Arc<Shared>,
     next_job: AtomicU64,
     thread: Mutex<Option<JoinHandle<()>>>,
+    control: Option<hushpen_remote::RemoteControl>,
 }
 
 impl<P: Protocol> Drop for Inner<P> {
     fn drop(&mut self) {
+        if let Some(control) = &self.control {
+            let _ = control.shutdown();
+        }
         let _ = self.commands.send(worker_manager::Msg::Cmd(Cmd::Shutdown));
     }
 }
@@ -231,6 +235,11 @@ impl<P: Protocol> WorkerClient<P> {
     /// Starts the supervisor thread, which starts the child at once. The child holds no model
     /// until [`WorkerClient::load_model`].
     pub fn start(spec: ChildSpec, timing: Timing, log: Arc<EngineLog>) -> Self {
+        Self::start_link(crate::Link::Child(spec), timing, log)
+    }
+
+    pub fn start_link(spec: crate::Link, timing: Timing, log: Arc<EngineLog>) -> Self {
+        let control = spec.control();
         let shared = Arc::new(Shared::new());
         let (sender, receiver) = mpsc::channel();
         let thread = worker_manager::spawn(worker_manager::Setup {
@@ -247,6 +256,7 @@ impl<P: Protocol> WorkerClient<P> {
                 shared,
                 next_job: AtomicU64::new(1),
                 thread: Mutex::new(Some(thread)),
+                control,
             }),
         }
     }
@@ -310,6 +320,9 @@ impl<P: Protocol> WorkerClient<P> {
     }
 
     pub fn cancel(&self, job: u64) {
+        if let Some(control) = &self.inner.control {
+            let _ = control.shutdown();
+        }
         self.send(Cmd::Cancel { job });
     }
 
@@ -320,6 +333,9 @@ impl<P: Protocol> WorkerClient<P> {
 
     /// Stops the child (a `Shutdown` frame, then a kill after 1 s) and the supervisor thread.
     pub fn shutdown(&self) {
+        if let Some(control) = &self.inner.control {
+            let _ = control.shutdown();
+        }
         self.send(Cmd::Shutdown);
         let thread = self
             .inner
@@ -344,6 +360,13 @@ pub struct LoadHandle<P: Protocol> {
 }
 
 impl<P: Protocol> LoadHandle<P> {
+    pub fn wait_timeout(&self, timeout: Duration) -> Option<Result<Loaded, Failure>> {
+        match self.answer.recv_timeout(timeout) {
+            Ok(answer) => Some(answer),
+            Err(mpsc::RecvTimeoutError::Timeout) => None,
+            Err(mpsc::RecvTimeoutError::Disconnected) => Some(Err(stopped::<P>())),
+        }
+    }
     fn new(answer: Receiver<Result<Loaded, Failure>>) -> Self {
         Self {
             answer,

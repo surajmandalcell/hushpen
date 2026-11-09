@@ -1,7 +1,7 @@
 //! Commands from the app: load a model, start a job, cancel a job.
 
 use super::{Inflight, LoadEntry, Manager, Pending};
-use crate::client::{Cmd, JobOutcome, ProgressSink, Work};
+use crate::client::{Cmd, Failure, JobOutcome, ProgressSink, Work};
 use crate::engine_log::Level;
 use crate::server::model_name;
 use hushpen_core::protocol::Request;
@@ -14,6 +14,7 @@ impl Manager {
             Cmd::Load { spec, reply } => {
                 let entry = LoadEntry {
                     spec,
+                    discarded: false,
                     reply: Some(reply),
                 };
                 if self.is_ready() {
@@ -42,6 +43,28 @@ impl Manager {
                 }
             }
             Cmd::Cancel { job } => self.cancel(job),
+            Cmd::Unload => {
+                self.write(&Request::Unload);
+                let failure = Failure::new(
+                    hushpen_core::error::ENGINE_UNAVAILABLE,
+                    "the model load was cancelled by unload",
+                );
+                for entry in self.unsent_loads.drain(..) {
+                    if let Some(reply) = entry.reply {
+                        let _ = reply.send(Err(failure.clone()));
+                    }
+                }
+                for entry in &mut self.sent_loads {
+                    entry.discarded = true;
+                    if let Some(reply) = entry.reply.take() {
+                        let _ = reply.send(Err(failure.clone()));
+                    }
+                }
+                self.model = None;
+                self.gpu = false;
+                self.current = None;
+                self.publish();
+            }
             Cmd::Shutdown => {}
         }
     }

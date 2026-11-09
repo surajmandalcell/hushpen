@@ -3,7 +3,8 @@
 //!
 //! Rules (architecture section 9): HTTP lives only in `hushpen-app/src/net/`,
 //! only `hushpen-app` depends on `ureq`, child crates depend on no HTTP or
-//! socket crate, and only allow-listed hosts appear in the code.
+//! socket crate directly, and only allow-listed hosts appear in the code.
+//! The paired remote transport and host own TCP outside the app network layer.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,7 @@ use std::process::Command;
 
 const NET_DIR: &str = "crates/hushpen-app/src/net/";
 const HOOK_DIR: &str = "crates/hushpen-testhook/src/";
+const REMOTE_DIRS: [&str; 2] = ["crates/hushpen-remote/src/", "crates/hushpen-host/src/"];
 const DECODE_DIR: &str = "crates/hushpen-engine/src/child/";
 const AUDIO_DIR: &str = "crates/hushpen-audio/";
 /// App files that decode audio themselves: the Audio enhance take is a WAV the app wrote, and a
@@ -28,8 +30,8 @@ const CALL_TOKENS: [&str; 6] = [
     "TcpListener",
     "UdpSocket",
 ];
-/// Tokens the test hook may use for its loopback listener.
-const HOOK_TOKENS: [&str; 2] = ["TcpStream", "TcpListener"];
+/// TCP belongs to the test hook and the paired remote services, never HTTP clients.
+const TCP_TOKENS: [&str; 2] = ["TcpStream", "TcpListener"];
 
 const HTTP_CRATES: [&str; 9] = [
     "ureq",
@@ -152,6 +154,7 @@ pub fn scan_source(rel_path: &str, text: &str) -> (Vec<Site>, Vec<Violation>) {
     let mut violations = Vec::new();
     let in_net = rel_path.starts_with(NET_DIR);
     let in_hook = rel_path.starts_with(HOOK_DIR);
+    let in_remote = REMOTE_DIRS.iter().any(|dir| rel_path.starts_with(dir));
     let lines: Vec<&str> = text.lines().collect();
 
     for (index, line) in lines.iter().enumerate() {
@@ -178,8 +181,8 @@ pub fn scan_source(rel_path: &str, text: &str) -> (Vec<Site>, Vec<Violation>) {
                 purpose: purpose_near(&lines, index),
                 host: None,
             });
-            let hook_ok = in_hook && HOOK_TOKENS.contains(&token);
-            if !in_net && !hook_ok {
+            let tcp_ok = (in_hook || in_remote) && TCP_TOKENS.contains(&token);
+            if !in_net && !tcp_ok {
                 violate(format!("`{token}` outside {NET_DIR}"));
             }
         }
@@ -464,6 +467,43 @@ mod tests {
             violations("crates/hushpen-testhook/src/server.rs", "ureq::get(x)").len(),
             1
         );
+    }
+
+    #[test]
+    fn remote_services_may_use_tcp_but_not_http_clients_or_raw_udp() {
+        for path in [
+            "crates/hushpen-remote/src/stream.rs",
+            "crates/hushpen-host/src/main.rs",
+        ] {
+            for token in ["TcpStream::connect(a)", "TcpListener::bind(a)"] {
+                let (sites, bad) = scan_source(path, token);
+                assert_eq!(sites.len(), 1);
+                assert!(bad.is_empty(), "{path}: {bad:?}");
+            }
+            for token in [
+                "ureq::get(a)",
+                "reqwest::get(a)",
+                "hyper::Client",
+                "UdpSocket::bind(a)",
+            ] {
+                assert_eq!(violations(path, token).len(), 1, "{path}: {token}");
+            }
+            assert_eq!(violations(path, r#"open("https://example.com")"#).len(), 1);
+        }
+    }
+
+    #[test]
+    fn remote_tcp_permission_does_not_reach_workers_or_similarly_named_paths() {
+        for path in [
+            "crates/hushpen-engine/src/client.rs",
+            "crates/hushpen-llm/src/server.rs",
+            "crates/hushpen-tts/src/server.rs",
+            "crates/hushpen-app/src/remote_jobs.rs",
+            "crates/hushpen-remote-other/src/lib.rs",
+            "crates/hushpen-host/tests/socket.rs",
+        ] {
+            assert_eq!(violations(path, "TcpStream::connect(a)").len(), 1, "{path}");
+        }
     }
 
     #[test]

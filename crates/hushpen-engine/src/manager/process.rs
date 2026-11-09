@@ -5,8 +5,8 @@ use crate::client::{Failure, JobOutcome};
 use crate::engine_log::{EngineLog, Level};
 use hushpen_core::error;
 use hushpen_core::protocol::{Event, PROTOCOL_VERSION, Request, read_frame, write_json};
-use std::io::{BufRead, BufReader};
-use std::process::{ChildStderr, ChildStdout, Command, Stdio};
+use std::io::{BufRead, BufReader, Read};
+use std::process::ChildStderr;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -19,14 +19,8 @@ impl Manager {
 
     pub(super) fn start_child(&mut self) {
         self.next_start = None;
-        let spawned = Command::new(&self.spec.program)
-            .args(&self.spec.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        let mut child = match spawned {
-            Ok(child) => child,
+        let connection = match self.spec.open() {
+            Ok(connection) => connection,
             Err(failure) => {
                 let delay = self.backoff.next_delay(Duration::ZERO);
                 self.restarts += 1;
@@ -40,17 +34,18 @@ impl Manager {
                 return;
             }
         };
-        let (Some(mut stdin), Some(stdout), Some(stderr)) =
-            (child.stdin.take(), child.stdout.take(), child.stderr.take())
-        else {
-            let _ = child.kill();
-            let _ = child.wait();
-            self.down_failed_start("the child has no pipes");
-            return;
-        };
+        let crate::link::Connection {
+            child,
+            mut stdin,
+            stdout,
+            stderr,
+        } = connection;
         let now = Instant::now();
-        self.log
-            .write(Level::Info, "SPAWN", &format!("pid={}", child.id()));
+        self.log.write(
+            Level::Info,
+            "SPAWN",
+            &format!("pid={}", child.as_ref().map_or(0, std::process::Child::id)),
+        );
         let hello = write_json(
             &mut stdin,
             &Request::Hello {
@@ -73,27 +68,26 @@ impl Manager {
         self.publish();
     }
 
-    fn down_failed_start(&mut self, reason: &str) {
-        let delay = self.backoff.next_delay(Duration::ZERO);
-        self.restarts += 1;
-        self.next_start = Some(Instant::now() + delay);
-        self.log.write(Level::Warn, "SPAWN_FAILED", reason);
-        self.publish();
-    }
-
-    fn spawn_readers(&self, stdout: ChildStdout, stderr: ChildStderr) {
+    fn spawn_readers(&self, stdout: Box<dyn Read + Send>, stderr: Option<ChildStderr>) {
         let generation = self.generation;
         let sender = self.sender.clone();
         thread::spawn(move || read_events(stdout, &sender, generation));
-        let log = Arc::clone(&self.log);
-        thread::spawn(move || pump_stderr(stderr, &log));
+        if let Some(stderr) = stderr {
+            let log = Arc::clone(&self.log);
+            thread::spawn(move || pump_stderr(stderr, &log));
+        }
     }
 
     pub(super) fn write(&mut self, request: &Request) {
         let Some(running) = self.running.as_mut() else {
             return;
         };
-        if let Err(failure) = write_json(&mut running.stdin, &request.to_json()) {
+        let result = if self.spec.is_remote() {
+            crate::link::write_speech(&mut running.stdin, request)
+        } else {
+            write_json(&mut running.stdin, &request.to_json()).map_err(std::io::Error::other)
+        };
+        if let Err(failure) = result {
             self.broken
                 .get_or_insert_with(|| format!("write failed: {failure}"));
         }
@@ -108,9 +102,11 @@ impl Manager {
         // A caller released below must not read the dead child's pid as the live engine.
         self.publish();
         self.generation += 1;
-        let pid = running.child.id();
+        let pid = running.child.as_ref().map_or(0, std::process::Child::id);
         let uptime = running.spawned.elapsed();
-        let _ = running.child.kill();
+        if let Some(child) = running.child.as_mut() {
+            let _ = child.kill();
+        }
 
         let failure = Failure::new(error::ENGINE_CRASHED, reason);
         let jobs: Vec<u64> = self.inflight.keys().copied().collect();
@@ -133,10 +129,14 @@ impl Manager {
         }
 
         drop(running.stdin);
-        let status = running
-            .child
-            .wait()
-            .map_or_else(|failure| failure.to_string(), |status| status.to_string());
+        let status = running.child.as_mut().map_or_else(
+            || "disconnected".into(),
+            |child| {
+                child
+                    .wait()
+                    .map_or_else(|failure| failure.to_string(), |status| status.to_string())
+            },
+        );
         let delay = match restart {
             Restart::Backoff => self.backoff.next_delay(uptime),
             Restart::Now => Duration::ZERO,
@@ -178,9 +178,14 @@ impl Manager {
         if let Some(mut running) = self.running.take() {
             let _ = write_json(&mut running.stdin, &Request::Shutdown.to_json());
             drop(running.stdin);
+            let Some(mut child) = running.child.take() else {
+                self.model = None;
+                self.publish();
+                return;
+            };
             let deadline = Instant::now() + Duration::from_secs(1);
             let exited = loop {
-                match running.child.try_wait() {
+                match child.try_wait() {
                     Ok(Some(_)) => break true,
                     Ok(None) if Instant::now() < deadline => {
                         thread::sleep(Duration::from_millis(10));
@@ -189,13 +194,13 @@ impl Manager {
                 }
             };
             if !exited {
-                let _ = running.child.kill();
-                let _ = running.child.wait();
+                let _ = child.kill();
+                let _ = child.wait();
             }
             self.log.write(
                 Level::Info,
                 "STOP",
-                &format!("pid={} clean={exited}", running.child.id()),
+                &format!("pid={} clean={exited}", child.id()),
             );
         }
         self.model = None;
@@ -203,7 +208,7 @@ impl Manager {
     }
 }
 
-fn read_events(stdout: ChildStdout, sender: &Sender<Msg>, generation: u64) {
+fn read_events(stdout: Box<dyn Read + Send>, sender: &Sender<Msg>, generation: u64) {
     let mut stdout = stdout;
     loop {
         let event = match read_frame(&mut stdout) {
