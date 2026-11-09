@@ -1,6 +1,7 @@
 //! Paired Noise connections carry the same frames as local worker pipes.
 
 pub mod discovery;
+pub mod enrollment;
 mod pairing;
 mod stream;
 
