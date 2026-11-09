@@ -3,6 +3,7 @@
 #![allow(unsafe_code)]
 
 use std::ffi::{OsStr, OsString};
+use std::fs;
 use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
@@ -11,8 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{
     CreateEventW, CreateProcessW, DETACHED_PROCESS, EVENT_MODIFY_STATE, OpenEventW, OpenProcess,
-    PROCESS_INFORMATION, PROCESS_SYNCHRONIZE, STARTUPINFOW, SetEvent, WaitForMultipleObjects,
-    WaitForSingleObject,
+    PROCESS_INFORMATION, PROCESS_SYNCHRONIZE, STARTUPINFOW, SetEvent, TerminateProcess,
+    WaitForMultipleObjects, WaitForSingleObject,
 };
 use windows::core::{PCWSTR, PWSTR};
 
@@ -195,6 +196,135 @@ pub(super) fn relaunch() -> io::Result<()> {
     Ok(())
 }
 
+const UPDATE_HELPER: &str = r#"param([int]$OldPid, [string]$Ready, [string]$Setup, [string]$Target, [string]$Log, [string]$Show)
+$ErrorActionPreference = 'Stop'
+$oldExited = $false
+$setupRunning = $false
+$installed = $false
+$result = 1
+try {
+    $old = [Diagnostics.Process]::GetProcessById($OldPid)
+    $null = $old.Handle
+    $readyEvent = [Threading.EventWaitHandle]::OpenExisting($Ready)
+    $null = $readyEvent.Set()
+    $readyEvent.Dispose()
+    if (-not $old.WaitForExit(60000)) { throw 'The old Hushpen process did not exit.' }
+    $oldExited = $true
+    $old.Dispose()
+    Add-Content -LiteralPath $Log -Value 'UPDATE_SETUP_START'
+    $directory = Split-Path -LiteralPath $Target
+    $installer = Start-Process -FilePath $Setup -ArgumentList "/S /D=$directory" -PassThru
+    $setupRunning = $true
+    if (-not $installer.WaitForExit(600000)) { throw 'Setup did not exit within ten minutes.' }
+    $setupRunning = $false
+    if ($installer.ExitCode -ne 0) { throw "Setup ended with code $($installer.ExitCode)." }
+    $installer.Dispose()
+    $installed = $true
+    $result = 0
+    Add-Content -LiteralPath $Log -Value 'UPDATE_SETUP_DONE'
+} catch {
+    Add-Content -LiteralPath $Log -Value "UPDATE_SWAP_FAILED $_"
+} finally {
+    if ($oldExited -and -not $setupRunning) {
+        $arguments = if ($Show -eq '1') { '--show-window' } else { '--hidden' }
+        Start-Process -FilePath $Target -ArgumentList $arguments
+    }
+    if ($installed) {
+        Remove-Item -LiteralPath $Setup, $PSCommandPath -Force
+        $directory = Split-Path -LiteralPath $Setup
+        if (-not (Get-ChildItem -LiteralPath $directory -Force)) {
+            Remove-Item -LiteralPath $directory -Force
+        }
+    }
+}
+exit $result
+"#;
+
+fn powershell() -> io::Result<PathBuf> {
+    let root = std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .filter(|root| root.is_absolute())
+        .ok_or_else(|| io::Error::other("The Windows system folder is unavailable."))?;
+    Ok(root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe"))
+}
+
+pub(super) fn apply_update(setup: &Path, target: &Path, log: &Path, show: bool) -> io::Result<()> {
+    apply_update_for_pid(std::process::id(), setup, target, log, show)
+}
+
+fn apply_update_for_pid(
+    pid: u32,
+    setup: &Path,
+    target: &Path,
+    log: &Path,
+    show: bool,
+) -> io::Result<()> {
+    for path in [setup, target, log] {
+        if !path.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Update paths must be absolute.",
+            ));
+        }
+        wide(path.as_os_str())?;
+    }
+    if pid == 0 || !setup.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "The setup file or process ID is invalid.",
+        ));
+    }
+    let script = setup.with_file_name("apply-update.ps1");
+    fs::write(&script, UPDATE_HELPER)?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_nanos();
+    let event = format!("Local\\HushpenUpdate-{pid}-{nonce}");
+    let event_name = wide(OsStr::new(&event))?;
+    // SAFETY: The event and child handles remain owned during the bounded startup handshake.
+    let ready = unsafe {
+        let ready = CreateEventW(None, true, false, PCWSTR(event_name.as_ptr()))
+            .map_err(io::Error::other)?;
+        OwnedHandle::from_raw_handle(ready.0)
+    };
+    let args = [
+        OsString::from("-NoProfile"),
+        OsString::from("-NonInteractive"),
+        OsString::from("-WindowStyle"),
+        OsString::from("Hidden"),
+        OsString::from("-ExecutionPolicy"),
+        OsString::from("Bypass"),
+        OsString::from("-File"),
+        script.into_os_string(),
+        OsString::from(pid.to_string()),
+        OsString::from(event),
+        setup.as_os_str().to_owned(),
+        target.as_os_str().to_owned(),
+        log.as_os_str().to_owned(),
+        OsString::from(if show { "1" } else { "0" }),
+    ];
+    let child = spawn(&powershell()?, &args)?;
+    // SAFETY: Both handles stay open until the helper opens the old process or exits.
+    let result = unsafe {
+        WaitForMultipleObjects(
+            &[HANDLE(ready.as_raw_handle()), HANDLE(child.as_raw_handle())],
+            false,
+            10_000,
+        )
+    };
+    if result == WAIT_OBJECT_0 {
+        Ok(())
+    } else {
+        // SAFETY: The helper belongs to this update and cannot install while the old app is still running.
+        unsafe {
+            let _ = TerminateProcess(HANDLE(child.as_raw_handle()), 1);
+            let _ = WaitForSingleObject(HANDLE(child.as_raw_handle()), 5000);
+        }
+        Err(io::Error::other("The update helper did not become ready."))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +359,67 @@ mod tests {
         assert!(request(&args("42", "Local\\HushpenRestart-43-1", r"C:\Current")).is_err());
         assert!(request(&args("42", "Local\\HushpenRestart-42-1", "relative")).is_err());
         assert!(request(&[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn the_helper_is_valid_powershell_and_refuses_relative_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("helper.ps1");
+        fs::write(&script, UPDATE_HELPER).unwrap();
+        let output = Command::new(powershell().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg("$errors = $null; $null = [Management.Automation.Language.Parser]::ParseFile($env:HUSHPEN_HELPER_TEST_PATH, [ref]$null, [ref]$errors); if ($errors.Count) { $errors; exit 1 }")
+            .env("HUSHPEN_HELPER_TEST_PATH", &script)
+            .output().unwrap();
+        assert!(
+            output.status.success(),
+            "{} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(apply_update(Path::new("relative.exe"), &script, &script, false).is_err());
+    }
+
+    #[test]
+    fn the_helper_waits_then_logs_a_failed_setup_without_replacing_the_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::env::var_os("SystemRoot").unwrap();
+        let setup = dir.path().join("test-setup.exe");
+        fs::copy(PathBuf::from(&root).join(r"System32\whoami.exe"), &setup).unwrap();
+        let target = dir.path().join("missing-hushpen.exe");
+        let log = dir.path().join("update.log");
+        let mut old = Command::new(PathBuf::from(root).join(r"System32\ping.exe"))
+            .args(["-n", "61", "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        apply_update_for_pid(old.id(), &setup, &target, &log, false).unwrap();
+        let started_early = log.exists();
+        old.kill().unwrap();
+        old.wait().unwrap();
+        assert!(
+            !started_early,
+            "setup starts only after the old process exits"
+        );
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            if fs::read_to_string(&log).is_ok_and(|text| text.contains("UPDATE_SWAP_FAILED")) {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < until,
+                "the helper must report setup failure"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        assert!(!target.exists());
     }
 }

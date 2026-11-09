@@ -149,7 +149,7 @@ pub struct Manifest {
     pub version: Version,
     pub notes_url: String,
     pub pub_date: Option<String>,
-    /// Keyed by target, for example `macos-arm64`, `linux-x64`, `linux-arm64`.
+    /// Keyed by target, for example `macos-arm64`, `linux-x64`, `windows-x64`.
     pub platforms: BTreeMap<String, Artifact>,
 }
 
@@ -276,6 +276,8 @@ pub enum InstallKind {
     Rpm,
     /// The Linux tar.gz.
     Tar,
+    WindowsSetup,
+    WindowsZip,
     /// No `install-kind` file: a build that runs from a source tree.
     Unknown,
 }
@@ -289,6 +291,8 @@ impl InstallKind {
             "deb" => Self::Deb,
             "rpm" => Self::Rpm,
             "tar" => Self::Tar,
+            "windows-setup" => Self::WindowsSetup,
+            "windows-zip" => Self::WindowsZip,
             _ => Self::Unknown,
         }
     }
@@ -300,6 +304,8 @@ impl InstallKind {
             Self::Deb => "deb",
             Self::Rpm => "rpm",
             Self::Tar => "tar",
+            Self::WindowsSetup => "windows-setup",
+            Self::WindowsZip => "windows-zip",
             Self::Unknown => "unknown",
         }
     }
@@ -312,6 +318,7 @@ pub fn target_key(os: crate::os::Os, arch: &str) -> Option<&'static str> {
         (Os::Mac, "aarch64") => Some("macos-arm64"),
         (Os::Linux, "x86_64") => Some("linux-x64"),
         (Os::Linux, "aarch64") => Some("linux-arm64"),
+        (Os::Windows, "x86_64") => Some("windows-x64"),
         _ => None,
     }
 }
@@ -335,9 +342,11 @@ pub enum Delivery {
 
 pub fn delivery(kind: InstallKind, target: Option<&str>, manifest: &Manifest) -> Delivery {
     match kind {
-        InstallKind::Deb | InstallKind::Rpm | InstallKind::Tar => Delivery::Notice,
+        InstallKind::Deb | InstallKind::Rpm | InstallKind::Tar | InstallKind::WindowsZip => {
+            Delivery::Notice
+        }
         InstallKind::Unknown => Delivery::Unpackaged,
-        InstallKind::App | InstallKind::AppImage => target
+        InstallKind::App | InstallKind::AppImage | InstallKind::WindowsSetup => target
             .and_then(|target| manifest.platforms.get(target))
             .map_or(Delivery::Notice, |artifact| {
                 Delivery::Artifact(artifact.clone())

@@ -76,7 +76,12 @@ fn banner_and_install_choices_keep_package_ownership_and_dismissal() {
         .version
         .as_str()
         .to_owned();
-    for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Tar] {
+    for kind in [
+        InstallKind::Deb,
+        InstallKind::Rpm,
+        InstallKind::Tar,
+        InstallKind::WindowsZip,
+    ] {
         assert_eq!(machine.install(kind, Some("linux-x64")), None);
         assert_eq!(
             machine.banner_kind(kind, Some("linux-x64"), true, None),
@@ -343,6 +348,8 @@ fn an_install_kind_file_names_one_of_the_package_kinds() {
         ("deb", InstallKind::Deb),
         (" rpm \n", InstallKind::Rpm),
         ("tar\n", InstallKind::Tar),
+        ("windows-setup\n", InstallKind::WindowsSetup),
+        ("windows-zip\n", InstallKind::WindowsZip),
         ("", InstallKind::Unknown),
         ("flatpak", InstallKind::Unknown),
     ] {
@@ -359,15 +366,17 @@ fn the_manifest_key_follows_the_system_and_the_cpu() {
     assert_eq!(target_key(Os::Linux, "x86_64"), Some("linux-x64"));
     assert_eq!(target_key(Os::Linux, "aarch64"), Some("linux-arm64"));
     assert_eq!(target_key(Os::Mac, "x86_64"), None);
-    assert_eq!(target_key(Os::Windows, "x86_64"), None);
+    assert_eq!(target_key(Os::Windows, "x86_64"), Some("windows-x64"));
+    assert_eq!(target_key(Os::Windows, "aarch64"), None);
 }
 
 #[test]
 fn a_zip_or_an_appimage_with_a_file_for_this_target_installs_itself() {
-    let manifest = manifest_with(&["linux-arm64", "macos-arm64"]);
+    let manifest = manifest_with(&["linux-arm64", "macos-arm64", "windows-x64"]);
     for (kind, target) in [
         (InstallKind::AppImage, "linux-arm64"),
         (InstallKind::App, "macos-arm64"),
+        (InstallKind::WindowsSetup, "windows-x64"),
     ] {
         let Delivery::Artifact(artifact) = delivery(kind, Some(target), &manifest) else {
             panic!("{kind:?} should install itself");
@@ -386,6 +395,32 @@ fn deb_rpm_and_tar_only_get_a_notice_even_when_the_manifest_has_their_file() {
             "{kind:?}"
         );
     }
+}
+
+#[test]
+fn a_windows_portable_copy_keeps_package_ownership() {
+    let manifest = manifest_with(&["windows-x64"]);
+    assert_eq!(
+        delivery(InstallKind::WindowsZip, Some("windows-x64"), &manifest),
+        Delivery::Notice
+    );
+    let mut machine = Machine::default();
+    let run = machine.begin_check().unwrap();
+    machine.finish_check(run, Ok(Offer::Available(manifest)));
+    assert_eq!(
+        machine.install(InstallKind::WindowsZip, Some("windows-x64")),
+        None
+    );
+    assert_eq!(
+        machine.banner_kind(InstallKind::WindowsZip, Some("windows-x64"), true, None),
+        Some(BannerKind::Notice)
+    );
+    assert!(matches!(
+        machine.install(InstallKind::WindowsSetup, Some("windows-x64")),
+        Some(Delivery::Artifact(_))
+    ));
+    assert!(machine.finish_stage(Ok(())));
+    assert!(machine.can_restart());
 }
 
 #[test]

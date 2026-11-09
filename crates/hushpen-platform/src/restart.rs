@@ -8,6 +8,20 @@ mod windows;
 
 pub const HELPER_ARG: &str = "restart-after-exit";
 
+/// Starts the Windows setup helper before the app releases its files.
+pub fn apply_update(setup: &Path, target: &Path, log: &Path, show_window: bool) -> io::Result<()> {
+    #[cfg(target_os = "windows")]
+    return windows::apply_update(setup, target, log, show_window);
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (setup, target, log, show_window);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "The setup helper is Windows only.",
+        ))
+    }
+}
+
 /// Starts a detached helper before the app releases its files and instance lock.
 pub fn after_exit(current: &Path, target: &Path, default: &Path) -> io::Result<()> {
     #[cfg(target_os = "windows")]
