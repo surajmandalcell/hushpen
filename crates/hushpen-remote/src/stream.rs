@@ -15,6 +15,7 @@ const MAX_PLAIN: usize = MAX_PACKET - 16;
 const MAX_HANDSHAKE: usize = 4096;
 const ACCEPTED: &[u8] = b"hushpen-ready-v1";
 const RUNTIME_IDLE: Duration = Duration::from_secs(15);
+const IO_POLL: Duration = Duration::from_millis(50);
 
 /// Shared by a service so an unfinished OS lookup cannot collect more lookup threads.
 #[derive(Clone, Default)]
@@ -127,10 +128,12 @@ pub struct RemoteStream {
 #[derive(Clone)]
 pub struct RemoteControl {
     socket: Arc<TcpStream>,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl RemoteControl {
     pub fn shutdown(&self) -> io::Result<()> {
+        self.cancelled.store(true, Ordering::Release);
         self.socket.shutdown(Shutdown::Both)
     }
 }
@@ -144,6 +147,7 @@ pub struct RemoteReader {
     failed: bool,
     packet_timeout: Duration,
     deadline: Option<Instant>,
+    cancelled: Arc<AtomicBool>,
 }
 
 pub struct RemoteWriter {
@@ -151,6 +155,7 @@ pub struct RemoteWriter {
     cipher: Arc<StatelessTransportState>,
     nonce: u64,
     failed: bool,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl RemoteStream {
@@ -286,8 +291,12 @@ impl RemoteStream {
         packet_timeout: Duration,
         deadline: Instant,
     ) -> io::Result<Self> {
+        // Windows can leave a blocking send pending after another thread calls shutdown.
+        socket.set_nonblocking(true)?;
+        let cancelled = Arc::new(AtomicBool::new(false));
         let control = RemoteControl {
             socket: Arc::new(socket.try_clone()?),
+            cancelled: Arc::clone(&cancelled),
         };
         let cipher = Arc::new(
             noise
@@ -303,12 +312,14 @@ impl RemoteStream {
             failed: false,
             packet_timeout,
             deadline: Some(deadline),
+            cancelled: Arc::clone(&cancelled),
         };
         let writer = RemoteWriter {
             socket,
             cipher,
             nonce: 0,
             failed: false,
+            cancelled,
         };
         Ok(Self {
             reader,
@@ -357,6 +368,7 @@ impl Write for RemoteStream {
 
 impl RemoteReader {
     pub fn shutdown(&self) -> io::Result<()> {
+        self.cancelled.store(true, Ordering::Release);
         self.socket.shutdown(Shutdown::Both)
     }
 
@@ -366,6 +378,7 @@ impl RemoteReader {
             MAX_PACKET,
             self.packet_timeout,
             self.deadline,
+            Some(&self.cancelled),
         )?
         else {
             return Ok(false);
@@ -396,6 +409,7 @@ impl Read for RemoteReader {
         if output.is_empty() {
             return Ok(0);
         }
+        check_cancelled(Some(&self.cancelled))?;
         if self.failed {
             return Err(invalid("connection closed after a read failure"));
         }
@@ -419,6 +433,7 @@ impl Read for RemoteReader {
 
 impl RemoteWriter {
     pub fn shutdown(&self) -> io::Result<()> {
+        self.cancelled.store(true, Ordering::Release);
         self.socket.shutdown(Shutdown::Both)
     }
 
@@ -433,7 +448,7 @@ impl RemoteWriter {
             .nonce
             .checked_add(1)
             .ok_or_else(|| invalid("connection exhausted"))?;
-        send_packet(&mut self.socket, &packet[..length])?;
+        send_packet(&mut self.socket, &packet[..length], Some(&self.cancelled))?;
         Ok(count)
     }
 }
@@ -443,6 +458,7 @@ impl Write for RemoteWriter {
         if bytes.is_empty() {
             return Ok(0);
         }
+        check_cancelled(Some(&self.cancelled))?;
         if self.failed {
             return Err(invalid("connection closed after a write failure"));
         }
@@ -493,7 +509,7 @@ fn send_handshake(
     let size = noise
         .write_message(payload, &mut packet)
         .map_err(io::Error::other)?;
-    send_packet(socket, &packet[..size])
+    send_packet(socket, &packet[..size], None)
 }
 
 fn receive_handshake(
@@ -503,7 +519,7 @@ fn receive_handshake(
 ) -> io::Result<Vec<u8>> {
     let timeout = remaining(deadline)?;
     socket.set_read_timeout(Some(timeout))?;
-    let packet = receive_packet(socket, MAX_HANDSHAKE, timeout, Some(deadline))?
+    let packet = receive_packet(socket, MAX_HANDSHAKE, timeout, Some(deadline), None)?
         .ok_or_else(|| invalid("handshake ended early"))?;
     let mut plain = vec![0; MAX_HANDSHAKE];
     let size = noise
@@ -513,7 +529,11 @@ fn receive_handshake(
     Ok(plain)
 }
 
-fn send_packet(socket: &mut TcpStream, bytes: &[u8]) -> io::Result<()> {
+fn send_packet(
+    socket: &mut TcpStream,
+    bytes: &[u8],
+    cancelled: Option<&AtomicBool>,
+) -> io::Result<()> {
     let length = u16::try_from(bytes.len()).map_err(|_| invalid("packet too large"))?;
     let timeout = socket
         .write_timeout()?
@@ -522,6 +542,7 @@ fn send_packet(socket: &mut TcpStream, bytes: &[u8]) -> io::Result<()> {
     for bytes in [&length.to_le_bytes()[..], bytes] {
         let mut left = bytes;
         while !left.is_empty() {
+            check_cancelled(cancelled)?;
             socket.set_write_timeout(Some(remaining(deadline)?))?;
             match socket.write(left) {
                 Ok(0) => {
@@ -532,6 +553,9 @@ fn send_packet(socket: &mut TcpStream, bytes: &[u8]) -> io::Result<()> {
                 }
                 Ok(count) => left = &left[count..],
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    wait_for_io(deadline, cancelled)?
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -544,25 +568,26 @@ fn receive_packet(
     limit: usize,
     packet_timeout: Duration,
     handshake_deadline: Option<Instant>,
+    cancelled: Option<&AtomicBool>,
 ) -> io::Result<Option<Vec<u8>>> {
     let timeout = socket
         .read_timeout()?
         .ok_or_else(|| invalid("missing read timeout"))?;
     let idle_deadline = handshake_deadline.unwrap_or(Instant::now() + timeout);
     let mut header = [0; 2];
-    match read_before(socket, &mut header[..1], idle_deadline)? {
+    match read_before(socket, &mut header[..1], idle_deadline, cancelled)? {
         0 => return Ok(None),
         1 => {}
         _ => return Err(invalid("invalid packet header")),
     }
     let deadline = handshake_deadline.unwrap_or(Instant::now() + packet_timeout);
-    read_exact_before(socket, &mut header[1..], deadline)?;
+    read_exact_before(socket, &mut header[1..], deadline, cancelled)?;
     let size = usize::from(u16::from_le_bytes(header));
     if size == 0 || size > limit {
         return Err(invalid("packet length is outside the limit"));
     }
     let mut packet = vec![0; size];
-    read_exact_before(socket, &mut packet, deadline)?;
+    read_exact_before(socket, &mut packet, deadline, cancelled)?;
     socket.set_read_timeout(Some(timeout))?;
     Ok(Some(packet))
 }
@@ -574,11 +599,20 @@ fn remaining(deadline: Instant) -> io::Result<Duration> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "device packet timed out"))
 }
 
-fn read_before(socket: &mut TcpStream, bytes: &mut [u8], deadline: Instant) -> io::Result<usize> {
+fn read_before(
+    socket: &mut TcpStream,
+    bytes: &mut [u8],
+    deadline: Instant,
+    cancelled: Option<&AtomicBool>,
+) -> io::Result<usize> {
     loop {
+        check_cancelled(cancelled)?;
         socket.set_read_timeout(Some(remaining(deadline)?))?;
         match socket.read(bytes) {
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                wait_for_io(deadline, cancelled)?
+            }
             result => return result,
         }
     }
@@ -588,9 +622,10 @@ fn read_exact_before(
     socket: &mut TcpStream,
     mut bytes: &mut [u8],
     deadline: Instant,
+    cancelled: Option<&AtomicBool>,
 ) -> io::Result<()> {
     while !bytes.is_empty() {
-        let count = read_before(socket, bytes, deadline)?;
+        let count = read_before(socket, bytes, deadline, cancelled)?;
         if count == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
@@ -600,6 +635,22 @@ fn read_exact_before(
         bytes = &mut bytes[count..];
     }
     Ok(())
+}
+
+fn check_cancelled(cancelled: Option<&AtomicBool>) -> io::Result<()> {
+    if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        return Err(io::Error::new(
+            io::ErrorKind::ConnectionAborted,
+            "device connection cancelled",
+        ));
+    }
+    Ok(())
+}
+
+fn wait_for_io(deadline: Instant, cancelled: Option<&AtomicBool>) -> io::Result<()> {
+    check_cancelled(cancelled)?;
+    std::thread::sleep(remaining(deadline)?.min(IO_POLL));
+    check_cancelled(cancelled)
 }
 
 #[cfg(test)]
@@ -807,7 +858,7 @@ mod tests {
             .write_message(writer.nonce, b"ping", &mut packet)
             .unwrap();
         packet[0] ^= 1;
-        send_packet(&mut writer.socket, &packet).unwrap();
+        send_packet(&mut writer.socket, &packet, None).unwrap();
         let mut answer = [0; 4];
         assert_eq!(
             server.read(&mut answer).unwrap_err().kind(),
@@ -864,7 +915,7 @@ mod tests {
         });
         let (mut socket, _) = listener.accept().unwrap();
         configure(&socket, Duration::from_millis(80)).unwrap();
-        assert!(receive_packet(&mut socket, 4096, Duration::from_millis(80), None).is_err());
+        assert!(receive_packet(&mut socket, 4096, Duration::from_millis(80), None, None).is_err());
         drop(socket);
         sender.join().unwrap();
     }
@@ -902,6 +953,38 @@ mod tests {
         control.shutdown().unwrap();
         assert!(receiver.recv_timeout(Duration::from_secs(1)).unwrap());
         reader.join().unwrap();
+    }
+
+    #[test]
+    fn cancellation_stops_a_backpressured_write_without_os_shutdown() {
+        let (client, _server) = connected();
+        let control = client.control();
+        let (_, mut writer) = client.split().unwrap();
+        let padding = vec![0; 64 * 1024];
+        let deadline = Instant::now() + TIMEOUT;
+        let mut filled = 0;
+        loop {
+            match writer.socket.write(&padding) {
+                Ok(count) if count > 0 => filled += count,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                result => panic!("the nonblocking socket must fill: {result:?}"),
+            }
+            assert!(filled < 64 * 1024 * 1024 && Instant::now() < deadline);
+        }
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let writing = thread::spawn(move || {
+            let result = writer.write_all(&vec![1; 32 * 1024 * 1024]);
+            let _ = sender.send(result);
+        });
+        assert!(receiver.recv_timeout(Duration::from_millis(100)).is_err());
+        control.cancelled.store(true, Ordering::Release);
+        let error = receiver
+            .recv_timeout(Duration::from_millis(300))
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
+        writing.join().unwrap();
+        let _ = control.shutdown();
     }
 
     #[test]
