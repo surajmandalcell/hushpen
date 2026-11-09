@@ -489,6 +489,17 @@ new decision, add it here in the same change (D-21).
   two key permissions on macOS; other checks do not block it. Unavailable
   keys show no shortcut promise. Paste refusal keeps Copied with a notice.
 
+- **D-49 Windows packages and updates.** Windows x64 builds an unsigned
+  per-user NSIS setup and a portable ZIP on `windows-2025`. Setup installs
+  under `%LOCALAPPDATA%\Programs\Hushpen` without administrator rights.
+  Build-generated icons and version resources use the existing assets;
+  the app manifest uses asInvoker and PerMonitorV2. The signed update
+  manifest selects setup. After SHA-256 verification, a detached helper
+  waits for Hushpen to exit, runs setup with `/S`, and restarts the app.
+  Portable installs show a release notice. `install.ps1` checks SHA256SUMS
+  before silent setup. Windows files have no Authenticode signature;
+  SmartScreen warns. CI packages do not publish a release or the website.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

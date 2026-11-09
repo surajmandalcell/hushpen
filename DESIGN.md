@@ -180,13 +180,13 @@ components:
 
 ## Overview
 
-Hushpen is a fixed-width app for private dictation, file transcription, models, and playback. Follow system Light or Dark. Open on the working app. Keep it calm and compact. Hide internal names.
+Hushpen is fixed-width, calm, and compact, for private dictation, transcription, models, and playback. Follow system appearance. Open on the working app. Hide internal names.
 
-Core capabilities set platform defaults. Windows uses Right Alt gestures, CPU, Keep in memory, Inter, and custom window controls. Only Linux offers Page out. Windows 11 build 22621+ uses Mica behind the sidebar; older builds use an opaque fill. The flow bar never takes focus. Higher-privilege apps get a copy and a notice.
+Core sets platform defaults. Windows uses Right Alt gestures, CPU, Keep in memory, Inter, and custom window controls. Only Linux offers Page out. Windows 11 build 22621+ uses Mica behind the sidebar; older builds use opaque fill. The flow bar never takes focus. Higher-privilege apps get a copy and notice.
 
 ## App Icon
 
-The icon outlines a Roman statue: a young woman in profile, eyes closed, whispering into an upright fountain pen below her lips. Ink (`#1B2228`) on marble (`#F7F4EF` to `#E8E3DA`, top to bottom), with no text or other color.
+The icon is a Roman statue: a young woman in profile, eyes closed, whispering into an upright fountain pen below her lips. Ink (`#1B2228`) on marble (`#F7F4EF` to `#E8E3DA`, top to bottom), without text or other colors.
 
 Each design in `assets/icons/<name>/` has `mark.svg` (full 1024 tile) and `mark-small.svg` (bold head and pen crop). `classic` ships; `sari` (braided bun, jhumka, sari pallu) and `waves` (long loose hair) are seasonal. `harness/icons.sh <name>` builds all icon files:
 
@@ -232,7 +232,7 @@ Do not add colored icon tiles, section accents, or tinted panels.
 
 ## Typography
 
-macOS uses the system UI font (`.SystemUIFont`, SF Pro). Linux keeps the embedded Inter, so text looks the same on a machine with no system copy of it.
+macOS uses `.SystemUIFont` (SF Pro). Linux embeds Inter.
 
 Use the typography tokens above: Title for onboarding and About, Toolbar title in chrome, Heading above Settings groups, Body for rows, Button for controls, and Secondary for descriptions and footers. Headings and secondary text use the secondary label color.
 
@@ -263,7 +263,7 @@ Depth is tonal. Shadows are only for dropdowns and menus: 4px down, 12px of blur
 
 ## Shapes
 
-Use the `rounded` tokens for groups, controls, selection, icons, and window corners. Linux window buttons are fully round.
+Use `rounded` tokens for groups, controls, selection, icons, and windows. Linux window buttons are round.
 
 ## Motion
 
@@ -288,6 +288,8 @@ An animation plays only when its state changes: a new view, a menu that opens, a
 The flow bar has its own motion, described under Recording overlay.
 
 ## Components
+
+**Updates:** Windows setup installs run the verified installer after exit, then restart. Portable ZIP installs show a release notice. Controls and states stay the same.
 
 **Sidebar:** 7 rows in this order: Home, History, Manual, Dictionary, Models, Settings, About. Icons are monochrome, 16px, in the secondary label color. The selected row uses the selection fill and the label color for its icon. The window opens on the view that was open at the last quit, and on Home the first time. Onboarding, while it is not done, shows first.
 

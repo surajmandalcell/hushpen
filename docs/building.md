@@ -97,14 +97,51 @@ Windows stores data in the roaming AppData known folder under `Hushpen`.
 `HUSHPEN_DATA_DIR` and the saved folder choice still override it. Endpoint
 keys and the single-instance pipe allow only the current user. Text for an
 app with higher privileges stays on the clipboard with an administrator
-notice. Windows packages are not available yet. A green runner proves a
-build and unit tests, not interactive behavior on Windows hardware.
+notice. A green runner proves builds and unit tests, not interactive
+behavior on Windows hardware.
 
 Onboarding and Settings show Microphone, Admin apps, and Global keys.
 Microphone consent reads the current user's privacy settings, including
 desktop-app access. Open Settings opens `ms-settings:privacy-microphone`.
 The hook row offers Retry when global keys are unavailable. Only microphone
 readiness blocks Continue on Windows.
+
+## Windows packages
+
+On x64 Windows, install the pinned packaging tool and build both packages:
+
+```sh
+cargo install --locked cargo-packager@0.11.8
+cargo xtask package --target windows-x64
+cargo xtask package-verify --target windows-x64
+```
+
+The output folder contains `Hushpen-<version>-windows-x64-setup.exe`,
+`Hushpen-<version>-windows-x64.zip`, and `SHA256SUMS`. Setup uses NSIS and
+installs for the current user in `%LOCALAPPDATA%\Programs\Hushpen` without
+administrator rights. Extract the ZIP to use a portable copy. Both carry
+the four programs, speech DLLs, speech detector, and license notices.
+The build makes the ICO from the existing PNGs. The app embeds its version
+and uses the GPUI manifest's PerMonitorV2 DPI mode and asInvoker privilege.
+
+Windows packages are unsigned: there is no Authenticode certificate.
+SmartScreen will warn. Update metadata still uses minisign and SHA-256.
+Setup installs download the verified setup, wait for Hushpen to exit,
+install silently, and relaunch. Portable copies show the release link.
+
+The repository also provides a PowerShell installer for the latest release:
+
+```powershell
+irm https://hushpen.mandalsuraj.com/install.ps1 | iex
+```
+
+It checks SHA256SUMS before silent setup. `HUSHPEN_NO_OPEN=1` skips relaunch.
+The script must be deployed separately before this website command is available.
+
+Dispatch `ci.yml` with `targets=windows-x64` and `suite=package` to build,
+check, and upload both packages. Use `suite=gate` for format, clippy,
+workspace tests, dependency checks, and all four program version checks.
+`release.yml` includes Windows when a release is explicitly requested.
 
 ## Linux notes
 
