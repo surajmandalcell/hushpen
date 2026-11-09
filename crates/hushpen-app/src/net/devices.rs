@@ -61,7 +61,7 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
         let request = request.clone();
         let settings = storage.settings.remote();
         let router = Arc::clone(&storage.remote);
-        let config = storage.data.config_dir();
+        let secrets = Arc::clone(&storage.secrets);
         let (sender, receiver) = mpsc::sync_channel(32);
         std::thread::spawn(move || {
             if let Err(error) = run(
@@ -69,7 +69,7 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
                 identity,
                 settings.devices,
                 router,
-                &config,
+                &secrets,
                 &stopped,
                 &sender,
             ) && !stopped.load(Ordering::Acquire)
@@ -141,7 +141,7 @@ fn run(
     identity: Identity,
     devices: Vec<RemoteDevice>,
     router: Arc<remote_jobs::Router>,
-    config: &std::path::Path,
+    secrets: &hushpen_store::secrets::Secrets,
     stopped: &AtomicBool,
     sender: &SyncSender<Update>,
 ) -> io::Result<()> {
@@ -158,7 +158,7 @@ fn run(
             }
             send(sender, Update::Found(found.into_values().collect()))
         }
-        Request::Offer { host } => offer(&identity, host, config, stopped, sender),
+        Request::Offer { host } => offer(&identity, host, secrets, stopped, sender),
         Request::Pair {
             uri,
             device,
@@ -241,7 +241,7 @@ fn paired(
 fn offer(
     identity: &Identity,
     host: String,
-    config: &std::path::Path,
+    secrets: &hushpen_store::secrets::Secrets,
     stopped: &AtomicBool,
     sender: &SyncSender<Update>,
 ) -> io::Result<()> {
@@ -304,8 +304,6 @@ fn offer(
             Some(&mut offer),
             Duration::from_secs(3),
             |key| {
-                let secrets =
-                    hushpen_store::secrets::Secrets::open(config).map_err(io::Error::other)?;
                 let mut pins = secrets.paired_clients();
                 if !pins.contains(&key) {
                     pins.push(key);
@@ -372,7 +370,8 @@ mod tests {
     #[test]
     fn qr_pairing_pins_the_phone_before_returning_its_serving_address() {
         let directory = tempfile::tempdir().unwrap();
-        let config = directory.path().to_owned();
+        let secrets = Arc::new(hushpen_store::secrets::Secrets::open(directory.path()).unwrap());
+        let worker_secrets = Arc::clone(&secrets);
         let desktop = Identity::generate().unwrap();
         let phone = Identity::generate().unwrap();
         let phone_key = phone.public();
@@ -381,7 +380,7 @@ mod tests {
             offer(
                 &desktop,
                 "127.0.0.1".into(),
-                &config,
+                &worker_secrets,
                 &AtomicBool::new(false),
                 &sender,
             )
@@ -395,6 +394,7 @@ mod tests {
         assert!(!qr.is_empty());
         assert!(qr.iter().all(|row| row.len() == qr.len()));
         let parsed = PairOffer::parse(&uri).unwrap();
+        secrets.set_endpoint_api_key(Some("test-token")).unwrap();
         assert_eq!(parsed.expires_unix_secs, expires);
         let mut session = RemoteStream::connect(
             format!("127.0.0.1:{}", parsed.port),
@@ -409,6 +409,16 @@ mod tests {
             .unwrap()
             .paired_clients();
         assert_eq!(pins, vec![phone_key]);
+        assert_eq!(secrets.endpoint_api_key().as_deref(), Some("test-token"));
+        secrets
+            .set_endpoint_api_key(Some("updated-test-token"))
+            .unwrap();
+        assert_eq!(
+            hushpen_store::secrets::Secrets::open(directory.path())
+                .unwrap()
+                .paired_clients(),
+            pins
+        );
         Enrollment {
             device: Device {
                 id: "ignored".into(),
@@ -437,13 +447,13 @@ mod tests {
     #[test]
     fn cancelling_a_qr_offer_closes_its_listener() {
         let directory = tempfile::tempdir().unwrap();
-        let config = directory.path().to_owned();
+        let secrets = hushpen_store::secrets::Secrets::open(directory.path()).unwrap();
         let identity = Identity::generate().unwrap();
         let cancelled = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&cancelled);
         let (sender, receiver) = mpsc::sync_channel(4);
         let worker = std::thread::spawn(move || {
-            offer(&identity, "127.0.0.1".into(), &config, &stop, &sender)
+            offer(&identity, "127.0.0.1".into(), &secrets, &stop, &sender)
         });
         let Update::Offer { uri, .. } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
         else {
