@@ -19,7 +19,7 @@ pub struct Engine {
     pub(crate) data: PathBuf,
     pub(crate) client: EngineClient,
     active: Mutex<Option<u64>>,
-    operation: Mutex<()>,
+    pub(crate) operation: Arc<Mutex<()>>,
 }
 
 #[uniffi::export]
@@ -49,7 +49,7 @@ impl Engine {
                 log,
             ),
             active: Mutex::new(None),
-            operation: Mutex::new(()),
+            operation: Arc::new(Mutex::new(())),
         }))
     }
 
@@ -130,8 +130,13 @@ impl Engine {
         }
     }
 
-    pub fn unload(&self) {
+    pub fn unload(&self) -> Result<(), MobileError> {
+        let _operation = self
+            .operation
+            .try_lock()
+            .map_err(|_| MobileError::failed("speech engine is busy"))?;
         self.client.unload();
+        Ok(())
     }
 
     pub fn shutdown(&self) {

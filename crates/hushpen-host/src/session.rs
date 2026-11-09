@@ -32,7 +32,7 @@ pub fn serve_session(
         return Err(invalid("unload rule is unavailable on this host"));
     }
     let gate = match kind {
-        WorkerKind::Speech => &workers.speech_session,
+        WorkerKind::Speech => workers.speech_session.as_ref(),
         WorkerKind::Cleanup => &workers.cleanup_session,
     };
     let _guard = gate.try_lock().map_err(|_| {

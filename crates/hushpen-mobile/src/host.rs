@@ -165,7 +165,7 @@ impl Host {
             os,
             serves: Serves {
                 speech: true,
-                cleanup: self.system.available(),
+                cleanup: true,
             },
         };
         let advertisement = hushpen_remote::discovery::Advertisement::new(
@@ -184,7 +184,13 @@ impl Host {
             EngineLog::open_scoped(&self.engine.data.join("logs/llm.log"), "llm")
                 .map_err(MobileError::failed)?,
         );
-        let workers = Workers::from_clients(self.engine.client.clone(), cleanup, os, true);
+        let workers = Workers::from_clients_with_speech_session(
+            self.engine.client.clone(),
+            cleanup,
+            os,
+            true,
+            Arc::clone(&self.engine.operation),
+        );
         workers.set_job_activity(activity_callback(lock(&self.activity).clone()));
         workers.set_unload_rule(rule);
         let stop = Arc::new(AtomicBool::new(false));
@@ -245,7 +251,7 @@ impl Host {
                 os: self.os,
                 serves: Serves {
                     speech: true,
-                    cleanup: self.system.available(),
+                    cleanup: true,
                 },
             },
             port,
@@ -400,10 +406,10 @@ mod tests {
     use hushpen_engine::{LlmOutcome, LlmSpec, LlmState, LlmWork, RemoteSpec};
     use hushpen_remote::WorkerKind;
 
-    struct System;
+    struct System(bool);
     impl SystemLlm for System {
         fn available(&self) -> bool {
-            true
+            self.0
         }
         fn cleanup(&self, text: String, _: String) -> Result<String, MobileError> {
             Ok(format!("{}!", text.trim_end_matches('.')))
@@ -415,7 +421,7 @@ mod tests {
         let mut host = Host::new(
             engine,
             "Test phone".into(),
-            SystemCleanup::new(Arc::new(System)),
+            SystemCleanup::new(Arc::new(System(true))),
         )
         .unwrap();
         Arc::get_mut(&mut host).unwrap().os = os;
@@ -464,6 +470,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(enrollment.device.kind, DeviceKind::Phone);
+            assert!(enrollment.device.serves.cleanup);
             enrollment.port
         });
         host.pair(uri).unwrap();
@@ -687,6 +694,56 @@ mod tests {
         );
         host.start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
             .unwrap();
+        host.stop();
+        host.engine.shutdown();
+    }
+
+    #[test]
+    fn pairing_keeps_cleanup_capable_when_the_system_model_is_unavailable() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut host = host(directory.path(), Os::Android);
+        Arc::get_mut(&mut host).unwrap().system = SystemCleanup::new(Arc::new(System(false)));
+        assert!(!host.system.available());
+        host.start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
+            .unwrap();
+        let _desktop = pair_desktop(&host);
+        host.stop();
+        host.engine.shutdown();
+    }
+
+    #[test]
+    fn a_desktop_speech_session_excludes_local_model_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = host(directory.path(), Os::Android);
+        host.start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
+            .unwrap();
+        let desktop = pair_desktop(&host);
+        let client = hushpen_engine::EngineClient::start_link(
+            Link::Remote(RemoteSpec::new(
+                connect(&host, &desktop),
+                WorkerKind::Speech,
+            )),
+            Timing::default(),
+            EngineLog::discard(),
+        );
+        assert!(
+            client.wait_for(Duration::from_secs(3), |status| status.state
+                == hushpen_engine::EngineState::Ready)
+        );
+        assert_eq!(
+            host.engine
+                .load("base-q5_1".into())
+                .unwrap_err()
+                .to_string(),
+            "speech engine is busy"
+        );
+        assert!(host.engine.unload().is_err());
+        client.shutdown();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while host.engine.operation.try_lock().is_err() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(host.engine.unload().is_ok());
         host.stop();
         host.engine.shutdown();
     }
