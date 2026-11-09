@@ -14,6 +14,8 @@ pub mod app_menu;
 pub mod assets;
 pub mod cli;
 pub mod controller;
+pub mod device_ssh;
+pub mod devices;
 pub mod dictation;
 pub mod dictionary;
 pub mod engine_host;

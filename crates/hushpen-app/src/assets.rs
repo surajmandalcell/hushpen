@@ -34,6 +34,7 @@ icon_assets!(
         BookA,
         Files,
         Cpu,
+        Smartphone,
         Settings,
         Info,
         X,

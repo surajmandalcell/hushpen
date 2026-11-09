@@ -1,0 +1,426 @@
+//! Devices state and intents. Network work runs in the device service.
+
+pub mod panel;
+
+use crate::storage::Storage;
+use gpui_kit::component::input::InputState;
+use gpui_kit::{AppContext as _, Context, Entity, EventEmitter, Window};
+use hushpen_core::os::Os;
+use hushpen_core::remote::{
+    Device, DeviceKind, Health, ModelKind, PairEvent, Pairing, Route, Serves, UnloadRule,
+};
+use hushpen_remote::discovery::FoundDevice;
+use hushpen_store::settings::{RemoteDevice, RemoteSettings, Transport};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Clone)]
+pub enum Request {
+    Discover,
+    Offer {
+        host: String,
+    },
+    CancelOffer,
+    Pair {
+        uri: String,
+        device: Device,
+        transport: Transport,
+    },
+    SetupSsh {
+        host: String,
+    },
+    Probe,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddMethod {
+    Phone,
+    Ssh,
+    Tailscale,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sheet {
+    Add(AddMethod),
+    Detail(String),
+}
+
+pub struct Devices {
+    storage: Rc<Storage>,
+    pub settings: RemoteSettings,
+    pub health: BTreeMap<String, Health>,
+    pub discovered: Vec<FoundDevice>,
+    pub hosts: Vec<String>,
+    pub selected_host: Option<String>,
+    pub selected_device: Option<Device>,
+    pub tailscale_os: Os,
+    pub sheet: Option<Sheet>,
+    pub pairing: Pairing,
+    pub qr: Vec<Vec<bool>>,
+    pub progress: Vec<String>,
+    pub busy: bool,
+    pub notice: Option<String>,
+    pub host: Entity<InputState>,
+    pub address: Entity<InputState>,
+    pub uri: Entity<InputState>,
+    pub name: Entity<InputState>,
+}
+
+impl EventEmitter<Request> for Devices {}
+
+impl Devices {
+    pub fn new(storage: Rc<Storage>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            settings: storage.settings.remote(),
+            storage,
+            health: BTreeMap::new(),
+            discovered: Vec::new(),
+            hosts: Vec::new(),
+            selected_host: None,
+            selected_device: None,
+            tailscale_os: Os::Linux,
+            sheet: None,
+            pairing: Pairing::Idle,
+            qr: Vec::new(),
+            progress: Vec::new(),
+            busy: false,
+            notice: None,
+            host: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("This computer's network address")
+            }),
+            address: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Tailscale address and port")),
+            uri: cx.new(|cx| InputState::new(window, cx).placeholder("Pairing link")),
+            name: cx.new(|cx| InputState::new(window, cx).placeholder("Device name")),
+        }
+    }
+
+    fn save(&mut self, next: RemoteSettings, cx: &mut Context<Self>) -> Result<(), String> {
+        self.storage.settings.set_remote(&next).map_err(|error| {
+            let message = format!("Could not save devices: {error}");
+            self.notice = Some(message.clone());
+            cx.notify();
+            message
+        })?;
+        self.settings = self.storage.settings.remote();
+        self.notice = None;
+        cx.notify();
+        Ok(())
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) -> Result<(), String> {
+        let mut next = self.settings.clone();
+        next.enabled = enabled;
+        self.save(next, cx)
+    }
+
+    pub fn set_no_local(&mut self, disabled: bool, cx: &mut Context<Self>) -> Result<(), String> {
+        let mut next = self.settings.clone();
+        next.no_local_models = disabled;
+        self.save(next, cx)
+    }
+
+    pub fn move_device(
+        &mut self,
+        kind: ModelKind,
+        id: &str,
+        up: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let mut next = self.settings.clone();
+        let ids = match kind {
+            ModelKind::Speech => &mut next.routes.speech,
+            ModelKind::Cleanup => &mut next.routes.cleanup,
+        };
+        let mut route = Route::new(ids.clone(), next.no_local_models);
+        if route.move_device(id, up) {
+            *ids = route.ids().to_vec();
+            self.save(next, cx)?;
+        }
+        Ok(())
+    }
+
+    pub fn opened(&mut self, cx: &mut Context<Self>) {
+        self.settings = self.storage.settings.remote();
+        if self.settings.enabled {
+            cx.emit(Request::Probe);
+        }
+        cx.notify();
+    }
+
+    pub fn open_add(&mut self, cx: &mut Context<Self>) {
+        self.close(cx);
+        self.sheet = Some(Sheet::Add(AddMethod::Phone));
+        cx.emit(Request::Discover);
+        cx.notify();
+    }
+
+    pub fn select_method(&mut self, method: AddMethod, cx: &mut Context<Self>) {
+        self.close(cx);
+        self.sheet = Some(Sheet::Add(method));
+        cx.notify();
+    }
+
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        cx.emit(Request::CancelOffer);
+        self.sheet = None;
+        self.pairing.apply(PairEvent::Cancel, now());
+        self.qr.clear();
+        self.notice = None;
+        self.busy = false;
+        self.selected_device = None;
+        self.progress.clear();
+        cx.notify();
+    }
+
+    pub fn open_detail(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(device) = self
+            .settings
+            .devices
+            .iter()
+            .find(|device| device.device.id == id)
+        {
+            let name = device.device.name.clone();
+            self.name
+                .update(cx, |input, cx| input.set_value(name, window, cx));
+            self.sheet = Some(Sheet::Detail(id.into()));
+            self.notice = None;
+            cx.notify();
+        }
+    }
+
+    pub fn rename(&mut self, id: &str, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
+        let mut next = self.settings.clone();
+        let device = next
+            .devices
+            .iter_mut()
+            .find(|device| device.device.id == id)
+            .ok_or("Device was forgotten.")?;
+        device.device.name = name.trim().into();
+        self.save(next, cx)
+    }
+
+    pub fn unload(
+        &mut self,
+        id: &str,
+        rule: UnloadRule,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let mut next = self.settings.clone();
+        let device = next
+            .devices
+            .iter_mut()
+            .find(|device| device.device.id == id)
+            .ok_or("Device was forgotten.")?;
+        if !rule.allowed_on(device.device.os) {
+            let message = "This device does not support that unload rule.".to_owned();
+            self.failed(message.clone(), cx);
+            return Err(message);
+        }
+        device.unload_rule = rule;
+        self.save(next, cx)
+    }
+
+    pub fn forget(&mut self, id: &str, cx: &mut Context<Self>) -> Result<(), String> {
+        let mut next = self.settings.clone();
+        next.devices.retain(|device| device.device.id != id);
+        for route in [&mut next.routes.speech, &mut next.routes.cleanup] {
+            route.retain(|item| item != id);
+        }
+        self.save(next, cx)?;
+        self.health.remove(id);
+        self.close(cx);
+        Ok(())
+    }
+
+    pub fn request(&mut self, request: Request, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        self.pairing.apply(PairEvent::Cancel, now());
+        self.qr.clear();
+        self.notice = None;
+        self.busy = !matches!(
+            request,
+            Request::Discover | Request::Probe | Request::CancelOffer
+        );
+        self.progress.clear();
+        cx.emit(request);
+        cx.notify();
+    }
+
+    pub fn pair_input(&mut self, cx: &mut Context<Self>) {
+        let mut uri = self.uri.read(cx).value().to_string();
+        if self.sheet == Some(Sheet::Add(AddMethod::Tailscale)) {
+            let address = self.address.read(cx).value().to_string();
+            let result = hushpen_remote::PairOffer::parse(&uri).and_then(|mut offer| {
+                let (host, port) = address
+                    .rsplit_once(':')
+                    .ok_or_else(|| std::io::Error::other("Enter an address and port."))?;
+                offer.host = host.trim_matches(['[', ']']).to_owned();
+                offer.port = port
+                    .parse()
+                    .map_err(|_| std::io::Error::other("Enter a valid port."))?;
+                let uri = offer.to_uri();
+                hushpen_remote::PairOffer::parse(&uri)?;
+                Ok(uri)
+            });
+            match result {
+                Ok(value) => uri = value,
+                Err(_) => {
+                    self.failed(
+                        "Enter a valid Tailscale address, port, and pairing link.".into(),
+                        cx,
+                    );
+                    return;
+                }
+            }
+        }
+        let Some(device) = self.selected_device.clone().or_else(|| {
+            if self.sheet != Some(Sheet::Add(AddMethod::Tailscale)) {
+                return None;
+            }
+            let address = self.address.read(cx).value().to_string();
+            if address.is_empty() {
+                return None;
+            }
+            Some(Device {
+                id: format!("tailscale-{}", address.replace([':', '[', ']'], "-")),
+                name: address,
+                kind: if matches!(self.tailscale_os, Os::Ios | Os::Android) {
+                    DeviceKind::Phone
+                } else {
+                    DeviceKind::Server
+                },
+                os: self.tailscale_os,
+                serves: Serves {
+                    speech: true,
+                    cleanup: true,
+                },
+            })
+        }) else {
+            self.failed("Choose a device or enter a Tailscale address.".into(), cx);
+            return;
+        };
+        let transport = if self.sheet == Some(Sheet::Add(AddMethod::Tailscale)) {
+            Transport::Tailscale
+        } else {
+            Transport::Lan
+        };
+        self.request(
+            Request::Pair {
+                uri,
+                device,
+                transport,
+            },
+            cx,
+        );
+    }
+
+    pub fn set_discovered(&mut self, found: Vec<FoundDevice>, cx: &mut Context<Self>) {
+        self.discovered = found;
+        cx.notify();
+    }
+    pub fn set_hosts(&mut self, hosts: Vec<String>, cx: &mut Context<Self>) {
+        self.selected_host = hosts.first().cloned();
+        self.hosts = hosts;
+        cx.notify();
+    }
+    pub fn set_offer(
+        &mut self,
+        uri: String,
+        qr: Vec<Vec<bool>>,
+        expires: u64,
+        cx: &mut Context<Self>,
+    ) {
+        self.pairing.apply(
+            PairEvent::Offer {
+                payload: uri,
+                expires_at: expires,
+            },
+            now(),
+        );
+        self.qr = qr;
+        self.busy = false;
+        cx.notify();
+    }
+    pub fn set_progress(&mut self, rows: Vec<String>, cx: &mut Context<Self>) {
+        self.progress = rows;
+        cx.notify();
+    }
+    pub fn set_health(&mut self, health: BTreeMap<String, Health>, cx: &mut Context<Self>) {
+        self.health = health;
+        cx.notify();
+    }
+    pub fn failed(&mut self, message: String, cx: &mut Context<Self>) {
+        self.busy = false;
+        self.pairing.apply(PairEvent::Reject, now());
+        self.qr.clear();
+        self.notice = Some(message);
+        cx.notify();
+    }
+    pub fn add_paired(
+        &mut self,
+        device: RemoteDevice,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let mut next = self.storage.settings.remote();
+        let id = &device.device.id;
+        if next.devices.iter().any(|other| {
+            other.device.id == *id && other.static_public_key != device.static_public_key
+        }) {
+            let message = "Forget the saved device before replacing its key.".to_owned();
+            self.failed(message.clone(), cx);
+            return Err(message);
+        }
+        next.devices.retain(|other| other.device.id != *id);
+        for (kind, route) in [
+            (ModelKind::Speech, &mut next.routes.speech),
+            (ModelKind::Cleanup, &mut next.routes.cleanup),
+        ] {
+            route.retain(|item| item != id);
+            if device.device.serves.contains(kind) {
+                route.insert(0, id.clone());
+            }
+        }
+        next.devices.push(device);
+        self.save(next, cx)?;
+        self.busy = false;
+        self.close(cx);
+        Ok(())
+    }
+
+    pub fn snapshot(&self) -> Value {
+        let health = self
+            .health
+            .iter()
+            .map(|(id, health)| {
+                let mut health = health.clone();
+                health.tick(crate::controller::monotonic_ms());
+                (
+                    id.clone(),
+                    json!({"status":format!("{:?}",health.status),"latencyMs":health.latency_ms}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        json!({"enabled":self.settings.enabled,"noLocalModels":self.settings.no_local_models,
+            "devices":self.settings.devices.iter().map(RemoteDevice::to_json).collect::<Vec<_>>(),
+            "routes":{"speech":self.settings.routes.speech,"cleanup":self.settings.routes.cleanup},
+            "sheet":match &self.sheet {None=>"closed",Some(Sheet::Add(_))=>"add",Some(Sheet::Detail(_))=>"detail"},
+            "busy":self.busy,"notice":self.notice,"progress":self.progress,"health":health,
+            "discovered":self.discovered.iter().map(|found| json!({"id":found.device.id,"name":found.device.name})).collect::<Vec<_>>(),
+            "hosts":self.hosts,"pairing":match self.pairing {Pairing::Idle=>"idle",Pairing::Offered{..}=>"offered",Pairing::Confirming{..}=>"confirming",Pairing::Paired{..}=>"paired",Pairing::Failed(_)=>"failed"}})
+    }
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|time| time.as_secs())
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests;

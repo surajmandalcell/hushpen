@@ -1,6 +1,7 @@
 //! The app window: sidebar, toolbar, window controls (drawn on Linux only), and the active view.
 
 use crate::about::{self, About};
+use crate::devices::{Devices, panel::PlaceholderDevices};
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::files::{self, DROP_GROUP, Files};
@@ -40,6 +41,7 @@ pub struct Shell {
     nav_focus: Vec<FocusHandle>,
     mic: Option<Entity<Mic>>,
     models: Option<Entity<Models>>,
+    pub(crate) devices: Option<Entity<Devices>>,
     dictation: Option<Entity<Dictation>>,
     /// The shell owns the bar: its pop-up window and the tray actions hold it weakly, so
     /// without this handle the bar would be released at the end of start-up.
@@ -85,6 +87,7 @@ impl Shell {
                 .collect(),
             mic: None,
             models: None,
+            devices: None,
             dictation: None,
             flow_bar: None,
             dictionary: None,
@@ -281,6 +284,12 @@ impl Shell {
         cx.notify();
     }
 
+    pub fn attach_devices(&mut self, devices: Entity<Devices>, cx: &mut Context<Self>) {
+        cx.observe(&devices, |_, _, cx| cx.notify()).detach();
+        self.devices = Some(devices);
+        cx.notify();
+    }
+
     /// Shows the microphone panel on Home and repaints when the microphone changes.
     pub fn attach_mic(&mut self, mic: Entity<Mic>, cx: &mut Context<Self>) {
         cx.observe(&mic, |_, _, cx| cx.notify()).detach();
@@ -305,6 +314,14 @@ impl Shell {
             // A tray action can leave Models while a details sheet is open.
             if let Some(models) = &self.models {
                 models.update(cx, |models, cx| models.dismiss_details(cx));
+            }
+            if let Some(devices) = &self.devices {
+                devices.update(cx, |devices, cx| {
+                    devices.close(cx);
+                    if view == View::Devices {
+                        devices.opened(cx);
+                    }
+                });
             }
             if let Some(tuning) = self
                 .settings
@@ -672,6 +689,10 @@ impl Shell {
             }
             (_, _, _, _, View::Manual) => match &self.files {
                 Some(files) => files::panel::render(files, cx).into_any_element(),
+                None => placeholder(view, palette).into_any_element(),
+            },
+            (_, _, _, _, View::Devices) => match &self.devices {
+                Some(devices) => PlaceholderDevices::render(devices, cx).into_any_element(),
                 None => placeholder(view, palette).into_any_element(),
             },
             (_, _, _, _, View::Settings) => match &self.settings {
@@ -1108,6 +1129,7 @@ mod tests {
             "sidebar.files",
             "sidebar.dictionary",
             "sidebar.models",
+            "sidebar.devices",
             "sidebar.settings",
             "sidebar.about",
         ]) {

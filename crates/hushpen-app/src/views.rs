@@ -1,4 +1,4 @@
-//! The seven main views, in sidebar order.
+//! The main views, in sidebar order.
 
 use gpui_kit::assets::IconName;
 
@@ -10,17 +10,19 @@ pub enum View {
     Manual,
     Dictionary,
     Models,
+    Devices,
     Settings,
     About,
 }
 
 impl View {
-    pub const ALL: [View; 7] = [
+    pub const ALL: [View; 8] = [
         View::Home,
         View::History,
         View::Manual,
         View::Dictionary,
         View::Models,
+        View::Devices,
         View::Settings,
         View::About,
     ];
@@ -33,6 +35,7 @@ impl View {
             View::Manual => "Manual",
             View::Dictionary => "Dictionary",
             View::Models => "Models",
+            View::Devices => "Devices",
             View::Settings => "Settings",
             View::About => "About",
         }
@@ -48,6 +51,7 @@ impl View {
             View::Manual => "files",
             View::Dictionary => "dictionary",
             View::Models => "models",
+            View::Devices => "devices",
             View::Settings => "settings",
             View::About => "about",
         }
@@ -68,6 +72,7 @@ impl View {
             View::Manual => IconName::Files,
             View::Dictionary => IconName::BookA,
             View::Models => IconName::Cpu,
+            View::Devices => IconName::Smartphone,
             View::Settings => IconName::Settings,
             View::About => IconName::Info,
         }
@@ -93,6 +98,7 @@ mod tests {
                 "Manual",
                 "Dictionary",
                 "Models",
+                "Devices",
                 "Settings",
                 "About"
             ]
@@ -111,7 +117,7 @@ mod tests {
         }
         keys.sort_unstable();
         keys.dedup();
-        assert_eq!(keys.len(), 7);
+        assert_eq!(keys.len(), 8);
     }
 
     #[test]

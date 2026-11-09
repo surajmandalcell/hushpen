@@ -348,6 +348,7 @@ const VIEWS: &[&str] = &[
     "files",
     "dictionary",
     "models",
+    "devices",
     "settings",
     "about",
 ];
