@@ -276,7 +276,7 @@ fn fetch_into(dir: &Path, scratch: &Path, archive: &Archive) -> Result<(), Strin
         ));
     }
     run_tool(
-        Command::new("tar")
+        crate::package::archive_tool()?
             .arg("-xjf")
             .arg(&package)
             .arg("-C")
