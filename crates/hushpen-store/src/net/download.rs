@@ -6,14 +6,14 @@
 //! blocked host, and on a hash or size mismatch. A network failure keeps it so the next try can
 //! resume.
 
+use super::Purpose;
 use super::fetch::{FetchError, Fetcher, Response};
 use super::policy::{Blocked, Checked, HostPolicy, MAX_REDIRECTS, Policy, UpdatePolicy, resolve};
-use super::{Purpose, record};
+use crate::model_files::{self, hex};
 use hushpen_core::error::{
     DOWNLOAD_FAILED, MODEL_HASH_MISMATCH, MODEL_HOST_BLOCKED, UPDATE_DOWNLOAD_FAILED,
     UPDATE_HASH_MISMATCH,
 };
-use hushpen_store::model_files::{self, hex};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -84,6 +84,7 @@ pub struct Downloader {
     fetcher: Box<dyn Fetcher>,
     idle: Duration,
     purpose: Purpose,
+    observer: fn(Purpose, &str, &str),
 }
 
 enum Message {
@@ -105,6 +106,7 @@ impl Downloader {
             fetcher,
             idle: IDLE_TIMEOUT,
             purpose: Purpose::ModelDownload,
+            observer: |_, _, _| {},
         }
     }
 
@@ -116,7 +118,22 @@ impl Downloader {
             fetcher,
             idle: IDLE_TIMEOUT,
             purpose: Purpose::UpdateDownload,
+            observer: |_, _, _| {},
         }
+    }
+
+    pub fn with_observer(mut self, observer: fn(Purpose, &str, &str)) -> Self {
+        self.observer = observer;
+        self
+    }
+
+    fn record(&self, host: &str, result: &str) {
+        (self.observer)(self.purpose, host, result);
+    }
+
+    fn refused(&self, blocked: &Blocked) -> Failure {
+        self.record(&blocked.host, "blocked");
+        Failure::from(blocked.clone())
     }
 
     fn is_update(&self) -> bool {
@@ -173,7 +190,7 @@ impl Downloader {
         let start = self
             .policy
             .check_start(&spec.url)
-            .map_err(|blocked| refused(self.purpose, &blocked))?;
+            .map_err(|blocked| self.refused(&blocked))?;
         let mut existing = fs::metadata(&spec.partial).map_or(0, |meta| meta.len());
         if existing > spec.bytes {
             let _ = fs::remove_file(&spec.partial);
@@ -363,27 +380,24 @@ impl Downloader {
             let response = match self.fetcher.get(&current.url, range) {
                 Ok(response) => response,
                 Err(FetchError(error)) => {
-                    record(self.purpose, &current.host, "error");
+                    self.record(&current.host, "error");
                     return Err(Failure::failed(format!(
                         "cannot reach {}: {error}",
                         current.host
                     )));
                 }
             };
-            record(self.purpose, &current.host, &response.status.to_string());
+            self.record(&current.host, &response.status.to_string());
             match response.status {
                 200 | 206 => return Ok(Some(Opened::Body(response))),
                 416 => return Ok(Some(Opened::RangeRejected)),
                 301 | 302 | 303 | 307 | 308 => {
                     hops += 1;
                     if hops > MAX_REDIRECTS {
-                        return Err(refused(
-                            self.purpose,
-                            &Blocked::new(
-                                current.host,
-                                format!("more than {MAX_REDIRECTS} redirects"),
-                            ),
-                        ));
+                        return Err(self.refused(&Blocked::new(
+                            current.host,
+                            format!("more than {MAX_REDIRECTS} redirects"),
+                        )));
                     }
                     let target = response
                         .location
@@ -393,7 +407,7 @@ impl Downloader {
                     current = self
                         .policy
                         .check_redirect(&target)
-                        .map_err(|blocked| refused(self.purpose, &blocked))?;
+                        .map_err(|blocked| self.refused(&blocked))?;
                 }
                 status => {
                     return Err(Failure::failed(format!(
@@ -404,11 +418,6 @@ impl Downloader {
             }
         }
     }
-}
-
-fn refused(purpose: Purpose, blocked: &Blocked) -> Failure {
-    record(purpose, &blocked.host, "blocked");
-    Failure::from(blocked.clone())
 }
 
 /// Feeds the first `len` bytes of the partial file into `hasher`. `false` means cancelled.

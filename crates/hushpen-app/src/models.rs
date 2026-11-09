@@ -705,7 +705,8 @@ pub fn production_transfer() -> Arc<Transfer> {
     use crate::net::fetch::UreqFetcher;
     use crate::net::policy::Policy;
     let policy = Policy::model_download();
-    let downloader = Downloader::new(policy, Box::new(UreqFetcher::new(&policy)));
+    let downloader = Downloader::new(policy, Box::new(UreqFetcher::new(&policy)))
+        .with_observer(crate::net::record);
     Arc::new(move |spec, cancel, progress| downloader.run(spec, cancel, progress))
 }
 

@@ -1,8 +1,8 @@
 //! `cargo xtask net-audit`: lists every network call site and host in
 //! `crates/` and fails when one sits outside the allowed places.
 //!
-//! Rules (architecture section 9): HTTP lives only in `hushpen-app/src/net/`,
-//! only `hushpen-app` depends on `ureq`, child crates depend on no HTTP or
+//! HTTP lives in the app network layer and shared store download service.
+//! Only these two crates depend on `ureq`; child crates depend on no HTTP or
 //! socket crate directly, and only allow-listed hosts appear in the code.
 //! The paired remote transport and host own TCP outside the app network layer.
 
@@ -11,8 +11,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const NET_DIR: &str = "crates/hushpen-app/src/net/";
+const DOWNLOAD_DIR: &str = "crates/hushpen-store/src/net/";
 const HOOK_DIR: &str = "crates/hushpen-testhook/src/";
-const REMOTE_DIRS: [&str; 2] = ["crates/hushpen-remote/src/", "crates/hushpen-host/src/"];
+const REMOTE_DIRS: [&str; 3] = [
+    "crates/hushpen-remote/src/",
+    "crates/hushpen-host/src/",
+    "crates/hushpen-mobile/src/host.rs",
+];
 const DECODE_DIR: &str = "crates/hushpen-engine/src/child/";
 const AUDIO_DIR: &str = "crates/hushpen-audio/";
 /// App files that decode audio themselves: the Audio enhance take is a WAV the app wrote, and a
@@ -46,7 +51,7 @@ const HTTP_CRATES: [&str; 9] = [
 ];
 const SOCKET_CRATES: [&str; 3] = ["socket2", "mio", "tokio"];
 const CHILD_CRATES: [&str; 3] = ["hushpen-engine", "hushpen-llm", "hushpen-tts"];
-const HTTP_OWNER: &str = "hushpen-app";
+const HTTP_OWNERS: [&str; 2] = ["hushpen-app", "hushpen-store"];
 
 const PURPOSE_LOOKBACK: usize = 15;
 /// The `net::Purpose` whose host the user types.
@@ -152,9 +157,15 @@ fn host_label(site: &Site) -> String {
 pub fn scan_source(rel_path: &str, text: &str) -> (Vec<Site>, Vec<Violation>) {
     let mut sites = Vec::new();
     let mut violations = Vec::new();
-    let in_net = rel_path.starts_with(NET_DIR);
+    let in_net = rel_path.starts_with(NET_DIR) || rel_path.starts_with(DOWNLOAD_DIR);
     let in_hook = rel_path.starts_with(HOOK_DIR);
-    let in_remote = REMOTE_DIRS.iter().any(|dir| rel_path.starts_with(dir));
+    let in_remote = REMOTE_DIRS.iter().any(|dir| {
+        if dir.ends_with('/') {
+            rel_path.starts_with(dir)
+        } else {
+            rel_path == *dir
+        }
+    });
     let lines: Vec<&str> = text.lines().collect();
 
     for (index, line) in lines.iter().enumerate() {
@@ -247,7 +258,7 @@ pub fn scan_manifest(rel_path: &str, crate_name: &str, text: &str) -> Vec<Violat
     for (line, name) in declared_dependencies(text) {
         let http = HTTP_CRATES.contains(&name.as_str());
         let socket = SOCKET_CRATES.contains(&name.as_str());
-        let message = if http && !(crate_name == HTTP_OWNER && name == "ureq") {
+        let message = if http && !(HTTP_OWNERS.contains(&crate_name) && name == "ureq") {
             Some(format!(
                 "`{crate_name}` must not depend on HTTP crate `{name}`"
             ))
@@ -335,11 +346,13 @@ fn ureq_dependent_violations(root: &Path) -> Result<Vec<Violation>, String> {
     }
     Ok(workspace_dependents(&stdout, "ureq")
         .into_iter()
-        .filter(|name| name != HTTP_OWNER)
+        .filter(|name| !HTTP_OWNERS.contains(&name.as_str()))
         .map(|name| Violation {
             path: "Cargo.lock".to_string(),
             line: 0,
-            message: format!("workspace crate `{name}` depends on `ureq`; only `{HTTP_OWNER}` may"),
+            message: format!(
+                "workspace crate `{name}` depends on `ureq`; only {HTTP_OWNERS:?} may"
+            ),
         })
         .collect())
 }
@@ -559,12 +572,11 @@ mod tests {
     }
 
     #[test]
-    fn manifests_keep_http_crates_out_of_everything_but_the_app() {
+    fn manifests_limit_http_to_the_app_and_shared_downloads() {
         let manifest = "[dependencies]\nureq.workspace = true\nserde = \"1\"\n";
         assert!(scan_manifest("crates/hushpen-app/Cargo.toml", "hushpen-app", manifest).is_empty());
-        assert_eq!(
-            scan_manifest("crates/hushpen-store/Cargo.toml", "hushpen-store", manifest).len(),
-            1
+        assert!(
+            scan_manifest("crates/hushpen-store/Cargo.toml", "hushpen-store", manifest).is_empty()
         );
         let reqwest = "[dependencies]\nreqwest = { version = \"0.13\" }\n";
         assert_eq!(
@@ -574,6 +586,20 @@ mod tests {
         let table = "[dependencies.ureq]\nversion = \"3\"\n";
         assert_eq!(
             scan_manifest("crates/hushpen-core/Cargo.toml", "hushpen-core", table).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn shared_download_permission_stays_inside_its_service() {
+        let source = "let agent = ureq::Agent::new_with_defaults();";
+        assert!(violations("crates/hushpen-store/src/net/fetch.rs", source).is_empty());
+        assert_eq!(
+            violations("crates/hushpen-store/src/settings/mod.rs", source).len(),
+            1
+        );
+        assert_eq!(
+            violations("crates/hushpen-mobile/src/models.rs", source).len(),
             1
         );
     }

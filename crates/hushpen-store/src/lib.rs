@@ -9,6 +9,8 @@ mod error;
 pub mod history;
 pub mod log_file;
 pub mod model_files;
+#[cfg(feature = "downloads")]
+pub mod net;
 pub mod retention;
 pub mod secrets;
 pub mod settings;

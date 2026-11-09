@@ -11,6 +11,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+downloads = ["dep:ureq"]
+update-test-feed = ["downloads"]
+test-support = ["downloads"]
+
 [dependencies]
 hushpen-core.workspace = true
 directories.workspace = true
@@ -18,6 +23,7 @@ log = { workspace = true, features = ["std"] }
 rusqlite.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+ureq = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true

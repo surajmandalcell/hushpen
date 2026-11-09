@@ -34,7 +34,7 @@ pixel-tests = [
 
 # Lets HUSHPEN_UPDATE_FEED and HUSHPEN_UPDATE_PUBKEY replace the feed and the key. Test builds
 # only; `xtask release-check` proves it is absent from shipped binaries.
-update-test-feed = []
+update-test-feed = ["hushpen-store/update-test-feed"]
 
 [dependencies]
 hushpen-audio.workspace = true
@@ -44,7 +44,7 @@ hushpen-remote.workspace = true
 qrcode.workspace = true
 hushpen-platform.workspace = true
 hushpen-speech.workspace = true
-hushpen-store.workspace = true
+hushpen-store = { workspace = true, features = ["downloads"] }
 hushpen-testhook = { workspace = true, optional = true }
 futures.workspace = true
 gpui-kit.workspace = true
@@ -69,6 +69,7 @@ embed-resource.workspace = true
 objc2-foundation.workspace = true
 
 [dev-dependencies]
+hushpen-store = { workspace = true, features = ["test-support", "update-test-feed"] }
 gpui-kit = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 

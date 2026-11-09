@@ -1,4 +1,4 @@
-//! A tiny HTTP/1.1 server on loopback for the download tests. Only tests use it.
+//! A tiny HTTP/1.1 server on loopback for network tests.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};

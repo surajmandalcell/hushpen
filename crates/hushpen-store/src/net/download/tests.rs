@@ -1,7 +1,7 @@
 use super::*;
+use crate::model_files::{Check, check, stamp_path};
 use crate::net::fetch::UreqFetcher;
 use crate::net::test_server::{TestServer, respond, respond_with_range};
-use hushpen_store::model_files::{Check, check, stamp_path};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
@@ -120,6 +120,24 @@ fn local_downloader() -> Downloader {
 }
 
 const START_PATH: &str = "/ggerganov/whisper.cpp/resolve/main/ggml-t.bin";
+
+#[test]
+#[should_panic(expected = "observer recorded")]
+fn the_observer_receives_only_the_purpose_host_and_result() {
+    let folders = Folders::new();
+    let (fetcher, _) = Scripted::boxed(|_, _| Err(FetchError("must not connect".into())));
+    let downloader = hf_downloader(fetcher).with_observer(|purpose, host, result| {
+        assert_eq!(purpose, Purpose::ModelDownload);
+        assert_eq!(host, "example.com");
+        assert_eq!(result, "blocked");
+        panic!("observer recorded");
+    });
+    let spec = folders.spec(https("example.com", "/model?token=private"), b"model");
+    assert_eq!(
+        run(&downloader, &spec).unwrap_err().code,
+        MODEL_HOST_BLOCKED
+    );
+}
 
 #[test]
 fn blocked_start_urls_are_refused_before_any_request_and_leave_no_file() {
