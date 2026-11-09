@@ -40,7 +40,9 @@ pub use client::{
 };
 pub use cpu::missing_cpu_feature;
 pub use engine_log::{EngineLog, Level};
-pub use entry::{engine_main, gpu_available, gpu_disabled_by_env, server_config};
+pub use entry::{
+    engine_main, gpu_available, gpu_disabled_by_env, server_config, server_config_with_detector,
+};
 pub use in_process::InProcess;
 pub use link::{Link, RemoteSpec};
 pub use llm_client::{

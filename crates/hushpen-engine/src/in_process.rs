@@ -29,6 +29,16 @@ impl InProcess {
         })
     }
 
+    pub fn speech_with_detector(detector: std::path::PathBuf) -> Self {
+        Self::new(move |input, output| {
+            crate::server::serve(
+                input,
+                output,
+                crate::server_config_with_detector(detector.clone()),
+            );
+        })
+    }
+
     pub(crate) fn open(&self) -> io::Result<Connection> {
         self.live
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)

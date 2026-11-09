@@ -115,6 +115,26 @@ pub fn is_verified(model: &Path) -> bool {
     size > 0 && check(model, size, &stamp.hash) == Check::Ready
 }
 
+/// Installs bundled model bytes atomically and keeps their verification stamp.
+pub fn install_bundled(model: &Path, bytes: &[u8], sha256: &str) -> Result<()> {
+    if hex(&Sha256::digest(bytes)) != sha256 {
+        return Err(Error::io(
+            "bundled model checksum differs",
+            io::ErrorKind::InvalidData.into(),
+        ));
+    }
+    if check(model, bytes.len() as u64, sha256) == Check::Ready {
+        return Ok(());
+    }
+    if let Some(parent) = model.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| Error::io("could not create the bundled model folder", error))?;
+    }
+    atomic::write(model, bytes)?;
+    write_stamp(model, sha256)?;
+    Ok(())
+}
+
 /// sha256 of a whole file, as lower-case hex. `on_chunk` gets the byte count so far and returns
 /// `false` to stop; the result is then `ErrorKind::Interrupted`.
 pub fn hash_file(path: &Path, mut on_chunk: impl FnMut(u64) -> bool) -> io::Result<String> {
@@ -217,6 +237,19 @@ pub fn sweep_partials(dir: &Path, max_age: std::time::Duration) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_models_check_the_pin_before_replacing_a_working_file() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("resources/detector.bin");
+        let bytes = b"trusted detector";
+        let hash = hex(&Sha256::digest(bytes));
+        install_bundled(&path, bytes, &hash).unwrap();
+        assert_eq!(check(&path, bytes.len() as u64, &hash), Check::Ready);
+        assert!(install_bundled(&path, b"wrong detector", &hash).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 2);
+    }
     use std::fs::OpenOptions;
     use std::io::{Seek, SeekFrom, Write};
 

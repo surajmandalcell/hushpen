@@ -85,6 +85,22 @@ pub struct WhisperEngine {
 
 impl WhisperEngine {
     pub fn load(model: &Path, options: LoadOptions) -> Result<Self, EngineError> {
+        Self::load_using_detector(model, options, None)
+    }
+
+    pub fn load_with_detector(
+        model: &Path,
+        options: LoadOptions,
+        detector: &Path,
+    ) -> Result<Self, EngineError> {
+        Self::load_using_detector(model, options, Some(detector))
+    }
+
+    fn load_using_detector(
+        model: &Path,
+        options: LoadOptions,
+        detector: Option<&Path>,
+    ) -> Result<Self, EngineError> {
         if let Some(feature) = crate::cpu::missing_cpu_feature() {
             return Err(EngineError::UnsupportedCpu(feature));
         }
@@ -99,7 +115,10 @@ impl WhisperEngine {
         let state = context
             .create_state()
             .map_err(|err| EngineError::LoadFailed(err.to_string()))?;
-        let vad_model = crate::vad::model_path()?;
+        let vad_model = match detector {
+            Some(detector) => crate::vad::explicit_model_path(detector)?,
+            None => crate::vad::model_path()?,
+        };
         let multilingual = context.is_multilingual();
         Ok(Self {
             state,
