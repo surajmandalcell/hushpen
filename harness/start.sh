@@ -36,7 +36,11 @@ start_one() {
   # had run before) found no /logs at all, so init.sh died at once. OrbStack failed on every second
   # start without the pause and on none of 12 starts with 0.5 s or more.
   if [ "$keep_data" != 1 ]; then
-    find "${dir:?}/data" "${dir:?}/logs" -mindepth 1 -delete
+    if ! find "${dir:?}/data" "${dir:?}/logs" -mindepth 1 -delete 2>/dev/null; then
+      docker run --rm --network none --name "$name" \
+        -v "$dir/data:/data" -v "$dir/logs:/logs" "$HARNESS_IMAGE" \
+        find /data /logs -mindepth 1 -delete || return 1
+    fi
     sleep 1
   fi
   local fixtures=()

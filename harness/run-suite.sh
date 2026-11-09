@@ -44,6 +44,7 @@ if [ -z "${HUSHPEN_RUNNER:-}" ]; then
   log=$runs_dir/$run_id.log
   status_file=$runs_dir/$run_id.status
   rm -f "$status_file"
+  touch "$log"
   args=("$suite" --slots "$slots")
   [ "$build" = 0 ] || args+=(--build)
   HUSHPEN_RUNNER=1 HUSHPEN_RUN_ID=$run_id \
@@ -103,12 +104,12 @@ if [ -n "${HUSHPEN_APPIMAGE:-}" ]; then
 fi
 
 echo "run $HUSHPEN_RUN_ID on $slots slot(s), commit $commit"
+for slot in $ids; do mkdir -p "$(slot_run_dir "$slot")"; done
 "$HARNESS_DIR/start.sh" $ids || exit 1
 docker ps --filter name=hushpen-val- --format '  running: {{.Names}} ({{.Status}})' | sort
 
 pids=()
 for slot in $ids; do
-  mkdir -p "$(slot_run_dir "$slot")"
   (
     docker exec -e HUSHPEN_RUN_ID="$HUSHPEN_RUN_ID" -e HUSHPEN_COMMIT="$commit" -e SLOT="$slot" \
       -e HUSHPEN_APPIMAGE_NAME="$appimage_name" -e HUSHPEN_APPIMAGE_SHA256="$appimage_sha" \
