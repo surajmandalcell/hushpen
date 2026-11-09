@@ -188,12 +188,10 @@ impl CheckId {
             Self::AdminApps => Some(
                 "Windows blocks typing into apps with higher privileges. Hushpen copies the text instead.",
             ),
-            Self::X11Session => Some(
-                "Global keys and paste need an X11 session. Use the record button and copy the finished text on Wayland.",
-            ),
-            Self::TrayWatcher => Some(
-                "The desktop has no StatusNotifier tray watcher. Keep the Hushpen window open to use its controls.",
-            ),
+            Self::X11Session => {
+                Some("On Wayland, use the record button and copy the finished text.")
+            }
+            Self::TrayWatcher => Some("Keep the Hushpen window open to use its controls."),
             _ => None,
         }
     }
