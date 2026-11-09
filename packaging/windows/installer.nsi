@@ -96,6 +96,7 @@ Section Uninstall
   SetShellVarContext current
   SetRegView 64
   !insertmacro CheckApp
+  ClearErrors
   Delete "$INSTDIR\hushpen.exe"
   {{#each resources}}
   Delete "$INSTDIR\{{this}}"
@@ -104,6 +105,10 @@ Section Uninstall
   Delete "$INSTDIR\{{this}}"
   {{/each}}
   Delete "$INSTDIR\uninstall.exe"
+  ${If} ${Errors}
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${PRODUCT}\${PRODUCT}.lnk"
   RMDir "$SMPROGRAMS\${PRODUCT}"
