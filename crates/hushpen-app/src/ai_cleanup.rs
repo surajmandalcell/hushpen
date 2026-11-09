@@ -79,6 +79,9 @@ pub enum Attempt {
 
 /// What runs the model. The real one is [`HostCleaner`]; tests pass a fake.
 pub trait Cleaner: Send + Sync {
+    fn notice(&self) -> Option<String> {
+        None
+    }
     /// Gets the model into memory and returns the code of the failure when it cannot.
     fn prepare(&self, token: &CancelToken, progress: &Progress) -> Result<(), String>;
 
@@ -311,14 +314,158 @@ pub fn cleaner_for(
             Arc::clone(transport),
         )));
     }
+    if storage.settings.remote().enabled {
+        return RoutedCleaner::of(storage, host)
+            .map(|cleaner| Box::new(cleaner) as Box<dyn Cleaner>);
+    }
     HostCleaner::of(host, profile(storage)).map(|cleaner| Box::new(cleaner) as Box<dyn Cleaner>)
 }
 
 /// The worker behind [`LlmHost`], with the load that brings its model back after an idle unload.
+#[derive(Clone)]
 pub struct HostCleaner {
     client: LlmClient,
     spec: LlmSpec,
     profile: Tuned,
+}
+
+struct RoutedCleaner {
+    routing: crate::remote_jobs::Routing,
+    local: Option<HostCleaner>,
+    spec: LlmSpec,
+    profile: Tuned,
+    notice: std::sync::Mutex<Option<String>>,
+}
+
+impl RoutedCleaner {
+    fn of(storage: &Storage, host: &LlmHost) -> Option<Self> {
+        let values = storage.settings.values();
+        let id = values
+            .get("cleanup.llm.modelId")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let entry = hushpen_core::catalog::embedded().chosen_llm(id)?;
+        let profile = profile(storage);
+        Some(Self {
+            routing: crate::remote_jobs::Routing::from_storage(storage),
+            local: HostCleaner::of(host, profile.clone()),
+            spec: LlmSpec::new(
+                storage
+                    .data
+                    .llm_models_dir()
+                    .join(format!("{}.gguf", entry.id)),
+            ),
+            profile,
+            notice: std::sync::Mutex::default(),
+        })
+    }
+
+    fn work(&self, work: LlmWork, timeout: Duration, token: &CancelToken) -> Attempt {
+        use hushpen_core::remote::ModelKind;
+        use hushpen_engine::{EngineLog, Link, RemoteSpec, Timing};
+        let result = self.routing.run(
+            ModelKind::Cleanup,
+            token,
+            |device, stream| {
+                let client = LlmClient::start_link(
+                    Link::Remote(
+                        RemoteSpec::new(stream, hushpen_remote::WorkerKind::Cleanup)
+                            .with_unload_rule(device.unload_rule),
+                    ),
+                    Timing::llm(),
+                    EngineLog::discard(),
+                );
+                let cleaner = HostCleaner {
+                    client: client.clone(),
+                    spec: self.spec.clone(),
+                    profile: self.profile.clone(),
+                };
+                let loading = client.load_model(self.spec.clone());
+                let loaded =
+                    crate::remote_jobs::wait_load(token, |wait| loading.wait_timeout(wait));
+                let attempt = if matches!(loaded, Some(Ok(_))) && !token.is_cancelled() {
+                    cleaner.work(work.clone(), timeout, token)
+                } else {
+                    Attempt::Failed(LLM_UNAVAILABLE.into())
+                };
+                client.shutdown();
+                match attempt {
+                    Attempt::Failed(_) | Attempt::TimedOut => None,
+                    done => Some(done),
+                }
+            },
+            || {
+                let Some(local) = &self.local else {
+                    return Attempt::Failed(LLM_UNAVAILABLE.into());
+                };
+                match local.prepare(token, &Progress::default()) {
+                    Ok(()) => local.work(work.clone(), timeout, token),
+                    Err(code) => Attempt::Failed(code),
+                }
+            },
+            |notice| *self.notice.lock().unwrap_or_else(|p| p.into_inner()) = Some(notice),
+        );
+        result.unwrap_or_else(|_| {
+            if token.is_cancelled() {
+                Attempt::Cancelled
+            } else {
+                Attempt::Failed(LLM_UNAVAILABLE.into())
+            }
+        })
+    }
+}
+
+impl Cleaner for RoutedCleaner {
+    fn notice(&self) -> Option<String> {
+        self.notice
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+    fn prepare(&self, _: &CancelToken, _: &Progress) -> Result<(), String> {
+        Ok(())
+    }
+    fn clean(
+        &self,
+        text: &str,
+        keep: &[String],
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
+        let family = self
+            .spec
+            .path
+            .file_name()
+            .map(|name| family_of(&name.to_string_lossy()))
+            .unwrap_or(PromptFamily::S1Mini);
+        let prompt = cleanup_prompt(Target::Local(family), &self.profile, keep);
+        self.work(
+            LlmWork::Cleanup {
+                system: prompt.job_system(),
+                user: text.to_owned(),
+                max_tokens: max_tokens(text),
+            },
+            timeout,
+            token,
+        )
+    }
+    fn edit(
+        &self,
+        instruction: &str,
+        selection: &str,
+        timeout: Duration,
+        token: &CancelToken,
+    ) -> Attempt {
+        self.work(
+            LlmWork::Command {
+                instruction: instruction.to_owned(),
+                selection: selection.to_owned(),
+                max_tokens: edit_max_tokens(selection),
+            },
+            timeout,
+            token,
+        )
+    }
 }
 
 impl HostCleaner {
@@ -655,6 +802,27 @@ mod tests {
         // No URL is set, so the request is refused before any socket opens.
         let attempt = cleaner.clean("hello", &[], TIMEOUT, &CancelToken::default());
         assert_eq!(attempt, Attempt::Failed("ENDPOINT_FAILED".into()));
+    }
+
+    #[test]
+    fn remote_cleanup_needs_no_local_weights_and_never_starts_a_local_worker() {
+        use serde_json::json;
+        let directory = tempfile::tempdir().unwrap();
+        let data = hushpen_store::data_dir::DataDir::open(directory.path().join("data")).unwrap();
+        let storage = crate::storage::open(data).unwrap();
+        storage.settings.set("remote.enabled", json!(true)).unwrap();
+        storage
+            .settings
+            .set("remote.noLocalModels", json!(true))
+            .unwrap();
+        let host = LlmHost::with_program(&storage.data, directory.path().join("missing-worker"));
+        let cleaner =
+            RoutedCleaner::of(&storage, &host).expect("a remote route needs no local file");
+        assert_eq!(
+            cleaner.clean("hello", &[], TIMEOUT, &CancelToken::default()),
+            Attempt::Failed(LLM_UNAVAILABLE.into())
+        );
+        assert!(host.client().is_none());
     }
 
     #[test]

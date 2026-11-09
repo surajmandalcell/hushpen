@@ -166,7 +166,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 async {}
             })
             .detach();
-            follow_worker_settings(cx, Rc::clone(&llm), Arc::clone(&voice_models), Rc::clone(&storage));
+            follow_worker_settings(cx, Rc::clone(&engine), Rc::clone(&llm), Arc::clone(&voice_models), Rc::clone(&storage));
             // Read inside the running app: the platform answer exists only then. A launch
             // behind the front app (`open -g`, a login item) must not activate the app.
             let launch = Launch::decide(
@@ -557,6 +557,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 );
                 crate::hook::attach_settings(cx, Rc::clone(&hook_storage));
                 crate::hook::attach_engine(cx, Rc::clone(&engine), Rc::clone(&hook_storage));
+                crate::hook::attach_remote(cx, Rc::clone(&hook_storage));
                 crate::hook::attach_llm(cx, Rc::clone(&llm), hook_storage);
                 crate::hook::attach_flow_bar(cx, flow_bar, flow_bar_host);
                 crate::hook::attach_tray(cx, tray_controller, tray.is_some());
@@ -630,6 +631,7 @@ fn follow_activation(cx: &mut App, onboarding: Entity<Onboarding>, settings: Ent
 /// unchanged settings never reload a model or start an unused voice worker.
 fn follow_worker_settings(
     cx: &mut App,
+    engine: Rc<EngineHost>,
     llm: Rc<LlmHost>,
     voices: Arc<TtsHost>,
     storage: Rc<storage::Storage>,
@@ -640,6 +642,7 @@ fn follow_worker_settings(
                 .timer(std::time::Duration::from_secs(1))
                 .await;
             let values = storage.settings.values();
+            engine.follow_settings(&values);
             llm.apply_settings(&values);
             voices.apply_settings(&values);
         }

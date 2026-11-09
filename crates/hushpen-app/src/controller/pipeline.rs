@@ -122,6 +122,9 @@ impl Controller {
                 return;
             };
             let text = record.text.clone().unwrap_or_else(|| rule.clone());
+            if let Some(notice) = cleaner.as_ref().and_then(|cleaner| cleaner.notice()) {
+                lock(&mine).remote_notice = Some(notice);
+            }
             log::info!(
                 "AI_CLEANUP session={session} outcome={} code={} ms={}",
                 record.outcome.key(),
@@ -451,6 +454,15 @@ impl Controller {
             prompt,
         };
         let engine = Arc::clone(&self.engine.run);
+        let routing = crate::remote_jobs::Routing::from_storage(&self.storage);
+        let values = self.storage.settings.values();
+        let cpus = std::thread::available_parallelism().map_or(2, usize::from);
+        let load = crate::engine_host::wanted_load(
+            &values,
+            &self.storage.data.whisper_models_dir(),
+            model,
+            cpus,
+        );
         let events = self.events.clone();
         let spawned = (self.spawn)(Box::new(move || {
             if let Some(stopping) = stopping
@@ -465,7 +477,20 @@ impl Controller {
                 ));
                 return;
             }
-            let event = match engine(spec, token) {
+            let outcome = if routing.settings.enabled {
+                match load {
+                    Some(load) => routing.speech(load, spec, token, engine, |notice| {
+                        lock(&found).remote_notice = Some(notice)
+                    }),
+                    None => JobOutcome::Failed(hushpen_engine::Failure::new(
+                        hushpen_core::error::ENGINE_NO_MODEL,
+                        "No speech model is selected.",
+                    )),
+                }
+            } else {
+                engine(spec, token)
+            };
+            let event = match outcome {
                 JobOutcome::Done(done) => {
                     {
                         let mut found = lock(&found);
@@ -486,6 +511,9 @@ impl Controller {
                     }
                 }
                 JobOutcome::Failed(failure) => {
+                    if routing.settings.enabled {
+                        lock(&found).detail = Some(failure.detail.clone());
+                    }
                     log::warn!(
                         "{} dictation job for session {session} failed",
                         failure.code

@@ -79,6 +79,7 @@ struct State {
     /// The load the running worker was last given.
     applied: Option<TtsSpec>,
     idle_secs: u64,
+    local_models_allowed: bool,
 }
 
 pub struct TtsHost {
@@ -102,6 +103,7 @@ impl TtsHost {
             log_path: data.tts_log_path(),
             program,
             state: Mutex::new(State {
+                local_models_allowed: true,
                 client: None,
                 applied: None,
                 idle_secs: hushpen_core::tts_protocol::DEFAULT_IDLE_SECS,
@@ -130,6 +132,17 @@ impl TtsHost {
 
     /// Updates a loaded model's idle timer without starting an unused voice worker.
     pub fn apply_settings(&self, settings: &Map<String, Value>) {
+        {
+            let mut state = self.lock();
+            state.local_models_allowed = crate::remote_jobs::local_models_allowed(settings);
+            if !state.local_models_allowed {
+                state.applied = None;
+                if let Some(client) = state.client.take() {
+                    std::thread::spawn(move || client.shutdown());
+                }
+                return;
+            }
+        }
         let secs = hushpen_core::idle::for_worker(
             settings,
             hushpen_core::idle::Worker::Voice,
@@ -167,6 +180,12 @@ impl TtsHost {
         let mut wanted = wanted_load(&self.models_dir, model, cpus)
             .ok_or_else(|| not_installed(&self.models_dir, model))?;
         let mut state = self.lock();
+        if !state.local_models_allowed {
+            return Err(SpeechError::new(
+                hushpen_core::error::SPEECH_UNAVAILABLE,
+                "Models are turned off on this computer.",
+            ));
+        }
         wanted.idle_secs = state.idle_secs;
         let client = state
             .client
@@ -402,6 +421,22 @@ pub fn wanted_load(models_dir: &Path, model: VoiceModel, cpus: usize) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_only_settings_refuse_a_downloaded_voice_without_starting_a_worker() {
+        let directory = tempfile::tempdir().unwrap();
+        let data = DataDir::open(directory.path().join("data")).unwrap();
+        stamped_model(&data.tts_models_dir(), VoiceModel::Kokoro);
+        let host = TtsHost::with_program(&data, directory.path().join("missing-worker"));
+        let values = serde_json::json!({"remote.enabled":true,"remote.noLocalModels":true});
+        host.apply_settings(values.as_object().unwrap());
+        let problem = host
+            .client(VoiceModel::Kokoro)
+            .err()
+            .expect("local models are off");
+        assert_eq!(problem.code, hushpen_core::error::SPEECH_UNAVAILABLE);
+        assert!(host.status().is_none());
+    }
 
     fn stamped_model(models_dir: &Path, model: VoiceModel) -> PathBuf {
         let dir = models_dir.join(model.id());

@@ -141,13 +141,15 @@ impl Props {
     }
 
     pub fn preparing(&self) -> bool {
-        self.stage == Stage::Preparing
+        self.stage == Stage::Preparing || !self.message.is_empty()
     }
 
     /// What the processing pill says: only the wait for the model shows its text, the others
     /// are the label of the pill.
-    pub fn working_text(&self) -> &'static str {
-        if self.preparing() {
+    pub fn working_text(&self) -> &str {
+        if !self.message.is_empty() {
+            &self.message
+        } else if self.preparing() {
             "Preparing the AI model"
         } else {
             "Transcribing"

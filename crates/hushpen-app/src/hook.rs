@@ -34,6 +34,8 @@ mod onboarding;
 #[cfg(feature = "test-automation")]
 mod read_aloud;
 #[cfg(feature = "test-automation")]
+mod remote;
+#[cfg(feature = "test-automation")]
 mod settings;
 #[cfg(feature = "test-automation")]
 mod settings_view;
@@ -74,6 +76,8 @@ pub use models::attach as attach_models;
 pub use onboarding::attach as attach_onboarding;
 #[cfg(feature = "test-automation")]
 pub use read_aloud::attach as attach_read_aloud;
+#[cfg(feature = "test-automation")]
+pub use remote::attach as attach_remote;
 #[cfg(feature = "test-automation")]
 pub use settings::attach as attach_settings;
 #[cfg(feature = "test-automation")]
