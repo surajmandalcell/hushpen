@@ -31,13 +31,14 @@ pub fn resolve(
     }
     let home = home.unwrap_or_else(|| Path::new("."));
     match os {
-        Os::Mac => home.join("Library/Application Support/Hushpen"),
+        Os::Mac | Os::Ios => home.join("Library/Application Support/Hushpen"),
         Os::Linux => xdg_data_home
             .map(Path::new)
             .filter(|dir| dir.is_absolute())
             .map_or_else(|| home.join(".local/share"), Path::to_path_buf)
             .join("hushpen"),
         Os::Windows => home.join("AppData/Roaming/Hushpen"),
+        Os::Android => home.join("files/hushpen"),
     }
 }
 

@@ -1,10 +1,13 @@
-//! `config/settings.json`: `{"schemaVersion": 4, "values": {...}}`.
+//! `config/settings.json`: `{"schemaVersion": 5, "values": {...}}`.
 //!
 //! Values are flat dotted keys from the registry. Keys the registry does not
 //! know are kept under `values._unknown`. Every write goes through a temp
 //! file and a rename, so a crash never leaves a half-written file.
 
 mod registry;
+mod remote;
+
+pub use remote::{RemoteDevice, RemoteSettings, Routes, Transport};
 
 use crate::data_dir::Os;
 use crate::{Error, Result, atomic, time};
@@ -22,7 +25,8 @@ use std::time::Duration;
 /// 25%. Older files stored every default, so [`OLD_DEFAULTS`] values are dropped once.
 /// 3: the Sound volume default went from 25% to 12.5%.
 /// 4: the hands-free default on macOS went from the built-in gestures to Option+Tab.
-const SCHEMA_VERSION: i64 = 4;
+/// 5: paired devices and model routes, disabled until the user turns them on.
+const SCHEMA_VERSION: i64 = 5;
 const UNKNOWN_KEY: &str = "_unknown";
 
 /// A stored value, as it was written when it was the default.
@@ -180,6 +184,9 @@ impl SettingsStore {
         if key == "overlay.position" {
             next.values.insert("overlay.customPos".into(), Value::Null);
         }
+        if key.starts_with("remote.") {
+            remote::normalize_routes(&mut next.values);
+        }
         self.persist(&next)?;
         *state = next;
         Ok(())
@@ -250,6 +257,9 @@ fn parse(bytes: &[u8], os: Os) -> Option<(State, bool)> {
     changed |= REGISTRY
         .iter()
         .any(|Spec { key, .. }| !stored.contains_key(*key));
+    let routes = state.values.get("remote.routes").cloned();
+    remote::normalize_routes(&mut state.values);
+    changed |= routes.as_ref() != state.values.get("remote.routes");
     Some((state, changed))
 }
 
