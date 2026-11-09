@@ -314,8 +314,13 @@ mod tests {
             ask(&endpoint, &Request::new("state")),
             Response::Ok(json!({"cmd": "state", "args": {}}))
         );
-        let remote = std::net::TcpListener::bind("0.0.0.0:4359");
-        assert!(remote.is_err(), "the hook port must be taken on loopback");
+        let duplicate = std::net::TcpListener::bind("127.0.0.1:4359");
+        assert!(
+            duplicate.is_err(),
+            "the hook port must be taken on loopback"
+        );
+        #[cfg(unix)]
+        assert!(std::net::TcpListener::bind("0.0.0.0:4359").is_err());
         drop(server);
     }
 }

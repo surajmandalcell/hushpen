@@ -5,7 +5,9 @@ fn golden(name: &str) -> String {
         "{}/../../tests/golden/export/{name}",
         env!("CARGO_MANIFEST_DIR")
     );
-    std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("golden file {path}: {error}"))
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("golden file {path}: {error}"))
+        .replace("\r\n", "\n")
 }
 
 fn segment(start_ms: i64, end_ms: i64, text: &str) -> Segment {

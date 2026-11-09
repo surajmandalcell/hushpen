@@ -82,7 +82,7 @@ fn uses() -> Vec<(String, String, &'static str, String)> {
             .strip_prefix(&root)
             .expect("under src")
             .to_string_lossy()
-            .into_owned();
+            .replace('\\', "/");
         let text = fs::read_to_string(&file).expect("read a source file");
         let mut current = String::new();
         for line in text.lines() {

@@ -355,13 +355,20 @@ mod tests {
     fn file_arguments_are_made_absolute() {
         assert_eq!(
             parsed("feed-wav speech.wav"),
-            Command::Send(Request::new("feed-wav").with("path", "/work/speech.wav"))
+            Command::Send(Request::new("feed-wav").with(
+                "path",
+                Path::new("/work").join("speech.wav").to_string_lossy()
+            ))
         );
         assert_eq!(
             parsed("paths /abs/a.txt b.txt"),
-            Command::Send(
-                Request::new("paths").with("paths", json!(["/abs/a.txt", "/work/b.txt"]))
-            )
+            Command::Send(Request::new("paths").with(
+                "paths",
+                json!([
+                    Path::new("/work").join("/abs/a.txt"),
+                    Path::new("/work").join("b.txt")
+                ])
+            ))
         );
     }
 
