@@ -1,7 +1,7 @@
 //! `config/secrets.json`: `{"endpointApiKey": "..."}`, mode 0600.
 //!
-//! The key of the opt-in endpoint is the only secret. It stays out of `settings.json`, the
-//! logs, and the test hook. The file is created private from its first byte (see
+//! Endpoint keys, the Noise private key, and live pairing offers stay out of settings, logs,
+//! and the test hook. The file is created private from its first byte (see
 //! [`atomic::write_private`]), and a wider mode found at open is tightened and logged.
 
 use crate::{Error, Result, atomic};
@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const KEY_FIELD: &str = "endpointApiKey";
+const NOISE_FIELD: &str = "noiseStaticPrivateKey";
+const PAIR_FIELD: &str = "pairOffer";
 const PRIVATE_MODE: u32 = 0o600;
 
 pub struct Secrets {
@@ -75,11 +77,51 @@ impl Secrets {
         {
             return Err(Error::InvalidSetting(KEY_FIELD.into()));
         }
+        self.set_field(KEY_FIELD, key.map(|key| Value::String(key.to_owned())))
+    }
+
+    pub fn noise_private_key(&self) -> Option<[u8; 32]> {
+        let state = self.lock();
+        let bytes = state.get(NOISE_FIELD)?.as_array()?;
+        let key: [u8; 32] = bytes
+            .iter()
+            .map(|byte| u8::try_from(byte.as_u64()?).ok())
+            .collect::<Option<Vec<_>>>()?
+            .try_into()
+            .ok()?;
+        (key != [0; 32]).then_some(key)
+    }
+
+    pub fn set_noise_private_key(&self, key: &[u8; 32]) -> Result<()> {
+        if key == &[0; 32] {
+            return Err(Error::InvalidSetting(NOISE_FIELD.into()));
+        }
+        self.set_field(NOISE_FIELD, Some(serde_json::json!(key.to_vec())))
+    }
+
+    /// The one-time offer is private because it contains the pairing code.
+    pub fn pair_offer(&self) -> Option<String> {
+        self.lock().get(PAIR_FIELD)?.as_str().map(str::to_owned)
+    }
+
+    pub fn set_pair_offer(&self, offer: Option<&str>) -> Result<()> {
+        if offer.is_some_and(|offer| {
+            offer.is_empty() || offer.len() > 4096 || offer.chars().any(char::is_control)
+        }) {
+            return Err(Error::InvalidSetting(PAIR_FIELD.into()));
+        }
+        self.set_field(
+            PAIR_FIELD,
+            offer.map(|offer| Value::String(offer.to_owned())),
+        )
+    }
+
+    fn set_field(&self, field: &str, value: Option<Value>) -> Result<()> {
         let mut state = self.lock();
         let mut next = state.clone();
-        match key {
-            Some(key) => next.insert(KEY_FIELD.into(), Value::String(key.to_owned())),
-            None => next.remove(KEY_FIELD),
+        match value {
+            Some(value) => next.insert(field.into(), value),
+            None => next.remove(field),
         };
         let mut text = serde_json::to_string_pretty(&Value::Object(next.clone()))
             .map_err(|e| Error::io("could not encode secrets", e.into()))?;
@@ -109,7 +151,7 @@ fn tighten(path: &Path) -> Result<()> {
     if meta.permissions().mode() & 0o777 != PRIVATE_MODE {
         match fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_MODE)) {
             Ok(()) => log::warn!("SECRETS_MODE_FIXED secrets.json was readable by others"),
-            Err(error) => log::warn!("SECRETS_MODE_FIXED could not tighten the mode: {error}"),
+            Err(error) => return Err(Error::io("could not make secrets.json private", error)),
         }
     }
     Ok(())

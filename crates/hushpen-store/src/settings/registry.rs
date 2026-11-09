@@ -26,6 +26,8 @@ pub(super) enum Kind {
     BoolMap,
     /// `null` or an object with numeric `x` and `y`.
     Position,
+    RemoteDevices,
+    RemoteRoutes,
 }
 
 pub(super) struct Spec {
@@ -100,6 +102,8 @@ impl Spec {
                 }
                 _ => None,
             },
+            Kind::RemoteDevices => super::remote::sanitize_devices(value),
+            Kind::RemoteRoutes => super::remote::sanitize_routes(value),
         }
     }
 }
@@ -159,6 +163,13 @@ macro_rules! spec {
 }
 
 pub(super) static REGISTRY: &[Spec] = &[
+    spec!("remote.enabled", Kind::Bool, |_| json!(false)),
+    spec!("remote.noLocalModels", Kind::Bool, |_| json!(false)),
+    spec!("remote.devices", Kind::RemoteDevices, |_| json!([])),
+    spec!("remote.routes", Kind::RemoteRoutes, |_| json!({
+        "speech": [hushpen_core::remote::THIS_COMPUTER],
+        "cleanup": [hushpen_core::remote::THIS_COMPUTER],
+    })),
     spec!("shortcut.hold", Kind::Text(64), |os| shortcut_default(
         Slot::Hold,
         os
