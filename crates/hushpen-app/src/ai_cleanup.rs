@@ -746,16 +746,9 @@ mod tests {
 
     #[test]
     fn a_dictation_during_the_model_load_does_not_wait_for_it() {
-        use hushpen_engine::{ChildSpec, EngineLog, Timing};
+        use hushpen_engine::{EngineLog, Timing};
         // A worker that never says ready stays in the starting state for the whole test.
-        let client = LlmClient::start(
-            ChildSpec {
-                program: "/bin/sh".into(),
-                args: vec!["-c".into(), "sleep 30".into()],
-            },
-            Timing::llm(),
-            EngineLog::discard(),
-        );
+        let client = LlmClient::start(sleeping_worker(), Timing::llm(), EngineLog::discard());
         assert!(client.wait_for(Duration::from_secs(5), |s| s.pid.is_some()));
         let cleaner = HostCleaner {
             client: client.clone(),
@@ -775,21 +768,36 @@ mod tests {
     }
 
     fn idle_cleaner(model: &str, profile: Tuned) -> (LlmClient, HostCleaner) {
-        use hushpen_engine::{ChildSpec, EngineLog, Timing};
-        let client = LlmClient::start(
-            ChildSpec {
-                program: "/bin/sh".into(),
-                args: vec!["-c".into(), "sleep 30".into()],
-            },
-            Timing::llm(),
-            EngineLog::discard(),
-        );
+        use hushpen_engine::{EngineLog, Timing};
+        let client = LlmClient::start(sleeping_worker(), Timing::llm(), EngineLog::discard());
         let cleaner = HostCleaner {
             client: client.clone(),
             spec: LlmSpec::new(std::path::PathBuf::from("/models").join(model)),
             profile,
         };
         (client, cleaner)
+    }
+
+    fn sleeping_worker() -> hushpen_engine::ChildSpec {
+        #[cfg(unix)]
+        return hushpen_engine::ChildSpec {
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), "exec sleep 30".into()],
+        };
+        #[cfg(target_os = "windows")]
+        hushpen_engine::ChildSpec {
+            program: "powershell.exe".into(),
+            args: [
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 30",
+            ]
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        }
     }
 
     fn job_system(work: LlmWork) -> String {

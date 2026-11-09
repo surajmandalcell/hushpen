@@ -19,6 +19,7 @@ use std::sync::Mutex;
 
 const NOTES: &str = "https://github.com/surajmandalcell/hushpen/releases/tag/v2.1.0";
 const HOUR_MS: u64 = 60 * 60 * 1000;
+const TEST_TARGET: &str = "linux-x64";
 
 fn offered(version: &str) -> Offer {
     let json = format!(r#"{{"version":"{version}","notes_url":"{NOTES}"}}"#);
@@ -177,6 +178,7 @@ fn rig(cx: &mut TestAppContext) -> Rig {
             cx,
         )
     });
+    updater.update(cx, |updater, _| updater.target = Some(TEST_TARGET));
     Rig {
         updater,
         storage,
@@ -191,9 +193,9 @@ fn rig(cx: &mut TestAppContext) -> Rig {
 
 const ARTIFACT_URL: &str = "http://127.0.0.1:8765/Hushpen.AppImage";
 
-/// A signed manifest that lists a file for the build running this test.
+/// A manifest with the Linux artifact supplied to the fake installer.
 fn offered_with_file(version: &str) -> Offer {
-    let target = hushpen_core::update::current_target().expect("a supported test host");
+    let target = TEST_TARGET;
     let json = format!(
         r#"{{"version":"{version}","notes_url":"{NOTES}","platforms":{{"{target}":{{"url":"{ARTIFACT_URL}","sha256":"{}","size":100}}}}}}"#,
         "ab".repeat(32)

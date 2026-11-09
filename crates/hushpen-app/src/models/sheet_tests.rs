@@ -451,7 +451,10 @@ fn the_details_sheet_shows_the_facts_and_its_actions_work(cx: &mut TestAppContex
     assert_eq!(label(cx, handle, "models.sheet.languages"), "English only");
     assert_eq!(label(cx, handle, "models.sheet.license"), "Apache-2.0");
     assert_eq!(label(cx, handle, "models.sheet.status"), "Not downloaded");
-    assert!(label(cx, handle, "models.sheet.location").ends_with("models/tts/voice"));
+    assert!(
+        PathBuf::from(label(cx, handle, "models.sheet.location"))
+            .ends_with(PathBuf::from("models").join("tts").join("voice"))
+    );
     assert_eq!(
         label(cx, handle, "models.sheet.checksum"),
         format!("{}  a.onnx, {}  b.bin", sha(VOICE_A), sha(VOICE_B))
