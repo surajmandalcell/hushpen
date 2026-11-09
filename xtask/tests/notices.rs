@@ -97,7 +97,11 @@ fn linked_crates() -> BTreeSet<String> {
         .args(["--target", "x86_64-pc-windows-msvc"])
         .output()
         .expect("cargo tree did not start");
-    assert!(output.status.success(), "cargo tree failed");
+    assert!(
+        output.status.success(),
+        "cargo tree failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8(output.stdout)
         .unwrap()
         .lines()
