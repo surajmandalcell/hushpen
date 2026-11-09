@@ -31,6 +31,10 @@ Hushpen
 ├── hushpen engine (child)          whisper.cpp, started as `hushpen engine`
 ├── hushpen-llm (child binary)      llama.cpp, one model in RAM
 ├── hushpen-tts (child binary)      Kokoro and Chatterbox, one voice model in RAM
+├── hushpen-mobile                  Rust phone API exposed through UniFFI
+│   ├── in-process worker           speech protocol on bounded memory streams
+│   ├── system cleanup              native system model behind SystemLlm
+│   └── phone host                  paired server over the host library
 └── data folder                     all app data on disk (D-13)
     ├── settings                    config/settings.json
     ├── model                       models/whisper/*.bin, models/llm/*.gguf, models/tts/<id>/
@@ -43,6 +47,13 @@ Hushpen
 ```
 
 ## Terms
+
+- **phone core**: `hushpen-mobile`, the shared Rust API called by Kotlin and
+  Swift through generated UniFFI bindings. It owns no screens or microphone.
+- **in-process worker**: the existing worker frame loop running on a thread
+  through bounded memory streams, without starting a child process.
+- **system cleanup**: cleanup supplied by the phone's system model through
+  the `SystemLlm` callback, with the shared core output checks.
 
 - **dictation**: one run of the dictation state machine: idle, listening,
   transcribing, cleaning, inserting, then done, cancelled, or failed. A
@@ -70,12 +81,13 @@ Hushpen
   aloud to the end, D-36).
 - **dictionary entry**: a word that goes into the Whisper prompt, or a
   replacement applied after cleanup.
-- **model**: a Whisper model (ggml `.bin`), an LLM model (GGUF), or a voice
-  model (a folder of pinned files under `models/tts/`, such as
-  `kokoro-82m-int8`). Every model file has a pinned sha256 and downloads only
-  when the user asks. The catalog (`assets/models.json`) lists every model.
-- **model kind**: what a model does: speech (Whisper, turns speech into
-  text), cleanup (an LLM, fixes the text), or voice (Kokoro, Chatterbox
+- **model**: a speech model, cleanup model, or voice model. Parakeet and
+  Whisper use ggml `.bin` files; downloaded cleanup models use GGUF.
+  Voice models use pinned files under `models/tts/`, such as `kokoro-82m-int8`.
+  Every downloadable file has a pinned SHA-256 and downloads only on request.
+  `assets/models.json` lists downloadable models. Phones also use system cleanup.
+- **model kind**: what a model does: speech (Parakeet or Whisper, turns
+  speech into text), cleanup (an LLM, fixes the text), or voice (Kokoro, Chatterbox
   Turbo, or Chatterbox Nano, reads text aloud). The Models page has one
   section for each kind: Speech to Text, Text cleanup, and Text to Speech.
 - **default model**: the speech model a dictation uses: `dictation.modelId`,

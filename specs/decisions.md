@@ -516,6 +516,17 @@ new decision, add it here in the same change (D-21).
   controls. Visual design and pixel baselines wait for the designer.
   `mobile/SCREENS.md` records the desktop screen state and intent contract.
 
+- **D-51 Shared phone core.** Native phone apps call `hushpen-mobile` through
+  pinned UniFFI bindings. Rust owns dictation, the phone catalog, verified
+  downloads, pairing, and model serving. Phones offer Parakeet v3 Q4 and
+  Whisper Base Q5. Cleanup uses the native system model through `SystemLlm`,
+  with core output checks and rule text as the fallback. Engines run on
+  threads over bounded memory streams using the existing worker protocol.
+  The host library serves those same workers. iOS uses Metal; Android starts
+  with CPU and NEON. QNN and Core ML speech accelerators need a later decision.
+  The iOS keyboard extension never loads a model. Phone screens and native
+  platform adapters are separate from this shared library.
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the
