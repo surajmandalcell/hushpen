@@ -7,7 +7,7 @@ on:
       targets:
         description: Comma-separated build targets (macos-arm64, linux-x64, linux-arm64, windows-x64)
         type: string
-        default: macos-arm64,linux-x64,linux-arm64
+        default: macos-arm64,linux-x64,linux-arm64,windows-x64
       suite:
         description: Which jobs to run
         type: choice
@@ -69,27 +69,11 @@ jobs:
         with:
           key: windows-x64
           cache-on-failure: true
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: |
-          $failed = $false
-          foreach ($package in 'hushpen-store', 'hushpen-platform', 'hushpen-audio', 'hushpen-speech', 'hushpen-testhook', 'xtask') {
-            cargo clippy -p $package --all-targets --locked -- -D warnings
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
-          if ($failed) { exit 1 }
-          cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Unit and component tests
-        run: cargo test --workspace --locked --no-fail-fast
-      - name: Build the four programs
-        run: cargo build --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
-      - name: Run the four programs
-        run: |
-          foreach ($program in 'hushpen', 'hushpen-asr', 'hushpen-llm', 'hushpen-tts') {
-            & ".\target\debug\$program.exe" --version
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - name: Gate, including the four program version checks
+        run: cargo xtask gate
 
   plan:
     if: inputs.suite != 'gate' && inputs.suite != 'e2e' && inputs.suite != 'updater'
@@ -265,8 +249,17 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       APPIMAGE_EXTRACT_AND_RUN: "1"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Configure libclang on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV'
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -287,6 +280,7 @@ jobs:
         with:
           path: |
             ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-packager.exe
             ~/.cargo/bin/cargo-generate-rpm
           key: packaging-tools-${{ runner.os }}-${{ runner.arch }}-packager-0.11.8-rpm-0.21.0
       - name: Install cargo-packager and cargo-generate-rpm
@@ -294,6 +288,10 @@ jobs:
         run: |
           cargo install --locked cargo-packager@0.11.8
           if [ "$RUNNER_OS" = Linux ]; then cargo install --locked cargo-generate-rpm@0.21.0; fi
+      - name: Check the PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/windows/test-install.ps1
       - name: Package
         run: cargo xtask package --target ${{ matrix.target }}
       - name: Verify every artifact
@@ -328,16 +326,16 @@ jobs:
           name: package-${{ matrix.target }}
           path: ${{ github.workspace }}/dist
       - name: deb in debian:12
-        if: matrix.target != 'macos-arm64'
+        if: runner.os == 'Linux'
         run: packaging/smoke/install-in-container.sh "$GITHUB_WORKSPACE/dist" debian:12
       - name: deb in ubuntu:22.04
-        if: matrix.target != 'macos-arm64'
+        if: runner.os == 'Linux'
         run: packaging/smoke/install-in-container.sh "$GITHUB_WORKSPACE/dist" ubuntu:22.04
       - name: rpm in fedora:40
-        if: matrix.target != 'macos-arm64'
+        if: runner.os == 'Linux'
         run: packaging/smoke/install-in-container.sh "$GITHUB_WORKSPACE/dist" fedora:40
       - name: AppImage under xvfb-run
-        if: matrix.target != 'macos-arm64'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends xvfb x11-utils mesa-vulkan-drivers \
@@ -345,7 +343,7 @@ jobs:
             libfontconfig1 libwayland-client0 libwayland-egl1 libdbus-1-3
           packaging/smoke/appimage-xvfb.sh "$(ls dist/Hushpen-*.AppImage)" "$RUNNER_TEMP/appimage-${{ matrix.target }}.png"
       - name: Keep the AppImage screenshot
-        if: matrix.target != 'macos-arm64' && always()
+        if: runner.os == 'Linux' && always()
         uses: actions/upload-artifact@v4
         with:
           name: appimage-${{ matrix.target }}

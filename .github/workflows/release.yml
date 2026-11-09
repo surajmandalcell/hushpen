@@ -65,13 +65,24 @@ jobs:
             os: ubuntu-22.04
           - target: linux-arm64
             os: ubuntu-22.04-arm
+          - target: windows-x64
+            os: windows-2025
     env:
       APPIMAGE_EXTRACT_AND_RUN: "1"
       HUSHPEN_BUILD_VERSION: ${{ needs.plan.outputs.version }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.tag }}
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Configure libclang on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV'
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -92,6 +103,7 @@ jobs:
         with:
           path: |
             ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-packager.exe
             ~/.cargo/bin/cargo-generate-rpm
           key: packaging-tools-${{ runner.os }}-${{ runner.arch }}-packager-0.11.8-rpm-0.21.0
       - name: Install cargo-packager and cargo-generate-rpm
@@ -102,10 +114,12 @@ jobs:
       - name: Package
         run: cargo xtask package --target ${{ matrix.target }}
       - name: Verify every artifact
+        env:
+          EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
         run: |
           cargo xtask package-verify --target ${{ matrix.target }}
           ls -l target/dist/${{ matrix.target }}
-          ./target/release/hushpen --version | grep -F "$HUSHPEN_BUILD_VERSION"
+          ./target/release/hushpen${EXE_SUFFIX} --version | grep -F "$HUSHPEN_BUILD_VERSION"
       - name: Keep the artifacts
         uses: actions/upload-artifact@v4
         with:
