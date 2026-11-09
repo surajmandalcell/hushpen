@@ -722,8 +722,13 @@ fn a_helper_that_cannot_start_leaves_the_app_running_with_an_error(cx: &mut Test
 }
 
 #[gpui_kit::test]
-fn deb_rpm_and_tar_installs_get_a_notice_and_never_download(cx: &mut TestAppContext) {
-    for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Tar] {
+fn managed_and_portable_installs_get_a_notice_and_never_download(cx: &mut TestAppContext) {
+    for kind in [
+        InstallKind::Deb,
+        InstallKind::Rpm,
+        InstallKind::Tar,
+        InstallKind::WindowsZip,
+    ] {
         let rig = rig(cx);
         rig.installer.is(kind);
         rig.set("updates.autoInstall", json!(true));

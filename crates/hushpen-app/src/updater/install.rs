@@ -84,6 +84,7 @@ impl SystemInstaller {
         let target = match kind {
             InstallKind::AppImage => std::env::var_os("APPIMAGE").map(PathBuf::from),
             InstallKind::App => bundle_of(&exe),
+            InstallKind::WindowsSetup => Some(exe),
             _ => None,
         };
         // An AppImage run through the runtime has APPIMAGE; without it there is no file to
@@ -156,6 +157,14 @@ impl Installer for SystemInstaller {
                     cleanup: vec![dir],
                 })
             }
+            InstallKind::WindowsSetup => {
+                let staged = dir.join("update-setup.exe");
+                download_once(&feed, artifact, &staged, &cancel, progress)?;
+                Ok(Staged {
+                    path: staged,
+                    cleanup: vec![dir],
+                })
+            }
             other => Err(swap_failed(format!(
                 "{} installs are not replaced by the app",
                 other.key()
@@ -165,6 +174,15 @@ impl Installer for SystemInstaller {
 
     fn restart(&self, staged: &Staged, show_window: bool) -> Result<(), CheckError> {
         let target = self.target()?;
+        if self.kind == InstallKind::WindowsSetup {
+            return hushpen_platform::restart::apply_update(
+                &staged.path,
+                target,
+                &self.log,
+                show_window,
+            )
+            .map_err(|error| swap_failed(format!("cannot start the update helper: {error}")));
+        }
         let exe = std::env::current_exe()
             .map_err(|error| swap_failed(format!("cannot find this program: {error}")))?;
         let helper_dir = Self::work_dir(target)?.join(format!("helper-{}", std::process::id()));
@@ -218,8 +236,9 @@ fn download_once(
     progress: &mut dyn FnMut(Progress),
 ) -> Result<(), CheckError> {
     if dest.is_file() {
-        let same = hushpen_store::model_files::hash_file(dest, |_| true)
-            .is_ok_and(|hash| hash == artifact.sha256);
+        let same = fs::metadata(dest).is_ok_and(|metadata| metadata.len() == artifact.size)
+            && hushpen_store::model_files::hash_file(dest, |_| true)
+                .is_ok_and(|hash| hash == artifact.sha256);
         if same {
             return Ok(());
         }
@@ -349,6 +368,15 @@ mod tests {
             InstallKind::App
         );
 
+        for (name, kind) in [
+            ("windows-setup", InstallKind::WindowsSetup),
+            ("windows-zip", InstallKind::WindowsZip),
+        ] {
+            write(&root.join(name).join("hushpen.exe"), "");
+            write(&root.join(name).join("install-kind"), name);
+            assert_eq!(kind_beside(&root.join(name).join("hushpen.exe")), kind);
+        }
+
         write(&root.join("source/hushpen"), "");
         assert_eq!(
             kind_beside(&root.join("source/hushpen")),
@@ -365,6 +393,38 @@ mod tests {
             Some(PathBuf::from("/Applications/Hushpen.app"))
         );
         assert_eq!(bundle_of(Path::new("/usr/bin/hushpen")), None);
+    }
+
+    #[test]
+    fn a_windows_setup_uses_only_a_cached_file_with_the_manifest_size_and_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("hushpen.exe");
+        let work = SystemInstaller::work_dir(&target).unwrap();
+        let staged = work.join("update-setup.exe");
+        write(&staged, "hello");
+        let installer = SystemInstaller {
+            kind: InstallKind::WindowsSetup,
+            target: Some(target),
+            log: dir.path().join("update.log"),
+        };
+        let mut artifact = Artifact {
+            url: "http://127.0.0.1:1/setup.exe".into(),
+            sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".into(),
+            size: 5,
+        };
+        assert_eq!(
+            installer.stage(&artifact, &mut |_| {}).unwrap(),
+            Staged {
+                path: staged.clone(),
+                cleanup: vec![work],
+            }
+        );
+        artifact.size += 1;
+        assert!(installer.stage(&artifact, &mut |_| {}).is_err());
+        assert!(
+            !staged.exists(),
+            "an invalid cached setup cannot be launched"
+        );
     }
 
     #[test]
