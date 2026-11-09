@@ -68,7 +68,7 @@ down.";
 pub fn worker_main(args: &[String]) -> ExitCode {
     match args.first().map(String::as_str) {
         Some("--version") => {
-            println!("hushpen-tts {}", hushpen_core::VERSION);
+            println!("hushpen-tts {}", hushpen_core::BUILD_VERSION);
             return ExitCode::SUCCESS;
         }
         Some("--check-runtime") => return check_runtime(),
