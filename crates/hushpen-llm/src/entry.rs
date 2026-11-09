@@ -23,7 +23,7 @@ pub const SMOKE_FILLERS: [&str; 3] = ["um", "uh", "er"];
 /// Runs the worker. `args` are the arguments after the program name.
 pub fn worker_main(args: &[String]) -> ExitCode {
     if args.first().map(String::as_str) == Some("--version") {
-        println!("hushpen-llm {}", hushpen_core::VERSION);
+        println!("hushpen-llm {}", hushpen_core::BUILD_VERSION);
         return ExitCode::SUCCESS;
     }
     let smoke = match parse_args(args) {
