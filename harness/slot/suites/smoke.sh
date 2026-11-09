@@ -115,13 +115,13 @@ check_failures "window controls and solid sidebar" "hook tree lists only window.
 
 echo "== every main view keeps 940x600"
 failures=""
-for view in home history files dictionary models settings about; do
+for view in home history files dictionary models devices settings about; do
   /app/hookctl action open-view "{\"view\":\"$view\"}" >/dev/null
   /app/hookctl wait "view=$view" 5000 >/dev/null 2>&1 || failures+="$view did not open; "
   sleep 0.3
   failures+=$(chrome_problems "$view")
 done
-check_failures "every main view keeps 940x600" "7 views: 940x600 on the display and in the hook state, resizable, maximized, and fullscreen false, only close and minimize" "$failures"
+check_failures "every main view keeps 940x600" "8 views: 940x600 on the display and in the hook state, resizable, maximized, and fullscreen false, only close and minimize" "$failures"
 /app/hookctl action open-view '{"view":"home"}' >/dev/null
 /app/hookctl wait view=home 5000 >/dev/null 2>&1
 
@@ -134,7 +134,7 @@ echo "== sidebar tree and hookctl click"
 failures=""
 /app/hookctl tree >"$RUN_OUT/tree-sidebar.json"
 index=0
-for view in home history files dictionary models settings about; do
+for view in home history files dictionary models devices settings about; do
   row=$(jq -c --arg id "sidebar.$view" '[.[] | select(.id == $id)] | first // empty' "$RUN_OUT/tree-sidebar.json")
   if [ -z "$row" ]; then
     failures+="sidebar.$view is not in the tree; "
@@ -151,7 +151,7 @@ for view in home history files dictionary models settings about; do
   [ "$(title_of)" = "$(title_for "$view")" ] || failures+="the title after hookctl click on $view is '$(title_of)'; "
   index=$((index + 1))
 done
-check_failures "sidebar tree and hookctl click" "7 items have text, enabled, focused, and bounds inside 0-232; hookctl click moved the neutral fill and the title to each" "$failures"
+check_failures "sidebar tree and hookctl click" "8 items have text, enabled, focused, and bounds inside 0-232; hookctl click moved the neutral fill and the title to each" "$failures"
 
 echo "== sidebar keyboard"
 failures=""
@@ -167,7 +167,7 @@ done
 # A hookctl click leaves the focus on its item; Home moves it to the first row by key.
 xdotool key Home
 sleep 0.3
-for view in home history files dictionary models settings about; do
+for view in home history files dictionary models devices settings about; do
   [ "$(focused_item)" = "sidebar.$view" ] || failures+="focus is on '$(focused_item)', not sidebar.$view; "
   box=$(/app/hookctl tree | jq -r --arg id "sidebar.$view" '[.[] | select(.id == $id) | "\(.bounds.x | floor) \(.bounds.y | floor)"] | first // empty')
   if [ -n "$box" ]; then
@@ -183,7 +183,7 @@ for view in home history files dictionary models settings about; do
   xdotool key Down
   sleep 0.2
 done
-check_failures "sidebar keyboard" "Tab reached the sidebar; each of the 7 items showed the accent focus ring (#0A84FF), Enter opened it, and Down moved on" "$failures"
+check_failures "sidebar keyboard" "Tab reached the sidebar; each of the 8 items showed the accent focus ring (#0A84FF), Enter opened it, and Down moved on" "$failures"
 /app/hookctl action open-view '{"view":"home"}' >/dev/null
 /app/hookctl wait view=home 5000 >/dev/null 2>&1
 
@@ -220,7 +220,7 @@ else
     sleep 0.3
     shot after-click
     /app/hookctl state >"$RUN_OUT/state-after.json"
-    fill=$(pixel "$RUN_OUT/after-click.png" $(at 200 "$(row_y 5)"))
+    fill=$(pixel "$RUN_OUT/after-click.png" $(at 200 "$(row_y 6)"))
     home=$(pixel "$RUN_OUT/after-click.png" $(at 200 "$(row_y 0)"))
     if near "$fill" "$SELECTED" && near "$home" "$SIDEBAR"; then
       check click pass "mouse click at ($bx,$by) opened Settings: its fill is $fill, Home is $home"
