@@ -525,7 +525,8 @@ new decision, add it here in the same change (D-21).
   The host library serves those same workers. iOS uses Metal; Android starts
   with CPU and NEON. QNN and Core ML speech accelerators need a later decision.
   The iOS keyboard extension never loads a model. Phone screens and native
-  platform adapters are separate from this shared library.
+  platform adapters are separate from this shared library. Build instructions
+  live in `mobile/README.md`.
 
 ## History notes
 
