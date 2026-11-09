@@ -82,7 +82,9 @@ jobs:
       - name: Configure libclang on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '"LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV'
+        run: |
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$((Get-Command link.exe).Source)" >> $env:GITHUB_ENV
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
