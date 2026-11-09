@@ -214,6 +214,8 @@ try {
     Add-Content -LiteralPath $Log -Value 'UPDATE_SETUP_START'
     $directory = Split-Path -LiteralPath $Target
     $installer = Start-Process -FilePath $Setup -ArgumentList "/S /D=$directory" -PassThru
+    # Windows PowerShell needs the handle to retain the exit code.
+    $null = $installer.Handle
     $setupRunning = $true
     if (-not $installer.WaitForExit(600000)) { throw 'Setup did not exit within ten minutes.' }
     $setupRunning = $false
