@@ -181,6 +181,7 @@ detail=$(ob '.permissions.rows[] | select(.key == "x11") | .detail')
 [ "$(ob '.permissions.rows | map(.key) | join(",")')" = x11,microphone ] || failures+="wayland: unexpected permission rows; "
 continue_enabled || failures+="wayland: the X11 notice blocks Continue; "
 click onboarding.permissions.learn.x11
+wait_until 3 bash -c '/app/hookctl tree | jq -e "any(.[]; .id == \"onboarding.notice\" and .visible)"' || failures+="wayland: the help notice did not render; "
 shot 002-wayland-help
 case "$(ob .notice)" in *"record button"*"copy"*) ;; *) failures+="wayland: Learn more has no fallback steps; " ;; esac
 /harness/slot/app.sh restart >/dev/null
@@ -190,6 +191,7 @@ wait_until 5 row_is tray info || failures+="no tray watcher: the tray row is $(r
 shot 002-no-tray
 continue_enabled || failures+="the tray notice blocks Continue; "
 click onboarding.permissions.learn.tray
+wait_until 3 bash -c '/app/hookctl tree | jq -e "any(.[]; .id == \"onboarding.notice\" and .visible)"' || failures+="the tray help notice did not render; "
 shot 002-tray-help
 case "$(ob .notice)" in *"Keep the Hushpen window open"*) ;; *) failures+="the tray help has no fallback steps; " ;; esac
 python3 /harness/slot/sni-host.py >/logs/sni-host.log 2>&1 &
