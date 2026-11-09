@@ -1,0 +1,45 @@
+/* Why Hushpen: big showcase sections, text on one side and a looping scene on the other.
+
+   Markup, one per section, inside .grp.why:
+     <section class="why-s" data-why="id">
+       <div class="why-t"><small>Label</small><h3>Big line.</h3><p>One or two short sentences.</p></div>
+       <div class="why-v" aria-hidden="true">scene</div>
+     </section>
+
+   Sides are counted among the .why-s siblings only, so any order keeps the rhythm: odd sections put
+   the text on the left, even ones put the scene on the left. At 720px and below the scene sits under the text.
+
+   Scenes: .why-v is a white 4:3 box. Draw a scene on a .why-st stage, 520 by 390 px; why-a.js zooms
+   every .why-v > .why-st to fill its box (--z), so a scene is drawn once and stays sharp at any width.
+   Keep scene text at 16px or more on the stage; phones show it at about 0.68x. why-a.js also sets
+   .why-v.live while the box is on screen; pause CSS loops with .why-v:not(.live). */
+.why { padding-top: 32px; }
+.why-s { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "t v"; align-items: center; gap: 72px; padding: 44px 0; }
+.why-s:nth-child(even of .why-s) { grid-template-areas: "v t"; }
+.why-t { grid-area: t; min-width: 0; }
+.why-t small { display: block; margin-bottom: 16px; font-size: 17px; font-weight: 600; line-height: 1.2; letter-spacing: -.012em; color: var(--ink2); }
+.why-t h3 { font: 700 clamp(42px, 4.6vw, 64px)/1.02 var(--sans); letter-spacing: -.05em; text-wrap: balance; }
+.why-t p { max-width: 24em; margin-top: 22px; font-size: 20px; line-height: 1.42; letter-spacing: -.018em; color: var(--ink2); text-wrap: pretty; }
+.why-v { grid-area: v; position: relative; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 28px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
+.why-st { position: absolute; left: 0; top: 0; width: 520px; height: 390px; overflow: hidden; zoom: var(--z, 1); }
+@media (max-width: 1100px) {
+  .why-s { gap: 48px; padding: 36px 0; }
+  .why-t p { font-size: 18px; }
+}
+@media (max-width: 860px) {
+  .why { padding-top: 16px; }
+  .why-s { gap: 32px; padding: 32px 0; }
+  .why-t small { margin-bottom: 12px; font-size: 15px; }
+  .why-t h3 { font-size: 36px; }
+  .why-t p { margin-top: 16px; font-size: 17px; }
+  .why-v { border-radius: 22px; }
+}
+@media (max-width: 720px) {
+  .why-s, .why-s:nth-child(even of .why-s) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "v"; gap: 28px; padding: 36px 0; }
+  .why-t h3 { font-size: clamp(34px, 7vw, 48px); }
+  .why-t p { max-width: 32em; }
+}
+@media (max-width: 560px) {
+  .why-s, .why-s:nth-child(even of .why-s) { gap: 24px; padding: 32px 0; }
+  .why-t h3 { font-size: clamp(34px, 9.6vw, 44px); }
+}
