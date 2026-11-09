@@ -7,7 +7,7 @@
 .ln-dl [data-asset-meta] { min-width: 19ch; }
 .ln-dl .ln-pv { padding: 2px 6px; border-radius: 5px; background: rgba(255, 255, 255, .18); font-size: 11px; font-weight: 600; line-height: 1; letter-spacing: 0; }
 .wx-dk { color: #1B1B1B; }
-.wx-dk svg.g { stroke-width: 1.2; }
+.wx-dk .g { flex: none; width: 15px; height: 15px; }
 .wx-wall { position: absolute; inset: 0; width: 100%; height: 100%; filter: blur(3px); }
 .wx-dk .ln-fb { bottom: 58px; }
 .wx-dk .ln-kc { bottom: 110px; }
@@ -17,6 +17,7 @@
 .wx-tc { display: flex; gap: 2px; }
 .wx-ti { position: relative; flex: none; display: grid; place-items: center; width: 36px; height: 34px; border-radius: 5px; transition: background-color .15s, width .4s var(--ease), margin .4s var(--ease), opacity .3s var(--ease); }
 .wx-ti > :first-child { width: 22px; height: 22px; transition: scale .12s var(--ease); }
+.wx-ti[data-a=search] > :first-child { width: 18px; height: 18px; }
 .wx-ti.is-act { background: rgba(255, 255, 255, .75); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .06); }
 .wx-ti.is-press > :first-child { scale: .86; }
 .wx-run { position: absolute; left: 50%; bottom: 1px; width: 6px; height: 3px; margin-left: -3px; border-radius: 2px; background: rgba(0, 0, 0, .4); opacity: 0; transition: opacity .3s var(--ease), width .3s var(--ease), margin .3s var(--ease), background-color .3s; }
@@ -25,10 +26,10 @@
 .wx-ti[data-a=hp] { width: 0; margin: 0 -1px; opacity: 0; }
 .wx-ti[data-a=hp].is-in { width: 36px; margin: 0; opacity: 1; }
 .wx-tr { position: absolute; right: 4px; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px; }
-.wx-tr > svg.g { width: 13px; height: 13px; margin: 0 6px; }
+.wx-tr > .g { width: 13px; height: 13px; margin: 0 6px; }
 .wx-tr .ln-tray { background: #1B1B1B; }
 .wx-sys { display: flex; align-items: center; gap: 8px; padding: 0 8px; }
-.wx-sys svg.g { width: 14px; height: 14px; }
+.wx-sys .g { width: 14px; height: 14px; }
 .wx-clk { display: grid; justify-items: end; padding: 0 8px; font-size: 11px; line-height: 1.35; }
 .wx-clk b { font-weight: 400; }
 
@@ -37,22 +38,21 @@
 .wx-dk .ln-win.is-fr { box-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 8px 20px rgba(0, 0, 0, .18), 0 24px 54px rgba(0, 0, 0, .3); }
 .wx-tabs, .wx-tt { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding-left: 8px; background: #EBEEF3; }
 .wx-tab { flex: 0 1 220px; min-width: 0; display: flex; align-items: center; gap: 8px; height: 30px; margin-top: 6px; padding: 0 8px 0 10px; border-radius: 7px 7px 0 0; background: #fff; font-size: 12px; white-space: nowrap; }
-.wx-tab > img, .wx-tab > svg:first-child { flex: none; width: 15px; height: 15px; }
+.wx-tab > :first-child { flex: none; width: 15px; height: 15px; }
 .wx-tab > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.wx-tab > svg.g { width: 11px; height: 11px; color: #5F5F5F; }
+.wx-tab > .g { width: 11px; height: 11px; opacity: .7; }
 .wx-tabs > .ln-ib { width: 28px; height: 28px; }
-.wx-tabs > .ln-ib svg.g { width: 13px; height: 13px; }
+.wx-tabs > .ln-ib .g { width: 13px; height: 13px; }
 .wx-wc { flex: none; display: flex; align-self: stretch; }
 .wx-wc i { display: grid; place-items: center; width: 42px; }
-.wx-wc svg.g { width: 10px; height: 10px; stroke-width: 1.3; }
+.wx-wc .g { width: 10px; height: 10px; }
 .wx-tt { gap: 8px; padding-left: 12px; background: #fff; font-size: 12px; }
 .wx-tt > img { width: 16px; height: 16px; }
 
 /* The browser, on this page, with the downloads panel under its button */
 .wx-nav { flex: none; display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 6px; background: #fff; box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .08); }
-.wx-nav .ln-ib { color: #1B1B1B; }
 .wx-url { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 30px; margin: 0 6px; padding: 0 12px; border-radius: 15px; background: #F1F3F6; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
-.wx-url svg.g { width: 12px; height: 12px; color: #5F5F5F; }
+.wx-url .g { width: 12px; height: 12px; opacity: .7; }
 .wx-dlb { width: 0; overflow: hidden; opacity: 0; transition: width .3s var(--ease), opacity .2s var(--ease); }
 .wx-dlb.is-on { width: 30px; opacity: 1; background: rgba(0, 0, 0, .06); }
 .wx-pg { flex: 1; min-height: 0; padding: 30px 32px; background: #F2F2F4; color: #111; }
@@ -60,7 +60,7 @@
 .wx-pg h1 span { color: #A0A0A6; }
 .wx-pg p { margin-top: 8px; font-size: 13px; color: #6B6B70; }
 .wx-pb { display: inline-flex; align-items: center; gap: 7px; height: 34px; margin-top: 18px; padding: 0 14px 0 12px; border-radius: 10px; background: #000; color: #fff; font-size: 12.5px; font-weight: 600; transition: transform .12s var(--ease), background-color .15s; }
-.wx-pb svg.g { width: 13px; height: 13px; stroke-width: 1.6; }
+.wx-pb .g { width: 13px; height: 13px; filter: invert(1); }
 .wx-pb small { font-size: 11px; font-weight: 500; opacity: .6; }
 .wx-pb.is-hov { background: #2C2C2E; }
 .wx-pb.is-press { transform: scale(.96); }
@@ -84,7 +84,7 @@
 .wx-ss h3 { margin: 0 0 14px; font: 300 25px/1.2 var(--gn); }
 .wx-ss p { font-size: 13px; line-height: 1.45; }
 .wx-ssx { position: absolute; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; }
-.wx-ssx svg.g { width: 11px; height: 11px; }
+.wx-ssx .g { width: 11px; height: 11px; filter: invert(1); }
 .wx-mi { align-self: flex-start; margin-top: 14px; font-size: 13px; text-underline-offset: 2px; }
 .wx-si { display: none; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin-top: 14px; font-size: 13px; }
 .wx-si b { font-weight: 400; overflow-wrap: anywhere; }
@@ -103,7 +103,7 @@
 .wx-pr { height: 6px; border-radius: 3px; }
 .wx-ck { display: flex; align-items: center; gap: 8px; color: #1B1B1B; }
 .wx-ck i { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 3px; background: #005FB8; color: #fff; }
-.wx-ck svg.g { width: 11px; height: 11px; stroke-width: 1.8; }
+.wx-ck .g { width: 11px; height: 11px; filter: invert(1); }
 .wx-ft { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; background: #F3F3F3; box-shadow: inset 0 1px 0 rgba(0, 0, 0, .08); }
 .wx-bt { display: grid; place-items: center; min-width: 78px; height: 26px; padding: 0 12px; border-radius: 4px; background: #FBFBFB; box-shadow: 0 0 0 1px rgba(0, 0, 0, .14); font-size: 12px; transition: transform .1s var(--ease), background-color .1s; }
 .wx-bt.wx-off { color: rgba(0, 0, 0, .36); }
@@ -114,7 +114,7 @@
 /* Notepad */
 .wx-menu { flex: none; display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 8px; font-size: 12.5px; }
 .wx-menu > span { padding: 4px 9px; border-radius: 4px; }
-.wx-menu > svg.g { width: 14px; height: 14px; margin-right: 8px; }
+.wx-menu > .g { width: 14px; height: 14px; margin-right: 8px; }
 .wx-doc { flex: 1; padding: 10px 14px; box-shadow: inset 0 1px 0 rgba(0, 0, 0, .06); font: 14px/1.55 Consolas, "Cascadia Mono", ui-monospace, monospace; }
 .wx-doc .ln-caret { height: 17px; background: #1B1B1B; }
 .wx-sbar { flex: none; display: flex; align-items: center; height: 24px; padding: 0 6px; background: #F3F3F3; box-shadow: inset 0 1px 0 rgba(0, 0, 0, .06); font-size: 11px; color: #5F5F5F; }
