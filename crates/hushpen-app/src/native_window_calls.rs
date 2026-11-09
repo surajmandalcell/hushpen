@@ -60,7 +60,9 @@ fn relative(path: &Path) -> String {
 
 /// The file without its test module.
 fn production(path: &Path) -> String {
-    let text = fs::read_to_string(path).expect("read a source file");
+    let text = fs::read_to_string(path)
+        .expect("read a source file")
+        .replace("\r\n", "\n");
     let end = text.find("#[cfg(test)]").unwrap_or(text.len());
     text[..end].to_owned()
 }
@@ -182,7 +184,9 @@ fn the_app_level_calls_live_nowhere_in_the_app() {
 fn the_linux_minimize_circle_is_the_only_other_native_window_call_and_never_builds_on_macos() {
     let text = file("window_controls.rs");
     assert_eq!(uses(&text, ".minimize_window(").len(), 1);
-    let lib = fs::read_to_string(root().join("lib.rs")).unwrap();
+    let lib = fs::read_to_string(root().join("lib.rs"))
+        .unwrap()
+        .replace("\r\n", "\n");
     assert!(
         lib.contains("#[cfg(not(target_os = \"macos\"))]\npub mod window_controls;"),
         "window_controls must stay out of the macOS build"
