@@ -14,6 +14,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+#[uniffi::export(with_foreign)]
+pub trait JobActivity: Send + Sync {
+    fn changed(&self, active: bool);
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum HostUnloadRule {
     KeepLoaded,
@@ -64,6 +69,7 @@ pub struct Host {
     secrets: Arc<Secrets>,
     running: Mutex<Option<Running>>,
     foreground: AtomicBool,
+    activity: Mutex<Option<Arc<dyn JobActivity>>>,
 }
 
 #[uniffi::export]
@@ -113,7 +119,18 @@ impl Host {
             secrets: Arc::new(secrets),
             running: Mutex::new(None),
             foreground: AtomicBool::new(true),
+            activity: Mutex::new(None),
         }))
+    }
+
+    pub fn set_job_activity(&self, activity: Option<Arc<dyn JobActivity>>) {
+        let running = lock(&self.running);
+        *lock(&self.activity) = activity.clone();
+        if let Some(running) = running.as_ref() {
+            running
+                .workers
+                .set_job_activity(activity_callback(activity));
+        }
     }
 
     pub fn start(&self, listen: String, rule: HostUnloadRule) -> Result<u16, MobileError> {
@@ -162,6 +179,7 @@ impl Host {
                 .map_err(MobileError::failed)?,
         );
         let workers = Workers::from_clients(self.engine.client.clone(), cleanup, os, true);
+        workers.set_job_activity(activity_callback(lock(&self.activity).clone()));
         workers.set_unload_rule(rule);
         let stop = Arc::new(AtomicBool::new(false));
         let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -277,11 +295,18 @@ impl Host {
             let _ = control.shutdown();
         }
         let _ = running.thread.join();
+        running.workers.set_job_activity(None);
         running.workers.cleanup.shutdown();
         if running.rule == UnloadRule::WhileServerModeOpen {
             self.engine.client.unload();
         }
     }
+}
+
+fn activity_callback(
+    activity: Option<Arc<dyn JobActivity>>,
+) -> Option<Arc<dyn Fn(bool) + Send + Sync>> {
+    activity.map(|activity| Arc::new(move |active| activity.changed(active)) as Arc<_>)
 }
 
 impl Drop for Host {

@@ -246,6 +246,7 @@ fn speech(
             if workers.speech_busy.swap(true, Ordering::AcqRel) {
                 return Err(invalid("speech worker is busy"));
             }
+            let activity = workers.job_started();
             let load = workers.speech.load_model(LoadSpec {
                 path,
                 gpu,
@@ -255,6 +256,7 @@ fn speech(
             let output = Arc::clone(output);
             let workers = Arc::clone(workers);
             std::thread::spawn(move || {
+                let _activity = activity;
                 let event = match load.wait_timeout(Duration::from_secs(120)) {
                     Some(Ok(loaded)) => Event::Loaded {
                         model: loaded.model,
@@ -293,6 +295,7 @@ fn speech(
             if workers.speech_busy.swap(true, Ordering::AcqRel) {
                 return Err(invalid("speech worker is busy"));
             }
+            let activity = workers.job_started();
             let handle = workers.speech.transcribe(TranscribeSpec {
                 wav_path: audio.path().into(),
                 language,
@@ -303,6 +306,7 @@ fn speech(
             let output = Arc::clone(output);
             let jobs = Arc::clone(jobs);
             std::thread::spawn(move || {
+                let _activity = activity;
                 finish_speech(
                     handle
                         .wait_timeout(Duration::from_secs(300))
@@ -332,6 +336,7 @@ fn speech(
             if workers.speech_busy.swap(true, Ordering::AcqRel) {
                 return Err(invalid("speech worker is busy"));
             }
+            let activity = workers.job_started();
             let handle = workers.speech.import(
                 ImportSpec {
                     path: audio.path().into(),
@@ -346,6 +351,7 @@ fn speech(
             let output = Arc::clone(output);
             let jobs = Arc::clone(jobs);
             std::thread::spawn(move || {
+                let _activity = activity;
                 finish_speech(
                     handle
                         .wait_timeout(Duration::from_secs(300))
@@ -462,6 +468,7 @@ fn cleanup(
             if workers.cleanup_busy.swap(true, Ordering::AcqRel) {
                 return Err(invalid("cleanup worker is busy"));
             }
+            let activity = workers.job_started();
             let handle = workers.cleanup.load_model(LlmSpec {
                 path,
                 family,
@@ -472,6 +479,7 @@ fn cleanup(
             let output = Arc::clone(output);
             let workers = Arc::clone(workers);
             std::thread::spawn(move || {
+                let _activity = activity;
                 let event = match handle.wait_timeout(Duration::from_secs(120)) {
                     Some(Ok(done)) => LlmEvent::Loaded {
                         model: done.model,
@@ -524,12 +532,14 @@ fn cleanup(
     if workers.cleanup_busy.swap(true, Ordering::AcqRel) {
         return Err(invalid("cleanup worker is busy"));
     }
+    let activity = workers.job_started();
     let handle = workers.cleanup.run(work);
     lock(jobs).insert(job, handle.id());
     let workers = Arc::clone(workers);
     let output = Arc::clone(output);
     let jobs = Arc::clone(jobs);
     std::thread::spawn(move || {
+        let _activity = activity;
         let event = match handle
             .wait_timeout(Duration::from_secs(120))
             .unwrap_or_else(|| {

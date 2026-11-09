@@ -25,6 +25,29 @@ pub struct Workers {
     pub(crate) cleanup_rule: Mutex<UnloadRule>,
     pub(crate) os: hushpen_core::os::Os,
     pub(crate) system_cleanup: bool,
+    activity: Mutex<Activity>,
+}
+
+type ActivityCallback = Arc<dyn Fn(bool) + Send + Sync>;
+
+#[derive(Default)]
+struct Activity {
+    count: usize,
+    callback: Option<ActivityCallback>,
+}
+
+pub(crate) struct JobActivity(Arc<Workers>);
+
+impl Drop for JobActivity {
+    fn drop(&mut self) {
+        let mut activity = lock(&self.0.activity);
+        activity.count -= 1;
+        if activity.count == 0
+            && let Some(callback) = &activity.callback
+        {
+            callback(false);
+        }
+    }
 }
 
 impl Workers {
@@ -74,7 +97,31 @@ impl Workers {
             cleanup_rule: Mutex::new(UnloadRule::KeepLoaded),
             os,
             system_cleanup,
+            activity: Mutex::new(Activity::default()),
         })
+    }
+
+    /// The callback must not call back into these workers.
+    pub fn set_job_activity(&self, callback: Option<ActivityCallback>) {
+        let mut activity = lock(&self.activity);
+        if let Some(previous) = activity.callback.take() {
+            previous(false);
+        }
+        if let Some(callback) = &callback {
+            callback(activity.count > 0);
+        }
+        activity.callback = callback;
+    }
+
+    pub(crate) fn job_started(self: &Arc<Self>) -> JobActivity {
+        let mut activity = lock(&self.activity);
+        activity.count += 1;
+        if activity.count == 1
+            && let Some(callback) = &activity.callback
+        {
+            callback(true);
+        }
+        JobActivity(Arc::clone(self))
     }
 
     pub fn unload(&self) {
@@ -204,5 +251,28 @@ mod tests {
         workers.shutdown();
         assert!(logs.join("engine.log").is_file());
         assert!(logs.join("llm.log").is_file());
+    }
+
+    #[test]
+    fn activity_stays_on_until_the_last_job_finishes() {
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("missing-worker");
+        let workers = Workers::start(missing.clone(), missing, directory.path()).unwrap();
+        let changes = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&changes);
+        workers.set_job_activity(Some(Arc::new(move |active| {
+            lock(&observed).push(active);
+        })));
+        let speech = workers.job_started();
+        let cleanup = workers.job_started();
+        drop(speech);
+        assert_eq!(*lock(&changes), [false, true]);
+        drop(cleanup);
+        assert_eq!(*lock(&changes), [false, true, false]);
+        let job = workers.job_started();
+        workers.set_job_activity(None);
+        drop(job);
+        assert_eq!(*lock(&changes), [false, true, false, true, false]);
+        workers.shutdown();
     }
 }
