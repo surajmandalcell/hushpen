@@ -3,61 +3,62 @@
 .wo, .wd, .we { font-family: var(--text); color: #1D1D1F; letter-spacing: -.012em; }
 .why-v:not(.live) .wo *, .why-v:not(.live) .wd *, .why-v:not(.live) .we * { animation-play-state: paused !important; }
 
-/* Works offline: the voice flows into the laptop and the text keeps coming. Data heads for the cloud
-   and bounces off the computer's edge; then Wi-Fi goes off and the typing goes on. */
-.wo-net { position: absolute; left: 24px; top: 24px; z-index: 3; display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 22px 0 12px; border-radius: 18px; background: #F5F5F7; }
-.wo-ni { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #007AFF; color: #fff; transition: background-color .35s var(--ease), color .35s var(--ease); }
-.wo-ni svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; }
-.wo-ni circle { fill: currentColor; stroke: none; }
-.wo-nl { display: grid; font-size: 16px; line-height: 1.2; }
-.wo-nl b { font-weight: 600; }
-.wo-nl em { grid-area: 2 / 1; font-style: normal; color: var(--ink2); transition: opacity .3s var(--ease); }
-.wo-off, .wo.off .wo-on { opacity: 0; }
-.wo.off .wo-off { opacity: 1; }
-.wo.off .wo-ni { background: rgba(0, 0, 0, .09); color: #1D1D1F; }
+/* Works offline: a small Mac screen drawn in points and zoomed 1.5x. A dictation goes into Notes, the
+   pointer turns Wi-Fi off in its menu, and the next dictation goes in the same way. */
+.why-v.wo-v { background: #8EC5F2 url(assets/wall-blossom.webp) 62% 34% / auto 150% no-repeat; }
+.wo-dk { position: absolute; left: 0; top: 0; width: 346.667px; height: 260px; zoom: 1.5; letter-spacing: 0; }
+.wo-mb { position: relative; z-index: 3; padding: 0 4px 0 14px; }
+.wo-mb > .wo-mx { display: grid; place-items: center; height: 22px; padding: 0 6px; border-radius: 6px; transition: background-color .2s var(--ease); }
+.wo-mb .wo-mx > * { grid-area: 1 / 1; margin: 0; }
+.wo .mb-hp { opacity: 1; }
+.wo-mb > .wo-ck { padding: 0 6px 0 8px; }
+.wo-wf { transition: opacity .2s var(--ease); }
+.wo-wf.x, .wo.off .wo-wf { opacity: 0; }
+.wo.off .wo-wf.x { opacity: 1; }
+.wo.menu .wo-wfx { background: rgba(0, 0, 0, .1); }
 
-.wo-wv { position: absolute; left: 0; top: 140px; z-index: 1; width: 128px; height: 100px; overflow: visible; -webkit-mask-image: linear-gradient(90deg, transparent, #000 55%); mask-image: linear-gradient(90deg, transparent, #000 55%); }
-.wo-wv .q { transform-box: view-box; transform-origin: 50% 50%; transform: scaleY(.05); opacity: .45; transition: transform .6s var(--ease), opacity .6s var(--ease); }
-.wo.talk .wo-wv .q { transform: none; opacity: 1; }
-.wo-wv .a { transform-box: view-box; transform-origin: 50% 50%; animation: wo-amp 1.9s var(--ease) infinite; }
-.wo-wv path { fill: none; stroke: #007AFF; stroke-linecap: round; animation: wo-flow var(--d) linear infinite; }
-@keyframes wo-flow { to { transform: translateX(var(--l)); } }
-@keyframes wo-amp { 0%, 100% { transform: scaleY(.5); } 16% { transform: scaleY(1); } 32% { transform: scaleY(.62); } 50% { transform: scaleY(.95); } 68% { transform: scaleY(.38); } 84% { transform: scaleY(.82); } }
+.wo-nt { position: absolute; left: 22px; top: 40px; width: 302px; height: 150px; overflow: hidden; border-radius: 10px; background: #fff; color: rgba(0, 0, 0, .85); font: 13px/1.38 var(--text);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .2), 0 18px 46px rgba(0, 0, 0, .24), 0 2px 8px rgba(0, 0, 0, .1); }
+.wo-tb { display: flex; align-items: center; gap: 15px; height: 44px; padding: 0 16px 0 18px; color: rgba(0, 0, 0, .5); }
+.wo-tb .tl3 { margin-right: auto; }
+.wo-tb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wo-aa { font: 500 14px/1 var(--text); }
+.wo-pg { padding: 0 24px; }
+.wo-pg small { display: block; font-size: 11px; line-height: 14px; color: rgba(0, 0, 0, .36); text-align: center; }
+.wo-pg h4 { margin-top: 8px; font: 700 17px/1.3 var(--sans); letter-spacing: -.01em; }
+.wo-tx { margin-top: 3px; transition: opacity .4s var(--ease); }
+.wo-tx .w { display: inline-block; }
+.wo-tx .nw { animation: wo-in .34s var(--ease) both; animation-delay: calc(var(--n) * 32ms); }
+@keyframes wo-in { from { opacity: 0; filter: blur(3px); } }
+.wo.fade .wo-tx { opacity: 0; }
+.wo-c { display: inline-block; width: 1.5px; height: 1.15em; margin-left: 1px; vertical-align: -.2em; background: #007AFF; animation: k-blink 1.06s steps(1) infinite; }
 
-.wo-lap { position: absolute; left: 94px; top: 116px; z-index: 2; width: 280px; }
-.wo-scr { position: relative; width: 228px; height: 148px; margin: 0 auto; overflow: hidden; border: 6px solid #1D1D1F; border-bottom-width: 9px; border-radius: 12px 12px 4px 4px; background: #fff; }
-.wo-base { position: relative; display: block; height: 11px; border-radius: 1px 1px 10px 10px; background: #D6D6DB; }
-.wo-base::after { content: ""; position: absolute; left: 50%; top: 0; width: 46px; height: 4px; margin-left: -23px; border-radius: 0 0 5px 5px; background: #BDBDC3; }
-.wo-tl { position: absolute; left: 10px; top: 9px; display: flex; gap: 5px; }
-.wo-tl b { width: 7px; height: 7px; border-radius: 50%; background: #FF5F57; }
-.wo-tl b:nth-child(2) { background: #FEBC2E; } .wo-tl b:nth-child(3) { background: #28C840; }
-.wo-ln u { position: absolute; left: 14px; width: 0; height: 8px; border-radius: 4px; background: #1D1D1F; opacity: .8; transition: width .18s var(--ease), opacity .4s var(--ease); }
-.wo-ln u:nth-child(1) { top: 30px; } .wo-ln u:nth-child(2) { top: 48px; } .wo-ln u:nth-child(3) { top: 66px; }
-.wo.clear .wo-ln u { opacity: 0; }
-.wo.clear .wo-car { visibility: hidden; }
-.wo-car { position: absolute; left: 0; top: 0; width: 2px; height: 12px; margin-top: -2px; border-radius: 1px; background: #007AFF; animation: k-blink 1.06s steps(1) infinite; transition: transform .18s var(--ease); }
-.wo-fb { position: absolute; left: 0; right: 0; bottom: 10px; --s: .9; }
+/* The Wi-Fi menu: it fades in and drops 4 pt into place; with Wi-Fi off the network list folds away */
+.wo-mn { position: absolute; right: 6px; top: 27px; z-index: 4; width: 220px; padding: 5px; border-radius: 10px; color: rgba(0, 0, 0, .85); font: 13px/1 var(--text);
+  background: rgba(244, 244, 246, .8); -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .16), 0 10px 30px rgba(0, 0, 0, .2), 0 2px 6px rgba(0, 0, 0, .08);
+  opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .2s var(--ease), transform .2s var(--ease), visibility 0s .2s; }
+.wo.menu .wo-mn { opacity: 1; visibility: visible; transform: none; transition-duration: .13s, .13s, 0s; transition-delay: 0s; }
+.wo-hd { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 9px; }
+.wo-hd b { font-weight: 700; }
+.wo-sw { position: relative; width: 26px; height: 15px; border-radius: 99px; background: #007AFF; box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .06); transition: background-color .2s var(--ease); }
+.wo-sw::after { content: ""; position: absolute; left: 1px; top: 1px; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 .5px 1.5px rgba(0, 0, 0, .3); transform: translateX(11px); transition: transform .2s var(--ease); }
+.wo.off .wo-sw { background: rgba(0, 0, 0, .13); }
+.wo.off .wo-sw::after { transform: none; }
+.wo-sep { display: block; height: .5px; margin: 4px 9px; background: rgba(0, 0, 0, .12); }
+.wo-kn { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .3s var(--ease), opacity .2s var(--ease); }
+.wo-kn > div { min-height: 0; overflow: hidden; }
+.wo.off .wo-kn { grid-template-rows: 0fr; opacity: 0; }
+.wo-kn small { display: block; padding: 5px 9px 3px; font-size: 11px; font-weight: 600; line-height: 14px; color: rgba(0, 0, 0, .45); }
+.wo-nw { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 9px 0 6px; }
+.wo-ni { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #007AFF; color: #fff; }
+.wo-ni svg { width: 13px; height: 9.2px; }
+.wo-nw b { flex: 1; font-weight: 400; }
+.wo-lk { width: 12px; height: 12px; fill: none; stroke: rgba(0, 0, 0, .4); stroke-width: 2.2; stroke-linecap: round; }
+.wo-it { height: 24px; padding: 0 9px; line-height: 24px; }
 
-.wo-pk { position: absolute; left: 0; top: 0; width: 430px; height: 100%; z-index: 1; overflow: hidden; pointer-events: none; }
-.wo-p { position: absolute; left: 300px; width: 12px; height: 12px; border-radius: 3.5px; background: #007AFF; opacity: 0; }
-.wo-ring { position: absolute; left: 430px; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; box-shadow: inset 0 0 0 2px #007AFF; opacity: 0; }
-.wo-wall { position: absolute; left: 429px; top: 84px; width: 2px; height: 232px; border-radius: 2px; background: rgba(0, 0, 0, .1); }
-.wo-flash { position: absolute; left: 428px; z-index: 1; width: 4px; height: 52px; margin-top: -26px; border-radius: 2px; background: #007AFF; opacity: 0; }
-
-.wo-cl { position: absolute; left: 450px; top: 164px; display: grid; justify-items: center; gap: 4px; width: 56px; color: var(--ink3); transition: opacity .45s var(--ease); }
-.wo-cl svg { width: 52px; height: 36px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.wo-cl small { font-size: 16px; font-weight: 500; }
-.wo-cl .sl { stroke-dasharray: 60; stroke-dashoffset: 60; transition: stroke-dashoffset .5s var(--ease); }
-.wo.off .wo-cl { opacity: .5; }
-.wo.off .wo-cl .sl { stroke-dashoffset: 0; }
-
-.wo-cap { position: absolute; left: 94px; top: 304px; display: grid; justify-items: center; width: 280px; font-size: 19px; font-weight: 600; letter-spacing: -.022em; }
-.wo-cap span { grid-area: 1 / 1; white-space: nowrap; transition: opacity .35s var(--ease), transform .5s var(--ease), filter .35s var(--ease); }
-.wo-cap em { font-style: normal; color: var(--ink3); }
-.wo-cap span + span, .wo.off .wo-cap span:first-child { opacity: 0; transform: translateY(6px); filter: blur(4px); }
-.wo.off .wo-cap span + span { opacity: 1; transform: none; filter: none; }
-
-.wo-cur { position: absolute; left: 0; top: 0; z-index: 5; width: 19px; height: 28px; opacity: 0; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .35)); translate: 150px 128px; transform-origin: 2px 2px; transition: translate .8s var(--ease), opacity .3s var(--ease), scale .12s var(--ease); }
+.wo-fb { position: absolute; left: 0; right: 0; bottom: 18px; height: 28px; }
+.wo-cur { position: absolute; left: 0; top: 0; z-index: 6; width: 12.7px; height: 18.7px; opacity: 0; filter: drop-shadow(0 .7px 1px rgba(0, 0, 0, .35)); translate: 250px 150px; transform-origin: 1.3px 1.3px; transition: translate .8s var(--ease), opacity .3s var(--ease), scale .12s var(--ease); }
 .wo-cur.on { opacity: 1; }
 .wo-cur.dn { scale: .86; }
 
