@@ -24,13 +24,19 @@ const SUMS: &str = "SHA256SUMS";
 const KEY_VAR: &str = "HUSHPEN_UPDATE_KEY";
 const PASSWORD_VAR: &str = "HUSHPEN_UPDATE_KEY_PASSWORD";
 
-const TARGETS: [Target; 3] = [Target::MacosArm64, Target::LinuxX64, Target::LinuxArm64];
+const TARGETS: [Target; 4] = [
+    Target::MacosArm64,
+    Target::LinuxX64,
+    Target::LinuxArm64,
+    Target::WindowsX64,
+];
 
 /// The format each target updates itself from.
 fn update_format(target: Target) -> Format {
     match target {
         Target::MacosArm64 => Format::Zip,
-        _ => Format::AppImage,
+        Target::WindowsX64 => Format::Nsis,
+        Target::LinuxX64 | Target::LinuxArm64 => Format::AppImage,
     }
 }
 
@@ -51,7 +57,7 @@ pub fn version_of_tag(tag: &str) -> Result<String, String> {
     Ok(version.to_owned())
 }
 
-/// The ten installers of the release, in plan order.
+/// The installers of the release, in plan order.
 pub fn installers(version: &str) -> Vec<String> {
     TARGETS
         .iter()
@@ -192,7 +198,7 @@ fn write_sums(dir: &Path, version: &str) -> Result<(), String> {
 }
 
 /// Writes `SHA256SUMS`, `latest.json`, and `latest.json.minisig` into `--dir`, which already
-/// holds the ten installers.
+/// holds every planned installer.
 pub fn run_manifest(args: &[String]) -> Result<(), String> {
     let args = parse_args(args, true)?;
     let key_text = std::env::var(KEY_VAR).map_err(|_| format!("{KEY_VAR} is not set"))?;
@@ -361,7 +367,8 @@ fn check_manifest(
     }
     if problems.len() == before {
         println!(
-            "ok: {MANIFEST}: version {version}, 3 targets, sha256 and size match the downloaded assets"
+            "ok: {MANIFEST}: version {version}, {} targets, sha256 and size match the downloaded assets",
+            TARGETS.len()
         );
     }
 }

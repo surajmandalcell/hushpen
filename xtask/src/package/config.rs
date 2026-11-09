@@ -108,6 +108,15 @@ pub fn deb(input: &Common, deps: &Deps) -> String {
     )
 }
 
+pub fn windows(input: &Common, template: &Path) -> String {
+    format!(
+        "{}\n[nsis]\ninstaller-mode = \"currentUser\"\ntemplate = {}\ninstaller-icon = {}\n",
+        common(input),
+        quote_path(template),
+        quote_path(&input.icons[0]),
+    )
+}
+
 pub fn appimage(input: &Common) -> String {
     // The AppImage payload is the deb layout; the voice worker finds its libraries beside it
     // in usr/bin.
@@ -273,6 +282,24 @@ mod tests {
         let work = PathBuf::from("/w");
         let text = deb(&input(&work, &[], &[]), &deps());
         assert!(text.contains("depends = [\"libvulkan1\", \"a | b\"]"));
+    }
+
+    #[test]
+    fn windows_uses_the_per_user_template_and_generated_icon() {
+        let work = Path::new("C:/work");
+        let icons = [work.join("Hushpen.ico")];
+        let text = windows(
+            &input(work, &icons, &[]),
+            Path::new("C:/source/installer.nsi"),
+        );
+        assert!(text.contains("installer-mode = \"currentUser\""));
+        assert!(text.contains("template = \"C:/source/installer.nsi\""));
+        assert!(text.contains(&format!("installer-icon = {}", quote_path(&icons[0]))));
+        let template = include_str!("../../../packaging/windows/installer.nsi");
+        assert!(template.contains("RequestExecutionLevel user"));
+        assert!(template.contains("InstallDir \"$LOCALAPPDATA\\Programs\\${PRODUCT}\""));
+        assert!(!template.contains("RMDir /r"));
+        assert!(!template.contains("HKLM"));
     }
 
     #[test]
