@@ -301,6 +301,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo clippy -p xtask --all-targets --locked -- -D warnings
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p xtask --locked
