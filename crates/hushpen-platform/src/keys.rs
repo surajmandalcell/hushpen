@@ -116,6 +116,18 @@ impl GlobalKeys {
         start(bindings, sink, record)
     }
 
+    /// Whether the listener's hook thread is still running.
+    pub fn available(&self) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            self.inner.available()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            true
+        }
+    }
+
     /// Swaps the live shortcuts. A hold that is on is let go first.
     pub fn set_bindings(&self, bindings: Bindings) {
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
