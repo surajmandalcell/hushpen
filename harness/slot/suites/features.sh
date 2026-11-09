@@ -102,13 +102,13 @@ echo "== sidebar order"
 open_view home
 shot feat-01-sidebar
 $HC tree >"$RUN_OUT/feat-01-tree.json"
-order=$(jq -r '[.[] | select(.id | test("^sidebar\\.(home|history|files|dictionary|models|settings|about)$"))]
+order=$(jq -r '[.[] | select(.id | test("^sidebar\\.(home|history|files|dictionary|models|devices|settings|about)$"))]
   | sort_by(.bounds.y) | map(.text) | join(",")' "$RUN_OUT/feat-01-tree.json")
-rows=$(jq -r '[.[] | select(.id | test("^sidebar\\.(home|history|files|dictionary|models|settings|about)$"))]
+rows=$(jq -r '[.[] | select(.id | test("^sidebar\\.(home|history|files|dictionary|models|devices|settings|about)$"))]
   | sort_by(.bounds.y) | map("\(.bounds.y | floor)+\(.bounds.height | floor)") | join(" ")' "$RUN_OUT/feat-01-tree.json")
 failures=""
-[ "$order" = "Home,History,Manual,Dictionary,Models,Settings,About" ] || failures+="the sidebar reads '$order'; "
-[ "$rows" = "48+28 78+28 108+28 138+28 168+28 198+28 228+28" ] || failures+="the rows sit at '$rows', not 28 px high 2 px apart from y 48; "
+[ "$order" = "Home,History,Manual,Dictionary,Models,Devices,Settings,About" ] || failures+="the sidebar reads '$order'; "
+[ "$rows" = "48+28 78+28 108+28 138+28 168+28 198+28 228+28 258+28" ] || failures+="the rows sit at '$rows', not 28 px high 2 px apart from y 48; "
 check_failures "sidebar order" "$order, 28 px rows 2 px apart from y 48" "$failures"
 
 echo "== Manual control in the title bar"
