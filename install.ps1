@@ -9,13 +9,23 @@ function Install-Hushpen {
     }
 
     $repo = 'surajmandalcell/hushpen'
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
+    $headers = @{ 'User-Agent' = 'Hushpen installer' }
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers $headers -TimeoutSec 30
+    if ($release.draft -or $release.prerelease -or -not ($release.assets | Where-Object { $_.name -like '*-windows-x64-setup.exe' })) {
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=20" -Headers $headers -TimeoutSec 30
+        $release = $releases | Where-Object {
+            -not $_.draft -and ($_.assets | Where-Object { $_.name -like '*-windows-x64-setup.exe' })
+        } | Sort-Object published_at -Descending | Select-Object -First 1
+    }
     $tag = $release.tag_name
-    if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+    if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
         throw 'Could not find the latest Hushpen release.'
     }
     $version = $tag.Substring(1)
     $name = "Hushpen-$version-windows-x64-setup.exe"
+    if (-not ($release.assets | Where-Object { $_.name -ceq $name })) {
+        throw 'Could not find the Windows setup asset.'
+    }
     $base = "https://github.com/$repo/releases/download/$tag"
     $tempRoot = if ($env:TMPDIR) { $env:TMPDIR } else { [IO.Path]::GetTempPath() }
     $temp = Join-Path $tempRoot "hushpen-install-$([Guid]::NewGuid())"

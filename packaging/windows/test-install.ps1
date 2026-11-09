@@ -8,20 +8,31 @@ finally { $sha.Dispose() }
 $script:checksum = $script:setupHash
 $script:entries = 1
 $script:tag = 'v2.4.0'
+$script:stableWindows = $true
+$script:releases = @()
+$script:listCalls = 0
 $script:exitCode = 0
 $script:installs = 0
 $script:launches = 0
 $script:downloads = @()
 $env:HUSHPEN_NO_OPEN = '1'
 
-function Invoke-RestMethod { param($Uri) @{ tag_name = $script:tag } }
+function Invoke-RestMethod {
+    param($Uri, $Headers, $TimeoutSec)
+    if ($Uri.EndsWith('/latest')) {
+        return @{ tag_name = $script:tag; assets = @($(if ($script:stableWindows) { @{ name = "Hushpen-$($script:tag.Substring(1))-windows-x64-setup.exe" } })) }
+    }
+    if (-not $Uri.EndsWith('/releases?per_page=20')) { throw 'Wrong releases URL.' }
+    $script:listCalls++
+    $script:releases
+}
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing)
     if ($OutFile) {
         $script:downloads += $OutFile
         [IO.File]::WriteAllBytes($OutFile, $script:setupBytes)
     } else {
-        @{ Content = ("$script:checksum  Hushpen-2.4.0-windows-x64-setup.exe`r`n" * $script:entries) }
+        @{ Content = ("$script:checksum  Hushpen-$($script:tag.Substring(1))-windows-x64-setup.exe`r`n" * $script:entries) }
     }
 }
 function Start-Process {
@@ -48,6 +59,21 @@ function Expect-Failure {
 
 Install-Hushpen
 if ($script:installs -ne 1) { throw 'Verified setup did not run.' }
+if ($script:listCalls -ne 0) { throw 'A stable Windows release must take priority.' }
+$script:stableWindows = $false
+$script:tag = 'v2.5.0-rc.2'
+$script:releases = @(
+    @{ tag_name = 'v2.5.0-rc.1'; published_at = '2026-11-07T00:00:00Z'; assets = @(@{ name = 'Hushpen-2.5.0-rc.1-windows-x64-setup.exe' }) },
+    @{ tag_name = 'v2.6.0'; published_at = '2026-11-09T00:00:00Z'; draft = $true; assets = @(@{ name = 'Hushpen-2.6.0-windows-x64-setup.exe' }) },
+    @{ tag_name = 'v2.6.1'; published_at = '2026-11-09T00:00:00Z'; assets = @(@{ name = 'Hushpen-2.6.1-macos-arm64.dmg' }) },
+    @{ tag_name = $script:tag; published_at = '2026-11-08T00:00:00Z'; prerelease = $true; assets = @(@{ name = 'Hushpen-2.5.0-rc.2-windows-x64-setup.exe' }) }
+)
+Install-Hushpen
+if (-not $script:downloads[-1].EndsWith('Hushpen-2.5.0-rc.2-windows-x64-setup.exe')) { throw 'The newest public Windows preview must be selected.' }
+$script:releases = @()
+Expect-Failure 'latest Hushpen release'
+$script:stableWindows = $true
+$script:tag = 'v2.4.0'
 $env:HUSHPEN_NO_OPEN = ''
 Install-Hushpen
 if ($script:launches -ne 1) { throw 'Setup must open its installed shortcut.' }
