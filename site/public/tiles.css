@@ -1,0 +1,118 @@
+/* Tile motion (tiles.js). Each feature tile plays its demo as a short looping scene on a stage that
+   fills the tile's demo area. Shots are opaque, so a crossfade lays the new shot over the old one. */
+.tmo-host > :not(.tmo) { display: none !important; }
+.tmo { position: absolute; inset: 0; overflow: hidden; isolation: isolate; border-radius: 14px; background: #F5F5F7; box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .06); container: tmo / size; color: var(--ink); font: 15px/1.42 var(--text); letter-spacing: -.012em; text-align: left; cursor: inherit; }
+.tmo:not(.live) * { animation-play-state: paused !important; }
+.tmo-cam, .tmo-shot, .tmo-in { position: absolute; inset: 0; }
+.tmo-shot { display: none; background: #F5F5F7; }
+.tmo-shot.on, .tmo-shot.out { display: block; }
+.tmo-shot.on { z-index: 2; } .tmo-shot.out { z-index: 1; }
+.tmo-in { --s: 1.4; --st: 45ms; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 36px 18px 16px; }
+
+/* Chip: the shot name */
+.tmo-cap { position: absolute; top: 10px; left: 10px; z-index: 6; height: 20px; padding: 0 8px; border-radius: 6px; background: rgba(255, 255, 255, .94); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .06); color: var(--ink2); font: 600 11px/20px var(--text); letter-spacing: 0; white-space: nowrap; pointer-events: none; }
+.tmo-cap:empty { display: none; }
+
+/* Shot parts any tile can use */
+.tmo-w { display: inline-block; }
+.tmo-l { display: block; }
+.tmo-shot.on .tmo-w { animation: tmW .36s var(--ease) both; animation-delay: calc(var(--d, 0s) + var(--n, 0) * var(--st)); }
+@keyframes tmW { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } }
+.tmo-x { color: var(--ink3); background: linear-gradient(currentColor, currentColor) 0 58% / 100% 1.5px no-repeat; }
+.tmo-shot.on .tmo-x { animation: tmX .4s var(--ease) both; animation-delay: calc(var(--d, .25s) + var(--k, 0) * 260ms); }
+@keyframes tmX { from { color: var(--ink); background-size: 0 1.5px; } }
+.tmo-shot.on .tmo-pop { animation: tmPop .34s var(--ease) both; animation-delay: var(--d, .3s); }
+@keyframes tmPop { from { opacity: 0; transform: translateY(4px) scale(.94); } }
+.tmo-sel { border-radius: 2px; background: linear-gradient(rgba(0, 122, 255, .2), rgba(0, 122, 255, .2)) 0 0 / 100% 100% no-repeat; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.tmo-shot.on .tmo-sel.sweep { animation: tmSel .8s var(--ease) both; animation-delay: var(--d, .25s); }
+@keyframes tmSel { from { background-size: 0 100%; } }
+.tmo-dim { opacity: .35; }
+.tmo-shot.on .tmo-dim { animation: tmDim .5s var(--ease) both; animation-delay: var(--d, .15s); }
+@keyframes tmDim { from { opacity: 1; } }
+.tmo-caret { display: inline-block; width: 1.5px; height: 1.15em; margin-left: 1px; vertical-align: -.2em; background: var(--acc); animation: k-blink 1.06s steps(1) infinite; }
+.tmo-card { width: min(100%, 380px); padding: 10px 14px; border-radius: 10px; background: #fff; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .08), 0 1px 3px rgba(0, 0, 0, .06); font-size: 14px; line-height: 1.4; }
+.tmo-row { display: flex; align-items: center; gap: 12px; }
+.tmo-slot { display: grid; place-items: center; align-self: stretch; height: calc(28px * var(--s)); }
+.tmo-q { color: var(--ink2); font-size: 15px; font-weight: 600; white-space: nowrap; --d: .4s; }
+.tmo .fbh { height: calc(28px * var(--s)); }
+.tmo-row .fbh { width: calc(var(--w, 118px) * var(--s)); justify-items: start; }
+.tmo-row .fbh > .fb { transform-origin: 0 50%; }
+
+/* The flow bar tile: a small desktop with a document and the flow bar under it */
+.tmf-bg { position: absolute; inset: 0; background: url(assets/wall-blossom.webp) 50% 40% / cover; }
+.tmf-fb { position: relative; }
+@container tmo (min-height: 300px) {
+  .tmo-in { --s: 2.7; gap: 46px; }
+}
+
+/* Rule cleanup: big type, a dark tag over each word a rule drops, then the cut closes the gaps.
+   Heard, Rules, and Cut share one layout, so a cut between them never moves the words. */
+.tmr-tx, .tmr-out p { font: 600 clamp(16px, min(6.2cqw, 11cqh), 25px)/1.9 var(--sans); letter-spacing: -.022em; }
+.tmr-tx { align-self: stretch; margin: 0 4px; text-align: center; }
+@property --tmr-cap { syntax: "<length>"; inherits: true; initial-value: 0px; }
+.tmr-g { --tmr-cap: .52em; position: relative; display: inline-block; white-space: pre; vertical-align: top; }
+.tmr-m { color: var(--ink3); background: linear-gradient(currentColor, currentColor) 0 60% / 100% .075em no-repeat; }
+.tmr-c { max-width: 0; opacity: 0; overflow: hidden; background-size: calc(100% - .26em) .075em; }
+.tmr-m::after { content: attr(data-k); position: absolute; left: 50%; bottom: calc(100% - var(--tmr-cap)); height: 15px; padding: 0 5px; border-radius: 5px; background: #1D1D1F; color: #fff; font: 600 10px/15px var(--text); letter-spacing: 0; white-space: nowrap; transform: translateX(-50%); }
+.tmr-c::after { display: none; }
+.tmr-cap { display: inline-grid; } .tmr-cap i { grid-area: 1 / 1; font-style: normal; } .tmr-cap i:first-child { opacity: 0; }
+.tmr-out { width: auto; max-width: 100%; padding: 8px 16px 6px; }
+.tmr-out small { display: block; color: var(--ink3); font: 600 11px/1.3 var(--text); letter-spacing: 0; }
+.tmr-out p { font-weight: 500; line-height: 1.5; white-space: nowrap; }
+.ru .tmo-in { --s: 1.3; gap: 8px; }
+.tmo { --z: 1; }
+.tmo-shot.on .tmr-m { animation: tmrMark .34s var(--ease) both; animation-delay: calc((.2s + var(--k) * .26s) * var(--z)); }
+.tmo-shot.on .tmr-m::after { animation: tmrTag .3s var(--ease) both; animation-delay: calc((.26s + var(--k) * .26s) * var(--z)); }
+.tmo-shot.on .tmr-c { animation: tmrCut .5s var(--ease) both; animation-delay: calc((.18s + var(--k) * .06s) * var(--z)); }
+.tmo-shot.on .tmr-cap i:first-child { animation: tmrHold calc(.42s * var(--z)) step-end; }
+.tmo-shot.on .tmr-cap i:last-child { animation: tmrLate calc(.42s * var(--z)) step-end; }
+.tmo-shot.on .tmr-dot { display: inline-block; animation: tmPop .3s var(--ease) both; animation-delay: calc(.5s * var(--z)); }
+.tmo-shot.on .tmr-out p { animation: tmrPaste .32s var(--ease) both; animation-delay: calc(.1s * var(--z)); }
+@keyframes tmrMark { from { color: var(--ink); background-size: 0 .075em; } }
+@keyframes tmrTag { from { opacity: 0; transform: translate(-50%, 4px) scale(.9); } }
+@keyframes tmrCut { from { max-width: var(--w); opacity: 1; } 60% { opacity: 0; } }
+@keyframes tmrHold { from, to { opacity: 1; } }
+@keyframes tmrLate { from, to { opacity: 0; } }
+@keyframes tmrPaste { from { opacity: 0; filter: blur(4px); transform: translateY(3px); } }
+
+/* AI cleanup: the segmented control of the app, and the profile output */
+.tma-raw { max-width: 30ch; color: var(--ink2); font: 500 clamp(15px, min(5.4cqw, 9.6cqh), 21px)/1.36 var(--sans); letter-spacing: -.02em; text-align: center; }
+.ai .tmo-in, .cm .tmo-in { --s: 1.3; gap: 10px; }
+.tms { position: relative; display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; width: min(100%, 360px); height: 30px; padding: 2px; border-radius: 8px; background: rgba(0, 0, 0, .07); }
+.tms b { position: relative; z-index: 1; display: grid; place-items: center; color: var(--ink2); font-size: 13px; font-weight: 500; }
+.tms b.to { color: var(--ink); }
+.tms i { position: absolute; left: 2px; top: 2px; bottom: 2px; width: calc((100% - 4px) / 4); border-radius: 5px; background: #fff; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .14); transform: translateX(calc(var(--to) * 100%)); }
+.tmo-shot.on .tms.go i { animation: tmSeg .55s var(--ease) .35s both; }
+.tmo-shot.on .tms.go b.to { animation: tmSegC .3s ease-out .55s both; }
+@keyframes tmSeg { from { transform: translateX(calc(var(--from) * 100%)); } }
+@keyframes tmSegC { from { color: var(--ink2); } }
+.tma-out { padding: 8px 14px 10px; font-size: clamp(13px, min(4.2cqw, 7.6cqh), 15px); line-height: 1.36; }
+.tma-pair { display: flex; align-items: center; justify-content: center; gap: 22px; width: 100%; }
+.tma-pair > .tmo-card { flex: 0 1 380px; }
+.tma-src { flex: 0 1 250px; color: var(--ink3); font: 500 15px/1.4 var(--sans); letter-spacing: -.016em; }
+.tma-arr { flex: none; width: 22px; height: 22px; fill: none; stroke: var(--ink3); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tmo-shot.on .tma-arr { animation: tmrArr .4s var(--ease) both; animation-delay: calc(.12s * var(--z)); }
+@keyframes tmrArr { from { opacity: 0; transform: translateX(-6px); } }
+@container tmo (max-width: 599px) { .tma-src, .tma-arr { display: none; } }
+@container tmo (min-width: 600px) {
+  .cm .tmo-in { flex-direction: row; gap: 26px; }
+  .cm .tmo-in > .tmo-card { flex: 0 1 380px; }
+  .cm .tmo-slot { flex: 0 0 300px; align-self: center; justify-items: start; }
+}
+.tma-nt { padding-top: 9px; } .tma-nt .tmo-l:first-child { margin-bottom: 1px; font-weight: 700; }
+.tma-out small, .tmc-doc small { display: block; margin: 0 -14px 6px; padding: 0 14px 6px; box-shadow: inset 0 -.5px 0 rgba(0, 0, 0, .1); color: var(--ink3); font: 600 11px/1.3 var(--text); letter-spacing: 0; }
+
+/* Command Mode */
+.tmc-doc { padding: 8px 14px 10px; }
+.tmc-doc p { min-height: 2.8em; font-size: clamp(14px, min(4.8cqw, 8.6cqh), 18px); line-height: 1.4; letter-spacing: -.016em; }
+.cm .tmo-row { width: min(100%, 380px); justify-self: center; }
+@container tmo (max-width: 360px) { .cm .tmo-in { --s: 1.12; } .cm .tmo-row { gap: 10px; } .tmo-q { font-size: 13.5px; } }
+
+/* Features heading options */
+.fhd { flex: 1; min-width: 0; }
+.fh h2 { word-spacing: .05em; }
+.fh p { max-width: 640px; margin-top: 14px; color: var(--ink2); font-size: 19px; line-height: 1.42; letter-spacing: -.014em; }
+.fh-mess { font-style: normal; }
+.fh-mess i { display: inline-block; font-style: normal; transform: translateY(var(--y)) rotate(var(--r)); }
+.fh-clean { display: inline-block; }
+@media (max-width: 560px) { .fh p { margin-top: 10px; font-size: 16px; } }

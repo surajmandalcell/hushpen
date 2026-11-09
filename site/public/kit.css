@@ -1,0 +1,75 @@
+*, *::before, *::after { box-sizing: border-box; }
+:root { --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif; --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; --ease: cubic-bezier(0.22, 1, 0.36, 1); --spring: cubic-bezier(0.34, 1.56, 0.64, 1); interpolate-size: allow-keywords; }
+html { -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
+body { margin: 0; font: 16px/1.5 var(--sans); letter-spacing: -0.011em; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden; }
+img { display: block; max-width: 100%; height: auto; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: none; }
+h1, h2, h3, h4, p { margin: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; } }
+
+/* Reveal on scroll */
+[data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity .9s var(--ease), transform 1.1s var(--ease); transition-delay: calc(var(--i, 0) * 90ms); }
+[data-reveal].in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { [data-reveal] { transform: none; } }
+
+/* Marquee */
+.k-marq { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+.k-marq-in { display: flex; align-items: center; gap: var(--mg, 12px); width: max-content; animation: k-marq var(--md, 48s) linear infinite; }
+.k-marq:hover .k-marq-in { animation-play-state: paused; }
+@keyframes k-marq { to { transform: translateX(calc(-50% - var(--mg, 12px) / 2)); } }
+@media (prefers-reduced-motion: reduce) { .k-marq-in { animation: none; } }
+@keyframes k-blink { 50% { opacity: 0; } }
+
+/* FAQ accordion */
+details.faq::details-content { block-size: 0; overflow: hidden; transition: block-size .45s var(--ease), content-visibility .45s allow-discrete; }
+details.faq[open]::details-content { block-size: auto; }
+details.faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+details.faq summary::-webkit-details-marker { display: none; }
+details.faq summary::after { content: ""; width: 10px; height: 10px; flex: none; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: translateY(-3px) rotate(45deg); transition: transform .4s var(--spring); opacity: .55; }
+details.faq[open] summary::after { transform: translateY(2px) rotate(225deg); }
+
+/* Copy button */
+.k-copy { position: relative; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: inherit; opacity: .75; transition: background-color .2s, opacity .2s; }
+.k-copy:hover { opacity: 1; }
+.k-copy svg { grid-area: 1 / 1; width: 15px; height: 15px; transition: opacity .2s, transform .35s var(--spring); }
+.k-copy .ok { opacity: 0; transform: scale(.5); color: #30A46C; }
+.k-copy.done svg:not(.ok) { opacity: 0; transform: scale(.5); }
+.k-copy.done .ok { opacity: 1; transform: none; }
+
+/* Terminal with the Ayu Dark profile. The title bar and cursor colors are mixed from the profile's
+   background and text. */
+.mt { --bg: #0B0E14; --fg: #BFBDB6; --cg: #AAD94C; --cb: #59C2FF; --cy: #E6B450; --dim: #565B66;
+  --bar: color-mix(in srgb, var(--bg), #fff 10%); --bar-ink: color-mix(in srgb, var(--fg) 82%, var(--bg)); --cur: color-mix(in srgb, var(--fg) 72%, var(--bg)); --mt-lh: 15px;
+  width: calc(84ch + 14px); max-width: 100%; overflow: hidden; background: var(--bg); color: var(--fg); text-align: left; font: 12px/var(--mt-lh) "Ubuntu Mono", "DejaVu Sans Mono", "SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace; letter-spacing: 0; cursor: default; user-select: none; }
+.mt-body { height: calc(22 * var(--mt-lh) + 8px); overflow: hidden; padding: 4px 8px; }
+.mt-out > div { white-space: pre-wrap; word-break: break-all; min-height: var(--mt-lh); }
+.mt-out i { font-style: normal; }
+.mt-cur { display: inline-block; width: 1ch; background: var(--cur); }
+.mt .cg { color: var(--cg); font-weight: 700; } .mt .cb { color: var(--cb); font-weight: 700; } .mt .dim { color: var(--dim); }
+
+/* A switch, drawn like the macOS one */
+.sw { position: relative; flex: none; width: 38px; height: 22px; border-radius: 99px; background: rgba(0, 0, 0, .12); box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .08); transition: background-color .25s; cursor: pointer; }
+.sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2.5px rgba(0, 0, 0, .3), 0 0 0 .5px rgba(0, 0, 0, .06); transition: transform .3s var(--spring); }
+.sw[aria-checked="true"] { background: #007AFF; } .sw[aria-checked="true"]::after { transform: translateX(16px); }
+
+/* macOS menu bar, 1:1 points */
+.mb { display: flex; align-items: center; height: 24px; padding: 0 8px 0 16px; font: 13px/1 var(--text); letter-spacing: 0; color: rgba(0, 0, 0, .86); white-space: nowrap; overflow: hidden; background: rgba(255, 255, 255, .34); -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); }
+.mb > * { flex: none; }
+.mb > b, .mb > span { padding: 0 10px; }
+.mb > b { font-weight: 700; }
+.mb-apple { width: 14px; height: 17px; margin-right: 8px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701'/%3E%3C/svg%3E") center / contain no-repeat; }
+.mb-sp { flex: 1 !important; }
+.mb > .mb-st { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; margin-right: 5px; border-radius: 6px; transition: background-color .2s; }
+.mb-st.on { background: rgba(0, 0, 0, .1); }
+.mb-hp { display: block; width: 22px; height: 16px; background: currentColor; -webkit-mask: url(assets/hushpen-menubar.svg) center / contain no-repeat; mask: url(assets/hushpen-menubar.svg) center / contain no-repeat; }
+.mb svg { display: block; margin: 0 8px; }
+.mb-bat { width: 26px; height: 12px; } .mb-wifi { width: 17px; height: 12px; } .mb-cc { width: 16px; height: 14px; }
+.mb > .mb-clock { padding: 0 6px 0 10px; }
+
+/* App windows: the captures carry their own title bar and window buttons. The window has a 10 px
+   corner; the parent (.wsh) draws the hairline and the soft shadow. */
+.wsh { filter: drop-shadow(0 0 .5px rgba(0, 0, 0, .45)) drop-shadow(0 22px 30px rgba(0, 0, 0, .2)); }
+.win { position: relative; overflow: hidden; border-radius: 10px; background: #F5F5F5; }
+.win > img { width: 100%; }

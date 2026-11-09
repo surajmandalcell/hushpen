@@ -1,0 +1,110 @@
+/* Scenes for Works offline (.wo), Dictionary and word packs (.wd), and Command Mode (.we), drawn on the
+   520 by 390 stage from why.css. why-a.js plays them while they are on screen. */
+.wo, .wd, .we { font-family: var(--text); color: #1D1D1F; letter-spacing: -.012em; }
+.why-v:not(.live) .wo *, .why-v:not(.live) .wd *, .why-v:not(.live) .we * { animation-play-state: paused !important; }
+
+/* Works offline: the voice flows into the laptop and the text keeps coming. Data heads for the cloud
+   and bounces off the computer's edge; then Wi-Fi goes off and the typing goes on. */
+.wo-net { position: absolute; left: 24px; top: 24px; z-index: 3; display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 22px 0 12px; border-radius: 18px; background: #F5F5F7; }
+.wo-ni { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #007AFF; color: #fff; transition: background-color .35s var(--ease), color .35s var(--ease); }
+.wo-ni svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; }
+.wo-ni circle { fill: currentColor; stroke: none; }
+.wo-nl { display: grid; font-size: 16px; line-height: 1.2; }
+.wo-nl b { font-weight: 600; }
+.wo-nl em { grid-area: 2 / 1; font-style: normal; color: var(--ink2); transition: opacity .3s var(--ease); }
+.wo-off, .wo.off .wo-on { opacity: 0; }
+.wo.off .wo-off { opacity: 1; }
+.wo.off .wo-ni { background: rgba(0, 0, 0, .09); color: #1D1D1F; }
+
+.wo-wv { position: absolute; left: 0; top: 140px; z-index: 1; width: 128px; height: 100px; overflow: visible; -webkit-mask-image: linear-gradient(90deg, transparent, #000 55%); mask-image: linear-gradient(90deg, transparent, #000 55%); }
+.wo-wv .q { transform-box: view-box; transform-origin: 50% 50%; transform: scaleY(.05); opacity: .45; transition: transform .6s var(--ease), opacity .6s var(--ease); }
+.wo.talk .wo-wv .q { transform: none; opacity: 1; }
+.wo-wv .a { transform-box: view-box; transform-origin: 50% 50%; animation: wo-amp 1.9s var(--ease) infinite; }
+.wo-wv path { fill: none; stroke: #007AFF; stroke-linecap: round; animation: wo-flow var(--d) linear infinite; }
+@keyframes wo-flow { to { transform: translateX(var(--l)); } }
+@keyframes wo-amp { 0%, 100% { transform: scaleY(.5); } 16% { transform: scaleY(1); } 32% { transform: scaleY(.62); } 50% { transform: scaleY(.95); } 68% { transform: scaleY(.38); } 84% { transform: scaleY(.82); } }
+
+.wo-lap { position: absolute; left: 94px; top: 116px; z-index: 2; width: 280px; }
+.wo-scr { position: relative; width: 228px; height: 148px; margin: 0 auto; overflow: hidden; border: 6px solid #1D1D1F; border-bottom-width: 9px; border-radius: 12px 12px 4px 4px; background: #fff; }
+.wo-base { position: relative; display: block; height: 11px; border-radius: 1px 1px 10px 10px; background: #D6D6DB; }
+.wo-base::after { content: ""; position: absolute; left: 50%; top: 0; width: 46px; height: 4px; margin-left: -23px; border-radius: 0 0 5px 5px; background: #BDBDC3; }
+.wo-tl { position: absolute; left: 10px; top: 9px; display: flex; gap: 5px; }
+.wo-tl b { width: 7px; height: 7px; border-radius: 50%; background: #FF5F57; }
+.wo-tl b:nth-child(2) { background: #FEBC2E; } .wo-tl b:nth-child(3) { background: #28C840; }
+.wo-ln u { position: absolute; left: 14px; width: 0; height: 8px; border-radius: 4px; background: #1D1D1F; opacity: .8; transition: width .18s var(--ease), opacity .4s var(--ease); }
+.wo-ln u:nth-child(1) { top: 30px; } .wo-ln u:nth-child(2) { top: 48px; } .wo-ln u:nth-child(3) { top: 66px; }
+.wo.clear .wo-ln u { opacity: 0; }
+.wo.clear .wo-car { visibility: hidden; }
+.wo-car { position: absolute; left: 0; top: 0; width: 2px; height: 12px; margin-top: -2px; border-radius: 1px; background: #007AFF; animation: k-blink 1.06s steps(1) infinite; transition: transform .18s var(--ease); }
+.wo-fb { position: absolute; left: 0; right: 0; bottom: 10px; --s: .9; }
+
+.wo-pk { position: absolute; left: 0; top: 0; width: 430px; height: 100%; z-index: 1; overflow: hidden; pointer-events: none; }
+.wo-p { position: absolute; left: 300px; width: 12px; height: 12px; border-radius: 3.5px; background: #007AFF; opacity: 0; }
+.wo-ring { position: absolute; left: 430px; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; box-shadow: inset 0 0 0 2px #007AFF; opacity: 0; }
+.wo-wall { position: absolute; left: 429px; top: 84px; width: 2px; height: 232px; border-radius: 2px; background: rgba(0, 0, 0, .1); }
+.wo-flash { position: absolute; left: 428px; z-index: 1; width: 4px; height: 52px; margin-top: -26px; border-radius: 2px; background: #007AFF; opacity: 0; }
+
+.wo-cl { position: absolute; left: 450px; top: 164px; display: grid; justify-items: center; gap: 4px; width: 56px; color: var(--ink3); transition: opacity .45s var(--ease); }
+.wo-cl svg { width: 52px; height: 36px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wo-cl small { font-size: 16px; font-weight: 500; }
+.wo-cl .sl { stroke-dasharray: 60; stroke-dashoffset: 60; transition: stroke-dashoffset .5s var(--ease); }
+.wo.off .wo-cl { opacity: .5; }
+.wo.off .wo-cl .sl { stroke-dashoffset: 0; }
+
+.wo-cap { position: absolute; left: 94px; top: 304px; display: grid; justify-items: center; width: 280px; font-size: 19px; font-weight: 600; letter-spacing: -.022em; }
+.wo-cap span { grid-area: 1 / 1; white-space: nowrap; transition: opacity .35s var(--ease), transform .5s var(--ease), filter .35s var(--ease); }
+.wo-cap em { font-style: normal; color: var(--ink3); }
+.wo-cap span + span, .wo.off .wo-cap span:first-child { opacity: 0; transform: translateY(6px); filter: blur(4px); }
+.wo.off .wo-cap span + span { opacity: 1; transform: none; filter: none; }
+
+.wo-cur { position: absolute; left: 0; top: 0; z-index: 5; width: 19px; height: 28px; opacity: 0; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .35)); translate: 150px 128px; transform-origin: 2px 2px; transition: translate .8s var(--ease), opacity .3s var(--ease), scale .12s var(--ease); }
+.wo-cur.on { opacity: 1; }
+.wo-cur.dn { scale: .86; }
+
+/* Dictionary and word packs: words come in as heard, and the ones a pack or the Dictionary knows
+   flip to the right spelling. The chip of the pack that knew the word lights up. */
+.wd-tx { position: absolute; left: 36px; top: 58px; width: 460px; font: 600 32px/1.4 var(--sans); letter-spacing: -.028em; transition: opacity .45s var(--ease); }
+.wd.fade .wd-tx, .wd.fade .wd-pk { opacity: 0; }
+.wd-w { opacity: 0; transition: opacity .28s var(--ease); }
+.wd-w.in { opacity: 1; }
+.wdf { position: relative; display: inline-grid; transition: width .5s var(--ease); }
+.wdf > span { position: relative; grid-area: 1 / 1; justify-self: start; white-space: nowrap; }
+.wdf i { display: inline-block; font-style: normal; transition: opacity .26s var(--ease), transform .45s var(--ease), filter .26s var(--ease); transition-delay: calc(var(--n) * 8ms); }
+.wdf-b i { opacity: 0; transform: translateY(.36em); filter: blur(4px); }
+.wdf.fix .wdf-a i { opacity: 0; transform: translateY(-.36em); filter: blur(4px); }
+.wdf.fix .wdf-b i { opacity: 1; transform: none; filter: none; transition-delay: calc(60ms + var(--n) * 11ms); }
+.wdf-a::after { content: ""; position: absolute; left: 0; right: var(--pr, 0); bottom: -1px; height: 4px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='4' viewBox='0 0 6 4'%3E%3Cpath d='M0 3 1.5 1 3 3 4.5 1 6 3' fill='none' stroke='%23FF3B30' stroke-width='1.2'/%3E%3C/svg%3E") 0 0 / 6px 4px repeat-x; transition: opacity .2s var(--ease); }
+.wdf.fix .wdf-a::after { opacity: 0; }
+.wdf::before { content: ""; position: absolute; inset: .06em -.14em .02em; border-radius: .2em; background: rgba(0, 122, 255, .1); opacity: 0; transition: opacity .5s var(--ease) .15s; }
+.wdf.fix::before { opacity: 1; }
+.wd-c { position: relative; display: inline-block; width: 0; height: 1em; }
+.wd-c::after { content: ""; position: absolute; left: 3px; top: -.06em; width: 2.5px; height: 1.16em; border-radius: 1px; background: #007AFF; animation: k-blink 1.06s steps(1) infinite; }
+.wd-pk { position: absolute; left: 36px; bottom: 36px; display: grid; grid-template-columns: repeat(2, max-content); gap: 8px; transition: opacity .45s var(--ease); }
+.wd-pk span { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 15px 0 9px; border-radius: 99px; background: #F5F5F7; color: var(--ink2); font-size: 16px; font-weight: 500; white-space: nowrap; transition: background-color .4s var(--ease), color .4s var(--ease); }
+.wd-pk i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, .18); transition: background-color .3s var(--ease), box-shadow .3s var(--ease); }
+.wd-pk svg { width: 12px; height: 12px; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .35s var(--ease) .12s; }
+.wd-pk .on { background: rgba(0, 122, 255, .1); color: #007AFF; animation: wd-pop .5s var(--ease); }
+.wd-pk .on i { background: #007AFF; box-shadow: inset 0 0 0 1.5px #007AFF; }
+.wd-pk .on svg { stroke-dashoffset: 0; }
+@keyframes wd-pop { 40% { transform: scale(1.05); } }
+
+/* Command Mode: the sentence is selected, the change is said, and the new text sweeps in where the old
+   text was. */
+.we-doc { position: absolute; left: 32px; top: 24px; width: 456px; height: 160px; padding: 12px 24px 0; border-radius: 20px; background: #F5F5F7; }
+.we-hd { display: flex; align-items: center; gap: 10px; height: 44px; box-shadow: inset 0 -.5px 0 rgba(0, 0, 0, .12); font-size: 16px; }
+.we-av { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #DCDCE1; color: #6B6B70; font-size: 12px; font-style: normal; font-weight: 600; letter-spacing: 0; }
+.we-hd b { font-weight: 600; } .we-hd span { margin-left: auto; color: var(--ink3); }
+.we-tx { margin-top: 16px; font: 500 25px/1.42 var(--sans); letter-spacing: -.022em; text-wrap: balance; }
+.cw { transition: background-color .14s linear, opacity .22s var(--ease), filter .22s var(--ease); transition-delay: calc(var(--n) * 34ms), calc(var(--n) * 14ms), calc(var(--n) * 14ms); }
+.we-tx.sel .cw { background-color: #B3D7FF; }
+.we-tx.out .cw { opacity: 0; filter: blur(4px); }
+.we-tx.new .cw { animation: we-in 1.25s var(--ease) backwards; animation-delay: calc(var(--n) * 60ms); }
+.we-tx.back .cw { animation: we-bk .45s var(--ease) backwards; }
+@keyframes we-in { 0% { opacity: 0; filter: blur(6px); background-color: #B3D7FF; } 28% { opacity: 1; filter: none; background-color: #B3D7FF; } 100% { background-color: rgba(179, 215, 255, 0); } }
+@keyframes we-bk { from { opacity: 0; } }
+.we-say { position: absolute; left: 0; right: 0; top: 202px; text-align: center; font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -.022em; }
+.we-say span { opacity: 0; filter: blur(5px); transition: opacity .3s var(--ease), filter .3s var(--ease); }
+.we-say span.in { opacity: 1; filter: none; }
+.we-row { position: absolute; left: 0; right: 0; top: 248px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.we .key small { font-size: 17px; } .we .key b { font-size: 15px; }
+.we-fb { position: absolute; left: 0; right: 0; top: 324px; height: 42px; --s: 1.5; }

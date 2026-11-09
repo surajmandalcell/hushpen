@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://hushpen.mandalsuraj.com/sitemap.xml

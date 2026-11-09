@@ -1,0 +1,26 @@
+/* The flow bar, after DESIGN.md "Recording overlay": a dark capsule in both appearances, 28 pt high,
+   round ends, a 0.5 pt #353535 edge, 12 pt medium text, 20 pt circles 4 pt in from each end. Hosts
+   scale it with a transform, so every proportion stays exact. */
+.fb { --fb-ease: cubic-bezier(.33, 1, .68, 1); position: relative; flex: none; height: 28px; width: 118px; border-radius: 999px; background: #1F1F1F; box-shadow: inset 0 0 0 .5px #353535; color: rgba(255, 255, 255, .92); font: 500 12px/1 var(--text); letter-spacing: 0; white-space: nowrap; overflow: hidden; user-select: none; -webkit-user-select: none; transition: width .28s var(--fb-ease), height .28s var(--fb-ease), opacity .16s ease-out, transform .16s ease-out; }
+.fb.gone { opacity: 0; transform: scale(.96); }
+.fb-l { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; transition: opacity .16s ease-out; }
+.fb-l.c2 { justify-content: space-between; padding: 0 4px; gap: 0; }
+.fb-l.lead { justify-content: flex-start; padding-left: 70px; }
+.fb-l.pre { opacity: 0; transition: none; }
+.fb-l.out { opacity: 0; transition-duration: .1s; }
+.fb-t { display: block; line-height: 28px; }
+.fb-m { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; background: rgba(255, 255, 255, .14); color: rgba(255, 255, 255, .9); transition: opacity .18s ease-out, transform .18s ease-out, background-color .12s; }
+.fb-m svg { display: block; width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.45; stroke-linecap: round; stroke-linejoin: round; }
+.fb-l.pre .fb-m, .fb-l.grow .fb-m { opacity: 0; transform: scale(.9); transition: none; }
+.fb-m.btn { cursor: pointer; } .fb-m.btn:hover { background: rgba(255, 255, 255, .24); }
+.fb-m.fin { background: #F2F2F2; color: #1F1F1F; } .fb-m.fin:hover { background: #fff; }
+.fb-m.fin svg { stroke-width: 1.7; }
+.fb-m.ok { background: rgba(48, 209, 88, .18); color: #30D158; } .fb-m.ok svg { stroke-width: 1.7; }
+.fb-m.gray { background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .5); }
+.fb-m.err { background: rgba(255, 156, 143, .18); color: #FF9C8F; } .fb-m.err svg { stroke-width: 1.7; }
+.fb-w { position: absolute; left: 0; top: 50%; width: 50px; height: 16px; margin-top: -8px; transition: transform .28s var(--fb-ease), opacity .16s ease-out; }
+.fb-w canvas { display: block; width: 50px; height: 16px; }
+.fb-w.off { opacity: 0; transition-duration: .28s, .1s; }
+/* A scaled host. --s is the scale; the host keeps the scaled box in the layout. */
+.fbh { display: grid; place-items: center; }
+.fbh > .fb { transform-origin: 50% 50%; scale: var(--s, 1); }

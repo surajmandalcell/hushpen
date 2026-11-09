@@ -1,0 +1,16 @@
+/* The hero on phones. The camera in hw.js frames every shot for the stage it gets. The stage is square,
+   the fields wrap at a width the close shot can hold, the key caps are larger in the desktop's points
+   because the close shot is farther out, and the web mail toast shows where the reply was. */
+@media (max-width: 640px) {
+  .hw-st { aspect-ratio: 1 / 1; border-radius: 22px; }
+  .hw-keys { gap: 5px; height: 38px; padding: 0 5px; border-radius: 11px; font-size: 14px; }
+  .hw-k { width: 28px; height: 28px; border-radius: 6px; }
+  .hw-k small { top: 4px; font-size: 10px; line-height: 10px; }
+  .hw-k b { bottom: 4px; font-size: 8px; line-height: 8px; }
+  .hw-ko { width: 50px; }
+  .hw-ko small, .hw-ko b { right: 5px; }
+  .hw-kt { width: 75px; }
+  .hw-kt small, .hw-kt b { left: 5px; }
+  .hw-dk .hx { display: block; max-width: 360px; }
+  .hw-dk .a4-toast { left: auto; right: 34px; }
+}
