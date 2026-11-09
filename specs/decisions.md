@@ -528,6 +528,33 @@ new decision, add it here in the same change (D-21).
   platform adapters are separate from this shared library. Build instructions
   live in `mobile/README.md`.
 
+- **D-52 Android app and keyboard.** `mobile/android` uses Kotlin and Compose
+  over the generated Rust phone API, with Android 10 as its minimum. Each
+  screen has a ViewModel; the repository handles native calls on worker
+  threads. Screens and keyboard actions use plain `Placeholder` views until
+  the designer supplies visuals. The IME records into a session WAV, feeds
+  the Rust dictation machine, and inserts through `InputConnection`.
+  Password fields refuse dictation. Undo requires the same field, cursor,
+  and inserted text. A desktop speech session reserves the shared engine
+  until it disconnects. Downloads keep an existing ready speech default.
+  Cleanup capability remains paired while the native model is off or unavailable.
+  Server mode uses `specialUse`, with its purpose declared
+  in the manifest: paired desktops request on-device speech and cleanup.
+  The owner did not pick a foreground service type, so this uses the brief's
+  fallback. A quiet notification remains while serving. A Rust job callback
+  holds a wake lock only during model work. Memory callbacks and Android's
+  low-memory reading feed Rust's unload rule. ML Kit Prompt cleanup is opt-in
+  and needs a supported, ready system model and the app in front; a visible
+  keyboard or foreground service does not remove Google's background limit.
+  Unavailable or failed cleanup keeps the Rust rule-cleaned text. See the
+  [ML Kit background limit](https://developers.google.com/ml-kit/genai#background_usage)
+  and [specialUse service type](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use).
+  Android rejects platform HTTP(S) connections before SDK initialization.
+  Its network security configuration also denies cleartext and trusts no
+  TLS authorities, blocking SDK metric uploads. Rust owns the
+  permitted model downloads and encrypted device links. ML Kit has no
+  supported metrics opt-out; see its [data disclosure](https://developers.google.com/ml-kit/android-data-disclosure).
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

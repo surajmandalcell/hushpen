@@ -35,6 +35,9 @@ Hushpen
 │   ├── in-process worker           speech protocol on bounded memory streams
 │   ├── system cleanup              native system model behind SystemLlm
 │   └── phone host                  paired server over the host library
+├── Android app                     Kotlin adapters over the phone core
+│   ├── input method (IME)          keyboard, microphone, and text insertion
+│   └── Server mode                 foreground service for paired desktops
 └── data folder                     all app data on disk (D-13)
     ├── settings                    config/settings.json
     ├── model                       models/whisper/*.bin, models/llm/*.gguf, models/tts/<id>/
@@ -54,6 +57,11 @@ Hushpen
   through bounded memory streams, without starting a child process.
 - **system cleanup**: cleanup supplied by the phone's system model through
   the `SystemLlm` callback, with the shared core output checks.
+- **input method (IME)**: Android's keyboard service. It records a session
+  WAV, runs Rust dictation, and sends text through the current input connection.
+- **Server mode**: phone model serving that the user starts. Android keeps
+  a foreground service and notification. A wake lock keeps its CPU awake
+  only during a model job. iOS requires the app to stay in front.
 
 - **dictation**: one run of the dictation state machine: idle, listening,
   transcribing, cleaning, inserting, then done, cancelled, or failed. A
