@@ -297,6 +297,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./packaging/windows/test-install.ps1
+      - name: Check Windows packaging code
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo clippy -p xtask --all-targets --locked -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p xtask --locked
       - name: Package
         run: cargo xtask package --target ${{ matrix.target }}
       - name: Verify every artifact

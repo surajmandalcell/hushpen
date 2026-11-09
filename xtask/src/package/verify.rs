@@ -553,7 +553,7 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
         return Ok(problems);
     }
     let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is missing")?;
-    let install = PathBuf::from(local).join("Programs/Hushpen");
+    let install = PathBuf::from(local).join("Programs").join("Hushpen");
     if install.exists() {
         return Err(format!(
             "refuse to replace an existing install at {}",
@@ -562,12 +562,17 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
     }
     capture(Command::new(artifact).arg("/S"), "Windows setup /S")?;
     let result = verify_windows_folder(&install, version, "windows-setup");
-    let uninstall = capture(
-        Command::new(install.join("uninstall.exe"))
-            .arg("/S")
-            .arg(format!("_?={}", install.display())),
-        "Windows uninstall /S",
-    );
+    let helper = scratch.join("uninstall.exe");
+    super::copy(&install.join("uninstall.exe"), &helper)?;
+    let mut uninstall = Command::new(&helper);
+    uninstall.arg("/S");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // NSIS reads the final directory verbatim, including spaces, without argument quotes.
+        uninstall.raw_arg(format!("_?={}", install.display()));
+    }
+    let uninstall = capture(&mut uninstall, "Windows uninstall /S");
     let mut problems = result?;
     if let Err(error) = uninstall {
         problems.push(error);
