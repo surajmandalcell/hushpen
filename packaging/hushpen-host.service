@@ -1,0 +1,16 @@
+[Unit]
+Description=Hushpen paired model host
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/hushpen-host/environment
+ExecStart=%h/.local/share/hushpen-host/hushpen-host
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
