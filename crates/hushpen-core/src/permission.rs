@@ -336,6 +336,7 @@ pub fn checks(os: Os, capabilities: Capabilities, facts: &Facts) -> Vec<Check> {
                 relaunch: false,
             },
         ],
+        Os::Ios | Os::Android => vec![microphone],
         Os::Linux => {
             let mut rows = Vec::new();
             if !capabilities.global_keys || !capabilities.paste {
@@ -413,6 +414,7 @@ fn microphone_check(os: Os, facts: &Facts) -> Check {
             ],
             Os::Windows => [Some(Action::OpenSettings), None],
             Os::Linux => [None, None],
+            Os::Ios | Os::Android => [(status != Status::Ready).then_some(Action::Allow), None],
         },
         blocking: true,
         relaunch: false,

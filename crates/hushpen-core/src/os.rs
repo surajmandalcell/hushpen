@@ -5,6 +5,8 @@ pub enum Os {
     Mac,
     Linux,
     Windows,
+    Ios,
+    Android,
 }
 
 impl Os {
@@ -20,6 +22,14 @@ impl Os {
         #[cfg(target_os = "windows")]
         {
             Self::Windows
+        }
+        #[cfg(target_os = "ios")]
+        {
+            Self::Ios
+        }
+        #[cfg(target_os = "android")]
+        {
+            Self::Android
         }
     }
 
@@ -49,6 +59,14 @@ impl Os {
                 translucent: compositor,
                 overlay_translucent: true,
             },
+            Self::Ios | Self::Android => Capabilities {
+                page_out: false,
+                metal: matches!(self, Self::Ios),
+                global_keys: false,
+                paste: false,
+                translucent: true,
+                overlay_translucent: false,
+            },
         }
     }
 }
@@ -75,6 +93,8 @@ mod tests {
             (Os::Mac, false, true),
             (Os::Linux, true, false),
             (Os::Windows, false, false),
+            (Os::Ios, false, true),
+            (Os::Android, false, false),
         ] {
             let caps = os.capabilities(false, false);
             assert_eq!((caps.page_out, caps.metal), (page_out, metal));

@@ -5,8 +5,8 @@ use super::{Combo, Key, Modifier, Named, Platform};
 /// The words for the Alt and Cmd keys on this system.
 pub(super) fn modifier_words(platform: Platform) -> (&'static str, &'static str) {
     match platform {
-        Platform::Mac => ("Option", "Command"),
-        Platform::Linux => ("Alt", "Super"),
+        Platform::Mac | Platform::Ios => ("Option", "Command"),
+        Platform::Linux | Platform::Android => ("Alt", "Super"),
         Platform::Windows => ("Alt", "Win"),
     }
 }
@@ -135,7 +135,7 @@ fn left_only(keys: &[Key], modifier: Modifier) -> bool {
 
 pub(super) fn display(keys: &[Key], platform: Platform) -> String {
     match platform {
-        Platform::Linux | Platform::Windows => keys
+        Platform::Linux | Platform::Windows | Platform::Android => keys
             .iter()
             .map(|key| match key {
                 Key::Fn => "Fn".to_owned(),
@@ -152,7 +152,7 @@ pub(super) fn display(keys: &[Key], platform: Platform) -> String {
             })
             .collect::<Vec<_>>()
             .join("+"),
-        Platform::Mac => mac_display(keys),
+        Platform::Mac | Platform::Ios => mac_display(keys),
     }
 }
 
