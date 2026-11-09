@@ -10,6 +10,7 @@ $script:entries = 1
 $script:tag = 'v2.4.0'
 $script:exitCode = 0
 $script:installs = 0
+$script:launches = 0
 $script:downloads = @()
 $env:HUSHPEN_NO_OPEN = '1'
 
@@ -25,6 +26,7 @@ function Invoke-WebRequest {
 }
 function Start-Process {
     param($FilePath, $ArgumentList, [switch]$PassThru)
+    if ($FilePath.EndsWith('Hushpen.lnk')) { $script:launches++; return }
     if ($ArgumentList -ne '/S' -or -not $FilePath.EndsWith('-setup.exe')) { throw 'Wrong setup command.' }
     $script:installs++
     $process = [PSCustomObject]@{ ExitCode = $script:exitCode }
@@ -41,6 +43,10 @@ function Expect-Failure {
 
 Install-Hushpen
 if ($script:installs -ne 1) { throw 'Verified setup did not run.' }
+$env:HUSHPEN_NO_OPEN = ''
+Install-Hushpen
+if ($script:launches -ne 1) { throw 'Setup must open its installed shortcut.' }
+$env:HUSHPEN_NO_OPEN = '1'
 $script:checksum = '0' * 64
 Expect-Failure 'does not match'
 $script:checksum = $script:setupHash

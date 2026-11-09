@@ -43,7 +43,8 @@ function Install-Hushpen {
         }
         Write-Host "Installed Hushpen $version."
         if ($env:HUSHPEN_NO_OPEN -ne '1') {
-            Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'Programs\Hushpen\hushpen.exe')
+            $programs = [Environment]::GetFolderPath('Programs')
+            Start-Process -FilePath (Join-Path $programs 'Hushpen\Hushpen.lnk')
         }
     } finally {
         Remove-Item -LiteralPath $temp -Recurse -Force
