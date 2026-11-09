@@ -25,6 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub(super) struct WindowsKeys {
     hub: Arc<Hub>,
     thread_id: u32,
+    thread: std::thread::JoinHandle<()>,
 }
 
 struct Listener {
@@ -52,7 +53,7 @@ impl WindowsKeys {
         let hub = Arc::new(Hub::new(bindings, sink, record));
         let listener = Arc::clone(&hub);
         let (ready, receive) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name("hushpen-keys".into())
             .spawn(move || run(listener, ready))
             .map_err(unavailable)?;
@@ -60,7 +61,15 @@ impl WindowsKeys {
             .recv_timeout(Duration::from_secs(5))
             .map_err(unavailable)??;
         hushpen_core::shortcut::set_code_names(code_name);
-        Ok(Self { hub, thread_id })
+        Ok(Self {
+            hub,
+            thread_id,
+            thread,
+        })
+    }
+
+    pub(super) fn available(&self) -> bool {
+        !self.thread.is_finished()
     }
 
     pub(super) fn set_bindings(&self, bindings: Bindings) {
@@ -110,6 +119,9 @@ impl WindowsKeys {
 
 impl Drop for WindowsKeys {
     fn drop(&mut self) {
+        if self.thread.is_finished() {
+            return;
+        }
         // SAFETY: the hook thread creates its queue before publishing its thread id.
         if let Err(error) =
             unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }

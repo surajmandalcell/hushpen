@@ -70,9 +70,26 @@ pub fn system() -> Arc<dyn Preflight> {
     Arc::new(macos::preflight())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+pub fn system() -> Arc<dyn Preflight> {
+    Arc::new(windows::WindowsPreflight)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn system() -> Arc<dyn Preflight> {
     Arc::new(hushpen_core::permission::NotApplicable)
+}
+
+/// Whether this process runs with Windows administrator privileges.
+pub fn is_elevated() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        windows::is_elevated()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
 }
 
 /// The live Accessibility grant, for the paste calls. Read it each time.
