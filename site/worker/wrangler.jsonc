@@ -1,0 +1,9 @@
+{
+  "name": "hushpen-site",
+  "account_id": "5dadb33ff9ed908a878e1564bfb89737",
+  "compatibility_date": "2026-11-01",
+  "main": "src/index.js",
+  "assets": { "directory": "../public", "binding": "ASSETS", "not_found_handling": "404-page", "html_handling": "auto-trailing-slash", "run_worker_first": ["/api/releases.json"] },
+  "routes": [{ "pattern": "hushpen.mandalsuraj.com", "custom_domain": true }],
+  "workers_dev": false
+}
