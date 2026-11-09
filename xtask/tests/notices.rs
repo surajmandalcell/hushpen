@@ -76,7 +76,7 @@ fn the_notices_carry_the_license_texts_the_sections_name() {
     );
 }
 
-/// `name version` of every third-party crate in the normal dependency tree of the three
+/// `name version` of every third-party crate in the normal dependency tree of the
 /// programs, for every supported build target.
 fn linked_crates() -> BTreeSet<String> {
     let output = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
@@ -89,6 +89,8 @@ fn linked_crates() -> BTreeSet<String> {
             "hushpen-llm",
             "-p",
             "hushpen-tts",
+            "-p",
+            "hushpen-host",
         ])
         .args(["--prefix", "none", "--format", "{p}"])
         .args(["--target", "aarch64-apple-darwin"])
