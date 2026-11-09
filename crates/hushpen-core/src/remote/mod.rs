@@ -70,6 +70,27 @@ impl Route {
     pub fn ids(&self) -> &[String] {
         &self.ids
     }
+
+    pub fn move_device(&mut self, id: &str, up: bool) -> bool {
+        if id == THIS_COMPUTER {
+            return false;
+        }
+        let Some(index) = self.ids.iter().position(|item| item == id) else {
+            return false;
+        };
+        let target = if up {
+            index.checked_sub(1)
+        } else {
+            index
+                .checked_add(1)
+                .filter(|index| self.ids.get(*index).is_some_and(|id| id != THIS_COMPUTER))
+        };
+        if let Some(target) = target {
+            self.ids.swap(index, target);
+            return true;
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
