@@ -301,7 +301,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
             Some(View::Settings)
         }
-        Scene::Onboarding(_) | Scene::PermissionsChanged => None,
+        Scene::Onboarding(_) | Scene::PermissionsChanged | Scene::Capabilities(_) => None,
     }
 }
 

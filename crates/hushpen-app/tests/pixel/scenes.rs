@@ -21,7 +21,7 @@ use hushpen_app::mic::Mic;
 use hushpen_app::models::{self, Models};
 use hushpen_app::net::endpoint::UreqTransport;
 use hushpen_app::net::update::CheckError;
-use hushpen_app::onboarding::{Onboarding, Parts as OnboardingParts, SystemGuide};
+use hushpen_app::onboarding::{Guide, Onboarding, Parts as OnboardingParts};
 use hushpen_app::read_aloud::{Parts as ReadParts, ReadAloud};
 use hushpen_app::settings::endpoint::EndpointForm;
 use hushpen_app::settings::{Parts as SettingsParts, Settings};
@@ -51,6 +51,26 @@ use std::sync::{Arc, Mutex};
 
 /// A key listener that holds nothing and hears nothing, so the shortcut fields can open.
 struct QuietKeys;
+
+struct QuietGuide;
+
+impl Guide for QuietGuide {
+    fn request(
+        &self,
+        _: hushpen_core::permission::Permission,
+        _: bool,
+    ) -> Option<futures::channel::oneshot::Receiver<()>> {
+        None
+    }
+
+    fn open(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn relaunch(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
 
 /// The feed of every scene: this version is the newest. The Updates view of a fresh folder never
 /// asks, because the check is off; Check for Updates in About asks once.
@@ -88,6 +108,7 @@ pub enum Scene {
     /// Home with the dictation and microphone panels the app attaches.
     Home,
     Onboarding(Step),
+    Capabilities(Platform),
     /// Onboarding reopened by a revoked macOS permission.
     PermissionsChanged,
     History,
@@ -279,6 +300,8 @@ impl Scene {
             Scene::Shell => "shell".into(),
             Scene::Home => "home".into(),
             Scene::Onboarding(step) => format!("onboarding-{}", step.key()),
+            Scene::Capabilities(Platform::Windows) => "onboarding-windows-permissions".into(),
+            Scene::Capabilities(_) => "onboarding-wayland-permissions".into(),
             Scene::PermissionsChanged => "onboarding-permissions-changed".into(),
             Scene::History => "history".into(),
             Scene::HistoryDetail => "history-detail".into(),
@@ -315,6 +338,10 @@ impl Scene {
         let mut scenes = vec![Scene::Shell, Scene::Home];
         scenes.extend(Step::ALL.into_iter().map(Scene::Onboarding));
         scenes.push(Scene::PermissionsChanged);
+        scenes.extend([
+            Scene::Capabilities(Platform::Windows),
+            Scene::Capabilities(Platform::Linux),
+        ]);
         scenes
     }
 
@@ -368,6 +395,7 @@ impl Scene {
                 | Scene::Home
                 | Scene::Menu(_)
                 | Scene::Onboarding(_)
+                | Scene::Capabilities(_)
                 | Scene::PermissionsChanged
         )
     }
@@ -936,13 +964,22 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                 )
             });
             controller.update(cx, |controller, cx| {
-                if mac {
+                if mac || matches!(scene, Scene::Capabilities(Platform::Windows)) {
                     controller.attach_permissions(Arc::new(Revoked), cx);
                 }
                 controller.attach_keys(KeysStatus::Available, Rc::new(|_| {}));
+                if matches!(scene, Scene::Capabilities(_)) {
+                    controller.attach_keys(
+                        KeysStatus::Unavailable(hushpen_platform::keys::Unavailable::new(
+                            hushpen_platform::keys::Reason::Failed,
+                            "Global keys are not running.",
+                        )),
+                        Rc::new(|_| {}),
+                    );
+                }
             });
             match scene {
-                Scene::Onboarding(_) | Scene::PermissionsChanged => {
+                Scene::Onboarding(_) | Scene::PermissionsChanged | Scene::Capabilities(_) => {
                     let onboarding = cx.new(|cx| {
                         Onboarding::new(
                             OnboardingParts {
@@ -950,9 +987,17 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                                 mic,
                                 models,
                                 controller,
-                                guide: Rc::new(SystemGuide),
-                                platform: if mac { Platform::Mac } else { Platform::Linux },
-                                session: Session::X11,
+                                guide: Rc::new(QuietGuide),
+                                platform: match scene {
+                                    Scene::Capabilities(platform) => platform,
+                                    _ if mac => Platform::Mac,
+                                    _ => Platform::Linux,
+                                },
+                                session: if matches!(scene, Scene::Capabilities(Platform::Linux)) {
+                                    Session::Wayland
+                                } else {
+                                    Session::X11
+                                },
                             },
                             cx,
                         )
@@ -981,6 +1026,25 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                             cx,
                         )
                     });
+                    if matches!(scene, Scene::Settings(_)) {
+                        let permissions = cx.new(|cx| {
+                            Onboarding::new(
+                                OnboardingParts {
+                                    storage: Rc::clone(&storage),
+                                    mic: mic.clone(),
+                                    models: models.clone(),
+                                    controller: controller.clone(),
+                                    guide: Rc::new(QuietGuide),
+                                    platform: Platform::Linux,
+                                    session: Session::X11,
+                                },
+                                cx,
+                            )
+                        });
+                        settings.update(cx, |settings, cx| {
+                            settings.attach_permissions(permissions, cx)
+                        });
+                    }
                     let updater = cx.new(|cx| {
                         Updater::new(
                             UpdaterParts {
@@ -1154,7 +1218,7 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
 fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: Scene) {
     match scene {
         Scene::Shell => click(cx, handle, "sidebar.history"),
-        Scene::Home | Scene::Onboarding(_) => {}
+        Scene::Home | Scene::Onboarding(_) | Scene::Capabilities(_) => {}
         Scene::PermissionsChanged => {
             // A stored grant that reads missing counts as lost only after the start reads
             // settle for 2 s on a timer; the repair page opens then. The headless executor

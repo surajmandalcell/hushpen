@@ -312,11 +312,8 @@ mod tests {
 
     #[test]
     fn accessibility_with_a_denied_input_monitoring_keeps_the_keys_ready_and_repairs_nothing() {
-        use hushpen_core::onboarding::{
-            Availability, Facts, RowKey, RowState, Session, permission_rows,
-        };
-        use hushpen_core::permission::Permissions;
-        use hushpen_core::shortcut::Platform;
+        use hushpen_core::os::Os;
+        use hushpen_core::permission::{CheckId, Facts, Permissions, Status, checks};
         let reader = Mock::new(true, 1, 3);
 
         let now = Permissions::read(&reader);
@@ -326,18 +323,21 @@ mod tests {
             !now.input_monitoring.missing(),
             "a grant that reads there is never lost"
         );
-        let rows = permission_rows(&Facts {
-            platform: Platform::Mac,
-            session: Session::X11,
-            keys: Availability::Ready,
-            paste: Availability::Ready,
-            mic_listed: true,
-            mic_present: true,
-            mac: now,
-            relaunch: false,
-        });
-        let row = rows.iter().find(|row| row.key == RowKey::InputMonitoring);
-        assert_eq!(row.map(|row| row.state), Some(RowState::Ready));
+        let rows = checks(
+            Os::Mac,
+            Os::Mac.capabilities(true, true),
+            &Facts {
+                keys: true,
+                mic_listed: true,
+                mic_present: true,
+                permissions: now,
+                relaunch: false,
+                elevated: false,
+                tray_watcher: true,
+            },
+        );
+        let row = rows.iter().find(|row| row.id == CheckId::InputMonitoring);
+        assert_eq!(row.map(|row| row.status), Some(Status::Ready));
     }
 
     #[test]

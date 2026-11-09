@@ -4,8 +4,8 @@
 use super::{Mode, Onboarding};
 use crate::hook;
 use gpui_kit::{App, Context};
-use hushpen_core::onboarding::{self as rules, Facts, Row, Step};
-use hushpen_core::permission::{Access, Permission};
+use hushpen_core::onboarding::{Session, Step};
+use hushpen_core::permission::{self, Access, Action, Check, CheckId, Facts, Permission};
 use std::time::Duration;
 
 /// The line under a row of a lost grant whose repair got no prompt from macOS. A record from
@@ -48,19 +48,49 @@ impl Onboarding {
         let controller = self.controller.read(cx);
         let mic = self.mic.read(cx);
         Facts {
-            platform: self.platform,
-            session: self.session,
-            keys: controller.keys_availability(),
-            paste: controller.paste_availability(),
+            keys: self.keys_ready(cx),
             mic_listed: mic.listed(),
             mic_present: !mic.devices().is_empty(),
-            mac: controller.access(),
+            permissions: controller.access(),
             relaunch: controller.keys_reopen_needed(),
+            elevated: self.elevated,
+            tray_watcher: self.tray_watcher,
         }
     }
 
-    pub fn rows(&self, cx: &App) -> Vec<Row> {
-        rules::permission_rows(&self.facts(cx))
+    pub fn rows(&self, cx: &App) -> Vec<Check> {
+        let capabilities = self
+            .platform
+            .capabilities(self.session == Session::X11, false);
+        permission::checks(self.platform, capabilities, &self.facts(cx))
+    }
+
+    pub fn check_action(&mut self, id: CheckId, action: Action, cx: &mut Context<Self>) {
+        match action {
+            Action::Allow => {
+                if let Some(permission) = id.permission() {
+                    self.allow(permission, cx);
+                }
+            }
+            Action::OpenSettings => {
+                if let Some(permission) = id.permission() {
+                    self.open_settings(permission, cx);
+                }
+            }
+            Action::LearnMore => {
+                self.notice = id.help().map(str::to_owned);
+                cx.notify();
+            }
+            Action::Retry => {
+                if id == CheckId::InputMonitoring && self.controller.read(cx).keys_reopen_needed() {
+                    self.relaunch(cx);
+                } else {
+                    self.controller
+                        .update(cx, |controller, cx| controller.retry_keys(cx));
+                    cx.notify();
+                }
+            }
+        }
     }
 
     /// The permissions page is on screen: the first step of the setup, or the repair page.
@@ -68,12 +98,8 @@ impl Onboarding {
         self.active() && self.step == Step::Permissions
     }
 
-    /// Reads the permissions again, and the page repaints. Reading is live and never prompts.
-    /// It does nothing while the permissions page is not on screen.
+    /// Reads the permissions again for onboarding and Settings. Reading never prompts.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
-        if !self.permissions_page_shown() {
-            return;
-        }
         self.controller
             .update(cx, |controller, cx| controller.refresh_permissions(cx));
         let access = self.controller.read(cx).access();
@@ -277,9 +303,13 @@ impl Onboarding {
         hook::record_event("onboarding", &format!("open {}", permission.key()));
         let pane = self.pane_of(permission, cx);
         self.note_pane(permission, pane);
-        self.notice = self.guide.open(pane.settings_url()).err().map(|_| {
-            "System Settings could not be opened. Open Privacy and Security yourself.".to_owned()
-        });
+        self.notice = pane
+            .settings_url_for(self.platform)
+            .and_then(|url| self.guide.open(url).err())
+            .map(|_| {
+                "System Settings could not be opened. Open Privacy and Security yourself."
+                    .to_owned()
+            });
         cx.notify();
     }
 

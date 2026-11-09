@@ -51,9 +51,6 @@ impl Restarter {
         input_monitoring: Access,
         status: Option<&KeysStatus>,
     ) -> Attempt {
-        let Some(restart) = self.restart.clone() else {
-            return Attempt::Idle;
-        };
         if input_monitoring != Access::Granted {
             self.failures = 0;
             return Attempt::Idle;
@@ -64,6 +61,13 @@ impl Restarter {
         if why.reason != Reason::Permission {
             return Attempt::Idle;
         }
+        self.retry(cx)
+    }
+
+    fn retry(&mut self, cx: &mut App) -> Attempt {
+        let Some(restart) = self.restart.clone() else {
+            return Attempt::Idle;
+        };
         match restart(cx) {
             Ok(session) => {
                 self.failures = 0;
@@ -78,6 +82,11 @@ impl Restarter {
 }
 
 impl Controller {
+    pub fn retry_keys(&mut self, cx: &mut Context<Self>) {
+        let attempt = self.keys_restarter.retry(cx);
+        self.apply_keys_attempt(attempt, cx);
+    }
+
     /// Starts the global keys when Input Monitoring is granted and they are still off, so the
     /// grant works with no restart. Failed starts add up to [`Controller::keys_reopen_needed`].
     pub(super) fn restart_keys(&mut self, cx: &mut Context<Self>) {
@@ -85,6 +94,10 @@ impl Controller {
         let attempt = self
             .keys_restarter
             .attempt(cx, input_monitoring, self.keys.as_ref());
+        self.apply_keys_attempt(attempt, cx);
+    }
+
+    fn apply_keys_attempt(&mut self, attempt: Attempt, cx: &mut Context<Self>) {
         match attempt {
             Attempt::Idle => {}
             Attempt::Started(session_active) => {

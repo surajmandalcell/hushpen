@@ -1,4 +1,4 @@
-//! The three macOS permissions Hushpen needs, as app state.
+//! Platform checks and the three macOS permissions Hushpen needs, as app state.
 //!
 //! Reading them never asks the user: [`Preflight`] has read calls only, and the request calls
 //! live behind onboarding buttons. Linux has no such permissions, so every answer there is
@@ -9,6 +9,8 @@
 
 use serde_json::{Map, Value, json};
 use std::time::Duration;
+
+use crate::os::{Capabilities, Os};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Permission {
@@ -48,6 +50,14 @@ impl Permission {
             Permission::InputMonitoring => {
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
             }
+        }
+    }
+
+    pub fn settings_url_for(self, os: Os) -> Option<&'static str> {
+        match (os, self) {
+            (Os::Mac, _) => Some(self.settings_url()),
+            (Os::Windows, Self::Microphone) => Some("ms-settings:privacy-microphone"),
+            _ => None,
         }
     }
 }
@@ -140,6 +150,326 @@ impl Permissions {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckId {
+    Microphone,
+    Accessibility,
+    InputMonitoring,
+    GlobalKeys,
+    AdminApps,
+    X11Session,
+    TrayWatcher,
+}
+
+impl CheckId {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Microphone => "microphone",
+            Self::Accessibility => "accessibility",
+            Self::InputMonitoring => "inputMonitoring",
+            Self::GlobalKeys => "keys",
+            Self::AdminApps => "admin",
+            Self::X11Session => "x11",
+            Self::TrayWatcher => "tray",
+        }
+    }
+
+    pub fn permission(self) -> Option<Permission> {
+        match self {
+            Self::Microphone => Some(Permission::Microphone),
+            Self::Accessibility => Some(Permission::Accessibility),
+            Self::InputMonitoring => Some(Permission::InputMonitoring),
+            _ => None,
+        }
+    }
+
+    pub fn help(self) -> Option<&'static str> {
+        match self {
+            Self::AdminApps => Some(
+                "Windows blocks typing into apps with higher privileges. Hushpen copies the text instead.",
+            ),
+            Self::X11Session => Some(
+                "Global keys and paste need an X11 session. Use the record button and copy the finished text on Wayland.",
+            ),
+            Self::TrayWatcher => Some(
+                "The desktop has no StatusNotifier tray watcher. Keep the Hushpen window open to use its controls.",
+            ),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Ready,
+    NeedsAttention,
+    Info,
+    NotAvailable,
+}
+
+impl Status {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::NeedsAttention => "needsAttention",
+            Self::Info => "info",
+            Self::NotAvailable => "notAvailable",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "Ready",
+            Self::NeedsAttention => "Needs attention",
+            Self::Info => "Info",
+            Self::NotAvailable => "Not available",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Allow,
+    OpenSettings,
+    LearnMore,
+    Retry,
+}
+
+impl Action {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Allow => "allow",
+            Self::OpenSettings => "open",
+            Self::LearnMore => "learn",
+            Self::Retry => "retry",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Allow => "Allow",
+            Self::OpenSettings => "Open Settings",
+            Self::LearnMore => "Learn more",
+            Self::Retry => "Retry",
+        }
+    }
+}
+
+/// One row shared by onboarding and Settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Check {
+    pub id: CheckId,
+    pub title: &'static str,
+    pub detail: String,
+    pub status: Status,
+    pub actions: [Option<Action>; 2],
+    /// Continue waits for this check when it needs attention.
+    pub blocking: bool,
+    /// Retry starts a new process after a macOS grant changed.
+    pub relaunch: bool,
+}
+
+/// Live answers supplied by the platform and microphone service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Facts {
+    pub permissions: Permissions,
+    pub mic_listed: bool,
+    pub mic_present: bool,
+    pub keys: bool,
+    pub elevated: bool,
+    pub tray_watcher: bool,
+    pub relaunch: bool,
+}
+
+pub fn checks(os: Os, capabilities: Capabilities, facts: &Facts) -> Vec<Check> {
+    let microphone = microphone_check(os, facts);
+    match os {
+        Os::Mac => vec![
+            microphone,
+            mac_check(
+                CheckId::Accessibility,
+                "Accessibility",
+                Permission::Accessibility,
+                facts,
+                "Hushpen can press the paste key for you.",
+                "Allow Accessibility so Hushpen can paste the text for you.",
+            ),
+            mac_check(
+                CheckId::InputMonitoring,
+                "Input Monitoring",
+                Permission::InputMonitoring,
+                facts,
+                "Hushpen can hear the hold key.",
+                "Allow Input Monitoring so Hushpen can hear the hold key.",
+            ),
+        ],
+        Os::Windows => vec![
+            microphone,
+            Check {
+                id: CheckId::AdminApps,
+                title: "Admin apps",
+                detail: if facts.elevated {
+                    "Hushpen runs as administrator. Apps at the same privilege level can get typed text."
+                } else {
+                    "Apps that run as administrator cannot get typed text. Hushpen copies the text instead."
+                }
+                .to_owned(),
+                status: Status::Info,
+                actions: [Some(Action::LearnMore), None],
+                blocking: false,
+                relaunch: false,
+            },
+            Check {
+                id: CheckId::GlobalKeys,
+                title: "Global keys",
+                detail: if facts.keys && capabilities.global_keys {
+                    "The hold key can start a dictation from any app."
+                } else {
+                    "Global keys are not running. Use the record button in Hushpen instead."
+                }
+                .to_owned(),
+                status: if facts.keys && capabilities.global_keys {
+                    Status::Ready
+                } else {
+                    Status::NeedsAttention
+                },
+                actions: [(!(facts.keys && capabilities.global_keys)).then_some(Action::Retry), None],
+                blocking: false,
+                relaunch: false,
+            },
+        ],
+        Os::Linux => {
+            let mut rows = Vec::new();
+            if !capabilities.global_keys || !capabilities.paste {
+                rows.push(Check {
+                    id: CheckId::X11Session,
+                    title: "X11 session",
+                    detail: "Global keys and paste need an X11 session".to_owned(),
+                    status: Status::NeedsAttention,
+                    actions: [Some(Action::LearnMore), None],
+                    blocking: false,
+                    relaunch: false,
+                });
+            } else if !facts.keys {
+                rows.push(Check {
+                    id: CheckId::GlobalKeys,
+                    title: "Global keys",
+                    detail: "Global keys are not running. Use the record button in Hushpen instead."
+                        .to_owned(),
+                    status: Status::NeedsAttention,
+                    actions: [Some(Action::Retry), None],
+                    blocking: false,
+                    relaunch: false,
+                });
+            }
+            rows.push(microphone);
+            if !facts.tray_watcher {
+                rows.push(Check {
+                    id: CheckId::TrayWatcher,
+                    title: "Tray icon",
+                    detail: "No tray watcher was found. Keep the Hushpen window open to use its controls."
+                        .to_owned(),
+                    status: Status::Info,
+                    actions: [Some(Action::LearnMore), None],
+                    blocking: false,
+                    relaunch: false,
+                });
+            }
+            rows
+        }
+    }
+}
+
+fn microphone_check(os: Os, facts: &Facts) -> Check {
+    let (status, detail) = if facts.permissions.microphone.missing() {
+        (
+            Status::NeedsAttention,
+            "Allow Hushpen to use the microphone.",
+        )
+    } else if !facts.mic_listed {
+        (Status::NeedsAttention, "Looking for a microphone.")
+    } else if !facts.mic_present {
+        (
+            Status::NeedsAttention,
+            "No microphone was found. Connect one to continue.",
+        )
+    } else {
+        (
+            if os == Os::Linux {
+                Status::Info
+            } else {
+                Status::Ready
+            },
+            "A microphone is ready.",
+        )
+    };
+    Check {
+        id: CheckId::Microphone,
+        title: "Microphone",
+        detail: detail.to_owned(),
+        status,
+        actions: match os {
+            Os::Mac => [
+                (status != Status::Ready).then_some(Action::Allow),
+                Some(Action::OpenSettings),
+            ],
+            Os::Windows => [Some(Action::OpenSettings), None],
+            Os::Linux => [None, None],
+        },
+        blocking: true,
+        relaunch: false,
+    }
+}
+
+fn mac_check(
+    id: CheckId,
+    title: &'static str,
+    permission: Permission,
+    facts: &Facts,
+    ready: &str,
+    missing: &str,
+) -> Check {
+    let (status, detail) = if facts.permissions.get(permission).missing() {
+        (Status::NeedsAttention, missing)
+    } else if permission == Permission::InputMonitoring && facts.relaunch {
+        (
+            Status::NeedsAttention,
+            "Input Monitoring is on, but the hold key works only after Hushpen opens again.",
+        )
+    } else {
+        (Status::Ready, ready)
+    };
+    Check {
+        id,
+        title,
+        detail: detail.to_owned(),
+        status,
+        actions: [
+            (status != Status::Ready).then_some(
+                if permission == Permission::InputMonitoring
+                    && facts.relaunch
+                    && !facts.permissions.get(permission).missing()
+                {
+                    Action::Retry
+                } else {
+                    Action::Allow
+                },
+            ),
+            Some(Action::OpenSettings),
+        ],
+        blocking: true,
+        relaunch: permission == Permission::InputMonitoring
+            && facts.relaunch
+            && !facts.permissions.get(permission).missing(),
+    }
+}
+
+pub fn checks_ready(checks: &[Check]) -> bool {
+    checks
+        .iter()
+        .all(|check| !check.blocking || matches!(check.status, Status::Ready | Status::Info))
+}
+
 fn was_granted(last_granted: &Map<String, Value>, permission: Permission) -> bool {
     last_granted
         .get(permission.key())
@@ -192,6 +522,194 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    fn facts() -> Facts {
+        Facts {
+            permissions: Permissions {
+                microphone: Access::Granted,
+                accessibility: Access::Granted,
+                input_monitoring: Access::Granted,
+            },
+            mic_listed: true,
+            mic_present: true,
+            keys: true,
+            elevated: false,
+            tray_watcher: true,
+            relaunch: false,
+        }
+    }
+
+    #[test]
+    fn mac_checks_keep_the_three_permission_rows_and_only_needed_actions() {
+        let facts = facts();
+        let rows = checks(Os::Mac, Os::Mac.capabilities(true, true), &facts);
+        assert_eq!(
+            rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            [
+                CheckId::Microphone,
+                CheckId::Accessibility,
+                CheckId::InputMonitoring
+            ]
+        );
+        assert!(rows.iter().all(|row| row.status == Status::Ready));
+        assert!(
+            rows.iter()
+                .all(|row| row.actions == [None, Some(Action::OpenSettings)])
+        );
+        assert!(checks_ready(&rows));
+
+        for permission in Permission::ALL {
+            let mut facts = facts;
+            match permission {
+                Permission::Microphone => facts.permissions.microphone = Access::Denied,
+                Permission::Accessibility => facts.permissions.accessibility = Access::Denied,
+                Permission::InputMonitoring => facts.permissions.input_monitoring = Access::Denied,
+            }
+            let rows = checks(Os::Mac, Os::Mac.capabilities(true, true), &facts);
+            let row = rows
+                .iter()
+                .find(|row| row.id.permission() == Some(permission))
+                .unwrap();
+            assert_eq!(row.status, Status::NeedsAttention);
+            assert_eq!(
+                row.actions,
+                [Some(Action::Allow), Some(Action::OpenSettings)]
+            );
+            assert!(!checks_ready(&rows));
+        }
+    }
+
+    #[test]
+    fn microphone_failures_block_every_os_and_unknown_windows_access_blocks() {
+        for os in [Os::Mac, Os::Linux, Os::Windows] {
+            for (access, listed, present) in [
+                (Access::Denied, true, true),
+                (Access::NotDetermined, true, true),
+                (Access::Granted, false, false),
+                (Access::Granted, true, false),
+            ] {
+                let facts = Facts {
+                    permissions: Permissions {
+                        microphone: access,
+                        ..facts().permissions
+                    },
+                    mic_listed: listed,
+                    mic_present: present,
+                    ..facts()
+                };
+                let rows = checks(os, os.capabilities(true, true), &facts);
+                assert!(
+                    !checks_ready(&rows),
+                    "{os:?}: {access:?}, {listed}, {present}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn windows_admin_and_failed_hook_are_non_blocking_and_retry_is_available() {
+        let mut facts = facts();
+        facts.keys = false;
+        let rows = checks(Os::Windows, Os::Windows.capabilities(false, false), &facts);
+        assert_eq!(
+            rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            [CheckId::Microphone, CheckId::AdminApps, CheckId::GlobalKeys]
+        );
+        assert_eq!(rows[0].actions, [Some(Action::OpenSettings), None]);
+        assert_eq!(rows[1].status, Status::Info);
+        assert_eq!(rows[1].actions, [Some(Action::LearnMore), None]);
+        assert_eq!(rows[2].status, Status::NeedsAttention);
+        assert_eq!(rows[2].actions, [Some(Action::Retry), None]);
+        assert!(checks_ready(&rows));
+        facts.keys = true;
+        facts.elevated = true;
+        let rows = checks(Os::Windows, Os::Windows.capabilities(false, false), &facts);
+        assert!(rows[1].detail.starts_with("Hushpen runs as administrator."));
+        assert_eq!(rows[2].status, Status::Ready);
+        assert_eq!(rows[2].actions, [None, None]);
+    }
+
+    #[test]
+    fn linux_wayland_and_missing_tray_explain_limits_without_blocking() {
+        let mut facts = facts();
+        facts.tray_watcher = false;
+        let rows = checks(Os::Linux, Os::Linux.capabilities(false, false), &facts);
+        assert_eq!(
+            rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            [
+                CheckId::X11Session,
+                CheckId::Microphone,
+                CheckId::TrayWatcher
+            ]
+        );
+        assert_eq!(rows[0].status, Status::NeedsAttention);
+        assert_eq!(rows[0].detail, "Global keys and paste need an X11 session");
+        assert_eq!(rows[1].status, Status::Info);
+        assert_eq!(rows[2].status, Status::Info);
+        assert!(checks_ready(&rows));
+        facts.tray_watcher = true;
+        let rows = checks(Os::Linux, Os::Linux.capabilities(true, false), &facts);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, CheckId::Microphone);
+    }
+
+    #[test]
+    fn a_mac_grant_that_needs_a_new_process_offers_retry_and_blocks() {
+        let facts = Facts {
+            relaunch: true,
+            ..facts()
+        };
+        let rows = checks(Os::Mac, Os::Mac.capabilities(true, true), &facts);
+        let row = &rows[2];
+        assert!(row.relaunch);
+        assert_eq!(row.status, Status::NeedsAttention);
+        assert_eq!(
+            row.actions,
+            [Some(Action::Retry), Some(Action::OpenSettings)]
+        );
+        assert!(!checks_ready(&rows));
+        let mut facts = facts;
+        facts.permissions.input_monitoring = Access::Denied;
+        let rows = checks(Os::Mac, Os::Mac.capabilities(true, true), &facts);
+        assert!(!rows[2].relaunch);
+        assert_eq!(rows[2].actions[0], Some(Action::Allow));
+    }
+
+    #[test]
+    fn linux_x11_hook_failure_offers_retry_without_blocking() {
+        let facts = Facts {
+            keys: false,
+            ..facts()
+        };
+        let rows = checks(Os::Linux, Os::Linux.capabilities(true, false), &facts);
+        assert_eq!(rows[0].id, CheckId::GlobalKeys);
+        assert_eq!(rows[0].status, Status::NeedsAttention);
+        assert_eq!(rows[0].actions, [Some(Action::Retry), None]);
+        assert!(checks_ready(&rows));
+    }
+
+    #[test]
+    fn settings_links_only_name_the_platforms_permission_panes() {
+        for permission in Permission::ALL {
+            assert_eq!(
+                permission.settings_url_for(Os::Mac),
+                Some(permission.settings_url())
+            );
+            assert_eq!(permission.settings_url_for(Os::Linux), None);
+        }
+        assert_eq!(
+            Permission::Microphone.settings_url_for(Os::Windows),
+            Some("ms-settings:privacy-microphone")
+        );
+        assert_eq!(
+            Permission::Accessibility.settings_url_for(Os::Windows),
+            None
+        );
+        assert_eq!(
+            Permission::InputMonitoring.settings_url_for(Os::Windows),
+            None
+        );
+    }
 
     /// Answers like macOS and records every call. It has no request method to call.
     struct Mock {

@@ -38,7 +38,9 @@ pub(super) fn view(
     } else {
         "The hold key is not available on this system. Use the Record button instead.".to_owned()
     };
-    let status = if passed {
+    let status = if passed && !keys_ready {
+        "That worked. Use the Record button while global keys are unavailable."
+    } else if passed {
         "That worked. The shortcuts are on now."
     } else if listening {
         "Listening"

@@ -220,6 +220,35 @@ pub fn render(
             sections.push(section_of(palette, section, rows));
         }
     }
+    if let Some(permissions) = settings.read(cx).permissions.clone() {
+        let mut rows = crate::onboarding::panel::permissions::rows(
+            palette,
+            &permissions,
+            "settings",
+            &query,
+            cx,
+        );
+        if !rows.is_empty()
+            && let Some(notice) = permissions.read(cx).notice().map(str::to_owned)
+        {
+            rows.push(ui::notice_row(
+                palette,
+                settings_id("permissions.notice"),
+                notice,
+                Notice::Info,
+                None,
+            ));
+        }
+        if !rows.is_empty() {
+            sections.push(ui::titled_section(
+                palette,
+                settings_id("permissions.heading"),
+                "Permissions",
+                ui::group(settings_id("permissions"), palette, rows),
+                None,
+            ));
+        }
+    }
     let mut list = div()
         .id(settings_id("list"))
         .flex()

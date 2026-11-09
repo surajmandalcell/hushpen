@@ -368,6 +368,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 )
             });
             follow_activation(cx, onboarding.clone(), settings_view.clone());
+            settings_view.update(cx, |settings, cx| settings.attach_permissions(onboarding.clone(), cx));
             let tuning = {
                 let (run, spawn) = {
                     let controller = controller.read(cx);
@@ -734,9 +735,11 @@ fn keys_starter(events: EventSender, shortcuts: Entity<Shortcuts>) -> KeysRestar
         };
         let keys = Rc::new(GlobalKeys::start(bindings, sink, record)?);
         let session = Rc::clone(&keys);
-        let quitting = Rc::clone(&keys);
+        let quitting = Rc::downgrade(&keys);
         cx.on_app_quit(move |_| {
-            quitting.restore_system();
+            if let Some(keys) = quitting.upgrade() {
+                keys.restore_system();
+            }
             async {}
         })
         .detach();

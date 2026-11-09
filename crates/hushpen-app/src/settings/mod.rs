@@ -142,6 +142,7 @@ impl Section {
 pub struct Settings {
     pub(crate) storage: Rc<Storage>,
     pub(crate) mic: Entity<Mic>,
+    pub(crate) permissions: Option<Entity<crate::onboarding::Onboarding>>,
     login: Option<Arc<dyn LoginToggle>>,
     login_cache: LoginCache,
     default_data_dir: PathBuf,
@@ -203,6 +204,7 @@ impl Settings {
         let mut me = Self {
             storage,
             mic,
+            permissions: None,
             login,
             login_cache: LoginCache::default(),
             default_data_dir: default_data_dir
@@ -230,6 +232,16 @@ impl Settings {
         };
         me.refresh_login(cx);
         me
+    }
+
+    /// Shares the live permission checks and actions with onboarding.
+    pub fn attach_permissions(
+        &mut self,
+        permissions: Entity<crate::onboarding::Onboarding>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.observe(&permissions, |_, _, cx| cx.notify()).detach();
+        self.permissions = Some(permissions);
     }
 
     /// Shows the update check in Settings > Updates and repaints when it changes.
