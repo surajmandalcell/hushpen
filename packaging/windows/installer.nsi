@@ -3,6 +3,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 !include MUI2.nsh
 !include LogicLib.nsh
+!include FileFunc.nsh
 !include x64.nsh
 
 !define PRODUCT "{{product_name}}"
@@ -32,6 +33,18 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 Suraj Mandal"
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
+  ; NSIS removes /D from $CMDLINE and replaces invalid destinations with its default.
+  System::Call 'kernel32::GetCommandLineW() w.r0'
+  ClearErrors
+  ${GetOptions} $0 "/D=" $1
+  ${IfNot} ${Errors}
+    ${If} ${FileExists} "$1"
+      ${IfNot} ${FileExists} "$1\*.*"
+        SetErrorLevel 1
+        Abort
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
   SetShellVarContext current
   SetRegView 64
   ${If} $INSTDIR == "$LOCALAPPDATA\Programs\${PRODUCT}"

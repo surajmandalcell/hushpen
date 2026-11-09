@@ -542,6 +542,14 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
     if Target::host()? != Target::WindowsX64 {
         return Err("Windows setup must be verified on Windows".into());
     }
+    let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is missing")?;
+    let install = PathBuf::from(local).join("Programs").join("Hushpen");
+    if install.exists() {
+        return Err(format!(
+            "refuse to replace an existing install at {}",
+            install.display()
+        ));
+    }
     let mut problems = Vec::new();
     check_windows_manifest(
         artifact,
@@ -556,7 +564,32 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
         .map_err(|e| format!("cannot resolve Windows setup path: {e}"))?;
     let scratch = std::path::absolute(scratch)
         .map_err(|e| format!("cannot resolve setup check folder: {e}"))?;
-    let blocked = scratch.join("blocked-install");
+    capture(Command::new(&setup).arg("/S"), "Windows setup /S")?;
+    let result = verify_windows_folder(&install, version, "windows-setup");
+    let helper = scratch.join("uninstall.exe");
+    super::copy(&install.join("uninstall.exe"), &helper)?;
+    let mut uninstall = Command::new(&helper);
+    uninstall.arg("/S");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // NSIS reads the final directory verbatim, including spaces, without argument quotes.
+        uninstall.raw_arg(format!("_?={}", install.display()));
+    }
+    let uninstall = capture(&mut uninstall, "Windows uninstall /S");
+    match result {
+        Ok(found) => problems.extend(found),
+        Err(error) => problems.push(error),
+    }
+    if let Err(error) = uninstall {
+        problems.push(error);
+    }
+    need(
+        &mut problems,
+        !install.join("hushpen.exe").exists(),
+        "Windows uninstall left the app executable",
+    );
+    let blocked = scratch.join("blocked install");
     fs::write(&blocked, b"blocked installation")
         .map_err(|e| format!("cannot create blocked install destination: {e}"))?;
     let mut refused = Command::new(&setup);
@@ -579,38 +612,10 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
         !scratch.join("hushpen.exe").exists(),
         "Windows setup wrote outside its refused destination",
     );
-    if !problems.is_empty() {
-        return Ok(problems);
-    }
-    let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is missing")?;
-    let install = PathBuf::from(local).join("Programs").join("Hushpen");
-    if install.exists() {
-        return Err(format!(
-            "refuse to replace an existing install at {}",
-            install.display()
-        ));
-    }
-    capture(Command::new(&setup).arg("/S"), "Windows setup /S")?;
-    let result = verify_windows_folder(&install, version, "windows-setup");
-    let helper = scratch.join("uninstall.exe");
-    super::copy(&install.join("uninstall.exe"), &helper)?;
-    let mut uninstall = Command::new(&helper);
-    uninstall.arg("/S");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // NSIS reads the final directory verbatim, including spaces, without argument quotes.
-        uninstall.raw_arg(format!("_?={}", install.display()));
-    }
-    let uninstall = capture(&mut uninstall, "Windows uninstall /S");
-    let mut problems = result?;
-    if let Err(error) = uninstall {
-        problems.push(error);
-    }
     need(
         &mut problems,
         !install.join("hushpen.exe").exists(),
-        "Windows uninstall left the app executable",
+        "Windows setup used the default folder after refusing its destination",
     );
     Ok(problems)
 }
