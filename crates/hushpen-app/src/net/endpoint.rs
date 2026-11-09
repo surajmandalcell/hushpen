@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn a_port_with_nothing_behind_it_is_down() {
+    fn a_port_with_nothing_behind_it_is_unreachable_or_times_out() {
         let port = {
             let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
             listener.local_addr().unwrap().port()
@@ -333,8 +333,17 @@ mod tests {
         let failure = UreqTransport
             .test_connection(&config(format!("http://127.0.0.1:{port}/v1")))
             .unwrap_err();
-        assert_eq!(failure.kind, Kind::Down);
+        assert!(matches!(failure.kind, Kind::Down | Kind::Timeout));
         assert_eq!(failure.host, "127.0.0.1");
+    }
+
+    #[test]
+    fn a_connection_refusal_is_classified_as_down() {
+        let refused = ureq::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        assert_eq!(kind_of(&refused), Kind::Down);
     }
 
     #[test]

@@ -91,6 +91,7 @@ pub struct Updater {
     quit: Rc<dyn Fn(&mut App)>,
     clock: Rc<dyn Fn() -> u64>,
     current: Version,
+    target: Option<&'static str>,
     machine: Machine,
     installs: u32,
     /// The new version that is downloaded, checked, and staged, once the state is `Ready`.
@@ -111,6 +112,7 @@ impl Updater {
             quit: parts.quit,
             clock: parts.clock,
             current: parts.current,
+            target: current_target(),
             machine: Machine::default(),
             installs: 0,
             staged: None,
@@ -288,7 +290,7 @@ impl Updater {
 
     /// What an offered version leads to on this install.
     fn delivery_of(&self, manifest: &Manifest) -> Delivery {
-        delivery(self.installer.kind(), current_target(), manifest)
+        delivery(self.installer.kind(), self.target, manifest)
     }
 
     /// What the offered version leads to, if one is offered.
@@ -311,10 +313,7 @@ impl Updater {
     /// installs, which show the release link instead.
     pub fn install(&mut self, cx: &mut Context<Self>) {
         let previous = self.state().key();
-        let Some(result) = self
-            .machine
-            .install(self.installer.kind(), current_target())
-        else {
+        let Some(result) = self.machine.install(self.installer.kind(), self.target) else {
             return;
         };
         let artifact = match result {
@@ -443,7 +442,7 @@ impl Updater {
             .and_then(|value| value.as_str().map(str::to_owned));
         self.machine.banner_kind(
             self.installer.kind(),
-            current_target(),
+            self.target,
             self.auto_install(),
             dismissed.as_deref(),
         )
