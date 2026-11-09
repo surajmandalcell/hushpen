@@ -26,8 +26,8 @@ while [ $# -gt 0 ]; do
 done
 case "$suite" in
   smoke | env) ui_only=1 ;;
-  mic | models | home | tail | hotkey | insert | guards | paste-last | engine | cleanup | ai-cleanup | endpoint | undo | command | dictionary | history | import | audio | export | flowbar | tray | shortcuts | onboarding | settings | features | updates | update-session | self-update | core | full) ui_only=0 ;;
-  *) die "usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|features|updates|update-session|self-update|core|full> --slots N [--build]" ;;
+  mic | models | home | tail | hotkey | insert | guards | paste-last | engine | remote | cleanup | ai-cleanup | endpoint | undo | command | dictionary | history | import | audio | export | flowbar | tray | shortcuts | onboarding | settings | features | updates | update-session | self-update | core | full) ui_only=0 ;;
+  *) die "usage: run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|remote|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|features|updates|update-session|self-update|core|full> --slots N [--build]" ;;
 esac
 [ "$suite" != self-update ] || export HUSHPEN_UPDATE_TEST=${HUSHPEN_UPDATE_TEST:-$HUSHPEN_ROOT/update-test}
 [[ $slots =~ ^[1-6]$ ]] || die "--slots must be 1 to 6, got '$slots'"

@@ -223,7 +223,7 @@ impl Controller {
             prompt: prompt.clone(),
         };
         let token = Arc::new(super::CancelToken::default());
-        let run = Arc::clone(&self.engine.run);
+        let run = self.runner();
         let (reply, answer) = oneshot::channel();
         let spawned = (self.spawn)(Box::new(move || {
             let _ = reply.send(run(spec, token));

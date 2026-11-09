@@ -38,6 +38,7 @@ pub(super) struct Run {
 /// Written by the worker threads of one session.
 #[derive(Default)]
 pub(super) struct Found {
+    pub remote_notice: Option<String>,
     pub duration_ms: Option<i64>,
     /// The language the engine detected.
     pub language: Option<String>,

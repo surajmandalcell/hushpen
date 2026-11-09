@@ -8,6 +8,7 @@ use hushpen_store::secrets::Secrets;
 use hushpen_store::settings::SettingsStore;
 
 pub struct Storage {
+    pub remote: std::sync::Arc<crate::remote_jobs::Router>,
     pub data: DataDir,
     pub settings: SettingsStore,
     pub secrets: Secrets,
@@ -33,6 +34,7 @@ pub fn open(data: DataDir) -> Result<Storage> {
         log::warn!("HISTORY_NEWER_SCHEMA the history database was written by a newer version");
     }
     Ok(Storage {
+        remote: std::sync::Arc::default(),
         data,
         settings,
         secrets,

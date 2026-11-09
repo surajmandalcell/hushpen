@@ -76,9 +76,27 @@ impl EngineHost {
         self.client.status()
     }
 
+    pub fn follow_settings(&self, settings: &Map<String, Value>) {
+        let cpus = std::thread::available_parallelism().map_or(2, usize::from);
+        if !crate::remote_jobs::local_models_allowed(settings)
+            || wanted_load(settings, &self.models_dir, &self.default_model, cpus)
+                .is_some_and(|load| hushpen_store::model_files::is_verified(&load.path))
+        {
+            self.apply_settings(settings);
+        }
+    }
+
     /// Loads the model, GPU choice, and thread count the settings ask for when they differ from
     /// what the child already holds. The change takes effect in the running child.
     pub fn apply_settings(&self, settings: &Map<String, Value>) {
+        if !crate::remote_jobs::local_models_allowed(settings) {
+            let previous = self.loaded.lock().unwrap_or_else(|p| p.into_inner()).take();
+            if previous.is_some() {
+                self.client.unload();
+            }
+            *self.problem.lock().unwrap_or_else(|p| p.into_inner()) = None;
+            return;
+        }
         let cpus = std::thread::available_parallelism().map_or(2, usize::from);
         let Some(wanted) = wanted_load(settings, &self.models_dir, &self.default_model, cpus)
         else {

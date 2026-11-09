@@ -147,6 +147,9 @@ pub fn wanted_load(
     models_dir: &Path,
     cpus: usize,
 ) -> Option<LlmSpec> {
+    if !crate::remote_jobs::local_models_allowed(settings) {
+        return None;
+    }
     let on = settings
         .get("cleanup.llm.enabled")
         .and_then(Value::as_bool)
@@ -224,6 +227,18 @@ mod tests {
         let off = settings(json!({"cleanup.llm.enabled": false, "cleanup.llm.modelId": "m"}));
         assert_eq!(wanted_load(&off, dir.path(), 4), None);
         assert_eq!(wanted_load(&Map::new(), dir.path(), 4), None);
+    }
+
+    #[test]
+    fn remote_only_cleanup_never_loads_local_weights() {
+        let dir = tempfile::tempdir().unwrap();
+        stamped_model(dir.path(), "m");
+        let mut values = on("m");
+        values.insert("remote.enabled".into(), json!(true));
+        values.insert("remote.noLocalModels".into(), json!(true));
+        assert_eq!(wanted_load(&values, dir.path(), 4), None);
+        values.insert("remote.enabled".into(), json!(false));
+        assert!(wanted_load(&values, dir.path(), 4).is_some());
     }
 
     #[test]

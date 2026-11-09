@@ -537,7 +537,29 @@ impl Controller {
 
     /// The engine call, for work that is not a dictation, such as the microphone test.
     pub fn runner(&self) -> Runner {
-        Arc::clone(&self.engine.run)
+        let local = Arc::clone(&self.engine.run);
+        let routing = crate::remote_jobs::Routing::from_storage(&self.storage);
+        if !routing.settings.enabled {
+            return local;
+        }
+        let cpus = std::thread::available_parallelism().map_or(2, usize::from);
+        let default = hushpen_core::catalog::embedded()
+            .default_whisper()
+            .map(|entry| entry.id.as_str())
+            .unwrap_or("");
+        let load = crate::engine_host::wanted_load(
+            &self.storage.settings.values(),
+            &self.storage.data.whisper_models_dir(),
+            default,
+            cpus,
+        );
+        Arc::new(move |spec, token| match &load {
+            Some(load) => routing.speech(load.clone(), spec, token, Arc::clone(&local), |_| {}),
+            None => JobOutcome::Failed(hushpen_engine::Failure::new(
+                ENGINE_NO_MODEL,
+                "No speech model is selected.",
+            )),
+        })
     }
 
     pub fn spawner(&self) -> Spawner {
@@ -657,6 +679,14 @@ impl Controller {
 
     /// Why no dictation can start, or `None` while one can.
     pub fn blocker(&self, cx: &gpui_kit::App) -> Option<Blocker> {
+        let remote = self.storage.settings.remote();
+        if remote.enabled
+            && remote.devices.iter().any(|device| {
+                device.device.serves.speech && remote.routes.speech.contains(&device.device.id)
+            })
+        {
+            return None;
+        }
         if let Some(problem) = &self.problem {
             return Some(if problem.unsupported_cpu {
                 Blocker {
@@ -687,6 +717,12 @@ impl Controller {
     /// A start never waits for the session before it, so only a blocker stops one.
     pub fn can_record(&self, cx: &gpui_kit::App) -> bool {
         self.phase() == Phase::Listening || self.blocker(cx).is_none()
+    }
+
+    pub fn remote_notice(&self) -> Option<String> {
+        self.runs
+            .get(&self.machine.session())
+            .and_then(|run| runs::lock(&run.found).remote_notice.clone())
     }
 
     /// Runs one event through the pipeline at the controller's clock. Returns the reason when a
@@ -857,6 +893,7 @@ impl Controller {
             "phase": self.phase().key(),
             "refused": self.refused,
             "warning": self.warned,
+            "remoteNotice": self.remote_notice(),
             "last_text_chars": self.last_text.as_ref().map(|text| text.chars().count()),
             "prompt": self.last_prompt,
             "ai": self.ai_json(),

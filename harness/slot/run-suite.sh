@@ -14,6 +14,7 @@ case "${1:-}" in
   guards) scripts=(guards) ;;
   paste-last) scripts=(paste-last) ;;
   engine) scripts=(engine) ;;
+  remote) scripts=(remote) ;;
   cleanup) scripts=(cleanup) ;;
   ai-cleanup) scripts=(ai-cleanup) ;;
   endpoint) scripts=(endpoint) ;;

@@ -233,7 +233,7 @@ impl FlowBar {
         }
         self.follow_pointer(cx);
 
-        let (shown, stage) = {
+        let (mut shown, stage) = {
             let controller = self.controller.read(cx);
             let stage = if controller.ai_phase() == Some(Phase::Preparing) {
                 Stage::Preparing
@@ -261,6 +261,12 @@ impl FlowBar {
                 stage,
             )
         };
+        if let Some(notice) = hushpen_core::remote::working_notice(
+            shown.state,
+            self.controller.read(cx).remote_notice().as_deref(),
+        ) {
+            shown.message = notice;
+        }
         let state = shown.state;
         if state == BarState::Transcribing {
             match self.work {

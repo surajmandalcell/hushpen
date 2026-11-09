@@ -37,6 +37,7 @@ mod native_window_calls;
 pub mod net;
 pub mod onboarding;
 pub mod read_aloud;
+pub mod remote_jobs;
 pub mod settings;
 pub mod shell;
 pub mod shortcuts;
