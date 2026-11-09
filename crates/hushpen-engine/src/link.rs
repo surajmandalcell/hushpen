@@ -12,6 +12,7 @@ use std::process::{Child, ChildStderr, Command, Stdio};
 pub enum Link {
     Child(ChildSpec),
     Remote(RemoteSpec),
+    InProcess(crate::InProcess),
 }
 
 /// A job's authenticated connection. Cancelling closes it; the route owner reconnects.
@@ -67,13 +68,14 @@ impl Drop for RemoteOutput {
 impl Link {
     pub(crate) fn control(&self) -> Option<RemoteControl> {
         match self {
-            Self::Child(_) => None,
+            Self::Child(_) | Self::InProcess(_) => None,
             Self::Remote(spec) => spec.stream.as_ref().map(RemoteStream::control),
         }
     }
 
     pub(crate) fn open(&mut self) -> io::Result<Connection> {
         match self {
+            Self::InProcess(server) => server.open(),
             Self::Child(spec) => {
                 let mut child = Command::new(&spec.program)
                     .args(&spec.args)

@@ -45,6 +45,16 @@ fn load_speech_model(
     }
 }
 
+/// Uses the same speech loader for child processes and phone threads.
+pub fn server_config() -> ServerConfig {
+    crate::whisper::quiet_native_logs();
+    ServerConfig {
+        version: hushpen_core::BUILD_VERSION.to_owned(),
+        gpu_available: gpu_available(),
+        loader: Arc::new(load_speech_model) as Arc<Loader>,
+    }
+}
+
 /// Runs the engine child. `args` are the arguments after the program name (or after `engine`).
 pub fn engine_main(args: &[String]) -> ExitCode {
     if args.first().map(String::as_str) == Some("--version") {
@@ -53,11 +63,7 @@ pub fn engine_main(args: &[String]) -> ExitCode {
     }
     crate::whisper::quiet_native_logs();
     if args.is_empty() {
-        let config = ServerConfig {
-            version: hushpen_core::BUILD_VERSION.to_owned(),
-            gpu_available: gpu_available(),
-            loader: Arc::new(load_speech_model) as Arc<Loader>,
-        };
+        let config = server_config();
         return ExitCode::from(serve(std::io::stdin().lock(), std::io::stdout(), config));
     }
     match parse_smoke(args) {

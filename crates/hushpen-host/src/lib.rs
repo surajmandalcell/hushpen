@@ -23,6 +23,8 @@ pub struct Workers {
     pub(crate) cleanup_session: Mutex<()>,
     pub(crate) speech_rule: Mutex<UnloadRule>,
     pub(crate) cleanup_rule: Mutex<UnloadRule>,
+    pub(crate) os: hushpen_core::os::Os,
+    pub(crate) system_cleanup: bool,
 }
 
 impl Workers {
@@ -30,30 +32,49 @@ impl Workers {
         let speech_log = EngineLog::open(&logs.join("engine.log")).map_err(io::Error::other)?;
         let llm_log =
             EngineLog::open_scoped(&logs.join("llm.log"), "llm").map_err(io::Error::other)?;
-        Ok(Arc::new(Self {
-            speech: EngineClient::start(
-                ChildSpec {
-                    program: asr,
-                    args: vec![],
-                },
-                Timing::default(),
-                speech_log,
-            ),
-            cleanup: LlmClient::start(
-                ChildSpec {
-                    program: llm,
-                    args: vec![],
-                },
-                Timing::llm(),
-                llm_log,
-            ),
+        let speech = EngineClient::start(
+            ChildSpec {
+                program: asr,
+                args: vec![],
+            },
+            Timing::default(),
+            speech_log,
+        );
+        let cleanup = LlmClient::start(
+            ChildSpec {
+                program: llm,
+                args: vec![],
+            },
+            Timing::llm(),
+            llm_log,
+        );
+        Ok(Self::from_clients(
+            speech,
+            cleanup,
+            hushpen_core::os::Os::current(),
+            false,
+        ))
+    }
+
+    /// Phone threads use the same authenticated sessions as server processes.
+    pub fn from_clients(
+        speech: EngineClient,
+        cleanup: LlmClient,
+        os: hushpen_core::os::Os,
+        system_cleanup: bool,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            speech,
+            cleanup,
             speech_busy: AtomicBool::new(false),
             cleanup_busy: AtomicBool::new(false),
             speech_session: Mutex::new(()),
             cleanup_session: Mutex::new(()),
             speech_rule: Mutex::new(UnloadRule::KeepLoaded),
             cleanup_rule: Mutex::new(UnloadRule::KeepLoaded),
-        }))
+            os,
+            system_cleanup,
+        })
     }
 
     pub fn unload(&self) {
@@ -70,7 +91,16 @@ impl Workers {
         self.cleanup.shutdown();
     }
 
-    #[cfg(target_os = "linux")]
+    pub fn set_unload_rule(&self, rule: UnloadRule) {
+        *lock(&self.speech_rule) = rule;
+        *lock(&self.cleanup_rule) = rule;
+    }
+
+    /// Platform memory callbacks use the same per-worker rule as Linux pressure checks.
+    pub fn memory_low(&self) {
+        self.unload_for_memory();
+    }
+
     fn unload_for_memory(&self) {
         if *lock(&self.speech_rule) == UnloadRule::WhenMemoryLow
             && !self.speech_busy.load(Ordering::Acquire)
