@@ -24,6 +24,7 @@ pub mod os;
 pub mod paths;
 pub mod permission;
 pub mod protocol;
+pub mod remote;
 pub mod shortcut;
 pub mod threads;
 pub mod transcript;
