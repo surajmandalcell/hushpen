@@ -66,6 +66,8 @@ The unit and component tests open no window and need no models. The tests that r
 Core tests exercise macOS, Linux, and Windows policy on every host. They cover
 platform defaults, model downloads and defaults, updater states, flow-bar
 results, and microphone session rules without native services.
+Permission-check tests supply each OS and its live facts. They cover blocking
+microphone checks, macOS grants, Windows hook retry, and Linux session limits.
 
 ## Windows build checks
 
@@ -98,11 +100,17 @@ app with higher privileges stays on the clipboard with an administrator
 notice. Windows packages are not available yet. A green runner proves a
 build and unit tests, not interactive behavior on Windows hardware.
 
+Onboarding and Settings show Microphone, Admin apps, and Global keys.
+Microphone consent reads the current user's privacy settings, including
+desktop-app access. Open Settings opens `ms-settings:privacy-microphone`.
+The hook row offers Retry when global keys are unavailable. Only microphone
+readiness blocks Continue on Windows.
+
 ## Linux notes
 
-- Hushpen needs an X11 session. On Wayland, the global key and the paste show "not available".
+- Hushpen needs X11 for global keys and paste. On Wayland, onboarding and Settings explain this limit; microphone setup can continue.
 - It needs a Vulkan or OpenGL driver to draw the window. On Debian and Ubuntu, `mesa-vulkan-drivers` or `libgl1-mesa-dri` is enough.
-- For the tray icon, you need a system tray host (StatusNotifier). Most desktops have one.
+- The tray needs a StatusNotifier host. Without one, onboarding and Settings show an information row.
 
 ## Release test install on lin1
 
