@@ -3,6 +3,7 @@
 use crate::link::Connection;
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 const CAPACITY: usize = 256 * 1024;
@@ -11,12 +12,14 @@ type Writer = Box<dyn Write + Send>;
 
 pub struct InProcess {
     serve: Arc<dyn Fn(Reader, Writer) + Send + Sync>,
+    live: Arc<AtomicBool>,
 }
 
 impl InProcess {
     pub fn new(serve: impl Fn(Reader, Writer) + Send + Sync + 'static) -> Self {
         Self {
             serve: Arc::new(serve),
+            live: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -27,8 +30,17 @@ impl InProcess {
     }
 
     pub(crate) fn open(&self) -> io::Result<Connection> {
+        self.live
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "the previous model thread is still stopping",
+                )
+            })?;
         let (input, stdin) = pipe();
-        let (stdout, output) = pipe();
+        let (stdout, mut output) = pipe();
+        output.1 = Some(Arc::clone(&self.live));
         let serve = Arc::clone(&self.serve);
         std::thread::Builder::new()
             .name("model-server".into())
@@ -56,11 +68,11 @@ struct Pipe {
 }
 
 struct PipeReader(Arc<Pipe>);
-struct PipeWriter(Arc<Pipe>);
+struct PipeWriter(Arc<Pipe>, Option<Arc<AtomicBool>>);
 
 fn pipe() -> (PipeReader, PipeWriter) {
     let state = Arc::new(Pipe::default());
-    (PipeReader(Arc::clone(&state)), PipeWriter(state))
+    (PipeReader(Arc::clone(&state)), PipeWriter(state, None))
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -132,6 +144,9 @@ impl Drop for PipeWriter {
     fn drop(&mut self) {
         lock(&self.0.buffer).writer_closed = true;
         self.0.changed.notify_all();
+        if let Some(live) = &self.1 {
+            live.store(false, Ordering::Release);
+        }
     }
 }
 
@@ -191,5 +206,21 @@ mod tests {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).unwrap();
         assert_eq!(bytes, b"last");
+    }
+
+    #[test]
+    fn a_restart_waits_until_the_previous_server_releases_its_output() {
+        let server = InProcess::new(|mut input, _output| {
+            let mut byte = [0];
+            let _ = input.read(&mut byte);
+        });
+        let connection = server.open().unwrap();
+        assert!(matches!(server.open(), Err(error) if error.kind() == io::ErrorKind::WouldBlock));
+        drop(connection);
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while server.live.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(server.open().is_ok());
     }
 }
