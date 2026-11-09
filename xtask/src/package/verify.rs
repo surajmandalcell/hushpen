@@ -552,6 +552,36 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
     if !problems.is_empty() {
         return Ok(problems);
     }
+    let setup = std::path::absolute(artifact)
+        .map_err(|e| format!("cannot resolve Windows setup path: {e}"))?;
+    let scratch = std::path::absolute(scratch)
+        .map_err(|e| format!("cannot resolve setup check folder: {e}"))?;
+    let blocked = scratch.join("blocked-install");
+    fs::write(&blocked, b"blocked installation")
+        .map_err(|e| format!("cannot create blocked install destination: {e}"))?;
+    let mut refused = Command::new(&setup);
+    refused.arg("/S").current_dir(&scratch);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        refused.raw_arg(format!("/D={}", blocked.display()));
+    }
+    let refused = refused
+        .output()
+        .map_err(|e| format!("cannot check refused installation: {e}"))?;
+    need(
+        &mut problems,
+        !refused.status.success(),
+        "Windows setup accepted a file as its destination",
+    );
+    need(
+        &mut problems,
+        !scratch.join("hushpen.exe").exists(),
+        "Windows setup wrote outside its refused destination",
+    );
+    if !problems.is_empty() {
+        return Ok(problems);
+    }
     let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is missing")?;
     let install = PathBuf::from(local).join("Programs").join("Hushpen");
     if install.exists() {
@@ -560,7 +590,7 @@ fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<Str
             install.display()
         ));
     }
-    capture(Command::new(artifact).arg("/S"), "Windows setup /S")?;
+    capture(Command::new(&setup).arg("/S"), "Windows setup /S")?;
     let result = verify_windows_folder(&install, version, "windows-setup");
     let helper = scratch.join("uninstall.exe");
     super::copy(&install.join("uninstall.exe"), &helper)?;

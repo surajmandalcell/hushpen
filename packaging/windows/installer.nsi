@@ -61,8 +61,12 @@ FunctionEnd
 Section Install
   !insertmacro CheckApp
   SetOverwrite on
-  SetOutPath "$INSTDIR"
   ClearErrors
+  SetOutPath "$INSTDIR"
+  ${If} ${Errors}
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   File "{{main_binary_path}}"
   {{#each resources_dirs}}
   CreateDirectory "$INSTDIR\{{this}}"
@@ -90,6 +94,10 @@ Section Install
   WriteRegStr HKCU "${UNINSTKEY}" "QuietUninstallString" '$"$INSTDIR\uninstall.exe$" /S'
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoRepair" 1
+  ${If} ${Errors}
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
 SectionEnd
 
 Section Uninstall
