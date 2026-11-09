@@ -14,33 +14,16 @@
   const STEPS = [['Download', 'Get the setup file. One file.'], ['Install', 'Windows may warn because the app is not signed yet. Choose More info, then Run anyway.'], ['Talk', 'Press <kbd>Right Alt</kbd> twice or <kbd>Right Alt</kbd> + <kbd>Space</kbd>. Hold <kbd>Right Alt</kbd> to talk.']];
   const PROG = [.13, .33, .57, .8];
 
-  // Fluent-style line icons on a 16 pt grid
-  const G = {
-    back: '<path d="M13 8H3.5M7.5 4 3.5 8l4 4"/>', reload: '<path d="M12.6 8a4.6 4.6 0 1 1-1.5-3.4"/><path d="M12.7 2.6v2.6h-2.6"/>',
-    dl: '<path d="M8 2.5v7.6M4.9 7.2 8 10.3l3.1-3.1M3 13.3h10"/>', more: '<circle cx="3.5" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r=".9" fill="currentColor" stroke="none"/>',
-    lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"/>',
-    min: '<path d="M3 8h10"/>', max: '<rect x="3.5" y="3.5" width="9" height="9" rx="1"/>', x: '<path d="m3.5 3.5 9 9M12.5 3.5l-9 9"/>',
-    plus: '<path d="M8 3.5v9M3.5 8h9"/>', up: '<path d="m4.5 9.8 3.5-3.5 3.5 3.5"/>', ok: '<path d="M3.8 8.4 6.6 11.1 12.2 5"/>',
-    search: '<circle cx="7" cy="7" r="4.3"/><path d="m10.3 10.3 3.2 3.2"/>',
-    gear: '<circle cx="8" cy="8" r="2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/>',
-    wifi: '<path d="M1.8 6.2a9 9 0 0 1 12.4 0M4 8.6a5.8 5.8 0 0 1 8 0M6.2 11a2.6 2.6 0 0 1 3.6 0"/>',
-    vol: '<path d="M2.5 6h2.3L8 3.4v9.2L4.8 10H2.5z"/><path d="M10.5 5.8a3.2 3.2 0 0 1 0 4.4M12.3 4a5.8 5.8 0 0 1 0 8"/>',
-    bat: '<rect x="1.5" y="5" width="11.5" height="6" rx="1.6"/><path d="M14.5 7v2"/><rect x="3" y="6.5" width="7" height="3" rx=".6" fill="currentColor" stroke="none"/>',
-  };
-  const g = k => `<svg class="g" viewBox="0 0 16 16" aria-hidden="true">${G[k]}</svg>`;
+  // Windows 11 glyphs from Fluent UI System Icons, and the real app icons (assets/windows/README.md)
+  const G = { back: 'arrow_left', reload: 'arrow_clockwise', dl: 'arrow_download', more: 'more_horizontal', lock: 'lock_closed', min: 'subtract', max: 'maximize', x: 'dismiss', plus: 'add', up: 'chevron_up', ok: 'checkmark', gear: 'settings', wifi: 'wifi_1', vol: 'speaker_2', bat: 'battery_10' };
+  const g = k => `<img class="g" src="assets/windows/fluent/${G[k]}_20_regular.svg" alt="">`;
   const ib = (k, c = '') => `<span class="ln-ib${c}">${g(k)}</span>`;
   const pos = ([x, y, w, h]) => `left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
   const HP = '<img src="assets/icon-256.webp" alt="">';
-  // Taskbar icons (24 pt): Start, Search, a browser, File Explorer, Notepad, then Hushpen once it is installed
-  const APP = {
-    start: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="url(#wnx-st)" d="M2 2h9.5v9.5H2zM12.5 2H22v9.5h-9.5zM2 12.5h9.5V22H2zM12.5 12.5H22V22h-9.5z"/></svg>',
-    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="#1B1B1B" stroke-width="1.8"/><path d="m15 15 5 5" stroke="#1B1B1B" stroke-width="1.8" stroke-linecap="round"/></svg>',
-    web: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="url(#wnx-web)"/><path d="M2.5 12h19M12 2.2c-3.4 3-3.4 16.6 0 19.6M12 2.2c3.4 3 3.4 16.6 0 19.6" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1.2"/></svg>',
-    fold: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6.5A1.5 1.5 0 0 1 3.5 5h5.2l2 2h9.8A1.5 1.5 0 0 1 22 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5z" fill="#E1A01B"/><path d="M2 10a1.5 1.5 0 0 1 1.5-1.5h17A1.5 1.5 0 0 1 22 10v8.5a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5z" fill="#FFC83D"/></svg>',
-    note: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2.5" width="16" height="19" rx="2.2" fill="#fff" stroke="#8A96A3" stroke-width=".8"/><path d="M4 4.7a2.2 2.2 0 0 1 2.2-2.2h11.6A2.2 2.2 0 0 1 20 4.7V7H4z" fill="#2F86DA"/><path d="M7.5 11h9M7.5 14h9M7.5 17h6" stroke="#8A96A3" stroke-width="1.2" stroke-linecap="round"/></svg>',
-    hp: HP,
-  };
-  const DEFS = '<svg class="ln-defs" width="0" height="0" aria-hidden="true"><linearGradient id="wnx-st" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3CCBF4"/><stop offset="1" stop-color="#0669D6"/></linearGradient><linearGradient id="wnx-web" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#36D1B4"/><stop offset="1" stop-color="#1268D3"/></linearGradient><linearGradient id="wnx-pt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8EC8FF"/><stop offset="1" stop-color="#0B4FD0"/></linearGradient></svg>';
+  // Taskbar icons: Start, Search, Edge, File Explorer, Notepad, then Hushpen once it is installed
+  const img = f => `<img src="assets/windows/${f}.svg" alt="">`;
+  const APP = { start: img('start'), search: img('fluent/search_20_regular'), web: img('edge'), fold: img('explorer'), note: img('notepad'), hp: HP };
+  const DEFS = '<svg class="ln-defs" width="0" height="0" aria-hidden="true"><linearGradient id="wnx-pt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8EC8FF"/><stop offset="1" stop-color="#0B4FD0"/></linearGradient></svg>';
   // Windows 11 keeps minimize, maximize, and close at the right end of the title bar
   const WC = (max = true) => `<span class="wx-wc"><i>${g('min')}</i>${max ? `<i>${g('max')}</i>` : ''}<i>${g('x')}</i></span>`;
   // The Windows pointer: white with a black edge
