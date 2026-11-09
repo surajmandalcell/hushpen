@@ -28,15 +28,6 @@
       el.textContent = value.stable.highlight || '';
       el.hidden = !value.stable.highlight;
     });
-    document.querySelectorAll('[data-checksums]').forEach(el => {
-      const release = el.dataset.checksums === 'windows' ? value.windows : value.stable;
-      el.replaceChildren();
-      for (const asset of Object.values(release?.assets || {})) {
-        const row = document.createElement('div'), name = document.createElement('b'), sum = document.createElement('code');
-        name.textContent = asset.name; sum.textContent = asset.sha256;
-        row.append(name, sum); el.append(row);
-      }
-    });
   });
   document.addEventListener('alpine:init', () => {
     Alpine.store('releases', { stable: null, windows: null, fetchedAt: null });

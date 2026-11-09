@@ -2,18 +2,9 @@
 [data-dl-meta] { min-height: 44px; }
 [data-dl-meta] > li:first-child, [data-version] { min-width: 11ch; font-variant-numeric: tabular-nums; }
 [data-asset-meta], [data-linux-download] small { display: inline-block; min-width: 26ch; font-variant-numeric: tabular-nums; }
-.win .ln-dl { height: auto; min-height: 46px; flex-wrap: wrap; padding-block: 12px; }
-.win .ln-dl use { fill: currentColor; stroke: none; }
-.win-note { max-width: 660px; color: var(--ink2); font-size: 15px; line-height: 1.55; }
-.win .ln-ft { margin-top: 24px; }
-.win-preview { display: inline-block; margin-left: 8px; padding: 3px 8px; border-radius: 6px; background: var(--wash); font-size: 12px; color: var(--ink2); }
 [hidden] { display: none !important; }
-[data-preview][hidden] { display: inline-block !important; visibility: hidden; }
-.release-checks { display: grid; gap: 14px; padding-top: 16px; max-width: 100%; }
-.release-checks b, .release-checks code { display: block; font-size: 12px; overflow-wrap: anywhere; }
-.release-checks code { margin-top: 4px; color: var(--ink2); }
 .release-note { min-height: 24px; margin-top: 16px; color: var(--ink2); }
 @media (max-width: 560px) {
-  .win .ln-dl, [data-linux-download] { width: 100%; height: auto; min-height: 44px; justify-content: center; flex-wrap: wrap; padding-block: 12px; }
-  .win .ln-dl small, [data-linux-download] small { flex-basis: 100%; min-width: 0; text-align: center; }
+  .ln-h .ln-dl { width: 100%; height: auto; min-height: 44px; justify-content: center; flex-wrap: wrap; padding-block: 12px; }
+  .ln-h .ln-dl small { flex-basis: 100%; min-width: 0; text-align: center; }
 }

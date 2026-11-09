@@ -4,7 +4,7 @@
 // desktop has a fixed logical size; a camera scales it into its stage and follows the action so the windows
 // stay readable. It plays only while seen. With Reduce Motion it shows its last frame.
 (() => {
-  const host = document.querySelector('.ln-v');
+  const host = document.querySelector('#linux .ln-v');
   if (!host || !window.FlowBar) return;
   const calm = FlowBar.calm;
   const EASE = 'cubic-bezier(.22,1,.36,1)';
@@ -232,6 +232,8 @@
     w.classList.add('is-open', 'is-fr');
     w.style.zIndex = ++S.z;
   };
+  // The Windows scene (wnx.js) runs on the same camera and pointer
+  window.LnScene = { lr, frame, cam, beat, move, click, front };
 
   const ST = ['is-open', 'is-fr', 'is-run', 'is-in', 'is-on', 'is-done', 'is-hov', 'is-sel', 'is-st', 'is-down', 'is-press'];
   // Back to the first frame with every transition off
