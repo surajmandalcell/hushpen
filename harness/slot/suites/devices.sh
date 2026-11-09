@@ -25,13 +25,14 @@ device_state() { $HC state | jq -er ".devices | $1"; }
 device_is() { [ "$(device_state "$1")" = "$2" ]; }
 snapshot() { $HC state | jq '{view,devices}' >"$RUN_OUT/$1.json"; shot "$1"; }
 reveal() {
-  local id=$1 last= unchanged=0 x y top bottom limit_top limit_bottom bounds direction attempt
+  local id=$1 last= unchanged=0 x y top bottom limit_top limit_bottom bounds direction attempt tree
   for attempt in $(seq 10); do
-    read -r top bottom x y limit_top limit_bottom <<<"$($HC tree | jq -r --arg id "$id" \
-      'map({key:.id,value:.root_bounds}) | from_entries | .[$id] as $target | .["content.scroll"] as $scroll | select($target != null and $scroll != null) | "\($target.y | floor) \(($target.y + $target.height) | ceil) \(($scroll.x + $scroll.width / 2) | floor) \(($scroll.y + $scroll.height / 2) | floor) \($scroll.y | ceil) \(($scroll.y + $scroll.height) | floor)"')"
+    tree=$($HC tree)
+    read -r top bottom x y limit_top limit_bottom <<<"$(jq -r --arg id "$id" \
+      'map({key:.id,value:.root_bounds}) | from_entries | .[$id] as $target | .["content.scroll"] as $scroll | select($scroll != null) | "\(($target.y // -1) | floor) \((if $target == null then $scroll.y + $scroll.height + 1 else $target.y + $target.height end) | ceil) \(($scroll.x + $scroll.width / 2) | floor) \(($scroll.y + $scroll.height / 2) | floor) \($scroll.y | ceil) \(($scroll.y + $scroll.height) | floor)"' <<<"$tree")"
     [ -n "$top" ] || return 1
     [ "$top" -ge "$limit_top" ] && [ "$bottom" -le "$limit_bottom" ] && return 0
-    bounds="$top $bottom"
+    bounds=$(jq -c '[.[] | select(.id | startswith("devices.")) | [.id,.root_bounds.y]]' <<<"$tree")
     if [ "$bounds" = "$last" ]; then unchanged=$((unchanged + 1)); else unchanged=0; fi
     [ "$unchanged" -lt 2 ] || return 1
     last=$bounds
@@ -51,21 +52,41 @@ real_click() {
   xdotool mousemove "$x" "$y" click 1
   sleep 0.3
 }
+type_into() {
+  real_click "$1" || return 1
+  xdotool windowfocus --sync "$(app_window)"
+  xdotool key ctrl+a
+  xdotool type --delay 2 -- "$2"
+  sleep 0.2
+}
 pair_host() {
-  local number=$1 id=$2 name=$3 port=$((47330 + $1)) data uri args pid
+  local number=$1 id=$2 name=$3 method=${4:-lan} port=$((47330 + $1)) data uri args pid offer_host=127.0.0.1 count
   data=$HOST_DATA/$number
   mkdir -p "$data"
   ss -ltn | grep -q ":$port " && return 1
-  uri=$(/app/hushpen-host pair --json --data-dir "$data" --listen "127.0.0.1:$port" --host 127.0.0.1 | jq -er .uri) || return 1
+  [ "$method" != tailscale ] || offer_host=unreachable.invalid
+  uri=$(/app/hushpen-host pair --json --data-dir "$data" --listen "127.0.0.1:$port" --host "$offer_host" | jq -er .uri) || return 1
   setsid timeout --kill-after=3 300 /app/hushpen-host --data-dir "$data" \
     --listen "127.0.0.1:$port" --host 127.0.0.1 --name "$name" \
     >"$data/stdout.log" 2>"$data/stderr.log" &
   pid=$!
   HOST_PIDS+=("$pid")
   wait_until 10 grep -q 'listening on' "$data/stderr.log" || return 1
-  args=$(jq -nc --arg uri "$uri" --arg id "$id" --arg name "$name" \
-    '{op:"pair",uri:$uri,id:$id,name:$name,os:"linux"}')
-  device_action "$args" || return 1
+  if [ "$method" = tailscale ]; then
+    count=$(device_state '.devices | length')
+    device_action '{"op":"method","method":"tailscale"}' || return 1
+    type_into devices.address invalid || return 1
+    type_into devices.uri "$uri" || return 1
+    real_click devices.pairTailscale || return 1
+    snapshot devices-address-invalid
+    device_is '.devices | length' "$count" && device_state '.notice != null' >/dev/null || return 1
+    type_into devices.address "127.0.0.1:$port" || return 1
+    real_click devices.pairTailscale || return 1
+  else
+    args=$(jq -nc --arg uri "$uri" --arg id "$id" --arg name "$name" \
+      '{op:"pair",uri:$uri,id:$id,name:$name,os:"linux"}')
+    device_action "$args" || return 1
+  fi
   unset uri args
   wait_until 15 device_is '.busy' false || return 1
   device_state ".devices | any(.id == \"$id\")" >/dev/null
@@ -149,3 +170,10 @@ wait_until 5 device_is '.pairing' idle || failures+="closing left the pairing of
 device_is '.sheet' closed || failures+="closing left Add device open; "
 snapshot devices-qr-closed
 check_failures "devices pairing QR" "the QR offer was visible and closing Add device cancelled it" "$failures"
+
+failures=""
+pair_host 3 tailscale-127.0.0.1-47333 'Address host' tailscale || failures+="address validation or pairing failed; "
+snapshot devices-address-paired
+device_is '.devices[] | select(.id == "tailscale-127.0.0.1-47333") | .address' '127.0.0.1:47333' || failures+="the typed address was not saved; "
+device_is '.devices[] | select(.id == "tailscale-127.0.0.1-47333") | .transport.kind' tailscale || failures+="the transport was not saved; "
+check_failures "devices address pairing" "invalid input was refused; the typed loopback address replaced the unreachable offer address and paired over Noise" "$failures"
