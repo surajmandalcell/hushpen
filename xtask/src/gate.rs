@@ -15,6 +15,7 @@ pub enum Step {
     Cargo(&'static [&'static str]),
     NetAudit,
     TwoBinary,
+    Programs,
 }
 
 impl Step {
@@ -23,12 +24,13 @@ impl Step {
             Step::Cargo(args) => format!("cargo {}", args.join(" ")),
             Step::NetAudit => "cargo xtask net-audit".to_string(),
             Step::TwoBinary => "cargo xtask two-binary".to_string(),
+            Step::Programs => "run the four Windows programs with --version".to_string(),
         }
     }
 }
 
-pub fn steps() -> Vec<Step> {
-    vec![
+pub fn steps(windows: bool) -> Vec<Step> {
+    let mut steps = vec![
         Step::Cargo(&["fmt", "--all", "--check"]),
         Step::TwoBinary,
         Step::Cargo(&[
@@ -43,7 +45,23 @@ pub fn steps() -> Vec<Step> {
         Step::Cargo(&["test", "--workspace", "--locked"]),
         Step::Cargo(&["deny", "check"]),
         Step::NetAudit,
-    ]
+    ];
+    if windows {
+        steps.push(Step::Cargo(&[
+            "build",
+            "--locked",
+            "-p",
+            "hushpen-app",
+            "-p",
+            "hushpen-engine",
+            "-p",
+            "hushpen-llm",
+            "-p",
+            "hushpen-tts",
+        ]));
+        steps.push(Step::Programs);
+    }
+    steps
 }
 
 /// Explains why build output would land inside the repo, or `None` when it
@@ -75,13 +93,27 @@ pub fn run(root: &Path) -> Result<(), String> {
     }
 
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let steps = steps();
+    let steps =
+        steps(crate::package::names::Target::host()? == crate::package::names::Target::WindowsX64);
     for (index, step) in steps.iter().enumerate() {
         println!("==> [{}/{}] {}", index + 1, steps.len(), step.display());
         match step {
             Step::Cargo(args) => run_cargo(&cargo, root, args)?,
             Step::NetAudit => net_audit::run(root)?,
             Step::TwoBinary => two_binary::run(root)?,
+            Step::Programs => {
+                for name in ["hushpen", "hushpen-asr", "hushpen-llm", "hushpen-tts"] {
+                    crate::package::run_tool(
+                        Command::new(
+                            crate::package::target_dir(root)
+                                .join("debug")
+                                .join(format!("{name}.exe")),
+                        )
+                        .arg("--version"),
+                        &format!("{name}.exe --version"),
+                    )?;
+                }
+            }
         }
     }
     println!("==> gate passed");
@@ -115,7 +147,7 @@ mod tests {
 
     #[test]
     fn gate_runs_the_required_commands_with_the_two_binary_check_and_net_audit() {
-        let shown: Vec<String> = steps().iter().map(Step::display).collect();
+        let shown: Vec<String> = steps(false).iter().map(Step::display).collect();
         assert_eq!(
             shown,
             [
@@ -127,6 +159,27 @@ mod tests {
                 "cargo xtask net-audit",
             ]
         );
+    }
+
+    #[test]
+    fn windows_gate_builds_and_loads_all_four_programs() {
+        let windows = steps(true);
+        let common = steps(false);
+        assert_eq!(&windows[..common.len()], common);
+        assert_eq!(windows.len(), common.len() + 2);
+        assert!(matches!(windows.last(), Some(Step::Programs)));
+        let Step::Cargo(build) = &windows[common.len()] else {
+            panic!("missing Windows build")
+        };
+        assert_eq!(build[0], "build");
+        for package in [
+            "hushpen-app",
+            "hushpen-engine",
+            "hushpen-llm",
+            "hushpen-tts",
+        ] {
+            assert!(build.contains(&package));
+        }
     }
 
     #[test]
