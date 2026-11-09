@@ -44,6 +44,12 @@ pub const SECTIONS: &[Section] = &[
         texts: &[MIT_GGML],
     },
     Section {
+        id: "jna",
+        title: "Java Native Access and libffi",
+        note: "Android native bridge, Java Native Access 5.18.1 (https://github.com/java-native-access/jna), used under the Apache License 2.0 printed below. Its native library statically includes libffi under the following MIT license.",
+        texts: &["packaging/licenses/manual/mit-libffi.txt"],
+    },
+    Section {
         id: "sherpa-onnx",
         title: "sherpa-onnx",
         note: "Speech toolkit the hushpen-tts voice worker loads as a shared library (the k2-fsa project, https://github.com/k2-fsa/sherpa-onnx). Apache License 2.0. The library statically contains kaldi-native-fbank, kaldifst, OpenFst, and simple-sentencepiece (Apache License 2.0), nlohmann/json (MIT), fastcluster (BSD-2-Clause), kissfft (BSD-3-Clause), and utf8proc (MIT); their texts follow.",
@@ -253,7 +259,7 @@ mod tests {
     fn section_ids_are_unique() {
         let ids: BTreeSet<_> = SECTIONS.iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), SECTIONS.len());
-        assert_eq!(SECTIONS.len(), 16);
+        assert_eq!(SECTIONS.len(), 17);
     }
 
     #[test]

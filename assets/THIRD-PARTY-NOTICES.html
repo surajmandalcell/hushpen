@@ -89,6 +89,31 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.</pre>
 </section>
+<section class="manual" id="jna">
+<h3>Java Native Access and libffi</h3>
+<p>Android native bridge, Java Native Access 5.18.1 (https://github.com/java-native-access/jna), used under the Apache License 2.0 printed below. Its native library statically includes libffi under the following MIT license.</p>
+<pre>libffi - Copyright (c) 1996-2022  Anthony Green, Red Hat, Inc and others.
+See source files for details.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+``Software''), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre>
+</section>
 <section class="manual" id="sherpa-onnx">
 <h3>sherpa-onnx</h3>
 <p>Speech toolkit the hushpen-tts voice worker loads as a shared library (the k2-fsa project, https://github.com/k2-fsa/sherpa-onnx). Apache License 2.0. The library statically contains kaldi-native-fbank, kaldifst, OpenFst, and simple-sentencepiece (Apache License 2.0), nlohmann/json (MIT), fastcluster (BSD-2-Clause), kissfft (BSD-3-Clause), and utf8proc (MIT); their texts follow.</p>
@@ -8158,11 +8183,11 @@ SOFTWARE.</pre>
 </section>
 <h2>Rust crates</h2>
 <ul class="crates">
-<li><a href="#Apache-2.0">Apache License 2.0</a> (559)</li>
-<li><a href="#MIT">MIT License</a> (178)</li>
+<li><a href="#Apache-2.0">Apache License 2.0</a> (562)</li>
+<li><a href="#MIT">MIT License</a> (179)</li>
 <li><a href="#ISC">ISC License</a> (22)</li>
+<li><a href="#MPL-2.0">Mozilla Public License 2.0</a> (22)</li>
 <li><a href="#Unicode-3.0">Unicode License v3</a> (19)</li>
-<li><a href="#MPL-2.0">Mozilla Public License 2.0</a> (16)</li>
 <li><a href="#BSD-3-Clause">BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License</a> (12)</li>
 <li><a href="#CC0-1.0">Creative Commons Zero v1.0 Universal</a> (3)</li>
 <li><a href="#Zlib">zlib License</a> (3)</li>
@@ -14849,6 +14874,7 @@ limitations under the License.</pre>
 <li>blocking 1.7.0 (<a href="https://github.com/smol-rs/blocking">https://github.com/smol-rs/blocking</a>)</li>
 <li>bstr 1.13.1 (<a href="https://github.com/BurntSushi/bstr">https://github.com/BurntSushi/bstr</a>)</li>
 <li>bzip2 0.6.1 (<a href="https://github.com/trifectatechfoundation/bzip2-rs">https://github.com/trifectatechfoundation/bzip2-rs</a>)</li>
+<li>camino 1.2.6 (<a href="https://github.com/camino-rs/camino">https://github.com/camino-rs/camino</a>)</li>
 <li>cc 1.6.0 (<a href="https://github.com/rust-lang/cc-rs">https://github.com/rust-lang/cc-rs</a>)</li>
 <li>cexpr 0.6.0 (<a href="https://github.com/jethrogb/rust-cexpr">https://github.com/jethrogb/rust-cexpr</a>)</li>
 <li>cfg-if 1.0.5 (<a href="https://github.com/rust-lang/cfg-if">https://github.com/rust-lang/cfg-if</a>)</li>
@@ -17104,6 +17130,7 @@ limitations under the License.
 <h3>Apache License 2.0</h3>
 <ul>
 <li>adler2 2.0.1 (<a href="https://github.com/oyvindln/adler2">https://github.com/oyvindln/adler2</a>)</li>
+<li>cargo-platform 0.3.3 (<a href="https://github.com/rust-lang/cargo">https://github.com/rust-lang/cargo</a>)</li>
 <li>proc-macro-crate 3.5.0 (<a href="https://github.com/bkchr/proc-macro-crate">https://github.com/bkchr/proc-macro-crate</a>)</li>
 </ul>
 <pre>                              Apache License
@@ -17936,6 +17963,7 @@ limitations under the License.</pre>
 <section class="license" id="Apache-2.0">
 <h3>Apache License 2.0</h3>
 <ul>
+<li>fs-err 3.3.2 (<a href="https://github.com/andrewhickman/fs-err">https://github.com/andrewhickman/fs-err</a>)</li>
 <li>yazi 0.2.1 (<a href="https://github.com/dfrg/yazi">https://github.com/dfrg/yazi</a>)</li>
 <li>zeno 0.3.3 (<a href="https://github.com/dfrg/zeno">https://github.com/dfrg/zeno</a>)</li>
 </ul>
@@ -24224,6 +24252,7 @@ OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <section class="license" id="MIT">
 <h3>MIT License</h3>
 <ul>
+<li>cargo_metadata 0.23.1 (<a href="https://github.com/oli-obk/cargo_metadata">https://github.com/oli-obk/cargo_metadata</a>)</li>
 <li>endi 1.1.1 (<a href="https://github.com/zeenix/endi">https://github.com/zeenix/endi</a>)</li>
 <li>zbus-lockstep-macros 0.5.2 (<a href="https://github.com/luukvanderduim/zbus-lockstep">https://github.com/luukvanderduim/zbus-lockstep</a>)</li>
 <li>zbus-lockstep 0.5.2 (<a href="https://github.com/luukvanderduim/zbus-lockstep">https://github.com/luukvanderduim/zbus-lockstep</a>)</li>
@@ -25790,6 +25819,12 @@ Exhibit B - &quot;Incompatible With Secondary Licenses&quot; Notice
 <ul>
 <li>dwrote 0.11.5 (<a href="https://github.com/servo/dwrote-rs">https://github.com/servo/dwrote-rs</a>)</li>
 <li>option-ext 0.2.0 (<a href="https://github.com/soc/option-ext.git">https://github.com/soc/option-ext.git</a>)</li>
+<li>uniffi 0.32.2 (<a href="https://github.com/mozilla/uniffi-rs">https://github.com/mozilla/uniffi-rs</a>)</li>
+<li>uniffi_core 0.32.2 (<a href="https://github.com/mozilla/uniffi-rs">https://github.com/mozilla/uniffi-rs</a>)</li>
+<li>uniffi_internal_macros 0.32.2 (<a href="https://github.com/mozilla/uniffi-rs">https://github.com/mozilla/uniffi-rs</a>)</li>
+<li>uniffi_macros 0.32.2 (<a href="https://github.com/mozilla/uniffi-rs">https://github.com/mozilla/uniffi-rs</a>)</li>
+<li>uniffi_meta 0.32.2 (<a href="https://github.com/mozilla/uniffi-rs">https://github.com/mozilla/uniffi-rs</a>)</li>
+<li>uniffi_pipeline 0.32.2 (<a href="https://github.com/mozilla/uniffi-rs">https://github.com/mozilla/uniffi-rs</a>)</li>
 </ul>
 <pre>Mozilla Public License Version 2.0
 &#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;
