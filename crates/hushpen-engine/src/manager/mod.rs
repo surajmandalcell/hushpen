@@ -9,13 +9,13 @@ mod process;
 
 use crate::backoff::Backoff;
 use crate::client::{
-    ChildSpec, Cmd, EngineState, Failure, JobOutcome, LoadSpec, Loaded, ProgressSink, Shared,
-    Timing, Work,
+    Cmd, EngineState, Failure, JobOutcome, LoadSpec, Loaded, ProgressSink, Shared, Timing, Work,
 };
 use crate::engine_log::EngineLog;
 use hushpen_core::protocol::Event;
 use std::collections::{HashMap, VecDeque};
-use std::process::{Child, ChildStdin};
+use std::io::Write;
+use std::process::Child;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -33,7 +33,7 @@ pub(crate) enum ChildEvent {
 }
 
 pub(crate) struct Setup {
-    pub spec: ChildSpec,
+    pub spec: crate::Link,
     pub timing: Timing,
     pub log: Arc<EngineLog>,
     pub shared: Arc<Shared>,
@@ -58,8 +58,8 @@ enum Restart {
 }
 
 struct Running {
-    child: Child,
-    stdin: ChildStdin,
+    child: Option<Child>,
+    stdin: Box<dyn Write + Send>,
     spawned: Instant,
     ready: bool,
     last_pong: Instant,
@@ -68,6 +68,7 @@ struct Running {
 
 struct LoadEntry {
     spec: LoadSpec,
+    discarded: bool,
     /// `None` for the reload after a restart, which nobody waits for.
     reply: Option<Sender<Result<Loaded, Failure>>>,
 }
@@ -90,7 +91,7 @@ struct Inflight {
 }
 
 struct Manager {
-    spec: ChildSpec,
+    spec: crate::Link,
     timing: Timing,
     log: Arc<EngineLog>,
     shared: Arc<Shared>,
@@ -182,7 +183,10 @@ impl Manager {
                 Some(_) => EngineState::Ready,
             }
         };
-        let pid = self.running.as_ref().map(|running| running.child.id());
+        let pid = self
+            .running
+            .as_ref()
+            .and_then(|running| running.child.as_ref().map(Child::id));
         self.shared.update(|status| {
             status.pid = pid;
             status.state = state;

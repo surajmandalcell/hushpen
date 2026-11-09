@@ -41,6 +41,10 @@ impl Manager {
                 let Some(entry) = self.sent_loads.pop_front() else {
                     return;
                 };
+                if entry.discarded {
+                    self.publish();
+                    return;
+                }
                 self.log.write(
                     Level::Info,
                     "LOADED",
@@ -123,7 +127,7 @@ impl Manager {
         running.ready = true;
         running.last_pong = now;
         running.next_ping = now + self.timing.ping_interval;
-        let pid = running.child.id();
+        let pid = running.child.as_ref().map_or(0, std::process::Child::id);
         self.log.write(
             Level::Info,
             "READY",
@@ -133,7 +137,11 @@ impl Manager {
         if self.unsent_loads.is_empty()
             && let Some(spec) = self.current.clone()
         {
-            self.unsent_loads.push_back(LoadEntry { spec, reply: None });
+            self.unsent_loads.push_back(LoadEntry {
+                spec,
+                discarded: false,
+                reply: None,
+            });
         }
         while let Some(entry) = self.unsent_loads.pop_front() {
             self.send_load(entry);

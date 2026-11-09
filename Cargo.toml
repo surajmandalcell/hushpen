@@ -7,6 +7,7 @@ members = [
     "crates/hushpen-engine",
     "crates/hushpen-llm",
     "crates/hushpen-platform",
+    "crates/hushpen-remote",
     "crates/hushpen-speech",
     "crates/hushpen-store",
     "crates/hushpen-testhook",
@@ -30,6 +31,7 @@ embed-resource = "=3.0.11"
 hushpen-audio = { path = "crates/hushpen-audio" }
 hushpen-core = { path = "crates/hushpen-core" }
 hushpen-engine = { path = "crates/hushpen-engine" }
+hushpen-remote = { path = "crates/hushpen-remote" }
 hushpen-platform = { path = "crates/hushpen-platform" }
 hushpen-speech = { path = "crates/hushpen-speech" }
 hushpen-store = { path = "crates/hushpen-store" }
@@ -98,6 +100,9 @@ zbus = { version = "=5.19.0", default-features = false, features = ["async-io", 
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
 
 # Storage, network, and signing.
+snow = "=0.10.0"
+mdns-sd = "=0.21.1"
+base64 = "=0.22.1"
 minisign = "=0.10.0"
 minisign-verify = "=0.3.0"
 rusqlite = { version = "=0.40.2", features = ["bundled"] }

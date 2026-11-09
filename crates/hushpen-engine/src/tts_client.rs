@@ -14,8 +14,8 @@ use hushpen_core::tts_protocol::{
     TtsRequest, read_event,
 };
 use serde_json::Value;
+use std::io::Read;
 use std::path::PathBuf;
-use std::process::ChildStdout;
 
 /// The voice model to keep ready: the folder that holds its files and the code that runs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,8 +139,8 @@ impl Protocol for TtsWorker {
         "speak"
     }
 
-    fn read(stdout: &mut ChildStdout) -> Result<Option<TtsEvent>, String> {
-        read_event(stdout).map_err(|problem| match problem {
+    fn read(mut stdout: &mut dyn Read) -> Result<Option<TtsEvent>, String> {
+        read_event(&mut stdout).map_err(|problem| match problem {
             ReadError::Frame(frame) => frame.to_string(),
             ReadError::Decode(decode) => format!("unreadable message: {decode}"),
         })

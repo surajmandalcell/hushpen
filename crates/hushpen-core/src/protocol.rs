@@ -198,6 +198,7 @@ pub enum Request {
         job: u64,
     },
     Ping,
+    Unload,
     Shutdown,
 }
 
@@ -236,6 +237,7 @@ impl Request {
             }),
             Self::Cancel { job } => json!({"type": "cancel", "job": job}),
             Self::Ping => json!({"type": "ping"}),
+            Self::Unload => json!({"type": "unload"}),
             Self::Shutdown => json!({"type": "shutdown"}),
         }
     }
@@ -270,6 +272,7 @@ impl Request {
                 job: fields.u64("job")?,
             }),
             "ping" => Ok(Self::Ping),
+            "unload" => Ok(Self::Unload),
             "shutdown" => Ok(Self::Shutdown),
             other => Err(DecodeError::UnknownType(other.to_owned())),
         }
@@ -695,6 +698,7 @@ mod tests {
             },
             Request::Cancel { job: 7 },
             Request::Ping,
+            Request::Unload,
             Request::Shutdown,
         ];
         for request in requests {

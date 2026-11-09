@@ -14,8 +14,8 @@ use hushpen_core::llm_protocol::{
 };
 use hushpen_core::protocol::read_frame;
 use serde_json::Value;
+use std::io::Read;
 use std::path::PathBuf;
-use std::process::ChildStdout;
 
 /// A model to keep ready. After a restart the supervisor loads the last good one again.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,8 +164,8 @@ impl Protocol for LlmWorker {
         }
     }
 
-    fn read(stdout: &mut ChildStdout) -> Result<Option<LlmEvent>, String> {
-        match read_frame(stdout) {
+    fn read(mut stdout: &mut dyn Read) -> Result<Option<LlmEvent>, String> {
+        match read_frame(&mut stdout) {
             Ok(Some(frame)) => LlmEvent::from_frame(&frame)
                 .map(Some)
                 .map_err(|problem| format!("unreadable message: {problem}")),

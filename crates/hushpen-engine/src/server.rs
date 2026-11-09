@@ -65,6 +65,7 @@ struct ModelSpec {
 }
 
 enum Work {
+    Unload,
     Load {
         model: ModelSpec,
         idle: Idle,
@@ -222,6 +223,9 @@ fn read_requests(
                 }
             }
             Request::Cancel { job } => cancel(job, jobs, output),
+            Request::Unload => {
+                let _ = work.send(Work::Unload);
+            }
             Request::Ping => send(output, &Event::Pong),
             Request::Shutdown => return 0,
         }
@@ -315,6 +319,11 @@ impl Worker {
             };
             held.idle_done = false;
             match item {
+                Work::Unload => {
+                    held.engine = None;
+                    held.model = None;
+                    *lock(&self.held_model) = None;
+                }
                 Work::Load { model, idle } => {
                     held.idle = idle;
                     self.load(&mut held, model);
@@ -1284,6 +1293,26 @@ mod tests {
         );
         assert_eq!(session.loads(), 2);
         assert_eq!(session.page_outs(), 0);
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn an_explicit_unload_frees_the_model_and_keeps_the_child_ready() {
+        let mut session = Session::start(0);
+        session.load("ggml-tiny.en.bin");
+        session.send(&Request::Unload);
+        assert!(eventually(
+            || session.counts.alive.load(Ordering::SeqCst) == 0
+        ));
+        session.transcribe(2, Some("en"));
+        assert!(
+            matches!(session.next(), Event::Error { job: Some(2), code, .. } if code == error::ENGINE_NO_MODEL)
+        );
+        assert_eq!(session.loads(), 1);
+        session.load("ggml-tiny.en.bin");
+        session.transcribe(1, Some("en"));
+        session.until_result(1);
+        assert_eq!(session.loads(), 2);
         assert_eq!(session.finish(), 0);
     }
 

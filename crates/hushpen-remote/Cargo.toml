@@ -1,0 +1,19 @@
+[package]
+name = "hushpen-remote"
+description = "Paired encrypted connections and discovery for Hushpen workers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hushpen-core.workspace = true
+serde_json.workspace = true
+snow.workspace = true
+mdns-sd.workspace = true
+base64.workspace = true

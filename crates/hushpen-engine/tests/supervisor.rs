@@ -5,7 +5,7 @@ use hushpen_core::error;
 use hushpen_core::protocol::{Event, PROTOCOL_VERSION, write_json};
 use hushpen_engine::{
     ChildSpec, EngineClient, EngineLog, EngineState, ImportProgress, ImportSpec, JobOutcome,
-    Timing, TranscribeSpec,
+    LoadSpec, Timing, TranscribeSpec,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -67,6 +67,135 @@ fn restart_delays(log: &Path) -> Vec<u64> {
         .filter_map(|rest| rest.split_whitespace().next())
         .filter_map(|ms| ms.parse().ok())
         .collect()
+}
+
+#[test]
+fn unload_cancels_a_startup_load_before_ready_and_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let ready = dir.path().join("ready.bin");
+    let requests = dir.path().join("requests.bin");
+    let mut bytes = Vec::new();
+    write_json(
+        &mut bytes,
+        &Event::Ready {
+            version: "test".into(),
+            protocol: PROTOCOL_VERSION,
+            gpu: false,
+        }
+        .to_json(),
+    )
+    .unwrap();
+    std::fs::write(&ready, bytes).unwrap();
+    let client = EngineClient::start(
+        sh(&format!(
+            "sleep 0.1; cat '{}'; cat >>'{}'",
+            ready.display(),
+            requests.display()
+        )),
+        fast(),
+        EngineLog::discard(),
+    );
+    let load = client.load_model(LoadSpec {
+        path: dir.path().join("model.bin"),
+        gpu: false,
+        threads: 1,
+        idle: hushpen_core::idle::Idle::KEEP,
+    });
+    client.unload();
+    assert!(matches!(
+        load.wait_timeout(Duration::from_secs(2)),
+        Some(Err(_))
+    ));
+    assert!(
+        client.wait_for(Duration::from_secs(3), |status| status.restarts >= 1
+            && status.state == EngineState::Ready)
+    );
+    assert!(client.status().model.is_none());
+    client.shutdown();
+    let bytes = std::fs::read(&requests).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("\"type\":\"load_model\""));
+}
+
+#[test]
+fn unload_discards_a_late_loaded_reply_and_does_not_reload_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let frames = dir.path().join("ready.bin");
+    let loaded = dir.path().join("loaded.bin");
+    let requests = dir.path().join("requests.bin");
+    let release = dir.path().join("release");
+    let mut bytes = Vec::new();
+    write_json(
+        &mut bytes,
+        &Event::Ready {
+            version: "test".into(),
+            protocol: PROTOCOL_VERSION,
+            gpu: false,
+        }
+        .to_json(),
+    )
+    .unwrap();
+    std::fs::write(&frames, bytes).unwrap();
+    let mut bytes = Vec::new();
+    write_json(
+        &mut bytes,
+        &Event::Loaded {
+            model: "model".into(),
+            ms: 1,
+            gpu: false,
+        }
+        .to_json(),
+    )
+    .unwrap();
+    std::fs::write(&loaded, bytes).unwrap();
+    let client = EngineClient::start(
+        sh(&format!(
+            "cat '{}'; while [ ! -f '{}' ]; do sleep 0.01; done; cat '{}'; cat >>'{}'",
+            frames.display(),
+            release.display(),
+            loaded.display(),
+            requests.display()
+        )),
+        fast(),
+        EngineLog::discard(),
+    );
+    assert!(
+        client.wait_for(Duration::from_secs(2), |status| status.state
+            == EngineState::Ready)
+    );
+    let load = client.load_model(LoadSpec {
+        path: dir.path().join("model.bin"),
+        gpu: false,
+        threads: 1,
+        idle: hushpen_core::idle::Idle::KEEP,
+    });
+    assert!(
+        client.wait_for(Duration::from_secs(2), |status| status.state
+            == EngineState::Loading)
+    );
+    client.unload();
+    assert!(matches!(
+        load.wait_timeout(Duration::from_secs(2)),
+        Some(Err(_))
+    ));
+    std::fs::write(release, b"").unwrap();
+    assert!(
+        client.wait_for(Duration::from_secs(2), |status| status.state
+            == EngineState::Ready
+            && status.model.is_none())
+    );
+    assert!(
+        client.wait_for(Duration::from_secs(3), |status| status.restarts >= 1
+            && status.state == EngineState::Ready)
+    );
+    assert!(client.status().model.is_none());
+    client.shutdown();
+    let bytes = std::fs::read(&requests).unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&bytes)
+            .matches("\"type\":\"load_model\"")
+            .count(),
+        1
+    );
 }
 
 #[test]

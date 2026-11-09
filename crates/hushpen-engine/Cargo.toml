@@ -19,6 +19,7 @@ vulkan = ["whisper-rs/vulkan"]
 [dependencies]
 hushpen-audio.workspace = true
 hushpen-core.workspace = true
+hushpen-remote.workspace = true
 hushpen-store.workspace = true
 hound.workspace = true
 serde_json.workspace = true
