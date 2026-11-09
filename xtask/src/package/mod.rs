@@ -33,8 +33,8 @@ const TTS_BINARY: &str = "hushpen-tts";
 /// executable, so they always travel together.
 const BINARIES: [&str; 4] = [APP_BINARY, ASR_BINARY, LLM_BINARY, TTS_BINARY];
 const NOTICES: &str = "THIRD-PARTY-NOTICES.html";
-const VAD_MODEL: &str = "ggml-silero-v5.1.2.bin";
-const VAD_SHA256: &str = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
+const VAD_MODEL: &str = hushpen_core::catalog::VAD_FILE;
+const VAD_SHA256: &str = hushpen_core::catalog::VAD_SHA256;
 const USAGE: &str = "usage: cargo xtask package [--target macos-arm64|linux-x64|linux-arm64|windows-x64] \
 [--formats app,zip,dmg,appimage,deb,rpm,tar.gz,nsis] [--out <dir>] [--skip-build] [--test-feed]";
 

@@ -138,6 +138,7 @@ impl UpdateFeed {
             dest: dest.to_path_buf(),
         };
         Downloader::for_update(self.policy.clone(), fetcher)
+            .with_observer(super::record)
             .run(&spec, cancel, progress)
             .map_err(|failure| CheckError::new(failure.code, failure.detail))
     }

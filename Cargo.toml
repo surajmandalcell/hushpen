@@ -7,6 +7,7 @@ members = [
     "crates/hushpen-engine",
     "crates/hushpen-host",
     "crates/hushpen-llm",
+    "crates/hushpen-mobile",
     "crates/hushpen-platform",
     "crates/hushpen-remote",
     "crates/hushpen-speech",
@@ -33,6 +34,7 @@ hushpen-audio = { path = "crates/hushpen-audio" }
 hushpen-core = { path = "crates/hushpen-core" }
 hushpen-engine = { path = "crates/hushpen-engine" }
 hushpen-host = { path = "crates/hushpen-host" }
+hushpen-mobile = { path = "crates/hushpen-mobile" }
 hushpen-remote = { path = "crates/hushpen-remote" }
 hushpen-platform = { path = "crates/hushpen-platform" }
 hushpen-speech = { path = "crates/hushpen-speech" }
@@ -106,6 +108,7 @@ snow = "=0.10.0"
 mdns-sd = "=0.21.1"
 base64 = "=0.22.1"
 qrcode = { version = "=0.14.1", default-features = false }
+uniffi = "=0.32.2"
 minisign = "=0.10.0"
 minisign-verify = "=0.3.0"
 rusqlite = { version = "=0.41.0", features = ["bundled"] }

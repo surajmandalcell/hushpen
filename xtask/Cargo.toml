@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+hushpen-core.workspace = true
 minisign.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
