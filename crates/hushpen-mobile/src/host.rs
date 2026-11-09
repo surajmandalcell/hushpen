@@ -74,6 +74,10 @@ pub struct Host {
 
 #[uniffi::export]
 impl Host {
+    pub fn validate_unload_rule(&self, rule: HostUnloadRule) -> Result<(), MobileError> {
+        rule.core(self.os).map(|_| ())
+    }
+
     pub fn allowed_unload_rules(&self) -> Vec<HostUnloadRule> {
         use hushpen_core::remote::UnloadKind;
         hushpen_core::remote::allowed_rules(self.os)
@@ -136,7 +140,9 @@ impl Host {
     pub fn start(&self, listen: String, rule: HostUnloadRule) -> Result<u16, MobileError> {
         let os = self.os;
         let rule = rule.core(os)?;
-        if os == Os::Ios && !self.foreground.load(Ordering::Acquire) {
+        if (os == Os::Ios || rule == UnloadRule::WhileServerModeOpen)
+            && !self.foreground.load(Ordering::Acquire)
+        {
             return Err(MobileError::failed("keep Server mode open to serve models"));
         }
         let mut running = lock(&self.running);
@@ -664,5 +670,24 @@ mod tests {
                 .core(Os::Android)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn android_open_only_rule_refuses_a_start_after_the_app_closes() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = host(directory.path(), Os::Android);
+        assert!(
+            host.validate_unload_rule(HostUnloadRule::AfterIdle { minutes: 0 })
+                .is_err()
+        );
+        host.set_foreground(false);
+        assert!(
+            host.start("127.0.0.1:0".into(), HostUnloadRule::WhileServerModeOpen)
+                .is_err()
+        );
+        host.start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
+            .unwrap();
+        host.stop();
+        host.engine.shutdown();
     }
 }
