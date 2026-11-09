@@ -40,6 +40,7 @@ icon_assets!(
         Minus,
         Mic,
         Keyboard,
+        Shield,
         Check,
         CircleAlert,
         Square,

@@ -1,41 +1,58 @@
-//! The permissions step: one row for each thing Hushpen needs, with its state and buttons.
-
-use crate::onboarding::Onboarding;
+//! Shared permission rows for onboarding and Settings.
 
 use crate::hook;
+use crate::onboarding::Onboarding;
 use crate::theme::{Palette, size, space};
 use crate::ui::{self, Kind};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba, Role,
-    StatefulInteractiveElement, Styled, Window, div, px, svg,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Role,
+    StatefulInteractiveElement, Styled, div, px, svg,
 };
-use hushpen_core::onboarding::{Row, RowState};
-use hushpen_core::permission::Permission;
+use hushpen_core::permission::{Action, Check, CheckId, Status};
 
 pub(super) fn view(
     palette: Palette,
     onboarding: &Entity<Onboarding>,
     cx: &mut App,
 ) -> impl IntoElement + use<> {
-    let (rows, focus, relaunch_focus) = {
-        let me = onboarding.read(cx);
-        (
-            me.rows(cx),
-            me.permission_focus.clone(),
-            me.relaunch_focus.clone(),
-        )
-    };
-    let rows = rows
+    ui::group(
+        hook::id("onboarding", "permissions"),
+        palette,
+        rows(palette, onboarding, "onboarding", "", cx),
+    )
+}
+
+pub(crate) fn rows(
+    palette: Palette,
+    onboarding: &Entity<Onboarding>,
+    scope: &'static str,
+    query: &str,
+    cx: &mut App,
+) -> Vec<AnyElement> {
+    let me = onboarding.read(cx);
+    let focus = me.permission_focus.clone();
+    let checks = me.rows(cx);
+    let query = query.to_lowercase();
+    checks
         .into_iter()
-        .map(|row| {
-            let key = row.key.key();
-            let hint = row
-                .opens
-                .filter(|_| row.state != RowState::Ready)
+        .enumerate()
+        .filter(|(_, check)| {
+            query.split_whitespace().all(|word| {
+                "permissions capabilities access".contains(word)
+                    || check.title.to_lowercase().contains(word)
+                    || check.detail.to_lowercase().contains(word)
+            })
+        })
+        .map(|(index, check)| {
+            let key = check.id.key();
+            let hint = check
+                .id
+                .permission()
+                .filter(|_| check.status != Status::Ready)
                 .and_then(|permission| onboarding.read(cx).hint(permission));
-            let line = permission_row(palette, onboarding, row, &focus, &relaunch_focus);
+            let line = permission_row(palette, onboarding, scope, check, &focus[index * 2..]);
             match hint {
                 Some(text) => div()
                     .w_full()
@@ -45,158 +62,122 @@ pub(super) fn view(
                     .child(line)
                     .child(
                         ui::secondary(palette)
-                            .id(hook::id("onboarding", &format!("permissions.hint.{key}")))
+                            .id(hook::id(scope, &format!("permissions.hint.{key}")))
                             .test_support()
                             .px(px(size::ROW_PADDING))
                             .pb(px(space::SM))
                             .child(text),
                     )
                     .into_any_element(),
-                None => line.into_any_element(),
+                None => line,
             }
         })
-        .collect();
-    ui::group(hook::id("onboarding", "permissions"), palette, rows)
-}
-
-/// What the status mark of a row that needs the user says as a tooltip and to a screen reader.
-const ATTENTION: &str = "Needs attention";
-
-/// The status of a row: a word, or for a row that needs attention a warning icon with a
-/// tooltip and no word. The hook tree and screen readers get the same text.
-fn status(
-    palette: Palette,
-    id: gpui_kit::SharedString,
-    text: &'static str,
-    tone: Rgba,
-    attention: bool,
-) -> impl IntoElement + use<> {
-    if attention {
-        let mark = div()
-            .id(id)
-            .test_support()
-            .role(Role::Image)
-            .aria_label(text)
-            .flex_none()
-            .child(
-                svg()
-                    .path(IconName::CircleAlert.path())
-                    .size(px(size::NAV_ICON))
-                    .flex_none()
-                    .text_color(tone),
-            );
-        ui::tooltip(mark, text).into_any_element()
-    } else {
-        ui::value(palette)
-            .id(id)
-            .test_support()
-            .aria_label(text)
-            .text_color(tone)
-            .child(text)
-            .into_any_element()
-    }
+        .collect()
 }
 
 fn permission_row(
     palette: Palette,
     onboarding: &Entity<Onboarding>,
-    row: Row,
+    scope: &'static str,
+    row: Check,
     focus: &[FocusHandle],
-    relaunch_focus: &FocusHandle,
-) -> impl IntoElement + use<> {
-    let key = row.key.key();
-    let (state_text, tone) = match row.state {
-        RowState::Ready => ("Ready", palette.success),
-        RowState::Missing => (ATTENTION, palette.warning),
-        RowState::Unavailable => ("Not available", palette.label_secondary),
+) -> AnyElement {
+    let key = row.id.key();
+    let state_text = row.status.label();
+    let tone = match row.status {
+        Status::Ready => palette.success,
+        Status::NeedsAttention => palette.warning,
+        Status::Info | Status::NotAvailable => palette.label_secondary,
     };
-    let icon = match row.key {
-        hushpen_core::onboarding::RowKey::Microphone => IconName::Mic,
-        hushpen_core::onboarding::RowKey::X11Session => IconName::Monitor,
-        hushpen_core::onboarding::RowKey::Paste => IconName::ClipboardPaste,
+    let icon = match row.id {
+        CheckId::Microphone => IconName::Mic,
+        CheckId::X11Session | CheckId::TrayWatcher => IconName::Monitor,
+        CheckId::AdminApps => IconName::Shield,
         _ => IconName::Keyboard,
     };
-    let ready = row.state == RowState::Ready;
-    let buttons = row.opens.map(|permission| {
-        let allow = {
-            let onboarding = onboarding.clone();
-            move |_: &mut Window, cx: &mut App| {
-                onboarding.update(cx, |me, cx| me.allow(permission, cx))
-            }
-        };
-        let open = {
-            let onboarding = onboarding.clone();
-            move |_: &mut Window, cx: &mut App| {
-                onboarding.update(cx, |me, cx| me.open_settings(permission, cx))
-            }
-        };
-        (permission, allow, open)
-    });
-    let relaunch = row.relaunch.then(|| {
-        let onboarding = onboarding.clone();
-        move |_: &mut Window, cx: &mut App| onboarding.update(cx, |me, cx| me.relaunch(cx))
-    });
+    let status = if row.status == Status::NeedsAttention {
+        ui::tooltip(
+            div()
+                .id(hook::id(scope, &format!("permissions.state.{key}")))
+                .test_support()
+                .role(Role::Image)
+                .aria_label(state_text)
+                .flex_none()
+                .child(
+                    svg()
+                        .path(IconName::CircleAlert.path())
+                        .size(px(size::NAV_ICON))
+                        .flex_none()
+                        .text_color(tone),
+                ),
+            state_text,
+        )
+        .into_any_element()
+    } else {
+        ui::value(palette)
+            .id(hook::id(scope, &format!("permissions.state.{key}")))
+            .test_support()
+            .aria_label(state_text)
+            .text_color(tone)
+            .child(state_text)
+            .into_any_element()
+    };
     let detail = ui::secondary(palette)
-        .id(hook::id("onboarding", &format!("permissions.detail.{key}")))
+        .id(hook::id(scope, &format!("permissions.detail.{key}")))
         .test_support()
         .child(row.detail);
+    let buttons: Vec<_> = row
+        .actions
+        .into_iter()
+        .enumerate()
+        .filter_map(|(slot, action)| action.map(|action| (slot, action)))
+        .map(|(slot, action)| {
+            let onboarding = onboarding.clone();
+            let id = row.id;
+            let relaunch = row.relaunch && action == Action::Retry;
+            let name = if relaunch { "relaunch" } else { action.key() };
+            let label = if relaunch {
+                "Quit and Reopen"
+            } else {
+                action.label()
+            };
+            ui::button(
+                palette,
+                if relaunch {
+                    hook::id(scope, "permissions.relaunch")
+                } else {
+                    hook::id(scope, &format!("permissions.{name}.{key}"))
+                },
+                label,
+                if action == Action::Allow || relaunch {
+                    Kind::Default
+                } else {
+                    Kind::Plain
+                },
+                Some(&focus[slot]),
+                true,
+                move |_, cx| onboarding.update(cx, |me, cx| me.check_action(id, action, cx)),
+            )
+            .into_any_element()
+        })
+        .collect();
     ui::icon_row(
         palette,
         icon,
         ui::title(palette).child(row.title),
         Some(detail.into_any_element()),
     )
-    .id(hook::id("onboarding", &format!("permissions.row.{key}")))
+    .id(hook::id(scope, &format!("permissions.row.{key}")))
     .test_support()
     .aria_label(format!("{}: {state_text}", row.title))
-    .child(status(
-        palette,
-        hook::id("onboarding", &format!("permissions.state.{key}")),
-        state_text,
-        tone,
-        row.state == RowState::Missing,
-    ))
-    .children(buttons.map(|(permission, allow, open)| {
-        let slot = Permission::ALL
-            .iter()
-            .position(|candidate| *candidate == permission)
-            .unwrap_or(0);
+    .child(status)
+    .children((!buttons.is_empty()).then(|| {
         div()
             .flex_none()
             .flex()
             .items_center()
             .gap(px(space::SM))
-            // Allow asks the system, so it has nothing left to do once the row is Ready.
-            .children((!ready).then(|| {
-                ui::button(
-                    palette,
-                    hook::id("onboarding", &format!("permissions.allow.{key}")),
-                    "Allow",
-                    Kind::Default,
-                    Some(&focus[slot * 2]),
-                    true,
-                    allow,
-                )
-            }))
-            .child(ui::button(
-                palette,
-                hook::id("onboarding", &format!("permissions.open.{key}")),
-                "Open Settings",
-                Kind::Plain,
-                Some(&focus[slot * 2 + 1]),
-                true,
-                open,
-            ))
+            .children(buttons)
     }))
-    .children(relaunch.map(|press| {
-        ui::button(
-            palette,
-            hook::id("onboarding", "permissions.relaunch"),
-            "Quit and Reopen",
-            Kind::Default,
-            Some(relaunch_focus),
-            true,
-            press,
-        )
-    }))
+    .into_any_element()
 }

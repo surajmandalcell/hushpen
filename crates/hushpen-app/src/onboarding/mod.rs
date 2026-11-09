@@ -32,6 +32,7 @@ use hushpen_core::permission::Permission;
 use hushpen_core::shortcut::{Platform, Slot};
 use serde_json::{Value, json};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 const COMPLETED: &str = "onboarding.completed";
@@ -84,6 +85,8 @@ pub struct Onboarding {
     guide: Rc<dyn Guide>,
     platform: Platform,
     session: Session,
+    elevated: bool,
+    tray_watcher: bool,
     mode: Mode,
     step: Step,
     /// The microphone list is not read yet, and a finished onboarding checks it once.
@@ -104,9 +107,8 @@ pub struct Onboarding {
     accessibility_wait: Option<AccessibilityWait>,
     allow_clicks: u64,
     messages: UnboundedSender<Message>,
-    /// Allow and Open Settings of each permission, in `Permission::ALL` order, two per row.
+    /// Two actions for each of the seven check ids, in displayed row order.
     pub(crate) permission_focus: Vec<FocusHandle>,
-    pub(crate) relaunch_focus: FocusHandle,
     pub(crate) continue_focus: FocusHandle,
     pub(crate) mic_focus: FocusHandle,
     pub(crate) practice_focus: FocusHandle,
@@ -135,16 +137,22 @@ impl Onboarding {
             }
         })
         .detach();
+        let fact_reader = guide.fact_reader();
         cx.spawn(async move |this, cx| {
             loop {
-                cx.background_executor().timer(REFRESH).await;
+                let read = Arc::clone(&fact_reader);
+                let (elevated, tray_watcher) =
+                    cx.background_executor().spawn(async move { read() }).await;
                 let ticked = this.update(cx, |me, cx| {
+                    me.elevated = elevated;
+                    me.tray_watcher = tray_watcher;
                     me.refresh(cx);
                     me.look_for_microphone(cx);
                 });
                 if ticked.is_err() {
                     break;
                 }
+                cx.background_executor().timer(REFRESH).await;
             }
         })
         .detach();
@@ -183,6 +191,8 @@ impl Onboarding {
             guide,
             platform,
             session,
+            elevated: false,
+            tray_watcher: true,
             mode,
             step,
             waiting_for_mic: completed && mode == Mode::Hidden,
@@ -201,10 +211,7 @@ impl Onboarding {
             accessibility_wait: None,
             allow_clicks: 0,
             messages,
-            permission_focus: (0..Permission::ALL.len() * 2)
-                .map(|_| cx.focus_handle().tab_stop(true))
-                .collect(),
-            relaunch_focus: cx.focus_handle().tab_stop(true),
+            permission_focus: (0..14).map(|_| cx.focus_handle().tab_stop(true)).collect(),
             continue_focus: cx.focus_handle().tab_stop(true),
             mic_focus: cx.focus_handle().tab_stop(true),
             practice_focus: cx.focus_handle().tab_stop(true),
@@ -264,11 +271,15 @@ impl Onboarding {
 
     pub fn keys_ready(&self, cx: &App) -> bool {
         self.controller.read(cx).keys_availability() == rules::Availability::Ready
+            && self
+                .shortcuts
+                .as_ref()
+                .is_none_or(|shortcuts| shortcuts.read(cx).keys_available())
     }
 
     pub fn can_continue(&self, cx: &App) -> bool {
         match self.step {
-            Step::Permissions => rules::rows_ready(&self.rows(cx)),
+            Step::Permissions => hushpen_core::permission::checks_ready(&self.rows(cx)),
             Step::MicTest => self.mic_test.passed,
             Step::Model => self.model_ready(cx),
             Step::Practice => self.practice.is_some(),
@@ -411,13 +422,13 @@ impl Onboarding {
             "gate": format!("{:?}", self.gate()).to_lowercase(),
             "completed": self.storage.settings.get(COMPLETED).and_then(|v| v.as_bool()).unwrap_or(false),
             "permissions": {
-                "ready": rules::rows_ready(&rows),
+                "ready": hushpen_core::permission::checks_ready(&rows),
                 "rows": rows.iter().map(|row| json!({
-                    "key": row.key.key(),
-                    "state": row.state.key(),
+                    "key": row.id.key(),
+                    "state": row.status.key(),
                     "detail": row.detail,
                     "relaunch": row.relaunch,
-                    "hint": row.opens.and_then(|permission| self.hint(permission)),
+                    "hint": row.id.permission().and_then(|permission| self.hint(permission)),
                 })).collect::<Vec<_>>(),
             },
             "mic": {

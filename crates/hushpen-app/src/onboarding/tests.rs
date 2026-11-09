@@ -13,8 +13,9 @@ use gpui_kit::{AppContext as _, TestAppContext};
 use hushpen_audio::{CaptureEvent, InputDevice};
 use hushpen_core::dictation::AppEvent;
 use hushpen_core::insert::Chord;
-use hushpen_core::onboarding::RowState;
+use hushpen_core::permission::Status as RowState;
 use hushpen_core::permission::{Access, Preflight, SETTLE_EVERY, SETTLE_FOR};
+use hushpen_core::permission::{Action, CheckId};
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
@@ -286,9 +287,56 @@ fn row(cx: &mut TestAppContext, fixture: &Fixture, key: &str) -> RowState {
     fixture
         .read(cx, |me, cx| me.rows(cx))
         .into_iter()
-        .find(|row| row.key.key() == key)
+        .find(|row| row.id.key() == key)
         .unwrap_or_else(|| panic!("no {key} row"))
-        .state
+        .status
+}
+
+#[gpui_kit::test]
+fn windows_checks_open_the_microphone_pane_and_retry_without_blocking(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let fixture = start(cx, rig, Platform::Windows, FakeSystem::all(Access::Granted));
+    list_microphones(cx, &fixture, vec![device()]);
+    fixture.rig.controller.update(cx, |controller, _| {
+        controller.attach_keys(
+            crate::controller::KeysStatus::Unavailable(hushpen_platform::keys::Unavailable::new(
+                hushpen_platform::keys::Reason::Unsupported,
+                "The hook is not running.",
+            )),
+            Rc::new(|_| {}),
+        );
+        controller.attach_keys_restart(Rc::new(|_| Ok(Rc::new(|_| {}))));
+    });
+    assert_eq!(row(cx, &fixture, "keys"), RowState::NeedsAttention);
+    assert!(fixture.read(cx, |me, cx| me.can_continue(cx)));
+    fixture.act(cx, |me, cx| {
+        me.check_action(CheckId::Microphone, Action::OpenSettings, cx)
+    });
+    assert_eq!(
+        *fixture.guide.opened.borrow(),
+        ["ms-settings:privacy-microphone"]
+    );
+    assert!(fixture.guide.requested.borrow().is_empty());
+    fixture.act(cx, |me, cx| {
+        me.check_action(CheckId::GlobalKeys, Action::Retry, cx)
+    });
+    assert_eq!(row(cx, &fixture, "keys"), RowState::Ready);
+    fixture.act(cx, |me, cx| {
+        me.check_action(CheckId::AdminApps, Action::LearnMore, cx)
+    });
+    assert!(fixture.read(cx, |me, _| {
+        me.notice()
+            .is_some_and(|notice| notice.contains("copies the text"))
+    }));
+}
+
+#[gpui_kit::test]
+fn settings_reads_the_same_live_checks_after_onboarding_ends(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Granted));
+    fixture.act(cx, |me, _| me.mode = Mode::Hidden);
+    fixture.system.set(Permission::Microphone, Access::Denied);
+    fixture.act(cx, |me, cx| me.refresh(cx));
+    assert_eq!(row(cx, &fixture, "microphone"), RowState::NeedsAttention);
 }
 
 #[gpui_kit::test]
@@ -759,7 +807,7 @@ fn lost_grant(cx: &mut TestAppContext, lost: Permission) -> Fixture {
 #[gpui_kit::test]
 fn a_granted_then_lost_permission_is_repaired_by_its_first_allow_only(cx: &mut TestAppContext) {
     let fixture = lost_grant(cx, Permission::Accessibility);
-    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::NeedsAttention);
 
     fixture.act(cx, |me, cx| me.allow(Permission::Accessibility, cx));
     cx.executor().advance_clock(ACCESSIBILITY_PROMPT_WAIT);
@@ -826,7 +874,7 @@ fn each_mac_row_offers_allow_then_open_settings_on_one_line(cx: &mut TestAppCont
 
     let rows = fixture.read(cx, |me, cx| me.rows(cx));
 
-    let opens: Vec<_> = rows.iter().map(|row| row.opens).collect();
+    let opens: Vec<_> = rows.iter().map(|row| row.id.permission()).collect();
     assert_eq!(opens, Permission::ALL.map(Some));
     assert!(rows.iter().all(|row| !row.relaunch));
 }
@@ -851,7 +899,7 @@ fn the_page_reads_again_every_second_and_shows_a_grant_within_one_tick(cx: &mut 
             Permission::Accessibility => "accessibility",
             Permission::InputMonitoring => "inputMonitoring",
         };
-        assert_eq!(row(cx, &fixture, key), RowState::Missing);
+        assert_eq!(row(cx, &fixture, key), RowState::NeedsAttention);
 
         fixture.system.set(flip, Access::Granted);
         cx.executor().advance_clock(Duration::from_millis(1_100));
@@ -926,7 +974,7 @@ fn a_start_whose_grant_stays_denied_for_two_seconds_still_opens_the_repair_page(
 
     assert_eq!(fixture.mode(cx), Mode::Repair);
     assert_eq!(fixture.step(cx), Step::Permissions);
-    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::NeedsAttention);
 }
 
 #[gpui_kit::test]
@@ -983,7 +1031,7 @@ fn the_repair_page_reads_again_every_second_too(cx: &mut TestAppContext) {
     list_microphones(cx, &fixture, vec![device()]);
     settle_start(cx);
     assert_eq!(fixture.mode(cx), Mode::Repair);
-    assert_eq!(row(cx, &fixture, "accessibility"), RowState::Missing);
+    assert_eq!(row(cx, &fixture, "accessibility"), RowState::NeedsAttention);
 
     fixture
         .system
@@ -1000,7 +1048,10 @@ fn coming_back_to_the_app_reads_the_permissions_at_once(cx: &mut TestAppContext)
     fixture
         .system
         .set(Permission::InputMonitoring, Access::Granted);
-    assert_eq!(row(cx, &fixture, "inputMonitoring"), RowState::Missing);
+    assert_eq!(
+        row(cx, &fixture, "inputMonitoring"),
+        RowState::NeedsAttention
+    );
 
     fixture.act(cx, |me, cx| me.app_activated(cx));
 
@@ -1008,7 +1059,7 @@ fn coming_back_to_the_app_reads_the_permissions_at_once(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-fn the_reads_stop_when_the_permissions_page_is_not_shown(cx: &mut TestAppContext) {
+fn the_reads_continue_for_settings_when_the_permissions_page_is_not_shown(cx: &mut TestAppContext) {
     let fixture = mac(cx, &["base"], "base");
     cx.executor().advance_clock(Duration::from_millis(1_100));
     cx.run_until_parked();
@@ -1021,10 +1072,9 @@ fn the_reads_stop_when_the_permissions_page_is_not_shown(cx: &mut TestAppContext
     fixture.act(cx, |me, cx| me.app_activated(cx));
 
     assert!(!fixture.read(cx, |me, _| me.permissions_page_shown()));
-    assert_eq!(
-        fixture.system.reads(),
-        reads,
-        "no tick and no activation reads on another step"
+    assert!(
+        fixture.system.reads() > reads,
+        "Settings keeps live answers on another step"
     );
 }
 
@@ -1056,8 +1106,8 @@ fn quit_and_reopen_shows_for_granted_keys_that_cannot_start_and_relaunches(
 
     let rows = fixture.read(cx, |me, cx| me.rows(cx));
     let reopen = rows.iter().find(|row| row.relaunch).unwrap();
-    assert_eq!(reopen.key.key(), "inputMonitoring");
-    assert_eq!(reopen.state, RowState::Missing);
+    assert_eq!(reopen.id.key(), "inputMonitoring");
+    assert_eq!(reopen.status, RowState::NeedsAttention);
     assert!(!fixture.read(cx, |me, cx| me.can_continue(cx)));
 
     fixture.act(cx, |me, cx| me.relaunch(cx));
@@ -1080,7 +1130,7 @@ fn a_relaunch_that_cannot_start_shows_a_notice_and_the_app_stays(cx: &mut TestAp
 fn the_mac_rows_follow_the_system_without_a_restart(cx: &mut TestAppContext) {
     let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
     for key in ["microphone", "accessibility", "inputMonitoring"] {
-        assert_eq!(row(cx, &fixture, key), RowState::Missing, "{key}");
+        assert_eq!(row(cx, &fixture, key), RowState::NeedsAttention, "{key}");
     }
     assert!(!fixture.read(cx, |me, cx| me.can_continue(cx)));
 
@@ -1089,7 +1139,7 @@ fn the_mac_rows_follow_the_system_without_a_restart(cx: &mut TestAppContext) {
         .set(Permission::Accessibility, Access::Granted);
     fixture.act(cx, |me, cx| me.refresh(cx));
     assert_eq!(row(cx, &fixture, "accessibility"), RowState::Ready);
-    assert_eq!(row(cx, &fixture, "microphone"), RowState::Missing);
+    assert_eq!(row(cx, &fixture, "microphone"), RowState::NeedsAttention);
 
     for permission in Permission::ALL {
         fixture.system.set(permission, Access::Granted);
@@ -1101,7 +1151,10 @@ fn the_mac_rows_follow_the_system_without_a_restart(cx: &mut TestAppContext) {
         .system
         .set(Permission::InputMonitoring, Access::Denied);
     fixture.act(cx, |me, cx| me.refresh(cx));
-    assert_eq!(row(cx, &fixture, "inputMonitoring"), RowState::Missing);
+    assert_eq!(
+        row(cx, &fixture, "inputMonitoring"),
+        RowState::NeedsAttention
+    );
     assert!(!fixture.read(cx, |me, cx| me.can_continue(cx)));
 }
 
@@ -1456,11 +1509,11 @@ fn a_linux_start_with_no_microphone_reopens_the_permissions_step(cx: &mut TestAp
 
     assert_eq!(fixture.mode(cx), Mode::Repair);
     assert_eq!(fixture.step(cx), Step::Permissions);
-    assert_eq!(row(cx, &fixture, "microphone"), RowState::Missing);
+    assert_eq!(row(cx, &fixture, "microphone"), RowState::NeedsAttention);
     assert_eq!(fixture.settings().values(), before);
 
     list_microphones(cx, &fixture, vec![device()]);
-    assert_eq!(row(cx, &fixture, "microphone"), RowState::Ready);
+    assert_eq!(row(cx, &fixture, "microphone"), RowState::Info);
     fixture.act(cx, |me, cx| me.advance(cx)).unwrap();
     assert_eq!(fixture.mode(cx), Mode::Hidden);
     assert_eq!(fixture.settings().values(), before);
@@ -1505,6 +1558,61 @@ mod window {
     use crate::theme;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{AnyWindowHandle, Bounds, Point, WindowBounds, WindowOptions, px, size};
+
+    #[gpui_kit::test]
+    fn open_settings_keeps_focus_after_its_permission_is_granted(cx: &mut TestAppContext) {
+        let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+        let handle = open(cx, &fixture);
+        tab_to(cx, handle, "onboarding.permissions.open.microphone");
+
+        fixture.system.set(Permission::Microphone, Access::Granted);
+        fixture.act(cx, |me, cx| me.refresh(cx));
+        frame(cx, handle);
+
+        assert!(focused(
+            cx,
+            handle,
+            "onboarding.permissions.open.microphone"
+        ));
+    }
+
+    #[gpui_kit::test]
+    fn settings_shows_shared_permission_actions_and_help(cx: &mut TestAppContext) {
+        let rig = rig(cx, &["base"], "base");
+        let fixture = start(cx, rig, Platform::Windows, FakeSystem::all(Access::Granted));
+        list_microphones(cx, &fixture, vec![device()]);
+        fixture.act(cx, |me, _| me.mode = Mode::Hidden);
+        let settings = cx.new(|cx| {
+            crate::settings::Settings::new(
+                crate::settings::Parts {
+                    storage: Rc::clone(&fixture.rig.storage),
+                    mic: fixture.rig.mic.clone(),
+                    login: None,
+                    default_data_dir: None,
+                    restart: None,
+                },
+                cx,
+            )
+        });
+        settings.update(cx, |me, cx| {
+            me.attach_permissions(fixture.onboarding.clone(), cx);
+            me.set_query("permissions".into(), cx);
+        });
+        let (handle, shell) = open_shell(cx, &fixture);
+        shell.update(cx, |shell, cx| {
+            shell.attach_settings(settings, cx);
+            shell.select(crate::views::View::Settings, cx);
+        });
+        frame(cx, handle);
+        assert!(present(cx, handle, "settings.permissions.open.microphone"));
+        assert!(present(cx, handle, "settings.permissions.learn.admin"));
+        cx.update_window(handle, |_, window, cx| {
+            window.click("settings.permissions.learn.admin", cx)
+        })
+        .unwrap();
+        frame(cx, handle);
+        assert!(present(cx, handle, "settings.permissions.notice"));
+    }
 
     fn open(cx: &mut TestAppContext, fixture: &Fixture) -> AnyWindowHandle {
         open_shell(cx, fixture).0
@@ -1669,7 +1777,7 @@ mod window {
         assert!(rows.len() >= 3);
         let secondary = theme::SECONDARY.size * theme::SECONDARY.line_height;
         for row in rows {
-            let key = row.key.key();
+            let key = row.id.key();
             let whole = rect(cx, handle, format!("onboarding.permissions.row.{key}"));
             let state = rect(cx, handle, format!("onboarding.permissions.state.{key}"));
             let detail = rect(cx, handle, format!("onboarding.permissions.detail.{key}"));
@@ -1698,9 +1806,9 @@ mod window {
                 (middle(state) - middle(whole)).abs() < 1.0,
                 "{key}: status on the row's line"
             );
-            if row.opens.is_some() {
+            if row.id.permission().is_some() {
                 // Allow has nothing left to do once the row is Ready.
-                let names: &[&str] = if row.state == RowState::Ready {
+                let names: &[&str] = if row.status == RowState::Ready {
                     assert!(
                         !present(cx, handle, format!("onboarding.permissions.allow.{key}")),
                         "{key}: Allow is hidden when Ready"

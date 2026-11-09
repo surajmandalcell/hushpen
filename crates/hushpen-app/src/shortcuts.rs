@@ -35,6 +35,9 @@ const RECHECK: Duration = Duration::from_secs(2);
 
 /// What the shortcut rules need from the key listener.
 pub trait KeyControl {
+    fn available(&self) -> bool {
+        true
+    }
     fn set_bindings(&self, bindings: Bindings);
     fn start_recording(&self);
     fn stop_recording(&self);
@@ -42,6 +45,9 @@ pub trait KeyControl {
 }
 
 impl KeyControl for GlobalKeys {
+    fn available(&self) -> bool {
+        GlobalKeys::available(self)
+    }
     fn set_bindings(&self, bindings: Bindings) {
         GlobalKeys::set_bindings(self, bindings);
     }
@@ -80,6 +86,7 @@ pub struct Shortcuts {
     off: BTreeSet<Slot>,
     recorder: Option<Recorder>,
     recorders_opened: u64,
+    recheck_started: bool,
     records: UnboundedSender<Recording>,
     pub(crate) field_focus: Vec<FocusHandle>,
     pub(crate) slot_reset_focus: Vec<FocusHandle>,
@@ -128,6 +135,7 @@ impl Shortcuts {
             off,
             recorder: None,
             recorders_opened: 0,
+            recheck_started: false,
             records,
             field_focus: handles(cx),
             slot_reset_focus: handles(cx),
@@ -167,15 +175,18 @@ impl Shortcuts {
                 self.why_off = None;
                 self.mark_all_taken();
                 self.apply_live();
-                cx.spawn(async move |this, cx| {
-                    loop {
-                        cx.background_executor().timer(RECHECK).await;
-                        if this.update(cx, |me, cx| me.recheck(cx)).is_err() {
-                            return;
+                if !self.recheck_started {
+                    self.recheck_started = true;
+                    cx.spawn(async move |this, cx| {
+                        loop {
+                            cx.background_executor().timer(RECHECK).await;
+                            if this.update(cx, |me, cx| me.recheck(cx)).is_err() {
+                                return;
+                            }
                         }
-                    }
-                })
-                .detach();
+                    })
+                    .detach();
+                }
             }
             Err(why) => {
                 self.keys = None;
@@ -387,13 +398,21 @@ impl Shortcuts {
     }
 
     pub fn why_off(&self) -> Option<&str> {
-        self.why_off.as_deref()
+        if self.keys.as_ref().is_some_and(|keys| !keys.available()) {
+            Some("Global keys are not running. Retry in Settings > Permissions.")
+        } else {
+            self.why_off.as_deref()
+        }
+    }
+
+    pub fn keys_available(&self) -> bool {
+        self.why_off().is_none()
     }
 
     /// Opens the recorder for `slot`. No live shortcut runs while it is open.
     pub fn start_recording(&mut self, slot: Slot, cx: &mut Context<Self>) -> Result<(), String> {
-        if let Some(why) = &self.why_off {
-            return Err(why.clone());
+        if let Some(why) = self.why_off() {
+            return Err(why.to_owned());
         }
         if !self.is_on(slot) {
             return Err("Turn the shortcut on to change it.".to_owned());
@@ -576,7 +595,7 @@ impl Shortcuts {
         json!({
             "recording": self.recording().map(Slot::key),
             "progress": self.progress(),
-            "recorder_available": self.why_off.is_none(),
+            "recorder_available": self.keys_available(),
             "slots": slots,
         })
     }

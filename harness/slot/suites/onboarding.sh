@@ -147,15 +147,15 @@ check_failures "VAL-ONB-001 first run" "onboarding at permissions, completed fal
 
 echo "== VAL-ONB-002 the Linux permissions page names the X11 needs, live"
 failures=""
-for key in x11 keys paste microphone; do
-  tree_has "onboarding.permissions.row.$key" || failures+="no $key row in the tree; "
-  row_is "$key" ready || failures+="$key row is $(row_state "$key"); "
-done
+tree_has onboarding.permissions.row.microphone || failures+="no microphone row in the tree; "
+row_is microphone info || failures+="the microphone row is $(row_state microphone); "
+[ "$(ob '.permissions.rows | map(.key) | join(",")')" = microphone ] || failures+="healthy X11 shows unexpected permission rows; "
+continue_enabled || failures+="Continue is closed with a microphone; "
 shot 002-ready
 $HC state | jq .onboarding.permissions >"$RUN_OUT/002-ready.json"
 pactl unload-module module-virtual-source
 t0=$(now_ms)
-wait_until 3 row_is microphone missing || failures+="the microphone row is $(row_state microphone) 3 s after the source went; "
+wait_until 3 row_is microphone needsAttention || failures+="the microphone row is $(row_state microphone) 3 s after the source went; "
 gone_ms=$(($(now_ms) - t0))
 sleep 0.3
 shot 002-mic-missing
@@ -165,7 +165,7 @@ ob .can_continue | grep -q false || failures+="Continue is open without a microp
 pactl load-module module-virtual-source source_name=vmic_src master=vmic.monitor >/dev/null
 pactl set-default-source vmic_src
 t0=$(now_ms)
-wait_until 3 row_is microphone ready || failures+="the microphone row is $(row_state microphone) 3 s after the source came back; "
+wait_until 3 row_is microphone info || failures+="the microphone row is $(row_state microphone) 3 s after the source came back; "
 back_ms=$(($(now_ms) - t0))
 shot 002-mic-back
 /harness/slot/app.sh stop
@@ -174,14 +174,31 @@ wait_until 20 ob_is .active true
 sleep 1.5
 shot 002-wayland
 $HC state | jq .onboarding.permissions >"$RUN_OUT/002-wayland.json"
-for key in keys paste; do
-  row_is "$key" unavailable || failures+="wayland: the $key row is $(row_state "$key"); "
-  detail=$(ob ".permissions.rows[] | select(.key == \"$key\") | .detail")
-  case "$detail" in *Wayland*) ;; *) failures+="wayland: the $key row says '$detail'; " ;; esac
-done
+row_is x11 needsAttention || failures+="wayland: the X11 row is $(row_state x11); "
+row_is microphone info || failures+="wayland: the microphone row is $(row_state microphone); "
+detail=$(ob '.permissions.rows[] | select(.key == "x11") | .detail')
+[ "$detail" = "Global keys and paste need an X11 session" ] || failures+="wayland: the X11 row says '$detail'; "
+[ "$(ob '.permissions.rows | map(.key) | join(",")')" = x11,microphone ] || failures+="wayland: unexpected permission rows; "
+continue_enabled || failures+="wayland: the X11 notice blocks Continue; "
+click onboarding.permissions.learn.x11
+shot 002-wayland-help
+case "$(ob .notice)" in *"record button"*"copy"*) ;; *) failures+="wayland: Learn more has no fallback steps; " ;; esac
 /harness/slot/app.sh restart >/dev/null
 wait_until 20 ob_is .active true
-check_failures "VAL-ONB-002 live permissions" "4 rows ready; microphone missing after ${gone_ms} ms and ready after ${back_ms} ms; Wayland: keys and paste not available" "$failures"
+pkill -f 'slot/sni-host.py$'
+wait_until 5 row_is tray info || failures+="no tray watcher: the tray row is $(row_state tray); "
+shot 002-no-tray
+continue_enabled || failures+="the tray notice blocks Continue; "
+click onboarding.permissions.learn.tray
+shot 002-tray-help
+case "$(ob .notice)" in *"Keep the Hushpen window open"*) ;; *) failures+="the tray help has no fallback steps; " ;; esac
+python3 /harness/slot/sni-host.py >/logs/sni-host.log 2>&1 &
+wait_until 5 bash -c 'python3 /harness/slot/sni-host.py --query' || failures+="the tray watcher did not restart; "
+wait_until 5 row_is tray "" || failures+="the tray row stayed after its watcher returned; "
+shot 002-tray-back
+check_failures "VAL-ONB-002 live permissions" "microphone needs attention after ${gone_ms} ms and returns to Info after ${back_ms} ms; Wayland and missing tray show help without blocking Continue" "$failures"
+/harness/slot/app.sh restart >/dev/null
+wait_until 20 ob_is .active true
 
 echo "== VAL-ONB-001 and 007 the step list and the model-less mic test, with the practice gate shut"
 # The mic test comes before the model step: with no model the level alone passes it.
@@ -397,7 +414,7 @@ shot 008-repair
 $HC tree >"$RUN_OUT/008-repair-tree.json"
 [ "$sources" = 0 ] || failures+="pactl lists $sources sources; "
 [ "$(ob .step)" = permissions ] || failures+="the repair is at '$(ob .step)'; "
-row_is microphone missing || failures+="the microphone row is $(row_state microphone); "
+row_is microphone needsAttention || failures+="the microphone row is $(row_state microphone); "
 [ "$(ob .completed)" = true ] || failures+="completed is $(ob .completed); "
 [ "$(ob .gate)" = open ] || failures+="the gate is $(ob .gate) in repair; "
 continue_enabled && failures+="Continue is open with no microphone; "
@@ -409,7 +426,7 @@ pactl load-module module-virtual-source source_name=vmic_src master=vmic.monitor
 pactl load-module module-null-sink sink_name=cues >/dev/null
 pactl set-default-source vmic_src
 pactl set-default-sink cues
-wait_until 5 row_is microphone ready || failures+="the microphone row is $(row_state microphone) after the source came back; "
+wait_until 5 row_is microphone info || failures+="the microphone row is $(row_state microphone) after the source came back; "
 shot 008-mic-back
 wait_until 5 continue_enabled || failures+="Continue is closed after the microphone came back; "
 click onboarding.continue

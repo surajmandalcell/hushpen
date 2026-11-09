@@ -3,10 +3,14 @@
 
 use futures::channel::oneshot;
 use hushpen_core::permission::Permission;
+use std::sync::Arc;
 
 /// What a click on a permission button does. The real one asks macOS and opens System
 /// Settings; tests pass a fake.
 pub trait Guide {
+    fn fact_reader(&self) -> Arc<dyn Fn() -> (bool, bool) + Send + Sync> {
+        Arc::new(|| (false, true))
+    }
     /// Calls the request API of the permission, which lists Hushpen in the Privacy pane and
     /// shows the system prompt. The Allow button calls it on every click. With `repair` the
     /// record of Hushpen is reset first: the grant was held and is gone, so the record is a
@@ -19,6 +23,15 @@ pub trait Guide {
 }
 
 impl Guide for SystemGuide {
+    fn fact_reader(&self) -> Arc<dyn Fn() -> (bool, bool) + Send + Sync> {
+        Arc::new(|| {
+            (
+                hushpen_platform::permissions::is_elevated(),
+                hushpen_platform::tray_host::available(),
+            )
+        })
+    }
+
     fn request(&self, permission: Permission, repair: bool) -> Option<oneshot::Receiver<()>> {
         let (done, finished) = oneshot::channel();
         let started = on_permission_thread(move || {

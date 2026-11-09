@@ -10,6 +10,7 @@ const MAC: Platform = Platform::Mac;
 
 #[derive(Default)]
 struct FakeKeys {
+    dead: std::cell::Cell<bool>,
     pushed: RefCell<Vec<Bindings>>,
     recording: RefCell<i32>,
     stopped: RefCell<i32>,
@@ -17,6 +18,9 @@ struct FakeKeys {
 }
 
 impl KeyControl for FakeKeys {
+    fn available(&self) -> bool {
+        !self.dead.get()
+    }
     fn set_bindings(&self, bindings: Bindings) {
         self.pushed.borrow_mut().push(bindings);
     }
@@ -567,6 +571,22 @@ fn with_no_key_listener_nothing_can_be_recorded_and_the_reason_shows(cx: &mut Te
     let state = shortcuts.read_with(cx, |shortcuts, _| shortcuts.state_json());
     assert_eq!(state["recorder_available"], false);
     assert_eq!(state["slots"]["hold"]["display"], "Right Alt");
+}
+
+#[gpui_kit::test]
+fn a_stopped_key_listener_cannot_open_the_recorder(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    assert_eq!(state(cx, &rig)["recorder_available"], true);
+    rig.keys.dead.set(true);
+
+    let opened = rig.shortcuts.update(cx, |shortcuts, cx| {
+        shortcuts.start_recording(Slot::Hold, cx)
+    });
+
+    assert!(opened.is_err());
+    assert_eq!(state(cx, &rig)["recorder_available"], false);
+    assert_eq!(state(cx, &rig)["recording"], Value::Null);
+    assert_eq!(*rig.keys.recording.borrow(), 0);
 }
 
 mod view {

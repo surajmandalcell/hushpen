@@ -60,16 +60,17 @@ impl Controller {
         report.restore = hushpen_core::insert::Restore::NotNeeded;
         store_report(&self.last_insert, session, ready_unix_ms, &report);
         if delivery == Delivery::Paste
-            && let InsertSupport::Unavailable(why) = &self.insert
+            && let Some(message) = report.copy_notice()
         {
-            let code = if why.reason == Reason::Wayland {
+            let code = if matches!(&self.insert, InsertSupport::Unavailable(why) if why.reason == Reason::Wayland)
+            {
                 INSERT_WAYLAND
             } else {
                 INSERT_COPIED
             };
             self.notice = Some(Notice {
                 code,
-                message: why.message.clone(),
+                message: message.to_owned(),
             });
         }
         queue.push_back(AppEvent::Inserted { session });
@@ -122,14 +123,15 @@ impl Controller {
         report.note = Some(note);
         report.restore = hushpen_core::insert::Restore::NotNeeded;
         store_report(&self.last_insert, session, ready_unix_ms, &report);
-        if let InsertSupport::Unavailable(why) = &self.insert {
+        if let Some(message) = report.copy_notice() {
             self.notice = Some(Notice {
-                code: if why.reason == Reason::Wayland {
+                code: if matches!(&self.insert, InsertSupport::Unavailable(why) if why.reason == Reason::Wayland)
+                {
                     INSERT_WAYLAND
                 } else {
                     INSERT_COPIED
                 },
-                message: why.message.clone(),
+                message: message.to_owned(),
             });
         }
     }
@@ -286,9 +288,16 @@ impl Controller {
         let Some(message) = report.copy_notice() else {
             return;
         };
+        let code = if report.note == Some("unavailable")
+            && matches!(&self.insert, InsertSupport::Unavailable(why) if why.reason == Reason::Wayland)
+        {
+            INSERT_WAYLAND
+        } else {
+            INSERT_COPIED
+        };
         drop(slot);
         self.notice = Some(Notice {
-            code: INSERT_COPIED,
+            code,
             message: message.to_owned(),
         });
     }

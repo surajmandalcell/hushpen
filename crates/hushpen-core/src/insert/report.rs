@@ -82,7 +82,7 @@ impl Report {
             Some("no-target") => "No app had the focus, so the text is on your clipboard.",
             Some("override") => "Paste is off for this app, so the text is on your clipboard.",
             Some("own-window") => "Hushpen had the focus, so the text is on your clipboard.",
-            Some("no-paste") => {
+            Some("no-paste" | "unavailable" | "no-inserter") => {
                 "Hushpen could not press the paste key, so the text is on your clipboard."
             }
             Some("higher-integrity") => {
@@ -143,6 +143,23 @@ mod tests {
             Some("This app runs as administrator. The text is on the clipboard.")
         );
         report.outcome = Outcome::Pasted;
+        assert_eq!(report.copy_notice(), None);
+    }
+
+    #[test]
+    fn unavailable_paste_keeps_a_copy_with_a_notice() {
+        for note in ["no-paste", "unavailable", "no-inserter"] {
+            let mut report = Report::new("");
+            report.outcome = Outcome::CopiedOnly;
+            report.note = Some(note);
+            assert_eq!(
+                report.copy_notice(),
+                Some("Hushpen could not press the paste key, so the text is on your clipboard.")
+            );
+        }
+        let mut report = Report::new("");
+        report.outcome = Outcome::CopiedOnly;
+        report.note = Some("home");
         assert_eq!(report.copy_notice(), None);
     }
 }

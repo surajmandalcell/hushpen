@@ -3,7 +3,7 @@
 
 mod mic_test;
 mod model;
-mod permissions;
+pub(crate) mod permissions;
 mod practice;
 mod updates;
 
