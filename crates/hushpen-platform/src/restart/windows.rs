@@ -4,16 +4,18 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{
-    CreateEventW, CreateProcessW, DETACHED_PROCESS, EVENT_MODIFY_STATE, OpenEventW, OpenProcess,
-    PROCESS_INFORMATION, PROCESS_SYNCHRONIZE, STARTUPINFOW, SetEvent, TerminateProcess,
-    WaitForMultipleObjects, WaitForSingleObject,
+    CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CreateEventW, CreateProcessW, DETACHED_PROCESS,
+    EVENT_MODIFY_STATE, OpenEventW, OpenProcess, PROCESS_INFORMATION, PROCESS_SYNCHRONIZE,
+    STARTUPINFOW, SetEvent, WaitForMultipleObjects, WaitForSingleObject,
 };
 use windows::core::{PCWSTR, PWSTR};
 
@@ -250,6 +252,21 @@ fn powershell() -> io::Result<PathBuf> {
     Ok(root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe"))
 }
 
+fn update_log_tail(path: &Path) -> String {
+    let read = || -> io::Result<Vec<u8>> {
+        let mut file = fs::File::open(path)?;
+        let offset = file.metadata()?.len().saturating_sub(4096);
+        file.seek(SeekFrom::Start(offset))?;
+        let mut bytes = Vec::new();
+        file.take(4096).read_to_end(&mut bytes)?;
+        Ok(bytes)
+    };
+    match read() {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).trim().to_owned(),
+        Err(error) => format!("unavailable ({error})"),
+    }
+}
+
 pub(super) fn apply_update(setup: &Path, target: &Path, log: &Path, show: bool) -> io::Result<()> {
     apply_update_for_pid(std::process::id(), setup, target, log, show)
 }
@@ -293,8 +310,6 @@ fn apply_update_for_pid(
     let args = [
         OsString::from("-NoProfile"),
         OsString::from("-NonInteractive"),
-        OsString::from("-WindowStyle"),
-        OsString::from("Hidden"),
         OsString::from("-ExecutionPolicy"),
         OsString::from("Bypass"),
         OsString::from("-File"),
@@ -306,7 +321,20 @@ fn apply_update_for_pid(
         log.as_os_str().to_owned(),
         OsString::from(if show { "1" } else { "0" }),
     ];
-    let child = spawn(&powershell()?, &args)?;
+    let startup_path = log.with_file_name("update-startup.log");
+    let startup_log = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&startup_path)?;
+    // A console-free PowerShell child outlives its parent without DETACHED_PROCESS.
+    let mut child = Command::new(powershell()?)
+        .args(args)
+        .creation_flags((CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP).0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(startup_log))
+        .spawn()?;
     // SAFETY: Both handles stay open until the helper opens the old process or exits.
     let result = unsafe {
         WaitForMultipleObjects(
@@ -318,12 +346,21 @@ fn apply_update_for_pid(
     if result == WAIT_OBJECT_0 {
         Ok(())
     } else {
-        // SAFETY: The helper belongs to this update and cannot install while the old app is still running.
-        unsafe {
-            let _ = TerminateProcess(HANDLE(child.as_raw_handle()), 1);
-            let _ = WaitForSingleObject(HANDLE(child.as_raw_handle()), 5000);
+        let mut status = child.try_wait();
+        if !matches!(status, Ok(Some(_))) {
+            let _ = child.kill();
+            // SAFETY: The process handle stays valid until the bounded cleanup wait ends.
+            unsafe {
+                let _ = WaitForSingleObject(HANDLE(child.as_raw_handle()), 5000);
+            }
+            status = child.try_wait();
         }
-        Err(io::Error::other("The update helper did not become ready."))
+        Err(io::Error::other(format!(
+            "The update helper did not become ready (wait {}, exit {status:?}). Startup: {}. Update: {}",
+            result.0,
+            update_log_tail(&startup_path),
+            update_log_tail(log),
+        )))
     }
 }
 
@@ -367,7 +404,17 @@ mod tests {
 #[cfg(test)]
 mod update_tests {
     use super::*;
-    use std::process::{Command, Stdio};
+
+    #[test]
+    fn update_errors_read_only_the_last_four_kibibytes_of_each_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("startup.log");
+        fs::write(&path, format!("{}tail", "x".repeat(5000))).unwrap();
+        let tail = update_log_tail(&path);
+        assert_eq!(tail.len(), 4096);
+        assert!(tail.ends_with("tail"));
+        assert!(update_log_tail(&dir.path().join("missing")).starts_with("unavailable"));
+    }
 
     #[test]
     fn the_helper_is_valid_powershell_and_refuses_relative_paths() {
@@ -403,10 +450,20 @@ mod update_tests {
             .stderr(Stdio::null())
             .spawn()
             .unwrap();
-        apply_update_for_pid(old.id(), &setup, &target, &log, false).unwrap();
+        let prepared = apply_update_for_pid(old.id(), &setup, &target, &log, false);
         let started_early = log.exists();
-        old.kill().unwrap();
-        old.wait().unwrap();
+        if old.try_wait().unwrap().is_none() {
+            old.kill().unwrap();
+        }
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while old.try_wait().unwrap().is_none() {
+            assert!(
+                std::time::Instant::now() < until,
+                "the old test process did not stop"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        prepared.unwrap_or_else(|error| panic!("{error}"));
         assert!(
             !started_early,
             "setup starts only after the old process exits"
