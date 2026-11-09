@@ -68,7 +68,8 @@ new decision, add it here in the same change (D-21).
   Settings. The UI shows `~/...` for paths under the home folder.
 - **D-14 Privacy.** No telemetry. Network use is limited to model downloads
   the user starts, the update check the user turns on or starts from About,
-  and the opt-in OpenAI-compatible endpoint. `xtask net-audit` scans for other calls.
+  the opt-in OpenAI-compatible endpoint, and device discovery, pairing, and
+  jobs the user enables in Devices (D-50). `xtask net-audit` scans for other calls.
 - **D-15 Cleanup.** Rule-based cleanup is on by default and runs offline. AI
   cleanup is opt-in. It uses a local LLM of at most 1.5 GB, or an endpoint
   the user sets. Every machine is offered S1-mini by Superwhisper first
@@ -499,6 +500,21 @@ new decision, add it here in the same change (D-21).
   Portable installs show a release notice. `install.ps1` checks SHA256SUMS
   before silent setup. Windows files have no Authenticode signature;
   SmartScreen warns. CI packages do not publish a release or the website.
+
+- **D-50 Devices and remote setup.** Devices follows Models in the sidebar.
+  Flow D gives speech and cleanup separate device orders. Remote use stays
+  off by default. This computer is last unless "Do not load models on this
+  computer" is on; then unavailable remote routes refuse the job. Core owns
+  routing, health, pairing, fallback notices, and allowed unload rules.
+  Nearby phones use mDNS and a one-use, expiring QR offer with Noise key
+  pinning. Tailscale uses the same protocol at the supplied address. SSH
+  setup reads concrete Host aliases from `~/.ssh/config`, uses BatchMode
+  only, verifies SHA-256 before installation, starts the user service, and
+  pairs over the authenticated SSH channel. Views send intents and show
+  service progress; they perform no network or process work. The current
+  screen is `PlaceholderDevices`, with plain state rows and default
+  controls. Visual design and pixel baselines wait for the designer.
+  `mobile/SCREENS.md` records the desktop screen state and intent contract.
 
 ## History notes
 

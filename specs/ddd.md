@@ -9,7 +9,11 @@ term or changes one, update this file in the same change (D-21).
 ```
 Hushpen
 ├── hushpen (UI process, GPUI)
-│   ├── main window                 940x600, sidebar with 7 views
+│   ├── main window                 940x600, sidebar with 8 views
+│   ├── Devices                     speech and cleanup routes to paired devices
+│   │   ├── route                   ordered devices for one model kind
+│   │   ├── pairing offer           one-use QR payload with an expiry
+│   │   └── device details          name, status, transport, and unload rule
 │   ├── flow bar                    the dark pill that shows dictation states
 │   ├── tray                        menu with the same actions
 │   ├── dictation                   one hold-to-talk run of the state machine
@@ -142,6 +146,23 @@ Hushpen
   when it is under the user home.
 - **test hook**: the debug-only socket that reports the element tree and the
   state and runs actions. Release builds do not contain it (D-08).
+- **Devices**: the sidebar view after Models for paired phones and servers.
+  Speech to Text and Text cleanup have separate routes (D-50).
+- **device**: a phone, server, or This computer, identified by a stable id.
+  A paired remote device has an address, transport, pinned public key, and
+  unload rule. Discovery alone does not establish trust.
+- **route**: the ordered device ids for speech or cleanup. Core picks the
+  first healthy device. This computer stays last unless local models are
+  disabled. If no permitted device can serve, the job is refused.
+- **pairing offer**: a one-use `hushpen-pair://v1` payload with a host, port,
+  public key, six-digit code, and expiry. Noise proves the code and pins both
+  keys. The private key stays in the private secrets file.
+- **unload rule**: when a remote device releases loaded models. Core limits
+  choices by its OS: iOS only while Server mode is open; Android and Linux
+  also keep, idle time, or low memory; macOS and Windows keep or idle time.
+- **SSH setup**: a desktop service that uses an existing SSH host alias with
+  BatchMode to verify and install the host, start its user service, and pair.
+  Its progress is screen state; it never asks for a password.
 
 ## Core modules
 
@@ -151,6 +172,8 @@ Hushpen
 - **update**: pure update states and offer, download, restart, and stale-response rules.
 - **flow_bar**: pure result, refusal, recovery, and history-button choice from supplied state and time.
 - **mic_session**: pure microphone purpose, sharing, state, and generation rules; the backend owns streams.
+- **remote**: pure device, route, health, pairing, fallback, and unload rules;
+  service crates supply discovery, connection, storage, and SSH results.
 
 ## Process names
 
