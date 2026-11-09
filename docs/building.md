@@ -74,6 +74,9 @@ runner. Select `targets=windows-x64` and `suite=gate` in `ci.yml`. The runner
 uses MSVC, CMake, and LLVM/libclang. Native C dependencies prevent checking
 this target from macOS. The four programs end in `.exe`.
 
+The MSVC linker embeds the Common Controls 6 dependency for the native window
+subclasses, including test programs. See [manifest dependencies](https://learn.microsoft.com/en-us/cpp/build/reference/manifestdependency-specify-manifest-dependencies).
+
 Inference defaults to CPU, with `GGML_NATIVE=OFF` and an AVX2/FMA/F16C/BMI2
 baseline. The `vulkan` feature in the engine and LLM crates is optional and
 off by default. Windows supports Unload; it does not support Page out.
