@@ -19,7 +19,7 @@ pub struct Workers {
     pub cleanup: LlmClient,
     pub(crate) speech_busy: AtomicBool,
     pub(crate) cleanup_busy: AtomicBool,
-    pub(crate) speech_session: Mutex<()>,
+    pub(crate) speech_session: Arc<Mutex<()>>,
     pub(crate) cleanup_session: Mutex<()>,
     pub(crate) speech_rule: Mutex<UnloadRule>,
     pub(crate) cleanup_rule: Mutex<UnloadRule>,
@@ -86,12 +86,29 @@ impl Workers {
         os: hushpen_core::os::Os,
         system_cleanup: bool,
     ) -> Arc<Self> {
+        Self::from_clients_with_speech_session(
+            speech,
+            cleanup,
+            os,
+            system_cleanup,
+            Arc::new(Mutex::new(())),
+        )
+    }
+
+    /// A phone shares speech ownership with its local dictation API.
+    pub fn from_clients_with_speech_session(
+        speech: EngineClient,
+        cleanup: LlmClient,
+        os: hushpen_core::os::Os,
+        system_cleanup: bool,
+        speech_session: Arc<Mutex<()>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             speech,
             cleanup,
             speech_busy: AtomicBool::new(false),
             cleanup_busy: AtomicBool::new(false),
-            speech_session: Mutex::new(()),
+            speech_session,
             cleanup_session: Mutex::new(()),
             speech_rule: Mutex::new(UnloadRule::KeepLoaded),
             cleanup_rule: Mutex::new(UnloadRule::KeepLoaded),
