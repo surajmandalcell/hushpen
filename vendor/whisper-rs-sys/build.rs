@@ -194,6 +194,41 @@ fn main() {
         .very_verbose(true)
         .pic(true);
 
+    if target.contains("android") {
+        let ndk = env::var("ANDROID_NDK_HOME")
+            .or_else(|_| env::var("ANDROID_NDK_ROOT"))
+            .expect("Set ANDROID_NDK_HOME to the Android NDK folder");
+        let abi = match env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+            Ok("aarch64") => "arm64-v8a",
+            Ok("x86_64") => "x86_64",
+            _ => panic!("Hushpen supports Android arm64-v8a and x86_64"),
+        };
+        config
+            .define(
+                "CMAKE_TOOLCHAIN_FILE",
+                PathBuf::from(ndk).join("build/cmake/android.toolchain.cmake"),
+            )
+            .define("ANDROID_ABI", abi)
+            .define(
+                "ANDROID_PLATFORM",
+                env::var("CARGO_NDK_ANDROID_PLATFORM").unwrap_or_else(|_| "29".into()),
+            )
+            .define("ANDROID_STL", "c++_shared");
+    }
+
+    if target.contains("apple-ios") {
+        config
+            .define("CMAKE_OSX_ARCHITECTURES", "arm64")
+            .define(
+                "CMAKE_OSX_DEPLOYMENT_TARGET",
+                env::var("IPHONEOS_DEPLOYMENT_TARGET").unwrap_or_else(|_| "26.0".into()),
+            )
+            .define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
+        if let Ok(sdk) = env::var("SDKROOT") {
+            config.define("CMAKE_OSX_SYSROOT", sdk);
+        }
+    }
+
     if cfg!(target_os = "windows") {
         config.cxxflag("/utf-8");
         println!("cargo:rustc-link-lib=advapi32");
@@ -353,7 +388,7 @@ fn main() {
         println!("cargo:rustc-link-lib=static=ggml-base");
         println!("cargo:rustc-link-lib=static=ggml-cpu");
     }
-    if cfg!(target_os = "macos") || cfg!(feature = "openblas") {
+    if target.contains("apple") || cfg!(feature = "openblas") {
         println!("cargo:rustc-link-lib=static=ggml-blas");
     }
     if cfg!(feature = "vulkan") {

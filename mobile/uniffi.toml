@@ -1,0 +1,10 @@
+[crates.hushpen_mobile.bindings.kotlin]
+package_name = "com.mandalsuraj.hushpen.core"
+cdylib_name = "hushpen_mobile"
+
+[crates.hushpen_mobile.bindings.swift]
+module_name = "HushpenCore"
+ffi_module_name = "hushpen_mobileFFI"
+ffi_module_filename = "hushpen_mobileFFI"
+generate_module_map = true
+link_frameworks = ["Accelerate", "AudioToolbox", "AVFAudio", "CoreAudio", "CoreFoundation", "Foundation", "Metal", "MetalKit"]
