@@ -364,10 +364,7 @@ mod tests {
             parsed("paths /abs/a.txt b.txt"),
             Command::Send(Request::new("paths").with(
                 "paths",
-                json!([
-                    Path::new("/work").join("/abs/a.txt"),
-                    Path::new("/work").join("b.txt")
-                ])
+                json!([Path::new("/abs/a.txt"), Path::new("/work").join("b.txt")])
             ))
         );
     }
