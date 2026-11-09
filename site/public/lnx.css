@@ -15,7 +15,6 @@
 .ln-dl:hover { background: #2C2C2E; }
 .ln-dl:active { transform: scale(.97); transition-duration: .12s; }
 .ln-dl svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.ln-dl small { margin-left: 2px; font-size: 13px; font-weight: 500; opacity: .6; }
 .ln-v { position: relative; }
 .ln-v:not(.ln-live) * { animation-play-state: paused !important; }
 .ln-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
@@ -292,6 +291,6 @@ svg.lu { flex: none; width: 16px; height: 16px; fill: none; stroke: rgba(0, 0, 0
   .ln-tm summary { height: 44px; }
   .ln-cmds .cmd { height: auto; min-height: 44px; padding-block: 7px; }
   .ln-cmds code { white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
-  .ln-dl { height: 44px; }
+  .ln-dl { width: 100%; height: 44px; justify-content: center; }
 }
 @media (prefers-reduced-motion: reduce) { .ln-caret { animation: none; } }

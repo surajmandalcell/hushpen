@@ -1,10 +1,5 @@
 /* Reserve release metadata space while the API request is in flight. */
 [data-dl-meta] { min-height: 44px; }
 [data-dl-meta] > li:first-child, [data-version] { min-width: 11ch; font-variant-numeric: tabular-nums; }
-[data-asset-meta], [data-linux-download] small { display: inline-block; min-width: 26ch; font-variant-numeric: tabular-nums; }
 [hidden] { display: none !important; }
 .release-note { min-height: 24px; margin-top: 16px; color: var(--ink2); }
-@media (max-width: 560px) {
-  .ln-h .ln-dl { width: 100%; height: auto; min-height: 44px; justify-content: center; flex-wrap: wrap; padding-block: 12px; }
-  .ln-h .ln-dl small { flex-basis: 100%; min-width: 0; text-align: center; }
-}

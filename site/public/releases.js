@@ -17,11 +17,6 @@
       const release = el.dataset.version === 'windows' ? value.windows : value.stable;
       el.textContent = release?.tag || 'Latest version';
     });
-    document.querySelectorAll('[data-asset-meta]').forEach(el => {
-      const release = el.dataset.assetMeta.startsWith('windows-') ? value.windows : value.stable;
-      const asset = release?.assets[el.dataset.assetMeta];
-      el.textContent = asset ? `${release.tag} · ${size(asset.size)}` : 'Latest version';
-    });
     document.querySelectorAll('[data-preview]').forEach(el => { el.hidden = !value.windows?.prerelease; });
     document.querySelectorAll('[data-notes]').forEach(el => { el.href = value.stable.notesUrl; });
     document.querySelectorAll('[data-release-note]').forEach(el => {
