@@ -165,6 +165,15 @@ impl ModelRepository {
         self.cancel.store(true, Ordering::Release);
     }
 
+    pub fn selection_after_download(
+        &self,
+        current: String,
+        downloaded: String,
+    ) -> Result<String, MobileError> {
+        phone_model(&downloaded)?;
+        selection_after_download(&self.models(), &current, &downloaded)
+    }
+
     pub fn verify(&self, id: String) -> Result<bool, MobileError> {
         let entry = phone_model(&id)?;
         let _busy = self.begin()?;
@@ -179,6 +188,45 @@ impl ModelRepository {
         }
         Ok(self.path(entry).to_string_lossy().into_owned())
     }
+}
+
+fn selection_after_download(
+    models: &[Model],
+    current: &str,
+    downloaded: &str,
+) -> Result<String, MobileError> {
+    use hushpen_core::models::{self, ModelState};
+    if !models
+        .iter()
+        .any(|model| model.id == downloaded && model.status == ModelStatus::Ready)
+    {
+        return Err(MobileError::failed(
+            "the downloaded model has not passed verification",
+        ));
+    }
+    let current = models::effective(current, Some(catalog::SPEECH_DEFAULT));
+    Ok(if models::should_adopt(
+        catalog::ModelKind::Speech,
+        downloaded,
+        current,
+        current,
+        models.iter().map(|model| {
+            (
+                model.id.as_str(),
+                if model.status == ModelStatus::Ready {
+                    ModelState::Ready
+                } else {
+                    ModelState::NotDownloaded
+                },
+                false,
+            )
+        }),
+    ) {
+        downloaded
+    } else {
+        current
+    }
+    .to_owned())
 }
 
 impl ModelRepository {
@@ -280,5 +328,35 @@ mod tests {
         assert!(model_files::is_verified(&path));
         assert!(!verify_file(&path, 3, &"0".repeat(64), &cancel).unwrap());
         assert!(!model_files::is_verified(&path));
+    }
+
+    #[test]
+    fn a_download_keeps_a_ready_default_and_replaces_a_missing_one() {
+        let model = |id: &str, status| Model {
+            id: id.into(),
+            name: id.into(),
+            kind: ModelKind::Speech,
+            bytes: 0,
+            recommended: false,
+            status,
+        };
+        let mut rows = vec![
+            model(catalog::SPEECH_DEFAULT, ModelStatus::Ready),
+            model("base-q5_1", ModelStatus::Ready),
+        ];
+        assert_eq!(
+            selection_after_download(&rows, catalog::SPEECH_DEFAULT, "base-q5_1").unwrap(),
+            catalog::SPEECH_DEFAULT
+        );
+        assert_eq!(
+            selection_after_download(&rows, "base-q5_1", catalog::SPEECH_DEFAULT).unwrap(),
+            "base-q5_1"
+        );
+        rows[0].status = ModelStatus::Missing;
+        assert_eq!(
+            selection_after_download(&rows, catalog::SPEECH_DEFAULT, "base-q5_1").unwrap(),
+            "base-q5_1"
+        );
+        assert!(selection_after_download(&rows, "base-q5_1", catalog::SPEECH_DEFAULT).is_err());
     }
 }
