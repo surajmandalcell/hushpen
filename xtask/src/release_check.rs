@@ -155,7 +155,7 @@ fn markers_for(name: &str) -> Vec<&'static str> {
 
 fn scan_file(path: &Path) -> Result<Vec<Finding>, String> {
     let name = path
-        .file_name()
+        .file_stem()
         .and_then(|n| n.to_str())
         .unwrap_or_default()
         .to_string();
@@ -300,7 +300,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let release = target_dir(root).join("release");
     let mut clean = true;
     for name in BINARIES {
-        let path = release.join(name);
+        let path = release.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
         if !path.is_file() {
             return Err(format!("release binary {} is missing", path.display()));
         }
@@ -393,6 +393,18 @@ mod tests {
         for marker in [WHISPER_MARKER, LLAMA_MARKER] {
             assert!(markers_for(TTS_BINARY).contains(&marker));
         }
+    }
+
+    #[test]
+    fn windows_executables_use_the_same_engine_scan_rules() {
+        let dir = std::env::temp_dir().join(format!("release-win-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = dir.join("hushpen.exe");
+        std::fs::write(&app, b"whisper_full").unwrap();
+        assert!(scan_file(&app).unwrap().is_empty());
+        std::fs::write(&app, b"llama_decode").unwrap();
+        assert_eq!(scan_file(&app).unwrap()[0].marker, "llama_decode");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

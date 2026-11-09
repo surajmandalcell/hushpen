@@ -67,7 +67,7 @@ impl Target {
             Self::LinuxX64 | Self::LinuxArm64 => {
                 &[Format::AppImage, Format::Deb, Format::Rpm, Format::TarGz]
             }
-            Self::WindowsX64 => &[],
+            Self::WindowsX64 => &[Format::Nsis, Format::Zip],
         }
     }
 }
@@ -82,6 +82,7 @@ pub enum Format {
     Deb,
     Rpm,
     TarGz,
+    Nsis,
 }
 
 impl Format {
@@ -94,8 +95,9 @@ impl Format {
             "deb" => Ok(Self::Deb),
             "rpm" => Ok(Self::Rpm),
             "tar.gz" | "targz" => Ok(Self::TarGz),
+            "nsis" => Ok(Self::Nsis),
             other => Err(format!(
-                "unknown format {other:?}; use app, zip, dmg, appimage, deb, rpm, or tar.gz"
+                "unknown format {other:?}; use app, zip, dmg, appimage, deb, rpm, tar.gz, or nsis"
             )),
         }
     }
@@ -109,12 +111,15 @@ impl Format {
             Self::Deb => Some("deb"),
             Self::Rpm => Some("rpm"),
             Self::TarGz => Some("tar.gz"),
+            Self::Nsis => Some("exe"),
         }
     }
 
     fn works_on(self, target: Target) -> bool {
         match self {
-            Self::App | Self::Zip | Self::Dmg => target == Target::MacosArm64,
+            Self::App | Self::Dmg => target == Target::MacosArm64,
+            Self::Zip => matches!(target, Target::MacosArm64 | Target::WindowsX64),
+            Self::Nsis => target == Target::WindowsX64,
             _ => target.is_linux(),
         }
     }
@@ -134,6 +139,9 @@ impl Format {
 /// `Hushpen-<version>-<target>.<ext>`, or `None` for the `.app` intermediate.
 pub fn artifact_name(version: &str, target: Target, format: Format) -> Option<String> {
     let ext = format.extension()?;
+    if format == Format::Nsis {
+        return Some(format!("Hushpen-{version}-{}-setup.exe", target.name()));
+    }
     Some(format!("Hushpen-{version}-{}.{ext}", target.name()))
 }
 
@@ -180,12 +188,17 @@ mod tests {
     }
 
     #[test]
-    fn the_three_targets_plan_ten_artifacts() {
-        let all: usize = [Target::MacosArm64, Target::LinuxX64, Target::LinuxArm64]
-            .into_iter()
-            .map(|target| planned_artifacts("2.0.0", target).len())
-            .sum();
-        assert_eq!(all, 10);
+    fn the_four_targets_plan_twelve_artifacts() {
+        let all: usize = [
+            Target::MacosArm64,
+            Target::LinuxX64,
+            Target::LinuxArm64,
+            Target::WindowsX64,
+        ]
+        .into_iter()
+        .map(|target| planned_artifacts("2.0.0", target).len())
+        .sum();
+        assert_eq!(all, 12);
     }
 
     #[test]
@@ -226,12 +239,17 @@ mod tests {
     }
 
     #[test]
-    fn windows_is_a_runtime_target_without_package_formats() {
+    fn windows_plans_a_setup_and_portable_zip() {
         assert!(!Target::WindowsX64.is_linux());
-        assert!(Target::WindowsX64.formats().is_empty());
+        assert_eq!(
+            planned_artifacts("2.4.0", Target::WindowsX64),
+            [
+                "Hushpen-2.4.0-windows-x64-setup.exe",
+                "Hushpen-2.4.0-windows-x64.zip",
+            ]
+        );
         for format in [
             Format::App,
-            Format::Zip,
             Format::Dmg,
             Format::AppImage,
             Format::Deb,

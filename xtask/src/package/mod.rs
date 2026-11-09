@@ -13,6 +13,7 @@ mod linux;
 mod mac;
 pub mod names;
 mod verify;
+mod windows;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,8 +35,8 @@ const BINARIES: [&str; 4] = [APP_BINARY, ASR_BINARY, LLM_BINARY, TTS_BINARY];
 const NOTICES: &str = "THIRD-PARTY-NOTICES.html";
 const VAD_MODEL: &str = "ggml-silero-v5.1.2.bin";
 const VAD_SHA256: &str = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
-const USAGE: &str = "usage: cargo xtask package [--target macos-arm64|linux-x64|linux-arm64] \
-[--formats app,zip,dmg,appimage,deb,rpm,tar.gz] [--out <dir>] [--skip-build] [--test-feed]";
+const USAGE: &str = "usage: cargo xtask package [--target macos-arm64|linux-x64|linux-arm64|windows-x64] \
+[--formats app,zip,dmg,appimage,deb,rpm,tar.gz,nsis] [--out <dir>] [--skip-build] [--test-feed]";
 
 #[derive(Debug, PartialEq, Eq)]
 struct Options {
@@ -119,6 +120,10 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    pub fn binary_name(&self, binary: &str) -> String {
+        binary_name(self.target, binary)
+    }
+
     pub fn notices(&self) -> PathBuf {
         self.root.join("assets").join(NOTICES)
     }
@@ -132,7 +137,8 @@ impl Ctx {
         }
         fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         for binary in BINARIES {
-            copy(&self.binaries.join(binary), &dir.join(binary))?;
+            let name = self.binary_name(binary);
+            copy(&self.binaries.join(&name), &dir.join(&name))?;
         }
         Ok(dir)
     }
@@ -165,6 +171,14 @@ impl Ctx {
         let name = names::artifact_name(&self.version, self.target, format)
             .expect("only shipped formats have an artifact name");
         self.dist.join(name)
+    }
+}
+
+fn binary_name(target: Target, binary: &str) -> String {
+    if target == Target::WindowsX64 {
+        format!("{binary}.exe")
+    } else {
+        binary.to_owned()
     }
 }
 
@@ -277,9 +291,6 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         Some(target) => target,
         None => Target::host()?,
     };
-    if target == Target::WindowsX64 {
-        return Err("Windows packaging is not available".into());
-    }
     if Target::host()? != target {
         return Err(format!(
             "this machine builds {} only, not {}; build each target on its own runner",
@@ -332,10 +343,12 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
         &BINARIES
     };
     for binary in checked {
-        crate::release_check::check_binary(&ctx.binaries.join(binary))?;
+        crate::release_check::check_binary(&ctx.binaries.join(ctx.binary_name(binary)))?;
     }
 
-    let mut artifacts = if target.is_linux() {
+    let mut artifacts = if target == Target::WindowsX64 {
+        windows::build(&ctx, &formats)?
+    } else if target.is_linux() {
         linux::build(&ctx, &formats)?
     } else {
         mac::build(&ctx, &formats)?

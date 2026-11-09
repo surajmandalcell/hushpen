@@ -71,7 +71,7 @@ fn check_vad(dir: &Path, problems: &mut Vec<String>) {
 
 fn check_version_line(binary: &Path, version: &str, problems: &mut Vec<String>) {
     let name = binary
-        .file_name()
+        .file_stem()
         .and_then(|name| name.to_str())
         .unwrap_or(APP_BINARY)
         .to_owned();
@@ -111,7 +111,8 @@ fn check_tts_libs(
 /// The packaged worker really loads the bundled libraries (dlopen and the version pin).
 fn check_tts_runtime(dir: &Path, problems: &mut Vec<String>) {
     match capture(
-        Command::new(dir.join(TTS_BINARY)).arg("--check-runtime"),
+        Command::new(dir.join(format!("{TTS_BINARY}{}", std::env::consts::EXE_SUFFIX)))
+            .arg("--check-runtime"),
         "hushpen-tts --check-runtime",
     ) {
         Ok(text) => need(
@@ -426,6 +427,17 @@ fn verify_zip(
     target: Target,
     pinned: &Path,
 ) -> Result<Vec<String>, String> {
+    if target == Target::WindowsX64 {
+        capture(
+            Command::new("tar")
+                .arg("-xf")
+                .arg(artifact)
+                .arg("-C")
+                .arg(scratch),
+            "tar (portable zip)",
+        )?;
+        return verify_windows_folder(scratch, version, "windows-zip");
+    }
     let mut problems = Vec::new();
     capture(
         Command::new("ditto")
@@ -436,6 +448,102 @@ fn verify_zip(
     )?;
     let app = scratch.join("Hushpen.app");
     problems.extend(verify_app_bundle(&app, version, target, pinned)?);
+    Ok(problems)
+}
+
+fn verify_windows_folder(dir: &Path, version: &str, kind: &str) -> Result<Vec<String>, String> {
+    let mut problems = Vec::new();
+    for binary in BINARIES {
+        let path = dir.join(super::binary_name(Target::WindowsX64, binary));
+        if let Err(error) = crate::release_check::check_binary(&path) {
+            problems.push(error);
+        }
+        check_version_line(&path, version, &mut problems);
+    }
+    need(
+        &mut problems,
+        dir.join(NOTICES).is_file(),
+        format!("Windows package lacks {NOTICES}"),
+    );
+    need(
+        &mut problems,
+        fs::read_to_string(dir.join("install-kind"))
+            .unwrap_or_default()
+            .trim()
+            == kind,
+        format!("Windows install-kind is not {kind}"),
+    );
+    check_vad(dir, &mut problems);
+    check_tts_libs(dir, Target::WindowsX64, None, &mut problems);
+    check_tts_runtime(dir, &mut problems);
+    let binary = dir.join("hushpen.exe");
+    let manifest = dir.join("verified-manifest.xml");
+    let result = capture(
+        Command::new("mt.exe")
+            .arg(format!("-inputresource:{};#1", binary.display()))
+            .arg(format!("-out:{}", manifest.display())),
+        "mt (app manifest)",
+    );
+    match result {
+        Ok(_) => {
+            let text = fs::read_to_string(&manifest)
+                .map_err(|e| format!("cannot read app manifest: {e}"))?;
+            need(
+                &mut problems,
+                text.contains("PerMonitorV2"),
+                "Windows manifest lacks PerMonitorV2",
+            );
+            need(
+                &mut problems,
+                text.contains("level=\"asInvoker\""),
+                "Windows app requests elevation",
+            );
+        }
+        Err(error) => problems.push(error),
+    }
+    if manifest.exists() {
+        fs::remove_file(&manifest).map_err(|e| format!("cannot remove extracted manifest: {e}"))?;
+    }
+    let metadata = capture(Command::new("pwsh").args(["-NoProfile", "-NonInteractive", "-Command"])
+        .arg("$v = (Get-Item -LiteralPath $env:HUSHPEN_VERIFY_EXE).VersionInfo; $v.ProductVersion; $v.FileVersion")
+        .env("HUSHPEN_VERIFY_EXE", &binary), "PowerShell (version resource)")?;
+    need(
+        &mut problems,
+        metadata.lines().collect::<Vec<_>>() == [version, version],
+        "Windows version resource differs from the build version",
+    );
+    Ok(problems)
+}
+
+fn verify_nsis(artifact: &Path, version: &str) -> Result<Vec<String>, String> {
+    if Target::host()? != Target::WindowsX64 {
+        return Err("Windows setup must be verified on Windows".into());
+    }
+    let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is missing")?;
+    let install = PathBuf::from(local).join("Programs/Hushpen");
+    if install.exists() {
+        return Err(format!(
+            "refuse to replace an existing install at {}",
+            install.display()
+        ));
+    }
+    capture(Command::new(artifact).arg("/S"), "Windows setup /S")?;
+    let result = verify_windows_folder(&install, version, "windows-setup");
+    let uninstall = capture(
+        Command::new(install.join("uninstall.exe"))
+            .arg("/S")
+            .arg(format!("_?={}", install.display())),
+        "Windows uninstall /S",
+    );
+    let mut problems = result?;
+    if let Err(error) = uninstall {
+        problems.push(error);
+    }
+    need(
+        &mut problems,
+        !install.join("hushpen.exe").exists(),
+        "Windows uninstall left the app executable",
+    );
     Ok(problems)
 }
 
@@ -645,9 +753,6 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
         Some(target) => target,
         None => Target::host()?,
     };
-    if target == Target::WindowsX64 {
-        return Err("Windows packaging is not available".into());
-    }
     let version = build_version();
     let dir = options
         .dir
@@ -688,6 +793,7 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
             Format::AppImage => verify_appimage(&artifact, &scratch, &version, target, &pinned)?,
             Format::Zip => verify_zip(&artifact, &scratch, &version, target, &pinned)?,
             Format::Dmg => verify_dmg(&artifact, &scratch, &version, target, &pinned)?,
+            Format::Nsis => verify_nsis(&artifact, &version)?,
             Format::App => Vec::new(),
         };
         for problem in &found {

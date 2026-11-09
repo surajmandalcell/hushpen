@@ -41,7 +41,7 @@ fn args_for(dir: &Path, pubkey: &Path) -> Args {
     }
 }
 
-/// A folder with the ten installers, each with its own content.
+/// A folder with every installer, each with its own content.
 fn installers_dir(dir: &Path) -> PathBuf {
     let out = dir.join("release");
     fs::create_dir_all(&out).unwrap();
@@ -91,9 +91,9 @@ fn a_tag_gives_its_version_and_odd_tags_are_refused() {
 }
 
 #[test]
-fn the_release_holds_the_ten_installers_and_three_metadata_files() {
+fn the_release_holds_twelve_installers_and_three_metadata_files() {
     let names = release_assets("2.0.0-rc.1");
-    assert_eq!(names.len(), 13);
+    assert_eq!(names.len(), 15);
     for expected in [
         "Hushpen-2.0.0-rc.1-macos-arm64.zip",
         "Hushpen-2.0.0-rc.1-macos-arm64.dmg",
@@ -105,6 +105,8 @@ fn the_release_holds_the_ten_installers_and_three_metadata_files() {
         "Hushpen-2.0.0-rc.1-linux-arm64.deb",
         "Hushpen-2.0.0-rc.1-linux-arm64.rpm",
         "Hushpen-2.0.0-rc.1-linux-arm64.tar.gz",
+        "Hushpen-2.0.0-rc.1-windows-x64-setup.exe",
+        "Hushpen-2.0.0-rc.1-windows-x64.zip",
         "latest.json",
         "latest.json.minisig",
         "SHA256SUMS",
@@ -129,7 +131,11 @@ fn a_signed_release_verifies_and_the_manifest_lists_the_self_update_installers()
         "content of Hushpen-2.0.0-rc.1-linux-arm64.AppImage".len()
     );
     let sums = fs::read_to_string(out.join(SUMS)).unwrap();
-    assert_eq!(sums.lines().count(), 10);
+    assert_eq!(sums.lines().count(), 12);
+    assert_eq!(
+        manifest["platforms"]["windows-x64"]["url"],
+        "https://github.com/owner/repo/releases/download/v2.0.0-rc.1/Hushpen-2.0.0-rc.1-windows-x64-setup.exe"
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -234,7 +240,7 @@ fn an_unreadable_key_names_the_variable_and_not_its_text() {
 }
 
 #[test]
-fn a_manifest_needs_all_ten_installers() {
+fn a_manifest_needs_all_twelve_installers() {
     let dir = scratch("short");
     let (secret, pubkey) = key_pair(&dir, "k");
     let out = installers_dir(&dir);
