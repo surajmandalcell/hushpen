@@ -18,59 +18,62 @@
   const run = (v, fn) => (async () => { await hold(v, 300); for (;;) await fn(); })();
   const FB = window.FlowBar;
 
-  // Works offline
+  // Works offline: a dictation goes into Notes, the pointer turns Wi-Fi off in its menu, and the next
+  // dictation goes in the same way
   const wo = document.querySelector('[data-wo]');
   if (wo && FB) {
-    const v = wo.closest('.why-v');
-    const g = wo.querySelector('.wo-wv .a');
-    // amplitude, wavelength, phase, stroke, opacity, seconds per wavelength
-    const WAVES = [[22, 34, 0, 2.6, 1, 0.9], [15, 46, 1.3, 1.8, 0.5, 1.25], [9, 27, 2.4, 1.4, 0.28, 0.75]];
-    g.innerHTML = WAVES.map(([a, l, p, sw, o, d]) => {
-      let path = '';
-      for (let x = -2 * l; x <= 128; x += 2) path += (path ? 'L' : 'M') + x + ' ' + (50 + a * Math.sin(x / l * 2 * Math.PI + p)).toFixed(2);
-      return `<path d="${path}" stroke-width="${sw}" opacity="${o}" style="--l:${l}px;--d:${d}s"/>`;
-    }).join('');
-    const fb = FB.create(wo.querySelector('[data-fb]'), { scale: 0.9, seed: 11, hidden: true, zoom: 1.6 });
-    const lines = [...wo.querySelectorAll('.wo-ln u')], car = wo.querySelector('.wo-car'), cur = wo.querySelector('.wo-cur'), pk = wo.querySelector('.wo-pk');
-    const MAX = [178, 152, 104];
-    const setLine = (i, w) => { lines[i].style.width = w + 'px'; car.style.transform = `translate(${14 + w + 4}px, ${30 + i * 18}px)`; };
-    const type = async i => { let w = 0; while (w < MAX[i]) { w = Math.min(MAX[i], w + 16 + Math.random() * 22); setLine(i, Math.round(w)); await hold(v, 110 + Math.random() * 70); } };
-    const off = on => wo.classList.toggle('off', on);
-    const spark = (cls, y, frames, ms, host) => { const e = document.createElement('i'); e.className = cls; e.style.top = y + 'px'; host.append(e); e.animate(frames, { duration: ms, easing: 'cubic-bezier(.22,1,.36,1)' }).finished.then(() => e.remove()); };
-    // A packet runs at the wall at an even speed, then bounces back into the laptop and fades
-    const shoot = async y => {
-      const p = document.createElement('i');
-      p.className = 'wo-p'; p.style.top = y + 'px'; pk.append(p);
-      await p.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(118px)', opacity: 1 }], { duration: 560, easing: 'linear', fill: 'forwards' }).finished;
-      spark('wo-ring', y + 6, [{ transform: 'scale(.25)', opacity: 1 }, { transform: 'scale(1.5)', opacity: 0 }], 650, pk);
-      spark('wo-flash', y + 6, [{ opacity: 1 }, { opacity: 0 }], 750, wo);
-      await p.animate([{ transform: 'translateX(118px)', opacity: 1 }, { transform: 'translateX(40px)', opacity: 0 }], { duration: 700, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }).finished;
-      p.remove();
+    const v = wo.closest('.why-v'), dk = wo.querySelector('.wo-dk'), tx = wo.querySelector('.wo-tx'), cur = wo.querySelector('.wo-cur');
+    const wf = wo.querySelector('.wo-wfx'), sw = wo.querySelector('.wo-sw'), DW = 520 / 1.5;
+    const fb = FB.create(wo.querySelector('[data-fb]'), { seed: 11, hidden: true, zoom: 2.2 });
+    const SAID = ['Boarding now at gate 14.', 'Wi-Fi is off, and it still types.'];
+    // Only the sentence that was just pasted fades in; the ones before it stay put
+    const put = (n, fresh) => {
+      tx.innerHTML = SAID.slice(0, n).map((s, i) => s.split(' ').map((w, k) => `<span class="w${fresh && i === n - 1 ? ' nw' : ''}" style="--n:${k}">${w}</span>`).join(' ')).join('<br>') + '<i class="wo-c"></i>';
+    };
+    // The desktop is zoomed; both boxes are measured the same way, so the desktop's width in points turns them into points
+    const at = (el, fx = 0.5, fy = 0.5) => {
+      const d = dk.getBoundingClientRect(), r = el.getBoundingClientRect(), k = d.width / DW;
+      return [(r.left - d.left + r.width * fx) / k, (r.top - d.top + r.height * fy) / k];
     };
     // The translate property, not transform: the press scale then shrinks the pointer at its tip and leaves its place alone
-    const move = (x, y) => { cur.style.translate = `${x}px ${y}px`; };
-    if (calm) {
-      off(true); wo.classList.add('talk'); setLine(0, MAX[0]); setLine(1, MAX[1]); setLine(2, 64); fb.set('listening').show();
-    } else run(v, async () => {
-      off(false); wo.classList.remove('talk', 'clear'); fb.hide();
-      lines.forEach((u, i) => setLine(i, 0)); setLine(0, 0);
-      await hold(v, 300);
-      wo.classList.add('talk'); fb.set('listening').show();
-      await Promise.all([type(0), (async () => { for (const [ms, y] of [[250, 150], [520, 184], [460, 216]]) { await hold(v, ms); shoot(y); } })()]);
-      await hold(v, 600);
-      cur.style.transition = 'none'; move(170, 140); void cur.offsetWidth; cur.style.transition = '';
-      cur.classList.add('on'); move(47, 49);
-      await hold(v, 850);
-      cur.classList.add('dn'); await sleep(130); off(true); cur.classList.remove('dn');
-      await hold(v, 350);
-      move(150, 104); cur.classList.remove('on');
-      await type(1); await type(2);
-      wo.classList.remove('talk'); fb.set('transcribing');
-      await hold(v, 700);
-      fb.set('pasted');
+    const move = ([x, y], dx = 0, dy = 0) => { cur.style.translate = `${(x + dx - 1.3).toFixed(1)}px ${(y + dy - 1.3).toFixed(1)}px`; };
+    const click = async () => { cur.classList.add('dn'); await sleep(130); cur.classList.remove('dn'); };
+    const dictate = async n => {
+      fb.set('listening').show();
+      await hold(v, 1900);
+      fb.set('transcribing');
+      await hold(v, 650);
+      fb.set('pasted'); put(n, true);
       await hold(v, 1000);
-      fb.hide(); wo.classList.add('clear');
-      await hold(v, 700);
+      fb.hide();
+    };
+    if (calm) {
+      wo.classList.add('off', 'menu'); put(2); fb.set('pasted').show();
+    } else run(v, async () => {
+      wo.classList.remove('off', 'menu', 'fade'); put(0);
+      await hold(v, 500);
+      await dictate(1);
+      await hold(v, 500);
+      const c = wo.querySelector('.wo-c');
+      cur.style.transition = 'none'; move(at(c), 34, 26); void cur.offsetWidth; cur.style.transition = '';
+      cur.classList.add('on'); move(at(wf));
+      await hold(v, 850);
+      await click(); wo.classList.add('menu');
+      await hold(v, 650);
+      move(at(sw, 0.35));
+      await hold(v, 800);
+      await click(); wo.classList.add('off');
+      await hold(v, 1000);
+      move(at(c), 2, 4);
+      await hold(v, 850);
+      await click(); wo.classList.remove('menu');
+      await hold(v, 300);
+      cur.classList.remove('on');
+      await hold(v, 400);
+      await dictate(2);
+      await hold(v, 2400);
+      wo.classList.add('fade');
+      await hold(v, 450);
     });
   }
 
