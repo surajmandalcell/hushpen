@@ -1,5 +1,18 @@
 use super::*;
 
+#[test]
+fn moving_route_devices_keeps_local_last_and_stops_at_edges() {
+    let mut route = Route::new(vec!["phone".into(), "server".into()], false);
+    assert!(!route.move_device("phone", true));
+    assert!(!route.move_device("server", false));
+    assert!(!route.move_device(THIS_COMPUTER, true));
+    assert!(!route.move_device("missing", false));
+    assert!(route.move_device("server", true));
+    assert_eq!(route.ids(), ["server", "phone", THIS_COMPUTER]);
+    assert!(route.move_device("server", false));
+    assert_eq!(route.ids(), ["phone", "server", THIS_COMPUTER]);
+}
+
 fn route(ids: &[&str], no_local: bool) -> Route {
     Route::new(ids.iter().map(|id| (*id).to_owned()).collect(), no_local)
 }
