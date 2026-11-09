@@ -59,6 +59,9 @@ ureq.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 rfd.workspace = true
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource.workspace = true
+
 [target.'cfg(target_os = "macos")'.dependencies]
 # The name of the menu bar item, which AppKit reads from its image.
 objc2-foundation.workspace = true
