@@ -2,10 +2,9 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 use super::names::Format;
-use super::{BINARIES, Ctx, config, copy, run_packager, run_tool};
+use super::{BINARIES, Ctx, archive_tool, config, copy, run_packager, run_tool};
 
 #[path = "../../../packaging/windows/icon.rs"]
 mod icon;
@@ -65,7 +64,7 @@ pub fn build(ctx: &Ctx, formats: &[Format]) -> Result<Vec<PathBuf>, String> {
                 copy(source, &portable.join(name))?;
             }
             run_tool(
-                Command::new("tar")
+                archive_tool()?
                     .args(["-a", "-cf"])
                     .arg(&artifact)
                     .arg("-C")

@@ -6,6 +6,7 @@
 //! is the CI runner, which may mount it.
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -428,8 +429,15 @@ fn verify_zip(
     pinned: &Path,
 ) -> Result<Vec<String>, String> {
     if target == Target::WindowsX64 {
+        let mut signature = [0_u8; 4];
+        fs::File::open(artifact)
+            .and_then(|mut file| file.read_exact(&mut signature))
+            .map_err(|e| format!("cannot read ZIP signature: {e}"))?;
+        if signature != *b"PK\x03\x04" {
+            return Err(format!("{} is not a ZIP archive", artifact.display()));
+        }
         capture(
-            Command::new("tar")
+            super::archive_tool()?
                 .arg("-xf")
                 .arg(artifact)
                 .arg("-C")
@@ -478,32 +486,7 @@ fn verify_windows_folder(dir: &Path, version: &str, kind: &str) -> Result<Vec<St
     check_tts_runtime(dir, &mut problems);
     let binary = dir.join("hushpen.exe");
     let manifest = dir.join("verified-manifest.xml");
-    let result = capture(
-        Command::new("mt.exe")
-            .arg(format!("-inputresource:{};#1", binary.display()))
-            .arg(format!("-out:{}", manifest.display())),
-        "mt (app manifest)",
-    );
-    match result {
-        Ok(_) => {
-            let text = fs::read_to_string(&manifest)
-                .map_err(|e| format!("cannot read app manifest: {e}"))?;
-            need(
-                &mut problems,
-                text.contains("PerMonitorV2"),
-                "Windows manifest lacks PerMonitorV2",
-            );
-            need(
-                &mut problems,
-                text.contains("level=\"asInvoker\""),
-                "Windows app requests elevation",
-            );
-        }
-        Err(error) => problems.push(error),
-    }
-    if manifest.exists() {
-        fs::remove_file(&manifest).map_err(|e| format!("cannot remove extracted manifest: {e}"))?;
-    }
+    check_windows_manifest(&binary, &manifest, true, &mut problems)?;
     let metadata = capture(Command::new("pwsh").args(["-NoProfile", "-NonInteractive", "-Command"])
         .arg("$v = (Get-Item -LiteralPath $env:HUSHPEN_VERIFY_EXE).VersionInfo; $v.ProductVersion; $v.FileVersion")
         .env("HUSHPEN_VERIFY_EXE", &binary), "PowerShell (version resource)")?;
@@ -515,9 +498,59 @@ fn verify_windows_folder(dir: &Path, version: &str, kind: &str) -> Result<Vec<St
     Ok(problems)
 }
 
-fn verify_nsis(artifact: &Path, version: &str) -> Result<Vec<String>, String> {
+fn check_windows_manifest(
+    binary: &Path,
+    manifest: &Path,
+    dpi: bool,
+    problems: &mut Vec<String>,
+) -> Result<(), String> {
+    let result = capture(
+        Command::new("mt.exe")
+            .arg(format!("-inputresource:{};#1", binary.display()))
+            .arg(format!("-out:{}", manifest.display())),
+        "mt (app manifest)",
+    );
+    match result {
+        Ok(_) => {
+            let text = fs::read_to_string(manifest)
+                .map_err(|e| format!("cannot read Windows manifest: {e}"));
+            fs::remove_file(manifest)
+                .map_err(|e| format!("cannot remove extracted manifest: {e}"))?;
+            let text = text?;
+            if dpi {
+                need(
+                    problems,
+                    text.contains("PerMonitorV2"),
+                    "Windows manifest lacks PerMonitorV2",
+                );
+            }
+            need(
+                problems,
+                text.contains("level=\"asInvoker\""),
+                format!("{} requests elevation", binary.display()),
+            );
+        }
+        Err(error) => problems.push(error),
+    }
+    if manifest.exists() {
+        fs::remove_file(manifest).map_err(|e| format!("cannot remove extracted manifest: {e}"))?;
+    }
+    Ok(())
+}
+
+fn verify_nsis(artifact: &Path, scratch: &Path, version: &str) -> Result<Vec<String>, String> {
     if Target::host()? != Target::WindowsX64 {
         return Err("Windows setup must be verified on Windows".into());
+    }
+    let mut problems = Vec::new();
+    check_windows_manifest(
+        artifact,
+        &scratch.join("setup-manifest.xml"),
+        false,
+        &mut problems,
+    )?;
+    if !problems.is_empty() {
+        return Ok(problems);
     }
     let local = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is missing")?;
     let install = PathBuf::from(local).join("Programs/Hushpen");
@@ -793,7 +826,7 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
             Format::AppImage => verify_appimage(&artifact, &scratch, &version, target, &pinned)?,
             Format::Zip => verify_zip(&artifact, &scratch, &version, target, &pinned)?,
             Format::Dmg => verify_dmg(&artifact, &scratch, &version, target, &pinned)?,
-            Format::Nsis => verify_nsis(&artifact, &version)?,
+            Format::Nsis => verify_nsis(&artifact, &scratch, &version)?,
             Format::App => Vec::new(),
         };
         for problem in &found {
@@ -818,6 +851,17 @@ pub fn run_verify(root: &Path, args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_renamed_tar_is_not_a_portable_zip() {
+        let dir = std::env::temp_dir().join(format!("not-zip-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let artifact = dir.join("portable.zip");
+        fs::write(&artifact, b"./\0\0").unwrap();
+        let error = verify_zip(&artifact, &dir, "2.4.0", Target::WindowsX64, &dir).unwrap_err();
+        assert!(error.contains("is not a ZIP archive"), "{error}");
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn the_shipped_icon_catalog_holds_the_icon_the_plist_names() {

@@ -209,6 +209,15 @@ pub fn run_tool(command: &mut Command, what: &str) -> Result<(), String> {
     }
 }
 
+pub(crate) fn archive_tool() -> Result<Command, String> {
+    if std::env::consts::OS == "windows" {
+        let system = std::env::var_os("SystemRoot").ok_or("SystemRoot is missing")?;
+        Ok(Command::new(PathBuf::from(system).join("System32/tar.exe")))
+    } else {
+        Ok(Command::new("tar"))
+    }
+}
+
 /// Runs `cargo packager` with a config file for the given formats.
 pub fn run_packager(root: &Path, config: &Path, formats: &str, out: &Path) -> Result<(), String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
