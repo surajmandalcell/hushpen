@@ -247,7 +247,7 @@ fn offer(
 ) -> io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:0")?;
     listener.set_nonblocking(true)?;
-    let id = key_id(&identity.public());
+    let id = key_id(&identity.public())[..32].to_owned();
     let hostname = format!("hushpen-{id}.local.");
     let host = if host.is_empty() {
         hostname.trim_end_matches('.').to_owned()
@@ -452,14 +452,15 @@ mod tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&cancelled);
         let (sender, receiver) = mpsc::sync_channel(4);
-        let worker = std::thread::spawn(move || {
-            offer(&identity, "127.0.0.1".into(), &secrets, &stop, &sender)
-        });
+        let worker =
+            std::thread::spawn(move || offer(&identity, String::new(), &secrets, &stop, &sender));
         let Update::Offer { uri, .. } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
         else {
             panic!("offer expected")
         };
-        let port = PairOffer::parse(&uri).unwrap().port;
+        let parsed = PairOffer::parse(&uri).unwrap();
+        assert!(parsed.host.split('.').all(|label| label.len() <= 63));
+        let port = parsed.port;
         cancelled.store(true, Ordering::Release);
         worker.join().unwrap().unwrap();
         assert!(std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).is_err());
