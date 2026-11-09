@@ -58,6 +58,22 @@ pub struct ParakeetEngine {
 
 impl ParakeetEngine {
     pub fn load(model: &Path, options: LoadOptions) -> Result<Self, EngineError> {
+        Self::load_using_detector(model, options, None)
+    }
+
+    pub fn load_with_detector(
+        model: &Path,
+        options: LoadOptions,
+        detector: &Path,
+    ) -> Result<Self, EngineError> {
+        Self::load_using_detector(model, options, Some(detector))
+    }
+
+    fn load_using_detector(
+        model: &Path,
+        options: LoadOptions,
+        detector: Option<&Path>,
+    ) -> Result<Self, EngineError> {
         if let Some(feature) = crate::cpu::missing_cpu_feature() {
             return Err(EngineError::UnsupportedCpu(feature));
         }
@@ -69,7 +85,11 @@ impl ParakeetEngine {
         let threads = i32::try_from(options.threads.max(1)).unwrap_or(i32::MAX);
         let mut vad_params = WhisperVadContextParams::default();
         vad_params.set_n_threads(threads);
-        let vad = WhisperVadContext::new(&crate::vad::model_path()?, vad_params)
+        let detector = match detector {
+            Some(detector) => crate::vad::explicit_model_path(detector)?,
+            None => crate::vad::model_path()?,
+        };
+        let vad = WhisperVadContext::new(&detector, vad_params)
             .map_err(|error| EngineError::LoadFailed(error.to_string()))?;
         // SAFETY: the library returns a fully initialized value.
         let mut params = unsafe { ffi::parakeet_context_default_params() };

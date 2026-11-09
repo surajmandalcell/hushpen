@@ -6,7 +6,7 @@ use whisper_rs::WhisperVadParams;
 
 use crate::EngineError;
 
-const MODEL: &str = "ggml-silero-v5.1.2.bin";
+const MODEL: &str = hushpen_core::catalog::VAD_FILE;
 
 fn candidates(exe_dir: &Path) -> [PathBuf; 3] {
     [
@@ -34,6 +34,17 @@ pub fn model_path() -> Result<String, EngineError> {
         .ok_or_else(|| EngineError::LoadFailed("the bundled speech detector is missing".into()))
 }
 
+pub fn explicit_model_path(path: &Path) -> Result<String, EngineError> {
+    path.to_str()
+        .filter(|_| path.is_file())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            EngineError::LoadFailed(
+                "the supplied speech detector is missing or has an invalid path".into(),
+            )
+        })
+}
+
 pub fn params() -> WhisperVadParams {
     let mut params = WhisperVadParams::default();
     params.set_threshold(0.5);
@@ -47,6 +58,18 @@ pub fn params() -> WhisperVadParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_detector_paths_never_fall_back_to_executable_resources() {
+        let directory = tempfile::tempdir().unwrap();
+        let supplied = directory.path().join("phone-detector.bin");
+        assert!(explicit_model_path(&supplied).is_err());
+        std::fs::write(&supplied, b"detector").unwrap();
+        assert_eq!(
+            explicit_model_path(&supplied).unwrap(),
+            supplied.to_str().unwrap()
+        );
+    }
 
     #[test]
     fn every_package_layout_has_a_model_location() {

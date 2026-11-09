@@ -29,6 +29,9 @@ pub const PARAKEET_LANGUAGES: [&str; 25] = [
 
 pub const SPEECH_DEFAULT: &str = "parakeet-v3-q4_k";
 pub const SPEECH_TURBO: &str = "large-v3-turbo-q5_0";
+pub const VAD_FILE: &str = "ggml-silero-v5.1.2.bin";
+pub const VAD_BYTES: u64 = 885_098;
+pub const VAD_SHA256: &str = "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf";
 
 /// Speech models removed from the catalog. Only these known files are deleted at startup.
 pub const RETIRED_SPEECH: &[&str] = &[

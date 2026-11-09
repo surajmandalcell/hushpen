@@ -55,6 +55,21 @@ pub fn server_config() -> ServerConfig {
     }
 }
 
+/// Phone bundles supply their extracted detector without changing process resources.
+pub fn server_config_with_detector(detector: PathBuf) -> ServerConfig {
+    let mut config = server_config();
+    config.loader = Arc::new(move |model, options| {
+        if is_parakeet(model) {
+            ParakeetEngine::load_with_detector(model, options, &detector)
+                .map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
+        } else {
+            WhisperEngine::load_with_detector(model, options, &detector)
+                .map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
+        }
+    });
+    config
+}
+
 /// Runs the engine child. `args` are the arguments after the program name (or after `engine`).
 pub fn engine_main(args: &[String]) -> ExitCode {
     if args.first().map(String::as_str) == Some("--version") {
@@ -139,6 +154,22 @@ fn run_smoke(smoke: &Smoke) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_in_process_detector_never_uses_the_executable_resource_fallback() {
+        let folder = tempfile::tempdir().unwrap();
+        let config = server_config_with_detector(folder.path().join("missing-detector.bin"));
+        let result = (config.loader)(
+            Path::new("ggml-parakeet-missing.bin"),
+            LoadOptions {
+                gpu: false,
+                threads: 1,
+            },
+        );
+        assert!(
+            matches!(result, Err(EngineError::LoadFailed(detail)) if detail.contains("supplied speech detector"))
+        );
+    }
 
     fn strings(args: &[&str]) -> Vec<String> {
         args.iter().map(|arg| (*arg).to_owned()).collect()
