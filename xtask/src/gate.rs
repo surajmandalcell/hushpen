@@ -91,6 +91,10 @@ pub fn run(root: &Path) -> Result<(), String> {
     if let Some(problem) = target_dir_problem(root, target_dir.as_deref(), ci) {
         return Err(problem);
     }
+    #[cfg(target_os = "windows")]
+    park_running_exe(
+        &std::env::current_exe().map_err(|error| format!("cannot find xtask: {error}"))?,
+    )?;
 
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let steps =
@@ -120,6 +124,40 @@ pub fn run(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn park_running_exe(exe: &Path) -> Result<(), String> {
+    use std::fs;
+    let parked = exe.with_file_name("xtask-gate-running.exe");
+    match fs::remove_file(&parked) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "cannot remove the previous gate executable: {error}"
+            ));
+        }
+    }
+    // Windows can rename a loaded image, but Cargo cannot overwrite that image's file.
+    fs::rename(exe, &parked).map_err(|error| format!("cannot park the running xtask: {error}"))?;
+    if let Err(error) = fs::copy(&parked, exe) {
+        let restored = match fs::remove_file(exe) {
+            Ok(()) => fs::rename(&parked, exe),
+            Err(remove) if remove.kind() == std::io::ErrorKind::NotFound => {
+                fs::rename(&parked, exe)
+            }
+            Err(remove) => Err(remove),
+        };
+        return Err(match restored {
+            Ok(()) => format!("cannot copy xtask back for Cargo (original restored): {error}"),
+            Err(restore) => format!(
+                "cannot copy xtask back for Cargo: {error}; original at {} could not be restored: {restore}",
+                parked.display()
+            ),
+        });
+    }
+    Ok(())
+}
+
 fn run_cargo(cargo: &str, root: &Path, args: &[&str]) -> Result<(), String> {
     let mut command = Command::new(cargo);
     command.args(args).current_dir(root);
@@ -144,6 +182,95 @@ fn run_cargo(cargo: &str, root: &Path, args: &[&str]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[ignore = "child process helper for the running-executable parking test"]
+    fn parking_child() {
+        let Some(dir) = std::env::var_os("HUSHPEN_GATE_PARK_TEST_DIR") else {
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::write(dir.join("ready"), "").unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !dir.join("stop").exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "parking test parent did not stop the child"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn parking_a_running_executable_leaves_cargos_output_replaceable() {
+        use std::fs;
+        use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+        let root = crate::root::repo_root().unwrap();
+        let dir = crate::package::target_dir(&root).join(format!(
+            "gate-parking-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("xtask.exe");
+        fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+        let mut child = Command::new(&exe)
+            .args(["--ignored", "--exact", "gate::tests::parking_child"])
+            .env("HUSHPEN_GATE_PARK_TEST_DIR", &dir)
+            .spawn()
+            .unwrap();
+        let result = (|| -> Result<(), String> {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !dir.join("ready").exists() {
+                if child
+                    .try_wait()
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+                    || Instant::now() >= deadline
+                {
+                    return Err("the parking helper did not become ready".into());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            fs::write(dir.join("xtask-gate-running.exe"), "previous gate")
+                .map_err(|error| error.to_string())?;
+            park_running_exe(&exe)?;
+            fs::write(&exe, "new Cargo output").map_err(|error| error.to_string())?;
+            if fs::read(&exe).map_err(|error| error.to_string())? != b"new Cargo output" {
+                return Err("Cargo's output did not change".into());
+            }
+            fs::write(dir.join("stop"), "").map_err(|error| error.to_string())?;
+            loop {
+                if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+                    return status
+                        .success()
+                        .then_some(())
+                        .ok_or_else(|| format!("parking helper failed: {status}"));
+                }
+                if Instant::now() >= deadline {
+                    return Err("the parking helper did not stop".into());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        })();
+        if child.try_wait().unwrap().is_none() {
+            child.kill().unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while child.try_wait().unwrap().is_none() {
+                assert!(
+                    Instant::now() < deadline,
+                    "the parking helper did not terminate"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(result.is_ok(), "{result:?}");
+    }
 
     #[test]
     fn gate_runs_the_required_commands_with_the_two_binary_check_and_net_audit() {
