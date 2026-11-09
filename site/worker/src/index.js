@@ -52,11 +52,13 @@ async function release(data) {
 }
 
 export async function buildReleases() {
-  const [latest, list] = await Promise.all([get(`${API}/latest`), get(`${API}?per_page=20`)]);
-  if (latest.draft || latest.prerelease) throw new Error('Latest release is not stable');
+  const list = await get(`${API}?per_page=20`);
+  const newest = (a, b) => Date.parse(b.published_at) - Date.parse(a.published_at);
+  const latest = list.filter(item => !item.draft && !item.prerelease).sort(newest)[0];
+  if (!latest) throw new Error('No stable release');
   const hasWindows = item => item.assets.some(asset => /-windows-x64-setup\.exe$/.test(asset.name));
   const windows = hasWindows(latest) ? latest : list.filter(item => !item.draft && hasWindows(item))
-    .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at))[0];
+    .sort(newest)[0];
   const stablePromise = release(latest);
   const [stable, windowsRelease] = await Promise.all([
     stablePromise, windows ? (windows.tag_name === latest.tag_name ? stablePromise : release(windows)) : null,
@@ -83,12 +85,19 @@ export default {
     try {
       const body = JSON.stringify(await buildReleases());
       const response = ttl => new Response(body, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': `public, max-age=${ttl}` } });
-      ctx.waitUntil(Promise.all([cache.put(freshKey, response(600)), cache.put(goodKey, response(604800))]));
+      ctx.waitUntil(Promise.all([
+        cache.put(freshKey, response(600)), cache.put(goodKey, response(604800)), env.RELEASES?.put('last-good', body),
+      ]));
       return outward(response(600));
     } catch (error) {
       console.error('Release refresh failed:', error);
       const lastGood = await cache.match(goodKey);
       if (lastGood) return outward(lastGood, true);
+      // The Cache API is per data center, so a cold one falls back to the copy every data center shares.
+      const shared = await env.RELEASES?.get('last-good');
+      if (shared) {
+        return outward(new Response(shared, { headers: { 'content-type': 'application/json; charset=utf-8' } }), true);
+      }
       return new Response(JSON.stringify({ error: 'Release data is temporarily unavailable.' }), {
         status: 503, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
       });

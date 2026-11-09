@@ -53,7 +53,7 @@ test('stable and Windows preview remain separate, with checksums and Highlights'
 
 test('stable Windows assets take priority and no Windows release returns null', async () => {
   const stable = fixture('v2.4.0', false, true);
-  github(stable, [fixture('v2.5.0-rc.2', true, true)]);
+  github(stable, [stable, fixture('v2.5.0-rc.2', true, true)]);
   assert.equal((await buildReleases()).windows.prerelease, false);
   const without = fixture('v2.4.0');
   without.body = '## Fixes\nA fix';
@@ -122,6 +122,23 @@ test('fresh cache lasts ten minutes, recovery copy seven days, clients five minu
   const down = await worker.fetch(request(), {}, context());
   assert.equal(down.status, 503);
   assert.equal(down.headers.get('cache-control'), 'no-store');
+});
+
+test('a cold data center serves the shared copy when GitHub fails', async () => {
+  const stable = fixture('v2.4.0');
+  github(stable, [stable]);
+  const store = new Map();
+  const env = { RELEASES: { async get(key) { return store.get(key) ?? null; }, async put(key, value) { store.set(key, value); } } };
+  const values = cacheMock(), ctx = context();
+  await worker.fetch(request(), env, ctx);
+  await Promise.all(ctx.waits);
+  assert.ok(store.get('last-good'));
+  values.clear();
+  globalThis.fetch = async () => new Response('Rate limited', { status: 403 });
+  const shared = await worker.fetch(request(), env, context());
+  assert.equal(shared.status, 200);
+  assert.equal(shared.headers.get('x-hushpen-stale'), '1');
+  assert.equal((await shared.json()).stable.tag, 'v2.4.0');
 });
 
 test('all other routes and methods go through the asset binding', async () => {
