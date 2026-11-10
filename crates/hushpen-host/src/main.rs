@@ -65,10 +65,7 @@ fn run() -> io::Result<()> {
         &options.data.join("logs"),
     )?;
     #[cfg(target_os = "linux")]
-    let _memory = hushpen_host::watch_memory(
-        Arc::clone(&workers),
-        Arc::new(std::sync::atomic::AtomicBool::new(false)),
-    );
+    let _memory = hushpen_host::watch_memory(Arc::clone(&workers));
     let _advertisement = advertise(&options, &identity, listener.local_addr()?.port())?;
     eprintln!("hushpen-host listening on {}", listener.local_addr()?);
     let mut offer: Option<PairOffer> = None;
