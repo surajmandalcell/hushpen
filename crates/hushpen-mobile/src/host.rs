@@ -9,6 +9,8 @@ use hushpen_remote::{Identity, PairOffer, RemoteControl, RemoteStream, Resolver}
 use hushpen_store::secrets::Secrets;
 use std::collections::HashMap;
 use std::net::TcpListener;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -55,6 +57,8 @@ struct Running {
     thread: JoinHandle<()>,
     workers: Arc<Workers>,
     port: u16,
+    #[cfg(unix)]
+    wake: UnixStream,
     rule: UnloadRule,
     _advertisement: hushpen_remote::discovery::Advertisement,
 }
@@ -157,6 +161,8 @@ impl Host {
             .set_nonblocking(true)
             .map_err(MobileError::failed)?;
         let port = listener.local_addr().map_err(MobileError::failed)?.port();
+        #[cfg(unix)]
+        let (wake, wait) = UnixStream::pair().map_err(MobileError::failed)?;
         let id = key_id(&self.identity.public());
         let device = Device {
             id: id.clone(),
@@ -197,6 +203,8 @@ impl Host {
         let connections = Arc::new(Mutex::new(HashMap::new()));
         let thread = accept(
             listener,
+            #[cfg(unix)]
+            wait,
             Arc::clone(&self.identity),
             Arc::clone(&self.secrets),
             Arc::clone(&workers),
@@ -212,6 +220,8 @@ impl Host {
             thread,
             workers,
             port,
+            #[cfg(unix)]
+            wake,
             rule,
             _advertisement: advertisement,
         });
@@ -298,6 +308,15 @@ impl Host {
         }
     }
 
+    /// A local flow releases speech without unloading a serving phone.
+    pub fn release_local_model(&self) -> Result<(), MobileError> {
+        let running = lock(&self.running);
+        if running.is_none() {
+            self.engine.unload()?;
+        }
+        Ok(())
+    }
+
     pub fn stop(&self) {
         let Some(running) = lock(&self.running).take() else {
             return;
@@ -306,6 +325,8 @@ impl Host {
         for control in lock(&running.connections).values() {
             let _ = control.shutdown();
         }
+        #[cfg(unix)]
+        drop(running.wake);
         let _ = running.thread.join();
         running.workers.set_job_activity(None);
         running.workers.cleanup.shutdown();
@@ -334,6 +355,7 @@ fn key_id(key: &[u8; 32]) -> String {
 #[allow(clippy::too_many_arguments)]
 fn accept(
     listener: TcpListener,
+    #[cfg(unix)] wake: UnixStream,
     identity: Arc<Identity>,
     secrets: Arc<Secrets>,
     workers: Arc<Workers>,
@@ -348,14 +370,28 @@ fn accept(
             let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let mut next_id = 0_u64;
             while !stop.load(Ordering::Acquire) {
+                #[cfg(unix)]
+                match wait_for_connection(&listener, &wake) {
+                    Ok(true) => {}
+                    Ok(false) => break,
+                    Err(problem) => {
+                        log::debug!("PHONE_LISTENER_ENDED {problem}");
+                        break;
+                    }
+                }
                 let socket = match listener.accept() {
                     Ok((socket, _)) => socket,
                     Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                        #[cfg(not(unix))]
                         std::thread::sleep(Duration::from_millis(20));
                         continue;
                     }
+                    Err(problem) if problem.kind() == std::io::ErrorKind::Interrupted => continue,
                     Err(_) => break,
                 };
+                if stop.load(Ordering::Acquire) {
+                    break;
+                }
                 if active.load(Ordering::Acquire) >= 8 {
                     continue;
                 }
@@ -399,6 +435,29 @@ fn accept(
         })
 }
 
+#[cfg(unix)]
+fn wait_for_connection(listener: &TcpListener, wake: &UnixStream) -> std::io::Result<bool> {
+    use rustix::event::{PollFd, PollFlags, poll};
+    let mut events = [
+        PollFd::new(listener, PollFlags::IN),
+        PollFd::new(wake, PollFlags::IN),
+    ];
+    loop {
+        match poll(&mut events, None) {
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(problem) => return Err(problem.into()),
+            Ok(_) => {}
+        }
+        if !events[1].revents().is_empty() {
+            return Ok(false);
+        }
+        if events[0].revents().contains(PollFlags::IN) {
+            return Ok(true);
+        }
+        return Err(std::io::Error::other("phone listener closed"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,6 +473,52 @@ mod tests {
         fn cleanup(&self, text: String, _: String) -> Result<String, MobileError> {
             Ok(format!("{}!", text.trim_end_matches('.')))
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn idle_listener_cancellation_needs_no_network_connection() {
+        for _ in 0..3 {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let (wake, wait) = UnixStream::pair().unwrap();
+            let (sent, received) = std::sync::mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                sent.send(wait_for_connection(&listener, &wait)).unwrap();
+            });
+            assert!(matches!(
+                received.recv_timeout(Duration::from_millis(20)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ));
+            drop(wake);
+            assert!(
+                !received
+                    .recv_timeout(Duration::from_secs(1))
+                    .unwrap()
+                    .unwrap()
+            );
+            thread.join().unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn listener_cancellation_before_wait_does_not_lose_the_wake() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let (wake, wait) = UnixStream::pair().unwrap();
+        drop(wake);
+        let (sent, received) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            sent.send(wait_for_connection(&listener, &wait)).unwrap();
+        });
+        assert!(
+            !received
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap()
+        );
+        thread.join().unwrap();
     }
 
     fn host(data: &std::path::Path, os: Os) -> Arc<Host> {
@@ -738,6 +843,7 @@ mod tests {
             "speech engine is busy"
         );
         assert!(host.engine.unload().is_err());
+        assert!(host.release_local_model().is_ok());
         client.shutdown();
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while host.engine.operation.try_lock().is_err() && std::time::Instant::now() < deadline {
@@ -745,6 +851,10 @@ mod tests {
         }
         assert!(host.engine.unload().is_ok());
         host.stop();
+        {
+            let _operation = lock(&host.engine.operation);
+            assert!(host.release_local_model().is_err());
+        }
         host.engine.shutdown();
     }
 }
