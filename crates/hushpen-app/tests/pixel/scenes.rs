@@ -535,7 +535,7 @@ fn seed_devices(storage: &Storage) {
         ],
         routes: Routes {
             speech: vec!["pixel-10".into(), "office".into(), "iphone".into()],
-            cleanup: vec!["office".into(), "studio".into()],
+            cleanup: vec!["office".into(), "pixel-10".into(), "studio".into()],
         },
     };
     storage
