@@ -105,7 +105,7 @@ struct PlaceholderApp: View {
     private func updateScene() {
         runtime.server.setActive(phase == .active, screen: activeScreen)
         runtime.onboarding.refresh()
-        if phase == .background { runtime.dictation.abort() }
+        runtime.dictation.setActive(phase == .active)
         Task { await runtime.settings.refresh() }
     }
 }

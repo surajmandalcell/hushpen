@@ -9,6 +9,7 @@ final class KeyboardModel {
     var url: URL?
     var canUndo = false
     var canInsert = false
+    var canStop = false
     var shift = false
     var symbols = false
     weak var controller: KeyboardController?
@@ -18,13 +19,15 @@ final class KeyboardModel {
     func backspace() { controller?.backspace() }
     func undo() { controller?.undo() }
     func cancel() { controller?.cancel() }
+    func stop() { controller?.stop() }
     func nextKeyboard() { controller?.advanceToNextInputMode() }
 }
 
 final class KeyboardController: UIInputViewController {
     private let model = KeyboardModel()
     private var store: FlowSessionStore?
-    private var timer: Timer?
+    private var observation: FlowSessionObservation?
+    private var visible = false
     private var hostActive = true
     private var offer: (session: UUID, document: UUID, context: String)?
     private var insertion: (document: UUID, text: String, context: String, replaced: String)?
@@ -50,24 +53,28 @@ final class KeyboardController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        visible = true
         startRefreshing()
     }
 
     private func startRefreshing() {
-        guard hostActive else { return }
+        guard hostActive, visible else { return }
+        do {
+            if observation == nil {
+                observation = try FlowSessionObservation { [weak self] in
+                    Task { @MainActor in self?.refresh() }
+                }
+            }
+        } catch { model.status = error.localizedDescription }
         refresh()
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
-        }
     }
 
     @objc private func pauseHost() {
         hostActive = false
         offer = nil
         model.canInsert = false
-        timer?.invalidate()
-        timer = nil
+        model.canStop = false
+        observation = nil
     }
 
     @objc private func resumeHost() {
@@ -84,8 +91,8 @@ final class KeyboardController: UIInputViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        timer?.invalidate()
-        timer = nil
+        visible = false
+        observation = nil
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
@@ -112,7 +119,8 @@ final class KeyboardController: UIInputViewController {
     }
 
     private func refresh() {
-        guard hostActive else { return }
+        guard hostActive, visible else { return }
+        model.canStop = false
         guard hasFullAccess else {
             model.url = nil
             model.canInsert = false
@@ -164,6 +172,7 @@ final class KeyboardController: UIInputViewController {
                     return
                 case .recording:
                     model.url = nil
+                    model.canStop = session.command != .stop
                     model.status = "Finish dictation in Hushpen, then return here."
                     return
                 case .pending:
@@ -243,6 +252,14 @@ final class KeyboardController: UIInputViewController {
         }
     }
 
+    func stop() {
+        guard hostActive, visible else { return }
+        do {
+            if let session = try store?.current() { try store?.stop(id: session.id) }
+            refresh()
+        } catch { model.status = error.localizedDescription }
+    }
+
     private func updateUndo() {
         guard let document = documentIdentifier(for: textDocumentProxy) else { model.canUndo = false; return }
         model.canUndo = insertion.map {
@@ -263,7 +280,10 @@ struct PlaceholderKeyboard: View {
                 Button("Insert dictation", action: model.insertResult)
                     .accessibilityIdentifier("keyboard.insert")
             }
-            if let url = model.url {
+            if model.canStop {
+                Button("Microphone", action: model.stop)
+                    .accessibilityIdentifier("keyboard.mic")
+            } else if let url = model.url {
                 Link("Microphone", destination: url)
                     .accessibilityIdentifier("keyboard.mic")
             }

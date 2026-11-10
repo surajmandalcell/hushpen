@@ -38,6 +38,41 @@ final class FlowSessionTests: XCTestCase {
         XCTAssertEqual(try store.current(now: now)?.id, second.id)
     }
 
+    func testKeyboardCommandsPersistOnlyForTheirLiveSession() throws {
+        let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        XCTAssertEqual(try store.current(now: now)?.command, .start)
+        XCTAssertThrowsError(try store.stop(id: session.id, now: now))
+        _ = try store.request(for: session.url, now: now)
+        XCTAssertNil(try store.current(now: now)?.command)
+        XCTAssertThrowsError(try store.stop(id: UUID(), now: now))
+        XCTAssertThrowsError(try store.stop(id: session.id, now: now.addingTimeInterval(600)))
+        try store.stop(id: session.id, now: now)
+        let reopened = try FlowSessionStore(root: root)
+        XCTAssertEqual(try reopened.current(now: now)?.command, .stop)
+        XCTAssertEqual(try reopened.current(now: now)?.state, .recording)
+        try store.complete(id: session.id, text: "Finished", now: now)
+        XCTAssertNil(try store.current(now: now)?.command)
+        XCTAssertThrowsError(try store.stop(id: session.id, now: now))
+
+        let next = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        _ = try store.request(for: next.url, now: now)
+        try store.cancel(id: next.id, now: now)
+        XCTAssertEqual(try reopened.current(now: now)?.command, .cancel)
+        XCTAssertThrowsError(try store.stop(id: next.id, now: now))
+        try store.resume(id: next.id, now: now)
+        XCTAssertNil(try reopened.current(now: now)?.command)
+        _ = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        XCTAssertThrowsError(try store.stop(id: next.id, now: now))
+    }
+
+    func testSessionChangeNotifiesWithoutARefreshTimer() async throws {
+        let changed = expectation(description: "A session change reaches the other process observer")
+        let observation = try FlowSessionObservation { changed.fulfill() }
+        defer { withExtendedLifetime(observation) {} }
+        _ = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        await fulfillment(of: [changed], timeout: 2)
+    }
+
     func testExpiredAndFutureRequestsCannotStart() throws {
         let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
         XCTAssertThrowsError(try store.request(for: session.url, now: now.addingTimeInterval(-1)))

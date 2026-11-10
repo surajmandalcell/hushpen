@@ -1,18 +1,23 @@
 import AVFoundation
 import Foundation
 import Observation
+import UIKit
 
 @Observable @MainActor
 final class DictationModel {
     private let repository: PhoneRepository
     private let store: FlowSessionStore
     private let microphone = Microphone()
+    private let activity = DictationActivity()
     private var machine: Dictation
     private var flow: FlowSession?
     private var generation = UUID()
     private var audio: [UInt64: URL] = [:]
     private var jobs: [UInt64: Task<Void, Never>] = [:]
     private var timer: Task<Void, Never>?
+    private var observation: FlowSessionObservation?
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var active = true
     private(set) var state = "idle"
     private(set) var sessionID = ""
     private(set) var result = ""
@@ -43,6 +48,9 @@ final class DictationModel {
         do {
             abort()
             flow = requested
+            observation = try FlowSessionObservation { [weak self] in
+                Task { @MainActor in self?.handleSignal() }
+            }
             sessionID = requested.id.uuidString
             generation = UUID()
             machine = try Dictation(maxMinutes: 5)
@@ -55,7 +63,6 @@ final class DictationModel {
             }
             guard flow?.id == requested.id else { return }
             send(.toggle)
-            startTimer()
         } catch {
             notice = phoneError(error)
             abort()
@@ -66,10 +73,19 @@ final class DictationModel {
     func cancel() { send(.cancel) }
     func recover() { send(.recover) }
 
+    func setActive(_ value: Bool) {
+        active = value
+        updateBackgroundTask()
+        if value { handleSignal() }
+    }
+
     func abort() {
         generation = UUID()
         timer?.cancel()
         timer = nil
+        observation = nil
+        activity.end()
+        endBackgroundTask()
         repository.engine.cancel()
         jobs.values.forEach { $0.cancel() }
         jobs.removeAll()
@@ -86,22 +102,46 @@ final class DictationModel {
         state = "idle"
     }
 
-    private func startTimer() {
+    private func scheduleWake() {
         timer?.cancel()
+        timer = nil
+        guard let flow else { return }
+        let expiry = UInt64(max(1, flow.expiresAt.timeIntervalSinceNow * 1000))
+        let delay = min(machine.nextWakeMs(nowMs: now()) ?? expiry, expiry)
         timer = Task { [weak self] in
-            let deadline = Date().addingTimeInterval(10 * 60)
-            while !Task.isCancelled && Date() < deadline {
-                do { try await Task.sleep(for: .milliseconds(100)) }
-                catch { return }
-                guard let self, self.flow != nil else { return }
-                self.send(.tick)
-                if !self.busy && !self.recoverable { self.abort(); return }
+            do { try await Task.sleep(for: .milliseconds(Int64(clamping: delay))) }
+            catch { return }
+            guard let self, !Task.isCancelled, let flow = self.flow else { return }
+            if flow.expiresAt <= Date() {
+                self.notice = "This dictation session expired. Start again from the keyboard."
+                self.abort()
+                return
             }
-            if !Task.isCancelled {
-                self?.notice = "This dictation session expired. Start again from the keyboard."
-                self?.abort()
-            }
+            self.send(.tick)
         }
+    }
+
+    private func handleSignal() {
+        guard let flow else { return }
+        do {
+            guard let current = try store.current(), current.id == flow.id else { abort(); return }
+            if current.state == .cancelled, state != "cancelled" { send(.cancel) }
+            else if current.command == .stop, state == "listening" { finish() }
+        } catch { notice = error.localizedDescription; abort() }
+    }
+
+    private func updateBackgroundTask() {
+        if active || !busy || state == "listening" { endBackgroundTask(); return }
+        guard backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Dictation") { [weak self] in
+            Task { @MainActor in self?.abort() }
+        }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
     }
 
     private func send(_ event: DictationEvent) {
@@ -118,6 +158,11 @@ final class DictationModel {
             recoverable = snapshot.recoverableSession != nil
             busy = ["listening", "transcribing", "cleaning"].contains(state)
             if cancelled, let flow { try store.cancel(id: flow.id) }
+            if busy, let flow { activity.update(session: flow, phase: state) }
+            else { activity.end() }
+            updateBackgroundTask()
+            if !busy && !recoverable && state != "done" && flow != nil { abort() }
+            else { scheduleWake() }
         } catch {
             notice = phoneError(error)
             abort()
@@ -146,6 +191,7 @@ final class DictationModel {
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: file.path)
         case let .stopCapture(session, keep):
             microphone.stop()
+            if keep, let flow { try store.stop(id: flow.id) }
             if !keep { dropAudio(session) }
         case .holdCapture:
             microphone.stop()
@@ -191,6 +237,9 @@ final class DictationModel {
             notice = "Return to your previous app and tap Insert dictation."
             send(.inserted(session: session))
             self.flow = nil
+            observation = nil
+            activity.end()
+            endBackgroundTask()
             timer?.cancel()
             timer = nil
         case let .saveRow(session, _, _, _):
