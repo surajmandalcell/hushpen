@@ -62,6 +62,7 @@ final class DictationModel {
                 }
             }
             guard flow?.id == requested.id else { return }
+            guard try store.mayRecord(id: requested.id) else { abort(); return }
             send(.toggle)
         } catch {
             notice = phoneError(error)
