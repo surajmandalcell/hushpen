@@ -55,6 +55,11 @@ impl Idle {
     };
 }
 
+/// Memory checks back off while the system has enough free memory.
+pub fn pressure_check_secs(quiet_checks: u32) -> u64 {
+    (30_u64 << quiet_checks.min(4)).min(300)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Worker {
     Speech,
@@ -201,6 +206,15 @@ pub fn model_ranges(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn quiet_memory_checks_back_off_and_stop_at_five_minutes() {
+        assert_eq!(
+            (0..6).map(pressure_check_secs).collect::<Vec<_>>(),
+            [30, 60, 120, 240, 300, 300]
+        );
+        assert_eq!(pressure_check_secs(u32::MAX), 300);
+    }
 
     fn settings(value: Value) -> Map<String, Value> {
         let Value::Object(map) = value else {

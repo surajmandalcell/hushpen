@@ -11,7 +11,7 @@ use hushpen_engine::{ChildSpec, EngineClient, EngineLog, LlmClient, Timing};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 pub struct Workers {
@@ -26,6 +26,8 @@ pub struct Workers {
     pub(crate) os: hushpen_core::os::Os,
     pub(crate) system_cleanup: bool,
     activity: Mutex<Activity>,
+    memory_changed: Condvar,
+    memory_epoch: Mutex<u64>,
 }
 
 type ActivityCallback = Arc<dyn Fn(bool) + Send + Sync>;
@@ -115,6 +117,8 @@ impl Workers {
             os,
             system_cleanup,
             activity: Mutex::new(Activity::default()),
+            memory_changed: Condvar::new(),
+            memory_epoch: Mutex::new(0),
         })
     }
 
@@ -158,6 +162,13 @@ impl Workers {
     pub fn set_unload_rule(&self, rule: UnloadRule) {
         *lock(&self.speech_rule) = rule;
         *lock(&self.cleanup_rule) = rule;
+        self.rule_changed();
+    }
+
+    pub(crate) fn rule_changed(&self) {
+        let mut epoch = lock(&self.memory_epoch);
+        *epoch = epoch.wrapping_add(1);
+        self.memory_changed.notify_all();
     }
 
     /// Platform memory callbacks use the same per-worker rule as Linux pressure checks.
@@ -217,21 +228,71 @@ pub fn memory_low(meminfo: &str, pressure: &str) -> bool {
     })
 }
 
-pub fn watch_memory(workers: Arc<Workers>, stop: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
+pub struct MemoryWatch {
+    workers: Arc<Workers>,
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for MemoryWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        self.workers.rule_changed();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+pub fn watch_memory(workers: Arc<Workers>) -> MemoryWatch {
+    let stop = Arc::new(AtomicBool::new(false));
+    let running = Arc::clone(&stop);
+    let watched = Arc::clone(&workers);
+    let thread = std::thread::spawn(move || {
+        let workers = watched;
+        let stop = running;
+        let mut quiet = 0_u32;
+        let mut epoch = lock(&workers.memory_epoch);
         while !stop.load(Ordering::Acquire) {
+            let watches = *lock(&workers.speech_rule) == UnloadRule::WhenMemoryLow
+                || *lock(&workers.cleanup_rule) == UnloadRule::WhenMemoryLow;
+            if !watches {
+                quiet = 0;
+                epoch = workers
+                    .memory_changed
+                    .wait(epoch)
+                    .unwrap_or_else(|error| error.into_inner());
+                continue;
+            }
             #[cfg(target_os = "linux")]
             if let Ok(info) = std::fs::read_to_string("/proc/meminfo") {
                 let pressure = std::fs::read_to_string("/proc/pressure/memory").unwrap_or_default();
                 if memory_low(&info, &pressure) {
                     workers.unload_for_memory();
+                    quiet = 0;
                 }
             }
-            #[cfg(not(target_os = "linux"))]
-            let _ = &workers;
-            std::thread::sleep(Duration::from_secs(1));
+            let generation = *epoch;
+            let (next, _) = workers
+                .memory_changed
+                .wait_timeout(
+                    epoch,
+                    Duration::from_secs(hushpen_core::idle::pressure_check_secs(quiet)),
+                )
+                .unwrap_or_else(|error| error.into_inner());
+            quiet = if generation == *next {
+                quiet.saturating_add(1)
+            } else {
+                0
+            };
+            epoch = next;
         }
-    })
+    });
+    MemoryWatch {
+        workers,
+        stop,
+        thread: Some(thread),
+    }
 }
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -257,6 +318,27 @@ mod tests {
     fn idle_minutes_become_worker_seconds() {
         assert_eq!(idle(UnloadRule::AfterIdle(5)).secs, 300);
         assert_eq!(idle(UnloadRule::KeepLoaded).secs, 0);
+    }
+
+    #[test]
+    fn an_idle_memory_watch_stops_without_waiting_for_a_poll() {
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("missing-worker");
+        let workers = Workers::start(missing.clone(), missing, directory.path()).unwrap();
+        let watch = watch_memory(Arc::clone(&workers));
+        let (sent, received) = std::sync::mpsc::channel();
+        let rules = Arc::clone(&workers);
+        let shutdown = std::thread::spawn(move || {
+            for _ in 0..10 {
+                rules.set_unload_rule(UnloadRule::WhenMemoryLow);
+                rules.set_unload_rule(UnloadRule::KeepLoaded);
+            }
+            drop(watch);
+            sent.send(()).unwrap();
+        });
+        received.recv_timeout(Duration::from_secs(1)).unwrap();
+        shutdown.join().unwrap();
+        workers.shutdown();
     }
 
     #[test]

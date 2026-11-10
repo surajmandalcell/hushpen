@@ -45,6 +45,7 @@ pub fn serve_session(
         WorkerKind::Speech => &workers.speech_rule,
         WorkerKind::Cleanup => &workers.cleanup_rule,
     }) = rule;
+    workers.rule_changed();
     let (mut input, output) = stream.split()?;
     let output = Arc::new(Mutex::new(output));
     let jobs = Arc::new(Mutex::new(HashMap::<u64, u64>::new()));
