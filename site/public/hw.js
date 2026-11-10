@@ -3,7 +3,8 @@
 // starts hands-free and the words come in, then pulls back to the window for the clean text and what the
 // app does with it. The flow bar is the real 28 pt capsule at the window's scale, so it looks big only
 // while the camera is close. The two key caps show above it only while a press happens. The scene plays
-// only while it is on screen. With Reduce Motion it is one still: the first window, close on its final text.
+// only while it is on screen. A window with a route also shows, while the speech is turned into text, the
+// device that does it. With Reduce Motion it is one still: the first window, close on its final text.
 (() => {
   const st = document.querySelector('.hw-st');
   const list = (window.HW || []).filter(w => w && w.html && w.field && w.raw && w.final);
@@ -13,7 +14,7 @@
   const calm = FlowBar.calm;
   // The desktop's own size in points; the camera scales and moves it inside the stage
   const W = 1280, H = 720;
-  const dk = st.querySelector('.hw-dk'), stage = dk.querySelector('.hw-stage'), mb = dk.querySelector('.mb'), keys = dk.querySelector('.hw-keys');
+  const dk = st.querySelector('.hw-dk'), stage = dk.querySelector('.hw-stage'), mb = dk.querySelector('.mb'), keys = dk.querySelector('.hw-keys'), rt = dk.querySelector('.hw-rt');
   // The wave canvas is drawn for the closest shot, so it stays sharp when the camera is in
   const fb = FlowBar.create(dk.querySelector('[data-fb]'), { scale: 1, zoom: 2, seed: 11, hidden: true });
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -105,6 +106,7 @@
     const old = [...stage.children];
     if (!swap) old.forEach(c => c.remove());
     fb.hide();
+    rt?.classList.remove('on');
     menus(spec, swap);
     st.setAttribute('aria-label', `Hushpen types what you say into ${spec.app}: ${spec.final}`);
     win = make(spec);
@@ -178,6 +180,7 @@
     }
     await beat(240);
     await press('transcribing');
+    if (spec.route && rt) { rt.querySelector('span').textContent = spec.route; rt.classList.add('on'); }
     const ws = [...field.querySelectorAll('.w')];
     for (const i of [...gone].sort((a, b) => a - b)) {
       if (ws[i]) ws[i].classList.add('x');
@@ -185,6 +188,7 @@
     }
     await beat(380);
     await collapse(field, ws.filter((_, i) => gone.has(i)));
+    rt?.classList.remove('on');
     fb.set('undo');
     field.innerHTML = esc(spec.final) + CARET;
     field.classList.add('done');

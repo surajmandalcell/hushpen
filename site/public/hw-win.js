@@ -278,6 +278,7 @@
     raw: 'um when I click export on a report nothing happens in Safari, no wait, in Safari 26. uh it works fine in Firefox',
     gone: [0, 10, 11, 12, 13, 17],
     final: 'When I click Export on a report, nothing happens in Safari 26. It works fine in Firefox.',
+    route: 'Pixel 10',
     after: async (w, beat) => {
       const q = s => w.querySelector(s);
       await beat(420);
@@ -360,6 +361,7 @@
     raw: 'um yes lunch on on Tuesday works, no wait, Wednesday works better for me',
     gone: [0, 4, 5, 6, 7, 8],
     final: 'Yes, lunch on Wednesday works better for me.',
+    route: 'Home server',
     after: async (win, beat) => {
       await beat(200);
       await press(win.querySelector('.wm-sendb'), beat);
