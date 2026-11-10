@@ -3,8 +3,10 @@ package com.mandalsuraj.hushpen.screens
 import android.os.Build
 import android.view.WindowInsets
 import android.webkit.WebView
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -24,15 +26,20 @@ class ScreenSmokeTest {
 
     @Test fun navigationAndSettingsRemainAvailableWithoutDownloadedModels() {
         if (Build.VERSION.SDK_INT >= 35) {
-            val onboarding = compose.onNodeWithText("Onboarding").assertIsDisplayed().fetchSemanticsNode()
+            val keyboard = compose.onNodeWithText("Keyboard").assertIsDisplayed().fetchSemanticsNode()
             val systemTop = compose.runOnIdle {
                 checkNotNull(compose.activity.window.decorView.rootWindowInsets).getInsets(WindowInsets.Type.systemBars()).top
             }
-            assertTrue("Onboarding must stay below the system bars.", onboarding.boundsInWindow.top >= systemTop)
+            assertTrue("Home must stay below the system bars.", keyboard.boundsInWindow.top >= systemTop)
         }
-        compose.onNodeWithText("Settings", useUnmergedTree = true).performScrollTo().performClick()
-        compose.onNodeWithText("System cleanup available: false").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Keyboard haptics").performScrollTo().performClick()
+        compose.onNodeWithText("Settings").performScrollTo().performClick()
+        compose.onNodeWithText("No system model on this phone. Rule cleanup still works.").assertIsDisplayed()
+        val haptics = compose.onNodeWithText("Haptics").performScrollTo()
+        val before = haptics.fetchSemanticsNode().config[SemanticsProperties.ToggleableState]
+        haptics.performClick()
+        compose.waitUntil(5_000) { haptics.fetchSemanticsNode().config[SemanticsProperties.ToggleableState] != before }
+        haptics.performClick()
+        compose.waitUntil(5_000) { haptics.fetchSemanticsNode().config[SemanticsProperties.ToggleableState] == before }
         compose.onNodeWithText("Open-source licenses").performScrollTo().performClick()
         onView(isAssignableFrom(WebView::class.java)).check(matches(isDisplayed())).check { view, problem ->
             if (problem != null) throw problem
@@ -45,9 +52,15 @@ class ScreenSmokeTest {
             }
         }
         pressBack()
-        compose.onNodeWithText("Devices", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Devices").performScrollTo().performClick()
         compose.onNodeWithText("No paired desktops.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Models", useUnmergedTree = true).performScrollTo().performClick()
-        compose.onNodeWithText("Refresh models").performScrollTo().assertIsDisplayed()
+        pressBack()
+        compose.onNodeWithText("Models").performScrollTo().performClick()
+        compose.onNodeWithText("Speech to Text").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Refresh").assertIsDisplayed()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText("Parakeet", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 }

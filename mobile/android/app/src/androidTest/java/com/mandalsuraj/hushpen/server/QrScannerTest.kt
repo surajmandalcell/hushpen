@@ -10,7 +10,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -58,7 +58,7 @@ class QrScannerTest {
         }
     }
 
-    @Test fun placeholderScannerOpensAndReleasesTheCamera() {
+    @Test fun scannerOpensAndReleasesTheCamera() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val cameras = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val back = cameras.cameraIdList.firstOrNull {
@@ -81,9 +81,9 @@ class QrScannerTest {
             compose.setContent {
                 val scanner: ScannerViewModel = viewModel()
                 model.set(scanner)
-                if (shown.value) PlaceholderScanner(onCode = {}, onClose = { shown.value = false }, model = scanner)
+                if (shown.value) CameraScanner(onCode = {}, model = scanner)
             }
-            compose.onNodeWithText("Scan desktop QR code").assertExists()
+            compose.onNodeWithContentDescription("Camera preview").assertExists()
             compose.waitUntil(20_000) {
                 !available.get() || model.get()?.state?.value?.notice != null
             }
