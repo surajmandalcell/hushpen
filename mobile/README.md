@@ -67,9 +67,9 @@ applies in debug and release builds; neither build trusts a platform TLS CA.
 `./gradlew assembleRelease` makes the release APK. Gradle can sign it when
 `HUSHPEN_ANDROID_KEYSTORE`, `HUSHPEN_ANDROID_STORE_PASSWORD`, and
 `HUSHPEN_ANDROID_KEY_PASSWORD` are set. The alias defaults to `hushpen`.
-Alternatively, sign the unsigned output with Android's `apksigner`, passing
-passwords through its `file:` options. The one local signing key and its
-password file live in
+Alternatively, sign the unsigned output with Android's `apksigner`, using
+`--ks-pass file:<password-file>`. Omit `--key-pass` when both passwords match.
+The signing key and password file live in
 `/Volumes/External1TB/data/_custom/droid/hushpen/signing/android/`, with mode
 0600. Never commit or replace them. Release CI reads the existing key through
 the three Android secrets described in [the release guide](../docs/building.md#phone-and-host-release-files).
@@ -94,8 +94,10 @@ real-path Cargo home with
 `CARGO_HOME=/Volumes/External1TB/data/_custom/droid/hushpen/cargo-home`.
 Do not change the shared cache configuration.
 
-Keep simulator data on the data drive. CoreSimulatorService needs macOS
-Removable Volumes access for an external device set. The app needs microphone
+Keep simulator data on the data drive, on an APFS volume with ownership enabled.
+An APFS sparse disk image stored there can provide ownership without changing
+the main drive's settings. A device set on a volume with ownership disabled
+can fail creation with Cocoa error 513 or EPERM. The app needs microphone
 and Local Network permission; the scanner needs camera permission.
 
 For flow UI tests, install the debug app and `HushpenKeyboardTestHost.app`
