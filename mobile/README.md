@@ -157,9 +157,11 @@ does not grant background execution. Real background recording uses the audio
 mode; processing uses a finite background task. No silent audio
 keeps the app alive between flows, so a new flow uses the app URL again.
 
-In-process workers park on channels while idle. Phone listeners wait for socket
-events and wake once on stop. Unix encrypted streams use blocking socket waits;
-Windows retains bounded cancellation polling. Bonjour waits for events. Other
+In-process and selected remote workers send no idle pings. Active jobs retain
+their watchdog. Phone listeners wait for socket events and wake once on stop.
+Unix encrypted streams use blocking socket waits; Windows retains cancellation
+polling. Authentication, worker selection, uploads, and partial encrypted
+packets keep their time limits. Bonjour waits for events. Other
 platforms check changed network interfaces every five minutes, which can delay
 advertising on a new network. Query responses and protocol announcements remain.
 Linux memory checks run only for the low-memory unload rule and back off from

@@ -106,6 +106,7 @@ impl Link {
                     )
                 })?;
                 select_worker_with_rule(&mut stream, spec.kind, spec.unload_rule)?;
+                stream.allow_idle_wait()?;
                 let (reader, writer) = stream.split()?;
                 Ok(Connection {
                     child: None,
