@@ -75,6 +75,13 @@ final class FlowSessionTests: XCTestCase {
         _ = try store.request(for: session.url, now: now)
         XCTAssertThrowsError(try store.complete(id: session.id, text: " \n", now: now))
         XCTAssertThrowsError(try store.complete(id: session.id, text: String(repeating: "a", count: 1_048_577), now: now))
+        for character in ["\"", "\\"] {
+            let escaped = String(repeating: character, count: 600_000)
+            XCTAssertLessThan(escaped.utf8.count, 1_048_576)
+            XCTAssertThrowsError(try store.complete(id: session.id, text: escaped, now: now))
+            XCTAssertEqual(try store.current(now: now)?.state, .recording)
+            XCTAssertNil(try store.current(now: now)?.text)
+        }
         XCTAssertEqual(try store.current(now: now)?.state, .recording)
     }
 

@@ -181,7 +181,9 @@ final class FlowSessionStore: @unchecked Sendable {
                     #if os(iOS)
                     options.insert(.completeFileProtection)
                     #endif
-                    try JSONEncoder().encode(session).write(to: url, options: options)
+                    let encoded = try JSONEncoder().encode(session)
+                    guard encoded.count <= 1_100_000 else { throw FlowSessionError.invalidText }
+                    try encoded.write(to: url, options: options)
                 } else if FileManager.default.fileExists(atPath: url.path) {
                     try FileManager.default.removeItem(at: url)
                 }
