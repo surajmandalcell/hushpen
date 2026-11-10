@@ -121,9 +121,12 @@ xcodebuild test-without-building -project mobile/ios/Hushpen.xcodeproj \
 ```
 
 The WAV hook exists only in debug builds. The extension links no Rust model
-engine and never records. It opens the app's session URL and offers the
-protected App Group result when the user returns. Insert dictation confirms
-the active field because iOS can replace the input-session identifier on return.
+engine and never records. It starts a flow through the app's session URL.
+Recording can continue after the user returns to the keyboard. The keyboard
+sends session-scoped stop and cancel commands through the App Group and
+Darwin notifications. It receives changes only while visible, without polling.
+Insert dictation confirms the active field because iOS can replace the
+input-session identifier on return.
 Results expire after ten minutes and require unchanged cursor context.
 Changing the field or cursor withdraws the offer and undo. iOS exposes no
 public enabled-keyboard identifier check; onboarding shows a last-use receipt.
@@ -138,3 +141,26 @@ Unavailable or failed cleanup keeps Rust's rule-cleaned text.
 The scheme archives the app and embedded keyboard in Release, with debug
 symbols. See [the archive and upload guide](../docs/building.md#ios-archive-and-owner-upload)
 for the unsigned archive check and the owner's App Store Connect steps.
+
+## Idle work
+
+Both keyboards use the Rust dictation deadline instead of repeated ticks.
+Android cancels its deadline and releases local capture and speech on hide.
+Memory callbacks feed its server unload rule without a background polling task.
+Local flow cleanup preserves models owned by Server mode.
+
+iOS opens its audio session only for recording. ActivityKit lifecycle logic
+tracks the active flow and ends at completion, cancellation, failure, or expiry.
+A designer-supplied ActivityConfiguration widget is still needed to display it.
+A [Live Activity](https://developer.apple.com/documentation/ActivityKit/displaying-live-data-with-live-activities)
+does not grant background execution. Real background recording uses the audio
+mode; processing uses a finite background task. No silent audio
+keeps the app alive between flows, so a new flow uses the app URL again.
+
+In-process workers park on channels while idle. Phone listeners wait for socket
+events and wake once on stop. Unix encrypted streams use blocking socket waits;
+Windows retains bounded cancellation polling. Bonjour waits for events. Other
+platforms check changed network interfaces every five minutes, which can delay
+advertising on a new network. Query responses and protocol announcements remain.
+Linux memory checks run only for the low-memory unload rule and back off from
+30 seconds to five minutes. Selected model unload deadlines remain unchanged.
