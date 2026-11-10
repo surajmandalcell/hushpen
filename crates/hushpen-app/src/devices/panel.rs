@@ -1,422 +1,429 @@
-//! Plain controls expose Devices state for the screen designer.
+//! The Devices page: the switch for models on other devices, the order of the devices that run
+//! each kind of model, and the paired devices with their status. The page under the switch fades
+//! and takes no input while models on other devices are off.
 
-use super::{AddMethod, Devices, Request, Sheet};
+use super::{Devices, focus};
+use crate::theme::{self, Palette, size, space};
+use crate::ui::{self, Kind, Notice};
+use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::component::Disableable as _;
-use gpui_kit::component::button::Button;
-use gpui_kit::component::input::Input;
+use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, Context, Entity, InteractiveElement, IntoElement, ParentElement, Styled, Window, div,
+    AnyElement, App, Entity, FontFeatures, InteractiveElement, IntoElement, ParentElement, Rgba,
+    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
-use hushpen_core::remote::{
-    ModelKind, Pairing, Route, Status, THIS_COMPUTER, UnloadKind, UnloadRule, allowed_rules,
-};
+use hushpen_core::remote::{DeviceKind, ModelKind, Route, Status, THIS_COMPUTER};
+use hushpen_store::settings::RemoteDevice;
+use std::sync::Arc;
 
-pub struct PlaceholderDevices;
+/// How much of the page under the switch shows while models on other devices are off.
+const OFF_OPACITY: f32 = 0.35;
 
-impl PlaceholderDevices {
-    pub fn render(devices: &Entity<Devices>, cx: &mut App) -> impl IntoElement + use<> {
-        let state = devices.read(cx);
-        let enabled = state.settings.enabled;
-        let no_local = state.settings.no_local_models;
-        let mut page = div()
-            .flex()
-            .flex_col()
-            .child(button(
-                devices,
-                "devices.enabled",
-                format!("Use models on other devices: {enabled}"),
-                move |state, _, cx| {
-                    let _ = state.set_enabled(!enabled, cx);
-                },
-            ))
-            .child(button(
-                devices,
-                "devices.noLocal",
-                format!("Do not load models on this computer: {no_local}"),
-                move |state, _, cx| {
-                    let _ = state.set_no_local(!no_local, cx);
-                },
-            ))
-            .child(button(
-                devices,
-                "devices.add",
-                "Add device…",
-                |state, _, cx| state.open_add(cx),
-            ))
-            .child(button(
-                devices,
-                "devices.probe",
-                "Check devices",
-                |state, _, cx| state.request(Request::Probe, cx),
-            ));
-        for (kind, title, ids) in [
-            (
-                ModelKind::Speech,
-                "Speech to Text",
-                &state.settings.routes.speech,
-            ),
-            (
-                ModelKind::Cleanup,
-                "Text cleanup",
-                &state.settings.routes.cleanup,
-            ),
-        ] {
-            let mut group = div().flex().flex_col().child(title);
-            let route = Route::new(ids.clone(), state.settings.no_local_models);
-            for id in route.ids() {
-                if id == THIS_COMPUTER {
-                    group = group.child("This computer · Ready");
-                    continue;
-                }
-                let Some(device) = state
-                    .settings
-                    .devices
-                    .iter()
-                    .find(|device| device.device.id == *id)
-                else {
-                    continue;
-                };
-                let health = state.health.get(id).map(|health| {
-                    let mut health = health.clone();
-                    health.tick(crate::controller::monotonic_ms());
-                    health
-                });
-                let health = health.as_ref();
-                let status = match health.map(|health| health.status).unwrap_or_default() {
-                    Status::Unknown => "Unknown",
-                    Status::Ready => "Ready",
-                    Status::Asleep => "Asleep",
-                    Status::Unreachable => "Unreachable",
-                    Status::ServerModeOff => "Server mode off",
-                };
-                let latency = health
-                    .and_then(|health| health.latency_ms)
-                    .map(|ms| format!(" · {ms} ms"))
-                    .unwrap_or_default();
-                let mut row = div().child(format!("{} · {status}{latency}", device.device.name));
-                for (up, label) in [(true, "Move up"), (false, "Move down")] {
-                    let mut moved = route.clone();
-                    let can_move = moved.move_device(id, up);
-                    let id = id.clone();
-                    row = row.child(
-                        button(
-                            devices,
-                            format!("devices.{kind:?}.{id}.{up}"),
-                            label,
-                            move |state, _, cx| {
-                                let _ = state.move_device(kind, &id, up, cx);
-                            },
-                        )
-                        .disabled(!can_move),
-                    );
-                }
-                let id = id.clone();
-                group = group.child(row.child(button(
-                    devices,
-                    format!("devices.{kind:?}.{id}.detail"),
-                    "Details…",
-                    move |state, window, cx| state.open_detail(&id, window, cx),
-                )));
-            }
-            if route.ids().is_empty() {
-                group = group
-                    .child("No device is ready. Add a device or allow models on this computer.");
-            }
-            page = page.child(group);
+pub fn render(devices: &Entity<Devices>, cx: &mut App) -> impl IntoElement {
+    let palette = theme::palette(cx);
+    let state = devices.read(cx);
+    let live = state.settings.enabled;
+    let mut page = div().flex().flex_col().gap(px(space::XXL)).w_full();
+    if let Some(notice) = state.notice.clone().filter(|_| state.sheet.is_none()) {
+        page = page.child(ui::group(
+            hook::id("devices", "notice.group"),
+            palette,
+            vec![ui::notice_row(
+                palette,
+                hook::id("devices", "notice"),
+                notice,
+                Notice::Failure,
+                None,
+            )],
+        ));
+    }
+    let general = ui::group(
+        hook::id("devices", "general"),
+        palette,
+        vec![
+            master_row(palette, devices, state, cx),
+            no_local_row(palette, devices, state, cx),
+        ],
+    );
+    let below = div()
+        .flex()
+        .flex_col()
+        .gap(px(space::XXL))
+        .w_full()
+        .child(route_section(
+            palette,
+            devices,
+            state,
+            ModelKind::Speech,
+            cx,
+        ))
+        .child(route_section(
+            palette,
+            devices,
+            state,
+            ModelKind::Cleanup,
+            cx,
+        ))
+        .child(device_section(palette, devices, state, cx));
+    page.child(general)
+        .child(dimmed(hook::id("devices", "dim"), live, below))
+}
+
+/// `element` faded while `live` is off, easing to its new look as the switch turns.
+fn dimmed(id: SharedString, live: bool, element: gpui_kit::Div) -> impl IntoElement {
+    motion::moving(id, if live { 1.0 } else { 0.0 }, motion::BASE, move |at| {
+        if at >= 1.0 {
+            element
+        } else {
+            element.opacity(OFF_OPACITY + (1.0 - OFF_OPACITY) * at)
         }
-        if let Some(notice) = &state.notice {
-            page = page.child(notice.clone());
+    })
+}
+
+fn master_row(
+    palette: Palette,
+    devices: &Entity<Devices>,
+    state: &Devices,
+    cx: &App,
+) -> AnyElement {
+    let on = state.settings.enabled;
+    let devices = devices.clone();
+    ui::toggle_row(
+        palette,
+        hook::id("devices", "enabled"),
+        "Use models on other devices",
+        "Phones and servers run speech and cleanup for this computer.",
+        on,
+        &state.focus.get("enabled", cx),
+        move |cx| {
+            devices.update(cx, |state, cx| {
+                let _ = state.set_enabled(!on, cx);
+            })
+        },
+    )
+}
+
+/// Turning local models off means something only while other devices are in use.
+fn no_local_row(
+    palette: Palette,
+    devices: &Entity<Devices>,
+    state: &Devices,
+    cx: &App,
+) -> AnyElement {
+    const TITLE: &str = "Do not load models on this computer";
+    let (live, on) = (state.settings.enabled, state.settings.no_local_models);
+    let devices = devices.clone();
+    let switch = ui::switch(
+        palette,
+        hook::id("devices", "noLocal"),
+        TITLE,
+        on,
+        live,
+        &state.focus.get("noLocal", cx),
+        move |_, cx| {
+            devices.update(cx, |state, cx| {
+                let _ = state.set_no_local(!on, cx);
+            })
+        },
+    );
+    let row = ui::labeled_row(
+        palette,
+        hook::id("devices", "noLocal.row"),
+        TITLE,
+        Some("If no device answers, the dictation stops with a notice.".into()),
+        switch,
+    );
+    dimmed(
+        hook::id("devices", "noLocal.dim"),
+        live,
+        div().flex().flex_col().w_full().child(row),
+    )
+    .into_any_element()
+}
+
+/// One kind of model: the devices that run it, in the order Hushpen tries them.
+fn route_section(
+    palette: Palette,
+    devices: &Entity<Devices>,
+    state: &Devices,
+    kind: ModelKind,
+    cx: &App,
+) -> AnyElement {
+    let (key, title, ids) = match kind {
+        ModelKind::Speech => ("speech", "Speech to Text", &state.settings.routes.speech),
+        ModelKind::Cleanup => ("cleanup", "Text cleanup", &state.settings.routes.cleanup),
+    };
+    let route = Route::new(ids.clone(), state.settings.no_local_models);
+    let mut rows: Vec<AnyElement> = route
+        .ids()
+        .iter()
+        .filter_map(|id| route_row(palette, devices, state, kind, key, &route, id, cx))
+        .collect();
+    if rows.is_empty() {
+        rows.push(ui::notice_row(
+            palette,
+            hook::id("devices", &format!("{key}.empty")),
+            "No device runs this. Add one, or allow models on this computer.".into(),
+            Notice::Info,
+            None,
+        ));
+    }
+    let footer = (kind == ModelKind::Cleanup).then(|| {
+        (
+            hook::id("devices", "routes.help"),
+            "Hushpen uses the first device in each list that answers.".to_owned(),
+        )
+    });
+    ui::titled_section(
+        palette,
+        hook::id("devices", &format!("heading.{key}")),
+        title,
+        ui::group(hook::id("devices", &format!("route.{key}")), palette, rows),
+        footer,
+    )
+}
+
+/// A device in a route: its kind, name, latency, and status, then Move up and Move down. This
+/// computer stays last, so its arrows are off.
+#[expect(clippy::too_many_arguments, reason = "the parts of one row")]
+fn route_row(
+    palette: Palette,
+    devices: &Entity<Devices>,
+    state: &Devices,
+    kind: ModelKind,
+    key: &str,
+    route: &Route,
+    id: &str,
+    cx: &App,
+) -> Option<AnyElement> {
+    let (name, icon) = if id == THIS_COMPUTER {
+        ("This computer".to_owned(), IconName::Laptop)
+    } else {
+        let device = state.device(id)?;
+        (device.device.name.clone(), kind_icon(device.device.kind))
+    };
+    let row = format!("{key}.{id}");
+    let reading = reading(palette, state, id);
+    let arrows = [(true, "up", "Move up"), (false, "down", "Move down")].map(|(up, way, tip)| {
+        let can_move = state.settings.enabled && route.clone().move_device(id, up);
+        let control = format!("{row}.{way}");
+        let devices = devices.clone();
+        let id = id.to_owned();
+        ui::icon_button_enabled(
+            palette,
+            hook::id("devices", &control),
+            if up {
+                IconName::ChevronUp
+            } else {
+                IconName::ChevronDown
+            },
+            format!("Move {name} {way}"),
+            tip,
+            &state.focus.get(&control, cx),
+            can_move,
+            move |_, cx| {
+                devices.update(cx, |state, cx| {
+                    let _ = state.move_device(kind, &id, up, cx);
+                })
+            },
+        )
+    });
+    Some(
+        ui::row(palette)
+            .id(hook::id("devices", &row))
+            .test_support()
+            .child(ui::icon(palette, icon))
+            .child(ui::named_lines(
+                palette,
+                hook::id("devices", &format!("{row}.title")),
+                name.clone(),
+                None,
+            ))
+            .child(latency_cell(palette, &row, reading.latency))
+            .child(status_cell(palette, &row, &reading).w(px(size::DEVICE_STATUS_WIDTH)))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .gap(px(size::MODEL_ICON_GAP))
+                    .children(arrows),
+            )
+            .into_any_element(),
+    )
+}
+
+/// Every paired device, with Add Device at the end of the heading and Details on each row.
+fn device_section(
+    palette: Palette,
+    devices: &Entity<Devices>,
+    state: &Devices,
+    cx: &App,
+) -> AnyElement {
+    let live = state.settings.enabled;
+    let add = {
+        let devices = devices.clone();
+        move |_: &mut Window, cx: &mut App| {
+            devices.update(cx, |state, cx| {
+                state.focus.opened_by(focus::ADD);
+                state.open_add(cx);
+            })
         }
-        match &state.sheet {
-            Some(Sheet::Add(method)) => {
-                let mut sheet = div().flex().flex_col().child("Add device");
-                for (method, label) in [
-                    (AddMethod::Phone, "Phone on this network"),
-                    (AddMethod::Ssh, "Server over SSH"),
-                    (AddMethod::Tailscale, "Tailscale address"),
-                ] {
-                    sheet = sheet.child(button(
-                        devices,
-                        format!("devices.method.{method:?}"),
-                        label,
-                        move |state, _, cx| state.select_method(method, cx),
-                    ));
-                }
-                match method {
-                    AddMethod::Phone => {
-                        sheet = sheet.child(button(
-                            devices,
-                            "devices.discover",
-                            "Find phones",
-                            |state, _, cx| state.request(Request::Discover, cx),
-                        ));
-                        if state.discovered.is_empty() {
-                            sheet = sheet.child(
-                                "No phones found. Open server mode on the phone and try again.",
-                            );
-                        }
-                        for found in &state.discovered {
-                            let device = found.device.clone();
-                            sheet = sheet.child(button(
-                                devices,
-                                format!("devices.found.{}", device.id),
-                                device.name.clone(),
-                                move |state, _, cx| {
-                                    state.selected_device = Some(device.clone());
-                                    cx.notify();
-                                },
-                            ));
-                        }
-                        sheet = sheet
-                            .child(
-                                Input::new(&state.host)
-                                    .id("devices.host")
-                                    .aria_label("This computer's network address"),
-                            )
-                            .child(button(
-                                devices,
-                                "devices.offer",
-                                "Show pairing QR",
-                                |state, _, cx| {
-                                    let host = state.host.read(cx).value().to_string();
-                                    state.request(Request::Offer { host }, cx);
-                                },
-                            ));
-                        if let Pairing::Offered { expires_at, .. } = state.pairing {
-                            sheet = sheet.child(format!(
-                                "Pairing code expires at {expires_at}. Scan it from the phone."
-                            ));
-                            if !state.qr.is_empty() {
-                                sheet = sheet.child(
-                                    div()
-                                        .id("devices.qr")
-                                        .test_support()
-                                        .child(qr(state.qr.clone())),
-                                );
-                            }
-                        }
-                        sheet = sheet
-                            .child(
-                                Input::new(&state.uri)
-                                    .id("devices.uri")
-                                    .aria_label("Pairing link"),
-                            )
-                            .child(button(
-                                devices,
-                                "devices.pair",
-                                "Pair device",
-                                |state, _, cx| state.pair_input(cx),
-                            ));
-                    }
-                    AddMethod::Ssh => {
-                        if state.hosts.is_empty() {
-                            sheet = sheet.child("No hosts found in your SSH config.");
-                        }
-                        for host in &state.hosts {
-                            let host = host.clone();
-                            sheet = sheet.child(button(
-                                devices,
-                                format!("devices.ssh.{host}"),
-                                host.clone(),
-                                move |state, _, cx| {
-                                    state.selected_host = Some(host.clone());
-                                    cx.notify();
-                                },
-                            ));
-                        }
-                        if let Some(host) = &state.selected_host {
-                            sheet = sheet.child(format!("Selected: {host}"));
-                        }
-                        sheet = sheet.child(
-                            button(devices, "devices.setupSsh", "Add server", |state, _, cx| {
-                                if let Some(host) = state.selected_host.clone() {
-                                    state.request(Request::SetupSsh { host }, cx);
-                                }
-                            })
-                            .disabled(state.busy || state.selected_host.is_none()),
-                        );
-                    }
-                    AddMethod::Tailscale => {
-                        sheet = sheet.child(format!("Device system: {:?}", state.tailscale_os));
-                        for (os, label) in [
-                            (hushpen_core::os::Os::Linux, "Linux"),
-                            (hushpen_core::os::Os::Android, "Android"),
-                            (hushpen_core::os::Os::Ios, "iOS"),
-                            (hushpen_core::os::Os::Mac, "macOS"),
-                            (hushpen_core::os::Os::Windows, "Windows"),
-                        ] {
-                            sheet = sheet.child(button(
-                                devices,
-                                format!("devices.os.{os:?}"),
-                                label,
-                                move |state, _, cx| {
-                                    state.tailscale_os = os;
-                                    cx.notify();
-                                },
-                            ));
-                        }
-                        sheet = sheet
-                            .child(
-                                Input::new(&state.address)
-                                    .id("devices.address")
-                                    .aria_label("Tailscale address and port"),
-                            )
-                            .child(
-                                Input::new(&state.uri)
-                                    .id("devices.uri")
-                                    .aria_label("Pairing link"),
-                            )
-                            .child(button(
-                                devices,
-                                "devices.pairTailscale",
-                                "Pair device",
-                                |state, _, cx| state.pair_input(cx),
-                            ));
-                    }
-                }
-                for row in &state.progress {
-                    sheet = sheet.child(row.clone());
-                }
-                sheet = sheet.child(format!("Working: {}", state.busy));
-                page = page.child(sheet.child(button(
-                    devices,
-                    "devices.close",
-                    "Done",
-                    |state, _, cx| state.close(cx),
-                )));
-            }
-            Some(Sheet::Detail(id)) => {
-                if let Some(device) = state
-                    .settings
-                    .devices
-                    .iter()
-                    .find(|device| device.device.id == *id)
-                {
-                    let mut sheet = div()
-                        .flex()
-                        .flex_col()
-                        .child(device.device.name.clone())
-                        .child(format!("Device: {}", device.device.id))
-                        .child(format!("System: {:?}", device.device.os))
-                        .child(format!("Kind: {:?}", device.device.kind))
-                        .child(format!("Transport: {:?}", device.transport))
-                        .child(format!("Address: {}", device.address))
-                        .child(format!(
-                            "Health: {:?}",
-                            state
-                                .health
-                                .get(id)
-                                .map(|health| (health.status, health.latency_ms))
-                        ))
-                        .child(
-                            Input::new(&state.name)
-                                .id("devices.name")
-                                .aria_label("Device name"),
-                        );
-                    let rename_id = id.clone();
-                    sheet = sheet.child(button(
-                        devices,
-                        "devices.rename",
-                        "Rename",
-                        move |state, _, cx| {
-                            let name = state.name.read(cx).value().to_string();
-                            let _ = state.rename(&rename_id, &name, cx);
-                        },
-                    ));
-                    sheet = sheet.child(format!("When idle: {:?}", device.unload_rule));
-                    for kind in allowed_rules(device.device.os) {
-                        let rules: Vec<_> = match kind {
-                            UnloadKind::KeepLoaded => {
-                                vec![(UnloadRule::KeepLoaded, "Keep loaded".to_owned())]
-                            }
-                            UnloadKind::AfterIdle => [5, 15, 30, 60]
-                                .into_iter()
-                                .map(|minutes| {
-                                    (
-                                        UnloadRule::AfterIdle(minutes),
-                                        format!("Unload after {minutes} minutes"),
-                                    )
-                                })
-                                .collect(),
-                            UnloadKind::WhenMemoryLow => {
-                                vec![(UnloadRule::WhenMemoryLow, "When memory is low".into())]
-                            }
-                            UnloadKind::WhileServerModeOpen => vec![(
-                                UnloadRule::WhileServerModeOpen,
-                                "While server mode is open".into(),
-                            )],
-                        };
-                        for (rule, label) in rules {
-                            let id = id.clone();
-                            sheet = sheet.child(button(
-                                devices,
-                                format!("devices.unload.{rule:?}"),
-                                label,
-                                move |state, _, cx| {
-                                    let _ = state.unload(&id, rule, cx);
-                                },
-                            ));
-                        }
-                    }
-                    let id = id.clone();
-                    sheet = sheet.child(button(
-                        devices,
-                        "devices.forget",
-                        "Forget device",
-                        move |state, _, cx| {
-                            let _ = state.forget(&id, cx);
-                        },
-                    ));
-                    page = page.child(sheet.child(button(
-                        devices,
-                        "devices.close",
-                        "Done",
-                        |state, _, cx| state.close(cx),
-                    )));
-                }
-            }
-            None => {}
+    };
+    let header = div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .pr(px(size::ROW_PADDING))
+        .child(ui::heading(
+            palette,
+            hook::id("devices", "heading.devices"),
+            "Your devices",
+        ))
+        .child(ui::button(
+            palette,
+            hook::id("devices", "add"),
+            "Add Device…",
+            Kind::Plain,
+            Some(&state.focus.get(focus::ADD, cx)),
+            live,
+            add,
+        ));
+    let mut rows: Vec<AnyElement> = state
+        .settings
+        .devices
+        .iter()
+        .map(|device| device_row(palette, devices, state, device, cx))
+        .collect();
+    if rows.is_empty() {
+        rows.push(ui::notice_row(
+            palette,
+            hook::id("devices", "empty"),
+            "No devices yet. Add a phone or a server.".into(),
+            Notice::Info,
+            None,
+        ));
+    }
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(space::XS + space::XXS))
+        .w_full()
+        .child(header)
+        .child(ui::group(hook::id("devices", "list"), palette, rows))
+        .into_any_element()
+}
+
+fn device_row(
+    palette: Palette,
+    devices: &Entity<Devices>,
+    state: &Devices,
+    device: &RemoteDevice,
+    cx: &App,
+) -> AnyElement {
+    let id = device.device.id.clone();
+    let row = format!("device.{id}");
+    let control = format!("{row}.info");
+    let reading = reading(palette, state, &id);
+    let open = {
+        let (devices, control) = (devices.clone(), control.clone());
+        move |window: &mut Window, cx: &mut App| {
+            devices.update(cx, |state, cx| {
+                state.focus.opened_by(&control);
+                state.open_detail(&id, window, cx);
+            })
         }
-        page
+    };
+    ui::row(palette)
+        .id(hook::id("devices", &row))
+        .test_support()
+        .child(ui::icon(palette, kind_icon(device.device.kind)))
+        .child(ui::named_lines(
+            palette,
+            hook::id("devices", &format!("{row}.title")),
+            device.device.name.clone(),
+            None,
+        ))
+        .child(latency_cell(palette, &row, reading.latency))
+        .child(status_cell(palette, &row, &reading).w(px(size::DEVICE_STATUS_WIDTH)))
+        .child(ui::icon_button_enabled(
+            palette,
+            hook::id("devices", &control),
+            IconName::Info,
+            format!("{} details", device.device.name),
+            "Details",
+            &state.focus.get(&control, cx),
+            state.settings.enabled,
+            open,
+        ))
+        .into_any_element()
+}
+
+pub(super) fn kind_icon(kind: DeviceKind) -> IconName {
+    match kind {
+        DeviceKind::Phone => IconName::Smartphone,
+        DeviceKind::Server => IconName::Server,
+        DeviceKind::ThisComputer => IconName::Laptop,
     }
 }
 
-fn button(
-    devices: &Entity<Devices>,
-    id: impl Into<gpui_kit::SharedString>,
-    label: impl Into<gpui_kit::SharedString>,
-    action: impl Fn(&mut Devices, &mut Window, &mut Context<Devices>) + 'static,
-) -> Button {
-    let devices = devices.clone();
-    Button::new(id.into())
-        .label(label)
-        .on_click(move |_, window, cx| devices.update(cx, |state, cx| action(state, window, cx)))
+/// What a row says about a device: its status word, the color of the word, and the time of the
+/// last answer.
+pub(super) struct Reading {
+    pub word: &'static str,
+    pub tone: Rgba,
+    pub latency: Option<u32>,
 }
 
-fn qr(modules: Vec<Vec<bool>>) -> impl IntoElement {
-    use gpui_kit::{Bounds, Point, Size, canvas, fill, px, rgb};
-    let side = modules.len() + 8;
-    canvas(
-        |_, _, _| (),
-        move |bounds, _, window, _| {
-            let cell = f32::from(bounds.size.width) / side as f32;
-            window.paint_quad(fill(bounds, rgb(0xffffff)));
-            for (y, row) in modules.iter().enumerate() {
-                for (x, dark) in row.iter().enumerate() {
-                    if *dark {
-                        let origin = Point::new(
-                            bounds.origin.x + px((x + 4) as f32 * cell),
-                            bounds.origin.y + px((y + 4) as f32 * cell),
-                        );
-                        window.paint_quad(fill(
-                            Bounds::new(origin, Size::new(px(cell), px(cell))),
-                            rgb(0),
-                        ));
-                    }
-                }
-            }
-        },
-    )
-    .size(px(side as f32 * 3.0))
+pub(super) fn reading(palette: Palette, state: &Devices, id: &str) -> Reading {
+    if id == THIS_COMPUTER {
+        return Reading {
+            word: "Fallback",
+            tone: palette.label_secondary,
+            latency: None,
+        };
+    }
+    let mut health = state.health.get(id).cloned().unwrap_or_default();
+    health.tick(crate::controller::monotonic_ms());
+    let (word, tone) = match health.status {
+        Status::Ready => ("Ready", palette.success),
+        Status::Asleep => ("Asleep", palette.label_secondary),
+        Status::ServerModeOff => ("Server mode off", palette.label_secondary),
+        Status::Unreachable => ("Not reachable", palette.error),
+        Status::Unknown if state.settings.enabled => ("Checking", palette.label_secondary),
+        Status::Unknown => ("Not checked", palette.label_tertiary),
+    };
+    Reading {
+        word,
+        tone,
+        latency: health.latency_ms,
+    }
+}
+
+/// The status word of the row `row`, at `<row>.status`.
+pub(super) fn status_cell(
+    palette: Palette,
+    row: &str,
+    reading: &Reading,
+) -> impl IntoElement + Styled + use<> {
+    ui::value(palette)
+        .id(hook::id("devices", &format!("{row}.status")))
+        .test_support()
+        .role(Role::Status)
+        .aria_label(reading.word)
+        .text_right()
+        .text_color(reading.tone)
+        .child(reading.word)
+}
+
+/// The latency of the row `row` in tabular digits, at `<row>.latency`, so the column holds still.
+pub(super) fn latency_cell(palette: Palette, row: &str, latency: Option<u32>) -> impl IntoElement {
+    let text = latency.map(|ms| format!("{ms} ms")).unwrap_or_default();
+    ui::value(palette)
+        .id(hook::id("devices", &format!("{row}.latency")))
+        .test_support()
+        .aria_label(text.clone())
+        .w(px(size::DEVICE_LATENCY_WIDTH))
+        .text_right()
+        .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+        .child(text)
 }

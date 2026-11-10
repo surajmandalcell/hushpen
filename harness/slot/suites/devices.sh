@@ -136,7 +136,7 @@ device_is '.routes.speech | last' this-computer || failures+="This computer move
 check_failures "devices independent routes" "speech moved independently and This computer stayed last" "$failures"
 
 failures=""
-real_click devices.Speech.phase2-one.detail || failures+="details could not be clicked; "
+real_click devices.device.phase2-one.info || failures+="details could not be clicked; "
 snapshot devices-details
 device_is '.sheet' detail || failures+="details did not open; "
 device_action '{"op":"rename","id":"phase2-one","name":"Renamed host"}' || failures+="rename failed; "

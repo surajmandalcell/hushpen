@@ -1,6 +1,10 @@
 //! Devices state and intents. Network work runs in the device service.
 
+mod add;
+mod detail;
+mod focus;
 pub mod panel;
+pub mod sheet;
 
 use crate::storage::Storage;
 use gpui_kit::component::input::InputState;
@@ -47,6 +51,14 @@ pub enum Sheet {
     Detail(String),
 }
 
+/// A pop-up button of the sheets whose menu is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Picker {
+    System,
+    Rule,
+    IdleTime,
+}
+
 pub struct Devices {
     storage: Rc<Storage>,
     pub settings: RemoteSettings,
@@ -62,6 +74,10 @@ pub struct Devices {
     pub progress: Vec<String>,
     pub busy: bool,
     pub notice: Option<String>,
+    pub menu: Option<Picker>,
+    /// The details ask once before they forget the device.
+    pub forgetting: bool,
+    pub focus: focus::Focus,
     pub host: Entity<InputState>,
     pub address: Entity<InputState>,
     pub uri: Entity<InputState>,
@@ -87,9 +103,10 @@ impl Devices {
             progress: Vec::new(),
             busy: false,
             notice: None,
-            host: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("This computer's network address")
-            }),
+            menu: None,
+            forgetting: false,
+            focus: focus::Focus::default(),
+            host: cx.new(|cx| InputState::new(window, cx).placeholder("Automatic")),
             address: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Tailscale address and port")),
             uri: cx.new(|cx| InputState::new(window, cx).placeholder("Pairing link")),
@@ -172,21 +189,27 @@ impl Devices {
         self.busy = false;
         self.selected_device = None;
         self.progress.clear();
+        self.menu = None;
+        self.forgetting = false;
         cx.notify();
     }
 
-    pub fn open_detail(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(device) = self
-            .settings
+    pub fn device(&self, id: &str) -> Option<&RemoteDevice> {
+        self.settings
             .devices
             .iter()
             .find(|device| device.device.id == id)
-        {
+    }
+
+    pub fn open_detail(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(device) = self.device(id) {
             let name = device.device.name.clone();
             self.name
                 .update(cx, |input, cx| input.set_value(name, window, cx));
             self.sheet = Some(Sheet::Detail(id.into()));
             self.notice = None;
+            self.menu = None;
+            self.forgetting = false;
             cx.notify();
         }
     }
@@ -390,6 +413,16 @@ impl Devices {
         self.busy = false;
         self.close(cx);
         Ok(())
+    }
+
+    /// Whole minutes until the pairing code expires, while one is offered.
+    pub fn offer_minutes(&self) -> Option<u64> {
+        match self.pairing {
+            Pairing::Offered { expires_at, .. } => {
+                Some(expires_at.saturating_sub(now()).div_ceil(60))
+            }
+            _ => None,
+        }
     }
 
     pub fn snapshot(&self) -> Value {
