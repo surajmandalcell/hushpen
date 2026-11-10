@@ -255,6 +255,82 @@ fn the_arrows_move_a_device_in_one_route_and_stop_at_the_ends(cx: &mut TestAppCo
     assert_eq!(routes().0, "android,ios,this-computer");
 }
 
+fn drag(cx: &mut TestAppContext, view: &Screen, from: &'static str, to: &'static str) {
+    cx.update_window(view.handle, |_, window, cx| window.drag_to(from, to, cx))
+        .unwrap();
+    frame(cx, view);
+}
+
+#[gpui_kit::test]
+fn a_dragged_row_moves_as_it_passes_the_middle_of_another_and_local_stays_last(
+    cx: &mut TestAppContext,
+) {
+    let view = screen(cx, &[("android", Os::Android), ("ios", Os::Ios)]);
+    let routes = || {
+        let saved = view.storage.settings.remote().routes;
+        (saved.speech.join(","), saved.cleanup.join(","))
+    };
+    let start = routes();
+    assert_eq!(start.0, "ios,android,this-computer");
+    drag(
+        cx,
+        &view,
+        "devices.speech.ios.grip",
+        "devices.speech.this-computer",
+    );
+    assert_eq!(
+        routes(),
+        ("android,ios,this-computer".into(), start.1.clone()),
+        "only the speech route changes, and nothing goes under This computer"
+    );
+    drag(
+        cx,
+        &view,
+        "devices.speech.this-computer",
+        "devices.speech.android",
+    );
+    assert_eq!(
+        routes().0,
+        "android,ios,this-computer",
+        "This computer has no grip and does not move"
+    );
+    drag(
+        cx,
+        &view,
+        "devices.speech.ios.grip",
+        "devices.heading.speech",
+    );
+    assert_eq!(routes().0, "ios,android,this-computer");
+    assert!(!cx.update(|cx| cx.has_active_drag()), "the drag ends");
+}
+
+#[gpui_kit::test]
+fn route_rows_name_the_model_each_device_runs(cx: &mut TestAppContext) {
+    let view = screen(cx, &[("android", Os::Android), ("ios", Os::Ios)]);
+    let catalog = hushpen_core::catalog::embedded();
+    let local_speech = catalog.chosen_speech("").map(|entry| entry.name.clone());
+    let local_cleanup = catalog
+        .chosen_llm("")
+        .map(|entry| entry.name.replace(" by Superwhisper", ""));
+    let mut model = |id: &'static str| {
+        cx.update_window(view.handle, |_, window, _| {
+            window.find(id).label().map(str::to_owned)
+        })
+        .unwrap()
+    };
+    assert_eq!(model("devices.speech.android.model"), local_speech);
+    assert_eq!(model("devices.speech.this-computer.model"), local_speech);
+    assert_eq!(
+        model("devices.cleanup.android.model").as_deref(),
+        Some("Gemini Nano")
+    );
+    assert_eq!(
+        model("devices.cleanup.ios.model").as_deref(),
+        Some("Apple Intelligence")
+    );
+    assert_eq!(model("devices.cleanup.this-computer.model"), local_cleanup);
+}
+
 #[gpui_kit::test]
 fn the_page_takes_no_input_while_remote_use_is_off(cx: &mut TestAppContext) {
     let view = screen(cx, &[("android", Os::Android)]);

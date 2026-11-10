@@ -77,6 +77,8 @@ pub struct Devices {
     pub menu: Option<Picker>,
     /// The details ask once before they forget the device.
     pub forgetting: bool,
+    /// The route row that the last drag picked up. It counts only while a drag runs.
+    pub dragging: Option<(ModelKind, String)>,
     pub focus: focus::Focus,
     pub host: Entity<InputState>,
     pub address: Entity<InputState>,
@@ -105,6 +107,7 @@ impl Devices {
             notice: None,
             menu: None,
             forgetting: false,
+            dragging: None,
             focus: focus::Focus::default(),
             host: cx.new(|cx| InputState::new(window, cx).placeholder("Automatic")),
             address: cx
@@ -146,17 +149,92 @@ impl Devices {
         up: bool,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        self.reorder(kind, cx, |route| route.move_device(id, up))
+    }
+
+    /// Puts `id` at `index` of the route of `kind`, as a drag does.
+    pub fn move_device_to(
+        &mut self,
+        kind: ModelKind,
+        id: &str,
+        index: usize,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        self.reorder(kind, cx, |route| route.move_to(id, index))
+    }
+
+    /// Moves the dragged device `id` next to `over` in the route of `kind`: before it while the
+    /// pointer is in the top half of the row of `over`, and after it below that.
+    pub fn drag_over(
+        &mut self,
+        kind: ModelKind,
+        id: &str,
+        over: &str,
+        below: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let ids = match kind {
+            ModelKind::Speech => &self.settings.routes.speech,
+            ModelKind::Cleanup => &self.settings.routes.cleanup,
+        };
+        let route = Route::new(ids.clone(), self.settings.no_local_models);
+        let place = |id: &str| route.ids().iter().position(|item| item == id);
+        let (Some(from), Some(at)) = (place(id), place(over)) else {
+            return Ok(());
+        };
+        // Taking the device out first shifts the rows after it up by one.
+        let index = match (below, from < at) {
+            (true, true) | (false, false) => at,
+            (true, false) => at + 1,
+            (false, true) => at - 1,
+        };
+        self.move_device_to(kind, id, index, cx)
+    }
+
+    fn reorder(
+        &mut self,
+        kind: ModelKind,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut Route) -> bool,
+    ) -> Result<(), String> {
         let mut next = self.settings.clone();
         let ids = match kind {
             ModelKind::Speech => &mut next.routes.speech,
             ModelKind::Cleanup => &mut next.routes.cleanup,
         };
         let mut route = Route::new(ids.clone(), next.no_local_models);
-        if route.move_device(id, up) {
+        if change(&mut route) {
             *ids = route.ids().to_vec();
             self.save(next, cx)?;
         }
         Ok(())
+    }
+
+    /// The name of the model that `device` (this computer for `None`) runs for `kind`, without
+    /// its maker, so `S1-mini by Superwhisper` fits its column as `S1-mini`. Every device loads
+    /// the model chosen on this computer, except that a phone cleans up text with the model of
+    /// its system.
+    pub fn model(&self, kind: ModelKind, device: Option<&RemoteDevice>) -> Option<String> {
+        let chosen = |key: &str| {
+            self.storage
+                .settings
+                .get(key)
+                .and_then(|value| value.as_str().map(|id| id.trim().to_owned()))
+                .unwrap_or_default()
+        };
+        let catalog = hushpen_core::catalog::embedded();
+        let entry = match (kind, device.map(|device| device.device.os)) {
+            (ModelKind::Cleanup, Some(Os::Android)) => return Some("Gemini Nano".into()),
+            (ModelKind::Cleanup, Some(Os::Ios)) => return Some("Apple Intelligence".into()),
+            (ModelKind::Speech, _) => catalog.chosen_speech(&chosen("dictation.modelId")),
+            (ModelKind::Cleanup, _) => catalog.chosen_llm(&chosen("cleanup.llm.modelId")),
+        };
+        entry.map(|entry| {
+            let name = entry.name.as_str();
+            name.split_once(" by ")
+                .map_or(name, |(model, _)| model)
+                .to_owned()
+        })
     }
 
     pub fn opened(&mut self, cx: &mut Context<Self>) {
@@ -438,9 +516,16 @@ impl Devices {
                 )
             })
             .collect::<serde_json::Map<_, _>>();
+        let models = |kind, ids: &[String]| {
+            ids.iter()
+                .map(|id| (id.clone(), json!(self.model(kind, self.device(id)))))
+                .collect::<serde_json::Map<_, _>>()
+        };
+        let routes = &self.settings.routes;
         json!({"enabled":self.settings.enabled,"noLocalModels":self.settings.no_local_models,
             "devices":self.settings.devices.iter().map(RemoteDevice::to_json).collect::<Vec<_>>(),
-            "routes":{"speech":self.settings.routes.speech,"cleanup":self.settings.routes.cleanup},
+            "routes":{"speech":routes.speech,"cleanup":routes.cleanup},
+            "models":{"speech":models(ModelKind::Speech,&routes.speech),"cleanup":models(ModelKind::Cleanup,&routes.cleanup)},
             "sheet":match &self.sheet {None=>"closed",Some(Sheet::Add(_))=>"add",Some(Sheet::Detail(_))=>"detail"},
             "busy":self.busy,"notice":self.notice,"progress":self.progress,"health":health,
             "discovered":self.discovered.iter().map(|found| json!({"id":found.device.id,"name":found.device.name})).collect::<Vec<_>>(),
