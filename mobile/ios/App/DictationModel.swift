@@ -24,6 +24,7 @@ final class DictationModel {
         self.repository = repository
         self.store = store
         machine = try Dictation(maxMinutes: 5)
+        try store.cancelAbandonedRecording()
         microphone.failed = { [weak self] message in
             guard let self else { return }
             self.notice = message

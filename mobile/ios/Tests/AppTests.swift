@@ -105,6 +105,32 @@ final class AppTests: XCTestCase {
         XCTAssertEqual(dictationNotice("UNKNOWN_CODE"), "Dictation failed. Start again from the keyboard.")
     }
 
+    func testFreshDictationCancelsOnlyAbandonedRecordings() throws {
+        let store = try FlowSessionStore(root: folder)
+        let document = UUID()
+        let abandoned = try store.begin(documentIdentifier: document, context: "cursor")
+        _ = try store.request(for: abandoned.url)
+        _ = try DictationModel(repository: repository, store: store)
+        XCTAssertEqual(try store.current()?.state, .cancelled)
+
+        let pending = try store.begin(documentIdentifier: document, context: "cursor")
+        _ = try DictationModel(repository: repository, store: store)
+        XCTAssertEqual(try store.request(for: pending.url).state, .recording)
+        try store.complete(id: pending.id, text: "Ready")
+        _ = try DictationModel(repository: repository, store: store)
+        XCTAssertEqual(try store.consume(id: pending.id, documentIdentifier: document, context: "cursor"), "Ready")
+    }
+
+    func testDamagedSessionDoesNotBlockFreshDictation() throws {
+        let store = try FlowSessionStore(root: folder)
+        let file = folder.appendingPathComponent("Flow/session.json")
+        let damaged = Data("damaged".utf8)
+        try damaged.write(to: file)
+        _ = try DictationModel(repository: repository, store: store)
+        XCTAssertEqual(try Data(contentsOf: file), damaged)
+        XCTAssertEqual(try store.begin(documentIdentifier: UUID(), context: "cursor").state, .pending)
+    }
+
     func testOldRecorderCallbacksCannotFinishOrFailAnInactiveMicrophone() async throws {
         let microphone = Microphone()
         let oldRecorder = try AVAudioRecorder(url: folder.appendingPathComponent("old.wav"), settings: [
