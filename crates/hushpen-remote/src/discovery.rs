@@ -27,6 +27,10 @@ impl Advertisement {
         let info = service_info(device, hostname, port, version)?;
         let fullname = info.get_fullname().to_owned();
         let daemon = ServiceDaemon::new().map_err(io::Error::other)?;
+        if let Err(error) = daemon.set_ip_check_interval(300) {
+            let _ = daemon.shutdown();
+            return Err(io::Error::other(error));
+        }
         if let Err(error) = daemon.register(info) {
             let _ = daemon.shutdown();
             return Err(io::Error::other(error));

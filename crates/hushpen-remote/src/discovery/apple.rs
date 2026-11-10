@@ -5,6 +5,9 @@ use crate::invalid;
 use hushpen_core::remote::Device;
 use std::ffi::{CString, c_char, c_int, c_short, c_uint, c_void};
 use std::io;
+use std::net::Shutdown;
+use std::os::fd::AsRawFd;
+use std::os::unix::net::UnixStream;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,6 +57,7 @@ unsafe extern "C" {
 
 pub struct Advertisement {
     stop: Arc<AtomicBool>,
+    wake: UnixStream,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -65,17 +69,19 @@ impl Advertisement {
             CString::new(instance_name(&device.id)).map_err(|_| invalid("invalid discovery id"))?;
         let stop = Arc::new(AtomicBool::new(false));
         let running = Arc::clone(&stop);
+        let (wake, wait) = UnixStream::pair()?;
         let (ready, result) = mpsc::sync_channel(1);
         let deadline = Instant::now() + Duration::from_secs(10);
         let thread = std::thread::Builder::new()
             .name("phone-bonjour".into())
             .spawn(move || {
-                if let Err(error) = serve(&name, port, &txt, &running, deadline, &ready) {
+                if let Err(error) = serve(&name, port, &txt, &running, &wait, deadline, &ready) {
                     let _ = ready.try_send(Err(error));
                 }
             })?;
         let mut advertisement = Self {
             stop,
+            wake,
             thread: Some(thread),
         };
         match result.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
@@ -98,6 +104,7 @@ impl Advertisement {
 
     fn close(&mut self) {
         self.stop.store(true, Ordering::Release);
+        let _ = self.wake.shutdown(Shutdown::Both);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -124,6 +131,7 @@ fn serve(
     port: u16,
     txt: &[u8],
     stop: &AtomicBool,
+    wake: &UnixStream,
     deadline: Instant,
     ready: &mpsc::SyncSender<io::Result<()>>,
 ) -> io::Result<()> {
@@ -167,13 +175,30 @@ fn serve(
                 "Bonjour registration timed out. Allow Local Network in Settings.",
             ));
         }
-        let mut socket = PollFd {
-            fd,
-            events: 0x0001,
-            revents: 0,
+        let mut sockets = [
+            PollFd {
+                fd,
+                events: 0x0001,
+                revents: 0,
+            },
+            PollFd {
+                fd: wake.as_raw_fd(),
+                events: 0x0001,
+                revents: 0,
+            },
+        ];
+        let timeout = if announced {
+            -1
+        } else {
+            i32::try_from(
+                deadline
+                    .saturating_duration_since(Instant::now())
+                    .as_millis(),
+            )
+            .unwrap_or(i32::MAX)
         };
-        // SAFETY: PollFd matches the iOS SDK's pollfd, and one live record is supplied.
-        let events = unsafe { poll(&mut socket, 1, 100) };
+        // SAFETY: PollFd matches the iOS SDK's pollfd, and both records stay live during poll.
+        let events = unsafe { poll(sockets.as_mut_ptr(), 2, timeout) };
         if events < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {
@@ -181,10 +206,13 @@ fn serve(
             }
             return Err(error);
         }
-        if socket.revents & (0x0008 | 0x0010 | 0x0020) != 0 {
+        if sockets[1].revents != 0 {
+            return Ok(());
+        }
+        if sockets[0].revents & (0x0008 | 0x0010 | 0x0020) != 0 {
             return Err(io::Error::other("Bonjour event socket closed"));
         }
-        if socket.revents & 0x0001 != 0 {
+        if sockets[0].revents & 0x0001 != 0 {
             // SAFETY: Poll confirmed readable data. Only this thread uses the live reference.
             check(unsafe { DNSServiceProcessResult(service.0) })?;
             if let Some(error) = status.take() {
