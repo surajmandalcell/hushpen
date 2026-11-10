@@ -8,8 +8,9 @@ build one part. Use `check` to check the toolchains.
 
 Outputs live under `$CARGO_TARGET_DIR/mobile`: Android libraries in
 `android/jniLibs`, Swift and Kotlin in `bindings`, and the device/simulator
-XCFramework in `ios/HushpenCore.xcframework`. iOS uses Metal. Android uses CPU,
-with NEON on arm64. QNN and Core ML acceleration remain a later decision.
+XCFramework in `ios/HushpenCore.xcframework`. iOS devices use Metal; the iOS
+simulator uses CPU. Android uses CPU, with NEON on arm64. QNN and Core ML
+acceleration remain a later decision.
 
 Call blocking Rust operations from a native worker thread. Both local and
 served cleanup use one `SystemCleanup` over the native `SystemLlm` callback.
