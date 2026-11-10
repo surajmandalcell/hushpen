@@ -123,6 +123,15 @@ final class FlowSessionStore: @unchecked Sendable {
         }
     }
 
+    func cancelAbandonedRecording() throws {
+        try transaction(replacingDamaged: true) { stored in
+            guard var session = stored, session.state == .recording else { return }
+            session.state = .cancelled
+            session.text = nil
+            stored = session
+        }
+    }
+
     func current(now: Date = Date()) throws -> FlowSession? {
         try transaction { stored in
             guard let session = stored else { return nil }
