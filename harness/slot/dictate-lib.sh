@@ -77,6 +77,19 @@ pad() { # <wav> [lead_ms] -> path of the padded copy
   echo "$RUN_OUT/padded/$(basename "$1")"
 }
 
+hold_wav() {
+  local padded seconds
+  padded=$(pad "$1") || return 1
+  seconds=$(python3 /harness/slot/wavstat.py "$padded" | sed -n 's/.*secs=\([0-9.]*\).*/\1/p')
+  [ -n "$seconds" ] || return 1
+  hook_action pipeline-event '{"event":"hold-down"}' >/dev/null || return 1
+  wait_until 5 dict_is .state listening || return 1
+  $HC feed-wav "$padded" >/dev/null || return 1
+  sleep "$(awk -v seconds="$seconds" 'BEGIN {printf "%.2f", seconds + 0.4}')"
+  hook_action pipeline-event '{"event":"hold-up"}' >/dev/null || return 1
+  wait_until "${2:-180}" dict_final
+}
+
 # dictate <label> <wav>: one Home dictation through the real microphone path. Sets
 # RUN_T0 (ms) and returns when the run has ended in done, no-speech, or failed.
 dictate() {
