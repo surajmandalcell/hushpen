@@ -9,7 +9,7 @@
 
   const GH = 'https://github.com/surajmandalcell/hushpen';
   const COLS = [
-    ['Product', [['Download', GH + '/releases/latest'], ['Release notes', GH + '/releases/latest'], ['All releases', GH + '/releases']]],
+    ['Product', [['Download', GH + '/releases/latest'], ['Platforms', '#platforms'], ['Release notes', GH + '/releases/latest'], ['All releases', GH + '/releases']]],
     ['Project', [['About', 'about.html'], ['GitHub', GH], ['Report an issue', GH + '/issues'], ['Made by Suraj Mandal', 'https://mandalsuraj.com']]],
     ['Legal', [['AGPL-3.0 license', GH + '/blob/master/LICENSE'], ['Third-party notices', GH + '/blob/master/assets/THIRD-PARTY-NOTICES.html']]],
   ];
@@ -70,8 +70,11 @@
 
   const FAQ = [
     ['Is Hushpen free?', 'Yes. Hushpen is free and open source under the AGPL-3.0-or-later license.'],
-    ['Does my voice leave my computer?', 'No. Hushpen records and transcribes on your computer. Your audio and text leave it only if you set up your own endpoint for AI cleanup.'],
-    ['Which systems does it run on?', 'macOS 13 or later on Apple silicon. Linux x64 and arm64 with an X11 session and a Vulkan or OpenGL driver. Windows x64. On Wayland, the global key and paste are not available.'],
+    ['Does my voice leave my computer?', 'No. Hushpen records and transcribes on your computer. Your audio and text leave it only if you set up your own endpoint for AI cleanup. With Devices (coming soon), audio goes only to the phones and servers you paired. There is no cloud.'],
+    ['Which systems does it run on?', 'macOS 13 or later on Apple silicon. Linux x64 and arm64 with an X11 session and a Vulkan or OpenGL driver. Windows x64. On Wayland, the global key and paste are not available. Android and iOS apps are coming soon.'],
+    ['Is there an Android or iPhone app?', 'Not yet. Both are coming soon. The Android app is a full keyboard with a voice bar, and dictation and AI cleanup run on the phone. The iPhone app is a keyboard that starts a flow session in the Hushpen app, and the Dynamic Island shows it while it listens.'],
+    ['Can my phone run the models for my computer?', 'Yes, with Devices, which is coming soon. Turn on Use models on other devices, then pair a phone with a QR code (nearby, encrypted with Noise), or a computer with SSH or Tailscale. Speech to Text and Text cleanup each list devices in order, and Hushpen uses the first that answers. This computer is the fallback. An Android phone can serve in the background or with the app open. An iPhone serves in Server mode, with the app open, charging, and the screen dimmed.'],
+    ['What is hushpen-host?', 'A headless program for servers. It serves models to your computer the same way a phone does. It is part of Devices, which is coming soon.'],
     ['Which languages?', 'Parakeet v3, the recommended model, hears English and 24 other European languages. Whisper Large v3 Turbo covers Hindi and many more. Whisper Small translates speech to English.'],
     ['Which keys does it use?', 'Left Option + Tab starts hands-free dictation, and the same keys stop it. Hold Right Option to talk, and let go to finish. Right Option + Right Shift is Command Mode, Ctrl + Cmd + V pastes the last text, Ctrl + Cmd + S reads aloud, and Esc cancels. On Linux and Windows, double tap Right Alt (or press Right Alt + Space) for hands-free. Hold Right Alt to talk. Change any of them in Settings.'],
     ['Does it need the internet?', 'Only to download a model, and only when you ask. Dictation itself runs on your computer. The update check is off until you turn it on.'],
