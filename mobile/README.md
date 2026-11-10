@@ -73,3 +73,61 @@ password file live in
 `/Volumes/External1TB/data/_custom/droid/hushpen/signing/android/`, with mode
 0600. Never commit or replace them. CI signing and release publication are
 separate release steps.
+
+## iOS app
+
+`mobile/ios` requires Xcode, XcodeGen 2.44 or later, and iOS 26 or later.
+Generate the project from `project.yml`; do not commit generated projects or plists.
+
+```sh
+bash mobile/build-core.sh ios
+bash mobile/ios/generate.sh
+xcodebuild build-for-testing -project mobile/ios/Hushpen.xcodeproj \
+  -scheme Hushpen -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
+  -derivedDataPath "$AGENT_DATA_DIR/hushpen/ios-build/DerivedData" \
+  -jobs 2 CODE_SIGN_IDENTITY=-
+```
+
+On this Mac, Askama's binding generator cannot resolve its templates through
+the symlinked default Cargo registry. For core generation, use the existing
+real-path Cargo home with
+`CARGO_HOME=/Volumes/External1TB/data/_custom/droid/hushpen/cargo-home`.
+Do not change the shared cache configuration.
+
+Keep simulator data on the data drive. CoreSimulatorService needs macOS
+Removable Volumes access for an external device set. The app needs microphone
+and Local Network permission; the scanner needs camera permission.
+
+For flow UI tests, install the debug app and `HushpenKeyboardTestHost.app`
+from the build products on the same simulator. Copy `speech-short.wav` to
+the app's `Documents/flow-test.wav` and the pinned Base Q5 model to
+`Documents/ggml-base-q5_1.bin`. Find the app container with
+`xcrun simctl get_app_container <simulator-id> com.mandalsuraj.hushpen data`.
+Grant the isolated simulator's microphone permission with
+`xcrun simctl privacy <simulator-id> grant microphone com.mandalsuraj.hushpen`.
+The tests verify and select the model through Rust, enable the keyboard with
+Full Access through Settings, and drive cold-launch dictation, insertion,
+undo, cancellation, field changes, and foreground Server mode.
+
+```sh
+xcodebuild test-without-building -project mobile/ios/Hushpen.xcodeproj \
+  -scheme Hushpen -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
+  -derivedDataPath "$AGENT_DATA_DIR/hushpen/ios-build/DerivedData" \
+  -parallel-testing-enabled NO -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 240 CODE_SIGN_IDENTITY=-
+```
+
+The WAV hook exists only in debug builds. The extension links no Rust model
+engine and never records. It opens the app's session URL and inserts the
+protected App Group result when the user returns. Results expire after ten
+minutes and require the same document and cursor context. iOS exposes no
+public enabled-keyboard identifier check; onboarding shows a last-use receipt.
+
+Server mode serves only while the app is in front. It restores brightness and
+the idle timer when it stops. iOS uses native Bonjour registration to avoid
+the restricted entitlement for raw multicast; other platforms keep `mdns-sd`.
+See [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+Cleanup is off by default and uses the available on-device
+[Foundation Models system model](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel).
+Unavailable or failed cleanup keeps Rust's rule-cleaned text. Device signing
+and App Store distribution remain separate release work.
