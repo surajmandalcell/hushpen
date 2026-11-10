@@ -13,6 +13,26 @@ fn moving_route_devices_keeps_local_last_and_stops_at_edges() {
     assert_eq!(route.ids(), ["phone", "server", THIS_COMPUTER]);
 }
 
+#[test]
+fn moving_a_device_to_a_place_keeps_local_last() {
+    let mut route = route(&["a", "b", "c"], false);
+    assert!(route.move_to("c", 0));
+    assert_eq!(route.ids(), ["c", "a", "b", THIS_COMPUTER]);
+    assert!(route.move_to("c", 1));
+    assert_eq!(route.ids(), ["a", "c", "b", THIS_COMPUTER]);
+    assert!(
+        route.move_to("a", 9),
+        "a place past the devices is the last of them"
+    );
+    assert_eq!(route.ids(), ["c", "b", "a", THIS_COMPUTER]);
+    assert!(!route.move_to("a", 2), "the device is already there");
+    assert!(!route.move_to(THIS_COMPUTER, 0));
+    assert!(!route.move_to("missing", 0));
+    let mut remote_only = Route::new(vec!["a".into(), "b".into()], true);
+    assert!(remote_only.move_to("a", 1));
+    assert_eq!(remote_only.ids(), ["b", "a"]);
+}
+
 fn route(ids: &[&str], no_local: bool) -> Route {
     Route::new(ids.iter().map(|id| (*id).to_owned()).collect(), no_local)
 }
