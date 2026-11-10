@@ -1,46 +1,71 @@
 package com.mandalsuraj.hushpen
 
-import android.app.Activity
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
-import android.view.Window
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.viewinterop.AndroidView
+import com.mandalsuraj.hushpen.ui.HushpenTheme
+import com.mandalsuraj.hushpen.ui.LocalSurfaces
 
-class LicensesActivity : Activity() {
-    private lateinit var licenses: WebView
-
+class LicensesActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        licenses = PlaceholderLicenses(this)
-        val content = FrameLayout(this).apply {
-            addView(licenses, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        setContent {
+            HushpenTheme {
+                val context = LocalContext.current
+                val licenses = remember(context) { licensesView(context) }
+                DisposableEffect(licenses) { onDispose { licenses.destroy() } }
+                val page = LocalSurfaces.current.page
+                Scaffold(
+                    containerColor = page,
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("Open-source licenses") },
+                            navigationIcon = {
+                                IconButton(onClick = ::finish) {
+                                    Icon(painterResource(R.drawable.ms_arrow_back), contentDescription = "Back")
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = page),
+                        )
+                    },
+                ) { padding ->
+                    AndroidView(factory = { licenses }, modifier = Modifier.fillMaxSize().padding(padding))
+                }
+            }
         }
-        ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
-        setContentView(content)
-    }
-
-    override fun onDestroy() {
-        licenses.destroy()
-        super.onDestroy()
     }
 }
 
-private fun PlaceholderLicenses(context: Context) = WebView(context).apply {
+/** Only the bundled notice loads: no scripts, network, or other local files. */
+private fun licensesView(context: Context) = WebView(context).apply {
     settings.javaScriptEnabled = false
     settings.allowFileAccess = false
     settings.allowContentAccess = false
     settings.blockNetworkLoads = true
+    if (Build.VERSION.SDK_INT >= 33) settings.isAlgorithmicDarkeningAllowed = true
     webViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
             request?.url?.toString()?.startsWith("file:///android_asset/") != true
