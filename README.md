@@ -122,6 +122,12 @@ Then open Hushpen and press **Download**. Hushpen starts with Parakeet v3 (416 M
 
 </details>
 
+## Phones
+
+Android and iOS source apps add voice keyboards and can serve speech models to paired desktops.
+Android can serve in the background; iOS Server mode requires the app to stay open.
+The phone screens use basic placeholders. See the [phone build guide](mobile/README.md) for setup and limits.
+
 ## Learn more
 
 <details>

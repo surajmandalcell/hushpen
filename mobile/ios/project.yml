@@ -18,6 +18,9 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    Release:
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
 targets:
   Hushpen:
     type: application
@@ -33,6 +36,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen
+        SKIP_INSTALL: NO
         OTHER_LDFLAGS: ['$(inherited)', '-lc++', '-lz', '-framework', Accelerate, '-framework', Metal, '-framework', MetalKit, '-framework', Security, '-framework', SystemConfiguration]
     info:
       path: Generated/App-Info.plist

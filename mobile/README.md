@@ -71,8 +71,8 @@ Alternatively, sign the unsigned output with Android's `apksigner`, passing
 passwords through its `file:` options. The one local signing key and its
 password file live in
 `/Volumes/External1TB/data/_custom/droid/hushpen/signing/android/`, with mode
-0600. Never commit or replace them. CI signing and release publication are
-separate release steps.
+0600. Never commit or replace them. Release CI reads the existing key through
+the three Android secrets described in [the release guide](../docs/building.md#phone-and-host-release-files).
 
 ## iOS app
 
@@ -129,5 +129,7 @@ the restricted entitlement for raw multicast; other platforms keep `mdns-sd`.
 See [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
 Cleanup is off by default and uses the available on-device
 [Foundation Models system model](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel).
-Unavailable or failed cleanup keeps Rust's rule-cleaned text. Device signing
-and App Store distribution remain separate release work.
+Unavailable or failed cleanup keeps Rust's rule-cleaned text.
+The scheme archives the app and embedded keyboard in Release, with debug
+symbols. See [the archive and upload guide](../docs/building.md#ios-archive-and-owner-upload)
+for the unsigned archive check and the owner's App Store Connect steps.

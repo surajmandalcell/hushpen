@@ -114,7 +114,10 @@ new decision, add it here in the same change (D-21).
   in every package, pinned by SHA-256 in the package checks, not downloaded.
 - **D-20 Packages.** macOS zip and dmg; Linux AppImage, deb, rpm, and tar.gz
   for x64 and arm64. File names are `Hushpen-<version>-<target>.<ext>`. The
-  dmg is built on CI only.
+  dmg is built on CI only. Releases also require Linux x64/arm64 host
+  tarballs and a signed Android APK in `SHA256SUMS`. Desktop update targets
+  stay unchanged. iOS has a Release archive configuration; the owner creates
+  its App Store Connect record before any upload.
 - **D-21 Specs.** `specs/ddd.md` (glossary with the naming tree) and
   `specs/decisions.md` (this file) live at the repo root. Features update
   them when they settle naming or behavior.

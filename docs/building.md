@@ -153,6 +153,94 @@ workspace tests, dependency checks, and all four program version checks.
 
 Before a major or minor release is complete, run `bash packaging/linux/install-on-lin1.sh` on lin1, from `/mnt/nvme1/data/hushpen/repo`. It builds on lin1, verifies the AppImage, installs the app, and keeps the installers in `~/Downloads/Hushpen`. Patch-only changes skip the build. Use `--force` for a requested patch install. The release decision in `specs/decisions.md` names the retained source and data paths.
 
+## Phone and host release files
+
+The manually started `release.yml` builds these files in addition to desktop
+packages. Its required tag must name the version being released.
+
+- `Hushpen-<version>-host-linux-x64.tar.gz`
+- `Hushpen-<version>-host-linux-arm64.tar.gz`
+- `Hushpen-<version>-android.apk`
+
+`cargo xtask release-manifest` includes all three in `SHA256SUMS`, and
+`release-verify` requires them. The signed desktop update manifest keeps its
+desktop targets only. iOS archives are not GitHub release assets.
+
+Build a host archive on matching Linux hardware:
+
+```sh
+cargo xtask package-host --target linux-x64
+```
+
+Use `linux-arm64` on arm64. `--out <folder>` changes the destination;
+`--skip-build` packages existing Release binaries. The archive includes
+`hushpen-host`, `hushpen-asr`, `hushpen-llm`, the speech detector, the user
+service file, and license notices. Desktop SSH setup downloads the matching
+archive, checks its SHA-256, and installs it without sudo.
+
+Android release CI builds both arm64-v8a and x86_64, runs unit tests, and
+signs the APK with the existing `hushpen` key. It reads these repository secrets:
+
+- `ANDROID_KEYSTORE_B64`: the base64-encoded local keystore.
+- `ANDROID_KEYSTORE_PASSWORD`: the keystore password.
+- `ANDROID_KEY_PASSWORD`: the signing-key password.
+
+The local key and mode-0600 password file remain under
+`/Volumes/External1TB/data/_custom/droid/hushpen/signing/android/`.
+Never replace the key: Android updates must use the same signing identity.
+The workflow removes the decoded key after use and verifies the APK signature
+before uploading the build artifact. See [the phone guide](../mobile/README.md)
+for native build and emulator checks.
+
+## iOS archive and owner upload
+
+`mobile/ios/project.yml` owns the Release archive configuration for team
+`GF57JXJF5A`. The app embeds `HushpenKeyboard.appex`; the extension links no
+Rust engine. Both targets share `group.com.mandalsuraj.hushpen`.
+
+Build the core and generate the project, then check an unsigned device archive:
+
+```sh
+bash mobile/build-core.sh ios
+bash mobile/ios/generate.sh
+xcodebuild archive -project mobile/ios/Hushpen.xcodeproj \
+  -scheme Hushpen -configuration Release -destination 'generic/platform=iOS' \
+  -derivedDataPath "$AGENT_DATA_DIR/hushpen/ios-build/DerivedData" \
+  -archivePath "$AGENT_DATA_DIR/hushpen/ios-build/Hushpen.xcarchive" \
+  -jobs 2 CODE_SIGNING_ALLOWED=NO
+```
+
+This checks archive structure and builds the extension. An unsigned archive
+cannot be uploaded. No archive command here uploads a build or creates an app record.
+
+The owner must complete these steps before App Store or TestFlight distribution:
+
+1. Sign in to [Apple Developer](https://developer.apple.com/account/) with team `GF57JXJF5A`.
+2. Register explicit App IDs `com.mandalsuraj.hushpen` and `com.mandalsuraj.hushpen.keyboard` if absent.
+3. Register `group.com.mandalsuraj.hushpen` and enable it for both App IDs.
+4. In [App Store Connect](https://appstoreconnect.apple.com/), accept any required agreements as the Account Holder.
+5. Open Apps, click `+`, and select New App.
+6. Select iOS, name `Hushpen`, primary language English (U.S.), and bundle ID `com.mandalsuraj.hushpen`.
+7. Set SKU `hushpen-ios`, choose the required User Access, and click Create.
+8. Set a new `CURRENT_PROJECT_VERSION` in `project.yml` for each upload, then regenerate the project.
+9. Confirm signing profiles for both targets include the App Group and use the selected team.
+10. Repeat the archive command without `CODE_SIGNING_ALLOWED=NO`, using authorized distribution signing.
+11. In Xcode's Archives organizer, select Hushpen, then Distribute App, App Store Connect, and Upload.
+12. Review signing, profiles, and entitlements before the final Upload action.
+13. Wait for build processing, then open Hushpen's TestFlight tab and select the processed build.
+14. Complete export-compliance questions and provide any required encryption documents before testing or submission.
+15. Add internal testers, or complete beta review for external testers. App Store release needs a separate review submission.
+
+Hushpen bundles Noise encryption. `ITSAppUsesNonExemptEncryption` remains
+`true`; the owner determines the required declaration and documentation.
+An app record is required before upload. These account, signing, compliance,
+and publication actions are separate from building an archive.
+
+Apple's instructions: [create an app record](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/),
+[upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds),
+[upload from Xcode](https://help.apple.com/xcode/mac/current/en.lproj/dev442d7f2ca.html),
+and [export compliance](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance).
+
 ## More
 
 - Design rules: `DESIGN.md`
