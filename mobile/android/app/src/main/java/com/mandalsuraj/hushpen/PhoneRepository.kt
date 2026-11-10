@@ -125,6 +125,10 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
 
     fun cancelSpeech() { if (ready) engine.cancel() }
 
+    suspend fun releaseSpeech() = withContext(Dispatchers.IO) {
+        if (ready) speech.withLock { host.releaseLocalModel() }
+    }
+
     fun setActivityVisible(visible: Boolean) {
         activityVisible = visible
         if (ready) {

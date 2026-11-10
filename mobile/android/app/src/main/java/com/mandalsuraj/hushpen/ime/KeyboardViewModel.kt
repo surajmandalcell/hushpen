@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.SystemClock
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mandalsuraj.hushpen.BuildConfig
@@ -12,13 +13,14 @@ import com.mandalsuraj.hushpen.core.Dictation
 import com.mandalsuraj.hushpen.core.DictationEffect
 import com.mandalsuraj.hushpen.core.DictationEvent
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -48,6 +50,7 @@ class KeyboardViewModel(
     val inputOpen: Boolean get() = insert != null
     private var activeCapture: ULong? = null
     private var stopping: Job? = null
+    private var deadline: Job? = null
     private var autoShifted = false
 
     init {
@@ -69,13 +72,9 @@ class KeyboardViewModel(
                     events.trySend(owner to if (snapshot.state == "transcribing") {
                         DictationEvent.TranscribeFailed(snapshot.session)
                     } else DictationEvent.CaptureFailed)
+                } finally {
+                    if (owner === machine) schedule(owner)
                 }
-            }
-        }
-        viewModelScope.launch {
-            while (isActive) {
-                delay(100)
-                send(DictationEvent.Tick)
             }
         }
     }
@@ -89,6 +88,8 @@ class KeyboardViewModel(
 
     fun closeInput() {
         insert = null
+        deadline?.cancel()
+        deadline = null
         jobs.values.forEach { it.cancel() }
         jobs.clear()
         repository.cancelSpeech()
@@ -99,10 +100,15 @@ class KeyboardViewModel(
         audio.clear()
         activeCapture = null
         val previousStop = stopping
-        stopping = viewModelScope.launch {
-            previousStop?.join()
-            runCatching { microphone.stop() }
-            withContext(Dispatchers.IO) { files.forEach(File::delete) }
+        stopping = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            withContext(NonCancellable) {
+                previousStop?.join()
+                runCatching { microphone.stop() }
+                    .onFailure { Log.w("Hushpen", "Microphone shutdown failed.", it) }
+                runCatching { repository.releaseSpeech() }
+                    .onFailure { Log.w("Hushpen", "Speech release failed.", it) }
+                withContext(Dispatchers.IO) { files.forEach(File::delete) }
+            }
         }
     }
 
@@ -147,6 +153,7 @@ class KeyboardViewModel(
     }
 
     private fun dictate(event: DictationEvent) {
+        if (!inputOpen) return
         if (!state.value.canDictate) {
             notice("Dictation is off in password fields.")
             return
@@ -155,7 +162,18 @@ class KeyboardViewModel(
     }
 
     private fun send(event: DictationEvent) {
-        events.trySend(machine to event)
+        if (inputOpen) events.trySend(machine to event)
+    }
+
+    private fun schedule(owner: Dictation) {
+        deadline?.cancel()
+        deadline = null
+        if (!inputOpen) return
+        val milliseconds = owner.nextWakeMs(now())?.toLong() ?: return
+        deadline = viewModelScope.launch {
+            delay(milliseconds)
+            if (owner === machine && inputOpen) events.trySend(owner to DictationEvent.Tick)
+        }
     }
 
     private suspend fun execute(owner: Dictation, effect: DictationEffect) {
@@ -256,9 +274,8 @@ class KeyboardViewModel(
     private fun now() = SystemClock.elapsedRealtime().toULong()
 
     override fun onCleared() {
-        repository.cancelSpeech()
-        val files = audio.values.toList()
-        microphone.close { files.forEach(File::delete) }
+        closeInput()
+        microphone.close { }
         machine.close()
         events.close()
     }
