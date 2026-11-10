@@ -13,7 +13,7 @@ mod update_feed;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|tts-runtime [--target <t>] [--dir <dir>]|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper] [--artifact <target>=<file>]... [--base-url <url>] [--wrong-sha]|release-manifest --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file> --pub-date <time>|release-verify --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file>>";
+const USAGE: &str = "usage: cargo xtask <gate|net-audit|licenses|two-binary|tts-runtime [--target <t>] [--dir <dir>]|release-check [--binary <path>] [--features <list>] [--guard]|package [...]|package-host [--target linux-x64|linux-arm64] [--out <dir>] [--skip-build]|package-verify [...]|update-test-keygen --out <dir> [--name <name>]|update-feed --out <dir> --key <file> --version <v> [--notes-url <url>] [--tamper] [--artifact <target>=<file>]... [--base-url <url>] [--wrong-sha]|release-manifest --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file> --pub-date <time>|release-verify --dir <dir> --tag <tag> --repo <owner/name> --pubkey <file>>";
 
 fn main() -> ExitCode {
     let root = match root::repo_root() {
@@ -39,6 +39,10 @@ fn main() -> ExitCode {
         Some("package") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();
             package::run(&root, &rest)
+        }
+        Some("package-host") => {
+            let rest: Vec<String> = std::env::args().skip(2).collect();
+            package::run_host(&root, &rest)
         }
         Some("package-verify") => {
             let rest: Vec<String> = std::env::args().skip(2).collect();

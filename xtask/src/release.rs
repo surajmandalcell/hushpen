@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use minisign::{PublicKeyBox, SecretKeyBox, SignatureBox};
 use serde_json::Value;
 
-use crate::package::names::{Format, Target, artifact_name, planned_artifacts};
+use crate::package::names::{Format, Target, artifact_name, device_artifacts, planned_artifacts};
 use crate::package::sha256_hex;
 use crate::update_feed::{Platform, manifest_text_at};
 
@@ -62,6 +62,7 @@ pub fn installers(version: &str) -> Vec<String> {
     TARGETS
         .iter()
         .flat_map(|target| planned_artifacts(version, *target))
+        .chain(device_artifacts(version))
         .collect()
 }
 

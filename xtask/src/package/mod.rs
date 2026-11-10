@@ -9,6 +9,7 @@
 
 mod config;
 mod deps;
+mod host;
 mod linux;
 mod mac;
 pub mod names;
@@ -23,6 +24,7 @@ use sha2::{Digest, Sha256};
 
 use names::{Format, Target};
 
+pub use host::run as run_host;
 pub use verify::run_verify;
 
 const APP_BINARY: &str = "hushpen";

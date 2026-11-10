@@ -91,9 +91,9 @@ fn a_tag_gives_its_version_and_odd_tags_are_refused() {
 }
 
 #[test]
-fn the_release_holds_twelve_installers_and_three_metadata_files() {
+fn the_release_holds_fifteen_installers_and_three_metadata_files() {
     let names = release_assets("2.0.0-rc.1");
-    assert_eq!(names.len(), 15);
+    assert_eq!(names.len(), 18);
     for expected in [
         "Hushpen-2.0.0-rc.1-macos-arm64.zip",
         "Hushpen-2.0.0-rc.1-macos-arm64.dmg",
@@ -107,6 +107,9 @@ fn the_release_holds_twelve_installers_and_three_metadata_files() {
         "Hushpen-2.0.0-rc.1-linux-arm64.tar.gz",
         "Hushpen-2.0.0-rc.1-windows-x64-setup.exe",
         "Hushpen-2.0.0-rc.1-windows-x64.zip",
+        "Hushpen-2.0.0-rc.1-host-linux-x64.tar.gz",
+        "Hushpen-2.0.0-rc.1-host-linux-arm64.tar.gz",
+        "Hushpen-2.0.0-rc.1-android.apk",
         "latest.json",
         "latest.json.minisig",
         "SHA256SUMS",
@@ -131,7 +134,8 @@ fn a_signed_release_verifies_and_the_manifest_lists_the_self_update_installers()
         "content of Hushpen-2.0.0-rc.1-linux-arm64.AppImage".len()
     );
     let sums = fs::read_to_string(out.join(SUMS)).unwrap();
-    assert_eq!(sums.lines().count(), 12);
+    assert_eq!(sums.lines().count(), 15);
+    assert_eq!(manifest["platforms"].as_object().unwrap().len(), 4);
     assert_eq!(
         manifest["platforms"]["windows-x64"]["url"],
         "https://github.com/owner/repo/releases/download/v2.0.0-rc.1/Hushpen-2.0.0-rc.1-windows-x64-setup.exe"
@@ -240,13 +244,24 @@ fn an_unreadable_key_names_the_variable_and_not_its_text() {
 }
 
 #[test]
-fn a_manifest_needs_all_twelve_installers() {
+fn a_manifest_needs_every_planned_installer() {
     let dir = scratch("short");
     let (secret, pubkey) = key_pair(&dir, "k");
     let out = installers_dir(&dir);
     fs::remove_file(out.join("Hushpen-2.0.0-rc.1-macos-arm64.zip")).unwrap();
     assert!(write_release(&args_for(&out, &pubkey), &secret, None).is_err());
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn changed_or_missing_device_packages_fail_release_verification() {
+    let (dir, out, pubkey) = signed_release("devices");
+    fs::write(out.join("Hushpen-2.0.0-rc.1-android.apk"), b"changed").unwrap();
+    fs::remove_file(out.join("Hushpen-2.0.0-rc.1-host-linux-arm64.tar.gz")).unwrap();
+    let error = verify(&out, &pubkey).unwrap_err();
+    assert!(error.contains("SHA256SUMS hash of Hushpen-2.0.0-rc.1-android.apk is wrong"));
+    assert!(error.contains("asset Hushpen-2.0.0-rc.1-host-linux-arm64.tar.gz is missing"));
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
