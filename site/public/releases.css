@@ -1,5 +1,13 @@
 /* Reserve release metadata space while the API request is in flight. */
 [data-dl-meta] { min-height: 44px; }
-[data-dl-meta] > li:first-child, [data-version] { min-width: 11ch; font-variant-numeric: tabular-nums; }
+[data-dl-meta] > li { font-variant-numeric: tabular-nums; transition: opacity .25s; }
+/* The labels change from "Latest version" to the tag and size when the data arrives. They stay hidden
+   until then, so the centered line never shifts. */
+[data-rel="wait"] [data-dl-meta] > li { opacity: 0; }
+/* On a phone the last label takes its own line, so a wrapped line never starts with a separator dot. */
+@media (max-width: 560px) {
+  [data-dl-meta] > li:last-child { flex-basis: 100%; text-align: center; }
+  [data-dl-meta] > li:last-child::before { display: none !important; }
+}
 [hidden] { display: none !important; }
 .release-note { min-height: 24px; margin-top: 16px; color: var(--ink2); }
