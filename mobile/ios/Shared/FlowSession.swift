@@ -165,6 +165,11 @@ final class FlowSessionStore: @unchecked Sendable {
         }
     }
 
+    func mayRecord(id: UUID, now: Date = Date()) throws -> Bool {
+        guard let session = try current(now: now) else { return false }
+        return session.id == id && session.state == .recording && session.command == nil
+    }
+
     func consume(
         id: UUID, documentIdentifier: UUID, context: String, now: Date = Date()
     ) throws -> String? {

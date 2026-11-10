@@ -41,28 +41,43 @@ final class FlowSessionTests: XCTestCase {
     func testKeyboardCommandsPersistOnlyForTheirLiveSession() throws {
         let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
         XCTAssertEqual(try store.current(now: now)?.command, .start)
+        XCTAssertFalse(try store.mayRecord(id: session.id, now: now))
         XCTAssertThrowsError(try store.stop(id: session.id, now: now))
         _ = try store.request(for: session.url, now: now)
         XCTAssertNil(try store.current(now: now)?.command)
+        XCTAssertTrue(try store.mayRecord(id: session.id, now: now))
+        XCTAssertFalse(try store.mayRecord(id: UUID(), now: now))
         XCTAssertThrowsError(try store.stop(id: UUID(), now: now))
         XCTAssertThrowsError(try store.stop(id: session.id, now: now.addingTimeInterval(600)))
         try store.stop(id: session.id, now: now)
         let reopened = try FlowSessionStore(root: root)
         XCTAssertEqual(try reopened.current(now: now)?.command, .stop)
         XCTAssertEqual(try reopened.current(now: now)?.state, .recording)
+        XCTAssertFalse(try reopened.mayRecord(id: session.id, now: now))
         try store.complete(id: session.id, text: "Finished", now: now)
         XCTAssertNil(try store.current(now: now)?.command)
+        XCTAssertFalse(try store.mayRecord(id: session.id, now: now))
         XCTAssertThrowsError(try store.stop(id: session.id, now: now))
 
         let next = try store.begin(documentIdentifier: document, context: "cursor", now: now)
         _ = try store.request(for: next.url, now: now)
         try store.cancel(id: next.id, now: now)
         XCTAssertEqual(try reopened.current(now: now)?.command, .cancel)
+        XCTAssertFalse(try reopened.mayRecord(id: next.id, now: now))
         XCTAssertThrowsError(try store.stop(id: next.id, now: now))
+
         try store.resume(id: next.id, now: now)
         XCTAssertNil(try reopened.current(now: now)?.command)
+        XCTAssertTrue(try reopened.mayRecord(id: next.id, now: now))
         _ = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        XCTAssertFalse(try reopened.mayRecord(id: next.id, now: now))
         XCTAssertThrowsError(try store.stop(id: next.id, now: now))
+    }
+
+    func testExpiredRequestCannotRecordAfterPermissionReturns() throws {
+        let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        _ = try store.request(for: session.url, now: now)
+        XCTAssertFalse(try store.mayRecord(id: session.id, now: now.addingTimeInterval(600)))
     }
 
     func testSessionChangeNotifiesWithoutARefreshTimer() async throws {
