@@ -31,11 +31,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.tag }}
-      - name: Check the tag and the signing secret
+      - name: Check the tag and the signing secrets
         id: tag
         env:
           TAG: ${{ inputs.tag }}
           HUSHPEN_UPDATE_KEY: ${{ secrets.HUSHPEN_UPDATE_KEY }}
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             echo "::error::tag '$TAG' is not vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
@@ -45,6 +48,12 @@ jobs:
             echo "::error::the repository secret HUSHPEN_UPDATE_KEY is not set"
             exit 1
           fi
+          for secret in ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::the repository secret $secret is not set"
+              exit 1
+            fi
+          done
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           case "$TAG" in *-rc.*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
 
@@ -122,6 +131,9 @@ jobs:
           cargo xtask package-verify --target ${{ matrix.target }}
           ls -l target/dist/${{ matrix.target }}
           ./target/release/hushpen${EXE_SUFFIX} --version | grep -F "$HUSHPEN_BUILD_VERSION"
+      - name: Package the headless host
+        if: runner.os == 'Linux'
+        run: cargo xtask package-host --target ${{ matrix.target }}
       - name: Keep the artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -129,10 +141,79 @@ jobs:
           path: target/dist/${{ matrix.target }}/Hushpen-*
           if-no-files-found: error
           retention-days: 7
+      - name: Keep the host archive
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-host-${{ matrix.target }}
+          path: target/dist/host-${{ matrix.target }}/Hushpen-*
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    needs: plan
+    name: package (android)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      HUSHPEN_BUILD_VERSION: ${{ needs.plan.outputs.version }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      HUSHPEN_MOBILE_CORE: ${{ github.workspace }}/target/mobile
+      HUSHPEN_ANDROID_BUILD_DIR: ${{ github.workspace }}/target/android-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install the native build tools and pinned Android SDK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends clang libclang-dev cmake libasound2-dev
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - name: Build both phone ABIs and bindings
+        run: bash mobile/build-core.sh android
+      - name: Test and sign the APK
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          HUSHPEN_ANDROID_KEYSTORE: ${{ runner.temp }}/hushpen.jks
+          HUSHPEN_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HUSHPEN_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          trap 'rm -f "$HUSHPEN_ANDROID_KEYSTORE"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 --decode > "$HUSHPEN_ANDROID_KEYSTORE"
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease lintRelease
+          apk="$HUSHPEN_ANDROID_BUILD_DIR/app/outputs/apk/release/app-release.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -F "versionName='$HUSHPEN_BUILD_VERSION'"
+          for abi in arm64-v8a x86_64; do
+            unzip -l "$apk" "lib/$abi/libhushpen_mobile.so" | grep -F "lib/$abi/libhushpen_mobile.so"
+            unzip -l "$apk" "lib/$abi/libc++_shared.so" | grep -F "lib/$abi/libc++_shared.so"
+          done
+          mkdir -p "$GITHUB_WORKSPACE/target/dist/android"
+          cp "$apk" "$GITHUB_WORKSPACE/target/dist/android/Hushpen-$HUSHPEN_BUILD_VERSION-android.apk"
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-android
+          path: target/dist/android/Hushpen-*.apk
+          if-no-files-found: error
+          retention-days: 7
 
   # Signs latest.json and makes the draft. This is the only job that reads the secret key.
   release:
-    needs: [plan, package]
+    needs: [plan, package, android]
     name: draft release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
