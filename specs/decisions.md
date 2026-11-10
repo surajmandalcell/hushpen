@@ -514,10 +514,10 @@ new decision, add it here in the same change (D-21).
   setup reads concrete Host aliases from `~/.ssh/config`, uses BatchMode
   only, verifies SHA-256 before installation, starts the user service, and
   pairs over the authenticated SSH channel. Views send intents and show
-  service progress; they perform no network or process work. The current
-  screen is `PlaceholderDevices`, with plain state rows and default
-  controls. Visual design and pixel baselines wait for the designer.
-  `mobile/SCREENS.md` records the desktop screen state and intent contract.
+  service progress; they perform no network or process work. The desktop
+  screen follows the Devices rules of `DESIGN.md`, with Light and Dark
+  pixel baselines for the page and both sheets. `mobile/SCREENS.md`
+  records the desktop screen state and intent contract.
 
 - **D-51 Shared phone core.** Native phone apps call `hushpen-mobile` through
   pinned UniFFI bindings. Rust owns dictation, the phone catalog, verified

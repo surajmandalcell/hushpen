@@ -353,7 +353,7 @@ Each group of icons runs from lightest to heaviest. The focus moves in the order
 
 ## Devices
 
-Devices follows flow D: separate Speech to Text and Text cleanup routes. The first controls are "Use models on other devices" and "Do not load models on this computer". Remote use defaults off. This computer stays last unless disabled; then no local fallback is allowed. Rows expose order, status, latency, and details. Add device supports nearby phones with QR, SSH servers, and Tailscale addresses. Details supports rename, forget, and core-approved unload rules. Until the designer supplies the visuals, use only `PlaceholderDevices` with plain state rows and default controls. The screen contract is `mobile/SCREENS.md`; placeholders have no pixel baselines.
+Devices follows flow D: separate Speech to Text and Text cleanup routes. The first controls are "Use models on other devices" (off by default) and "Do not load models on this computer"; while the first is off, the rest fades to 35% and takes no input. A route row holds the kind icon, name, latency (56px, tabular digits), status word (100px; Ready in success, Not reachable in error), and Move up and Move down. This computer says Fallback and stays last; with local models off there is no local fallback. Your devices rows open Details; Add Device… ends that heading. Add a Device has Nearby (phones and a 104px QR, white in both appearances), SSH, and Tailscale. Details holds rename, Remove Device… (asked in a row), and only core-approved unload rules. The contract is `mobile/SCREENS.md`.
 
 ## Do's and Don'ts
 

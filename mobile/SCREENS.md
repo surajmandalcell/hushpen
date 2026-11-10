@@ -1,7 +1,8 @@
 # Screen contracts
 
-The desktop and phone flows use plain placeholders until the designer supplies
-the visuals. Core owns the rules; views render state and send intents.
+The desktop Devices screens follow `DESIGN.md`. The phone flows use plain
+placeholders until the designer supplies the visuals. Core owns the rules;
+views render state and send intents.
 
 ## Devices
 
