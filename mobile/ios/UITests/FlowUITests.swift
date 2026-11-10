@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 
 @MainActor
@@ -37,17 +38,27 @@ final class FlowUITests: XCTestCase {
         editor.activate()
         let field = editor.textFields["editor.first"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let insert = element("keyboard.insert", in: editor)
+        XCTAssertTrue(insert.waitForExistence(timeout: 10))
+        XCTAssertEqual(field.value as? String, "hi ")
+        insert.tap()
         let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
         expectation(for: inserted, evaluatedWith: field)
         waitForExpectations(timeout: 15)
         let once = field.value as? String
         attach(editor, name: "Returned transcript")
 
-        phone.activate()
-        editor.activate()
+        XCTAssertFalse(element("keyboard.insert", in: editor).exists)
         XCTAssertEqual(field.value as? String, once)
         element("keyboard.undo", in: editor).tap()
         XCTAssertEqual(field.value as? String, "hi ")
+        phone.activate()
+        editor.activate()
+        useKeyboard()
+        XCTAssertEqual(field.value as? String, "hi ")
+        let undo = element("keyboard.undo", in: editor)
+        XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        XCTAssertFalse(undo.isEnabled)
     }
 
     func testCancelDoesNotInsertText() {
@@ -69,13 +80,34 @@ final class FlowUITests: XCTestCase {
         editor.activate()
         let first = editor.textFields["editor.first"]
         XCTAssertTrue(first.waitForExistence(timeout: 10))
+        attach(editor, name: "Keyboard returned")
+        let insert = element("keyboard.insert", in: editor)
+        XCTAssertTrue(insert.waitForExistence(timeout: 10))
+        XCTAssertEqual(first.value as? String, "First field")
+        editor.textFields["editor.second"].tap()
+        useKeyboard()
+        XCTAssertTrue(element("keyboard.mic", in: editor).waitForExistence(timeout: 10))
+        XCTAssertFalse(insert.exists)
+        XCTAssertEqual(first.value as? String, "First field")
+        XCTAssertEqual(editor.textFields["editor.second"].value as? String, "Second field")
+        editor.textFields["editor.first"].tap()
+        useKeyboard()
+        startFromKeyboard()
+        element("dictation.finish", in: phone).tap()
+        waitForText("done", id: "dictation.state", in: phone, timeout: 180)
+        editor.activate()
+        XCTAssertTrue(insert.waitForExistence(timeout: 10))
+        insert.tap()
         let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
         expectation(for: inserted, evaluatedWith: first)
         waitForExpectations(timeout: 15)
         editor.textFields["editor.second"].tap()
+        useKeyboard()
         XCTAssertEqual(editor.textFields["editor.second"].value as? String, "Second field")
-        XCTAssertFalse(element("keyboard.undo", in: editor).isEnabled)
         attach(editor, name: "Changed field")
+        let undo = element("keyboard.undo", in: editor)
+        XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        XCTAssertFalse(undo.isEnabled)
     }
 
     func testServerStopsWhenTheAppLeavesTheForeground() {
@@ -83,12 +115,32 @@ final class FlowUITests: XCTestCase {
         phone.switches["server.toggle"].switches.firstMatch.tap()
         waitForText("Running", id: "server.state", in: phone, timeout: 20)
         XCTAssertEqual(element("server.port", in: phone).label, "7342")
+        XCTAssertTrue(serverAcceptsConnections())
         attach(phone, name: "Server running")
         editor.launch()
         phone.activate()
         waitForText("Stopped", id: "server.state", in: phone, timeout: 10)
         XCTAssertEqual(element("server.port", in: phone).label, "None")
+        let closed = NSPredicate { _, _ in !self.serverAcceptsConnections() }
+        expectation(for: closed, evaluatedWith: nil)
+        waitForExpectations(timeout: 10)
         attach(phone, name: "Server stopped on background")
+    }
+
+    nonisolated private func serverAcceptsConnections() -> Bool {
+        let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard socket >= 0 else { XCTFail("The server probe could not open a socket."); return false }
+        defer { Darwin.close(socket) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(7342).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(socket, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
     }
 
     private func openEditor() {
@@ -96,16 +148,25 @@ final class FlowUITests: XCTestCase {
         let field = editor.textFields["editor.first"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
-        if !element("keyboard.mic", in: editor).waitForExistence(timeout: 2) {
-            let globe = editor.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH[c] %@", "Emoji", "Next keyboard")).firstMatch
+        useKeyboard()
+        if element("keyboard.insert", in: editor).exists {
+            element("keyboard.cancel", in: editor).tap()
+        }
+        XCTAssertTrue(element("keyboard.mic", in: editor).waitForExistence(timeout: 15))
+        attach(editor, name: "Keyboard ready")
+    }
+
+    private func useKeyboard() {
+        if !element("keyboard.status", in: editor).waitForExistence(timeout: 2) {
+            let globe = editor.buttons.matching(NSPredicate(format: "(label == %@ OR label BEGINSWITH[c] %@) AND identifier != %@", "Emoji", "Next keyboard", "keyboard.next")).firstMatch
             XCTAssertTrue(globe.waitForExistence(timeout: 5))
             globe.press(forDuration: 1)
+            attach(editor, name: "Keyboard picker")
             let keyboard = editor.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Hushpen")).firstMatch
             XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
             keyboard.tap()
         }
-        XCTAssertTrue(element("keyboard.mic", in: editor).waitForExistence(timeout: 15))
-        attach(editor, name: "Keyboard ready")
+        XCTAssertTrue(element("keyboard.status", in: editor).waitForExistence(timeout: 15))
     }
 
     private func enableKeyboard() {
@@ -143,7 +204,9 @@ final class FlowUITests: XCTestCase {
     }
 
     private func startFromKeyboard() {
-        element("keyboard.mic", in: editor).tap()
+        let microphone = element("keyboard.mic", in: editor)
+        XCTAssertTrue(microphone.waitForExistence(timeout: 10))
+        microphone.tap()
         waitForText("listening", id: "dictation.state", in: phone, timeout: 30)
         attach(phone, name: "App recording")
     }

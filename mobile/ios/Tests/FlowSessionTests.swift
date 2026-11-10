@@ -89,6 +89,29 @@ final class FlowSessionTests: XCTestCase {
         }
     }
 
+    func testExplicitInsertionConfirmsANewInputSessionWithTheSameContext() throws {
+        let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        _ = try store.request(for: session.url, now: now)
+        try store.complete(id: session.id, text: "Ready", now: now)
+        let destination = UUID()
+        XCTAssertThrowsError(try store.confirmDestination(id: session.id, documentIdentifier: destination, context: "moved", now: now))
+        XCTAssertThrowsError(try store.confirmDestination(id: session.id, documentIdentifier: destination, context: "cursor", now: now.addingTimeInterval(600)))
+        XCTAssertEqual(try store.current(now: now)?.documentIdentifier, document)
+        try store.confirmDestination(id: session.id, documentIdentifier: destination, context: "cursor", now: now)
+        XCTAssertEqual(try store.consume(id: session.id, documentIdentifier: destination, context: "cursor", now: now), "Ready")
+        XCTAssertNil(try store.consume(id: session.id, documentIdentifier: destination, context: "cursor", now: now))
+        XCTAssertThrowsError(try store.confirmDestination(id: session.id, documentIdentifier: UUID(), context: "cursor", now: now))
+    }
+
+    func testUnfinishedAndCancelledSessionsCannotConfirmADestination() throws {
+        let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        XCTAssertThrowsError(try store.confirmDestination(id: session.id, documentIdentifier: UUID(), context: "cursor", now: now))
+        _ = try store.request(for: session.url, now: now)
+        XCTAssertThrowsError(try store.confirmDestination(id: session.id, documentIdentifier: UUID(), context: "cursor", now: now))
+        try store.cancel(id: session.id, now: now)
+        XCTAssertThrowsError(try store.confirmDestination(id: session.id, documentIdentifier: UUID(), context: "cursor", now: now))
+    }
+
     func testEmptyAndOversizedTextLeaveRecordingUnfinished() throws {
         let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
         _ = try store.request(for: session.url, now: now)
