@@ -337,6 +337,12 @@ impl RemoteStream {
         Ok(())
     }
 
+    /// Only selected worker sessions can wait without an idle deadline.
+    /// Partial encrypted packets still use the packet timeout.
+    pub fn allow_idle_wait(&mut self) -> io::Result<()> {
+        self.reader.socket.set_read_timeout(None)
+    }
+
     pub fn split(self) -> io::Result<(RemoteReader, RemoteWriter)> {
         Ok((self.reader, self.writer))
     }
@@ -367,6 +373,11 @@ impl Write for RemoteStream {
 }
 
 impl RemoteReader {
+    /// Bounds an active transfer while the connection otherwise waits for work.
+    pub fn set_read_deadline(&mut self, deadline: Option<Instant>) {
+        self.deadline = deadline;
+    }
+
     pub fn shutdown(&self) -> io::Result<()> {
         self.cancelled.store(true, Ordering::Release);
         self.socket.shutdown(Shutdown::Both)
@@ -567,20 +578,19 @@ fn receive_packet(
     socket: &mut TcpStream,
     limit: usize,
     packet_timeout: Duration,
-    handshake_deadline: Option<Instant>,
+    read_deadline: Option<Instant>,
     cancelled: Option<&AtomicBool>,
 ) -> io::Result<Option<Vec<u8>>> {
-    let timeout = socket
-        .read_timeout()?
-        .ok_or_else(|| invalid("missing read timeout"))?;
-    let idle_deadline = handshake_deadline.unwrap_or(Instant::now() + timeout);
+    let timeout = socket.read_timeout()?;
+    let idle_deadline = read_deadline.or_else(|| timeout.map(|timeout| Instant::now() + timeout));
     let mut header = [0; 2];
     match read_before(socket, &mut header[..1], idle_deadline, cancelled)? {
         0 => return Ok(None),
         1 => {}
         _ => return Err(invalid("invalid packet header")),
     }
-    let deadline = handshake_deadline.unwrap_or(Instant::now() + packet_timeout);
+    let packet_deadline = Instant::now() + packet_timeout;
+    let deadline = read_deadline.map_or(packet_deadline, |deadline| deadline.min(packet_deadline));
     read_exact_before(socket, &mut header[1..], deadline, cancelled)?;
     let size = usize::from(u16::from_le_bytes(header));
     if size == 0 || size > limit {
@@ -588,7 +598,7 @@ fn receive_packet(
     }
     let mut packet = vec![0; size];
     read_exact_before(socket, &mut packet, deadline, cancelled)?;
-    socket.set_read_timeout(Some(timeout))?;
+    socket.set_read_timeout(timeout)?;
     Ok(Some(packet))
 }
 
@@ -602,16 +612,21 @@ fn remaining(deadline: Instant) -> io::Result<Duration> {
 fn read_before(
     socket: &mut TcpStream,
     bytes: &mut [u8],
-    deadline: Instant,
+    deadline: Option<Instant>,
     cancelled: Option<&AtomicBool>,
 ) -> io::Result<usize> {
     loop {
         check_cancelled(cancelled)?;
-        socket.set_read_timeout(Some(remaining(deadline)?))?;
+        socket.set_read_timeout(deadline.map(remaining).transpose()?)?;
         match socket.read(bytes) {
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                wait_for_io(deadline, cancelled)?
+                if let Some(deadline) = deadline {
+                    wait_for_io(deadline, cancelled)?;
+                } else {
+                    std::thread::sleep(IO_POLL);
+                    check_cancelled(cancelled)?;
+                }
             }
             result => return result,
         }
@@ -625,7 +640,7 @@ fn read_exact_before(
     cancelled: Option<&AtomicBool>,
 ) -> io::Result<()> {
     while !bytes.is_empty() {
-        let count = read_before(socket, bytes, deadline, cancelled)?;
+        let count = read_before(socket, bytes, Some(deadline), cancelled)?;
         if count == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
@@ -939,6 +954,73 @@ mod tests {
         let (_, mut writer) = server.split().unwrap();
         writer.socket.write_all(&[32]).unwrap();
         assert!(client.read(&mut answer).is_err());
+    }
+
+    #[test]
+    fn selected_worker_idle_wait_outlives_the_old_timeout_but_packets_stay_bounded() {
+        let (mut client, mut server) = connected_with_timeout(Duration::from_millis(100));
+        select_worker(&mut client, WorkerKind::Speech).unwrap();
+        assert_eq!(read_worker(&mut server).unwrap(), WorkerKind::Speech);
+        client
+            .reader
+            .socket
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        client.allow_idle_wait().unwrap();
+        server.allow_idle_wait().unwrap();
+        assert_eq!(client.reader.socket.read_timeout().unwrap(), None);
+        let sender = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(150));
+            server.write_all(b"ready").unwrap();
+            server
+        });
+        let mut answer = [0; 5];
+        client.read_exact(&mut answer).unwrap();
+        assert_eq!(&answer, b"ready");
+        let server = sender.join().unwrap();
+        let (_, mut writer) = server.split().unwrap();
+        client
+            .reader
+            .set_read_deadline(Some(Instant::now() + Duration::from_secs(2)));
+        writer.socket.write_all(&[32]).unwrap();
+        let started = Instant::now();
+        assert!(client.read(&mut answer).is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn an_unselected_authenticated_stream_keeps_its_idle_deadline() {
+        let (_client, mut server) = connected();
+        assert!(server.reader.socket.read_timeout().unwrap().is_some());
+        server
+            .reader
+            .socket
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        assert!(read_worker(&mut server).is_err());
+    }
+
+    #[test]
+    fn an_active_transfer_deadline_bounds_an_idle_allowed_reader() {
+        let (mut client, mut server) = connected();
+        select_worker(&mut client, WorkerKind::Speech).unwrap();
+        assert_eq!(read_worker(&mut server).unwrap(), WorkerKind::Speech);
+        server.allow_idle_wait().unwrap();
+        let control = server.control();
+        let (mut reader, _writer) = server.split().unwrap();
+        reader.set_read_deadline(Some(Instant::now() + Duration::from_millis(30)));
+        let (sent, received) = mpsc::sync_channel(1);
+        let reading = thread::spawn(move || {
+            sent.send(reader.read(&mut [0])).unwrap();
+        });
+        let result = received.recv_timeout(Duration::from_secs(1));
+        let _ = control.shutdown();
+        reading.join().unwrap();
+        let problem = result.unwrap().unwrap_err();
+        assert!(matches!(
+            problem.kind(),
+            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+        ));
     }
 
     #[test]

@@ -170,7 +170,7 @@ impl Manager {
     }
 
     fn handle(&mut self, message: Msg) {
-        if self.in_process_idle()
+        if self.idle_without_ping()
             && let Some(running) = self.running.as_mut()
         {
             running.last_pong = Instant::now();
@@ -186,9 +186,11 @@ impl Manager {
         }
     }
 
-    fn in_process_idle(&self) -> bool {
-        matches!(self.spec, crate::Link::InProcess(_))
-            && self.sent_loads.is_empty()
+    fn idle_without_ping(&self) -> bool {
+        matches!(
+            self.spec,
+            crate::Link::InProcess(_) | crate::Link::Remote(_)
+        ) && self.sent_loads.is_empty()
             && self.inflight.is_empty()
     }
 

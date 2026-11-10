@@ -31,7 +31,7 @@ impl<P: Protocol> Manager<P> {
             }
             return;
         }
-        if self.in_process_idle() {
+        if self.idle_without_ping() {
             return;
         }
         if now.duration_since(running.last_pong) >= self.timing.pong_timeout {
@@ -93,7 +93,7 @@ impl<P: Protocol> Manager<P> {
                 consider(running.spawned + self.timing.ready_timeout);
             }
             Some(running) => {
-                if !self.in_process_idle() {
+                if !self.idle_without_ping() {
                     consider(running.next_ping);
                     consider(running.last_pong + self.timing.pong_timeout);
                 }

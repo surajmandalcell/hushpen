@@ -7,7 +7,7 @@ use hushpen_core::remote::UnloadRule;
 use hushpen_engine::{
     ImportSpec, JobOutcome, LlmOutcome, LlmSpec, LlmWork, LoadSpec, TranscribeSpec,
 };
-use hushpen_remote::{RemoteStream, RemoteWriter, WorkerKind, read_worker_options};
+use hushpen_remote::{RemoteReader, RemoteStream, RemoteWriter, WorkerKind, read_worker_options};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -46,6 +46,7 @@ pub fn serve_session(
         WorkerKind::Cleanup => &workers.cleanup_rule,
     }) = rule;
     workers.rule_changed();
+    stream.allow_idle_wait()?;
     let (mut input, output) = stream.split()?;
     let output = Arc::new(Mutex::new(output));
     let jobs = Arc::new(Mutex::new(HashMap::<u64, u64>::new()));
@@ -98,13 +99,16 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
-fn receive_audio(input: &mut impl Read, cache: &Path, value: &Value) -> io::Result<NamedTempFile> {
-    receive_audio_until(
-        input,
-        cache,
-        value,
-        Instant::now() + Duration::from_secs(60),
-    )
+fn receive_audio(
+    input: &mut RemoteReader,
+    cache: &Path,
+    value: &Value,
+) -> io::Result<NamedTempFile> {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    input.set_read_deadline(Some(deadline));
+    let result = receive_audio_until(input, cache, value, deadline);
+    input.set_read_deadline(None);
+    result
 }
 
 fn receive_audio_until(
@@ -596,26 +600,29 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let mut bytes = Vec::new();
         write_frame(&mut bytes, FrameKind::Binary, b"RIFF").unwrap();
-        let file = receive_audio(
+        let file = receive_audio_until(
             &mut &bytes[..],
             directory.path(),
             &serde_json::json!({"bytes":4}),
+            Instant::now() + Duration::from_secs(60),
         )
         .unwrap();
         assert_eq!(std::fs::read(file.path()).unwrap(), b"RIFF");
         assert!(
-            receive_audio(
+            receive_audio_until(
                 &mut &bytes[..],
                 directory.path(),
-                &serde_json::json!({"bytes":5})
+                &serde_json::json!({"bytes":5}),
+                Instant::now() + Duration::from_secs(60),
             )
             .is_err()
         );
         assert!(
-            receive_audio(
+            receive_audio_until(
                 &mut &bytes[..],
                 directory.path(),
-                &serde_json::json!({"bytes":u64::MAX})
+                &serde_json::json!({"bytes":u64::MAX}),
+                Instant::now() + Duration::from_secs(60),
             )
             .is_err()
         );
