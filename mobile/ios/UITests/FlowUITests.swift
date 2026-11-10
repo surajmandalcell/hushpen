@@ -31,7 +31,8 @@ final class FlowUITests: XCTestCase {
 
         phone.terminate()
         startFromKeyboard()
-        element("dictation.finish", in: phone).tap()
+        element("dictation.cancel", in: phone).tap()
+        element("dictation.recover", in: phone).tap()
         waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         editor.activate()
         let field = editor.textFields["editor.first"]
@@ -53,8 +54,10 @@ final class FlowUITests: XCTestCase {
         openEditor()
         startFromKeyboard()
         element("dictation.cancel", in: phone).tap()
+        phone.terminate()
         editor.activate()
         XCTAssertEqual(editor.textFields["editor.first"].value as? String, "First field")
+        XCTAssertTrue(element("keyboard.mic", in: editor).waitForExistence(timeout: 10))
         attach(editor, name: "Cancelled session")
     }
 
@@ -77,7 +80,7 @@ final class FlowUITests: XCTestCase {
 
     func testServerStopsWhenTheAppLeavesTheForeground() {
         phone.tabBars.buttons["Server"].tap()
-        element("server.toggle", in: phone).tap()
+        phone.switches["server.toggle"].switches.firstMatch.tap()
         waitForText("Running", id: "server.state", in: phone, timeout: 20)
         XCTAssertEqual(element("server.port", in: phone).label, "7342")
         attach(phone, name: "Server running")
@@ -94,7 +97,7 @@ final class FlowUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         if !element("keyboard.mic", in: editor).waitForExistence(timeout: 2) {
-            let globe = editor.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Next keyboard")).firstMatch
+            let globe = editor.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH[c] %@", "Emoji", "Next keyboard")).firstMatch
             XCTAssertTrue(globe.waitForExistence(timeout: 5))
             globe.press(forDuration: 1)
             let keyboard = editor.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Hushpen")).firstMatch
@@ -114,12 +117,12 @@ final class FlowUITests: XCTestCase {
         let keyboard = settings.staticTexts["Keyboard"]
         XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
         keyboard.tap()
-        let keyboards = settings.staticTexts["Keyboards"].firstMatch
+        let keyboards = settings.cells.containing(.staticText, identifier: "Keyboards").firstMatch
         XCTAssertTrue(keyboards.waitForExistence(timeout: 10))
         keyboards.tap()
         let hushpen = settings.staticTexts["Hushpen"].firstMatch
         if !hushpen.waitForExistence(timeout: 2) {
-            let add = settings.staticTexts["Add New Keyboard…"]
+            let add = settings.buttons["AddNewKeyboard"]
             XCTAssertTrue(add.waitForExistence(timeout: 5))
             add.tap()
             XCTAssertTrue(hushpen.waitForExistence(timeout: 5))
@@ -127,7 +130,7 @@ final class FlowUITests: XCTestCase {
         }
         XCTAssertTrue(hushpen.waitForExistence(timeout: 5))
         hushpen.tap()
-        let access = settings.switches["Allow Full Access"]
+        let access = settings.switches["Allow Full Access"].switches.firstMatch
         XCTAssertTrue(access.waitForExistence(timeout: 5))
         if access.value as? String == "0" {
             access.tap()

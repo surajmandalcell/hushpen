@@ -45,6 +45,25 @@ final class FlowSessionTests: XCTestCase {
         XCTAssertNil(try store.current(now: now.addingTimeInterval(600)))
     }
 
+    func testCancelledSessionResumesOnlyBeforeReplacement() throws {
+        let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        _ = try store.request(for: session.url, now: now)
+        try store.cancel(id: session.id, now: now)
+        XCTAssertEqual(try store.current(now: now)?.state, .cancelled)
+        XCTAssertThrowsError(try store.complete(id: session.id, text: "late", now: now))
+        XCTAssertThrowsError(try store.resume(id: session.id, now: now.addingTimeInterval(600)))
+        try store.resume(id: session.id, now: now)
+        XCTAssertThrowsError(try store.resume(id: session.id, now: now))
+        try store.complete(id: session.id, text: "Recovered", now: now)
+        XCTAssertEqual(try store.consume(id: session.id, documentIdentifier: document, context: "cursor", now: now), "Recovered")
+
+        let replaced = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        _ = try store.request(for: replaced.url, now: now)
+        try store.cancel(id: replaced.id, now: now)
+        _ = try store.begin(documentIdentifier: document, context: "cursor", now: now)
+        XCTAssertThrowsError(try store.resume(id: replaced.id, now: now))
+    }
+
     func testDuplicateAndUntrustedURLsCannotStartRecording() throws {
         let session = try store.begin(documentIdentifier: document, context: "cursor", now: now)
         let suffix = session.id.uuidString
