@@ -148,7 +148,7 @@
     `<div class="wg-bar"><span class="wg-btn">${oc('branch')}master${oc('chev', 'cv')}</span><span class="wg-btn wg-fd">${oc('search')}Go to file</span><span class="wg-btn go">${oc('code')}Code${oc('chev', 'cv')}</span></div>` +
     `<div class="wg-fl"><div class="wg-fh">${idn()}<b>surajmandalcell</b><span>Reuse the cached AppImage runtime on lin1</span><span class="ct">${oc('hist')}1,186 Commits</span></div>` +
     `${RFILES.map(([nm, m, d, f]) => `<div class="wg-fr">${oc(f ? 'file' : 'dir', f ? 'f' : 'd')}<b>${nm}</b><span class="m">${m}</span><time>${d}</time></div>`).join('')}</div></div>` +
-    `<div class="wg-ab"><h6>About</h6><p>Private dictation for Mac and Linux. Speech turns into text on your computer.</p><div class="wg-ls">` +
+    `<div class="wg-ab"><h6>About</h6><p>Private dictation for Mac, Windows and Linux. Speech turns into text on your computer.</p><div class="wg-ls">` +
     `<span class="wg-ln">${oc('book')}<span>Readme</span></span><span class="wg-ln wg-lic"><i class="tint"></i>${oc('law')}<span>AGPL-3.0 license</span></span><span class="wg-ln">${oc('pulse')}<span>Activity</span></span>` +
     `<span class="wg-ln">${oc('star')}<span><b>56</b> stars</span></span><span class="wg-ln">${oc('eye')}<span><b>3</b> watching</span></span><span class="wg-ln">${oc('fork')}<span><b>4</b> forks</span></span></div>` +
     `<div class="wg-rl"><h6>Releases</h6><p class="wg-rv">${oc('tag')}<b data-wf-title>Latest version</b><span class="wg-lt">Latest</span></p></div></div></div></div></div>` +
