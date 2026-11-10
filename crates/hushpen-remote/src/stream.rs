@@ -292,7 +292,7 @@ impl RemoteStream {
         deadline: Instant,
     ) -> io::Result<Self> {
         // Windows can leave a blocking send pending after another thread calls shutdown.
-        socket.set_nonblocking(true)?;
+        socket.set_nonblocking(cfg!(windows))?;
         let cancelled = Arc::new(AtomicBool::new(false));
         let control = RemoteControl {
             socket: Arc::new(socket.try_clone()?),
@@ -955,6 +955,7 @@ mod tests {
         reader.join().unwrap();
     }
 
+    #[cfg(windows)]
     #[test]
     fn cancellation_stops_a_backpressured_write_without_os_shutdown() {
         let (client, _server) = connected();
@@ -985,6 +986,41 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
         writing.join().unwrap();
         let _ = control.shutdown();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_interrupts_a_backpressured_blocking_write() {
+        let (client, _server) = connected();
+        let control = client.control();
+        let (_, mut writer) = client.split().unwrap();
+        writer.socket.set_nonblocking(true).unwrap();
+        let padding = vec![0; 64 * 1024];
+        let deadline = Instant::now() + TIMEOUT;
+        let mut filled = 0;
+        loop {
+            match writer.socket.write(&padding) {
+                Ok(count) if count > 0 => filled += count,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                result => panic!("the nonblocking socket must fill: {result:?}"),
+            }
+            assert!(filled < 64 * 1024 * 1024 && Instant::now() < deadline);
+        }
+        writer.socket.set_nonblocking(false).unwrap();
+        let (sent, received) = mpsc::sync_channel(1);
+        let writing = thread::spawn(move || {
+            sent.send(writer.write_all(&vec![1; 32 * 1024 * 1024]))
+                .unwrap();
+        });
+        assert!(received.recv_timeout(Duration::from_millis(100)).is_err());
+        control.shutdown().unwrap();
+        assert!(
+            received
+                .recv_timeout(Duration::from_millis(300))
+                .unwrap()
+                .is_err()
+        );
+        writing.join().unwrap();
     }
 
     #[test]
