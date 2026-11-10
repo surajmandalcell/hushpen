@@ -195,8 +195,8 @@ fn release_yml_checks_out_the_tag_ref_and_never_a_branch() {
     let text = release_yml();
     let checkouts = text.matches("uses: actions/checkout@").count();
     assert_eq!(
-        checkouts, 4,
-        "plan, package, release, and verify each check out the tag"
+        checkouts, 5,
+        "plan, package, android, release, and verify each check out the tag"
     );
     assert_eq!(
         text.matches("ref: refs/tags/${{ inputs.tag }}").count(),
