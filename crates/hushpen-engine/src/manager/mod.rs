@@ -148,8 +148,16 @@ impl Manager {
     fn run(mut self) {
         self.start_child();
         loop {
-            let wait = self.next_wakeup().saturating_duration_since(Instant::now());
-            match self.receiver.recv_timeout(wait) {
+            let message = match self.next_wakeup() {
+                Some(at) => self
+                    .receiver
+                    .recv_timeout(at.saturating_duration_since(Instant::now())),
+                None => self
+                    .receiver
+                    .recv()
+                    .map_err(|_| RecvTimeoutError::Disconnected),
+            };
+            match message {
                 Ok(Msg::Cmd(Cmd::Shutdown)) | Err(RecvTimeoutError::Disconnected) => {
                     self.stop();
                     return;
@@ -162,6 +170,12 @@ impl Manager {
     }
 
     fn handle(&mut self, message: Msg) {
+        if self.in_process_idle()
+            && let Some(running) = self.running.as_mut()
+        {
+            running.last_pong = Instant::now();
+            running.next_ping = running.last_pong;
+        }
         match message {
             Msg::Cmd(command) => self.command(command),
             Msg::Child { generation, event } if generation == self.generation => match event {
@@ -170,6 +184,12 @@ impl Manager {
             },
             Msg::Child { .. } => {}
         }
+    }
+
+    fn in_process_idle(&self) -> bool {
+        matches!(self.spec, crate::Link::InProcess(_))
+            && self.sent_loads.is_empty()
+            && self.inflight.is_empty()
     }
 
     fn publish(&self) {
