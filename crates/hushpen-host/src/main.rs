@@ -36,7 +36,7 @@ fn main() -> std::process::ExitCode {
 fn run() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--version") {
-        println!("hushpen-host {}", env!("CARGO_PKG_VERSION"));
+        println!("hushpen-host {}", hushpen_core::BUILD_VERSION);
         return Ok(());
     }
     if args.iter().any(|arg| arg == "--help") {

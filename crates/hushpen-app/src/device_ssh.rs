@@ -379,10 +379,11 @@ printf '%s  %s\n' "$sum" "$stage/host.tar.gz" | sha256sum --check --status
 tar -tzf "$stage/host.tar.gz" > "$stage/files"
 tar -tvzf "$stage/host.tar.gz" | awk 'substr($1,1,1) != "-" {{exit 1}}'
 while IFS= read -r file; do
-    case "$file" in hushpen-host|hushpen-asr|hushpen-llm|ggml-silero-v5.1.2.bin) ;; *) exit 13 ;; esac
+    case "$file" in hushpen-host|hushpen-asr|hushpen-llm|ggml-silero-v5.1.2.bin|LICENSE|THIRD-PARTY-NOTICES.html|hushpen-host.service) ;; *) exit 13 ;; esac
 done < "$stage/files"
 tar --extract --gzip --no-same-owner --no-same-permissions --file "$stage/host.tar.gz" --directory "$stage"
-for file in hushpen-host hushpen-asr hushpen-llm ggml-silero-v5.1.2.bin; do
+files='hushpen-host hushpen-asr hushpen-llm ggml-silero-v5.1.2.bin LICENSE THIRD-PARTY-NOTICES.html'
+for file in $files hushpen-host.service; do
     [ -f "$stage/$file" ] && [ ! -L "$stage/$file" ] || exit 13
 done
 chmod 700 "$stage/hushpen-host" "$stage/hushpen-asr" "$stage/hushpen-llm"
@@ -415,7 +416,7 @@ rollback() {{
     if [ -e "$unit" ] || [ -L "$unit" ]; then
         systemctl --user disable hushpen-host.service >/dev/null || return 1
     fi
-    for file in hushpen-host hushpen-asr hushpen-llm ggml-silero-v5.1.2.bin; do
+    for file in $files; do
         restore "$install/$file" "$file" || return 1
     done
     restore "$environment" environment || return 1
@@ -437,21 +438,19 @@ finish() {{
     rm -rf -- "$stage"
     exit "$status"
 }}
-for file in hushpen-host hushpen-asr hushpen-llm ggml-silero-v5.1.2.bin; do
+for file in $files; do
     remember "$install/$file" "$file"
 done
 remember "$environment" environment
 remember "$unit" unit
 trap finish EXIT
-for file in hushpen-host hushpen-asr hushpen-llm ggml-silero-v5.1.2.bin; do
+for file in $files; do
     cp "$stage/$file" "$install/$file.new"
     mv -f "$install/$file.new" "$install/$file"
 done
 printf 'HUSHPEN_DATA_DIR=%s\n' "$data" > "$environment.new"
 mv -f "$environment.new" "$environment"
-cat > "$unit.new" <<'HUSHPEN_UNIT'
-{unit}
-HUSHPEN_UNIT
+cp "$stage/hushpen-host.service" "$unit.new"
 mv -f "$unit.new" "$unit"
 echo 'HUSHPEN_STEP start'
 systemctl --user daemon-reload
@@ -465,7 +464,6 @@ address=$(printf '%s\n' "$SSH_CONNECTION" | awk '{{print $3}}')
 "$install/hushpen-host" pair --json --data-dir "$data" --host "$address"
 systemctl --user is-active --quiet hushpen-host.service
 "#,
-        unit = include_str!("../../../packaging/hushpen-host.service")
     ))
 }
 
@@ -620,6 +618,20 @@ mod tests {
         assert!(rollback.contains("enabled-runtime)"));
         assert!(rendered.contains("if [ \"$status\" != 0 ] && ! rollback; then"));
         assert!(!rendered.contains("rm -rf -- \"$data\""));
+    }
+
+    #[test]
+    fn ssh_setup_installs_the_host_notices_and_packaged_unit_with_rollback() {
+        let rendered = script(&Source::Release {
+            version: "2.4.0".into(),
+        })
+        .unwrap();
+        assert!(rendered.contains("LICENSE|THIRD-PARTY-NOTICES.html|hushpen-host.service)"));
+        assert!(rendered.contains("ggml-silero-v5.1.2.bin LICENSE THIRD-PARTY-NOTICES.html'"));
+        assert!(rendered.contains("for file in $files hushpen-host.service; do"));
+        assert!(rendered.contains("cp \"$stage/hushpen-host.service\" \"$unit.new\""));
+        assert_eq!(rendered.matches("for file in $files; do").count(), 3);
+        assert!(rendered.contains("restore \"$unit\" unit"));
     }
 
     #[cfg(unix)]

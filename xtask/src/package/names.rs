@@ -158,6 +158,25 @@ pub fn planned_artifacts(version: &str, target: Target) -> Vec<String> {
         .collect()
 }
 
+/// The host archive that desktop SSH setup downloads.
+pub fn host_artifact_name(version: &str, target: Target) -> Option<String> {
+    target
+        .is_linux()
+        .then(|| format!("Hushpen-{version}-host-{}.tar.gz", target.name()))
+}
+
+pub fn android_artifact_name(version: &str) -> String {
+    format!("Hushpen-{version}-android.apk")
+}
+
+pub fn device_artifacts(version: &str) -> Vec<String> {
+    [Target::LinuxX64, Target::LinuxArm64]
+        .into_iter()
+        .filter_map(|target| host_artifact_name(version, target))
+        .chain(std::iter::once(android_artifact_name(version)))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +277,19 @@ mod tests {
         ] {
             assert!(format.check_target(Target::WindowsX64).is_err());
         }
+    }
+
+    #[test]
+    fn device_artifacts_match_the_ssh_and_android_names() {
+        assert_eq!(
+            device_artifacts("2.4.0-rc.1"),
+            [
+                "Hushpen-2.4.0-rc.1-host-linux-x64.tar.gz",
+                "Hushpen-2.4.0-rc.1-host-linux-arm64.tar.gz",
+                "Hushpen-2.4.0-rc.1-android.apk",
+            ]
+        );
+        assert!(host_artifact_name("2.4.0", Target::MacosArm64).is_none());
+        assert!(host_artifact_name("2.4.0", Target::WindowsX64).is_none());
     }
 }
