@@ -1,7 +1,6 @@
 package com.mandalsuraj.hushpen.server
 
 import android.app.Notification
-import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -17,8 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 class ModelHostService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -54,15 +51,6 @@ class ModelHostService : Service() {
             startForeground(NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION, notification)
-        }
-        scope.launch {
-            val activity = getSystemService(ActivityManager::class.java)
-            val memory = ActivityManager.MemoryInfo()
-            while (isActive) {
-                activity.getMemoryInfo(memory)
-                if (memory.lowMemory) controller?.memoryLow()
-                delay(5_000)
-            }
         }
     }
 

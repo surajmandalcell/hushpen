@@ -197,6 +197,39 @@ class KeyboardSmokeTest {
         instrumentation.runOnMainSync { keyboard.closeInput(); store.clear() }
     }
 
+    @Test fun hiddenKeyboardDoesNotStartOrResumeDictation() {
+        val denied = object : ContextWrapper(app) {
+            override fun checkSelfPermission(permission: String): Int = PackageManager.PERMISSION_DENIED
+        }
+        lateinit var keyboard: KeyboardViewModel
+        val store = ViewModelStore()
+        instrumentation.runOnMainSync {
+            keyboard = KeyboardViewModel(denied, app.repository)
+            store.put("keyboard", keyboard)
+            keyboard.toggle()
+            keyboard.holdDown()
+            keyboard.recover()
+        }
+        try {
+            instrumentation.waitForIdleSync()
+            assertEquals("idle", keyboard.state.value.phase)
+            assertEquals("", keyboard.state.value.notice)
+            instrumentation.runOnMainSync {
+                keyboard.openInput(canDictate = false) { error("A hidden keyboard must not insert text.") }
+                keyboard.closeInput()
+                keyboard.toggle()
+                keyboard.holdUp()
+                keyboard.cancel()
+            }
+            instrumentation.waitForIdleSync()
+            assertFalse(keyboard.inputOpen)
+            assertEquals("idle", keyboard.state.value.phase)
+            assertEquals("", keyboard.state.value.notice)
+        } finally {
+            instrumentation.runOnMainSync { store.clear() }
+        }
+    }
+
     private fun enableKeyboard() {
         val component = "${app.packageName}/.ime.HushpenInputMethod"
         shell("ime enable $component")
