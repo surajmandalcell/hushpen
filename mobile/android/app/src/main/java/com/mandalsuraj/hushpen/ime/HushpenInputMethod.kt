@@ -1,5 +1,6 @@
 package com.mandalsuraj.hushpen.ime
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
@@ -60,11 +61,15 @@ class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreO
         })[KeyboardViewModel::class.java]
     }
 
-    override fun onCreateInputView(): View = ComposeView(this).apply {
-        setViewTreeLifecycleOwner(this@HushpenInputMethod)
-        setViewTreeViewModelStoreOwner(this@HushpenInputMethod)
-        setViewTreeSavedStateRegistryOwner(this@HushpenInputMethod)
-        setContent { PlaceholderKeyboard(model, ::type, ::backspace, ::enter, ::undo) }
+    override fun onCreateInputView(): View {
+        checkNotNull(window.window).decorView.apply {
+            setViewTreeLifecycleOwner(this@HushpenInputMethod)
+            setViewTreeViewModelStoreOwner(this@HushpenInputMethod)
+            setViewTreeSavedStateRegistryOwner(this@HushpenInputMethod)
+        }
+        return ComposeView(this).apply {
+            setContent { PlaceholderKeyboard(model, ::type, ::backspace, ::enter, ::undo) }
+        }
     }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
@@ -240,6 +245,7 @@ private fun KeyboardButton(
     })
 }
 
+@SuppressLint("AppCompatCustomView", "ClickableViewAccessibility")
 private class KeyboardActionButton(context: Context) : Button(context) {
     var click: () -> Unit = {}
     var repeat: Boolean = false
