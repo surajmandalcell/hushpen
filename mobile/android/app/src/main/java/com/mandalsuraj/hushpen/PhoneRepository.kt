@@ -143,8 +143,8 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
         initialize()
         catalog.modelPath(id)
         speech.withLock {
-            check(preferences.edit().putString("speechModel", id).commit()) { "Could not save the speech model." }
             engine.unload()
+            check(preferences.edit().putString("speechModel", id).commit()) { "Could not save the speech model." }
             mutableSelected.value = id
         }
     }
