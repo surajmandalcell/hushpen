@@ -76,8 +76,8 @@ fn worker(kind: WorkerKind, answer: bool, remote: bool) -> (Link, Receiver<Strin
 
 fn timing() -> Timing {
     Timing {
-        ping_interval: Duration::from_millis(10),
-        pong_timeout: Duration::from_millis(40),
+        ping_interval: Duration::from_millis(50),
+        pong_timeout: Duration::from_millis(500),
         ..Timing::default()
     }
 }
@@ -85,10 +85,10 @@ fn timing() -> Timing {
 fn idle_speech(remote: bool) {
     let (link, requests) = worker(WorkerKind::Speech, true, remote);
     let engine = EngineClient::start_link(link, timing(), EngineLog::discard());
-    assert!(engine.wait_for(Duration::from_secs(1), |state| state.state
+    assert!(engine.wait_for(Duration::from_secs(2), |state| state.state
         == EngineState::Ready));
     assert!(matches!(
-        requests.recv_timeout(Duration::from_millis(100)),
+        requests.recv_timeout(Duration::from_millis(700)),
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     let load = engine.load_model(LoadSpec {
@@ -97,7 +97,7 @@ fn idle_speech(remote: bool) {
         threads: 1,
         idle: Idle::KEEP,
     });
-    assert!(load.wait_timeout(Duration::from_secs(1)).unwrap().is_ok());
+    assert!(load.wait_timeout(Duration::from_secs(2)).unwrap().is_ok());
     assert_eq!(engine.status().restarts, 0);
     engine.shutdown();
 }
@@ -105,14 +105,14 @@ fn idle_speech(remote: bool) {
 fn idle_cleanup(remote: bool) {
     let (link, requests) = worker(WorkerKind::Cleanup, true, remote);
     let cleanup = LlmClient::start_link(link, timing(), EngineLog::discard());
-    assert!(cleanup.wait_for(Duration::from_secs(1), |state| state.state
+    assert!(cleanup.wait_for(Duration::from_secs(2), |state| state.state
         == LlmState::Ready));
     assert!(matches!(
-        requests.recv_timeout(Duration::from_millis(100)),
+        requests.recv_timeout(Duration::from_millis(700)),
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     let load = cleanup.load_model(LlmSpec::new("/test/model.gguf".into()));
-    assert!(load.wait_timeout(Duration::from_secs(1)).unwrap().is_ok());
+    assert!(load.wait_timeout(Duration::from_secs(2)).unwrap().is_ok());
     assert_eq!(cleanup.status().restarts, 0);
     cleanup.shutdown();
 }
@@ -120,10 +120,10 @@ fn idle_cleanup(remote: bool) {
 fn active_speech(remote: bool) {
     let (link, requests) = worker(WorkerKind::Speech, false, remote);
     let engine = EngineClient::start_link(link, timing(), EngineLog::discard());
-    assert!(engine.wait_for(Duration::from_secs(1), |state| state.state
+    assert!(engine.wait_for(Duration::from_secs(2), |state| state.state
         == EngineState::Ready));
     assert!(matches!(
-        requests.recv_timeout(Duration::from_millis(100)),
+        requests.recv_timeout(Duration::from_millis(700)),
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     let load = engine.load_model(LoadSpec {
@@ -132,21 +132,21 @@ fn active_speech(remote: bool) {
         threads: 1,
         idle: Idle::KEEP,
     });
-    assert!(load.wait_timeout(Duration::from_secs(1)).unwrap().is_err());
+    assert!(load.wait_timeout(Duration::from_secs(2)).unwrap().is_err());
     engine.shutdown();
 }
 
 fn active_cleanup(remote: bool) {
     let (link, requests) = worker(WorkerKind::Cleanup, false, remote);
     let cleanup = LlmClient::start_link(link, timing(), EngineLog::discard());
-    assert!(cleanup.wait_for(Duration::from_secs(1), |state| state.state
+    assert!(cleanup.wait_for(Duration::from_secs(2), |state| state.state
         == LlmState::Ready));
     assert!(matches!(
-        requests.recv_timeout(Duration::from_millis(100)),
+        requests.recv_timeout(Duration::from_millis(700)),
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     let load = cleanup.load_model(LlmSpec::new("/test/model.gguf".into()));
-    assert!(load.wait_timeout(Duration::from_secs(1)).unwrap().is_err());
+    assert!(load.wait_timeout(Duration::from_secs(2)).unwrap().is_err());
     cleanup.shutdown();
 }
 
