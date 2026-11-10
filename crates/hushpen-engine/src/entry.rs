@@ -16,10 +16,12 @@ use std::sync::Arc;
 
 /// True when a GPU backend is built in and `HUSHPEN_DISABLE_GPU` does not switch it off.
 pub fn gpu_available() -> bool {
+    // shortcut: iOS simulator uses CPU, retry Metal when simulator shared buffers no longer trap.
     (hushpen_core::os::Os::current()
         .capabilities(false, false)
         .metal
         || cfg!(feature = "vulkan"))
+        && !cfg!(all(target_os = "ios", target_abi = "sim"))
         && !gpu_disabled_by_env()
 }
 

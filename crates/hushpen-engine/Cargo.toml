@@ -26,7 +26,7 @@ serde_json.workspace = true
 whisper-rs.workspace = true
 whisper-rs-sys.workspace = true
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+[target.'cfg(any(target_os = "macos", all(target_os = "ios", not(target_abi = "sim"))))'.dependencies]
 whisper-rs = { workspace = true, features = ["metal"] }
 
 [dev-dependencies]

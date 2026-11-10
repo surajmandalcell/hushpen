@@ -74,12 +74,7 @@ impl Engine {
         self.client
             .load_model(LoadSpec {
                 path,
-                // The iOS Simulator's Metal driver cannot map the shared buffers ggml
-                // loads weights into, so whisper.cpp traps there; real devices keep Metal.
-                gpu: hushpen_core::os::Os::current()
-                    .capabilities(false, false)
-                    .metal
-                    && !cfg!(target_abi = "sim"),
+                gpu: hushpen_engine::gpu_available(),
                 threads: hushpen_core::threads::auto_threads(cpus),
                 idle: Idle::KEEP,
             })
