@@ -1,8 +1,13 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 enum FlowSessionState: String, Codable {
     case pending, recording, completed, cancelled, consumed
+}
+
+enum FlowSessionCommand: String, Codable {
+    case start, stop, cancel
 }
 
 struct FlowSession: Codable, Equatable {
@@ -13,6 +18,7 @@ struct FlowSession: Codable, Equatable {
     let expiresAt: Date
     var state: FlowSessionState
     var text: String?
+    var command: FlowSessionCommand?
 
     var url: URL {
         URL(string: "hushpen://dictate?session=\(id.uuidString)")!
@@ -65,7 +71,8 @@ final class FlowSessionStore: @unchecked Sendable {
         try transaction(replacingDamaged: true) { stored in
             let session = FlowSession(
                 id: UUID(), documentIdentifier: documentIdentifier, context: context,
-                createdAt: now, expiresAt: now.addingTimeInterval(600), state: .pending
+                createdAt: now, expiresAt: now.addingTimeInterval(600), state: .pending,
+                command: .start
             )
             stored = session
             return session
@@ -84,6 +91,7 @@ final class FlowSessionStore: @unchecked Sendable {
             else { throw FlowSessionError.stale }
             guard session.state == .pending else { throw FlowSessionError.wrongState }
             session.state = .recording
+            session.command = nil
             stored = session
             return session
         }
@@ -98,6 +106,7 @@ final class FlowSessionStore: @unchecked Sendable {
             guard session.state == .recording else { throw FlowSessionError.wrongState }
             session.text = text
             session.state = .completed
+            session.command = nil
             stored = session
         }
     }
@@ -108,6 +117,7 @@ final class FlowSessionStore: @unchecked Sendable {
             else { throw FlowSessionError.stale }
             guard session.state == .cancelled else { throw FlowSessionError.wrongState }
             session.state = .recording
+            session.command = nil
             stored = session
         }
     }
@@ -119,6 +129,17 @@ final class FlowSessionStore: @unchecked Sendable {
             guard session.state != .consumed else { throw FlowSessionError.wrongState }
             session.state = .cancelled
             session.text = nil
+            session.command = .cancel
+            stored = session
+        }
+    }
+
+    func stop(id: UUID, now: Date = Date()) throws {
+        try transaction { stored in
+            guard var session = stored, session.id == id, Self.isLive(session, now: now)
+            else { throw FlowSessionError.stale }
+            guard session.state == .recording else { throw FlowSessionError.wrongState }
+            session.command = .stop
             stored = session
         }
     }
@@ -128,6 +149,7 @@ final class FlowSessionStore: @unchecked Sendable {
             guard var session = stored, session.state == .recording else { return }
             session.state = .cancelled
             session.text = nil
+            session.command = .cancel
             stored = session
         }
     }
@@ -187,6 +209,7 @@ final class FlowSessionStore: @unchecked Sendable {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var result: Result<T, Error>?
+        var changed = false
         coordinator.coordinate(writingItemAt: file, options: .forMerging, error: &coordinationError) { url in
             result = Result {
                 var session: FlowSession?
@@ -219,11 +242,25 @@ final class FlowSessionStore: @unchecked Sendable {
                 } else if FileManager.default.fileExists(atPath: url.path) {
                     try FileManager.default.removeItem(at: url)
                 }
+                changed = true
                 return value
             }
         }
         if let coordinationError { throw coordinationError }
         guard let result else { throw FlowSessionError.unavailable }
+        if changed { notify_post(FlowSessionObservation.name) }
         return try result.get()
     }
+}
+
+final class FlowSessionObservation {
+    static let name = "com.mandalsuraj.hushpen.flow.changed"
+    private var token: Int32 = -1
+
+    init(changed: @escaping @Sendable () -> Void) throws {
+        let status = notify_register_dispatch(Self.name, &token, .main) { _ in changed() }
+        guard status == NOTIFY_STATUS_OK else { throw FlowSessionError.unavailable }
+    }
+
+    deinit { if token != -1 { notify_cancel(token) } }
 }

@@ -51,6 +51,8 @@ targets:
         NSCameraUsageDescription: Hushpen scans a desktop pairing code.
         NSLocalNetworkUsageDescription: Hushpen connects to paired computers to serve models on this phone.
         NSBonjourServices: ['_hushpen._tcp']
+        NSSupportsLiveActivities: true
+        UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         ITSAppUsesNonExemptEncryption: true

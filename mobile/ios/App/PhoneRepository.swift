@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UIKit
 
 struct PhoneSnapshot: Sendable {
@@ -119,6 +120,10 @@ final class PhoneRepository: @unchecked Sendable {
         try Task.checkCancellation()
         let task = Task.detached { [self] in
             try speech.withLock {
+                defer {
+                    do { try host.releaseLocalModel() }
+                    catch { Logger(subsystem: "com.mandalsuraj.hushpen", category: "Dictation").error("Speech model could not unload: \(error.localizedDescription, privacy: .public)") }
+                }
                 try Task.checkCancellation()
                 try engine.load(modelId: selectedModel)
                 try Task.checkCancellation()

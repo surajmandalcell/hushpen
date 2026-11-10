@@ -72,6 +72,24 @@ final class FlowUITests: XCTestCase {
         attach(editor, name: "Cancelled session")
     }
 
+    func testKeyboardStopsBackgroundFlowWithoutOpeningTheApp() {
+        openEditor()
+        startFromKeyboard()
+        editor.activate()
+        useKeyboard()
+        let microphone = element("keyboard.mic", in: editor)
+        XCTAssertTrue(microphone.waitForExistence(timeout: 10))
+        microphone.tap()
+        let insert = element("keyboard.insert", in: editor)
+        XCTAssertTrue(insert.waitForExistence(timeout: 180))
+        insert.tap()
+        let field = editor.textFields["editor.first"]
+        let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
+        expectation(for: inserted, evaluatedWith: field)
+        waitForExpectations(timeout: 15)
+        XCTAssertFalse(insert.exists)
+    }
+
     func testChangingFieldsWithdrawsUndoAndPreventsReplay() {
         openEditor()
         startFromKeyboard()
