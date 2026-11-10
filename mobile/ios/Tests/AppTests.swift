@@ -92,8 +92,12 @@ final class AppTests: XCTestCase {
     }
 
     func testUnavailableSystemCleanupKeepsRustRuleText() async throws {
-        let rule = try cleanText(raw: "  hello   world  ", system: nil)
-        let unavailable = try cleanText(raw: "  hello   world  ", system: repository.system)
+        let system = repository.system
+        let (rule, unavailable) = try await Task.detached {
+            let rule = try cleanText(raw: "  hello   world  ", system: nil)
+            let unavailable = try cleanText(raw: "  hello   world  ", system: system)
+            return (rule, unavailable)
+        }.value
         XCTAssertEqual(unavailable.text, rule.text)
         XCTAssertEqual(unavailable.outcome, "unavailable")
         XCTAssertEqual(rule.outcome, "off")
