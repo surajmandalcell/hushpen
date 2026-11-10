@@ -229,6 +229,13 @@ impl Dictation {
             recoverable_session: machine.recoverable(now_ms),
         }
     }
+
+    /// The delay until the next state deadline, or none while waiting for input or a worker.
+    pub fn next_wake_ms(&self, now_ms: u64) -> Option<u64> {
+        lock(&self.machine)
+            .next_deadline_ms()
+            .map(|deadline| deadline.saturating_sub(now_ms).max(1))
+    }
 }
 
 #[cfg(test)]
@@ -335,5 +342,19 @@ mod tests {
             assert!(dictation.handle(event, 1001).is_err());
             assert_eq!(dictation.snapshot(1001), before);
         }
+    }
+
+    #[test]
+    fn phone_wakes_only_for_state_deadlines() {
+        let dictation = Dictation::new(2).unwrap();
+        assert_eq!(dictation.next_wake_ms(0), None);
+        dictation.handle(DictationEvent::Toggle, 100).unwrap();
+        assert_eq!(dictation.next_wake_ms(100), Some(60_000));
+        assert_eq!(dictation.next_wake_ms(60_100), Some(1));
+        dictation.handle(DictationEvent::Tick, 60_100).unwrap();
+        assert_eq!(dictation.next_wake_ms(60_100), Some(60_000));
+        dictation.handle(DictationEvent::Tick, 120_100).unwrap();
+        assert_eq!(dictation.snapshot(120_100).state, "transcribing");
+        assert_eq!(dictation.next_wake_ms(120_100), None);
     }
 }
