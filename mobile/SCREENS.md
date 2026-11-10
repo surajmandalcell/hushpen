@@ -1,6 +1,6 @@
 # Screen contracts
 
-The desktop and Android flows use plain placeholders until the designer supplies
+The desktop and phone flows use plain placeholders until the designer supplies
 the visuals. Core owns the rules; views render state and send intents.
 
 ## Devices
@@ -112,6 +112,89 @@ the visuals. Core owns the rules; views render state and send intents.
   Stopping Server mode releases that session for local dictation.
 - Undo checks the field, cursor, and preceding text before deleting the last
   insertion. All controls remain default buttons until visual design lands.
+
+## iOS onboarding
+
+- State: microphone permission, keyboard use receipt, Full Access guidance,
+  speech model rows, selected model, download progress, and notice.
+- Intents: request microphone, open system settings, refresh the keyboard receipt,
+  download or verify a model, and select a ready model.
+- Empty: no speech model is ready. Keep the Rust phone catalog available.
+- Errors: permission denied, download or verification failed, or save failed.
+- iOS does not expose whether this custom keyboard is enabled. The receipt
+  records its last use with Full Access; it does not claim current readiness.
+
+## iOS Models
+
+- State: Rust catalog and model status, selected speech model, download bytes,
+  verification state, and notice.
+- Intents: refresh, download, cancel, verify, and select.
+- Empty: no downloaded speech model. Both phone models remain available.
+- Errors: network, space, checksum, busy engine, or save failure.
+
+## iOS Devices
+
+- State: paired desktops, pairing URI, scanner open, server availability,
+  busy state, and notice.
+- Intents: scan or enter a desktop offer, pair, forget, refresh, and open Server mode.
+- Empty: no paired desktop. Scan the desktop's pairing offer.
+- Errors: camera unavailable, invalid or expired offer, handshake failure,
+  Local Network permission denied, or save failure. Rust parses offers.
+
+## iOS Server mode
+
+- State: running or starting, listening port, selected speech model, and notice.
+- Intents: start, stop, and refresh. The unload rule is While server mode is open.
+- Empty: server off. Show "Plug in to keep serving" while it is on.
+- Errors: port busy, model unavailable, or host startup failed.
+- Serving disables the idle timer and dims the screen. Leaving the foreground
+  stops serving and restores the previous brightness and idle-timer state.
+
+## iOS scanner
+
+- State: camera permission, starting, scanning, scanned code, and notice.
+- Intents: request permission, start or retry, take a code, stop, open settings, and close.
+- Empty: no code or no camera. A desktop offer can be pasted in Devices.
+- Errors: permission denied, camera unavailable, or capture could not start.
+  Pairing payload validation stays in Rust.
+
+## iOS Settings
+
+- State: cleanup enabled, Foundation Models availability, microphone permission,
+  keyboard use receipt, and notice.
+- Intents: set cleanup, refresh permissions, open settings, and open bundled licenses.
+- Empty: no supported or ready system model. Rust rule cleanup still works.
+- Errors: save or native cleanup failure. Keep the saved setting and rule-cleaned text.
+- Cleanup stays off by default.
+
+## iOS licenses
+
+- State: the bundled license notice document.
+- Intents: open from Settings and return.
+- Empty/error: the bundled document is missing or cannot open.
+- The WebView reads bundled content only, with scripts and remote navigation disabled.
+
+## iOS dictation
+
+- State: active flow session, Rust dictation phase, transcript, and notice.
+- Intents: accept a session URL, record, finish, cancel, and recover.
+- Empty: no current keyboard request. Do not record from an arbitrary URL.
+- Errors: microphone denied, missing model, capture failure, expired session,
+  or speech failure. Keep errors visible and do not insert stale results.
+- Recording and model work run in the app. The final text goes to the App Group.
+  The user returns to the original app to insert it.
+
+## iOS keyboard
+
+- State: Full Access, flow session, current text field, insertion availability,
+  and notice.
+- Intents: start a session, open its app URL, insert the returned text,
+  cancel, type, delete, space, return, and switch keyboards.
+- Empty: no text field, no Full Access, or no result. Show the required system setup.
+- Errors: session expired, shared file unavailable, or changed text field or cursor.
+  Never insert into a different field or replay a consumed result.
+- The extension links no Rust library and loads no model or microphone.
+  Views use default controls until the designer supplies the keyboard.
 
 ## Phone enrollment contract
 

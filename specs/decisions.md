@@ -555,6 +555,24 @@ new decision, add it here in the same change (D-21).
   permitted model downloads and encrypted device links. ML Kit has no
   supported metrics opt-out; see its [data disclosure](https://developers.google.com/ml-kit/android-data-disclosure).
 
+- **D-53 iOS app and keyboard.** `mobile/ios` uses SwiftUI and observable
+  screen models over the shared Rust phone API, with iOS 26 as its minimum.
+  XcodeGen owns the project. The app and keyboard share
+  `group.com.mandalsuraj.hushpen`; only the app links the Rust model engine.
+  A keyboard flow session opens `hushpen://dictate?session=...` in the app.
+  The app records, transcribes, and cleans the text. The keyboard consumes
+  its result once after the user returns. Session expiry, document identity,
+  and cursor context prevent insertion into another field. The shared file
+  is protected and excluded from backups. Server mode serves only while the
+  app remains in front, uses the core's fixed unload rule, dims the
+  screen, and restores brightness and the idle timer when it stops.
+  Cleanup is off by default and uses Apple's on-device Foundation Models
+  when available; failures keep Rust's rule-cleaned text. Screens and keyboard
+  use default `Placeholder` controls. `mobile/SCREENS.md` holds their contract.
+  iOS advertises through native Bonjour. Other platforms keep `mdns-sd`.
+  Native Bonjour avoids the restricted entitlement required for raw multicast;
+  see [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+
 ## History notes
 
 ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the

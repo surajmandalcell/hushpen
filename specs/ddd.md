@@ -38,6 +38,10 @@ Hushpen
 ├── Android app                     Kotlin adapters over the phone core
 │   ├── input method (IME)          keyboard, microphone, and text insertion
 │   └── Server mode                 foreground service for paired desktops
+├── iOS app                         Swift adapters over the phone core
+│   ├── flow session                keyboard request, app recording, one-time result
+│   ├── keyboard extension          App Group handoff and text insertion, no models
+│   └── Server mode                 serving only while the app stays in front
 └── data folder                     all app data on disk (D-13)
     ├── settings                    config/settings.json
     ├── model                       models/whisper/*.bin, models/llm/*.gguf, models/tts/<id>/
@@ -62,6 +66,9 @@ Hushpen
 - **Server mode**: phone model serving that the user starts. Android keeps
   a foreground service and notification. A wake lock keeps its CPU awake
   only during a model job. iOS requires the app to stay in front.
+- **flow session**: an iOS keyboard request that opens the app to record and
+  transcribe. Its App Group result belongs to the original document and
+  cursor context, expires after ten minutes, and can be inserted once.
 
 - **dictation**: one run of the dictation state machine: idle, listening,
   transcribing, cleaning, inserting, then done, cancelled, or failed. A
