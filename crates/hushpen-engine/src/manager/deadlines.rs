@@ -7,7 +7,7 @@ use crate::engine_log::Level;
 use hushpen_core::error;
 use hushpen_core::protocol::Request;
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 impl Manager {
     pub(super) fn tick(&mut self) {
@@ -30,6 +30,9 @@ impl Manager {
             if now.duration_since(running.spawned) >= self.timing.ready_timeout {
                 self.down("no ready message", Restart::Backoff);
             }
+            return;
+        }
+        if self.in_process_idle() {
             return;
         }
         if now.duration_since(running.last_pong) >= self.timing.pong_timeout {
@@ -80,9 +83,9 @@ impl Manager {
         self.pending = kept;
     }
 
-    pub(super) fn next_wakeup(&self) -> Instant {
-        let mut next = Instant::now() + Duration::from_secs(3600);
-        let mut consider = |at: Instant| next = next.min(at);
+    pub(super) fn next_wakeup(&self) -> Option<Instant> {
+        let mut next: Option<Instant> = None;
+        let mut consider = |at: Instant| next = Some(next.map_or(at, |next| next.min(at)));
         match &self.running {
             None => {
                 if let Some(at) = self.next_start {
@@ -93,8 +96,10 @@ impl Manager {
                 consider(running.spawned + self.timing.ready_timeout);
             }
             Some(running) => {
-                consider(running.next_ping);
-                consider(running.last_pong + self.timing.pong_timeout);
+                if !self.in_process_idle() {
+                    consider(running.next_ping);
+                    consider(running.last_pong + self.timing.pong_timeout);
+                }
                 for job in self.inflight.values() {
                     if let Some(at) = job.cancel_deadline {
                         consider(at);
