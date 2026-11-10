@@ -288,6 +288,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         Scene::Models | Scene::ModelsBottom | Scene::ModelsSearch | Scene::ModelsNoMatch => {
             Some(View::Models)
         }
+        Scene::Devices | Scene::DevicesBottom => Some(View::Devices),
         // The scrim dims the whole window, so the shell colors do not hold under a sheet.
         Scene::ModelsDetails
         | Scene::EnhanceTune
@@ -296,7 +297,9 @@ fn selected_view(scene: Scene) -> Option<View> {
         | Scene::PromptS1
         | Scene::DictionaryPreview
         | Scene::Voices
-        | Scene::VoicesAdd => None,
+        | Scene::VoicesAdd
+        | Scene::DevicesAdd
+        | Scene::DevicesDetail => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
             Some(View::Settings)
@@ -346,6 +349,7 @@ fn check_scenes(scenes: &[Scene], appearance: Appearance) {
                 Scene::Settings(SettingsShot::Middle | SettingsShot::Bottom)
                     | Scene::AboutBottom
                     | Scene::ModelsBottom
+                    | Scene::DevicesBottom
                     | Scene::Files(FilesShot::Queue)
             );
             assert_shell_tokens(&shot.image, appearance, Some(view), scrolled, &name);
@@ -439,6 +443,13 @@ fn every_view_and_dialog_matches_its_approved_dark_baseline() {
 #[test]
 fn every_view_and_dialog_matches_its_approved_light_baseline() {
     check_scenes(&Scene::views(), Appearance::Light);
+}
+
+#[test]
+fn devices_and_their_sheets_match_their_approved_baselines() {
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        check_scenes(&Scene::devices(), appearance);
+    }
 }
 
 #[test]

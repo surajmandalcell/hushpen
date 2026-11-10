@@ -6,11 +6,12 @@ use crate::{OneMicrophone, Revoked, headless_in, pixel_data_dir};
 use gpui_kit::base::test_support::snapshots;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AppContext as _, ExternalPaths, FileDropEvent, HeadlessAppContext, InputEvent as _,
+    AppContext as _, Entity, ExternalPaths, FileDropEvent, HeadlessAppContext, InputEvent as _,
     ScrollDelta, SharedString, point, px, size,
 };
 use hushpen_app::about::{About, Build, SystemOpener};
-use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock};
+use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock, monotonic_ms};
+use hushpen_app::devices::Devices;
 use hushpen_app::dictation::Dictation;
 use hushpen_app::dictionary::Dictionary;
 use hushpen_app::enhance::{Parts as EnhanceParts, Tuning};
@@ -34,17 +35,23 @@ use hushpen_app::updater::{Checker, Parts as UpdaterParts, SystemInstaller, Upda
 use hushpen_app::voices::{Parts as VoiceParts, VoiceLibrary};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
+use hushpen_core::os::Os;
+use hushpen_core::remote::{Device, DeviceKind, Health, Probe, Serves, UnloadRule};
 use hushpen_core::shortcut::{Bindings, Combo, Conflict, Platform};
 use hushpen_core::update::{Offer, Version};
 use hushpen_engine::{
     Failure, ImportProgress, JobOutcome, Segment as EngineSegment, Transcription,
 };
+use hushpen_remote::discovery::FoundDevice;
 use hushpen_speech::{Pcm, SpeechEngine, SpeechError, Voice, VoiceQuality};
 use hushpen_store::data_dir::DataDir;
 use hushpen_store::history::{self, Row};
+use hushpen_store::settings::{RemoteDevice, RemoteSettings, Routes, Transport};
 use hushpen_store::voices::Library;
 use image::RgbaImage;
 use serde_json::json;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -162,6 +169,14 @@ pub enum Scene {
     Voices,
     /// The Manage Voices sheet on Add Voice, before a take.
     VoicesAdd,
+    /// Devices with two phones and two servers in the two routes.
+    Devices,
+    /// Devices scrolled to the end: the paired devices under Add Device.
+    DevicesBottom,
+    /// Add a Device on Nearby: two phones found on this network and the pairing code.
+    DevicesAdd,
+    /// The details of a server that unloads its models after 30 idle minutes.
+    DevicesDetail,
 }
 
 /// What a Settings baseline shows of the one long list.
@@ -331,6 +346,10 @@ impl Scene {
             Scene::DictionaryPreview => "dictionary-pack-preview".into(),
             Scene::Voices => "voices".into(),
             Scene::VoicesAdd => "voices-add".into(),
+            Scene::Devices => "devices".into(),
+            Scene::DevicesBottom => "devices-bottom".into(),
+            Scene::DevicesAdd => "devices-add".into(),
+            Scene::DevicesDetail => "devices-detail".into(),
         }
     }
 
@@ -376,7 +395,24 @@ impl Scene {
         scenes.push(Scene::DictionaryPreview);
         scenes.push(Scene::Voices);
         scenes.push(Scene::VoicesAdd);
+        scenes.extend(Self::devices());
         scenes
+    }
+
+    fn on_devices(self) -> bool {
+        matches!(
+            self,
+            Scene::Devices | Scene::DevicesBottom | Scene::DevicesAdd | Scene::DevicesDetail
+        )
+    }
+
+    pub fn devices() -> [Scene; 4] {
+        [
+            Scene::Devices,
+            Scene::DevicesBottom,
+            Scene::DevicesAdd,
+            Scene::DevicesDetail,
+        ]
     }
 
     pub fn all() -> Vec<Scene> {
@@ -412,6 +448,8 @@ impl Scene {
                 | Scene::DictionaryPreview
                 | Scene::Voices
                 | Scene::VoicesAdd
+                | Scene::DevicesAdd
+                | Scene::DevicesDetail
         )
     }
 }
@@ -427,6 +465,159 @@ const NAMES: [&str; 8] = [
     "The quarterly numbers look fine, but the second chart needs a clearer title.",
     "Thanks for the quick reply. I will send the invoice tomorrow morning.",
 ];
+
+/// The phones and servers of the Devices scenes, in the order they were paired.
+fn seed_devices(storage: &Storage) {
+    let device =
+        |id: &str, name: &str, os: Os, transport: Transport, unload_rule, serves| RemoteDevice {
+            device: Device {
+                id: id.into(),
+                name: name.into(),
+                kind: if matches!(os, Os::Ios | Os::Android) {
+                    DeviceKind::Phone
+                } else {
+                    DeviceKind::Server
+                },
+                os,
+                serves,
+            },
+            address: "192.168.1.24:47321".into(),
+            static_public_key: [7; 32],
+            transport,
+            unload_rule,
+        };
+    let both = Serves {
+        speech: true,
+        cleanup: true,
+    };
+    let speech = Serves {
+        speech: true,
+        cleanup: false,
+    };
+    let remote = RemoteSettings {
+        enabled: true,
+        no_local_models: false,
+        devices: vec![
+            device(
+                "pixel-10",
+                "Pixel 10",
+                Os::Android,
+                Transport::Lan,
+                UnloadRule::KeepLoaded,
+                both,
+            ),
+            device(
+                "office",
+                "Office server",
+                Os::Linux,
+                Transport::Ssh {
+                    host: "office".into(),
+                },
+                UnloadRule::AfterIdle(30),
+                both,
+            ),
+            device(
+                "iphone",
+                "iPhone 16 Pro",
+                Os::Ios,
+                Transport::Lan,
+                UnloadRule::WhileServerModeOpen,
+                speech,
+            ),
+            device(
+                "studio",
+                "Studio PC",
+                Os::Linux,
+                Transport::Tailscale,
+                UnloadRule::WhenMemoryLow,
+                both,
+            ),
+        ],
+        routes: Routes {
+            speech: vec!["pixel-10".into(), "office".into(), "iphone".into()],
+            cleanup: vec!["office".into(), "studio".into()],
+        },
+    };
+    storage
+        .settings
+        .set_remote(&remote)
+        .expect("store the devices");
+}
+
+/// What the last probe of each device found: two answer, a phone has Server mode closed, and
+/// a server unloaded its models.
+fn device_health() -> BTreeMap<String, Health> {
+    let now = monotonic_ms();
+    [
+        ("pixel-10", Probe::Ready { latency_ms: 38 }),
+        ("office", Probe::Ready { latency_ms: 112 }),
+        ("iphone", Probe::ServerModeOff),
+        ("studio", Probe::Asleep),
+    ]
+    .into_iter()
+    .map(|(id, probe)| {
+        let mut health = Health::default();
+        health.record(probe, now);
+        (id.to_owned(), health)
+    })
+    .collect()
+}
+
+/// Two phones with Server mode open on this network, and the pairing code of this computer.
+fn stage_add_sheet(
+    cx: &mut HeadlessAppContext,
+    handle: gpui_kit::AnyWindowHandle,
+    devices: &Entity<Devices>,
+) {
+    let phone = |id: &str, name: &str, os: Os| FoundDevice {
+        device: Device {
+            id: id.into(),
+            name: name.into(),
+            kind: DeviceKind::Phone,
+            os,
+            serves: Serves {
+                speech: true,
+                cleanup: true,
+            },
+        },
+        hostname: format!("{id}.local."),
+        port: 47321,
+        addresses: Vec::new(),
+        version: "2.0.0".into(),
+    };
+    let found = vec![
+        phone("galaxy-s25", "Galaxy S25", Os::Android),
+        phone("ipad-air", "iPad Air", Os::Ios),
+    ];
+    // The base64 of a key of 32 sevens, put together here so that the source holds no string
+    // that looks like a real key.
+    let key = format!("{}Bwc%3D", "BwcH".repeat(10));
+    let uri = format!(
+        "hushpen-pair://v1?host=192.168.1.20&port=47321&pk={key}&otp=482915&exp=1780000000"
+    );
+    let code = qrcode::QrCode::new(uri.as_bytes()).expect("a QR code");
+    let width = code.width();
+    let modules = (0..width)
+        .map(|y| {
+            (0..width)
+                .map(|x| code[(x, y)] == qrcode::Color::Dark)
+                .collect()
+        })
+        .collect();
+    let expires = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock after 1970")
+        .as_secs()
+        + 120;
+    cx.update_window(handle, |_, _, cx| {
+        devices.update(cx, |devices, cx| {
+            devices.set_discovered(found, cx);
+            devices.set_offer(uri, modules, expires, cx);
+        })
+    })
+    .expect("show the found phones and the code");
+    cx.run_until_parked();
+}
 
 /// The newest transcript, in Unix milliseconds: 2025-06-01 09:15 UTC.
 const FIRST_AT: i64 = 1_748_769_300_000;
@@ -882,6 +1073,9 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
         | Scene::ModelsDetails
         | Scene::ModelsSearch
         | Scene::ModelsNoMatch => seed_models(&storage),
+        Scene::Devices | Scene::DevicesBottom | Scene::DevicesAdd | Scene::DevicesDetail => {
+            seed_devices(&storage)
+        }
         // Automatic names the CPU count, which differs between machines.
         Scene::Settings(shot) => {
             storage
@@ -932,6 +1126,8 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
         _ => {}
     }
     let mut cx = headless_in(appearance);
+    let devices_entity: Rc<RefCell<Option<Entity<Devices>>>> = Rc::default();
+    let devices_slot = Rc::clone(&devices_entity);
     let handle = cx
         .open_window(size(px(space::WINDOW_WIDTH), px(height)), |window, cx| {
             let shell = cx.new(|cx| Shell::new(window, cx));
@@ -1184,6 +1380,12 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
                         });
                         cx.new(|cx| Files::new(Rc::clone(&storage), import, Some(read), cx))
                     });
+                    if scene.on_devices() {
+                        let devices = cx.new(|cx| Devices::new(Rc::clone(&storage), window, cx));
+                        devices.update(cx, |devices, cx| devices.set_health(device_health(), cx));
+                        shell.update(cx, |shell, cx| shell.attach_devices(devices.clone(), cx));
+                        *devices_slot.borrow_mut() = Some(devices);
+                    }
                     shell.update(cx, |shell, cx| {
                         shell.attach_mic(mic, cx);
                         shell.attach_dictation(dictation, cx);
@@ -1207,6 +1409,9 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
     std::thread::sleep(std::time::Duration::from_millis(300));
     cx.run_until_parked();
     drive(&mut cx, handle, scene);
+    if let (Scene::DevicesAdd, Some(devices)) = (scene, devices_entity.borrow().as_ref()) {
+        stage_add_sheet(&mut cx, handle, devices);
+    }
     let image = cx.capture_screenshot(handle).expect("capture the window");
     let nodes = cx
         .update_window(handle, |_, window, _| nodes_of(window))
@@ -1413,6 +1618,19 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "sidebar.files");
             click(cx, handle, "read.manage");
             click(cx, handle, "voices.add");
+        }
+        Scene::Devices => click(cx, handle, "sidebar.devices"),
+        Scene::DevicesBottom => {
+            click(cx, handle, "sidebar.devices");
+            scroll_by(cx, handle, -5_000.0);
+        }
+        Scene::DevicesAdd => {
+            click(cx, handle, "sidebar.devices");
+            click_scrolled(cx, handle, "devices.add");
+        }
+        Scene::DevicesDetail => {
+            click(cx, handle, "sidebar.devices");
+            click_scrolled(cx, handle, "devices.device.office.info");
         }
         Scene::EndpointFailure => {
             click(cx, handle, "sidebar.settings");
