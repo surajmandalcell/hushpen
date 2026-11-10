@@ -6,12 +6,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Window
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var onboarding: OnboardingViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
         super.onCreate(savedInstanceState)
         setContent {
             val onboardingModel: OnboardingViewModel = viewModel()
@@ -52,7 +55,7 @@ class MainActivity : ComponentActivity() {
             var screen by rememberSaveable { mutableStateOf("Onboarding") }
             val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refreshPermissions() }
             val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState())) {
                 Text("Hushpen")
                 listOf("Onboarding", "Models", "Devices", "Settings").forEach { destination ->
                     Button(onClick = { screen = destination }) { Text(destination) }
