@@ -1,4 +1,4 @@
-//! Device automation uses the same state intents as the placeholder controls.
+//! Device automation uses the same state intents as the Devices controls.
 
 use super::{register_action, set_state_section};
 use crate::devices::{AddMethod, Devices, Request};

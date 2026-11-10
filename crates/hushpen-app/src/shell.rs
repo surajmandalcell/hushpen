@@ -1,7 +1,7 @@
 //! The app window: sidebar, toolbar, window controls (drawn on Linux only), and the active view.
 
 use crate::about::{self, About};
-use crate::devices::{Devices, panel::PlaceholderDevices};
+use crate::devices::Devices;
 use crate::dictation::{self, Dictation};
 use crate::dictionary::{self, Dictionary};
 use crate::files::{self, DROP_GROUP, Files};
@@ -692,7 +692,7 @@ impl Shell {
                 None => placeholder(view, palette).into_any_element(),
             },
             (_, _, _, _, View::Devices) => match &self.devices {
-                Some(devices) => PlaceholderDevices::render(devices, cx).into_any_element(),
+                Some(devices) => crate::devices::panel::render(devices, cx).into_any_element(),
                 None => placeholder(view, palette).into_any_element(),
             },
             (_, _, _, _, View::Settings) => match &self.settings {
@@ -870,6 +870,13 @@ impl Render for Shell {
                             .library()
                             .cloned()?;
                         crate::voices::sheet::render(&library, window, cx)
+                    })
+                    .or_else(|| {
+                        let devices = self
+                            .devices
+                            .as_ref()
+                            .filter(|_| self.active == View::Devices)?;
+                        crate::devices::sheet::render(devices, window, cx)
                     });
                 // The content of a newly picked view fades in and rises into place; the sidebar
                 // and the title bar stay still.

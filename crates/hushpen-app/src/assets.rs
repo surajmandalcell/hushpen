@@ -67,7 +67,12 @@ icon_assets!(
         Pencil,
         Play,
         Pause,
-        Volume2
+        Volume2,
+        Server,
+        Laptop,
+        ChevronUp,
+        Circle,
+        LoaderCircle
     ]
 );
 

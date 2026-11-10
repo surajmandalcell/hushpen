@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 14] = [
+const ALLOWED: [(&str, &str, &str); 17] = [
     // The drop zone outlines in it while files are dragged over the window, as a drop target.
     ("import/panel.rs", "drop_zone", "accent"),
     // The default button fills with it; the plain button is a link and takes it for text.
@@ -37,6 +37,10 @@ const ALLOWED: [(&str, &str, &str); 14] = [
     ),
     // What the last update check found on About; a failed check is a status word.
     ("about/panel.rs", "update_status", "error"),
+    // The status word of a device, and a failed step of a server setup.
+    ("devices/panel.rs", "reading", "success"),
+    ("devices/panel.rs", "reading", "error"),
+    ("devices/add.rs", "ssh", "error"),
 ];
 
 const TOKENS: [&str; 4] = ["accent", "success", "warning", "error"];
