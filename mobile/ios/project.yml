@@ -1,0 +1,128 @@
+name: Hushpen
+options:
+  minimumXcodeGenVersion: 2.44.0
+  deploymentTarget:
+    iOS: '26.0'
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    DEVELOPMENT_TEAM: GF57JXJF5A
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    TARGETED_DEVICE_FAMILY: '1,2'
+    MARKETING_VERSION: 2.4.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Hushpen:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Shared
+      - path: ${HUSHPEN_MOBILE_CORE}/bindings/swift/HushpenCore.swift
+      - path: ../../assets/THIRD-PARTY-NOTICES.html
+        buildPhase: resources
+      - path: ../../LICENSE
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen
+        OTHER_LDFLAGS: ['$(inherited)', '-lc++', '-lz', '-framework', Accelerate, '-framework', Metal, '-framework', MetalKit, '-framework', Security, '-framework', SystemConfiguration]
+    info:
+      path: Generated/App-Info.plist
+      properties:
+        CFBundleDisplayName: Hushpen
+        CFBundleURLTypes:
+          - CFBundleURLName: com.mandalsuraj.hushpen.dictate
+            CFBundleURLSchemes: [hushpen]
+        NSMicrophoneUsageDescription: Hushpen records your speech to turn it into text on this phone.
+        NSCameraUsageDescription: Hushpen scans a desktop pairing code.
+        NSLocalNetworkUsageDescription: Hushpen connects to paired computers to serve models on this phone.
+        NSBonjourServices: ['_hushpen._tcp']
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: true
+    entitlements:
+      path: Generated/App.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.mandalsuraj.hushpen]
+    dependencies:
+      - framework: ${HUSHPEN_MOBILE_CORE}/ios/HushpenCore.xcframework
+        embed: false
+      - target: HushpenKeyboard
+        embed: true
+  HushpenKeyboard:
+    type: app-extension
+    platform: iOS
+    sources: [Keyboard, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen.keyboard
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Generated/Keyboard-Info.plist
+      properties:
+        CFBundleDisplayName: Hushpen
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardController
+          NSExtensionAttributes:
+            IsASCIICapable: true
+            PrimaryLanguage: en-US
+            RequestsOpenAccess: true
+    entitlements:
+      path: Generated/Keyboard.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.mandalsuraj.hushpen]
+  HushpenTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Hushpen
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen.tests
+        GENERATE_INFOPLIST_FILE: YES
+  HushpenKeyboardTestHost:
+    type: application
+    platform: iOS
+    sources: [TestHost]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen.KeyboardTestHost
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  HushpenUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Hushpen
+      - target: HushpenKeyboardTestHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Hushpen
+schemes:
+  Hushpen:
+    build:
+      targets:
+        Hushpen: all
+        HushpenKeyboardTestHost: [test]
+    test:
+      config: Debug
+      targets: [HushpenTests, HushpenUITests]
+      gatherCoverageData: true
+    run:
+      config: Debug
+    archive:
+      config: Release
