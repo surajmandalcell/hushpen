@@ -91,6 +91,29 @@ impl Route {
         }
         false
     }
+
+    /// Puts `id` at `index`, as a drag does. An index past the other devices puts it last
+    /// among them, so this computer stays last.
+    pub fn move_to(&mut self, id: &str, index: usize) -> bool {
+        if id == THIS_COMPUTER {
+            return false;
+        }
+        let Some(from) = self.ids.iter().position(|item| item == id) else {
+            return false;
+        };
+        let movable = self
+            .ids
+            .iter()
+            .filter(|item| *item != THIS_COMPUTER)
+            .count();
+        let to = index.min(movable - 1);
+        if to == from {
+            return false;
+        }
+        let item = self.ids.remove(from);
+        self.ids.insert(to, item);
+        true
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
