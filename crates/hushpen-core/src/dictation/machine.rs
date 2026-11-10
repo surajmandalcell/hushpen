@@ -127,6 +127,29 @@ impl DictationMachine {
         self.config = config;
     }
 
+    /// The next time a Tick can change state. Idle and worker waits need no timer.
+    pub fn next_deadline_ms(&self) -> Option<u64> {
+        let front = match self.run.state {
+            State::Listening => {
+                let max = self.config.max_ms();
+                let elapsed = if self.warned {
+                    max
+                } else {
+                    max.saturating_sub(WARN_BEFORE_MAX_MS)
+                };
+                Some(self.started_at.saturating_add(elapsed))
+            }
+            State::Done => Some(self.state_since.saturating_add(self.config.done_ms)),
+            State::Cancelled => Some(self.state_since.saturating_add(self.config.cancelled_ms)),
+            State::Failed => Some(self.state_since.saturating_add(self.config.failed_ms)),
+            _ => None,
+        };
+        front
+            .into_iter()
+            .chain(self.held.as_ref().map(|held| held.until))
+            .min()
+    }
+
     pub fn handle(&mut self, event: AppEvent, now: u64) -> Vec<Effect> {
         match event {
             AppEvent::HoldDown => match self.run.state {

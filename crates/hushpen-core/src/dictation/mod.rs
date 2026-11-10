@@ -133,7 +133,7 @@ pub enum AppEvent {
     PasteLast,
     /// The "Read aloud" shortcut. The controller answers it; no session starts.
     ReadAloud,
-    /// Time passed. Sent at least every 250 ms while a session runs, and again at each deadline.
+    /// Time reached [`DictationMachine::next_deadline_ms`].
     Tick,
     CaptureError {
         code: &'static str,
