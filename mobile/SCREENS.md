@@ -182,7 +182,7 @@ the visuals. Core owns the rules; views render state and send intents.
 - Errors: microphone denied, missing model, capture failure, expired session,
   or speech failure. Keep errors visible and do not insert stale results.
 - Recording and model work run in the app. The final text goes to the App Group.
-  The user returns to the original app to insert it.
+  The user returns to the original app and confirms Insert dictation in the keyboard.
 
 ## iOS keyboard
 
@@ -192,7 +192,10 @@ the visuals. Core owns the rules; views render state and send intents.
   cancel, type, delete, space, return, and switch keyboards.
 - Empty: no text field, no Full Access, or no result. Show the required system setup.
 - Errors: session expired, shared file unavailable, or changed text field or cursor.
-  Never insert into a different field or replay a consumed result.
+  Never insert automatically or replay a consumed result. The Insert dictation action
+  confirms the active field; changing that field or cursor withdraws the offer and undo.
+- iOS can replace its input-session identifier while the same field stays focused.
+  Keep completed text until explicit insertion with matching cursor context.
 - The extension links no Rust library and loads no model or microphone.
   Views use default controls until the designer supplies the keyboard.
 

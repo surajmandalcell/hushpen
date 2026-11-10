@@ -67,8 +67,8 @@ Hushpen
   a foreground service and notification. A wake lock keeps its CPU awake
   only during a model job. iOS requires the app to stay in front.
 - **flow session**: an iOS keyboard request that opens the app to record and
-  transcribe. Its App Group result belongs to the original document and
-  cursor context, expires after ten minutes, and can be inserted once.
+  transcribe. Its App Group result expires after ten minutes and is used once.
+  Insert dictation confirms the active field with unchanged cursor context.
 
 - **dictation**: one run of the dictation state machine: idle, listening,
   transcribing, cleaning, inserting, then done, cancelled, or failed. A

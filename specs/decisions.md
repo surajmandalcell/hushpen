@@ -563,10 +563,11 @@ new decision, add it here in the same change (D-21).
   XcodeGen owns the project. The app and keyboard share
   `group.com.mandalsuraj.hushpen`; only the app links the Rust model engine.
   A keyboard flow session opens `hushpen://dictate?session=...` in the app.
-  The app records, transcribes, and cleans the text. The keyboard consumes
-  its result once after the user returns. Session expiry, document identity,
-  and cursor context prevent insertion into another field. The shared file
-  is protected and excluded from backups. Server mode serves only while the
+  The app records, transcribes, and cleans text. Insert dictation confirms
+  the active field on return because iOS can renew input session IDs.
+  Results expire in ten minutes and are used once. Field or cursor changes
+  cancel the offer and undo. The shared file is protected and excluded from
+  backups. Server mode serves only while the
   app remains in front, uses the core's fixed unload rule, dims the
   screen, and restores brightness and the idle timer when it stops.
   Cleanup is off by default and uses Apple's on-device Foundation Models
