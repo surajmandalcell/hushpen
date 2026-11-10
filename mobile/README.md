@@ -121,9 +121,11 @@ xcodebuild test-without-building -project mobile/ios/Hushpen.xcodeproj \
 ```
 
 The WAV hook exists only in debug builds. The extension links no Rust model
-engine and never records. It opens the app's session URL and inserts the
-protected App Group result when the user returns. Results expire after ten
-minutes and require the same document and cursor context. iOS exposes no
+engine and never records. It opens the app's session URL and offers the
+protected App Group result when the user returns. Insert dictation confirms
+the active field because iOS can replace the input-session identifier on return.
+Results expire after ten minutes and require unchanged cursor context.
+Changing the field or cursor withdraws the offer and undo. iOS exposes no
 public enabled-keyboard identifier check; onboarding shows a last-use receipt.
 
 Server mode serves only while the app is in front. It restores brightness and
