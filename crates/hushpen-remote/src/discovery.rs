@@ -8,13 +8,20 @@ use std::io;
 use std::net::{SocketAddr, SocketAddrV6};
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "ios")]
+mod apple;
+#[cfg(target_os = "ios")]
+pub use apple::Advertisement;
+
 pub const SERVICE_TYPE: &str = "_hushpen._tcp.local.";
 
+#[cfg(not(target_os = "ios"))]
 pub struct Advertisement {
     daemon: ServiceDaemon,
     fullname: String,
 }
 
+#[cfg(not(target_os = "ios"))]
 impl Advertisement {
     pub fn new(device: &Device, hostname: &str, port: u16, version: &str) -> io::Result<Self> {
         let info = service_info(device, hostname, port, version)?;
@@ -28,6 +35,7 @@ impl Advertisement {
     }
 }
 
+#[cfg(not(target_os = "ios"))]
 impl Drop for Advertisement {
     fn drop(&mut self) {
         let _ = self.daemon.unregister(&self.fullname);
@@ -129,6 +137,28 @@ fn service_info(
     )
     .map(ServiceInfo::enable_addr_auto)
     .map_err(io::Error::other)
+}
+
+#[cfg(any(target_os = "ios", test))]
+fn instance_name(id: &str) -> &str {
+    &id[..id.floor_char_boundary(id.len().min(63))]
+}
+
+#[cfg(any(target_os = "ios", test))]
+fn txt_record(info: &ServiceInfo) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    for property in info.get_properties().iter() {
+        let key = property.key().as_bytes();
+        let value = property.val();
+        let length = key.len() + value.map_or(0, |value| 1 + value.len());
+        bytes.push(u8::try_from(length).map_err(|_| invalid("discovery TXT field is too long"))?);
+        bytes.extend_from_slice(key);
+        if let Some(value) = value {
+            bytes.push(b'=');
+            bytes.extend_from_slice(value);
+        }
+    }
+    Ok(bytes)
 }
 
 fn found(info: &ResolvedService) -> io::Result<FoundDevice> {
@@ -247,6 +277,13 @@ mod tests {
         assert_eq!(info.get_property_val_str("version"), Some("2.4.0"));
         assert!(info.get_property_val_str("key").is_none());
         assert!(info.get_property_val_str("otp").is_none());
+        let bytes = txt_record(&info).unwrap();
+        assert_eq!(
+            mdns_sd::TxtProperties::from(bytes.as_slice()),
+            *info.get_properties()
+        );
+        assert_eq!(bytes[0], 15);
+        assert_eq!(&bytes[1..16], b"id=hushpen-test");
         let mut resolved = info.as_resolved_service();
         resolved
             .addresses
@@ -257,5 +294,28 @@ mod tests {
             found.addresses,
             vec!["192.168.1.2:7342".parse::<SocketAddr>().unwrap()]
         );
+    }
+
+    #[test]
+    fn native_instance_names_fit_a_dns_label_without_changing_the_id() {
+        let id = "a".repeat(64);
+        assert_eq!(instance_name(&id), "a".repeat(63));
+        let unicode = "é".repeat(40);
+        assert_eq!(instance_name(&unicode), "é".repeat(31));
+        let device = Device {
+            id: id.clone(),
+            name: "Test phone".into(),
+            kind: DeviceKind::Phone,
+            os: Os::Ios,
+            serves: Serves {
+                speech: true,
+                cleanup: true,
+            },
+        };
+        let info = service_info(&device, "hushpen-test.local.", 7342, "2.4.0").unwrap();
+        assert_eq!(info.get_property_val_str("id"), Some(id.as_str()));
+        let encoded = txt_record(&info).unwrap();
+        let properties = mdns_sd::TxtProperties::from(encoded.as_slice());
+        assert_eq!(properties.get_property_val_str("id"), Some(id.as_str()));
     }
 }
