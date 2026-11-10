@@ -42,6 +42,8 @@ targets:
       path: Generated/App-Info.plist
       properties:
         CFBundleDisplayName: Hushpen
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleURLTypes:
           - CFBundleURLName: com.mandalsuraj.hushpen.dictate
             CFBundleURLSchemes: [hushpen]
@@ -74,6 +76,8 @@ targets:
       path: Generated/Keyboard-Info.plist
       properties:
         CFBundleDisplayName: Hushpen
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardController
