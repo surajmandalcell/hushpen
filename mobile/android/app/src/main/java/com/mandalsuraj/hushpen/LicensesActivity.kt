@@ -4,9 +4,11 @@ import android.app.Activity
 import android.content.Context
 import android.os.Bundle
 import android.view.Window
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
@@ -17,12 +19,15 @@ class LicensesActivity : Activity() {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         super.onCreate(savedInstanceState)
         licenses = PlaceholderLicenses(this)
-        ViewCompat.setOnApplyWindowInsetsListener(licenses) { view, insets ->
+        val content = FrameLayout(this).apply {
+            addView(licenses, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-        setContentView(licenses)
+        setContentView(content)
     }
 
     override fun onDestroy() {
