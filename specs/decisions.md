@@ -509,8 +509,10 @@ new decision, add it here in the same change (D-21).
   off by default. This computer is last unless "Do not load models on this
   computer" is on; then unavailable remote routes refuse the job. Core owns
   routing, health, pairing, fallback notices, and allowed unload rules.
-  Nearby phones use mDNS and a one-use, expiring QR offer with Noise key
-  pinning. Tailscale uses the same protocol at the supplied address. SSH
+  A route row names the model this computer asks that device to load, since
+  devices report none; phones clean up with their system model. Nearby
+  phones use mDNS and a one-use, expiring QR offer with Noise key pinning.
+  Tailscale uses the same protocol at the supplied address. SSH
   setup reads concrete Host aliases from `~/.ssh/config`, uses BatchMode
   only, verifies SHA-256 before installation, starts the user service, and
   pairs over the authenticated SSH channel. Views send intents and show

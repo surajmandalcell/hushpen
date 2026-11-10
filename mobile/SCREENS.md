@@ -7,10 +7,11 @@ views render state and send intents.
 ## Devices
 
 - State: remote enabled, local models disabled, separate speech and cleanup
-  route rows, and a notice. Each row has device id, name, status, latency,
-  and whether it can move up or down.
+  route rows, and a notice. Each row has device id, name, model, status,
+  latency, and whether it can move up or down.
 - Intents: set remote enabled, set local models disabled, move a device in
-  one route, probe devices, open Add device, and open device details.
+  one route by one place or to a place (a drag), probe devices, open Add
+  device, and open device details.
 - Empty: no paired devices; local routes contain This computer while local
   models are allowed. Disabled local routes have no local fallback.
 - Errors: settings could not be saved, a device did not answer, or no device

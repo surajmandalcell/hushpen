@@ -9,8 +9,9 @@ use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FontFeatures, InteractiveElement, IntoElement, ParentElement, Rgba,
-    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, FontFeatures, InteractiveElement,
+    IntoElement, ParentElement, Render, Rgba, Role, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, px, svg,
 };
 use hushpen_core::remote::{DeviceKind, ModelKind, Route, Status, THIS_COMPUTER};
 use hushpen_store::settings::RemoteDevice;
@@ -18,6 +19,24 @@ use std::sync::Arc;
 
 /// How much of the page under the switch shows while models on other devices are off.
 const OFF_OPACITY: f32 = 0.35;
+/// How much of a route row shows while it is dragged.
+const DRAGGED_OPACITY: f32 = 0.5;
+
+/// What a drag of a route row carries.
+#[derive(Clone)]
+struct RouteDrag {
+    kind: ModelKind,
+    id: String,
+}
+
+/// A drag draws nothing at the pointer: the rows reorder under it as it moves.
+struct NoPreview;
+
+impl Render for NoPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
 
 pub fn render(devices: &Entity<Devices>, cx: &mut App) -> impl IntoElement {
     let palette = theme::palette(cx);
@@ -183,8 +202,9 @@ fn route_section(
     )
 }
 
-/// A device in a route: its kind, name, latency, and status, then Move up and Move down. This
-/// computer stays last, so its arrows are off.
+/// A device in a route: a grip, its kind, name, model, latency, and status, then Move up and
+/// Move down. A drag of the row moves the device as the pointer passes the middle of another
+/// row. This computer stays last, so it has no grip and its arrows are off.
 #[expect(clippy::too_many_arguments, reason = "the parts of one row")]
 fn route_row(
     palette: Palette,
@@ -196,14 +216,19 @@ fn route_row(
     id: &str,
     cx: &App,
 ) -> Option<AnyElement> {
-    let (name, icon) = if id == THIS_COMPUTER {
-        ("This computer".to_owned(), IconName::Laptop)
+    let device = if id == THIS_COMPUTER {
+        None
     } else {
-        let device = state.device(id)?;
-        (device.device.name.clone(), kind_icon(device.device.kind))
+        Some(state.device(id)?)
     };
+    let (name, icon) = match device {
+        None => ("This computer".to_owned(), IconName::Laptop),
+        Some(device) => (device.device.name.clone(), kind_icon(device.device.kind)),
+    };
+    let model = state.model(kind, device).unwrap_or_default();
     let row = format!("{key}.{id}");
     let reading = reading(palette, state, id);
+    let (live, movable) = (state.settings.enabled, device.is_some());
     let arrows = [(true, "up", "Move up"), (false, "down", "Move down")].map(|(up, way, tip)| {
         let can_move = state.settings.enabled && route.clone().move_device(id, up);
         let control = format!("{row}.{way}");
@@ -228,28 +253,97 @@ fn route_row(
             },
         )
     });
-    Some(
-        ui::row(palette)
-            .id(hook::id("devices", &row))
-            .test_support()
-            .child(ui::icon(palette, icon))
-            .child(ui::named_lines(
-                palette,
-                hook::id("devices", &format!("{row}.title")),
-                name.clone(),
-                None,
-            ))
-            .child(latency_cell(palette, &row, reading.latency))
-            .child(status_cell(palette, &row, &reading).w(px(size::DEVICE_STATUS_WIDTH)))
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .gap(px(size::MODEL_ICON_GAP))
-                    .children(arrows),
-            )
-            .into_any_element(),
-    )
+    let mut grip = div()
+        .id(hook::id("devices", &format!("{row}.grip")))
+        .test_support()
+        .flex_none()
+        .w(px(size::NAV_ICON))
+        .mr(px(-space::XS));
+    if movable {
+        grip = grip.child(
+            svg()
+                .path(IconName::GripVertical.path())
+                .size(px(size::NAV_ICON))
+                .text_color(palette.label_tertiary),
+        );
+        if live {
+            grip = grip.cursor_grab();
+        }
+    }
+    let dragged = cx.has_active_drag()
+        && state
+            .dragging
+            .as_ref()
+            .is_some_and(|(from, dragged)| *from == kind && dragged == id);
+    let mut element = ui::row(palette)
+        .id(hook::id("devices", &row))
+        .test_support()
+        .child(grip)
+        .child(ui::icon(palette, icon))
+        .child(ui::named_lines(
+            palette,
+            hook::id("devices", &format!("{row}.title")),
+            name.clone(),
+            None,
+        ))
+        .child(model_cell(palette, &row, model))
+        .child(latency_cell(palette, &row, reading.latency))
+        .child(status_cell(palette, &row, &reading).w(px(size::DEVICE_STATUS_WIDTH)))
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .gap(px(size::MODEL_ICON_GAP))
+                .children(arrows),
+        );
+    if dragged {
+        element = element.opacity(DRAGGED_OPACITY);
+    }
+    if live {
+        let (target, over) = (devices.clone(), id.to_owned());
+        // Every row of every route hears each move of a drag, so a row acts only on a drag of its
+        // own route that is over it.
+        element = element.on_drag_move::<RouteDrag>(move |event, _, cx| {
+            let pointer = event.event.position;
+            let drag = event.drag(cx).clone();
+            if drag.kind != kind || drag.id == over || !event.bounds.contains(&pointer) {
+                return;
+            }
+            let below = pointer.y > event.bounds.center().y;
+            target.update(cx, |state, cx| {
+                let _ = state.drag_over(kind, &drag.id, &over, below, cx);
+            });
+        });
+    }
+    if live && movable {
+        let source = devices.clone();
+        let value = RouteDrag {
+            kind,
+            id: id.to_owned(),
+        };
+        element = element.on_drag(value, move |drag, _, _, cx| {
+            source.update(cx, |state, cx| {
+                state.dragging = Some((drag.kind, drag.id.clone()));
+                cx.notify();
+            });
+            cx.new(|_| NoPreview)
+        });
+    }
+    Some(element.into_any_element())
+}
+
+/// The model the device of the row `row` runs, at `<row>.model`. A long name shows whole in the
+/// tooltip.
+fn model_cell(palette: Palette, row: &str, model: String) -> impl IntoElement {
+    let cell = ui::value(palette)
+        .id(hook::id("devices", &format!("{row}.model")))
+        .test_support()
+        .aria_label(model.clone())
+        .w(px(size::DEVICE_MODEL_WIDTH))
+        .text_right()
+        .truncate()
+        .child(model.clone());
+    ui::tooltip(cell, model)
 }
 
 /// Every paired device, with Add Device at the end of the heading and Details on each row.

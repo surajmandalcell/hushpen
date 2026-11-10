@@ -289,7 +289,7 @@ The flow bar has its own motion, described under Recording overlay.
 
 ## Components
 
-**Updates:** Windows setup installs run the verified installer after exit, then restart. Portable ZIP installs show a release notice. Controls and states stay the same.
+**Updates:** Windows setup installs run the verified installer after exit, then restart. Portable ZIP installs show a release notice.
 
 **Sidebar:** 8 rows: Home, History, Manual, Dictionary, Models, Devices, Settings, About. Icons are monochrome, 16px, in the secondary label color. Selection uses the selection fill and label-colored icon. Restore the last view; start on Home. Incomplete onboarding shows first.
 
@@ -353,7 +353,7 @@ Each group of icons runs from lightest to heaviest. The focus moves in the order
 
 ## Devices
 
-Devices follows flow D: separate Speech to Text and Text cleanup routes. The first controls are "Use models on other devices" (off by default) and "Do not load models on this computer"; while the first is off, the rest fades to 35% and takes no input. A route row holds the kind icon, name, latency (56px, tabular digits), status word (100px; Ready in success, Not reachable in error), and Move up and Move down. This computer says Fallback and stays last; with local models off there is no local fallback. Your devices rows open Details; Add Device… ends that heading. Add a Device has Nearby (phones and a 104px QR, white in both appearances), SSH, and Tailscale. Details holds rename, Remove Device… (asked in a row), and only core-approved unload rules. The contract is `mobile/SCREENS.md`.
+Devices follows flow D: separate Speech to Text and Text cleanup routes. First come "Use models on other devices" (off by default) and "Do not load models on this computer"; while the first is off, the rest fades to 35% and takes no input. A route row holds a grip, kind icon, name, model (112px), latency (56px, tabular digits), status (100px; Ready in success, Not reachable in error), and Move up and Move down. A dragged row shows at 50% and passes each row the pointer crosses halfway. This computer has no grip, says Fallback, and stays last; with local models off it is gone. Your devices rows open Details; Add Device… ends that heading. Add a Device has Nearby (phones and a 104px QR, white in both appearances), SSH, and Tailscale. Details holds rename, Remove Device… (asked in a row), and only core-approved unload rules.
 
 ## Do's and Don'ts
 

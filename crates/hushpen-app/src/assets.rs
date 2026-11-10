@@ -71,6 +71,7 @@ icon_assets!(
         Server,
         Laptop,
         ChevronUp,
+        GripVertical,
         Circle,
         LoaderCircle
     ]

@@ -293,8 +293,9 @@ pub mod size {
     /// The progress bar of a file in the Manual queue, and the percent and time left after it.
     pub const QUEUE_PROGRESS_WIDTH: f32 = 120.0;
     pub const QUEUE_STATUS_WIDTH: f32 = 96.0;
-    /// The columns of a Devices row: the latency of the last answer and the status word, wide
-    /// enough for `1200 ms` and `Server mode off`.
+    /// The columns of a Devices row: the model, the latency of the last answer, and the status
+    /// word, wide enough for `Parakeet v3 Q4`, `1200 ms`, and `Server mode off`.
+    pub const DEVICE_MODEL_WIDTH: f32 = 112.0;
     pub const DEVICE_LATENCY_WIDTH: f32 = 56.0;
     pub const DEVICE_STATUS_WIDTH: f32 = 100.0;
     /// The QR code a phone scans to pair, about this many pixels on a side.

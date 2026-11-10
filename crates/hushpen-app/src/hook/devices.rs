@@ -16,7 +16,7 @@ pub fn attach(cx: &mut App, devices: Entity<Devices>) {
     let _ = register_action(
         cx,
         "devices-action",
-        "Run a Devices intent. Args: {op:enabled|noLocal|move|add|method|close|rename|forget|unload|discover|offer|ssh|pair|probe, ...}.",
+        "Run a Devices intent. Args: {op:enabled|noLocal|move|add|method|close|rename|forget|unload|discover|offer|ssh|pair|probe, ...}; move takes kind, id, and up or index.",
         move |cx, args| {
             let text = |key| {
                 args.get(key)
@@ -31,16 +31,28 @@ pub fn attach(cx: &mut App, devices: Entity<Devices>) {
                     "noLocal" => {
                         state.set_no_local(args["value"].as_bool().ok_or("Missing value.")?, cx)?
                     }
-                    "move" => state.move_device(
-                        match text("kind")? {
+                    "move" => {
+                        let kind = match text("kind")? {
                             "speech" => ModelKind::Speech,
                             "cleanup" => ModelKind::Cleanup,
                             _ => return Err("Unknown model kind.".into()),
-                        },
-                        text("id")?,
-                        args["up"].as_bool().ok_or("Missing up.")?,
-                        cx,
-                    )?,
+                        };
+                        // An index places the device as a drag does; otherwise up moves it one.
+                        match args["index"].as_u64() {
+                            Some(index) => state.move_device_to(
+                                kind,
+                                text("id")?,
+                                usize::try_from(index).map_err(|_| "Invalid index.")?,
+                                cx,
+                            )?,
+                            None => state.move_device(
+                                kind,
+                                text("id")?,
+                                args["up"].as_bool().ok_or("Missing up.")?,
+                                cx,
+                            )?,
+                        }
+                    }
                     "add" => state.open_add(cx),
                     "method" => state.select_method(
                         match text("method")? {
