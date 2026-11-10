@@ -7,6 +7,10 @@
   const fallback = windows => GH + (windows ? '' : '/latest');
   const subscribe = fn => { listeners.push(fn); if (data) fn(data); };
   window.HushpenReleases = { size, fallback, subscribe };
+  const root = document.documentElement;
+  const settle = () => { root.dataset.rel = 'ready'; };
+  root.dataset.rel = 'wait';
+  setTimeout(settle, 1500);
   subscribe(value => {
     document.querySelectorAll('[data-asset]').forEach(el => {
       const release = el.dataset.asset.startsWith('windows-') ? value.windows : value.stable;
@@ -33,7 +37,8 @@
         Object.assign(Alpine.store('releases'), value);
         data = Alpine.store('releases');
         listeners.forEach(fn => fn(data));
+        settle();
       })
-      .catch(() => {}); // HTML keeps working release-page links when the API is unavailable.
+      .catch(settle); // HTML keeps working release-page links when the API is unavailable.
   });
 })();
