@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|remote|devices|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|features|updates|update-session|self-update|core|full>
+# usage (inside a slot, through with-env.sh): run-suite.sh <smoke|env|mic|models|home|tail|hotkey|insert|guards|paste-last|engine|remote|android|devices|cleanup|ai-cleanup|endpoint|undo|command|dictionary|history|import|audio|export|flowbar|tray|shortcuts|onboarding|settings|features|updates|update-session|self-update|core|full>
 # Runs the suite scripts in order and writes result.json. core and full are smoke plus env today;
 # a feature that adds end-to-end checks adds a script to suites/ and to the lists below.
 case "${1:-}" in
@@ -15,6 +15,7 @@ case "${1:-}" in
   paste-last) scripts=(paste-last) ;;
   engine) scripts=(engine) ;;
   remote) scripts=(remote) ;;
+  android) scripts=(android) ;;
   devices) scripts=(devices) ;;
   cleanup) scripts=(cleanup) ;;
   ai-cleanup) scripts=(ai-cleanup) ;;
