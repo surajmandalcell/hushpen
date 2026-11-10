@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **Use models on paired devices.** Devices gives speech and cleanup separate
+  fallback orders, encrypted QR pairing, Tailscale addresses, and automatic
+  Linux host setup over SSH. Remote use starts off.
+- **Phone apps and keyboards.** Android adds a keyboard with local dictation
+  and background Server mode. The iOS keyboard opens the app to dictate and
+  inserts its result after you return. iOS Server mode requires the app to
+  stay open. Phone screens use basic placeholders; visual design is pending.
+- **Phone cleanup.** Supported phones can use their system model for optional
+  text cleanup. Android cleanup requires the app in front. Failed or
+  unavailable cleanup keeps the rule-cleaned text.
+- **Release packages.** Release automation includes Linux x64 and arm64 host
+  archives and a signed Android APK in `SHA256SUMS`. The iOS project has a
+  Release archive configuration; App Store and TestFlight upload remain
+  separate owner steps.
+
 ## 2.4.0
 
 ### New
