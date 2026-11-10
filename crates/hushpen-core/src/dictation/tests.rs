@@ -1369,3 +1369,62 @@ fn esc_while_the_model_edits_stops_it_and_pastes_nothing() {
     assert!(effects.contains(&Effect::StopLlm { session: 1 }));
     assert!(handle(&mut m, cleaned(1), LATER).is_empty());
 }
+
+#[test]
+fn next_deadline_covers_every_state_without_idle_polling() {
+    for state in State::ALL {
+        let m = reach(state);
+        let expected = match state {
+            State::Listening => Some(300_000),
+            State::Done => Some(LATER + Config::default().done_ms),
+            State::Cancelled => Some(LATER + Config::default().cancelled_ms),
+            State::Failed => Some(LATER + Config::default().failed_ms),
+            _ => None,
+        };
+        assert_eq!(m.next_deadline_ms(), expected, "{state:?}");
+    }
+}
+
+#[test]
+fn one_shot_deadlines_preserve_warning_stop_and_recovery_expiry() {
+    let mut m = machine();
+    hold(&mut m);
+    assert_eq!(m.next_deadline_ms(), Some(300_000));
+    assert_eq!(
+        handle(&mut m, AppEvent::Tick, 300_000),
+        vec![Effect::MaxDurationWarning { seconds_left: 60 }]
+    );
+    assert_eq!(m.next_deadline_ms(), Some(360_000));
+    assert_eq!(handle(&mut m, AppEvent::Tick, 360_000), stop_effects());
+    assert_eq!(m.next_deadline_ms(), None);
+
+    let mut m = machine();
+    hold(&mut m);
+    handle(&mut m, AppEvent::Esc, LATER);
+    assert_eq!(m.next_deadline_ms(), Some(LATER + 500));
+    handle(&mut m, AppEvent::Tick, LATER + 500);
+    assert_eq!(m.state(), State::Idle);
+    assert_eq!(m.next_deadline_ms(), Some(LATER + RECOVER_MS));
+    assert_eq!(
+        handle(&mut m, AppEvent::Tick, LATER + RECOVER_MS),
+        vec![Effect::DropAudio { session: 1 }]
+    );
+    assert_eq!(m.next_deadline_ms(), None);
+}
+
+#[test]
+fn short_recording_and_overlapping_workers_do_not_add_polling_deadlines() {
+    let mut m = DictationMachine::new(Config::with_max_minutes(1));
+    handle(&mut m, AppEvent::HoldDown, 100);
+    assert_eq!(m.next_deadline_ms(), Some(100));
+    handle(&mut m, AppEvent::Tick, 100);
+    assert_eq!(m.next_deadline_ms(), Some(60_100));
+    handle(&mut m, AppEvent::HoldUp, LATER);
+    assert_eq!(m.next_deadline_ms(), None);
+    handle(&mut m, AppEvent::HoldDown, 2_000);
+    handle(&mut m, AppEvent::Tick, 2_000);
+    assert_eq!(m.next_deadline_ms(), Some(62_000));
+    handle(&mut m, AppEvent::HoldUp, 3_000);
+    assert_eq!(m.next_deadline_ms(), None);
+    assert_eq!(m.behind(), 1);
+}
