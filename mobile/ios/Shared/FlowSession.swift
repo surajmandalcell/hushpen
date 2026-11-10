@@ -7,7 +7,7 @@ enum FlowSessionState: String, Codable {
 
 struct FlowSession: Codable, Equatable {
     let id: UUID
-    let documentIdentifier: UUID
+    var documentIdentifier: UUID
     let context: String
     let createdAt: Date
     let expiresAt: Date
@@ -160,6 +160,19 @@ final class FlowSessionStore: @unchecked Sendable {
             session.text = nil
             stored = session
             return text
+        }
+    }
+
+    func confirmDestination(
+        id: UUID, documentIdentifier: UUID, context: String, now: Date = Date()
+    ) throws {
+        try transaction { stored in
+            guard var session = stored, session.id == id, Self.isLive(session, now: now)
+            else { throw FlowSessionError.stale }
+            guard session.state == .completed else { throw FlowSessionError.wrongState }
+            guard session.context == context else { throw FlowSessionError.stale }
+            session.documentIdentifier = documentIdentifier
+            stored = session
         }
     }
 

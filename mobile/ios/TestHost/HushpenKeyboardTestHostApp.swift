@@ -10,7 +10,6 @@ struct HushpenKeyboardTestHostApp: App {
 struct PlaceholderEditor: View {
     @State private var first = ""
     @State private var second = ""
-    @State private var password = ""
 
     var body: some View {
         Form {
@@ -18,8 +17,6 @@ struct PlaceholderEditor: View {
                 .accessibilityIdentifier("editor.first")
             TextField("Second field", text: $second)
                 .accessibilityIdentifier("editor.second")
-            SecureField("Password", text: $password)
-                .accessibilityIdentifier("editor.password")
             Text(first).accessibilityIdentifier("editor.first.value")
             Text(second).accessibilityIdentifier("editor.second.value")
         }

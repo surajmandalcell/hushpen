@@ -188,7 +188,7 @@ final class DictationModel {
             guard let flow, !copy else { throw MobileError.Failed(detail: "This keyboard session cannot receive text.") }
             try store.complete(id: flow.id, text: text)
             result = text
-            notice = "Return to your previous app to insert the text."
+            notice = "Return to your previous app and tap Insert dictation."
             send(.inserted(session: session))
             self.flow = nil
             timer?.cancel()
