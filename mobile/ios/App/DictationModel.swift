@@ -94,7 +94,7 @@ final class DictationModel {
                 catch { return }
                 guard let self, self.flow != nil else { return }
                 self.send(.tick)
-                if self.state == "cancelled" && !self.recoverable { self.abort(); return }
+                if !self.busy && !self.recoverable { self.abort(); return }
             }
             if !Task.isCancelled {
                 self?.notice = "This dictation session expired. Start again from the keyboard."
@@ -106,11 +106,17 @@ final class DictationModel {
     private func send(_ event: DictationEvent) {
         guard flow != nil else { return }
         do {
-            for effect in try machine.handle(event: event, nowMs: now()) { try execute(effect) }
+            let time = now()
+            if case .recover = event, machine.snapshot(nowMs: time).recoverableSession != nil, let flow {
+                try store.resume(id: flow.id)
+            }
+            for effect in try machine.handle(event: event, nowMs: time) { try execute(effect) }
             let snapshot = machine.snapshot(nowMs: now())
+            let cancelled = snapshot.state == "cancelled" && state != "cancelled"
             state = snapshot.state
             recoverable = snapshot.recoverableSession != nil
             busy = ["listening", "transcribing", "cleaning"].contains(state)
+            if cancelled, let flow { try store.cancel(id: flow.id) }
         } catch {
             notice = phoneError(error)
             abort()

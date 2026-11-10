@@ -102,6 +102,16 @@ final class FlowSessionStore: @unchecked Sendable {
         }
     }
 
+    func resume(id: UUID, now: Date = Date()) throws {
+        try transaction { stored in
+            guard var session = stored, session.id == id, Self.isLive(session, now: now)
+            else { throw FlowSessionError.stale }
+            guard session.state == .cancelled else { throw FlowSessionError.wrongState }
+            session.state = .recording
+            stored = session
+        }
+    }
+
     func cancel(id: UUID, now: Date = Date()) throws {
         try transaction { stored in
             guard var session = stored, session.id == id, Self.isLive(session, now: now)
