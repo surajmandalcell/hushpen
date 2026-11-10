@@ -2,6 +2,8 @@
 
 #[cfg(test)]
 mod cancel_tests;
+#[cfg(test)]
+mod idle_tests;
 mod session;
 pub use session::serve_session;
 
