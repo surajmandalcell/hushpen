@@ -35,8 +35,8 @@
       const li = document.createElement('li'), link = document.createElement('a');
       link.href = fallback(true); link.textContent = 'Other downloads'; li.append(link); el.append(li);
     });
-    const arch = system.arch || 'x64', download = document.querySelector('[data-linux-download]');
-    if (download) download.href = releases?.stable.assets[`linux-${arch}-appimage`]?.url || fallback();
+    const arch = system.arch || 'x64';
+    document.querySelectorAll('[data-linux-download]').forEach(download => { download.href = releases?.stable.assets[`linux-${arch}-appimage`]?.url || fallback(); });
     const toast = document.querySelector('.dtoast');
     if (toast) {
       toast.querySelector('b').textContent = `Downloading Hushpen${asset ? ' ' + release.version : ''}`;
