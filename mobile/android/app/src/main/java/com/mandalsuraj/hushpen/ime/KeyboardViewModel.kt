@@ -48,6 +48,7 @@ class KeyboardViewModel(
     val inputOpen: Boolean get() = insert != null
     private var activeCapture: ULong? = null
     private var stopping: Job? = null
+    private var autoShifted = false
 
     init {
         viewModelScope.launch {
@@ -82,6 +83,7 @@ class KeyboardViewModel(
     fun openInput(canDictate: Boolean, deliver: (String) -> Boolean) {
         closeInput()
         insert = deliver
+        autoShifted = false
         mutableState.value = KeyboardState(canDictate = canDictate)
     }
 
@@ -111,7 +113,20 @@ class KeyboardViewModel(
     fun recover() = send(DictationEvent.Recover)
 
     fun shift() {
+        autoShifted = false
         mutableState.value = mutableState.value.copy(shift = !state.value.shift)
+    }
+
+    /** Follows the editor's capitalization at the cursor, but never undoes a shift the user set. */
+    fun autoShift(on: Boolean) {
+        val current = state.value
+        if (on && !current.shift) {
+            autoShifted = true
+            mutableState.value = current.copy(shift = true)
+        } else if (!on && current.shift && autoShifted) {
+            autoShifted = false
+            mutableState.value = current.copy(shift = false)
+        }
     }
 
     fun symbols() {
@@ -119,6 +134,7 @@ class KeyboardViewModel(
     }
 
     fun typed() {
+        autoShifted = false
         mutableState.value = mutableState.value.copy(shift = false, canUndo = false)
     }
 

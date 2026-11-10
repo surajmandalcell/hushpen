@@ -93,7 +93,7 @@ class KeyboardSmokeTest {
             }
             click("Backspace")
             expectText(scenario, "hello ")
-            click("Enter")
+            click("Done")
             waitFor("Done editor action") {
                 var action: Int? = null
                 scenario.onActivity { action = it.editorAction }
@@ -105,7 +105,7 @@ class KeyboardSmokeTest {
                 activity.getSystemService(InputMethodManager::class.java).restartInput(activity.editor)
             }
             instrumentation.waitForIdleSync()
-            click("Enter")
+            click("Send")
             waitFor("custom Send editor action") {
                 var action: Int? = null
                 scenario.onActivity { action = it.editorAction }
@@ -129,7 +129,7 @@ class KeyboardSmokeTest {
             click("Mic")
             val speechState = reveal("Dictation: listening")
             assertTrue("The listening state must be visible.", speechState.isVisibleToUser)
-            click("Mic")
+            click("Finish")
             var transcript = ""
             // Rust allows 120 seconds to load and 300 seconds to transcribe a cold job.
             waitFor("real speech insertion", 450_000) {
@@ -157,7 +157,7 @@ class KeyboardSmokeTest {
             expectText(scenario, "")
             click("Mic")
             assertTrue("The second listening state must be visible.", reveal("Dictation: listening").isVisibleToUser)
-            click("Mic")
+            click("Finish")
             scenario.onActivity { activity -> activity.otherEditor.requestFocus() }
             waitFor("new editor") {
                 var focused = false
@@ -215,7 +215,7 @@ class KeyboardSmokeTest {
 
     private fun click(label: String) {
         val node = reveal(label)
-        assertTrue("The $label action must be clickable.", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue("The $label action must be clickable.\n${failureSnapshot()}", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
         instrumentation.waitForIdleSync()
         instrumentation.uiAutomation.windows.forEach { it.root }
     }

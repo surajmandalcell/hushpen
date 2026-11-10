@@ -1,28 +1,12 @@
 package com.mandalsuraj.hushpen.ime
 
-import android.annotation.SuppressLint
-import android.content.Context
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
-import android.os.Handler
-import android.os.Looper
 import android.text.InputType
-import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.widget.Button
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -36,7 +20,9 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.mandalsuraj.hushpen.MainActivity
 import com.mandalsuraj.hushpen.PhoneApplication
+import com.mandalsuraj.hushpen.ui.HushpenTheme
 
 class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private val life = LifecycleRegistry(this)
@@ -48,6 +34,7 @@ class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreO
     private var receipt: InsertReceipt? = null
     private var selectionStart = -1
     private var selectionEnd = -1
+    private val enterKey = mutableStateOf(EnterKey.Return)
 
     override fun onCreate() {
         super.onCreate()
@@ -68,7 +55,8 @@ class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreO
             setViewTreeSavedStateRegistryOwner(this@HushpenInputMethod)
         }
         return ComposeView(this).apply {
-            setContent { PlaceholderKeyboard(model, ::type, ::backspace, ::enter, ::undo) }
+            val actions = KeyboardActions(::type, ::backspace, ::enter, ::undo, ::openApp)
+            setContent { HushpenTheme { HushpenKeyboard(model, enterKey.value, actions) } }
         }
     }
 
@@ -92,11 +80,13 @@ class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreO
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        enterKey.value = EnterKey.of(info)
         if (!model.inputOpen) {
             model.openInput(allowsDictation(info), ::insertDictation)
         }
         life.handleLifecycleEvent(Lifecycle.Event.ON_START)
         life.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        updateShift()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -119,6 +109,13 @@ class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreO
         selectionEnd = newSelEnd
         if (receipt?.let { newSelStart != it.end || newSelEnd != it.end } == true) receipt = null
         model.setUndo(receipt != null)
+        if (newSelStart == newSelEnd) updateShift()
+    }
+
+    private fun updateShift() {
+        val info = currentInputEditorInfo ?: return
+        val connection = currentInputConnection ?: return
+        model.autoShift(info.inputType != InputType.TYPE_NULL && connection.getCursorCapsMode(info.inputType) != 0)
     }
 
     private fun type(text: String) {
@@ -184,120 +181,14 @@ class HushpenInputMethod : InputMethodService(), LifecycleOwner, ViewModelStoreO
         model.setUndo(false)
     }
 
+    private fun openApp() {
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        requestHideSelf(0)
+    }
+
     override fun onDestroy() {
         viewModelStore.clear()
         life.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun PlaceholderKeyboard(
-    model: KeyboardViewModel,
-    type: (String) -> Unit,
-    backspace: () -> Unit,
-    enter: () -> Unit,
-    undo: () -> Unit,
-) {
-    val state by model.state.collectAsState()
-    val haptics by model.hapticsEnabled.collectAsState()
-    Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Dictation: ${state.phase}")
-        if (state.notice.isNotEmpty()) Text(state.notice)
-        FlowRow {
-            val keys = if (state.symbols) "1234567890@#%&*()-+/:;!?.,'\"" else "qwertyuiopasdfghjklzxcvbnm"
-            for (key in keys) {
-                val text = if (state.shift) key.uppercase() else key.toString()
-                KeyboardButton(text, haptics = haptics, click = { type(text) })
-            }
-            KeyboardButton("Shift", haptics = haptics, click = model::shift)
-            KeyboardButton(if (state.symbols) "Letters" else "Symbols", haptics = haptics, click = model::symbols)
-            KeyboardButton("Space", haptics = haptics, click = { type(" ") })
-            KeyboardButton("Backspace", haptics = haptics, click = backspace, repeat = true)
-            KeyboardButton("Enter", haptics = haptics, click = enter)
-            KeyboardButton("Mic", haptics = haptics, click = model::toggle, hold = model::holdDown, release = model::holdUp)
-            KeyboardButton("Cancel", haptics = haptics, click = model::cancel)
-            KeyboardButton("Recover", haptics = haptics, click = model::recover)
-            KeyboardButton("Undo", haptics = haptics, enabled = state.canUndo, click = undo)
-        }
-    }
-}
-
-@Composable
-private fun KeyboardButton(
-    label: String,
-    enabled: Boolean = true,
-    haptics: Boolean,
-    click: () -> Unit,
-    repeat: Boolean = false,
-    hold: (() -> Unit)? = null,
-    release: (() -> Unit)? = null,
-) {
-    AndroidView(factory = { context -> KeyboardActionButton(context) }, update = { button ->
-        button.text = label
-        button.isEnabled = enabled
-        button.isHapticFeedbackEnabled = haptics
-        button.click = click
-        button.repeat = repeat
-        button.hold = hold
-        button.release = release
-    })
-}
-
-@SuppressLint("AppCompatCustomView", "ClickableViewAccessibility")
-private class KeyboardActionButton(context: Context) : Button(context) {
-    var click: () -> Unit = {}
-    var repeat: Boolean = false
-    var hold: (() -> Unit)? = null
-    var release: (() -> Unit)? = null
-    private val main = Handler(Looper.getMainLooper())
-    private var held = false
-    private val repeated = object : Runnable {
-        override fun run() {
-            held = true
-            performClick()
-            main.postDelayed(this, 60)
-        }
-    }
-
-    init {
-        setOnClickListener {
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            click()
-        }
-        setOnLongClickListener {
-            if (repeat) {
-                main.post(repeated)
-                true
-            } else if (hold != null) {
-                held = true
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                hold?.invoke()
-                true
-            } else false
-        }
-        setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> held = false
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    main.removeCallbacks(repeated)
-                    if (held) {
-                        release?.invoke()
-                        isPressed = false
-                        held = false
-                        return@setOnTouchListener true
-                    }
-                }
-            }
-            false
-        }
-    }
-
-    override fun onDetachedFromWindow() {
-        main.removeCallbacks(repeated)
-        if (held) release?.invoke()
-        held = false
-        super.onDetachedFromWindow()
     }
 }
