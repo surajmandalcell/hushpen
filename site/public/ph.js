@@ -57,6 +57,8 @@
   const sbA = '<div class="pk-sb"><span>12:30</span><i class="pk-cam"></i><span class="r">' + SB.wifi + SB.sig + SB.bat + '</span></div>';
   const sbI = '<div class="pk-sb"><span>9:41</span><span class="r">' + SB.sig + SB.wifi + SB.bat + '</span></div>' + `<i class="pk-isl">${wave(9, '--h:14px;--w:2.5px;--g:2px')}<b data-t>0:00</b></i>`;
 
+  const sbN = '<div class="pk-sb"><span>9:41</span><span class="r">' + SB.sig + SB.wifi + SB.bat + '</span></div><i class="pk-notch"></i>';
+
   const bubbles = '<span class="pk-day">Today · 12:24</span><div class="pk-bb in">Are we still on for Thursday?</div><div class="pk-bb out">Yes, see you at 2.</div><div class="pk-bb in">Can we move the sync to Friday?</div>';
   const field = (ph, inner) => `<div class="pk-fd"><span class="pk-ph">${ph}</span><span class="pk-ft"><span class="pk-tx"></span><i class="pk-caret"></i></span>${inner}</div>`;
 
@@ -108,7 +110,8 @@
       <div class="pk-lc">${ic('back', 22)}<div><b>Go back and keep talking</b><span>Hushpen listens in the background and shows it in the Dynamic Island. Tap the check mark in the keyboard to insert.</span></div></div>
       <div class="pk-lh">Swipe right on the bar below to go back.</div></div>` : ''}<i class="pk-hi"></i>`);
   const irow = (i, t, v, tr = '') => `<div class="pk-r">${ic(i, 22)}<div class="tt"><b>${t}</b></div>${v ? `<span class="v">${v}</span>` : ''}${tr}</div>`;
-  const iosHome = () => frame('ios', `${sbI}<div class="pk-ihome"><div class="pk-ilt">Hushpen</div><div class="pk-ih">Setup</div>
+  // An iPhone 13 Pro has a notch, not the Dynamic Island, so the paired phone in the Devices scene passes notch
+  const iosHome = notch => frame(notch ? 'ios pk-n' : 'ios', `${notch ? sbN : sbI}<div class="pk-ihome"><div class="pk-ilt">Hushpen</div><div class="pk-ih">Setup</div>
     <div class="pk-ig">${irow('kbd', 'Keyboard', 'Last used today')}${irow('mic', 'Microphone', 'Allowed')}${irow('lines', 'Speech Model', 'Parakeet v3 Q4')}</div>
     <div class="pk-ig" style="margin-top:22px">${irow('radio', 'Server Mode', '', '<span class="pk-isw"></span>')}</div>
     <div class="pk-ift">Keep Hushpen open and plugged in. Your computer can then use this phone's models.</div></div>
@@ -333,7 +336,7 @@
     })();
   };
 
-  window.PK = { ic, IC, wave, frame, sbA, center, ctl, watch, androidHome, androidHomeCtl, SB };
+  window.PK = { ic, IC, wave, frame, sbA, center, ctl, watch, androidHome, androidHomeCtl, iosHome, iosHomeCtl, SB };
   document.querySelectorAll('[data-phone]').forEach(h => section(h, h.dataset.phone));
   document.querySelectorAll('[data-kbtile]').forEach(tile);
 })();
