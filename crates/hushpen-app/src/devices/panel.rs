@@ -9,12 +9,14 @@ use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontFeatures, InteractiveElement,
-    IntoElement, ParentElement, Render, Rgba, Role, SharedString, StatefulInteractiveElement,
-    Styled, Window, div, px, svg,
+    AnyElement, App, AppContext as _, Bounds, Context, Entity, FontFeatures, InteractiveElement,
+    IntoElement, ParentElement, Pixels, Point, Render, Rgba, Role, SharedString,
+    StatefulInteractiveElement, Styled, Window, canvas, div, px, svg,
 };
 use hushpen_core::remote::{DeviceKind, ModelKind, Route, Status, THIS_COMPUTER};
 use hushpen_store::settings::RemoteDevice;
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// How much of the page under the switch shows while models on other devices are off.
@@ -275,6 +277,8 @@ fn route_row(
             .dragging
             .as_ref()
             .is_some_and(|(from, dragged)| *from == kind && dragged == id);
+    // Where the last frame drew the row, for a release that no earlier move reached the row.
+    let area = Rc::new(Cell::new(Bounds::<Pixels>::default()));
     let mut element = ui::row(palette)
         .id(hook::id("devices", &row))
         .test_support()
@@ -295,6 +299,19 @@ fn route_row(
                 .flex_none()
                 .gap(px(size::MODEL_ICON_GAP))
                 .children(arrows),
+        )
+        .child(
+            canvas(
+                {
+                    let area = Rc::clone(&area);
+                    move |bounds, _, _| area.set(bounds)
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full(),
         );
     if dragged {
         element = element.opacity(DRAGGED_OPACITY);
@@ -303,16 +320,28 @@ fn route_row(
         let (target, over) = (devices.clone(), id.to_owned());
         // Every row of every route hears each move of a drag, so a row acts only on a drag of its
         // own route that is over it.
-        element = element.on_drag_move::<RouteDrag>(move |event, _, cx| {
-            let pointer = event.event.position;
-            let drag = event.drag(cx).clone();
-            if drag.kind != kind || drag.id == over || !event.bounds.contains(&pointer) {
-                return;
+        let place = Rc::new(
+            move |drag: &RouteDrag, pointer: Point<Pixels>, row: Bounds<Pixels>, cx: &mut App| {
+                if drag.kind != kind || drag.id == over || !row.contains(&pointer) {
+                    return;
+                }
+                let below = pointer.y > row.center().y;
+                target.update(cx, |state, cx| {
+                    let _ = state.drag_over(kind, &drag.id, &over, below, cx);
+                });
+            },
+        );
+        element = element.on_drag_move::<RouteDrag>({
+            let place = Rc::clone(&place);
+            move |event, _, cx| {
+                let drag = event.drag(cx).clone();
+                place(&drag, event.event.position, event.bounds, cx);
             }
-            let below = pointer.y > event.bounds.center().y;
-            target.update(cx, |state, cx| {
-                let _ = state.drag_over(kind, &drag.id, &over, below, cx);
-            });
+        });
+        // A pointer that jumps from the pick-up to the drop reports no move over the target
+        // after the drag starts, so the release counts as the last move.
+        element = element.on_drop::<RouteDrag>(move |drag, window, cx| {
+            place(drag, window.mouse_position(), area.get(), cx);
         });
     }
     if live && movable {
