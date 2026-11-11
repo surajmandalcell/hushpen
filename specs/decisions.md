@@ -578,10 +578,3 @@ new decision, add it here in the same change (D-21).
   iOS advertises through native Bonjour. Other platforms keep `mdns-sd`.
   Native Bonjour avoids the restricted entitlement required for raw multicast;
   see [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
-
-## History notes
-
-ASR Pro was the name of the Electron app (1.x, and a 2.0 mission that the
-Rust rewrite replaced). Its decisions D-01 to D-40 covered Electron, IPC,
-the renderer, Windows, and the old data folders. They no longer apply and
-stay in git history.

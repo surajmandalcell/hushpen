@@ -206,7 +206,7 @@ The macOS menu bar item is the glyph alone, with no name beside it: a solid quil
 
 ## Colors
 
-All colors are neutral grays plus one accent. Tokens come in a Dark and a Light set.
+All colors are neutral grays plus one accent.
 
 - **Content (`#1E1E1E` Dark, `#F5F5F5` Light):** the opaque content pane and the onboarding page.
 - **Sidebar (`#2B2B2D` Dark, `#E8E8EA` Light):** the solid sidebar on Linux without a compositor. On macOS the sidebar has no fill: the native sidebar material shows through.
@@ -231,8 +231,6 @@ All colors are neutral grays plus one accent. Tokens come in a Dark and a Light 
 Do not add colored icon tiles, section accents, or tinted panels.
 
 ## Typography
-
-macOS uses `.SystemUIFont` (SF Pro). Linux embeds Inter.
 
 Use the typography tokens above: Title for onboarding and About, Toolbar title in chrome, Heading above Settings groups, Body for rows, Button for controls, and Secondary for descriptions and footers. Headings and secondary text use the secondary label color.
 
@@ -284,8 +282,6 @@ Every animation uses one cubic ease-out curve. It never overshoots or bounces.
 - An icon button with two states, such as Play and Pause, cross-fades its icons: the old icon fades out and shrinks, and the new one fades in and grows from a quarter of its size into place.
 
 An animation plays only when its state changes: a new view, a menu that opens, a switch that turns on. A redraw of the same state never plays it again. The new state is there at once for the keyboard and the accessibility tree, so a switch reads "on" before its knob arrives. Text moves and fades as one block; its layout never animates. With Reduce Motion every change shows at once. The pixel tests turn on Reduce Motion, so every baseline is a settled frame.
-
-The flow bar has its own motion, described under Recording overlay.
 
 ## Components
 
