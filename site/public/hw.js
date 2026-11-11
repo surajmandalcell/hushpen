@@ -11,6 +11,10 @@
   if (!st || !window.FlowBar || !list.length) return;
 
   const EASE = 'cubic-bezier(.22,1,.36,1)';
+  const RT_ICON = {
+    phone: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+    server: '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/>',
+  };
   const calm = FlowBar.calm;
   // The desktop's own size in points; the camera scales and moves it inside the stage
   const W = 1280, H = 720;
@@ -180,7 +184,11 @@
     }
     await beat(240);
     await press('transcribing');
-    if (spec.route && rt) { rt.querySelector('span').textContent = spec.route; rt.classList.add('on'); }
+    if (spec.route && rt) {
+      rt.querySelector('svg').innerHTML = RT_ICON[spec.routeIcon || 'phone'];
+      rt.querySelector('span').textContent = spec.route;
+      rt.classList.add('on');
+    }
     const ws = [...field.querySelectorAll('.w')];
     for (const i of [...gone].sort((a, b) => a - b)) {
       if (ws[i]) ws[i].classList.add('x');

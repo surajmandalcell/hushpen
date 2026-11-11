@@ -72,6 +72,8 @@ a.pf-c:hover .pf-b { background: #2C2C2E; }
 .pk-ios.is-la .pk-sb > span.r { transform: translateX(10px); }
 .pk-isl.la .pk-wv, .pk-isl.la b { opacity: 1; transition-delay: .18s; }
 .pk-ios .pk-sb:has(~ .pk-isl.la) .r svg:not(:last-child), .pk-ios.is-la .pk-sb .r svg:not(:last-child) { display: none; }
+.pk-notch { position: absolute; left: 50%; top: 0; z-index: 9; width: 150px; height: 30px; margin-left: -75px; border-radius: 0 0 20px 20px; background: #000; }
+.pk-n .pk-sb > span { top: 7px; }
 .pk-hi { position: absolute; left: 50%; bottom: 8px; z-index: 8; width: 130px; height: 5px; margin-left: -65px; border-radius: 3px; background: #000; }
 .pk-gn { position: absolute; left: 50%; bottom: 8px; z-index: 8; width: 110px; height: 4px; margin-left: -55px; border-radius: 3px; background: #1B1B21; opacity: .7; }
 
