@@ -151,7 +151,8 @@ Local flow cleanup preserves models owned by Server mode.
 
 iOS opens its audio session only for recording. ActivityKit lifecycle logic
 tracks the active flow and ends at completion, cancellation, failure, or expiry.
-A designer-supplied ActivityConfiguration widget is still needed to display it.
+The embedded ActivityConfiguration widget defines its display. Display on a
+physical phone remains unverified.
 A [Live Activity](https://developer.apple.com/documentation/ActivityKit/displaying-live-data-with-live-activities)
 does not grant background execution. Real background recording uses the audio
 mode; processing uses a finite background task. No silent audio
