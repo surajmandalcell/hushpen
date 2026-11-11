@@ -128,7 +128,7 @@ private struct ListeningPill: View {
             HStack(spacing: 6) {
                 Image(systemName: "waveform")
                     .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing, options: .repeating, isActive: !reduceMotion)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.white)
                 Text("Listening in Hushpen")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white)
@@ -165,7 +165,7 @@ private struct WorkingPill: View {
         HStack(spacing: 6) {
             Image(systemName: "waveform")
                 .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.white)
             Text("Finishing in Hushpen")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white)
