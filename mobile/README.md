@@ -117,8 +117,15 @@ xcodebuild test-without-building -project mobile/ios/Hushpen.xcodeproj \
   -scheme Hushpen -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
   -derivedDataPath "$AGENT_DATA_DIR/hushpen/ios-build/DerivedData" \
   -parallel-testing-enabled NO -test-timeouts-enabled YES \
+  -collect-test-diagnostics never \
   -default-test-execution-time-allowance 240 CODE_SIGN_IDENTITY=-
 ```
+
+For prepared products, replace `-project`, `-scheme`, and `-derivedDataPath`
+with `-xctestrun <products.xctestrun>`. Boot the owned simulator with
+`xcrun simctl boot <simulator-id>`; no Simulator window is needed.
+Disabling verbose diagnostics avoids a stalled system diagnostic collection
+after a failed test. Test assertions and result bundles remain enabled.
 
 The WAV hook exists only in debug builds. The extension links no Rust model
 engine and never records. It starts a flow through the app's session URL.
