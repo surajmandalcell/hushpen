@@ -304,6 +304,118 @@ fn a_dragged_row_moves_as_it_passes_the_middle_of_another_and_local_stays_last(
     assert!(!cx.update(|cx| cx.has_active_drag()), "the drag ends");
 }
 
+/// A pointer that reports only where a drag starts and where it ends, as assistive tools and some
+/// drivers do: the first move that leaves the start picks the row up, and nothing moves after it.
+#[gpui_kit::test]
+fn a_drag_that_jumps_straight_to_its_drop_places_the_row_on_release(cx: &mut TestAppContext) {
+    use gpui_kit::{
+        InputEvent as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, point, px,
+    };
+    let view = screen(cx, &[("android", Os::Android), ("ios", Os::Ios)]);
+    let routes = || view.storage.settings.remote().routes.speech.join(",");
+    assert_eq!(routes(), "ios,android,this-computer");
+    cx.update_window(view.handle, |_, window, cx| {
+        let from = window.find("devices.speech.ios").bounds();
+        let over = window.find("devices.speech.android").bounds();
+        let start = from.center();
+        let end = point(over.center().x, over.bottom() - px(6.0));
+        let moved = |position, pressed_button| {
+            MouseMoveEvent {
+                position,
+                pressed_button,
+                modifiers: Default::default(),
+            }
+            .to_platform_input()
+        };
+        window.dispatch_event(moved(start, None), cx);
+        window.dispatch_event(
+            MouseDownEvent {
+                button: MouseButton::Left,
+                position: start,
+                modifiers: Default::default(),
+                click_count: 1,
+                first_mouse: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+        window.dispatch_event(moved(start, Some(MouseButton::Left)), cx);
+        window.dispatch_event(moved(end, Some(MouseButton::Left)), cx);
+        window.render_frame(cx);
+        window.dispatch_event(
+            MouseUpEvent {
+                button: MouseButton::Left,
+                position: end,
+                modifiers: Default::default(),
+                click_count: 1,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    })
+    .unwrap();
+    frame(cx, &view);
+    assert_eq!(routes(), "android,ios,this-computer");
+    assert!(!cx.update(|cx| cx.has_active_drag()), "the drag ends");
+}
+
+#[gpui_kit::test]
+fn a_release_in_the_near_half_of_the_next_row_leaves_the_order(cx: &mut TestAppContext) {
+    use gpui_kit::{
+        InputEvent as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, point, px,
+    };
+    let view = screen(cx, &[("android", Os::Android), ("ios", Os::Ios)]);
+    cx.update_window(view.handle, |_, window, cx| {
+        let from = window.find("devices.speech.ios").bounds();
+        let over = window.find("devices.speech.android").bounds();
+        let start = from.center();
+        let end = point(over.center().x, over.top() + px(6.0));
+        let moved = |position, pressed_button| {
+            MouseMoveEvent {
+                position,
+                pressed_button,
+                modifiers: Default::default(),
+            }
+            .to_platform_input()
+        };
+        window.dispatch_event(moved(start, None), cx);
+        window.dispatch_event(
+            MouseDownEvent {
+                button: MouseButton::Left,
+                position: start,
+                modifiers: Default::default(),
+                click_count: 1,
+                first_mouse: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+        window.dispatch_event(moved(end, Some(MouseButton::Left)), cx);
+        window.render_frame(cx);
+        window.dispatch_event(
+            MouseUpEvent {
+                button: MouseButton::Left,
+                position: end,
+                modifiers: Default::default(),
+                click_count: 1,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+    })
+    .unwrap();
+    frame(cx, &view);
+    assert_eq!(
+        view.storage.settings.remote().routes.speech.join(","),
+        "ios,android,this-computer",
+        "a row that has not passed the middle of the next one stays where it was"
+    );
+}
+
 #[gpui_kit::test]
 fn route_rows_name_the_model_each_device_runs(cx: &mut TestAppContext) {
     let view = screen(cx, &[("android", Os::Android), ("ios", Os::Ios)]);
