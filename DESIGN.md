@@ -232,6 +232,8 @@ Do not add colored icon tiles, section accents, or tinted panels.
 
 ## Typography
 
+Linux embeds Inter.
+
 Use the typography tokens above: Title for onboarding and About, Toolbar title in chrome, Heading above Settings groups, Body for rows, Button for controls, and Secondary for descriptions and footers. Headings and secondary text use the secondary label color.
 
 ## Layout
