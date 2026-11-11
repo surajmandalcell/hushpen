@@ -12,7 +12,7 @@ final class FlowUITests: XCTestCase {
         phone.launchEnvironment["HUSHPEN_TEST_WAV"] = "documents"
         phone.launchEnvironment["HUSHPEN_TEST_MODEL"] = "ggml-base-q5_1.bin"
         phone.launch()
-        XCTAssertTrue(phone.tabBars.firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(phone.navigationBars["Hushpen"].waitForExistence(timeout: 30))
         enableKeyboard()
         phone.activate()
     }
@@ -129,9 +129,8 @@ final class FlowUITests: XCTestCase {
     }
 
     func testServerStopsWhenTheAppLeavesTheForeground() {
-        phone.tabBars.buttons["Server"].tap()
         phone.switches["server.toggle"].switches.firstMatch.tap()
-        waitForText("Running", id: "server.state", in: phone, timeout: 20)
+        waitForText("Serving", id: "server.state", in: phone, timeout: 20)
         XCTAssertEqual(element("server.port", in: phone).label, "7342")
         XCTAssertTrue(serverAcceptsConnections())
         attach(phone, name: "Server running")

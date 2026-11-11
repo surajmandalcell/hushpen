@@ -47,84 +47,13 @@ struct HushpenApp: App {
         WindowGroup {
             Group {
                 if let runtime = app.runtime {
-                    PlaceholderApp(runtime: runtime, incomingURL: app.incomingURL)
+                    RootView(runtime: runtime, incomingURL: app.incomingURL)
                 } else {
-                    List {
-                        Text(app.loading ? "Opening Hushpen" : "Hushpen")
-                        if !app.notice.isEmpty { Text(app.notice).accessibilityIdentifier("app.notice") }
-                        Button("Try again") { Task { await app.load() } }.disabled(app.loading)
-                    }
-                    .task { await app.load() }
+                    LaunchView(loading: app.loading, notice: app.notice) { Task { await app.load() } }
+                        .task { await app.load() }
                 }
             }
             .onOpenURL { app.incomingURL = $0 }
         }
-    }
-}
-
-struct PlaceholderApp: View {
-    let runtime: PhoneRuntime
-    let incomingURL: URL?
-    @Environment(\.scenePhase) private var phase
-    @State private var screen = "onboarding"
-    @State private var activeScreen: UIScreen?
-    @State private var dictationOpen = false
-
-    var body: some View {
-        TabView(selection: $screen) {
-            Tab(value: "onboarding") {
-                NavigationStack { PlaceholderOnboarding(onboarding: runtime.onboarding, models: runtime.models) }
-            } label: { Text("Onboarding").accessibilityIdentifier("screen.onboarding") }
-            Tab(value: "models") {
-                NavigationStack { PlaceholderModels(model: runtime.models) }
-            } label: { Text("Models").accessibilityIdentifier("screen.models") }
-            Tab(value: "server") {
-                NavigationStack { PlaceholderServer(model: runtime.server) }
-            } label: { Text("Server").accessibilityIdentifier("screen.server") }
-            Tab(value: "devices") {
-                NavigationStack { PlaceholderDevices(model: runtime.devices, openServer: { screen = "server" }) }
-            } label: { Text("Devices").accessibilityIdentifier("screen.devices") }
-            Tab(value: "settings") {
-                NavigationStack { PlaceholderSettings(model: runtime.settings, onboarding: runtime.onboarding) }
-            } label: { Text("Settings").accessibilityIdentifier("screen.settings") }
-        }
-        .background(SceneScreenReader { value in activeScreen = value; updateScene() })
-        .onAppear { runtime.server.setOpen(true); updateScene() }
-        .onChange(of: phase) { _, _ in updateScene() }
-        .task(id: incomingURL) {
-            guard let url = incomingURL else { return }
-            runtime.server.stop()
-            dictationOpen = true
-            await runtime.dictation.open(url: url)
-        }
-        .sheet(isPresented: $dictationOpen, onDismiss: { runtime.dictation.abort() }) {
-            NavigationStack { PlaceholderDictation(model: runtime.dictation) }
-        }
-    }
-
-    private func updateScene() {
-        runtime.server.setActive(phase == .active, screen: activeScreen)
-        runtime.onboarding.refresh()
-        runtime.dictation.setActive(phase == .active)
-        Task { await runtime.settings.refresh() }
-    }
-}
-
-private struct SceneScreenReader: UIViewRepresentable {
-    let changed: (UIScreen?) -> Void
-    func makeUIView(context: Context) -> SceneScreenView {
-        let view = SceneScreenView()
-        view.changed = changed
-        return view
-    }
-    func updateUIView(_ uiView: SceneScreenView, context: Context) {}
-}
-
-private final class SceneScreenView: UIView {
-    var changed: ((UIScreen?) -> Void)?
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        let screen = window?.windowScene?.screen
-        DispatchQueue.main.async { [weak self] in self?.changed?(screen) }
     }
 }
