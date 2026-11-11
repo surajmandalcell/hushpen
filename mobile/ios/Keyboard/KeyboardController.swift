@@ -10,6 +10,9 @@ final class KeyboardModel {
     var canUndo = false
     var canInsert = false
     var canStop = false
+    var recording = false
+    var fullAccess = true
+    var needsGlobe = false
     var shift = false
     var symbols = false
     weak var controller: KeyboardController?
@@ -38,11 +41,17 @@ final class KeyboardController: UIInputViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostWillResignActive, object: extensionContext)
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostDidEnterBackground, object: extensionContext)
         NotificationCenter.default.addObserver(self, selector: #selector(resumeHost), name: .NSExtensionHostDidBecomeActive, object: extensionContext)
-        let host = UIHostingController(rootView: PlaceholderKeyboard(model: model))
+        let host = UIHostingController(rootView: KeyboardView(model: model))
+        host.view.backgroundColor = .clear
+        host.safeAreaRegions = []
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host.view)
+        // The voice bar (48) sits above the four key rows (216).
+        let height = view.heightAnchor.constraint(equalToConstant: 264)
+        height.priority = UILayoutPriority(999)
         NSLayoutConstraint.activate([
+            height,
             host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             host.view.topAnchor.constraint(equalTo: view.topAnchor),
@@ -54,6 +63,7 @@ final class KeyboardController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         visible = true
+        model.needsGlobe = needsInputModeSwitchKey
         startRefreshing()
     }
 
@@ -74,6 +84,7 @@ final class KeyboardController: UIInputViewController {
         offer = nil
         model.canInsert = false
         model.canStop = false
+        model.recording = false
         observation = nil
     }
 
@@ -121,6 +132,8 @@ final class KeyboardController: UIInputViewController {
     private func refresh() {
         guard hostActive, visible else { return }
         model.canStop = false
+        model.recording = false
+        model.fullAccess = hasFullAccess
         guard hasFullAccess else {
             model.url = nil
             model.canInsert = false
@@ -172,6 +185,7 @@ final class KeyboardController: UIInputViewController {
                     return
                 case .recording:
                     model.url = nil
+                    model.recording = true
                     model.canStop = session.command != .stop
                     model.status = "Finish dictation in Hushpen, then return here."
                     return
@@ -267,52 +281,5 @@ final class KeyboardController: UIInputViewController {
                 && textDocumentProxy.documentContextBeforeInput?.hasSuffix($0.text) == true
         } ?? false
         if !model.canUndo { insertion = nil }
-    }
-}
-
-struct PlaceholderKeyboard: View {
-    @Bindable var model: KeyboardModel
-
-    var body: some View {
-        VStack {
-            Text(model.status).accessibilityIdentifier("keyboard.status")
-            if model.canInsert {
-                Button("Insert dictation", action: model.insertResult)
-                    .accessibilityIdentifier("keyboard.insert")
-            }
-            if model.canStop {
-                Button("Microphone", action: model.stop)
-                    .accessibilityIdentifier("keyboard.mic")
-            } else if let url = model.url {
-                Link("Microphone", destination: url)
-                    .accessibilityIdentifier("keyboard.mic")
-            }
-            HStack {
-                Button("Next keyboard", action: model.nextKeyboard)
-                    .accessibilityIdentifier("keyboard.next")
-                Button("Shift") { model.shift.toggle() }
-                Button("Symbols") { model.symbols.toggle() }
-                Button("Undo", action: model.undo).disabled(!model.canUndo)
-                    .accessibilityIdentifier("keyboard.undo")
-                Button("Cancel dictation", action: model.cancel)
-                    .accessibilityIdentifier("keyboard.cancel")
-            }
-            ForEach(model.symbols ? ["1234567890", "-/:;()$&@\"", ".,?!'"] : ["qwertyuiop", "asdfghjkl", "zxcvbnm"], id: \.self) { row in
-                HStack {
-                    ForEach(Array(row).map(String.init), id: \.self) { key in
-                        Button(model.shift ? key.uppercased() : key) { model.insert(key) }
-                            .accessibilityIdentifier("keyboard.key.\(key)")
-                    }
-                }
-            }
-            HStack {
-                Button("Space") { model.insert(" ") }
-                    .accessibilityIdentifier("keyboard.space")
-                Button("Backspace", action: model.backspace)
-                    .accessibilityIdentifier("keyboard.backspace")
-                Button("Return") { model.insert("\n") }
-                    .accessibilityIdentifier("keyboard.return")
-            }
-        }
     }
 }
