@@ -1,6 +1,7 @@
 import CryptoKit
 import Darwin
 import Foundation
+import notify
 
 enum FlowSessionState: String, Codable {
     case pending, recording, completed, cancelled, consumed
