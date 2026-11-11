@@ -2,14 +2,6 @@
 import Foundation
 import OSLog
 
-struct DictationActivityAttributes: ActivityAttributes, Sendable {
-    struct ContentState: Codable, Hashable, Sendable {
-        let phase: String
-    }
-
-    let sessionID: UUID
-}
-
 @MainActor
 final class DictationActivity {
     private var activity: Activity<DictationActivityAttributes>?

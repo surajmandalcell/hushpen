@@ -28,6 +28,7 @@ targets:
     sources:
       - path: App
       - path: Shared
+      - path: LiveActivity
       - path: ${HUSHPEN_MOBILE_CORE}/bindings/swift/HushpenCore.swift
       - path: ../../assets/THIRD-PARTY-NOTICES.html
         buildPhase: resources
@@ -65,6 +66,25 @@ targets:
         embed: false
       - target: HushpenKeyboard
         embed: true
+      - target: HushpenActivity
+        embed: true
+  HushpenActivity:
+    type: app-extension
+    platform: iOS
+    sources: [Widget, LiveActivity]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen.activity
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Generated/Activity-Info.plist
+      properties:
+        CFBundleDisplayName: Hushpen
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
   HushpenKeyboard:
     type: app-extension
     platform: iOS
