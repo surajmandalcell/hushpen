@@ -1,8 +1,8 @@
 # Screen contracts
 
-The desktop Devices screens follow `DESIGN.md`. The phone flows use plain
-placeholders until the designer supplies the visuals. Core owns the rules;
-views render state and send intents.
+The desktop Devices screens follow `DESIGN.md`. The iOS screens use the
+system look: Liquid Glass, system fonts, SF Symbols, grouped lists. Core owns
+the rules; views render state and send intents.
 
 ## Devices
 
@@ -115,12 +115,15 @@ views render state and send intents.
 - Undo checks the field, cursor, and preceding text before deleting the last
   insertion. All controls remain default buttons until visual design lands.
 
-## iOS onboarding
+## iOS Home
 
+- One list, no tab bar: Setup (Keyboard, Microphone, Speech Model), the Server
+  Mode switch, then Models, Devices, and Settings rows.
 - State: microphone permission, keyboard use receipt, Full Access guidance,
   speech model rows, selected model, download progress, and notice.
 - Intents: request microphone, open system settings, refresh the keyboard receipt,
-  download or verify a model, and select a ready model.
+  open Models, Devices, or Settings, and turn Server Mode on or off.
+  Turning it on opens the Server mode card.
 - Empty: no speech model is ready. Keep the Rust phone catalog available.
 - Errors: permission denied, download or verification failed, or save failed.
 - iOS does not expose whether this custom keyboard is enabled. The receipt
@@ -138,27 +141,36 @@ views render state and send intents.
 
 - State: paired desktops, pairing URI, scanner open, server availability,
   busy state, and notice.
-- Intents: scan or enter a desktop offer, pair, forget, refresh, and open Server mode.
+- Intents: scan or paste a desktop offer, pair, forget (after a confirmation),
+  refresh, and turn Server mode on or off. Pairing needs Server mode on.
+  Turning it on here opens no card, so the list stays usable.
 - Empty: no paired desktop. Scan the desktop's pairing offer.
 - Errors: camera unavailable, invalid or expired offer, handshake failure,
   Local Network permission denied, or save failure. Rust parses offers.
 
 ## iOS Server mode
 
-- State: running or starting, listening port, selected speech model, and notice.
-- Intents: start, stop, and refresh. The unload rule is While server mode is open.
-- Empty: server off. Show "Plug in to keep serving" while it is on.
+- State: running or starting, listening port, selected speech model, cleanup
+  mode, paired desktops, charging, and notice.
+- Intents: start, stop, close, and refresh. The unload rule is While server mode is open.
+- Empty: server off. Show "Plug in to keep serving" while it is not charging.
 - Errors: port busy, model unavailable, or host startup failed.
 - Serving disables the idle timer and dims the screen. Leaving the foreground
   stops serving and restores the previous brightness and idle-timer state.
+- Home opens a full-screen, always dark stats card: status, port, speech model,
+  cleanup, desktops, and unload rule. Stop closes it. After an interrupted stop
+  the card stays with the notice and a Close button.
 
 ## iOS scanner
 
 - State: camera permission, starting, scanning, scanned code, and notice.
 - Intents: request permission, start or retry, take a code, stop, open settings, and close.
-- Empty: no code or no camera. A desktop offer can be pasted in Devices.
+- Empty: no code or no camera. Paste Link closes the sheet and opens the link
+  field on Devices.
 - Errors: permission denied, camera unavailable, or capture could not start.
   Pairing payload validation stays in Rust.
+- A sheet over Devices. A scanned code fills the link field; pairing is a
+  separate tap.
 
 ## iOS Settings
 
@@ -185,6 +197,15 @@ views render state and send intents.
   or speech failure. Keep errors visible and do not insert stale results.
 - Recording and model work run in the app. The final text goes to the App Group.
   The user returns to the original app and confirms Insert dictation in the keyboard.
+- The full-screen page shows the wave, state, elapsed time, a go-back hint, and
+  Cancel, Done, Recover, or Close. Dismissing it cancels the session.
+
+## iOS Live Activity
+
+- State: dictation phase (listening, transcribing, cleaning) and the start time.
+- Shown from the first busy phase until the dictation ends. Compact, minimal,
+  expanded, and lock screen views show the wave and, while listening, a
+  system-drawn timer. The app never updates it for the clock.
 
 ## iOS keyboard
 
@@ -199,7 +220,10 @@ views render state and send intents.
 - iOS can replace its input-session identifier while the same field stays focused.
   Keep completed text until explicit insertion with matching cursor context.
 - The extension links no Rust library and loads no model or microphone.
-  Views use default controls until the designer supplies the keyboard.
+- Gboard-style keys with a voice bar above them. The bar shows the hint or
+  notice, Undo, and, while a session records in the app, the dark flow bar
+  with Cancel and Finish. The mic key opens the app, or stops the session.
+  Ready text shows an Insert dictation button with Cancel.
 
 ## Phone enrollment contract
 
