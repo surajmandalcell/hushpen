@@ -10,6 +10,9 @@ final class PhoneAppModel {
     var incomingURL: URL?
 
     func load() async {
+        #if DEBUG
+        guard NSClassFromString("XCTestCase") == nil else { return }
+        #endif
         guard runtime == nil, !loading else { return }
         loading = true
         notice = ""

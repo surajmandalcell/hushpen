@@ -23,6 +23,13 @@ final class AppTests: XCTestCase {
         repository = nil
     }
 
+    func testHostedUnitTestsDoNotStartTheAppRuntime() async {
+        let app = PhoneAppModel()
+        await app.load()
+        XCTAssertNil(app.runtime)
+        XCTAssertFalse(app.loading)
+    }
+
     func testPhoneRepositoryUsesRustCatalogAndIosUnloadRule() async {
         let state = await repository.snapshot()
         XCTAssertTrue(state.models.contains { $0.id == "small-q5_1" && $0.kind == .speech })
