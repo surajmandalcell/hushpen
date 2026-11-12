@@ -13,9 +13,19 @@ simulator uses CPU. Android uses CPU, with NEON on arm64. QNN and Core ML
 acceleration remain a later decision.
 
 Call blocking Rust operations from a native worker thread. Both local and
-served cleanup use one `SystemCleanup` over the native `SystemLlm` callback.
-Unavailable, failed, or timed-out callbacks keep the rule-cleaned text.
+served cleanup use one `SystemCleanup`. It tries the native `SystemLlm`
+callback first, then the selected downloaded model when the system model is
+unavailable. Local cleanup runs the desktop llama.cpp worker on a thread,
+with the same core profiles, prompts, and output checks. Missing models,
+low memory, failures, and timeouts keep the rule-cleaned text.
 Phone apps, keyboard extensions, and release packages are separate builds.
+
+Both apps pass reported physical RAM to the core phone catalog. Parakeet,
+Whisper Base Q5, and Whisper Small Q5 are always offered. Larger speech and
+cleanup models use the shared RAM gates in `hushpen-core/src/catalog.rs`.
+Downloads reuse `assets/models.json` files and checksums. Local cleanup
+checks current free app memory before loading and unloads after each job.
+The iOS keyboard still loads no model.
 
 `bash mobile/tests/build-core.sh` checks the build commands without compiling.
 The headless Swift smoke test is `mobile/tests/ffi.swift`. Compile it with the
@@ -59,7 +69,8 @@ see `harness/README.md` for its two stages.
 ML Kit Prompt cleanup is off by default. It uses an already available
 system model while the app is in front. A keyboard or foreground service
 cannot remove [ML Kit's background restriction](https://developers.google.com/ml-kit/genai#background_usage).
-Unavailable or failed native cleanup keeps Rust's rule-cleaned text.
+When native cleanup is unavailable, the selected downloaded cleanup model
+can run in the keyboard or foreground service. Otherwise, Rust rules clean the text.
 Android blocks platform SDK HTTP and HTTPS traffic, including ML Kit metric
 uploads. Rust owns approved downloads and paired connections. Android's
 [network policy](https://developer.android.com/privacy-and-security/security-config)
@@ -145,7 +156,9 @@ Insert dictation confirms the active field because iOS can replace the
 input-session identifier on return.
 Results expire after ten minutes and require unchanged cursor context.
 Changing the field or cursor withdraws the offer and undo. iOS exposes no
-public enabled-keyboard identifier check; onboarding shows a last-use receipt.
+public enabled-keyboard identifier property. The app reads the extension's
+App Group heartbeat on return and checks active input modes when their
+descriptions identify Hushpen. Full Access is last observed state.
 
 Server mode serves only while the app is in front. It restores brightness and
 the idle timer when it stops. iOS uses native Bonjour registration to avoid
@@ -153,7 +166,8 @@ the restricted entitlement for raw multicast; other platforms keep `mdns-sd`.
 See [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
 Cleanup is off by default and uses the available on-device
 [Foundation Models system model](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel).
-Unavailable or failed cleanup keeps Rust's rule-cleaned text.
+Without Foundation Models, the selected downloaded cleanup model runs in
+the app. Missing models, low memory, or failed cleanup keep Rust's rule-cleaned text.
 The scheme archives the app and embedded keyboard in Release, with debug
 symbols. See [the archive and upload guide](../docs/building.md#ios-archive-and-owner-upload)
 for the unsigned archive check and the owner's App Store Connect steps.
