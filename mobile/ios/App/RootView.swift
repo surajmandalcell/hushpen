@@ -64,7 +64,7 @@ struct RootView: View {
 
     private func updateScene() {
         runtime.server.setActive(phase == .active, screen: activeScreen)
-        runtime.onboarding.refresh()
+        if phase == .active { runtime.onboarding.refresh() }
         runtime.dictation.setActive(phase == .active)
         Task { await runtime.settings.refresh() }
     }

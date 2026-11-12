@@ -73,12 +73,12 @@ struct HomeScreen: View {
         let used = onboarding.keyboardUsed
         if used {
             LabeledContent {
-                HStack { Text("Used with Full Access").foregroundStyle(.secondary); ReadyMark() }
+                HStack { Text(onboarding.keyboardStatus).foregroundStyle(.secondary); ReadyMark() }
             } label: { RowTitle(title: "Keyboard", symbol: "keyboard") }
         } else {
             Button(action: onboarding.openSettings) {
                 LabeledContent {
-                    Text("Set Up").foregroundStyle(.tint)
+                    Text(onboarding.keyboardStatus == "Allow Full Access" ? onboarding.keyboardStatus : "Set Up").foregroundStyle(.tint)
                 } label: { RowTitle(title: "Keyboard", symbol: "keyboard") }
             }
             .foregroundStyle(.primary)

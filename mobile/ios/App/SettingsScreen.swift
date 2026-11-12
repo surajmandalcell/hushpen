@@ -38,7 +38,7 @@ struct SettingsScreen: View {
             }
             Section {
                 Reading(title: "Microphone", symbol: "mic", value: onboarding.microphone)
-                Reading(title: "Keyboard", symbol: "keyboard", value: onboarding.keyboardUsed ? "Used with Full Access" : "Not used yet")
+                Reading(title: "Keyboard", symbol: "keyboard", value: onboarding.keyboardStatus)
                 Button { onboarding.openSettings() } label: {
                     Label("Open Settings", systemImage: "gearshape")
                 }
