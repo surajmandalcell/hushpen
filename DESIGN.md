@@ -192,7 +192,8 @@ Each design in `assets/icons/<name>/` has `mark.svg` (full 1024 tile) and `mark-
 
 - `assets/hushpen-app-icon.svg` and `.png`: the drawing on an 824px squircle at 100px on the 1024 canvas (the macOS grid), with the template shadow (10px down, 30% black).
 - `assets/hushpen-app-icon.icns` and `assets/linux-icons/*.png`: 128px and up show the full drawing, 48 and 64px the bold crop, and 16 to 32px the solid head and pen of `assets/icons/mark-tiny.svg`, because finer lines turn gray there.
-- `assets/hushpen-app-icon.icon` and `assets/hushpen-app-icon.car`: the Icon Composer source and its compiled catalog, shipped as `Assets.car` with `CFBundleIconName`. macOS 26 and later draw it in the Dock and Finder. In the Dark icon style the system draws a dark tile and the lines turn light.
+- `assets/hushpen-app-icon.icon` and `assets/hushpen-app-icon.car`: the Icon Composer source and its compiled catalog, shipped as `Assets.car` with `CFBundleIconName`. macOS 26 and later draw it in the Dock and Finder, and the iOS app embeds the same `.icon` for the Home Screen. In the Dark icon style the system draws a dark tile and the lines turn light.
+- `assets/hushpen-app-icon-ios.png`: the same art edge to edge on 1024px, opaque and square, for the App Store and the press kit.
 - `assets/hushpen-app-icon-192.png`: About draws the tile without its margin at 96px, with the 16px app-icon corner, at 2x.
 - The menu bar and Linux tray glyphs, from `assets/hushpen-menubar.svg`.
 

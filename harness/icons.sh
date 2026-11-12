@@ -84,8 +84,28 @@ $(art "$SRC/mark.svg")
 SVG
 render "$T/about.svg" 192 "$OUT/hushpen-app-icon-192.png"
 
-# The Icon Composer source: the marble fill and the art as one layer. In the Dark icon style macOS
-# draws its own dark tile, and the lines turn light.
+# The App Store and press icon: the marble and the art edge to edge on 1024, opaque and square,
+# because iOS draws its own corner mask and App Store Connect rejects an alpha channel.
+cat > "$T/ios.svg" <<SVG
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="marble" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F4EF"/>
+      <stop offset="1" stop-color="#E8E3DA"/>
+    </linearGradient>
+    <clipPath id="art"><path transform="translate(-124.272 -124.272) scale(1.242718)" d="$TILE"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#marble)"/>
+  <g clip-path="url(#art)">
+$(art "$SRC/mark.svg")
+  </g>
+</svg>
+SVG
+render "$T/ios.svg" 1024 "$T/ios.png"
+magick "$T/ios.png" -background "#E8E3DA" -alpha remove -alpha off PNG24:"$OUT/hushpen-app-icon-ios.png"
+
+# The Icon Composer source: the marble fill and the art as one layer. macOS and iOS 26 draw it
+# with their own mask. In the Dark icon style the system draws a dark tile, and the lines turn light.
 ICON=$OUT/hushpen-app-icon.icon
 rm -rf "$ICON"; mkdir -p "$ICON/Assets"
 cp "$SRC/mark.svg" "$ICON/Assets/mark.svg"
@@ -114,7 +134,7 @@ cat > "$ICON/icon.json" <<'JSON'
       "translucency" : { "enabled" : false, "value" : 0.5 }
     }
   ],
-  "supported-platforms" : { "squares" : [ "macOS" ] }
+  "supported-platforms" : { "squares" : "shared" }
 }
 JSON
 # actool names the icon in Assets.car after the .icon folder, not after --app-icon, so the
