@@ -241,8 +241,10 @@ jobs:
           HUSHPEN_UPDATE_KEY: ${{ secrets.HUSHPEN_UPDATE_KEY }}
           HUSHPEN_UPDATE_KEY_PASSWORD: ${{ secrets.HUSHPEN_UPDATE_KEY_PASSWORD }}
         run: |
+          # The feed is checked with the key that installed apps trust. During a key
+          # rotation that is the previous key, while the new app embeds update-key.pub.
           cargo xtask release-manifest --dir release --tag "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pubkey assets/update-key.pub --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            --pubkey assets/update-key-previous.pub --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           ls -l release
       - name: Create the draft release
         env:
@@ -296,10 +298,10 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           cargo xtask release-verify --dir "$RUNNER_TEMP/draft" --tag "$TAG" \
-            --repo "$GITHUB_REPOSITORY" --pubkey assets/update-key.pub
+            --repo "$GITHUB_REPOSITORY" --pubkey assets/update-key-previous.pub
       - name: Check the signature with the minisign tool
         run: |
-          minisign -V -p assets/update-key.pub -m "$RUNNER_TEMP/draft/latest.json" \
+          minisign -V -p assets/update-key-previous.pub -m "$RUNNER_TEMP/draft/latest.json" \
             -x "$RUNNER_TEMP/draft/latest.json.minisig"
       - name: List what the draft holds
         run: |

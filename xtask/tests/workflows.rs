@@ -249,7 +249,7 @@ fn release_yml_signs_with_the_secret_key_in_the_release_job_only() {
     let release = job(&text, "release");
     assert!(release.contains("HUSHPEN_UPDATE_KEY: ${{ secrets.HUSHPEN_UPDATE_KEY }}"));
     assert!(release.contains("cargo xtask release-manifest"));
-    assert!(release.contains("--pubkey assets/update-key.pub"));
+    assert!(release.contains("--pubkey assets/update-key-previous.pub"));
     // The plan job reads the secret only to fail early when it is unset.
     assert_eq!(text.matches("secrets.HUSHPEN_UPDATE_KEY }}").count(), 2);
     assert_eq!(
@@ -301,7 +301,7 @@ fn release_yml_verifies_the_draft_after_it_exists() {
     for step in [
         "packaging/release/download-draft.sh",
         "cargo xtask release-verify",
-        "minisign -V -p assets/update-key.pub",
+        "minisign -V -p assets/update-key-previous.pub",
     ] {
         assert!(verify.contains(step), "{step} missing from the verify job");
     }
