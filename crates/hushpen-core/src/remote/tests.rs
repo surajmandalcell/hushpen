@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn ssh_pairing_prefers_overlay_addresses_and_keeps_direct_fallbacks() {
+    assert_eq!(
+        ssh_pair_hosts(Some("office.example"), "100.64.0.1\n", "192.0.2.1"),
+        ["100.64.0.1", "office.example", "192.0.2.1"],
+    );
+    assert_eq!(
+        ssh_pair_hosts(Some("100.64.0.1"), "100.64.0.1", "100.64.0.1"),
+        ["100.64.0.1"],
+    );
+    assert_eq!(ssh_pair_hosts(None, "", "192.0.2.1"), ["192.0.2.1"]);
+}
+
+#[test]
+fn ssh_pairing_rejects_invalid_and_non_overlay_addresses() {
+    for output in [
+        "100.63.255.255",
+        "100.128.0.0",
+        "127.0.0.1",
+        "100.64.0.1:22",
+        "100.64.0.999",
+        "name.example",
+        "100.64.0.1\n100.64.0.2",
+    ] {
+        assert_eq!(
+            ssh_pair_hosts(None, output, "office.example"),
+            ["office.example"]
+        );
+    }
+    assert_eq!(
+        ssh_pair_hosts(None, "100.127.255.254", "office.example"),
+        ["100.127.255.254", "office.example"],
+    );
+}
+
+#[test]
 fn moving_route_devices_keeps_local_last_and_stops_at_edges() {
     let mut route = Route::new(vec!["phone".into(), "server".into()], false);
     assert!(!route.move_device("phone", true));
