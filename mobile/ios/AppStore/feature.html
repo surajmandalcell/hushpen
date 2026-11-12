@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hushpen feature image</title>
+<!--
+  The wide feature image for the press kit and link previews: the icon and the promise on the left,
+  two real iPhone captures bleeding off the bottom on the right. Parameters: w, h (canvas), a and b
+  (the two screenshots, as file paths). Render at 1x with
+  chrome-headless-shell --screenshot --window-size=<w>,<h>.
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: #F5F5F7; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; position: relative; color: #1D1D1F; }
+  .copy { position: absolute; left: calc(100px * var(--u)); top: 50%; transform: translateY(-50%); width: calc(820px * var(--u)); }
+  .mark { display: flex; align-items: center; gap: calc(22px * var(--u)); font-size: calc(40px * var(--u)); font-weight: 600; letter-spacing: -.02em; }
+  .mark img { width: calc(112px * var(--u)); height: calc(112px * var(--u)); border-radius: calc(25px * var(--u)); box-shadow: 0 0 0 calc(2px * var(--u)) rgba(0, 0, 0, .08), 0 calc(14px * var(--u)) calc(36px * var(--u)) rgba(0, 0, 0, .14); }
+  h1 { margin-top: calc(44px * var(--u)); font-size: calc(124px * var(--u)); font-weight: 700; letter-spacing: -.045em; line-height: 1.02; }
+  h1 span { display: block; margin-top: calc(14px * var(--u)); font-size: calc(58px * var(--u)); line-height: 1.1; color: #86868B; letter-spacing: -.035em; }
+  p { margin-top: calc(34px * var(--u)); font-size: calc(34px * var(--u)); line-height: 1.35; color: #424245; letter-spacing: -.011em; }
+  .phone { position: absolute; overflow: hidden; background: #fff; border-radius: calc(64px * var(--u)); box-shadow: 0 0 0 calc(2px * var(--u)) rgba(0, 0, 0, .1), 0 calc(30px * var(--u)) calc(80px * var(--u)) rgba(0, 0, 0, .18); }
+  .phone img { display: block; width: 100%; height: 100%; }
+</style>
+<div class="copy">
+  <div class="mark"><img id="icon" alt="">Hushpen</div>
+  <h1>Private<br>dictation. <span>Free and open source.</span></h1>
+  <p id="sub"></p>
+</div>
+<div class="phone" id="p1"><img id="a" alt=""></div>
+<div class="phone" id="p2"><img id="b" alt=""></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const W = +q.get("w"), H = +q.get("h"), u = H / 1080;
+  document.documentElement.style.setProperty("--u", u);
+  document.getElementById("icon").src = q.get("icon");
+  document.getElementById("sub").textContent = q.get("sub") || "";
+  const ph = 1120 * u, pw = ph * 1320 / 2868;
+  const place = (id, src, left, top) => {
+    const e = document.getElementById(id);
+    Object.assign(e.style, { left: left + "px", top: top + "px", width: pw + "px", height: ph + "px" });
+    e.firstElementChild.src = src;
+  };
+  place("p1", q.get("b"), W - 100 * u - pw * 1.62, 300 * u);
+  place("p2", q.get("a"), W - 100 * u - pw, 130 * u);
+</script>
