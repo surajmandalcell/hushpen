@@ -5,8 +5,11 @@ struct KeyboardHeartbeat: Codable, Equatable {
     let hasFullAccess: Bool
 
     static func read(root: URL?, now: Date = Date()) -> KeyboardHeartbeat? {
-        guard let root,
-              let data = try? Data(contentsOf: root.appendingPathComponent("keyboard-status.json")),
+        guard let root else { return nil }
+        let file = root.appendingPathComponent("keyboard-status.json")
+        guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+              size <= 4096,
+              let data = try? Data(contentsOf: file),
               data.count <= 4096,
               let value = try? JSONDecoder().decode(Self.self, from: data),
               value.seenAt <= now else { return nil }
@@ -29,7 +32,7 @@ struct KeyboardStatus: Equatable {
     let fullAccess: Bool?
 
     var text: String {
-        guard added else { return "Not added yet" }
+        guard added else { return "Open keyboard to check" }
         switch fullAccess {
         case true: return "Full Access last seen"
         case false: return "Allow Full Access"

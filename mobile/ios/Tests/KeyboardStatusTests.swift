@@ -26,6 +26,7 @@ final class KeyboardStatusTests: XCTestCase {
         XCTAssertEqual(value.text, "Added")
         XCTAssertFalse(status(modes: ["\(KeyboardStatus.bundleIdentifier).other"]).added)
         XCTAssertFalse(status(modes: ["en-US"]).added)
+        XCTAssertEqual(status(modes: ["en-US"]).text, "Open keyboard to check")
     }
 
     func testOldHeartbeatPreservesAddedStateWithoutClaimingRecentAccess() {
@@ -46,6 +47,8 @@ final class KeyboardStatusTests: XCTestCase {
         try future.write(root: root)
         XCTAssertNil(KeyboardHeartbeat.read(root: root, now: now))
         try Data("damaged".utf8).write(to: root.appendingPathComponent("keyboard-status.json"))
+        XCTAssertNil(KeyboardHeartbeat.read(root: root, now: now))
+        try Data(repeating: 32, count: 4097).write(to: root.appendingPathComponent("keyboard-status.json"))
         XCTAssertNil(KeyboardHeartbeat.read(root: root, now: now))
         XCTAssertNil(KeyboardHeartbeat.read(root: nil, now: now))
     }
