@@ -68,7 +68,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: windows-x64
-          cache-on-failure: true
+          cache-on-failure: false
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny@0.20.2
