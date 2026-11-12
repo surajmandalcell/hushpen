@@ -1,6 +1,7 @@
 package com.mandalsuraj.hushpen
 
 import android.content.Context
+import android.app.ActivityManager
 import android.os.Build
 import com.mandalsuraj.hushpen.core.DownloadProgress
 import com.mandalsuraj.hushpen.core.Engine
@@ -8,7 +9,9 @@ import com.mandalsuraj.hushpen.core.Host
 import com.mandalsuraj.hushpen.core.HostUnloadRule
 import com.mandalsuraj.hushpen.core.Model
 import com.mandalsuraj.hushpen.core.ModelKind
+import com.mandalsuraj.hushpen.core.ModelStatus
 import com.mandalsuraj.hushpen.core.ModelRepository
+import com.mandalsuraj.hushpen.core.LocalCleanup
 import com.mandalsuraj.hushpen.core.SystemCleanup
 import com.mandalsuraj.hushpen.core.cleanText
 import com.mandalsuraj.hushpen.server.NativeSystemLlm
@@ -33,11 +36,13 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
     private val preferences = context.getSharedPreferences("phone", Context.MODE_PRIVATE)
     private val initialization = Mutex()
     private val speech = Mutex()
+    private val cleanupSelection = Mutex()
     @Volatile private var ready = false
     @Volatile private var activityVisible = false
     private lateinit var catalog: ModelRepository
     private lateinit var nativeSystem: NativeSystemLlm
     private lateinit var system: SystemCleanup
+    private lateinit var local: LocalCleanup
     lateinit var engine: Engine
         private set
     lateinit var host: Host
@@ -49,6 +54,8 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
     override val models: StateFlow<List<Model>> = mutableModels
     private val mutableSelected = MutableStateFlow(preferences.getString("speechModel", "").orEmpty())
     override val selectedModel: StateFlow<String> = mutableSelected
+    private val mutableSelectedCleanup = MutableStateFlow(preferences.getString("cleanupModel", "s1-mini").orEmpty())
+    override val selectedCleanupModel: StateFlow<String> = mutableSelectedCleanup
     private val mutableCleanup = MutableStateFlow(preferences.getBoolean("cleanup", false))
     override val cleanupEnabled: StateFlow<Boolean> = mutableCleanup
     private val mutableHaptics = MutableStateFlow(preferences.getBoolean("haptics", true))
@@ -68,13 +75,25 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
         initialization.withLock {
             if (ready) return@withLock
             val data = File(context.filesDir, "hushpen").absolutePath
-            catalog = ModelRepository(data)
+            val memory = ActivityManager.MemoryInfo().also {
+                context.getSystemService(ActivityManager::class.java).getMemoryInfo(it)
+            }.totalMem.toULong()
+            catalog = ModelRepository.withMemory(data, memory)
             engine = Engine(data)
+            local = LocalCleanup(data, memory)
+            local.setMemoryBudget(memory)
+            val cleanupModels = catalog.models().filter { it.kind == ModelKind.CLEANUP }
+            val cleanupModel = cleanupModels.firstOrNull { it.id == mutableSelectedCleanup.value }
+                ?: cleanupModels.firstOrNull { it.recommended }
+                ?: cleanupModels.firstOrNull()
+            cleanupModel?.let { local.setModel(it.id) }
+            mutableSelectedCleanup.value = cleanupModel?.id.orEmpty()
             nativeSystem = NativeSystemLlm().also {
                 it.enabled = mutableCleanup.value
                 it.foreground = activityVisible
             }
             system = SystemCleanup(nativeSystem)
+            system.setLocal(if (mutableCleanup.value) local else null)
             host = Host(engine, Build.MODEL.take(32).ifBlank { "Android phone" }, system)
             serverController = ServerController(context.applicationContext, host)
             mutableModels.value = catalog.models()
@@ -112,8 +131,13 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
                 }
             })
             if (downloaded) {
-                val selected = catalog.selectionAfterDownload(mutableSelected.value, id)
-                if (selected != mutableSelected.value) selectModel(selected)
+                mutableModels.value = catalog.models()
+                if (catalog.models().any { it.id == id && it.kind == ModelKind.CLEANUP }) {
+                    if (catalog.models().none { it.id == mutableSelectedCleanup.value && it.status == ModelStatus.READY }) selectModel(id)
+                } else {
+                    val selected = catalog.selectionAfterDownload(mutableSelected.value, id)
+                    if (selected != mutableSelected.value) selectModel(selected)
+                }
             }
             refresh()
         } finally {
@@ -124,6 +148,14 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
     override fun cancelDownload() { if (ready) catalog.cancelDownload() }
 
     fun cancelSpeech() { if (ready) engine.cancel() }
+
+    internal fun shutdown() {
+        if (ready) {
+            host.stop()
+            local.shutdown()
+            engine.shutdown()
+        }
+    }
 
     suspend fun releaseSpeech() = withContext(Dispatchers.IO) {
         if (ready) speech.withLock { host.releaseLocalModel() }
@@ -146,9 +178,29 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
     override suspend fun selectModel(id: String) = withContext(Dispatchers.IO) {
         initialize()
         catalog.modelPath(id)
+        if (catalog.models().any { it.id == id && it.kind == ModelKind.CLEANUP }) {
+            cleanupSelection.withLock {
+                val previous = mutableSelectedCleanup.value
+                if (!preferences.edit().putString("cleanupModel", id).commit()) {
+                    preferences.edit().putString("cleanupModel", previous).commit()
+                    error("Could not save the cleanup model.")
+                }
+                try {
+                    local.setModel(id)
+                } catch (problem: Exception) {
+                    preferences.edit().putString("cleanupModel", previous).commit()
+                    throw problem
+                }
+                mutableSelectedCleanup.value = id
+            }
+            return@withContext
+        }
         speech.withLock {
             engine.unload()
-            check(preferences.edit().putString("speechModel", id).commit()) { "Could not save the speech model." }
+            if (!preferences.edit().putString("speechModel", id).commit()) {
+                preferences.edit().putString("speechModel", mutableSelected.value).commit()
+                error("Could not save the speech model.")
+            }
             mutableSelected.value = id
         }
     }
@@ -170,15 +222,22 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
 
     suspend fun cleanup(raw: String): String = withContext(Dispatchers.IO) {
         initialize()
+        if (mutableCleanup.value) releaseSpeech()
         cleanText(raw, if (mutableCleanup.value) system else null).text
     }
 
     override suspend fun setCleanup(enabled: Boolean) = withContext(Dispatchers.IO) {
         initialize()
-        check(preferences.edit().putBoolean("cleanup", enabled).commit()) { "Could not save cleanup." }
-        nativeSystem.enabled = enabled
-        mutableCleanup.value = enabled
-        mutableSystemAvailable.value = system.available()
+        cleanupSelection.withLock {
+            if (!preferences.edit().putBoolean("cleanup", enabled).commit()) {
+                preferences.edit().putBoolean("cleanup", mutableCleanup.value).commit()
+                error("Could not save cleanup.")
+            }
+            nativeSystem.enabled = enabled
+            system.setLocal(if (enabled) local else null)
+            mutableCleanup.value = enabled
+            mutableSystemAvailable.value = system.available()
+        }
     }
 
     override suspend fun setHaptics(enabled: Boolean) = withContext(Dispatchers.IO) {

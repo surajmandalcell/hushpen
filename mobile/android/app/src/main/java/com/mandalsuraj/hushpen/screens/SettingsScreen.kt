@@ -28,11 +28,11 @@ fun SettingsScreen(model: SettingsViewModel, onLicenses: () -> Unit, onBack: () 
             row { shape ->
                 ToggleItem(
                     shape = shape,
-                    headline = "Use system cleanup",
+                    headline = "Use text cleanup",
                     supporting = when {
-                        !available -> "No system model on this phone. Rule cleanup still works."
-                        cleanup -> "On. Uses the model built into this phone."
-                        else -> "Uses the model built into this phone"
+                        !available -> "Uses a downloaded cleanup model. Choose one in Models."
+                        cleanup -> "On. Uses the system model first."
+                        else -> "Uses the system model first"
                     },
                     supportingLines = 2,
                     icon = R.drawable.ms_auto_awesome,
@@ -41,7 +41,7 @@ fun SettingsScreen(model: SettingsViewModel, onLicenses: () -> Unit, onBack: () 
                 )
             }
         }
-        GroupFooter("The system model works only while Hushpen is open. At other times, rules clean the text.")
+        GroupFooter("Without a ready model, rules clean the text. Cleanup stays on this phone.")
         SectionHeader("Keyboard")
         ListGroup {
             row { shape ->

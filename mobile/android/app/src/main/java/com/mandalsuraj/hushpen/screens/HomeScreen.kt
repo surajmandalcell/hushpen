@@ -107,7 +107,7 @@ fun HomeScreen(
                         "Speech and cleanup models"
                     } else {
                         val count = if (speech.size == 1) "1 speech model" else "${speech.size} speech models"
-                        listOfNotNull(count, "system cleanup".takeIf { catalog.any { it.kind == ModelKind.SYSTEM_CLEANUP } }).joinToString()
+                        listOfNotNull(count, "text cleanup".takeIf { catalog.any { it.kind == ModelKind.SYSTEM_CLEANUP || it.kind == ModelKind.CLEANUP } }).joinToString()
                     },
                     icon = R.drawable.ms_deployed_code,
                     modifier = Modifier.clickable { onOpen(Screen.Models) },

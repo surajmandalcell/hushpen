@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 interface ModelsData {
     val models: StateFlow<List<Model>>
     val selectedModel: StateFlow<String>
+    val selectedCleanupModel: StateFlow<String>
     val download: StateFlow<DownloadState>
     suspend fun initialize()
     suspend fun refresh()
@@ -24,6 +25,7 @@ interface ModelsData {
 class ModelsViewModel(private val repository: ModelsData) : ViewModel() {
     val models = repository.models
     val selectedModel = repository.selectedModel
+    val selectedCleanupModel = repository.selectedCleanupModel
     val download = repository.download
     private val mutableNotice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = mutableNotice
