@@ -22,7 +22,7 @@ struct HomeScreen: View {
                 Section { ForEach(notices, id: \.self) { NoticeRow(text: $0) } }
             }
             Section {
-                keyboard
+                keyboard.accessibilityIdentifier("onboarding.keyboard")
                 microphone
                 speechModel
             } header: {
@@ -78,7 +78,7 @@ struct HomeScreen: View {
         } else {
             Button(action: onboarding.openSettings) {
                 LabeledContent {
-                    Text(onboarding.keyboardStatus == "Allow Full Access" ? onboarding.keyboardStatus : "Set Up").foregroundStyle(.tint)
+                    Text(onboarding.keyboardStatus).foregroundStyle(.tint)
                 } label: { RowTitle(title: "Keyboard", symbol: "keyboard") }
             }
             .foregroundStyle(.primary)

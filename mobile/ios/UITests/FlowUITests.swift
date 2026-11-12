@@ -61,6 +61,21 @@ final class FlowUITests: XCTestCase {
         XCTAssertFalse(undo.isEnabled)
     }
 
+    func testSetupRefreshesWhenReturningFromTheKeyboard() {
+        XCTAssertTrue(element("onboarding.keyboard", in: phone).waitForExistence(timeout: 10))
+        XCTAssertFalse(phone.staticTexts["Not added yet"].exists)
+        let added = phone.staticTexts["Added"].exists
+        let observed = phone.staticTexts["Full Access last seen"].exists
+        let unknown = phone.staticTexts["Open keyboard to check"].exists
+        XCTAssertTrue(added || observed || unknown)
+        print("PHONE_KEYBOARD_AFTER_SETTINGS added=\(added) full_access_observed=\(observed) unknown=\(unknown)")
+        openEditor()
+        phone.activate()
+        XCTAssertTrue(phone.staticTexts["Full Access last seen"].waitForExistence(timeout: 10))
+        element("home.settings", in: phone).tap()
+        XCTAssertTrue(phone.staticTexts["Full Access last seen"].waitForExistence(timeout: 10))
+    }
+
     func testCancelDoesNotInsertText() {
         openEditor()
         startFromKeyboard()
