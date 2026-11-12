@@ -144,18 +144,23 @@ final class FlowUITests: XCTestCase {
     }
 
     func testServerStopsWhenTheAppLeavesTheForeground() {
+        XCTAssertTrue(phone.wait(for: .runningForeground, timeout: 10))
         phone.switches["server.toggle"].switches.firstMatch.tap()
         waitForText("Serving", id: "server.state", in: phone, timeout: 20)
         XCTAssertEqual(element("server.port", in: phone).label, "7342")
         XCTAssertTrue(serverAcceptsConnections())
         attach(phone, name: "Server running")
         editor.launch()
-        phone.activate()
-        waitForText("Stopped", id: "server.state", in: phone, timeout: 10)
-        XCTAssertEqual(element("server.port", in: phone).label, "None")
+        XCTAssertTrue(editor.wait(for: .runningForeground, timeout: 10))
+        XCTAssertTrue(phone.wait(for: .runningBackground, timeout: 10))
         let closed = NSPredicate { _, _ in !self.serverAcceptsConnections() }
         expectation(for: closed, evaluatedWith: nil)
         waitForExpectations(timeout: 10)
+        phone.activate()
+        XCTAssertTrue(phone.wait(for: .runningForeground, timeout: 10))
+        waitForText("Stopped", id: "server.state", in: phone, timeout: 10)
+        XCTAssertEqual(element("server.port", in: phone).label, "None")
+        XCTAssertFalse(serverAcceptsConnections())
         attach(phone, name: "Server stopped on background")
     }
 
