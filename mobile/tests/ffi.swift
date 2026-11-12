@@ -18,8 +18,9 @@ struct FfiSmoke {
             .appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let models = try ModelRepository(data: root.path).models()
-        precondition(models.filter { $0.kind == .speech }.count == 2)
+        let models = try ModelRepository.withMemory(data: root.path, physicalMemoryBytes: 8_000_000_000).models()
+        precondition(models.filter { $0.kind == .speech }.count == 4)
+        precondition(models.filter { $0.kind == .cleanup }.count == 2)
         precondition(models.filter { $0.kind == .systemCleanup }.count == 1)
 
         let dictation = try Dictation(maxMinutes: 5)

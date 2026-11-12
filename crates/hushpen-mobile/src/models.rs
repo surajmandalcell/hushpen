@@ -6,11 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const SPEECH_IDS: [&str; 2] = [catalog::SPEECH_DEFAULT, "base-q5_1"];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum ModelKind {
     Speech,
+    Cleanup,
     SystemCleanup,
 }
 
@@ -42,6 +41,7 @@ pub trait DownloadProgress: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct ModelRepository {
     data: PathBuf,
+    physical_memory_bytes: u64,
     busy: AtomicBool,
     cancel: AtomicBool,
 }
@@ -58,6 +58,11 @@ impl Drop for Downloading<'_> {
 impl ModelRepository {
     #[uniffi::constructor]
     pub fn new(data: String) -> Result<Arc<Self>, MobileError> {
+        Self::with_memory(data, 0)
+    }
+
+    #[uniffi::constructor]
+    pub fn with_memory(data: String, physical_memory_bytes: u64) -> Result<Arc<Self>, MobileError> {
         let data = PathBuf::from(data);
         if !data.is_absolute() {
             return Err(MobileError::invalid(
@@ -66,27 +71,32 @@ impl ModelRepository {
         }
         std::fs::create_dir_all(data.join("cache/downloads")).map_err(MobileError::failed)?;
         std::fs::create_dir_all(data.join("models/whisper")).map_err(MobileError::failed)?;
+        std::fs::create_dir_all(data.join("models/llm")).map_err(MobileError::failed)?;
         model_files::sweep_partials(
             &data.join("cache/downloads"),
             std::time::Duration::from_secs(7 * 24 * 3600),
         );
         Ok(Arc::new(Self {
             data,
+            physical_memory_bytes,
             busy: AtomicBool::new(false),
             cancel: AtomicBool::new(false),
         }))
     }
 
     pub fn models(&self) -> Vec<Model> {
-        let mut models: Vec<_> = SPEECH_IDS
+        let mut models: Vec<_> = catalog::phone_models(self.physical_memory_bytes)
             .into_iter()
-            .filter_map(|id| catalog::embedded().whisper(id))
             .map(|entry| {
                 let pin = &entry.files[0];
                 Model {
                     id: entry.id.clone(),
                     name: entry.name.clone(),
-                    kind: ModelKind::Speech,
+                    kind: if entry.kind == catalog::ModelKind::Cleanup {
+                        ModelKind::Cleanup
+                    } else {
+                        ModelKind::Speech
+                    },
                     bytes: entry.bytes(),
                     recommended: entry.default,
                     status: match model_files::check(&self.path(entry), pin.bytes, &pin.sha256) {
@@ -98,14 +108,21 @@ impl ModelRepository {
                 }
             })
             .collect();
-        models.push(Model {
-            id: "system".into(),
-            name: "System model".into(),
-            kind: ModelKind::SystemCleanup,
-            bytes: 0,
-            recommended: true,
-            status: ModelStatus::System,
-        });
+        let cleanup = models
+            .iter()
+            .position(|model| model.kind == ModelKind::Cleanup)
+            .unwrap_or(models.len());
+        models.insert(
+            cleanup,
+            Model {
+                id: "system".into(),
+                name: "System model".into(),
+                kind: ModelKind::SystemCleanup,
+                bytes: 0,
+                recommended: true,
+                status: ModelStatus::System,
+            },
+        );
         models
     }
 
@@ -115,7 +132,7 @@ impl ModelRepository {
         id: String,
         progress: Option<Arc<dyn DownloadProgress>>,
     ) -> Result<bool, MobileError> {
-        let entry = phone_model(&id)?;
+        let entry = self.model(&id)?;
         let _busy = self.begin()?;
         let pin = &entry.files[0];
         let dest = self.path(entry);
@@ -170,18 +187,21 @@ impl ModelRepository {
         current: String,
         downloaded: String,
     ) -> Result<String, MobileError> {
-        phone_model(&downloaded)?;
+        let entry = self.model(&downloaded)?;
+        if entry.kind != catalog::ModelKind::Speech {
+            return Err(MobileError::invalid("choose a speech model for dictation"));
+        }
         selection_after_download(&self.models(), &current, &downloaded)
     }
 
     pub fn verify(&self, id: String) -> Result<bool, MobileError> {
-        let entry = phone_model(&id)?;
+        let entry = self.model(&id)?;
         let _busy = self.begin()?;
         self.verify_entry(entry)
     }
 
     pub fn model_path(&self, id: String) -> Result<String, MobileError> {
-        let entry = phone_model(&id)?;
+        let entry = self.model(&id)?;
         let _busy = self.begin()?;
         if !self.verify_entry(entry)? {
             return Err(MobileError::failed("the model has not passed verification"));
@@ -230,8 +250,20 @@ fn selection_after_download(
 }
 
 impl ModelRepository {
+    fn model(&self, id: &str) -> Result<&'static ModelEntry, MobileError> {
+        catalog::phone_models(self.physical_memory_bytes)
+            .into_iter()
+            .find(|entry| entry.id == id)
+            .ok_or_else(|| MobileError::invalid("this model is not available for this phone"))
+    }
+
     fn path(&self, entry: &ModelEntry) -> PathBuf {
-        self.data.join("models/whisper").join(&entry.files[0].file)
+        let folder = if entry.kind == catalog::ModelKind::Cleanup {
+            "models/llm"
+        } else {
+            "models/whisper"
+        };
+        self.data.join(folder).join(&entry.files[0].file)
     }
 
     fn begin(&self) -> Result<Downloading<'_>, MobileError> {
@@ -277,14 +309,17 @@ fn verify_file(
 }
 
 pub(crate) fn phone_model(id: &str) -> Result<&'static ModelEntry, MobileError> {
-    if !SPEECH_IDS.contains(&id) {
-        return Err(MobileError::invalid(
-            "this model is not in the phone catalog",
-        ));
-    }
-    catalog::embedded()
-        .whisper(id)
+    catalog::phone_models(u64::MAX)
+        .into_iter()
+        .find(|entry| entry.kind == catalog::ModelKind::Speech && entry.id == id)
         .ok_or_else(|| MobileError::failed("the phone catalog is missing a speech model"))
+}
+
+pub(crate) fn cleanup_model(id: &str) -> Result<&'static ModelEntry, MobileError> {
+    catalog::phone_models(u64::MAX)
+        .into_iter()
+        .find(|entry| entry.kind == catalog::ModelKind::Cleanup && entry.id == id)
+        .ok_or_else(|| MobileError::invalid("this model is not a phone cleanup model"))
 }
 
 #[cfg(test)]
@@ -292,7 +327,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_phone_catalog_contains_only_two_speech_models_and_system_cleanup() {
+    fn unknown_phone_memory_offers_small_speech_models_and_system_cleanup() {
         let directory = tempfile::tempdir().unwrap();
         let repository =
             ModelRepository::new(directory.path().to_string_lossy().into_owned()).unwrap();
@@ -302,11 +337,12 @@ mod tests {
                 .iter()
                 .map(|model| model.id.as_str())
                 .collect::<Vec<_>>(),
-            [catalog::SPEECH_DEFAULT, "base-q5_1", "system"]
+            [catalog::SPEECH_DEFAULT, "base-q5_1", "small-q5_1", "system"]
         );
         assert_eq!(
             models.iter().map(|model| model.status).collect::<Vec<_>>(),
             [
+                ModelStatus::Missing,
                 ModelStatus::Missing,
                 ModelStatus::Missing,
                 ModelStatus::System
@@ -314,6 +350,43 @@ mod tests {
         );
         assert!(repository.model_path("../../outside".into()).is_err());
         assert!(repository.download("s1-mini".into(), None).is_err());
+    }
+
+    #[test]
+    fn repository_operations_enforce_phone_memory_and_model_kind() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().to_string_lossy().into_owned();
+        let repository = ModelRepository::with_memory(root.clone(), 6_000_000_000).unwrap();
+        assert!(
+            repository.models().iter().any(|model| {
+                model.id == catalog::SPEECH_TURBO && model.kind == ModelKind::Speech
+            })
+        );
+        let cleanup = repository.model(catalog::LLM_CLEANUP).unwrap();
+        assert_eq!(
+            repository.path(cleanup),
+            directory.path().join("models/llm/s1-mini.gguf")
+        );
+        assert!(repository.verify(catalog::LLM_GENERAL.into()).is_err());
+        assert!(
+            repository
+                .download(catalog::LLM_GENERAL.into(), None)
+                .is_err()
+        );
+        assert!(repository.model_path(catalog::LLM_GENERAL.into()).is_err());
+        assert!(
+            repository
+                .selection_after_download(String::new(), catalog::LLM_CLEANUP.into())
+                .is_err()
+        );
+        assert!(phone_model(catalog::LLM_CLEANUP).is_err());
+        assert!(cleanup_model(catalog::SPEECH_DEFAULT).is_err());
+        let repository = ModelRepository::with_memory(root, 8_000_000_000).unwrap();
+        assert_eq!(repository.models().len(), 7);
+        assert_eq!(
+            repository.model(catalog::LLM_GENERAL).unwrap().kind,
+            catalog::ModelKind::Cleanup
+        );
     }
 
     #[test]

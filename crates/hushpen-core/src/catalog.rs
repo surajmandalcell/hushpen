@@ -193,6 +193,39 @@ pub struct Catalog {
 pub const LLM_CLEANUP: &str = "s1-mini";
 /// The cleanup model that also does Command Mode and other languages.
 pub const LLM_GENERAL: &str = "qwen3.5-2b";
+
+/// Phone models allowed by the physical memory reported by the platform, in bytes.
+pub fn phone_models(physical_memory_bytes: u64) -> Vec<&'static ModelEntry> {
+    let catalog = embedded();
+    [
+        catalog.whisper(SPEECH_DEFAULT),
+        catalog.whisper("base-q5_1"),
+        catalog.whisper("small-q5_1"),
+        (physical_memory_bytes >= 6_000_000_000)
+            .then(|| catalog.whisper(SPEECH_TURBO))
+            .flatten(),
+        (physical_memory_bytes >= 4_000_000_000)
+            .then(|| catalog.llm(LLM_CLEANUP))
+            .flatten(),
+        (physical_memory_bytes >= 8_000_000_000)
+            .then(|| catalog.llm(LLM_GENERAL))
+            .flatten(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// Free process memory needed before loading a phone cleanup model.
+pub fn phone_cleanup_memory(id: &str) -> Option<u64> {
+    embedded()
+        .llm(id)?
+        .info
+        .as_ref()?
+        .ram_peak_bytes
+        .checked_add(128 * 1024 * 1024)
+}
+
 /// Cleanup models an earlier version offered. Their files are deleted.
 pub const RETIRED_LLM: &[&str] = &["gemma-4-e2b"];
 

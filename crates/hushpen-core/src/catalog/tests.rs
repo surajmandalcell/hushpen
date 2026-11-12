@@ -9,6 +9,56 @@ const IDS: [&str; 4] = [
 ];
 
 #[test]
+fn phone_models_use_physical_memory_and_keep_the_desktop_catalog() {
+    let ids = |memory| {
+        phone_models(memory)
+            .into_iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<Vec<_>>()
+    };
+    let baseline = [SPEECH_DEFAULT, "base-q5_1", "small-q5_1"];
+    for memory in [0, 3_999_999_999] {
+        assert_eq!(ids(memory), baseline);
+    }
+    for memory in [4_000_000_000, 5_999_999_999] {
+        assert_eq!(ids(memory), [baseline.as_slice(), &[LLM_CLEANUP]].concat());
+    }
+    for memory in [6_000_000_000, 7_999_999_999] {
+        assert_eq!(
+            ids(memory),
+            [baseline.as_slice(), &[SPEECH_TURBO, LLM_CLEANUP]].concat()
+        );
+    }
+    for memory in [8_000_000_000, u64::MAX] {
+        assert_eq!(
+            ids(memory),
+            [
+                baseline.as_slice(),
+                &[SPEECH_TURBO, LLM_CLEANUP, LLM_GENERAL]
+            ]
+            .concat()
+        );
+    }
+    for entry in phone_models(u64::MAX) {
+        let pinned = match entry.kind {
+            ModelKind::Speech => embedded().whisper(&entry.id),
+            ModelKind::Cleanup => embedded().llm(&entry.id),
+            ModelKind::Voice => None,
+        };
+        assert!(std::ptr::eq(entry, pinned.unwrap()));
+    }
+    assert_eq!(offered(), [LLM_CLEANUP, LLM_GENERAL]);
+}
+
+#[test]
+fn phone_cleanup_requires_peak_memory_and_process_headroom() {
+    assert_eq!(phone_cleanup_memory(LLM_CLEANUP), Some(1_034_217_728));
+    assert_eq!(phone_cleanup_memory(LLM_GENERAL), Some(1_634_217_728));
+    assert_eq!(phone_cleanup_memory(SPEECH_DEFAULT), None);
+    assert_eq!(phone_cleanup_memory("unknown"), None);
+}
+
+#[test]
 fn the_embedded_catalog_lists_the_four_speech_models_in_order() {
     let ids: Vec<_> = embedded().whisper.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, IDS);
