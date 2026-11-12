@@ -14,8 +14,8 @@ settings:
     SWIFT_VERSION: '6.0'
     SWIFT_STRICT_CONCURRENCY: complete
     TARGETED_DEVICE_FAMILY: '1,2'
-    MARKETING_VERSION: 2.4.0
-    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 2.5.0
+    CURRENT_PROJECT_VERSION: 2
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
   configs:
@@ -34,9 +34,12 @@ targets:
         buildPhase: resources
       - path: ../../LICENSE
         buildPhase: resources
+      - path: ../../assets/hushpen-app-icon.icon
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mandalsuraj.hushpen
+        ASSETCATALOG_COMPILER_APPICON_NAME: hushpen-app-icon
         SKIP_INSTALL: NO
         OTHER_LDFLAGS: ['$(inherited)', '-lc++', '-lz', '-framework', Accelerate, '-framework', Metal, '-framework', MetalKit, '-framework', Security, '-framework', SystemConfiguration]
     info:
