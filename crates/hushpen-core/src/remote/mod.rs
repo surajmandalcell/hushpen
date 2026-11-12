@@ -11,6 +11,26 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const THIS_COMPUTER: &str = "this-computer";
 
+/// Try overlay addresses before the SSH hostname and the host's offered address.
+pub fn ssh_pair_hosts(hostname: Option<&str>, tailscale: &str, offered_host: &str) -> Vec<String> {
+    let mut hosts = Vec::new();
+    let tailscale = tailscale.trim();
+    for host in tailscale
+        .parse::<std::net::Ipv4Addr>()
+        .ok()
+        .filter(|ip| ip.octets()[0] == 100 && (64..=127).contains(&ip.octets()[1]))
+        .map(|_| tailscale)
+        .into_iter()
+        .chain(hostname)
+        .chain(std::iter::once(offered_host))
+    {
+        if !host.is_empty() && !hosts.iter().any(|saved| saved == host) {
+            hosts.push(host.to_owned());
+        }
+    }
+    hosts
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceKind {
     Phone,

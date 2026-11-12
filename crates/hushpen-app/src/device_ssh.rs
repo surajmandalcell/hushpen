@@ -128,7 +128,37 @@ pub fn hostname(host: &str, cancelled: &AtomicBool) -> io::Result<String> {
     read_hostname(command, cancelled)
 }
 
-fn read_hostname(mut command: Command, cancelled: &AtomicBool) -> io::Result<String> {
+/// Ask the same SSH host for its overlay address without requiring Tailscale locally.
+pub fn tailscale(host: &str, cancelled: &AtomicBool) -> io::Result<String> {
+    if !valid_host(host) {
+        return Err(invalid("Choose a host from your SSH config."));
+    }
+    let mut command = Command::new("ssh");
+    command.args([
+        "-T",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "--",
+        host,
+        "tailscale ip -4",
+    ]);
+    read_output(command, cancelled)
+}
+
+fn read_hostname(command: Command, cancelled: &AtomicBool) -> io::Result<String> {
+    read_output(command, cancelled)?
+        .lines()
+        .find_map(|line| line.strip_prefix("hostname "))
+        .filter(|hostname| !hostname.is_empty() && hostname.len() <= 253)
+        .map(str::to_owned)
+        .ok_or_else(|| invalid("The SSH config returned no hostname."))
+}
+
+fn read_output(mut command: Command, cancelled: &AtomicBool) -> io::Result<String> {
     if cancelled.load(Ordering::Acquire) {
         return Err(io::Error::new(
             io::ErrorKind::Interrupted,
@@ -184,12 +214,7 @@ fn read_hostname(mut command: Command, cancelled: &AtomicBool) -> io::Result<Str
     if !status.success() {
         return Err(io::Error::other("SSH config lookup failed."));
     }
-    output
-        .lines()
-        .find_map(|line| line.strip_prefix("hostname "))
-        .filter(|hostname| !hostname.is_empty() && hostname.len() <= 253)
-        .map(str::to_owned)
-        .ok_or_else(|| invalid("The SSH config returned no hostname."))
+    Ok(output)
 }
 
 /// No password, host-key, or keyboard-interactive prompt is allowed.

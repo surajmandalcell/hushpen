@@ -180,6 +180,7 @@ fn run(
                 &identity,
                 &uri,
                 device_ssh::hostname(&host, stopped),
+                device_ssh::tailscale(&host, stopped),
                 &router.resolver,
             )?;
             let device = Device {
@@ -209,16 +210,31 @@ fn pair_ssh(
     identity: &Identity,
     uri: &str,
     hostname: io::Result<String>,
+    tailscale: io::Result<String>,
     resolver: &hushpen_remote::Resolver,
 ) -> io::Result<(String, [u8; 32])> {
     let mut offer = PairOffer::parse(uri)?;
-    offer.host = match hostname {
-        Ok(hostname) => hostname,
-        Err(problem) if problem.kind() == io::ErrorKind::Interrupted => return Err(problem),
-        Err(_) => return remote_jobs::authenticate_pair(identity, uri, resolver),
+    let optional = |result: io::Result<String>| match result {
+        Ok(output) => Ok(Some(output)),
+        Err(problem) if problem.kind() == io::ErrorKind::Interrupted => Err(problem),
+        Err(_) => Ok(None),
     };
-    remote_jobs::authenticate_pair(identity, &offer.to_uri(), resolver)
-        .or_else(|_| remote_jobs::authenticate_pair(identity, uri, resolver))
+    let hostname = optional(hostname)?;
+    let tailscale = optional(tailscale)?;
+    let hosts = hushpen_core::remote::ssh_pair_hosts(
+        hostname.as_deref(),
+        tailscale.as_deref().unwrap_or_default(),
+        &offer.host,
+    );
+    let mut failure = io::Error::other("The server did not answer at any address.");
+    for host in hosts {
+        offer.host = host;
+        match remote_jobs::authenticate_pair(identity, &offer.to_uri(), resolver) {
+            Ok(paired) => return Ok(paired),
+            Err(problem) => failure = problem,
+        }
+    }
+    Err(failure)
 }
 
 fn ssh_source() -> io::Result<device_ssh::Source> {
@@ -443,6 +459,7 @@ mod tests {
                 &client,
                 &uri,
                 hostname,
+                Err(io::Error::other("Tailscale is unavailable.")),
                 &hushpen_remote::Resolver::default(),
             )
             .unwrap();
@@ -453,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelled_ssh_hostname_lookup_does_not_pair_the_original_offer() {
+    fn cancelled_ssh_address_lookup_does_not_pair_the_original_offer() {
         let client = Identity::generate().unwrap();
         let expires = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -461,14 +478,23 @@ mod tests {
             .as_secs()
             + 60;
         let offer = PairOffer::new("127.0.0.1".into(), 47321, client.public(), expires).unwrap();
-        let problem = pair_ssh(
-            &client,
-            &offer.to_uri(),
-            Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled")),
-            &hushpen_remote::Resolver::default(),
-        )
-        .unwrap_err();
-        assert_eq!(problem.kind(), io::ErrorKind::Interrupted);
+        for cancel_hostname in [true, false] {
+            let cancelled = || Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled"));
+            let (hostname, tailscale) = if cancel_hostname {
+                (cancelled(), Ok(String::new()))
+            } else {
+                (Ok(String::new()), cancelled())
+            };
+            let problem = pair_ssh(
+                &client,
+                &offer.to_uri(),
+                hostname,
+                tailscale,
+                &hushpen_remote::Resolver::default(),
+            )
+            .unwrap_err();
+            assert_eq!(problem.kind(), io::ErrorKind::Interrupted);
+        }
     }
 
     #[test]

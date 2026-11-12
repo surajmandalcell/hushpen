@@ -505,22 +505,23 @@ new decision, add it here in the same change (D-21).
   before silent setup. Windows files have no Authenticode signature;
   SmartScreen warns. CI packages do not publish a release or the website.
 
-- **D-50 Devices and remote setup.** Devices follows Models in the sidebar.
-  Flow D gives speech and cleanup separate device orders. Remote use stays
-  off by default. This computer is last unless "Do not load models on this
+- **D-50 Devices and remote setup.** Devices follows Models. Flow D has
+  separate speech and cleanup orders. Remote defaults off. This computer
+  stays last unless "Do not load models on this
   computer" is on; then unavailable remote routes refuse the job. Core owns
   routing, health, pairing, fallback notices, and allowed unload rules.
-  A route row names the model this computer asks that device to load, since
-  devices report none; phones clean up with their system model. Nearby
+  Route rows name the requested model; devices report none. Phones use system cleanup. Nearby
   phones use mDNS and a one-use, expiring QR offer with Noise key pinning.
   Tailscale uses the same protocol at the supplied address. SSH
   setup reads concrete Host aliases from `~/.ssh/config`, uses BatchMode
   only, verifies SHA-256 before installation, starts the user service, and
-  pairs over the authenticated SSH channel. Views send intents and show
-  service progress; they perform no network or process work. The desktop
+  receives the pairing offer over the authenticated SSH channel. It tries
+  Tailscale IPv4 before configured and offered addresses, saving only one
+  that passes Noise authentication. Views send intents and show progress,
+  without network or process work. The desktop
   screen follows the Devices rules of `DESIGN.md`, with Light and Dark
   pixel baselines for the page and both sheets. `mobile/SCREENS.md`
-  records the desktop screen state and intent contract.
+  records screen state and intents.
 
 - **D-51 Shared phone core.** Native phone apps call `hushpen-mobile` through
   pinned UniFFI bindings. Rust owns dictation, model rules, verified downloads,
