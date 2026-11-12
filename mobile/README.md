@@ -27,6 +27,10 @@ Downloads reuse `assets/models.json` files and checksums. Local cleanup
 checks current free app memory before loading and unloads after each job.
 The iOS keyboard still loads no model.
 
+Phone RAM gates still need phone measurements. Desktop memory figures supply
+the current free-memory checks; they do not prove a phone's peak usage.
+No increased-memory-limit entitlement is enabled without that evidence.
+
 `bash mobile/tests/build-core.sh` checks the build commands without compiling.
 The headless Swift smoke test is `mobile/tests/ffi.swift`. Compile it with the
 generated `HushpenCore.swift`, the generated header directory, and
@@ -63,6 +67,14 @@ image at `files/qr-test.png`. Tests verify the model through Rust. They
 enable and select the IME, drive default keyboard controls, run real speech,
 check undo and input changes, and exercise camera and service lifetimes.
 The WAV hook and server pairing activity exist only in debug builds.
+
+`PhoneModelsTest` checks the physical-RAM catalog without extra model fixtures.
+Its cleanup, Turbo load, and selection-restart tests require
+`-Pandroid.testInstrumentationRunnerArguments.phoneModelFixtures=true` and the
+pinned files under `files/hushpen/models/llm` or `files/hushpen/models/whisper`.
+Run each measurement separately to keep the process memory peak independent.
+The test reports latency, sampled peak RSS, process high-water RSS, and PSS.
+Qwen measurements require at least 8 GB of reported physical RAM.
 The `android` desktop harness suite checks remote insertion and local fallback;
 see `harness/README.md` for its two stages.
 
@@ -137,6 +149,13 @@ with `-xctestrun <products.xctestrun>`. Boot the owned simulator with
 `xcrun simctl boot <simulator-id>`; no Simulator window is needed.
 Disabling verbose diagnostics avoids a stalled system diagnostic collection
 after a failed test. Test assertions and result bundles remain enabled.
+
+`PhoneMeasurements` skips when its pinned weights are absent. Stage them in
+the app's `Documents/PhoneMeasurements/models/llm` or `models/whisper` folder.
+Run each method alone with `-only-testing:HushpenTests/PhoneMeasurements/<method>`
+in a fresh test process. Each method reports elapsed time and process peak RSS;
+running several methods together mixes their memory peaks. Simulator RAM
+overrides test catalog selection, not a physical iPhone's memory limit.
 
 `StoreShotsUITests` takes the App Store screenshots from a real run: stage the
 simulator as above (a 16 kHz mono `flow-test.wav` of the sentence to dictate),
