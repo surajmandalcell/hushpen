@@ -59,7 +59,6 @@ targets:
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-        ITSAppUsesNonExemptEncryption: true
     entitlements:
       path: Generated/App.entitlements
       properties:

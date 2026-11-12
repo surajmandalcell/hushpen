@@ -131,7 +131,7 @@ Answer: Data Not Collected. Tracking: No.
 - The only internet use is the download of a speech model from huggingface.co when the user taps Download. Hushpen sends no identifier or content in it. Like any file host, the server sees the request address.
 - Pairing and Server Mode use the local network only, with Noise encryption.
 - The privacy manifest `Shared/PrivacyInfo.xcprivacy` declares no tracking, no collected data types, and the required-reason APIs.
-- Export compliance: the app bundles the Noise protocol (ChaCha20-Poly1305, X25519, BLAKE2s), so `ITSAppUsesNonExemptEncryption` stays `true` and App Store Connect asks for the declaration. The code is open source; the owner decides the declaration.
+- Export compliance: the app bundles the Noise protocol (ChaCha20-Poly1305, X25519, BLAKE2s), so the Info.plist leaves out `ITSAppUsesNonExemptEncryption` and App Store Connect asks the export compliance questions for each build. The owner answers them.
 
 ## App Review information
 

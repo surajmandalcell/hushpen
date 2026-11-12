@@ -236,8 +236,9 @@ subtitle, keywords, description, age rating, privacy answers, and review notes.
 `caption.html` and `feature.html` there add the caption bands and the feature
 image to the real captures from `StoreShotsUITests`.
 
-Hushpen bundles Noise encryption. `ITSAppUsesNonExemptEncryption` remains
-`true`; the owner determines the required declaration and documentation.
+Hushpen bundles Noise encryption. The Info.plist leaves out
+`ITSAppUsesNonExemptEncryption`, so App Store Connect asks the export
+compliance questions for each build; the owner answers them.
 An app record is required before upload. These account, signing, compliance,
 and publication actions are separate from building an archive.
 
