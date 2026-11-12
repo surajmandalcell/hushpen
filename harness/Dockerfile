@@ -19,7 +19,7 @@ RUN printf 'Acquire::http::Pipeline-Depth "0";\nAcquire::Retries "5";\n' \
 # without one (`fc-list | grep -ci inter` prints 0).
 # LLVM first and alone: in one big install its 26 MB package arrived corrupt on every attempt.
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends --fix-missing \
-    ca-certificates curl git build-essential clang libclang-dev mold cmake pkg-config \
+    ca-certificates curl git openssh-client build-essential clang libclang-dev mold cmake pkg-config \
  && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends --fix-missing \

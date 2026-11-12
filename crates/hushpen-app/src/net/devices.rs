@@ -176,7 +176,12 @@ fn run(
             let uri = device_ssh::setup(&host, &source, stopped, |step| {
                 let _ = sender.try_send(Update::Progress(step.label().into()));
             })?;
-            let (address, key) = remote_jobs::authenticate_pair(&identity, &uri, &router.resolver)?;
+            let (address, key) = pair_ssh(
+                &identity,
+                &uri,
+                device_ssh::hostname(&host, stopped),
+                &router.resolver,
+            )?;
             let device = Device {
                 id: key_id(&key),
                 name: host.clone(),
@@ -198,6 +203,22 @@ fn run(
         }
         Request::CancelOffer => Ok(()),
     }
+}
+
+fn pair_ssh(
+    identity: &Identity,
+    uri: &str,
+    hostname: io::Result<String>,
+    resolver: &hushpen_remote::Resolver,
+) -> io::Result<(String, [u8; 32])> {
+    let mut offer = PairOffer::parse(uri)?;
+    offer.host = match hostname {
+        Ok(hostname) => hostname,
+        Err(problem) if problem.kind() == io::ErrorKind::Interrupted => return Err(problem),
+        Err(_) => return remote_jobs::authenticate_pair(identity, uri, resolver),
+    };
+    remote_jobs::authenticate_pair(identity, &offer.to_uri(), resolver)
+        .or_else(|_| remote_jobs::authenticate_pair(identity, uri, resolver))
 }
 
 fn ssh_source() -> io::Result<device_ssh::Source> {
@@ -366,6 +387,89 @@ fn key_id(key: &[u8; 32]) -> String {
 mod tests {
     use super::*;
     use hushpen_remote::enrollment::Enrollment;
+
+    #[test]
+    fn ssh_pairing_uses_the_configured_hostname_or_the_original_offer() {
+        for (offered_host, hostname) in [
+            ("10.0.0.48", Ok("127.0.0.1".to_owned())),
+            ("127.0.0.1", Ok("hushpen-no-such-server.invalid".to_owned())),
+            (
+                "127.0.0.1",
+                Err(io::Error::other("SSH config lookup failed.")),
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = Identity::generate().unwrap();
+            let client = Identity::generate().unwrap();
+            let key = server.public();
+            let client_key = client.public();
+            let expires = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 60;
+            let mut offer =
+                PairOffer::new(offered_host.into(), address.port(), key, expires).unwrap();
+            let uri = offer.to_uri();
+            let worker = std::thread::spawn(move || {
+                let deadline = Instant::now() + Duration::from_secs(8);
+                let socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                            assert!(
+                                Instant::now() < deadline,
+                                "SSH pairing never reached the host"
+                            );
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) => panic!("SSH pairing listener failed: {error}"),
+                    }
+                };
+                let session = RemoteStream::accept(
+                    socket,
+                    &server,
+                    &[],
+                    Some(&mut offer),
+                    Duration::from_secs(3),
+                )
+                .unwrap();
+                assert_eq!(session.peer_key, client_key);
+                assert!(session.paired);
+            });
+            let (paired_address, paired_key) = pair_ssh(
+                &client,
+                &uri,
+                hostname,
+                &hushpen_remote::Resolver::default(),
+            )
+            .unwrap();
+            assert_eq!(paired_address, address.to_string());
+            assert_eq!(paired_key, key);
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn cancelled_ssh_hostname_lookup_does_not_pair_the_original_offer() {
+        let client = Identity::generate().unwrap();
+        let expires = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 60;
+        let offer = PairOffer::new("127.0.0.1".into(), 47321, client.public(), expires).unwrap();
+        let problem = pair_ssh(
+            &client,
+            &offer.to_uri(),
+            Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled")),
+            &hushpen_remote::Resolver::default(),
+        )
+        .unwrap_err();
+        assert_eq!(problem.kind(), io::ErrorKind::Interrupted);
+    }
 
     #[test]
     fn qr_pairing_pins_the_phone_before_returning_its_serving_address() {

@@ -176,6 +176,8 @@ versions, and the desktop entry. It skips desktop startup, tray, global
 keys, microphone, and paste checks. Run UI-only checks in the Xvfb container
 with the existing harness. The native `hushpen-host` user service is the
 Office server; verify it through SSH pairing and a real speech job.
+Its local service drop-in sets `--name "Office server"`. SSH pairing uses
+OpenSSH's configured HostName; that address must also accept TCP port 47321.
 `specs/decisions.md` D-02 names the retained setup.
 
 ## Phone and host release files
