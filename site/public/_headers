@@ -1,0 +1,24 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/assets/fonts/*
+  Cache-Control: public, max-age=2592000, stale-while-revalidate=604800
+
+/vendor/*
+  Cache-Control: public, max-age=2592000, stale-while-revalidate=604800
+
+/assets/:file
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/assets/shots/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/assets/avatars/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/assets/linux/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/assets/windows/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
