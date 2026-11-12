@@ -4,6 +4,13 @@ The desktop Devices screens follow `DESIGN.md`. The iOS screens use the
 system look: Liquid Glass, system fonts, SF Symbols, grouped lists. Core owns
 the rules; views render state and send intents.
 
+## Needs design
+
+- Phone Models: review the local cleanup choices in the existing download
+  rows. Speech and cleanup keep separate selections. The system model is first.
+- Phone Settings: the existing cleanup switch enables system or downloaded
+  cleanup. No new visual treatment is included.
+
 ## Devices
 
 - State: remote enabled, local models disabled, separate speech and cleanup
@@ -56,10 +63,10 @@ the rules; views render state and send intents.
 
 ## Android Models
 
-- State: Rust catalog rows and status, selected speech model, active download,
+- State: Rust catalog rows and status, separate speech and cleanup selections, active download,
   bytes received and total, verification state, and notice.
 - Intents: refresh, download, cancel download, verify, and select.
-- Empty: no downloaded model. Both phone speech models remain available.
+- Empty: no downloaded model. Rust filters the phone catalog by reported RAM.
 - Errors: network, space, checksum, busy model operation, or save failure.
 
 ## Android Devices and Server mode
@@ -89,10 +96,10 @@ the rules; views render state and send intents.
 
 - State: cleanup enabled, system cleanup available, haptics enabled, and notice.
 - Intents: set cleanup and set haptics. Availability refreshes when the activity resumes.
-- Empty: no supported system model. Rule cleanup still works.
+- Empty: no supported system model. Use the selected downloaded cleanup model, or keep rule cleanup.
 - Errors: settings could not be saved. Keep the saved value.
-- ML Kit cleanup needs the app in front. Keyboard dictation and background
-  serving keep rule-cleaned text when the system model is unavailable.
+- ML Kit cleanup needs the app in front. Local cleanup uses the same Rust
+  engine and prompts as desktop when the system model is unavailable.
 
 ## Android licenses
 
@@ -131,10 +138,10 @@ the rules; views render state and send intents.
 
 ## iOS Models
 
-- State: Rust catalog and model status, selected speech model, download bytes,
+- State: Rust catalog and model status, separate speech and cleanup selections, download bytes,
   verification state, and notice.
 - Intents: refresh, download, cancel, verify, and select.
-- Empty: no downloaded speech model. Both phone models remain available.
+- Empty: no downloaded model. Rust filters the phone catalog by reported RAM.
 - Errors: network, space, checksum, busy engine, or save failure.
 
 ## iOS Devices
@@ -177,7 +184,7 @@ the rules; views render state and send intents.
 - State: cleanup enabled, Foundation Models availability, microphone permission,
   keyboard use receipt, and notice.
 - Intents: set cleanup, refresh permissions, open settings, and open bundled licenses.
-- Empty: no supported or ready system model. Rust rule cleanup still works.
+- Empty: no supported system model. Use the selected downloaded cleanup model, or keep rule cleanup.
 - Errors: save or native cleanup failure. Keep the saved setting and rule-cleaned text.
 - Cleanup stays off by default.
 
