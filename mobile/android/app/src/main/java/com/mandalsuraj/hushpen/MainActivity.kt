@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Server -> {
                         val catalog by models.models.collectAsStateWithLifecycle()
                         val selected by models.selectedModel.collectAsStateWithLifecycle()
+                        val selectedCleanup by models.selectedCleanupModel.collectAsStateWithLifecycle()
                         val rule by devices.unloadRule.collectAsStateWithLifecycle()
                         val clients by devices.pairedClients.collectAsStateWithLifecycle()
                         val cleanup by settings.cleanupEnabled.collectAsStateWithLifecycle()
@@ -105,7 +106,11 @@ class MainActivity : ComponentActivity() {
                             starting = requested && !server.running && server.notice == null,
                             rule = rule,
                             speechModel = (speech.firstOrNull { it.id == selected } ?: speech.firstOrNull { it.recommended })?.name ?: "None",
-                            cleanup = if (cleanup && system) "System model when open" else "Rules",
+                            cleanup = when {
+                                !cleanup -> "Rules"
+                                system -> "System model when open"
+                                else -> catalog.firstOrNull { it.id == selectedCleanup && it.status == com.mandalsuraj.hushpen.core.ModelStatus.READY }?.name ?: "Rules"
+                            },
                             desktops = clients.map(::desktopName),
                             onStop = {
                                 serve(false)

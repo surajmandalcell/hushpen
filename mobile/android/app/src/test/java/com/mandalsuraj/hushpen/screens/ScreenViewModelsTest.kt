@@ -130,6 +130,7 @@ class ScreenViewModelsTest {
     private class FakeModels : ModelsData {
         override val models = MutableStateFlow<List<Model>>(emptyList())
         override val selectedModel = MutableStateFlow("base-q5_1")
+        override val selectedCleanupModel = MutableStateFlow("s1-mini")
         override val download = MutableStateFlow(DownloadState())
         val actions = mutableListOf<String>()
         var fail = false

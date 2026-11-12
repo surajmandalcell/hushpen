@@ -33,7 +33,7 @@ class ScreenSmokeTest {
             assertTrue("Home must stay below the system bars.", keyboard.boundsInWindow.top >= systemTop)
         }
         compose.onNodeWithText("Settings").performScrollTo().performClick()
-        compose.onNodeWithText("No system model on this phone. Rule cleanup still works.").assertIsDisplayed()
+        compose.onNodeWithText("Uses a downloaded cleanup model. Choose one in Models.").assertIsDisplayed()
         val haptics = compose.onNodeWithText("Haptics").performScrollTo()
         val before = haptics.fetchSemanticsNode().config[SemanticsProperties.ToggleableState]
         haptics.performClick()

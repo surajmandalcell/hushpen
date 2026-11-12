@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mandalsuraj.hushpen.DownloadState
@@ -34,12 +35,14 @@ import com.mandalsuraj.hushpen.ui.SectionHeader
 fun ModelsScreen(model: ModelsViewModel, settings: SettingsViewModel, onBack: () -> Unit) {
     val catalog by model.models.collectAsStateWithLifecycle()
     val selected by model.selectedModel.collectAsStateWithLifecycle()
+    val selectedCleanup by model.selectedCleanupModel.collectAsStateWithLifecycle()
     val download by model.download.collectAsStateWithLifecycle()
     val notice by model.notice.collectAsStateWithLifecycle()
     val cleanup by settings.cleanupEnabled.collectAsStateWithLifecycle()
     val available by settings.systemAvailable.collectAsStateWithLifecycle()
     val speech = catalog.filter { it.kind == ModelKind.SPEECH }
     val system = catalog.filter { it.kind == ModelKind.SYSTEM_CLEANUP }
+    val local = catalog.filter { it.kind == ModelKind.CLEANUP }
 
     ListScreen(
         title = "Models",
@@ -76,8 +79,11 @@ fun ModelsScreen(model: ModelsViewModel, settings: SettingsViewModel, onBack: ()
                         )
                     }
                 }
+                local.forEach { entry ->
+                    row { shape -> SpeechModelRow(shape, entry, selectedCleanup, download, model) }
+                }
             }
-            GroupFooter("Built into this phone. Nothing to download.")
+            GroupFooter("The system model is used first. Otherwise, cleanup uses your downloaded model.")
         }
     }
 }
@@ -105,11 +111,11 @@ private fun SpeechModelRow(shape: Shape, entry: Model, selected: String, downloa
     GroupItem(
         shape = shape,
         headline = entry.name,
-        supporting = "${speechPurpose(entry)}\n$status",
+        supporting = "${if (entry.kind == ModelKind.CLEANUP) "Text cleanup on this phone" else speechPurpose(entry)}\n$status",
         supportingLines = 2,
         supportingColor = if (entry.status == ModelStatus.DAMAGED && !active) MaterialTheme.colorScheme.error else Color.Unspecified,
-        icon = R.drawable.ms_graphic_eq,
-        modifier = if (ready && !inUse) Modifier.clickable { model.select(entry.id) } else Modifier,
+        icon = if (entry.kind == ModelKind.CLEANUP) R.drawable.ms_auto_awesome else R.drawable.ms_graphic_eq,
+        modifier = Modifier.testTag("models.${entry.id}").then(if (ready && !inUse) Modifier.clickable { model.select(entry.id) } else Modifier),
         below = if (active) {
             {
                 val bar = Modifier.fillMaxWidth().padding(top = 8.dp)
