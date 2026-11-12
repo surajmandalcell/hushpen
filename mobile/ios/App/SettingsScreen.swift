@@ -18,9 +18,9 @@ struct SettingsScreen: View {
                 Toggle(isOn: Binding(get: { model.cleanupEnabled }, set: { enabled in Task { await model.setCleanup(enabled) } })) {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Use System Cleanup")
+                            Text("Use Text Cleanup")
                             if !model.systemAvailable {
-                                Text("No system model on this iPhone. Rule cleanup still works.")
+                                Text("Uses your downloaded cleanup model when the system model is unavailable.")
                                     .font(.subheadline).foregroundStyle(.secondary)
                             }
                         }
@@ -28,13 +28,14 @@ struct SettingsScreen: View {
                         Image(systemName: "sparkles").foregroundStyle(.tint)
                     }
                 }
+                .disabled(model.busy)
                 .accessibilityIdentifier("settings.cleanup")
                 Reading(title: "System Model", symbol: "cpu", value: model.systemAvailable ? "Available" : "Unavailable")
                     .accessibilityIdentifier("settings.systemModel")
             } header: {
                 Text("Cleanup")
             } footer: {
-                Text("The system model works only while Hushpen is open. At other times, rules clean the text. Cleanup is off until you turn it on.")
+                Text("The system model is first when available. Otherwise, Hushpen uses the selected downloaded model. If neither is ready, rules clean the text. Cleanup is off until you turn it on.")
             }
             Section {
                 Reading(title: "Microphone", symbol: "mic", value: onboarding.microphone)

@@ -29,7 +29,9 @@ struct ServerScreen: View {
     }
 
     private var cleanup: String {
-        settings.cleanupEnabled && settings.systemAvailable ? "System model when open" : "Rules"
+        guard settings.cleanupEnabled else { return "Rules" }
+        if settings.systemAvailable { return "System model when open" }
+        return models.models.first { $0.kind == .cleanup && $0.id == models.selectedCleanupModel && $0.status == .ready }?.name ?? "Rules"
     }
 
     private var desktops: String {
