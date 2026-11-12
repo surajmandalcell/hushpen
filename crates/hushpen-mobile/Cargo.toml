@@ -21,6 +21,7 @@ bindgen = ["uniffi/cli"]
 hushpen-core.workspace = true
 hushpen-engine.workspace = true
 hushpen-host.workspace = true
+hushpen-llm = { path = "../hushpen-llm" }
 hushpen-remote.workspace = true
 hushpen-store = { workspace = true, features = ["downloads"] }
 log.workspace = true

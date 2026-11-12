@@ -20,7 +20,7 @@ vulkan = ["llama-cpp-2/vulkan"]
 hushpen-core.workspace = true
 llama-cpp-2.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(any(target_os = "macos", all(target_os = "ios", not(target_abi = "sim"))))'.dependencies]
 llama-cpp-2 = { workspace = true, features = ["metal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

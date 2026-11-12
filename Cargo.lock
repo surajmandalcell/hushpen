@@ -3728,6 +3728,7 @@ dependencies = [
  "hushpen-core",
  "hushpen-engine",
  "hushpen-host",
+ "hushpen-llm",
  "hushpen-remote",
  "hushpen-store",
  "log",
