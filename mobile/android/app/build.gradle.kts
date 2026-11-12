@@ -22,7 +22,7 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 1
-        versionName = providers.environmentVariable("HUSHPEN_BUILD_VERSION").orElse("2.4.0").get()
+        versionName = providers.environmentVariable("HUSHPEN_BUILD_VERSION").orElse("2.5.0").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
