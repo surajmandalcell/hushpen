@@ -237,7 +237,6 @@ final class FlowUITests: XCTestCase {
             allow.tap()
             XCTAssertEqual(access.value as? String, "1")
         }
-        settings.terminate()
     }
 
     private func startFromKeyboard() {

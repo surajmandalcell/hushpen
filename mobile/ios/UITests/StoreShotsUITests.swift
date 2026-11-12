@@ -53,7 +53,6 @@ final class StoreShotsUITests: XCTestCase {
             XCTAssertTrue(allow.waitForExistence(timeout: 5))
             allow.tap()
         }
-        settings.terminate()
     }
 
     func test2MessagesDictation() {
