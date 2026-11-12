@@ -149,9 +149,34 @@ workspace tests, dependency checks, and all four program version checks.
 - It needs a Vulkan or OpenGL driver to draw the window. On Debian and Ubuntu, `mesa-vulkan-drivers` or `libgl1-mesa-dri` is enough.
 - The tray needs a StatusNotifier host. Without one, onboarding and Settings show an information row.
 
-## Release test install on lin1
+## Linux checks and release test install
 
-Before a major or minor release is complete, run `bash packaging/linux/install-on-lin1.sh` on lin1, from `/mnt/nvme1/data/hushpen/repo`. It builds on lin1, verifies the AppImage, installs the app, and keeps the installers in `~/Downloads/Hushpen`. Patch-only changes skip the build. Use `--force` for a requested patch install. The release decision in `specs/decisions.md` names the retained source and data paths.
+Use the closer of `ssh oci1` and `ssh oci2`. Oci2 is selected: 0.46 s versus
+3.25 s. Run Linux clippy and changed-crate tests in `hushpen-val:noble` there.
+The permanent checkout is `/mnt/sdb/data/hushpen/repo`; reuse
+`target/linux-arm64` and `cache/{cargo,rustup,tmp}` under the same data root.
+
+Before a major or minor release is complete, run:
+
+```sh
+ssh oci2 'cd /mnt/sdb/data/hushpen/repo && bash packaging/linux/install-on-test-host.sh'
+```
+
+The script builds and verifies the arm64 AppImage and host archive in that
+container. It installs the AppImage under `install/`, the host under
+`install/host`, and the user service file. SSH setup uses the host through
+`~/.local/share/hushpen-host`; its data stays under `host-data`. Installers
+remain under `downloads/<version>`, linked from `~/Downloads/Hushpen`.
+First installation is required. Patch-only changes skip the build; use
+`--force` for a requested patch install. `--skip-build` installs already built
+packages from that version's download folder after verification.
+
+Oci2 has no desktop. The installer checks package contents, checksums,
+versions, and the desktop entry. It skips desktop startup, tray, global
+keys, microphone, and paste checks. Run UI-only checks in the Xvfb container
+with the existing harness. The native `hushpen-host` user service is the
+Office server; verify it through SSH pairing and a real speech job.
+`specs/decisions.md` D-02 names the retained setup.
 
 ## Phone and host release files
 
