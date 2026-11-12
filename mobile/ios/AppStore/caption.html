@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hushpen App Store screenshot</title>
+<!--
+  One App Store screenshot: a caption above a real simulator capture. Parameters:
+  w, h (canvas), img (path of the capture), a and b (the black and the gray caption line).
+  Render at 1x with chrome-headless-shell --screenshot --window-size=<w>,<h>.
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: #F5F5F7; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; position: relative; }
+  h1 { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: -.045em; line-height: 1.06; color: #1D1D1F; }
+  h1 span { display: block; color: #86868B; }
+  .shot { position: absolute; overflow: hidden; background: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, .1), 0 36px 90px rgba(0, 0, 0, .16); }
+  .shot img { display: block; width: 100%; height: 100%; }
+</style>
+<h1 id="t"></h1>
+<div class="shot" id="s"><img id="i" alt=""></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const W = +q.get("w"), H = +q.get("h"), pad = W > 1500 ? 140 : 130, size = W > 1500 ? 120 : 104;
+  const gap = Math.round(pad + size * 2.12 + 60), bottom = Math.round(H * 0.026);
+  const t = document.getElementById("t");
+  t.style.top = pad + "px"; t.style.fontSize = size + "px";
+  t.append(q.get("a") || ""); const b = document.createElement("span"); b.textContent = q.get("b") || ""; t.append(b);
+  const s = document.getElementById("s"), img = document.getElementById("i");
+  const sh = H - gap - bottom, sw = Math.round(sh * (W > 1500 ? 2064 / 2752 : 1320 / 2868));
+  Object.assign(s.style, { top: gap + "px", height: sh + "px", width: sw + "px", left: Math.round((W - sw) / 2) + "px", borderRadius: (W > 1500 ? 72 : 150) + "px" });
+  img.src = q.get("img");
+</script>

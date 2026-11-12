@@ -231,6 +231,11 @@ The owner must complete these steps before App Store or TestFlight distribution:
 14. Complete export-compliance questions and provide any required encryption documents before testing or submission.
 15. Add internal testers, or complete beta review for external testers. App Store release needs a separate review submission.
 
+`mobile/ios/AppStore/metadata.md` holds every App Store Connect field: name,
+subtitle, keywords, description, age rating, privacy answers, and review notes.
+`caption.html` and `feature.html` there add the caption bands and the feature
+image to the real captures from `StoreShotsUITests`.
+
 Hushpen bundles Noise encryption. `ITSAppUsesNonExemptEncryption` remains
 `true`; the owner determines the required declaration and documentation.
 An app record is required before upload. These account, signing, compliance,
