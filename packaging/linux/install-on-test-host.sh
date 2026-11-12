@@ -141,14 +141,14 @@ if [[ $skip_build == false ]]; then
   container cargo xtask package --target linux-arm64 --formats appimage --out "$dist"
   container cargo xtask package-host --target linux-arm64 --out "$dist/host"
 fi
-container cargo xtask package-verify --target linux-arm64 --formats appimage --dir "$dist"
 container chown -R "$(id -u):$(id -g)" "$dist"
+artifact="$dist/Hushpen-$version-linux-arm64.AppImage"
+chmod +x "$artifact"
+container cargo xtask package-verify --target linux-arm64 --formats appimage --dir "$dist"
 (cd "$dist" && sha256sum --check --ignore-missing SHA256SUMS)
 [[ -f $dist/host/Hushpen-$version-host-linux-arm64.tar.gz ]] || die 'The required host archive is missing.'
 (cd "$dist/host" && awk -v name="Hushpen-$version-host-linux-arm64.tar.gz" \
   '$2 == name {print; found=1} END {exit !found}' SHA256SUMS | sha256sum --check)
-artifact="$dist/Hushpen-$version-linux-arm64.AppImage"
-chmod +x "$artifact"
 line=$(container timeout 60 "$artifact" --version)
 [[ $line == "hushpen $version"* ]] || die "Unexpected packaged version: $line"
 
