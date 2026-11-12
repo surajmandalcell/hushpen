@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.5.0
 
 ### New
 
@@ -10,14 +10,20 @@
 - **Phone apps and keyboards.** Android adds a keyboard with local dictation
   and background Server mode. The iOS keyboard opens the app to dictate and
   inserts its result after you return. iOS Server mode requires the app to
-  stay open. Phone screens use basic placeholders; visual design is pending.
+  stay open. Both apps have native phone screens. iOS is available in TestFlight.
 - **Phone cleanup.** Supported phones can use their system model for optional
   text cleanup. Android cleanup requires the app in front. Failed or
   unavailable cleanup keeps the rule-cleaned text.
 - **Release packages.** Release automation includes Linux x64 and arm64 host
   archives and a signed Android APK in `SHA256SUMS`. The iOS project has a
-  Release archive configuration; App Store and TestFlight upload remain
-  separate owner steps.
+  Release archive configuration. iOS builds are distributed through TestFlight.
+- **Windows preview.** Windows x64 now has a setup installer and a portable ZIP.
+  Windows packages are unsigned and can show a SmartScreen warning.
+
+### Improved
+
+- Drag devices to change the speech and cleanup fallback orders.
+- Models row buttons pack from the left, so their positions stay clear and consistent.
 
 ## 2.4.0
 
