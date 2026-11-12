@@ -523,36 +523,35 @@ new decision, add it here in the same change (D-21).
   records the desktop screen state and intent contract.
 
 - **D-51 Shared phone core.** Native phone apps call `hushpen-mobile` through
-  pinned UniFFI bindings. Rust owns dictation, the phone catalog, verified
-  downloads, pairing, and model serving. Phones offer Parakeet v3 Q4 and
-  Whisper Base Q5. Cleanup uses the native system model through `SystemLlm`,
-  with core output checks and rule text as the fallback. Engines run on
-  threads over bounded memory streams using the existing worker protocol.
-  The host library serves those same workers. iOS uses Metal; Android starts
-  with CPU and NEON. QNN and Core ML speech accelerators need a later decision.
-  The iOS keyboard extension never loads a model. Phone screens and native
-  platform adapters are separate from this shared library. Build instructions
-  live in `mobile/README.md`.
+  pinned UniFFI bindings. Rust owns dictation, model rules, verified downloads,
+  pairing, and serving. Parakeet v3 Q4, Whisper Base Q5, and Small Q5 are
+  available on every phone; Turbo Q5 follows core's physical RAM policy.
+  Cleanup uses the system model first, then S1-mini by Superwhisper or Qwen3.5 2B
+  when core's RAM policy and the app's current free memory allow it. Files,
+  checksums, prompts, profiles, and output checks match desktop. Failure keeps
+  rule-cleaned text. Speech and llama.cpp run on threads over the existing
+  bounded worker protocol; the host serves those workers. iOS uses Metal;
+  Android uses CPU and NEON. QNN and Core ML acceleration need a later decision.
+  The iOS keyboard never loads engines. Build steps live in `mobile/README.md`.
 
 - **D-52 Android app and keyboard.** `mobile/android` uses Kotlin and Compose
   over the generated Rust phone API, with Android 10 as its minimum. Each
-  screen has a ViewModel; the repository handles native calls on worker
-  threads. Screens and keyboard actions use plain `Placeholder` views until
-  the designer supplies visuals. The IME records into a session WAV, feeds
+  screen has a ViewModel; the repository calls Rust on worker threads.
+  The IME records into a session WAV, feeds
   the Rust dictation machine, and inserts through `InputConnection`.
   Password fields refuse dictation. Undo requires the same field, cursor,
   and inserted text. A desktop speech session reserves the shared engine
-  until it disconnects. Downloads keep an existing ready speech default.
-  Cleanup capability remains paired while the native model is off or unavailable.
-  Server mode uses `specialUse`, with its purpose declared
-  in the manifest: paired desktops request on-device speech and cleanup.
-  The owner did not pick a foreground service type, so this uses the brief's
-  fallback. A quiet notification remains while serving. A Rust job callback
+  until it disconnects. Downloads keep ready choices; speech and cleanup
+  selections are separate and persist. Cleanup capability remains paired
+  when off or unavailable. Server mode uses `specialUse` for paired desktops'
+  speech and cleanup requests, declared in the manifest. A quiet notification
+  remains while serving. A Rust job callback
   holds a wake lock only during model work. Memory callbacks and Android's
-  low-memory reading feed Rust's unload rule. ML Kit Prompt cleanup is opt-in
-  and needs a supported, ready system model and the app in front; a visible
-  keyboard or foreground service does not remove Google's background limit.
-  Unavailable or failed cleanup keeps the Rust rule-cleaned text. See the
+  low-memory reading feed Rust's unload rule. `MemoryInfo.totalMem` supplies
+  core's RAM policy. Cleanup is opt-in. ML Kit needs a ready system model
+  and the app in front; a keyboard or foreground service does not remove
+  Google's background limit. Local cleanup can run in the background within
+  the memory budget; failure keeps rule text. See the
   [ML Kit background limit](https://developers.google.com/ml-kit/genai#background_usage)
   and [specialUse service type](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use).
   Android rejects platform HTTP(S) connections before SDK initialization.
@@ -568,14 +567,15 @@ new decision, add it here in the same change (D-21).
   A keyboard flow session opens `hushpen://dictate?session=...` in the app.
   The app records, transcribes, and cleans text. Insert dictation confirms
   the active field on return because iOS can renew input session IDs.
-  Results expire in ten minutes and are used once. Field or cursor changes
-  cancel the offer and undo. The shared file is protected and excluded from
-  backups. Server mode serves only while the
-  app remains in front, uses the core's fixed unload rule, dims the
-  screen, and restores brightness and the idle timer when it stops.
-  Cleanup is off by default and uses Apple's on-device Foundation Models
-  when available; failures keep Rust's rule-cleaned text. Screens and keyboard
-  use default `Placeholder` controls. `mobile/SCREENS.md` holds their contract.
+  Results expire after ten minutes and are used once. Field or cursor changes
+  cancel insertion and undo. Shared files are protected and excluded from
+  backups. The keyboard writes its Full Access heartbeat to the App Group;
+  the app refreshes setup on foreground and checks active input modes.
+  Server mode serves only in front, uses core's fixed unload rule, dims the
+  screen, and restores brightness and the idle timer on exit. Cleanup is off
+  by default and follows D-51. `ProcessInfo.physicalMemory` supplies core's RAM
+  policy; the current process budget also limits local cleanup.
+  `mobile/SCREENS.md` holds the screen contract.
   iOS advertises through native Bonjour. Other platforms keep `mdns-sd`.
   Native Bonjour avoids the restricted entitlement required for raw multicast;
   see [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
