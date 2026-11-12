@@ -3,12 +3,15 @@
 mod dictation;
 mod engine;
 mod host;
+mod local_cleanup;
+mod memory;
 mod models;
 mod system_llm;
 
 pub use dictation::{Dictation, DictationEffect, DictationEvent, DictationSnapshot};
 pub use engine::{Engine, Transcript};
 pub use host::{Host, HostUnloadRule, JobActivity};
+pub use local_cleanup::LocalCleanup;
 pub use models::{DownloadProgress, Model, ModelKind, ModelRepository, ModelStatus};
 pub use system_llm::{CleanupResult, SystemCleanup, SystemLlm, clean_text};
 

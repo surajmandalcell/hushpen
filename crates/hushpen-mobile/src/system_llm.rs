@@ -1,9 +1,9 @@
-use crate::MobileError;
+use crate::{LocalCleanup, MobileError, lock};
 use hushpen_core::cleanup::{self, guard, outcome::Outcome};
-use hushpen_core::llm_prompt::{CLEANUP_SYSTEM, Controls};
-use std::sync::Arc;
+use hushpen_core::llm_prompt::{CLEANUP_SYSTEM, Controls, Profile};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -25,6 +25,7 @@ pub struct CleanupResult {
 pub struct SystemCleanup {
     system: Arc<dyn SystemLlm>,
     busy: Arc<AtomicBool>,
+    local: Mutex<Option<Arc<LocalCleanup>>>,
 }
 
 struct Busy(Arc<AtomicBool>);
@@ -42,11 +43,16 @@ impl SystemCleanup {
         Arc::new(Self {
             system,
             busy: Arc::new(AtomicBool::new(false)),
+            local: Mutex::new(None),
         })
     }
 
     pub fn clean(&self, raw: String) -> Result<CleanupResult, MobileError> {
         self.clean_for(raw, CLEANUP_TIMEOUT)
+    }
+
+    pub fn set_local(&self, local: Option<Arc<LocalCleanup>>) {
+        *lock(&self.local) = local;
     }
 
     pub fn available(&self) -> bool {
@@ -56,9 +62,21 @@ impl SystemCleanup {
 }
 
 impl SystemCleanup {
+    pub(crate) fn ready_for_model(&self, path: &str) -> bool {
+        self.available()
+            || lock(&self.local)
+                .as_ref()
+                .is_some_and(|local| local.matches_model(path) && local.available())
+    }
+
     fn clean_for(&self, raw: String, timeout: Duration) -> Result<CleanupResult, MobileError> {
         let rule = rule_text(&raw)?;
-        self.run(rule, CLEANUP_SYSTEM.to_owned(), timeout)
+        self.run(
+            rule,
+            CLEANUP_SYSTEM.to_owned(),
+            timeout,
+            Some(Profile::General),
+        )
     }
 
     pub(crate) fn clean_with_instructions(
@@ -66,7 +84,7 @@ impl SystemCleanup {
         text: String,
         instructions: String,
     ) -> Result<CleanupResult, MobileError> {
-        self.run(text, instructions, CLEANUP_TIMEOUT)
+        self.run(text, instructions, CLEANUP_TIMEOUT, None)
     }
 
     fn run(
@@ -74,16 +92,19 @@ impl SystemCleanup {
         rule: String,
         mut instructions: String,
         timeout: Duration,
+        local_profile: Option<Profile>,
     ) -> Result<CleanupResult, MobileError> {
         if rule.len() > 1024 * 1024 || instructions.len() > 1024 * 1024 {
             return Err(MobileError::invalid(
                 "cleanup text or instructions exceed 1 MiB",
             ));
         }
+        let local_instructions = instructions.clone();
         if Controls::parse(&instructions).is_some() {
             instructions = format!("{CLEANUP_SYSTEM}\n{instructions}");
         }
         let input = rule.clone();
+        let local = lock(&self.local).clone();
         Ok(
             match self.invoke(timeout, move |system| {
                 system
@@ -94,7 +115,13 @@ impl SystemCleanup {
                     Ok(text) => result(text, Outcome::Used),
                     Err(_) => result(rule, Outcome::GuardRejected),
                 },
-                Ok(None) => result(rule, Outcome::Unavailable),
+                Ok(None) => match local {
+                    Some(local) => match local_profile {
+                        Some(profile) => local.clean_rule(rule, profile)?,
+                        None => local.clean_with_instructions(rule, local_instructions)?,
+                    },
+                    None => result(rule, Outcome::Unavailable),
+                },
                 Ok(Some(Err(_))) => result(rule, Outcome::Error),
                 Err(outcome) => result(rule, outcome),
             },
@@ -147,14 +174,14 @@ pub fn clean_text(
     }
 }
 
-fn rule_text(raw: &str) -> Result<String, MobileError> {
+pub(crate) fn rule_text(raw: &str) -> Result<String, MobileError> {
     if raw.len() > 1024 * 1024 {
         return Err(MobileError::invalid("cleanup text exceeds 1 MiB"));
     }
     Ok(cleanup::clean(raw, &cleanup::Options::default()))
 }
 
-fn result(text: String, outcome: Outcome) -> CleanupResult {
+pub(crate) fn result(text: String, outcome: Outcome) -> CleanupResult {
     CleanupResult {
         text,
         outcome: outcome.key().into(),

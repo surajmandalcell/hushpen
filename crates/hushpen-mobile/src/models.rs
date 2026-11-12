@@ -315,13 +315,6 @@ pub(crate) fn phone_model(id: &str) -> Result<&'static ModelEntry, MobileError> 
         .ok_or_else(|| MobileError::failed("the phone catalog is missing a speech model"))
 }
 
-pub(crate) fn cleanup_model(id: &str) -> Result<&'static ModelEntry, MobileError> {
-    catalog::phone_models(u64::MAX)
-        .into_iter()
-        .find(|entry| entry.kind == catalog::ModelKind::Cleanup && entry.id == id)
-        .ok_or_else(|| MobileError::invalid("this model is not a phone cleanup model"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,7 +373,6 @@ mod tests {
                 .is_err()
         );
         assert!(phone_model(catalog::LLM_CLEANUP).is_err());
-        assert!(cleanup_model(catalog::SPEECH_DEFAULT).is_err());
         let repository = ModelRepository::with_memory(root, 8_000_000_000).unwrap();
         assert_eq!(repository.models().len(), 7);
         assert_eq!(

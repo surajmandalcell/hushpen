@@ -43,8 +43,8 @@ pub(super) fn serve(
             ),
             LlmRequest::Hello { .. } | LlmRequest::Shutdown => break,
             LlmRequest::Ping => send(&output, LlmEvent::Pong),
-            LlmRequest::LoadModel { .. } => {
-                loaded = system.available();
+            LlmRequest::LoadModel { path, .. } => {
+                loaded = system.ready_for_model(&path);
                 send(
                     &output,
                     if loaded {
