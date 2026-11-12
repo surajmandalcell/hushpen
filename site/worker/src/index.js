@@ -33,7 +33,7 @@ async function release(data) {
   }
   const assets = {};
   for (const [kind, pattern] of KINDS) {
-    const matches = data.assets.filter(asset => pattern.test(asset.name));
+    const matches = data.assets.filter(asset => !asset.name.includes('-host-linux-') && pattern.test(asset.name));
     if (matches.length > 1) throw new Error(`Duplicate ${kind} asset`);
     const asset = matches[0];
     if (!asset) continue;

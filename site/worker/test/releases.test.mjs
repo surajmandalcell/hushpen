@@ -148,3 +148,30 @@ test('all other routes and methods go through the asset binding', async () => {
     assert.equal(await response.text(), `${method} ${path}`);
   }
 });
+
+test('host tarballs do not keep a new stable release on the stale feed', async () => {
+  const stable = fixture('v2.5.0'), preview = fixture('v2.5.1-rc.1', true, true);
+  for (const release of [stable, preview]) {
+    for (const arch of ['x64', 'arm64']) {
+      const version = release.tag_name.slice(1);
+      release.assets.push(asset(`Hushpen-${version}-linux-${arch}.tar.gz`));
+      release.assets.push(asset(`Hushpen-${version}-host-linux-${arch}.tar.gz`));
+    }
+  }
+  github(stable, [stable, preview]);
+  const values = cacheMock(), ctx = context();
+  values.set('https://hushpen.example/api/releases.json?cache=last-good',
+    Response.json({ stable: { tag: 'v2.4.0' } }));
+  const response = await worker.fetch(request(), {}, ctx);
+  await Promise.all(ctx.waits);
+  const data = await response.json();
+  assert.equal(data.stable.tag, 'v2.5.0');
+  assert.equal(response.headers.get('x-hushpen-stale'), null);
+  for (const [release, tag] of [[data.stable, stable.tag_name], [data.windows, preview.tag_name]]) {
+    for (const arch of ['x64', 'arm64']) {
+      assert.equal(release.assets[`linux-${arch}-tar`].name, `Hushpen-${tag.slice(1)}-linux-${arch}.tar.gz`);
+      assert.equal(release.assets[`linux-${arch}-tar`].sha256, hash);
+    }
+    assert.ok(Object.values(release.assets).every(item => !item.name.includes('-host-linux-')));
+  }
+});
