@@ -118,6 +118,80 @@ fn valid_host(host: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
 }
 
+/// OpenSSH resolves aliases and Include files before we connect to the model host.
+pub fn hostname(host: &str, cancelled: &AtomicBool) -> io::Result<String> {
+    if !valid_host(host) {
+        return Err(invalid("Choose a host from your SSH config."));
+    }
+    let mut command = Command::new("ssh");
+    command.args(["-G", "-o", "BatchMode=yes", "--", host]);
+    read_hostname(command, cancelled)
+}
+
+fn read_hostname(mut command: Command, cancelled: &AtomicBool) -> io::Result<String> {
+    if cancelled.load(Ordering::Acquire) {
+        return Err(io::Error::new(
+            io::ErrorKind::Interrupted,
+            "Server setup was cancelled.",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("SSH output is unavailable."))?;
+    let output = std::thread::spawn(move || {
+        let mut output = String::new();
+        stdout.take(65_537).read_to_string(&mut output)?;
+        if output.len() > 65_536 {
+            return Err(invalid("The SSH config output is too large."));
+        }
+        Ok(output)
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if cancelled.load(Ordering::Acquire) || Instant::now() >= deadline {
+            terminate(&mut child);
+            let _ = child.wait();
+            return Err(io::Error::new(
+                if cancelled.load(Ordering::Acquire) {
+                    io::ErrorKind::Interrupted
+                } else {
+                    io::ErrorKind::TimedOut
+                },
+                "SSH config lookup stopped.",
+            ));
+        }
+        if let Some(status) = child.try_wait()?
+            && output.is_finished()
+        {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    let output = output
+        .join()
+        .map_err(|_| io::Error::other("SSH config output stopped."))??;
+    if !status.success() {
+        return Err(io::Error::other("SSH config lookup failed."));
+    }
+    output
+        .lines()
+        .find_map(|line| line.strip_prefix("hostname "))
+        .filter(|hostname| !hostname.is_empty() && hostname.len() <= 253)
+        .map(str::to_owned)
+        .ok_or_else(|| invalid("The SSH config returned no hostname."))
+}
+
 /// No password, host-key, or keyboard-interactive prompt is allowed.
 pub fn setup(
     host: &str,
@@ -529,6 +603,70 @@ mod tests {
         );
         assert!(!valid_host("host;touch /tmp/file"));
         assert!(!valid_host("host\n"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_hostname_follows_an_included_alias() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config");
+        let included = directory.path().join("office");
+        std::fs::write(&config, format!("Include \"{}\"\n", included.display())).unwrap();
+        std::fs::write(&included, "Host office-server\n  HostName 127.0.0.1\n").unwrap();
+        let mut command = Command::new("ssh");
+        command
+            .args(["-G", "-F"])
+            .arg(config)
+            .args(["--", "office-server"]);
+        assert_eq!(
+            read_hostname(command, &AtomicBool::new(false)).unwrap(),
+            "127.0.0.1"
+        );
+    }
+
+    #[test]
+    fn cancelled_hostname_lookup_does_not_start_ssh() {
+        let problem = read_hostname(
+            Command::new("hushpen-no-such-command"),
+            &AtomicBool::new(true),
+        )
+        .unwrap_err();
+        assert_eq!(problem.kind(), io::ErrorKind::Interrupted);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hostname_lookup_stops_a_running_command_when_cancelled() {
+        let directory = tempfile::tempdir().unwrap();
+        let started = directory.path().join("started");
+        let cancelled = std::sync::Arc::new(AtomicBool::new(false));
+        let token = std::sync::Arc::clone(&cancelled);
+        let marker = started.clone();
+        let cancel = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !marker.exists() {
+                assert!(Instant::now() < deadline, "The command did not start.");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            token.store(true, Ordering::Release);
+        });
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "printf started > \"$1\"; sleep 1", "sh"])
+            .arg(&started);
+        let problem = read_hostname(command, &cancelled).unwrap_err();
+        cancel.join().unwrap();
+        assert!(started.is_file());
+        assert_eq!(problem.kind(), io::ErrorKind::Interrupted);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hostname_lookup_rejects_oversized_output() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 65537 /dev/zero"]);
+        let problem = read_hostname(command, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(problem.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[test]
