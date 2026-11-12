@@ -1,4 +1,4 @@
-#[cfg(target_os = "ios")]
+#[cfg(all(target_os = "ios", not(target_env = "sim")))]
 #[allow(unsafe_code)]
 pub(crate) fn available() -> Option<u64> {
     unsafe extern "C" {
@@ -19,7 +19,10 @@ pub(crate) fn available() -> Option<u64> {
     )
 }
 
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[cfg(any(
+    all(target_os = "ios", target_env = "sim"),
+    not(any(target_os = "ios", target_os = "android"))
+))]
 pub(crate) fn available() -> Option<u64> {
     None
 }
