@@ -10,16 +10,17 @@ new decision, add it here in the same change (D-21).
 - **D-02 Version.** 2.4.0. A GitHub release is published only after every
   validation passed and every release file was checked. `CHANGELOG.md` holds
   the notes of each version, and the release text is its section.
-  Each major or minor release also requires a native lin1 test install before
-  release completion: run `bash packaging/linux/install-on-lin1.sh` from
-  `/mnt/nvme1/data/hushpen/repo` on lin1. First installation is required;
-  later patch-only changes skip the build unless `--force` is requested.
-  Keep the checkout, toolchain, shared target, installed app, app data, and
-  installers under `/mnt/nvme1/data/hushpen/`. Home links expose the project
-  at `~/dev/personal/hushpen` and installers at `~/Downloads/Hushpen`.
-  Verify the installed app on lin1 after restart. Do not remove this setup
-  during audit cleanup. This local test package does not replace the public
-  Ubuntu 22.04 release packages or enable automatic in-app patch updates.
+  Linux checks and test installs use the closer of `ssh oci1` and `ssh oci2`:
+  oci2 (0.46 s versus 3.25 s). Each major or minor release requires
+  `bash packaging/linux/install-on-test-host.sh` from
+  `/mnt/sdb/data/hushpen/repo`. First installation is required; patch-only
+  changes skip the build unless `--force` is requested. Preserve the checkout,
+  toolchain, target, installed app, app data, and installers under
+  `/mnt/sdb/data/hushpen/`. Home links expose `~/dev/personal/hushpen` and
+  `~/Downloads/Hushpen`. Keep the native `hushpen-host` user service running.
+  Oci2 is headless: use Xvfb in `hushpen-val:noble` for UI checks, or name
+  skipped checks. This local package does not replace public Ubuntu 22.04
+  packages or enable automatic in-app patch updates.
 - **D-03 Manual CI.** Every workflow runs by `workflow_dispatch` only.
   `release.yml` has a required `tag` input and checks out that tag. No push,
   tag-push, or pull_request trigger. The one exception is `deploy-docs.yml`.
