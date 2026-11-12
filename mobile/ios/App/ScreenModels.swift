@@ -6,7 +6,7 @@ import UIKit
 final class OnboardingModel {
     private(set) var microphone = "Not requested"
     private(set) var keyboardUsed = false
-    private(set) var keyboardStatus = "Not added yet"
+    private(set) var keyboardStatus = "Open keyboard to check"
 
     var microphoneGranted: Bool { microphone == "Allowed" }
 
@@ -42,6 +42,7 @@ final class ModelsModel {
     private let repository: PhoneRepository
     private(set) var models: [Model] = []
     private(set) var selectedModel = ""
+    private(set) var selectedCleanupModel = ""
     private(set) var downloading: String?
     private(set) var progress: UInt64 = 0
     private(set) var total: UInt64 = 0
@@ -57,6 +58,7 @@ final class ModelsModel {
         let value = await repository.snapshot()
         models = value.models
         selectedModel = value.selectedModel
+        selectedCleanupModel = value.selectedCleanupModel
     }
 
     func download(_ id: String) async {
@@ -115,6 +117,7 @@ final class SettingsModel {
     private let repository: PhoneRepository
     private(set) var cleanupEnabled = false
     private(set) var systemAvailable = false
+    private(set) var busy = false
     var notice = ""
 
     init(repository: PhoneRepository) { self.repository = repository }
@@ -126,7 +129,13 @@ final class SettingsModel {
     }
 
     func setCleanup(_ enabled: Bool) async {
-        do { try repository.setCleanup(enabled); notice = "" }
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try await Task.detached { [repository] in try repository.setCleanup(enabled) }.value
+            notice = ""
+        }
         catch { notice = phoneError(error) }
         await refresh()
     }

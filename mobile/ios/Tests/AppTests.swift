@@ -18,13 +18,15 @@ final class AppTests: XCTestCase {
     override func tearDown() async throws {
         repository.host.stop()
         repository.engine.shutdown()
+        repository.localCleanup.shutdown()
         try FileManager.default.removeItem(at: folder)
         repository = nil
     }
 
     func testPhoneRepositoryUsesRustCatalogAndIosUnloadRule() async {
         let state = await repository.snapshot()
-        XCTAssertEqual(state.models.filter { $0.kind == .speech }.count, 2)
+        XCTAssertTrue(state.models.contains { $0.id == "small-q5_1" && $0.kind == .speech })
+        XCTAssertEqual(state.models.contains { $0.id == "large-v3-turbo-q5_0" }, ProcessInfo.processInfo.physicalMemory >= 6_000_000_000)
         XCTAssertEqual(state.models.filter { $0.kind == .systemCleanup }.count, 1)
         XCTAssertEqual(state.allowedRules, [.whileServerModeOpen])
         XCTAssertFalse(state.cleanupEnabled)
@@ -66,7 +68,8 @@ final class AppTests: XCTestCase {
     func testModelsAndSettingsReadSharedState() async {
         let models = ModelsModel(repository: repository)
         await models.refresh()
-        XCTAssertEqual(models.models.count, 3)
+        XCTAssertEqual(models.models, repository.catalog.models())
+        XCTAssertEqual(models.selectedCleanupModel, repository.selectedCleanupModel)
         XCTAssertFalse(models.speechReady)
         let settings = SettingsModel(repository: repository)
         await settings.setCleanup(true)
@@ -91,6 +94,18 @@ final class AppTests: XCTestCase {
         XCTAssertFalse(repository.nativeSystem.enabled)
     }
 
+    func testConcurrentCleanupUpdatesKeepRuntimeAndSavedSettingsTogether() async throws {
+        let phone = try XCTUnwrap(repository)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for index in 0..<20 {
+                group.addTask { try phone.setCleanup(index.isMultiple(of: 2)) }
+            }
+            try await group.waitForAll()
+        }
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("config/phone.json"))) as? [String: Any])
+        XCTAssertEqual(saved["cleanup"] as? Bool, phone.nativeSystem.enabled)
+    }
+
     func testUnavailableSystemCleanupKeepsRustRuleText() async throws {
         let system = repository.system
         let (rule, unavailable) = try await Task.detached {
@@ -101,6 +116,45 @@ final class AppTests: XCTestCase {
         XCTAssertEqual(unavailable.text, rule.text)
         XCTAssertEqual(unavailable.outcome, "unavailable")
         XCTAssertEqual(rule.outcome, "off")
+    }
+
+    func testOldPhoneSettingsChooseTheCoreCleanupDefault() async throws {
+        let root = folder.appendingPathComponent("old-settings", isDirectory: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("config"), withIntermediateDirectories: true)
+        try Data("{\"speechModel\":\"\",\"cleanup\":false}".utf8).write(to: root.appendingPathComponent("config/phone.json"))
+        let phone = try await Task.detached {
+            try PhoneRepository(data: root, name: "Old settings", physicalMemory: 6_000_000_000)
+        }.value
+        defer { phone.host.stop(); phone.engine.shutdown(); phone.localCleanup.shutdown() }
+        XCTAssertEqual(phone.selectedCleanupModel, "s1-mini")
+        XCTAssertFalse(phone.nativeSystem.enabled)
+    }
+
+    func testSavedCleanupOutsideTheMemoryGateDoesNotBlockStartup() async throws {
+        for memory: UInt64 in [0, 3_000_000_000, 6_000_000_000] {
+            let root = folder.appendingPathComponent("memory-\(memory)", isDirectory: true)
+            try FileManager.default.createDirectory(at: root.appendingPathComponent("config"), withIntermediateDirectories: true)
+            try Data("{\"speechModel\":\"\",\"cleanup\":true,\"cleanupModel\":\"qwen3.5-2b\"}".utf8).write(to: root.appendingPathComponent("config/phone.json"))
+            let phone = try await Task.detached {
+                try PhoneRepository(data: root, name: "Memory gate", physicalMemory: memory)
+            }.value
+            defer { phone.host.stop(); phone.engine.shutdown(); phone.localCleanup.shutdown() }
+            let expected = phone.catalog.models().first { $0.kind == .cleanup }?.id ?? ""
+            XCTAssertEqual(phone.selectedCleanupModel, expected)
+            let state = await phone.snapshot()
+            XCTAssertEqual(state.selectedCleanupModel, expected)
+        }
+    }
+
+    func testMissingCleanupSelectionPreservesSpeechAndCleanupChoices() async {
+        let speech = repository.selectedModel
+        let cleanup = repository.selectedCleanupModel
+        do {
+            try await repository.selectModel(id: "s1-mini")
+            XCTFail("A cleanup model must pass verification before selection.")
+        } catch { XCTAssertFalse(phoneError(error).isEmpty) }
+        XCTAssertEqual(repository.selectedModel, speech)
+        XCTAssertEqual(repository.selectedCleanupModel, cleanup)
     }
 
     func testDictationNoticesExplainCoreErrors() {

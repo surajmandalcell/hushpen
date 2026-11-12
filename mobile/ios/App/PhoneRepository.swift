@@ -5,6 +5,7 @@ import UIKit
 struct PhoneSnapshot: Sendable {
     let models: [Model]
     let selectedModel: String
+    let selectedCleanupModel: String
     let cleanupEnabled: Bool
     let systemAvailable: Bool
     let pairedClients: [String]
@@ -14,6 +15,7 @@ struct PhoneSnapshot: Sendable {
 private struct PhoneSettings: Codable {
     var speechModel = ""
     var cleanup = false
+    var cleanupModel: String?
 }
 
 final class PhoneRepository: @unchecked Sendable {
@@ -21,6 +23,7 @@ final class PhoneRepository: @unchecked Sendable {
     let engine: Engine
     let host: Host
     let system: SystemCleanup
+    let localCleanup: LocalCleanup
     let nativeSystem: NativeSystemLlm
     let data: URL
     private let settingsURL: URL
@@ -28,7 +31,7 @@ final class PhoneRepository: @unchecked Sendable {
     private let lock = NSLock()
     private let speech = NSLock()
 
-    init(data: URL, name: String) throws {
+    init(data: URL, name: String, physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) throws {
         self.data = data
         settingsURL = data.appendingPathComponent("config/phone.json")
         if FileManager.default.fileExists(atPath: settingsURL.path) {
@@ -41,10 +44,18 @@ final class PhoneRepository: @unchecked Sendable {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try privateData.setResourceValues(values)
-        catalog = try ModelRepository(data: data.path)
+        catalog = try ModelRepository.withMemory(data: data.path, physicalMemoryBytes: physicalMemory)
+        let cleanupModels = catalog.models().filter { $0.kind == .cleanup }
+        let savedCleanup = settings.cleanupModel
+        settings.cleanupModel = cleanupModels.contains { $0.id == savedCleanup }
+            ? savedCleanup : (cleanupModels.first(where: \.recommended) ?? cleanupModels.first)?.id
         engine = try Engine(dataDir: data.path)
+        localCleanup = try LocalCleanup(dataDir: data.path, physicalMemoryBytes: physicalMemory)
+        localCleanup.setMemoryBudget(bytes: physicalMemory)
+        if let id = settings.cleanupModel { try localCleanup.setModel(modelId: id) }
         nativeSystem = NativeSystemLlm(enabled: settings.cleanup)
         system = SystemCleanup(system: nativeSystem)
+        system.setLocal(local: settings.cleanup ? localCleanup : nil)
         host = try Host(engine: engine, name: name, system: system)
         host.setForeground(foreground: false)
     }
@@ -77,10 +88,15 @@ final class PhoneRepository: @unchecked Sendable {
         lock.withLock { settings.speechModel }
     }
 
+    var selectedCleanupModel: String {
+        lock.withLock { settings.cleanupModel ?? "" }
+    }
+
     func snapshot() async -> PhoneSnapshot {
         await Task.detached { [self] in
             PhoneSnapshot(
                 models: catalog.models(), selectedModel: selectedModel,
+                selectedCleanupModel: selectedCleanupModel,
                 cleanupEnabled: nativeSystem.enabled, systemAvailable: system.available(),
                 pairedClients: host.pairedClients(), allowedRules: host.allowedUnloadRules()
             )
@@ -90,8 +106,10 @@ final class PhoneRepository: @unchecked Sendable {
     func download(id: String, progress: DownloadProgress?) async throws {
         try await Task.detached { [self] in
             if try catalog.download(id: id, progress: progress) {
-                let next = try catalog.selectionAfterDownload(current: selectedModel, downloaded: id)
-                if next != selectedModel { try select(id: next) }
+                if catalog.models().contains(where: { $0.id == id && $0.kind == .speech }) {
+                    let next = try catalog.selectionAfterDownload(current: selectedModel, downloaded: id)
+                    if next != selectedModel { try select(id: next) }
+                }
             }
         }.value
     }
@@ -105,7 +123,28 @@ final class PhoneRepository: @unchecked Sendable {
     }
 
     private func select(id: String) throws {
+        guard let model = catalog.models().first(where: { $0.id == id }) else {
+            throw MobileError.InvalidInput(detail: "This model is not available for this phone.")
+        }
         _ = try catalog.modelPath(id: id)
+        if model.kind == .cleanup {
+            try lock.withLock {
+                let previous = settings.cleanupModel
+                try localCleanup.setModel(modelId: id)
+                do {
+                    var next = settings
+                    next.cleanupModel = id
+                    try save(next)
+                } catch {
+                    if let previous { try localCleanup.setModel(modelId: previous) }
+                    throw error
+                }
+            }
+            return
+        }
+        guard model.kind == .speech else {
+            throw MobileError.InvalidInput(detail: "Choose a downloaded speech or cleanup model.")
+        }
         try speech.withLock {
             try engine.unload()
             try lock.withLock {
@@ -149,8 +188,10 @@ final class PhoneRepository: @unchecked Sendable {
             var next = settings
             next.cleanup = enabled
             try save(next)
+            nativeSystem.enabled = enabled
+            system.setLocal(local: enabled ? localCleanup : nil)
+            if !enabled { localCleanup.unload() }
         }
-        nativeSystem.enabled = enabled
     }
 
     private func save(_ next: PhoneSettings) throws {

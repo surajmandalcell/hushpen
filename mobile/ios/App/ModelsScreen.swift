@@ -5,7 +5,7 @@ struct ModelsScreen: View {
     let settings: SettingsModel
 
     private var speech: [Model] { model.models.filter { $0.kind == .speech } }
-    private var cleanup: [Model] { model.models.filter { $0.kind == .systemCleanup } }
+    private var cleanup: [Model] { model.models.filter { $0.kind == .systemCleanup || $0.kind == .cleanup } }
 
     var body: some View {
         List {
@@ -23,19 +23,23 @@ struct ModelsScreen: View {
             if !cleanup.isEmpty {
                 Section {
                     ForEach(cleanup, id: \.id) { entry in
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.name)
-                                Text(cleanupStatus).font(.subheadline).foregroundStyle(.secondary)
+                        if entry.kind == .systemCleanup {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.name)
+                                    Text(cleanupStatus).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "sparkles").foregroundStyle(.tint)
                             }
-                        } icon: {
-                            Image(systemName: "sparkles").foregroundStyle(.tint)
+                        } else {
+                            SpeechRow(entry: entry, model: model)
                         }
                     }
                 } header: {
                     Text("Text cleanup")
                 } footer: {
-                    Text("Built into this iPhone. Nothing to download.")
+                    Text("The system model is first when available. Otherwise, Hushpen uses your selected downloaded cleanup model. Turn cleanup on in Settings.")
                 }
             }
         }
@@ -47,7 +51,7 @@ struct ModelsScreen: View {
 
     private var cleanupStatus: String {
         if !settings.cleanupEnabled { return "Off. Turn it on in Settings." }
-        return settings.systemAvailable ? "Ready. Works while Hushpen is open." : "Not available on this iPhone. Rule cleanup still works."
+        return settings.systemAvailable ? "Ready. Works while Hushpen is open." : "Unavailable. Use a downloaded cleanup model below."
     }
 }
 
@@ -57,7 +61,7 @@ private struct SpeechRow: View {
 
     private var active: Bool { model.downloading == entry.id }
     private var ready: Bool { entry.status == .ready }
-    private var inUse: Bool { ready && entry.id == model.selectedModel }
+    private var inUse: Bool { ready && entry.id == (entry.kind == .cleanup ? model.selectedCleanupModel : model.selectedModel) }
     private var idle: Bool { !model.busy && model.downloading == nil }
     private var fraction: Double { model.total > 0 ? Double(model.progress) / Double(model.total) : 0 }
 
@@ -65,8 +69,8 @@ private struct SpeechRow: View {
         Label {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.name).accessibilityIdentifier(inUse ? "models.selected" : "models.row")
-                    Text(speechPurpose(entry)).font(.subheadline).foregroundStyle(.secondary)
+                    Text(entry.name).accessibilityIdentifier("\(entry.kind == .cleanup ? "models.cleanup" : "models").\(inUse ? "selected" : "row")")
+                    Text(entry.kind == .cleanup ? "Text cleanup" : speechPurpose(entry)).font(.subheadline).foregroundStyle(.secondary)
                     Text(status).font(.footnote).foregroundStyle(entry.status == .damaged && !active ? Color.red : Color.secondary)
                     if active {
                         Group {
@@ -80,7 +84,7 @@ private struct SpeechRow: View {
                 trailing
             }
         } icon: {
-            Image(systemName: "waveform").foregroundStyle(.tint)
+            Image(systemName: entry.kind == .cleanup ? "sparkles" : "waveform").foregroundStyle(.tint)
         }
         .contentShape(Rectangle())
         .onTapGesture { if ready && !inUse && idle { Task { await model.select(entry.id) } } }
@@ -112,10 +116,12 @@ private struct SpeechRow: View {
             Button("Use") { Task { await model.select(entry.id) } }
                 .buttonStyle(.borderless)
                 .disabled(!idle)
+                .accessibilityIdentifier("models.select.\(entry.id)")
         } else if entry.status == .needsVerification {
             Button("Verify") { Task { await model.verify(entry.id) } }
                 .buttonStyle(.borderless)
                 .disabled(!idle)
+                .accessibilityIdentifier("models.verify.\(entry.id)")
         } else {
             Button { Task { await model.download(entry.id) } } label: {
                 Image(systemName: "arrow.down.circle").font(.title2)
@@ -123,6 +129,7 @@ private struct SpeechRow: View {
             .buttonStyle(.borderless)
             .disabled(model.downloading != nil)
             .accessibilityLabel("Download \(entry.name)")
+            .accessibilityIdentifier("models.download.\(entry.id)")
         }
     }
 }
