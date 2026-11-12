@@ -1,0 +1,53 @@
+/* Privacy, Support and Press. Builds on page.css: same type, colors and hairline rows. */
+.pg.doc { max-width: 720px; }
+.pg.doc.wide { max-width: 1040px; }
+.pg.doc h1 { margin-top: 56px; }
+.pg.doc .lede { font-size: 21px; color: #1D1D1F; }
+.pg.doc h2 { margin: 56px 0 14px; font: 600 24px/1.25 var(--sans); letter-spacing: -.025em; }
+.pg.doc h3 { margin: 28px 0 6px; font: 600 17px/1.35 var(--text); letter-spacing: -.011em; }
+.pg.doc p { font-size: 17px; }
+.pg.doc .stamp { margin: 0 0 28px; color: #86868B; font: 400 14px/1.5 var(--text); }
+
+/* Links in running text are blue; rows and nav keep the ink color from page.css. */
+.pg.doc p a, .pg.doc ul.bul a, .pg.doc details.faq a, .pg.doc dl.facts dd a { color: #0071E3; }
+.pg.doc p a:hover, .pg.doc ul.bul a:hover, .pg.doc details.faq a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pg.doc ul.bul li a { display: inline; padding: 0; border: 0; font: inherit; }
+
+.pg.doc ul.bul { list-style: disc; margin: 0 0 18px; padding: 0 0 0 22px; border: 0; }
+.pg.doc ul.bul li { margin: 0 0 8px; padding: 0; color: #424245; font: 400 17px/1.5 var(--text); }
+.pg.doc ul.bul li::marker { color: #86868B; }
+.pg.doc ul.bul strong { color: #1D1D1F; font-weight: 600; }
+
+/* A grouped list: label on the left, value on the right, hairlines between rows. */
+.pg.doc dl.facts { margin: 20px 0 0; padding: 0 16px; border-radius: 12px; background: #F5F5F7; }
+.pg.doc dl.facts div { display: flex; justify-content: space-between; gap: 24px; padding: 13px 0; border-top: .5px solid #D2D2D7; font: 400 16px/1.4 var(--text); }
+.pg.doc dl.facts div:first-child { border-top: 0; }
+.pg.doc dl.facts dt { flex: none; color: #86868B; }
+.pg.doc dl.facts dd { margin: 0; text-align: right; color: #1D1D1F; }
+
+/* Questions: kit.css draws the chevron and the open animation. */
+.pg.doc details.faq { border-bottom: 1px solid #E5E5EA; }
+.pg.doc details.faq:first-of-type { border-top: 1px solid #E5E5EA; }
+.pg.doc details.faq summary { padding: 17px 2px; font: 500 18px/1.35 var(--text); letter-spacing: -.011em; }
+.pg.doc details.faq p { padding: 0 2px 4px; }
+.pg.doc details.faq ol { margin: 0 0 18px; padding: 0 0 0 22px; color: #424245; font: 400 17px/1.5 var(--text); }
+.pg.doc details.faq ol li { margin: 0 0 6px; }
+.pg.doc details.faq li a { display: inline; padding: 0; border: 0; font: inherit; }
+
+/* Text blocks a writer can copy. */
+.pg.doc .copyable { margin: 12px 0 0; padding: 16px 18px; border-radius: 12px; background: #F5F5F7; color: #1D1D1F; font: 400 16px/1.55 var(--text); white-space: pre-line; user-select: all; }
+
+/* Screenshot sheets */
+.pg.doc .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; margin: 20px 0 0; }
+.pg.doc .shots a { display: block; }
+.pg.doc .shots img { width: 100%; height: auto; border-radius: 14px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08); }
+.pg.doc .shots.pad { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.pg.doc .hero { margin: 36px 0 0; }
+.pg.doc .hero img { width: 100%; border-radius: 16px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08); }
+.pg.doc .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 20px 0 0; }
+.pg.doc .swatches div { padding: 74px 12px 12px; border-radius: 12px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08); font: 500 14px/1.35 var(--text); }
+.pg.doc .swatches span { display: block; font-weight: 400; opacity: .6; }
+.pg.doc .pg-links { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 56px 0 0; color: #86868B; font: 400 14px/1.5 var(--text); }
+.pg.doc .pg-links a { color: #86868B; }
+.pg.doc .pg-links a:hover { color: #0071E3; }
+.pg.doc .pg-foot { margin: 14px 0 0; color: #86868B; font: 400 14px/1.5 var(--text); }
