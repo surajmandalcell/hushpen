@@ -219,6 +219,8 @@ pub mod size {
     pub const NAV_ITEM_HEIGHT: f32 = 28.0;
     pub const NAV_ITEM_PADDING: f32 = 8.0;
     pub const NAV_ICON: f32 = 16.0;
+    /// The icon of a quiet icon button, such as Details in a Models row.
+    pub const QUIET_ICON: f32 = 14.0;
     pub const ROW_MIN_HEIGHT: f32 = 36.0;
     pub const ROW_PADDING: f32 = 10.0;
     pub const BUTTON_HEIGHT: f32 = 22.0;
@@ -270,8 +272,8 @@ pub mod size {
     /// The app icon at the top of About.
     pub const APP_ICON: f32 = 96.0;
     /// The columns of a Models row, so they line up from row to row. The meters of a speech
-    /// model are a label and five dots on each of two lines; the four icon buttons have their
-    /// own slots.
+    /// model are a label and five dots on each of two lines; the icon buttons pack from the left
+    /// of one group four buttons wide.
     pub const MODEL_METER_WIDTH: f32 =
         MODEL_METER_LABEL + MODEL_METER_GAP + 5.0 * MODEL_DOT + 4.0 * MODEL_DOT_GAP;
     pub const MODEL_METER_LABEL: f32 = 52.0;

@@ -130,6 +130,29 @@ pub fn icon_button_enabled<F: Fn(&mut Window, &mut App) + 'static>(
     )
 }
 
+/// An [`icon_button`] for a secondary action, such as Details: its icon is 14 px in the tertiary
+/// label color and turns secondary while the pointer is over the 22 px button, so it stays out of
+/// the way of the actions beside it.
+pub fn quiet_icon_button<F: Fn(&mut Window, &mut App) + 'static>(
+    palette: Palette,
+    id: SharedString,
+    name: IconName,
+    label: String,
+    tooltip: &'static str,
+    focus: &FocusHandle,
+    press: F,
+) -> impl IntoElement + use<F> {
+    let hover = palette.label_secondary;
+    icon_frame(palette, id, label, tooltip, focus, true, press).child(
+        svg()
+            .path(name.path())
+            .size(px(size::QUIET_ICON))
+            .flex_none()
+            .text_color(palette.label_tertiary)
+            .group_hover(ICON_GROUP, move |style| style.text_color(hover)),
+    )
+}
+
 /// An icon button for one of two states, such as Play and Pause: it shows `icons[1]` while
 /// `on`. A change cross-fades the two icons, the new one growing into place.
 #[expect(
@@ -195,6 +218,9 @@ pub fn swap_icon_button<F: Fn(&mut Window, &mut App) + 'static>(
 /// The scale an icon of a [`swap_icon_button`] grows from as it comes in.
 const SWAP_ICON_FROM: f32 = 0.25;
 
+/// The hover group of an icon button, so its icon can change color with the 22 px square.
+const ICON_GROUP: &str = "icon-button";
+
 /// The 22 px square of an icon button, with its ring, hover fill, tooltip, and click.
 fn icon_frame<F: Fn(&mut Window, &mut App) + 'static>(
     palette: Palette,
@@ -211,6 +237,7 @@ fn icon_frame<F: Fn(&mut Window, &mut App) + 'static>(
         .test_support()
         .role(Role::Button)
         .aria_label(label)
+        .group(ICON_GROUP)
         .flex_none()
         .flex()
         .items_center()
