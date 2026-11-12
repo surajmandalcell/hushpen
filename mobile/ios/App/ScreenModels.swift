@@ -6,6 +6,7 @@ import UIKit
 final class OnboardingModel {
     private(set) var microphone = "Not requested"
     private(set) var keyboardUsed = false
+    private(set) var keyboardStatus = "Not added yet"
 
     var microphoneGranted: Bool { microphone == "Allowed" }
 
@@ -16,7 +17,13 @@ final class OnboardingModel {
         case .undetermined: microphone = "Not requested"
         @unknown default: microphone = "Unavailable"
         }
-        keyboardUsed = UserDefaults(suiteName: "group.com.mandalsuraj.hushpen")?.object(forKey: "keyboardLastSeen") != nil
+        let status = KeyboardStatus(
+            modes: UITextInputMode.activeInputModes.map(\.description),
+            heartbeat: KeyboardHeartbeat.read(root: KeyboardStatus.groupRoot),
+            legacySeenAt: UserDefaults(suiteName: FlowSessionStore.groupIdentifier)?.object(forKey: "keyboardLastSeen") as? Date
+        )
+        keyboardUsed = status.added && status.fullAccess != false
+        keyboardStatus = status.text
     }
 
     func requestMicrophone() async {

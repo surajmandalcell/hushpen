@@ -34,10 +34,12 @@ final class KeyboardController: UIInputViewController {
     private var hostActive = true
     private var offer: (session: UUID, document: UUID, context: String)?
     private var insertion: (document: UUID, text: String, context: String, replaced: String)?
+    private var heartbeat: KeyboardHeartbeat?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         model.controller = self
+        shareStatus()
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostWillResignActive, object: extensionContext)
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostDidEnterBackground, object: extensionContext)
         NotificationCenter.default.addObserver(self, selector: #selector(resumeHost), name: .NSExtensionHostDidBecomeActive, object: extensionContext)
@@ -95,9 +97,7 @@ final class KeyboardController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if hasFullAccess {
-            UserDefaults(suiteName: FlowSessionStore.groupIdentifier)?.set(Date(), forKey: "keyboardLastSeen")
-        }
+        shareStatus()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -131,6 +131,7 @@ final class KeyboardController: UIInputViewController {
 
     private func refresh() {
         guard hostActive, visible else { return }
+        shareStatus()
         model.canStop = false
         model.recording = false
         model.fullAccess = hasFullAccess
@@ -208,6 +209,19 @@ final class KeyboardController: UIInputViewController {
         } catch {
             model.url = nil
             model.status = error.localizedDescription
+        }
+    }
+
+    private func shareStatus() {
+        let value = KeyboardHeartbeat(seenAt: Date(), hasFullAccess: hasFullAccess)
+        if let heartbeat, heartbeat.hasFullAccess == value.hasFullAccess,
+           value.seenAt.timeIntervalSince(heartbeat.seenAt) < 5 { return }
+        do {
+            try value.write(root: KeyboardStatus.groupRoot)
+            heartbeat = value
+        } catch {
+            // iOS denies shared-container writes while Full Access is off.
+            if hasFullAccess { model.status = "Keyboard status could not be shared. Reopen the keyboard." }
         }
     }
 
