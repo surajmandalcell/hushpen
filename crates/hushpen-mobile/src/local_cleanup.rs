@@ -116,6 +116,16 @@ impl LocalCleanup {
         catalog::phone_cleanup_memory(id).is_some_and(|needed| needed <= budget)
     }
 
+    fn wait_for_memory(&self, id: &str) -> bool {
+        for _ in 0..10 {
+            if self.has_memory(id) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        self.has_memory(id)
+    }
+
     fn entry(&self, id: &str) -> Result<&'static catalog::ModelEntry, MobileError> {
         catalog::phone_models(self.memory)
             .into_iter()
@@ -173,7 +183,7 @@ impl LocalCleanup {
             return Ok(result(rule, Outcome::Unavailable));
         };
         let entry = self.entry(&id)?;
-        if !self.verified(entry) || !self.has_memory(&id) {
+        if !self.verified(entry) || !self.wait_for_memory(&id) {
             return Ok(result(rule, Outcome::Unavailable));
         }
         let family = PromptFamily::from_model_name(&entry.files[0].file)
@@ -267,7 +277,13 @@ mod tests {
         let needed = catalog::phone_cleanup_memory("s1-mini").unwrap();
         local.set_memory_budget(needed - 1);
         assert!(!local.has_memory("s1-mini"));
-        local.set_memory_budget(needed);
+        let released = Arc::clone(&local);
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            released.set_memory_budget(needed);
+        });
+        assert!(local.wait_for_memory("s1-mini"));
+        release.join().unwrap();
         assert!(local.has_memory("s1-mini"));
         assert!(!local.available());
         let output = local
