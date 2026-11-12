@@ -127,6 +127,15 @@ with `-xctestrun <products.xctestrun>`. Boot the owned simulator with
 Disabling verbose diagnostics avoids a stalled system diagnostic collection
 after a failed test. Test assertions and result bundles remain enabled.
 
+`StoreShotsUITests` takes the App Store screenshots from a real run: stage the
+simulator as above (a 16 kHz mono `flow-test.wav` of the sentence to dictate),
+boot it with `xcrun simctl status_bar <id> override --time 9:41 --batteryState
+charged --batteryLevel 100`, light appearance, and no Simulator window. Run
+`test1EnableKeyboard`, `test2MessagesDictation`, `test3Screens`, and
+`test4LiveActivity` with `-only-testing` and
+`TEST_RUNNER_HUSHPEN_SHOTS_DIR=<folder>`. The tests skip without that variable.
+Use an iPhone 17 Pro Max (1320 by 2868) and an iPad Pro 13-inch M5 (2064 by 2752).
+
 The WAV hook exists only in debug builds. The extension links no Rust model
 engine and never records. It starts a flow through the app's session URL.
 Recording can continue after the user returns to the keyboard. The keyboard
