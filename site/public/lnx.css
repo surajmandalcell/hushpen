@@ -149,7 +149,7 @@ svg.g { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor;
 .rl-bx { border: 1px solid #D1D9E0; border-radius: 6px; background: #fff; }
 .rl-bb { padding: 16px; border-bottom: 1px solid #D1D9E0; }
 .rl-ti { display: flex; height: 48px; margin-bottom: 16px; }
-.rl-ti h1 { flex: 1; min-width: 0; margin: 0; font: 600 32px/48px "hw-mona", -apple-system, system-ui, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+.rl-ti .rl-h { flex: 1; min-width: 0; margin: 0; font: 600 32px/48px "hw-mona", -apple-system, system-ui, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
 .rl-lb { align-self: flex-start; height: 24px; margin: 16px 8px 0; padding: 0 8px; border: 1px solid #1A7F37; border-radius: 2em; color: #1A7F37; font-size: 12px; font-weight: 500; line-height: 22px; }
 .rl-cm { height: 28px; margin-bottom: 16px; }
 .rl-cm span { display: inline-flex; align-items: center; height: 28px; padding: 0 8px; border: 1px solid #D1D9E0; border-radius: 6px; background: #F6F8FA; color: #25292E; font-size: 12px; font-weight: 500; line-height: 18px; }

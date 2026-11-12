@@ -1,5 +1,5 @@
-// Page chrome: links, the download toast, the nav pill, reveal on scroll, fitted scenes, the FAQ, the
-// strips, copy buttons, and the menu bars.
+// Page chrome: the download toast, the nav pill, reveal on scroll, fitted scenes, the strips, copy
+// buttons, and the menu bars. The FAQ and footer links are plain HTML in index.html.
 (() => {
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.documentElement.classList.toggle('calm', calm);
@@ -8,13 +8,6 @@
   window.HP = { calm, sleep, whenSeen };
 
   const GH = 'https://github.com/surajmandalcell/hushpen';
-  const COLS = [
-    ['Product', [['Download', GH + '/releases/latest'], ['Platforms', '#platforms'], ['Release notes', GH + '/releases/latest'], ['All releases', GH + '/releases']]],
-    ['Project', [['About', 'about.html'], ['GitHub', GH], ['Report an issue', GH + '/issues'], ['Made by Suraj Mandal', 'https://mandalsuraj.com']]],
-    ['Legal', [['AGPL-3.0 license', GH + '/blob/master/LICENSE'], ['Third-party notices', GH + '/blob/master/assets/THIRD-PARTY-NOTICES.html']]],
-  ];
-  const ext = u => u.startsWith('http') ? ' target="_blank" rel="noopener"' : '';
-  document.querySelectorAll('[data-links]').forEach(el => { el.innerHTML = COLS.map(([h, ls]) => `<div><h4>${h}</h4>${ls.map(([t, u]) => `<a href="${u}"${t === 'Download' ? ' data-dl' : t === 'Release notes' ? ' data-notes' : ''}${ext(u)}>${t}</a>`).join('')}</div>`).join(''); });
   document.querySelectorAll('[data-gh]').forEach(a => { a.href = GH; });
   const LX = ['AppImage', 'deb', 'rpm', 'tar.gz'];
   document.querySelectorAll('[data-lx]').forEach(el => {
@@ -67,21 +60,6 @@
   addEventListener('resize', fit); fit();
 
   document.querySelectorAll('[data-reveal]').forEach(el => { const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { el.classList.add('in'); io.disconnect(); } }, { threshold: 0.12 }); io.observe(el); });
-
-  const FAQ = [
-    ['Is Hushpen free?', 'Yes. Hushpen is free and open source under the AGPL-3.0-or-later license.'],
-    ['Does my voice leave my computer?', 'No. Hushpen records and transcribes on your computer. Your audio and text leave it only if you set up your own endpoint for AI cleanup. With Devices (coming soon), audio goes only to the phones and servers you paired. There is no cloud.'],
-    ['Which systems does it run on?', 'macOS 13 or later on Apple silicon. Linux x64 and arm64 with an X11 session and a Vulkan or OpenGL driver. Windows x64. On Wayland, the global key and paste are not available. Android and iOS apps are coming soon.'],
-    ['Is there an Android or iPhone app?', 'Not yet. Both are coming soon. The Android app is a full keyboard with a voice bar, and dictation and AI cleanup run on the phone. The iPhone app is a keyboard that starts a flow session in the Hushpen app, and the Dynamic Island shows it while it listens.'],
-    ['Can my phone run the models for my computer?', 'Yes, with Devices, which is coming soon. Turn on Use models on other devices, then pair a phone with a QR code (nearby, encrypted with Noise), or a computer with SSH or Tailscale. Speech to Text and Text cleanup each list devices in order, and Hushpen uses the first that answers. This computer is the fallback. An Android phone can serve in the background or with the app open. An iPhone serves in Server mode, with the app open, charging, and the screen dimmed.'],
-    ['What is hushpen-host?', 'A headless program for servers. It serves models to your computer the same way a phone does. It is part of Devices, which is coming soon.'],
-    ['Which languages?', 'Parakeet v3, the recommended model, hears English and 24 other European languages. Whisper Large v3 Turbo covers Hindi and many more. Whisper Small translates speech to English.'],
-    ['Which keys does it use?', 'Left Option + Tab starts hands-free dictation, and the same keys stop it. Hold Right Option to talk, and let go to finish. Right Option + Right Shift is Command Mode, Ctrl + Cmd + V pastes the last text, Ctrl + Cmd + S reads aloud, and Esc cancels. On Linux and Windows, double tap Right Alt (or press Right Alt + Space) for hands-free. Hold Right Alt to talk. Change any of them in Settings.'],
-    ['Does it need the internet?', 'Only to download a model, and only when you ask. Dictation itself runs on your computer. The update check is off until you turn it on.'],
-    ['What does AI cleanup do?', 'It rewrites the text for where it goes, with the General, Message, Email, or Notes profile. It uses a local model (S1-mini by Superwhisper for English, or Qwen3.5 2B) or your own OpenAI-compatible endpoint, such as Ollama or LM Studio. It is off until you turn it on. Rule-based cleanup is on by default.'],
-    ['How much memory does it use?', 'The app used about 15 MB after a day of running. The speech engine runs as its own program, hushpen-asr, and holds the model: about 400 MB with Parakeet kept loaded. In Settings, the engine can unload the model after 5, 15, 30, or 60 idle minutes.'],
-  ];
-  document.querySelectorAll('[data-faq]').forEach(el => { el.innerHTML = FAQ.map(([q, a], i) => `<details class="faq"${i === 0 ? ' open' : ''}><summary>${q}</summary><p>${a}</p></details>`).join(''); });
 
   const COPY_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="2"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg><svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>';
   document.querySelectorAll('[data-copy]').forEach(b => {

@@ -38,7 +38,7 @@
   const web = r => `<div class="ln-win wx-web" style="${pos(r)}">
     <div class="wx-tabs"><span class="wx-tab">${HP}<span>Hushpen</span>${g('x')}</span>${ib('plus')}<span class="ln-sp"></span>${WC()}</div>
     <div class="wx-nav">${ib('back')}${ib('reload')}<span class="wx-url">${g('lock')}<span>hushpen.mandalsuraj.com/#windows</span></span><span class="ln-ib wx-dlb">${g('dl')}</span>${ib('more')}</div>
-    <div class="wx-pg"><h1>The same app <span>on Windows.</span></h1><p>Windows x64. No admin rights needed.</p><span class="wx-pb">${g('dl')}Download for Windows</span><i class="wx-ph"></i></div>
+    <div class="wx-pg"><div class="wx-h">The same app <span>on Windows.</span></div><p>Windows x64. No admin rights needed.</p><span class="wx-pb">${g('dl')}Download for Windows</span><i class="wx-ph"></i></div>
     <div class="wx-fly"><b>Downloads</b><div class="wx-it">${HP}<div class="wx-tx"><b data-wx-file>${FILE}</b><i class="wx-bar"><b></b></i><span class="wx-st">Starting…</span><u>Open file</u></div></div></div>
   </div>`;
 

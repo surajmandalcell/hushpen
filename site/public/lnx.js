@@ -128,7 +128,7 @@
       <nav class="rl-ln"><ul>${TABS.map((t, i) => `<li><span${i ? '' : ' class="on"'}>${t}</span></li>`).join('')}</ul><div class="rl-mr"><u></u><span>More${oc('tri')}</span></div></nav></div>
     <div class="rl-ct"><ol class="rl-bc"><li><a>Releases</a></li><li data-ln-tag>Latest version</li></ol>
       <div class="rl-bx"><div class="rl-bb">
-        <div class="rl-ti"><h1 data-ln-title>Latest version</h1><span class="rl-lb">Latest</span></div>
+        <div class="rl-ti"><div class="rl-h" data-ln-title>Latest version</div><span class="rl-lb">Latest</span></div>
         <div class="rl-cm"><span>Compare${oc('tri')}</span></div>
         <div class="rl-mt"><div>${AV} <b>github-actions</b> <span data-ln-published></span></div><div>${oc('tag')} <span data-ln-tag>Latest version</span></div></div>
         <div class="rl-md" data-ln-highlight hidden></div></div>
