@@ -2026,8 +2026,8 @@ mod window {
         assert_eq!((on.2, on.3), (off.2, off.3));
     }
 
-    /// The model step draws the speech rows of the Models view, with the same icon buttons in
-    /// the same slots, and a progress bar under the name while a model downloads.
+    /// The model step draws the speech rows of the Models view, with the same icon buttons
+    /// packed from the left, and a progress bar under the name while a model downloads.
     #[gpui_kit::test]
     fn the_model_step_shows_the_rows_of_the_models_view(cx: &mut TestAppContext) {
         use crate::controller::testkit::PARAKEET_ID;
@@ -2067,11 +2067,18 @@ mod window {
         let select = rect(cx, handle, "onboarding.model.select.0".into());
         let delete = rect(cx, handle, "onboarding.model.delete.0".into());
         assert_eq!((download.2, download.3), (22.0, 22.0), "an icon button");
-        assert!(download.0 < select.0 && select.0 < delete.0);
+        assert_eq!(download.0, select.0, "the first button after Details");
+        assert!(select.0 < delete.0);
+        let details = rect(cx, handle, "onboarding.model.info.0".into());
+        assert_eq!(
+            rect(cx, handle, "onboarding.model.info.1".into()).0,
+            details.0,
+            "Details is in one place in every row"
+        );
         assert_eq!(
             rect(cx, handle, "onboarding.model.delete.1".into()).0,
-            delete.0,
-            "each button keeps its slot from row to row"
+            select.0,
+            "with no Set as default, Delete takes its place and leaves no hole"
         );
 
         fixture

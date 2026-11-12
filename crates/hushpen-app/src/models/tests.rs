@@ -763,7 +763,7 @@ mod search_tests {
         assert_eq!(shown(cx, &rig, "voices"), ["kokoro"]);
     }
 
-    fn window(cx: &mut TestAppContext, rig: &Rig) -> AnyWindowHandle {
+    pub(super) fn window(cx: &mut TestAppContext, rig: &Rig) -> AnyWindowHandle {
         cx.update(gpui_kit::init);
         cx.update(crate::theme::install);
         let (handle, shell) = cx.update(|cx| {
@@ -952,5 +952,68 @@ mod search_tests {
         assert!(present(cx, handle, "models.search"));
         click(cx, handle, "sidebar.history");
         assert!(!present(cx, handle, "models.search"));
+    }
+}
+
+/// The icon buttons of a row of the Models view.
+mod button_tests {
+    use super::search_tests::window;
+    use super::*;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{AnyWindowHandle, Bounds, Pixels, SharedString, px};
+
+    fn bounds(cx: &mut TestAppContext, handle: AnyWindowHandle, id: &str) -> Bounds<Pixels> {
+        let id = SharedString::from(id.to_owned());
+        cx.update_window(handle, |_, window, _| window.find(id).bounds())
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn the_buttons_of_a_row_sit_together_from_the_left_with_no_hole(cx: &mut TestAppContext) {
+        // alpha is the default, beta is downloaded, gamma is not.
+        let rig = super::rig(
+            cx,
+            &[("alpha", ALPHA), ("beta", BETA)],
+            Some("alpha"),
+            instant(),
+        );
+        settle(cx, &rig);
+        let handle = window(cx, &rig);
+        let gap = px(crate::theme::size::MODEL_ICON_GAP);
+        let side = px(crate::theme::size::BUTTON_HEIGHT);
+
+        let info: Vec<_> = (0..3)
+            .map(|row| bounds(cx, handle, &format!("models.info.{row}")))
+            .collect();
+        assert!(
+            info.iter()
+                .all(|b| b.size.width == side && b.size.height == side),
+            "Details keeps a 22px target"
+        );
+        assert!(
+            info.iter().all(|b| b.left() == info[0].left()),
+            "Details is in one place in every row"
+        );
+        let delete = bounds(cx, handle, "models.delete.0");
+        assert_eq!(
+            delete.left(),
+            info[0].right() + gap,
+            "the default has no star"
+        );
+        let select = bounds(cx, handle, "models.select.1");
+        assert_eq!(select.left(), info[1].right() + gap);
+        assert_eq!(
+            bounds(cx, handle, "models.delete.1").left(),
+            select.right() + gap
+        );
+        assert_eq!(
+            bounds(cx, handle, "models.download.2").left(),
+            info[2].right() + gap
+        );
+        assert_eq!(
+            bounds(cx, handle, "models.size.0").right() + px(crate::theme::space::SM),
+            info[0].left(),
+            "the size column ends where the buttons begin"
+        );
     }
 }

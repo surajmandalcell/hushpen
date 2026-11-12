@@ -5,9 +5,7 @@
 //! Done close it, and focus goes back to the control that opened it.
 
 use super::{BUILT_IN_NAME, Page, Playing, READING, Take, VoiceLibrary, detail, take_detail};
-use crate::theme::{
-    self, BODY, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, size, space,
-};
+use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
 use crate::ui::{self, Kind, Notice};
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
@@ -22,6 +20,9 @@ use hushpen_core::chatterbox::BUILT_IN_VOICE;
 /// The width of the last place in a voice row: Set as Default, or the word Default. Set as
 /// Default is about 111px wide in Inter, so the column holds it with room for a wider font.
 const DEFAULT_COLUMN_WIDTH: f32 = 120.0;
+
+/// The icon buttons of a voice row: Play, Rename, and Delete.
+const ICON_SLOTS: usize = 3;
 
 fn id(name: &str) -> SharedString {
     hook::id("voices", name)
@@ -239,6 +240,7 @@ fn voice_row(
         act(library, move |me, _, cx| me.toggle_play(what.clone(), cx)),
     )
     .into_any_element();
+    // The built-in voice has no clip to rename or delete.
     let edits: Vec<AnyElement> = if cloned {
         let (rename_id, delete_id) = (voice.clone(), voice.clone());
         vec![
@@ -276,7 +278,7 @@ fn voice_row(
             .into_any_element(),
         ]
     } else {
-        (0..2).map(|_| empty_icon_place()).collect()
+        Vec::new()
     };
     let last = if default {
         ui::value(palette)
@@ -316,8 +318,11 @@ fn voice_row(
                 .flex()
                 .items_center()
                 .gap(px(space::SM))
-                .child(play)
-                .children(edits)
+                .child(
+                    ui::icon_group(ICON_SLOTS, space::SM)
+                        .child(play)
+                        .children(edits),
+                )
                 .child(
                     div()
                         .min_w(px(DEFAULT_COLUMN_WIDTH))
@@ -326,14 +331,6 @@ fn voice_row(
                         .child(last),
                 ),
         )
-        .into_any_element()
-}
-
-/// The place of an icon button a row does not have.
-fn empty_icon_place() -> AnyElement {
-    div()
-        .flex_none()
-        .size(px(size::BUTTON_HEIGHT))
         .into_any_element()
 }
 

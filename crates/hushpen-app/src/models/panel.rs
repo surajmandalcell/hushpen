@@ -308,8 +308,8 @@ fn actions(view: &RowView) -> Vec<Action> {
 }
 
 /// The name, Recommended, and the state word over the description; then, lightest to heaviest,
-/// the meters, the size, and the four icon slots. Every column has a fixed width, and a button
-/// keeps its slot in every row, so they line up from row to row.
+/// the meters, the size, and the icon buttons. Every column has a fixed width, and the buttons
+/// pack from the left of their group, so the columns and Details line up from row to row.
 fn model_row(palette: Palette, models: &Entity<Models>, view: RowView, place: Place) -> AnyElement {
     let index = view.index;
     let word = state_word(palette, view.state, view.default, view.updating);
@@ -388,7 +388,7 @@ fn model_row(palette: Palette, models: &Entity<Models>, view: RowView, place: Pl
                 .text_right()
                 .child(format_size(view.bytes)),
         )
-        .child(icon_slots(palette, models, place, &view));
+        .child(icon_buttons(palette, models, place, &view));
 
     ui::row(palette)
         .id(place.id("row", index))
@@ -480,9 +480,10 @@ fn meter(
     ui::tooltip(line, text)
 }
 
-/// Details, then Download or Cancel, Set as default, and Delete, each in its own slot. A slot
-/// with no button stays empty.
-fn icon_slots(
+/// Details, then Download or Cancel, Set as default, and Delete, as many as the row's state
+/// offers. They sit together from the left of one group, so a missing button leaves no hole and
+/// Details is in the same place in every row.
+fn icon_buttons(
     palette: Palette,
     models: &Entity<Models>,
     place: Place,
@@ -491,7 +492,7 @@ fn icon_slots(
     let index = view.index;
     let details = {
         let models = models.clone();
-        ui::icon_button(
+        ui::quiet_icon_button(
             palette,
             place.id("info", index),
             IconName::Info,
@@ -504,30 +505,19 @@ fn icon_slots(
         )
         .into_any_element()
     };
-    let actions = actions(view);
-    let slots = [PRIMARY, SET_DEFAULT, DELETE].map(|slot| {
-        actions
-            .iter()
-            .find(|action| action.slot() == slot)
-            .map_or_else(
-                || {
-                    div()
-                        .flex_none()
-                        .size(px(size::BUTTON_HEIGHT))
-                        .into_any_element()
-                },
-                |action| button(palette, models, place, view, *action),
-            )
-    });
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap(px(size::MODEL_ICON_GAP))
+    ui::icon_group(ICON_SLOTS, size::MODEL_ICON_GAP)
         .child(details)
-        .children(slots)
+        .children(
+            actions(view)
+                .into_iter()
+                .map(|action| button(palette, models, place, view, action)),
+        )
         .into_any_element()
 }
+
+/// The most buttons a row shows: Details, then Download, Set as default, and Delete of a failed
+/// speech model.
+const ICON_SLOTS: usize = 4;
 
 /// The word after the name of a row, with its color. A model that is downloaded, or not, has
 /// none; only a failure takes a status color.
