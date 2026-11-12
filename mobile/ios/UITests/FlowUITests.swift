@@ -145,6 +145,7 @@ final class FlowUITests: XCTestCase {
 
     func testServerStopsWhenTheAppLeavesTheForeground() {
         XCTAssertTrue(phone.wait(for: .runningForeground, timeout: 10))
+        XCTAssertTrue(phone.windows.firstMatch.wait(for: \.frame, toEqual: phone.frame, timeout: 10))
         phone.switches["server.toggle"].switches.firstMatch.tap()
         waitForText("Serving", id: "server.state", in: phone, timeout: 20)
         XCTAssertEqual(element("server.port", in: phone).label, "7342")
