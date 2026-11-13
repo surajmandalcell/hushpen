@@ -10,6 +10,7 @@ struct PhoneSnapshot: Sendable {
     let systemAvailable: Bool
     let pairedClients: [String]
     let allowedRules: [HostUnloadRule]
+    let details: [String: ModelDetails]
 }
 
 private struct PhoneSettings: Codable {
@@ -25,6 +26,7 @@ final class PhoneRepository: @unchecked Sendable {
     let system: SystemCleanup
     let localCleanup: LocalCleanup
     let nativeSystem: NativeSystemLlm
+    let history: History
     let data: URL
     private let settingsURL: URL
     private var settings: PhoneSettings
@@ -58,6 +60,7 @@ final class PhoneRepository: @unchecked Sendable {
         system.setLocal(local: settings.cleanup ? localCleanup : nil)
         host = try Host(engine: engine, name: name, system: system)
         host.setForeground(foreground: false)
+        history = try History(dataDir: data.path)
     }
 
     static func open() async throws -> PhoneRepository {
@@ -79,6 +82,7 @@ final class PhoneRepository: @unchecked Sendable {
                 }
                 try repository.select(id: "base-q5_1")
             }
+            if ProcessInfo.processInfo.environment["HUSHPEN_TEST_HISTORY"] == "demo" { try repository.seedDemoHistory() }
             #endif
             return repository
         }.value
@@ -94,11 +98,15 @@ final class PhoneRepository: @unchecked Sendable {
 
     func snapshot() async -> PhoneSnapshot {
         await Task.detached { [self] in
-            PhoneSnapshot(
-                models: catalog.models(), selectedModel: selectedModel,
+            let models = catalog.models()
+            return PhoneSnapshot(
+                models: models, selectedModel: selectedModel,
                 selectedCleanupModel: selectedCleanupModel,
                 cleanupEnabled: nativeSystem.enabled, systemAvailable: system.available(),
-                pairedClients: host.pairedClients(), allowedRules: host.allowedUnloadRules()
+                pairedClients: host.pairedClients(), allowedRules: host.allowedUnloadRules(),
+                details: Dictionary(uniqueKeysWithValues: models.compactMap { model in
+                    catalog.details(id: model.id).map { (model.id, $0) }
+                })
             )
         }.value
     }
@@ -155,7 +163,7 @@ final class PhoneRepository: @unchecked Sendable {
         }
     }
 
-    func transcribe(wav: URL) async throws -> String {
+    func transcribe(wav: URL) async throws -> Transcript {
         try Task.checkCancellation()
         let task = Task.detached { [self] in
             try speech.withLock {
@@ -166,7 +174,7 @@ final class PhoneRepository: @unchecked Sendable {
                 try Task.checkCancellation()
                 try engine.load(modelId: selectedModel)
                 try Task.checkCancellation()
-                return try engine.transcribe(wavPath: wav.path, language: nil).text
+                return try engine.transcribe(wavPath: wav.path, language: nil)
             }
         }
         return try await withTaskCancellationHandler {
@@ -177,9 +185,9 @@ final class PhoneRepository: @unchecked Sendable {
         }
     }
 
-    func cleanup(text: String) async throws -> String {
+    func cleanup(text: String) async throws -> CleanupResult {
         try await Task.detached { [self] in
-            try cleanText(raw: text, system: nativeSystem.enabled ? system : nil).text
+            try cleanText(raw: text, system: nativeSystem.enabled ? system : nil)
         }.value
     }
 
@@ -215,3 +223,32 @@ func phoneError(_ error: Error) -> String {
     default: error.localizedDescription
     }
 }
+
+#if DEBUG
+extension PhoneRepository {
+    /// Screenshot and test data: a streak of days with a few dictations each. Runs once on an empty history.
+    func seedDemoHistory(now: Date = Date()) throws {
+        guard try history.page(query: "", after: nil, limit: 1).entries.isEmpty else { return }
+        let texts = [
+            "Running about ten minutes late. Start without me and keep me a seat by the window.",
+            "Remind me to call the dentist on Monday morning and ask about the invoice.",
+            "Hi Priya, thanks for the notes. I read them on the train and the second section needs a clearer example before we send it to the team. Can you add the numbers from last week and a short line on what changed? I would also move the risks to the top, because that is what Ravi will read first. Let me know when it is ready and I will look tonight.",
+            "Pick up oat milk, lemons and the parcel from the locker.",
+            "Meeting notes. We agreed to ship the beta on the third of June. Ravi owns the release checklist.",
+        ]
+        let calendar = Calendar.current
+        for day in 0..<11 {
+            for slot in 0..<(day == 0 ? 3 : 2) {
+                let text = texts[(day + slot * 2) % texts.count]
+                let at = (calendar.date(byAdding: .day, value: -day, to: now) ?? now).addingTimeInterval(-Double(slot) * 5_400 - 600)
+                let words = text.split(separator: " ").count
+                _ = try history.save(entry: NewHistoryEntry(
+                    createdMs: Int64(at.timeIntervalSince1970 * 1000), spokenMs: UInt64(words) * 400 + 1_000,
+                    tookMs: UInt64(900 + words * 40), rawText: text.lowercased(), text: text,
+                    modelId: "parakeet-v3-q4_k", language: "en", cleanup: "used"
+                ))
+            }
+        }
+    }
+}
+#endif

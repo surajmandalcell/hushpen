@@ -1,27 +1,20 @@
 import SwiftUI
 import UIKit
 
-/// The dim, always-black screen a phone shows on a desk while it serves desktops.
+/// The dark screen a phone shows on a desk while it serves desktops: what it serves, and its power.
 struct ServerScreen: View {
     let server: ServerModel
     let models: ModelsModel
     let devices: DevicesModel
     let settings: SettingsModel
     let close: () -> Void
-    @State private var plugged = false
-
-    private static let card = Color(red: 0.078, green: 0.078, blue: 0.086)
-    private static let label = Color.white.opacity(0.48)
-    private static let value = Color.white.opacity(0.8)
-    private static let serving = Color(red: 0.188, green: 0.82, blue: 0.345)
-    private static let charge = Color(red: 1, green: 0.702, blue: 0.251)
-    private static let problem = Color(red: 1, green: 0.612, blue: 0.561)
+    @State private var power = PowerModel()
 
     private var status: (text: String, color: Color) {
-        if server.running { return ("Serving", Self.serving) }
-        if server.busy { return ("Starting", Self.label) }
-        if !server.notice.isEmpty { return ("Stopped", Self.problem) }
-        return ("Off", Self.label)
+        if server.running { return ("Serving", .primary) }
+        if server.busy { return ("Starting", .secondary) }
+        if !server.notice.isEmpty { return ("Stopped", Color(red: 1, green: 0.612, blue: 0.561)) }
+        return ("Off", .secondary)
     }
 
     private var speechModel: String {
@@ -30,127 +23,69 @@ struct ServerScreen: View {
 
     private var cleanup: String {
         guard settings.cleanupEnabled else { return "Rules" }
-        if settings.systemAvailable { return "System model when open" }
+        if settings.systemAvailable { return "System model" }
         return models.models.first { $0.kind == .cleanup && $0.id == models.selectedCleanupModel && $0.status == .ready }?.name ?? "Rules"
     }
 
-    private var desktops: String {
-        devices.clients.isEmpty ? "None yet" : devices.clients.map(desktopName).joined(separator: ", ")
+    private var line: String {
+        switch devices.clients.count {
+        case 0: "No desktop is paired yet."
+        case 1: "\(desktopName(devices.clients[0])) can use this iPhone."
+        default: "\(devices.clients.count) desktops can use this iPhone."
+        }
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: proxy.size.height * 0.1)
-                    card
-                    Spacer(minLength: 28)
-                    Text("Server mode stops when you leave Hushpen.")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.4))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                    Button(server.running || server.busy ? "Stop Server Mode" : "Close") {
-                        if server.running || server.busy { server.stop() }
-                        close()
-                    }
-                    .buttonStyle(.glass)
-                    .controlSize(.extraLarge)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.vertical, 28)
-                    .accessibilityIdentifier("server.stop")
+        List {
+            Section {
+                VStack(spacing: 2) {
+                    Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 44)).foregroundStyle(.secondary).accessibilityHidden(true)
+                    Text(status.text).font(.title.bold()).foregroundStyle(status.color).padding(.top, 8)
+                        .accessibilityAddTraits(.isHeader).accessibilityIdentifier("server.state")
+                    Text(line).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
-                .frame(maxWidth: 520, minHeight: proxy.size.height)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 18)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 24, leading: 0, bottom: 8, trailing: 0))
             }
-            .scrollBounceBehavior(.basedOnSize)
+            if !server.notice.isEmpty {
+                Section { NoticeRow(text: server.notice).accessibilityIdentifier("server.notice") }
+            }
+            Section {
+                LabeledContent("Speech model") { Text(speechModel).accessibilityIdentifier("server.selectedModel") }
+                LabeledContent("Cleanup", value: cleanup)
+                LabeledContent("Port") { Text(server.port.map(String.init) ?? (server.busy ? "Starting" : "None")).accessibilityIdentifier("server.port") }
+                LabeledContent("Served", value: server.served == 1 ? "1 job" : "\(server.served) jobs")
+            }
+            Section {
+                PowerRow(power: power)
+            } footer: {
+                Text(power.charging ? "This iPhone can keep serving." : "Server Mode keeps running on battery. Plug in for long sessions.")
+            }
         }
+        .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 12) {
+                Text("Server mode stops when you leave Hushpen.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button(role: server.running || server.busy ? .destructive : nil) {
+                    if server.running || server.busy { server.stop() }
+                    close()
+                } label: {
+                    Text(server.running || server.busy ? "Stop Server Mode" : "Close").font(.headline).frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.glass)
+                .tint(server.running || server.busy ? .red : nil)
+                .accessibilityIdentifier("server.stop")
+            }
+            .padding(.horizontal, 20).padding(.bottom, 8)
+        }
         .preferredColorScheme(.dark)
         .task { await server.refresh(); await models.refresh(); await devices.refresh(); await settings.refresh() }
-        .onAppear {
-            UIDevice.current.isBatteryMonitoringEnabled = true
-            plugged = Self.isPlugged
-        }
-        .onDisappear { UIDevice.current.isBatteryMonitoringEnabled = false }
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
-            plugged = Self.isPlugged
-        }
-    }
-
-    private static var isPlugged: Bool {
-        let state = UIDevice.current.batteryState
-        return state == .charging || state == .full
-    }
-
-    private var card: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 7) {
-                Text("Server mode")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 8)
-                Circle().fill(status.color).frame(width: 8, height: 8).accessibilityHidden(true)
-                Text(status.text)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(status.color)
-                    .accessibilityIdentifier("server.state")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 14)
-            stat("Port", server.port.map(String.init) ?? (server.busy ? "Starting" : "None"), id: "server.port")
-            stat("Speech model", speechModel, id: "server.selectedModel")
-            stat("Cleanup", cleanup)
-            stat("Desktops", desktops)
-            stat("Unload", "While Server mode is open")
-            if !server.notice.isEmpty {
-                note("exclamationmark.circle.fill", server.notice, color: Self.problem)
-                    .accessibilityIdentifier("server.notice")
-            }
-            if plugged {
-                note("bolt.fill", "Charging", color: Self.serving.opacity(0.8))
-            } else {
-                note("bolt.fill", "Plug in to keep serving", color: Self.charge)
-            }
-        }
-        .background(Self.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-    }
-
-    private func stat(_ title: String, _ value: String, id: String? = nil) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title).foregroundStyle(Self.label)
-            Spacer(minLength: 8)
-            Text(value)
-                .foregroundStyle(Self.value)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(2)
-                .accessibilityIdentifier(id ?? "")
-        }
-        .font(.subheadline)
-        .padding(.horizontal, 20)
-        .frame(minHeight: 50)
-        .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.07)).frame(height: 1) }
-    }
-
-    private func note(_ symbol: String, _ text: String, color: Color) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.subheadline)
-            .foregroundStyle(color)
-            .labelStyle(NoteLabelStyle())
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.07)).frame(height: 1) }
-    }
-}
-
-private struct NoteLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            configuration.icon.font(.footnote)
-            configuration.title
-        }
+        .onAppear { power.start() }
+        .onDisappear { power.stop() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in power.read() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in power.read() }
     }
 }

@@ -6,9 +6,13 @@ import UIKit
 final class OnboardingModel {
     private(set) var microphone = "Not requested"
     private(set) var keyboardUsed = false
+    private(set) var keyboardAdded = false
+    /// `nil` until the keyboard has run lately and could say.
+    private(set) var fullAccess: Bool?
     private(set) var keyboardStatus = "Open keyboard to check"
 
     var microphoneGranted: Bool { microphone == "Allowed" }
+    var setupDone: Bool { microphoneGranted && keyboardUsed }
 
     func refresh() {
         switch AVAudioApplication.shared.recordPermission {
@@ -23,6 +27,8 @@ final class OnboardingModel {
             legacySeenAt: UserDefaults(suiteName: FlowSessionStore.groupIdentifier)?.object(forKey: "keyboardLastSeen") as? Date
         )
         keyboardUsed = status.added && status.fullAccess != false
+        keyboardAdded = status.added
+        fullAccess = status.fullAccess
         keyboardStatus = status.text
     }
 
@@ -41,6 +47,7 @@ final class OnboardingModel {
 final class ModelsModel {
     private let repository: PhoneRepository
     private(set) var models: [Model] = []
+    private(set) var details: [String: ModelDetails] = [:]
     private(set) var selectedModel = ""
     private(set) var selectedCleanupModel = ""
     private(set) var downloading: String?
@@ -57,6 +64,7 @@ final class ModelsModel {
     func refresh() async {
         let value = await repository.snapshot()
         models = value.models
+        details = value.details
         selectedModel = value.selectedModel
         selectedCleanupModel = value.selectedCleanupModel
     }
@@ -102,6 +110,15 @@ final class ModelsModel {
             if try await repository.verify(id: id) == false { notice = "Model verification failed. Download it again." }
         } catch { notice = phoneError(error) }
         await refresh()
+    }
+}
+
+/// Counts each time a desktop job begins; the core reports a job starting and ending.
+private final class ServedJobs: JobActivity, Sendable {
+    private let began: @MainActor @Sendable () -> Void
+    init(began: @escaping @MainActor @Sendable () -> Void) { self.began = began }
+    func changed(active: Bool) {
+        if active { Task { @MainActor in began() } }
     }
 }
 
@@ -151,6 +168,8 @@ final class ServerModel {
     private(set) var open = false
     private(set) var allowedRules: [HostUnloadRule] = []
     private(set) var selectedModel = ""
+    /// Jobs desktops started while Server mode ran, since it last started.
+    private(set) var served = 0
     var notice = ""
     private var generation = UUID()
     private var priorBrightness: CGFloat?
@@ -159,7 +178,10 @@ final class ServerModel {
     private weak var dimmedScreen: UIScreen?
     private var operation: Task<Void, Never>?
 
-    init(repository: PhoneRepository) { self.repository = repository }
+    init(repository: PhoneRepository) {
+        self.repository = repository
+        repository.host.setJobActivity(activity: ServedJobs { [weak self] in self?.served += 1 })
+    }
 
     func refresh() async {
         let value = await repository.snapshot()
@@ -189,6 +211,7 @@ final class ServerModel {
         generation = token
         busy = true
         notice = ""
+        served = 0
         let previous = operation
         operation = Task { [weak self, repository] in
             await previous?.value

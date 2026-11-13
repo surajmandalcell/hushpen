@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import OSLog
 import UIKit
 
 @Observable @MainActor
@@ -13,6 +14,7 @@ final class DictationModel {
     private var flow: FlowSession?
     private var generation = UUID()
     private var audio: [UInt64: URL] = [:]
+    private var notes: [UInt64: RunNotes] = [:]
     private var jobs: [UInt64: Task<Void, Never>] = [:]
     private var timer: Task<Void, Never>?
     private var observation: FlowSessionObservation?
@@ -24,6 +26,8 @@ final class DictationModel {
     private(set) var recoverable = false
     private(set) var busy = false
     var notice = ""
+    /// Called after a finished dictation is kept in the phone history.
+    var kept: (@MainActor () -> Void)?
 
     init(repository: PhoneRepository, store: FlowSessionStore) throws {
         self.repository = repository
@@ -93,6 +97,7 @@ final class DictationModel {
         microphone.stop()
         for file in audio.values { try? FileManager.default.removeItem(at: file) }
         audio.removeAll()
+        notes.removeAll()
         if let flow {
             do { try store.cancel(id: flow.id) }
             catch { if notice.isEmpty { notice = error.localizedDescription } }
@@ -177,6 +182,7 @@ final class DictationModel {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
             let file = folder.appendingPathComponent("session-\(UUID().uuidString).wav")
             audio[session] = file
+            notes[session] = RunNotes()
             #if DEBUG
             let documentsWav = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("flow-test.wav")
             let fixture = ProcessInfo.processInfo.environment["HUSHPEN_TEST_WAV"].map {
@@ -192,6 +198,7 @@ final class DictationModel {
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: file.path)
         case let .stopCapture(session, keep):
             microphone.stop()
+            notes[session]?.stoppedAt = Date()
             if keep, let flow { try store.stop(id: flow.id) }
             if !keep { dropAudio(session) }
         case .holdCapture:
@@ -203,9 +210,10 @@ final class DictationModel {
             let token = generation
             jobs[session] = Task { [weak self, repository] in
                 do {
-                    let text = try await repository.transcribe(wav: file)
+                    let transcript = try await repository.transcribe(wav: file)
                     guard let self, self.generation == token, !Task.isCancelled else { return }
-                    self.send(.transcribed(session: session, text: text))
+                    self.notes[session]?.heard(transcript)
+                    self.send(.transcribed(session: session, text: transcript.text))
                 } catch {
                     guard let self, self.generation == token, !Task.isCancelled else { return }
                     self.send(.transcribeFailed(session: session))
@@ -217,12 +225,14 @@ final class DictationModel {
             let token = generation
             jobs[session] = Task { [weak self, repository] in
                 do {
-                    let text = try await repository.cleanup(text: raw)
+                    let cleaned = try await repository.cleanup(text: raw)
                     guard let self, self.generation == token, !Task.isCancelled else { return }
-                    self.send(.cleaned(session: session, text: text))
+                    self.notes[session]?.cleanup = cleaned.outcome
+                    self.send(.cleaned(session: session, text: cleaned.text))
                 } catch {
                     guard let self, self.generation == token, !Task.isCancelled else { return }
                     self.notice = phoneError(error)
+                    self.notes[session]?.cleanup = "error"
                     self.send(.cleaned(session: session, text: raw))
                 }
             }
@@ -243,13 +253,29 @@ final class DictationModel {
             endBackgroundTask()
             timer?.cancel()
             timer = nil
-        case let .saveRow(session, _, _, _):
+        case let .saveRow(session, status, text, _):
             jobs.removeValue(forKey: session)
             dropAudio(session)
+            if let run = notes.removeValue(forKey: session), status == "done", let text {
+                keep(run, text: text)
+            }
         case let .notify(_, code): notice = dictationNotice(code)
         case let .maxDurationWarning(secondsLeft): notice = "\(secondsLeft) seconds left."
         case .edit: throw MobileError.Failed(detail: "Keyboard editing is unavailable.")
         case .cue, .updatePasteLast, .pasteLast: break
+        }
+    }
+
+    /// A history failure never blocks the text the keyboard waits for.
+    private func keep(_ run: RunNotes, text: String) {
+        let entry = run.entry(text: text, model: repository.selectedModel)
+        Task { [repository, weak self] in
+            do {
+                _ = try await Task.detached { try repository.history.save(entry: entry) }.value
+                self?.kept?()
+            } catch {
+                Logger(subsystem: "com.mandalsuraj.hushpen", category: "History").error("History was not saved: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -260,6 +286,29 @@ final class DictationModel {
     }
 
     private func now() -> UInt64 { UInt64(ProcessInfo.processInfo.systemUptime * 1000) }
+}
+
+/// What one dictation tells the history: the engine's words and times, and how cleanup went.
+private struct RunNotes {
+    var raw = ""
+    var language = ""
+    var spokenMs: UInt64 = 0
+    var cleanup = "off"
+    var stoppedAt: Date?
+
+    mutating func heard(_ transcript: Transcript) {
+        raw = transcript.text
+        language = transcript.language
+        spokenMs = transcript.audioMs
+    }
+
+    func entry(text: String, model: String, now: Date = Date()) -> NewHistoryEntry {
+        let tookMs = stoppedAt.map { max(0, now.timeIntervalSince($0) * 1000) } ?? 0
+        return NewHistoryEntry(
+            createdMs: Int64((stoppedAt ?? now).timeIntervalSince1970 * 1000), spokenMs: spokenMs, tookMs: UInt64(tookMs),
+            rawText: raw, text: text, modelId: model, language: language, cleanup: cleanup
+        )
+    }
 }
 
 func dictationNotice(_ code: String) -> String {

@@ -30,6 +30,7 @@ final class PhoneRuntime {
     let settings: SettingsModel
     let server: ServerModel
     let devices: DevicesModel
+    let history: HistoryModel
     let dictation: DictationModel
 
     init(repository: PhoneRepository) throws {
@@ -38,7 +39,9 @@ final class PhoneRuntime {
         settings = SettingsModel(repository: repository)
         server = ServerModel(repository: repository)
         devices = DevicesModel(repository: repository, server: server)
+        history = HistoryModel(repository: repository)
         dictation = try DictationModel(repository: repository, store: FlowSessionStore())
+        dictation.kept = { [history] in Task { await history.refresh() } }
     }
 }
 

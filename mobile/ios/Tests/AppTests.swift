@@ -86,6 +86,45 @@ final class AppTests: XCTestCase {
         XCTAssertFalse(settings.cleanupEnabled)
     }
 
+    func testPhoneHistoryKeepsSearchesPrunesAndClearsOnThePhone() async throws {
+        let day: Int64 = 86_400_000
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        func entry(_ text: String, daysAgo: Int64) -> NewHistoryEntry {
+            NewHistoryEntry(createdMs: now - daysAgo * day, spokenMs: 7_000, tookMs: 1_400, rawText: text.lowercased(), text: text, modelId: "base-q5_1", language: "en", cleanup: "off")
+        }
+        _ = try repository.history.save(entry: entry("Call the dentist on Monday", daysAgo: 40))
+        _ = try repository.history.save(entry: entry("Pick up oat milk", daysAgo: 1))
+        let model = HistoryModel(repository: repository)
+        await model.refresh()
+        XCTAssertEqual(model.entries.map(\.text), ["Pick up oat milk", "Call the dentist on Monday"])
+        XCTAssertEqual(model.entries.first?.words, 4)
+        XCTAssertEqual(model.entries.first?.tookMs, 1_400)
+        XCTAssertEqual(model.activity.count, 2)
+        model.query = "dentist"
+        await model.refresh()
+        XCTAssertEqual(model.entries.count, 1)
+        model.query = ""
+        await model.prune(keepingDays: 30)
+        XCTAssertEqual(model.entries.map(\.text), ["Pick up oat milk"])
+        await model.prune(keepingDays: 0)
+        XCTAssertEqual(model.entries.count, 1)
+        await model.clear()
+        XCTAssertTrue(model.entries.isEmpty)
+        XCTAssertTrue(model.activity.isEmpty)
+    }
+
+    func testModelDetailsComeFromTheCatalog() async {
+        let state = await repository.snapshot()
+        let speech = state.models.filter { $0.kind == .speech }
+        XCTAssertFalse(speech.isEmpty)
+        for model in speech {
+            let details = state.details[model.id]
+            XCTAssertNotNil(details, model.id)
+            XCTAssertTrue((1...5).contains(Int(details?.accuracy ?? 0)))
+        }
+        XCTAssertNil(state.details["system"])
+    }
+
     func testAppDataIsExcludedFromBackups() throws {
         let values = try folder.resourceValues(forKeys: [.isExcludedFromBackupKey])
         XCTAssertEqual(values.isExcludedFromBackup, true)

@@ -4,15 +4,50 @@ import WebKit
 struct SettingsScreen: View {
     let model: SettingsModel
     let onboarding: OnboardingModel
+    let models: ModelsModel
+    let devices: DevicesModel
+    let history: HistoryModel
+    @AppStorage("typingSpeed") private var typingSpeed = 40
+    @AppStorage("keepHistoryDays") private var keepDays = 0
+    @State private var clearing = false
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    private var speechName: String {
+        let speech = models.models.filter { $0.kind == .speech }
+        return (speech.first { $0.id == models.selectedModel } ?? speech.first { $0.recommended })?.name ?? ""
     }
 
     var body: some View {
         List {
             if !model.notice.isEmpty {
                 Section { NoticeRow(text: model.notice) }
+            }
+            Section {
+                permission("Microphone", "mic", onboarding.microphone, granted: onboarding.microphoneGranted, id: "onboarding.microphone") {
+                    if onboarding.microphone == "Not requested" { Task { await onboarding.requestMicrophone() } } else { onboarding.openSettings() }
+                }
+                permission("Keyboard", "keyboard", onboarding.keyboardAdded ? "On" : "Off", granted: onboarding.keyboardAdded, id: "onboarding.keyboard", onboarding.openSettings)
+                permission("Full Access", "lock.open", fullAccess, granted: onboarding.fullAccess == true, id: "onboarding.fullAccess", onboarding.openSettings)
+                Button { onboarding.openSettings() } label: {
+                    Label("Open Settings", systemImage: "gearshape")
+                }
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                Text("Allow Full Access to share dictation text with the app.")
+            }
+            Section {
+                NavigationLink(value: Route.models) {
+                    Reading(title: "Models", symbol: "shippingbox", value: speechName)
+                }
+                .accessibilityIdentifier("settings.models")
+                NavigationLink(value: Route.devices) {
+                    Reading(title: "Devices", symbol: "laptopcomputer", value: devices.clients.isEmpty ? "" : "\(devices.clients.count)")
+                }
+                .accessibilityIdentifier("settings.devices")
             }
             Section {
                 Toggle(isOn: Binding(get: { model.cleanupEnabled }, set: { enabled in Task { await model.setCleanup(enabled) } })) {
@@ -38,15 +73,38 @@ struct SettingsScreen: View {
                 Text("The system model is first when available. Otherwise, Hushpen uses the selected downloaded model. If neither is ready, rules clean the text. Cleanup is off until you turn it on.")
             }
             Section {
-                Reading(title: "Microphone", symbol: "mic", value: onboarding.microphone)
-                Reading(title: "Keyboard", symbol: "keyboard", value: onboarding.keyboardStatus)
-                Button { onboarding.openSettings() } label: {
-                    Label("Open Settings", systemImage: "gearshape")
-                }
+                Picker(selection: $keepDays) {
+                    Text("Forever").tag(0)
+                    Text("1 Year").tag(365)
+                    Text("3 Months").tag(90)
+                    Text("1 Month").tag(30)
+                } label: { RowTitle(title: "Keep History", symbol: "clock") }
+                .accessibilityIdentifier("settings.keepHistory")
+                Button("Clear History\u{2026}", role: .destructive) { clearing = true }
+                    .accessibilityIdentifier("settings.clearHistory")
             } header: {
-                Text("Keyboard")
+                Text("History")
             } footer: {
-                Text("In Settings, open General, Keyboard, Keyboards, Add New Keyboard, then choose Hushpen. Allow Full Access to share dictation text with the app. Then switch to Hushpen with the globe key.")
+                Text("History stays on this iPhone and is never sent anywhere.")
+            }
+            Section {
+                Stepper(value: $typingSpeed, in: 10...200, step: 5) {
+                    LabeledContent {
+                        Text("\(typingSpeed)").monospacedDigit()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Typing speed")
+                                Text("Words a minute, for time saved").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "timer").foregroundStyle(.tint)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("settings.typingSpeed")
+            } header: {
+                Text("Stats")
             }
             Section {
                 NavigationLink(value: Route.licenses) {
@@ -60,7 +118,37 @@ struct SettingsScreen: View {
             }
         }
         .navigationTitle("Settings")
-        .task { onboarding.refresh(); await model.refresh() }
+        .task { onboarding.refresh(); await model.refresh(); await models.refresh(); await devices.refresh() }
+        .onChange(of: keepDays) { _, days in Task { await history.prune(keepingDays: days) } }
+        .confirmationDialog("Clear all history?", isPresented: $clearing, titleVisibility: .visible) {
+            Button("Clear History", role: .destructive) { Task { await history.clear() } }
+        } message: { Text("Every dictation is removed from this iPhone. This cannot be undone.") }
+    }
+
+    private var fullAccess: String {
+        switch onboarding.fullAccess {
+        case true: "Allowed"
+        case false: "Off"
+        case nil: onboarding.keyboardAdded ? "Not seen yet" : "Off"
+        }
+    }
+
+    /// A permission as a row: the state at the end, and a tap that asks or opens Settings while it is not granted.
+    @ViewBuilder private func permission(_ title: String, _ symbol: String, _ value: String, granted: Bool, id: String, _ action: @escaping () -> Void) -> some View {
+        if granted {
+            LabeledContent {
+                HStack { Text(value).foregroundStyle(.secondary); ReadyMark(label: "\(title) \(value)") }
+            } label: { RowTitle(title: title, symbol: symbol) }
+                .accessibilityIdentifier(id)
+        } else {
+            Button(action: action) {
+                LabeledContent {
+                    Text(value == "Not requested" ? "Allow" : value).foregroundStyle(.tint)
+                } label: { RowTitle(title: title, symbol: symbol) }
+            }
+            .foregroundStyle(.primary)
+            .accessibilityIdentifier(id)
+        }
     }
 }
 
