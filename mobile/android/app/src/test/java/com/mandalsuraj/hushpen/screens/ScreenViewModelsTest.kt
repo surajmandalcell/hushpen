@@ -96,11 +96,10 @@ class ScreenViewModelsTest {
         val model = DevicesViewModel(data)
         model.scan()
         assertTrue(model.scannerOpen.value)
-        val offer = "hushpen-pair://v1?host=100.64.0.1&port=7342&otp=123456"
+        val offer = "{\"version\":2,\"host\":\"100.64.0.1\",\"port\":7342,\"key\":\"test-key\",\"token\":\"test-token\",\"expires\":1800000000}"
         model.scanned(offer)
         advanceUntilIdle()
         assertFalse(model.scannerOpen.value)
-        assertEquals(offer, model.pairingUri.value)
         assertEquals(listOf("pair:$offer"), data.actions)
     }
 
@@ -166,7 +165,7 @@ class ScreenViewModelsTest {
         val actions = mutableListOf<String>()
         override suspend fun initialize() = Unit
         override suspend fun refresh() = Unit
-        override suspend fun pair(uri: String) { actions += "pair:$uri" }
+        override suspend fun pair(payload: String) { actions += "pair:$payload" }
         override suspend fun forget(id: String) { actions += "forget:$id" }
         override suspend fun setUnloadRule(rule: HostUnloadRule) { unloadRule.value = rule }
         override fun startServing() { actions += "start" }

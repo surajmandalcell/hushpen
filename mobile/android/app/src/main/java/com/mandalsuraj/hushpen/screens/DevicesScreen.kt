@@ -49,7 +49,6 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
     val clients by model.pairedClients.collectAsStateWithLifecycle()
     val rules by model.allowedRules.collectAsStateWithLifecycle()
     val rule by model.unloadRule.collectAsStateWithLifecycle()
-    val uri by model.pairingUri.collectAsStateWithLifecycle()
     val scanner by model.scannerOpen.collectAsStateWithLifecycle()
     val idleMinutes by model.idleMinutes.collectAsStateWithLifecycle()
     val notice by model.notice.collectAsStateWithLifecycle()
@@ -136,13 +135,7 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
 
     if (scanner) {
         PairingSheet(
-            uri = uri,
-            onUri = model::setPairingUri,
             onCode = model::scanned,
-            onPair = {
-                model.pair()
-                model.closeScanner()
-            },
             onClose = model::closeScanner,
         )
     }
