@@ -3732,6 +3732,7 @@ dependencies = [
  "hushpen-remote",
  "hushpen-store",
  "log",
+ "rusqlite",
  "rustix",
  "serde_json",
  "tempfile",

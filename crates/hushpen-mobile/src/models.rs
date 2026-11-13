@@ -22,6 +22,16 @@ pub enum ModelStatus {
     System,
 }
 
+/// The catalog's line and ratings for a model, kept apart from `Model` so old callers still build.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ModelDetails {
+    pub description: String,
+    /// From 1, the slowest, to 5, the fastest.
+    pub speed: u8,
+    /// From 1 to 5, the most accurate.
+    pub accuracy: u8,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct Model {
     pub id: String,
@@ -82,6 +92,17 @@ impl ModelRepository {
             busy: AtomicBool::new(false),
             cancel: AtomicBool::new(false),
         }))
+    }
+
+    /// What the catalog says about one model: its line and its 1 to 5 ratings. `None` for the
+    /// system model or an id this phone does not offer.
+    pub fn details(&self, id: String) -> Option<ModelDetails> {
+        let info = self.model(&id).ok()?.info.as_ref()?;
+        Some(ModelDetails {
+            description: info.description.clone(),
+            speed: info.speed,
+            accuracy: info.accuracy,
+        })
     }
 
     pub fn models(&self) -> Vec<Model> {
@@ -342,6 +363,9 @@ mod tests {
             ]
         );
         assert!(repository.model_path("../../outside".into()).is_err());
+        assert!(repository.details("system".into()).is_none());
+        let details = repository.details(catalog::SPEECH_DEFAULT.into()).unwrap();
+        assert!((1..=5).contains(&details.speed) && (1..=5).contains(&details.accuracy));
         assert!(repository.download("s1-mini".into(), None).is_err());
     }
 

@@ -2,6 +2,7 @@
 
 mod dictation;
 mod engine;
+mod history;
 mod host;
 mod local_cleanup;
 mod memory;
@@ -10,9 +11,12 @@ mod system_llm;
 
 pub use dictation::{Dictation, DictationEffect, DictationEvent, DictationSnapshot};
 pub use engine::{Engine, Transcript};
+pub use history::{
+    History, HistoryActivity, HistoryCursor, HistoryEntry, HistoryPage, NewHistoryEntry,
+};
 pub use host::{Host, HostUnloadRule, JobActivity};
 pub use local_cleanup::LocalCleanup;
-pub use models::{DownloadProgress, Model, ModelKind, ModelRepository, ModelStatus};
+pub use models::{DownloadProgress, Model, ModelDetails, ModelKind, ModelRepository, ModelStatus};
 pub use system_llm::{CleanupResult, SystemCleanup, SystemLlm, clean_text};
 
 uniffi::setup_scaffolding!();

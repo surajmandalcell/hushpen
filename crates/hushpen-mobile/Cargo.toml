@@ -25,6 +25,7 @@ hushpen-llm = { path = "../hushpen-llm" }
 hushpen-remote.workspace = true
 hushpen-store = { workspace = true, features = ["downloads"] }
 log.workspace = true
+rusqlite.workspace = true
 serde_json.workspace = true
 uniffi.workspace = true
 
