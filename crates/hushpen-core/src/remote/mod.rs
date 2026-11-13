@@ -1,9 +1,11 @@
 //! Device routes, availability, unload rules, and pairing without IO.
 
 mod health;
+mod list;
 mod pairing;
 
 pub use health::{Health, Probe, Status};
+pub use list::{RemoteHost, remote_hosts, ssh_hosts, tailscale_hosts};
 pub use pairing::{PairEvent, PairFailure, Pairing};
 
 use crate::os::Os;
