@@ -19,8 +19,6 @@ internal fun ruleChoice(rule: HostUnloadRule): String = when (rule) {
 }
 
 /** Rust identifies a paired desktop only by its public key, shown as lowercase hex. */
-internal fun desktopName(id: String): String = "Desktop ${id.take(8)}"
-
 internal fun sizeLabel(bytes: ULong): String {
     val value = bytes.toDouble()
     return if (value >= 1e9) String.format("%.1f GB", value / 1e9) else "${(value / 1e6).roundToLong()} MB"

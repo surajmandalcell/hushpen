@@ -7,6 +7,7 @@ import com.mandalsuraj.hushpen.core.DownloadProgress
 import com.mandalsuraj.hushpen.core.Engine
 import com.mandalsuraj.hushpen.core.Host
 import com.mandalsuraj.hushpen.core.HostUnloadRule
+import com.mandalsuraj.hushpen.core.PairedDesktop
 import com.mandalsuraj.hushpen.core.Model
 import com.mandalsuraj.hushpen.core.ModelKind
 import com.mandalsuraj.hushpen.core.ModelStatus
@@ -64,8 +65,8 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
     override val download: StateFlow<DownloadState> = mutableDownload
     private val mutableSystemAvailable = MutableStateFlow(false)
     override val systemAvailable: StateFlow<Boolean> = mutableSystemAvailable
-    private val mutableClients = MutableStateFlow<List<String>>(emptyList())
-    override val pairedClients: StateFlow<List<String>> = mutableClients
+    private val mutableClients = MutableStateFlow<List<PairedDesktop>>(emptyList())
+    override val pairedClients: StateFlow<List<PairedDesktop>> = mutableClients
     private val mutableRules = MutableStateFlow<List<HostUnloadRule>>(emptyList())
     override val allowedRules: StateFlow<List<HostUnloadRule>> = mutableRules
     private val mutableRule = MutableStateFlow<HostUnloadRule>(readRule())
@@ -263,9 +264,18 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
 
     override suspend fun pair(payload: String) = withContext(Dispatchers.IO) {
         initialize()
-        host.pair(payload)
-        mutableClients.value = host.pairedClients()
+        host.pair(payload).also { mutableClients.value = host.pairedClients() }
     }
+
+    override suspend fun pairCode(code: String, address: String) = withContext(Dispatchers.IO) {
+        initialize()
+        host.pairCode(code, address).also { mutableClients.value = host.pairedClients() }
+    }
+
+    override suspend fun openPairing() = withContext(Dispatchers.IO) { initialize(); host.openPairing() }
+    override suspend fun closePairing() = withContext(Dispatchers.IO) { initialize(); host.closePairing() }
+    override suspend fun pairingState() = withContext(Dispatchers.IO) { initialize(); host.pairingState() }
+    override suspend fun answerPairing(number: String, approve: Boolean) = withContext(Dispatchers.IO) { initialize(); host.answerPairing(number, approve) }
 
     override suspend fun forget(id: String) = withContext(Dispatchers.IO) {
         initialize()

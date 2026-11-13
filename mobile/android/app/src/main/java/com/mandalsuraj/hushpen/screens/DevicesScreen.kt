@@ -21,6 +21,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,7 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mandalsuraj.hushpen.R
 import com.mandalsuraj.hushpen.core.HostUnloadRule
+import com.mandalsuraj.hushpen.core.PairedDesktop
+import com.mandalsuraj.hushpen.server.NearbyPairingSheet
 import com.mandalsuraj.hushpen.server.PairingSheet
+import com.mandalsuraj.hushpen.server.TypeCodeSheet
 import com.mandalsuraj.hushpen.ui.GroupItem
 import com.mandalsuraj.hushpen.ui.ListGroup
 import com.mandalsuraj.hushpen.ui.ListScreen
@@ -50,10 +54,11 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
     val rules by model.allowedRules.collectAsStateWithLifecycle()
     val rule by model.unloadRule.collectAsStateWithLifecycle()
     val scanner by model.scannerOpen.collectAsStateWithLifecycle()
+    val listening by model.listening.collectAsStateWithLifecycle()
     val idleMinutes by model.idleMinutes.collectAsStateWithLifecycle()
     val notice by model.notice.collectAsStateWithLifecycle()
     var choosingRule by rememberSaveable { mutableStateOf(false) }
-    var forgetting by rememberSaveable { mutableStateOf<String?>(null) }
+    var forgetting by remember { mutableStateOf<PairedDesktop?>(null) }
 
     ListScreen(
         title = "Devices",
@@ -98,6 +103,19 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
                 )
             }
         }
+        if (server.running && !listening) {
+            ListGroup {
+                row { shape ->
+                    GroupItem(
+                        shape = shape,
+                        headline = if (clients.isEmpty()) "Try again" else "Pair another computer",
+                        supporting = "Let a computer find this phone",
+                        icon = R.drawable.ms_sensors,
+                        modifier = Modifier.clickable { model.reopenPairing() },
+                    )
+                }
+            }
+        }
         SectionHeader("Paired desktops")
         ListGroup {
             if (clients.isEmpty()) {
@@ -106,25 +124,25 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
                         shape = shape,
                         headline = "No paired desktops.",
                         supporting = if (server.running) {
-                            "Tap Pair desktop, then scan the code on your computer."
+                            "On your computer, open Add a Device and pick this phone."
                         } else {
-                            "Turn on Server mode, then scan the code on your computer."
+                            "Turn on Server mode, then pair from your computer."
                         },
                         supportingLines = 2,
                         icon = R.drawable.ms_computer,
                     )
                 }
             }
-            clients.forEach { id ->
+            clients.forEach { desktop ->
                 row { shape ->
                     GroupItem(
                         shape = shape,
-                        headline = desktopName(id),
+                        headline = desktop.name,
                         supporting = "Paired",
                         icon = R.drawable.ms_computer,
                         trailing = {
-                            IconButton(onClick = { forgetting = id }) {
-                                Icon(painterResource(R.drawable.ms_delete), contentDescription = "Forget ${desktopName(id)}")
+                            IconButton(onClick = { forgetting = desktop }) {
+                                Icon(painterResource(R.drawable.ms_delete), contentDescription = "Forget ${desktop.name}")
                             }
                         },
                     )
@@ -133,12 +151,20 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
         }
     }
 
+    val typing by model.typing.collectAsStateWithLifecycle()
+    val codeError by model.codeError.collectAsStateWithLifecycle()
+    val busy by model.busy.collectAsStateWithLifecycle()
     if (scanner) {
         PairingSheet(
             onCode = model::scanned,
+            onTypeCode = model::typeCode,
             onClose = model::closeScanner,
         )
     }
+    if (typing) {
+        TypeCodeSheet(busy = busy, error = codeError, onPair = model::pairCode, onClose = model::closeTyping)
+    }
+    NearbyPairing(model)
     if (choosingRule) {
         UnloadRuleDialog(
             rules = rules,
@@ -152,20 +178,31 @@ fun DevicesScreen(model: DevicesViewModel, onServing: (Boolean) -> Unit, onBack:
             onDismiss = { choosingRule = false },
         )
     }
-    forgetting?.let { id ->
+    forgetting?.let { desktop ->
         AlertDialog(
             onDismissRequest = { forgetting = null },
-            title = { Text("Forget ${desktopName(id)}?") },
+            title = { Text("Forget ${desktop.name}?") },
             text = { Text("This desktop can no longer use this phone's models. You can pair it again later.") },
             confirmButton = {
                 TextButton(onClick = {
-                    model.forget(id)
+                    model.forget(desktop.id)
                     forgetting = null
                 }) { Text("Forget") }
             },
             dismissButton = { TextButton(onClick = { forgetting = null }) { Text("Cancel") } },
         )
     }
+}
+
+/** Opens the Nearby window while this screen is in front, and shows the number to compare. */
+@Composable
+fun NearbyPairing(model: DevicesViewModel) {
+    val comparing by model.comparing.collectAsStateWithLifecycle()
+    DisposableEffect(model) {
+        model.watch()
+        onDispose { model.unwatch() }
+    }
+    comparing?.let { NearbyPairingSheet(number = it, onAnswer = model::answer) }
 }
 
 @Composable

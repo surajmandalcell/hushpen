@@ -117,7 +117,7 @@ fun HomeScreen(
                 GroupItem(
                     shape = shape,
                     headline = "Devices",
-                    supporting = if (clients.isEmpty()) "No paired desktops" else clients.joinToString(transform = ::desktopName),
+                    supporting = if (clients.isEmpty()) "No paired desktops" else clients.joinToString { it.name },
                     icon = R.drawable.ms_computer,
                     modifier = Modifier.clickable { onOpen(Screen.Devices) },
                 )
