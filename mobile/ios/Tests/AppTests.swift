@@ -172,18 +172,17 @@ final class AppTests: XCTestCase {
 
     func testFreshDictationCancelsOnlyAbandonedRecordings() throws {
         let store = try FlowSessionStore(root: folder)
-        let document = UUID()
-        let abandoned = try store.begin(documentIdentifier: document, context: "cursor")
+        let abandoned = try store.begin()
         _ = try store.request(for: abandoned.url)
         _ = try DictationModel(repository: repository, store: store)
         XCTAssertEqual(try store.current()?.state, .cancelled)
 
-        let pending = try store.begin(documentIdentifier: document, context: "cursor")
+        let pending = try store.begin()
         _ = try DictationModel(repository: repository, store: store)
         XCTAssertEqual(try store.request(for: pending.url).state, .recording)
         try store.complete(id: pending.id, text: "Ready")
         _ = try DictationModel(repository: repository, store: store)
-        XCTAssertEqual(try store.consume(id: pending.id, documentIdentifier: document, context: "cursor"), "Ready")
+        XCTAssertEqual(try store.consume(id: pending.id), "Ready")
     }
 
     func testDamagedSessionDoesNotBlockFreshDictation() throws {
@@ -193,7 +192,7 @@ final class AppTests: XCTestCase {
         try damaged.write(to: file)
         _ = try DictationModel(repository: repository, store: store)
         XCTAssertEqual(try Data(contentsOf: file), damaged)
-        XCTAssertEqual(try store.begin(documentIdentifier: UUID(), context: "cursor").state, .pending)
+        XCTAssertEqual(try store.begin().state, .pending)
     }
 
     func testOldRecorderCallbacksCannotFinishOrFailAnInactiveMicrophone() async throws {

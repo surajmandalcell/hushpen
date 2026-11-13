@@ -13,8 +13,6 @@ enum FlowSessionCommand: String, Codable {
 
 struct FlowSession: Codable, Equatable {
     let id: UUID
-    var documentIdentifier: UUID
-    let context: String
     let createdAt: Date
     let expiresAt: Date
     var state: FlowSessionState
@@ -68,12 +66,11 @@ final class FlowSessionStore: @unchecked Sendable {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    func begin(documentIdentifier: UUID, context: String, now: Date = Date()) throws -> FlowSession {
+    func begin(now: Date = Date()) throws -> FlowSession {
         try transaction(replacingDamaged: true) { stored in
             let session = FlowSession(
-                id: UUID(), documentIdentifier: documentIdentifier, context: context,
-                createdAt: now, expiresAt: now.addingTimeInterval(600), state: .pending,
-                command: .start
+                id: UUID(), createdAt: now, expiresAt: now.addingTimeInterval(600),
+                state: .pending, command: .start
             )
             stored = session
             return session
@@ -171,36 +168,17 @@ final class FlowSessionStore: @unchecked Sendable {
         return session.id == id && session.state == .recording && session.command == nil
     }
 
-    func consume(
-        id: UUID, documentIdentifier: UUID, context: String, now: Date = Date()
-    ) throws -> String? {
+    /// Hands the text over once. The caller inserts it at the cursor it has now: the user may
+    /// have typed, or moved to another field, while the app was transcribing.
+    func consume(id: UUID, now: Date = Date()) throws -> String? {
         try transaction { stored in
             guard var session = stored, session.id == id, Self.isLive(session, now: now),
                   session.state == .completed else { return nil }
-            guard session.documentIdentifier == documentIdentifier, session.context == context else {
-                session.state = .cancelled
-                session.text = nil
-                stored = session
-                return nil
-            }
             let text = session.text
             session.state = .consumed
             session.text = nil
             stored = session
             return text
-        }
-    }
-
-    func confirmDestination(
-        id: UUID, documentIdentifier: UUID, context: String, now: Date = Date()
-    ) throws {
-        try transaction { stored in
-            guard var session = stored, session.id == id, Self.isLive(session, now: now)
-            else { throw FlowSessionError.stale }
-            guard session.state == .completed else { throw FlowSessionError.wrongState }
-            guard session.context == context else { throw FlowSessionError.stale }
-            session.documentIdentifier = documentIdentifier
-            stored = session
         }
     }
 
