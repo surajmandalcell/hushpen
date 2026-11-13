@@ -130,6 +130,17 @@ final class AppTests: XCTestCase {
         XCTAssertEqual(values.isExcludedFromBackup, true)
     }
 
+    func testHistoryFilesStayProtectedUntilFirstUnlock() throws {
+        XCTAssertEqual(PhoneRepository.historyProtection, .completeUntilFirstUserAuthentication)
+        // The Simulator keeps no protection class (the value is nil there); an iPhone reports it.
+        for name in ["history", "history/history.db"] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent(name).path)
+            if let actual = attributes[.protectionKey] as? FileProtectionType {
+                XCTAssertEqual(actual, .completeUntilFirstUserAuthentication, name)
+            }
+        }
+    }
+
     func testFailedPreferenceWriteKeepsTheSavedSetting() async throws {
         let destination = folder.appendingPathComponent("config/phone.json", isDirectory: true)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)

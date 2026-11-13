@@ -60,7 +60,25 @@ final class PhoneRepository: @unchecked Sendable {
         system.setLocal(local: settings.cleanup ? localCleanup : nil)
         host = try Host(engine: engine, name: name, system: system)
         host.setForeground(foreground: false)
+        try Self.protectHistory(in: data)
         history = try History(dataDir: data.path)
+        try Self.protectHistory(in: data)
+    }
+
+    /// Dictation text is private. A dictation can finish while the phone is locked (the app keeps recording in the
+    /// background), and SQLite reopens its files then, so the class is "until first unlock", not "when unlocked".
+    /// New files in the folder take its class; the second call covers the database files made on first open.
+    static let historyProtection = FileProtectionType.completeUntilFirstUserAuthentication
+
+    static func protectHistory(in data: URL) throws {
+        let folder = data.appendingPathComponent("history", isDirectory: true)
+        let protection: [FileAttributeKey: Any] = [.protectionKey: historyProtection]
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: protection)
+        try FileManager.default.setAttributes(protection, ofItemAtPath: folder.path)
+        for name in ["history.db", "history.db-wal", "history.db-shm"] {
+            let file = folder.appendingPathComponent(name).path
+            if FileManager.default.fileExists(atPath: file) { try FileManager.default.setAttributes(protection, ofItemAtPath: file) }
+        }
     }
 
     static func open() async throws -> PhoneRepository {
