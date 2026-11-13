@@ -44,6 +44,7 @@ struct RootView: View {
                 }
             }
         }
+        .nearbyPairing(runtime.devices, enabled: !serverOpen)
         .background(SceneScreenReader { value in activeScreen = value; updateScene() })
         .onAppear { runtime.server.setOpen(true); updateScene() }
         .onChange(of: phase) { _, _ in updateScene() }

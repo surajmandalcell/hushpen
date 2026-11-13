@@ -274,29 +274,84 @@ final class ServerModel {
 final class DevicesModel {
     private let repository: PhoneRepository
     let server: ServerModel
-    private(set) var clients: [String] = []
+    private(set) var clients: [PairedDesktop] = []
     private(set) var busy = false
-    var scannedOffer = ""
+    /// The number both screens show while a computer pairs through Nearby; `nil` otherwise.
+    private(set) var comparing: String?
     var notice = ""
     var scannerOpen = false
+    private var watchers = 0
+    private var watching: Task<Void, Never>?
 
     init(repository: PhoneRepository, server: ServerModel) {
         self.repository = repository
         self.server = server
+        #if DEBUG
+        // Screenshots of the comparison need a computer; this shows the same state without one.
+        if ProcessInfo.processInfo.environment["HUSHPEN_TEST_PAIRING"] == "compare" { comparing = "482913" }
+        #endif
     }
 
     func refresh() async { clients = await repository.snapshot().pairedClients }
 
-    func pair() async {
-        guard !busy else { return }
+    /// The Nearby window stays open while a screen that can pair is in front, and closes with it.
+    func watch() {
+        watchers += 1
+        if watching == nil { watching = Task { await listen() } }
+    }
+
+    func unwatch() {
+        watchers = max(0, watchers - 1)
+        guard watchers == 0 else { return }
+        watching?.cancel()
+        watching = nil
+        comparing = nil
+        Task { await repository.closePairing() }
+    }
+
+    private func listen() async {
+        while !Task.isCancelled {
+            if server.running {
+                let state = await repository.pairingState()
+                if Task.isCancelled { return }
+                comparing = if case let .comparing(number) = state { number } else { nil }
+                switch state {
+                case .closed: await repository.openPairing()
+                case .paired:
+                    notice = "Computer paired."
+                    await refresh()
+                    await repository.openPairing()
+                case let .failed(message):
+                    notice = message
+                    await repository.openPairing()
+                case .listening, .comparing: break
+                }
+            } else {
+                comparing = nil
+            }
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+    }
+
+    func answer(_ approve: Bool) {
+        comparing = nil
+        Task { await repository.answerPairing(approve) }
+    }
+
+    /// Scans a QR, or types the 8-digit code (with an address, or empty to look nearby).
+    func pair(payload: String? = nil, code: String = "", address: String = "") async -> Bool {
+        guard !busy else { return false }
         busy = true
         defer { busy = false }
         do {
-            try await repository.pair(uri: scannedOffer)
-            scannedOffer = ""
-            notice = "Desktop paired."
-        } catch { notice = phoneError(error) }
-        await refresh()
+            let name = if let payload { try await repository.pair(payload: payload) } else { try await repository.pair(code: code, address: address) }
+            notice = name.isEmpty ? "Computer paired." : "\(name) paired."
+            await refresh()
+            return true
+        } catch {
+            notice = phoneError(error)
+            return false
+        }
     }
 
     func forget(_ id: String) async {

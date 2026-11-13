@@ -41,6 +41,22 @@ final class AppTests: XCTestCase {
         XCTAssertEqual(state.pairedClients, [])
     }
 
+    func testPairingStartsClosedAndNeedsServerMode() async {
+        let first = await repository.pairingState()
+        await repository.openPairing()
+        let second = await repository.pairingState()
+        XCTAssertEqual(first, .closed)
+        XCTAssertEqual(second, .closed)
+        do {
+            _ = try await repository.pair(code: "1234 5678", address: "")
+            XCTFail("Pairing needs Server mode.")
+        } catch { XCTAssertEqual(phoneError(error), "start Server mode before pairing") }
+        do {
+            _ = try await repository.pair(payload: "hushpen-pair://v1/old-link")
+            XCTFail("A link is not a pairing code.")
+        } catch { XCTAssertFalse(phoneError(error).isEmpty) }
+    }
+
     func testFailedModelSelectionPreservesSavedChoice() async {
         do {
             try await repository.selectModel(id: "parakeet-v3-q4_k")

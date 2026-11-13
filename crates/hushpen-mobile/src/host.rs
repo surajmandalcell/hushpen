@@ -301,7 +301,12 @@ impl Host {
                 &Resolver::default(),
             ) {
                 Ok(session) => return self.enroll(session, port),
-                Err(problem) => failure = MobileError::failed(problem),
+                Err(problem) => {
+                    log::debug!("PHONE_PAIR_CODE_FAILED {problem}");
+                    failure = MobileError::failed(
+                        "The code did not pair. Check the code, and keep Add a Device open on your computer.",
+                    );
+                }
             }
         }
         Err(failure)
@@ -985,6 +990,43 @@ mod tests {
         assert_eq!(host.paired_clients()[0].name, "Studio Mac");
         host.stop();
         host.engine.shutdown();
+    }
+
+    /// The computer for `PairingUITests.testNearbyPairingWithARealComputer`: it keeps trying to
+    /// pair with the Simulator's Server mode, and approves only the number the phone shows.
+    #[test]
+    #[ignore = "needs HUSHPEN_NEARBY_ADDR and HUSHPEN_PAIR_NUMBER_FILE and a running phone app"]
+    fn nearby_peer() {
+        let address = std::env::var("HUSHPEN_NEARBY_ADDR").unwrap();
+        let file = std::env::var("HUSHPEN_PAIR_NUMBER_FILE").unwrap();
+        let _ = std::fs::remove_file(&file);
+        let desktop = Identity::generate().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(180);
+        while std::time::Instant::now() < deadline {
+            let result = RemoteStream::connect_nearby(
+                address.clone(),
+                &desktop,
+                Duration::from_secs(90),
+                &Resolver::default(),
+                |number, name| {
+                    println!("NEARBY number={number} phone={name}");
+                    for _ in 0..300 {
+                        if std::fs::read_to_string(&file).is_ok_and(|shown| shown.trim() == number)
+                        {
+                            return Ok(true);
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    Ok(false)
+                },
+            );
+            if result.is_ok() {
+                println!("NEARBY paired");
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        panic!("the phone never paired");
     }
 
     #[test]

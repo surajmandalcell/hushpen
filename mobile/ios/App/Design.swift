@@ -42,12 +42,13 @@ struct ReadyMark: View {
 /// One line of help or trouble at the top of a list.
 struct NoticeRow: View {
     let text: String
+    var ok = false
 
     var body: some View {
         Label {
             Text(text).font(.subheadline)
         } icon: {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill").foregroundStyle(ok ? .green : .orange)
         }
     }
 }
@@ -80,8 +81,6 @@ func sizeLabel(_ bytes: UInt64) -> String {
 }
 
 /// Rust names a paired desktop only by its public key, shown as lowercase hex.
-func desktopName(_ id: String) -> String { "Desktop \(id.prefix(8))" }
-
 func speechPurpose(_ model: Model) -> String {
     switch model.name.lowercased() {
     case let name where name.hasPrefix("parakeet"): "English and 24 European languages"

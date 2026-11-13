@@ -30,7 +30,7 @@ struct ServerScreen: View {
     private var line: String {
         switch devices.clients.count {
         case 0: "No desktop is paired yet."
-        case 1: "\(desktopName(devices.clients[0])) can use this iPhone."
+        case 1: "\(devices.clients[0].name) can use this iPhone."
         default: "\(devices.clients.count) desktops can use this iPhone."
         }
     }
@@ -81,10 +81,11 @@ struct ServerScreen: View {
             }
             .padding(.horizontal, 20).padding(.bottom, 8)
         }
+        .nearbyPairing(devices)
         .preferredColorScheme(.dark)
         .task { await server.refresh(); await models.refresh(); await devices.refresh(); await settings.refresh() }
-        .onAppear { power.start() }
-        .onDisappear { power.stop() }
+        .onAppear { power.start(); devices.watch() }
+        .onDisappear { power.stop(); devices.unwatch() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in power.read() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in power.read() }
     }

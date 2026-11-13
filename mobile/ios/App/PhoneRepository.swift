@@ -8,7 +8,7 @@ struct PhoneSnapshot: Sendable {
     let selectedCleanupModel: String
     let cleanupEnabled: Bool
     let systemAvailable: Bool
-    let pairedClients: [String]
+    let pairedClients: [PairedDesktop]
     let allowedRules: [HostUnloadRule]
     let details: [String: ModelDetails]
 }
@@ -226,9 +226,18 @@ final class PhoneRepository: @unchecked Sendable {
         settings = next
     }
 
-    func pair(uri: String) async throws {
-        try await Task.detached { [host] in try host.pair(uri: uri) }.value
+    func pair(payload: String) async throws -> String {
+        try await Task.detached { [host] in try host.pair(payload: payload) }.value
     }
+
+    func pair(code: String, address: String) async throws -> String {
+        try await Task.detached { [host] in try host.pairCode(code: code, address: address) }.value
+    }
+
+    func openPairing() async { await Task.detached { [host] in try? host.openPairing() }.value }
+    func closePairing() async { await Task.detached { [host] in host.closePairing() }.value }
+    func pairingState() async -> PairingState { await Task.detached { [host] in host.pairingState() }.value }
+    func answerPairing(_ approve: Bool) async { await Task.detached { [host] in host.answerPairing(approve: approve) }.value }
 
     func forget(id: String) async throws {
         try await Task.detached { [host] in try host.forget(publicKey: id) }.value
