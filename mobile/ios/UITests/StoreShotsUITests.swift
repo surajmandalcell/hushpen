@@ -23,7 +23,7 @@ final class StoreShotsUITests: XCTestCase {
 
     func test1EnableKeyboard() {
         phone.launch()
-        XCTAssertTrue(phone.navigationBars["Hushpen"].waitForExistence(timeout: 30))
+        XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
         settings.launch()
         let general = settings.staticTexts["General"].firstMatch
@@ -57,7 +57,7 @@ final class StoreShotsUITests: XCTestCase {
 
     func test2MessagesDictation() {
         phone.launch()
-        XCTAssertTrue(phone.navigationBars["Hushpen"].waitForExistence(timeout: 30))
+        XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         XCUIDevice.shared.press(.home)
         messages.launch()
         let conversation = messages.cells.firstMatch
@@ -94,32 +94,25 @@ final class StoreShotsUITests: XCTestCase {
         messages.terminate()
         XCUIDevice.shared.press(.home)
         phone.launch()
-        XCTAssertTrue(phone.navigationBars["Hushpen"].waitForExistence(timeout: 30))
-        XCTAssertTrue(element("home.models", in: phone).waitForExistence(timeout: 15))
+        XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         sleep(2)
         shot("home")
-        element("home.models", in: phone).tap()
+        phone.tabBars.buttons["Settings"].tap()
+        sleep(1)
+        shot("settings")
+        element("settings.models", in: phone).tap()
         XCTAssertTrue(phone.navigationBars["Models"].waitForExistence(timeout: 10))
         sleep(2)
         shot("models")
         phone.navigationBars.buttons.firstMatch.tap()
-        element("home.devices", in: phone).tap()
+        element("settings.devices", in: phone).tap()
         XCTAssertTrue(phone.navigationBars["Devices"].waitForExistence(timeout: 10))
         XCTAssertTrue(phone.windows.firstMatch.wait(for: \.frame, toEqual: phone.frame, timeout: 10))
         phone.switches["devices.server"].switches.firstMatch.tap()
         sleep(3)
         shot("devices")
         XCTAssertTrue(phone.windows.firstMatch.wait(for: \.frame, toEqual: phone.frame, timeout: 10))
-        phone.switches["devices.server"].switches.firstMatch.tap()
-        sleep(1)
-        phone.navigationBars.buttons.firstMatch.tap()
-        element("home.settings", in: phone).tap()
-        XCTAssertTrue(phone.navigationBars["Settings"].waitForExistence(timeout: 10))
-        sleep(2)
-        shot("settings")
-        phone.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(phone.windows.firstMatch.wait(for: \.frame, toEqual: phone.frame, timeout: 10))
-        phone.switches["server.toggle"].switches.firstMatch.tap()
+        element("devices.screen", in: phone).tap()
         waitForText("Serving", id: "server.state", in: phone, timeout: 20)
         sleep(2)
         shot("server")
@@ -128,7 +121,7 @@ final class StoreShotsUITests: XCTestCase {
 
     func test4LiveActivity() {
         phone.launch()
-        XCTAssertTrue(phone.navigationBars["Hushpen"].waitForExistence(timeout: 30))
+        XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         XCUIDevice.shared.press(.home)
         messages.launch()
         let conversation = messages.cells.firstMatch
