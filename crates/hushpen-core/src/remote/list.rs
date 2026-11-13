@@ -51,37 +51,62 @@ pub fn remote_hosts(
     Ok(hosts)
 }
 
-/// Includes must be read by the caller; this parser never opens configuration files.
+/// Resolves exact aliases and `Host *` defaults without opening configuration files.
+/// Includes, Match conditions, and other patterns require resolved facts from the caller.
 pub fn ssh_hosts(config: &str) -> Vec<RemoteHost> {
-    let mut hosts = Vec::new();
-    let mut block = Vec::new();
-    let mut hostname = None;
-    for line in config.lines().chain(std::iter::once("Host")) {
-        let fields = ssh_fields(line);
-        let Some(keyword) = fields.first() else {
-            continue;
-        };
-        if keyword.eq_ignore_ascii_case("host") || keyword.eq_ignore_ascii_case("match") {
-            for alias in block.drain(..) {
-                let address = hostname.clone().unwrap_or_else(|| String::clone(&alias));
-                merge(
-                    &mut hosts,
-                    RemoteHost {
-                        name: alias.clone(),
-                        address: address.clone(),
-                        ssh_alias: Some(alias.clone()),
-                        tailscale_address: None,
-                        identities: vec![identity(&alias), identity(&address)],
-                    },
-                );
+    let lines: Vec<_> = config.lines().map(ssh_fields).collect();
+    let mut aliases = Vec::new();
+    for fields in &lines {
+        if fields
+            .first()
+            .is_some_and(|keyword| keyword.eq_ignore_ascii_case("host"))
+        {
+            for alias in fields.iter().skip(1).filter(|alias| valid_alias(alias)) {
+                if !aliases
+                    .iter()
+                    .any(|saved: &String| saved.eq_ignore_ascii_case(alias))
+                {
+                    aliases.push(alias.clone());
+                }
             }
-            hostname = None;
-            if keyword.eq_ignore_ascii_case("host") {
-                block.extend(fields.into_iter().skip(1).filter(|host| valid_alias(host)));
-            }
-        } else if keyword.eq_ignore_ascii_case("hostname") && hostname.is_none() {
-            hostname = fields.get(1).filter(|host| valid_address(host)).cloned();
         }
+    }
+    let mut hosts = Vec::new();
+    for alias in aliases {
+        let mut active = true;
+        let mut address = alias.clone();
+        for fields in &lines {
+            let Some(keyword) = fields.first() else {
+                continue;
+            };
+            if keyword.eq_ignore_ascii_case("host") {
+                let matches =
+                    |pattern: &str| pattern == "*" || pattern.eq_ignore_ascii_case(&alias);
+                active = fields.iter().skip(1).any(|pattern| matches(pattern))
+                    && !fields.iter().skip(1).any(|pattern| {
+                        pattern
+                            .strip_prefix('!')
+                            .is_some_and(|pattern| matches(pattern) || !valid_alias(pattern))
+                    });
+            } else if keyword.eq_ignore_ascii_case("match") {
+                active = false;
+            } else if active && keyword.eq_ignore_ascii_case("hostname") {
+                if let Some(hostname) = fields.get(1).filter(|hostname| valid_address(hostname)) {
+                    address.clone_from(hostname);
+                }
+                break;
+            }
+        }
+        merge(
+            &mut hosts,
+            RemoteHost {
+                name: alias.clone(),
+                address: address.clone(),
+                ssh_alias: Some(alias.clone()),
+                tailscale_address: None,
+                identities: vec![identity(&alias), identity(&address)],
+            },
+        );
     }
     hosts
 }
@@ -114,12 +139,14 @@ pub fn tailscale_hosts(status: &str) -> Result<Vec<RemoteHost>, serde_json::Erro
         let dns = peer["DNSName"].as_str().filter(|name| valid_address(name));
         let hostname = peer["HostName"].as_str().filter(|name| valid_alias(name));
         let name = hostname.or(dns).unwrap_or(&address).trim_end_matches('.');
-        let identities = addresses
-            .iter()
-            .map(ToString::to_string)
-            .chain(dns.into_iter().map(identity))
-            .chain(hostname.into_iter().map(identity))
-            .collect();
+        let mut identities: Vec<_> = addresses.iter().map(ToString::to_string).collect();
+        if let Some(dns) = dns {
+            let dns = identity(dns);
+            if let Some(short) = dns.split('.').next().filter(|name| !name.is_empty()) {
+                identities.push(short.to_owned());
+            }
+            identities.push(dns);
+        }
         merge(
             &mut hosts,
             RemoteHost {
@@ -285,6 +312,66 @@ Host standalone
             hosts.iter().filter(|host| host.name == "storage").count(),
             1
         );
+    }
+
+    #[test]
+    fn ignored_later_hostname_cannot_merge_an_unrelated_peer() {
+        let status = r#"{"Peer":{"other":{"DNSName":"later.example.","HostName":"later","TailscaleIPs":["100.80.0.9"]}}}"#;
+        let hosts = remote_hosts(
+            "Host office\nHostName work.example\nHost office\nHostName later.example",
+            status,
+        )
+        .unwrap();
+        assert_eq!(hosts.len(), 2);
+        let office = hosts.iter().find(|host| host.name == "office").unwrap();
+        assert_eq!(office.address, "work.example");
+        assert_eq!(office.tailscale_address, None);
+        assert!(
+            hosts
+                .iter()
+                .any(|host| host.name == "later" && host.ssh_alias.is_none())
+        );
+    }
+
+    #[test]
+    fn duplicate_display_hostnames_keep_distinct_magicdns_peers_separate() {
+        let status = r#"{"Peer":{
+            "one":{"DNSName":"server.tail.example.","HostName":"server","TailscaleIPs":["100.80.0.1"]},
+            "two":{"DNSName":"server-1.tail.example.","HostName":"server","TailscaleIPs":["100.80.0.2"]}
+        }}"#;
+        assert_eq!(tailscale_hosts(status).unwrap().len(), 2);
+        let hosts = remote_hosts("Host server-1", status).unwrap();
+        assert_eq!(hosts.len(), 2);
+        let ssh = hosts.iter().find(|host| host.ssh_alias.is_some()).unwrap();
+        assert_eq!(ssh.ssh_alias.as_deref(), Some("server-1"));
+        assert_eq!(ssh.tailscale_address.as_deref(), Some("100.80.0.2"));
+        let no_dns = r#"{"Peer":{
+            "one":{"HostName":"server","TailscaleIPs":["100.80.0.1"]},
+            "two":{"HostName":"server","TailscaleIPs":["100.80.0.2"]}
+        }}"#;
+        assert_eq!(tailscale_hosts(no_dns).unwrap().len(), 2);
+        assert_eq!(remote_hosts("Host server", no_dns).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn ssh_hostname_uses_the_first_value_from_exact_aliases_and_defaults() {
+        let hosts = ssh_hosts(
+            "Host office\nUser someone\nHost office\nHostName work.example\nHost * !office\nHostName default.example\nHost other\nHostName ignored.example\nHost office\nHostName also-ignored.example",
+        );
+        assert_eq!(hosts.len(), 2);
+        assert!(
+            hosts
+                .iter()
+                .any(|host| host.name == "office" && host.address == "work.example")
+        );
+        assert!(
+            hosts
+                .iter()
+                .any(|host| host.name == "other" && host.address == "default.example")
+        );
+        let hosts =
+            ssh_hosts("Host *\nHostName first.example\nHost office\nHostName ignored.example");
+        assert_eq!(hosts[0].address, "first.example");
     }
 
     #[test]
