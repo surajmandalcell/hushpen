@@ -200,7 +200,7 @@ fn unload_rules_follow_each_platform_and_keep_the_idle_boundary() {
 fn offer(pairing: &mut Pairing) {
     pairing.apply(
         PairEvent::Offer {
-            payload: "hushpen-pair://v1?offer".into(),
+            payload: "QR payload".into(),
             expires_at: 100,
         },
         0,
@@ -221,11 +221,26 @@ fn pairing_progresses_from_offer_to_confirmation_to_paired() {
     assert!(matches!(pairing, Pairing::Offered { .. }));
     pairing.apply(
         PairEvent::Confirm {
-            code: "000123".into(),
+            number: "000123".into(),
+            computer_name: "Office computer".into(),
         },
         1,
     );
-    assert!(matches!(pairing, Pairing::Confirming { ref code, .. } if code == "000123"));
+    assert!(
+        matches!(pairing, Pairing::Confirming { ref number, ref computer_name, .. } if number == "000123" && computer_name == "Office computer")
+    );
+    pairing.apply(
+        PairEvent::LocalConfirm {
+            number: "000123".into(),
+        },
+        1,
+    );
+    pairing.apply(
+        PairEvent::PeerConfirm {
+            number: "000123".into(),
+        },
+        1,
+    );
     pairing.apply(
         PairEvent::Paired {
             device_id: "phone".into(),
@@ -246,13 +261,30 @@ fn pairing_progresses_from_offer_to_confirmation_to_paired() {
 
 #[test]
 fn offers_and_confirmations_expire_at_the_exact_deadline() {
-    for confirm in [false, true] {
+    for approvals in 0..=3 {
         let mut pairing = Pairing::Idle;
         offer(&mut pairing);
-        if confirm {
+        if approvals > 0 {
             pairing.apply(
                 PairEvent::Confirm {
-                    code: "123456".into(),
+                    number: "123456".into(),
+                    computer_name: "Computer".into(),
+                },
+                1,
+            );
+        }
+        if approvals > 1 {
+            pairing.apply(
+                PairEvent::LocalConfirm {
+                    number: "123456".into(),
+                },
+                1,
+            );
+        }
+        if approvals > 2 {
+            pairing.apply(
+                PairEvent::PeerConfirm {
+                    number: "123456".into(),
                 },
                 1,
             );
@@ -270,8 +302,8 @@ fn offers_and_confirmations_expire_at_the_exact_deadline() {
 }
 
 #[test]
-fn invalid_offers_codes_and_rejections_fail_and_can_be_cancelled_or_retried() {
-    for (payload, expires_at) in [("", 100), ("offer", 0)] {
+fn invalid_offers_numbers_and_rejections_fail_and_can_be_cancelled_or_retried() {
+    for (payload, expires_at) in [("", 100), ("  ", 100), ("offer", 0)] {
         let mut pairing = Pairing::Idle;
         pairing.apply(
             PairEvent::Offer {
@@ -284,11 +316,17 @@ fn invalid_offers_codes_and_rejections_fail_and_can_be_cancelled_or_retried() {
         offer(&mut pairing);
         assert!(matches!(pairing, Pairing::Offered { .. }));
     }
-    for code in ["12345", "1234567", "12345x", "１２３"] {
+    for number in ["12345", "1234567", "12345x", "１２３"] {
         let mut pairing = Pairing::Idle;
         offer(&mut pairing);
-        pairing.apply(PairEvent::Confirm { code: code.into() }, 1);
-        assert_eq!(pairing, Pairing::Failed(PairFailure::InvalidCode));
+        pairing.apply(
+            PairEvent::Confirm {
+                number: number.into(),
+                computer_name: "Computer".into(),
+            },
+            1,
+        );
+        assert_eq!(pairing, Pairing::Failed(PairFailure::InvalidNumber));
     }
     for confirm in [false, true] {
         let mut pairing = Pairing::Idle;
@@ -296,7 +334,8 @@ fn invalid_offers_codes_and_rejections_fail_and_can_be_cancelled_or_retried() {
         if confirm {
             pairing.apply(
                 PairEvent::Confirm {
-                    code: "123456".into(),
+                    number: "123456".into(),
+                    computer_name: "Computer".into(),
                 },
                 1,
             );
@@ -306,6 +345,168 @@ fn invalid_offers_codes_and_rejections_fail_and_can_be_cancelled_or_retried() {
         pairing.apply(PairEvent::Cancel, 3);
         assert_eq!(pairing, Pairing::Idle);
     }
+}
+
+#[test]
+fn pairing_needs_both_matching_approvals_before_verified_completion() {
+    for peer_first in [false, true] {
+        let mut pairing = Pairing::Idle;
+        offer(&mut pairing);
+        pairing.apply(
+            PairEvent::Confirm {
+                number: "012345".into(),
+                computer_name: "Computer".into(),
+            },
+            1,
+        );
+        let paired = PairEvent::Paired {
+            device_id: "phone".into(),
+        };
+        pairing.apply(paired.clone(), 1);
+        assert!(matches!(
+            pairing,
+            Pairing::Confirming {
+                local_confirmed: false,
+                peer_confirmed: false,
+                ..
+            }
+        ));
+        let local = PairEvent::LocalConfirm {
+            number: "012345".into(),
+        };
+        let peer = PairEvent::PeerConfirm {
+            number: "012345".into(),
+        };
+        let (first, second) = if peer_first {
+            (peer, local)
+        } else {
+            (local, peer)
+        };
+        pairing.apply(first.clone(), 2);
+        pairing.apply(first, 2);
+        pairing.apply(paired.clone(), 2);
+        assert!(matches!(pairing, Pairing::Confirming { .. }));
+        pairing.apply(second, 3);
+        pairing.apply(
+            PairEvent::Paired {
+                device_id: String::new(),
+            },
+            3,
+        );
+        assert!(matches!(
+            pairing,
+            Pairing::Confirming {
+                local_confirmed: true,
+                peer_confirmed: true,
+                ..
+            }
+        ));
+        pairing.apply(paired, 3);
+        assert_eq!(
+            pairing,
+            Pairing::Paired {
+                device_id: "phone".into()
+            }
+        );
+    }
+}
+
+#[test]
+fn mismatched_approval_discards_pairing_and_cancel_discards_late_events() {
+    for approval in [
+        PairEvent::LocalConfirm {
+            number: "654321".into(),
+        },
+        PairEvent::PeerConfirm {
+            number: "654321".into(),
+        },
+    ] {
+        let mut pairing = Pairing::Idle;
+        offer(&mut pairing);
+        pairing.apply(
+            PairEvent::Confirm {
+                number: "123456".into(),
+                computer_name: "Computer".into(),
+            },
+            1,
+        );
+        pairing.apply(approval, 2);
+        assert_eq!(pairing, Pairing::Failed(PairFailure::Mismatch));
+        pairing.apply(
+            PairEvent::Paired {
+                device_id: "phone".into(),
+            },
+            3,
+        );
+        assert_eq!(pairing, Pairing::Failed(PairFailure::Mismatch));
+        pairing.apply(PairEvent::Cancel, 4);
+        pairing.apply(
+            PairEvent::LocalConfirm {
+                number: "123456".into(),
+            },
+            5,
+        );
+        pairing.apply(
+            PairEvent::PeerConfirm {
+                number: "123456".into(),
+            },
+            5,
+        );
+        pairing.apply(
+            PairEvent::Paired {
+                device_id: "phone".into(),
+            },
+            5,
+        );
+        assert_eq!(pairing, Pairing::Idle);
+        offer(&mut pairing);
+        pairing.apply(
+            PairEvent::Confirm {
+                number: "123456".into(),
+                computer_name: "Computer".into(),
+            },
+            1,
+        );
+        assert!(matches!(
+            pairing,
+            Pairing::Confirming {
+                local_confirmed: false,
+                peer_confirmed: false,
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
+fn pairing_rejects_empty_control_and_oversized_computer_names() {
+    for computer_name in [
+        String::new(),
+        "  ".into(),
+        "Computer\nPhone".into(),
+        "a".repeat(129),
+    ] {
+        let mut pairing = Pairing::Idle;
+        offer(&mut pairing);
+        pairing.apply(
+            PairEvent::Confirm {
+                number: "123456".into(),
+                computer_name,
+            },
+            1,
+        );
+        assert_eq!(pairing, Pairing::Failed(PairFailure::InvalidName));
+    }
+    let mut pairing = Pairing::Idle;
+    offer(&mut pairing);
+    pairing.apply(
+        PairEvent::Confirm {
+            number: "000000".into(),
+            computer_name: "a".repeat(128),
+        },
+        1,
+    );
+    assert!(matches!(pairing, Pairing::Confirming { .. }));
 }
 
 #[test]
