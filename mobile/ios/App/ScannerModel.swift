@@ -33,7 +33,7 @@ final class ScannerModel {
         guard generation == token else { return }
         guard allowed else {
             permission = status == .restricted ? "Restricted" : "Denied"
-            notice = "Allow the camera in Settings, or paste the desktop pairing code."
+            notice = "Allow the camera in Settings, or type the code."
             return
         }
         permission = "Allowed"
@@ -86,7 +86,7 @@ private final class QrCapture: NSObject, AVCaptureMetadataOutputObjectsDelegate,
                 do {
                     if session.inputs.isEmpty {
                         guard let device = AVCaptureDevice.default(for: .video) else {
-                            throw MobileError.Failed(detail: "No camera is available. Paste the desktop pairing code.")
+                            throw MobileError.Failed(detail: "No camera is available. Type the code instead.")
                         }
                         let input = try AVCaptureDeviceInput(device: device)
                         let output = AVCaptureMetadataOutput()

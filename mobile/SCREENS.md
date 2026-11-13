@@ -71,13 +71,19 @@ the rules; views render state and send intents.
 
 ## Android Devices and Server mode
 
-- State: server running, port, paired desktop keys, Rust-approved unload rules,
-  selected rule and idle minutes, pairing URI, scanner open, and notice.
+- State: server running, port, paired desktops (name and id), Rust-approved
+  unload rules, selected rule and idle minutes, scanner and Type Code sheets,
+  the Nearby pairing number, and notice.
 - Intents: start or stop serving, choose unload rule, change idle minutes,
-  scan or enter a desktop offer, pair, forget, and refresh.
-- Empty: no paired desktops. Start Server mode and scan a desktop offer.
-- Errors: expired or invalid offer, handshake failure, port busy, service
-  start refused, unsupported unload rule, or save failure.
+  scan a QR, type the 8-digit code and an optional address, pair or cancel on
+  the Nearby number, forget, and refresh.
+- Nearby (D-57): while Devices or Server mode is in front and Server mode is
+  on, the phone opens a two-minute pairing window and lists in the computer's
+  Nearby list. The computer picks it; both screens show the same 6-digit
+  number; Pair on each saves trust. Leaving the screen closes the window.
+- Empty: no paired desktops. On your computer, open Add a Device and pick this phone.
+- Errors: expired offer, wrong code, no computer found, handshake failure,
+  port busy, service start refused, unsupported unload rule, or save failure.
 - Closing the activity stops the open-only rule. Other rules keep the
   foreground service. Memory readings and callbacks feed Rust's memory rule.
 - Pairing retains cleanup capability while the native system model is off
@@ -183,15 +189,18 @@ the rules; views render state and send intents.
 
 - A list: Server Mode with its state, the Power row (title, "Charging" or "On
   battery", then the battery icon and percent), paired desktops, and Pair a Desktop.
-- State: paired desktops, pairing URI, scanner open, server availability,
-  battery, busy state, and notice.
-- Intents: scan or paste a desktop offer, pair, forget (after a confirmation),
-  refresh, show the Server mode screen, and turn Server mode on or off.
-  Pairing needs Server mode on. Turning it on here opens no card, so the list
-  stays usable.
-- Empty: no paired desktop. Scan the desktop's pairing offer.
-- Errors: camera unavailable, invalid or expired offer, handshake failure,
-  Local Network permission denied, or save failure. Rust parses offers.
+- State: paired desktops (name and id), scanner open, the Nearby pairing
+  number, server availability, battery, busy state, and notice.
+- Intents: scan a QR or type the 8-digit code, pair or cancel on the Nearby
+  number, forget (after a confirmation), refresh, show the Server mode
+  screen, and turn Server mode on or off. Pairing needs Server mode on.
+  Turning it on here opens no card, so the list stays usable.
+- Nearby (D-57): with Server mode on, this screen and the Server screen keep
+  the pairing window open and show a sheet with the 6-digit number, Pair, and
+  Cancel when a computer picks this iPhone. Closing the screen closes the window.
+- Empty: no paired desktop. On your computer, open Add a Device and pick this iPhone.
+- Errors: camera unavailable, wrong or expired code, no computer found,
+  handshake failure, Local Network permission denied, or save failure.
 
 ## iOS Server mode
 
@@ -211,13 +220,13 @@ the rules; views render state and send intents.
 ## iOS scanner
 
 - State: camera permission, starting, scanning, scanned code, and notice.
-- Intents: request permission, start or retry, take a code, stop, open settings, and close.
-- Empty: no code or no camera. Paste Link closes the sheet and opens the link
-  field on Devices.
+- Intents: request permission, start or retry, take a code, stop, open settings,
+  open Type Code, and close.
+- Empty: no code or no camera. Type Code takes the computer's 8-digit code
+  (PAKE) and an Address row, Automatic by default (Bonjour), or host:port.
 - Errors: permission denied, camera unavailable, or capture could not start.
   Pairing payload validation stays in Rust.
-- A sheet over Devices. A scanned code fills the link field; pairing is a
-  separate tap.
+- A sheet over Devices. A scanned QR pairs at once; there is no link or paste field.
 
 ## iOS Settings
 
@@ -288,9 +297,13 @@ the rules; views render state and send intents.
 
 ## Phone enrollment contract
 
-The desktop QR contains the existing `hushpen-pair://v1` offer. The phone
-first completes the Noise handshake using that offer and pins the desktop
-public key. Then it sends one JSON frame over the encrypted stream:
+A phone enrolls after pairing: a scanned QR (version 2 JSON), a typed
+8-digit code, or a Nearby number comparison where the computer connects to
+the phone. The phone saves the computer's key and its name from the protected
+handshake (a Nearby computer sends no name, so the phone shows "Desktop" and
+the key prefix). After a scan or a typed code the phone sends one JSON frame
+over the encrypted stream; Nearby needs none, because the computer already
+has the phone's address from discovery:
 
 ```json
 {"type":"enroll","name":"Phone","os":"android","port":7342,"speech":true,"cleanup":true}
