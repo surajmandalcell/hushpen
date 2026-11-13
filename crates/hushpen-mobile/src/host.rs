@@ -250,9 +250,10 @@ impl Host {
         self.pairing.state()
     }
 
-    /// Pair or Cancel on the number comparison.
-    pub fn answer_pairing(&self, approve: bool) {
-        self.pairing.answer(approve);
+    /// Pair or Cancel on the number comparison. Pair must carry the number the person saw;
+    /// a different current number ignores it. Cancel always works.
+    pub fn answer_pairing(&self, number: String, approve: bool) {
+        self.pairing.answer(&number, approve);
     }
 
     /// Scans the computer's QR. Returns the computer's name.
@@ -898,7 +899,22 @@ mod tests {
             unreachable!()
         };
         assert!(host.paired_clients().is_empty());
-        host.answer_pairing(true);
+        // A yes for a number the person did not see is ignored.
+        let stale = if number == "000000" {
+            "111111"
+        } else {
+            "000000"
+        };
+        host.answer_pairing(stale.into(), true);
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            host.pairing_state(),
+            PairingState::Comparing {
+                number: number.clone()
+            }
+        );
+        assert!(host.paired_clients().is_empty());
+        host.answer_pairing(number.clone(), true);
         let (paired, shown) = peer.join().unwrap();
         assert!(paired);
         assert_eq!(shown, number);
@@ -917,7 +933,7 @@ mod tests {
         host.open_pairing().unwrap();
         let peer = nearby(true, &address);
         wait_for(&host, |s| matches!(s, PairingState::Comparing { .. }));
-        host.answer_pairing(false);
+        host.answer_pairing(String::new(), false);
         assert!(!peer.join().unwrap().0);
         assert!(matches!(
             wait_for(&host, |s| matches!(s, PairingState::Failed { .. })),

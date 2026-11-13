@@ -117,9 +117,11 @@ impl Pairing {
         lock(&self.inner).state.clone()
     }
 
-    pub(super) fn answer(&self, approve: bool) {
+    /// A yes counts only for the number the person saw; a no always counts.
+    pub(super) fn answer(&self, number: &str, approve: bool) {
         let mut inner = lock(&self.inner);
-        if matches!(inner.state, PairingState::Comparing { .. }) {
+        if matches!(&inner.state, PairingState::Comparing { number: current } if !approve || current == number)
+        {
             inner.answer = Some(approve);
             self.changed.notify_all();
         }
