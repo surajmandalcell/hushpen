@@ -86,6 +86,9 @@ final class StoreShotsUITests: XCTestCase {
         expectation(for: inserted, evaluatedWith: field)
         waitForExpectations(timeout: 30)
         sleep(1)
+        // The simulator's Messages can report the new text late, so the pill may show a paste notice over text that landed.
+        let dismiss = element("keyboard.dismiss", in: messages)
+        if dismiss.exists { dismiss.tap(); sleep(1) }
         shot("messages-inserted")
     }
 
@@ -97,7 +100,9 @@ final class StoreShotsUITests: XCTestCase {
         XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         sleep(2)
         shot("home")
-        phone.tabBars.buttons["Settings"].tap()
+        // iPad puts the tabs in a bar at the top, which is not always a tab bar element.
+        let tab = phone.tabBars.buttons["Settings"]
+        if tab.waitForExistence(timeout: 3) { tab.tap() } else { phone.buttons["Settings"].firstMatch.tap() }
         sleep(1)
         shot("settings")
         element("settings.models", in: phone).tap()
