@@ -12,7 +12,7 @@ final class FlowUITests: XCTestCase {
         phone.launchEnvironment["HUSHPEN_TEST_WAV"] = "documents"
         phone.launchEnvironment["HUSHPEN_TEST_MODEL"] = "ggml-base-q5_1.bin"
         phone.launch()
-        XCTAssertTrue(phone.navigationBars["Hushpen"].waitForExistence(timeout: 30))
+        XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         enableKeyboard()
         phone.activate()
     }
@@ -56,18 +56,16 @@ final class FlowUITests: XCTestCase {
     }
 
     func testSetupRefreshesWhenReturningFromTheKeyboard() {
+        phone.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(element("onboarding.keyboard", in: phone).waitForExistence(timeout: 10))
-        XCTAssertFalse(phone.staticTexts["Not added yet"].exists)
-        let added = phone.staticTexts["Added"].exists
-        let observed = phone.staticTexts["Full Access last seen"].exists
-        let unknown = phone.staticTexts["Open keyboard to check"].exists
-        XCTAssertTrue(added || observed || unknown)
-        print("PHONE_KEYBOARD_AFTER_SETTINGS added=\(added) full_access_observed=\(observed) unknown=\(unknown)")
+        XCTAssertTrue(element("onboarding.fullAccess", in: phone).exists)
+        let added = phone.staticTexts["On"].exists
+        let observed = phone.staticTexts["Allowed"].exists
+        print("PHONE_KEYBOARD_AFTER_SETTINGS added=\(added) full_access_observed=\(observed)")
         openEditor()
         phone.activate()
-        XCTAssertTrue(phone.staticTexts["Full Access last seen"].waitForExistence(timeout: 10))
-        element("home.settings", in: phone).tap()
-        XCTAssertTrue(phone.staticTexts["Full Access last seen"].waitForExistence(timeout: 10))
+        XCTAssertTrue(phone.staticTexts["On"].waitForExistence(timeout: 10))
+        XCTAssertTrue(phone.staticTexts["Allowed"].waitForExistence(timeout: 10))
     }
 
     func testCancelDoesNotInsertText() {
@@ -140,9 +138,12 @@ final class FlowUITests: XCTestCase {
     func testServerStopsWhenTheAppLeavesTheForeground() {
         XCTAssertTrue(phone.wait(for: .runningForeground, timeout: 10))
         XCTAssertTrue(phone.windows.firstMatch.wait(for: \.frame, toEqual: phone.frame, timeout: 10))
-        phone.switches["server.toggle"].switches.firstMatch.tap()
+        phone.tabBars.buttons["Settings"].tap()
+        element("settings.devices", in: phone).tap()
+        phone.switches["devices.server"].switches.firstMatch.tap()
+        element("devices.screen", in: phone).tap()
         waitForText("Serving", id: "server.state", in: phone, timeout: 20)
-        XCTAssertEqual(element("server.port", in: phone).label, "7342")
+        XCTAssertEqual(element("server.port", in: phone).label, "Port, 7342")
         XCTAssertTrue(serverAcceptsConnections())
         attach(phone, name: "Server running")
         editor.launch()
@@ -154,7 +155,7 @@ final class FlowUITests: XCTestCase {
         phone.activate()
         XCTAssertTrue(phone.wait(for: .runningForeground, timeout: 10))
         waitForText("Stopped", id: "server.state", in: phone, timeout: 10)
-        XCTAssertEqual(element("server.port", in: phone).label, "None")
+        XCTAssertEqual(element("server.port", in: phone).label, "Port, None")
         XCTAssertFalse(serverAcceptsConnections())
         attach(phone, name: "Server stopped on background")
     }
