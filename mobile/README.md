@@ -174,8 +174,11 @@ Darwin notifications. It receives changes only while visible, without polling.
 The keyboard inserts finished text by itself at the cursor the field has then,
 so typing while the app transcribes does not cancel it. It consumes the result
 once before inserting. iOS reports no result for an insert, so the keyboard
-checks that the text before the cursor changed; on a miss it copies the text
-and shows a paste failure. Results expire after ten minutes.
+checks that the text around the cursor changed. Some hosts, such as Messages,
+edit the field without telling the keyboard, so after one second without a
+change it moves the cursor one character left and back to make the host send
+its real text. Only a fresh reading that is still unchanged after three
+seconds copies the text and shows a paste failure. Results expire after ten minutes.
 Typing or moving the cursor withdraws undo. iOS exposes no
 public enabled-keyboard identifier property. The app reads the extension's
 App Group heartbeat on return and checks active input modes when their

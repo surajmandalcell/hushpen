@@ -40,6 +40,8 @@ final class KeyboardController: UIInputViewController {
     private var rescued: String?
     private var expiry: Task<Void, Never>?
     private var heartbeat: KeyboardHeartbeat?
+    /// Counts the host's text and cursor notices, so a cursor move shows whether the host answered.
+    private var contextEvents = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -112,12 +114,22 @@ final class KeyboardController: UIInputViewController {
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
+        contextEvents += 1
         refresh()
     }
 
     override func selectionDidChange(_ textInput: (any UITextInput)?) {
         super.selectionDidChange(textInput)
+        contextEvents += 1
         refresh()
+    }
+
+    private var proxyContext: InsertionCheck.Context {
+        InsertionCheck.Context(
+            before: textDocumentProxy.documentContextBeforeInput,
+            after: textDocumentProxy.documentContextAfterInput,
+            selected: textDocumentProxy.selectedText
+        )
     }
 
     private var context: String {
@@ -202,7 +214,7 @@ final class KeyboardController: UIInputViewController {
     private func deliver(_ id: UUID, from store: FlowSessionStore) throws {
         guard let text = try store.consume(id: id) else { return }
         let proxy = textDocumentProxy
-        let check = InsertionCheck(before: proxy.documentContextBeforeInput)
+        let check = InsertionCheck(start: proxyContext)
         let replaced = proxy.selectedText ?? ""
         delivering = true
         model.pill = .transcribing
@@ -211,12 +223,7 @@ final class KeyboardController: UIInputViewController {
     }
 
     private func confirm(_ text: String, check: InsertionCheck, replaced: String) async {
-        var landed = false
-        for _ in 0..<7 {
-            try? await Task.sleep(for: .milliseconds(100))
-            landed = check.landed(before: textDocumentProxy.documentContextBeforeInput)
-            if landed { break }
-        }
+        let landed = await didLand(check)
         delivering = false
         guard landed else {
             rescued = text
@@ -232,6 +239,43 @@ final class KeyboardController: UIInputViewController {
             self.model.pill = .idle
             self.insertion = nil
         }
+    }
+
+    /// A host can report the new text late or not at all, so a miss is final only after a slow host
+    /// had three seconds and a fresh reading still shows the old text.
+    private func didLand(_ check: InsertionCheck) async -> Bool {
+        if await changes(check, within: .seconds(1)) { return true }
+        await refreshReading()
+        return await changes(check, within: .seconds(2))
+    }
+
+    private func changes(_ check: InsertionCheck, within limit: Duration) async -> Bool {
+        let end = ContinuousClock.now + limit
+        while ContinuousClock.now < end {
+            try? await Task.sleep(for: .milliseconds(100))
+            if await stays(check) { return true }
+        }
+        return false
+    }
+
+    /// A host that refuses the text can show it for a moment and take it back, so a change counts
+    /// only when it is still there a moment later.
+    private func stays(_ check: InsertionCheck) async -> Bool {
+        guard check.landed(now: proxyContext) else { return false }
+        try? await Task.sleep(for: .milliseconds(300))
+        return check.landed(now: proxyContext)
+    }
+
+    /// Messages edits the field without telling the keyboard, so the proxy keeps the old text until the
+    /// cursor moves. Moving it one character left and back makes the host send its real text.
+    private func refreshReading() async {
+        let events = contextEvents
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: -1)
+        try? await Task.sleep(for: .milliseconds(300))
+        // No notice means the cursor could not move, so there is nothing to put back.
+        guard contextEvents != events else { return }
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: 1)
+        try? await Task.sleep(for: .milliseconds(300))
     }
 
     private func copyToPasteboard(_ text: String) -> Bool {
