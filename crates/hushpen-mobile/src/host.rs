@@ -1,11 +1,14 @@
 mod cleanup;
+mod pairing;
+
+pub use pairing::{PairedDesktop, PairingState};
 
 use crate::{Engine, MobileError, SystemCleanup, lock};
 use hushpen_core::os::Os;
 use hushpen_core::remote::{Device, DeviceKind, Serves, UnloadRule};
 use hushpen_engine::{EngineLog, InProcess, Link, LlmClient, Timing};
 use hushpen_host::Workers;
-use hushpen_remote::{Identity, QrPayload, RemoteControl, RemoteStream, Resolver};
+use hushpen_remote::{Identity, QrPayload, RemoteControl, RemoteStream, Resolver, Session};
 use hushpen_store::secrets::Secrets;
 use std::collections::HashMap;
 use std::net::TcpListener;
@@ -71,6 +74,7 @@ pub struct Host {
     os: Os,
     identity: Arc<Identity>,
     secrets: Arc<Secrets>,
+    pairing: Arc<pairing::Pairing>,
     running: Mutex<Option<Running>>,
     foreground: AtomicBool,
     activity: Mutex<Option<Arc<dyn JobActivity>>>,
@@ -118,6 +122,7 @@ impl Host {
             }
         }
         .map_err(MobileError::failed)?;
+        let pairing = Arc::new(pairing::Pairing::new(engine.data.join("config")));
         Ok(Arc::new(Self {
             engine,
             system,
@@ -125,6 +130,7 @@ impl Host {
             os: Os::current(),
             identity: Arc::new(identity),
             secrets: Arc::new(secrets),
+            pairing,
             running: Mutex::new(None),
             foreground: AtomicBool::new(true),
             activity: Mutex::new(None),
@@ -207,6 +213,7 @@ impl Host {
             wait,
             Arc::clone(&self.identity),
             Arc::clone(&self.secrets),
+            Arc::clone(&self.pairing),
             Arc::clone(&workers),
             self.engine.data.clone(),
             rule,
@@ -228,13 +235,31 @@ impl Host {
         Ok(port)
     }
 
-    pub fn pair(&self, uri: String) -> Result<(), MobileError> {
-        let port = lock(&self.running)
-            .as_ref()
-            .map(|running| running.port)
-            .ok_or_else(|| MobileError::failed("start Server mode before pairing"))?;
-        let offer = QrPayload::parse(&uri).map_err(MobileError::invalid)?;
-        let mut session = RemoteStream::connect_qr(
+    /// Opens the Nearby window: a computer can list this phone and pick it. Closes after
+    /// two minutes, after three tries, and with `close_pairing`.
+    pub fn open_pairing(&self) -> Result<(), MobileError> {
+        let port = self.serving_port()?;
+        self.pairing.open(&self.name, port, self.identity.public())
+    }
+
+    pub fn close_pairing(&self) {
+        self.pairing.close();
+    }
+
+    pub fn pairing_state(&self) -> PairingState {
+        self.pairing.state()
+    }
+
+    /// Pair or Cancel on the number comparison.
+    pub fn answer_pairing(&self, approve: bool) {
+        self.pairing.answer(approve);
+    }
+
+    /// Scans the computer's QR. Returns the computer's name.
+    pub fn pair(&self, payload: String) -> Result<String, MobileError> {
+        let port = self.serving_port()?;
+        let offer = QrPayload::parse(&payload).map_err(MobileError::invalid)?;
+        let session = RemoteStream::connect_qr(
             match offer.host.parse::<std::net::IpAddr>() {
                 Ok(ip) => std::net::SocketAddr::new(ip, offer.port).to_string(),
                 Err(_) => format!("{}:{}", offer.host, offer.port),
@@ -245,32 +270,58 @@ impl Host {
             &Resolver::default(),
         )
         .map_err(MobileError::failed)?;
-        let mut pins = self.secrets.paired_clients();
-        if !pins.contains(&session.peer_key) {
-            pins.push(session.peer_key);
-        }
-        self.secrets
-            .set_paired_clients(&pins)
-            .map_err(MobileError::failed)?;
-        hushpen_remote::enrollment::Enrollment {
-            device: Device {
-                id: key_id(&self.identity.public()),
-                name: self.name.clone(),
-                kind: DeviceKind::Phone,
-                os: self.os,
-                serves: Serves {
-                    speech: true,
-                    cleanup: true,
-                },
-            },
-            port,
-        }
-        .send(&mut session.stream)
-        .map_err(MobileError::failed)
+        self.enroll(session, port)
     }
 
-    pub fn paired_clients(&self) -> Vec<String> {
-        self.secrets.paired_clients().iter().map(key_id).collect()
+    /// Types the computer's 8-digit code. An empty address looks for computers showing a
+    /// code through Bonjour; otherwise it is `host:port`. Returns the computer's name.
+    pub fn pair_code(&self, code: String, address: String) -> Result<String, MobileError> {
+        let port = self.serving_port()?;
+        let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        if code.len() != 8 || !code.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(MobileError::invalid("Enter the 8-digit code."));
+        }
+        let address = address.trim();
+        let addresses = if address.is_empty() {
+            computers_nearby()?
+        } else if address.contains(':') {
+            vec![address.to_owned()]
+        } else {
+            return Err(MobileError::invalid("Enter the address as host:port."));
+        };
+        let mut failure = MobileError::failed(
+            "No computer is showing a code. Open Add a Device on your computer.",
+        );
+        for address in addresses {
+            match RemoteStream::connect_code(
+                address,
+                &self.identity,
+                &code,
+                Duration::from_secs(10),
+                &Resolver::default(),
+            ) {
+                Ok(session) => return self.enroll(session, port),
+                Err(problem) => failure = MobileError::failed(problem),
+            }
+        }
+        Err(failure)
+    }
+
+    /// A computer paired by Nearby never sends its name, so it keeps the key-based label.
+    pub fn paired_clients(&self) -> Vec<PairedDesktop> {
+        let names = self.pairing.names();
+        self.secrets
+            .paired_clients()
+            .iter()
+            .map(key_id)
+            .map(|id| PairedDesktop {
+                name: names
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Desktop {}", &id[..8])),
+                id,
+            })
+            .collect()
     }
 
     pub fn forget(&self, public_key: String) -> Result<(), MobileError> {
@@ -286,7 +337,8 @@ impl Host {
                     .filter(|key| key_id(key) != public_key)
                     .collect::<Vec<_>>(),
             )
-            .map_err(MobileError::failed)
+            .map_err(MobileError::failed)?;
+        self.pairing.set_name(&public_key, None)
     }
 
     pub fn set_foreground(&self, foreground: bool) {
@@ -317,6 +369,7 @@ impl Host {
     }
 
     pub fn stop(&self) {
+        self.pairing.close();
         let Some(running) = lock(&self.running).take() else {
             return;
         };
@@ -332,6 +385,45 @@ impl Host {
         if running.rule == UnloadRule::WhileServerModeOpen {
             self.engine.client.unload();
         }
+    }
+}
+
+impl Host {
+    fn serving_port(&self) -> Result<u16, MobileError> {
+        lock(&self.running)
+            .as_ref()
+            .map(|running| running.port)
+            .ok_or_else(|| MobileError::failed("start Server mode before pairing"))
+    }
+
+    /// Trusts the computer that just proved itself and tells it where this phone serves.
+    fn enroll(&self, mut session: Session, port: u16) -> Result<String, MobileError> {
+        let name = session.computer_name.clone().unwrap_or_default();
+        let mut pins = self.secrets.paired_clients();
+        if !pins.contains(&session.peer_key) {
+            pins.push(session.peer_key);
+        }
+        self.secrets
+            .set_paired_clients(&pins)
+            .map_err(MobileError::failed)?;
+        self.pairing
+            .set_name(&key_id(&session.peer_key), Some(&name))?;
+        hushpen_remote::enrollment::Enrollment {
+            device: Device {
+                id: key_id(&self.identity.public()),
+                name: self.name.clone(),
+                kind: DeviceKind::Phone,
+                os: self.os,
+                serves: Serves {
+                    speech: true,
+                    cleanup: true,
+                },
+            },
+            port,
+        }
+        .send(&mut session.stream)
+        .map_err(MobileError::failed)?;
+        Ok(name)
     }
 }
 
@@ -357,6 +449,7 @@ fn accept(
     #[cfg(unix)] wake: UnixStream,
     identity: Arc<Identity>,
     secrets: Arc<Secrets>,
+    pairing: Arc<pairing::Pairing>,
     workers: Arc<Workers>,
     data: std::path::PathBuf,
     rule: UnloadRule,
@@ -394,44 +487,120 @@ fn accept(
                 if active.load(Ordering::Acquire) >= 8 {
                     continue;
                 }
-                let session = match RemoteStream::accept(
-                    socket,
-                    &identity,
-                    &secrets.paired_clients(),
-                    None,
-                    Duration::from_secs(2),
-                ) {
-                    Ok(session) => session,
-                    Err(_) => continue,
-                };
-                let control = session.stream.control();
-                let mut controls = lock(&connections);
                 let id = next_id;
                 next_id = next_id.wrapping_add(1);
-                controls.insert(id, control);
-                if stop.load(Ordering::Acquire) {
-                    for control in controls.values() {
-                        let _ = control.shutdown();
-                    }
-                    break;
-                }
-                drop(controls);
+                let (identity, secrets, pairing) = (
+                    Arc::clone(&identity),
+                    Arc::clone(&secrets),
+                    Arc::clone(&pairing),
+                );
                 let workers = Arc::clone(&workers);
                 let data = data.clone();
                 let active = Arc::clone(&active);
+                let stop = Arc::clone(&stop);
                 let connections = Arc::clone(&connections);
                 active.fetch_add(1, Ordering::AcqRel);
+                // A Nearby comparison waits for a person, so each connection has its own thread.
                 std::thread::spawn(move || {
-                    if let Err(problem) =
-                        hushpen_host::serve_session(session.stream, workers, &data, rule)
-                    {
-                        log::debug!("PHONE_SESSION_ENDED {problem}");
+                    if let Some(session) = handshake(socket, &identity, &secrets, &pairing) {
+                        let mut controls = lock(&connections);
+                        controls.insert(id, session.stream.control());
+                        if stop.load(Ordering::Acquire) {
+                            for control in controls.values() {
+                                let _ = control.shutdown();
+                            }
+                        } else {
+                            drop(controls);
+                            if let Err(problem) =
+                                hushpen_host::serve_session(session.stream, workers, &data, rule)
+                            {
+                                log::debug!("PHONE_SESSION_ENDED {problem}");
+                            }
+                        }
+                        lock(&connections).remove(&id);
                     }
-                    lock(&connections).remove(&id);
                     active.fetch_sub(1, Ordering::AcqRel);
                 });
             }
         })
+}
+
+/// A paired desktop gets its session. While the Nearby window is open, a new desktop may
+/// compare numbers on this connection and be saved; it gets no session.
+fn handshake(
+    socket: std::net::TcpStream,
+    identity: &Identity,
+    secrets: &Secrets,
+    pairing: &pairing::Pairing,
+) -> Option<Session> {
+    let (mut offer, generation) = match pairing.take() {
+        Some((offer, generation)) => (Some(offer), generation),
+        None => (None, 0),
+    };
+    let mut compared = false;
+    let timeout = Duration::from_secs(if offer.is_some() { 120 } else { 2 });
+    let result = RemoteStream::accept_pairing_with(
+        socket,
+        identity,
+        &secrets.paired_clients(),
+        offer.as_mut(),
+        timeout,
+        |number, _| {
+            compared = true;
+            pairing.compare(number)
+        },
+        |key| {
+            let mut pins = secrets.paired_clients();
+            if !pins.contains(&key) {
+                pins.push(key);
+            }
+            secrets
+                .set_paired_clients(&pins)
+                .map_err(std::io::Error::other)
+        },
+    );
+    match (result, offer) {
+        (Ok(session), _) if session.paired => {
+            pairing.finish(generation, Ok(()));
+            None
+        }
+        (Ok(session), offer) => {
+            if let Some(offer) = offer {
+                pairing.restore(offer, generation);
+            }
+            Some(session)
+        }
+        (Err(_), Some(_)) if compared => {
+            pairing.finish(
+                generation,
+                Err("Pairing was cancelled or the numbers did not match.".into()),
+            );
+            None
+        }
+        (Err(_), offer) => {
+            if let Some(offer) = offer {
+                pairing.restore(offer, generation);
+            }
+            None
+        }
+    }
+}
+
+/// Computers showing a pairing code now, found through Bonjour.
+fn computers_nearby() -> Result<Vec<String>, MobileError> {
+    let discovery = hushpen_remote::discovery::Discovery::new().map_err(MobileError::failed)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let mut found = Vec::new();
+    while std::time::Instant::now() < deadline {
+        if let Some(device) = discovery
+            .next(Duration::from_millis(100))
+            .map_err(MobileError::failed)?
+            && device.device.kind != DeviceKind::Phone
+        {
+            found.extend(device.addresses.iter().map(|address| address.to_string()));
+        }
+    }
+    Ok(found)
 }
 
 #[cfg(unix)]
@@ -665,6 +834,155 @@ mod tests {
             )
             .is_err()
         );
+        host.stop();
+        host.engine.shutdown();
+    }
+
+    fn wait_for(host: &Host, done: impl Fn(&PairingState) -> bool) -> PairingState {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let state = host.pairing_state();
+            if done(&state) {
+                return state;
+            }
+            assert!(std::time::Instant::now() < deadline, "stuck in {state:?}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn nearby_pairing_needs_the_window_and_both_taps_and_saves_one_desktop() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = host(directory.path(), Os::Android);
+        assert!(host.open_pairing().is_err());
+        let port = host
+            .start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
+            .unwrap();
+        assert_eq!(host.pairing_state(), PairingState::Closed);
+        let desktop = Identity::generate().unwrap();
+        let mut address = format!("127.0.0.1:{port}");
+        let nearby = |approve: bool, address: &str| {
+            let (address, desktop) = (
+                address.to_owned(),
+                Identity::from_private(desktop.private()).unwrap(),
+            );
+            std::thread::spawn(move || {
+                let mut shown = String::new();
+                let result = RemoteStream::connect_nearby(
+                    address,
+                    &desktop,
+                    Duration::from_secs(10),
+                    &Resolver::default(),
+                    |number, name| {
+                        assert_eq!(name, "Test phone");
+                        shown = number.into();
+                        Ok(approve)
+                    },
+                );
+                (result.is_ok(), shown)
+            })
+        };
+        // A closed window refuses the desktop.
+        assert!(!nearby(true, &address).join().unwrap().0);
+        host.open_pairing().unwrap();
+        assert_eq!(host.pairing_state(), PairingState::Listening);
+        let peer = nearby(true, &address);
+        let PairingState::Comparing { number } =
+            wait_for(&host, |s| matches!(s, PairingState::Comparing { .. }))
+        else {
+            unreachable!()
+        };
+        assert!(host.paired_clients().is_empty());
+        host.answer_pairing(true);
+        let (paired, shown) = peer.join().unwrap();
+        assert!(paired);
+        assert_eq!(shown, number);
+        assert_eq!(number.len(), 6);
+        wait_for(&host, |s| *s == PairingState::Paired);
+        let clients = host.paired_clients();
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].id, key_id(&desktop.public()));
+        assert!(clients[0].name.starts_with("Desktop "));
+        // Cancel on the phone saves nothing, and a fresh window works again.
+        host.forget(clients[0].id.clone()).unwrap();
+        let port = host
+            .start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
+            .unwrap();
+        address = format!("127.0.0.1:{port}");
+        host.open_pairing().unwrap();
+        let peer = nearby(true, &address);
+        wait_for(&host, |s| matches!(s, PairingState::Comparing { .. }));
+        host.answer_pairing(false);
+        assert!(!peer.join().unwrap().0);
+        assert!(matches!(
+            wait_for(&host, |s| matches!(s, PairingState::Failed { .. })),
+            PairingState::Failed { .. }
+        ));
+        assert!(host.paired_clients().is_empty());
+        // Closing the sheet closes the window and any comparison under way.
+        host.open_pairing().unwrap();
+        let peer = nearby(true, &address);
+        wait_for(&host, |s| matches!(s, PairingState::Comparing { .. }));
+        host.close_pairing();
+        assert!(!peer.join().unwrap().0);
+        assert_eq!(host.pairing_state(), PairingState::Closed);
+        assert!(host.paired_clients().is_empty());
+        host.stop();
+        host.engine.shutdown();
+    }
+
+    #[test]
+    fn a_typed_code_pairs_with_a_named_computer_and_wrong_codes_do_not() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = host(directory.path(), Os::Android);
+        host.start("127.0.0.1:0".into(), HostUnloadRule::KeepLoaded)
+            .unwrap();
+        let desktop = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let mut offer = hushpen_remote::PairOffer::new(
+            "127.0.0.1".into(),
+            listener.local_addr().unwrap().port(),
+            desktop.public(),
+            hushpen_store::time::now_unix_ms() / 1000 + 120,
+        )
+        .unwrap();
+        offer.open_window("Studio Mac").unwrap();
+        let code = offer.code().to_owned();
+        let peer = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (socket, _) = listener.accept().unwrap();
+                let session = RemoteStream::accept(
+                    socket,
+                    &desktop,
+                    &[],
+                    Some(&mut offer),
+                    Duration::from_secs(5),
+                );
+                if let Ok(mut session) = session {
+                    hushpen_remote::enrollment::Enrollment::receive(
+                        &mut session.stream,
+                        &session.peer_key,
+                    )
+                    .unwrap();
+                }
+            }
+        });
+        let wrong = if code == "00000000" {
+            "11111111"
+        } else {
+            "00000000"
+        };
+        assert!(host.pair_code(wrong.into(), address.clone()).is_err());
+        assert!(host.pair_code("12".into(), address.clone()).is_err());
+        assert!(host.pair_code(code.clone(), "no-port".into()).is_err());
+        assert_eq!(
+            host.pair_code(format!("{} {}", &code[..4], &code[4..]), address)
+                .unwrap(),
+            "Studio Mac"
+        );
+        peer.join().unwrap();
+        assert_eq!(host.paired_clients()[0].name, "Studio Mac");
         host.stop();
         host.engine.shutdown();
     }
