@@ -39,7 +39,7 @@ struct DictationLiveActivity: Widget {
             } compactTrailing: {
                 PhaseClock(attributes: context.attributes, phase: phase)
                     .font(.footnote.weight(.semibold))
-                    .frame(maxWidth: 44)
+                    .frame(width: 44, alignment: .trailing)
             } minimal: {
                 PhaseGlyph()
             }
@@ -77,21 +77,29 @@ private struct PhaseGlyph: View {
 }
 
 /// The elapsed time while listening. The system draws it, so the app never wakes to update it.
+/// The range ends at 59:59: an open end makes the text reserve room for many digits, and the
+/// compact island then clips "0:04" to "0:0".
 private struct PhaseClock: View {
     let attributes: DictationActivityAttributes
     let phase: String
 
     var body: some View {
-        if phase == "listening" {
-            Text(timerInterval: attributes.startedAt...Date.distantFuture, pauseTime: nil, countsDown: false, showsHours: false)
-                .monospacedDigit()
-                .foregroundStyle(PhaseText.orange)
-                .multilineTextAlignment(.trailing)
-        } else {
-            Image(systemName: "ellipsis")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Working")
+        // No cross-fade between the two: the fade left half of the old time ("0:0") under the dots.
+        Group {
+            if phase == "listening" {
+                Text(timerInterval: attributes.startedAt...attributes.startedAt.addingTimeInterval(59 * 60 + 59), pauseTime: nil, countsDown: false, showsHours: false)
+                    .monospacedDigit()
+                    .foregroundStyle(PhaseText.orange)
+                    .multilineTextAlignment(.trailing)
+                    .transition(.identity)
+            } else {
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Working")
+                    .transition(.identity)
+            }
         }
+        .transaction { $0.animation = nil }
     }
 }
 
