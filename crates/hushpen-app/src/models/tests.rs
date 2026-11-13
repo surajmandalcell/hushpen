@@ -968,8 +968,62 @@ mod button_tests {
             .unwrap()
     }
 
+    fn near(a: Pixels, b: Pixels) -> bool {
+        (f32::from(a) - f32::from(b)).abs() < 0.01
+    }
+
+    /// Checks each row of `rows`, given as the part name of its last button and how many buttons
+    /// it has, against a group of `widest` buttons: the last button ends at the row padding, the
+    /// others follow Details with no hole, and the size column ends where the group begins.
+    fn assert_packed_right(
+        cx: &mut TestAppContext,
+        handle: AnyWindowHandle,
+        rows: &[(&str, usize)],
+        widest: usize,
+    ) {
+        let gap = px(crate::theme::size::MODEL_ICON_GAP);
+        let side = px(crate::theme::size::BUTTON_HEIGHT);
+        let group = |buttons: usize| side * buttons as f32 + gap * (buttons - 1) as f32;
+        for (index, (last, buttons)) in rows.iter().enumerate() {
+            let row = bounds(cx, handle, &format!("models.row.{index}"));
+            let last = bounds(cx, handle, &format!("models.{last}.{index}"));
+            let info = bounds(cx, handle, &format!("models.info.{index}"));
+            assert!(
+                [info, last]
+                    .iter()
+                    .all(|b| b.size.width == side && b.size.height == side),
+                "row {index}: a 22px target"
+            );
+            assert!(
+                near(
+                    last.right(),
+                    row.right() - px(crate::theme::size::ROW_PADDING)
+                ),
+                "row {index}: the last button ends at the row padding"
+            );
+            assert!(
+                near(info.left(), last.right() - group(*buttons)),
+                "row {index}: Details starts the {buttons} buttons"
+            );
+            if *buttons == 2 {
+                assert!(
+                    near(last.left(), info.right() + gap),
+                    "row {index}: no hole after Details"
+                );
+            }
+            let size = bounds(cx, handle, &format!("models.size.{index}"));
+            assert!(
+                near(
+                    size.right() + px(crate::theme::space::SM),
+                    last.right() - group(widest)
+                ),
+                "row {index}: the size column ends where the widest group begins"
+            );
+        }
+    }
+
     #[gpui_kit::test]
-    fn the_buttons_of_a_row_sit_together_from_the_left_with_no_hole(cx: &mut TestAppContext) {
+    fn the_buttons_of_a_row_sit_against_its_right_end_with_no_hole(cx: &mut TestAppContext) {
         // alpha is the default, beta is downloaded, gamma is not.
         let rig = super::rig(
             cx,
@@ -980,40 +1034,34 @@ mod button_tests {
         settle(cx, &rig);
         let handle = window(cx, &rig);
         let gap = px(crate::theme::size::MODEL_ICON_GAP);
-        let side = px(crate::theme::size::BUTTON_HEIGHT);
 
-        let info: Vec<_> = (0..3)
-            .map(|row| bounds(cx, handle, &format!("models.info.{row}")))
-            .collect();
-        assert!(
-            info.iter()
-                .all(|b| b.size.width == side && b.size.height == side),
-            "Details keeps a 22px target"
+        assert_packed_right(
+            cx,
+            handle,
+            &[("delete", 2), ("delete", 3), ("download", 2)],
+            3,
         );
-        assert!(
-            info.iter().all(|b| b.left() == info[0].left()),
-            "Details is in one place in every row"
-        );
-        let delete = bounds(cx, handle, "models.delete.0");
-        assert_eq!(
-            delete.left(),
-            info[0].right() + gap,
-            "the default has no star"
-        );
+        let info = bounds(cx, handle, "models.info.1");
         let select = bounds(cx, handle, "models.select.1");
-        assert_eq!(select.left(), info[1].right() + gap);
-        assert_eq!(
+        assert!(near(select.left(), info.right() + gap));
+        assert!(near(
             bounds(cx, handle, "models.delete.1").left(),
             select.right() + gap
-        );
-        assert_eq!(
-            bounds(cx, handle, "models.download.2").left(),
-            info[2].right() + gap
-        );
-        assert_eq!(
-            bounds(cx, handle, "models.size.0").right() + px(crate::theme::space::SM),
-            info[0].left(),
-            "the size column ends where the buttons begin"
+        ));
+    }
+
+    #[gpui_kit::test]
+    fn the_button_group_is_as_wide_as_the_most_buttons_a_row_has_now(cx: &mut TestAppContext) {
+        // alpha is the default and no row has a star, so no row has more than two buttons.
+        let rig = super::rig(cx, &[("alpha", ALPHA)], Some("alpha"), instant());
+        settle(cx, &rig);
+        let handle = window(cx, &rig);
+
+        assert_packed_right(
+            cx,
+            handle,
+            &[("delete", 2), ("download", 2), ("download", 2)],
+            2,
         );
     }
 }

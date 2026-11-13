@@ -171,9 +171,10 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
     }
     for (kind, views) in sections {
         let (title, help) = section_text(kind);
+        let slots = widest_buttons(&views);
         let rows = views
             .into_iter()
-            .map(|view| model_row(palette, models, view, Place::Models))
+            .map(|view| model_row(palette, models, view, Place::Models, slots))
             .collect();
         page = page.child(ui::titled_section(
             palette,
@@ -205,9 +206,10 @@ pub fn speech_rows(palette: Palette, models: &Entity<Models>, cx: &App) -> Vec<A
             .map(|(offset, row)| row_view(start + offset, row, &default))
             .collect()
     };
+    let slots = widest_buttons(&views);
     views
         .into_iter()
-        .map(|view| model_row(palette, models, view, Place::Onboarding))
+        .map(|view| model_row(palette, models, view, Place::Onboarding, slots))
         .collect()
 }
 
@@ -307,10 +309,28 @@ fn actions(view: &RowView) -> Vec<Action> {
     }
 }
 
+/// The buttons a row shows: Details and the actions of its state.
+fn button_count(view: &RowView) -> usize {
+    1 + actions(view).len()
+}
+
+/// The most buttons any of `views` shows now, which sets the width of the button column of
+/// their section.
+fn widest_buttons(views: &[RowView]) -> usize {
+    views.iter().map(button_count).max().unwrap_or(1)
+}
+
 /// The name, Recommended, and the state word over the description; then, lightest to heaviest,
 /// the meters, the size, and the icon buttons. Every column has a fixed width, and the buttons
-/// pack from the left of their group, so the columns and Details line up from row to row.
-fn model_row(palette: Palette, models: &Entity<Models>, view: RowView, place: Place) -> AnyElement {
+/// pack to the right end of a group `slots` buttons wide, so the last button ends at the row's
+/// padding and the size column lines up from row to row.
+fn model_row(
+    palette: Palette,
+    models: &Entity<Models>,
+    view: RowView,
+    place: Place,
+    slots: usize,
+) -> AnyElement {
     let index = view.index;
     let word = state_word(palette, view.state, view.default, view.updating);
     let name_line = div()
@@ -388,7 +408,7 @@ fn model_row(palette: Palette, models: &Entity<Models>, view: RowView, place: Pl
                 .text_right()
                 .child(format_size(view.bytes)),
         )
-        .child(icon_buttons(palette, models, place, &view));
+        .child(icon_buttons(palette, models, place, &view, slots));
 
     ui::row(palette)
         .id(place.id("row", index))
@@ -481,13 +501,14 @@ fn meter(
 }
 
 /// Details, then Download or Cancel, Set as default, and Delete, as many as the row's state
-/// offers. They sit together from the left of one group, so a missing button leaves no hole and
-/// Details is in the same place in every row.
+/// offers. They sit together at the right end of one group, so a missing button leaves no hole
+/// between buttons and no room after the last one; the room is at the left of the group.
 fn icon_buttons(
     palette: Palette,
     models: &Entity<Models>,
     place: Place,
     view: &RowView,
+    slots: usize,
 ) -> AnyElement {
     let index = view.index;
     let details = {
@@ -505,7 +526,8 @@ fn icon_buttons(
         )
         .into_any_element()
     };
-    ui::icon_group(ICON_SLOTS, size::MODEL_ICON_GAP)
+    ui::icon_group(slots, size::MODEL_ICON_GAP)
+        .justify_end()
         .child(details)
         .children(
             actions(view)
@@ -514,10 +536,6 @@ fn icon_buttons(
         )
         .into_any_element()
 }
-
-/// The most buttons a row shows: Details, then Download, Set as default, and Delete of a failed
-/// speech model.
-const ICON_SLOTS: usize = 4;
 
 /// The word after the name of a row, with its color. A model that is downloaded, or not, has
 /// none; only a failure takes a status color.

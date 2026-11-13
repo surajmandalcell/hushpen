@@ -48,9 +48,9 @@ pub fn glyph(palette: Palette, name: IconName) -> impl IntoElement {
         .text_color(palette.label_secondary)
 }
 
-/// The icon buttons of a row, packed from the left in a group as wide as `slots` buttons with
-/// `gap` between them. A row with fewer buttons leaves no hole between them; its free room is
-/// at the right end, and the first button stays in one place from row to row.
+/// The icon buttons of a row, in a group as wide as `slots` buttons with `gap` between them. A
+/// row with fewer buttons leaves no hole between them. They start at the left; chain
+/// `justify_end` to pack them against the right end instead.
 pub fn icon_group(slots: usize, gap: f32) -> Div {
     let slots = slots as f32;
     div()
