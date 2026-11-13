@@ -5,7 +5,7 @@ use hushpen_core::os::Os;
 use hushpen_core::remote::{Device, DeviceKind, Serves, UnloadRule};
 use hushpen_engine::{EngineLog, InProcess, Link, LlmClient, Timing};
 use hushpen_host::Workers;
-use hushpen_remote::{Identity, PairOffer, RemoteControl, RemoteStream, Resolver};
+use hushpen_remote::{Identity, QrPayload, RemoteControl, RemoteStream, Resolver};
 use hushpen_store::secrets::Secrets;
 use std::collections::HashMap;
 use std::net::TcpListener;
@@ -233,15 +233,14 @@ impl Host {
             .as_ref()
             .map(|running| running.port)
             .ok_or_else(|| MobileError::failed("start Server mode before pairing"))?;
-        let offer = PairOffer::parse(&uri).map_err(MobileError::invalid)?;
-        let mut session = RemoteStream::connect(
+        let offer = QrPayload::parse(&uri).map_err(MobileError::invalid)?;
+        let mut session = RemoteStream::connect_qr(
             match offer.host.parse::<std::net::IpAddr>() {
                 Ok(ip) => std::net::SocketAddr::new(ip, offer.port).to_string(),
                 Err(_) => format!("{}:{}", offer.host, offer.port),
             },
             &self.identity,
-            offer.public_key,
-            Some(&offer),
+            &offer,
             Duration::from_secs(10),
             &Resolver::default(),
         )
@@ -538,14 +537,15 @@ mod tests {
         let identity = Identity::from_private(desktop.private()).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
-        let offer = PairOffer::new(
+        let mut offer = hushpen_remote::PairOffer::new(
             "127.0.0.1".into(),
             listener.local_addr().unwrap().port(),
             desktop.public(),
             hushpen_store::time::now_unix_ms() / 1000 + 120,
         )
         .unwrap();
-        let uri = offer.to_uri();
+        offer.open_window("Test desktop").unwrap();
+        let payload = offer.qr_payload();
         let peer = std::thread::spawn(move || {
             let mut offer = offer;
             let deadline = std::time::Instant::now() + Duration::from_secs(3);
@@ -578,7 +578,7 @@ mod tests {
             assert!(enrollment.device.serves.cleanup);
             enrollment.port
         });
-        host.pair(uri).unwrap();
+        host.pair(payload).unwrap();
         assert_eq!(
             peer.join().unwrap(),
             lock(&host.running).as_ref().unwrap().port

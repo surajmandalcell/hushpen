@@ -338,10 +338,10 @@ impl Routing {
 /// The caller saves the public pin only after authentication succeeds.
 pub fn authenticate_pair(
     identity: &Identity,
-    uri: &str,
+    bootstrap: &str,
     resolver: &hushpen_remote::Resolver,
 ) -> io::Result<(String, [u8; 32])> {
-    let offer = PairOffer::parse(uri)?;
+    let offer = PairOffer::from_bootstrap(bootstrap)?;
     let address = if offer.host.contains(':') {
         format!("[{}]:{}", offer.host, offer.port)
     } else {

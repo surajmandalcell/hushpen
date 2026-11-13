@@ -130,7 +130,7 @@ pub fn attach(cx: &mut App, devices: Entity<Devices>) {
                         };
                         state.request(
                             Request::Pair {
-                                uri: text("uri")?.into(),
+                                bootstrap: text("offer")?.into(),
                                 device,
                                 transport,
                             },

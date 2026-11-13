@@ -589,13 +589,22 @@ fn stage_add_sheet(
         phone("galaxy-s25", "Galaxy S25", Os::Android),
         phone("ipad-air", "iPad Air", Os::Ios),
     ];
-    // The base64 of a key of 32 sevens, put together here so that the source holds no string
-    // that looks like a real key.
-    let key = format!("{}Bwc%3D", "BwcH".repeat(10));
-    let uri = format!(
-        "hushpen-pair://v1?host=192.168.1.20&port=47321&pk={key}&otp=482915&exp=1780000000"
-    );
-    let code = qrcode::QrCode::new(uri.as_bytes()).expect("a QR code");
+    let expires = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock after 1970")
+        .as_secs()
+        + 120;
+    // This render-only QR stays fixed so pixel baselines are repeatable.
+    let payload = json!({
+        "version": 2,
+        "host": "192.168.1.20",
+        "port": 47321,
+        "key": format!("{}Bwc=", "BwcH".repeat(10)),
+        "token": format!("{}CAg=", "CAgI".repeat(10)),
+        "expires": 1780000000,
+    })
+    .to_string();
+    let code = qrcode::QrCode::new(payload.as_bytes()).expect("a QR code");
     let width = code.width();
     let modules = (0..width)
         .map(|y| {
@@ -604,15 +613,10 @@ fn stage_add_sheet(
                 .collect()
         })
         .collect();
-    let expires = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("a clock after 1970")
-        .as_secs()
-        + 120;
     cx.update_window(handle, |_, _, cx| {
         devices.update(cx, |devices, cx| {
             devices.set_discovered(found, cx);
-            devices.set_offer(uri, modules, expires, cx);
+            devices.set_offer(payload, modules, expires, cx);
         })
     })
     .expect("show the found phones and the code");

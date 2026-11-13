@@ -13,6 +13,13 @@ pub struct Enrollment {
     pub port: u16,
 }
 
+pub(crate) fn validate_name(name: &str) -> io::Result<()> {
+    if name.trim().is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+        return Err(invalid("invalid device name"));
+    }
+    Ok(())
+}
+
 impl Enrollment {
     pub fn send(&self, stream: &mut RemoteStream) -> io::Result<()> {
         let os = match self.device.os {
@@ -49,11 +56,8 @@ impl Enrollment {
         let name = value["name"]
             .as_str()
             .ok_or_else(|| invalid("missing phone name"))?;
-        if value["type"] != "enroll"
-            || name.trim().is_empty()
-            || name.len() > 128
-            || name.chars().any(char::is_control)
-        {
+        validate_name(name)?;
+        if value["type"] != "enroll" {
             return Err(invalid("invalid phone details"));
         }
         let os = match value["os"].as_str() {

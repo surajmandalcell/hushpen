@@ -5,7 +5,7 @@ pub mod enrollment;
 mod pairing;
 mod stream;
 
-pub use pairing::PairOffer;
+pub use pairing::{PairOffer, PairingWindow, QrPayload};
 pub use stream::{
     Identity, RemoteControl, RemoteReader, RemoteStream, RemoteWriter, Resolver, Session,
 };

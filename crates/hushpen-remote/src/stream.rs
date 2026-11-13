@@ -1,4 +1,4 @@
-use crate::{PairOffer, denied, invalid};
+use crate::{PairOffer, QrPayload, denied, invalid, pairing};
 use snow::params::DHChoice;
 use snow::resolvers::{CryptoResolver, DefaultResolver};
 use snow::{Builder, HandshakeState, StatelessTransportState};
@@ -115,6 +115,15 @@ pub struct Session {
     pub peer_key: [u8; 32],
     /// The peer used the offer and its key must now be saved.
     pub paired: bool,
+    pub computer_name: Option<String>,
+}
+
+enum ClientPairing<'a> {
+    Trusted([u8; 32]),
+    Bootstrap(&'a PairOffer),
+    Code(&'a str),
+    Qr(&'a QrPayload),
+    Nearby,
 }
 
 /// A bounded encrypted byte stream. Protocol frames are unchanged inside it.
@@ -132,6 +141,17 @@ pub struct RemoteControl {
 }
 
 impl RemoteControl {
+    fn handshake(socket: &TcpStream) -> io::Result<Self> {
+        Ok(Self {
+            socket: Arc::new(socket.try_clone()?),
+            cancelled: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    pub(crate) fn same_connection(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.socket, &other.socket)
+    }
+
     pub fn shutdown(&self) -> io::Result<()> {
         self.cancelled.store(true, Ordering::Release);
         self.socket.shutdown(Shutdown::Both)
@@ -167,12 +187,92 @@ impl RemoteStream {
         timeout: Duration,
         resolver: &Resolver,
     ) -> io::Result<Session> {
-        if let Some(offer) = pairing {
-            offer.check()?;
-            if offer.public_key != pinned_server {
-                return Err(denied());
-            }
+        if pairing.is_some_and(|offer| offer.public_key != pinned_server) {
+            return Err(denied());
         }
+        let method = pairing
+            .map(ClientPairing::Bootstrap)
+            .unwrap_or(ClientPairing::Trusted(pinned_server));
+        Self::connect_with(address, identity, method, timeout, resolver, |_, _| {
+            Ok(false)
+        })
+    }
+
+    pub fn connect_qr(
+        address: impl ToSocketAddrs + ToString + Send + 'static,
+        identity: &Identity,
+        qr: &QrPayload,
+        timeout: Duration,
+        resolver: &Resolver,
+    ) -> io::Result<Session> {
+        Self::connect_with(
+            address,
+            identity,
+            ClientPairing::Qr(qr),
+            timeout,
+            resolver,
+            |_, _| Ok(false),
+        )
+    }
+
+    pub fn connect_code(
+        address: impl ToSocketAddrs + ToString + Send + 'static,
+        identity: &Identity,
+        code: &str,
+        timeout: Duration,
+        resolver: &Resolver,
+    ) -> io::Result<Session> {
+        Self::connect_with(
+            address,
+            identity,
+            ClientPairing::Code(code),
+            timeout,
+            resolver,
+            |_, _| Ok(false),
+        )
+    }
+
+    /// The callback waits for the local user to compare and approve the number.
+    pub fn connect_nearby(
+        address: impl ToSocketAddrs + ToString + Send + 'static,
+        identity: &Identity,
+        timeout: Duration,
+        resolver: &Resolver,
+        confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
+    ) -> io::Result<Session> {
+        Self::connect_with(
+            address,
+            identity,
+            ClientPairing::Nearby,
+            timeout,
+            resolver,
+            confirm,
+        )
+    }
+
+    fn connect_with(
+        address: impl ToSocketAddrs + ToString + Send + 'static,
+        identity: &Identity,
+        method: ClientPairing<'_>,
+        timeout: Duration,
+        resolver: &Resolver,
+        confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
+    ) -> io::Result<Session> {
+        let (pin, payload) = match method {
+            ClientPairing::Trusted(key) => (Some(key), &[][..]),
+            ClientPairing::Bootstrap(offer) => {
+                offer.check()?;
+                (Some(offer.public_key), pairing::TYPED)
+            }
+            ClientPairing::Qr(qr) => {
+                if pairing::now()? >= qr.expires_unix_secs {
+                    return Err(denied());
+                }
+                (Some(qr.public_key), pairing::QR)
+            }
+            ClientPairing::Code(_) => (None, pairing::TYPED),
+            ClientPairing::Nearby => (None, pairing::NEARBY),
+        };
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or_else(|| invalid("invalid connection timeout"))?;
@@ -202,14 +302,50 @@ impl RemoteStream {
             .build_initiator()
             .map_err(io::Error::other)?;
         send_handshake(&mut socket, &mut noise, &[], deadline)?;
-        receive_handshake(&mut socket, &mut noise, deadline)?;
+        let name = receive_handshake(&mut socket, &mut noise, deadline)?;
         let peer_key = peer_key(&noise)?;
-        if peer_key != pinned_server {
+        if pin.is_some_and(|key| peer_key != key) {
             return Err(denied());
         }
-        let payload = pairing.map(|offer| offer.otp().as_bytes()).unwrap_or(&[]);
+        let paired = !payload.is_empty();
+        let computer_name = if paired {
+            let name = String::from_utf8(name).map_err(|_| invalid("invalid computer name"))?;
+            crate::enrollment::validate_name(&name)?;
+            Some(name)
+        } else {
+            None
+        };
         send_handshake(&mut socket, &mut noise, payload, deadline)?;
+        let context = pairing::context(
+            &peer_key,
+            &identity.public(),
+            computer_name.as_deref().unwrap_or_default(),
+            noise.get_handshake_hash(),
+        );
         let mut stream = Self::from_handshake(socket, noise, timeout, deadline)?;
+        let accepted = match method {
+            ClientPairing::Trusted(_) => true,
+            ClientPairing::Bootstrap(offer) => {
+                pairing::pake(&mut stream, &context, offer.code(), false)?;
+                true
+            }
+            ClientPairing::Code(code) => {
+                pairing::pake(&mut stream, &context, code, false)?;
+                true
+            }
+            ClientPairing::Qr(qr) => {
+                pairing::qr_client(&mut stream, &context, qr)?;
+                true
+            }
+            ClientPairing::Nearby => {
+                let number = pairing::nearby(&mut stream, &context, false)?;
+                confirm(&number, computer_name.as_deref().unwrap_or_default())?
+            }
+        };
+        if paired {
+            remaining(deadline)?;
+            pairing::confirm(&mut stream, accepted)?;
+        }
         let mut answer = [0; ACCEPTED.len()];
         stream.read_exact(&mut answer)?;
         if answer != ACCEPTED {
@@ -219,7 +355,8 @@ impl RemoteStream {
         Ok(Session {
             stream,
             peer_key,
-            paired: pairing.is_some(),
+            paired,
+            computer_name,
         })
     }
 
@@ -237,17 +374,44 @@ impl RemoteStream {
 
     /// Saves a new peer's key before the peer receives its pairing receipt.
     pub fn accept_with(
-        mut socket: TcpStream,
+        socket: TcpStream,
         identity: &Identity,
         pinned_clients: &[[u8; 32]],
         pairing: Option<&mut PairOffer>,
         timeout: Duration,
         on_pair: impl FnOnce([u8; 32]) -> io::Result<()>,
     ) -> io::Result<Session> {
+        Self::accept_pairing_with(
+            socket,
+            identity,
+            pinned_clients,
+            pairing,
+            timeout,
+            |_, _| Ok(false),
+            on_pair,
+        )
+    }
+
+    /// Nearby trust requires a local approval and an authenticated approval from the peer.
+    pub fn accept_pairing_with(
+        mut socket: TcpStream,
+        identity: &Identity,
+        pinned_clients: &[[u8; 32]],
+        mut pairing: Option<&mut PairOffer>,
+        timeout: Duration,
+        confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
+        on_pair: impl FnOnce([u8; 32]) -> io::Result<()>,
+    ) -> io::Result<Session> {
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or_else(|| invalid("invalid connection timeout"))?;
         configure(&socket, timeout)?;
+        let _window_connection = pairing
+            .as_ref()
+            .map(|offer| offer.window())
+            .filter(|window| window.is_open())
+            .map(|window| window.track(RemoteControl::handshake(&socket)?))
+            .transpose()?;
         let mut noise = builder()?
             .local_private_key(&identity.private)
             .map_err(io::Error::other)?
@@ -256,21 +420,55 @@ impl RemoteStream {
         if !receive_handshake(&mut socket, &mut noise, deadline)?.is_empty() {
             return Err(invalid("unexpected handshake payload"));
         }
-        send_handshake(&mut socket, &mut noise, &[], deadline)?;
+        let name = pairing
+            .as_ref()
+            .and_then(|offer| offer.window().name().ok())
+            .unwrap_or_default();
+        send_handshake(&mut socket, &mut noise, name.as_bytes(), deadline)?;
         let payload = receive_handshake(&mut socket, &mut noise, deadline)?;
         let peer_key = peer_key(&noise)?;
-        let paired = !pinned_clients.contains(&peer_key);
+        let paired = !payload.is_empty();
+        if !paired && !pinned_clients.contains(&peer_key) {
+            return Err(denied());
+        }
+        let context = pairing::context(
+            &identity.public(),
+            &peer_key,
+            &name,
+            noise.get_handshake_hash(),
+        );
+        let mut stream = Self::from_handshake(socket, noise, timeout, deadline)?;
         if paired {
-            let offer = pairing.ok_or_else(denied)?;
+            let offer = pairing.as_mut().ok_or_else(denied)?;
             if offer.public_key != identity.public() {
                 return Err(denied());
             }
-            offer.consume(&payload)?;
-            on_pair(peer_key)?;
-        } else if !payload.is_empty() {
-            return Err(invalid("unexpected handshake payload"));
+            let window = offer.window();
+            let result = (|| {
+                offer.begin_attempt()?;
+                let accepted = match payload.as_slice() {
+                    pairing::TYPED => {
+                        pairing::pake(&mut stream, &context, offer.code(), true)?;
+                        true
+                    }
+                    pairing::QR => {
+                        pairing::qr_server(&mut stream, &context, offer)?;
+                        true
+                    }
+                    pairing::NEARBY => {
+                        let number = pairing::nearby(&mut stream, &context, true)?;
+                        confirm(&number, &name)?
+                    }
+                    _ => return Err(denied()),
+                };
+                remaining(deadline)?;
+                pairing::confirm(&mut stream, accepted)?;
+                remaining(deadline)?;
+                offer.consume()?;
+                window.save(|| on_pair(peer_key))
+            })();
+            result?;
         }
-        let mut stream = Self::from_handshake(socket, noise, timeout, deadline)?;
         stream
             .writer
             .socket
@@ -282,6 +480,7 @@ impl RemoteStream {
             stream,
             peer_key,
             paired,
+            computer_name: paired.then_some(name),
         })
     }
 
@@ -761,7 +960,8 @@ mod tests {
             crate::pairing::now().unwrap() + 60,
         )
         .unwrap();
-        let scanned = PairOffer::parse(&offer.to_uri()).unwrap();
+        offer.open_window("Test computer").unwrap();
+        let scanned = PairOffer::from_bootstrap(&offer.to_bootstrap()).unwrap();
         let host = thread::spawn(move || {
             let (socket, _) = listener.accept().unwrap();
             let first =
@@ -793,6 +993,372 @@ mod tests {
             .is_err()
         );
         host.join().unwrap();
+    }
+
+    #[test]
+    fn qr_pairing_pins_the_key_and_cannot_reuse_an_offer() {
+        for wrong_pin in [false, true] {
+            let server = Identity::generate().unwrap();
+            let client = Identity::generate().unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let mut offer = PairOffer::new(
+                "127.0.0.1".into(),
+                address.port(),
+                server.public(),
+                crate::pairing::now().unwrap() + 60,
+            )
+            .unwrap();
+            offer.open_window("QR computer").unwrap();
+            let mut qr = QrPayload::parse(&offer.qr_payload()).unwrap();
+            if wrong_pin {
+                qr.public_key = [0; 32];
+            }
+            let host = thread::spawn(move || {
+                let (socket, _) = listener.accept().unwrap();
+                let first = RemoteStream::accept(socket, &server, &[], Some(&mut offer), TIMEOUT);
+                assert_eq!(first.is_ok(), !wrong_pin);
+                if !wrong_pin {
+                    let (socket, _) = listener.accept().unwrap();
+                    assert!(
+                        RemoteStream::accept(socket, &server, &[], Some(&mut offer), TIMEOUT)
+                            .is_err()
+                    );
+                }
+            });
+            let first =
+                RemoteStream::connect_qr(address, &client, &qr, TIMEOUT, &Resolver::default());
+            assert_eq!(first.is_ok(), !wrong_pin);
+            if !wrong_pin {
+                assert_eq!(first.unwrap().computer_name.as_deref(), Some("QR computer"));
+                assert!(
+                    RemoteStream::connect_qr(address, &client, &qr, TIMEOUT, &Resolver::default())
+                        .is_err()
+                );
+            }
+            host.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn typed_code_has_three_attempts_across_connections() {
+        let server = Identity::generate().unwrap();
+        let client = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Code computer").unwrap();
+        let code = offer.code().to_owned();
+        let wrong = if code == "00000000" {
+            "11111111"
+        } else {
+            "00000000"
+        };
+        let host = thread::spawn(move || {
+            for _ in 0..4 {
+                let (socket, _) = listener.accept().unwrap();
+                assert!(
+                    RemoteStream::accept_with(
+                        socket,
+                        &server,
+                        &[],
+                        Some(&mut offer),
+                        TIMEOUT,
+                        |_| panic!("a failed code must not save trust")
+                    )
+                    .is_err()
+                );
+            }
+        });
+        for attempt in 0..4 {
+            let entered = if attempt < 3 { wrong } else { &code };
+            assert!(
+                RemoteStream::connect_code(
+                    address,
+                    &client,
+                    entered,
+                    TIMEOUT,
+                    &Resolver::default()
+                )
+                .is_err()
+            );
+        }
+        host.join().unwrap();
+    }
+
+    #[test]
+    fn a_closed_pairing_window_rejects_the_correct_code() {
+        let server = Identity::generate().unwrap();
+        let client = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Closed computer").unwrap();
+        let code = offer.code().to_owned();
+        offer.window().close();
+        let host = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            assert!(RemoteStream::accept(socket, &server, &[], Some(&mut offer), TIMEOUT).is_err());
+        });
+        assert!(
+            RemoteStream::connect_code(address, &client, &code, TIMEOUT, &Resolver::default())
+                .is_err()
+        );
+        host.join().unwrap();
+    }
+
+    #[test]
+    fn nearby_pairing_compares_the_same_number_and_requires_both_approvals() {
+        for (computer_approves, phone_approves) in
+            [(true, true), (true, false), (false, true), (false, false)]
+        {
+            let server = Identity::generate().unwrap();
+            let client = Identity::generate().unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let mut offer = PairOffer::new(
+                "127.0.0.1".into(),
+                address.port(),
+                server.public(),
+                crate::pairing::now().unwrap() + 60,
+            )
+            .unwrap();
+            offer.open_window("My computer").unwrap();
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let saved = Arc::new(AtomicBool::new(false));
+            let saved_by_server = Arc::clone(&saved);
+            let host = thread::spawn(move || {
+                let (socket, _) = listener.accept().unwrap();
+                let mut result = RemoteStream::accept_pairing_with(
+                    socket,
+                    &server,
+                    &[],
+                    Some(&mut offer),
+                    TIMEOUT,
+                    |number, name| {
+                        assert_eq!(name, "My computer");
+                        sender.send(number.to_owned()).unwrap();
+                        Ok(computer_approves)
+                    },
+                    |_| {
+                        saved_by_server.store(true, Ordering::Release);
+                        Ok(())
+                    },
+                );
+                assert_eq!(result.is_ok(), computer_approves && phone_approves);
+                if let Ok(session) = &mut result {
+                    offer.close_window();
+                    let mut payload = [0; 4];
+                    session.stream.read_exact(&mut payload).unwrap();
+                    assert_eq!(&payload, b"ping");
+                }
+            });
+            let mut phone_number = String::new();
+            let mut result = RemoteStream::connect_nearby(
+                address,
+                &client,
+                TIMEOUT,
+                &Resolver::default(),
+                |number, name| {
+                    assert_eq!(name, "My computer");
+                    phone_number = number.to_owned();
+                    Ok(phone_approves)
+                },
+            );
+            assert_eq!(result.is_ok(), computer_approves && phone_approves);
+            assert_eq!(phone_number, receiver.recv_timeout(TIMEOUT).unwrap());
+            assert_eq!(phone_number.len(), 6);
+            if let Ok(session) = &mut result {
+                session.stream.write_all(b"ping").unwrap();
+            }
+            host.join().unwrap();
+            assert_eq!(
+                saved.load(Ordering::Acquire),
+                computer_approves && phone_approves
+            );
+        }
+    }
+
+    #[test]
+    fn closing_the_window_during_number_confirmation_cannot_save_trust() {
+        let server = Identity::generate().unwrap();
+        let client = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Closing computer").unwrap();
+        let window = offer.window();
+        let host = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            assert!(
+                RemoteStream::accept_pairing_with(
+                    socket,
+                    &server,
+                    &[],
+                    Some(&mut offer),
+                    TIMEOUT,
+                    |_, _| {
+                        window.close();
+                        Ok(true)
+                    },
+                    |_| panic!("a closed window must not save trust")
+                )
+                .is_err()
+            );
+        });
+        assert!(
+            RemoteStream::connect_nearby(
+                address,
+                &client,
+                TIMEOUT,
+                &Resolver::default(),
+                |_, _| Ok(true)
+            )
+            .is_err()
+        );
+        host.join().unwrap();
+    }
+
+    #[test]
+    fn closing_the_window_interrupts_a_peer_stalled_before_noise() {
+        let server = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Computer").unwrap();
+        let window = offer.window();
+        let (started, ready) = mpsc::sync_channel(1);
+        let (completed, result) = mpsc::sync_channel(1);
+        let host = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            started.send(()).unwrap();
+            completed
+                .send(
+                    RemoteStream::accept(
+                        socket,
+                        &server,
+                        &[],
+                        Some(&mut offer),
+                        Duration::from_secs(10),
+                    )
+                    .is_err(),
+                )
+                .unwrap();
+        });
+        let _stalled = TcpStream::connect(address).unwrap();
+        ready.recv_timeout(TIMEOUT).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        let closing = Instant::now();
+        window.close();
+        assert!(result.recv_timeout(Duration::from_millis(500)).unwrap());
+        assert!(closing.elapsed() < Duration::from_millis(500));
+        host.join().unwrap();
+    }
+
+    #[test]
+    fn a_delayed_number_approval_cannot_save_trust_after_the_deadline() {
+        use sha2::{Digest, Sha256};
+
+        let server = Identity::generate().unwrap();
+        let client = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Computer").unwrap();
+        let saved = Arc::new(AtomicBool::new(false));
+        let saved_by_server = Arc::clone(&saved);
+        let (completed, result) = mpsc::sync_channel(1);
+        let (comparing, comparison) = mpsc::sync_channel(1);
+        let host = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            let accepted = RemoteStream::accept_pairing_with(
+                socket,
+                &server,
+                &[],
+                Some(&mut offer),
+                Duration::from_millis(200),
+                |_, _| {
+                    comparing.send(()).unwrap();
+                    thread::sleep(Duration::from_millis(300));
+                    Ok(true)
+                },
+                |_| {
+                    saved_by_server.store(true, Ordering::Release);
+                    Ok(())
+                },
+            );
+            completed.send(accepted.is_err()).unwrap();
+        });
+        let started = Instant::now();
+        let deadline = started + TIMEOUT;
+        let mut socket = TcpStream::connect_timeout(&address, TIMEOUT).unwrap();
+        configure(&socket, TIMEOUT).unwrap();
+        let mut noise = builder()
+            .unwrap()
+            .local_private_key(&client.private)
+            .unwrap()
+            .build_initiator()
+            .unwrap();
+        send_handshake(&mut socket, &mut noise, &[], deadline).unwrap();
+        let name = receive_handshake(&mut socket, &mut noise, deadline).unwrap();
+        send_handshake(&mut socket, &mut noise, pairing::NEARBY, deadline).unwrap();
+        let context = pairing::context(
+            &peer_key(&noise).unwrap(),
+            &client.public(),
+            std::str::from_utf8(&name).unwrap(),
+            noise.get_handshake_hash(),
+        );
+        let mut stream = RemoteStream::from_handshake(socket, noise, TIMEOUT, deadline).unwrap();
+        let nonce = [42; 32];
+        let mut commitment = Sha256::new();
+        for part in [b"commit".as_slice(), &context, b"phone", &nonce] {
+            commitment.update((part.len() as u64).to_be_bytes());
+            commitment.update(part);
+        }
+        stream.write_all(&commitment.finalize()).unwrap();
+        let mut peer_commitment = [0; 32];
+        stream.read_exact(&mut peer_commitment).unwrap();
+        // One encrypted packet leaves approval buffered while the computer waits for its user.
+        let mut reveal_and_approval = nonce.to_vec();
+        reveal_and_approval.push(1);
+        stream.write_all(&reveal_and_approval).unwrap();
+        let mut peer_nonce = [0; 32];
+        stream.read_exact(&mut peer_nonce).unwrap();
+        comparison.recv_timeout(TIMEOUT).unwrap();
+        assert!(result.recv_timeout(TIMEOUT).unwrap());
+        assert!(started.elapsed() < TIMEOUT);
+        host.join().unwrap();
+        assert!(!saved.load(Ordering::Acquire));
     }
 
     #[test]
@@ -840,7 +1406,8 @@ mod tests {
             crate::pairing::now().unwrap() + 60,
         )
         .unwrap();
-        let scanned = PairOffer::parse(&offer.to_uri()).unwrap();
+        offer.open_window("Test computer").unwrap();
+        let scanned = PairOffer::from_bootstrap(&offer.to_bootstrap()).unwrap();
         let host = thread::spawn(move || {
             let (socket, _) = listener.accept().unwrap();
             let result =

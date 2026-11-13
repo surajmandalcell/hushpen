@@ -78,11 +78,16 @@ fn run() -> io::Result<()> {
         }
         let state_lock = state_lock(&options)?;
         let secrets = Secrets::open(&options.data.join("config")).map_err(io::Error::other)?;
-        if let Some(uri) = secrets.pair_offer()
-            && generation.as_ref() != Some(&uri)
+        if let Some(bootstrap) = secrets.pair_offer()
+            && generation.as_ref() != Some(&bootstrap)
         {
-            offer = PairOffer::parse(&uri).ok();
-            generation = Some(uri);
+            offer = PairOffer::from_bootstrap(&bootstrap)
+                .and_then(|mut offer| {
+                    offer.open_window(&options.name)?;
+                    Ok(offer)
+                })
+                .ok();
+            generation = Some(bootstrap);
         }
         let pins = secrets.paired_clients();
         // Remove the durable offer before authentication, so a restart cannot replay it.
@@ -97,7 +102,9 @@ fn run() -> io::Result<()> {
             Duration::from_secs(10),
             |peer_key| {
                 let mut paired = pins.clone();
-                paired.push(peer_key);
+                if !paired.contains(&peer_key) {
+                    paired.push(peer_key);
+                }
                 secrets
                     .set_paired_clients(&paired)
                     .map_err(io::Error::other)
@@ -173,23 +180,19 @@ fn pair(options: &Options, identity: &Identity) -> io::Result<()> {
         options.host.clone()
     };
     let offer = PairOffer::new(host, options.listen.port(), identity.public(), expires)?;
-    let uri = offer.to_uri();
+    let bootstrap = offer.to_bootstrap();
     Secrets::open(&options.data.join("config"))
         .map_err(io::Error::other)?
-        .set_pair_offer(Some(&uri))
+        .set_pair_offer(Some(&bootstrap))
         .map_err(io::Error::other)?;
     if options.json {
         println!(
             "{}",
-            json!({"uri":uri,"otp":offer.otp(),"publicKey":identity.public(),"expires":expires})
+            json!({"offer":bootstrap,"publicKey":identity.public(),"expires":expires})
         );
     } else {
-        println!(
-            "Pairing code: {}\nExpires in 2 minutes.\n{}",
-            offer.otp(),
-            uri
-        );
-        let qr = qrcode::QrCode::new(uri.as_bytes()).map_err(io::Error::other)?;
+        println!("Pairing code: {}\nExpires in 2 minutes.", offer.code());
+        let qr = qrcode::QrCode::new(offer.qr_payload().as_bytes()).map_err(io::Error::other)?;
         println!(
             "{}",
             qr.render::<qrcode::render::unicode::Dense1x2>()

@@ -21,18 +21,18 @@ pub fn attach(cx: &mut App, storage: Rc<Storage>) {
     let _ = register_action(
         cx,
         "remote-pair",
-        "Pair through a Noise offer and save the authenticated host. Args: {\"uri\":\"hushpen-pair://...\",\"id\":\"test-host\",\"name\":\"Test host\",\"noLocalModels\":true}. Results appear in remote.state; the code is never returned.",
+        "Pair through an SSH bootstrap offer and save the authenticated host. Args: {\"offer\":\"JSON bootstrap\",\"id\":\"test-host\",\"name\":\"Test host\",\"noLocalModels\":true}. Results appear in remote.state; the code is never returned.",
         move |cx, args| {
             if state.borrow()["state"] == "pairing" {
                 return Err("pairing is already running".into());
             }
-            let uri = args
-                .get("uri")
+            let bootstrap = args
+                .get("offer")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "needs a pairing URI".to_owned())?
+                .ok_or_else(|| "needs a pairing offer".to_owned())?
                 .to_owned();
-            hushpen_remote::PairOffer::parse(&uri)
-                .map_err(|_| "the pairing URI is invalid".to_owned())?;
+            hushpen_remote::PairOffer::from_bootstrap(&bootstrap)
+                .map_err(|_| "the pairing offer is invalid".to_owned())?;
             let id = text(&args, "id", "test-host")?;
             let name = text(&args, "name", "Test host")?;
             let no_local = args
@@ -44,7 +44,9 @@ pub fn attach(cx: &mut App, storage: Rc<Storage>) {
             let resolver = storage.remote.resolver.clone();
             let (sender, receiver) = mpsc::sync_channel(1);
             std::thread::spawn(move || {
-                let _ = sender.send(remote_jobs::authenticate_pair(&identity, &uri, &resolver));
+                let _ = sender.send(remote_jobs::authenticate_pair(
+                    &identity, &bootstrap, &resolver,
+                ));
             });
             *state.borrow_mut() = json!({"state":"pairing","id":id});
             let state = Rc::clone(&state);
