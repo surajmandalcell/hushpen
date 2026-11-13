@@ -272,8 +272,8 @@ pub mod size {
     /// The app icon at the top of About.
     pub const APP_ICON: f32 = 96.0;
     /// The columns of a Models row, so they line up from row to row. The meters of a speech
-    /// model are a label and five dots on each of two lines; the icon buttons pack from the left
-    /// of one group four buttons wide.
+    /// model are a label and five dots on each of two lines; the icon buttons pack to the right
+    /// of one group as wide as the most buttons a row of the section has.
     pub const MODEL_METER_WIDTH: f32 =
         MODEL_METER_LABEL + MODEL_METER_GAP + 5.0 * MODEL_DOT + 4.0 * MODEL_DOT_GAP;
     pub const MODEL_METER_LABEL: f32 = 52.0;
