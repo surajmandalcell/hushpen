@@ -580,3 +580,20 @@ new decision, add it here in the same change (D-21).
   iOS advertises through native Bonjour. Other platforms keep `mdns-sd`.
   Native Bonjour avoids the restricted entitlement required for raw multicast;
   see [Apple's local network rules](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
+
+- **D-54 Device link.** Dictation and job traffic go from device to device
+  over Noise_XX_25519_ChaChaPoly_BLAKE2s on TCP, with the Noise keys pinned
+  at pairing (D-50). No Hushpen relay, STUN, signalling, or hole-punching
+  service exists, and no Hushpen server is in the path.
+
+- **D-55 Off-LAN.** Devices on different networks connect at an address the
+  user routes: their own Tailscale, a VPN, or SSH (D-50). Hushpen does not
+  embed Tailscale (no tsnet or libtailscale) and runs no relay. A new off-LAN
+  transport needs a new decision, with its hosts added to `xtask net-audit`
+  (D-14).
+
+- **D-56 No usage counting.** The apps send no usage counts, install ids, or
+  analytics, and no app request goes to a Hushpen-run server. The website is
+  opened in a browser only, and the update check goes to github.com (D-17).
+  User numbers come only from sources outside the app, such as store
+  consoles, GitHub download counts, and site counters (D-14).
