@@ -302,6 +302,10 @@ pub mod size {
     pub const DEVICE_STATUS_WIDTH: f32 = 100.0;
     /// The QR code a phone scans to pair, about this many pixels on a side.
     pub const PAIRING_CODE: f32 = 104.0;
+    /// The 6-digit number both screens show while a phone and this computer compare.
+    pub const PAIRING_NUMBER: f32 = 28.0;
+    /// The field of Remote's Another machine, narrow enough to keep its label whole.
+    pub const HOST_FIELD_WIDTH: f32 = 132.0;
 }
 
 /// The top of an element `height` high that centers on the chrome center line.

@@ -4,27 +4,48 @@ use crate::devices::{Devices, Request};
 use crate::{device_ssh, remote_jobs, storage::Storage};
 use gpui_kit::{App, Entity};
 use hushpen_core::os::Os;
-use hushpen_core::remote::{Device, DeviceKind, Health, Serves, UnloadRule};
+use hushpen_core::remote::{
+    Device, DeviceKind, Health, RemoteHost, Serves, UnloadRule, remote_hosts, ssh_hosts,
+};
 use hushpen_remote::discovery::{Advertisement, Discovery, FoundDevice};
 use hushpen_remote::{Identity, PairOffer, RemoteStream};
 use hushpen_store::settings::{RemoteDevice, Transport};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::io;
 use std::net::TcpListener;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// How long one pairing connection may take, including the time to compare two numbers.
+const PAIR_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The sender that carries Pair (`true`) or Cancel (`false`) to the connection that waits for it.
+type Decision = Mutex<Option<mpsc::Sender<bool>>>;
 
 enum Update {
     Found(Vec<FoundDevice>),
+    Hosts(Vec<RemoteHost>),
     Offer {
         payload: String,
         qr: Vec<Vec<bool>>,
+        code: String,
         expires: u64,
     },
+    /// The numbers match so far; the user decides.
+    Confirming {
+        number: String,
+        name: String,
+    },
+    /// A try ended and the offer stays up with `tries` left.
+    Attempt {
+        message: String,
+        tries: u8,
+    },
+    Expired,
     Progress(String),
     Paired(RemoteDevice),
     Health(BTreeMap<String, Health>),
@@ -33,22 +54,29 @@ enum Update {
 }
 
 pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
-    let config = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .and_then(|home| std::fs::read_to_string(home.join(".ssh/config")).ok())
-        .unwrap_or_default();
-    devices.update(cx, |view, cx| {
-        view.set_hosts(device_ssh::hosts(&config), cx)
-    });
+    // The pairing window and setups share one job; looking for phones and machines never
+    // stops it.
     let cancel = Rc::new(RefCell::new(Arc::new(AtomicBool::new(false))));
+    let lookup = Rc::new(RefCell::new(Arc::new(AtomicBool::new(false))));
+    let decision: Arc<Decision> = Arc::default();
     cx.subscribe(devices, move |devices, request: &Request, cx| {
         if matches!(request, Request::CancelOffer) {
             cancel.borrow().store(true, Ordering::Release);
             return;
         }
+        if let Request::Confirm(accept) = request {
+            let sender = decision.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(sender) = sender {
+                let _ = sender.send(*accept);
+            }
+            return;
+        }
+        let side = matches!(request, Request::Discover | Request::Hosts);
+        let cancel = if side { &lookup } else { &cancel };
         cancel.borrow().store(true, Ordering::Release);
         let stopped = Arc::new(AtomicBool::new(false));
         *cancel.borrow_mut() = Arc::clone(&stopped);
+        let decision = Arc::clone(&decision);
         let identity = match remote_jobs::identity(&storage.secrets) {
             Ok(identity) => identity,
             Err(_) => {
@@ -70,16 +98,18 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
                 settings.devices,
                 router,
                 &secrets,
+                &decision,
                 &stopped,
                 &sender,
-            ) && !stopped.load(Ordering::Acquire)
+            ) && !side
+                && !stopped.load(Ordering::Acquire)
             {
                 let _ = sender.send(Update::Failed(error.to_string()));
             }
             let _ = sender.send(Update::Done);
         });
         let devices = devices.downgrade();
-        let generation = Rc::clone(&cancel);
+        let generation = Rc::clone(cancel);
         let token = Arc::clone(&*cancel.borrow());
         cx.spawn(async move |cx| {
             let deadline = Instant::now() + Duration::from_secs(300);
@@ -107,11 +137,20 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
                 if devices
                     .update(cx, |view, cx| match update {
                         Update::Found(found) => view.set_discovered(found, cx),
+                        Update::Hosts(hosts) => view.set_hosts(hosts, cx),
                         Update::Offer {
                             payload,
                             qr,
+                            code,
                             expires,
-                        } => view.set_offer(payload, qr, expires, cx),
+                        } => view.set_offer(payload, qr, code, expires, cx),
+                        Update::Confirming { number, name } => {
+                            view.set_confirming(number, name, cx)
+                        }
+                        Update::Attempt { message, tries } => {
+                            view.attempt_failed(message, tries, cx)
+                        }
+                        Update::Expired => view.expired(cx),
                         Update::Progress(step) => {
                             progress.push(step);
                             view.set_progress(progress.clone(), cx);
@@ -140,16 +179,29 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
     .detach();
 }
 
+#[expect(clippy::too_many_arguments, reason = "the parts of one device job")]
 fn run(
     request: Request,
     identity: Identity,
     devices: Vec<RemoteDevice>,
     router: Arc<remote_jobs::Router>,
     secrets: &hushpen_store::secrets::Secrets,
+    decision: &Decision,
     stopped: &AtomicBool,
     sender: &SyncSender<Update>,
 ) -> io::Result<()> {
     match request {
+        Request::Confirm(_) | Request::CancelOffer => Ok(()),
+        Request::Hosts => {
+            let config = std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .and_then(|home| std::fs::read_to_string(home.join(".ssh/config")).ok())
+                .unwrap_or_default();
+            let status = device_ssh::tailscale_status(stopped);
+            // A status that does not parse leaves the SSH hosts.
+            let hosts = remote_hosts(&config, &status).unwrap_or_else(|_| ssh_hosts(&config));
+            send(sender, Update::Hosts(hosts))
+        }
         Request::Discover => {
             let discovery = Discovery::new()?;
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -162,7 +214,7 @@ fn run(
             }
             send(sender, Update::Found(found.into_values().collect()))
         }
-        Request::Offer { host } => offer(&identity, host, secrets, stopped, sender),
+        Request::Offer { host } => offer(&identity, host, secrets, decision, stopped, sender),
         Request::Pair {
             bootstrap,
             device,
@@ -206,7 +258,6 @@ fn run(
             router.probe(&identity, &devices, stopped);
             send(sender, Update::Health(router.snapshot()))
         }
-        Request::CancelOffer => Ok(()),
     }
 }
 
@@ -283,9 +334,12 @@ fn offer(
     identity: &Identity,
     host: String,
     secrets: &hushpen_store::secrets::Secrets,
+    decision: &Decision,
     stopped: &AtomicBool,
     sender: &SyncSender<Update>,
 ) -> io::Result<()> {
+    let (decide, decided) = mpsc::channel();
+    *decision.lock().unwrap_or_else(|e| e.into_inner()) = Some(decide);
     let listener = TcpListener::bind("0.0.0.0:0")?;
     listener.set_nonblocking(true)?;
     let id = key_id(&identity.public())[..32].to_owned();
@@ -326,6 +380,7 @@ fn offer(
         Update::Offer {
             payload,
             qr: bits,
+            code: offer.code().to_owned(),
             expires,
         },
     )?;
@@ -352,12 +407,35 @@ fn offer(
                     }
                     Err(error) => return Err(error),
                 };
-                let mut session = match RemoteStream::accept_with(
+                // An answer left over from an earlier connection never counts.
+                while decided.try_recv().is_ok() {}
+                let tries_before = offer.tries_left();
+                let compared = Cell::new(false);
+                let mut session = match RemoteStream::accept_pairing_with(
                     socket,
                     identity,
                     &[],
                     Some(&mut offer),
-                    Duration::from_secs(3),
+                    PAIR_TIMEOUT,
+                    |number, name| {
+                        compared.set(true);
+                        send(
+                            sender,
+                            Update::Confirming {
+                                number: number.to_owned(),
+                                name: name.to_owned(),
+                            },
+                        )?;
+                        loop {
+                            match decided.recv_timeout(Duration::from_millis(50)) {
+                                Ok(accept) => return Ok(accept),
+                                Err(mpsc::RecvTimeoutError::Timeout)
+                                    if Instant::now() < deadline
+                                        && !stopped.load(Ordering::Acquire) => {}
+                                Err(_) => return Ok(false),
+                            }
+                        }
+                    },
                     |key| {
                         let mut pins = secrets.paired_clients();
                         if !pins.contains(&key) {
@@ -367,7 +445,25 @@ fn offer(
                     },
                 ) {
                     Ok(session) => session,
-                    Err(_) => continue,
+                    Err(_) => {
+                        let tries = offer.tries_left();
+                        if stopped.load(Ordering::Acquire) {
+                            continue;
+                        }
+                        if tries == 0 {
+                            return Err(io::Error::other("Too many tries. Show a new code."));
+                        }
+                        // A connection that used no try says nothing.
+                        if compared.get() || tries < tries_before {
+                            let message = if compared.get() {
+                                "Pairing was cancelled or the numbers did not match.".to_owned()
+                            } else {
+                                "That code did not match.".to_owned()
+                            };
+                            send(sender, Update::Attempt { message, tries })?;
+                        }
+                        continue;
+                    }
                 };
                 let control = session.stream.control();
                 let watchdog_stop = Arc::new(AtomicBool::new(false));
@@ -402,10 +498,7 @@ fn offer(
             if stopped.load(Ordering::Acquire) {
                 Ok(())
             } else {
-                Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "The pairing code expired. Try again.",
-                ))
+                send(sender, Update::Expired)
             }
         })();
         finished.store(true, Ordering::Release);
@@ -555,6 +648,7 @@ mod tests {
                 &desktop,
                 "127.0.0.1".into(),
                 &worker_secrets,
+                &Decision::default(),
                 &AtomicBool::new(false),
                 &sender,
             )
@@ -564,12 +658,14 @@ mod tests {
             payload,
             qr,
             expires,
+            code,
         } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
         else {
             panic!("pairing offer expected");
         };
         assert!(!qr.is_empty());
         assert!(qr.iter().all(|row| row.len() == qr.len()));
+        assert!(code.len() == 8 && code.bytes().all(|digit| digit.is_ascii_digit()));
         let parsed = hushpen_remote::QrPayload::parse(&payload).unwrap();
         secrets.set_endpoint_api_key(Some("test-token")).unwrap();
         assert_eq!(parsed.expires_unix_secs, expires);
@@ -628,8 +724,16 @@ mod tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&cancelled);
         let (sender, receiver) = mpsc::sync_channel(4);
-        let worker =
-            std::thread::spawn(move || offer(&identity, String::new(), &secrets, &stop, &sender));
+        let worker = std::thread::spawn(move || {
+            offer(
+                &identity,
+                String::new(),
+                &secrets,
+                &Decision::default(),
+                &stop,
+                &sender,
+            )
+        });
         let Update::Offer { payload, .. } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
         else {
             panic!("offer expected")

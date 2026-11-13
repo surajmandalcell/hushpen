@@ -16,7 +16,7 @@ pub fn attach(cx: &mut App, devices: Entity<Devices>) {
     let _ = register_action(
         cx,
         "devices-action",
-        "Run a Devices intent. Args: {op:enabled|noLocal|move|add|method|close|rename|forget|unload|discover|offer|ssh|pair|probe, ...}; move takes kind, id, and up or index.",
+        "Run a Devices intent. Args: {op:enabled|noLocal|move|add|method|close|rename|forget|unload|discover|offer|confirm|ssh|pair|probe, ...}; method is nearby or remote; confirm takes accept; move takes kind, id, and up or index.",
         move |cx, args| {
             let text = |key| {
                 args.get(key)
@@ -56,9 +56,8 @@ pub fn attach(cx: &mut App, devices: Entity<Devices>) {
                     "add" => state.open_add(cx),
                     "method" => state.select_method(
                         match text("method")? {
-                            "phone" => AddMethod::Phone,
-                            "ssh" => AddMethod::Ssh,
-                            "tailscale" => AddMethod::Tailscale,
+                            "nearby" => AddMethod::Nearby,
+                            "remote" => AddMethod::Remote,
                             _ => return Err("Unknown method.".into()),
                         },
                         cx,
@@ -95,6 +94,9 @@ pub fn attach(cx: &mut App, devices: Entity<Devices>) {
                         },
                         cx,
                     ),
+                    "confirm" => {
+                        state.confirm(args["accept"].as_bool().ok_or("Missing accept.")?, cx)
+                    }
                     "probe" => state.request(Request::Probe, cx),
                     "pair" => {
                         let os = match text("os")? {

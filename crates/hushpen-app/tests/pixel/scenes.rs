@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 use hushpen_app::about::{About, Build, SystemOpener};
 use hushpen_app::controller::{Controller, Engine, KeysStatus, monotonic_clock, monotonic_ms};
-use hushpen_app::devices::Devices;
+use hushpen_app::devices::{AddMethod, Devices};
 use hushpen_app::dictation::Dictation;
 use hushpen_app::dictionary::Dictionary;
 use hushpen_app::enhance::{Parts as EnhanceParts, Tuning};
@@ -36,7 +36,7 @@ use hushpen_app::voices::{Parts as VoiceParts, VoiceLibrary};
 use hushpen_core::error::ENGINE_BAD_AUDIO;
 use hushpen_core::onboarding::{Session, Step};
 use hushpen_core::os::Os;
-use hushpen_core::remote::{Device, DeviceKind, Health, Probe, Serves, UnloadRule};
+use hushpen_core::remote::{Device, DeviceKind, Health, Probe, Serves, UnloadRule, remote_hosts};
 use hushpen_core::shortcut::{Bindings, Combo, Conflict, Platform};
 use hushpen_core::update::{Offer, Version};
 use hushpen_engine::{
@@ -173,10 +173,49 @@ pub enum Scene {
     Devices,
     /// Devices scrolled to the end: the paired devices under Add Device.
     DevicesBottom,
-    /// Add a Device on Nearby: two phones found on this network and the pairing code.
-    DevicesAdd,
+    /// Add a Device in one of its states.
+    DevicesAdd(AddShot),
     /// The details of a server that unloads its models after 30 idle minutes.
     DevicesDetail,
+}
+
+/// What the Add a Device sheet shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddShot {
+    /// Nearby: two phones found on this network, with the QR and the code under them.
+    Nearby,
+    /// The same 6-digit number on both screens, before either side taps Pair.
+    Confirm,
+    /// Nearby with no phone found: the QR and the code are still there.
+    Fallback,
+    /// Remote: SSH and Tailscale machines in one list, and the host field.
+    Remote,
+    /// A wrong code: two tries left.
+    WrongCode,
+    /// The two minutes ran out.
+    Expired,
+}
+
+impl AddShot {
+    pub const ALL: [AddShot; 6] = [
+        AddShot::Nearby,
+        AddShot::Confirm,
+        AddShot::Fallback,
+        AddShot::Remote,
+        AddShot::WrongCode,
+        AddShot::Expired,
+    ];
+
+    fn key(self) -> &'static str {
+        match self {
+            AddShot::Nearby => "devices-add",
+            AddShot::Confirm => "devices-add-confirm",
+            AddShot::Fallback => "devices-add-fallback",
+            AddShot::Remote => "devices-add-remote",
+            AddShot::WrongCode => "devices-add-wrong-code",
+            AddShot::Expired => "devices-add-expired",
+        }
+    }
 }
 
 /// What a Settings baseline shows of the one long list.
@@ -348,7 +387,7 @@ impl Scene {
             Scene::VoicesAdd => "voices-add".into(),
             Scene::Devices => "devices".into(),
             Scene::DevicesBottom => "devices-bottom".into(),
-            Scene::DevicesAdd => "devices-add".into(),
+            Scene::DevicesAdd(shot) => shot.key().into(),
             Scene::DevicesDetail => "devices-detail".into(),
         }
     }
@@ -402,17 +441,15 @@ impl Scene {
     fn on_devices(self) -> bool {
         matches!(
             self,
-            Scene::Devices | Scene::DevicesBottom | Scene::DevicesAdd | Scene::DevicesDetail
+            Scene::Devices | Scene::DevicesBottom | Scene::DevicesAdd(_) | Scene::DevicesDetail
         )
     }
 
-    pub fn devices() -> [Scene; 4] {
-        [
-            Scene::Devices,
-            Scene::DevicesBottom,
-            Scene::DevicesAdd,
-            Scene::DevicesDetail,
-        ]
+    pub fn devices() -> Vec<Scene> {
+        let mut scenes = vec![Scene::Devices, Scene::DevicesBottom];
+        scenes.extend(AddShot::ALL.into_iter().map(Scene::DevicesAdd));
+        scenes.push(Scene::DevicesDetail);
+        scenes
     }
 
     pub fn all() -> Vec<Scene> {
@@ -448,7 +485,7 @@ impl Scene {
                 | Scene::DictionaryPreview
                 | Scene::Voices
                 | Scene::VoicesAdd
-                | Scene::DevicesAdd
+                | Scene::DevicesAdd(_)
                 | Scene::DevicesDetail
         )
     }
@@ -568,6 +605,7 @@ fn stage_add_sheet(
     cx: &mut HeadlessAppContext,
     handle: gpui_kit::AnyWindowHandle,
     devices: &Entity<Devices>,
+    shot: AddShot,
 ) {
     let phone = |id: &str, name: &str, os: Os| FoundDevice {
         device: Device {
@@ -613,10 +651,32 @@ fn stage_add_sheet(
                 .collect()
         })
         .collect();
+    let selected = found[0].device.clone();
+    // One machine is in both the SSH config and Tailscale and shows once.
+    let ssh_config = "Host studio\n  HostName studio.local\nHost office\n  HostName 100.101.12.4\n";
+    let tailscale = r#"{"Peer":{"a":{"HostName":"office","DNSName":"office.tail1234.ts.net.","TailscaleIPs":["100.101.12.4"]},"b":{"HostName":"home-nas","DNSName":"home-nas.tail1234.ts.net.","TailscaleIPs":["100.88.3.17"]}}}"#;
+    let machines = remote_hosts(ssh_config, tailscale).expect("a Tailscale status");
     cx.update_window(handle, |_, _, cx| {
         devices.update(cx, |devices, cx| {
-            devices.set_discovered(found, cx);
-            devices.set_offer(payload, modules, expires, cx);
+            if shot != AddShot::Fallback {
+                devices.set_discovered(found, cx);
+            }
+            devices.set_offer(payload, modules, "48291637".into(), expires, cx);
+            match shot {
+                AddShot::Nearby | AddShot::Fallback => {}
+                AddShot::Confirm => {
+                    devices.selected_device = Some(selected);
+                    devices.set_confirming("482913".into(), "MacBook Pro".into(), cx);
+                }
+                AddShot::Remote => {
+                    devices.set_hosts(machines, cx);
+                    devices.select_method(AddMethod::Remote, cx);
+                }
+                AddShot::WrongCode => {
+                    devices.attempt_failed("That code did not match.".into(), 2, cx)
+                }
+                AddShot::Expired => devices.expired(cx),
+            }
         })
     })
     .expect("show the found phones and the code");
@@ -1077,7 +1137,7 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
         | Scene::ModelsDetails
         | Scene::ModelsSearch
         | Scene::ModelsNoMatch => seed_models(&storage),
-        Scene::Devices | Scene::DevicesBottom | Scene::DevicesAdd | Scene::DevicesDetail => {
+        Scene::Devices | Scene::DevicesBottom | Scene::DevicesAdd(_) | Scene::DevicesDetail => {
             seed_devices(&storage)
         }
         // Automatic names the CPU count, which differs between machines.
@@ -1413,8 +1473,8 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
     std::thread::sleep(std::time::Duration::from_millis(300));
     cx.run_until_parked();
     drive(&mut cx, handle, scene);
-    if let (Scene::DevicesAdd, Some(devices)) = (scene, devices_entity.borrow().as_ref()) {
-        stage_add_sheet(&mut cx, handle, devices);
+    if let (Scene::DevicesAdd(shot), Some(devices)) = (scene, devices_entity.borrow().as_ref()) {
+        stage_add_sheet(&mut cx, handle, devices, shot);
     }
     let image = cx.capture_screenshot(handle).expect("capture the window");
     let nodes = cx
@@ -1628,7 +1688,7 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "sidebar.devices");
             scroll_by(cx, handle, -5_000.0);
         }
-        Scene::DevicesAdd => {
+        Scene::DevicesAdd(_) => {
             click(cx, handle, "sidebar.devices");
             click_scrolled(cx, handle, "devices.add");
         }

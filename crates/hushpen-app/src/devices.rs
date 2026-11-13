@@ -10,7 +10,9 @@ use crate::storage::Storage;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{AppContext as _, Context, Entity, EventEmitter, Window};
 use hushpen_core::os::Os;
-use hushpen_core::remote::{Device, Health, ModelKind, PairEvent, Pairing, Route, UnloadRule};
+use hushpen_core::remote::{
+    Device, Health, ModelKind, PairEvent, Pairing, RemoteHost, Route, UnloadRule,
+};
 use hushpen_remote::discovery::FoundDevice;
 use hushpen_store::settings::{RemoteDevice, RemoteSettings, Transport};
 use serde_json::{Value, json};
@@ -20,7 +22,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
 pub enum Request {
+    /// Phones announced on this network. It never touches the pairing offer.
     Discover,
+    /// SSH config and Tailscale machines. It never touches the pairing offer.
+    Hosts,
+    /// The local answer to the pairing number: Pair or Cancel.
+    Confirm(bool),
     Offer {
         host: String,
     },
@@ -38,9 +45,8 @@ pub enum Request {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddMethod {
-    Phone,
-    Ssh,
-    Tailscale,
+    Nearby,
+    Remote,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +58,6 @@ pub enum Sheet {
 /// A pop-up button of the sheets whose menu is open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Picker {
-    System,
     Rule,
     IdleTime,
 }
@@ -62,13 +67,16 @@ pub struct Devices {
     pub settings: RemoteSettings,
     pub health: BTreeMap<String, Health>,
     pub discovered: Vec<FoundDevice>,
-    pub hosts: Vec<String>,
-    pub selected_host: Option<String>,
+    pub hosts: Vec<RemoteHost>,
     pub selected_device: Option<Device>,
-    pub tailscale_os: Os,
     pub sheet: Option<Sheet>,
     pub pairing: Pairing,
     pub qr: Vec<Vec<bool>>,
+    /// The eight digits a phone types, from the same offer as the QR.
+    pub code: String,
+    pub tries_left: u8,
+    /// The offer that Confirming replaced, so Cancel can show it again.
+    offer: Option<(String, u64)>,
     pub progress: Vec<String>,
     pub busy: bool,
     pub notice: Option<String>,
@@ -78,8 +86,8 @@ pub struct Devices {
     /// The route row that the last drag picked up. It counts only while a drag runs.
     pub dragging: Option<(ModelKind, String)>,
     pub focus: focus::Focus,
+    /// The host name or address of Remote's Another machine.
     pub host: Entity<InputState>,
-    pub address: Entity<InputState>,
     pub name: Entity<InputState>,
 }
 
@@ -93,12 +101,13 @@ impl Devices {
             health: BTreeMap::new(),
             discovered: Vec::new(),
             hosts: Vec::new(),
-            selected_host: None,
             selected_device: None,
-            tailscale_os: Os::Linux,
             sheet: None,
             pairing: Pairing::Idle,
             qr: Vec::new(),
+            code: String::new(),
+            tries_left: 0,
+            offer: None,
             progress: Vec::new(),
             busy: false,
             notice: None,
@@ -106,9 +115,7 @@ impl Devices {
             forgetting: false,
             dragging: None,
             focus: focus::Focus::default(),
-            host: cx.new(|cx| InputState::new(window, cx).placeholder("Automatic")),
-            address: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Tailscale address and port")),
+            host: cx.new(|cx| InputState::new(window, cx).placeholder("build-box.lan")),
             name: cx.new(|cx| InputState::new(window, cx).placeholder("Device name")),
         }
     }
@@ -241,16 +248,26 @@ impl Devices {
         cx.notify();
     }
 
+    /// Opening the sheet opens the pairing window and looks for phones; closing shuts both.
     pub fn open_add(&mut self, cx: &mut Context<Self>) {
-        self.close(cx);
-        self.sheet = Some(Sheet::Add(AddMethod::Phone));
-        cx.emit(Request::Discover);
-        cx.notify();
+        self.select_method(AddMethod::Nearby, cx);
     }
 
     pub fn select_method(&mut self, method: AddMethod, cx: &mut Context<Self>) {
         self.close(cx);
         self.sheet = Some(Sheet::Add(method));
+        match method {
+            AddMethod::Nearby => {
+                cx.emit(Request::Discover);
+                self.request(
+                    Request::Offer {
+                        host: String::new(),
+                    },
+                    cx,
+                );
+            }
+            AddMethod::Remote => cx.emit(Request::Hosts),
+        }
         cx.notify();
     }
 
@@ -259,6 +276,8 @@ impl Devices {
         self.sheet = None;
         self.pairing.apply(PairEvent::Cancel, now());
         self.qr.clear();
+        self.code.clear();
+        self.offer = None;
         self.notice = None;
         self.busy = false;
         self.selected_device = None;
@@ -333,16 +352,19 @@ impl Devices {
     }
 
     pub fn request(&mut self, request: Request, cx: &mut Context<Self>) {
+        if matches!(request, Request::Discover | Request::Hosts) {
+            cx.emit(request);
+            return;
+        }
         if self.busy {
             return;
         }
         self.pairing.apply(PairEvent::Cancel, now());
         self.qr.clear();
+        self.code.clear();
+        self.offer = None;
         self.notice = None;
-        self.busy = !matches!(
-            request,
-            Request::Discover | Request::Probe | Request::CancelOffer
-        );
+        self.busy = !matches!(request, Request::Probe | Request::CancelOffer);
         self.progress.clear();
         cx.emit(request);
         cx.notify();
@@ -352,8 +374,7 @@ impl Devices {
         self.discovered = found;
         cx.notify();
     }
-    pub fn set_hosts(&mut self, hosts: Vec<String>, cx: &mut Context<Self>) {
-        self.selected_host = hosts.first().cloned();
+    pub fn set_hosts(&mut self, hosts: Vec<RemoteHost>, cx: &mut Context<Self>) {
         self.hosts = hosts;
         cx.notify();
     }
@@ -361,9 +382,11 @@ impl Devices {
         &mut self,
         payload: String,
         qr: Vec<Vec<bool>>,
+        code: String,
         expires: u64,
         cx: &mut Context<Self>,
     ) {
+        self.offer = Some((payload.clone(), expires));
         self.pairing.apply(
             PairEvent::Offer {
                 payload,
@@ -372,8 +395,69 @@ impl Devices {
             now(),
         );
         self.qr = qr;
+        self.code = code;
+        self.tries_left = 3;
         self.busy = false;
         cx.notify();
+    }
+    /// The protocol verified the commitments: both screens now show the same number.
+    pub fn set_confirming(
+        &mut self,
+        number: String,
+        computer_name: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.notice = None;
+        self.pairing.apply(
+            PairEvent::Confirm {
+                number,
+                computer_name,
+            },
+            now(),
+        );
+        cx.notify();
+    }
+    /// Pair (`true`) or Cancel (`false`) on this computer. Cancel shows the offer again.
+    pub fn confirm(&mut self, accept: bool, cx: &mut Context<Self>) {
+        let Pairing::Confirming { number, .. } = &self.pairing else {
+            return;
+        };
+        if accept {
+            let number = number.clone();
+            self.pairing
+                .apply(PairEvent::LocalConfirm { number }, now());
+        } else {
+            self.show_offer();
+        }
+        cx.emit(Request::Confirm(accept));
+        cx.notify();
+    }
+    /// A try ended without a new device: the offer stays up with the tries that remain.
+    pub fn attempt_failed(&mut self, message: String, tries_left: u8, cx: &mut Context<Self>) {
+        self.show_offer();
+        self.tries_left = tries_left;
+        self.notice = Some(message);
+        cx.notify();
+    }
+    /// The two minutes ended: the QR and the code no longer work.
+    pub fn expired(&mut self, cx: &mut Context<Self>) {
+        self.pairing.apply(PairEvent::Tick, u64::MAX);
+        self.qr.clear();
+        self.code.clear();
+        self.busy = false;
+        self.notice = Some("The code expired. Show a new one.".into());
+        cx.notify();
+    }
+    fn show_offer(&mut self) {
+        if let Some((payload, expires_at)) = self.offer.clone() {
+            self.pairing.apply(
+                PairEvent::Offer {
+                    payload,
+                    expires_at,
+                },
+                now(),
+            );
+        }
     }
     pub fn set_progress(&mut self, rows: Vec<String>, cx: &mut Context<Self>) {
         self.progress = rows;
@@ -387,6 +471,7 @@ impl Devices {
         self.busy = false;
         self.pairing.apply(PairEvent::Reject, now());
         self.qr.clear();
+        self.code.clear();
         self.notice = Some(message);
         cx.notify();
     }
@@ -457,7 +542,8 @@ impl Devices {
             "sheet":match &self.sheet {None=>"closed",Some(Sheet::Add(_))=>"add",Some(Sheet::Detail(_))=>"detail"},
             "busy":self.busy,"notice":self.notice,"progress":self.progress,"health":health,
             "discovered":self.discovered.iter().map(|found| json!({"id":found.device.id,"name":found.device.name})).collect::<Vec<_>>(),
-            "hosts":self.hosts,"pairing":match self.pairing {Pairing::Idle=>"idle",Pairing::Offered{..}=>"offered",Pairing::Confirming{..}=>"confirming",Pairing::Paired{..}=>"paired",Pairing::Failed(_)=>"failed"}})
+            "hosts":self.hosts.iter().map(|host| host.name.as_str()).collect::<Vec<_>>(),
+            "triesLeft":self.tries_left,"pairing":match self.pairing {Pairing::Idle=>"idle",Pairing::Offered{..}=>"offered",Pairing::Confirming{..}=>"confirming",Pairing::Paired{..}=>"paired",Pairing::Failed(_)=>"failed"}})
     }
 }
 
