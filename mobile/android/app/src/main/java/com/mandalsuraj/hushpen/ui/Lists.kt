@@ -247,9 +247,10 @@ fun Notices(messages: List<String>) {
 
 @Composable
 fun NoticeCard(text: String, modifier: Modifier = Modifier) {
+    val ok = text.endsWith(" paired.")
     Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        color = if (ok) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.errorContainer,
+        contentColor = if (ok) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onErrorContainer,
         shape = RoundedCornerShape(24.dp),
         modifier = modifier
             .fillMaxWidth()
@@ -261,7 +262,7 @@ fun NoticeCard(text: String, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(painterResource(R.drawable.ms_error), contentDescription = null)
+            Icon(painterResource(if (ok) R.drawable.ms_check_circle else R.drawable.ms_error), contentDescription = null)
             Text(text, style = MaterialTheme.typography.bodyMedium)
         }
     }

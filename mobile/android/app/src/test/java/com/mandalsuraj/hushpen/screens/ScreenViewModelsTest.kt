@@ -3,12 +3,16 @@ package com.mandalsuraj.hushpen.screens
 import com.mandalsuraj.hushpen.DownloadState
 import com.mandalsuraj.hushpen.core.Model
 import com.mandalsuraj.hushpen.core.HostUnloadRule
+import com.mandalsuraj.hushpen.core.PairedDesktop
+import com.mandalsuraj.hushpen.core.PairingState
 import com.mandalsuraj.hushpen.server.ServerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -103,6 +107,68 @@ class ScreenViewModelsTest {
         assertEquals(listOf("pair:$offer"), data.actions)
     }
 
+    @Test fun aTypedCodeGoesToRustAndAFailureKeepsTheSheetOpen() = runTest(dispatcher) {
+        val data = FakeDevices()
+        val model = DevicesViewModel(data)
+        model.typeCode()
+        assertTrue(model.typing.value)
+        data.failure = "The code was wrong."
+        model.pairCode("1234 5678", "")
+        advanceUntilIdle()
+        assertTrue(model.typing.value)
+        assertEquals("The code was wrong.", model.codeError.value)
+        data.failure = null
+        model.pairCode("1234 5678", "mac.local:7000")
+        advanceUntilIdle()
+        assertFalse(model.typing.value)
+        assertEquals("Studio Mac paired.", model.notice.value)
+        assertEquals(listOf("code:1234 5678@", "code:1234 5678@mac.local:7000"), data.actions)
+    }
+
+    @Test fun theNearbyWindowOpensWithTheScreenShowsTheNumberAndClosesWithTheScreen() = runTest(dispatcher) {
+        val data = FakeDevices()
+        val model = DevicesViewModel(data)
+        data.serverState.value = ServerState(true, 7342)
+        runCurrent()
+        model.watch()
+        advanceTimeBy(50)
+        assertEquals(listOf("open"), data.actions)
+        data.state = PairingState.Comparing("482913")
+        advanceTimeBy(500)
+        assertEquals("482913", model.comparing.value)
+        model.answer("482913", true)
+        runCurrent()
+        assertEquals(null, model.comparing.value)
+        assertEquals("answer:482913:true", data.actions.last())
+        model.unwatch()
+        runCurrent()
+        assertEquals("close", data.actions.last())
+    }
+
+    @Test fun theNearbyWindowStaysClosedAfterAPairingUntilThePersonAsksAgain() = runTest(dispatcher) {
+        val data = FakeDevices()
+        val model = DevicesViewModel(data)
+        data.serverState.value = ServerState(true, 7342)
+        runCurrent()
+        model.watch()
+        advanceTimeBy(50)
+        data.state = PairingState.Paired
+        advanceTimeBy(2_000)
+        assertEquals(listOf("open"), data.actions)
+        assertEquals("Computer paired.", model.notice.value)
+        assertFalse(model.listening.value)
+        data.state = PairingState.Failed("The numbers did not match.")
+        advanceTimeBy(500)
+        data.state = PairingState.Closed
+        advanceTimeBy(2_000)
+        assertEquals(listOf("open"), data.actions)
+        model.reopenPairing()
+        runCurrent()
+        assertEquals(listOf("open", "open"), data.actions)
+        model.unwatch()
+        runCurrent()
+    }
+
     @Test fun devicesFollowServerStateAndForwardServingAndForgetIntents() = runTest(dispatcher) {
         val data = FakeDevices()
         val model = DevicesViewModel(data)
@@ -158,14 +224,25 @@ class ScreenViewModelsTest {
     }
 
     private class FakeDevices : DevicesData {
-        override val pairedClients = MutableStateFlow(listOf("desktop"))
+        override val pairedClients = MutableStateFlow(listOf(PairedDesktop("desktop", "Desktop desktop")))
         override val allowedRules = MutableStateFlow<List<HostUnloadRule>>(emptyList())
         override val unloadRule = MutableStateFlow<HostUnloadRule>(HostUnloadRule.KeepLoaded)
         override val serverState = MutableStateFlow(ServerState())
         val actions = mutableListOf<String>()
         override suspend fun initialize() = Unit
         override suspend fun refresh() = Unit
-        override suspend fun pair(payload: String) { actions += "pair:$payload" }
+        var failure: String? = null
+        var state: PairingState = PairingState.Closed
+        override suspend fun pair(payload: String): String { actions += "pair:$payload"; return "Studio Mac" }
+        override suspend fun pairCode(code: String, address: String): String {
+            actions += "code:$code@$address"
+            failure?.let { throw IllegalStateException(it) }
+            return "Studio Mac"
+        }
+        override suspend fun openPairing() { actions += "open"; state = PairingState.Listening }
+        override suspend fun closePairing() { actions += "close" }
+        override suspend fun pairingState() = state
+        override suspend fun answerPairing(number: String, approve: Boolean) { actions += "answer:$number:$approve" }
         override suspend fun forget(id: String) { actions += "forget:$id" }
         override suspend fun setUnloadRule(rule: HostUnloadRule) { unloadRule.value = rule }
         override fun startServing() { actions += "start" }

@@ -32,10 +32,10 @@ import com.mandalsuraj.hushpen.screens.ModelsScreen
 import com.mandalsuraj.hushpen.screens.ModelsViewModel
 import com.mandalsuraj.hushpen.screens.OnboardingViewModel
 import com.mandalsuraj.hushpen.screens.Screen
+import com.mandalsuraj.hushpen.screens.NearbyPairing
 import com.mandalsuraj.hushpen.screens.ServerScreen
 import com.mandalsuraj.hushpen.screens.SettingsScreen
 import com.mandalsuraj.hushpen.screens.SettingsViewModel
-import com.mandalsuraj.hushpen.screens.desktopName
 import com.mandalsuraj.hushpen.ui.HushpenTheme
 import kotlinx.coroutines.launch
 
@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
                         val cleanup by settings.cleanupEnabled.collectAsStateWithLifecycle()
                         val system by settings.systemAvailable.collectAsStateWithLifecycle()
                         val speech = catalog.filter { it.kind == ModelKind.SPEECH }
+                        NearbyPairing(devices)
                         ServerScreen(
                             server = server,
                             starting = requested && !server.running && server.notice == null,
@@ -111,7 +112,7 @@ class MainActivity : ComponentActivity() {
                                 system -> "System model when open"
                                 else -> catalog.firstOrNull { it.id == selectedCleanup && it.status == com.mandalsuraj.hushpen.core.ModelStatus.READY }?.name ?: "Rules"
                             },
-                            desktops = clients.map(::desktopName),
+                            desktops = clients.map { it.name },
                             onStop = {
                                 serve(false)
                                 home()
