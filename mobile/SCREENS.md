@@ -203,9 +203,12 @@ the rules; views render state and send intents.
 - Errors: microphone denied, missing model, capture failure, expired session,
   or speech failure. Keep errors visible and do not insert stale results.
 - Recording and model work run in the app. The final text goes to the App Group.
-  The user returns to the original app and confirms Insert dictation in the keyboard.
-- The full-screen page shows the wave, state, elapsed time, a go-back hint, and
-  Cancel, Done, Recover, or Close. Dismissing it cancels the session.
+  The user returns to the original app and the keyboard inserts the text.
+- The full-screen page, while it listens, says "Swipe right to go back" and
+  "Then start talking." over a two second swipe demo, with a quiet ring and an
+  arrow at the system back link. The page names no app: iOS draws the link.
+  It shows the state, elapsed time, and Cancel and Done. Other states keep the
+  wave, state, and Cancel, Recover, or Close. Dismissing it cancels the session.
 
 ## iOS Live Activity
 
@@ -216,21 +219,28 @@ the rules; views render state and send intents.
 
 ## iOS keyboard
 
-- State: Full Access, flow session, current text field, insertion availability,
-  and notice.
-- Intents: start a session, open its app URL, insert the returned text,
-  cancel, type, delete, space, return, and switch keyboards.
-- Empty: no text field, no Full Access, or no result. Show the required system setup.
-- Errors: session expired, shared file unavailable, or changed text field or cursor.
-  Never insert automatically or replay a consumed result. The Insert dictation action
-  confirms the active field; changing that field or cursor withdraws the offer and undo.
-- iOS can replace its input-session identifier while the same field stays focused.
-  Keep completed text until explicit insertion with matching cursor context.
+- State: Full Access, flow session, pill, and notice.
+- Intents: start a session, open its app URL, finish or cancel it, undo the
+  insert, copy or dismiss a failed insert, type, delete, space, return, and
+  switch keyboards.
+- Empty: no Full Access or no result. Show the required system setup.
+- Errors: session expired, shared file unavailable, or an insert the field
+  refused. Never replay a consumed result.
+- Finished text goes in by itself at the cursor the field has at that moment.
+  Typing, moving the cursor, or changing the field while the app transcribes
+  does not cancel it. The session is consumed before the insert.
+- iOS reports no result for an insert, so the keyboard checks that the text
+  before the cursor changed. If not, it copies the text and the pill says
+  "Paste failed. Copied to clipboard."; if the copy fails, "Paste failed." with
+  a Copy button.
 - The extension links no Rust library and loads no model or microphone.
-- Gboard-style keys with a voice bar above them. The bar shows the hint or
-  notice, Undo, and, while a session records in the app, the dark flow bar
-  with Cancel and Finish. The mic key opens the app, or stops the session.
-  Ready text shows an Insert dictation button with Cancel.
+- The system keyboard look with a mic key (letters, 123, space, mic, return;
+  the system draws the globe). A fixed 44 pt band above the 216 pt of keys
+  holds the pill and is empty at rest, so nothing moves. Keys work while the
+  app listens or transcribes; only the mic key dims, and while listening it
+  finishes the session. The pill is white on a Light keyboard and the dark flow
+  bar color on a Dark one: Listening (cancel, wave, finish), Transcribing,
+  Inserted with Undo (4 seconds), and the two paste failures.
 
 ## Phone enrollment contract
 

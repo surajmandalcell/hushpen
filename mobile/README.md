@@ -171,10 +171,12 @@ engine and never records. It starts a flow through the app's session URL.
 Recording can continue after the user returns to the keyboard. The keyboard
 sends session-scoped stop and cancel commands through the App Group and
 Darwin notifications. It receives changes only while visible, without polling.
-Insert dictation confirms the active field because iOS can replace the
-input-session identifier on return.
-Results expire after ten minutes and require unchanged cursor context.
-Changing the field or cursor withdraws the offer and undo. iOS exposes no
+The keyboard inserts finished text by itself at the cursor the field has then,
+so typing while the app transcribes does not cancel it. It consumes the result
+once before inserting. iOS reports no result for an insert, so the keyboard
+checks that the text before the cursor changed; on a miss it copies the text
+and shows a paste failure. Results expire after ten minutes.
+Typing or moving the cursor withdraws undo. iOS exposes no
 public enabled-keyboard identifier property. The app reads the extension's
 App Group heartbeat on return and checks active input modes when their
 descriptions identify Hushpen. Full Access is last observed state.

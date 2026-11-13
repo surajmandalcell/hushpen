@@ -566,10 +566,13 @@ new decision, add it here in the same change (D-21).
   XcodeGen owns the project. The app and keyboard share
   `group.com.mandalsuraj.hushpen`; only the app links the Rust model engine.
   A keyboard flow session opens `hushpen://dictate?session=...` in the app.
-  The app records, transcribes, and cleans text. Insert dictation confirms
-  the active field on return because iOS can renew input session IDs.
-  Results expire after ten minutes and are used once. Field or cursor changes
-  cancel insertion and undo. Shared files are protected and excluded from
+  The app records, transcribes, and cleans text. The keyboard inserts the
+  result by itself at the cursor the field has at that moment; typing or
+  moving while the app transcribes does not cancel it. Results expire after
+  ten minutes and are used once, consumed before the insert. iOS reports no
+  result for an insert, so the keyboard checks that the text before the
+  cursor changed; on a miss it copies the text and says so, or offers Copy.
+  Typing or moving the cursor withdraws undo. Shared files are protected and excluded from
   backups. The keyboard writes its Full Access heartbeat to the App Group;
   the app refreshes setup on foreground and checks active input modes.
   Server mode serves only in front, uses core's fixed unload rule, dims the

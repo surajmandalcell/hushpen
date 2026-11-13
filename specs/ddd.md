@@ -68,7 +68,7 @@ Hushpen
   only during a model job. iOS requires the app to stay in front.
 - **flow session**: an iOS keyboard request that opens the app to record and
   transcribe. Its App Group result expires after ten minutes and is used once.
-  Insert dictation confirms the active field with unchanged cursor context.
+  The keyboard inserts it at the cursor the field has at that moment.
 
 - **dictation**: one run of the dictation state machine: idle, listening,
   transcribing, cleaning, inserting, then done, cancelled, or failed. A
