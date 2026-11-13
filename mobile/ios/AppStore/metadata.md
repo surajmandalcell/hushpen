@@ -55,12 +55,14 @@ DICTATE IN ANY APP
 - A Live Activity and the Dynamic Island show that Hushpen is listening while you use another app.
 
 CHOOSE YOUR SPEECH MODEL
-- Parakeet v3 (416 MB): English and 24 other European languages. Recommended.
-- Whisper Base (60 MB): other languages, and older or slower iPhones.
+- Parakeet v3 Q4 (416 MB): English and 24 other European languages. Recommended.
+- Whisper Base Q5 (60 MB): small and fast, for older or slower devices.
+- Whisper Small Q5 (190 MB): many languages, and translation to English.
+- Whisper Large v3 Turbo Q5 (574 MB): other languages, such as Hindi. Offered on devices with 6 GB of memory or more.
 Each model is checked against a fixed checksum after it downloads. Models live on your device, and you can delete them at any time.
 
 CLEAN TEXT
-Hushpen removes filler words, fixes capitals and spacing, and understands spoken punctuation with fast on-device rules. On iPhones that support it, you can also turn on optional cleanup with Apple's on-device system model. It is off until you turn it on.
+Hushpen removes filler words, fixes capitals and spacing, and understands spoken punctuation with fast on-device rules. On devices that support it, you can also turn on optional cleanup with Apple's on-device system model, or download a cleanup model (484 MB on devices with 4 GB of memory or more, 1.3 GB on 8 GB or more). Cleanup is off until you turn it on.
 
 USE YOUR IPHONE AS A SPEECH SERVER (OPTIONAL)
 Hushpen is also a free dictation app for Mac, Windows, and Linux. Turn on Server Mode, and your own computer can use the models on your iPhone or iPad over your local network. You pair with a QR code, and the connection is encrypted. Nothing goes through a cloud server. Server Mode works while Hushpen is open, so keep the phone plugged in.
@@ -68,7 +70,7 @@ Hushpen is also a free dictation app for Mac, Windows, and Linux. Turn on Server
 ABOUT FULL ACCESS
 The keyboard asks for Full Access for one reason: to receive the text Hushpen makes and put it in the app you are typing in. The keyboard has no network code. Full Access never sends what you type anywhere.
 
-Hushpen needs iOS 26 or later and 60 to 416 MB of storage for a speech model. Questions, bugs, and ideas: hushpen.mandalsuraj.com/support
+Hushpen needs iOS 26 or later and 60 to 574 MB of storage for a speech model. Questions, bugs, and ideas: hushpen.mandalsuraj.com/support
 Source code: github.com/surajmandalcell/hushpen
 ```
 
@@ -80,7 +82,7 @@ What's New in 2.5.0 (4000):
 The first App Store release of Hushpen for iPhone and iPad.
 
 - A dictation keyboard: tap the microphone, talk, go back, and insert clean text in any app.
-- Speech models run on your device: Parakeet v3 and Whisper Base.
+- Speech models run on your device: Parakeet v3 and three Whisper models.
 - A Live Activity and Dynamic Island show that Hushpen is listening.
 - Server Mode and encrypted pairing let your own computer use the models on your iPhone or iPad.
 - The new app icon, and a Settings page with the open-source licenses.
