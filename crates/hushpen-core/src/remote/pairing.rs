@@ -9,7 +9,10 @@ pub enum Pairing {
         expires_at: u64,
     },
     Confirming {
-        code: String,
+        number: String,
+        computer_name: String,
+        local_confirmed: bool,
+        peer_confirmed: bool,
         expires_at: u64,
     },
     Paired {
@@ -22,15 +25,33 @@ pub enum Pairing {
 pub enum PairFailure {
     Expired,
     InvalidOffer,
-    InvalidCode,
+    InvalidNumber,
+    InvalidName,
+    Mismatch,
     Rejected,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PairEvent {
-    Offer { payload: String, expires_at: u64 },
-    Confirm { code: String },
-    Paired { device_id: String },
+    Offer {
+        payload: String,
+        expires_at: u64,
+    },
+    /// Supplied only after the protocol verifies commitments and the computer name.
+    Confirm {
+        number: String,
+        computer_name: String,
+    },
+    LocalConfirm {
+        number: String,
+    },
+    /// Supplied only after the protocol authenticates the peer's approval.
+    PeerConfirm {
+        number: String,
+    },
+    Paired {
+        device_id: String,
+    },
     Reject,
     Cancel,
     Tick,
@@ -47,7 +68,7 @@ impl Pairing {
             expires_at,
         } = event
         {
-            *self = if payload.is_empty() || expires_at <= now {
+            *self = if payload.trim().is_empty() || expires_at <= now {
                 Self::Failed(PairFailure::InvalidOffer)
             } else {
                 Self::Offered {
@@ -62,18 +83,57 @@ impl Pairing {
             *self = Self::Failed(PairFailure::Expired);
             return;
         }
-        match (&*self, event) {
-            (Self::Offered { expires_at, .. }, PairEvent::Confirm { code }) => {
-                *self = if code.len() == 6 && code.bytes().all(|digit| digit.is_ascii_digit()) {
+        match (&mut *self, event) {
+            (
+                Self::Offered { expires_at, .. },
+                PairEvent::Confirm {
+                    number,
+                    computer_name,
+                },
+            ) => {
+                *self = if number.len() != 6 || !number.bytes().all(|digit| digit.is_ascii_digit())
+                {
+                    Self::Failed(PairFailure::InvalidNumber)
+                } else if computer_name.trim().is_empty()
+                    || computer_name.len() > 128
+                    || computer_name.chars().any(char::is_control)
+                {
+                    Self::Failed(PairFailure::InvalidName)
+                } else {
                     Self::Confirming {
-                        code,
+                        number,
+                        computer_name,
+                        local_confirmed: false,
+                        peer_confirmed: false,
                         expires_at: *expires_at,
                     }
-                } else {
-                    Self::Failed(PairFailure::InvalidCode)
                 };
             }
-            (Self::Confirming { .. }, PairEvent::Paired { device_id }) if !device_id.is_empty() => {
+            (Self::Confirming { number, .. }, PairEvent::LocalConfirm { number: approved })
+            | (Self::Confirming { number, .. }, PairEvent::PeerConfirm { number: approved })
+                if *number != approved =>
+            {
+                *self = Self::Failed(PairFailure::Mismatch);
+            }
+            (
+                Self::Confirming {
+                    local_confirmed, ..
+                },
+                PairEvent::LocalConfirm { .. },
+            ) => {
+                *local_confirmed = true;
+            }
+            (Self::Confirming { peer_confirmed, .. }, PairEvent::PeerConfirm { .. }) => {
+                *peer_confirmed = true;
+            }
+            (
+                Self::Confirming {
+                    local_confirmed: true,
+                    peer_confirmed: true,
+                    ..
+                },
+                PairEvent::Paired { device_id },
+            ) if !device_id.is_empty() => {
                 *self = Self::Paired { device_id };
             }
             (Self::Offered { .. } | Self::Confirming { .. }, PairEvent::Reject) => {
