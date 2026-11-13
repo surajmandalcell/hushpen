@@ -16,6 +16,8 @@ const MAX_HANDSHAKE: usize = 4096;
 const ACCEPTED: &[u8] = b"hushpen-ready-v1";
 const RUNTIME_IDLE: Duration = Duration::from_secs(15);
 const IO_POLL: Duration = Duration::from_millis(50);
+const PREAUTH_TIMEOUT: Duration = Duration::from_secs(5);
+const COMPARISON_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Shared by a service so an unfinished OS lookup cannot collect more lookup threads.
 #[derive(Clone, Default)]
@@ -123,7 +125,7 @@ enum ClientPairing<'a> {
     Bootstrap(&'a PairOffer),
     Code(&'a str),
     Qr(&'a QrPayload),
-    Nearby,
+    Nearby(&'a str),
 }
 
 /// A bounded encrypted byte stream. Protocol frames are unchanged inside it.
@@ -240,10 +242,32 @@ impl RemoteStream {
         resolver: &Resolver,
         confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
     ) -> io::Result<Session> {
+        let key = identity.public();
+        let short_key: String = key[..6].iter().map(|byte| format!("{byte:02x}")).collect();
+        Self::connect_nearby_named(
+            address,
+            identity,
+            &format!("Device {short_key}"),
+            timeout,
+            resolver,
+            confirm,
+        )
+    }
+
+    /// Sends the validated local name in the protected handshake before comparing numbers.
+    pub fn connect_nearby_named(
+        address: impl ToSocketAddrs + ToString + Send + 'static,
+        identity: &Identity,
+        name: &str,
+        timeout: Duration,
+        resolver: &Resolver,
+        confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
+    ) -> io::Result<Session> {
+        crate::enrollment::validate_name(name)?;
         Self::connect_with(
             address,
             identity,
-            ClientPairing::Nearby,
+            ClientPairing::Nearby(name),
             timeout,
             resolver,
             confirm,
@@ -258,6 +282,7 @@ impl RemoteStream {
         resolver: &Resolver,
         confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
     ) -> io::Result<Session> {
+        let nearby_payload;
         let (pin, payload) = match method {
             ClientPairing::Trusted(key) => (Some(key), &[][..]),
             ClientPairing::Bootstrap(offer) => {
@@ -271,10 +296,13 @@ impl RemoteStream {
                 (Some(qr.public_key), pairing::QR)
             }
             ClientPairing::Code(_) => (None, pairing::TYPED),
-            ClientPairing::Nearby => (None, pairing::NEARBY),
+            ClientPairing::Nearby(name) => {
+                nearby_payload = [pairing::NEARBY, b"\0", name.as_bytes()].concat();
+                (None, nearby_payload.as_slice())
+            }
         };
-        let deadline = Instant::now()
-            .checked_add(timeout)
+        let mut deadline = Instant::now()
+            .checked_add(timeout.min(PREAUTH_TIMEOUT))
             .ok_or_else(|| invalid("invalid connection timeout"))?;
         let mut last_error = invalid("no device address");
         let mut socket = None;
@@ -337,8 +365,10 @@ impl RemoteStream {
                 pairing::qr_client(&mut stream, &context, qr)?;
                 true
             }
-            ClientPairing::Nearby => {
+            ClientPairing::Nearby(_) => {
                 let number = pairing::nearby(&mut stream, &context, false)?;
+                remaining(deadline)?;
+                deadline = stream.comparison_deadline(timeout)?;
                 confirm(&number, computer_name.as_deref().unwrap_or_default())?
             }
         };
@@ -394,22 +424,46 @@ impl RemoteStream {
 
     /// Nearby trust requires a local approval and an authenticated approval from the peer.
     pub fn accept_pairing_with(
+        socket: TcpStream,
+        identity: &Identity,
+        pinned_clients: &[[u8; 32]],
+        pairing: Option<&mut PairOffer>,
+        timeout: Duration,
+        confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
+        on_pair: impl FnOnce([u8; 32]) -> io::Result<()>,
+    ) -> io::Result<Session> {
+        let name = pairing
+            .as_ref()
+            .and_then(|offer| offer.window().name().ok())
+            .unwrap_or_default();
+        Self::accept_pairing_peer_with(
+            socket,
+            identity,
+            pinned_clients,
+            pairing,
+            timeout,
+            |number, _, _| confirm(number, &name),
+            on_pair,
+        )
+    }
+
+    /// Exposes the connecting peer's protected name and static key for local approval.
+    pub fn accept_pairing_peer_with(
         mut socket: TcpStream,
         identity: &Identity,
         pinned_clients: &[[u8; 32]],
         mut pairing: Option<&mut PairOffer>,
         timeout: Duration,
-        confirm: impl FnOnce(&str, &str) -> io::Result<bool>,
+        confirm: impl FnOnce(&str, &str, &[u8; 32]) -> io::Result<bool>,
         on_pair: impl FnOnce([u8; 32]) -> io::Result<()>,
     ) -> io::Result<Session> {
-        let deadline = Instant::now()
-            .checked_add(timeout)
+        let mut deadline = Instant::now()
+            .checked_add(timeout.min(PREAUTH_TIMEOUT))
             .ok_or_else(|| invalid("invalid connection timeout"))?;
-        configure(&socket, timeout)?;
+        configure(&socket, timeout.min(PREAUTH_TIMEOUT))?;
         let _window_connection = pairing
             .as_ref()
             .map(|offer| offer.window())
-            .filter(|window| window.is_open())
             .map(|window| window.track(RemoteControl::handshake(&socket)?))
             .transpose()?;
         let mut noise = builder()?
@@ -445,19 +499,30 @@ impl RemoteStream {
             }
             let window = offer.window();
             let result = (|| {
-                offer.begin_attempt()?;
                 let accepted = match payload.as_slice() {
                     pairing::TYPED => {
+                        offer.begin_attempt()?;
                         pairing::pake(&mut stream, &context, offer.code(), true)?;
                         true
                     }
                     pairing::QR => {
+                        offer.begin_attempt()?;
                         pairing::qr_server(&mut stream, &context, offer)?;
                         true
                     }
-                    pairing::NEARBY => {
+                    payload if payload.starts_with(pairing::NEARBY) => {
+                        offer.check()?;
+                        let peer_name = payload
+                            .strip_prefix(pairing::NEARBY)
+                            .and_then(|name| name.strip_prefix(b"\0"))
+                            .ok_or_else(denied)?;
+                        let peer_name = std::str::from_utf8(peer_name)
+                            .map_err(|_| invalid("invalid peer name"))?;
+                        crate::enrollment::validate_name(peer_name)?;
                         let number = pairing::nearby(&mut stream, &context, true)?;
-                        confirm(&number, &name)?
+                        remaining(deadline)?;
+                        deadline = stream.comparison_deadline(timeout)?;
+                        confirm(&number, peer_name, &peer_key)?
                     }
                     _ => return Err(denied()),
                 };
@@ -534,6 +599,16 @@ impl RemoteStream {
         self.writer.socket.set_write_timeout(Some(packet_timeout))?;
         self.reader.deadline = None;
         Ok(())
+    }
+
+    fn comparison_deadline(&mut self, timeout: Duration) -> io::Result<Instant> {
+        let timeout = timeout.min(COMPARISON_TIMEOUT);
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| invalid("invalid comparison timeout"))?;
+        self.writer.socket.set_write_timeout(Some(timeout))?;
+        self.reader.deadline = Some(deadline);
+        Ok(deadline)
     }
 
     /// Only selected worker sessions can wait without an idle deadline.
@@ -1136,19 +1211,21 @@ mod tests {
             )
             .unwrap();
             offer.open_window("My computer").unwrap();
+            let phone_key = client.public();
             let (sender, receiver) = mpsc::sync_channel(1);
             let saved = Arc::new(AtomicBool::new(false));
             let saved_by_server = Arc::clone(&saved);
             let host = thread::spawn(move || {
                 let (socket, _) = listener.accept().unwrap();
-                let mut result = RemoteStream::accept_pairing_with(
+                let mut result = RemoteStream::accept_pairing_peer_with(
                     socket,
                     &server,
                     &[],
                     Some(&mut offer),
                     TIMEOUT,
-                    |number, name| {
-                        assert_eq!(name, "My computer");
+                    |number, name, key| {
+                        assert_eq!(name, "My phone");
+                        assert_eq!(*key, phone_key);
                         sender.send(number.to_owned()).unwrap();
                         Ok(computer_approves)
                     },
@@ -1158,6 +1235,9 @@ mod tests {
                     },
                 );
                 assert_eq!(result.is_ok(), computer_approves && phone_approves);
+                if result.is_err() {
+                    assert_eq!(offer.tries_left(), 3);
+                }
                 if let Ok(session) = &mut result {
                     offer.close_window();
                     let mut payload = [0; 4];
@@ -1166,9 +1246,10 @@ mod tests {
                 }
             });
             let mut phone_number = String::new();
-            let mut result = RemoteStream::connect_nearby(
+            let mut result = RemoteStream::connect_nearby_named(
                 address,
                 &client,
+                "My phone",
                 TIMEOUT,
                 &Resolver::default(),
                 |number, name| {
@@ -1189,6 +1270,103 @@ mod tests {
                 computer_approves && phone_approves
             );
         }
+    }
+
+    #[test]
+    fn nearby_rejects_missing_or_invalid_peer_names_without_spending_code_tries() {
+        let server = Identity::generate().unwrap();
+        let client = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Computer").unwrap();
+        let host = thread::spawn(move || {
+            for _ in 0..4 {
+                let (socket, _) = listener.accept().unwrap();
+                assert!(
+                    RemoteStream::accept_pairing_peer_with(
+                        socket,
+                        &server,
+                        &[],
+                        Some(&mut offer),
+                        TIMEOUT,
+                        |_, _, _| panic!("invalid names must not reach comparison"),
+                        |_| panic!("invalid names must not save trust"),
+                    )
+                    .is_err()
+                );
+                assert_eq!(offer.tries_left(), 3);
+            }
+        });
+        for payload in [
+            &b"nearby-v2"[..],
+            b"nearby-v2\0",
+            b"nearby-v2\0\n",
+            b"nearby-v2\0\xff",
+        ] {
+            let mut socket = TcpStream::connect(address).unwrap();
+            configure(&socket, TIMEOUT).unwrap();
+            let deadline = Instant::now() + TIMEOUT;
+            let mut noise = builder()
+                .unwrap()
+                .local_private_key(&client.private)
+                .unwrap()
+                .build_initiator()
+                .unwrap();
+            send_handshake(&mut socket, &mut noise, &[], deadline).unwrap();
+            receive_handshake(&mut socket, &mut noise, deadline).unwrap();
+            send_handshake(&mut socket, &mut noise, payload, deadline).unwrap();
+        }
+        host.join().unwrap();
+    }
+
+    #[test]
+    fn nearby_number_comparison_outlives_the_preauth_deadline() {
+        let server = Identity::generate().unwrap();
+        let client = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Computer").unwrap();
+        let timeout = Duration::from_secs(7);
+        let host = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            RemoteStream::accept_pairing_peer_with(
+                socket,
+                &server,
+                &[],
+                Some(&mut offer),
+                timeout,
+                |_, _, _| {
+                    thread::sleep(PREAUTH_TIMEOUT + Duration::from_millis(100));
+                    Ok(true)
+                },
+                |_| Ok(()),
+            )
+            .unwrap();
+        });
+        RemoteStream::connect_nearby_named(
+            address,
+            &client,
+            "Phone",
+            timeout,
+            &Resolver::default(),
+            |_, _| Ok(true),
+        )
+        .unwrap();
+        host.join().unwrap();
     }
 
     #[test]
@@ -1234,6 +1412,45 @@ mod tests {
             )
             .is_err()
         );
+        host.join().unwrap();
+    }
+
+    #[test]
+    fn a_silent_preauth_peer_cannot_use_the_long_comparison_timeout() {
+        let server = Identity::generate().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut offer = PairOffer::new(
+            "127.0.0.1".into(),
+            address.port(),
+            server.public(),
+            crate::pairing::now().unwrap() + 60,
+        )
+        .unwrap();
+        offer.open_window("Computer").unwrap();
+        let (completed, result) = mpsc::sync_channel(1);
+        let host = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            let started = Instant::now();
+            let result = RemoteStream::accept_pairing_peer_with(
+                socket,
+                &server,
+                &[],
+                Some(&mut offer),
+                Duration::from_secs(60),
+                |_, _, _| panic!("a silent peer cannot reach comparison"),
+                |_| panic!("a silent peer cannot save trust"),
+            );
+            completed
+                .send((result.is_err(), started.elapsed()))
+                .unwrap();
+        });
+        let peer = TcpStream::connect(address).unwrap();
+        let (failed, elapsed) = result.recv_timeout(Duration::from_secs(7)).unwrap();
+        assert!(failed);
+        assert!(elapsed >= Duration::from_secs(4));
+        assert!(elapsed < Duration::from_secs(7));
+        drop(peer);
         host.join().unwrap();
     }
 
@@ -1331,7 +1548,7 @@ mod tests {
             .unwrap();
         send_handshake(&mut socket, &mut noise, &[], deadline).unwrap();
         let name = receive_handshake(&mut socket, &mut noise, deadline).unwrap();
-        send_handshake(&mut socket, &mut noise, pairing::NEARBY, deadline).unwrap();
+        send_handshake(&mut socket, &mut noise, b"nearby-v2\0Phone", deadline).unwrap();
         let context = pairing::context(
             &peer_key(&noise).unwrap(),
             &client.public(),
