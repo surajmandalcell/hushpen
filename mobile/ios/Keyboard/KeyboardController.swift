@@ -2,15 +2,18 @@ import Observation
 import SwiftUI
 import UIKit
 
+/// What the 44 pt band above the keys shows. `idle` shows nothing.
+enum KeyboardPill: Equatable {
+    case idle, listening, transcribing, inserted
+    case pasteFailed(copied: Bool)
+    case notice(String)
+}
+
 @Observable
 @MainActor
 final class KeyboardModel {
-    var status = "Ready"
+    var pill = KeyboardPill.idle
     var url: URL?
-    var canUndo = false
-    var canInsert = false
-    var canStop = false
-    var recording = false
     var fullAccess = true
     var needsGlobe = false
     var shift = false
@@ -18,11 +21,12 @@ final class KeyboardModel {
     weak var controller: KeyboardController?
 
     func insert(_ text: String) { controller?.insert(text) }
-    func insertResult() { controller?.insertResult() }
     func backspace() { controller?.backspace() }
     func undo() { controller?.undo() }
     func cancel() { controller?.cancel() }
     func stop() { controller?.stop() }
+    func copy() { controller?.copyRescuedText() }
+    func dismiss() { controller?.dismissFailure() }
     func nextKeyboard() { controller?.advanceToNextInputMode() }
 }
 
@@ -32,8 +36,10 @@ final class KeyboardController: UIInputViewController {
     private var observation: FlowSessionObservation?
     private var visible = false
     private var hostActive = true
-    private var offer: (session: UUID, document: UUID, context: String)?
-    private var insertion: (document: UUID, text: String, context: String, replaced: String)?
+    private var delivering = false
+    private var insertion: (document: UUID?, text: String, context: String, replaced: String)?
+    private var rescued: String?
+    private var expiry: Task<Void, Never>?
     private var heartbeat: KeyboardHeartbeat?
 
     override func viewDidLoad() {
@@ -49,8 +55,8 @@ final class KeyboardController: UIInputViewController {
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host.view)
-        // The voice bar (48) sits above the four key rows (216).
-        let height = view.heightAnchor.constraint(equalToConstant: 264)
+        // The pill band (44) sits above the four key rows (216).
+        let height = view.heightAnchor.constraint(equalToConstant: 260)
         height.priority = UILayoutPriority(999)
         NSLayoutConstraint.activate([
             height,
@@ -77,16 +83,13 @@ final class KeyboardController: UIInputViewController {
                     Task { @MainActor in self?.refresh() }
                 }
             }
-        } catch { model.status = error.localizedDescription }
+        } catch { model.pill = .notice(error.localizedDescription) }
         refresh()
     }
 
     @objc private func pauseHost() {
         hostActive = false
-        offer = nil
-        model.canInsert = false
-        model.canStop = false
-        model.recording = false
+        if model.pill == .listening || model.pill == .transcribing { model.pill = .idle }
         observation = nil
     }
 
@@ -124,91 +127,59 @@ final class KeyboardController: UIInputViewController {
         )
     }
 
-    private func documentIdentifier(for proxy: any UITextDocumentProxy) -> UUID? {
+    private var document: UUID? {
         // UIKit can return nil for this required property while input fields change.
-        (proxy as? NSObject)?.value(forKey: "documentIdentifier") as? UUID
+        (textDocumentProxy as? NSObject)?.value(forKey: "documentIdentifier") as? UUID
     }
 
     private func refresh() {
         guard hostActive, visible else { return }
         shareStatus()
-        model.canStop = false
-        model.recording = false
         model.fullAccess = hasFullAccess
         guard hasFullAccess else {
             model.url = nil
-            model.canInsert = false
-            model.status = "Allow Full Access in Settings to use dictation."
-            return
-        }
-        guard let document = documentIdentifier(for: textDocumentProxy) else {
-            model.url = nil
-            model.canInsert = false
-            model.canUndo = false
+            model.pill = .notice("Turn on Full Access to dictate.")
             return
         }
         do {
             if store == nil { store = try FlowSessionStore() }
             guard let store else { return }
-            let current: FlowSession?
-            do {
-                current = try store.current()
-            } catch FlowSessionError.damaged {
-                offer = nil
-                model.canInsert = false
-                model.url = try store.begin(
-                    documentIdentifier: document, context: context
-                ).url
-                model.status = "The old session could not be read. Start dictation again."
-                return
-            }
-            if current?.state != .completed {
-                offer = nil
-                model.canInsert = false
-            }
-            if let session = current {
-                switch session.state {
-                case .completed:
-                    let cursor = context
-                    let sameOffer = offer.map { $0.session == session.id && $0.document == document && $0.context == cursor } ?? true
-                    if session.context != cursor || !sameOffer {
-                        try store.cancel(id: session.id)
-                        offer = nil
-                        model.canInsert = false
-                        model.status = "The text field changed. Start dictation again."
-                        break
-                    }
-                    offer = (session.id, document, cursor)
-                    model.canInsert = true
-                    model.url = nil
-                    model.status = "Dictation is ready. Tap Insert dictation."
-                    updateUndo()
-                    return
+            var damaged = false
+            var current: FlowSession?
+            do { current = try store.current() } catch FlowSessionError.damaged { damaged = true }
+            if let current {
+                switch current.state {
                 case .recording:
+                    rescued = nil
                     model.url = nil
-                    model.recording = true
-                    model.canStop = session.command != .stop
-                    model.status = "Finish dictation in Hushpen, then return here."
+                    model.pill = current.command == .stop ? .transcribing : .listening
                     return
                 case .pending:
-                    if session.documentIdentifier == document,
-                       session.context == context {
-                        model.url = session.url
-                        updateUndo()
-                        return
-                    }
+                    model.url = current.url
+                    settle()
+                    return
+                case .completed:
+                    try deliver(current.id, from: store)
                 case .cancelled, .consumed:
                     break
                 }
             }
-            let session = try store.begin(
-                documentIdentifier: document, context: context
-            )
-            model.url = session.url
-            updateUndo()
+            model.url = try store.begin().url
+            settle()
+            if damaged { model.pill = .notice("The last dictation could not be read. Try again.") }
         } catch {
             model.url = nil
-            model.status = error.localizedDescription
+            model.pill = .notice(error.localizedDescription)
+        }
+    }
+
+    /// Drops a pill that no longer matches the session. A failure stays until it is dismissed.
+    private func settle() {
+        switch model.pill {
+        case .listening, .notice: model.pill = .idle
+        case .transcribing where !delivering: model.pill = .idle
+        case .inserted where !undoAvailable: model.pill = .idle
+        default: break
         }
     }
 
@@ -221,50 +192,87 @@ final class KeyboardController: UIInputViewController {
             heartbeat = value
         } catch {
             // iOS denies shared-container writes while Full Access is off.
-            if hasFullAccess { model.status = "Keyboard status could not be shared. Reopen the keyboard." }
+            if hasFullAccess { model.pill = .notice("Keyboard status could not be shared. Reopen the keyboard.") }
         }
     }
 
-    func insertResult() {
-        guard hostActive, let offer, let store else { return }
+    /// Inserts finished text at the cursor the field has now. The session is consumed first so a
+    /// second refresh cannot insert it again.
+    private func deliver(_ id: UUID, from store: FlowSessionStore) throws {
+        guard let text = try store.consume(id: id) else { return }
         let proxy = textDocumentProxy
-        let cursor = context
-        guard let document = documentIdentifier(for: proxy), offer.document == document,
-              offer.context == cursor else { refresh(); return }
-        do {
-            try store.confirmDestination(id: offer.session, documentIdentifier: offer.document, context: cursor)
-            guard let text = try store.consume(id: offer.session, documentIdentifier: offer.document, context: cursor)
-            else { throw FlowSessionError.stale }
-            let replaced = proxy.selectedText ?? ""
-            proxy.insertText(text)
-            insertion = (document, text, context, replaced)
-            self.offer = nil
-            model.canInsert = false
-            model.status = "Inserted"
-            refresh()
-        } catch { model.status = error.localizedDescription }
+        let check = InsertionCheck(before: proxy.documentContextBeforeInput)
+        let replaced = proxy.selectedText ?? ""
+        delivering = true
+        model.pill = .transcribing
+        proxy.insertText(text)
+        Task { [weak self] in await self?.confirm(text, check: check, replaced: replaced) }
+    }
+
+    private func confirm(_ text: String, check: InsertionCheck, replaced: String) async {
+        var landed = false
+        for _ in 0..<7 {
+            try? await Task.sleep(for: .milliseconds(100))
+            landed = check.landed(before: textDocumentProxy.documentContextBeforeInput)
+            if landed { break }
+        }
+        delivering = false
+        guard landed else {
+            rescued = text
+            model.pill = .pasteFailed(copied: copyToPasteboard(text))
+            return
+        }
+        insertion = (document, text, context, replaced)
+        model.pill = .inserted
+        expiry?.cancel()
+        expiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled, let self, self.model.pill == .inserted else { return }
+            self.model.pill = .idle
+            self.insertion = nil
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) -> Bool {
+        let board = UIPasteboard.general
+        let before = board.changeCount
+        board.string = text
+        return board.changeCount != before
+    }
+
+    func copyRescuedText() {
+        guard let rescued else { return }
+        if copyToPasteboard(rescued) { model.pill = .pasteFailed(copied: true) }
+    }
+
+    func dismissFailure() {
+        rescued = nil
+        model.pill = .idle
     }
 
     func insert(_ text: String) {
         textDocumentProxy.insertText(model.shift ? text.uppercased() : text)
         model.shift = false
-        insertion = nil
-        refresh()
+        typed()
     }
 
     func backspace() {
         textDocumentProxy.deleteBackward()
+        typed()
+    }
+
+    private func typed() {
         insertion = nil
+        if model.pill == .inserted { model.pill = .idle }
         refresh()
     }
 
     func undo() {
-        updateUndo()
-        guard model.canUndo, let insertion else { return }
+        guard undoAvailable, let insertion else { return }
         for _ in insertion.text { textDocumentProxy.deleteBackward() }
         if !insertion.replaced.isEmpty { textDocumentProxy.insertText(insertion.replaced) }
         self.insertion = nil
-        model.status = "Undone"
+        model.pill = .idle
         refresh()
     }
 
@@ -273,10 +281,9 @@ final class KeyboardController: UIInputViewController {
             if let session = try store?.current() {
                 try store?.cancel(id: session.id)
             }
-            model.status = "Cancelled"
             refresh()
         } catch {
-            model.status = error.localizedDescription
+            model.pill = .notice(error.localizedDescription)
         }
     }
 
@@ -285,15 +292,12 @@ final class KeyboardController: UIInputViewController {
         do {
             if let session = try store?.current() { try store?.stop(id: session.id) }
             refresh()
-        } catch { model.status = error.localizedDescription }
+        } catch { model.pill = .notice(error.localizedDescription) }
     }
 
-    private func updateUndo() {
-        guard let document = documentIdentifier(for: textDocumentProxy) else { model.canUndo = false; return }
-        model.canUndo = insertion.map {
-            $0.document == document && $0.context == context
-                && textDocumentProxy.documentContextBeforeInput?.hasSuffix($0.text) == true
-        } ?? false
-        if !model.canUndo { insertion = nil }
+    private var undoAvailable: Bool {
+        guard let insertion else { return false }
+        return insertion.document == document && insertion.context == context
+            && textDocumentProxy.documentContextBeforeInput?.hasSuffix(insertion.text) == true
     }
 }

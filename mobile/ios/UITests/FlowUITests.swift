@@ -38,27 +38,21 @@ final class FlowUITests: XCTestCase {
         editor.activate()
         let field = editor.textFields["editor.first"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
-        let insert = element("keyboard.insert", in: editor)
-        XCTAssertTrue(insert.waitForExistence(timeout: 10))
-        XCTAssertEqual(field.value as? String, "hi ")
-        insert.tap()
-        let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
-        expectation(for: inserted, evaluatedWith: field)
-        waitForExpectations(timeout: 15)
+        waitForInsertion(in: field)
         let once = field.value as? String
-        attach(editor, name: "Returned transcript")
+        XCTAssertTrue((once ?? "").hasPrefix("hi "))
+        let undo = element("keyboard.undo", in: editor)
+        XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        attach(editor, name: "Inserted", keep: true)
 
-        XCTAssertFalse(element("keyboard.insert", in: editor).exists)
         XCTAssertEqual(field.value as? String, once)
-        element("keyboard.undo", in: editor).tap()
+        undo.tap()
         XCTAssertEqual(field.value as? String, "hi ")
         phone.activate()
         editor.activate()
         useKeyboard()
         XCTAssertEqual(field.value as? String, "hi ")
-        let undo = element("keyboard.undo", in: editor)
-        XCTAssertTrue(undo.waitForExistence(timeout: 10))
-        XCTAssertFalse(undo.isEnabled)
+        XCTAssertFalse(element("keyboard.undo", in: editor).exists)
     }
 
     func testSetupRefreshesWhenReturningFromTheKeyboard() {
@@ -94,53 +88,53 @@ final class FlowUITests: XCTestCase {
         useKeyboard()
         let microphone = element("keyboard.mic", in: editor)
         XCTAssertTrue(microphone.waitForExistence(timeout: 10))
+        attach(editor, name: "Listening", keep: true)
         microphone.tap()
-        let insert = element("keyboard.insert", in: editor)
-        XCTAssertTrue(insert.waitForExistence(timeout: 180))
-        insert.tap()
-        let field = editor.textFields["editor.first"]
-        let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
-        expectation(for: inserted, evaluatedWith: field)
-        waitForExpectations(timeout: 15)
-        XCTAssertFalse(insert.exists)
+        waitForInsertion(in: editor.textFields["editor.first"])
     }
 
-    func testChangingFieldsWithdrawsUndoAndPreventsReplay() {
+    func testTypingWhileTranscribingKeepsTheDictation() {
         openEditor()
         startFromKeyboard()
-        element("dictation.finish", in: phone).tap()
-        waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         editor.activate()
-        let first = editor.textFields["editor.first"]
-        XCTAssertTrue(first.waitForExistence(timeout: 10))
-        attach(editor, name: "Keyboard returned")
-        let insert = element("keyboard.insert", in: editor)
-        XCTAssertTrue(insert.waitForExistence(timeout: 10))
-        XCTAssertEqual(first.value as? String, "First field")
-        editor.textFields["editor.second"].tap()
-        useKeyboard()
-        XCTAssertTrue(element("keyboard.mic", in: editor).waitForExistence(timeout: 10))
-        XCTAssertFalse(insert.exists)
-        XCTAssertEqual(first.value as? String, "First field")
-        XCTAssertEqual(editor.textFields["editor.second"].value as? String, "Second field")
-        editor.textFields["editor.first"].tap()
+        XCTAssertTrue(element("keyboard.finish", in: editor).waitForExistence(timeout: 10))
+        attach(editor, name: "Listening", keep: true)
+        element("keyboard.finish", in: editor).tap()
+        attach(editor, name: "Transcribing", keep: true)
+        for letter in ["z", "q"] {
+            element("keyboard.shift", in: editor).tap()
+            element("keyboard.key.\(letter)", in: editor).tap()
+        }
+        let field = editor.textFields["editor.first"]
+        waitForInsertion(in: field)
+        attach(editor, name: "Typed while transcribing", keep: true)
+        // The dictation holds no capital Z or Q, so both stay, wherever the cursor was when it arrived.
+        let value = field.value as? String ?? ""
+        XCTAssertTrue(value.contains("Z") && value.contains("Q"), value)
+    }
+
+    func testFailedInsertCopiesTheTextAndOffersIt() {
+        openEditor()
+        let refusing = element("editor.refusing", in: editor)
+        refusing.tap()
         useKeyboard()
         startFromKeyboard()
         element("dictation.finish", in: phone).tap()
         waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         editor.activate()
-        XCTAssertTrue(insert.waitForExistence(timeout: 10))
-        insert.tap()
-        let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
-        expectation(for: inserted, evaluatedWith: first)
-        waitForExpectations(timeout: 15)
-        editor.textFields["editor.second"].tap()
-        useKeyboard()
-        XCTAssertEqual(editor.textFields["editor.second"].value as? String, "Second field")
-        attach(editor, name: "Changed field")
-        let undo = element("keyboard.undo", in: editor)
-        XCTAssertTrue(undo.waitForExistence(timeout: 10))
-        XCTAssertFalse(undo.isEnabled)
+        let status = element("keyboard.status", in: editor)
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        let failed = NSPredicate(format: "label BEGINSWITH %@", "Paste failed.")
+        expectation(for: failed, evaluatedWith: status)
+        waitForExpectations(timeout: 30)
+        XCTAssertTrue(element("keyboard.dismiss", in: editor).exists || element("keyboard.copy", in: editor).exists)
+        XCTAssertEqual(editor.textFields["editor.first"].value as? String, "First field")
+        attach(editor, name: "Paste failed", keep: true)
+        if element("keyboard.copy", in: editor).exists {
+            element("keyboard.copy", in: editor).tap()
+        }
+        element("keyboard.dismiss", in: editor).tap()
+        XCTAssertFalse(element("keyboard.dismiss", in: editor).exists)
     }
 
     func testServerStopsWhenTheAppLeavesTheForeground() {
@@ -187,11 +181,18 @@ final class FlowUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         useKeyboard()
-        if element("keyboard.insert", in: editor).exists {
+        if element("keyboard.cancel", in: editor).exists {
             element("keyboard.cancel", in: editor).tap()
         }
         XCTAssertTrue(element("keyboard.mic", in: editor).waitForExistence(timeout: 15))
-        attach(editor, name: "Keyboard ready")
+        attach(editor, name: "Keyboard ready", keep: true)
+    }
+
+    /// The keyboard inserts finished text on its own, at the cursor the field has then.
+    private func waitForInsertion(in field: XCUIElement) {
+        let inserted = NSPredicate(format: "value CONTAINS[c] %@", "quick brown fox")
+        expectation(for: inserted, evaluatedWith: field)
+        waitForExpectations(timeout: 180)
     }
 
     private func useKeyboard() {
@@ -200,8 +201,8 @@ final class FlowUITests: XCTestCase {
             XCTAssertTrue(globe.waitForExistence(timeout: 5))
             globe.press(forDuration: 1)
             attach(editor, name: "Keyboard picker")
-            let keyboard = editor.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Hushpen")).firstMatch
-            XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+            let keyboard = editor.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Hushpen")).firstMatch
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
             keyboard.tap()
         }
         XCTAssertTrue(element("keyboard.status", in: editor).waitForExistence(timeout: 15))
@@ -245,7 +246,8 @@ final class FlowUITests: XCTestCase {
         XCTAssertTrue(microphone.waitForExistence(timeout: 10))
         microphone.tap()
         waitForText("listening", id: "dictation.state", in: phone, timeout: 30)
-        attach(phone, name: "App recording")
+        sleep(1)
+        attach(phone, name: "App recording", keep: true)
     }
 
     private func element(_ id: String, in app: XCUIApplication) -> XCUIElement {
@@ -260,10 +262,10 @@ final class FlowUITests: XCTestCase {
         waitForExpectations(timeout: timeout)
     }
 
-    private func attach(_ app: XCUIApplication, name: String) {
+    private func attach(_ app: XCUIApplication, name: String, keep: Bool = false) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
-        attachment.lifetime = .deleteOnSuccess
+        attachment.lifetime = keep ? .keepAlways : .deleteOnSuccess
         add(attachment)
     }
 }
