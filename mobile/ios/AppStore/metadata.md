@@ -149,7 +149,7 @@ To review the main feature (about 3 minutes):
 2. On Home, tap Microphone, Allow.
 3. Open Settings > General > Keyboard > Keyboards > Add New Keyboard > Hushpen. Then tap Hushpen in the list and turn on Allow Full Access.
 4. Open Notes or Messages and tap a text field. Hold the globe key and choose Hushpen.
-5. Tap the microphone key. The keyboard cannot record, so it opens Hushpen, which shows "Listening" and "Swipe right to go back".
+5. Tap the microphone key. The keyboard cannot record, so it opens Hushpen, which shows "You're all set. Head back to keep typing." over a short swipe demo.
 6. Swipe right on the bar at the bottom of the screen (or tap the back-to-app link in the status bar) to return to Notes. Speak a sentence, then tap the check mark in the pill above the keys. The text appears at the cursor by itself. The undo button in the pill removes it.
 
 Why Full Access: the keyboard extension can only read the text that the app made through the App Group container (group.com.mandalsuraj.hushpen) with Full Access. The keyboard has no network code, no microphone access, and no analytics.

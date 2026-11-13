@@ -204,10 +204,10 @@ the rules; views render state and send intents.
   or speech failure. Keep errors visible and do not insert stale results.
 - Recording and model work run in the app. The final text goes to the App Group.
   The user returns to the original app and the keyboard inserts the text.
-- The full-screen page, while it listens, says "Swipe right to go back" and
-  "Then start talking." over a two second swipe demo, with a quiet ring and an
+- The full-screen page, while it listens, says "You're all set. Head back to
+  keep typing." over a two second swipe demo, with a quiet ring and an
   arrow at the system back link. The page names no app: iOS draws the link.
-  It shows the state, elapsed time, and Cancel and Done. Other states keep the
+  It shows no "Listening" text or animation, only Cancel and Done. Other states keep the
   wave, state, and Cancel, Recover, or Close. Dismissing it cancels the session.
 
 ## iOS Live Activity
