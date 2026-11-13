@@ -2,17 +2,18 @@ import SwiftUI
 import UIKit
 
 /// The Power row of Devices and Server mode: a title, "Charging" or "On battery", then the battery icon and percent.
+/// A part the device does not report is left out; the screens hide the row when none is known.
 struct PowerRow: View {
     let power: PowerModel
 
     var body: some View {
         LabeledContent {
-            BatteryReading(power: power)
+            if power.percent != nil { BatteryReading(power: power) }
         } label: {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Power")
-                    Text(power.status).font(.subheadline).foregroundStyle(.secondary)
+                    if let status = power.status { Text(status).font(.subheadline).foregroundStyle(.secondary) }
                 }
             } icon: {
                 Image(systemName: "bolt.fill").foregroundStyle(.tint)
@@ -53,13 +54,13 @@ struct DevicesScreen: View {
                     }
                 }
                 .accessibilityIdentifier("devices.server")
-                PowerRow(power: power)
+                if power.known { PowerRow(power: power) }
                 if server.running {
                     Button(action: showServer) { Label("Show Server Screen", systemImage: "moon.stars") }
                         .accessibilityIdentifier("devices.screen")
                 }
             } footer: {
-                Text("Your computer can use this iPhone\u{2019}s models while Hushpen is open. Server mode stops when you leave the app.")
+                Text("Your computer can use this \(deviceKind)\u{2019}s models while Hushpen is open. Server mode stops when you leave the app.")
             }
             Section("Paired Desktops") {
                 if model.clients.isEmpty {
@@ -67,7 +68,7 @@ struct DevicesScreen: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("No paired desktops")
                             Text(server.running
-                                ? "On your computer, open Add a Device and pick this iPhone."
+                                ? "On your computer, open Add a Device and pick this \(deviceKind)."
                                 : "Turn on Server Mode, then pair from your computer.")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
@@ -116,7 +117,7 @@ struct DevicesScreen: View {
         ) { desktop in
             Button("Forget", role: .destructive) { Task { await model.forget(desktop.id) } }
         } message: { _ in
-            Text("This desktop can no longer use this iPhone's models. You can pair it again later.")
+            Text("This desktop can no longer use this \(deviceKind)'s models. You can pair it again later.")
         }
     }
 }

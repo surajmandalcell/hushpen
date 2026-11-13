@@ -156,7 +156,7 @@ struct StatsScreen: View {
     private func onThisPhone(_ summary: StatsSummary) -> some View {
         let percent = summary.sessions == 0 ? nil : Int((Double(summary.onThisPhone) / Double(summary.sessions) * 100).rounded())
         return VStack(alignment: .leading, spacing: 4) {
-            CardHeader(symbol: "lock.fill", title: "On this iPhone")
+            CardHeader(symbol: "lock.fill", title: "On this \(deviceKind)")
             BigNumber(value: percent.map(String.init) ?? "\u{2013}", unit: percent == nil ? nil : "%").padding(.top, 2)
             Capsule().fill(Color(.tertiarySystemFill)).frame(height: 6)
                 .overlay(alignment: .leading) {

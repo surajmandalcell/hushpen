@@ -30,8 +30,8 @@ struct ServerScreen: View {
     private var line: String {
         switch devices.clients.count {
         case 0: "No desktop is paired yet."
-        case 1: "\(devices.clients[0].name) can use this iPhone."
-        default: "\(devices.clients.count) desktops can use this iPhone."
+        case 1: "\(devices.clients[0].name) can use this \(deviceKind)."
+        default: "\(devices.clients.count) desktops can use this \(deviceKind)."
         }
     }
 
@@ -57,10 +57,14 @@ struct ServerScreen: View {
                 LabeledContent("Port") { Text(server.port.map(String.init) ?? (server.busy ? "Starting" : "None")).accessibilityIdentifier("server.port") }
                 LabeledContent("Served", value: server.served == 1 ? "1 job" : "\(server.served) jobs")
             }
-            Section {
-                PowerRow(power: power)
-            } footer: {
-                Text(power.charging ? "This iPhone can keep serving." : "Server Mode keeps running on battery. Plug in for long sessions.")
+            if power.known {
+                Section {
+                    PowerRow(power: power)
+                } footer: {
+                    if let charging = power.charging {
+                        Text(charging ? "This \(deviceKind) can keep serving." : "Server Mode keeps running on battery. Plug in for long sessions.")
+                    }
+                }
             }
         }
         .scrollContentBackground(.hidden)

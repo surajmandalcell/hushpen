@@ -173,7 +173,7 @@ struct NearbyPairSheet: View {
     var body: some View {
         VStack(spacing: 14) {
             Text("Pair with this computer?").font(.title3.bold())
-            Text("It will use the models on this iPhone. Check that your computer shows the same number.")
+            Text("It will use the models on this \(deviceKind). Check that your computer shows the same number.")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Text("\(number.prefix(3)) \(number.dropFirst(3))")
                 .font(.system(size: 44, weight: .semibold, design: .rounded).monospacedDigit())

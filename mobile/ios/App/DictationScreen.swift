@@ -101,7 +101,7 @@ struct DictationScreen: View {
 
     @ViewBuilder private var subtitle: some View {
         switch model.state {
-        case "transcribing": Text("Turning your speech into text on this iPhone.").subtitleStyle()
+        case "transcribing": Text("Turning your speech into text on this \(deviceKind).").subtitleStyle()
         case "cleaning": Text("Polishing the text.").subtitleStyle()
         case "done": Text("Your text is ready.").subtitleStyle()
         case "cancelled": Text("Recover to transcribe what you said.").subtitleStyle()

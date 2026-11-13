@@ -1,4 +1,8 @@
 import SwiftUI
+import UIKit
+
+/// "iPhone" or "iPad": what the app runs on, for text that says "this iPhone".
+@MainActor var deviceKind: String { UIDevice.current.model }
 
 /// A list title with an accent symbol, like a row in the system Settings app.
 struct RowTitle: View {

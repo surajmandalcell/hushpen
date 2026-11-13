@@ -3,10 +3,11 @@ import SwiftUI
 import UIKit
 
 /// The phone battery for the Power row: how full it is and whether it charges.
+/// Either part is nil when the device does not say (a Simulator has no battery); the row shows only what is known.
 @Observable @MainActor
 final class PowerModel {
     private(set) var level: Double?
-    private(set) var charging = false
+    private(set) var charging: Bool?
 
     func start() {
         UIDevice.current.isBatteryMonitoringEnabled = true
@@ -27,11 +28,20 @@ final class PowerModel {
         #endif
         let device = UIDevice.current
         level = device.batteryLevel >= 0 ? Double(device.batteryLevel) : nil
-        charging = device.batteryState == .charging || device.batteryState == .full
+        charging = Self.charging(device.batteryState)
     }
 
-    var percent: String { level.map { "\(Int(($0 * 100).rounded()))%" } ?? "Unknown" }
-    var status: String { charging ? "Charging" : "On battery" }
+    nonisolated static func charging(_ state: UIDevice.BatteryState) -> Bool? {
+        switch state {
+        case .charging, .full: true
+        case .unplugged: false
+        default: nil
+        }
+    }
+
+    var known: Bool { level != nil || charging != nil }
+    var percent: String? { level.map { "\(Int(($0 * 100).rounded()))%" } }
+    var status: String? { charging.map { $0 ? "Charging" : "On battery" } }
 }
 
 /// The battery icon followed by the percent at its right, as the Power row ends.
@@ -44,10 +54,10 @@ struct BatteryReading: View {
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(charging ? Color.green : Color.primary, .secondary)
                 .accessibilityHidden(true)
-            Text(power.percent).monospacedDigit().foregroundStyle(.secondary)
+            Text(power.percent ?? "").monospacedDigit().foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
 
-    private var charging: Bool { power.charging }
+    private var charging: Bool { power.charging == true }
 }

@@ -85,7 +85,7 @@ struct SettingsScreen: View {
             } header: {
                 Text("History")
             } footer: {
-                Text("History stays on this iPhone and is never sent anywhere.")
+                Text("History stays on this \(deviceKind) and is never sent anywhere.")
             }
             Section {
                 Stepper(value: $typingSpeed, in: 10...200, step: 5) {
@@ -122,7 +122,7 @@ struct SettingsScreen: View {
         .onChange(of: keepDays) { _, days in Task { await history.prune(keepingDays: days) } }
         .confirmationDialog("Clear all history?", isPresented: $clearing, titleVisibility: .visible) {
             Button("Clear History", role: .destructive) { Task { await history.clear() } }
-        } message: { Text("Every dictation is removed from this iPhone. This cannot be undone.") }
+        } message: { Text("Every dictation is removed from this \(deviceKind). This cannot be undone.") }
     }
 
     private var fullAccess: String {

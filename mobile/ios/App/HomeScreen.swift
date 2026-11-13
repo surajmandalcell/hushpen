@@ -56,7 +56,7 @@ struct HomeScreen: View {
                 }
                 .padding(.horizontal, 4).padding(.top, 10)
                 if history.entries.isEmpty {
-                    Text("Dictations you make with the Hushpen keyboard appear here. They stay on this iPhone.")
+                    Text("Dictations you make with the Hushpen keyboard appear here. They stay on this \(deviceKind).")
                         .font(.subheadline).foregroundStyle(.secondary).card()
                 } else {
                     ForEach(history.entries.prefix(3)) { HistoryCard(entry: $0, style: .home) }

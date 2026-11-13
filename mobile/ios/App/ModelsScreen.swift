@@ -73,7 +73,7 @@ private struct ModelCard: View {
     }
 
     private var blurb: String {
-        if system { return "Built into this iPhone" }
+        if system { return "Built into this \(deviceKind)" }
         return info?.description ?? (entry.kind == .cleanup ? "Text cleanup" : speechPurpose(entry))
     }
 

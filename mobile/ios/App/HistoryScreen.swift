@@ -31,7 +31,7 @@ struct HistoryScreen: View {
         .overlay {
             if history.loaded && history.entries.isEmpty {
                 if history.query.isEmpty {
-                    ContentUnavailableView("No dictations yet", systemImage: "clock", description: Text("Dictations you make with the Hushpen keyboard appear here. They stay on this iPhone."))
+                    ContentUnavailableView("No dictations yet", systemImage: "clock", description: Text("Dictations you make with the Hushpen keyboard appear here. They stay on this \(deviceKind)."))
                 } else {
                     ContentUnavailableView.search(text: history.query)
                 }
@@ -196,7 +196,7 @@ struct HistoryDetail: View {
             Button("Delete", role: .destructive) {
                 Task { await history.delete(entry.id); dismiss() }
             }
-        } message: { Text("It is removed from this iPhone.") }
+        } message: { Text("It is removed from this \(deviceKind).") }
         .sensoryFeedback(.success, trigger: copied) { _, now in now }
     }
 
