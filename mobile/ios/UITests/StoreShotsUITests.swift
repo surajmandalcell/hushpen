@@ -19,6 +19,8 @@ final class StoreShotsUITests: XCTestCase {
         try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
         phone.launchEnvironment["HUSHPEN_TEST_WAV"] = "documents"
         phone.launchEnvironment["HUSHPEN_TEST_MODEL"] = "ggml-base-q5_1.bin"
+        // A simulator has no battery, so the Power row would be hidden. Show the full, charging phone the status bar draws.
+        phone.launchEnvironment["HUSHPEN_TEST_BATTERY"] = "100,charging"
     }
 
     func test1EnableKeyboard() {
@@ -86,9 +88,6 @@ final class StoreShotsUITests: XCTestCase {
         expectation(for: inserted, evaluatedWith: field)
         waitForExpectations(timeout: 30)
         sleep(1)
-        // The simulator's Messages can report the new text late, so the pill may show a paste notice over text that landed.
-        let dismiss = element("keyboard.dismiss", in: messages)
-        if dismiss.exists { dismiss.tap(); sleep(1) }
         shot("messages-inserted")
     }
 
