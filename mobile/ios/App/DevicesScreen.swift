@@ -1,9 +1,33 @@
 import SwiftUI
+import UIKit
+
+/// The Power row of Devices and Server mode: a title, "Charging" or "On battery", then the battery icon and percent.
+struct PowerRow: View {
+    let power: PowerModel
+
+    var body: some View {
+        LabeledContent {
+            BatteryReading(power: power)
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Power")
+                    Text(power.status).font(.subheadline).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "bolt.fill").foregroundStyle(.tint)
+            }
+        }
+        .accessibilityIdentifier("power.row")
+    }
+}
 
 struct DevicesScreen: View {
     @Bindable var model: DevicesModel
     let serve: @MainActor @Sendable (Bool) -> Void
+    let showServer: () -> Void
     @State private var forgetting: String?
+    @State private var power = PowerModel()
     @State private var enteringLink = false
     @FocusState private var linkFocused: Bool
 
@@ -20,14 +44,24 @@ struct DevicesScreen: View {
             }
             Section {
                 Toggle(isOn: Binding(get: { server.running || server.busy }, set: serve)) {
-                    RowTitle(title: "Server Mode", symbol: "dot.radiowaves.left.and.right")
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Server Mode")
+                            Text(server.running ? "Serving on port \(server.port.map(String.init) ?? "")" : server.busy ? "Starting" : "Off")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(.tint)
+                    }
                 }
                 .accessibilityIdentifier("devices.server")
-                if server.running, let port = server.port {
-                    Reading(title: "Port", symbol: "number", value: String(port))
+                PowerRow(power: power)
+                if server.running {
+                    Button(action: showServer) { Label("Show Server Screen", systemImage: "moon.stars") }
+                        .accessibilityIdentifier("devices.screen")
                 }
             } footer: {
-                Text("Keep Hushpen open and plugged in. Server mode stops when you leave the app.")
+                Text("Your computer can use this iPhone\u{2019}s models while Hushpen is open. Server mode stops when you leave the app.")
             }
             if enteringLink || !model.scannedOffer.isEmpty {
                 Section {
@@ -86,8 +120,13 @@ struct DevicesScreen: View {
             }
         }
         .navigationTitle("Devices")
+        .toolbarVisibility(.hidden, for: .tabBar)
         .refreshable { await model.refresh() }
         .task { await model.refresh() }
+        .onAppear { power.start() }
+        .onDisappear { power.stop() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in power.read() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in power.read() }
         .sheet(isPresented: $model.scannerOpen) {
             ScannerSheet(
                 scanned: { value in
