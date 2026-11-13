@@ -595,5 +595,7 @@ new decision, add it here in the same change (D-21).
 - **D-56 No usage counting.** The apps send no usage counts, install ids, or
   analytics, and no app request goes to a Hushpen-run server. The website is
   opened in a browser only, and the update check goes to github.com (D-17).
-  User numbers come only from sources outside the app, such as store
-  consoles, GitHub download counts, and site counters (D-14).
+  User numbers come only from sources outside the app, read once a week:
+  App Store Connect App Analytics and Sales and Trends (iOS), GitHub
+  release download counts (desktop, APK, host), and Cloudflare request
+  counts for the install scripts and the site (D-14).
