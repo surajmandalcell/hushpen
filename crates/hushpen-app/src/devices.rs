@@ -27,7 +27,12 @@ pub enum Request {
     /// SSH config and Tailscale machines. It never touches the pairing offer.
     Hosts,
     /// The local answer to the pairing number: Pair or Cancel.
-    Confirm(bool),
+    Confirm {
+        number: String,
+        accept: bool,
+    },
+    /// Restrict Nearby to the discovery record the person picked.
+    SelectNearby(String),
     Offer {
         host: String,
     },
@@ -408,6 +413,7 @@ impl Devices {
         cx: &mut Context<Self>,
     ) {
         self.notice = None;
+        self.focus.confirmation.set(true);
         self.pairing.apply(
             PairEvent::Confirm {
                 number,
@@ -422,20 +428,35 @@ impl Devices {
         let Pairing::Confirming { number, .. } = &self.pairing else {
             return;
         };
+        let number = number.clone();
         if accept {
-            let number = number.clone();
-            self.pairing
-                .apply(PairEvent::LocalConfirm { number }, now());
+            self.pairing.apply(
+                PairEvent::LocalConfirm {
+                    number: number.clone(),
+                },
+                now(),
+            );
         } else {
             self.show_offer();
         }
-        cx.emit(Request::Confirm(accept));
+        cx.emit(Request::Confirm { number, accept });
         cx.notify();
     }
     /// A try ended without a new device: the offer stays up with the tries that remain.
-    pub fn attempt_failed(&mut self, message: String, tries_left: u8, cx: &mut Context<Self>) {
+    pub fn attempt_failed(
+        &mut self,
+        message: String,
+        tries_left: u8,
+        number: Option<&str>,
+        cx: &mut Context<Self>,
+    ) {
+        self.tries_left = self.tries_left.min(tries_left);
+        if matches!(&self.pairing, Pairing::Confirming { number: current, .. } if number != Some(current.as_str()))
+        {
+            cx.notify();
+            return;
+        }
         self.show_offer();
-        self.tries_left = tries_left;
         self.notice = Some(message);
         cx.notify();
     }

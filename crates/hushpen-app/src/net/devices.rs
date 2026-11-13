@@ -10,21 +10,40 @@ use hushpen_core::remote::{
 use hushpen_remote::discovery::{Advertisement, Discovery, FoundDevice};
 use hushpen_remote::{Identity, PairOffer, RemoteStream};
 use hushpen_store::settings::{RemoteDevice, Transport};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io;
-use std::net::TcpListener;
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// How long one pairing connection may take, including the time to compare two numbers.
+/// The protocol caps pre-authentication at five seconds; only comparison gets this long.
 const PAIR_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_PAIR_CONNECTIONS: usize = 4;
 
-/// The sender that carries Pair (`true`) or Cancel (`false`) to the connection that waits for it.
-type Decision = Mutex<Option<mpsc::Sender<bool>>>;
+#[derive(Default)]
+struct Pairing {
+    selected: Mutex<Option<String>>,
+    decision: Mutex<Option<(String, mpsc::Sender<bool>)>>,
+    /// One number owns the prompt until both sides have answered.
+    comparing: Mutex<()>,
+}
+
+impl Pairing {
+    fn answer(&self, number: &str, accept: bool) {
+        let mut pending = self.decision.lock().unwrap_or_else(|e| e.into_inner());
+        if pending
+            .as_ref()
+            .is_some_and(|(current, _)| current == number)
+            && let Some((_, sender)) = pending.take()
+        {
+            let _ = sender.send(accept);
+        }
+    }
+}
 
 enum Update {
     Found(Vec<FoundDevice>),
@@ -44,6 +63,7 @@ enum Update {
     Attempt {
         message: String,
         tries: u8,
+        number: Option<String>,
     },
     Expired,
     Progress(String),
@@ -58,20 +78,24 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
     // stops it.
     let cancel = Rc::new(RefCell::new(Arc::new(AtomicBool::new(false))));
     let lookup = Rc::new(RefCell::new(Arc::new(AtomicBool::new(false))));
-    let decision: Arc<Decision> = Arc::default();
+    let decision: Arc<Pairing> = Arc::default();
     cx.subscribe(devices, move |devices, request: &Request, cx| {
         if matches!(request, Request::CancelOffer) {
             cancel.borrow().store(true, Ordering::Release);
             return;
         }
-        if let Request::Confirm(accept) = request {
-            let sender = decision.lock().unwrap_or_else(|e| e.into_inner()).take();
-            if let Some(sender) = sender {
-                let _ = sender.send(*accept);
-            }
+        if let Request::Confirm { number, accept } = request {
+            decision.answer(number, *accept);
+            return;
+        }
+        if let Request::SelectNearby(id) = request {
+            *decision.selected.lock().unwrap_or_else(|e| e.into_inner()) = Some(id.clone());
             return;
         }
         let side = matches!(request, Request::Discover | Request::Hosts);
+        if !side {
+            *decision.selected.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
         let cancel = if side { &lookup } else { &cancel };
         cancel.borrow().store(true, Ordering::Release);
         let stopped = Arc::new(AtomicBool::new(false));
@@ -147,9 +171,11 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
                         Update::Confirming { number, name } => {
                             view.set_confirming(number, name, cx)
                         }
-                        Update::Attempt { message, tries } => {
-                            view.attempt_failed(message, tries, cx)
-                        }
+                        Update::Attempt {
+                            message,
+                            tries,
+                            number,
+                        } => view.attempt_failed(message, tries, number.as_deref(), cx),
                         Update::Expired => view.expired(cx),
                         Update::Progress(step) => {
                             progress.push(step);
@@ -186,12 +212,12 @@ fn run(
     devices: Vec<RemoteDevice>,
     router: Arc<remote_jobs::Router>,
     secrets: &hushpen_store::secrets::Secrets,
-    decision: &Decision,
+    decision: &Pairing,
     stopped: &AtomicBool,
     sender: &SyncSender<Update>,
 ) -> io::Result<()> {
     match request {
-        Request::Confirm(_) | Request::CancelOffer => Ok(()),
+        Request::Confirm { .. } | Request::SelectNearby(_) | Request::CancelOffer => Ok(()),
         Request::Hosts => {
             let config = std::env::var_os("HOME")
                 .map(std::path::PathBuf::from)
@@ -334,12 +360,10 @@ fn offer(
     identity: &Identity,
     host: String,
     secrets: &hushpen_store::secrets::Secrets,
-    decision: &Decision,
+    decision: &Pairing,
     stopped: &AtomicBool,
     sender: &SyncSender<Update>,
 ) -> io::Result<()> {
-    let (decide, decided) = mpsc::channel();
-    *decision.lock().unwrap_or_else(|e| e.into_inner()) = Some(decide);
     let listener = TcpListener::bind("0.0.0.0:0")?;
     listener.set_nonblocking(true)?;
     let id = key_id(&identity.public())[..32].to_owned();
@@ -398,7 +422,24 @@ fn offer(
             window.close();
         });
         let result = (|| {
+            let mut connections: Vec<
+                std::thread::ScopedJoinHandle<'_, io::Result<Option<RemoteDevice>>>,
+            > = Vec::new();
             while Instant::now() < deadline && !stopped.load(Ordering::Acquire) {
+                for index in (0..connections.len()).rev() {
+                    if connections[index].is_finished() {
+                        let result = connections
+                            .swap_remove(index)
+                            .join()
+                            .map_err(|_| io::Error::other("Pairing stopped unexpectedly."))??;
+                        if let Some(device) = result {
+                            return send(sender, Update::Paired(device));
+                        }
+                    }
+                }
+                if connections.is_empty() && offer.tries_left() == 0 {
+                    return Err(io::Error::other("Too many tries. Show a new code."));
+                }
                 let (socket, peer) = match listener.accept() {
                     Ok(pair) => pair,
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
@@ -407,93 +448,16 @@ fn offer(
                     }
                     Err(error) => return Err(error),
                 };
-                // An answer left over from an earlier connection never counts.
-                while decided.try_recv().is_ok() {}
-                let tries_before = offer.tries_left();
-                let compared = Cell::new(false);
-                let mut session = match RemoteStream::accept_pairing_with(
-                    socket,
-                    identity,
-                    &[],
-                    Some(&mut offer),
-                    PAIR_TIMEOUT,
-                    |number, name| {
-                        compared.set(true);
-                        send(
-                            sender,
-                            Update::Confirming {
-                                number: number.to_owned(),
-                                name: name.to_owned(),
-                            },
-                        )?;
-                        loop {
-                            match decided.recv_timeout(Duration::from_millis(50)) {
-                                Ok(accept) => return Ok(accept),
-                                Err(mpsc::RecvTimeoutError::Timeout)
-                                    if Instant::now() < deadline
-                                        && !stopped.load(Ordering::Acquire) => {}
-                                Err(_) => return Ok(false),
-                            }
-                        }
-                    },
-                    |key| {
-                        let mut pins = secrets.paired_clients();
-                        if !pins.contains(&key) {
-                            pins.push(key);
-                        }
-                        secrets.set_paired_clients(&pins).map_err(io::Error::other)
-                    },
-                ) {
-                    Ok(session) => session,
-                    Err(_) => {
-                        let tries = offer.tries_left();
-                        if stopped.load(Ordering::Acquire) {
-                            continue;
-                        }
-                        if tries == 0 {
-                            return Err(io::Error::other("Too many tries. Show a new code."));
-                        }
-                        // A connection that used no try says nothing.
-                        if compared.get() || tries < tries_before {
-                            let message = if compared.get() {
-                                "Pairing was cancelled or the numbers did not match.".to_owned()
-                            } else {
-                                "That code did not match.".to_owned()
-                            };
-                            send(sender, Update::Attempt { message, tries })?;
-                        }
-                        continue;
-                    }
-                };
-                let control = session.stream.control();
-                let watchdog_stop = Arc::new(AtomicBool::new(false));
-                let watch = Arc::clone(&watchdog_stop);
-                let watchdog = std::thread::spawn(move || {
-                    let deadline = Instant::now() + Duration::from_secs(3);
-                    while Instant::now() < deadline && !watch.load(Ordering::Acquire) {
-                        std::thread::sleep(Duration::from_millis(25));
-                    }
-                    if !watch.load(Ordering::Acquire) {
-                        let _ = control.shutdown();
-                    }
-                });
-                let enrollment = hushpen_remote::enrollment::Enrollment::receive(
-                    &mut session.stream,
-                    &session.peer_key,
-                );
-                watchdog_stop.store(true, Ordering::Release);
-                let _ = watchdog.join();
-                let enrollment = enrollment?;
-                let address = enrollment.address(peer.ip());
-                return send(
-                    sender,
-                    Update::Paired(paired(
-                        enrollment.device,
-                        address,
-                        session.peer_key,
-                        Transport::Lan,
-                    )),
-                );
+                if connections.len() == MAX_PAIR_CONNECTIONS {
+                    drop(socket);
+                    continue;
+                }
+                let mut offer = offer.clone();
+                connections.push(scope.spawn(move || {
+                    pair_connection(
+                        socket, peer, identity, &mut offer, secrets, decision, stopped, sender,
+                    )
+                }));
             }
             if stopped.load(Ordering::Acquire) {
                 Ok(())
@@ -501,10 +465,134 @@ fn offer(
                 send(sender, Update::Expired)
             }
         })();
+        drop(listener);
         finished.store(true, Ordering::Release);
         window.close();
         result
     })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the parts of one pairing connection"
+)]
+fn pair_connection(
+    socket: TcpStream,
+    peer: SocketAddr,
+    identity: &Identity,
+    offer: &mut PairOffer,
+    secrets: &hushpen_store::secrets::Secrets,
+    pairing: &Pairing,
+    stopped: &AtomicBool,
+    sender: &SyncSender<Update>,
+) -> io::Result<Option<RemoteDevice>> {
+    let window = offer.window();
+    let tries_before = offer.tries_left();
+    let mut compared = None;
+    let mut comparison = None;
+    let result = RemoteStream::accept_pairing_peer_with(
+        socket,
+        identity,
+        &[],
+        Some(offer),
+        PAIR_TIMEOUT,
+        |number, name, key| {
+            let selected = pairing.selected.lock().unwrap_or_else(|e| e.into_inner());
+            if selected.as_ref().is_some_and(|id| *id != key_id(key)) {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "A different device connected.",
+                ));
+            }
+            let Ok(guard) = pairing.comparing.try_lock() else {
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "A number is already being compared.",
+                ));
+            };
+            drop(selected);
+            comparison = Some(guard);
+            compared = Some(number.to_owned());
+            let (decide, decided) = mpsc::channel();
+            *pairing.decision.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some((number.to_owned(), decide));
+            send(
+                sender,
+                Update::Confirming {
+                    number: number.to_owned(),
+                    name: name.to_owned(),
+                },
+            )?;
+            let deadline = Instant::now() + PAIR_TIMEOUT;
+            loop {
+                match decided.recv_timeout(Duration::from_millis(50)) {
+                    Ok(accept) => return Ok(accept),
+                    Err(mpsc::RecvTimeoutError::Timeout)
+                        if Instant::now() < deadline
+                            && window.is_open()
+                            && !stopped.load(Ordering::Acquire) => {}
+                    Err(_) => return Ok(false),
+                }
+            }
+        },
+        |key| {
+            let mut pins = secrets.paired_clients();
+            if !pins.contains(&key) {
+                pins.push(key);
+            }
+            secrets.set_paired_clients(&pins).map_err(io::Error::other)
+        },
+    );
+    if comparison.is_some() {
+        *pairing.decision.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+    let mut session = match result {
+        Ok(session) => session,
+        Err(_) => {
+            let tries = offer.tries_left();
+            if !stopped.load(Ordering::Acquire) && (compared.is_some() || tries < tries_before) {
+                let message = if compared.is_some() {
+                    "Pairing was cancelled or the numbers did not match."
+                } else {
+                    "Pairing did not finish. Try again."
+                }
+                .to_owned();
+                send(
+                    sender,
+                    Update::Attempt {
+                        message,
+                        tries,
+                        number: compared,
+                    },
+                )?;
+            }
+            return Ok(None);
+        }
+    };
+    let control = session.stream.control();
+    let watchdog_stop = Arc::new(AtomicBool::new(false));
+    let watch = Arc::clone(&watchdog_stop);
+    let watchdog = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline && !watch.load(Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if !watch.load(Ordering::Acquire) {
+            let _ = control.shutdown();
+        }
+    });
+    let enrollment =
+        hushpen_remote::enrollment::Enrollment::receive(&mut session.stream, &session.peer_key);
+    watchdog_stop.store(true, Ordering::Release);
+    let _ = watchdog.join();
+    let enrollment = enrollment?;
+    let address = enrollment.address(peer.ip());
+    Ok(Some(paired(
+        enrollment.device,
+        address,
+        session.peer_key,
+        Transport::Lan,
+    )))
 }
 
 fn computer_name() -> io::Result<String> {
@@ -539,6 +627,191 @@ fn key_id(key: &[u8; 32]) -> String {
 mod tests {
     use super::*;
     use hushpen_remote::enrollment::Enrollment;
+
+    struct Listening {
+        _directory: tempfile::TempDir,
+        secrets: Arc<hushpen_store::secrets::Secrets>,
+        pairing: Arc<Pairing>,
+        stopped: Arc<AtomicBool>,
+        updates: mpsc::Receiver<Update>,
+        worker: Option<std::thread::JoinHandle<io::Result<()>>>,
+        qr: hushpen_remote::QrPayload,
+    }
+
+    impl Listening {
+        fn start() -> Self {
+            let directory = tempfile::tempdir().unwrap();
+            let secrets =
+                Arc::new(hushpen_store::secrets::Secrets::open(directory.path()).unwrap());
+            let pairing = Arc::new(Pairing::default());
+            let stopped = Arc::new(AtomicBool::new(false));
+            let (sender, updates) = mpsc::sync_channel(32);
+            let (pins, decisions, stop) = (
+                Arc::clone(&secrets),
+                Arc::clone(&pairing),
+                Arc::clone(&stopped),
+            );
+            let worker = std::thread::spawn(move || {
+                offer(
+                    &Identity::generate().unwrap(),
+                    "127.0.0.1".into(),
+                    &pins,
+                    &decisions,
+                    &stop,
+                    &sender,
+                )
+            });
+            let Update::Offer { payload, .. } =
+                updates.recv_timeout(Duration::from_secs(5)).unwrap()
+            else {
+                panic!("offer expected")
+            };
+            Self {
+                _directory: directory,
+                secrets,
+                pairing,
+                stopped,
+                updates,
+                worker: Some(worker),
+                qr: hushpen_remote::QrPayload::parse(&payload).unwrap(),
+            }
+        }
+
+        fn address(&self) -> String {
+            format!("127.0.0.1:{}", self.qr.port)
+        }
+
+        fn next(&self) -> Update {
+            self.updates.recv_timeout(Duration::from_secs(5)).unwrap()
+        }
+
+        fn nearby(
+            &self,
+            phone: Identity,
+            approve: bool,
+        ) -> std::thread::JoinHandle<io::Result<()>> {
+            let address = self.address();
+            std::thread::spawn(move || {
+                let mut session = RemoteStream::connect_nearby_named(
+                    address,
+                    &phone,
+                    "Actual phone name",
+                    Duration::from_secs(3),
+                    &hushpen_remote::Resolver::default(),
+                    |_, _| Ok(approve),
+                )?;
+                enroll(&mut session.stream)
+            })
+        }
+    }
+
+    impl Drop for Listening {
+        fn drop(&mut self) {
+            self.stopped.store(true, Ordering::Release);
+            if let Some(worker) = self.worker.take() {
+                worker.join().unwrap().unwrap();
+            }
+        }
+    }
+
+    fn enroll(stream: &mut RemoteStream) -> io::Result<()> {
+        Enrollment {
+            device: Device {
+                id: "ignored".into(),
+                name: "Actual phone name".into(),
+                kind: DeviceKind::Phone,
+                os: Os::Ios,
+                serves: Serves::default(),
+            },
+            port: 47321,
+        }
+        .send(stream)
+    }
+
+    #[test]
+    fn wrong_nearby_key_is_rejected_and_the_selected_peer_can_still_pair() {
+        let listening = Listening::start();
+        let phone = Identity::generate().unwrap();
+        let key = phone.public();
+        *listening.pairing.selected.lock().unwrap() = Some(key_id(&key));
+        assert!(
+            listening
+                .nearby(Identity::generate().unwrap(), true)
+                .join()
+                .unwrap()
+                .is_err()
+        );
+        assert!(listening.secrets.paired_clients().is_empty());
+        assert!(matches!(
+            listening.updates.try_recv(),
+            Err(TryRecvError::Empty)
+        ));
+        let honest = listening.nearby(phone, true);
+        let Update::Confirming { number, name } = listening.next() else {
+            panic!("confirmation expected")
+        };
+        assert_eq!(name, "Actual phone name");
+        listening.pairing.answer(&number, true);
+        honest.join().unwrap().unwrap();
+        let Update::Paired(device) = listening.next() else {
+            panic!("paired device expected")
+        };
+        assert_eq!(device.static_public_key, key);
+        assert_eq!(listening.secrets.paired_clients(), [key]);
+    }
+
+    #[test]
+    fn stalled_preauth_socket_does_not_block_an_honest_qr_peer() {
+        let listening = Listening::start();
+        let _stalled = TcpStream::connect(listening.address()).unwrap();
+        let started = Instant::now();
+        let mut session = RemoteStream::connect_qr(
+            listening.address(),
+            &Identity::generate().unwrap(),
+            &listening.qr,
+            Duration::from_secs(3),
+            &hushpen_remote::Resolver::default(),
+        )
+        .unwrap();
+        enroll(&mut session.stream).unwrap();
+        assert!(matches!(listening.next(), Update::Paired(_)));
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn nearby_cancellation_leaves_the_code_tries_unchanged() {
+        let listening = Listening::start();
+        for _ in 0..4 {
+            let peer = listening.nearby(Identity::generate().unwrap(), true);
+            let Update::Confirming { number, .. } = listening.next() else {
+                panic!("confirmation expected")
+            };
+            listening.pairing.answer(&number, false);
+            assert!(peer.join().unwrap().is_err());
+            assert!(matches!(listening.next(), Update::Attempt { tries: 3, .. }));
+        }
+        let mut session = RemoteStream::connect_qr(
+            listening.address(),
+            &Identity::generate().unwrap(),
+            &listening.qr,
+            Duration::from_secs(3),
+            &hushpen_remote::Resolver::default(),
+        )
+        .unwrap();
+        enroll(&mut session.stream).unwrap();
+        assert!(matches!(listening.next(), Update::Paired(_)));
+    }
+
+    #[test]
+    fn stale_number_cannot_approve_a_later_connection() {
+        let pairing = Pairing::default();
+        let (sender, receiver) = mpsc::channel();
+        *pairing.decision.lock().unwrap() = Some(("123456".into(), sender));
+        pairing.answer("654321", true);
+        assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+        pairing.answer("123456", true);
+        assert!(receiver.recv().unwrap());
+    }
 
     #[test]
     fn ssh_pairing_uses_the_configured_hostname_or_the_original_offer() {
@@ -648,7 +921,7 @@ mod tests {
                 &desktop,
                 "127.0.0.1".into(),
                 &worker_secrets,
-                &Decision::default(),
+                &Pairing::default(),
                 &AtomicBool::new(false),
                 &sender,
             )
@@ -729,7 +1002,7 @@ mod tests {
                 &identity,
                 String::new(),
                 &secrets,
-                &Decision::default(),
+                &Pairing::default(),
                 &stop,
                 &sender,
             )
@@ -741,8 +1014,11 @@ mod tests {
         let parsed = hushpen_remote::QrPayload::parse(&payload).unwrap();
         assert!(parsed.host.split('.').all(|label| label.len() <= 63));
         let port = parsed.port;
+        let _stalled = TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).unwrap();
+        let started = Instant::now();
         cancelled.store(true, Ordering::Release);
         worker.join().unwrap().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(1));
         assert!(std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).is_err());
     }
 }

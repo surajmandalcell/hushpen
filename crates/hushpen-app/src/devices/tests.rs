@@ -187,7 +187,7 @@ fn the_number_needs_pair_here_and_cancel_shows_the_offer_again(cx: &mut TestAppC
         state.set_confirming("111222".into(), "MacBook Pro".into(), cx);
         state.confirm(false, cx);
         assert!(matches!(state.pairing, Pairing::Offered { .. }));
-        state.attempt_failed("That code did not match.".into(), 2, cx);
+        state.attempt_failed("That code did not match.".into(), 2, None, cx);
         assert_eq!(state.tries_left, 2);
         state.expired(cx);
         assert_eq!(state.pairing, Pairing::Failed(PairFailure::Expired));
@@ -279,6 +279,115 @@ fn details(cx: &mut TestAppContext, view: &Screen, id: &str) {
     })
     .unwrap();
     frame(cx, view);
+}
+
+#[gpui_kit::test]
+fn enter_on_the_initial_sheet_focus_never_approves_pairing(cx: &mut TestAppContext) {
+    let view = screen(cx, &[]);
+    view.devices.update(cx, |state, cx| {
+        state.open_add(cx);
+        state.set_offer(
+            "payload".into(),
+            vec![vec![true]],
+            "12345678".into(),
+            now() + 60,
+            cx,
+        );
+    });
+    frame(cx, &view);
+    let answers = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let received = Rc::clone(&answers);
+    cx.update(|cx| {
+        cx.subscribe(&view.devices, move |_, request, _| {
+            if let Request::Confirm { accept, .. } = request {
+                received.borrow_mut().push(*accept);
+            }
+        })
+        .detach()
+    });
+    view.devices.update(cx, |state, cx| {
+        state.set_confirming("482913".into(), "Actual phone".into(), cx)
+    });
+    frame(cx, &view);
+    cx.update_window(view.handle, |_, window, cx| {
+        assert_eq!(window.find("devices.pair").focused(), Some(false));
+        window.press("enter", cx);
+    })
+    .unwrap();
+    frame(cx, &view);
+    assert!(!answers.borrow().contains(&true));
+    assert!(view.devices.read_with(cx, |state, _| !matches!(
+        state.pairing,
+        Pairing::Confirming {
+            local_confirmed: true,
+            ..
+        }
+    )));
+}
+
+#[gpui_kit::test]
+fn a_new_number_drops_the_previous_pair_button_focus(cx: &mut TestAppContext) {
+    let view = screen(cx, &[]);
+    view.devices.update(cx, |state, cx| {
+        state.open_add(cx);
+        state.set_offer(
+            "payload".into(),
+            vec![vec![true]],
+            "12345678".into(),
+            now() + 60,
+            cx,
+        );
+        state.set_confirming("482913".into(), "Actual phone".into(), cx);
+    });
+    frame(cx, &view);
+    cx.update_window(view.handle, |_, window, cx| {
+        let pair = view.devices.read(cx).focus.get("pair", cx);
+        window.focus(&pair, cx);
+    })
+    .unwrap();
+    frame(cx, &view);
+    cx.update_window(view.handle, |_, window, _| {
+        assert_eq!(window.find("devices.pair").focused(), Some(true))
+    })
+    .unwrap();
+    view.devices.update(cx, |state, cx| {
+        state.attempt_failed("Cancelled".into(), 3, Some("482913"), cx);
+        state.set_confirming("482913".into(), "Actual phone".into(), cx);
+    });
+    frame(cx, &view);
+    cx.update_window(view.handle, |_, window, cx| {
+        assert_eq!(window.find("devices.pair").focused(), Some(false));
+        window.press("enter", cx);
+    })
+    .unwrap();
+    frame(cx, &view);
+    assert!(view.devices.read_with(cx, |state, _| !matches!(
+        state.pairing,
+        Pairing::Confirming {
+            local_confirmed: true,
+            ..
+        }
+    )));
+}
+
+#[gpui_kit::test]
+fn a_code_failure_does_not_replace_the_active_number(cx: &mut TestAppContext) {
+    let (_dir, _storage, devices) = rig(cx);
+    devices.update(cx, |state, cx| {
+        state.set_offer(
+            "payload".into(),
+            vec![vec![true]],
+            "12345678".into(),
+            now() + 60,
+            cx,
+        );
+        state.set_confirming("482913".into(), "Actual phone".into(), cx);
+        state.attempt_failed("That code did not match.".into(), 2, None, cx);
+        assert_eq!(state.tries_left, 2);
+        state.attempt_failed("Pairing did not finish.".into(), 3, None, cx);
+        assert_eq!(state.tries_left, 2);
+        assert!(matches!(&state.pairing, Pairing::Confirming { number, .. } if number == "482913"));
+    });
 }
 
 #[gpui_kit::test]
