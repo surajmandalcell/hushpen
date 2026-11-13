@@ -5,38 +5,89 @@ struct DictationScreen: View {
     let model: DictationModel
     let close: () -> Void
     @State private var startedAt: Date?
+    @ScaledMetric(relativeTo: .title) private var headlineSize = 30
 
     private static let orange = Color(red: 1, green: 0.624, blue: 0.039)
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 18) {
-                    hero.padding(.top, 56)
-                    Text(title)
-                        .font(.title2.weight(.semibold))
-                        .accessibilityIdentifier("dictation.state")
-                    subtitle
-                    if model.state == "listening" { goBack.padding(.top, 14) }
-                    if !model.result.isEmpty { result.padding(.top, 6) }
-                    if !model.notice.isEmpty {
-                        Text(model.notice)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .accessibilityIdentifier("dictation.notice")
+            if model.state == "listening" {
+                handOff
+            } else {
+                ScrollView {
+                    VStack(spacing: 18) {
+                        hero.padding(.top, 56)
+                        Text(title)
+                            .font(.title2.weight(.semibold))
+                            .accessibilityIdentifier("dictation.state")
+                        subtitle
+                        if !model.result.isEmpty { result.padding(.top, 6) }
+                        notice
                     }
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: 520)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 24)
-                .frame(maxWidth: 520)
-                .frame(maxWidth: .infinity)
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .scrollBounceBehavior(.basedOnSize)
             controls.padding(.vertical, 20)
         }
         .background(Color(.systemBackground))
+        .overlay {
+            if model.state == "listening" {
+                // The insets read zero once a view ignores the safe area, so read them one level up.
+                GeometryReader { proxy in
+                    BackLinkHint(top: proxy.safeAreaInsets.top, width: proxy.size.width)
+                        .ignoresSafeArea()
+                }
+                .allowsHitTesting(false)
+            }
+        }
         .onChange(of: model.state) { _, state in if state == "listening" { startedAt = .now } }
         .onAppear { if model.state == "listening" && startedAt == nil { startedAt = .now } }
+    }
+
+    /// The page the keyboard opens to: how to swipe back, then the recording itself.
+    private var handOff: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 6) {
+                Text("Swipe right to go back")
+                    .font(.system(size: headlineSize, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("dictation.hint")
+                Text("Then start talking.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 40)
+            .padding(.horizontal, 24)
+            SwipeDemo()
+                .frame(maxWidth: 420, maxHeight: .infinity)
+                .padding(.vertical, 20)
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    WaveGlyph(size: 18, style: .listening).foregroundStyle(.tint)
+                    Text(title).font(.headline)
+                    Text(timerInterval: (startedAt ?? .now)...Date.distantFuture, pauseTime: nil, countsDown: false, showsHours: false)
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(Self.orange)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("dictation.state")
+                notice
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    @ViewBuilder private var notice: some View {
+        if !model.notice.isEmpty {
+            Text(model.notice)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("dictation.notice")
+        }
     }
 
     private var title: String {
@@ -52,7 +103,6 @@ struct DictationScreen: View {
 
     @ViewBuilder private var hero: some View {
         switch model.state {
-        case "listening": WaveGlyph(size: 96, style: .listening).foregroundStyle(.tint)
         case "transcribing", "cleaning": WaveGlyph(size: 96, style: .working).foregroundStyle(.tint)
         case "done":
             Image(systemName: "checkmark.circle.fill").font(.system(size: 80)).foregroundStyle(.green).accessibilityHidden(true)
@@ -68,35 +118,12 @@ struct DictationScreen: View {
 
     @ViewBuilder private var subtitle: some View {
         switch model.state {
-        case "listening":
-            Text(timerInterval: (startedAt ?? .now)...Date.distantFuture, pauseTime: nil, countsDown: false, showsHours: false)
-                .font(.title3.monospacedDigit())
-                .foregroundStyle(Self.orange)
         case "transcribing": Text("Turning your speech into text on this iPhone.").subtitleStyle()
         case "cleaning": Text("Polishing the text.").subtitleStyle()
         case "done": Text("Your text is ready.").subtitleStyle()
         case "cancelled": Text("Recover to transcribe what you said.").subtitleStyle()
         default: Text("Start again from the Hushpen keyboard.").subtitleStyle()
         }
-    }
-
-    private var goBack: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "arrow.left").font(.title3).foregroundStyle(.tint).padding(.top, 1)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Go back and keep talking").font(.headline)
-                Text("Hushpen listens in the background and shows in the Dynamic Island. Tap the check mark in the keyboard to insert.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text("Swipe right on the bar at the bottom to go back.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
     private var result: some View {
