@@ -97,15 +97,18 @@ final class FlowUITests: XCTestCase {
         editor.activate()
         XCTAssertTrue(element("keyboard.finish", in: editor).waitForExistence(timeout: 10))
         attach(editor, name: "Listening", keep: true)
+        // Shift is armed first so the letter follows the finish tap at once, while the app still transcribes.
+        element("keyboard.shift", in: editor).tap()
         element("keyboard.finish", in: editor).tap()
-        attach(editor, name: "Transcribing", keep: true)
-        for letter in ["z", "q"] {
-            element("keyboard.shift", in: editor).tap()
-            element("keyboard.key.\(letter)", in: editor).tap()
-        }
+        element("keyboard.key.z", in: editor).tap()
+        // Typing must not end the pill: it still says Transcribing with the letter in the field.
+        let status = element("keyboard.status", in: editor)
+        attach(editor, name: "Typed while transcribing", keep: true)
+        XCTAssertEqual(status.label, "Transcribing")
+        element("keyboard.shift", in: editor).tap()
+        element("keyboard.key.q", in: editor).tap()
         let field = editor.textFields["editor.first"]
         waitForInsertion(in: field)
-        attach(editor, name: "Typed while transcribing", keep: true)
         // The dictation holds no capital Z or Q, so both stay, wherever the cursor was when it arrived.
         let value = field.value as? String ?? ""
         XCTAssertTrue(value.contains("Z") && value.contains("Q"), value)
