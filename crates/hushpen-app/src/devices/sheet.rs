@@ -40,9 +40,10 @@ pub fn render(devices: &Entity<Devices>, window: &mut Window, cx: &mut App) -> O
         cx,
     );
     let trap = devices.read(cx).focus.trap(cx);
-    // Done takes the focus once, on the first frame of the sheet.
+    let new_comparison = devices.read(cx).focus.confirmation.replace(false);
+    // Each new number starts on Cancel, even if Pair had focus on an earlier try.
     let opened = window.use_keyed_state(hook::id("devices", "sheet.opened"), cx, |_, _| false);
-    if !*opened.read(cx) {
+    if !*opened.read(cx) || new_comparison {
         opened.update(cx, |opened, _| *opened = true);
         let done = devices.read(cx).focus.get(focus::DONE, cx);
         window.defer(cx, move |window, cx| window.focus(&done, cx));

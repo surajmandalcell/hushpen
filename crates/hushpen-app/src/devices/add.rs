@@ -145,6 +145,7 @@ fn nearby(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyEleme
                     move |_, cx| {
                         devices.update(cx, |state, cx| {
                             state.selected_device = Some(device.clone());
+                            cx.emit(Request::SelectNearby(device.id.clone()));
                             cx.notify();
                         })
                     },
@@ -341,6 +342,7 @@ fn compare(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyElem
     let state = devices.read(cx);
     let Pairing::Confirming {
         number,
+        computer_name,
         local_confirmed,
         ..
     } = &state.pairing
@@ -352,10 +354,6 @@ fn compare(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyElem
     } else {
         number.clone()
     };
-    let name = state
-        .selected_device
-        .as_ref()
-        .map_or_else(|| "Phone".to_owned(), |device| device.name.clone());
     let detail = if *local_confirmed {
         "Waiting for you to tap Pair on the phone"
     } else {
@@ -366,7 +364,7 @@ fn compare(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyElem
         palette,
         "add.pairing",
         IconName::Smartphone,
-        name,
+        computer_name.clone(),
         detail,
         ui::value(palette).child("Pairing…").into_any_element(),
     );
@@ -403,7 +401,7 @@ fn cancel(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
         hook::id("devices", "cancelPairing"),
         "Cancel",
         Kind::Plain,
-        Some(&state.focus.get("cancelPairing", cx)),
+        Some(&state.focus.get(focus::DONE, cx)),
         true,
         move |_, cx| devices.update(cx, |state, cx| state.confirm(false, cx)),
     )
@@ -426,7 +424,7 @@ fn pair(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
         hook::id("devices", "pair"),
         "Pair",
         Kind::Default,
-        Some(&state.focus.get(focus::DONE, cx)),
+        Some(&state.focus.get("pair", cx)),
         !waiting,
         move |_, cx| devices.update(cx, |state, cx| state.confirm(true, cx)),
     )

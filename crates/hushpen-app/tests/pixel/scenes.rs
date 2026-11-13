@@ -666,14 +666,14 @@ fn stage_add_sheet(
                 AddShot::Nearby | AddShot::Fallback => {}
                 AddShot::Confirm => {
                     devices.selected_device = Some(selected);
-                    devices.set_confirming("482913".into(), "MacBook Pro".into(), cx);
+                    devices.set_confirming("482913".into(), "Galaxy S25 Ultra".into(), cx);
                 }
                 AddShot::Remote => {
                     devices.set_hosts(machines, cx);
                     devices.select_method(AddMethod::Remote, cx);
                 }
                 AddShot::WrongCode => {
-                    devices.attempt_failed("That code did not match.".into(), 2, cx)
+                    devices.attempt_failed("That code did not match.".into(), 2, None, cx)
                 }
                 AddShot::Expired => devices.expired(cx),
             }

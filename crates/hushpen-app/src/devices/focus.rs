@@ -3,7 +3,7 @@
 //! `speech.<id>.up`.
 
 use gpui_kit::{App, FocusHandle};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 /// The open sheet itself, which keeps Tab inside it. It is no tab stop of its own.
@@ -16,6 +16,7 @@ pub const ADD: &str = "add";
 #[derive(Default)]
 pub struct Focus {
     handles: RefCell<HashMap<String, FocusHandle>>,
+    pub(super) confirmation: Cell<bool>,
     /// The key of the control that opened the sheet.
     opener: RefCell<Option<String>>,
 }

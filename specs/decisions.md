@@ -557,34 +557,35 @@ new decision, add it here in the same change (D-21).
   counts for the install scripts and the site (D-14).
 
 - **D-57 Add a Device pairing.** `DESIGN.md` owns the Nearby | Remote sheet.
-  Nearby uses mDNS, not trust. Both peers commit before either reveals
-  fresh randomness. Verify commitments before deriving the same 6-digit
-  **pairing number** on both screens; require Pair on both before saving trust.
-  Cancel or mismatch discards the session; retries use fresh commitments.
+  mDNS is discovery only. Both peers commit before revealing fresh randomness.
+  Verify commitments, then derive the same 6-digit **pairing number**;
+  require Pair on both screens before saving trust. Cancel/mismatch discards
+  the session; retries use fresh commitments.
   Under the list, always show a QR pinning the computer's key and an 8-digit
   **pairing code** for a PAKE (password-authenticated key exchange).
-  Offers work once, expire in two minutes, and allow three tries across
-  connections. Never send the typed secret as a password. Bind commitments
+  Offers work once for two minutes, with three shared tries. Never send
+  the typed secret as a password. Bind commitments
   and mutual PAKE confirmation to both keys, roles, computer name, and Noise
   transcript before enrollment. Send the validated name in the protected
   handshake. Show no copyable URI or paste field.
-  Listen for pairing only while the sheet is open; closing cancels sessions
-  and invalidates offers. Paired serving is separate. Remote merges SSH and
-  installed Tailscale hosts, plus a host field; SSH carries offers (D-50).
+  The sheet alone opens pairing; closing cancels sessions and offers.
+  Desktop: at most four connections;
+  unauthenticated work has five seconds, then number comparison has 60 seconds.
+  Nearby failures do not spend QR/code tries. Show the peer's protected name;
+  match selected discovery ids to static keys. Pair has no initial focus.
+  Paired serving is separate. Remote merges SSH/Tailscale hosts and a host
+  field; SSH carries offers (D-50).
   D-54, D-55, and D-56 stay unchanged.
-  Choose RustCrypto [`spake2 = "=0.4.0"`](https://docs.rs/crate/spake2/0.4.0),
-  MIT OR Apache-2.0: stable Rust with party identity binding.
-  An isolated graph passes `deny.toml`: advisories, bans, licenses, sources.
+  Use RustCrypto [`spake2 = "=0.4.0"`](https://docs.rs/crate/spake2/0.4.0),
+  MIT OR Apache-2.0; stable Rust, party identity binding. The isolated graph
+  passes all four `deny.toml` checks.
   [Upstream](https://docs.rs/spake2/0.4.0/spake2/#security) notes no independent
   audit and no timing-attack protection; review the protocol before release.
-  Implementation plan:
-  1. `hushpen-remote`: `pairing.rs` owns commitments, PAKE, and `PairOffer`
-     limits; `stream.rs` gates trust and binds Noise; `enrollment.rs` carries
-     names. Keep Noise transport and the `lib.rs` exports.
-  2. `hushpen-core::remote`: build and deduplicate lists from supplied SSH,
-     Tailscale, and discovery facts; `pairing.rs` owns pure screen states.
-  3. `hushpen-app`: `devices` owns the sheet and listener lifetime;
-     `net/devices.rs` and `device_ssh.rs` supply network and process facts.
-  4. `hushpen-mobile` exposes shared intents through UniFFI; `mobile/ios`
-     and `mobile/android` own comparison, scan, and Type Code screens.
-     Test mismatch, replay, expiry, three tries, cancel, names, and approvals.
+  Ownership: `hushpen-remote::pairing` owns commitments, PAKE, and offer
+  limits; `stream` gates trust and binds Noise; `enrollment` carries names.
+  Keep Noise transport and `lib.rs` exports. `hushpen-core::remote` deduplicates
+  supplied SSH, Tailscale, and discovery facts; its `pairing` owns pure states.
+  Desktop `devices` owns sheet/listener lifetime; `net/devices.rs` and
+  `device_ssh.rs` supply network/process facts. `hushpen-mobile` exposes UniFFI
+  intents; iOS/Android own comparison, scan, and Type Code screens. Test
+  mismatch, replay, expiry, three tries, cancel, names, and approvals.

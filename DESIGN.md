@@ -180,7 +180,7 @@ components:
 
 ## Overview
 
-Hushpen is compact and fixed-width: private dictation, transcription, models, and playback. Open on the working app. Hide internal names.
+Hushpen is compact, fixed-width: private dictation, transcription, models, playback. Open on the working app; hide internal names.
 
 Core sets platform defaults. Windows uses Right Alt gestures, CPU, Keep in memory, Inter, and custom window controls. Only Linux offers Page out. Windows 11 build 22621+ uses Mica behind the sidebar; older builds use opaque fill. The flow bar never takes focus. Higher-privilege apps get a copy and notice.
 
@@ -188,22 +188,22 @@ Core sets platform defaults. Windows uses Right Alt gestures, CPU, Keep in memor
 
 The icon outlines a Roman statue: a young woman in profile, eyes closed, whispering into an upright fountain pen below her lips. Ink (`#1B2228`) on marble (`#F7F4EF` to `#E8E3DA`, top to bottom), without text or other colors.
 
-Each design in `assets/icons/<name>/` has `mark.svg` (full 1024 tile) and `mark-small.svg` (bold head and pen crop). `classic` ships; `sari` (braided bun, jhumka, sari pallu) and `waves` (long loose hair) are seasonal. `harness/icons.sh <name>` builds all icon files:
+Each `assets/icons/<name>/` has `mark.svg` (1024 tile) and `mark-small.svg` (bold crop). Ship `classic`; seasonal `sari` has a braided bun, jhumka, sari pallu; `waves` has long loose hair. Build with `harness/icons.sh <name>`:
 
 - `assets/hushpen-app-icon.svg` and `.png`: the drawing on an 824px squircle at 100px on the 1024 canvas (the macOS grid), with the template shadow (10px down, 30% black).
-- `assets/hushpen-app-icon.icns` and `assets/linux-icons/*.png`: 128px and up show the full drawing, 48 and 64px the bold crop, and 16 to 32px the solid head and pen of `assets/icons/mark-tiny.svg`, because finer lines turn gray there.
-- `assets/hushpen-app-icon.icon` and `assets/hushpen-app-icon.car`: the Icon Composer source and its compiled catalog, shipped as `Assets.car` with `CFBundleIconName`. macOS 26 and later draw it in the Dock and Finder, and the iOS app embeds the same `.icon` for the Home Screen. In the Dark icon style the system draws a dark tile and the lines turn light.
+- `assets/hushpen-app-icon.icns` and `assets/linux-icons/*.png`: full drawing at 128px and up, bold crop at 48/64px, solid head/pen from `assets/icons/mark-tiny.svg` at 16–32px.
+- `assets/hushpen-app-icon.icon` and `.car`: Icon Composer source/catalog. Ship `Assets.car` with `CFBundleIconName` for macOS 26+ Dock/Finder; iOS embeds the same `.icon`. Dark style uses a dark tile and light lines.
 - `assets/hushpen-app-icon-ios.png`: the same art edge to edge on 1024px, opaque and square, for the App Store and the press kit.
 - `assets/hushpen-app-icon-192.png`: About draws the tile without its margin at 96px, at 2x.
 - The menu bar and Linux tray glyphs, from `assets/hushpen-menubar.svg`.
 
 ## Appearance
 
-Views share one palette and follow system Light or Dark live; unknown appearance uses Dark. Reduce Motion follows macOS Accessibility or GNOME `enable-animations` off, read at start and once a second. Unknown motion settings allow motion.
+Views share the palette and follow system Light or Dark live; unknown uses Dark. Read macOS Accessibility or GNOME `enable-animations` at start and each second for Reduce Motion; unknown allows motion.
 
-The flow bar pill is the one exception on desktop. It stays a dark HUD (`#1F1F1F`, light text) in both appearances, because it floats over other apps. The iOS keyboard pill follows the appearance of the keyboard instead.
+The desktop flow bar stays dark (`#1F1F1F`, light text) over other apps. The iOS keyboard pill follows keyboard appearance.
 
-The menu bar shows only a solid quill rising to the top right, writing two 1.5pt waves at bottom left. `assets/hushpen-menubar.png` is a 22x16pt template at 2x, tinted by macOS for appearance and highlight. Its accessible name is "Hushpen". Linux uses the same glyph in a 32px square, black or white for its appearance.
+The menu bar shows a solid quill rising right, writing two 1.5pt waves at bottom left. `assets/hushpen-menubar.png` is a 22x16pt template at 2x, tinted for macOS appearance/highlight, named "Hushpen" for accessibility. Linux uses the glyph in a 32px square, black or white by appearance.
 
 ## Colors
 
@@ -233,21 +233,19 @@ Do not add colored icon tiles, section accents, or tinted panels.
 
 ## Typography
 
-Linux embeds Inter.
-
-Typography tokens: Title for onboarding/About; Toolbar title for chrome; Heading for Settings groups; Body for rows; Button for controls; Secondary for help and footers. Headings and secondary text use the secondary label color.
+Tokens: Title for onboarding/About; Toolbar title for chrome; Heading for Settings groups; Body for rows; Button for controls; Secondary for help/footers. Heading/Secondary use secondary label color.
 
 ## Layout
 
-The window opens at 940x600px. Only height changes: 600 to 900px, capped by screen height, saved on resize and restored inside the screen. Lists grow with it. No zoom or full screen. macOS uses a transparent full-size title bar and AppKit lights. Linux draws close and minimize (12px circles, 8px apart), without maximize. A compositor means an X11 owner of `_NET_WM_CM_S<screen>` or any Wayland session: use 10px corners, a separator hairline, opaque content, translucent sidebar, and `_KDE_NET_WM_BLUR_BEHIND_REGION` on the sidebar. Without one, use a square opaque window, solid sidebar, and rectangular flow bar; transparency renders black. Check at start and once a second; switch live.
+The window opens at 940x600px. Height alone changes from 600 to 900px, capped by screen height, saved on resize and restored inside the screen. Lists grow; no zoom or full screen. macOS uses a transparent full-size title bar and AppKit lights. Linux has close and minimize (12px circles, 8px apart), no maximize. With an X11 owner of `_NET_WM_CM_S<screen>` or Wayland, use 10px corners, a separator hairline, opaque content, translucent sidebar, and sidebar `_KDE_NET_WM_BLUR_BEHIND_REGION`. Otherwise use a square opaque window, solid sidebar, and rectangular flow bar. Check at start and each second; switch live.
 
-The 232px sidebar starts with a 48px band (`sidebar-top`) for window buttons and "Hushpen". Rows below are 28px high, 2px apart, with 8px side padding. The content title bar is 52px high.
+The 232px sidebar starts with a 48px band (`sidebar-top`) for window buttons and "Hushpen". Rows: 28px high, 2px gaps, 8px side padding. Content title bar: 52px.
 
 Window buttons, app name, and view title center 26px from the top. Both systems place 12px circles at (20, 20). After opening, macOS reads the taller native button frame and raises it by half the height difference. The name starts 16px after the last circle, in toolbar title style, truncated inside the band.
 
-The content pane has a 24px margin. Groups fill the pane width. Onboarding is one centered column, at most 640px wide.
+Content has a 24px margin and full-width groups. Onboarding centers one column up to 640px.
 
-Rows are at least 36px high with 10px side padding: title left, value or control right on the same line. One secondary line may follow the title, truncated, never wrapped. Longer help uses one 11px secondary group footer or a tooltip.
+Rows are at least 36px high with 10px side padding: title left, value or control right. One truncated secondary line may follow. Longer help uses one 11px secondary group footer or tooltip.
 
 The model step of onboarding shows the speech rows of Models, Parakeet first; a progress bar replaces the secondary line while a model downloads. Continue stays off until one speech model is downloaded. Details opens the sheet over the step. Each permission row has its icon, name, status (the word Ready, or the attention icon), and buttons on one line. On macOS the buttons are Allow (the default button), then Open Settings. The description is one short secondary line.
 
@@ -255,12 +253,12 @@ Show home-relative paths as `~/...`.
 
 ## Elevation & Depth
 
-Depth is tonal. Shadows are only for dropdowns and menus: 4px down, 12px of blur, in the shadow color.
+Depth is tonal. Only dropdowns and menus have shadows: 4px down, 12px blur, shadow color.
 
-- Hairlines (one device pixel, separator color) sit only between rows inside a group, and span the full width of the group on every page.
-- A group has a 0.5px stroke in the separator color. There is no toolbar line and no other stray border.
-- The focus ring is 2px in the accent color, inside the bounds of a button, a pop-up button, or a row. A focused text field has a 1px accent border and no glow.
-- A sheet floats centered over the scrim: 460px wide (`sheet-width`), the content color, the window radius, and a hairline edge. It has no shadow. No tooltip of the page under it shows over it. Done and Esc close it. Tab stays inside it, and closing it returns focus to the control that opened it.
+- Hairlines span each group's width between rows only: one device pixel, separator color.
+- Groups have a 0.5px separator stroke. No toolbar line or other border.
+- Buttons, pop-up buttons, and rows use an inset 2px accent focus ring. Focused fields use a 1px accent border, no glow.
+- Sheets center over the scrim: 460px (`sheet-width`), content color, window radius, hairline edge, no shadow. Underlying tooltips stay hidden. Done and Esc close; Tab stays inside; closing restores opener focus.
 
 ## Shapes
 
@@ -268,14 +266,14 @@ Use `rounded` tokens for groups, controls, selection, icons, and windows.
 
 ## Motion
 
-Motion is short and quiet, with these tokens:
+Motion tokens:
 
 - **Fast (90 ms):** tooltips, menus, and Play/Pause icon changes.
 - **Slide (110 ms):** switch knobs and segmented fills.
 - **Base (130 ms):** views, onboarding steps, and sheets.
 - **Travel (4px):** entry distance.
 
-Every animation uses one cubic ease-out curve. It never overshoots or bounces.
+All animations use cubic ease-out, without overshoot or bounce.
 
 - A tooltip fades in and rises 4px into place.
 - A pop-up menu fades in and drops 4px into place, each time it opens.
@@ -358,7 +356,7 @@ Each group of icons runs from lightest to heaviest. The focus moves in the order
 
 Devices follows flow D: separate Speech to Text and Text cleanup routes. First come "Use models on other devices" (off by default) and "Do not load models on this computer"; while the first is off, the rest fades to 35% and takes no input. Route rows hold a grip, kind icon, name, model (112px), latency (56px, tabular digits), status (100px; Ready in success, Not reachable in error), and Move up and Move down. Dragged rows show at 50% and move past each row's halfway point; release counts as the last move. This computer has no grip, says Fallback, stays last, and hides with local models off. Your devices rows open Details; Add Device… ends that heading. Details holds rename, Remove Device… (asked in a row), and core-approved unload rules.
 
-**Add a Device (D-57):** Nearby | Remote tabs. Nearby lists phones, each with Pair… (then "Waiting…"). When the phone connects, both screens show the same 6-digit pairing number after verified hash commitment, with Cancel and Pair below. Tap Pair on both. The protected handshake sends the computer's real name. Cancel or mismatch shows the QR again.
+**Add a Device (D-57):** Nearby | Remote tabs. Phones show Pair… then "Waiting…". After verified commitments, show the peer's protected name and matching 6-digit numbers. Match selected discovery records to peer keys. Cancel has initial focus; Pair requires action on both screens. Cancel/mismatch restores the QR.
 
 **Fallback:** always under the Nearby list, even when empty: a QR, white in both appearances, pins the computer's public key; "Or type the code" shows an 8-digit pairing code. The phone's Pair a Desktop scans or types (`mobile/SCREENS.md`). Offers work once, expire in two minutes, and allow three tries; the QR row shows the time and tries left. A wrong code keeps the offer; an expired or used-up one offers Show New Code. No copyable URI or paste field. The listener opens and closes with the sheet.
 
