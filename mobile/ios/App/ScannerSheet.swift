@@ -198,8 +198,9 @@ struct NearbyPairSheet: View {
 extension View {
     /// Shows the Nearby comparison over this screen while a computer is pairing.
     func nearbyPairing(_ model: DevicesModel, enabled: Bool = true) -> some View {
-        sheet(isPresented: Binding(get: { enabled && model.comparing != nil }, set: { if !$0 { model.answer(false) } })) {
-            NearbyPairSheet(number: model.comparing ?? "000000", answer: model.answer)
+        sheet(isPresented: Binding(get: { enabled && model.comparing != nil }, set: { if !$0 { model.answer(number: "", approve: false) } })) {
+            let number = model.comparing ?? "000000"
+            NearbyPairSheet(number: number) { model.answer(number: number, approve: $0) }
         }
     }
 }

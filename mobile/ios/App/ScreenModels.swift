@@ -278,6 +278,8 @@ final class DevicesModel {
     private(set) var busy = false
     /// The number both screens show while a computer pairs through Nearby; `nil` otherwise.
     private(set) var comparing: String?
+    /// The window is open: a computer can pick this iPhone now.
+    private(set) var listening = false
     var notice = ""
     var scannerOpen = false
     private var watchers = 0
@@ -294,7 +296,8 @@ final class DevicesModel {
 
     func refresh() async { clients = await repository.snapshot().pairedClients }
 
-    /// The Nearby window stays open while a screen that can pair is in front, and closes with it.
+    /// Opening a screen that can pair opens the Nearby window once. Expiry, three tries, a
+    /// pairing, or a failure close it, and it stays closed until the person asks again.
     func watch() {
         watchers += 1
         if watching == nil { watching = Task { await listen() } }
@@ -306,36 +309,58 @@ final class DevicesModel {
         watching?.cancel()
         watching = nil
         comparing = nil
+        listening = false
         Task { await repository.closePairing() }
     }
 
+    /// The explicit action: "Try Again" or "Pair Another Computer".
+    func reopenPairing() {
+        notice = ""
+        Task { await repository.openPairing() }
+    }
+
     private func listen() async {
+        var opened = false
+        var last = PairingState.closed
         while !Task.isCancelled {
             if server.running {
+                if !opened {
+                    opened = true
+                    await repository.openPairing()
+                }
                 let state = await repository.pairingState()
                 if Task.isCancelled { return }
                 comparing = if case let .comparing(number) = state { number } else { nil }
                 switch state {
-                case .closed: await repository.openPairing()
-                case .paired:
-                    notice = "Computer paired."
-                    await refresh()
-                    await repository.openPairing()
-                case let .failed(message):
-                    notice = message
-                    await repository.openPairing()
-                case .listening, .comparing: break
+                case .listening, .comparing: listening = true
+                default: listening = false
+                }
+                if state != last {
+                    switch state {
+                    case .paired:
+                        notice = "Computer paired."
+                        await refresh()
+                    case let .failed(message): notice = message
+                    case .closed:
+                        if case .listening = last { notice = "Pairing closed. Tap Try Again to pair from your computer." }
+                    default: break
+                    }
+                    last = state
                 }
             } else {
+                opened = false
                 comparing = nil
+                listening = false
+                last = .closed
             }
             try? await Task.sleep(for: .milliseconds(400))
         }
     }
 
-    func answer(_ approve: Bool) {
+    /// Pair needs the number the person saw; Cancel always works.
+    func answer(number: String, approve: Bool) {
         comparing = nil
-        Task { await repository.answerPairing(approve) }
+        Task { await repository.answerPairing(number: number, approve: approve) }
     }
 
     /// Scans a QR, or types the 8-digit code (with an address, or empty to look nearby).
