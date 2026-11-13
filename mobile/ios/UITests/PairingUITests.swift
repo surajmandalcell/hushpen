@@ -86,5 +86,12 @@ final class PairingUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 20))
         sleep(1)
         shot("pair-8-paired")
+        // The window stays closed after a pairing until the person asks again.
+        let again = element("devices.nearby")
+        XCTAssertTrue(again.waitForExistence(timeout: 10))
+        sleep(2)
+        XCTAssertTrue(again.exists)
+        again.tap()
+        XCTAssertTrue(again.waitForNonExistence(timeout: 10))
     }
 }

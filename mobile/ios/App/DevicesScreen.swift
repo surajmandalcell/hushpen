@@ -89,6 +89,12 @@ struct DevicesScreen: View {
                 }
                 .disabled(!server.running)
                 .accessibilityIdentifier("devices.scan")
+                if server.running && !model.listening {
+                    Button { model.reopenPairing() } label: {
+                        Label(model.clients.isEmpty ? "Try Again" : "Pair Another Computer", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                    .accessibilityIdentifier("devices.nearby")
+                }
             } footer: {
                 Text(server.running ? "Not listed on your computer? Scan its code or type the 8-digit code." : "Turn on Server Mode to pair.")
             }
