@@ -144,6 +144,15 @@ impl PairOffer {
         self.window.clone()
     }
 
+    /// Typed or scanned tries that remain across all connections.
+    pub fn tries_left(&self) -> u8 {
+        if self.used {
+            0
+        } else {
+            3u8.saturating_sub(self.attempts)
+        }
+    }
+
     pub fn open_window(&mut self, computer_name: &str) -> io::Result<()> {
         self.check()?;
         crate::enrollment::validate_name(computer_name)?;

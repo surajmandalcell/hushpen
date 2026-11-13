@@ -1,9 +1,10 @@
-//! Add a Device: the three places Hushpen looks for one. Nearby lists the phones that announce
-//! themselves on this network and shows a pairing code; SSH sets up a server from
-//! `~/.ssh/config` and shows each step; Tailscale pairs with an address.
+//! Add a Device: Nearby | Remote. Nearby lists the phones found on this network; picking one
+//! shows the pairing number both screens must match. Under the list, a QR and an eight-digit
+//! code pair a phone that is not listed. Remote lists the SSH and Tailscale machines and sets
+//! one up over SSH, showing each step.
 
 use super::sheet::{self, Page};
-use super::{AddMethod, Devices, Picker, Request, focus};
+use super::{AddMethod, Devices, Request, focus};
 use crate::device_ssh::Step;
 use crate::hook;
 use crate::theme::{Palette, radius, size, space};
@@ -11,17 +12,17 @@ use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Bounds, Entity, InteractiveElement, IntoElement, ParentElement, Point, Role,
-    Size, StatefulInteractiveElement, Styled, canvas, div, fill, px, rgb, svg,
+    AnyElement, App, Bounds, Entity, FontFeatures, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, Point, Role, Size, StatefulInteractiveElement, Styled, canvas, div, fill, px,
+    rgb, svg,
 };
-use hushpen_core::os::Os;
-use hushpen_core::remote::Pairing;
+use hushpen_core::remote::{PairFailure, Pairing, RemoteHost};
 use hushpen_store::settings::Transport;
+use std::sync::Arc;
 
-const METHODS: [(AddMethod, &str, &str); 3] = [
-    (AddMethod::Phone, "phone", "Nearby"),
-    (AddMethod::Ssh, "ssh", "SSH"),
-    (AddMethod::Tailscale, "tailscale", "Tailscale"),
+const METHODS: [(AddMethod, &str, &str); 2] = [
+    (AddMethod::Nearby, "nearby", "Nearby"),
+    (AddMethod::Remote, "remote", "Remote"),
 ];
 
 /// The steps of a server setup, in the order the service reports them.
@@ -34,17 +35,10 @@ const STEPS: [Step; 6] = [
     Step::Pairing,
 ];
 
-/// The systems a device on Tailscale can run, as the System pop-up names them.
-const SYSTEMS: [(Os, &str, &str); 5] = [
-    (Os::Linux, "linux", "Linux"),
-    (Os::Android, "android", "Android"),
-    (Os::Ios, "ios", "iOS"),
-    (Os::Mac, "macos", "macOS"),
-    (Os::Windows, "windows", "Windows"),
-];
-
 /// The modules of white a scanner needs around a QR code.
 const QUIET_ZONE: usize = 4;
+
+const KEY_HELP: &str = "Pairing keeps a key on both sides, so every frame is encrypted.";
 
 pub(super) fn render(
     palette: Palette,
@@ -54,28 +48,39 @@ pub(super) fn render(
 ) -> Page {
     let state = devices.read(cx);
     let mut body = vec![methods(palette, devices, method, cx)];
-    body.extend(sheet::notice(palette, state));
-    match method {
-        AddMethod::Phone => body.extend(nearby(palette, devices, cx)),
-        AddMethod::Ssh => body.push(ssh(palette, devices, cx)),
-        AddMethod::Tailscale => body.push(tailscale(palette, devices, cx)),
+    let comparing =
+        method == AddMethod::Nearby && matches!(state.pairing, Pairing::Confirming { .. });
+    let failed = matches!(state.pairing, Pairing::Failed(_));
+    // A failed offer shows its reason beside the button that starts a new one.
+    if !(method == AddMethod::Nearby && failed) {
+        body.extend(sheet::notice(palette, state));
     }
+    match method {
+        AddMethod::Nearby if comparing => body.extend(compare(palette, devices, cx)),
+        AddMethod::Nearby => body.extend(nearby(palette, devices, cx)),
+        AddMethod::Remote => body.push(remote(palette, devices, cx)),
+    }
+    let right = if comparing {
+        vec![cancel(palette, devices, cx), pair(palette, devices, cx)]
+    } else {
+        vec![sheet::done(palette, devices, cx)]
+    };
     Page {
         title: "Add a Device".into(),
         subtitle: "Pick where to look. Hushpen sets up what it finds.".into(),
         label: "Add a Device".into(),
         body,
         left: None,
-        right: vec![sheet::done(palette, devices, cx)],
+        right,
     }
 }
 
-/// Nearby, SSH, and Tailscale, centered over the groups. Nearby looks for phones again.
+/// Nearby and Remote, centered over the groups. Picking the open tab looks again.
 fn methods(palette: Palette, devices: &Entity<Devices>, method: AddMethod, cx: &App) -> AnyElement {
     let chosen = METHODS
         .iter()
         .find(|(each, ..)| *each == method)
-        .map_or("phone", |(_, key, _)| *key);
+        .map_or("nearby", |(_, key, _)| *key);
     let choices = METHODS.map(|(_, key, label)| (key, label));
     let devices = devices.clone();
     let focus = devices.read(cx).focus.get("method", cx);
@@ -91,13 +96,18 @@ fn methods(palette: Palette, devices: &Entity<Devices>, method: AddMethod, cx: &
             chosen,
             &focus,
             move |key, _, cx| {
-                let Some(&(method, ..)) = METHODS.iter().find(|(_, each, _)| *each == key) else {
+                let Some(&(next, ..)) = METHODS.iter().find(|(_, each, _)| *each == key) else {
                     return;
                 };
                 devices.update(cx, |state, cx| {
-                    state.select_method(method, cx);
-                    if method == AddMethod::Phone {
-                        state.request(Request::Discover, cx);
+                    if next == method {
+                        let again = match next {
+                            AddMethod::Nearby => Request::Discover,
+                            AddMethod::Remote => Request::Hosts,
+                        };
+                        state.request(again, cx);
+                    } else {
+                        state.select_method(next, cx);
                     }
                 });
             },
@@ -105,7 +115,7 @@ fn methods(palette: Palette, devices: &Entity<Devices>, method: AddMethod, cx: &
         .into_any_element()
 }
 
-/// The phones found on this network, then the pairing code a phone scans.
+/// The phones found on this network, then the QR and the code for a phone that is not listed.
 fn nearby(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyElement> {
     let state = devices.read(cx);
     let mut found = Vec::new();
@@ -115,33 +125,40 @@ fn nearby(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyEleme
             .selected_device
             .as_ref()
             .is_some_and(|device| device.id == phone.device.id);
-        let trailing = if selected {
-            ui::value(palette).child("Selected").into_any_element()
+        let hostname = phone.hostname.trim_end_matches('.');
+        let (trailing, detail) = if selected {
+            (
+                ui::value(palette).child("Waiting…").into_any_element(),
+                "Pair on the phone to show the number".to_owned(),
+            )
         } else {
             let control = format!("{key}.pair");
             let (devices, device) = (devices.clone(), phone.device.clone());
-            ui::button(
-                palette,
-                hook::id("devices", &control),
-                "Pair…",
-                Kind::Plain,
-                Some(&state.focus.get(&control, cx)),
-                !state.busy,
-                move |_, cx| {
-                    devices.update(cx, |state, cx| {
-                        state.selected_device = Some(device.clone());
-                        cx.notify();
-                    })
-                },
+            (
+                ui::button(
+                    palette,
+                    hook::id("devices", &control),
+                    "Pair…",
+                    Kind::Plain,
+                    Some(&state.focus.get(&control, cx)),
+                    !state.busy,
+                    move |_, cx| {
+                        devices.update(cx, |state, cx| {
+                            state.selected_device = Some(device.clone());
+                            cx.notify();
+                        })
+                    },
+                )
+                .into_any_element(),
+                format!("Hushpen found · {hostname}"),
             )
-            .into_any_element()
         };
         found.push(device_line(
             palette,
             &key,
             IconName::Smartphone,
             phone.device.name.clone(),
-            format!("Hushpen found · {}", phone.hostname.trim_end_matches('.')),
+            detail,
             trailing,
         ));
     }
@@ -159,39 +176,19 @@ fn nearby(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyEleme
         found.push(ui::notice_row(
             palette,
             hook::id("devices", "add.found.empty"),
-            "No phones found. Open Server mode on the phone.".into(),
+            "No phones found.".into(),
             Notice::Info,
             Some(again.into_any_element()),
         ));
     }
-    let code = if matches!(state.pairing, Pairing::Offered { .. }) && !state.qr.is_empty() {
-        vec![code_row(palette, devices, cx)]
-    } else {
-        vec![
-            offer_row(palette, devices, cx),
-            ui::field_row(
-                palette,
-                hook::id("devices", "host"),
-                "Address of this computer",
-                "Leave it on Automatic",
-                &state.host,
-                None,
-            ),
-        ]
-    };
     vec![
         sheet::section(
             palette,
             "add.found",
             found,
-            Some("Phones with Server mode open show here.".into()),
+            Some("Open Server mode on a phone. It shows here.".into()),
         ),
-        sheet::section(
-            palette,
-            "add.code",
-            code,
-            Some("Pairing keeps a key on both sides, so every frame is encrypted.".into()),
-        ),
+        fallback(palette, devices, cx),
     ]
 }
 
@@ -218,58 +215,75 @@ fn device_line(
         .into_any_element()
 }
 
-fn offer_row(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
+/// The QR and the code, always under the list. A failed or finished offer says why and offers
+/// a new one.
+fn fallback(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
     let state = devices.read(cx);
-    let show = {
-        let devices = devices.clone();
-        move |window: &mut gpui_kit::Window, cx: &mut App| {
-            devices.update(cx, |state, cx| {
-                let host = state.host.read(cx).value().to_string();
-                state.request(Request::Offer { host }, cx);
-                window.focus(&state.focus.get(focus::DONE, cx), cx);
-            })
+    let rows = match &state.pairing {
+        Pairing::Offered { .. } if !state.qr.is_empty() => {
+            vec![qr_row(palette, devices, cx), code_row(palette, devices, cx)]
         }
-    };
-    ui::labeled_row(
-        palette,
-        hook::id("devices", "add.offer"),
-        "Pairing code",
-        Some("A phone scans it to pair".into()),
-        ui::button(
+        Pairing::Failed(failure) => {
+            let text = state.notice.clone().unwrap_or_else(|| match failure {
+                PairFailure::Expired => "The code expired. Show a new one.".into(),
+                _ => "The code stopped working. Show a new one.".into(),
+            });
+            let devices = devices.clone();
+            let again = ui::button(
+                palette,
+                hook::id("devices", "offer"),
+                "Show New Code",
+                Kind::Plain,
+                Some(&state.focus.get("offer", cx)),
+                !state.busy,
+                move |window, cx| {
+                    devices.update(cx, |state, cx| {
+                        state.request(
+                            Request::Offer {
+                                host: String::new(),
+                            },
+                            cx,
+                        );
+                        window.focus(&state.focus.get(focus::DONE, cx), cx);
+                    })
+                },
+            );
+            vec![ui::notice_row(
+                palette,
+                hook::id("devices", "add.code.failed"),
+                text,
+                Notice::Failure,
+                Some(again.into_any_element()),
+            )]
+        }
+        _ => vec![ui::notice_row(
             palette,
-            hook::id("devices", "offer"),
-            "Show Code",
-            Kind::Plain,
-            Some(&state.focus.get("offer", cx)),
-            !state.busy,
-            show,
-        ),
-    )
+            hook::id("devices", "add.code.wait"),
+            "Getting the code ready…".into(),
+            Notice::Info,
+            None,
+        )],
+    };
+    sheet::section(palette, "add.code", rows, Some(KEY_HELP.into()))
 }
 
-/// The code next to the steps that pair a phone with it, and how long it works.
-fn code_row(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
+/// The QR beside where to scan it, and how long and how often it works.
+fn qr_row(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
     let state = devices.read(cx);
     let minutes = state.offer_minutes().unwrap_or(1).max(1);
-    let expiry = if minutes == 1 {
-        "It works once, for 1 minute.".to_owned()
-    } else {
-        format!("It works once, for {minutes} minutes.")
-    };
-    let cancel = {
-        let devices = devices.clone();
-        move |window: &mut gpui_kit::Window, cx: &mut App| {
-            devices.update(cx, |state, cx| {
-                state.request(Request::CancelOffer, cx);
-                window.focus(&state.focus.get("offer", cx), cx);
-            })
+    let expiry = format!(
+        "It works once, for {minutes} {}.",
+        if minutes == 1 { "minute" } else { "minutes" }
+    );
+    let tries = format!(
+        "{} {} left.",
+        state.tries_left,
+        if state.tries_left == 1 {
+            "try"
+        } else {
+            "tries"
         }
-    };
-    let steps = [
-        "1. Open Hushpen on the phone.",
-        "2. Open Server mode.",
-        "3. Scan this code.",
-    ];
+    );
     ui::row(palette)
         .id(hook::id("devices", "add.code.row"))
         .test_support()
@@ -279,19 +293,144 @@ fn code_row(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement
         .child(
             ui::text_column()
                 .gap(px(space::XS))
-                .children(steps.map(|step| ui::title(palette).child(step)))
-                .child(ui::secondary(palette).child(expiry))
-                .child(div().flex().pt(px(space::XS)).child(ui::button(
-                    palette,
-                    hook::id("devices", "cancelOffer"),
-                    "Cancel",
-                    Kind::Plain,
-                    Some(&state.focus.get("cancelOffer", cx)),
-                    true,
-                    cancel,
-                ))),
+                .child(ui::title(palette).child("Phone not listed? Scan this."))
+                .child(ui::secondary(palette).child("On the phone: Devices, Pair a Desktop."))
+                .child(
+                    ui::secondary(palette)
+                        .id(hook::id("devices", "add.code.expiry"))
+                        .test_support()
+                        .aria_label(expiry.clone())
+                        .child(expiry),
+                )
+                .child(
+                    ui::secondary(palette)
+                        .id(hook::id("devices", "add.code.tries"))
+                        .test_support()
+                        .aria_label(tries.clone())
+                        .child(tries),
+                ),
         )
         .into_any_element()
+}
+
+/// The eight digits to type on the phone, in two groups of four.
+fn code_row(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
+    let code = devices.read(cx).code.clone();
+    let shown = match code.len() {
+        8 => format!("{} {}", &code[..4], &code[4..]),
+        _ => code,
+    };
+    ui::labeled_row(
+        palette,
+        hook::id("devices", "add.offer"),
+        "Or type the code",
+        Some("On the phone: Pair a Desktop, Type Code".into()),
+        ui::value(palette)
+            .id(hook::id("devices", "code"))
+            .test_support()
+            .aria_label(shown.clone())
+            .text_color(palette.label)
+            .font_weight(FontWeight::SEMIBOLD)
+            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+            .child(shown),
+    )
+}
+
+/// The number both screens show, under the phone that is pairing.
+fn compare(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyElement> {
+    let state = devices.read(cx);
+    let Pairing::Confirming {
+        number,
+        local_confirmed,
+        ..
+    } = &state.pairing
+    else {
+        return Vec::new();
+    };
+    let shown = if number.len() == 6 {
+        format!("{} {}", &number[..3], &number[3..])
+    } else {
+        number.clone()
+    };
+    let name = state
+        .selected_device
+        .as_ref()
+        .map_or_else(|| "Phone".to_owned(), |device| device.name.clone());
+    let detail = if *local_confirmed {
+        "Waiting for you to tap Pair on the phone"
+    } else {
+        "Compare the numbers, then tap Pair on both"
+    }
+    .to_owned();
+    let line = device_line(
+        palette,
+        "add.pairing",
+        IconName::Smartphone,
+        name,
+        detail,
+        ui::value(palette).child("Pairing…").into_any_element(),
+    );
+    let big = ui::row(palette)
+        .id(hook::id("devices", "add.number.row"))
+        .test_support()
+        .flex_col()
+        .gap(px(space::SM))
+        .py(px(space::LG))
+        .child(
+            div()
+                .id(hook::id("devices", "number"))
+                .test_support()
+                .aria_label(shown.clone())
+                .text_size(px(size::PAIRING_NUMBER))
+                .font_weight(FontWeight::SEMIBOLD)
+                .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+                .text_color(palette.label)
+                .child(shown),
+        )
+        .child(ui::secondary(palette).child("Must match the number on the phone."))
+        .into_any_element();
+    vec![
+        sheet::section(palette, "add.pairing.group", vec![line], None),
+        sheet::section(palette, "add.number", vec![big], Some(KEY_HELP.into())),
+    ]
+}
+
+fn cancel(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
+    let state = devices.read(cx);
+    let devices = devices.clone();
+    ui::button(
+        palette,
+        hook::id("devices", "cancelPairing"),
+        "Cancel",
+        Kind::Plain,
+        Some(&state.focus.get("cancelPairing", cx)),
+        true,
+        move |_, cx| devices.update(cx, |state, cx| state.confirm(false, cx)),
+    )
+    .into_any_element()
+}
+
+/// Pair on this computer. It turns off after the tap, while the phone's answer is awaited.
+fn pair(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
+    let state = devices.read(cx);
+    let waiting = matches!(
+        state.pairing,
+        Pairing::Confirming {
+            local_confirmed: true,
+            ..
+        }
+    );
+    let devices = devices.clone();
+    ui::button(
+        palette,
+        hook::id("devices", "pair"),
+        "Pair",
+        Kind::Default,
+        Some(&state.focus.get(focus::DONE, cx)),
+        !waiting,
+        move |_, cx| devices.update(cx, |state, cx| state.confirm(true, cx)),
+    )
+    .into_any_element()
 }
 
 /// The QR code of a pairing offer, in whole pixels per module, about `PAIRING_CODE` on a side.
@@ -333,185 +472,152 @@ fn qr(modules: Vec<Vec<bool>>) -> impl IntoElement {
         )
 }
 
-/// The servers of `~/.ssh/config` with Set Up, or the steps of the setup once one runs.
-fn ssh(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
+/// The SSH target of a machine: its alias, else its address.
+fn target(host: &RemoteHost) -> String {
+    host.ssh_alias
+        .clone()
+        .unwrap_or_else(|| host.address.clone())
+}
+
+/// Every machine Hushpen can reach, and a field for any other, or the steps of the setup once
+/// one runs.
+fn remote(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
     let state = devices.read(cx);
     if state.busy || !state.progress.is_empty() {
-        let current = state.progress.len().saturating_sub(1);
-        let failed = !state.busy && state.notice.is_some();
-        let rows = STEPS
-            .iter()
-            .enumerate()
-            .map(|(index, step)| {
-                let waiting = index > current || (index == current && !state.busy && !failed);
-                let (icon, tone) = match index.cmp(&current) {
-                    std::cmp::Ordering::Less => (IconName::Check, palette.label_secondary),
-                    std::cmp::Ordering::Equal if state.busy => {
-                        (IconName::LoaderCircle, palette.label_secondary)
-                    }
-                    std::cmp::Ordering::Equal if failed => {
-                        (IconName::CircleAlert, palette.label_secondary)
-                    }
-                    _ => (IconName::Circle, palette.label_tertiary),
-                };
-                let key = format!("add.step.{index}");
-                let label = step.label();
-                ui::row(palette)
-                    .id(hook::id("devices", &key))
-                    .test_support()
-                    .child(
-                        svg()
-                            .path(icon.path())
-                            .size(px(size::NAV_ICON))
-                            .flex_none()
-                            .text_color(tone),
-                    )
-                    .child(
-                        ui::text_column().child(
-                            ui::title(palette)
-                                .id(hook::id("devices", &format!("{key}.title")))
-                                .test_support()
-                                .aria_label(label)
-                                .text_color(if waiting {
-                                    palette.label_tertiary
-                                } else {
-                                    palette.label
-                                })
-                                .child(label),
-                        ),
-                    )
-                    .children((index == current && failed).then(|| {
-                        ui::value(palette)
-                            .id(hook::id("devices", &format!("{key}.status")))
-                            .test_support()
-                            .role(Role::Status)
-                            .aria_label("Failed")
-                            .text_color(palette.error)
-                            .child("Failed")
-                    }))
-                    .into_any_element()
-            })
-            .collect();
-        return sheet::section(
-            palette,
-            "add.steps",
-            rows,
-            Some("Audio goes through the SSH connection. No port opens on the server.".into()),
-        );
+        return steps(palette, state);
     }
+    let setup = |control: String, host: String| {
+        let devices = devices.clone();
+        ui::button(
+            palette,
+            hook::id("devices", &control),
+            "Set Up…",
+            Kind::Plain,
+            Some(&state.focus.get(&control, cx)),
+            !state.busy && !host.is_empty(),
+            move |window, cx| {
+                devices.update(cx, |state, cx| {
+                    state.request(Request::SetupSsh { host: host.clone() }, cx);
+                    window.focus(&state.focus.get(focus::DONE, cx), cx);
+                })
+            },
+        )
+        .into_any_element()
+    };
+    let saved = |host: &str| {
+        state.settings.devices.iter().any(
+            |device| matches!(&device.transport, Transport::Ssh { host: saved } if saved == host),
+        )
+    };
     let mut rows: Vec<AnyElement> = state
         .hosts
         .iter()
         .map(|host| {
-            let added = state.settings.devices.iter().any(
-                |device| matches!(&device.transport, Transport::Ssh { host: saved } if saved == host),
-            );
-            let trailing = if added {
+            let target = target(host);
+            let trailing = if saved(&target) {
                 ui::value(palette).child("Added").into_any_element()
             } else {
-                let control = format!("add.ssh.{host}");
-                let (devices, host) = (devices.clone(), host.clone());
-                ui::button(
-                    palette,
-                    hook::id("devices", &control),
-                    "Set Up…",
-                    Kind::Plain,
-                    Some(&state.focus.get(&control, cx)),
-                    !state.busy,
-                    move |window, cx| {
-                        devices.update(cx, |state, cx| {
-                            state.selected_host = Some(host.clone());
-                            state.request(Request::SetupSsh { host: host.clone() }, cx);
-                            window.focus(&state.focus.get(focus::DONE, cx), cx);
-                        })
-                    },
-                )
-                .into_any_element()
+                setup(format!("add.ssh.{}", host.name), target)
             };
             device_line(
                 palette,
-                &format!("add.host.{host}"),
+                &format!("add.host.{}", host.name),
                 IconName::Server,
-                host.clone(),
-                "From ~/.ssh/config".into(),
+                host.name.clone(),
+                host.secondary_line(),
                 trailing,
             )
         })
         .collect();
-    if rows.is_empty() {
-        rows.push(ui::notice_row(
-            palette,
-            hook::id("devices", "add.hosts.empty"),
-            "No servers in ~/.ssh/config.".into(),
-            Notice::Info,
-            None,
-        ));
-    }
+    let typed = RemoteHost::typed(state.host.read(cx).value().as_ref()).map(|host| host.address);
+    // The label and its line need room, so the field is narrower than a field row's.
+    rows.push(ui::labeled_row(
+        palette,
+        hook::id("devices", "host.row"),
+        "Another machine",
+        Some("Host name or address".into()),
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            .child(div().w(px(size::HOST_FIELD_WIDTH)).child(ui::field(
+                palette,
+                hook::id("devices", "host"),
+                "Another machine",
+                &state.host,
+            )))
+            .child(setup("add.ssh.typed".into(), typed.unwrap_or_default())),
+    ));
     sheet::section(
         palette,
         "add.hosts",
         rows,
-        Some("Hushpen installs a small host in your home folder there. No sudo needed.".into()),
+        Some("From ~/.ssh/config and tailscale status. A machine in both shows once.".into()),
     )
 }
 
-/// The system and address of a device on Tailscale.
-fn tailscale(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
-    let state = devices.read(cx);
-    let current = SYSTEMS
+/// The steps of a server setup, with the failed one marked.
+fn steps(palette: Palette, state: &Devices) -> AnyElement {
+    let current = state.progress.len().saturating_sub(1);
+    let failed = !state.busy && state.notice.is_some();
+    let rows = STEPS
         .iter()
-        .find(|(os, ..)| *os == state.tailscale_os)
-        .map_or("Linux", |(_, _, label)| *label);
-    let menu = (state.menu == Some(Picker::System)).then(|| {
-        SYSTEMS.iter().fold(
-            ui::Menu::new(hook::id("devices", "os.list"), sheet::close_menu(devices)),
-            |menu, &(os, key, label)| {
-                let option = format!("os.{key}");
-                let devices = devices.clone();
-                menu.option(
-                    hook::id("devices", &option),
-                    label,
-                    None,
-                    os == state.tailscale_os,
-                    &state.focus.get(&option, cx),
-                    move |_, cx| {
-                        devices.update(cx, |state, cx| {
-                            state.tailscale_os = os;
-                            cx.notify();
-                        })
-                    },
+        .enumerate()
+        .map(|(index, step)| {
+            let waiting = index > current || (index == current && !state.busy && !failed);
+            let (icon, tone) = match index.cmp(&current) {
+                std::cmp::Ordering::Less => (IconName::Check, palette.label_secondary),
+                std::cmp::Ordering::Equal if state.busy => {
+                    (IconName::LoaderCircle, palette.label_secondary)
+                }
+                std::cmp::Ordering::Equal if failed => {
+                    (IconName::CircleAlert, palette.label_secondary)
+                }
+                _ => (IconName::Circle, palette.label_tertiary),
+            };
+            let key = format!("add.step.{index}");
+            let label = step.label();
+            ui::row(palette)
+                .id(hook::id("devices", &key))
+                .test_support()
+                .child(
+                    svg()
+                        .path(icon.path())
+                        .size(px(size::NAV_ICON))
+                        .flex_none()
+                        .text_color(tone),
                 )
-            },
-        )
-    });
-    let system = ui::menu_row(
-        palette,
-        "What the device runs",
-        ui::PopUp {
-            id: hook::id("devices", "os"),
-            label: "System",
-            current: current.to_owned(),
-            enabled: !state.busy,
-            focus: &state.focus.get("os", cx),
-            menu,
-        },
-        sheet::toggle(devices, Picker::System),
-    );
-    let rows = vec![
-        system,
-        ui::field_row(
-            palette,
-            hook::id("devices", "address"),
-            "Address",
-            "Tailscale name or IP, and port",
-            &state.address,
-            None,
-        ),
-    ];
+                .child(
+                    ui::text_column().child(
+                        ui::title(palette)
+                            .id(hook::id("devices", &format!("{key}.title")))
+                            .test_support()
+                            .aria_label(label)
+                            .text_color(if waiting {
+                                palette.label_tertiary
+                            } else {
+                                palette.label
+                            })
+                            .child(label),
+                    ),
+                )
+                .children((index == current && failed).then(|| {
+                    ui::value(palette)
+                        .id(hook::id("devices", &format!("{key}.status")))
+                        .test_support()
+                        .role(Role::Status)
+                        .aria_label("Failed")
+                        .text_color(palette.error)
+                        .child("Failed")
+                }))
+                .into_any_element()
+        })
+        .collect();
     sheet::section(
         palette,
-        "add.tailscale",
+        "add.steps",
         rows,
-        Some("Both devices must be in the same Tailscale network.".into()),
+        Some("The host listens on port 47321. Audio uses the pairing key, not SSH.".into()),
     )
 }

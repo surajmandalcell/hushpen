@@ -298,7 +298,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         | Scene::DictionaryPreview
         | Scene::Voices
         | Scene::VoicesAdd
-        | Scene::DevicesAdd
+        | Scene::DevicesAdd(_)
         | Scene::DevicesDetail => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),
         Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {

@@ -149,6 +149,23 @@ pub fn tailscale(host: &str, cancelled: &AtomicBool) -> io::Result<String> {
     read_output(command, cancelled)
 }
 
+/// `tailscale status --json` of this computer, or nothing when Tailscale is not installed or
+/// not running. shortcut: output over 64 KiB (a very large tailnet) counts as nothing, when a
+/// real tailnet hits it, stream the output into the parser.
+pub fn tailscale_status(cancelled: &AtomicBool) -> String {
+    [
+        "tailscale",
+        "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    ]
+    .into_iter()
+    .find_map(|program| {
+        let mut command = Command::new(program);
+        command.args(["status", "--json"]);
+        read_output(command, cancelled).ok()
+    })
+    .unwrap_or_default()
+}
+
 fn read_hostname(command: Command, cancelled: &AtomicBool) -> io::Result<String> {
     read_output(command, cancelled)?
         .lines()

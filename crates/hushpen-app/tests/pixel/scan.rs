@@ -369,13 +369,14 @@ const ROW_MAX: f32 = 36.0 + 11.0 * 1.3 + 1.0;
 const TITLE_MAX: f32 = 13.0 * 1.3 + 1.0;
 const SECONDARY_MAX: f32 = 11.0 * 1.3 + 1.0;
 /// Rows that hold more than a line by design: the text areas of Read aloud and of the cleanup
-/// prompt, the lines to read for Find best settings and for Add Voice, and the pairing code.
-const TALL_ROWS: [&str; 5] = [
+/// prompt, the lines to read for Find best settings and for Add Voice, and the pairing code and number.
+const TALL_ROWS: [&str; 6] = [
     "read.text",
     "settings.cleanup.prompt.text",
     "enhance.reading",
     "voices.reading",
     "devices.add.code.row",
+    "devices.add.number.row",
 ];
 
 /// The rows of every group, as `(group, row, height)`, from the elements that span a group.

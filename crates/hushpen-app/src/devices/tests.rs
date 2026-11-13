@@ -1,7 +1,7 @@
 use super::*;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{TestAppContext, WindowOptions};
-use hushpen_core::remote::{DeviceKind, Serves, THIS_COMPUTER};
+use hushpen_core::remote::{DeviceKind, PairFailure, Serves, THIS_COMPUTER};
 
 fn rig(cx: &mut TestAppContext) -> (tempfile::TempDir, Rc<Storage>, Entity<Devices>) {
     let dir = tempfile::tempdir().unwrap();
@@ -120,26 +120,78 @@ fn closing_clears_pairing_and_snapshot_never_contains_the_offer(cx: &mut TestApp
         state.set_offer(
             "secret-pairing-payload".into(),
             vec![vec![true]],
+            "12345678".into(),
             now() + 60,
             cx,
         );
-        assert!(
-            !state
-                .snapshot()
-                .to_string()
-                .contains("secret-pairing-payload")
-        );
+        let snapshot = state.snapshot().to_string();
+        assert!(!snapshot.contains("secret-pairing-payload") && !snapshot.contains("12345678"));
+        // Looking for phones leaves the offer up; any other request replaces it.
         state.request(Request::Discover, cx);
+        assert!(matches!(state.pairing, Pairing::Offered { .. }));
+        state.request(Request::Probe, cx);
         assert_eq!(state.pairing, Pairing::Idle);
-        assert!(state.qr.is_empty());
-        state.set_offer("new-payload".into(), vec![vec![true]], now() + 60, cx);
+        assert!(state.qr.is_empty() && state.code.is_empty());
+        state.set_offer(
+            "new-payload".into(),
+            vec![vec![true]],
+            "87654321".into(),
+            now() + 60,
+            cx,
+        );
         state.busy = true;
         state.progress.push("working".into());
         state.close(cx);
         assert!(!state.busy);
         assert!(state.progress.is_empty());
         assert_eq!(state.pairing, Pairing::Idle);
-        assert!(state.qr.is_empty());
+        assert!(state.qr.is_empty() && state.code.is_empty());
+    });
+}
+
+#[gpui_kit::test]
+fn the_number_needs_pair_here_and_cancel_shows_the_offer_again(cx: &mut TestAppContext) {
+    let (_dir, _storage, devices) = rig(cx);
+    devices.update(cx, |state, cx| {
+        state.set_offer(
+            "payload".into(),
+            vec![vec![true]],
+            "12345678".into(),
+            now() + 60,
+            cx,
+        );
+        state.set_confirming("482913".into(), "MacBook Pro".into(), cx);
+        assert!(matches!(
+            state.pairing,
+            Pairing::Confirming {
+                local_confirmed: false,
+                ..
+            }
+        ));
+        state.confirm(true, cx);
+        assert!(matches!(
+            state.pairing,
+            Pairing::Confirming {
+                local_confirmed: true,
+                ..
+            }
+        ));
+        state.pairing = Pairing::Idle;
+        state.set_offer(
+            "payload".into(),
+            vec![vec![true]],
+            "12345678".into(),
+            now() + 60,
+            cx,
+        );
+        state.set_confirming("111222".into(), "MacBook Pro".into(), cx);
+        state.confirm(false, cx);
+        assert!(matches!(state.pairing, Pairing::Offered { .. }));
+        state.attempt_failed("That code did not match.".into(), 2, cx);
+        assert_eq!(state.tries_left, 2);
+        state.expired(cx);
+        assert_eq!(state.pairing, Pairing::Failed(PairFailure::Expired));
+        assert!(state.qr.is_empty() && state.code.is_empty());
     });
 }
 

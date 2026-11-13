@@ -40,7 +40,7 @@ const ALLOWED: [(&str, &str, &str); 17] = [
     // The status word of a device, and a failed step of a server setup.
     ("devices/panel.rs", "reading", "success"),
     ("devices/panel.rs", "reading", "error"),
-    ("devices/add.rs", "ssh", "error"),
+    ("devices/add.rs", "steps", "error"),
 ];
 
 const TOKENS: [&str; 4] = ["accent", "success", "warning", "error"];
