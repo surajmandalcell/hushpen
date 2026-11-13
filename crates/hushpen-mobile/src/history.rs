@@ -106,6 +106,10 @@ impl History {
             return Err(MobileError::invalid("data folder must be absolute"));
         }
         let db = Database::open(&data.join("history/history.db")).map_err(MobileError::failed)?;
+        // Deleted dictations are zeroed in the file, not just marked free.
+        db.connection()
+            .pragma_update(None, "secure_delete", "ON")
+            .map_err(MobileError::failed)?;
         db.connection()
             .execute_batch(PHONE_RUN)
             .map_err(MobileError::failed)?;
@@ -265,6 +269,11 @@ mod tests {
     fn it_keeps_pages_counts_and_removes_dictations() {
         let dir = tempfile::tempdir().unwrap();
         let history = History::new(dir.path().to_str().unwrap().into()).unwrap();
+        let wipes: i64 = lock(&history.db)
+            .connection()
+            .query_row("PRAGMA secure_delete", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(wipes, 1);
         let first = history.save(entry(1_000, "one two three", 1_400)).unwrap();
         history.save(entry(2_000, "four five", 900)).unwrap();
         history.save(entry(3_000, "six", 500)).unwrap();
