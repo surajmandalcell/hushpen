@@ -21,7 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 enum Update {
     Found(Vec<FoundDevice>),
     Offer {
-        uri: String,
+        payload: String,
         qr: Vec<Vec<bool>>,
         expires: u64,
     },
@@ -107,7 +107,11 @@ pub fn attach(devices: &Entity<Devices>, storage: Rc<Storage>, cx: &mut App) {
                 if devices
                     .update(cx, |view, cx| match update {
                         Update::Found(found) => view.set_discovered(found, cx),
-                        Update::Offer { uri, qr, expires } => view.set_offer(uri, qr, expires, cx),
+                        Update::Offer {
+                            payload,
+                            qr,
+                            expires,
+                        } => view.set_offer(payload, qr, expires, cx),
                         Update::Progress(step) => {
                             progress.push(step);
                             view.set_progress(progress.clone(), cx);
@@ -160,12 +164,12 @@ fn run(
         }
         Request::Offer { host } => offer(&identity, host, secrets, stopped, sender),
         Request::Pair {
-            uri,
+            bootstrap,
             device,
             transport,
         } => {
             let (address, static_public_key) =
-                remote_jobs::authenticate_pair(&identity, &uri, &router.resolver)?;
+                remote_jobs::authenticate_pair(&identity, &bootstrap, &router.resolver)?;
             send(
                 sender,
                 Update::Paired(paired(device, address, static_public_key, transport)),
@@ -208,12 +212,12 @@ fn run(
 
 fn pair_ssh(
     identity: &Identity,
-    uri: &str,
+    bootstrap: &str,
     hostname: io::Result<String>,
     tailscale: io::Result<String>,
     resolver: &hushpen_remote::Resolver,
 ) -> io::Result<(String, [u8; 32])> {
-    let mut offer = PairOffer::parse(uri)?;
+    let mut offer = PairOffer::from_bootstrap(bootstrap)?;
     let optional = |result: io::Result<String>| match result {
         Ok(output) => Ok(Some(output)),
         Err(problem) if problem.kind() == io::ErrorKind::Interrupted => Err(problem),
@@ -229,7 +233,7 @@ fn pair_ssh(
     let mut failure = io::Error::other("The server did not answer at any address.");
     for host in hosts {
         offer.host = host;
-        match remote_jobs::authenticate_pair(identity, &offer.to_uri(), resolver) {
+        match remote_jobs::authenticate_pair(identity, &offer.to_bootstrap(), resolver) {
             Ok(paired) => return Ok(paired),
             Err(problem) => failure = problem,
         }
@@ -293,7 +297,7 @@ fn offer(
     };
     let device = Device {
         id,
-        name: "Hushpen".into(),
+        name: computer_name()?,
         kind: DeviceKind::ThisComputer,
         os: Os::current(),
         serves: Serves::default(),
@@ -306,8 +310,9 @@ fn offer(
         .as_secs()
         + 120;
     let mut offer = PairOffer::new(host, port, identity.public(), expires)?;
-    let uri = offer.to_uri();
-    let qr = qrcode::QrCode::new(uri.as_bytes()).map_err(io::Error::other)?;
+    offer.open_window(&device.name)?;
+    let payload = offer.qr_payload();
+    let qr = qrcode::QrCode::new(payload.as_bytes()).map_err(io::Error::other)?;
     let width = qr.width();
     let bits = (0..width)
         .map(|y| {
@@ -319,74 +324,112 @@ fn offer(
     send(
         sender,
         Update::Offer {
-            uri,
+            payload,
             qr: bits,
             expires,
         },
     )?;
     let deadline = Instant::now() + Duration::from_secs(120);
-    while Instant::now() < deadline && !stopped.load(Ordering::Acquire) {
-        let (socket, peer) = match listener.accept() {
-            Ok(pair) => pair,
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(25));
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
-        let mut session = match RemoteStream::accept_with(
-            socket,
-            identity,
-            &[],
-            Some(&mut offer),
-            Duration::from_secs(3),
-            |key| {
-                let mut pins = secrets.paired_clients();
-                if !pins.contains(&key) {
-                    pins.push(key);
-                }
-                secrets.set_paired_clients(&pins).map_err(io::Error::other)
-            },
-        ) {
-            Ok(session) => session,
-            Err(_) => continue,
-        };
-        let control = session.stream.control();
-        let watchdog_stop = Arc::new(AtomicBool::new(false));
-        let watch = Arc::clone(&watchdog_stop);
-        let watchdog = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(3);
-            while Instant::now() < deadline && !watch.load(Ordering::Acquire) {
+    let window = offer.window();
+    let finished = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while Instant::now() < deadline
+                && !stopped.load(Ordering::Acquire)
+                && !finished.load(Ordering::Acquire)
+            {
                 std::thread::sleep(Duration::from_millis(25));
             }
-            if !watch.load(Ordering::Acquire) {
-                let _ = control.shutdown();
-            }
+            window.close();
         });
-        let enrollment =
-            hushpen_remote::enrollment::Enrollment::receive(&mut session.stream, &session.peer_key);
-        watchdog_stop.store(true, Ordering::Release);
-        let _ = watchdog.join();
-        let enrollment = enrollment?;
-        let address = enrollment.address(peer.ip());
-        return send(
-            sender,
-            Update::Paired(paired(
-                enrollment.device,
-                address,
-                session.peer_key,
-                Transport::Lan,
-            )),
-        );
-    }
-    if stopped.load(Ordering::Acquire) {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "The pairing code expired. Try again.",
-        ))
-    }
+        let result = (|| {
+            while Instant::now() < deadline && !stopped.load(Ordering::Acquire) {
+                let (socket, peer) = match listener.accept() {
+                    Ok(pair) => pair,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(25));
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
+                let mut session = match RemoteStream::accept_with(
+                    socket,
+                    identity,
+                    &[],
+                    Some(&mut offer),
+                    Duration::from_secs(3),
+                    |key| {
+                        let mut pins = secrets.paired_clients();
+                        if !pins.contains(&key) {
+                            pins.push(key);
+                        }
+                        secrets.set_paired_clients(&pins).map_err(io::Error::other)
+                    },
+                ) {
+                    Ok(session) => session,
+                    Err(_) => continue,
+                };
+                let control = session.stream.control();
+                let watchdog_stop = Arc::new(AtomicBool::new(false));
+                let watch = Arc::clone(&watchdog_stop);
+                let watchdog = std::thread::spawn(move || {
+                    let deadline = Instant::now() + Duration::from_secs(3);
+                    while Instant::now() < deadline && !watch.load(Ordering::Acquire) {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    if !watch.load(Ordering::Acquire) {
+                        let _ = control.shutdown();
+                    }
+                });
+                let enrollment = hushpen_remote::enrollment::Enrollment::receive(
+                    &mut session.stream,
+                    &session.peer_key,
+                );
+                watchdog_stop.store(true, Ordering::Release);
+                let _ = watchdog.join();
+                let enrollment = enrollment?;
+                let address = enrollment.address(peer.ip());
+                return send(
+                    sender,
+                    Update::Paired(paired(
+                        enrollment.device,
+                        address,
+                        session.peer_key,
+                        Transport::Lan,
+                    )),
+                );
+            }
+            if stopped.load(Ordering::Acquire) {
+                Ok(())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "The pairing code expired. Try again.",
+                ))
+            }
+        })();
+        finished.store(true, Ordering::Release);
+        window.close();
+        result
+    })
+}
+
+fn computer_name() -> io::Result<String> {
+    #[cfg(target_os = "macos")]
+    let name = {
+        let output = std::process::Command::new("/usr/sbin/scutil")
+            .args(["--get", "ComputerName"])
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other("The computer name is unavailable."));
+        }
+        String::from_utf8(output.stdout).map_err(io::Error::other)?
+    };
+    #[cfg(target_os = "windows")]
+    let name = std::env::var("COMPUTERNAME").map_err(io::Error::other)?;
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let name = std::fs::read_to_string("/etc/hostname")?;
+    Ok(name.trim().to_owned())
 }
 
 fn send(sender: &SyncSender<Update>, update: Update) -> io::Result<()> {
@@ -428,7 +471,8 @@ mod tests {
                 + 60;
             let mut offer =
                 PairOffer::new(offered_host.into(), address.port(), key, expires).unwrap();
-            let uri = offer.to_uri();
+            offer.open_window("Test SSH host").unwrap();
+            let uri = offer.to_bootstrap();
             let worker = std::thread::spawn(move || {
                 let deadline = Instant::now() + Duration::from_secs(8);
                 let socket = loop {
@@ -487,7 +531,7 @@ mod tests {
             };
             let problem = pair_ssh(
                 &client,
-                &offer.to_uri(),
+                &offer.to_bootstrap(),
                 hostname,
                 tailscale,
                 &hushpen_remote::Resolver::default(),
@@ -516,21 +560,23 @@ mod tests {
             )
             .unwrap();
         });
-        let Update::Offer { uri, qr, expires } =
-            receiver.recv_timeout(Duration::from_secs(5)).unwrap()
+        let Update::Offer {
+            payload,
+            qr,
+            expires,
+        } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
         else {
             panic!("pairing offer expected");
         };
         assert!(!qr.is_empty());
         assert!(qr.iter().all(|row| row.len() == qr.len()));
-        let parsed = PairOffer::parse(&uri).unwrap();
+        let parsed = hushpen_remote::QrPayload::parse(&payload).unwrap();
         secrets.set_endpoint_api_key(Some("test-token")).unwrap();
         assert_eq!(parsed.expires_unix_secs, expires);
-        let mut session = RemoteStream::connect(
+        let mut session = RemoteStream::connect_qr(
             format!("127.0.0.1:{}", parsed.port),
             &phone,
-            parsed.public_key,
-            Some(&parsed),
+            &parsed,
             Duration::from_secs(3),
             &hushpen_remote::Resolver::default(),
         )
@@ -584,11 +630,11 @@ mod tests {
         let (sender, receiver) = mpsc::sync_channel(4);
         let worker =
             std::thread::spawn(move || offer(&identity, String::new(), &secrets, &stop, &sender));
-        let Update::Offer { uri, .. } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
+        let Update::Offer { payload, .. } = receiver.recv_timeout(Duration::from_secs(5)).unwrap()
         else {
             panic!("offer expected")
         };
-        let parsed = PairOffer::parse(&uri).unwrap();
+        let parsed = hushpen_remote::QrPayload::parse(&payload).unwrap();
         assert!(parsed.host.split('.').all(|label| label.len() <= 63));
         let port = parsed.port;
         cancelled.store(true, Ordering::Release);

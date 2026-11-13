@@ -60,13 +60,13 @@ model=$(model_file base-q5_1)
 cp -p "$MODELS/$model" "$MODELS/$model.verified" "$HOST_DATA/models/whisper/" || setup_failed "the verified host model could not be copied"
 if ss -ltn | grep -q ":$HOST_PORT "; then setup_failed "the isolated host port is already in use"; fi
 
-uri=$(/app/hushpen-host pair --json --data-dir "$HOST_DATA" --listen "127.0.0.1:$HOST_PORT" --host 127.0.0.1 | jq -er .uri) || setup_failed "the host offer could not be created"
+offer=$(/app/hushpen-host pair --json --data-dir "$HOST_DATA" --listen "127.0.0.1:$HOST_PORT" --host 127.0.0.1 | jq -er .offer) || setup_failed "the host offer could not be created"
 setsid timeout --kill-after=3 300 /app/hushpen-host --data-dir "$HOST_DATA" --listen "127.0.0.1:$HOST_PORT" --host 127.0.0.1 --name 'Test host' >"$RUN_OUT/host-stdout.log" 2>"$RUN_OUT/host-stderr.log" &
 HOST_PID=$!
 wait_until 10 host_ready || setup_failed "the host did not listen"
-args=$(jq -nc --arg uri "$uri" '{uri:$uri,id:"test-host",name:"Test host",noLocalModels:true}')
+args=$(jq -nc --arg offer "$offer" '{offer:$offer,id:"test-host",name:"Test host",noLocalModels:true}')
 hook_action remote-pair "$args" >/dev/null || setup_failed "the debug pairing action did not start"
-unset uri args
+unset offer args
 wait_until 15 pair_finished || setup_failed "pairing did not finish"
 st_is .remote.state paired || setup_failed "the encrypted pairing failed"
 wait_until 10 engine_is .model null || setup_failed "the local model stayed loaded with noLocalModels on"

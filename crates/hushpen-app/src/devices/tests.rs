@@ -1,7 +1,7 @@
 use super::*;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{TestAppContext, WindowOptions};
-use hushpen_core::remote::THIS_COMPUTER;
+use hushpen_core::remote::{DeviceKind, Serves, THIS_COMPUTER};
 
 fn rig(cx: &mut TestAppContext) -> (tempfile::TempDir, Rc<Storage>, Entity<Devices>) {
     let dir = tempfile::tempdir().unwrap();

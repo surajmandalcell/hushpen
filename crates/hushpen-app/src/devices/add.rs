@@ -127,10 +127,9 @@ fn nearby(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyEleme
                 Kind::Plain,
                 Some(&state.focus.get(&control, cx)),
                 !state.busy,
-                move |window, cx| {
+                move |_, cx| {
                     devices.update(cx, |state, cx| {
                         state.selected_device = Some(device.clone());
-                        state.uri.update(cx, |input, cx| input.focus(window, cx));
                         cx.notify();
                     })
                 },
@@ -145,9 +144,6 @@ fn nearby(palette: Palette, devices: &Entity<Devices>, cx: &App) -> Vec<AnyEleme
             format!("Hushpen found · {}", phone.hostname.trim_end_matches('.')),
             trailing,
         ));
-        if selected {
-            found.push(link_row(palette, devices, "pair", cx));
-        }
     }
     if found.is_empty() {
         let devices = devices.clone();
@@ -220,31 +216,6 @@ fn device_line(
         ))
         .child(trailing)
         .into_any_element()
-}
-
-/// The pairing link the device shows in Server mode, and Pair, which takes the button `control`.
-fn link_row(palette: Palette, devices: &Entity<Devices>, control: &str, cx: &App) -> AnyElement {
-    let state = devices.read(cx);
-    let pair = {
-        let devices = devices.clone();
-        ui::button(
-            palette,
-            hook::id("devices", control),
-            "Pair",
-            Kind::Default,
-            Some(&state.focus.get(control, cx)),
-            !state.busy,
-            move |_, cx| devices.update(cx, |state, cx| state.pair_input(cx)),
-        )
-    };
-    ui::field_row(
-        palette,
-        hook::id("devices", "uri"),
-        "Pairing link",
-        "From Server mode",
-        &state.uri,
-        Some(pair.into_any_element()),
-    )
 }
 
 fn offer_row(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
@@ -484,7 +455,7 @@ fn ssh(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
     )
 }
 
-/// The system, the address, and the pairing link of a device on Tailscale.
+/// The system and address of a device on Tailscale.
 fn tailscale(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
     let state = devices.read(cx);
     let current = SYSTEMS
@@ -536,7 +507,6 @@ fn tailscale(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElemen
             &state.address,
             None,
         ),
-        link_row(palette, devices, "pairTailscale", cx),
     ];
     sheet::section(
         palette,

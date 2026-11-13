@@ -1,19 +1,109 @@
-use crate::{denied, invalid};
+use crate::{RemoteControl, RemoteStream, denied, invalid};
 use base64::{Engine, engine::general_purpose::STANDARD};
+use hmac::{Hmac, KeyInit, Mac};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use snow::resolvers::{CryptoResolver, DefaultResolver};
-use std::collections::BTreeMap;
-use std::io;
+use spake2::{Ed25519Group, Identity, Password, Spake2};
+use std::io::{self, Read, Write};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use subtle::ConstantTimeEq;
 
-/// A short-lived, single-use offer. Its code must not be logged.
+pub(crate) const NEARBY: &[u8] = b"nearby-v2";
+pub(crate) const TYPED: &[u8] = b"spake2-v2";
+pub(crate) const QR: &[u8] = b"qr-v2";
+
+/// Closing the sheet closes its unfinished connections, including number comparisons.
+#[derive(Clone, Default)]
+pub struct PairingWindow(Arc<Mutex<Window>>);
+
+#[derive(Default)]
+struct Window {
+    name: Option<String>,
+    cancelled: bool,
+    connections: Vec<RemoteControl>,
+}
+
+pub(crate) struct WindowConnection {
+    window: PairingWindow,
+    control: RemoteControl,
+}
+
+impl Drop for WindowConnection {
+    fn drop(&mut self) {
+        if let Ok(mut window) = self.window.0.lock() {
+            window
+                .connections
+                .retain(|connection| !connection.same_connection(&self.control));
+        }
+    }
+}
+
+impl PairingWindow {
+    pub fn close(&self) {
+        let mut window = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        window.name = None;
+        window.cancelled = true;
+        for connection in window.connections.drain(..) {
+            let _ = connection.shutdown();
+        }
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.0.lock().is_ok_and(|window| window.name.is_some())
+    }
+
+    pub(crate) fn name(&self) -> io::Result<String> {
+        self.0
+            .lock()
+            .map_err(|_| denied())?
+            .name
+            .clone()
+            .ok_or_else(denied)
+    }
+
+    pub(crate) fn track(&self, control: RemoteControl) -> io::Result<WindowConnection> {
+        let mut window = self.0.lock().map_err(|_| denied())?;
+        if window.name.is_none() {
+            return Err(denied());
+        }
+        window.connections.push(control.clone());
+        Ok(WindowConnection {
+            window: self.clone(),
+            control,
+        })
+    }
+
+    pub(crate) fn save(&self, save: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+        let window = self.0.lock().map_err(|_| denied())?;
+        if window.name.is_none() {
+            return Err(denied());
+        }
+        save()
+    }
+}
+
+/// Private bootstrap state. Only the QR payload can be displayed or scanned.
 pub struct PairOffer {
     pub host: String,
     pub port: u16,
     pub public_key: [u8; 32],
     pub expires_unix_secs: u64,
-    otp: String,
+    code: String,
+    token: [u8; 32],
     attempts: u8,
     used: bool,
+    window: PairingWindow,
+}
+
+/// A QR pins the computer key and proves possession of a random one-use secret.
+pub struct QrPayload {
+    pub host: String,
+    pub port: u16,
+    pub public_key: [u8; 32],
+    pub expires_unix_secs: u64,
+    token: [u8; 32],
 }
 
 impl PairOffer {
@@ -23,19 +113,15 @@ impl PairOffer {
         public_key: [u8; 32],
         expires_unix_secs: u64,
     ) -> io::Result<Self> {
-        validate_host(&host)?;
-        if port == 0 || expires_unix_secs <= now()? {
-            return Err(invalid("invalid pairing offer"));
+        validate_address(&host, port)?;
+        let time = now()?;
+        if expires_unix_secs <= time || expires_unix_secs > time.saturating_add(120) {
+            return Err(invalid("invalid pairing expiry"));
         }
-        let mut rng = DefaultResolver
-            .resolve_rng()
-            .ok_or_else(|| io::Error::other("random source unavailable"))?;
         let code = loop {
-            let mut bytes = [0_u8; 4];
-            rng.try_fill_bytes(&mut bytes).map_err(io::Error::other)?;
-            let value = u32::from_le_bytes(bytes);
-            if value < 4_294_000_000 {
-                break value % 1_000_000;
+            let value = u32::from_le_bytes(random::<4>()?);
+            if value < 4_200_000_000 {
+                break format!("{:08}", value % 100_000_000);
             }
         };
         Ok(Self {
@@ -43,95 +129,87 @@ impl PairOffer {
             port,
             public_key,
             expires_unix_secs,
-            otp: format!("{code:06}"),
+            code,
+            token: random()?,
             attempts: 0,
             used: false,
+            window: PairingWindow::default(),
         })
     }
 
-    pub fn otp(&self) -> &str {
-        &self.otp
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+    pub fn window(&self) -> PairingWindow {
+        self.window.clone()
     }
 
-    pub fn to_uri(&self) -> String {
-        let key = STANDARD
-            .encode(self.public_key)
-            .replace('+', "%2B")
-            .replace('/', "%2F")
-            .replace('=', "%3D");
-        format!(
-            "hushpen-pair://v1?host={}&port={}&pk={key}&otp={}&exp={}",
-            self.host, self.port, self.otp, self.expires_unix_secs,
-        )
+    pub fn open_window(&mut self, computer_name: &str) -> io::Result<()> {
+        self.check()?;
+        crate::enrollment::validate_name(computer_name)?;
+        let mut window = self.window.0.lock().map_err(|_| denied())?;
+        if window.name.is_some() || window.cancelled {
+            return Err(denied());
+        }
+        window.name = Some(computer_name.into());
+        Ok(())
     }
 
-    pub fn parse(uri: &str) -> io::Result<Self> {
-        if uri.len() > 1024 {
-            return Err(invalid("pairing offer is too long"));
-        }
-        let query = uri
-            .strip_prefix("hushpen-pair://v1?")
-            .ok_or_else(|| invalid("invalid pairing version"))?;
-        let mut fields = BTreeMap::new();
-        for field in query.split('&') {
-            let (name, value) = field
-                .split_once('=')
-                .ok_or_else(|| invalid("invalid pairing field"))?;
-            if !["host", "port", "pk", "otp", "exp"].contains(&name)
-                || fields.insert(name, decode(value)?).is_some()
-            {
-                return Err(invalid("invalid pairing field"));
-            }
-        }
-        let field = |name| {
-            fields
-                .get(name)
-                .map(String::as_str)
-                .ok_or_else(|| invalid("missing pairing field"))
-        };
-        let host = field("host")?.to_owned();
-        validate_host(&host)?;
-        let port = field("port")?
-            .parse::<u16>()
-            .map_err(|_| invalid("invalid pairing port"))?;
-        let public_key: [u8; 32] = STANDARD
-            .decode(field("pk")?)
-            .map_err(|_| invalid("invalid pairing key"))?
-            .try_into()
-            .map_err(|_| invalid("invalid pairing key"))?;
-        let otp = field("otp")?.to_owned();
-        let expires_unix_secs = field("exp")?
-            .parse::<u64>()
-            .map_err(|_| invalid("invalid pairing expiry"))?;
-        if port == 0 || otp.len() != 6 || !otp.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(invalid("invalid pairing offer"));
-        }
+    pub fn close_window(&mut self) {
+        self.window.close();
+        self.used = true;
+    }
+
+    pub fn qr_payload(&self) -> String {
+        json!({"version":2,"host":self.host,"port":self.port,"key":STANDARD.encode(self.public_key), "expires":self.expires_unix_secs,"token":STANDARD.encode(self.token)}).to_string()
+    }
+
+    /// Private file or SSH pipe only. This contains the typed secret.
+    pub fn to_bootstrap(&self) -> String {
+        json!({"qr":self.qr_payload(),"code":self.code}).to_string()
+    }
+
+    pub fn from_bootstrap(text: &str) -> io::Result<Self> {
+        let value = object(text, 2)?;
+        let qr = QrPayload::parse(value["qr"].as_str().ok_or_else(|| invalid("missing QR"))?)?;
+        let code = value["code"]
+            .as_str()
+            .ok_or_else(|| invalid("missing pairing code"))?;
+        validate_code(code)?;
         Ok(Self {
-            host,
-            port,
-            public_key,
-            expires_unix_secs,
-            otp,
+            host: qr.host,
+            port: qr.port,
+            public_key: qr.public_key,
+            expires_unix_secs: qr.expires_unix_secs,
+            token: qr.token,
+            code: code.into(),
             attempts: 0,
             used: false,
+            window: PairingWindow::default(),
         })
     }
 
     pub(crate) fn check(&self) -> io::Result<()> {
-        if self.used || self.attempts >= 3 || now()? >= self.expires_unix_secs {
+        self.check_at(now()?)
+    }
+
+    fn check_at(&self, time: u64) -> io::Result<()> {
+        if self.used || self.attempts >= 3 || time >= self.expires_unix_secs {
             return Err(denied());
         }
         Ok(())
     }
 
-    pub(crate) fn consume(&mut self, payload: &[u8]) -> io::Result<()> {
+    pub(crate) fn begin_attempt(&mut self) -> io::Result<()> {
         self.check()?;
+        self.window.name()?;
         self.attempts += 1;
-        let mut different = payload.len() ^ self.otp.len();
-        for (index, byte) in self.otp.bytes().enumerate() {
-            different |= usize::from(byte ^ payload.get(index).copied().unwrap_or(0));
-        }
-        if different != 0 {
+        Ok(())
+    }
+
+    pub(crate) fn consume(&mut self) -> io::Result<()> {
+        // The third in-flight attempt may succeed, but no fourth attempt may start.
+        if self.used || now()? >= self.expires_unix_secs || !self.window.is_open() {
             return Err(denied());
         }
         self.used = true;
@@ -139,86 +217,362 @@ impl PairOffer {
     }
 }
 
-fn validate_host(host: &str) -> io::Result<()> {
-    if host.is_empty()
+impl QrPayload {
+    pub fn parse(text: &str) -> io::Result<Self> {
+        let value = object(text, 6)?;
+        if value["version"] != 2 {
+            return Err(invalid("invalid pairing version"));
+        }
+        let host = value["host"]
+            .as_str()
+            .ok_or_else(|| invalid("invalid pairing host"))?
+            .to_owned();
+        let port = value["port"]
+            .as_u64()
+            .and_then(|n| u16::try_from(n).ok())
+            .ok_or_else(|| invalid("invalid pairing port"))?;
+        validate_address(&host, port)?;
+        let expires_unix_secs = value["expires"]
+            .as_u64()
+            .ok_or_else(|| invalid("invalid pairing expiry"))?;
+        let time = now()?;
+        if expires_unix_secs <= time || expires_unix_secs > time.saturating_add(120) {
+            return Err(denied());
+        }
+        Ok(Self {
+            host,
+            port,
+            public_key: key(&value["key"])?,
+            expires_unix_secs,
+            token: key(&value["token"])?,
+        })
+    }
+}
+
+fn object(text: &str, fields: usize) -> io::Result<Value> {
+    if text.len() > 2048 {
+        return Err(invalid("pairing payload is too long"));
+    }
+    let value: Value =
+        serde_json::from_str(text).map_err(|_| invalid("invalid pairing payload"))?;
+    if !value.as_object().is_some_and(|o| o.len() == fields) {
+        return Err(invalid("invalid pairing fields"));
+    }
+    Ok(value)
+}
+
+fn key(value: &Value) -> io::Result<[u8; 32]> {
+    STANDARD
+        .decode(
+            value
+                .as_str()
+                .ok_or_else(|| invalid("invalid pairing key"))?,
+        )
+        .map_err(|_| invalid("invalid pairing key"))?
+        .try_into()
+        .map_err(|_| invalid("invalid pairing key"))
+}
+
+fn validate_address(host: &str, port: u16) -> io::Result<()> {
+    if port == 0
+        || host.is_empty()
         || host.len() > 253
         || !host
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b".:-".contains(&byte))
+            .all(|b| b.is_ascii_alphanumeric() || b".:-".contains(&b))
     {
-        return Err(invalid("invalid pairing host"));
+        return Err(invalid("invalid pairing address"));
     }
     Ok(())
 }
 
-fn decode(text: &str) -> io::Result<String> {
-    let mut out = Vec::with_capacity(text.len());
-    let mut bytes = text.bytes();
-    while let Some(byte) = bytes.next() {
-        if byte == b'%' {
-            let high = bytes
-                .next()
-                .and_then(|b| (b as char).to_digit(16))
-                .ok_or_else(|| invalid("invalid pairing escape"))?;
-            let low = bytes
-                .next()
-                .and_then(|b| (b as char).to_digit(16))
-                .ok_or_else(|| invalid("invalid pairing escape"))?;
-            out.push((high * 16 + low) as u8);
-        } else {
-            out.push(byte);
-        }
+fn validate_code(code: &str) -> io::Result<()> {
+    if code.len() != 8 || !code.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(invalid("invalid pairing code"));
     }
-    String::from_utf8(out).map_err(|_| invalid("invalid pairing text"))
+    Ok(())
 }
 
 pub(crate) fn now() -> io::Result<u64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|time| time.as_secs())
+        .map(|t| t.as_secs())
         .map_err(io::Error::other)
+}
+
+fn random<const N: usize>() -> io::Result<[u8; N]> {
+    let mut bytes = [0; N];
+    DefaultResolver
+        .resolve_rng()
+        .ok_or_else(|| io::Error::other("random source unavailable"))?
+        .try_fill_bytes(&mut bytes)
+        .map_err(io::Error::other)?;
+    Ok(bytes)
+}
+
+/// Both keys, fixed roles, validated computer name, and the completed Noise transcript.
+pub(crate) fn context(
+    computer: &[u8; 32],
+    phone: &[u8; 32],
+    name: &str,
+    transcript: &[u8],
+) -> [u8; 32] {
+    hash(&[
+        b"hushpen-pair-v2",
+        b"computer",
+        computer,
+        b"phone",
+        phone,
+        name.as_bytes(),
+        transcript,
+    ])
+}
+
+fn hash(parts: &[&[u8]]) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    for part in parts {
+        hash.update((part.len() as u64).to_be_bytes());
+        hash.update(part);
+    }
+    hash.finalize().into()
+}
+
+fn commitment(context: &[u8; 32], role: &[u8], nonce: &[u8; 32]) -> [u8; 32] {
+    hash(&[b"commit", context, role, nonce])
+}
+
+fn verify(expected: &[u8; 32], actual: &[u8; 32]) -> io::Result<()> {
+    if !bool::from(expected.ct_eq(actual)) {
+        return Err(denied());
+    }
+    Ok(())
+}
+
+fn number(context: &[u8; 32], computer: &[u8; 32], phone: &[u8; 32]) -> String {
+    let digest = hash(&[b"number", context, computer, phone]);
+    format!(
+        "{:06}",
+        u64::from_be_bytes(digest[..8].try_into().expect("eight bytes")) % 1_000_000
+    )
+}
+
+pub(crate) fn nearby(
+    stream: &mut RemoteStream,
+    context: &[u8; 32],
+    computer: bool,
+) -> io::Result<String> {
+    let nonce = random()?;
+    let role: &[u8] = if computer { b"computer" } else { b"phone" };
+    let other: &[u8] = if computer { b"phone" } else { b"computer" };
+    let committed = commitment(context, role, &nonce);
+    let mut peer_commit = [0; 32];
+    // Neither peer reveals until both commitments have crossed the wire.
+    if computer {
+        stream.read_exact(&mut peer_commit)?;
+    }
+    stream.write_all(&committed)?;
+    if !computer {
+        stream.read_exact(&mut peer_commit)?;
+    }
+    let mut peer_nonce = [0; 32];
+    if computer {
+        stream.read_exact(&mut peer_nonce)?;
+        verify(&peer_commit, &commitment(context, other, &peer_nonce))?;
+    }
+    stream.write_all(&nonce)?;
+    if !computer {
+        stream.read_exact(&mut peer_nonce)?;
+        verify(&peer_commit, &commitment(context, other, &peer_nonce))?;
+    }
+    Ok(if computer {
+        number(context, &nonce, &peer_nonce)
+    } else {
+        number(context, &peer_nonce, &nonce)
+    })
+}
+
+pub(crate) fn pake(
+    stream: &mut RemoteStream,
+    context: &[u8; 32],
+    code: &str,
+    computer: bool,
+) -> io::Result<()> {
+    validate_code(code)?;
+    let (state, message) = start_pake(context, code, computer);
+    stream.write_all(&message)?;
+    let mut peer_message = [0; 33];
+    stream.read_exact(&mut peer_message)?;
+    let key = state.finish(&peer_message).map_err(|_| denied())?;
+    prove(stream, context, &key, computer)
+}
+
+fn start_pake(context: &[u8; 32], code: &str, computer: bool) -> (Spake2<Ed25519Group>, Vec<u8>) {
+    let phone = hash(&[b"phone", context]);
+    let desktop = hash(&[b"computer", context]);
+    let start = if computer {
+        Spake2::<Ed25519Group>::start_b
+    } else {
+        Spake2::<Ed25519Group>::start_a
+    };
+    start(
+        &Password::new(code.as_bytes()),
+        &Identity::new(&phone),
+        &Identity::new(&desktop),
+    )
+}
+
+fn proof(key: &[u8], context: &[u8; 32], role: &[u8]) -> [u8; 32] {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key size");
+    mac.update(b"hushpen-pair-confirm-v2");
+    mac.update(context);
+    mac.update(role);
+    mac.finalize().into_bytes().into()
+}
+
+pub(crate) fn prove(
+    stream: &mut RemoteStream,
+    context: &[u8; 32],
+    key: &[u8],
+    computer: bool,
+) -> io::Result<()> {
+    let role: &[u8] = if computer { b"computer" } else { b"phone" };
+    let other: &[u8] = if computer { b"phone" } else { b"computer" };
+    stream.write_all(&proof(key, context, role))?;
+    let mut received = [0; 32];
+    stream.read_exact(&mut received)?;
+    verify(&proof(key, context, other), &received)
+}
+
+pub(crate) fn qr_server(
+    stream: &mut RemoteStream,
+    context: &[u8; 32],
+    offer: &PairOffer,
+) -> io::Result<()> {
+    prove(stream, context, &offer.token, true)
+}
+pub(crate) fn qr_client(
+    stream: &mut RemoteStream,
+    context: &[u8; 32],
+    qr: &QrPayload,
+) -> io::Result<()> {
+    prove(stream, context, &qr.token, false)
+}
+
+pub(crate) fn confirm(stream: &mut RemoteStream, accepted: bool) -> io::Result<()> {
+    stream.write_all(&[u8::from(accepted)])?;
+    let mut peer = [0];
+    stream.read_exact(&mut peer)?;
+    if !accepted || peer != [1] {
+        return Err(denied());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn offer() -> PairOffer {
+        PairOffer::new(
+            "computer.local".into(),
+            47321,
+            [3; 32],
+            now().unwrap() + 120,
+        )
+        .unwrap()
+    }
 
     #[test]
-    fn pairing_uri_round_trips_and_rejects_bad_fields() {
-        let offer =
-            PairOffer::new("pixel.local".into(), 7342, [255; 32], now().unwrap() + 60).unwrap();
-        let uri = offer.to_uri();
-        let parsed = PairOffer::parse(&uri).unwrap();
-        assert_eq!(parsed.host, offer.host);
-        assert_eq!(parsed.public_key, offer.public_key);
-        assert_eq!(parsed.otp(), offer.otp());
-        for invalid in [
-            uri.replace("v1?", "v2?"),
-            format!("{uri}&otp=123456"),
-            uri.replace("7342", "0"),
-            uri.replace("pixel.local", "%26bad"),
-            uri.replace("pk=", "pk=%zz"),
-            uri.replace("pk=", "pk=x"),
-            uri.replace("otp=", "otp=x"),
-            format!("{uri}&unknown=x"),
+    fn numbers_bind_both_keys_name_and_noise_transcript() {
+        let context = context(&[1; 32], &[2; 32], "Computer", &[3; 32]);
+        let left = number(&context, &[4; 32], &[5; 32]);
+        assert_eq!(left.len(), 6);
+        for swapped in [
+            super::context(&[9; 32], &[2; 32], "Computer", &[3; 32]),
+            super::context(&[1; 32], &[9; 32], "Computer", &[3; 32]),
+            super::context(&[1; 32], &[2; 32], "Imposter", &[3; 32]),
+            super::context(&[1; 32], &[2; 32], "Computer", &[9; 32]),
         ] {
-            assert!(PairOffer::parse(&invalid).is_err());
+            assert_ne!(left, number(&swapped, &[4; 32], &[5; 32]));
         }
     }
 
     #[test]
-    fn offers_expire_are_single_use_and_limit_failed_codes() {
-        let mut offer = PairOffer::new("host".into(), 1, [1; 32], now().unwrap() + 60).unwrap();
-        let code = offer.otp().as_bytes().to_vec();
-        offer.consume(&code).unwrap();
-        assert!(offer.consume(&code).is_err());
-        let mut offer = PairOffer::new("host".into(), 1, [1; 32], now().unwrap() + 60).unwrap();
-        for _ in 0..3 {
-            assert!(offer.consume(b"wrong").is_err());
+    fn commitments_reject_changed_randomness_roles_and_context() {
+        let committed = commitment(&[1; 32], b"phone", &[2; 32]);
+        assert!(verify(&committed, &commitment(&[1; 32], b"phone", &[2; 32])).is_ok());
+        for changed in [
+            commitment(&[1; 32], b"phone", &[3; 32]),
+            commitment(&[1; 32], b"computer", &[2; 32]),
+            commitment(&[3; 32], b"phone", &[2; 32]),
+        ] {
+            assert!(verify(&committed, &changed).is_err());
         }
-        let code = offer.otp().as_bytes().to_vec();
-        assert!(offer.consume(&code).is_err());
-        offer.expires_unix_secs = 0;
-        assert!(offer.check().is_err());
+    }
+
+    #[test]
+    fn spake2_requires_same_code_context_and_mutual_role_proofs() {
+        for (code, context) in [
+            ("12345678", [1; 32]),
+            ("87654321", [1; 32]),
+            ("12345678", [2; 32]),
+        ] {
+            let (a, am) = start_pake(&[1; 32], "12345678", false);
+            let (b, bm) = start_pake(&context, code, true);
+            let ak = a.finish(&bm).unwrap();
+            let bk = b.finish(&am).unwrap();
+            let expected = code == "12345678" && context == [1; 32];
+            assert_eq!(ak == bk, expected);
+            assert_eq!(
+                verify(
+                    &proof(&ak, &[1; 32], b"computer"),
+                    &proof(&bk, &context, b"computer")
+                )
+                .is_ok(),
+                expected
+            );
+            assert_ne!(
+                proof(&ak, &[1; 32], b"computer"),
+                proof(&ak, &[1; 32], b"phone")
+            );
+        }
+    }
+
+    #[test]
+    fn offers_expire_limit_three_attempts_and_cannot_be_reused_or_reopened() {
+        let mut first = offer();
+        assert!(first.begin_attempt().is_err());
+        first.open_window("Computer").unwrap();
+        for _ in 0..3 {
+            first.begin_attempt().unwrap();
+        }
+        assert!(first.begin_attempt().is_err());
+        first.consume().unwrap();
+        assert!(first.begin_attempt().is_err());
+        assert!(first.consume().is_err());
+        let mut expiring = offer();
+        assert!(expiring.check_at(expiring.expires_unix_secs - 1).is_ok());
+        assert!(expiring.check_at(expiring.expires_unix_secs).is_err());
+        expiring.open_window("Computer").unwrap();
+        expiring.window().close();
+        assert!(expiring.begin_attempt().is_err());
+        assert!(expiring.open_window("Computer").is_err());
+        let mut cancelled = offer();
+        cancelled.window().close();
+        assert!(cancelled.open_window("Computer").is_err());
+    }
+
+    #[test]
+    fn qr_pins_key_without_exposing_typed_code() {
+        let offer = offer();
+        let payload = offer.qr_payload();
+        assert!(!payload.contains("code"));
+        let qr = QrPayload::parse(&payload).unwrap();
+        assert_eq!(qr.public_key, offer.public_key);
+        assert_eq!(qr.token, offer.token);
+        assert_eq!(offer.code().len(), 8);
+        let restored = PairOffer::from_bootstrap(&offer.to_bootstrap()).unwrap();
+        assert_eq!(restored.code(), offer.code());
+        assert!(!restored.window.is_open());
+        assert!(QrPayload::parse("{}").is_err());
     }
 }

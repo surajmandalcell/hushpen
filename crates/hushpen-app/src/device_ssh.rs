@@ -399,12 +399,12 @@ fn receive(
     } else if line.starts_with('{') {
         let value: serde_json::Value = serde_json::from_str(line)
             .map_err(|_| invalid("The server returned an invalid pairing offer."))?;
-        let uri = value["uri"]
+        let bootstrap = value["offer"]
             .as_str()
             .ok_or_else(|| invalid("The server returned no pairing offer."))?;
-        hushpen_remote::PairOffer::parse(uri)
+        hushpen_remote::PairOffer::from_bootstrap(bootstrap)
             .map_err(|_| invalid("The server returned an invalid pairing offer."))?;
-        if pairing.replace(uri.to_owned()).is_some() {
+        if pairing.replace(bootstrap.to_owned()).is_some() {
             return Err(invalid("The server returned more than one pairing offer."));
         }
     }
@@ -749,7 +749,7 @@ mod tests {
         .unwrap();
         assert_eq!(steps, [Step::Verifying]);
         assert!(offer.is_none());
-        assert!(receive("{\"uri\":\"invalid\"}", &mut |_| {}, &mut offer).is_err());
+        assert!(receive("{\"offer\":\"invalid\"}", &mut |_| {}, &mut offer).is_err());
     }
 
     #[test]
@@ -840,11 +840,11 @@ mod tests {
             architecture,
         };
         let mut steps = Vec::new();
-        let uri = setup(&host, &source, &AtomicBool::new(false), |step| {
+        let bootstrap = setup(&host, &source, &AtomicBool::new(false), |step| {
             steps.push(step)
         })
         .unwrap();
-        let offer = hushpen_remote::PairOffer::parse(&uri).unwrap();
+        let offer = hushpen_remote::PairOffer::from_bootstrap(&bootstrap).unwrap();
         assert_eq!(offer.port, 47321);
         assert_eq!(
             steps,

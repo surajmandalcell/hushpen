@@ -10,9 +10,7 @@ use crate::storage::Storage;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{AppContext as _, Context, Entity, EventEmitter, Window};
 use hushpen_core::os::Os;
-use hushpen_core::remote::{
-    Device, DeviceKind, Health, ModelKind, PairEvent, Pairing, Route, Serves, UnloadRule,
-};
+use hushpen_core::remote::{Device, Health, ModelKind, PairEvent, Pairing, Route, UnloadRule};
 use hushpen_remote::discovery::FoundDevice;
 use hushpen_store::settings::{RemoteDevice, RemoteSettings, Transport};
 use serde_json::{Value, json};
@@ -28,7 +26,7 @@ pub enum Request {
     },
     CancelOffer,
     Pair {
-        uri: String,
+        bootstrap: String,
         device: Device,
         transport: Transport,
     },
@@ -82,7 +80,6 @@ pub struct Devices {
     pub focus: focus::Focus,
     pub host: Entity<InputState>,
     pub address: Entity<InputState>,
-    pub uri: Entity<InputState>,
     pub name: Entity<InputState>,
 }
 
@@ -112,7 +109,6 @@ impl Devices {
             host: cx.new(|cx| InputState::new(window, cx).placeholder("Automatic")),
             address: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Tailscale address and port")),
-            uri: cx.new(|cx| InputState::new(window, cx).placeholder("Pairing link")),
             name: cx.new(|cx| InputState::new(window, cx).placeholder("Device name")),
         }
     }
@@ -352,74 +348,6 @@ impl Devices {
         cx.notify();
     }
 
-    pub fn pair_input(&mut self, cx: &mut Context<Self>) {
-        let mut uri = self.uri.read(cx).value().to_string();
-        if self.sheet == Some(Sheet::Add(AddMethod::Tailscale)) {
-            let address = self.address.read(cx).value().to_string();
-            let result = hushpen_remote::PairOffer::parse(&uri).and_then(|mut offer| {
-                let (host, port) = address
-                    .rsplit_once(':')
-                    .ok_or_else(|| std::io::Error::other("Enter an address and port."))?;
-                offer.host = host.trim_matches(['[', ']']).to_owned();
-                offer.port = port
-                    .parse()
-                    .map_err(|_| std::io::Error::other("Enter a valid port."))?;
-                let uri = offer.to_uri();
-                hushpen_remote::PairOffer::parse(&uri)?;
-                Ok(uri)
-            });
-            match result {
-                Ok(value) => uri = value,
-                Err(_) => {
-                    self.failed(
-                        "Enter a valid Tailscale address, port, and pairing link.".into(),
-                        cx,
-                    );
-                    return;
-                }
-            }
-        }
-        let Some(device) = self.selected_device.clone().or_else(|| {
-            if self.sheet != Some(Sheet::Add(AddMethod::Tailscale)) {
-                return None;
-            }
-            let address = self.address.read(cx).value().to_string();
-            if address.is_empty() {
-                return None;
-            }
-            Some(Device {
-                id: format!("tailscale-{}", address.replace([':', '[', ']'], "-")),
-                name: address,
-                kind: if matches!(self.tailscale_os, Os::Ios | Os::Android) {
-                    DeviceKind::Phone
-                } else {
-                    DeviceKind::Server
-                },
-                os: self.tailscale_os,
-                serves: Serves {
-                    speech: true,
-                    cleanup: true,
-                },
-            })
-        }) else {
-            self.failed("Choose a device or enter a Tailscale address.".into(), cx);
-            return;
-        };
-        let transport = if self.sheet == Some(Sheet::Add(AddMethod::Tailscale)) {
-            Transport::Tailscale
-        } else {
-            Transport::Lan
-        };
-        self.request(
-            Request::Pair {
-                uri,
-                device,
-                transport,
-            },
-            cx,
-        );
-    }
-
     pub fn set_discovered(&mut self, found: Vec<FoundDevice>, cx: &mut Context<Self>) {
         self.discovered = found;
         cx.notify();
@@ -431,14 +359,14 @@ impl Devices {
     }
     pub fn set_offer(
         &mut self,
-        uri: String,
+        payload: String,
         qr: Vec<Vec<bool>>,
         expires: u64,
         cx: &mut Context<Self>,
     ) {
         self.pairing.apply(
             PairEvent::Offer {
-                payload: uri,
+                payload,
                 expires_at: expires,
             },
             now(),

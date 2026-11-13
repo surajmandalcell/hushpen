@@ -54,7 +54,7 @@ fn devices_routes_and_private_identity_survive_a_restart() {
     secrets.set_endpoint_api_key(Some("endpoint-test")).unwrap();
     secrets.set_noise_private_key(&[23; 32]).unwrap();
     secrets
-        .set_pair_offer(Some("hushpen-pair://v1?otp=123456"))
+        .set_pair_offer(Some("{\"code\":\"12345678\"}"))
         .unwrap();
     drop(settings);
     drop(secrets);
@@ -69,7 +69,7 @@ fn devices_routes_and_private_identity_survive_a_restart() {
     assert_eq!(secrets.endpoint_api_key().as_deref(), Some("endpoint-test"));
     assert_eq!(
         secrets.pair_offer().as_deref(),
-        Some("hushpen-pair://v1?otp=123456")
+        Some("{\"code\":\"12345678\"}")
     );
     secrets.set_pair_offer(None).unwrap();
     assert_eq!(Secrets::open(root.path()).unwrap().pair_offer(), None);

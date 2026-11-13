@@ -60,34 +60,21 @@ type_into() {
   sleep 0.2
 }
 pair_host() {
-  local number=$1 id=$2 name=$3 method=${4:-lan} port=$((47330 + $1)) data uri args pid offer_host=127.0.0.1 count
+  local number=$1 id=$2 name=$3 method=${4:-lan} port=$((47330 + $1)) data offer args pid
   data=$HOST_DATA/$number
   mkdir -p "$data"
   ss -ltn | grep -q ":$port " && return 1
-  [ "$method" != tailscale ] || offer_host=unreachable.invalid
-  uri=$(/app/hushpen-host pair --json --data-dir "$data" --listen "127.0.0.1:$port" --host "$offer_host" | jq -er .uri) || return 1
+  offer=$(/app/hushpen-host pair --json --data-dir "$data" --listen "127.0.0.1:$port" --host 127.0.0.1 | jq -er .offer) || return 1
   setsid timeout --kill-after=3 300 /app/hushpen-host --data-dir "$data" \
     --listen "127.0.0.1:$port" --host 127.0.0.1 --name "$name" \
     >"$data/stdout.log" 2>"$data/stderr.log" &
   pid=$!
   HOST_PIDS+=("$pid")
   wait_until 10 grep -q 'listening on' "$data/stderr.log" || return 1
-  if [ "$method" = tailscale ]; then
-    count=$(device_state '.devices | length')
-    device_action '{"op":"method","method":"tailscale"}' || return 1
-    type_into devices.address invalid || return 1
-    type_into devices.uri "$uri" || return 1
-    real_click devices.pairTailscale || return 1
-    snapshot devices-address-invalid
-    device_is '.devices | length' "$count" && device_state '.notice != null' >/dev/null || return 1
-    type_into devices.address "127.0.0.1:$port" || return 1
-    real_click devices.pairTailscale || return 1
-  else
-    args=$(jq -nc --arg uri "$uri" --arg id "$id" --arg name "$name" \
-      '{op:"pair",uri:$uri,id:$id,name:$name,os:"linux"}')
-    device_action "$args" || return 1
-  fi
-  unset uri args
+  args=$(jq -nc --arg offer "$offer" --arg id "$id" --arg name "$name" --arg transport "$method" \
+    '{op:"pair",offer:$offer,id:$id,name:$name,os:"linux",transport:$transport}')
+  device_action "$args" || return 1
+  unset offer args
   wait_until 15 device_is '.busy' false || return 1
   device_state ".devices | any(.id == \"$id\")" >/dev/null
 }
@@ -162,7 +149,7 @@ reveal devices.qr || failures+="the QR could not scroll fully into view; "
 snapshot devices-qr
 if command -v zbarimg >/dev/null; then
   decoded=$(zbarimg --quiet --raw "$RUN_OUT/devices-qr.png" 2>/dev/null)
-  case "$decoded" in hushpen-pair://v1\?host=*) ;; *) failures+="the visible QR did not decode to a pairing link; " ;; esac
+  jq -e 'type == "object" and .version == 2 and (.host | type == "string") and (.port | type == "number" and . > 0 and . <= 65535) and (.key | type == "string" and length == 44) and (.token | type == "string" and length == 44) and (.expires | type == "number" and . > now) and (has("code") | not)' <<<"$decoded" >/dev/null || failures+="the visible QR did not decode to a key-pinning payload; "
   unset decoded
 fi
 real_click devices.close || failures+="the QR close control could not be clicked; "
@@ -176,4 +163,4 @@ pair_host 3 tailscale-127.0.0.1-47333 'Address host' tailscale || failures+="add
 snapshot devices-address-paired
 device_is '.devices[] | select(.id == "tailscale-127.0.0.1-47333") | .address' '127.0.0.1:47333' || failures+="the typed address was not saved; "
 device_is '.devices[] | select(.id == "tailscale-127.0.0.1-47333") | .transport.kind' tailscale || failures+="the transport was not saved; "
-check_failures "devices address pairing" "invalid input was refused; the typed loopback address replaced the unreachable offer address and paired over Noise" "$failures"
+check_failures "devices address pairing" "the address from the protected bootstrap paired over Noise and saved its transport" "$failures"
