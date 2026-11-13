@@ -22,6 +22,8 @@ pub struct PairingWindow(Arc<Mutex<Window>>);
 struct Window {
     name: Option<String>,
     cancelled: bool,
+    attempts: u8,
+    used: bool,
     connections: Vec<RemoteControl>,
 }
 
@@ -85,6 +87,7 @@ impl PairingWindow {
 }
 
 /// Private bootstrap state. Only the QR payload can be displayed or scanned.
+#[derive(Clone)]
 pub struct PairOffer {
     pub host: String,
     pub port: u16,
@@ -92,8 +95,6 @@ pub struct PairOffer {
     pub expires_unix_secs: u64,
     code: String,
     token: [u8; 32],
-    attempts: u8,
-    used: bool,
     window: PairingWindow,
 }
 
@@ -131,8 +132,6 @@ impl PairOffer {
             expires_unix_secs,
             code,
             token: random()?,
-            attempts: 0,
-            used: false,
             window: PairingWindow::default(),
         })
     }
@@ -146,10 +145,11 @@ impl PairOffer {
 
     /// Typed or scanned tries that remain across all connections.
     pub fn tries_left(&self) -> u8 {
-        if self.used {
+        let window = self.window.0.lock().unwrap_or_else(|e| e.into_inner());
+        if window.used {
             0
         } else {
-            3u8.saturating_sub(self.attempts)
+            3u8.saturating_sub(window.attempts)
         }
     }
 
@@ -166,7 +166,7 @@ impl PairOffer {
 
     pub fn close_window(&mut self) {
         self.window.close();
-        self.used = true;
+        self.window.0.lock().unwrap_or_else(|e| e.into_inner()).used = true;
     }
 
     pub fn qr_payload(&self) -> String {
@@ -192,8 +192,6 @@ impl PairOffer {
             expires_unix_secs: qr.expires_unix_secs,
             token: qr.token,
             code: code.into(),
-            attempts: 0,
-            used: false,
             window: PairingWindow::default(),
         })
     }
@@ -203,25 +201,33 @@ impl PairOffer {
     }
 
     fn check_at(&self, time: u64) -> io::Result<()> {
-        if self.used || self.attempts >= 3 || time >= self.expires_unix_secs {
+        let window = self.window.0.lock().map_err(|_| denied())?;
+        if window.used || window.attempts >= 3 || time >= self.expires_unix_secs {
             return Err(denied());
         }
         Ok(())
     }
 
     pub(crate) fn begin_attempt(&mut self) -> io::Result<()> {
-        self.check()?;
-        self.window.name()?;
-        self.attempts += 1;
+        let mut window = self.window.0.lock().map_err(|_| denied())?;
+        if window.used
+            || window.attempts >= 3
+            || now()? >= self.expires_unix_secs
+            || window.name.is_none()
+        {
+            return Err(denied());
+        }
+        window.attempts += 1;
         Ok(())
     }
 
     pub(crate) fn consume(&mut self) -> io::Result<()> {
         // The third in-flight attempt may succeed, but no fourth attempt may start.
-        if self.used || now()? >= self.expires_unix_secs || !self.window.is_open() {
+        let mut window = self.window.0.lock().map_err(|_| denied())?;
+        if window.used || now()? >= self.expires_unix_secs || window.name.is_none() {
             return Err(denied());
         }
-        self.used = true;
+        window.used = true;
         Ok(())
     }
 }
@@ -469,9 +475,13 @@ pub(crate) fn qr_client(
 
 pub(crate) fn confirm(stream: &mut RemoteStream, accepted: bool) -> io::Result<()> {
     stream.write_all(&[u8::from(accepted)])?;
+    stream.flush()?;
+    if !accepted {
+        return Err(denied());
+    }
     let mut peer = [0];
     stream.read_exact(&mut peer)?;
-    if !accepted || peer != [1] {
+    if peer != [1] {
         return Err(denied());
     }
     Ok(())
@@ -568,6 +578,41 @@ mod tests {
         let mut cancelled = offer();
         cancelled.window().close();
         assert!(cancelled.open_window("Computer").is_err());
+    }
+
+    #[test]
+    fn concurrent_offer_clones_share_three_tries_and_one_use() {
+        let mut offer = offer();
+        offer.open_window("Computer").unwrap();
+        let attempts: Vec<_> = (0..4)
+            .map(|_| {
+                let mut clone = offer.clone();
+                std::thread::spawn(move || clone.begin_attempt().is_ok())
+            })
+            .collect();
+        assert_eq!(
+            attempts
+                .into_iter()
+                .map(|attempt| attempt.join().unwrap())
+                .filter(|accepted| *accepted)
+                .count(),
+            3
+        );
+        assert_eq!(offer.tries_left(), 0);
+        let uses: Vec<_> = (0..4)
+            .map(|_| {
+                let mut clone = offer.clone();
+                std::thread::spawn(move || clone.consume().is_ok())
+            })
+            .collect();
+        assert_eq!(
+            uses.into_iter()
+                .map(|used| used.join().unwrap())
+                .filter(|consumed| *consumed)
+                .count(),
+            1
+        );
+        assert!(offer.check().is_err());
     }
 
     #[test]
