@@ -40,7 +40,7 @@ Description (4000):
 ```
 Hushpen turns your voice into text on your iPhone or iPad. It is free and open source. There is no subscription, no account, no ads, and no word limit.
 
-Add the Hushpen keyboard, tap the microphone key in any app, and talk. Hushpen opens, listens, and turns your speech into clean text on the device. Go back to the app you were typing in and tap Insert dictation. Your words appear where the cursor is.
+Add the Hushpen keyboard, tap the microphone key in any app, and talk. Hushpen opens, listens, and turns your speech into clean text on the device. Swipe back to the app you were typing in and keep talking. Your words appear where the cursor is.
 
 PRIVATE BY DESIGN
 - Speech recognition runs on your device. Your voice and your text do not leave it.
@@ -49,7 +49,7 @@ PRIVATE BY DESIGN
 - The source code is public under AGPL-3.0-or-later, so anyone can check these claims.
 
 DICTATE IN ANY APP
-- A full keyboard with a voice bar: Messages, Notes, Mail, and other apps that use the system keyboard.
+- A full keyboard with a microphone key: Messages, Notes, Mail, and other apps that use the system keyboard.
 - Hushpen records only after you tap the microphone. The keyboard itself never records and has no network code.
 - Undo the last insertion with one tap.
 - A Live Activity and the Dynamic Island show that Hushpen is listening while you use another app.
@@ -149,8 +149,8 @@ To review the main feature (about 3 minutes):
 2. On Home, tap Microphone, Allow.
 3. Open Settings > General > Keyboard > Keyboards > Add New Keyboard > Hushpen. Then tap Hushpen in the list and turn on Allow Full Access.
 4. Open Notes or Messages and tap a text field. Hold the globe key and choose Hushpen.
-5. Tap the blue microphone key. The keyboard cannot record, so it opens Hushpen, which shows "Listening". Speak a sentence, then tap Done. Hushpen shows "Done".
-6. Swipe right on the bar at the bottom of the screen (or tap the back-to-app link in the status bar) to return to Notes. Tap "Insert dictation" in the keyboard. The text appears at the cursor. The undo button removes it.
+5. Tap the microphone key. The keyboard cannot record, so it opens Hushpen, which shows "Listening" and "Swipe right to go back".
+6. Swipe right on the bar at the bottom of the screen (or tap the back-to-app link in the status bar) to return to Notes. Speak a sentence, then tap the check mark in the pill above the keys. The text appears at the cursor by itself. The undo button in the pill removes it.
 
 Why Full Access: the keyboard extension can only read the text that the app made through the App Group container (group.com.mandalsuraj.hushpen) with Full Access. The keyboard has no network code, no microphone access, and no analytics.
 
