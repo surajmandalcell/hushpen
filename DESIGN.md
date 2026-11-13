@@ -180,7 +180,7 @@ components:
 
 ## Overview
 
-Hushpen is fixed-width, calm, and compact, for private dictation, transcription, models, and playback. Open on the working app. Hide internal names.
+Hushpen is compact and fixed-width: private dictation, transcription, models, and playback. Open on the working app. Hide internal names.
 
 Core sets platform defaults. Windows uses Right Alt gestures, CPU, Keep in memory, Inter, and custom window controls. Only Linux offers Page out. Windows 11 build 22621+ uses Mica behind the sidebar; older builds use opaque fill. The flow bar never takes focus. Higher-privilege apps get a copy and notice.
 
@@ -199,34 +199,34 @@ Each design in `assets/icons/<name>/` has `mark.svg` (full 1024 tile) and `mark-
 
 ## Appearance
 
-The app follows the system appearance, Light or Dark, and changes live when the system setting changes, with no restart. Every view reads its colors from one palette for the current appearance. If the appearance is unknown (Linux without a desktop setting), the app uses Dark. The app also follows the system Reduce Motion setting (macOS Accessibility, or GNOME `enable-animations` off on Linux): it reads it at start and once a second, and a change applies live. If the system does not say, motion plays.
+Views share one palette and follow system Light or Dark live; unknown appearance uses Dark. Reduce Motion follows macOS Accessibility or GNOME `enable-animations` off, read at start and once a second. Unknown motion settings allow motion.
 
 The flow bar pill is the one exception on desktop. It stays a dark HUD (`#1F1F1F`, light text) in both appearances, because it floats over other apps. The iOS keyboard pill follows the appearance of the keyboard instead.
 
-The macOS menu bar item is the glyph alone, with no name beside it: a solid quill writing a sound wave (a 1.5pt line of two waves along the bottom left, the quill rising to the top right). It is a template image (`assets/hushpen-menubar.png`, 22 by 16 points at 2x), so macOS tints it for Light, Dark, and a highlighted menu bar. Its accessibility name is "Hushpen". Linux panels get the same glyph scaled to fit a 32px square, black or white for their appearance.
+The menu bar shows only a solid quill rising to the top right, writing two 1.5pt waves at bottom left. `assets/hushpen-menubar.png` is a 22x16pt template at 2x, tinted by macOS for appearance and highlight. Its accessible name is "Hushpen". Linux uses the same glyph in a 32px square, black or white for its appearance.
 
 ## Colors
 
-All colors are neutral grays plus one accent.
+Use the Light and Dark tokens above: neutral grays and one accent.
 
-- **Content (`#1E1E1E` Dark, `#F5F5F5` Light):** the opaque content pane and the onboarding page.
-- **Sidebar (`#2B2B2D` Dark, `#E8E8EA` Light):** the solid sidebar on Linux without a compositor. On macOS the sidebar has no fill: the native sidebar material shows through.
-- **Sidebar blur (the sidebar color at 80%):** the sidebar on Linux with a compositor. What is behind the window shows through; KWin blurs it, and picom blurs it when its own configuration asks.
-- **Group (white 5% Dark, black 3.5% Light):** the fill of a grouped section.
-- **Selection (white 10% Dark, black 9% Light):** the neutral fill of hover, the selected sidebar row, and a selected list row. Never blue.
-- **Control (white 12% Dark, black 8% Light):** the neutral fill of a push button.
-- **Label (white 85% Dark, black 85% Light):** main text.
-- **Label secondary (white 55% Dark, black 50% Light):** secondary lines, sidebar icons, and group footers.
-- **Label tertiary (white 25% Dark, black 26% Light):** placeholders and disabled text.
-- **Separator (white 10% Dark, black 10% Light):** hairlines and the group stroke.
-- **Segment (white 22% Dark, white Light):** the selected segment of a segmented control, raised above the control fill.
-- **Accent (`#0A84FF` Dark, `#007AFF` Light):** the default button, a switch that is on, the focus ring, the selection focus, links, and the outline of a drop zone while files are dragged over the window.
-- **Status colors, on status words only:** success (`#30D158` Dark, `#34C759` Light) for ready, error (`#FF453A` Dark, `#FF3B30` Light) for a failure.
-- **Status icon, for a row that needs the user:** warning (`#FF9F0A` Dark, `#FF9500` Light) on an exclamation icon (lucide `circle-alert`, 16px) with the tooltip and accessibility label "Needs attention" and no word. The icon is the only place the warning color appears.
-- **Scrim (black 40% Dark, black 20% Light):** dims the window behind a sheet.
-- **Menu (`#2B2B2D` Dark, white Light):** an open pop-up menu and a tooltip.
-- **Shadow (black 50% Dark, black 20% Light):** the shadow under an open menu.
-- **On accent (`#FFFFFF`):** text on the default button.
+- **Content:** opaque content and onboarding.
+- **Sidebar:** native unfilled material on macOS; solid on Linux without a compositor.
+- **Sidebar blur:** translucent Linux sidebar; KWin blurs it, picom uses its own blur setting.
+- **Group:** grouped section fill.
+- **Selection:** neutral hover, sidebar selection, and list selection; never blue.
+- **Control:** push button fill.
+- **Label:** main text.
+- **Label secondary:** secondary lines, sidebar icons, and group footers.
+- **Label tertiary:** placeholders and disabled text.
+- **Separator:** hairlines and group stroke.
+- **Segment:** selected segment, raised above the control fill.
+- **Accent:** default button, on switch, focus rings, selection focus, links, and dragged-over drop zone outline.
+- **Success and error:** ready or failed status words only.
+- **Warning:** only the 16px lucide `circle-alert` icon, with tooltip and accessible name "Needs attention"; no word.
+- **Scrim:** dims behind a sheet.
+- **Menu:** pop-up menus and tooltips.
+- **Shadow:** under an open menu.
+- **On accent:** default button text.
 - **Linux window buttons:** close and minimize, with dark glyphs on hover.
 
 Do not add colored icon tiles, section accents, or tinted panels.
@@ -235,23 +235,23 @@ Do not add colored icon tiles, section accents, or tinted panels.
 
 Linux embeds Inter.
 
-Use the typography tokens above: Title for onboarding and About, Toolbar title in chrome, Heading above Settings groups, Body for rows, Button for controls, and Secondary for descriptions and footers. Headings and secondary text use the secondary label color.
+Typography tokens: Title for onboarding/About; Toolbar title for chrome; Heading for Settings groups; Body for rows; Button for controls; Secondary for help and footers. Headings and secondary text use the secondary label color.
 
 ## Layout
 
-The window is 940px wide and opens 600px high. Only its height changes, from 600px up to 900px, or up to the screen height when that is smaller. The app saves the height after a resize and restores it, held inside the screen, at the next start. Lists and scroll areas grow with the height. It has no zoom and no full screen. On macOS the title bar is transparent with full-size content and AppKit draws the traffic lights. On Linux the frame is custom: the app draws a close and a minimize button (12px circles, 8px apart) and no maximize button. With a compositor (an owner of `_NET_WM_CM_S<screen>` on X11, or any Wayland session) the Linux window is see-through like the macOS one: 10px corners, a hairline edge in the separator color, an opaque content pane, the translucent sidebar, and `_KDE_NET_WM_BLUR_BEHIND_REGION` set to the sidebar. Without one it is square and opaque with the solid sidebar, because a transparent window renders black there. The app reads the compositor at start and once a second, and switches live. The flow bar is a rectangle without a compositor for the same reason.
+The window opens at 940x600px. Only height changes: 600 to 900px, capped by screen height, saved on resize and restored inside the screen. Lists grow with it. No zoom or full screen. macOS uses a transparent full-size title bar and AppKit lights. Linux draws close and minimize (12px circles, 8px apart), without maximize. A compositor means an X11 owner of `_NET_WM_CM_S<screen>` or any Wayland session: use 10px corners, a separator hairline, opaque content, translucent sidebar, and `_KDE_NET_WM_BLUR_BEHIND_REGION` on the sidebar. Without one, use a square opaque window, solid sidebar, and rectangular flow bar; transparency renders black. Check at start and once a second; switch live.
 
-The sidebar is 232px wide. The first 48px (`sidebar-top`) hold the window buttons and the word "Hushpen" beside them. Rows start below it: 28px high, 2px apart, with 8px of padding at the sides. The title bar area above the content is 52px high and holds the view title.
+The 232px sidebar starts with a 48px band (`sidebar-top`) for window buttons and "Hushpen". Rows below are 28px high, 2px apart, with 8px side padding. The content title bar is 52px high.
 
-The chrome has one center line, 26px from the window top. The window buttons, the app name, and the view title all center on it. The 12px circles sit at (20, 20) on both systems. On macOS the native button frame is taller than its circle, so the app reads the frame height after the window opens and moves the frame up by half the difference. The name starts 16px right of the last circle, uses the toolbar title style, and truncates inside the band.
+Window buttons, app name, and view title center 26px from the top. Both systems place 12px circles at (20, 20). After opening, macOS reads the taller native button frame and raises it by half the height difference. The name starts 16px after the last circle, in toolbar title style, truncated inside the band.
 
 The content pane has a 24px margin. Groups fill the pane width. Onboarding is one centered column, at most 640px wide.
 
-A group holds rows. A row is one line, at least 36px high, with 10px of side padding. The title is on the left. The value or the control is on the right, on the same line. A row may have one short secondary line under the title. It is truncated, never wrapped. Longer help goes in one group footer line (secondary, 11px) or in a tooltip.
+Rows are at least 36px high with 10px side padding: title left, value or control right on the same line. One secondary line may follow the title, truncated, never wrapped. Longer help uses one 11px secondary group footer or a tooltip.
 
 The model step of onboarding shows the speech rows of Models, Parakeet first; a progress bar replaces the secondary line while a model downloads. Continue stays off until one speech model is downloaded. Details opens the sheet over the step. Each permission row has its icon, name, status (the word Ready, or the attention icon), and buttons on one line. On macOS the buttons are Allow (the default button), then Open Settings. The description is one short secondary line.
 
-Long local paths show as `~/...` when they are under the user home directory.
+Show home-relative paths as `~/...`.
 
 ## Elevation & Depth
 
@@ -268,23 +268,23 @@ Use `rounded` tokens for groups, controls, selection, icons, and windows.
 
 ## Motion
 
-Motion is short and quiet. It shows where something comes from and never makes the user wait. Every animation uses the same tokens:
+Motion is short and quiet, with these tokens:
 
-- **Fast (90 ms):** something small that appears or changes, such as a tooltip, a pop-up menu, or the icon of Play and Pause.
-- **Slide (110 ms):** a control that moves to a new state, such as the knob of a switch or the fill of a segmented control.
-- **Base (130 ms):** a surface that comes in, such as a view, an onboarding step, or a sheet.
-- **Travel (4px):** how far a surface moves on its way in.
+- **Fast (90 ms):** tooltips, menus, and Play/Pause icon changes.
+- **Slide (110 ms):** switch knobs and segmented fills.
+- **Base (130 ms):** views, onboarding steps, and sheets.
+- **Travel (4px):** entry distance.
 
 Every animation uses one cubic ease-out curve. It never overshoots or bounces.
 
 - A tooltip fades in and rises 4px into place.
 - A pop-up menu fades in and drops 4px into place, each time it opens.
-- A view picked in the sidebar fades in and rises 4px into place in the content pane. The sidebar and the title bar stay still. A new onboarding step comes in the same way.
-- As a sheet opens, the scrim fades in, and the sheet fades in and rises 4px into place. It does not scale, because the renderer cannot scale an element.
-- A switch slides its knob across and blends its track into the new fill. A segmented control slides its fill to the new segment.
-- An icon button with two states, such as Play and Pause, cross-fades its icons: the old icon fades out and shrinks, and the new one fades in and grows from a quarter of its size into place.
+- Views and onboarding steps fade in and rise 4px; sidebar and title bar stay still.
+- Sheets fade in and rise 4px while the scrim fades in; no scaling.
+- Switch knobs slide and tracks blend; segmented fills slide.
+- Two-state icons crossfade: the old shrinks away, the new grows from quarter size.
 
-An animation plays only when its state changes: a new view, a menu that opens, a switch that turns on. A redraw of the same state never plays it again. The new state is there at once for the keyboard and the accessibility tree, so a switch reads "on" before its knob arrives. Text moves and fades as one block; its layout never animates. With Reduce Motion every change shows at once. The pixel tests turn on Reduce Motion, so every baseline is a settled frame.
+Animate state changes, never redraws. Keyboard and accessibility state changes at once. Text moves and fades as one block; layout never animates. Reduce Motion shows changes at once; pixel tests enable it for settled frames.
 
 ## Components
 
@@ -313,7 +313,7 @@ An animation plays only when its state changes: a new view, a menu that opens, a
 
 Each group of icons runs from lightest to heaviest. The focus moves in the order the controls are drawn.
 
-**About:** a centered header, a facts group, a links group, and a footer line. The header holds the app icon (96px, 16px radius), "Hushpen" in the title style, the line "Private dictation that stays on this Mac" ("on this computer" on Linux), the build line in the secondary style (`Version 2.0.0 (1a2b3c4, 2026-05-15)`, with `-dev` after the version in a debug build), and a Check for Updates button with what the check found on one secondary line under it. The facts are Version, Engine (whisper.cpp and the model in use), and Data folder (with a Show button). The links are Website, GitHub, Report an issue, Open-source licenses, and Open log folder, each with the external-link glyph on the right. The footer is one centered secondary line: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." The Engine fact is the one place the UI names a component of the stack.
+**About:** centered header, facts group, links group, and centered secondary footer. Header: 96px icon with 16px radius, title "Hushpen", "Private dictation that stays on this Mac" ("on this computer" on Linux), secondary build stamp `Version <version> (<commit>, <date>)` (`-dev` after debug versions), and Check for Updates with one secondary result line below. Facts: Version, Engine (whisper.cpp and current model), Data folder with Show. Links: Website, GitHub, Report an issue, Open-source licenses, Open log folder; each ends with the external-link glyph. Footer: "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later." Only Engine names a stack component.
 
 **Models:** one section for each model kind, in this order: Speech to Text, Text cleanup, Text to Speech. Each section is a heading above its group, with one footer line. Text cleanup lists only the models this machine is offered. A row holds the name, then the word "Recommended" in the secondary style for the suggested model of its kind, then the state word, over one secondary line that says what the model is for. The state word is Default or Checking in the secondary label color, the percent of a download or "Updating 40%" in the label color, or Failed verification in the error color; a model that is downloaded, or not, has none. On the right, lightest to heaviest: the Accuracy and Speed meters (speech only), the size, and up to four icon buttons: Details (lucide `info`, 14px, tertiary label color, secondary on hover), Download (`download`) or Cancel (`x`), Set as default (`star`, speech only), and Delete (`trash`). A meter is a secondary label and five 6px dots 5px apart, filled in the secondary label color and empty in the tertiary; its tooltip and accessible name say "Accuracy: High (4 of 5)". The meters (112px) and the size (56px) keep fixed widths. The button group (22px buttons, 6px apart) fits the most buttons a row of the section has now, and a row's buttons sit against its right end with no empty slot, so the last one ends at the row padding and the sizes line up. The default has no Set as default; a failed speech row has Download, Set as default, and Delete. The first finished speech download becomes the default, and deleting the default makes another downloaded speech model the default (D-45). Speech to Text has four rows, in this order: Parakeet v3 Q4 (Q4_K, 416 MB, Recommended and the default), Whisper Large v3 Turbo Q5 (Q5_0, 574 MB), Whisper Small Q5 (Q5_1, 190 MB), and Whisper Base Q5 (Q5_1, 60 MB). Their secondary lines explain the roles: English and 24 other European languages; Hindi and other languages outside Parakeet's set; translation to English; older or slower computers. No English-only or full-size speech variants are offered. Typing in the search field keeps only the model rows whose name, description, language, or size matches, or whose section name holds the whole query (D-45); a section with no match hides. With no match the view shows `No models match "<query>"` and a Clear button. The field takes Cmd+F and Esc as in Settings, and the query is never saved. A model file may list earlier pins it replaces. When the files on disk match an earlier pin, the app fetches only the changed files in the background at start, and the state word of the row says Updating, with no top notice. A network stop stays quiet and the next start tries again. Failed verification is only for files that match no known pin.
 
@@ -354,7 +354,13 @@ Each group of icons runs from lightest to heaviest. The focus moves in the order
 
 ## Devices
 
-Devices follows flow D: separate Speech to Text and Text cleanup routes. First come "Use models on other devices" (off by default) and "Do not load models on this computer"; while the first is off, the rest fades to 35% and takes no input. A route row holds a grip, kind icon, name, model (112px), latency (56px, tabular digits), status (100px; Ready in success, Not reachable in error), and Move up and Move down. A dragged row shows at 50% and passes each row the pointer crosses halfway; the release counts as the last move. This computer has no grip, says Fallback, and stays last; with local models off it is gone. Your devices rows open Details; Add Device… ends that heading. Add a Device has Nearby (phones and a 104px QR, white in both appearances), SSH, and Tailscale. Details holds rename, Remove Device… (asked in a row), and only core-approved unload rules.
+Devices follows flow D: separate Speech to Text and Text cleanup routes. First come "Use models on other devices" (off by default) and "Do not load models on this computer"; while the first is off, the rest fades to 35% and takes no input. Route rows hold a grip, kind icon, name, model (112px), latency (56px, tabular digits), status (100px; Ready in success, Not reachable in error), and Move up and Move down. Dragged rows show at 50% and move past each row's halfway point; release counts as the last move. This computer has no grip, says Fallback, stays last, and hides with local models off. Your devices rows open Details; Add Device… ends that heading. Details holds rename, Remove Device… (asked in a row), and core-approved unload rules.
+
+**Add a Device (D-57):** Nearby | Remote tabs. Nearby lists phones, each with Pair…. Selection shows the same 6-digit pairing number on both screens after verified hash commitment. Compare, then tap Pair on both. The protected handshake sends the computer's real name for the phone to show. Cancel or mismatch stops pairing.
+
+**Fallback:** always under the Nearby list, even when empty: a QR, white in both appearances, pins the computer's public key; "Or type the code" shows an 8-digit pairing code. The phone's Pair a Desktop offers Scan QR and Type Code (PAKE), finding the computer through Bonjour or an Address field. Offers work once, expire in two minutes, and allow three tries. No copyable URI or paste field. The pairing listener closes and cancels with the sheet.
+
+**Remote:** merge `~/.ssh/config` and installed `tailscale status`; show each machine once. Rows: server icon, name, secondary line ("From ~/.ssh/config", "From Tailscale · <address>", or both), Set Up…. Below, "Another machine" has "Host name or address", a field, and Set Up… (off while empty). Keep setup progress here; SSH carries the offer. No embedded Tailscale.
 
 ## Do's and Don'ts
 

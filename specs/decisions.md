@@ -11,7 +11,7 @@ new decision, add it here in the same change (D-21).
   validation passed and every release file was checked. `CHANGELOG.md` holds
   the notes of each version, and the release text is its section.
   Linux checks and test installs use the closer of `ssh oci1` and `ssh oci2`:
-  oci2 (0.46 s versus 3.25 s). Each major or minor release requires
+  oci2. Each major or minor release requires
   `bash packaging/linux/install-on-test-host.sh` from
   `/mnt/sdb/data/hushpen/repo`. First installation is required; patch-only
   changes skip the build unless `--force` is requested. Preserve the checkout,
@@ -126,10 +126,8 @@ new decision, add it here in the same change (D-21).
   containers with Xvfb, openbox, PulseAudio, and Mesa lavapipe. At most 3
   slots run engine work at once.
 - **D-23 Import limits.** The engine child decodes an imported file one
-  packet at a time while it transcribes it in 120 s windows with 10 s of
-  overlap, so memory does not grow with the length of the file (tiny.en:
-  about 470 MB peak for 2 min, 10 min, and 1 h on the Mac; 344 MB peak for
-  a 5 h file in a Linux slot, reached in the first 30 s). Files up to 12 hours are
+  packet at a time in 120 s windows with 10 s overlap, so memory does not
+  grow with file length. Files up to 12 hours are
   accepted; the limit only bounds how long one job runs. Translate writes
   English from any spoken language with a multilingual model; an
   English-only (`.en`) model refuses it with
@@ -137,10 +135,8 @@ new decision, add it here in the same change (D-21).
   does not translate.
 - **D-24 Chrome and rows.** The window controls, the sidebar app name, and the
   view title center on one line 26 px from the window top (`size::CHROME_CENTER`).
-  Linux draws its lights at (20, 20) like macOS; on macOS the lights' button
-  frame is read after the window opens and placed so its center is on the line.
-  A line between rows spans the full group width on every page. Views build
-  their rows from the shared builders in `ui/` (group, rows, controls).
+  `DESIGN.md` owns their geometry and the full-width row separators.
+  Views use the shared builders in `ui/` (group, rows, controls).
 - **D-25 Read aloud engines.** The crate `hushpen-speech` holds the speech
   engine seam, the text preparation, and the system voice. It is its own
   crate, not part of `hushpen-platform`, because it needs `hushpen-audio` to
@@ -183,37 +179,27 @@ new decision, add it here in the same change (D-21).
   the sherpa-onnx 2.0.0 C API, opened with dlopen from pinned, checksummed
   release libraries (`cargo xtask tts-runtime`; `Contents/Frameworks` on
   macOS, beside the worker on Linux); nothing downloads at build time and a
-  version mismatch is refused. The worker also runs Chatterbox (D-35). The
-  `sherpa-onnx-sys` crate was rejected because its build script downloads
-  the library. sherpa-onnx 2.0.0 contains
+  version mismatch is refused. The worker also runs Chatterbox (D-35).
+  No `sherpa-onnx-sys`. sherpa-onnx 2.0.0 contains
   no espeak-ng or piper-phonemize, so the package ships no GPL data; the
   worker turns text into phonemes itself (the model's lexicon plus number
   and abbreviation rules) and passes phoneme codepoints, so words outside
   the lexicon are still spoken instead of silently dropped. The model is
   Kokoro-82M int8 (four pinned files, catalog kind `voice`, stored under
   `models/tts/`), v1.0 int8 pinned to revision
-  `57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2`, an export that keeps the STFT
-  convolutions in float32 (the older export gave invalid samples). Synthesis
+  `57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2`, with STFT convolutions in float32. Synthesis
   keeps the model's pauses (`silence_scale` 1.0). A voice model counts as
   installed only when its stamp matches the current catalog size and hash.
   Mixed voices are D-39. It runs on the CPU only: the CoreML provider aborts the
   process on this model's dynamic shapes (an uncatchable C++ exception from
-  ONNX Runtime). Measured real-time factors: about 0.5 on an Apple M4 Pro,
-  0.44 to 0.46 on four vCPUs of a Linux arm64 container. The library is
+  ONNX Runtime). The library is
   never dlclosed, because ONNX Runtime's exit-time destructors raced the
   unload on Linux (a SIGSEGV after an otherwise clean shutdown).
 
-- **D-29 Linux window look.** The Linux window looks like the macOS one when
-  a compositor draws the screen: an owner of `_NET_WM_CM_S<screen>` on X11,
-  or any Wayland session. Then the window is transparent (GPUI always takes
-  the ARGB visual on X11 and switches transparency at run time), with 10 px
-  corners, a hairline edge, the translucent sidebar (`sidebar-blur`, the
-  sidebar color at 80%), and `_KDE_NET_WM_BLUR_BEHIND_REGION` on the sidebar
-  rectangle so KWin blurs it; picom blurs from its own configuration. Without
-  a compositor a transparent pixel renders black, so the window stays square
-  and opaque with the solid sidebar, and the flow bar is a rectangle. The app
-  reads the selection owner at start and once a second, and switches live
-  (`window_chrome::follow_compositor`).
+- **D-29 Linux window look.** `DESIGN.md` owns the compositor, blur, and
+  opaque fallback rules. GPUI always takes the ARGB visual on X11 and
+  switches transparency at run time. `window_chrome::follow_compositor`
+  reads the selection owner at start and once a second, and switches live.
 
 - **D-30 Model catalog and details.** The catalog is schema 2: every model
   has a kind (`speech`, `cleanup`, `voice`), a description, speed and
@@ -254,15 +240,10 @@ new decision, add it here in the same change (D-21).
   `readAloud.defaultVoice` (a cloned voice id, empty for the voice of the
   model), `readAloud.speed`
   (0.5 to 2, in steps of 0.05), and `readAloud.format`.
-- **D-32 Focus and control edges.** A focused text field has a 1px accent
-  border and no glow (the kit theme's `focus_ring` is off). Buttons, pop-up
-  buttons, and rows keep the 2px accent ring inside their bounds. A switch or
-  a slider draws its ring outside its track and is offset by that ring, so
-  its track ends on the same line as the buttons above and below. Shortcut
-  fields have one fixed width; the default hands-free reads `⌥⇥` (Option+Tab)
-  on macOS and `Right Alt ×2 or Right Alt+Space` on Linux. Home picks the
-  microphone with one pop-up row like Language, shared with Settings
-  through `Mic::choices`, and shows the level meter only while a test runs.
+- **D-32 Focus and control edges.** `DESIGN.md` owns focus borders, rings,
+  control alignment, shortcut widths, and default labels. The kit theme's
+  `focus_ring` is off. Home and Settings share `Mic::choices`; Home shows
+  one microphone pop-up like Language and a level meter only during a test.
 - **D-33 Pop-up menus.** Every choice of fixed values is a pop-up button
   (`ui::pop_up`). Its menu (`ui::Menu`) is drawn deferred by the kit
   `Popup`, under the right end of the button, so the `overflow_hidden` of a
@@ -328,8 +309,7 @@ new decision, add it here in the same change (D-21).
   opened from the library file sherpa-onnx already links, so the package
   ships no new runtime. Turbo comes from `ResembleAI/chatterbox-turbo-ONNX`,
   whose repo has no default voice clip, so its clip comes from
-  `onnx-community/chatterbox-ONNX`. No official Nano ONNX export exists;
-  Nano is the community export `Masterx/chatterbox-nano-ONNX`. Both read
+  `onnx-community/chatterbox-ONNX`. Nano uses `Masterx/chatterbox-nano-ONNX`. Both read
   English only: other text fails with `SPEECH_NOT_ENGLISH`, and the UI
   offers the system voice. A voice is cloned from a clip of 5 to 20 s of
   speech (a guided microphone take or a WAV, MP3, or M4A file, the silence
@@ -339,10 +319,7 @@ new decision, add it here in the same change (D-21).
   `reference.<model>.cond`; a clip it cannot use fails with
   `SPEECH_VOICE_CLIP`. The default voice (`readAloud.defaultVoice`) is what
   Chatterbox reads with while the Voice menu says Default; empty means the
-  voice of the model (`default_voice.wav`). Measured on an Apple M4 Pro with
-  8 threads: Turbo has its first audio after about 1.2 s at a real-time
-  factor of 0.4 to 0.55 and uses about 650 MB idle, up to 850 MB; Nano about
-  0.75 s, 0.27 to 0.37, 470 MB, up to 680 MB.
+  voice of the model (`default_voice.wav`).
 - **D-36 Read aloud in History.** Each text that Read aloud speaks to the
   end, for Play or for Export, saves one history row of kind `read`: the
   spoken text as the final text, the engine key as `model_id`, the voice
@@ -367,8 +344,7 @@ new decision, add it here in the same change (D-21).
 - **D-38 Idle models.** Settings > Engine > When idle applies to the speech,
   cleanup, and voice workers. Keep in memory leaves the model loaded; on
   macOS it is the default, because macOS compresses and swaps idle memory by
-  itself (a kept Whisper base fell from 323 to 178 MiB resident while idle)
-  and has no public page-out call. Page out (Linux only, the Linux default)
+  itself and has no public page-out call. Page out (Linux only, the Linux default)
   calls `madvise(MADV_PAGEOUT)` on the weight mappings after the idle time;
   the model stays loaded and its pages come back from swap. Unload frees the
   model after the idle time. `MADV_FREE_REUSABLE` is never used, because it
@@ -384,9 +360,7 @@ new decision, add it here in the same change (D-21).
 
 - **D-40 Speech models.** Offer only Parakeet v3 Q4_K, Whisper Large v3
   Turbo Q5_0, Whisper Small Q5_1, and Whisper Base Q5_1, in that order.
-  Parakeet is the default and the sole Recommended speech model. The owner's
-  77 Indian/British English dictations measured 4.14%, 8.44%, 11.01%, and
-  11.97% word error rate, respectively. Turbo is for languages outside
+  Parakeet is the default and the sole Recommended speech model. Turbo is for languages outside
   Parakeet's 25 European languages, Small for translation to English, and
   Base for older or slower computers. Downloads use pinned Hugging Face
   revisions, exact sizes, and SHA-256 checks. A retired selection moves to
@@ -420,32 +394,15 @@ new decision, add it here in the same change (D-21).
   cleanup.
 
 - **D-43 Whole-clip dictation.** Dictation transcribes the whole recording
-  after stop. Cutting at pauses and transcribing while the user speaks was
-  measured on 77 owner dictations and rejected against a 0.3-point WER
-  limit: Parakeet v3 Q4 lost 0.29 points (95% CI up to 0.85) to save
-  329 ms, and Whisper Turbo Q5 lost 0.36 points to save 937 ms.
+  after stop.
 
-- **D-44 Flow bar balance and Recover.** Every flow bar state has a 20 pt
-  circle at both ends or at neither, 4 pt in from the edge, and centers its
-  text between them. The pill is 28 pt high with radius h/2; on macOS its
-  panel is borderless, because a titled panel clips it to 17 pt corners.
-  Listening, Transcribing, and Cleaning are 118 wide and idle 67 by 22.
-  Every other pill fits its measured line: 4 + 20 + 8 + line + 8 + 20 + 4
-  with circles, 12 + line + 12 without, at most 366. The line is the widest
-  the pill can show (Undo or Recover on hover too), so hover never resizes
-  it. Motion: the size follows a critically damped spring (about 280 ms, no
-  overshoot); old content fades out in 100 ms before new content fades in
-  over 160 ms; the listening bars become the processing wave in place
-  (same 11 bars, 280 ms); marks and circles fade and grow from 0.9 once the
-  size settles. Show and hide fade the pill in place over 160 ms with scale
-  0.96 to 1, never a shrink to a circle. On macOS the panel has a clear
-  background and no shadow, and it is ordered out only after it drew a
-  clear frame, so a kept window never flashes old content. Reduce Motion
-  crossfades, resizes while the pill is empty, and hides at once. Esc or
-  the cross keeps the recording 4 s (`RECOVER_MS`) for Recover, which
-  transcribes it again and pastes it as if it were finished. The audio
-  goes, or the cancelled row is saved, when the 4 s end or a new dictation
-  starts. Command Mode has no Recover.
+- **D-44 Flow bar balance and Recover.** `DESIGN.md` owns the balanced
+  geometry and motion rules. Size uses a critically damped spring. The macOS
+  panel is borderless to avoid clipping. The same 11 bars become the processing
+  wave in place over 280 ms. Esc or the cross keeps the recording 4 s
+  (`RECOVER_MS`) for Recover, which transcribes and pastes it again.
+  The audio goes, or the cancelled row is saved, when the 4 s end or a new
+  dictation starts. Command Mode has no Recover.
 
 - **D-45 Models rows and the default model.** The sections are Speech to
   Text, Text cleanup, and Text to Speech; the search also matches the old
@@ -506,22 +463,18 @@ new decision, add it here in the same change (D-21).
   SmartScreen warns. CI packages do not publish a release or the website.
 
 - **D-50 Devices and remote setup.** Devices follows Models. Flow D has
-  separate speech and cleanup orders. Remote defaults off. This computer
-  stays last unless "Do not load models on this
-  computer" is on; then unavailable remote routes refuse the job. Core owns
-  routing, health, pairing, fallback notices, and allowed unload rules.
-  Route rows name the requested model; devices report none. Phones use system cleanup. Nearby
-  phones use mDNS and a one-use, expiring QR offer with Noise key pinning.
-  Tailscale uses the same protocol at the supplied address. SSH
-  setup reads concrete Host aliases from `~/.ssh/config`, uses BatchMode
-  only, verifies SHA-256 before installation, starts the user service, and
-  receives the pairing offer over the authenticated SSH channel. It tries
-  Tailscale IPv4 before configured and offered addresses, saving only one
-  that passes Noise authentication. Views send intents and show progress,
-  without network or process work. The desktop
-  screen follows the Devices rules of `DESIGN.md`, with Light and Dark
-  pixel baselines for the page and both sheets. `mobile/SCREENS.md`
-  records screen state and intents.
+  separate speech and cleanup orders. Remote starts off. This computer stays
+  last unless local models are disabled; unavailable remote routes then
+  refuse the job. Core owns routing, health, pairing state, fallback notices,
+  and unload rules. Route rows name models; devices report none. Phones use
+  system cleanup. D-57 owns Add a Device and pairing.
+  SSH setup uses concrete Host aliases and BatchMode, verifies SHA-256
+  before installation, starts the user service, and receives its offer over
+  authenticated SSH. It tries Tailscale IPv4 before configured and offered
+  addresses, saving only one that passes Noise authentication. Views send
+  intents and show progress; services own network and process work.
+  `DESIGN.md` owns the desktop page and sheets, with Light and Dark pixel
+  baselines. `mobile/SCREENS.md` records phone screen state and intents.
 
 - **D-51 Shared phone core.** Native phone apps call `hushpen-mobile` through
   pinned UniFFI bindings. Rust owns dictation, model rules, verified downloads,
@@ -602,3 +555,36 @@ new decision, add it here in the same change (D-21).
   App Store Connect App Analytics and Sales and Trends (iOS), GitHub
   release download counts (desktop, APK, host), and Cloudflare request
   counts for the install scripts and the site (D-14).
+
+- **D-57 Add a Device pairing.** `DESIGN.md` owns the Nearby | Remote sheet.
+  Nearby uses mDNS, not trust. Both peers commit before either reveals
+  fresh randomness. Verify commitments before deriving the same 6-digit
+  **pairing number** on both screens; require Pair on both before saving trust.
+  Cancel or mismatch discards the session; retries use fresh commitments.
+  Under the list, always show a QR pinning the computer's key and an 8-digit
+  **pairing code** for a PAKE (password-authenticated key exchange).
+  Offers work once, expire in two minutes, and allow three tries across
+  connections. Never send the typed secret as a password. Bind commitments
+  and mutual PAKE confirmation to both keys, roles, computer name, and Noise
+  transcript before enrollment. Send the validated name in the protected
+  handshake. Show no copyable URI or paste field.
+  Listen for pairing only while the sheet is open; closing cancels sessions
+  and invalidates offers. Paired serving is separate. Remote merges SSH and
+  installed Tailscale hosts, plus a host field; SSH carries offers (D-50).
+  D-54, D-55, and D-56 stay unchanged.
+  Choose RustCrypto [`spake2 = "=0.4.0"`](https://docs.rs/crate/spake2/0.4.0),
+  MIT OR Apache-2.0: stable Rust with party identity binding.
+  An isolated graph passes `deny.toml`: advisories, bans, licenses, sources.
+  [Upstream](https://docs.rs/spake2/0.4.0/spake2/#security) notes no independent
+  audit and no timing-attack protection; review the protocol before release.
+  Implementation plan:
+  1. `hushpen-remote`: `pairing.rs` owns commitments, PAKE, and `PairOffer`
+     limits; `stream.rs` gates trust and binds Noise; `enrollment.rs` carries
+     names. Keep Noise transport and the `lib.rs` exports.
+  2. `hushpen-core::remote`: build and deduplicate lists from supplied SSH,
+     Tailscale, and discovery facts; `pairing.rs` owns pure screen states.
+  3. `hushpen-app`: `devices` owns the sheet and listener lifetime;
+     `net/devices.rs` and `device_ssh.rs` supply network and process facts.
+  4. `hushpen-mobile` exposes shared intents through UniFFI; `mobile/ios`
+     and `mobile/android` own comparison, scan, and Type Code screens.
+     Test mismatch, replay, expiry, three tries, cancel, names, and approvals.

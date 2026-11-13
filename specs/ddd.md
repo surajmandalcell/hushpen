@@ -12,7 +12,12 @@ Hushpen
 │   ├── main window                 940x600, sidebar with 8 views
 │   ├── Devices                     speech and cleanup routes to paired devices
 │   │   ├── route                   ordered devices for one model kind
-│   │   ├── pairing offer           one-use QR payload with an expiry
+│   │   ├── Add a Device            sheet open only while adding a device
+│   │   │   ├── Nearby              phones found through mDNS
+│   │   │   └── Remote              merged SSH and Tailscale hosts, or a typed host
+│   │   ├── pairing number          6-digit check shown on both screens
+│   │   ├── pairing code            8-digit secret used by a PAKE
+│   │   ├── pairing offer           one-use bootstrap data with an expiry
 │   │   └── device details          name, status, transport, and unload rule
 │   ├── flow bar                    the dark pill that shows dictation states
 │   ├── tray                        menu with the same actions
@@ -181,9 +186,23 @@ Hushpen
 - **route**: the ordered device ids for speech or cleanup. Core picks the
   first healthy device. This computer stays last unless local models are
   disabled. If no permitted device can serve, the job is refused.
-- **pairing offer**: a one-use `hushpen-pair://v1` payload with a host, port,
-  public key, six-digit code, and expiry. Noise proves the code and pins both
-  keys. The private key stays in the private secrets file.
+- **Add a Device**: the sheet with Nearby | Remote tabs (D-57). The computer
+  listens for pairing only while it is open; closing cancels the offer.
+- **Nearby**: the list of phones found through mDNS. A discovered name is
+  not proof of identity. The QR and typed-code fallback stay under this list.
+- **Remote**: one list built from `~/.ssh/config` and installed
+  `tailscale status`, with duplicates merged, plus a host name or address field.
+- **pairing number**: the same 6-digit check on both screens, derived after
+  hash commitment verification. The user compares it and taps Pair on both.
+  It is not the typed secret.
+- **pairing code**: an 8-digit secret for the typed fallback, used through a
+  PAKE (password-authenticated key exchange). It works once, expires in two
+  minutes, and allows three tries across connections.
+- **pairing offer**: one-use bootstrap data with a computer address, port,
+  public key, and expiry. The QR pins that key; the typed fallback uses the
+  pairing code. No payload is shown as a copyable URI or paste field.
+  The protected handshake sends the computer's name. Private keys stay in
+  the private secrets file.
 - **unload rule**: when a remote device releases loaded models. Core limits
   choices by its OS: iOS only while Server mode is open; Android and Linux
   also keep, idle time, or low memory; macOS and Windows keep or idle time.
