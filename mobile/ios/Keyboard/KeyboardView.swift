@@ -14,24 +14,17 @@ private func rgb(_ value: UInt32, alpha: CGFloat = 1) -> UIColor {
     )
 }
 
-/// The system keyboard colors, and a pill for each appearance: white on Light, the desktop flow bar's
-/// dark HUD on Dark.
+/// The system keyboard colors, and the ink of the glass pill, which follows Light and Dark.
 private enum Palette {
     static let letter = Color(light: rgb(0xFFFFFF), dark: rgb(0x6B6B6E))
     static let function = Color(light: rgb(0xABB0BC), dark: rgb(0x444447))
     static let keyShadow = Color(light: rgb(0x000000, alpha: 0.3), dark: rgb(0x000000, alpha: 0.45))
 
-    static let pill = Color(light: rgb(0xFFFFFF), dark: rgb(0x1F1F1F))
-    static let pillEdge = Color(light: rgb(0x000000, alpha: 0.08), dark: rgb(0x353535))
-    static let pillShadow = Color(light: rgb(0x000000, alpha: 0.16), dark: rgb(0x000000, alpha: 0.25))
     static let pillText = Color(light: rgb(0x1C1C1E), dark: rgb(0xFFFFFF))
-    static let pillButton = Color(light: rgb(0x3C3C43, alpha: 0.12), dark: rgb(0x3A3A3C))
+    static let pillSub = Color(light: rgb(0x3C3C43, alpha: 0.6), dark: rgb(0xEBEBF5, alpha: 0.6))
+    static let pillButton = Color(light: rgb(0x3C3C43, alpha: 0.12), dark: rgb(0xFFFFFF, alpha: 0.16))
     static let pillMain = Color(light: rgb(0x1C1C1E), dark: rgb(0xFFFFFF))
     static let pillMainText = Color(light: rgb(0xFFFFFF), dark: rgb(0x1F1F1F))
-    static let pillOk = Color(light: rgb(0x34C759, alpha: 0.16), dark: rgb(0x30D158, alpha: 0.18))
-    static let pillOkText = Color(light: rgb(0x248A3D), dark: rgb(0x30D158))
-    static let pillWarn = Color(light: rgb(0xFF9500, alpha: 0.16), dark: rgb(0xFFC266, alpha: 0.18))
-    static let pillWarnText = Color(light: rgb(0xB45309), dark: rgb(0xFFC266))
 }
 
 /// The system keyboard look with our mic key. A fixed 44 pt band above the keys holds the pill, so
@@ -58,9 +51,7 @@ private struct Band: View {
         ZStack {
             ZStack { content(pill).transition(.opacity) }
                 .frame(width: width(pill), height: 36)
-                .background(Palette.pill, in: Capsule())
-                .overlay(Capsule().strokeBorder(Palette.pillEdge, lineWidth: 0.5))
-                .shadow(color: Palette.pillShadow, radius: 6, y: 4)
+                .glassEffect(.regular, in: Capsule())
                 .opacity(pill == .idle ? 0 : 1)
                 .scaleEffect(pill == .idle ? 0.96 : 1)
                 .allowsHitTesting(pill != .idle)
@@ -74,11 +65,8 @@ private struct Band: View {
 
     private func width(_ pill: KeyboardPill) -> CGFloat? {
         switch pill {
-        case .idle, .listening, .inserted: 154
-        case .transcribing: 148
-        case .pasteFailed(copied: true): 296
-        case .pasteFailed(copied: false): 206
-        case .notice: nil
+        case .idle, .listening: 154
+        default: nil
         }
     }
 
@@ -100,36 +88,37 @@ private struct Band: View {
             Color.clear
         case .listening:
             HStack(spacing: 0) {
-                round("xmark", fill: Palette.pillButton, ink: Palette.pillText, label: "Cancel dictation", id: "keyboard.cancel", action: model.cancel)
+                round("xmark", label: "Cancel dictation", id: "keyboard.cancel", action: model.cancel)
                 Spacer(minLength: 0)
-                Wave(bars: 11).accessibilityHidden(true)
+                Wave().accessibilityHidden(true)
                 Spacer(minLength: 0)
-                round("checkmark", fill: Palette.pillMain, ink: Palette.pillMainText, label: "Finish dictation", id: "keyboard.finish", action: model.stop)
+                round("checkmark", main: true, label: "Finish dictation", id: "keyboard.finish", action: model.stop)
             }
             .padding(4)
         case .transcribing:
             HStack(spacing: 8) {
-                Wave(bars: 7, ripple: true).accessibilityHidden(true)
+                Wave(settles: true).accessibilityHidden(true)
                 text("Transcribing")
             }
+            .padding(.horizontal, 16)
         case .inserted:
-            HStack(spacing: 0) {
-                mark("checkmark", fill: Palette.pillOk, ink: Palette.pillOkText)
-                text("Inserted").frame(maxWidth: .infinity)
-                round("arrow.uturn.backward", fill: Palette.pillButton, ink: Palette.pillText, label: "Undo", id: "keyboard.undo", action: model.undo)
+            HStack(spacing: 8) {
+                mark("checkmark.circle.fill")
+                text("Inserted")
+                round("arrow.uturn.backward", label: "Undo", id: "keyboard.undo", action: model.undo)
             }
             .padding(4)
         case .pasteFailed(copied: true):
-            HStack(spacing: 0) {
-                mark("exclamationmark", fill: Palette.pillWarn, ink: Palette.pillWarnText)
-                text("Paste failed. Copied to clipboard.").frame(maxWidth: .infinity)
-                round("xmark", fill: Palette.pillButton, ink: Palette.pillText, label: "Dismiss", id: "keyboard.dismiss", action: model.dismiss)
+            HStack(spacing: 8) {
+                mark("exclamationmark.circle.fill")
+                text("Paste failed", sub: "Copied to clipboard")
+                round("xmark", label: "Dismiss", id: "keyboard.dismiss", action: model.dismiss)
             }
             .padding(4)
         case .pasteFailed(copied: false):
             HStack(spacing: 8) {
-                mark("exclamationmark", fill: Palette.pillWarn, ink: Palette.pillWarnText)
-                text("Paste failed.").frame(maxWidth: .infinity, alignment: .leading)
+                mark("exclamationmark.circle.fill")
+                text("Paste failed")
                 Button(action: model.copy) {
                     Text("Copy")
                         .font(.system(size: 13, weight: .semibold))
@@ -145,7 +134,7 @@ private struct Band: View {
             .padding(4)
         case let .notice(message):
             HStack(spacing: 8) {
-                mark("exclamationmark", fill: Palette.pillWarn, ink: Palette.pillWarnText)
+                mark("exclamationmark.circle.fill")
                 text(message)
             }
             .padding(.leading, 4)
@@ -153,30 +142,32 @@ private struct Band: View {
         }
     }
 
-    private func text(_ value: String) -> some View {
-        Text(value)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Palette.pillText)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
+    private func text(_ value: String, sub: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.pillText)
+            if let sub { Text(sub).font(.system(size: 11)).foregroundStyle(Palette.pillSub) }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 
-    private func mark(_ symbol: String, fill: Color, ink: Color) -> some View {
+    /// The System banner's status icon: a gray filled circle, never a status color.
+    private func mark(_ symbol: String) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(ink)
+            .font(.system(size: 28))
+            .foregroundStyle(Palette.pillSub)
             .frame(width: 28, height: 28)
-            .background(fill, in: Circle())
             .accessibilityHidden(true)
     }
 
-    private func round(_ symbol: String, fill: Color, ink: Color, label: String, id: String, action: @escaping () -> Void) -> some View {
+    /// A tinted round button; `main` is the dark (Light) or white (Dark) one for the primary action.
+    private func round(_ symbol: String, main: Bool = false, label: String, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(ink)
+                .foregroundStyle(main ? Palette.pillMainText : Palette.pillText)
                 .frame(width: 28, height: 28)
-                .background(fill, in: Circle())
+                .background(main ? Palette.pillMain : Palette.pillButton, in: Circle())
                 .contentShape(Circle().inset(by: -4))
         }
         .buttonStyle(.plain)
@@ -187,31 +178,31 @@ private struct Band: View {
 
 /// Rounded bars that rise and fall: steady while listening, a faster ripple while transcribing.
 private struct Wave: View {
-    let bars: Int
-    var ripple = false
-    @State private var high = false
+    /// Transcribing starts as the flowing wave and turns once to the ripple after 2 s.
+    var settles = false
+    @State private var start = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let heights: [CGFloat] = [0.35, 0.6, 0.85, 1, 0.7, 0.95, 0.55, 0.75, 0.4, 0.65, 0.9]
-
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<bars, id: \.self) { index in
-                let peak = ripple ? 0.8 : Self.heights[index % Self.heights.count]
-                let rest = ripple ? 0.25 : peak * 0.3
-                Capsule()
-                    .frame(width: 2.5, height: 22)
-                    .scaleEffect(y: reduceMotion || high ? peak : rest)
-                    .animation(
-                        reduceMotion ? nil : .easeInOut(duration: ripple ? 0.55 : 0.5).repeatForever(autoreverses: true)
-                            .delay(ripple ? Double(index) * 0.09 : (Double(index) * 0.13).truncatingRemainder(dividingBy: 1)),
-                        value: high
-                    )
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            let t = reduceMotion ? 390 : context.date.timeIntervalSince(start) * 1000
+            let turn = settles ? min(max((t - 2000) / 420, 0), 1) : 0
+            HStack(spacing: 2) {
+                ForEach(0..<11, id: \.self) { index in
+                    let x = Double(index) / 10
+                    // One taper for both looks, so the outer bars always stand lower than the middle ones.
+                    let taper = 0.15 + 0.85 * pow(sin(.pi * x), 1.5)
+                    let flow = 0.5 + 0.5 * sin(2 * .pi * (1.1 * x - t / 1300))
+                    let ripple = 0.5 + 0.5 * cos(2 * .pi * (0.9 * abs(2 * x - 1) - t / 1800))
+                    let level = (1 - turn) * flow + turn * ripple
+                    Capsule()
+                        .frame(width: 2, height: 3 + 13 * taper * level)
+                        .opacity(0.5 + 0.5 * level)
+                }
             }
+            .frame(height: 28)
         }
-        .frame(height: 22)
         .foregroundStyle(Palette.pillText)
-        .onAppear { high = true }
     }
 }
 
@@ -287,13 +278,10 @@ private struct Keys: View {
             .frame(width: unit * 1.25)
             .accessibilityIdentifier("keyboard.symbols")
             if model.needsGlobe {
-                Button(action: model.nextKeyboard) {
-                    Image(systemName: "globe").font(.system(size: 20))
-                }
-                .buttonStyle(KeyStyle(kind: .function))
-                .frame(width: unit * 1.1)
-                .accessibilityLabel("Next keyboard")
-                .accessibilityIdentifier("keyboard.next")
+                Image(systemName: "globe").font(.system(size: 20))
+                    .modifier(KeyFace(kind: .function))
+                    .overlay { GlobeTouch(controller: model.controller) }
+                    .frame(width: unit * 1.1)
             }
             Button { model.insert(" ") } label: {
                 Text("space").font(.system(size: 16))
@@ -341,6 +329,23 @@ private struct Keys: View {
             }
         }
     }
+}
+
+/// A clear UIKit button over the globe key: iOS needs the touch events to switch on a tap and list the keyboards on a hold.
+private struct GlobeTouch: UIViewRepresentable {
+    let controller: KeyboardController?
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .custom)
+        button.accessibilityLabel = "Next keyboard"
+        button.accessibilityIdentifier = "keyboard.next"
+        if let controller {
+            button.addTarget(controller, action: #selector(UIInputViewController.handleInputModeList(from:with:)), for: .allTouchEvents)
+        }
+        return button
+    }
+
+    func updateUIView(_ view: UIButton, context: Context) {}
 }
 
 private struct KeyStyle: ButtonStyle {

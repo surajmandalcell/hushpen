@@ -4,10 +4,9 @@ import SwiftUI
 struct DictationScreen: View {
     let model: DictationModel
     let close: () -> Void
-    @State private var startedAt: Date?
-    @ScaledMetric(relativeTo: .title) private var headlineSize = 30
 
-    private static let orange = Color(red: 1, green: 0.624, blue: 0.039)
+    /// The one line on the hand-off page. Change the words here.
+    private static let handOffText = "You're all set. Head back to keep typing."
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,40 +42,24 @@ struct DictationScreen: View {
                 .allowsHitTesting(false)
             }
         }
-        .onChange(of: model.state) { _, state in if state == "listening" { startedAt = .now } }
-        .onAppear { if model.state == "listening" && startedAt == nil { startedAt = .now } }
     }
 
-    /// The page the keyboard opens to: how to swipe back, then the recording itself.
+    /// The page the keyboard opens to: how to swipe back. Nothing here says or shows that it listens.
     private var handOff: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 6) {
-                Text("Swipe right to go back")
-                    .font(.system(size: headlineSize, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .accessibilityIdentifier("dictation.hint")
-                Text("Then start talking.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 40)
-            .padding(.horizontal, 24)
+            Text(Self.handOffText)
+                .font(.system(size: 17, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.top, 40)
+                .padding(.horizontal, 24)
+                // The state is for VoiceOver and the UI tests only.
+                .accessibilityLabel("Listening. \(Self.handOffText)")
+                .accessibilityIdentifier("dictation.state")
             SwipeDemo()
                 .frame(maxWidth: 420, maxHeight: .infinity)
                 .padding(.vertical, 20)
-            VStack(spacing: 8) {
-                HStack(spacing: 10) {
-                    WaveGlyph(size: 18, style: .listening).foregroundStyle(.tint)
-                    Text(title).font(.headline)
-                    Text(timerInterval: (startedAt ?? .now)...Date.distantFuture, pauseTime: nil, countsDown: false, showsHours: false)
-                        .font(.headline.monospacedDigit())
-                        .foregroundStyle(Self.orange)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("dictation.state")
-                notice
-            }
-            .padding(.horizontal, 24)
+            notice.padding(.horizontal, 24)
         }
     }
 

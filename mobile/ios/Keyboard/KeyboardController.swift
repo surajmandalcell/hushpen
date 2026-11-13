@@ -27,7 +27,6 @@ final class KeyboardModel {
     func stop() { controller?.stop() }
     func copy() { controller?.copyRescuedText() }
     func dismiss() { controller?.dismissFailure() }
-    func nextKeyboard() { controller?.advanceToNextInputMode() }
 }
 
 final class KeyboardController: UIInputViewController {
@@ -45,6 +44,8 @@ final class KeyboardController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         model.controller = self
+        // The mic key is our dictation key, so iOS must not draw its own below the keyboard.
+        hasDictationKey = true
         shareStatus()
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostWillResignActive, object: extensionContext)
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostDidEnterBackground, object: extensionContext)
