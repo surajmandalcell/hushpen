@@ -122,23 +122,58 @@ the rules; views render state and send intents.
 - Undo checks the field, cursor, and preceding text before deleting the last
   insertion. All controls remain default buttons until visual design lands.
 
+## iOS tabs
+
+- A floating glass tab bar with four tabs: Home, History, Stats, Settings. It
+  shows on every tab, Stats included, and hides on pushed screens (Models,
+  Devices, History detail). No central mic button.
+- Home, History, and Stats read the phone's own history database. Nothing
+  leaves the phone. iOS gives the keyboard no host app, so there are no
+  per-app numbers.
+
 ## iOS Home
 
-- One list, no tab bar: Setup (Keyboard, Microphone, Speech Model), the Server
-  Mode switch, then Models, Devices, and Settings rows.
-- State: microphone permission, keyboard use receipt, Full Access guidance,
-  speech model rows, selected model, download progress, and notice.
-- Intents: request microphone, open system settings, refresh the keyboard receipt,
-  open Models, Devices, or Settings, and turn Server Mode on or off.
-  Turning it on opens the Server mode card.
-- Empty: no speech model is ready. Keep the Rust phone catalog available.
-- Errors: permission denied, download or verification failed, or save failed.
+- Cards: Words for this week (bars, change on last week, opens Stats), Time
+  saved, Streak, then Recent with the last three dictations and See All.
+  A "Finish setup" card (Keyboard, Microphone, Speech model) shows only while
+  one of them is missing.
+- State: this week's words, time saved, streak, latest dictations, setup, and notice.
+- Intents: open Stats or History, request microphone, open system settings.
+- Empty: no dictations yet. Recent says they stay on this iPhone.
 - iOS does not expose whether this custom keyboard is enabled. The receipt
   records its last use with Full Access; it does not claim current readiness.
 
+## iOS History
+
+- One card per dictation, grouped by day, with search. Under the text one row
+  holds the time, "Spoke 7 s · Took 1.4 s · 16 words", and a plain
+  copy icon (16 pt glyph, 44 pt touch area). Long stats drop "Took" first, then
+  end in an ellipsis; the time and the copy icon never shrink. The text stops
+  at 3 lines.
+- Intents: search, copy, open a dictation, and load more.
+- Empty: no dictations yet, or no match.
+- A card opens History detail (a list): Cleaned up or Original, the text and
+  its stats, Details (speech model, cleanup, language), and a bar with Share,
+  Copy, and Delete.
+- The phone saves a row when a keyboard dictation finishes: text, speech
+  length, the seconds from the end of speech to the text, model, language, and
+  how cleanup went. The audio is never kept.
+
+## iOS Stats
+
+- Day, Week, Month, and Year. A Words card with bars and a callout for the
+  picked bar, Time saved (typing at the set speed minus the time spoken),
+  Streak with this week's days, and On this iPhone ("43 of 52" in one stacked
+  bar, "+N devices" only when the history holds text from other devices).
+- Settings holds Typing speed and Keep History (Forever, 1 Year, 3 Months, 1
+  Month) and Clear History.
+
 ## iOS Models
 
-- State: Rust catalog and model status, separate speech and cleanup selections, download bytes,
+- Cards. The trailing button is a 28 pt glyph in a 44 pt touch area, centered
+  on the name line: Get is `arrow.down.circle`, `checkmark.circle.fill` when
+  installed (accent while in use), a progress ring while downloading.
+- State: Rust catalog and model status, accuracy and speed ratings, separate speech and cleanup selections, download bytes,
   verification state, and notice.
 - Intents: refresh, download, cancel, verify, and select.
 - Empty: no downloaded model. Rust filters the phone catalog by reported RAM.
@@ -146,11 +181,14 @@ the rules; views render state and send intents.
 
 ## iOS Devices
 
+- A list: Server Mode with its state, the Power row (title, "Charging" or "On
+  battery", then the battery icon and percent), paired desktops, and Pair a Desktop.
 - State: paired desktops, pairing URI, scanner open, server availability,
-  busy state, and notice.
+  battery, busy state, and notice.
 - Intents: scan or paste a desktop offer, pair, forget (after a confirmation),
-  refresh, and turn Server mode on or off. Pairing needs Server mode on.
-  Turning it on here opens no card, so the list stays usable.
+  refresh, show the Server mode screen, and turn Server mode on or off.
+  Pairing needs Server mode on. Turning it on here opens no card, so the list
+  stays usable.
 - Empty: no paired desktop. Scan the desktop's pairing offer.
 - Errors: camera unavailable, invalid or expired offer, handshake failure,
   Local Network permission denied, or save failure. Rust parses offers.
@@ -158,15 +196,17 @@ the rules; views render state and send intents.
 ## iOS Server mode
 
 - State: running or starting, listening port, selected speech model, cleanup
-  mode, paired desktops, charging, and notice.
+  mode, jobs served since it started, paired desktops, battery, and notice.
 - Intents: start, stop, close, and refresh. The unload rule is While server mode is open.
-- Empty: server off. Show "Plug in to keep serving" while it is not charging.
+- A list on black: a status header, Speech model, Cleanup, Port, Served, and
+  the Power row (battery icon, then the percent). The footer says "This iPhone
+  can keep serving." while charging, else that it keeps running on battery.
+  There is no "Plug in to keep serving" screen.
 - Errors: port busy, model unavailable, or host startup failed.
 - Serving disables the idle timer and dims the screen. Leaving the foreground
   stops serving and restores the previous brightness and idle-timer state.
-- Home opens a full-screen, always dark stats card: status, port, speech model,
-  cleanup, desktops, and unload rule. Stop closes it. After an interrupted stop
-  the card stays with the notice and a Close button.
+- Devices opens this full-screen, always dark screen. Stop closes it. After an
+  interrupted stop the screen stays with the notice and a Close button.
 
 ## iOS scanner
 
@@ -181,9 +221,13 @@ the rules; views render state and send intents.
 
 ## iOS Settings
 
+- Cards (grouped rows): Keyboard (Microphone, Keyboard, Full Access, Open
+  Settings), Models and Devices, Cleanup, History (Keep History, Clear
+  History), Stats (Typing speed), and About.
 - State: cleanup enabled, Foundation Models availability, microphone permission,
-  keyboard use receipt, and notice.
-- Intents: set cleanup, refresh permissions, open settings, and open bundled licenses.
+  keyboard use receipt, typing speed, history retention, and notice.
+- Intents: set cleanup, refresh permissions, open settings, set typing speed
+  and retention, clear history, and open bundled licenses.
 - Empty: no supported system model. Use the selected downloaded cleanup model, or keep rule cleanup.
 - Errors: save or native cleanup failure. Keep the saved setting and rule-cleaned text.
 - Cleanup stays off by default.
