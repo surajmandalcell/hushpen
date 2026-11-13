@@ -261,9 +261,9 @@ class PhoneRepository(private val context: Context) : ModelsData, SettingsData, 
         }
     }
 
-    override suspend fun pair(uri: String) = withContext(Dispatchers.IO) {
+    override suspend fun pair(payload: String) = withContext(Dispatchers.IO) {
         initialize()
-        host.pair(uri)
+        host.pair(payload)
         mutableClients.value = host.pairedClients()
     }
 

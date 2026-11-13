@@ -16,7 +16,7 @@ interface DevicesData {
     val serverState: StateFlow<ServerState>
     suspend fun initialize()
     suspend fun refresh()
-    suspend fun pair(uri: String)
+    suspend fun pair(payload: String)
     suspend fun forget(id: String)
     suspend fun setUnloadRule(rule: HostUnloadRule)
     fun startServing()
@@ -31,8 +31,6 @@ class DevicesViewModel(private val repository: DevicesData) : ViewModel() {
     val server: StateFlow<ServerState> = mutableServer
     private val mutableNotice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = mutableNotice
-    private val mutablePairingUri = MutableStateFlow("")
-    val pairingUri: StateFlow<String> = mutablePairingUri
     private val mutableScanner = MutableStateFlow(false)
     val scannerOpen: StateFlow<Boolean> = mutableScanner
     private val mutableIdleMinutes = MutableStateFlow("30")
@@ -45,15 +43,12 @@ class DevicesViewModel(private val repository: DevicesData) : ViewModel() {
     }
 
     fun refresh() = run { repository.refresh() }
-    fun setPairingUri(uri: String) { mutablePairingUri.value = uri }
     fun scan() { mutableScanner.value = true }
     fun closeScanner() { mutableScanner.value = false }
-    fun scanned(uri: String) {
-        mutablePairingUri.value = uri
+    fun scanned(payload: String) {
         mutableScanner.value = false
-        pair()
+        run { repository.pair(payload) }
     }
-    fun pair() = run { repository.pair(mutablePairingUri.value) }
     fun forget(id: String) = run { repository.forget(id) }
     fun setRule(rule: HostUnloadRule) = run { repository.setUnloadRule(rule) }
     fun setIdleMinutes(minutes: String) { mutableIdleMinutes.value = minutes }

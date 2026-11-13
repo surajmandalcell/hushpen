@@ -52,7 +52,7 @@ class ImeTestActivity : ComponentActivity() {
             addView(otherEditor)
         })
         editor.requestFocus()
-        intent.getStringExtra("pairingUri")?.let { uri ->
+        intent.getStringExtra("pairingPayload")?.let { payload ->
             lifecycleScope.launch {
                 val repository = (application as PhoneApplication).repository
                 var stage = "initialize"
@@ -69,7 +69,7 @@ class ImeTestActivity : ComponentActivity() {
                         }
                         check(serving.running) { "Server mode did not start." }
                         stage = "pair"
-                        repository.pair(uri)
+                        repository.pair(payload)
                         val ready = "Server ready: ${serving.port}"
                         status.text = ready
                         withContext(Dispatchers.IO) { File(filesDir, "android-server-status").writeText(ready) }

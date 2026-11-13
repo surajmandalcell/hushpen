@@ -51,7 +51,10 @@ class QrScannerTest {
                 TimeUnit.SECONDS,
             )
             assertTrue("The desktop image must contain one pairing QR code", codes.count {
-                it.rawValue?.startsWith("hushpen-pair://v1?") == true
+                it.rawValue?.let { payload ->
+                    runCatching { org.json.JSONObject(payload) }.getOrNull()
+                        ?.let { value -> value.has("key") && !value.has("code") }
+                } == true
             } == 1)
         } finally {
             scanner.close()
