@@ -616,6 +616,15 @@ impl Controller {
         }
     }
 
+    /// Whether the tick has nothing to watch: no session, no hold, no undo offer, and no AI
+    /// phase on show. The tick loop then sleeps until the controller changes.
+    pub(super) fn rests(&self) -> bool {
+        self.machine.state() == State::Idle
+            && !self.machine.holds()
+            && self.undo.is_none()
+            && self.shown_ai.is_none()
+    }
+
     /// Hook events for the state change, and the Esc grab that follows the session.
     pub(super) fn record(&mut self, before: State) {
         let state = self.machine.state();

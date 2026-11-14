@@ -143,7 +143,7 @@ impl Onboarding {
                 // While the main window is not in use nothing reads: each read opens a session
                 // bus connection and lists the microphones.
                 let Ok(idle) = this.update(cx, |_, cx| {
-                    crate::main_window::handle(cx).is_some() && !crate::mic::may_list(true, cx)
+                    crate::main_window::handle(cx).is_some() && !crate::mic::window_in_use(cx)
                 }) else {
                     break;
                 };

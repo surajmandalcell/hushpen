@@ -60,9 +60,11 @@ fn overlay_kind(bounds: Bounds<Pixels>, cx: &App) -> Option<WindowKind> {
     if detect() != Session::Wayland {
         return None;
     }
-    let screen = cx.primary_display().map_or(bounds.origin.y + bounds.size.height, |display| {
-        display.bounds().size.height
-    });
+    let screen = cx
+        .primary_display()
+        .map_or(bounds.origin.y + bounds.size.height, |display| {
+            display.bounds().size.height
+        });
     let gap = (screen - bounds.origin.y - bounds.size.height).max(gpui_kit::px(0.0));
     Some(WindowKind::LayerShell(LayerShellOptions {
         namespace: APP_ID.into(),
@@ -112,7 +114,10 @@ impl PopUp {
         };
         // The overlay first, where the compositor has one; else the plain pop-up.
         let mut opened = None;
-        for kind in overlay_kind(bounds, cx).into_iter().chain([WindowKind::PopUp]) {
+        for kind in overlay_kind(bounds, cx)
+            .into_iter()
+            .chain([WindowKind::PopUp])
+        {
             let view = view.clone();
             let layer = !matches!(kind, WindowKind::PopUp);
             // The Kit root draws a shadow margin around a window that the system does not

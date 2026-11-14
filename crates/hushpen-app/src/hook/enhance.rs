@@ -62,7 +62,7 @@ pub fn attach(cx: &mut App, tuning: Entity<Tuning>, window: AnyWindowHandle) {
                     Some(_) => return Err("page is tune, find, or null".into()),
                     None => None,
                 };
-                window
+                crate::main_window::current(cx, window)
                     .update(cx, |_, window, cx| {
                         tuning.update(cx, |me, cx| match page {
                             Some(page) => me.open(page, None, window, cx),

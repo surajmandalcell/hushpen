@@ -232,7 +232,8 @@ pub fn attach(cx: &mut App, queue: UnboundedReceiver<Job>, surface: Surface) {
     cx.spawn(async move |cx| {
         let mut queue = queue;
         while let Some(job) = queue.next().await {
-            let answer = cx.update(|cx| answer(cx, window, job.call));
+            let answer =
+                cx.update(|cx| answer(cx, crate::main_window::current(cx, window), job.call));
             let _ = job.reply.send(answer);
         }
     })
@@ -263,9 +264,9 @@ pub fn install(cx: &mut App, surface: &Surface) {
     hooks
         .state
         .set_section("settings", move |_| Value::Object(settings()));
-    hooks
-        .state
-        .set_section("window", move |cx| window_section(cx, window));
+    hooks.state.set_section("window", move |cx| {
+        window_section(cx, crate::main_window::current(cx, window))
+    });
     // Features replace these with real readings when they exist.
     hooks
         .state

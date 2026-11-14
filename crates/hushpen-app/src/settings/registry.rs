@@ -166,6 +166,8 @@ impl Settings {
             Ok(()) => {
                 self.notice = None;
                 hook::record_event("settings", &format!("set {key}"));
+                // A sleeping Flow bar loop reads the new value, such as the idle pill turned on.
+                crate::flow_bar::wake(cx);
             }
             Err(error) => {
                 self.notice = Some(format!("The setting could not be saved: {error}"));

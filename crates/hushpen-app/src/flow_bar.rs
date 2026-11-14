@@ -5,6 +5,8 @@
 //! [`FlowBar`] is the model and the view. It never owns a window: a [`Host`] opens, moves, and
 //! closes the native pop-up, and [`run`] feeds the host from the bar: every frame while the bar
 //! moves, twenty times a second while it rests, and at once when the pipeline changes state.
+//! While nothing can show (the bar gone and no window of the app in use) it sleeps until the
+//! pipeline changes or a window comes into use ([`wake`]).
 
 mod motion;
 pub mod view;
@@ -18,11 +20,11 @@ use crate::mic::Mic;
 use crate::native::native_handle;
 use crate::storage::Storage;
 use futures::StreamExt as _;
-use futures::channel::mpsc::{UnboundedReceiver, unbounded};
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use futures::future::{Either, select};
 use gpui_kit::{
-    AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, Pixels, Render, WeakEntity, Window,
-    WindowTextSystem, point, px,
+    AnyWindowHandle, App, Bounds, Context, Entity, Global, IntoElement, Pixels, Render, WeakEntity,
+    Window, WindowTextSystem, point, px,
 };
 use hushpen_core::dictation::{AppEvent, State};
 use hushpen_core::flow_bar::{BarState, Display, Drag, Input, Release, Spot, place, state_for};
@@ -613,6 +615,17 @@ pub fn run(cx: &mut App, bar: Entity<FlowBar>, host: Box<dyn Host>) -> SharedHos
             if let Some(native) = native {
                 native();
             }
+            let Some(wait) = wait else {
+                // Asleep: only a pipeline change or a window coming into use goes on.
+                if wakes && woken.next().await.is_none() {
+                    wakes = false;
+                }
+                if !wakes {
+                    cx.background_executor().timer(TICK).await;
+                }
+                while woken.try_recv().is_ok() {}
+                continue;
+            };
             let timer = cx.background_executor().timer(wait);
             if wakes {
                 if let Either::Right((None, _)) = select(timer, woken.next()).await {
@@ -628,14 +641,38 @@ pub fn run(cx: &mut App, bar: Entity<FlowBar>, host: Box<dyn Host>) -> SharedHos
     host
 }
 
-/// Wakes the run loop when the pipeline changes state, so a new dictation shows the bar on the
-/// next frame and not on the next tick, up to 50 ms later.
+/// The way into a sleeping run loop from outside the pipeline.
+struct Waker(UnboundedSender<()>);
+
+impl Global for Waker {}
+
+/// A window of the app came into use: a sleeping bar loop ticks again, so settings and the
+/// pointer are read while the user works in the app.
+pub fn wake(cx: &App) {
+    if let Some(waker) = cx.try_global::<Waker>() {
+        let _ = waker.0.unbounded_send(());
+    }
+}
+
+/// Whether the loop can sleep with no timer: the bar is gone and no press holds it, and no
+/// window of the app is in use, so only a pipeline change can bring the bar up.
+fn sleeps(bar_gone: bool, pressed: bool, window_in_use: bool) -> bool {
+    bar_gone && !pressed && !window_in_use
+}
+
+/// Wakes the run loop when the pipeline changes what the bar shows, so a new dictation shows the
+/// bar on the next frame and not on the next tick, up to 50 ms later, and a sleeping loop starts.
 fn wake_on_pipeline_change(cx: &mut App, controller: &Entity<Controller>) -> UnboundedReceiver<()> {
     let (wake, woken) = unbounded();
+    cx.set_global(Waker(wake.clone()));
     let key = |controller: &Controller| {
         (
             controller.state(),
             controller.flash().map(|flash| flash.seq),
+            controller.failure_code(),
+            controller.copied_only(),
+            controller.undo_offered(),
+            controller.recover_offered(),
         )
     };
     let mut seen = key(controller.read(cx));
@@ -650,17 +687,22 @@ fn wake_on_pipeline_change(cx: &mut App, controller: &Entity<Controller>) -> Unb
     woken
 }
 
-/// One tick: reads the bar and opens, plans, or closes the window. Returns how long to wait and
-/// the native work to do once the App is no longer borrowed, or `None` when the bar is gone.
+/// One tick: reads the bar and opens, plans, or closes the window. Returns how long to wait
+/// (`None`: sleep until woken) and the native work to do once the App is no longer borrowed, or
+/// `None` when the bar entity is gone.
 fn drive(
     cx: &mut App,
     driver: &SharedHost,
     bar: &WeakEntity<FlowBar>,
-) -> Option<(Duration, Option<Native>)> {
+) -> Option<(Option<Duration>, Option<Native>)> {
     let screen = driver.borrow().screen(cx);
-    let Ok((plan, fast)) = bar.update(cx, |bar, cx| {
+    let Ok((plan, fast, pressed)) = bar.update(cx, |bar, cx| {
         let plan = bar.tick(screen, cx);
-        (plan, bar.is_pressed() || bar.needs_frames())
+        (
+            plan,
+            bar.is_pressed() || bar.needs_frames(),
+            bar.is_pressed(),
+        )
     }) else {
         return None;
     };
@@ -668,7 +710,11 @@ fn drive(
         Some(bounds) => driver.borrow_mut().show(bounds, cx),
         None => driver.borrow_mut().hide(cx),
     };
-    Some((if fast { FRAME } else { TICK }, native))
+    // A kept window can take a few ticks to leave the screen, so the loop sleeps once it left.
+    let gone = plan.is_none() && driver.borrow().window().is_none();
+    let asleep = sleeps(gone, pressed, crate::mic::window_in_use(cx));
+    let wait = if fast { FRAME } else { TICK };
+    Some(((!asleep).then_some(wait), native))
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 use super::*;
 use crate::controller::testkit::{Rig, rig, send_at};
 use crate::flow_bar::view::Props;
-use crate::flow_bar::{SharedHost, TICK, run};
+use crate::flow_bar::{SharedHost, TICK, run, wake};
 use gpui_kit::{AppContext as _, TestAppContext, point, px, size};
 use hushpen_core::dictation::{AppEvent, RECOVER_MS};
 use hushpen_core::flow_bar::BarState;
@@ -198,6 +198,15 @@ fn next_tick(cx: &mut TestAppContext) {
     cx.run_until_parked();
 }
 
+/// Turns the idle pill on as the Settings view does: the write, then a wake for the loop.
+fn turn_idle_pill_on(cx: &mut TestAppContext, rig: &Rig) {
+    rig.storage
+        .settings
+        .set("overlay.idleVisible", json!(true))
+        .unwrap();
+    cx.update(|cx| wake(cx));
+}
+
 fn on_screen(host: &SharedHost) -> bool {
     host.borrow().window().is_some()
 }
@@ -251,10 +260,7 @@ fn the_idle_pill_comes_back_when_it_is_turned_on_after_a_dictation(cx: &mut Test
     assert_eq!(windows(cx), 1, "kept open off the screen");
     assert_eq!(calls(), ["hide"]);
 
-    rig.storage
-        .settings
-        .set("overlay.idleVisible", json!(true))
-        .unwrap();
+    turn_idle_pill_on(cx, &rig);
     next_tick(cx);
     assert!(on_screen(&host));
     assert_eq!(windows(cx), 1);
@@ -265,10 +271,7 @@ fn the_idle_pill_comes_back_when_it_is_turned_on_after_a_dictation(cx: &mut Test
 fn the_idle_pill_opens_its_window_when_it_is_turned_on_live(cx: &mut TestAppContext) {
     let (rig, _view, host) = running(cx, false);
     assert_eq!(windows(cx), 0);
-    rig.storage
-        .settings
-        .set("overlay.idleVisible", json!(true))
-        .unwrap();
+    turn_idle_pill_on(cx, &rig);
     next_tick(cx);
     assert!(on_screen(&host));
     assert_eq!(windows(cx), 1);
