@@ -73,6 +73,8 @@ final class StoreShotsUITests: XCTestCase {
         useKeyboard()
         let microphone = element("keyboard.mic", in: messages)
         XCTAssertTrue(microphone.waitForExistence(timeout: 15))
+        // An earlier run leaves its dictated text as a draft; holding Delete (it repeats) empties the field.
+        element("keyboard.backspace", in: messages).press(forDuration: 6)
         shot("messages-keyboard")
         microphone.tap()
         waitForText("listening", id: "dictation.state", in: phone, timeout: 30)
@@ -89,6 +91,8 @@ final class StoreShotsUITests: XCTestCase {
         let inserted = NSPredicate(format: "value CONTAINS[c] %@", "final draft")
         expectation(for: inserted, evaluatedWith: field)
         waitForExpectations(timeout: 30)
+        // The strip then says "Inserted" and offers Undo; some hosts (iPad Messages) clear it at once.
+        _ = element("keyboard.undo", in: messages).waitForExistence(timeout: 15)
         sleep(1)
         shot("messages-inserted")
     }
@@ -161,7 +165,7 @@ final class StoreShotsUITests: XCTestCase {
             let globe = messages.buttons.matching(NSPredicate(format: "(label == %@ OR label BEGINSWITH[c] %@) AND identifier != %@", "Emoji", "Next keyboard", "keyboard.next")).firstMatch
             XCTAssertTrue(globe.waitForExistence(timeout: 5))
             globe.press(forDuration: 1)
-            let keyboard = messages.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Hushpen")).firstMatch
+            let keyboard = messages.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Hushpen")).firstMatch
             XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
             keyboard.tap()
         }
