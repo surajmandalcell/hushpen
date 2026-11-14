@@ -29,7 +29,8 @@ struct DictationScreen: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }
-            controls.padding(.vertical, 20)
+            // The hand-off page only shows how to swipe back; the keyboard pill holds Cancel and Done.
+            if model.state != "listening" { controls.padding(.vertical, 20) }
         }
         .background(Color(.systemBackground))
         .overlay {
@@ -123,9 +124,6 @@ struct DictationScreen: View {
         HStack(alignment: .top, spacing: 44) {
             if model.busy {
                 action("Cancel", symbol: "xmark", id: "dictation.cancel") { model.cancel() }
-                if model.state == "listening" {
-                    action("Done", symbol: "checkmark", id: "dictation.finish", prominent: true) { model.finish() }
-                }
             } else if model.recoverable {
                 action("Close", symbol: "xmark", id: "dictation.close", action: close)
                 action("Recover", symbol: "arrow.uturn.backward", id: "dictation.recover", prominent: true) { model.recover() }

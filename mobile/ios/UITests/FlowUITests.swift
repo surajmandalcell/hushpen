@@ -32,7 +32,8 @@ final class FlowUITests: XCTestCase {
 
         phone.terminate()
         startFromKeyboard()
-        element("dictation.cancel", in: phone).tap()
+        cancelFromKeyboard()
+        phone.activate()
         element("dictation.recover", in: phone).tap()
         waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         editor.activate()
@@ -71,7 +72,7 @@ final class FlowUITests: XCTestCase {
     func testCancelDoesNotInsertText() {
         openEditor()
         startFromKeyboard()
-        element("dictation.cancel", in: phone).tap()
+        cancelFromKeyboard()
         phone.terminate()
         editor.activate()
         XCTAssertEqual(editor.textFields["editor.first"].value as? String, "First field")
@@ -120,7 +121,9 @@ final class FlowUITests: XCTestCase {
         refusing.tap()
         useKeyboard()
         startFromKeyboard()
-        element("dictation.finish", in: phone).tap()
+        editor.activate()
+        element("keyboard.finish", in: editor).tap()
+        phone.activate()
         waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         editor.activate()
         let status = element("keyboard.status", in: editor)
@@ -252,6 +255,13 @@ final class FlowUITests: XCTestCase {
         waitForText("listening", id: "dictation.state", in: phone, timeout: 30)
         sleep(1)
         attach(phone, name: "App recording", keep: true)
+    }
+
+    /// The hand-off page has no Cancel or Done; the pill in the keyboard holds them.
+    private func cancelFromKeyboard() {
+        editor.activate()
+        XCTAssertTrue(element("keyboard.cancel", in: editor).waitForExistence(timeout: 10))
+        element("keyboard.cancel", in: editor).tap()
     }
 
     private func element(_ id: String, in app: XCUIApplication) -> XCUIElement {
