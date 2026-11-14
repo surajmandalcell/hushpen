@@ -56,6 +56,21 @@ final class KeyTouchTests: XCTestCase {
         XCTAssertNil(tracker.key(at: CGPoint(x: 70, y: -30)))
     }
 
+    func testPeriodAndEmojiKeysTypeAtTouchUpWithoutCallout() {
+        let (tracker, box) = tracker()
+        tracker.frames[.period] = CGRect(x: 140, y: 0, width: 40, height: 54)
+        tracker.frames[.emoji] = CGRect(x: 180, y: 0, width: 40, height: 54)
+        for (point, key) in [(CGPoint(x: 150, y: 10), KeyID.period), (CGPoint(x: 190, y: 10), .emoji)] {
+            tracker.down(1, at: point)
+            XCTAssertEqual(tracker.pressed, [key])
+            XCTAssertFalse(key.showsCallout)
+            XCTAssertFalse(key.actsOnTouchDown)
+            XCTAssertEqual(box.typed.last == key, false, "waits for touch-up")
+            tracker.up(1, at: point)
+        }
+        XCTAssertEqual(box.typed, [.period, .emoji])
+    }
+
     func testCancelledTouchTypesNothing() {
         let (tracker, box) = tracker()
         tracker.down(1, at: CGPoint(x: 10, y: 10))

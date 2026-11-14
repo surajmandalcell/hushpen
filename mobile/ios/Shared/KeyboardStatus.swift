@@ -26,6 +26,15 @@ struct KeyboardHeartbeat: Codable, Equatable {
     }
 }
 
+/// Keyboard settings the app writes and the keyboard reads, in the App Group.
+enum KeyboardSetting {
+    static let leftHandedKey = "leftHandedKeyboard"
+    static var defaults: UserDefaults? { UserDefaults(suiteName: FlowSessionStore.groupIdentifier) }
+
+    /// Mirrors the strip: dictate on the left, Undo and Redo on the right. Off without Full Access.
+    static var leftHanded: Bool { defaults?.bool(forKey: leftHandedKey) ?? false }
+}
+
 struct KeyboardStatus: Equatable {
     static let bundleIdentifier = "com.mandalsuraj.hushpen.keyboard"
     let added: Bool

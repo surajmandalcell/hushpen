@@ -2,9 +2,9 @@ import CoreGraphics
 import Foundation
 import Observation
 
-/// A key of the Hushpen keyboard that reads touches. The globe and the mic key keep their own controls.
+/// A key of the Hushpen keyboard that reads touches. The globe keeps its own control.
 enum KeyID: Hashable, Sendable {
-    case character(String), shift, backspace, symbols, space, enter
+    case character(String), shift, backspace, symbols, emoji, space, period, enter
 
     /// Letter and symbol keys show the key callout; the other keys only change shade.
     var showsCallout: Bool {
@@ -48,7 +48,7 @@ final class KeyTracker {
 
     var pressed: Set<KeyID> { Set(presses.values.map(\.current)) }
 
-    /// The cell that holds the point; touches in no cell pass through to the globe and the mic.
+    /// The cell that holds the point; touches in no cell pass through to the globe and the emoji grid.
     func key(at point: CGPoint) -> KeyID? {
         frames.first { $0.value.contains(point) }?.key
     }

@@ -18,6 +18,16 @@ final class KeyboardModel {
     var needsGlobe = false
     var shift = false
     var symbols = false
+    /// The emoji panel shows in place of the letters.
+    var emoji = false
+    /// Dictate on the left, Undo and Redo on the right.
+    var leftHanded = false
+    var canUndoEdit = false
+    var canRedoEdit = false
+    /// The microphone level, 0...1, while the app listens.
+    var level = 0.0
+    /// When the take began; the strip counts from here.
+    var listeningSince = Date()
     weak var controller: KeyboardController?
     /// Follows the fingers on the keys; a finished key press types through `press`.
     let keys = KeyTracker()
@@ -35,7 +45,9 @@ final class KeyboardModel {
         case .shift: shift.toggle()
         case .backspace: backspace()
         case .symbols: symbols.toggle()
+        case .emoji: emoji.toggle()
         case .space: insert(" ")
+        case .period: insert(".")
         case .enter: insert("\n")
         }
     }
@@ -47,12 +59,17 @@ final class KeyboardModel {
     func stop() { controller?.stop() }
     func copy() { controller?.copyRescuedText() }
     func dismiss() { controller?.dismissFailure() }
+    func undoEdit() { controller?.undoEdit() }
+    func redoEdit() { controller?.redoEdit() }
 }
 
 final class KeyboardController: UIInputViewController {
     private let model = KeyboardModel()
     private var store: FlowSessionStore?
     private var observation: FlowSessionObservation?
+    private var levelObservation: FlowLevel.Observer?
+    private var history = EditHistory()
+    private var historyDocument: UUID?
     private var visible = false
     private var hostActive = true
     private var delivering = false
@@ -93,7 +110,7 @@ final class KeyboardController: UIInputViewController {
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host.view)
-        // The pill band (44) sits above the four key rows (216).
+        // The strip (44) sits above the four key rows (216).
         let height = view.heightAnchor.constraint(equalToConstant: 260)
         height.priority = UILayoutPriority(999)
         NSLayoutConstraint.activate([
@@ -121,6 +138,11 @@ final class KeyboardController: UIInputViewController {
                     Task { @MainActor in self?.refresh() }
                 }
             }
+            if levelObservation == nil {
+                levelObservation = try FlowLevel.Observer { [weak self] level in
+                    MainActor.assumeIsolated { self?.model.level = level }
+                }
+            }
         } catch { model.pill = .notice(error.localizedDescription) }
         refresh()
     }
@@ -130,6 +152,7 @@ final class KeyboardController: UIInputViewController {
         model.keys.cancelAll()
         if model.pill == .listening || model.pill == .transcribing { model.pill = .idle }
         observation = nil
+        levelObservation = nil
     }
 
     @objc private func resumeHost() {
@@ -139,7 +162,7 @@ final class KeyboardController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // The mic key is our dictation key, so iOS must not draw its own below the keyboard. The flag
+        // The strip's mic hint is our dictation control, so iOS must not draw its own below the keyboard. The flag
         // only reaches the system once the keyboard is attached to the field, so viewDidLoad is too early.
         hasDictationKey = true
         shareStatus()
@@ -150,6 +173,7 @@ final class KeyboardController: UIInputViewController {
         visible = false
         model.keys.cancelAll()
         observation = nil
+        levelObservation = nil
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
@@ -189,6 +213,7 @@ final class KeyboardController: UIInputViewController {
         guard hostActive, visible else { return }
         shareStatus()
         model.fullAccess = hasFullAccess
+        model.leftHanded = KeyboardSetting.leftHanded
         guard hasFullAccess else {
             model.url = nil
             model.pill = .notice("Turn on Full Access to dictate.")
@@ -205,6 +230,7 @@ final class KeyboardController: UIInputViewController {
                 case .recording:
                     rescued = nil
                     model.url = nil
+                    if model.listeningSince != current.createdAt { model.listeningSince = current.createdAt }
                     model.pill = current.command == .stop ? .transcribing : .listening
                     return
                 case .pending:
@@ -290,6 +316,7 @@ final class KeyboardController: UIInputViewController {
             return
         }
         insertion = (document, text, context, replaced)
+        record(added: text, removed: replaced, joining: false)
         model.pill = .inserted
         expiry?.cancel()
         expiry = Task { [weak self] in
@@ -355,14 +382,62 @@ final class KeyboardController: UIInputViewController {
     }
 
     func insert(_ text: String) {
-        textDocumentProxy.insertText(model.shift ? text.uppercased() : text)
+        let typedText = model.shift ? text.uppercased() : text
+        let replaced = textDocumentProxy.selectedText ?? ""
+        textDocumentProxy.insertText(typedText)
+        record(added: typedText, removed: replaced)
         model.shift = false
         typed()
     }
 
     func backspace() {
-        textDocumentProxy.deleteBackward()
+        let proxy = textDocumentProxy
+        let removed = proxy.selectedText ?? proxy.documentContextBeforeInput?.last.map(String.init) ?? ""
+        proxy.deleteBackward()
+        record(added: "", removed: removed)
         typed()
+    }
+
+    /// Keeps the edit for the Undo and Redo buttons. Another field starts a new history.
+    private func record(added: String, removed: String, joining: Bool = true) {
+        if document != historyDocument {
+            history.clear()
+            historyDocument = document
+        }
+        history.record(added: added, removed: removed, joining: joining)
+        publishHistory()
+    }
+
+    private func publishHistory() {
+        model.canUndoEdit = history.canUndo
+        model.canRedoEdit = history.canRedo
+    }
+
+    /// An edit applies only while the cursor still sits behind its text; if the user moved the cursor
+    /// or the field changed, the history is stale and goes.
+    private func apply(removing: String, inserting: String, take: () -> Void) {
+        guard removing.isEmpty || textDocumentProxy.documentContextBeforeInput?.hasSuffix(removing) == true else {
+            history.clear()
+            publishHistory()
+            return
+        }
+        take()
+        for _ in removing { textDocumentProxy.deleteBackward() }
+        if !inserting.isEmpty { textDocumentProxy.insertText(inserting) }
+        insertion = nil
+        if model.pill == .inserted { model.pill = .idle }
+        publishHistory()
+        refresh()
+    }
+
+    func undoEdit() {
+        guard let edit = history.nextUndo else { return }
+        apply(removing: edit.added, inserting: edit.removed) { _ = history.takeUndo() }
+    }
+
+    func redoEdit() {
+        guard let edit = history.nextRedo else { return }
+        apply(removing: edit.removed, inserting: edit.added) { _ = history.takeRedo() }
     }
 
     private func typed() {
@@ -375,6 +450,8 @@ final class KeyboardController: UIInputViewController {
         guard undoAvailable, let insertion else { return }
         for _ in insertion.text { textDocumentProxy.deleteBackward() }
         if !insertion.replaced.isEmpty { textDocumentProxy.insertText(insertion.replaced) }
+        history.discardLast(added: insertion.text)
+        publishHistory()
         self.insertion = nil
         model.pill = .idle
         refresh()
@@ -391,12 +468,12 @@ final class KeyboardController: UIInputViewController {
         }
     }
 
-    /// The tick and the mic key exist only while the pill listens, and the pill listens only while the host is
+    /// The Finish button exists only while the strip listens, and it listens only while the host is
     /// active and the keyboard shows, so no host-state guard is needed. A missing session says so.
     func stop() {
         do {
             guard let session = try store?.current() else {
-                model.pill = .notice("Dictation ended. Tap the mic to start again.")
+                model.pill = .notice("Dictation ended. Tap to dictate again.")
                 return
             }
             if session.state == .recording { try store?.stop(id: session.id) }

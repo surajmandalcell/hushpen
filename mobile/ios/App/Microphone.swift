@@ -9,6 +9,8 @@ final class Microphone: NSObject, AVAudioRecorderDelegate {
     var finished: (() -> Void)?
     private var interruption: NSObjectProtocol?
     private var sessionActive = false
+    private let level = FlowLevel.Publisher()
+    private var meterTimer: Timer?
 
     override init() {
         super.init()
@@ -45,10 +47,15 @@ final class Microphone: NSObject, AVAudioRecorderDelegate {
                 AVLinearPCMIsBigEndianKey: false,
             ])
             next.delegate = self
+            next.isMeteringEnabled = true
             guard next.record(forDuration: 5 * 60) else {
                 throw MobileError.Failed(detail: "The microphone could not start.")
             }
             recorder = next
+            startMeter {
+                next.updateMeters()
+                return FlowLevel.normalized(decibels: next.averagePower(forChannel: 0))
+            }
         } catch {
             release()
             throw error
@@ -57,11 +64,47 @@ final class Microphone: NSObject, AVAudioRecorderDelegate {
 
     /// Stops the recorder. The audio session stays active, which keeps iOS from suspending a background app; `release()` ends it.
     func stop() {
+        stopMeter()
         guard recorder != nil else { return }
         recorder?.delegate = nil
         recorder?.stop()
         recorder = nil
     }
+
+    /// Sends the loudness to the keyboard about 12 times a second while the take runs.
+    private func startMeter(_ read: @escaping @MainActor () -> Double) {
+        meterTimer?.invalidate()
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.level.set(read()) }
+        }
+    }
+
+    private func stopMeter() {
+        guard meterTimer != nil else { return }
+        meterTimer?.invalidate()
+        meterTimer = nil
+        level.set(0)
+    }
+
+    #if DEBUG
+    /// A test recording has no live microphone, so its own loudness drives the level.
+    func meter(fixture url: URL) {
+        guard let data = try? Data(contentsOf: url), data.count > 44 else { return }
+        let begin = Date()
+        startMeter {
+            let start = Int(Date().timeIntervalSince(begin) * 16_000)
+            let count = min(1_600, (data.count - 44) / 2 - start)
+            guard count > 0 else { return 0 }
+            var sum = 0.0
+            for index in start..<(start + count) {
+                let sample = Double(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 44 + 2 * index, as: Int16.self) })
+                sum += sample * sample
+            }
+            let rms = (sum / Double(count)).squareRoot() / 32_768
+            return FlowLevel.normalized(decibels: Float(20 * log10(max(rms, 1e-5))))
+        }
+    }
+    #endif
 
     func release() {
         guard sessionActive else { return }
