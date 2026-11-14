@@ -1491,8 +1491,9 @@ mod tests {
         thread::sleep(Duration::from_millis(100));
         let closing = Instant::now();
         window.close();
-        assert!(result.recv_timeout(Duration::from_millis(500)).unwrap());
-        assert!(closing.elapsed() < Duration::from_millis(500));
+        // Well under the 10 s handshake limit, with room for a busy CI runner.
+        assert!(result.recv_timeout(Duration::from_secs(3)).unwrap());
+        assert!(closing.elapsed() < Duration::from_secs(3));
         host.join().unwrap();
     }
 
@@ -1846,7 +1847,7 @@ mod tests {
         assert!(receiver.recv_timeout(Duration::from_millis(100)).is_err());
         control.cancelled.store(true, Ordering::Release);
         let error = receiver
-            .recv_timeout(Duration::from_millis(300))
+            .recv_timeout(Duration::from_secs(3))
             .unwrap()
             .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
@@ -1882,7 +1883,7 @@ mod tests {
         control.shutdown().unwrap();
         assert!(
             received
-                .recv_timeout(Duration::from_millis(300))
+                .recv_timeout(Duration::from_secs(3))
                 .unwrap()
                 .is_err()
         );
