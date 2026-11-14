@@ -14,9 +14,9 @@ use crate::theme::{self, chrome, size as sizes, space};
 use gpui_kit::base::Root;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, Global, Hsla, PlatformDisplay,
-    Point, Rgba, Styled as _, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowDecorations, WindowOptions, point, px, size, transparent_black,
+    AnyWindowHandle, App, AppContext as _, Bounds, Context, Decorations, Entity, Global, Hsla,
+    PlatformDisplay, Point, Rgba, Styled as _, TitlebarOptions, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowDecorations, WindowOptions, point, px, size, transparent_black,
 };
 use hushpen_platform::window::{Frame, SizeLimits};
 use std::rc::Rc;
@@ -58,11 +58,25 @@ fn height_to_save(current: f32, saved: f32, screen: f32) -> Option<i64> {
 }
 
 /// The width and height limits the platform gives the native window.
-pub fn size_limits(screen: f32) -> SizeLimits {
+/// `frame` is what a client-decorated window adds on both sides (see `frame`).
+pub fn size_limits(screen: f32, frame: f32) -> SizeLimits {
     SizeLimits {
-        width: space::WINDOW_WIDTH as u16,
-        min_height: space::WINDOW_HEIGHT as u16,
-        max_height: max_height(screen) as u16,
+        width: (space::WINDOW_WIDTH + frame) as u16,
+        min_height: (space::WINDOW_HEIGHT + frame) as u16,
+        max_height: (max_height(screen) + frame) as u16,
+    }
+}
+
+/// What the Kit root takes from the width and the height of a client-decorated Linux window: its
+/// 20 point shadow margin on each side (`gpui-component` `SHADOW_SIZE`). The window opens that
+/// much larger, so the visible window keeps its design size.
+pub const CLIENT_FRAME: f32 = if cfg!(target_os = "linux") { 40.0 } else { 0.0 };
+
+/// The frame the window has now: `CLIENT_FRAME` while the app draws the decorations, else none.
+pub fn frame(window: &Window) -> f32 {
+    match window.window_decorations() {
+        Decorations::Client { .. } => CLIENT_FRAME,
+        Decorations::Server => 0.0,
     }
 }
 
@@ -76,15 +90,32 @@ fn visible_height(display: Rc<dyn PlatformDisplay>) -> f32 {
     f32::from(display.visible_bounds().size.height)
 }
 
+/// Whether the opened size counts the Kit root's margin: only on a Wayland session.
+fn opens_with_margin() -> bool {
+    #[cfg(target_os = "linux")]
+    return hushpen_platform::keys::session::detect()
+        == hushpen_platform::keys::session::Session::Wayland;
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
 /// The options for the main window, at `saved` height when there is one. The caller adds the
 /// app id.
 pub fn main_window_options(saved: Option<f32>, cx: &App) -> WindowOptions {
     let height = clamp_height(saved, screen_height(cx));
-    let window_size = size(px(space::WINDOW_WIDTH), px(height));
+    let see_through = chrome::sidebar(cx).see_through();
+    // Wayland takes the opened size as the whole surface, so the Kit root's margin must be added
+    // to it. X11 takes it as the visible window and adds the margin itself.
+    let frame = if see_through && opens_with_margin() {
+        CLIENT_FRAME
+    } else {
+        0.0
+    };
+    let window_size = size(px(space::WINDOW_WIDTH + frame), px(height + frame));
     options(
         Bounds::centered(None, window_size, cx),
         matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac),
-        chrome::sidebar(cx).see_through(),
+        see_through,
     )
 }
 
@@ -135,10 +166,11 @@ pub fn remember_height(saved: f32, save: Rc<dyn Fn(i64)>, window: &mut Window, c
     memory.update(cx, |_, cx| {
         cx.observe_window_bounds(window, |memory, window, cx| {
             let screen = window.display(cx).map_or(MAX_HEIGHT, visible_height);
-            let height = f32::from(window.viewport_size().height);
+            let frame = frame(window);
+            let height = f32::from(window.viewport_size().height) - frame;
             let tallest = max_height(screen);
             if height > tallest + 0.5 {
-                window.resize(size(px(space::WINDOW_WIDTH), px(tallest)));
+                window.resize(size(px(space::WINDOW_WIDTH + frame), px(tallest + frame)));
                 return;
             }
             // The blur follows the sidebar, which is as tall as the window.
@@ -172,11 +204,6 @@ pub fn resize_grip() -> impl gpui_kit::IntoElement {
         })
 }
 
-/// What the Kit root takes from each side of a client-decorated Linux window: its 20 point
-/// shadow margin (`gpui-component` `SHADOW_SIZE`). Wayland holds the window to its minimum size
-/// without that margin, so the minimum is the window size less the margin on both sides.
-const CLIENT_FRAME: f32 = if cfg!(target_os = "linux") { 40.0 } else { 0.0 };
-
 fn options(
     bounds: Bounds<gpui_kit::Pixels>,
     native_chrome: bool,
@@ -197,10 +224,7 @@ fn options(
         // The native limits (see `size_limits`) keep the width and cap the height.
         is_resizable: true,
         is_minimizable: true,
-        window_min_size: Some(size(
-            px(space::WINDOW_WIDTH - CLIENT_FRAME),
-            px(space::WINDOW_HEIGHT - CLIENT_FRAME),
-        )),
+        window_min_size: Some(size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT))),
         ..Default::default()
     }
 }
@@ -285,11 +309,13 @@ pub fn apply_look(window: &mut Window, cx: &mut App) {
     let blur = if look == chrome::Sidebar::Blurred {
         let scale = window.scale_factor();
         let device = |length: f32| (length * scale).round() as u32;
+        // The sidebar sits inside the margin the Kit root keeps around a client-decorated window.
+        let margin = frame(window) / 2.0;
         let sidebar = Frame {
-            x: 0,
-            y: 0,
+            x: device(margin) as i32,
+            y: device(margin) as i32,
             width: device(space::SIDEBAR_WIDTH),
-            height: device(f32::from(window.viewport_size().height)),
+            height: device(f32::from(window.viewport_size().height) - 2.0 * margin),
         };
         hushpen_platform::window::blur_behind(handle, sidebar)
     } else {
@@ -365,13 +391,7 @@ mod tests {
         assert_eq!((space::WINDOW_WIDTH, space::WINDOW_HEIGHT), (940.0, 600.0));
         assert!(options.is_resizable);
         assert!(options.is_minimizable);
-        assert_eq!(
-            options.window_min_size,
-            Some(size(
-                bounds().size.width - px(CLIENT_FRAME),
-                bounds().size.height - px(CLIENT_FRAME)
-            ))
-        );
+        assert_eq!(options.window_min_size, Some(bounds().size));
         assert_eq!(
             options.window_bounds,
             Some(WindowBounds::Windowed(bounds()))
@@ -409,14 +429,19 @@ mod tests {
     #[test]
     fn the_native_limits_keep_the_width_and_cap_the_height() {
         assert_eq!(
-            size_limits(1440.0),
+            size_limits(1440.0, 0.0),
             SizeLimits {
                 width: 940,
                 min_height: 600,
                 max_height: 900
             }
         );
-        assert_eq!(size_limits(750.0).max_height, 750);
+        assert_eq!(size_limits(750.0, 0.0).max_height, 750);
+        let framed = size_limits(1440.0, 40.0);
+        assert_eq!(
+            (framed.width, framed.min_height, framed.max_height),
+            (980, 640, 940)
+        );
     }
 
     #[gpui_kit::test]
