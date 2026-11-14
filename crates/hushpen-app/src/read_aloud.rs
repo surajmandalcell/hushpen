@@ -738,7 +738,9 @@ impl ReadAloud {
         self.text_format = format;
         let state = self.text.clone();
         let text = text.to_owned();
-        let _ = self.window.update(cx, |_, window, cx| {
+        // A Wayland reopen replaces the window this view was made in.
+        let main = crate::main_window::handle(cx).unwrap_or(self.window);
+        let _ = main.update(cx, |_, window, cx| {
             state.update(cx, |state, cx| state.set_value(text, window, cx));
         });
         cx.notify();

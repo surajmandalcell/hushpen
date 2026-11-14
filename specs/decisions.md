@@ -60,7 +60,10 @@ new decision, add it here in the same change (D-21).
 - **D-11 Window.** 940 px wide on every OS. The height can change from 600 px
   to 900 px, or to the screen height when that is smaller; the app keeps the
   last height in an internal setting and restores it inside the current
-  screen. No zoom, no full screen.
+  screen. No zoom, no full screen. Close hides the window to the tray (or
+  minimizes it with no tray). Wayland cannot hide or unminimize a window, so
+  there close drops it and the tray's Show or Settings opens a fresh one on the
+  same views. The idle app lists microphones only while a window is in use.
 - **D-12 Appearance.** The app follows the system Light or Dark setting and
   changes live. Without a system setting it uses Dark. `DESIGN.md` is the
   binding design system.

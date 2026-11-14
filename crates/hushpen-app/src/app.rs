@@ -40,7 +40,7 @@ use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, Window, WindowOpti
 use hushpen_core::shortcut::Platform;
 use hushpen_core::update::Version;
 use hushpen_platform::keys::GlobalKeys;
-use hushpen_platform::window::lock_chrome;
+use hushpen_platform::window::{WindowHandle, lock_chrome};
 use hushpen_store::data_dir::DataDir;
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -175,7 +175,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             );
             // Read before the window opens: its options follow the compositor.
             theme::chrome::set_compositor(hushpen_platform::window::compositor_running(), cx);
-            let (handle, shell) = match open_main_window(cx, launch, &storage) {
+            let (handle, shell) = match open_main_window(cx, launch, &storage, None) {
                 Ok(opened) => opened,
                 Err(error) => {
                     eprintln!("hushpen: could not open the window: {error:#}");
@@ -183,13 +183,13 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     return;
                 }
             };
-            crate::window_chrome::follow_compositor(handle, cx);
+            crate::window_chrome::follow_compositor(cx);
             // Close hides the window to the tray, or minimizes it when no tray can bring it
-            // back; only the tray's Quit ends the app. If the window is ever closed for real,
-            // the app ends with it. The flow bar opens and closes its own window, which must
-            // not end the app.
-            cx.on_window_closed(move |cx, _| {
-                if !cx.windows().contains(&handle) {
+            // back; only the tray's Quit ends the app. If the window is ever closed for real
+            // with no way to open it again, the app ends with it. The flow bar opens and
+            // closes its own window, which must not end the app.
+            cx.on_window_closed(|cx, _| {
+                if main_window::lost(cx) {
                     cx.quit();
                 }
             })
@@ -200,14 +200,13 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                     "no tray host: no StatusNotifier watcher owns the session bus name, so closing the window minimizes it"
                 );
             }
-            let _ = handle.update(cx, |_, window, cx| {
-                main_window::install(cx, handle, native_handle(window), tray_host);
-                theme::observe(window).detach();
-                window.on_window_should_close(cx, |_, cx| {
-                    main_window::close_requested(cx);
-                    false
-                });
-            });
+            let wayland = handle
+                .update(cx, |_, window, cx| {
+                    let native = native_handle(window);
+                    main_window::install(cx, handle, native, tray_host);
+                    cfg!(target_os = "linux") && native == WindowHandle::Other
+                })
+                .unwrap_or(false);
             app_menu::install(cx);
             let mic = cx.new(|cx| {
                 let mut mic = Mic::new(mic_storage, Arc::new(CpalBackend), cx);
@@ -534,6 +533,25 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 },
             );
             let tray = tray::install(cx, &tray_controller);
+            if wayland {
+                // Holds the shell while no window does, so its views and state survive a close.
+                let (storage, shell, tray) = (Rc::clone(&storage), shell.clone(), tray.clone());
+                main_window::set_reopen(
+                    cx,
+                    Rc::new(move |focus, cx| {
+                        let launch = if focus { Launch::Shown } else { Launch::Behind };
+                        let opened = open_main_window(cx, launch, &storage, Some(shell.clone()));
+                        let handle = opened
+                            .map_err(|error| log::warn!("the window could not open again: {error:#}"))
+                            .ok()?
+                            .0;
+                        if let Some(tray) = &tray {
+                            tray::follow_appearance(cx, handle, tray);
+                        }
+                        Some(handle)
+                    }),
+                );
+            }
             if let Some(tray) = &tray {
                 tray::follow_appearance(cx, handle, tray);
                 let closing = tray.clone();
@@ -793,10 +811,12 @@ fn start_insert(controller: &Entity<Controller>, cx: &mut App) {
     controller.update(cx, |controller, _| controller.attach_insert(support));
 }
 
+/// Opens the main window, on `shell` when it already exists (a reopen on Wayland).
 fn open_main_window(
     cx: &mut App,
     launch: Launch,
     storage: &Rc<Storage>,
+    shell: Option<Entity<Shell>>,
 ) -> gpui_kit::Result<(AnyWindowHandle, Entity<Shell>)> {
     let saved = storage
         .settings
@@ -814,7 +834,13 @@ fn open_main_window(
             ..main_window_options(saved, cx)
         },
         cx,
-        |window, cx| cx.new(|cx| Shell::new(window, cx)),
+        |window, cx| match shell {
+            Some(shell) => {
+                shell.update(cx, |shell, cx| shell.adopt(window, cx));
+                shell
+            }
+            None => cx.new(|cx| Shell::new(window, cx)),
+        },
     )?;
     let screen = crate::window_chrome::screen_height(cx);
     let opened = clamp_height(saved, screen);
@@ -837,6 +863,11 @@ fn open_main_window(
         #[cfg(target_os = "macos")]
         place_traffic_lights(window);
         add_sidebar_material(window);
+        theme::observe(window).detach();
+        window.on_window_should_close(cx, |_, cx| {
+            main_window::close_requested(cx);
+            false
+        });
     });
     Ok((handle, shell))
 }

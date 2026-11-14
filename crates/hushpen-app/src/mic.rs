@@ -14,7 +14,7 @@ use crate::hook;
 use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedSender, unbounded};
-use gpui_kit::{Context, FocusHandle};
+use gpui_kit::{App, Context, FocusHandle, WindowVisibility};
 use hushpen_audio::{
     CaptureError, CaptureEvent, DEFAULT_ID, Enhance, EventSink, Finished, InputDevice,
     RecoveredSession, Selection, Sweep, new_session_path, recover_orphans, resolve_selection,
@@ -44,9 +44,18 @@ const DEVICE_POLL: Duration = Duration::from_secs(2);
 
 /// Whether a poll lists the microphones: not while one records, and only while a window of the
 /// app is in use. A hidden app idles with no work and lists them again within one poll of a
-/// window coming back (the idle poll cost 1.7% of a core).
-fn should_poll(not_recording: bool, window_active: bool) -> bool {
-    not_recording && window_active
+/// window coming back (the idle poll cost 1.7% of a core). `active` is how the active window
+/// shows: a minimized Wayland window stays active but its compositor reports it hidden.
+fn should_poll(not_recording: bool, active: Option<WindowVisibility>) -> bool {
+    not_recording && active == Some(WindowVisibility::Visible)
+}
+
+/// [`should_poll`] for the app now. Every idle microphone listing asks it, onboarding's too.
+pub(crate) fn may_list(not_recording: bool, cx: &mut App) -> bool {
+    let active = cx
+        .active_window()
+        .and_then(|window| window.update(cx, |_, window, _| window.visibility()).ok());
+    should_poll(not_recording, active)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,10 +282,7 @@ impl Mic {
     }
 
     fn poll(&mut self, cx: &mut Context<Self>) {
-        if should_poll(
-            self.state() != CaptureState::Listening,
-            cx.active_window().is_some(),
-        ) {
+        if may_list(self.state() != CaptureState::Listening, cx) {
             self.refresh(cx);
         }
     }

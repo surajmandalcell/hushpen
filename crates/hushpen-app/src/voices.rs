@@ -810,6 +810,8 @@ impl VoiceLibrary {
     fn set_input(&self, input: &Entity<InputState>, text: String, cx: &mut Context<Self>) {
         let (window, input) = (self.window, input.clone());
         cx.defer(move |cx: &mut App| {
+            // A Wayland reopen replaces the window this sheet was made in.
+            let window = crate::main_window::handle(cx).unwrap_or(window);
             let _ = window.update(cx, |_, window, cx| {
                 input.update(cx, |state, cx| state.set_value(text, window, cx));
             });
