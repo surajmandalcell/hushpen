@@ -9,6 +9,7 @@ struct SettingsScreen: View {
     let history: HistoryModel
     @AppStorage("typingSpeed") private var typingSpeed = 40
     @AppStorage("keepHistoryDays") private var keepDays = 0
+    @AppStorage(KeyboardSetting.leftHandedKey, store: KeyboardSetting.defaults) private var leftHanded = false
     @State private var clearing = false
 
     private var version: String {
@@ -34,10 +35,12 @@ struct SettingsScreen: View {
                 Button { onboarding.openSettings() } label: {
                     Label("Open Settings", systemImage: "gearshape")
                 }
+                Toggle(isOn: $leftHanded) { RowTitle(title: "Left-handed keyboard", symbol: "hand.point.left") }
+                    .accessibilityIdentifier("settings.leftHanded")
             } header: {
                 Text("Keyboard")
             } footer: {
-                Text("Allow Full Access to share dictation text with the app.")
+                Text("Allow Full Access to share dictation text with the app. The left-handed keyboard puts dictation on the left and Undo and Redo on the right.")
             }
             Section {
                 NavigationLink(value: Route.models) {

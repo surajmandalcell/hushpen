@@ -199,6 +199,7 @@ final class DictationModel {
             if let source = fixture {
                 try FileManager.default.copyItem(at: source, to: file)
                 try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: file.path)
+                microphone.meter(fixture: source)
                 return
             }
             #endif

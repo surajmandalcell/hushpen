@@ -231,7 +231,7 @@ the rules; views render state and send intents.
 ## iOS Settings
 
 - Cards (grouped rows): Keyboard (Microphone, Keyboard, Full Access, Open
-  Settings), Models and Devices, Cleanup, History (Keep History, Clear
+  Settings, Left-handed keyboard), Models and Devices, Cleanup, History (Keep History, Clear
   History), Stats (Typing speed), and About.
 - State: cleanup enabled, Foundation Models availability, microphone permission,
   keyboard use receipt, typing speed, history retention, and notice.
@@ -261,7 +261,7 @@ the rules; views render state and send intents.
   keep typing." over a two second swipe demo, with a quiet ring and an
   arrow at the system back link. The page names no app: iOS draws the link.
   It shows no "Listening" text, animation, or buttons: Cancel and Done live in
-  the keyboard pill. Other states keep the
+  the keyboard strip. Other states keep the
   wave, state, and Cancel, Recover, or Close. Dismissing it cancels the session.
 
 ## iOS Live Activity
@@ -273,10 +273,10 @@ the rules; views render state and send intents.
 
 ## iOS keyboard
 
-- State: Full Access, flow session, pill, and notice.
+- State: Full Access, flow session, strip state, notice, and the emoji panel.
 - Intents: start a session, open its app URL, finish or cancel it, undo the
-  insert, copy or dismiss a failed insert, type, delete, space, return, and
-  switch keyboards.
+  insert, copy or dismiss a failed insert, type, delete, space, period, return,
+  open and close the emoji panel, and switch keyboards.
 - Empty: no Full Access or no result. Show the required system setup.
 - Errors: session expired, shared file unavailable, or an insert the field
   refused. Never replay a consumed result.
@@ -284,17 +284,26 @@ the rules; views render state and send intents.
   Typing, moving the cursor, or changing the field while the app transcribes
   does not cancel it. The session is consumed before the insert.
 - iOS reports no result for an insert, so the keyboard checks that the text
-  before the cursor changed. If not, it copies the text and the pill says
+  before the cursor changed. If not, it copies the text and the strip says
   "Paste failed. Copied to clipboard."; if the copy fails, "Paste failed." with
   a Copy button.
 - The extension links no Rust library and loads no model or microphone.
-- The system keyboard look with a mic key (letters, 123, space, mic, return;
-  the system draws the globe). A fixed 44 pt band above the 216 pt of keys
-  holds the pill and is empty at rest, so nothing moves. Keys work while the
-  app listens or transcribes; only the mic key dims, and while listening it
-  finishes the session. The pill is white on a Light keyboard and the dark flow
-  bar color on a Dark one: Listening (cancel, wave, finish), Transcribing,
-  Inserted with Undo (4 seconds), and the two paste failures.
+- The system keyboard look (letters; bottom row 123, emoji, space, period,
+  return; the system draws the globe). A fixed 44 pt strip above the 216 pt of
+  keys holds the dictation states, so nothing moves. At rest it shows Undo and
+  Redo of the keyboard's own edits on the left (by word, dimmed when empty) and
+  the hint (mic.fill and "Tap to dictate") on the right, one tap target that
+  starts dictation. The Settings switch "Left-handed keyboard" (App Group
+  setting, default off) mirrors the strip. Keys work while the app listens or
+  transcribes. Listening: a gray glass Cancel button, the elapsed time and a
+  blue curve that follows the microphone level (the app sends it to the
+  keyboard), a blue Finish button. Transcribing: a low steady curve and the word.
+  Inserted: a blue check and the word, with Undo as a round button on the right
+  (4 seconds). The two paste failures and other notices show gray text in the
+  middle, with Dismiss or Copy as a round button on the right. The parts of a
+  new state fade in and rise 4 pt one after another (0.18 s each, 0.05 s apart);
+  Reduce Motion swaps them at once. The emoji key swaps the letters for a
+  scrolling grid of common emoji, with ABC and delete below it.
 - Keys feel like the system keyboard: no fade or animation. A letter shows the
   callout at touch-down and types at touch-up, on the key under the finger.
   Delete types at touch-down and repeats after 0.5 s, then faster. Each key

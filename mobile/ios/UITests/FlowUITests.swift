@@ -65,6 +65,90 @@ final class FlowUITests: XCTestCase {
         XCTAssertFalse(element("keyboard.undo", in: editor).exists)
     }
 
+    func testEmojiPanelTypesAnEmojiAndReturnsToTheLetters() {
+        editor.launch()
+        let field = editor.textFields["editor.first"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        useKeyboard()
+        element("keyboard.emoji", in: editor).tap()
+        let grin = element("keyboard.emoji.😀", in: editor)
+        XCTAssertTrue(grin.waitForExistence(timeout: 5))
+        XCTAssertFalse(element("keyboard.key.q", in: editor).exists)
+        attach(editor, name: "Emoji panel", keep: true)
+        grin.tap()
+        XCTAssertEqual(field.value as? String, "😀")
+        // The emoji key reads ABC in the panel and brings the letters back.
+        element("keyboard.emoji", in: editor).tap()
+        XCTAssertTrue(element("keyboard.key.q", in: editor).waitForExistence(timeout: 5))
+        element("keyboard.period", in: editor).tap()
+        XCTAssertEqual(field.value as? String, "😀.")
+    }
+
+    func testUndoAndRedoButtonsStepTypedText() {
+        editor.launch()
+        let field = editor.textFields["editor.first"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        useKeyboard()
+        let undo = element("keyboard.edit.undo", in: editor)
+        let redo = element("keyboard.edit.redo", in: editor)
+        XCTAssertFalse(undo.isEnabled)
+        for key in ["h", "i"] { element("keyboard.key.\(key)", in: editor).tap() }
+        element("keyboard.space", in: editor).tap()
+        XCTAssertEqual(field.value as? String, "hi ")
+        attach(editor, name: "Rest with edits", keep: true)
+        XCTAssertTrue(undo.isEnabled)
+        undo.tap()
+        expect(field, "hi")
+        undo.tap()
+        // An empty field reads its placeholder.
+        expect(field, "First field")
+        XCTAssertFalse(undo.isEnabled)
+        XCTAssertTrue(redo.isEnabled)
+        redo.tap()
+        expect(field, "hi")
+    }
+
+    func testLeftHandedSettingMirrorsTheStrip() {
+        phone.tabBars.buttons["Settings"].tap()
+        let row = phone.switches["settings.leftHanded"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        // The row can wrap the switch; the switch itself takes the tap.
+        let toggle = row.switches.firstMatch.exists ? row.switches.firstMatch : row
+        if toggle.value as? String == "1" { toggle.tap() }
+        editor.launch()
+        let field = editor.textFields["editor.first"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        useKeyboard()
+        let hint = element("keyboard.mic", in: editor)
+        XCTAssertTrue(hint.waitForExistence(timeout: 15))
+        XCTAssertGreaterThan(hint.frame.minX, element("keyboard.edit.undo", in: editor).frame.maxX, "dictation on the right by default")
+        phone.activate()
+        phone.tabBars.buttons["Settings"].tap()
+        toggle.tap()
+        for _ in 0..<10 where toggle.value as? String != "1" { sleep(1) }
+        XCTAssertEqual(toggle.value as? String, "1")
+        editor.activate()
+        // The keyboard reads the setting when it shows again.
+        field.tap()
+        let undo = element("keyboard.edit.undo", in: editor)
+        for _ in 0..<30 where hint.frame.minX > undo.frame.minX { sleep(1) }
+        XCTAssertLessThan(hint.frame.maxX, undo.frame.minX, "dictation on the left when mirrored")
+        attach(editor, name: "Left-handed rest", keep: true)
+        phone.activate()
+        phone.tabBars.buttons["Settings"].tap()
+        toggle.tap()
+    }
+
+    /// The host reports an edit a moment after the keyboard sends it.
+    private func expect(_ field: XCUIElement, _ text: String) {
+        let match = NSPredicate(format: "value == %@", text)
+        let wait = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: match, object: field)], timeout: 5)
+        XCTAssertEqual(wait, .completed, "field reads \(field.value as? String ?? "nil"), not \(text)")
+    }
+
     func testSetupRefreshesWhenReturningFromTheKeyboard() {
         phone.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(element("onboarding.keyboard", in: phone).waitForExistence(timeout: 10))
@@ -94,10 +178,10 @@ final class FlowUITests: XCTestCase {
         startFromKeyboard()
         editor.activate()
         useKeyboard()
-        let microphone = element("keyboard.mic", in: editor)
-        XCTAssertTrue(microphone.waitForExistence(timeout: 10))
+        let finish = element("keyboard.finish", in: editor)
+        XCTAssertTrue(finish.waitForExistence(timeout: 10))
         attach(editor, name: "Listening", keep: true)
-        microphone.tap()
+        finish.tap()
         waitForInsertion(in: editor.textFields["editor.first"])
     }
 
