@@ -19,6 +19,26 @@ final class KeyboardModel {
     var shift = false
     var symbols = false
     weak var controller: KeyboardController?
+    /// Follows the fingers on the keys; a finished key press types through `press`.
+    let keys = KeyTracker()
+
+    init() {
+        keys.onDown = { [weak self] in self?.keyFeedback() }
+        keys.onType = { [weak self] key in self?.press(key) }
+    }
+
+    func keyFeedback() { controller?.keyFeedback() }
+
+    func press(_ key: KeyID) {
+        switch key {
+        case let .character(character): insert(character)
+        case .shift: shift.toggle()
+        case .backspace: backspace()
+        case .symbols: symbols.toggle()
+        case .space: insert(" ")
+        case .enter: insert("\n")
+        }
+    }
 
     func insert(_ text: String) { controller?.insert(text) }
     func backspace() { controller?.backspace() }
@@ -45,11 +65,24 @@ final class KeyboardController: UIInputViewController {
     /// Counts the host's text and cursor notices, so a cursor move shows whether the host answered.
     private var contextEvents = 0
 
+    /// The input view must adopt `UIInputViewAudioFeedback` for `playInputClick()` to sound.
+    override func loadView() {
+        inputView = ClickingInputView(frame: .zero, inputViewStyle: .keyboard)
+    }
+
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
+
+    /// The click honors the user's Keyboard Clicks setting. The haptic needs Full Access.
+    func keyFeedback() {
+        UIDevice.current.playInputClick()
+        guard hasFullAccess else { return }
+        haptic.impactOccurred()
+        haptic.prepare()
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         model.controller = self
-        // The mic key is our dictation key, so iOS must not draw its own below the keyboard.
-        hasDictationKey = true
         shareStatus()
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostWillResignActive, object: extensionContext)
         NotificationCenter.default.addObserver(self, selector: #selector(pauseHost), name: .NSExtensionHostDidEnterBackground, object: extensionContext)
@@ -94,6 +127,7 @@ final class KeyboardController: UIInputViewController {
 
     @objc private func pauseHost() {
         hostActive = false
+        model.keys.cancelAll()
         if model.pill == .listening || model.pill == .transcribing { model.pill = .idle }
         observation = nil
     }
@@ -105,12 +139,16 @@ final class KeyboardController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // The mic key is our dictation key, so iOS must not draw its own below the keyboard. The flag
+        // only reaches the system once the keyboard is attached to the field, so viewDidLoad is too early.
+        hasDictationKey = true
         shareStatus()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         visible = false
+        model.keys.cancelAll()
         observation = nil
     }
 
@@ -371,4 +409,8 @@ final class KeyboardController: UIInputViewController {
         return insertion.document == document && insertion.context == context
             && textDocumentProxy.documentContextBeforeInput?.hasSuffix(insertion.text) == true
     }
+}
+
+private final class ClickingInputView: UIInputView, UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
 }
