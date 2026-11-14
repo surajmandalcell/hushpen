@@ -196,11 +196,19 @@ impl CuePlayer {
 }
 
 struct Output {
-    _stream: cpal::Stream,
+    stream: cpal::Stream,
+    paused: bool,
     playing: Arc<Mutex<Playing>>,
     failed: Arc<AtomicBool>,
     rate: u32,
     quiet_since: Instant,
+}
+
+/// Whether a stream quiet for `quiet` should rest. A playing stream writes silence about 50
+/// times a second and costs about 2% of a core; a pause lifts in milliseconds, where opening a
+/// stream takes up to a second.
+fn pause_due(quiet: Duration) -> bool {
+    quiet > Duration::from_secs(3)
 }
 
 impl Output {
@@ -243,7 +251,8 @@ impl Output {
         .map_err(|error| log::warn!("could not open the output device for cue sounds: {error}"))
         .ok()?;
         Some(Self {
-            _stream: stream,
+            stream,
+            paused: false,
             playing,
             failed,
             rate,
@@ -251,7 +260,24 @@ impl Output {
         })
     }
 
+    /// Pauses the stream once it has been quiet long enough. A pause the device refuses leaves
+    /// the stream playing.
+    fn rest(&mut self) {
+        if !self.paused && pause_due(self.quiet_since.elapsed()) && self.stream.pause().is_ok() {
+            self.paused = true;
+        }
+    }
+
     fn play(&mut self, cue: Cue, volume: f32) {
+        if self.paused {
+            match self.stream.play() {
+                Ok(()) => self.paused = false,
+                Err(error) => {
+                    log::warn!("could not resume the output for a cue: {error}");
+                    self.failed.store(true, Ordering::SeqCst);
+                }
+            }
+        }
         let samples = render(cue, self.rate, volume);
         let length = Duration::from_secs_f32(samples.len() as f32 / self.rate.max(1) as f32);
         self.playing
@@ -336,6 +362,9 @@ fn run(queue: &mpsc::Receiver<Request>, data_root: Option<PathBuf>) {
         };
         if output.as_ref().is_some_and(Output::stale) {
             output = None;
+        }
+        if let Some(output) = &mut output {
+            output.rest();
         }
         if request.is_none() && pending.due(Instant::now()) {
             let now = Instant::now();
@@ -567,6 +596,13 @@ mod tests {
         assert_eq!(double.len(), 960);
         assert!((double[1] - 0.5 / 480.0).abs() < 1e-6);
         assert_eq!(resample(&ramp, 48_000, 48_000), ramp);
+    }
+
+    #[test]
+    fn an_idle_output_rests_only_after_the_quiet_time() {
+        assert!(!pause_due(Duration::ZERO));
+        assert!(!pause_due(Duration::from_secs(3)));
+        assert!(pause_due(Duration::from_secs(4)));
     }
 
     #[test]
