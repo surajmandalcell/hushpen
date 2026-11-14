@@ -14,9 +14,9 @@ use crate::theme::{self, chrome, size as sizes, space};
 use gpui_kit::base::Root;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Context, Decorations, Entity, Global, Hsla,
-    PlatformDisplay, Point, Rgba, Styled as _, TitlebarOptions, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowDecorations, WindowOptions, point, px, size, transparent_black,
+    App, AppContext as _, Bounds, Context, Decorations, Entity, Global, Hsla, PlatformDisplay,
+    Point, Rgba, Styled as _, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowOptions, point, px, size, transparent_black,
 };
 use hushpen_platform::window::{Frame, SizeLimits};
 use std::rc::Rc;
@@ -328,7 +328,7 @@ pub fn apply_look(window: &mut Window, cx: &mut App) {
 
 /// Follows a compositor that starts or stops while the app runs, with one read a second, and
 /// repaints the main window in its new look. macOS always composites, so nothing runs there.
-pub fn follow_compositor(main: AnyWindowHandle, cx: &mut App) {
+pub fn follow_compositor(cx: &mut App) {
     if hushpen_core::os::Os::current() == hushpen_core::os::Os::Mac {
         return;
     }
@@ -337,7 +337,9 @@ pub fn follow_compositor(main: AnyWindowHandle, cx: &mut App) {
             cx.background_executor().timer(COMPOSITOR_POLL).await;
             let running = hushpen_platform::window::compositor_running();
             cx.update(|cx| {
-                if chrome::set_compositor(running, cx) {
+                if chrome::set_compositor(running, cx)
+                    && let Some(main) = crate::main_window::handle(cx)
+                {
                     let _ = main.update(cx, |_, window, cx| apply_look(window, cx));
                 }
             });

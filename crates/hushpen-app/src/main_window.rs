@@ -5,12 +5,16 @@
 //! [`close_requested`] or [`step_aside`]. The tray menu, a second start of the app, and the
 //! flow bar's "Open history" call [`show`]. The app menu's Hide calls [`hide_app`].
 //!
+//! Wayland can neither hide a window nor bring a minimized one back (an activation without a
+//! token from the compositor is refused). There the app registers a [`Reopen`]: close drops the
+//! window, and a show opens a fresh one on the same views.
+//!
 //! Every native call (order out, order front, miniaturize, activate, hide) runs after the App is
 //! free again, never inside the update that asked for it. AppKit reports each of them through
 //! callbacks that update the App, which fails when the App is still borrowed (it logs
 //! `RefCell already borrowed` and loses the update). [`after_update`] is the one way in.
 
-use gpui_kit::{AnyWindowHandle, App, AsyncApp, Global};
+use gpui_kit::{AnyWindowHandle, App, AsyncApp, Global, QuitMode};
 use hushpen_platform::window::{self, WindowHandle};
 use std::rc::Rc;
 
@@ -46,12 +50,17 @@ impl Away {
     }
 }
 
+/// Opens the main window again on the same views and returns it; `true` gives it the focus.
+pub type Reopen = Rc<dyn Fn(bool, &mut App) -> Option<AnyWindowHandle>>;
+
 pub struct MainWindow {
     handle: AnyWindowHandle,
     native: Rc<dyn Native>,
     /// Asked at each close, because a tray host can start or stop while the app runs.
     tray_host: Rc<dyn Fn() -> bool>,
     away: Option<Away>,
+    /// Set only where the platform can neither hide nor show the window.
+    reopen: Option<Reopen>,
 }
 
 impl Global for MainWindow {}
@@ -123,7 +132,17 @@ pub fn install_with(
         native,
         tray_host,
         away: None,
+        reopen: None,
     });
+}
+
+/// Makes close drop the window when it cannot hide, and show open it again with `reopen`.
+pub fn set_reopen(cx: &mut App, reopen: Reopen) {
+    if cx.has_global::<MainWindow>() {
+        cx.global_mut::<MainWindow>().reopen = Some(reopen);
+        // GPUI ends a Linux app when its last window closes; here the tray keeps it alive.
+        cx.set_quit_mode(QuitMode::Explicit);
+    }
 }
 
 /// How the window is away from the screen, or `None` while it shows.
@@ -131,9 +150,51 @@ pub fn away(cx: &App) -> Option<Away> {
     cx.try_global::<MainWindow>().and_then(|main| main.away)
 }
 
+/// The main window now; a reopen replaces it.
+pub fn handle(cx: &App) -> Option<AnyWindowHandle> {
+    cx.try_global::<MainWindow>().map(|main| main.handle)
+}
+
+/// Whether the main window is gone with no way back, so the app should end.
+pub fn lost(cx: &App) -> bool {
+    cx.try_global::<MainWindow>()
+        .is_some_and(|main| main.reopen.is_none() && !cx.windows().contains(&main.handle))
+}
+
+/// Drops the window so a show can open it again. False when no reopen is registered.
+fn drop_for_reopen(handle: AnyWindowHandle, cx: &mut App) -> bool {
+    if cx
+        .try_global::<MainWindow>()
+        .is_none_or(|main| main.reopen.is_none())
+    {
+        return false;
+    }
+    let _ = handle.update(cx, |_, window, _| window.remove_window());
+    true
+}
+
+/// Opens the window again with the registered reopen. False when none is registered or the
+/// window did not open.
+fn reopen(focus: bool, cx: &mut App) -> bool {
+    let Some(reopen) = cx
+        .try_global::<MainWindow>()
+        .and_then(|main| main.reopen.clone())
+    else {
+        return false;
+    };
+    let Some(handle) = reopen(focus, cx) else {
+        log::warn!("the main window could not be opened again");
+        return false;
+    };
+    let main = cx.global_mut::<MainWindow>();
+    main.handle = handle;
+    main.away = None;
+    true
+}
+
 /// Picks hide or minimize, hides when a tray can bring the window back, and makes the native
-/// call once the App is free. A hide that fails (a backend that cannot hide) becomes a
-/// minimize, so the window never vanishes with no way back. `None` when no main window is
+/// call once the App is free. A hide that fails (a backend that cannot hide) drops the window
+/// when a [`Reopen`] is registered, else becomes a minimize, so the window never vanishes with no way back. `None` when no main window is
 /// registered.
 fn pick(cx: &mut App) -> Option<Away> {
     let main = cx.try_global::<MainWindow>()?;
@@ -149,6 +210,9 @@ fn pick(cx: &mut App) -> Option<Away> {
             return native.minimize(handle, cx);
         }
         if let Err(reason) = native.hide() {
+            if cx.update(|cx| drop_for_reopen(handle, cx)) {
+                return;
+            }
             log::warn!("the window could not be hidden, so it is minimized: {reason}");
             // A show that came in meanwhile has already cleared the state.
             cx.update(|cx| {
@@ -186,7 +250,19 @@ pub fn show(cx: &mut App) {
     let (native, handle) = (Rc::clone(&main.native), main.handle);
     cx.global_mut::<MainWindow>().away = None;
     after_update(cx, move |cx| {
+        if cx.update(|cx| !cx.windows().contains(&handle) && reopen(true, cx)) {
+            return;
+        }
         if let Err(reason) = native.show() {
+            // A window the platform cannot bring back (minimized on Wayland) is replaced.
+            let inactive = |cx: &mut App| {
+                handle
+                    .update(cx, |_, window, _| !window.is_window_active())
+                    .unwrap_or(false)
+            };
+            if cx.update(|cx| inactive(cx) && drop_for_reopen(handle, cx) && reopen(true, cx)) {
+                return;
+            }
             log::warn!("the window could not be shown by the platform: {reason}");
         }
         native.activate_app();
@@ -202,9 +278,12 @@ pub fn show_unfocused(cx: &mut App) {
     let Some(main) = cx.try_global::<MainWindow>() else {
         return;
     };
-    let native = Rc::clone(&main.native);
+    let (native, handle) = (Rc::clone(&main.native), main.handle);
     cx.global_mut::<MainWindow>().away = None;
-    after_update(cx, move |_cx| {
+    after_update(cx, move |cx| {
+        if cx.update(|cx| !cx.windows().contains(&handle) && reopen(false, cx)) {
+            return;
+        }
         if let Err(reason) = native.show_unfocused() {
             log::warn!("the window could not be shown by the platform: {reason}");
         }
@@ -242,6 +321,7 @@ pub(crate) mod testkit {
         pub activated: Cell<u32>,
         pub app_hidden: Cell<u32>,
         pub hide_fails: Cell<bool>,
+        pub show_fails: Cell<bool>,
         pub log: RefCell<Vec<&'static str>>,
     }
 
@@ -256,6 +336,9 @@ pub(crate) mod testkit {
         }
 
         fn show(&self) -> Result<(), String> {
+            if self.show_fails.get() {
+                return Err("no such backend".into());
+            }
             self.shown.set(self.shown.get() + 1);
             self.log.borrow_mut().push("show");
             Ok(())
@@ -355,6 +438,7 @@ mod tests {
     use gpui_kit::{
         AppContext as _, Context, IntoElement, Render, TestAppContext, Window, WindowOptions, div,
     };
+    use std::cell::Cell;
 
     struct Blank;
 
@@ -538,6 +622,66 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(native.calls.get(), 1);
         assert_eq!(cx.update(|cx| away(cx)), Some(Away::Minimized));
+    }
+
+    /// A Wayland-like window: it cannot hide or show, and a reopen opens a fresh one.
+    fn wayland(cx: &mut TestAppContext) -> (AnyWindowHandle, Rc<testkit::Calls>, Rc<Cell<u32>>) {
+        let handle = window(cx);
+        let calls = cx.update(|cx| install_fake(cx, handle, true));
+        calls.hide_fails.set(true);
+        calls.show_fails.set(true);
+        let opened = Rc::new(Cell::new(0));
+        let count = Rc::clone(&opened);
+        cx.update(|cx| {
+            set_reopen(
+                cx,
+                Rc::new(move |_, cx| {
+                    count.set(count.get() + 1);
+                    gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| Blank))
+                        .ok()
+                        .map(|opened| opened.0)
+                }),
+            )
+        });
+        (handle, calls, opened)
+    }
+
+    #[gpui_kit::test]
+    fn a_window_that_cannot_hide_closes_and_a_show_opens_it_again(cx: &mut TestAppContext) {
+        let (handle, calls, opened) = wayland(cx);
+        close(cx, handle);
+        assert!(!cx.update(|cx| cx.windows().contains(&handle)), "dropped");
+        assert_eq!(calls.minimized.get(), 0);
+        assert_eq!(cx.update(|cx| away(cx)), Some(Away::Hidden));
+        assert!(!cx.update(|cx| lost(cx)), "the tray keeps the app");
+        cx.update(show);
+        cx.run_until_parked();
+        assert_eq!(opened.get(), 1);
+        let now = cx.update(|cx| handle_of(cx));
+        assert!(now != handle && cx.update(|cx| cx.windows().contains(&now)));
+        assert_eq!(cx.update(|cx| away(cx)), None);
+    }
+
+    #[gpui_kit::test]
+    fn a_show_the_platform_cannot_do_replaces_an_inactive_window(cx: &mut TestAppContext) {
+        let (handle, _calls, opened) = wayland(cx);
+        let inactive = cx.update(|cx| {
+            handle
+                .update(cx, |_, window, _| !window.is_window_active())
+                .unwrap()
+        });
+        cx.update(show);
+        cx.run_until_parked();
+        assert_eq!(
+            opened.get(),
+            u32::from(inactive),
+            "only an inactive window is replaced"
+        );
+        assert_eq!(cx.update(|cx| cx.windows().contains(&handle)), !inactive);
+    }
+
+    fn handle_of(cx: &App) -> AnyWindowHandle {
+        handle(cx).expect("a main window")
     }
 
     #[gpui_kit::test]

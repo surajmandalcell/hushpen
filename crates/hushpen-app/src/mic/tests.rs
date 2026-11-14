@@ -683,7 +683,12 @@ fn a_sample_take_records_the_microphone_as_it_is(cx: &mut TestAppContext) {
 
 #[test]
 fn the_device_poll_runs_only_while_a_window_is_in_use_and_no_recording_runs() {
-    assert!(should_poll(true, true));
-    assert!(!should_poll(true, false), "a hidden app idles");
-    assert!(!should_poll(false, true), "a recording owns the device");
+    let shown = Some(WindowVisibility::Visible);
+    assert!(should_poll(true, shown));
+    assert!(!should_poll(true, None), "a hidden app idles");
+    assert!(
+        !should_poll(true, Some(WindowVisibility::Hidden)),
+        "a minimized window idles"
+    );
+    assert!(!should_poll(false, shown), "a recording owns the device");
 }

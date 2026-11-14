@@ -909,6 +909,29 @@ fn the_page_reads_again_every_second_and_shows_a_grant_within_one_tick(cx: &mut 
     }
 }
 
+#[gpui_kit::test]
+fn nothing_reads_while_the_main_window_is_not_in_use(cx: &mut TestAppContext) {
+    let fixture = mac_with(cx, FakeSystem::all(Access::Denied));
+    let (window, _shell) = cx.update(|cx| {
+        gpui_kit::open_window(gpui_kit::WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| crate::shell::Shell::new(window, cx))
+        })
+        .expect("open test window")
+    });
+    cx.update(|cx| crate::main_window::testkit::install_fake(cx, window, true));
+    // Dropped, as close does on Wayland: no window of the app is in use.
+    cx.update_window(window, |_, window, _| window.remove_window())
+        .unwrap();
+    fixture.system.set(Permission::Microphone, Access::Granted);
+    cx.executor().advance_clock(Duration::from_millis(2_100));
+    cx.run_until_parked();
+    assert_eq!(
+        row(cx, &fixture, "microphone"),
+        RowState::NeedsAttention,
+        "no read"
+    );
+}
+
 fn finished_with_every_grant_stored(rig: &Rig) {
     let settings = &rig.storage.settings;
     settings.set_internal(COMPLETED, json!(true)).unwrap();

@@ -140,6 +140,17 @@ impl Onboarding {
         let fact_reader = guide.fact_reader();
         cx.spawn(async move |this, cx| {
             loop {
+                // While the main window is not in use nothing reads: each read opens a session
+                // bus connection and lists the microphones.
+                let Ok(idle) = this.update(cx, |_, cx| {
+                    crate::main_window::handle(cx).is_some() && !crate::mic::may_list(true, cx)
+                }) else {
+                    break;
+                };
+                if idle {
+                    cx.background_executor().timer(REFRESH).await;
+                    continue;
+                }
                 let read = Arc::clone(&fact_reader);
                 let (elevated, tray_watcher) =
                     cx.background_executor().spawn(async move { read() }).await;
