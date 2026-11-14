@@ -10,6 +10,8 @@ final class MessagesUITests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         continueAfterFailure = false
+        // With the pill listening, the Messages app can take about a minute to settle for each step.
+        executionTimeAllowance = 600
         phone.launchEnvironment["HUSHPEN_TEST_WAV"] = "documents"
         phone.launchEnvironment["HUSHPEN_TEST_MODEL"] = "ggml-base-q5_1.bin"
     }
@@ -44,12 +46,13 @@ final class MessagesUITests: XCTestCase {
         useKeyboard()
         let microphone = element("keyboard.mic", in: messages)
         XCTAssertTrue(microphone.waitForExistence(timeout: 15))
+        // An earlier run leaves its dictated text as a draft; holding Delete (it repeats) empties the field.
+        element("keyboard.backspace", in: messages).press(forDuration: 6)
         for key in keys { element("keyboard.key.\(key)", in: messages).tap() }
         microphone.tap()
         waitForText("listening", id: "dictation.state", in: phone, timeout: 30)
         sleep(2)
-        messages.activate()
-        element("keyboard.finish", in: messages).tap()
+        finishFromKeyboard()
         phone.activate()
         waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         XCUIDevice.shared.press(.home)
@@ -69,6 +72,21 @@ final class MessagesUITests: XCTestCase {
         expectation(for: typed, evaluatedWith: field)
         waitForExpectations(timeout: 10)
         XCTAssertTrue((field.value as? String)?.hasPrefix(keys.joined()) == true)
+    }
+
+    /// The hand-off page has no Done; the pill in the keyboard has. The keyboard ignores a tap until it
+    /// shows again after the app switch, so tap until the pill leaves Listening.
+    private func finishFromKeyboard() {
+        messages.activate()
+        let status = element("keyboard.status", in: messages)
+        let finish = element("keyboard.finish", in: messages)
+        for _ in 0..<5 {
+            XCTAssertTrue(finish.waitForExistence(timeout: 10))
+            finish.tap()
+            let left = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "Listening"), object: status)
+            if XCTWaiter().wait(for: [left], timeout: 4) == .completed { return }
+        }
+        XCTFail("The pill still says Listening after five taps on Done")
     }
 
     private func useKeyboard() {

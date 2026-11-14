@@ -14,7 +14,13 @@ final class FlowUITests: XCTestCase {
         phone.launch()
         XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
         enableKeyboard()
-        phone.activate()
+        // The first Settings visit after a fresh install can end the app; start it again then.
+        if phone.state == .notRunning {
+            phone.launch()
+            XCTAssertTrue(element("home.words", in: phone).waitForExistence(timeout: 30))
+        } else {
+            phone.activate()
+        }
     }
 
     override func tearDown() async throws {
@@ -32,9 +38,12 @@ final class FlowUITests: XCTestCase {
 
         phone.terminate()
         startFromKeyboard()
-        cancelFromKeyboard()
+        // The hand-off page has no buttons. Cancel in the pill starts a new session, so Recover
+        // is out of reach there; Done in the pill ends this one.
+        editor.activate()
+        XCTAssertTrue(element("keyboard.finish", in: editor).waitForExistence(timeout: 10))
+        element("keyboard.finish", in: editor).tap()
         phone.activate()
-        element("dictation.recover", in: phone).tap()
         waitForText("done", id: "dictation.state", in: phone, timeout: 180)
         editor.activate()
         let field = editor.textFields["editor.first"]
