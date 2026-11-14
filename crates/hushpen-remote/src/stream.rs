@@ -564,6 +564,8 @@ impl RemoteStream {
         packet_timeout: Duration,
         deadline: Instant,
     ) -> io::Result<Self> {
+        // Windows can leave a blocking send pending after another thread calls shutdown.
+        socket.set_nonblocking(cfg!(windows))?;
         let cancelled = Arc::clone(&control.cancelled);
         let cipher = Arc::new(
             noise
@@ -773,8 +775,6 @@ fn builder() -> io::Result<Builder<'static>> {
 }
 
 fn configure(socket: &TcpStream, timeout: Duration) -> io::Result<()> {
-    // Windows can leave a blocking send or receive pending after another thread calls shutdown.
-    socket.set_nonblocking(cfg!(windows))?;
     socket.set_read_timeout(Some(timeout))?;
     socket.set_write_timeout(Some(timeout))?;
     socket.set_nodelay(true)
@@ -896,11 +896,17 @@ fn read_before(
     deadline: Option<Instant>,
     cancelled: Option<&AtomicBool>,
 ) -> io::Result<usize> {
+    // Windows does not wake a blocking receive when another handle shuts the socket down,
+    // so a cancellable blocking read wakes each poll to check the flag.
+    let poll = cfg!(windows) && cancelled.is_some();
     loop {
         check_cancelled(cancelled)?;
-        socket.set_read_timeout(deadline.map(remaining).transpose()?)?;
+        let wait = deadline.map(remaining).transpose()?;
+        socket.set_read_timeout(wait.map(|wait| if poll { wait.min(IO_POLL) } else { wait }))?;
         match socket.read(bytes) {
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            // Only a blocking Windows read reports its timeout this way; the loop checks the deadline.
+            Err(error) if error.kind() == io::ErrorKind::TimedOut && poll => {}
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 if let Some(deadline) = deadline {
                     wait_for_io(deadline, cancelled)?;
