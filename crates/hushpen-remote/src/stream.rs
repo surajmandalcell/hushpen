@@ -329,8 +329,8 @@ impl RemoteStream {
             .map_err(io::Error::other)?
             .build_initiator()
             .map_err(io::Error::other)?;
-        send_handshake(&mut socket, &mut noise, &[], deadline)?;
-        let name = receive_handshake(&mut socket, &mut noise, deadline)?;
+        send_handshake(&mut socket, &mut noise, &[], deadline, None)?;
+        let name = receive_handshake(&mut socket, &mut noise, deadline, None)?;
         let peer_key = peer_key(&noise)?;
         if pin.is_some_and(|key| peer_key != key) {
             return Err(denied());
@@ -343,14 +343,15 @@ impl RemoteStream {
         } else {
             None
         };
-        send_handshake(&mut socket, &mut noise, payload, deadline)?;
+        send_handshake(&mut socket, &mut noise, payload, deadline, None)?;
         let context = pairing::context(
             &peer_key,
             &identity.public(),
             computer_name.as_deref().unwrap_or_default(),
             noise.get_handshake_hash(),
         );
-        let mut stream = Self::from_handshake(socket, noise, timeout, deadline)?;
+        let control = RemoteControl::handshake(&socket)?;
+        let mut stream = Self::from_handshake(socket, control, noise, timeout, deadline)?;
         let accepted = match method {
             ClientPairing::Trusted(_) => true,
             ClientPairing::Bootstrap(offer) => {
@@ -461,25 +462,32 @@ impl RemoteStream {
             .checked_add(timeout.min(PREAUTH_TIMEOUT))
             .ok_or_else(|| invalid("invalid connection timeout"))?;
         configure(&socket, timeout.min(PREAUTH_TIMEOUT))?;
+        let control = RemoteControl::handshake(&socket)?;
         let _window_connection = pairing
             .as_ref()
-            .map(|offer| offer.window())
-            .map(|window| window.track(RemoteControl::handshake(&socket)?))
+            .map(|offer| offer.window().track(control.clone()))
             .transpose()?;
+        let cancelled = Some(&*control.cancelled);
         let mut noise = builder()?
             .local_private_key(&identity.private)
             .map_err(io::Error::other)?
             .build_responder()
             .map_err(io::Error::other)?;
-        if !receive_handshake(&mut socket, &mut noise, deadline)?.is_empty() {
+        if !receive_handshake(&mut socket, &mut noise, deadline, cancelled)?.is_empty() {
             return Err(invalid("unexpected handshake payload"));
         }
         let name = pairing
             .as_ref()
             .and_then(|offer| offer.window().name().ok())
             .unwrap_or_default();
-        send_handshake(&mut socket, &mut noise, name.as_bytes(), deadline)?;
-        let payload = receive_handshake(&mut socket, &mut noise, deadline)?;
+        send_handshake(
+            &mut socket,
+            &mut noise,
+            name.as_bytes(),
+            deadline,
+            cancelled,
+        )?;
+        let payload = receive_handshake(&mut socket, &mut noise, deadline, cancelled)?;
         let peer_key = peer_key(&noise)?;
         let paired = !payload.is_empty();
         if !paired && !pinned_clients.contains(&peer_key) {
@@ -491,7 +499,7 @@ impl RemoteStream {
             &name,
             noise.get_handshake_hash(),
         );
-        let mut stream = Self::from_handshake(socket, noise, timeout, deadline)?;
+        let mut stream = Self::from_handshake(socket, control, noise, timeout, deadline)?;
         if paired {
             let offer = pairing.as_mut().ok_or_else(denied)?;
             if offer.public_key != identity.public() {
@@ -551,17 +559,12 @@ impl RemoteStream {
 
     fn from_handshake(
         socket: TcpStream,
+        control: RemoteControl,
         noise: HandshakeState,
         packet_timeout: Duration,
         deadline: Instant,
     ) -> io::Result<Self> {
-        // Windows can leave a blocking send pending after another thread calls shutdown.
-        socket.set_nonblocking(cfg!(windows))?;
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let control = RemoteControl {
-            socket: Arc::new(socket.try_clone()?),
-            cancelled: Arc::clone(&cancelled),
-        };
+        let cancelled = Arc::clone(&control.cancelled);
         let cipher = Arc::new(
             noise
                 .into_stateless_transport_mode()
@@ -770,6 +773,8 @@ fn builder() -> io::Result<Builder<'static>> {
 }
 
 fn configure(socket: &TcpStream, timeout: Duration) -> io::Result<()> {
+    // Windows can leave a blocking send or receive pending after another thread calls shutdown.
+    socket.set_nonblocking(cfg!(windows))?;
     socket.set_read_timeout(Some(timeout))?;
     socket.set_write_timeout(Some(timeout))?;
     socket.set_nodelay(true)
@@ -788,23 +793,25 @@ fn send_handshake(
     noise: &mut HandshakeState,
     payload: &[u8],
     deadline: Instant,
+    cancelled: Option<&AtomicBool>,
 ) -> io::Result<()> {
     socket.set_write_timeout(Some(remaining(deadline)?))?;
     let mut packet = [0; MAX_HANDSHAKE];
     let size = noise
         .write_message(payload, &mut packet)
         .map_err(io::Error::other)?;
-    send_packet(socket, &packet[..size], None)
+    send_packet(socket, &packet[..size], cancelled)
 }
 
 fn receive_handshake(
     socket: &mut TcpStream,
     noise: &mut HandshakeState,
     deadline: Instant,
+    cancelled: Option<&AtomicBool>,
 ) -> io::Result<Vec<u8>> {
     let timeout = remaining(deadline)?;
     socket.set_read_timeout(Some(timeout))?;
-    let packet = receive_packet(socket, MAX_HANDSHAKE, timeout, Some(deadline), None)?
+    let packet = receive_packet(socket, MAX_HANDSHAKE, timeout, Some(deadline), cancelled)?
         .ok_or_else(|| invalid("handshake ended early"))?;
     let mut plain = vec![0; MAX_HANDSHAKE];
     let size = noise
@@ -1319,9 +1326,9 @@ mod tests {
                 .unwrap()
                 .build_initiator()
                 .unwrap();
-            send_handshake(&mut socket, &mut noise, &[], deadline).unwrap();
-            receive_handshake(&mut socket, &mut noise, deadline).unwrap();
-            send_handshake(&mut socket, &mut noise, payload, deadline).unwrap();
+            send_handshake(&mut socket, &mut noise, &[], deadline, None).unwrap();
+            receive_handshake(&mut socket, &mut noise, deadline, None).unwrap();
+            send_handshake(&mut socket, &mut noise, payload, deadline, None).unwrap();
         }
         host.join().unwrap();
     }
@@ -1547,16 +1554,18 @@ mod tests {
             .unwrap()
             .build_initiator()
             .unwrap();
-        send_handshake(&mut socket, &mut noise, &[], deadline).unwrap();
-        let name = receive_handshake(&mut socket, &mut noise, deadline).unwrap();
-        send_handshake(&mut socket, &mut noise, b"nearby-v2\0Phone", deadline).unwrap();
+        send_handshake(&mut socket, &mut noise, &[], deadline, None).unwrap();
+        let name = receive_handshake(&mut socket, &mut noise, deadline, None).unwrap();
+        send_handshake(&mut socket, &mut noise, b"nearby-v2\0Phone", deadline, None).unwrap();
         let context = pairing::context(
             &peer_key(&noise).unwrap(),
             &client.public(),
             std::str::from_utf8(&name).unwrap(),
             noise.get_handshake_hash(),
         );
-        let mut stream = RemoteStream::from_handshake(socket, noise, TIMEOUT, deadline).unwrap();
+        let control = RemoteControl::handshake(&socket).unwrap();
+        let mut stream =
+            RemoteStream::from_handshake(socket, control, noise, TIMEOUT, deadline).unwrap();
         let nonce = [42; 32];
         let mut commitment = Sha256::new();
         for part in [b"commit".as_slice(), &context, b"phone", &nonce] {
