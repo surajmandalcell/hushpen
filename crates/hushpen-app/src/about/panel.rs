@@ -1,6 +1,6 @@
 //! The About view: the app header, a group of facts, a group of links, and the copyright line.
 
-use super::{About, Build, CHECK_SLOT, COPYRIGHT, TAGLINE, Target};
+use super::{About, Build, CHECK_SLOT, COPYRIGHT, PRIVACY, TAGLINE, Target};
 use crate::assets::APP_ICON;
 use crate::hook;
 use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, radius, size, space};
@@ -89,6 +89,17 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
         ));
     }
     page.child(ui::group(hook::id("about", "links"), palette, links))
+        .child(
+            div()
+                .id(hook::id("about", "privacy"))
+                .test_support()
+                .aria_label(PRIVACY)
+                .w_full()
+                .text_center()
+                .text_token(SECONDARY)
+                .text_color(palette.label_secondary)
+                .child(PRIVACY),
+        )
         .child(
             line(
                 hook::id("about", "copyright"),

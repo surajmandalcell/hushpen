@@ -17,6 +17,72 @@ pub fn check_due(last_check_ms: u64, now_ms: u64) -> bool {
     last_check_ms == 0 || now_ms < last_check_ms || now_ms - last_check_ms >= CHECK_INTERVAL_MS
 }
 
+/// The anonymous active-user count that rides along with a check while updates are on: the
+/// day (`YYYY-MM-DD`) and month (`YYYY-MM`) of this check, and whether each is new. The app
+/// keeps the last counted day and month and moves them only after the server answered 2xx.
+/// Days are UTC, because the app cannot read the local time zone without unsafe code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Count {
+    pub day: String,
+    pub month: String,
+    pub new_day: bool,
+    pub new_month: bool,
+}
+
+impl Count {
+    pub fn new(now_ms: u64, last_day: &str, last_month: &str) -> Self {
+        let day = utc_date(now_ms);
+        let month = day[..7].to_owned();
+        Self {
+            new_day: day != last_day,
+            new_month: month != last_month,
+            day,
+            month,
+        }
+    }
+
+    /// The query string of the count request. `build` comes from the version ([`Version::build`]).
+    pub fn query(&self, version: &Version, os: crate::os::Os) -> String {
+        let platform = match os {
+            crate::os::Os::Mac => "macos",
+            crate::os::Os::Linux => "linux",
+            crate::os::Os::Windows => "windows",
+            crate::os::Os::Ios => "ios",
+            crate::os::Os::Android => "android",
+        };
+        // Build metadata after `+` is not part of the version, and `+` would read as a space.
+        let text = version.as_str().split('+').next().unwrap_or("");
+        let build = version.build();
+        let mut query = format!("platform={platform}&version={text}&build={build}");
+        if self.new_day {
+            query.push_str("&d=1");
+        }
+        if self.new_month {
+            query.push_str("&m=1");
+        }
+        query
+    }
+}
+
+/// `YYYY-MM-DD` of a time in milliseconds since 1970, in UTC.
+pub fn utc_date(now_ms: u64) -> String {
+    let z = (now_ms / 86_400_000) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Part {
     Number(u64),
@@ -104,6 +170,13 @@ impl Version {
     /// The version as it was written, without a leading `v`.
     pub fn as_str(&self) -> &str {
         &self.text
+    }
+
+    /// The integer build the shared update API compares: major * 1000000 + minor * 1000 +
+    /// patch, so 2.5.0 is 2005000. Hushpen has no other build number.
+    pub fn build(&self) -> u64 {
+        let [major, minor, patch] = self.numbers;
+        major * 1_000_000 + minor * 1_000 + patch
     }
 }
 

@@ -412,6 +412,7 @@ fn the_view_shows_the_header_the_facts_the_links_and_the_copyright(cx: &mut Test
         ("about.open.issues", "Report an issue"),
         ("about.open.licenses", "Open-source licenses"),
         ("about.open.log-folder", "Open log folder"),
+        ("about.privacy", PRIVACY),
         ("about.copyright", COPYRIGHT),
     ] {
         assert_eq!(label(cx, window, id).as_deref(), Some(want), "{id}");

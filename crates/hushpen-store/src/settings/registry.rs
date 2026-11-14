@@ -335,6 +335,8 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!(internal "updates.dismissedVersion", Kind::OptionalText(64), |_| {
         json!("")
     }),
+    spec!(internal "updates.countedDay", Kind::OptionalText(10), |_| json!("")),
+    spec!(internal "updates.countedMonth", Kind::OptionalText(7), |_| json!("")),
     spec!(internal "overlay.customPos", Kind::Position, |_| Value::Null),
     spec!(internal "ui.lastView", Kind::Choice(VIEWS), |_| json!("home")),
     spec!(internal "ui.windowHeight", Kind::Int(600, 4000), |_| json!(600)),

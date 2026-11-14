@@ -11,7 +11,9 @@ use gpui_kit::{
     WindowOptions, px, size,
 };
 use hushpen_core::error::{UPDATE_CHECK_FAILED, UPDATE_HASH_MISMATCH, UPDATE_SWAP_FAILED};
-use hushpen_core::update::{Artifact, CHECK_INTERVAL_MS, InstallKind, parse_manifest};
+use hushpen_core::update::{
+    Artifact, CHECK_INTERVAL_MS, Count, InstallKind, parse_manifest, utc_date,
+};
 use hushpen_store::data_dir::DataDir;
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -30,9 +32,17 @@ fn offered(version: &str) -> Offer {
 struct FakeChecker {
     answers: Mutex<VecDeque<Result<Offer, CheckError>>>,
     calls: Mutex<Vec<String>>,
+    /// The query of each count request, in order.
+    counts: Mutex<Vec<String>>,
+    /// Whether the fake server answers 2xx to a count.
+    count_fails: std::sync::atomic::AtomicBool,
 }
 
 impl FakeChecker {
+    fn counts(&self) -> Vec<String> {
+        self.counts.lock().unwrap().clone()
+    }
+
     fn answer(&self, answer: Result<Offer, CheckError>) {
         self.answers.lock().unwrap().push_back(answer);
     }
@@ -50,6 +60,11 @@ impl Checker for FakeChecker {
             .unwrap()
             .pop_front()
             .unwrap_or(Ok(Offer::UpToDate))
+    }
+
+    fn count(&self, query: &str) -> bool {
+        self.counts.lock().unwrap().push(query.to_owned());
+        !self.count_fails.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -306,6 +321,85 @@ fn check_once_asks_one_time_with_the_check_off_and_leaves_it_off(cx: &mut TestAp
         rig.checker.calls(),
         1,
         "nothing asks on its own while the switch is off"
+    );
+}
+
+#[gpui_kit::test]
+fn nothing_is_counted_while_updates_are_off(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.start(cx);
+    rig.check_now(cx);
+    rig.updater.update(cx, |me, cx| me.check_once(cx));
+    cx.run_until_parked();
+    assert_eq!(rig.checker.calls(), 1, "About's one check still runs");
+    assert!(rig.checker.counts().is_empty(), "but it sends no count");
+    assert_eq!(
+        rig.storage.settings.get("updates.countedDay"),
+        Some(json!(""))
+    );
+}
+
+#[gpui_kit::test]
+fn a_count_rides_along_with_each_check_and_moves_the_day_and_month_after_success(
+    cx: &mut TestAppContext,
+) {
+    use hushpen_core::os::Os;
+    use std::sync::atomic::Ordering;
+    let rig = rig(cx);
+    rig.set("updates.check", json!(true));
+    rig.start(cx);
+    let platform =
+        Count::new(rig.now.get(), "", "").query(&Version::parse("2.0.0").unwrap(), Os::current());
+    assert_eq!(
+        rig.checker.counts(),
+        [platform],
+        "the first check is a new day and month"
+    );
+    let (day, month) = (
+        utc_date(rig.now.get()),
+        utc_date(rig.now.get())[..7].to_owned(),
+    );
+    assert_eq!(
+        rig.storage.settings.get("updates.countedDay"),
+        Some(json!(day))
+    );
+    assert_eq!(
+        rig.storage.settings.get("updates.countedMonth"),
+        Some(json!(month))
+    );
+
+    // The same day again: no flags.
+    rig.check_now(cx);
+    let counts = rig.checker.counts();
+    assert!(
+        !counts[1].contains("&d=1") && !counts[1].contains("&m=1"),
+        "{counts:?}"
+    );
+
+    // A failed answer leaves the stored day alone, so the next check sends the flag again.
+    rig.now.set(rig.now.get() + 2 * 24 * HOUR_MS);
+    rig.checker.count_fails.store(true, Ordering::SeqCst);
+    rig.check_now(cx);
+    assert!(rig.checker.counts()[2].contains("&d=1"));
+    assert_eq!(
+        rig.storage.settings.get("updates.countedDay"),
+        Some(json!(day))
+    );
+    rig.checker.count_fails.store(false, Ordering::SeqCst);
+    rig.check_now(cx);
+    assert!(rig.checker.counts()[3].contains("&d=1"));
+    assert_eq!(
+        rig.storage.settings.get("updates.countedDay"),
+        Some(json!(utc_date(rig.now.get())))
+    );
+
+    // Forty days on is a new month, too.
+    rig.now.set(rig.now.get() + 40 * 24 * HOUR_MS);
+    rig.check_now(cx);
+    assert!(
+        rig.checker.counts()[4].ends_with("&d=1&m=1"),
+        "{:?}",
+        rig.checker.counts()
     );
 }
 

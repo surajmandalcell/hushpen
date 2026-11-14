@@ -2,7 +2,8 @@
 //!
 //! A check runs on its own only while `updates.check` is on, at most once every 24 hours, and
 //! at once when the user presses Check now. Check for Updates in About runs one check even while
-//! the switch is off, and leaves the switch off. A check sends no identifier.
+//! the switch is off, and leaves the switch off. A check sends no identifier. While the switch is
+//! on, each check also sends the anonymous count of [`Count`] to the shared update API.
 //!
 //! What an offered version leads to depends on how this copy was installed. A macOS app or an
 //! AppImage downloads the file of the signed manifest, checks its sha256, stages it beside the
@@ -25,9 +26,12 @@ use gpui_kit::{App, Context, FocusHandle};
 use hushpen_core::error::{
     UPDATE_DOWNLOAD_FAILED, UPDATE_HASH_MISMATCH, UPDATE_SIGNATURE_INVALID, UPDATE_SWAP_FAILED,
 };
+use hushpen_core::os::Os;
 pub(crate) use hushpen_core::update::BannerKind;
 pub use hushpen_core::update::State;
-use hushpen_core::update::{Delivery, Machine, Manifest, Offer, Version, current_target, delivery};
+use hushpen_core::update::{
+    Count, Delivery, Machine, Manifest, Offer, Version, current_target, delivery,
+};
 use serde_json::{Value, json};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -40,6 +44,9 @@ const CHECK: &str = "updates.check";
 const AUTO_INSTALL: &str = "updates.autoInstall";
 const LAST_CHECK: &str = "updates.lastCheckAt";
 const DISMISSED: &str = "updates.dismissedVersion";
+/// The last day and month the server counted, set only after it answered 2xx.
+const COUNT_DAY: &str = "updates.countedDay";
+const COUNT_MONTH: &str = "updates.countedMonth";
 
 /// How often a running app looks at the clock for the next automatic check.
 const RECHECK_EVERY: Duration = Duration::from_secs(60 * 60);
@@ -51,6 +58,12 @@ pub(crate) const BANNER_DISMISS: usize = 1;
 /// Asks the feed. The real one talks to GitHub; tests pass a fake.
 pub trait Checker: Send + Sync {
     fn check(&self, current: &Version) -> Result<Offer, CheckError>;
+
+    /// Sends the anonymous count `query` and says whether the server answered 2xx. It never
+    /// offers or verifies a download, and it is silent on error.
+    fn count(&self, _query: &str) -> bool {
+        false
+    }
 }
 
 pub struct FeedChecker;
@@ -59,6 +72,10 @@ impl Checker for FeedChecker {
     fn check(&self, current: &Version) -> Result<Offer, CheckError> {
         let feed = UpdateFeed::current()?;
         feed.check(&feed.fetcher(), current)
+    }
+
+    fn count(&self, query: &str) -> bool {
+        UpdateFeed::current().is_ok_and(|feed| feed.count(query))
     }
 }
 
@@ -234,6 +251,42 @@ impl Updater {
             let _ = this.update(cx, |me, cx| me.finish_check(run, result, cx));
         })
         .detach();
+        // Only while the switch is on: About's one-off check never counts.
+        if self.checks_on() {
+            self.count(cx);
+        }
+    }
+
+    /// The anonymous count, on its own task so it never delays the check.
+    fn count(&mut self, cx: &mut Context<Self>) {
+        let stored = |key: &str| {
+            self.storage
+                .settings
+                .get(key)
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .unwrap_or_default()
+        };
+        let count = Count::new((self.clock)(), &stored(COUNT_DAY), &stored(COUNT_MONTH));
+        let query = count.query(&self.current, Os::current());
+        let checker = Arc::clone(&self.checker);
+        cx.spawn(async move |this, cx| {
+            let sent = cx
+                .background_executor()
+                .spawn(async move { checker.count(&query) })
+                .await;
+            if sent {
+                let _ = this.update(cx, |me, _| me.counted(&count));
+            }
+        })
+        .detach();
+    }
+
+    fn counted(&self, count: &Count) {
+        for (key, value) in [(COUNT_DAY, &count.day), (COUNT_MONTH, &count.month)] {
+            if let Err(error) = self.storage.settings.set_internal(key, json!(value)) {
+                log::warn!("the day of the update count could not be saved: {error}");
+            }
+        }
     }
 
     fn finish_check(
