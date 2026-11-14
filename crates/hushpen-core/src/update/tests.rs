@@ -444,3 +444,56 @@ fn a_source_tree_build_offers_the_install_and_refuses_it_later() {
         Delivery::Unpackaged
     );
 }
+
+const DAY_MS: u64 = 86_400_000;
+
+#[test]
+fn utc_date_reads_known_days() {
+    assert_eq!(utc_date(0), "1970-01-01");
+    assert_eq!(utc_date(DAY_MS - 1), "1970-01-01");
+    assert_eq!(utc_date(DAY_MS), "1970-01-02");
+    assert_eq!(utc_date(951_782_400_000), "2000-02-29");
+    assert_eq!(utc_date(1_793_000_000_000), "2026-10-26");
+    assert_eq!(utc_date(1_798_675_200_000), "2026-12-31");
+}
+
+#[test]
+fn count_flags_follow_the_stored_day_and_month() {
+    let now = 1_798_675_200_000; // 2026-12-31
+    let first = Count::new(now, "", "");
+    assert!(first.new_day && first.new_month);
+    assert_eq!(
+        (first.day.as_str(), first.month.as_str()),
+        ("2026-12-31", "2026-12")
+    );
+    // The same day again: nothing is new.
+    let same = Count::new(now + 3_600_000, &first.day, &first.month);
+    assert!(!same.new_day && !same.new_month);
+    // The day after a stored day of the same month: only the day.
+    let next_day = Count::new(now, "2026-12-30", "2026-12");
+    assert!(next_day.new_day && !next_day.new_month);
+    // The first day of the next month: both.
+    let next_month = Count::new(now + DAY_MS, "2026-12-31", "2026-12");
+    assert!(next_month.new_day && next_month.new_month);
+}
+
+#[test]
+fn count_query_has_only_platform_version_build_and_flags() {
+    use crate::os::Os;
+    let v = |text: &str| Version::parse(text).unwrap();
+    let both = Count::new(0, "", "");
+    assert_eq!(
+        both.query(&v("2.5.0"), Os::Mac),
+        "platform=macos&version=2.5.0&build=2005000&d=1&m=1"
+    );
+    let day = Count::new(0, "1969-12-31", "1970-01");
+    assert_eq!(
+        day.query(&v("2.5.0-rc.1+abc"), Os::Linux),
+        "platform=linux&version=2.5.0-rc.1&build=2005000&d=1"
+    );
+    let none = Count::new(0, "1970-01-01", "1970-01");
+    assert_eq!(
+        none.query(&v("12.34.567"), Os::Windows),
+        "platform=windows&version=12.34.567&build=12034567"
+    );
+}

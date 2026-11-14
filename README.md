@@ -41,6 +41,8 @@ Hushpen turns your voice into text, on your own computer.
 
 There is more: edit text by voice, read text aloud, drop in audio files, and search everything you said in History.
 
+**Privacy.** Update checks send the app name, platform, and version. We count them per day and keep nothing that identifies you.
+
 ### How it compares
 
 | | Hushpen | Wispr Flow | Aqua Voice | Superwhisper | VoiceInk |

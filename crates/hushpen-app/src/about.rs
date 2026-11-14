@@ -27,6 +27,9 @@ pub const TAGLINE: &str = if matches!(hushpen_core::os::Os::current(), hushpen_c
 /// The footer line.
 pub const COPYRIGHT: &str = "Copyright (c) 2026 Suraj Mandal. Licensed under AGPL-3.0-or-later.";
 
+/// The privacy line, above the copyright line (D-14).
+pub const PRIVACY: &str = "Update checks send the app name, platform, and version. We count them per day and keep nothing that identifies you.";
+
 /// The speech engine the Engine fact names.
 const ENGINE: &str = "whisper.cpp";
 

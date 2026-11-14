@@ -71,6 +71,17 @@ new decision, add it here in the same change (D-21).
   the user starts, the update check the user turns on or starts from About,
   the opt-in OpenAI-compatible endpoint, and device discovery, pairing, and
   jobs the user enables in Devices (D-50). `xtask net-audit` scans for other calls.
+  Owner decision 2026-11-14: while the update check is on, each automatic or
+  Check now check also sends the app name, platform, version, and a new-day or
+  new-month flag to `apps.mandalsuraj.com`, the shared update API of the
+  apps. It keeps only daily counters: no ID, no IP, no other data. The signed
+  GitHub manifest stays the only source of a download (D-17). Check for Updates
+  in About with the check off sends nothing there. The host may appear only in
+  `crates/hushpen-app/src/net/update.rs`; `xtask net-audit` fails elsewhere.
+  The app stores the last counted UTC day and month and moves them only after a
+  2xx answer. Privacy line for every privacy text: "Update checks send the app
+  name, platform, and version. We count them per day and keep nothing that
+  identifies you."
 - **D-15 Cleanup.** Rule-based cleanup is on by default and runs offline. AI
   cleanup is opt-in. It uses a local LLM of at most 1.5 GB, or an endpoint
   the user sets. Every machine is offered S1-mini by Superwhisper first
@@ -549,7 +560,8 @@ new decision, add it here in the same change (D-21).
   (D-14).
 
 - **D-56 No usage counting.** The apps send no usage counts, install ids, or
-  analytics, and no app request goes to a Hushpen-run server. The website is
+  analytics. The one exception is the update-check count of D-14 (desktop,
+  only while updates are on). The website is
   opened in a browser only, and the update check goes to github.com (D-17).
   User numbers come only from sources outside the app, read once a week:
   App Store Connect App Analytics and Sales and Trends (iOS), GitHub

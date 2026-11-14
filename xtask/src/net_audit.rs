@@ -27,6 +27,11 @@ const APP_DECODE_FILES: [&str; 2] = [
     "crates/hushpen-app/src/voices/clip.rs",
 ];
 
+/// The shared update API of the apps (D-14). It gets the anonymous active-user count while
+/// updates are on, and no other file may name it.
+const COUNT_HOST: &str = "apps.mandalsuraj.com";
+const COUNT_FILE: &str = "crates/hushpen-app/src/net/update.rs";
+
 const CALL_TOKENS: [&str; 6] = [
     "ureq::",
     "reqwest::",
@@ -209,7 +214,13 @@ pub fn scan_source(rel_path: &str, text: &str) -> (Vec<Site>, Vec<Violation>) {
             if host.contains('{') {
                 continue;
             }
-            if !host_allowed(&host) {
+            if host.eq_ignore_ascii_case(COUNT_HOST) {
+                if rel_path != COUNT_FILE {
+                    violate(format!("host `{host}` is allowed only in {COUNT_FILE}"));
+                } else if scheme != "https" {
+                    violate(format!("plain http to `{host}`"));
+                }
+            } else if !host_allowed(&host) {
                 violate(format!("host `{host}` is not on the allow list"));
             } else if scheme == "http" && !is_loopback(&host.to_ascii_lowercase()) {
                 violate(format!(
@@ -545,6 +556,25 @@ mod tests {
         assert!(violations(path, r#"open("https://hushpen.mandalsuraj.com/")"#).is_empty());
         assert_eq!(violations(path, r#"u("https://example.com/f")"#).len(), 1);
         assert_eq!(violations(path, r#"u("https://evilhf.co/f")"#).len(), 1);
+    }
+
+    #[test]
+    fn the_update_api_host_is_allowed_only_in_the_update_file() {
+        let line = r#"const U: &str = "https://apps.mandalsuraj.com/v1/hushpen/latest";"#;
+        assert!(violations("crates/hushpen-app/src/net/update.rs", line).is_empty());
+        assert_eq!(
+            violations("crates/hushpen-app/src/net/endpoint.rs", line).len(),
+            1
+        );
+        assert_eq!(
+            violations("crates/hushpen-app/src/updater.rs", line).len(),
+            1
+        );
+        let http = line.replace("https", "http");
+        assert_eq!(
+            violations("crates/hushpen-app/src/net/update.rs", &http).len(),
+            1
+        );
     }
 
     #[test]

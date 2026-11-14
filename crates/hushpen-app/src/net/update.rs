@@ -1,8 +1,10 @@
-//! The update check: one signed `latest.json` and its `.minisig`, and nothing else.
+//! The update check: one signed `latest.json` and its `.minisig`, plus one anonymous count.
 //!
-//! Each request is a plain GET with no query string, no cookie, and no header that names this
-//! machine or this install. The manifest counts only after its signature matches the public
-//! key that ships inside the app (`assets/update-key.pub`).
+//! Each manifest request is a plain GET with no query string, no cookie, and no header that
+//! names this machine or this install. The manifest counts only after its signature matches the
+//! public key that ships inside the app (`assets/update-key.pub`). The count ([`UpdateFeed::count`])
+//! sends the app name, platform, version, and day or month flags to the shared update API, and
+//! nothing that identifies the person or the install (D-14).
 
 use super::download::{Downloader, Outcome, Progress, Spec};
 use super::fetch::{FetchError, Fetcher, UreqFetcher};
@@ -14,10 +16,15 @@ use minisign_verify::{PublicKey, Signature};
 use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 /// The release feed. GitHub answers it with a redirect to the newest release asset.
 pub const FEED_URL: &str =
     "https://github.com/surajmandalcell/hushpen/releases/latest/download/latest.json";
+
+/// The shared update API of the apps. The only file that names this host is this one (net-audit).
+const COUNT_URL: &str = "https://apps.mandalsuraj.com/v1/hushpen/latest";
+const COUNT_TIMEOUT: Duration = Duration::from_secs(8);
 
 const SIGNATURE_SUFFIX: &str = ".minisig";
 const EMBEDDED_KEY: &str = include_str!("../../../../assets/update-key.pub");
@@ -38,6 +45,33 @@ fn signature_error(detail: impl Into<String>) -> CheckError {
 fn blocked_error(blocked: &Blocked) -> CheckError {
     record(Purpose::UpdateCheck, &blocked.host, "blocked");
     failed(blocked.reason.clone())
+}
+
+/// One GET with an 8 second limit, no redirect, no cookie. Silent on any error.
+fn send_count(url: &str) -> bool {
+    let config = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .http_status_as_error(false)
+        .https_only(true)
+        .timeout_global(Some(COUNT_TIMEOUT))
+        .user_agent(format!("Hushpen/{}", hushpen_core::BUILD_VERSION))
+        .build();
+    // Purpose::UpdateCheck. Host: apps.mandalsuraj.com.
+    match ureq::Agent::new_with_config(config).get(url).call() {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            record(
+                Purpose::UpdateCheck,
+                "apps.mandalsuraj.com",
+                &status.to_string(),
+            );
+            response.status().is_success()
+        }
+        Err(_) => {
+            record(Purpose::UpdateCheck, "apps.mandalsuraj.com", "error");
+            false
+        }
+    }
 }
 
 /// Where the manifest is, which key signs it, and which hosts may be asked.
@@ -95,6 +129,14 @@ impl UpdateFeed {
             key,
             policy,
         })
+    }
+
+    /// The anonymous active-user count: one GET to the shared update API with the app, platform,
+    /// version, and day or month flags of `hushpen_core::update::Count::query`. It is not an update
+    /// source: nothing in the answer is read, and the signed manifest stays the only thing that
+    /// offers or verifies a download. True when the server answered 2xx. A test feed never counts.
+    pub fn count(&self, query: &str) -> bool {
+        self.manifest_url == FEED_URL && send_count(&format!("{COUNT_URL}?{query}"))
     }
 
     pub fn fetcher(&self) -> UreqFetcher {
