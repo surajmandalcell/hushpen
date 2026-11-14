@@ -155,6 +155,12 @@ pub fn handle(cx: &App) -> Option<AnyWindowHandle> {
     cx.try_global::<MainWindow>().map(|main| main.handle)
 }
 
+/// The main window now, or `first` when none is registered (tests). For code that was handed
+/// the first window: a Wayland reopen replaces it.
+pub fn current(cx: &App, first: AnyWindowHandle) -> AnyWindowHandle {
+    handle(cx).unwrap_or(first)
+}
+
 /// Whether the main window is gone with no way back, so the app should end.
 pub fn lost(cx: &App) -> bool {
     cx.try_global::<MainWindow>()

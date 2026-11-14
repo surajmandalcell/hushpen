@@ -58,6 +58,11 @@ pub(crate) fn may_list(not_recording: bool, cx: &mut App) -> bool {
     should_poll(not_recording, active)
 }
 
+/// Whether a window of the app is in use: active and on screen.
+pub(crate) fn window_in_use(cx: &mut App) -> bool {
+    may_list(true, cx)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Notice {
     pub code: &'static str,

@@ -19,7 +19,7 @@ pub fn attach(cx: &mut App, settings: Entity<Settings>, window: AnyWindowHandle)
          {\"query\": \"mic\"}. An empty query shows every row again.",
         move |cx, args| {
             let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-            window
+            crate::main_window::current(cx, window)
                 .update(cx, |_, window, cx| {
                     settings.update(cx, |settings, cx| settings.search_for(query, window, cx));
                 })

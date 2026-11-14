@@ -407,11 +407,26 @@ impl Controller {
             }
         })
         .detach();
+        // Every change notifies, so a resting tick loop wakes on the next key press or result.
+        let (changed, mut woken) = unbounded::<()>();
+        cx.observe_self(move |_, _| {
+            let _ = changed.unbounded_send(());
+        })
+        .detach();
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(TICK).await;
-                if this.update(cx, |me, cx| me.tick(cx)).is_err() {
+                let Ok(rests) = this.update(cx, |me, cx| {
+                    me.tick(cx);
+                    me.rests()
+                }) else {
                     break;
+                };
+                if rests {
+                    while woken.try_recv().is_ok() {}
+                    if woken.next().await.is_none() {
+                        break;
+                    }
                 }
             }
         })

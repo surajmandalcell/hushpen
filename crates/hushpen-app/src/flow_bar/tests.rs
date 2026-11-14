@@ -1131,3 +1131,14 @@ fn a_command_that_the_model_cannot_finish_shows_an_error_and_pastes_nothing(
     assert_eq!(bar.props(cx).message, "AI edit timed out. Text unchanged");
     assert!(pasted(&inserter).is_empty());
 }
+
+#[test]
+fn the_loop_sleeps_only_while_nothing_can_show() {
+    assert!(
+        sleeps(true, false, false),
+        "gone, no press, no window in use"
+    );
+    assert!(!sleeps(false, false, false), "a shown bar ticks");
+    assert!(!sleeps(true, true, false), "a press ticks");
+    assert!(!sleeps(true, false, true), "a window in use ticks");
+}

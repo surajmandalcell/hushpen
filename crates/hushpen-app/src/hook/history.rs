@@ -41,7 +41,7 @@ pub fn attach(cx: &mut App, history: Entity<History>, window: AnyWindowHandle) {
             let history = history.clone();
             move |cx, args| {
                 let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-                window
+                crate::main_window::current(cx, window)
                     .update(cx, |_, window, cx| {
                         history.update(cx, |history, cx| history.search_for(query, window, cx));
                     })

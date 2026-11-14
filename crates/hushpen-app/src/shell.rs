@@ -106,6 +106,9 @@ impl Shell {
             window.focus(&shell.shell_focus, cx)
         })
         .detach();
+        // A sleeping flow bar loop reads settings and the pointer again while the app is in use.
+        cx.observe_window_activation(window, |_, _, cx| crate::flow_bar::wake(cx))
+            .detach();
         // The Kit root does not exist yet: it wraps this view once it is built.
         window.defer(cx, crate::window_chrome::apply_look);
     }

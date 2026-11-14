@@ -892,7 +892,10 @@ fn place_traffic_lights(window: &Window) {
 }
 
 fn lock_native_chrome(window: &Window, screen: f32) {
-    if let Err(error) = lock_chrome(native_handle(window), size_limits(screen, crate::window_chrome::frame(window))) {
+    if let Err(error) = lock_chrome(
+        native_handle(window),
+        size_limits(screen, crate::window_chrome::frame(window)),
+    ) {
         log::warn!("could not lock the window chrome: {error}");
     }
 }
