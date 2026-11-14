@@ -680,3 +680,10 @@ fn a_sample_take_records_the_microphone_as_it_is(cx: &mut TestAppContext) {
         .unwrap_err();
     assert_eq!(busy.code, hushpen_core::error::MIC_BUSY);
 }
+
+#[test]
+fn the_device_poll_runs_only_while_a_window_is_in_use_and_no_recording_runs() {
+    assert!(should_poll(true, true));
+    assert!(!should_poll(true, false), "a hidden app idles");
+    assert!(!should_poll(false, true), "a recording owns the device");
+}
