@@ -46,6 +46,37 @@ pub struct PopUp {
     waits: u32,
     hide_call: Call,
     show_call: Call,
+    /// The window is a Wayland layer-shell overlay, which the app sizes but cannot move.
+    layer: bool,
+}
+
+/// On Wayland the pop-up is a layer-shell overlay, bottom centre: a plain pop-up is a normal
+/// window there, and KDE draws its own title bar on it. `None` where the session is not Wayland
+/// (the caller then opens the pop-up; so it does when the compositor has no layer shell).
+#[cfg(target_os = "linux")]
+fn overlay_kind(bounds: Bounds<Pixels>, cx: &App) -> Option<WindowKind> {
+    use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions};
+    use hushpen_platform::keys::session::{Session, detect};
+    if detect() != Session::Wayland {
+        return None;
+    }
+    let screen = cx.primary_display().map_or(bounds.origin.y + bounds.size.height, |display| {
+        display.bounds().size.height
+    });
+    let gap = (screen - bounds.origin.y - bounds.size.height).max(gpui_kit::px(0.0));
+    Some(WindowKind::LayerShell(LayerShellOptions {
+        namespace: APP_ID.into(),
+        layer: Layer::Overlay,
+        anchor: Anchor::BOTTOM,
+        margin: Some((gpui_kit::px(0.0), gpui_kit::px(0.0), gap, gpui_kit::px(0.0))),
+        keyboard_interactivity: KeyboardInteractivity::None,
+        ..Default::default()
+    }))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn overlay_kind(_: Bounds<Pixels>, _: &App) -> Option<WindowKind> {
+    None
 }
 
 impl PopUp {
@@ -59,31 +90,53 @@ impl PopUp {
             waits: 0,
             hide_call: hide,
             show_call: show_unfocused,
+            layer: false,
         }
     }
 
     fn open(&mut self, bounds: Bounds<Pixels>, cx: &mut App) -> Option<Native> {
         let view = self.view.upgrade()?;
-        let opened = gpui_kit::open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: None,
-                focus: false,
-                show: true,
-                kind: WindowKind::PopUp,
-                is_movable: false,
-                is_resizable: false,
-                is_minimizable: false,
-                window_background: WindowBackgroundAppearance::Transparent,
-                app_id: Some(APP_ID.into()),
-                inactive_frame_interval: None,
-                ..Default::default()
-            },
-            cx,
-            move |_, _| view,
-        );
-        match opened {
-            Ok((handle, _)) => {
+        let options = |kind| WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: None,
+            focus: false,
+            show: true,
+            kind,
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            window_background: WindowBackgroundAppearance::Transparent,
+            app_id: Some(APP_ID.into()),
+            inactive_frame_interval: None,
+            ..Default::default()
+        };
+        // The overlay first, where the compositor has one; else the plain pop-up.
+        let mut opened = None;
+        for kind in overlay_kind(bounds, cx).into_iter().chain([WindowKind::PopUp]) {
+            let view = view.clone();
+            let layer = !matches!(kind, WindowKind::PopUp);
+            // The Kit root draws a shadow margin around a window that the system does not
+            // decorate, which would eat the overlay: the overlay opens without it.
+            let result = if layer {
+                cx.open_window(options(kind), move |_, _| view)
+                    .map(AnyWindowHandle::from)
+            } else {
+                gpui_kit::open_window(options(kind), cx, move |_, _| view).map(|(handle, _)| handle)
+            };
+            match result {
+                Ok(handle) => {
+                    self.layer = layer;
+                    opened = Some(Ok(handle));
+                    break;
+                }
+                Err(error) => {
+                    log::info!("the flow bar window kind is not available: {error:#}");
+                    opened = Some(Err(error));
+                }
+            }
+        }
+        match opened? {
+            Ok(handle) => {
                 self.handle = Some(handle);
                 let native = handle
                     .update(cx, |_, window, cx| {
@@ -142,7 +195,12 @@ impl Host for PopUp {
             self.refused.set(false);
             self.waits = 0;
             let show_call = self.show_call;
+            let layer = self.layer;
             let placed = handle.update(cx, |_, window, _| {
+                if layer {
+                    // A layer surface keeps its bottom-centre anchor; only its size follows.
+                    window.resize(bounds.size);
+                }
                 if was_hidden {
                     // The window drew nothing while it was off the screen.
                     window.refresh();

@@ -16,7 +16,7 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, Global, Hsla, PlatformDisplay,
     Point, Rgba, Styled as _, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions, point, px, size, transparent_black,
+    WindowDecorations, WindowOptions, point, px, size, transparent_black,
 };
 use hushpen_platform::window::{Frame, SizeLimits};
 use std::rc::Rc;
@@ -172,6 +172,11 @@ pub fn resize_grip() -> impl gpui_kit::IntoElement {
         })
 }
 
+/// What the Kit root takes from each side of a client-decorated Linux window: its 20 point
+/// shadow margin (`gpui-component` `SHADOW_SIZE`). Wayland holds the window to its minimum size
+/// without that margin, so the minimum is the window size less the margin on both sides.
+const CLIENT_FRAME: f32 = if cfg!(target_os = "linux") { 40.0 } else { 0.0 };
+
 fn options(
     bounds: Bounds<gpui_kit::Pixels>,
     native_chrome: bool,
@@ -186,10 +191,16 @@ fn options(
             traffic_light_position: Some(traffic_light_position(sizes::TRAFFIC_LIGHT)),
         }),
         window_background: background(see_through),
+        // GPUI asks Wayland for server decorations unless told otherwise, which adds the desktop
+        // title bar above the one the app draws. macOS ignores it.
+        window_decorations: Some(WindowDecorations::Client),
         // The native limits (see `size_limits`) keep the width and cap the height.
         is_resizable: true,
         is_minimizable: true,
-        window_min_size: Some(size(px(space::WINDOW_WIDTH), px(space::WINDOW_HEIGHT))),
+        window_min_size: Some(size(
+            px(space::WINDOW_WIDTH - CLIENT_FRAME),
+            px(space::WINDOW_HEIGHT - CLIENT_FRAME),
+        )),
         ..Default::default()
     }
 }
@@ -354,7 +365,13 @@ mod tests {
         assert_eq!((space::WINDOW_WIDTH, space::WINDOW_HEIGHT), (940.0, 600.0));
         assert!(options.is_resizable);
         assert!(options.is_minimizable);
-        assert_eq!(options.window_min_size, Some(bounds().size));
+        assert_eq!(
+            options.window_min_size,
+            Some(size(
+                bounds().size.width - px(CLIENT_FRAME),
+                bounds().size.height - px(CLIENT_FRAME)
+            ))
+        );
         assert_eq!(
             options.window_bounds,
             Some(WindowBounds::Windowed(bounds()))
@@ -484,6 +501,7 @@ mod tests {
     fn linux_is_frameless_and_opaque_without_a_compositor() {
         let options = options(bounds(), false, false);
         assert!(options.titlebar.is_none());
+        assert_eq!(options.window_decorations, Some(WindowDecorations::Client));
         assert_eq!(
             options.window_background,
             WindowBackgroundAppearance::Opaque
