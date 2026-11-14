@@ -20,6 +20,7 @@ final class DictationModel {
     private var observation: FlowSessionObservation?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var active = true
+    private var failedCode = ""
     private(set) var state = "idle"
     private(set) var sessionID = ""
     private(set) var result = ""
@@ -37,7 +38,7 @@ final class DictationModel {
         microphone.failed = { [weak self] message in
             guard let self else { return }
             self.notice = message
-            self.abort()
+            self.abort(failure: keyboardNotice("CAPTURE_FAILED"))
         }
         microphone.finished = { [weak self] in
             guard let self, self.state == "listening" else { return }
@@ -70,7 +71,7 @@ final class DictationModel {
             send(.toggle)
         } catch {
             notice = phoneError(error)
-            abort()
+            abort(failure: keyboardNotice(""))
         }
     }
 
@@ -80,11 +81,14 @@ final class DictationModel {
 
     func setActive(_ value: Bool) {
         active = value
+        // iOS rejects GPU work from the background, so models loaded from now on run on the CPU.
+        setBackground(background: !value)
         updateBackgroundTask()
         if value { handleSignal() }
     }
 
-    func abort() {
+    /// Ends the dictation. A `failure` tells the keyboard why no text came; without one the session is cancelled.
+    func abort(failure: String? = nil) {
         generation = UUID()
         timer?.cancel()
         timer = nil
@@ -95,12 +99,15 @@ final class DictationModel {
         jobs.values.forEach { $0.cancel() }
         jobs.removeAll()
         microphone.stop()
+        microphone.release()
         for file in audio.values { try? FileManager.default.removeItem(at: file) }
         audio.removeAll()
         notes.removeAll()
         if let flow {
-            do { try store.cancel(id: flow.id) }
-            catch { if notice.isEmpty { notice = error.localizedDescription } }
+            do {
+                if let failure { try store.fail(id: flow.id, message: failure) }
+                else { try store.cancel(id: flow.id) }
+            } catch { if notice.isEmpty { notice = error.localizedDescription } }
         }
         flow = nil
         busy = false
@@ -140,7 +147,7 @@ final class DictationModel {
         if active || !busy || state == "listening" { endBackgroundTask(); return }
         guard backgroundTask == .invalid else { return }
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Dictation") { [weak self] in
-            Task { @MainActor in self?.abort() }
+            Task { @MainActor in self?.abort(failure: keyboardNotice("BACKGROUND_TIME")) }
         }
     }
 
@@ -167,11 +174,12 @@ final class DictationModel {
             if busy, let flow { activity.update(session: flow, phase: state) }
             else { activity.end() }
             updateBackgroundTask()
-            if !busy && !recoverable && state != "done" && flow != nil { abort() }
-            else { scheduleWake() }
+            if !busy && !recoverable && state != "done" && flow != nil {
+                abort(failure: state == "failed" ? keyboardNotice(failedCode) : nil)
+            } else { scheduleWake() }
         } catch {
             notice = phoneError(error)
-            abort()
+            abort(failure: keyboardNotice(""))
         }
     }
 
@@ -197,12 +205,17 @@ final class DictationModel {
             try microphone.start(url: file)
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: file.path)
         case let .stopCapture(session, keep):
+            // The audio session stays active while the text is made: that keeps iOS from suspending the app in the background.
             microphone.stop()
             notes[session]?.stoppedAt = Date()
             if keep, let flow { try store.stop(id: flow.id) }
-            if !keep { dropAudio(session) }
+            if !keep {
+                microphone.release()
+                dropAudio(session)
+            }
         case .holdCapture:
             microphone.stop()
+            microphone.release()
         case let .dropAudio(session):
             dropAudio(session)
         case let .transcribe(session):
@@ -216,8 +229,8 @@ final class DictationModel {
                     self.send(.transcribed(session: session, text: transcript.text))
                 } catch {
                     guard let self, self.generation == token, !Task.isCancelled else { return }
+                    Logger(subsystem: "com.mandalsuraj.hushpen", category: "Dictation").error("Transcription failed: \(error.localizedDescription, privacy: .public)")
                     self.send(.transcribeFailed(session: session))
-                    self.notice = phoneError(error)
                     self.abort()
                 }
             }
@@ -251,6 +264,7 @@ final class DictationModel {
             observation = nil
             activity.end()
             endBackgroundTask()
+            microphone.release()
             timer?.cancel()
             timer = nil
         case let .saveRow(session, status, text, _):
@@ -259,7 +273,9 @@ final class DictationModel {
             if let run = notes.removeValue(forKey: session), status == "done", let text {
                 keep(run, text: text)
             }
-        case let .notify(_, code): notice = dictationNotice(code)
+        case let .notify(_, code):
+            failedCode = code
+            notice = dictationNotice(code)
         case let .maxDurationWarning(secondsLeft): notice = "\(secondsLeft) seconds left."
         case .edit: throw MobileError.Failed(detail: "Keyboard editing is unavailable.")
         case .cue, .updatePasteLast, .pasteLast: break
@@ -308,6 +324,17 @@ private struct RunNotes {
             createdMs: Int64((stoppedAt ?? now).timeIntervalSince1970 * 1000), spokenMs: spokenMs, tookMs: UInt64(tookMs),
             rawText: raw, text: text, modelId: model, language: language, cleanup: cleanup
         )
+    }
+}
+
+/// What the keyboard pill says when a dictation fails: plain words, never an error string.
+func keyboardNotice(_ code: String) -> String {
+    switch code {
+    case "ENGINE_NO_SPEECH": "No speech heard"
+    case "ENGINE_CRASHED": "Transcription failed. Open Hushpen to retry."
+    case "CAPTURE_FAILED": "Microphone stopped. Try again."
+    case "BACKGROUND_TIME": "Hushpen ran out of time. Try again."
+    default: "Dictation failed. Try again."
     }
 }
 

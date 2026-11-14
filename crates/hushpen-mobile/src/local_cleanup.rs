@@ -190,7 +190,7 @@ impl LocalCleanup {
             .ok_or_else(|| MobileError::failed("unknown cleanup model family"))?;
         let spec = LlmSpec {
             family: Some(family.as_str().into()),
-            gpu: hushpen_engine::gpu_available(),
+            gpu: hushpen_engine::gpu_for_load(),
             threads: hushpen_core::threads::auto_threads(
                 std::thread::available_parallelism().map_or(2, usize::from),
             ),

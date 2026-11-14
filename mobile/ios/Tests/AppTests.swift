@@ -236,6 +236,14 @@ final class AppTests: XCTestCase {
         XCTAssertEqual(dictationNotice("UNKNOWN_CODE"), "Dictation failed. Start again from the keyboard.")
     }
 
+    func testKeyboardNoticesUsePlainWordsForEveryFailure() {
+        XCTAssertEqual(keyboardNotice("ENGINE_NO_SPEECH"), "No speech heard")
+        XCTAssertEqual(keyboardNotice("ENGINE_CRASHED"), "Transcription failed. Open Hushpen to retry.")
+        XCTAssertEqual(keyboardNotice("CAPTURE_FAILED"), "Microphone stopped. Try again.")
+        XCTAssertEqual(keyboardNotice("BACKGROUND_TIME"), "Hushpen ran out of time. Try again.")
+        XCTAssertEqual(keyboardNotice("anything else"), "Dictation failed. Try again.")
+    }
+
     func testFreshDictationCancelsOnlyAbandonedRecordings() throws {
         let store = try FlowSessionStore(root: folder)
         let abandoned = try store.begin()

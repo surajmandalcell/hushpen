@@ -21,6 +21,13 @@ pub use system_llm::{CleanupResult, SystemCleanup, SystemLlm, clean_text};
 
 uniffi::setup_scaffolding!();
 
+/// The iOS app calls this when it leaves or enters the foreground: iOS rejects GPU work from the
+/// background, so models loaded while it is true run on the CPU.
+#[uniffi::export]
+pub fn set_background(background: bool) {
+    hushpen_engine::set_background(background);
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Error)]
 pub enum MobileError {
     InvalidInput { detail: String },
