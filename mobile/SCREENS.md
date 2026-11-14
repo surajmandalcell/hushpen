@@ -260,7 +260,8 @@ the rules; views render state and send intents.
 - The full-screen page, while it listens, says "You're all set. Head back to
   keep typing." over a two second swipe demo, with a quiet ring and an
   arrow at the system back link. The page names no app: iOS draws the link.
-  It shows no "Listening" text or animation, only Cancel and Done. Other states keep the
+  It shows no "Listening" text, animation, or buttons: Cancel and Done live in
+  the keyboard pill. Other states keep the
   wave, state, and Cancel, Recover, or Close. Dismissing it cancels the session.
 
 ## iOS Live Activity
@@ -294,6 +295,13 @@ the rules; views render state and send intents.
   finishes the session. The pill is white on a Light keyboard and the dark flow
   bar color on a Dark one: Listening (cancel, wave, finish), Transcribing,
   Inserted with Undo (4 seconds), and the two paste failures.
+- Keys feel like the system keyboard: no fade or animation. A letter shows the
+  callout at touch-down and types at touch-up, on the key under the finger.
+  Delete types at touch-down and repeats after 0.5 s, then faster. Each key
+  plays the system click (Keyboard Clicks setting) and, with Full Access, a
+  light haptic. Several fingers work at once. The key area is a UIKit touch
+  layer over the SwiftUI keys. `hasDictationKey` is set in `viewDidAppear`;
+  earlier, iOS keeps its own mic below the keyboard.
 
 ## Phone enrollment contract
 

@@ -19,6 +19,11 @@ private enum Palette {
     static let letter = Color(light: rgb(0xFFFFFF), dark: rgb(0x6B6B6E))
     static let function = Color(light: rgb(0xABB0BC), dark: rgb(0x444447))
     static let keyShadow = Color(light: rgb(0x000000, alpha: 0.3), dark: rgb(0x000000, alpha: 0.45))
+    static let calloutShadow = Color(light: rgb(0x000000, alpha: 0.28), dark: rgb(0x000000, alpha: 0.5))
+    /// A letter key under the finger, as the system keyboard darkens it in Light and lifts it in Dark.
+    static let letterPressed = Color(light: rgb(0xE5E5E5), dark: rgb(0x8E8E91))
+    /// The glyph of a key that cannot act now. A color, not a fade.
+    static let dimInk = Color(uiColor: .tertiaryLabel)
 
     static let pillText = Color(light: rgb(0x1C1C1E), dark: rgb(0xFFFFFF))
     static let pillSub = Color(light: rgb(0x3C3C43, alpha: 0.6), dark: rgb(0xEBEBF5, alpha: 0.6))
@@ -35,7 +40,8 @@ struct KeyboardView: View {
     var body: some View {
         VStack(spacing: 0) {
             Band(model: model).frame(height: 44)
-            Keys(model: model)
+            // The callout of a top-row key rises into the band, so the keys draw above it.
+            Keys(model: model).zIndex(1)
         }
     }
 }
@@ -207,6 +213,17 @@ private struct Wave: View {
 }
 
 // MARK: - Keys
+// Keys press and release at once: no fade, scale, or animation. The keys tests scan this section.
+
+private enum KeyKind { case letter, function }
+
+private struct KeyFrames: PreferenceKey {
+    static let defaultValue: [KeyID: CGRect] = [:]
+
+    static func reduce(value: inout [KeyID: CGRect], nextValue: () -> [KeyID: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
 
 private struct Keys: View {
     @Bindable var model: KeyboardModel
@@ -226,6 +243,37 @@ private struct Keys: View {
             }
         }
         .frame(height: 216)
+        .coordinateSpace(name: "keys")
+        .onPreferenceChange(KeyFrames.self) { frames in
+            MainActor.assumeIsolated { model.keys.frames = frames }
+        }
+        .overlay { KeyTouchLayer(tracker: model.keys).accessibilityHidden(true) }
+        .overlay { callouts }
+        .transaction { $0.animation = nil }
+    }
+
+    /// One key: its face, its cell for touches, and its accessibility element. The touch layer reads
+    /// the cell frames; a VoiceOver activation types the key the same way.
+    private func key<Content: View>(
+        _ id: KeyID, kind: KeyKind, name: String, identifier: String, width: CGFloat? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        return content()
+            .modifier(KeyFace(kind: kind, pressed: model.keys.pressed.contains(id)))
+            .frame(width: width)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: KeyFrames.self, value: [id: proxy.frame(in: .named("keys"))])
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(name)
+            .accessibilityIdentifier(identifier)
+            .accessibilityAddTraits([.isButton, .isKeyboardKey])
+            .accessibilityAction {
+                model.keyFeedback()
+                model.press(id)
+            }
     }
 
     private func row(_ characters: String) -> some View {
@@ -234,13 +282,10 @@ private struct Keys: View {
         }
     }
 
-    private func letter(_ key: String) -> some View {
-        Button { model.insert(key) } label: {
-            Text(model.shift ? key.uppercased() : key).font(.system(size: 24))
+    private func letter(_ character: String) -> some View {
+        key(.character(character), kind: .letter, name: character, identifier: "keyboard.key.\(character)") {
+            Text(model.shift ? character.uppercased() : character).font(.system(size: 24))
         }
-        .buttonStyle(KeyStyle(kind: .letter, preview: model.shift ? key.uppercased() : key))
-        .accessibilityIdentifier("keyboard.key.\(key)")
-        .accessibilityAddTraits(.isKeyboardKey)
     }
 
     private func thirdRow(_ characters: String, unit: CGFloat) -> some View {
@@ -248,87 +293,128 @@ private struct Keys: View {
             if model.symbols {
                 Color.clear.frame(width: unit * 1.45)
             } else {
-                Button { model.shift.toggle() } label: {
+                key(.shift, kind: model.shift ? .letter : .function, name: "Shift", identifier: "keyboard.shift", width: unit * 1.23) {
                     Image(systemName: model.shift ? "shift.fill" : "shift").font(.system(size: 20))
                 }
-                .buttonStyle(KeyStyle(kind: model.shift ? .letter : .function))
-                .frame(width: unit * 1.23)
-                .accessibilityLabel("Shift")
-                .accessibilityIdentifier("keyboard.shift")
                 Color.clear.frame(width: unit * 0.27)
             }
             ForEach(Array(characters).map(String.init), id: \.self) { character in letter(character) }
             Color.clear.frame(width: unit * 0.27)
-            Button(action: model.backspace) {
+            key(.backspace, kind: .function, name: "Delete", identifier: "keyboard.backspace", width: unit * 1.23) {
                 Image(systemName: "delete.left").font(.system(size: 20))
             }
-            .buttonStyle(KeyStyle(kind: .function))
-            .frame(width: unit * 1.23)
-            .accessibilityLabel("Delete")
-            .accessibilityIdentifier("keyboard.backspace")
         }
     }
 
     private func bottomRow(unit: CGFloat) -> some View {
         HStack(spacing: 0) {
-            Button { model.symbols.toggle() } label: {
+            key(.symbols, kind: .function, name: model.symbols ? "ABC" : "123", identifier: "keyboard.symbols", width: unit * 1.25) {
                 Text(model.symbols ? "ABC" : "123").font(.system(size: 16))
             }
-            .buttonStyle(KeyStyle(kind: .function))
-            .frame(width: unit * 1.25)
-            .accessibilityIdentifier("keyboard.symbols")
             if model.needsGlobe {
                 Image(systemName: "globe").font(.system(size: 20))
                     .modifier(KeyFace(kind: .function))
                     .overlay { GlobeTouch(controller: model.controller) }
                     .frame(width: unit * 1.1)
             }
-            Button { model.insert(" ") } label: {
+            key(.space, kind: .letter, name: "space", identifier: "keyboard.space") {
                 Text("space").font(.system(size: 16))
             }
-            .buttonStyle(KeyStyle(kind: .letter))
-            .accessibilityIdentifier("keyboard.space")
             mic.frame(width: unit * 1.25)
-            Button { model.insert("\n") } label: {
+            key(.enter, kind: .function, name: "return", identifier: "keyboard.return", width: unit * 2.1) {
                 Text("return").font(.system(size: 16))
             }
-            .buttonStyle(KeyStyle(kind: .function))
-            .frame(width: unit * 2.1)
-            .accessibilityIdentifier("keyboard.return")
         }
     }
 
-    /// Only the mic dims while the app listens or transcribes; every other key keeps working.
+    /// The key callouts above the fingers that are down on a letter or symbol.
+    private var callouts: some View {
+        GeometryReader { proxy in
+            ForEach(Array(model.keys.pressed.filter(\.showsCallout)), id: \.self) { id in
+                if case let .character(character) = id, let cell = model.keys.frames[id] {
+                    Callout(text: model.shift ? character.uppercased() : character, face: KeyFace.face(of: cell), width: proxy.size.width)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// The mic only looks dim while the app listens or transcribes; every other key keeps working.
     @ViewBuilder private var mic: some View {
         let glyph = Image(systemName: "mic").font(.system(size: 20))
         switch model.pill {
         case .listening:
             Button(action: model.stop) { glyph }
-                .buttonStyle(KeyStyle(kind: .function))
-                .opacity(0.4)
+                .buttonStyle(KeyStyle(ink: Palette.dimInk, onPress: model.keyFeedback))
                 .accessibilityLabel("Finish dictation")
                 .accessibilityIdentifier("keyboard.mic")
         case .transcribing:
             glyph
-                .modifier(KeyFace(kind: .function))
-                .opacity(0.4)
+                .modifier(KeyFace(kind: .function, ink: Palette.dimInk))
                 .accessibilityLabel("Transcribing")
                 .accessibilityIdentifier("keyboard.mic")
         default:
             if let url = model.url, model.fullAccess {
                 Link(destination: url) { glyph }
-                    .buttonStyle(KeyStyle(kind: .function))
+                    .buttonStyle(KeyStyle(onPress: model.keyFeedback))
                     .accessibilityLabel("Dictate")
                     .accessibilityIdentifier("keyboard.mic")
             } else {
                 glyph
-                    .modifier(KeyFace(kind: .function))
-                    .opacity(0.4)
+                    .modifier(KeyFace(kind: .function, ink: Palette.dimInk))
                     .accessibilityLabel("Dictation unavailable")
                     .accessibilityIdentifier("keyboard.mic")
             }
         }
     }
+}
+
+/// Clear UIKit view over the keys. It sees every finger at touch-down and touch-up, which a SwiftUI
+/// button reports late, and it follows several fingers at once. Points outside the key cells (the
+/// globe and the mic) fall through to the controls underneath.
+private struct KeyTouchLayer: UIViewRepresentable {
+    let tracker: KeyTracker
+
+    func makeUIView(context: Context) -> KeyTouchView { KeyTouchView(tracker: tracker) }
+
+    func updateUIView(_ view: KeyTouchView, context: Context) {}
+}
+
+private final class KeyTouchView: UIView {
+    private let tracker: KeyTracker
+
+    init(tracker: KeyTracker) {
+        self.tracker = tracker
+        super.init(frame: .zero)
+        isMultipleTouchEnabled = true
+        backgroundColor = .clear
+        isAccessibilityElement = false
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        tracker.key(at: point) != nil
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { tracker.down(token(touch), at: touch.location(in: self)) }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { tracker.move(token(touch), to: touch.location(in: self)) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { tracker.up(token(touch), at: touch.location(in: self)) }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { tracker.cancel(token(touch)) }
+    }
+
+    private func token(_ touch: UITouch) -> Int { ObjectIdentifier(touch).hashValue }
 }
 
 /// A clear UIKit button over the globe key: iOS needs the touch events to switch on a tap and list the keyboards on a hold.
@@ -341,6 +427,7 @@ private struct GlobeTouch: UIViewRepresentable {
         button.accessibilityIdentifier = "keyboard.next"
         if let controller {
             button.addTarget(controller, action: #selector(UIInputViewController.handleInputModeList(from:with:)), for: .allTouchEvents)
+            button.addAction(UIAction { [weak controller] _ in controller?.keyFeedback() }, for: .touchDown)
         }
         return button
     }
@@ -348,51 +435,75 @@ private struct GlobeTouch: UIViewRepresentable {
     func updateUIView(_ view: UIButton, context: Context) {}
 }
 
+/// The press look of the mic, a button of the system's own: the key swaps shade at once, with the click.
 private struct KeyStyle: ButtonStyle {
-    enum Kind { case letter, function }
-
-    let kind: Kind
-    var preview: String?
+    var ink = Color.primary
+    let onPress: () -> Void
 
     func makeBody(configuration: Configuration) -> some View {
-        let pressed = configuration.isPressed
         configuration.label
-            .modifier(KeyFace(kind: kind, pressed: pressed))
-            .overlay(alignment: .top) {
-                if pressed, let preview {
-                    Text(preview)
-                        .font(.system(size: 34))
-                        .foregroundStyle(.primary)
-                        .frame(width: 56, height: 54)
-                        .background(Palette.letter, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
-                        .offset(y: -52)
-                        .allowsHitTesting(false)
-                }
-            }
+            .modifier(KeyFace(kind: .function, pressed: configuration.isPressed, ink: ink))
+            .onChange(of: configuration.isPressed) { _, down in if down { onPress() } }
     }
 }
 
-/// A key: 43 pt tall in a 54 pt row, 8 pt corners, a one point edge below.
+/// A key: 43 pt tall in a 54 pt row, 8 pt corners, a one point edge below. Pressed swaps the shade,
+/// the way the system keyboard darkens a light key and lightens a dark one.
 private struct KeyFace: ViewModifier {
-    let kind: KeyStyle.Kind
+    static let sideInset: CGFloat = 3
+    static let verticalInset: CGFloat = 5.5
+
+    let kind: KeyKind
     var pressed = false
+    var ink = Color.primary
+
+    /// The painted key inside its touch cell.
+    static func face(of cell: CGRect) -> CGRect {
+        cell.insetBy(dx: sideInset, dy: verticalInset)
+    }
 
     func body(content: Content) -> some View {
         content
-            .foregroundStyle(Color.primary)
+            .foregroundStyle(ink)
             .frame(maxWidth: .infinity, minHeight: 43, maxHeight: 43)
             .background(fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .shadow(color: Palette.keyShadow, radius: 0, y: 1)
-            .padding(.horizontal, 3)
-            .padding(.vertical, 5.5)
+            .padding(.horizontal, Self.sideInset)
+            .padding(.vertical, Self.verticalInset)
             .contentShape(Rectangle())
     }
 
     private var fill: Color {
         switch kind {
-        case .letter: pressed ? Palette.function : Palette.letter
+        case .letter: pressed ? Palette.letterPressed : Palette.letter
         case .function: pressed ? Palette.letter : Palette.function
         }
     }
 }
+
+// MARK: - Callout
+
+/// The system key callout (iOS 26 and later): a rounded square with the glyph, a few points above
+/// the key, shown from touch-down to touch-up. The system draws it taller (63 pt) over a key row
+/// with the whole screen above it; here it must fit the 44 pt band above the top row, so every
+/// row gets the same 46 pt bubble. A key at the screen edge keeps the bubble inside the keyboard.
+private struct Callout: View {
+    static let gap: CGFloat = 3
+    static let height: CGFloat = 46
+
+    let text: String
+    let face: CGRect
+    let width: CGFloat
+
+    var body: some View {
+        let bubble = face.width * 1.6
+        let left = min(max(face.midX - bubble / 2, 2), width - bubble - 2)
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(Palette.letter)
+            .shadow(color: Palette.calloutShadow, radius: 4, y: 1)
+            .overlay { Text(text).font(.system(size: 30)).foregroundStyle(Color.primary) }
+            .frame(width: bubble, height: Self.height)
+            .position(x: left + bubble / 2, y: face.minY - Self.gap - Self.height / 2)
+    }
+}
+
