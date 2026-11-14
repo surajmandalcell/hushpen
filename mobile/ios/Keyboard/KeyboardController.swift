@@ -39,6 +39,8 @@ final class KeyboardController: UIInputViewController {
     private var insertion: (document: UUID?, text: String, context: String, replaced: String)?
     private var rescued: String?
     private var expiry: Task<Void, Never>?
+    /// The reason the last dictation failed, while its notice shows.
+    private var failure: String?
     private var heartbeat: KeyboardHeartbeat?
     /// Counts the host's text and cursor notices, so a cursor move shows whether the host answered.
     private var contextEvents = 0
@@ -173,6 +175,11 @@ final class KeyboardController: UIInputViewController {
                     return
                 case .completed:
                     try deliver(current.id, from: store)
+                case .failed:
+                    // The next session replaces the failed one, so the reason shows once.
+                    model.url = try store.begin().url
+                    showFailure(current.message ?? "Dictation failed. Try again.")
+                    return
                 case .cancelled, .consumed:
                     break
                 }
@@ -186,9 +193,23 @@ final class KeyboardController: UIInputViewController {
         }
     }
 
+    /// Shows why a dictation made no text. The notice has no button, so it leaves by itself.
+    private func showFailure(_ message: String) {
+        failure = message
+        model.pill = .notice(message)
+        expiry?.cancel()
+        expiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled, let self, self.failure == message else { return }
+            self.failure = nil
+            if self.model.pill == .notice(message) { self.model.pill = .idle }
+        }
+    }
+
     /// Drops a pill that no longer matches the session. A failure stays until it is dismissed.
     private func settle() {
         switch model.pill {
+        case .notice(let text) where text == failure: break
         case .listening, .notice: model.pill = .idle
         case .transcribing where !delivering: model.pill = .idle
         case .inserted where !undoAvailable: model.pill = .idle
@@ -332,10 +353,15 @@ final class KeyboardController: UIInputViewController {
         }
     }
 
+    /// The tick and the mic key exist only while the pill listens, and the pill listens only while the host is
+    /// active and the keyboard shows, so no host-state guard is needed. A missing session says so.
     func stop() {
-        guard hostActive, visible else { return }
         do {
-            if let session = try store?.current() { try store?.stop(id: session.id) }
+            guard let session = try store?.current() else {
+                model.pill = .notice("Dictation ended. Tap the mic to start again.")
+                return
+            }
+            if session.state == .recording { try store?.stop(id: session.id) }
             refresh()
         } catch { model.pill = .notice(error.localizedDescription) }
     }

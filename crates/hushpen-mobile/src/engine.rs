@@ -74,7 +74,7 @@ impl Engine {
         self.client
             .load_model(LoadSpec {
                 path,
-                gpu: hushpen_engine::gpu_available(),
+                gpu: hushpen_engine::gpu_for_load(),
                 threads: hushpen_core::threads::auto_threads(cpus),
                 idle: Idle::KEEP,
             })

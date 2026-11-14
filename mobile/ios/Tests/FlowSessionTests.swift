@@ -130,6 +130,42 @@ final class FlowSessionTests: XCTestCase {
         XCTAssertThrowsError(try store.resume(id: replaced.id, now: now))
     }
 
+    func testFailedRecordingTellsTheKeyboardWhyAndCannotFinish() throws {
+        let session = try store.begin(now: now)
+        XCTAssertThrowsError(try store.fail(id: session.id, message: "early", now: now))
+        _ = try store.request(for: session.url, now: now)
+        XCTAssertThrowsError(try store.fail(id: UUID(), message: "other", now: now))
+        XCTAssertThrowsError(try store.fail(id: session.id, message: "late", now: now.addingTimeInterval(600)))
+        try store.stop(id: session.id, now: now)
+        try store.fail(id: session.id, message: "No speech heard", now: now)
+
+        let failed = try XCTUnwrap(FlowSessionStore(root: root).current(now: now))
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(failed.message, "No speech heard")
+        XCTAssertNil(failed.command)
+        XCTAssertNil(failed.text)
+        XCTAssertFalse(try store.mayRecord(id: session.id, now: now))
+        XCTAssertNil(try store.consume(id: session.id, now: now))
+        XCTAssertThrowsError(try store.complete(id: session.id, text: "late", now: now))
+        XCTAssertThrowsError(try store.stop(id: session.id, now: now))
+        XCTAssertThrowsError(try store.resume(id: session.id, now: now))
+        XCTAssertThrowsError(try store.fail(id: session.id, message: "again", now: now))
+
+        _ = try store.begin(now: now)
+        XCTAssertNil(try store.current(now: now)?.message)
+    }
+
+    func testTheTenMinutesStartWhenRecordingStarts() throws {
+        let session = try store.begin(now: now)
+        let started = now.addingTimeInterval(540)
+        let claimed = try store.request(for: session.url, now: started)
+        XCTAssertEqual(claimed.createdAt, started)
+        XCTAssertEqual(claimed.expiresAt, started.addingTimeInterval(600))
+        XCTAssertEqual(try store.current(now: now.addingTimeInterval(700))?.id, session.id)
+        XCTAssertTrue(try store.mayRecord(id: session.id, now: started.addingTimeInterval(599)))
+        XCTAssertNil(try store.current(now: started.addingTimeInterval(600)))
+    }
+
     func testDuplicateAndUntrustedURLsCannotStartRecording() throws {
         let session = try store.begin(now: now)
         let suffix = session.id.uuidString

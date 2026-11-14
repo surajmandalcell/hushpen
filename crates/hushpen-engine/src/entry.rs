@@ -13,6 +13,7 @@ use hushpen_core::threads::auto_threads;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// True when a GPU backend is built in and `HUSHPEN_DISABLE_GPU` does not switch it off.
 pub fn gpu_available() -> bool {
@@ -23,6 +24,23 @@ pub fn gpu_available() -> bool {
         || cfg!(feature = "vulkan"))
         && !cfg!(all(target_os = "ios", target_abi = "sim"))
         && !gpu_disabled_by_env()
+}
+
+static BACKGROUND: AtomicBool = AtomicBool::new(false);
+
+/// iOS rejects GPU work from a background app. The phone app says so here, and every model
+/// loaded after that runs on the CPU. Speech and cleanup models load again for each dictation.
+pub fn set_background(background: bool) {
+    BACKGROUND.store(background, Ordering::Relaxed);
+}
+
+/// Whether a model loaded now may use the GPU.
+pub fn gpu_for_load() -> bool {
+    gpu_choice(gpu_available(), BACKGROUND.load(Ordering::Relaxed))
+}
+
+fn gpu_choice(available: bool, background: bool) -> bool {
+    available && !background
 }
 
 /// `HUSHPEN_DISABLE_GPU` set to anything but empty or `0` forces the CPU.
@@ -156,6 +174,14 @@ fn run_smoke(smoke: &Smoke) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_background_app_keeps_every_model_off_the_gpu() {
+        assert!(gpu_choice(true, false));
+        assert!(!gpu_choice(true, true));
+        assert!(!gpu_choice(false, false));
+        assert!(!gpu_choice(false, true));
+    }
 
     #[test]
     fn an_in_process_detector_never_uses_the_executable_resource_fallback() {

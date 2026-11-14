@@ -4,7 +4,7 @@ import Foundation
 import notify
 
 enum FlowSessionState: String, Codable {
-    case pending, recording, completed, cancelled, consumed
+    case pending, recording, completed, cancelled, consumed, failed
 }
 
 enum FlowSessionCommand: String, Codable {
@@ -18,6 +18,8 @@ struct FlowSession: Codable, Equatable {
     var state: FlowSessionState
     var text: String?
     var command: FlowSessionCommand?
+    /// Plain words for the keyboard when the state is `failed`.
+    var message: String?
 
     var url: URL {
         URL(string: "hushpen://dictate?session=\(id.uuidString)")!
@@ -69,7 +71,7 @@ final class FlowSessionStore: @unchecked Sendable {
     func begin(now: Date = Date()) throws -> FlowSession {
         try transaction(replacingDamaged: true) { stored in
             let session = FlowSession(
-                id: UUID(), createdAt: now, expiresAt: now.addingTimeInterval(600),
+                id: UUID(), createdAt: now, expiresAt: now.addingTimeInterval(Self.lifetime),
                 state: .pending, command: .start
             )
             stored = session
@@ -88,8 +90,11 @@ final class FlowSessionStore: @unchecked Sendable {
             guard var session = stored, session.id == id, Self.isLive(session, now: now)
             else { throw FlowSessionError.stale }
             guard session.state == .pending else { throw FlowSessionError.wrongState }
-            session.state = .recording
-            session.command = nil
+            // The 10 minutes count from the start of recording, not from when the keyboard opened.
+            session = FlowSession(
+                id: session.id, createdAt: now, expiresAt: now.addingTimeInterval(Self.lifetime),
+                state: .recording
+            )
             stored = session
             return session
         }
@@ -128,6 +133,20 @@ final class FlowSessionStore: @unchecked Sendable {
             session.state = .cancelled
             session.text = nil
             session.command = .cancel
+            stored = session
+        }
+    }
+
+    /// Ends a recording that produced no text, so the keyboard can say why instead of going quiet.
+    func fail(id: UUID, message: String, now: Date = Date()) throws {
+        try transaction { stored in
+            guard var session = stored, session.id == id, Self.isLive(session, now: now)
+            else { throw FlowSessionError.stale }
+            guard session.state == .recording else { throw FlowSessionError.wrongState }
+            session.state = .failed
+            session.text = nil
+            session.command = nil
+            session.message = message
             stored = session
         }
     }
@@ -184,8 +203,10 @@ final class FlowSessionStore: @unchecked Sendable {
 
     private static func isLive(_ session: FlowSession, now: Date) -> Bool {
         session.createdAt <= now && session.expiresAt > now
-            && session.expiresAt.timeIntervalSince(session.createdAt) == 600
+            && session.expiresAt.timeIntervalSince(session.createdAt) == lifetime
     }
+
+    private static let lifetime: TimeInterval = 600
 
     private func transaction<T>(
         replacingDamaged: Bool = false, _ body: (inout FlowSession?) throws -> T
