@@ -69,7 +69,6 @@ final class KeyboardController: UIInputViewController {
     private var observation: FlowSessionObservation?
     private var levelObservation: FlowLevel.Observer?
     private var history = EditHistory()
-    private var historyDocument: UUID?
     private var visible = false
     private var hostActive = true
     private var delivering = false
@@ -174,17 +173,21 @@ final class KeyboardController: UIInputViewController {
         model.keys.cancelAll()
         observation = nil
         levelObservation = nil
+        history.clear()
+        publishHistory()
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
         contextEvents += 1
+        dropStaleHistory()
         refresh()
     }
 
     override func selectionDidChange(_ textInput: (any UITextInput)?) {
         super.selectionDidChange(textInput)
         contextEvents += 1
+        dropStaleHistory()
         refresh()
     }
 
@@ -400,23 +403,29 @@ final class KeyboardController: UIInputViewController {
 
     /// Keeps the edit for the Undo and Redo buttons. Another field starts a new history.
     private func record(added: String, removed: String, joining: Bool = true) {
-        if document != historyDocument {
-            history.clear()
-            historyDocument = document
-        }
+        dropStaleHistory()
         history.record(added: added, removed: removed, joining: joining)
         publishHistory()
     }
 
-    private func publishHistory() {
-        model.canUndoEdit = history.canUndo
-        model.canRedoEdit = history.canRedo
+    /// The history belongs to one text field. When the field changes, the history goes.
+    private func dropStaleHistory() {
+        history.bind(to: document)
+        publishHistory()
     }
 
-    /// An edit applies only while the cursor still sits behind its text; if the user moved the cursor
-    /// or the field changed, the history is stale and goes.
+    private var historyValid: Bool { history.allows(document: document) }
+
+    private func publishHistory() {
+        model.canUndoEdit = historyValid && history.canUndo
+        model.canRedoEdit = historyValid && history.canRedo
+    }
+
+    /// An edit applies only in the same field and while the cursor still sits behind its text; if the user
+    /// moved the cursor or the field changed, the history is stale and goes.
     private func apply(removing: String, inserting: String, take: () -> Void) {
-        guard removing.isEmpty || textDocumentProxy.documentContextBeforeInput?.hasSuffix(removing) == true else {
+        guard historyValid,
+              removing.isEmpty || textDocumentProxy.documentContextBeforeInput?.hasSuffix(removing) == true else {
             history.clear()
             publishHistory()
             return

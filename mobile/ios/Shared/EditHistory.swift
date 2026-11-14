@@ -14,6 +14,8 @@ struct EditHistory {
 
     private(set) var undoStack: [TextEdit] = []
     private(set) var redoStack: [TextEdit] = []
+    /// The text field these edits belong to (`documentIdentifier`).
+    private(set) var document: UUID?
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
@@ -61,7 +63,19 @@ struct EditHistory {
     mutating func clear() {
         undoStack.removeAll()
         redoStack.removeAll()
+        document = nil
     }
+
+    /// Another text field starts an empty history.
+    mutating func bind(to document: UUID?) {
+        if document != self.document {
+            clear()
+            self.document = document
+        }
+    }
+
+    /// Edits apply only in the field that made them, and only when the system names that field.
+    func allows(document: UUID?) -> Bool { document != nil && document == self.document }
 
     private static func isBlank(_ text: String) -> Bool {
         text.contains { $0.isWhitespace }

@@ -78,11 +78,39 @@ final class EditHistoryTests: XCTestCase {
         XCTAssertFalse(history.canRedo)
     }
 
-    func testLevelEncodingClampsAndRoundTrips() {
-        XCTAssertEqual(FlowLevel.decode(FlowLevel.encode(0.5)), 0.5, accuracy: 0.001)
-        XCTAssertEqual(FlowLevel.encode(7), 1000)
+    func testAnotherDocumentClearsTheHistoryAndUndoNeedsTheSameDocument() {
+        let first = UUID(), second = UUID()
+        var history = EditHistory()
+        history.bind(to: first)
+        history.record(added: "hi", removed: "")
+        XCTAssertTrue(history.allows(document: first))
+        XCTAssertFalse(history.allows(document: second))
+        XCTAssertFalse(history.allows(document: nil))
+        history.bind(to: first)
+        XCTAssertTrue(history.canUndo)
+        history.bind(to: second)
+        XCTAssertFalse(history.canUndo)
+        XCTAssertFalse(history.canRedo)
+        XCTAssertFalse(history.allows(document: first))
+    }
+
+    func testAnUnnamedDocumentNeverAllowsUndo() {
+        var history = EditHistory()
+        history.bind(to: nil)
+        history.record(added: "hi", removed: "")
+        XCTAssertFalse(history.allows(document: nil))
+        history.clear()
+        XCTAssertFalse(history.canUndo)
+    }
+
+    func testLevelUsesAFewCoarseStepsAndRoundTrips() {
+        XCTAssertEqual(FlowLevel.encode(7), UInt8(FlowLevel.steps))
         XCTAssertEqual(FlowLevel.encode(-1), 0)
-        XCTAssertEqual(FlowLevel.decode(99_999), 1)
+        XCTAssertEqual(FlowLevel.encode(0.5), 4)
+        XCTAssertEqual(FlowLevel.decode(0), 0)
+        XCTAssertEqual(FlowLevel.decode(UInt8(FlowLevel.steps)), 1)
+        XCTAssertEqual(FlowLevel.decode(200), 1)
+        XCTAssertEqual(Set((0...100).map { FlowLevel.encode(Double($0) / 100) }).count, FlowLevel.steps + 1)
         XCTAssertEqual(FlowLevel.normalized(decibels: -80), 0)
         XCTAssertEqual(FlowLevel.normalized(decibels: 0), 1)
         XCTAssertLessThan(FlowLevel.normalized(decibels: -40), FlowLevel.normalized(decibels: -20))
