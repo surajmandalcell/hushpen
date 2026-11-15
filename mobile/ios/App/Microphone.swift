@@ -5,6 +5,7 @@ import OSLog
 @MainActor
 final class Microphone: NSObject, AVAudioRecorderDelegate {
     private var recorder: AVAudioRecorder?
+    private var holder: AVAudioEngine?
     var failed: ((String) -> Void)?
     var finished: (() -> Void)?
     private var interruption: NSObjectProtocol?
@@ -62,13 +63,37 @@ final class Microphone: NSObject, AVAudioRecorderDelegate {
         }
     }
 
-    /// Stops the recorder. The audio session stays active, which keeps iOS from suspending a background app; `release()` ends it.
-    func stop() {
+    /// Ends the take and closes its file. With `keepAlive`, the microphone stays open (its sound is thrown away) until
+    /// `release()`: iOS keeps a background app running only while it records, and a background task ends after
+    /// about 30 seconds, which a slow CPU transcription can pass.
+    func stop(keepAlive: Bool = false) {
         stopMeter()
-        guard recorder != nil else { return }
-        recorder?.delegate = nil
-        recorder?.stop()
-        recorder = nil
+        guard let recorder else { return }
+        // The open microphone must start before the take stops, while the app still records in the background.
+        if keepAlive { holdMicrophone() }
+        recorder.delegate = nil
+        recorder.stop()
+        self.recorder = nil
+    }
+
+    /// Whether the microphone stays open after the take, to keep the app running.
+    var holdingMicrophone: Bool { holder != nil }
+
+    /// Runs on the audio thread, so it must not inherit the main actor (Swift traps on that).
+    private nonisolated static func discard(_: AVAudioPCMBuffer, _: AVAudioTime) {}
+
+    private func holdMicrophone() {
+        guard holder == nil else { return }
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        input.installTap(onBus: 0, bufferSize: 4_096, format: input.outputFormat(forBus: 0), block: Self.discard)
+        do {
+            try engine.start()
+            holder = engine
+        } catch {
+            input.removeTap(onBus: 0)
+            Logger(subsystem: "com.mandalsuraj.hushpen", category: "Microphone").error("Microphone hold did not start: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Sends the loudness to the keyboard about 12 times a second while the take runs.
@@ -107,6 +132,11 @@ final class Microphone: NSObject, AVAudioRecorderDelegate {
     #endif
 
     func release() {
+        if let holder {
+            holder.inputNode.removeTap(onBus: 0)
+            holder.stop()
+            self.holder = nil
+        }
         guard sessionActive else { return }
         sessionActive = false
         do { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
