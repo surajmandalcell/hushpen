@@ -147,7 +147,8 @@ final class DictationModel {
         if active || !busy || state == "listening" { endBackgroundTask(); return }
         guard backgroundTask == .invalid else { return }
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Dictation") { [weak self] in
-            Task { @MainActor in self?.abort(failure: keyboardNotice("BACKGROUND_TIME")) }
+            // iOS ends the app if the task is still open when this returns, so the failure is written now.
+            MainActor.assumeIsolated { self?.abort(failure: keyboardNotice("BACKGROUND_TIME")) }
         }
     }
 
@@ -206,8 +207,8 @@ final class DictationModel {
             try microphone.start(url: file)
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: file.path)
         case let .stopCapture(session, keep):
-            // The audio session stays active while the text is made: that keeps iOS from suspending the app in the background.
-            microphone.stop()
+            // The microphone stays open until the text goes in: that keeps iOS from suspending the app in the background.
+            microphone.stop(keepAlive: keep)
             notes[session]?.stoppedAt = Date()
             if keep, let flow { try store.stop(id: flow.id) }
             if !keep {

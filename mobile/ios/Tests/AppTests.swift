@@ -287,4 +287,13 @@ final class AppTests: XCTestCase {
         microphone.audioRecorderEncodeErrorDidOccur(oldRecorder, error: nil)
         await fulfillment(of: [finished, failed], timeout: 0.1)
     }
+
+    /// The microphone stays open after a take only to keep the app running; with no take there is nothing to keep.
+    func testMicrophoneHoldsOnlyAfterALiveTake() {
+        let microphone = Microphone()
+        microphone.stop(keepAlive: true)
+        XCTAssertFalse(microphone.holdingMicrophone)
+        microphone.release()
+        XCTAssertFalse(microphone.holdingMicrophone)
+    }
 }
