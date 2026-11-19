@@ -1,5 +1,5 @@
 # Installs the latest Hushpen release for the current Windows user:
-#   irm https://samhq.app/install.ps1 | iex
+#   irm https://hushpen.samhq.app/install.ps1 | iex
 # HUSHPEN_NO_OPEN=1 skips opening the app.
 function Install-Hushpen {
     $ErrorActionPreference = 'Stop'

@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn only_web_and_settings_urls_are_allowed() {
         for url in [
-            "https://samhq.app",
+            "https://hushpen.samhq.app",
             "HTTP://localhost",
             "ms-settings:privacy-microphone",
         ] {
