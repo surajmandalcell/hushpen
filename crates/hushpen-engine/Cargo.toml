@@ -23,6 +23,7 @@ hushpen-remote.workspace = true
 hushpen-store.workspace = true
 hound.workspace = true
 serde_json.workspace = true
+sys-locale.workspace = true
 whisper-rs.workspace = true
 whisper-rs-sys.workspace = true
 

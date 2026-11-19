@@ -7,7 +7,7 @@ use crate::mic::CaptureState;
 use gpui_kit::Context;
 use hushpen_core::error::ENGINE_NO_SPEECH;
 use hushpen_core::onboarding::{self as rules, Heard, MicVerdict};
-use hushpen_engine::{JobOutcome, TranscribeSpec};
+use hushpen_engine::{JobOutcome, TranscribeSpec, dictation_language};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -164,6 +164,7 @@ impl Onboarding {
 
     /// Turns the test recording into words on a worker thread, then deletes it.
     fn transcribe(&mut self, wav: PathBuf, cx: &mut Context<Self>) {
+        let model = self.model_id(cx);
         let (run, spawn, language) = {
             let controller = self.controller.read(cx);
             (
@@ -174,7 +175,7 @@ impl Onboarding {
         };
         let spec = TranscribeSpec {
             wav_path: wav.clone(),
-            language: (language != hushpen_core::language::AUTO).then_some(language),
+            language: dictation_language(&model, &language),
             prompt: None,
         };
         let messages = self.messages.clone();

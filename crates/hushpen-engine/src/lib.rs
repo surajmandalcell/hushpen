@@ -32,6 +32,7 @@ mod worker_manager;
 
 pub use asr::{
     AsrEngine, CancelFlag, EngineError, LoadOptions, Segment, TranscribeOptions, Transcript,
+    dictation_language,
 };
 pub use client::{
     ChildSpec, EngineClient, EngineState, Failure, ImportProgress, ImportSpec, JobHandle,

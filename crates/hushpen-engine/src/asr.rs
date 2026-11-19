@@ -1,10 +1,41 @@
 //! The speech recognition seam: a trait the engine child and the tests share.
 
+use hushpen_core::{catalog, language};
 use std::fmt;
 
 pub use hushpen_core::cancel::CancelFlag;
 use hushpen_core::error;
 pub use hushpen_core::protocol::Segment;
+
+/// Resolve dictation Auto on the device that owns the user's language preferences.
+pub fn dictation_language(model: &str, setting: &str) -> Option<String> {
+    select_dictation_language(model, setting, sys_locale::get_locale)
+}
+
+fn select_dictation_language(
+    model: &str,
+    setting: &str,
+    locale: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    if setting != language::AUTO {
+        return Some(setting.to_owned());
+    }
+    if !catalog::embedded()
+        .whisper(model)
+        .is_some_and(|entry| entry.languages == catalog::Languages::Multilingual)
+    {
+        return None;
+    }
+    let locale = locale()?;
+    let code = locale.split('-').next()?.to_ascii_lowercase();
+    let code = match code.as_str() {
+        "nb" => "no",
+        "fil" => "tl",
+        "jv" => "jw",
+        code => code,
+    };
+    language::name(code).map(|_| code.to_owned())
+}
 
 /// The full result of one job.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +208,20 @@ pub trait AsrEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whisper_dictation_auto_uses_the_locale_when_whisper_supports_it() {
+        let choose = |model, setting, locale| {
+            select_dictation_language(model, setting, || Some(String::from(locale)))
+        };
+        let whisper = "base-q5_1";
+        assert_eq!(choose(whisper, "auto", "en-IN").as_deref(), Some("en"));
+        assert_eq!(choose(whisper, "auto", "pt-BR").as_deref(), Some("pt"));
+        assert_eq!(choose(whisper, "auto", "nb-NO").as_deref(), Some("no"));
+        assert_eq!(choose(whisper, "ja", "en-IN").as_deref(), Some("ja"));
+        assert_eq!(choose(whisper, "auto", "xx-XX"), None);
+        assert_eq!(choose(catalog::SPEECH_DEFAULT, "auto", "en-IN"), None);
+    }
 
     #[test]
     fn cancel_flag_clones_share_state() {
