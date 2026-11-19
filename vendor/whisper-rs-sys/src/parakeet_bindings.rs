@@ -120,6 +120,42 @@ unsafe extern "C" {
     pub fn parakeet_log_set(callback: ggml_log_callback, user_data: *mut ::std::os::raw::c_void);
 }
 
+#[repr(C)]
+pub struct hushpen_unified_model {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+pub struct hushpen_unified_stream {
+    _unused: [u8; 0],
+}
+unsafe extern "C" {
+    pub fn hushpen_unified_load(
+        path: *const ::std::os::raw::c_char,
+        use_gpu: bool,
+        n_threads: ::std::os::raw::c_int,
+    ) -> *mut hushpen_unified_model;
+    pub fn hushpen_unified_free(model: *mut hushpen_unified_model);
+    pub fn hushpen_unified_gpu(model: *const hushpen_unified_model) -> bool;
+    pub fn hushpen_unified_error() -> *const ::std::os::raw::c_char;
+    pub fn hushpen_unified_batch(
+        model: *mut hushpen_unified_model,
+        pcm: *const f32,
+        n: ::std::os::raw::c_int,
+        lang: *const ::std::os::raw::c_char,
+    ) -> *const ::std::os::raw::c_char;
+    pub fn hushpen_unified_begin(
+        model: *mut hushpen_unified_model,
+        lang: *const ::std::os::raw::c_char,
+    ) -> *mut hushpen_unified_stream;
+    pub fn hushpen_unified_feed(
+        stream: *mut hushpen_unified_stream,
+        pcm: *const f32,
+        n: ::std::os::raw::c_int,
+    ) -> *const ::std::os::raw::c_char;
+    pub fn hushpen_unified_finish(stream: *mut hushpen_unified_stream) -> *const ::std::os::raw::c_char;
+    pub fn hushpen_unified_stream_free(stream: *mut hushpen_unified_stream);
+}
+
 #[cfg(target_pointer_width = "64")]
 const _: () = {
     assert!(::std::mem::size_of::<parakeet_context_params>() == 8);

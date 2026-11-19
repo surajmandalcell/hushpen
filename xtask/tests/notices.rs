@@ -15,7 +15,7 @@ fn notices() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
-const SECTIONS: [(&str, &str); 16] = [
+const SECTIONS: [(&str, &str); 17] = [
     ("whisper-cpp", "whisper.cpp"),
     ("llama-cpp", "llama.cpp"),
     ("ggml", "ggml"),
@@ -28,6 +28,7 @@ const SECTIONS: [(&str, &str); 16] = [
     ("inter", "Inter"),
     ("whisper-models", "Whisper models"),
     ("parakeet-model", "Parakeet speech model"),
+    ("nemotron-unified", "Nemotron Labs Unified speech model"),
     ("silero-vad", "Silero VAD"),
     ("llm-models", "LLM models"),
     ("kokoro-model", "Kokoro voice model"),

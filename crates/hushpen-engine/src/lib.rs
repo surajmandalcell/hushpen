@@ -21,6 +21,8 @@ mod pageout;
 mod pause_bench;
 pub mod server;
 mod tts_client;
+#[allow(unsafe_code)]
+mod unified;
 mod vad;
 mod wav;
 mod windows;
@@ -31,8 +33,8 @@ mod worker;
 mod worker_manager;
 
 pub use asr::{
-    AsrEngine, CancelFlag, EngineError, LoadOptions, Segment, TranscribeOptions, Transcript,
-    dictation_language,
+    AsrEngine, CancelFlag, EngineError, LoadOptions, PcmSource, Segment, TranscribeOptions,
+    Transcript, dictation_language,
 };
 pub use client::{
     ChildSpec, EngineClient, EngineState, Failure, ImportProgress, ImportSpec, JobHandle,

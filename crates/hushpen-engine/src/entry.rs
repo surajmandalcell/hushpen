@@ -2,7 +2,7 @@
 //!
 //! No arguments serves the frame protocol on stdin and stdout. `--smoke <wav> --model <ggml file>`
 //! transcribes one file, prints the result, and exits; it opens no window and no data folder.
-//! Both load Parakeet for a `ggml-parakeet*` file and Whisper for any other.
+//! Both use the same model loader as the app.
 
 use crate::asr::{AsrEngine, CancelFlag, EngineError, LoadOptions, TranscribeOptions};
 use crate::parakeet::ParakeetEngine;
@@ -58,11 +58,23 @@ fn load_speech_model(
     model: &Path,
     options: LoadOptions,
 ) -> Result<Box<dyn AsrEngine>, EngineError> {
-    if is_parakeet(model) {
-        ParakeetEngine::load(model, options).map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
-    } else {
-        WhisperEngine::load(model, options).map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
+    load_with_detector(model, options, None)
+}
+
+fn load_with_detector(
+    model: &Path,
+    options: LoadOptions,
+    detector: Option<&Path>,
+) -> Result<Box<dyn AsrEngine>, EngineError> {
+    if crate::server::model_name(model) == hushpen_core::catalog::SPEECH_UNIFIED {
+        return Ok(Box::new(crate::unified::Unified::load(model, options)?));
     }
+    Ok(match (is_parakeet(model), detector) {
+        (true, Some(vad)) => Box::new(ParakeetEngine::load_with_detector(model, options, vad)?),
+        (true, None) => Box::new(ParakeetEngine::load(model, options)?),
+        (false, Some(vad)) => Box::new(WhisperEngine::load_with_detector(model, options, vad)?),
+        (false, None) => Box::new(WhisperEngine::load(model, options)?),
+    })
 }
 
 /// Uses the same speech loader for child processes and phone threads.
@@ -78,15 +90,8 @@ pub fn server_config() -> ServerConfig {
 /// Phone bundles supply their extracted detector without changing process resources.
 pub fn server_config_with_detector(detector: PathBuf) -> ServerConfig {
     let mut config = server_config();
-    config.loader = Arc::new(move |model, options| {
-        if is_parakeet(model) {
-            ParakeetEngine::load_with_detector(model, options, &detector)
-                .map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
-        } else {
-            WhisperEngine::load_with_detector(model, options, &detector)
-                .map(|engine| Box::new(engine) as Box<dyn AsrEngine>)
-        }
-    });
+    config.loader =
+        Arc::new(move |model, options| load_with_detector(model, options, Some(&detector)));
     config
 }
 

@@ -41,6 +41,23 @@ extern "C" {
     struct parakeet_state;
     struct parakeet_full_params;
 
+    // Unified RNNT, 16 kHz mono float PCM. One caller at a time per model.
+    // The model must outlive its streams. Null means failure. Error text is
+    // thread-local; other strings are borrowed until the next call on the handle.
+    struct hushpen_unified_model;
+    struct hushpen_unified_stream;
+    PARAKEET_API struct hushpen_unified_model * hushpen_unified_load(const char * path, bool use_gpu, int n_threads);
+    PARAKEET_API bool hushpen_unified_gpu(const struct hushpen_unified_model * model);
+    PARAKEET_API void hushpen_unified_free(struct hushpen_unified_model * model);
+    PARAKEET_API const char * hushpen_unified_error(void);
+    // Batch and finish return JSON with full text and timed words (seconds).
+    PARAKEET_API const char * hushpen_unified_batch(struct hushpen_unified_model * model, const float * pcm, int n, const char * lang);
+    PARAKEET_API struct hushpen_unified_stream * hushpen_unified_begin(struct hushpen_unified_model * model, const char * lang);
+    // Feed returns only newly committed UTF-8 text, or the empty string.
+    PARAKEET_API const char * hushpen_unified_feed(struct hushpen_unified_stream * stream, const float * pcm, int n);
+    PARAKEET_API const char * hushpen_unified_finish(struct hushpen_unified_stream * stream);
+    PARAKEET_API void hushpen_unified_stream_free(struct hushpen_unified_stream * stream);
+
     typedef int32_t parakeet_pos;
     typedef int32_t parakeet_token;
     typedef int32_t parakeet_seq_id;

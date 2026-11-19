@@ -113,6 +113,15 @@ pub const SECTIONS: &[Section] = &[
         texts: &["packaging/licenses/manual/cc-by-4.0.txt"],
     },
     Section {
+        id: "nemotron-unified",
+        title: "Nemotron Labs Unified speech model",
+        note: "Hushpen downloads mudler's Q8_0 conversion of NVIDIA Nemotron Labs Unified ASR 0.6B on request. It runs in parakeet.cpp (https://github.com/mudler/parakeet.cpp). The runtime license, converter's notice, and model license follow.",
+        texts: &[
+            "vendor/whisper-rs-sys/whisper.cpp/src/unified/LICENSE",
+            "packaging/licenses/manual/nemotron-unified.txt",
+        ],
+    },
+    Section {
         id: "silero-vad",
         title: "Silero VAD",
         note: "Voice activity detector, bundled for dictation and file transcription. Silero Team, MIT license. Model v5.1.2, converted by ggml-org: https://huggingface.co/ggml-org/whisper-vad (revision 9ffd54a1e1ee413ddf265af9913beaf518d1639b). https://github.com/snakers4/silero-vad",
@@ -259,7 +268,7 @@ mod tests {
     fn section_ids_are_unique() {
         let ids: BTreeSet<_> = SECTIONS.iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), SECTIONS.len());
-        assert_eq!(SECTIONS.len(), 17);
+        assert_eq!(SECTIONS.len(), 18);
     }
 
     #[test]

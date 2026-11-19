@@ -22,7 +22,7 @@ include = [
     "whisper.cpp/CMakeLists.txt",
     "whisper.cpp/cmake",
     "whisper.cpp/src/**",
-    "whisper.cpp/include/whisper.h",
+    "whisper.cpp/include/*.h",
     "whisper.cpp/ggml/cmake",
     "whisper.cpp/ggml/CMakeLists.txt",
     "whisper.cpp/ggml/src/**",
