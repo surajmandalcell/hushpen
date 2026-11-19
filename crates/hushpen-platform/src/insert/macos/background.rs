@@ -187,7 +187,7 @@ fn app(pid: i32) -> Result<CFType, Miss> {
 }
 
 /// The focused element of the app `pid`, which the app keeps while it is in the background.
-fn focused(pid: i32) -> Result<CFType, Miss> {
+pub(super) fn focused(pid: i32) -> Result<CFType, Miss> {
     let focused = attribute(&app(pid)?, FOCUSED_ELEMENT).ok_or(Miss::NoFocusedElement)?;
     with_timeout(&focused, AX_TIMEOUT_SECONDS);
     Ok(focused)
