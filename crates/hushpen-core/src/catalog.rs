@@ -114,9 +114,10 @@ impl ModelFile {
 pub struct ModelInfo {
     /// One line: what the model is.
     pub description: String,
-    /// From 1, the slowest, to 5, the fastest, against the other models of its kind.
+    /// In half dots, from 1 (half a dot, the slowest) to 10 (five dots, the fastest). The
+    /// catalog writes dots, such as `4.5`, from the benchmark mapping in DESIGN.md.
     pub speed: u8,
-    /// From 1 to 5, the most accurate, against the other models of its kind.
+    /// In half dots, from 1 to 10 (five dots, the most accurate), like [`ModelInfo::speed`].
     pub accuracy: u8,
     /// How most weights are stored, by the name whisper.cpp, llama.cpp, or ONNX gives it: `F16`,
     /// `Q5_1`, `Q4_K_M`, `INT8`.
@@ -467,12 +468,14 @@ fn parse_pin(item: &Value, id: &str) -> Result<OldPin, String> {
 }
 
 fn parse_info(item: &Value, id: &str) -> Result<ModelInfo, String> {
+    // Dots from 0.5 to 5 in half steps, kept as half dots.
     let scale = |key: &str| {
         item.get(key)
-            .and_then(Value::as_u64)
-            .filter(|value| (1..=5).contains(value))
-            .map(|value| value as u8)
-            .ok_or_else(|| format!("model `{id}` needs a `{key}` from 1 to 5"))
+            .and_then(Value::as_f64)
+            .map(|dots| dots * 2.0)
+            .filter(|halves| halves.fract() == 0.0 && (1.0..=10.0).contains(halves))
+            .map(|halves| halves as u8)
+            .ok_or_else(|| format!("model `{id}` needs a `{key}` from 0.5 to 5 in half steps"))
     };
     let bytes = |key: &str| {
         item.get(key)

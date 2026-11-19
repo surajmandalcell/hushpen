@@ -81,6 +81,12 @@ impl Models {
         self.after_open(opened, "the source page", cx);
     }
 
+    /// Opens the benchmark page, which has the numbers behind the dots, in the browser.
+    pub fn open_benchmarks(&mut self, cx: &mut Context<Self>) {
+        let opened = self.opener.open_url(hushpen_core::links::BENCHMARKS_URL);
+        self.after_open(opened, "the benchmark page", cx);
+    }
+
     /// Opens the folder of the model, or the closest folder above it that exists yet.
     pub fn show_files(&mut self, cx: &mut Context<Self>) {
         let Some(folder) = self

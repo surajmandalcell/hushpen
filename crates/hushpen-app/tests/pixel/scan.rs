@@ -83,6 +83,8 @@ fn color_owners(nodes: &[Node]) -> Vec<(String, Rect)> {
         let allowed = (node.is("Button") && node.rect.w < WIDEST_BUTTON)
             || node.is("Link")
             || node.is("Slider")
+            // The Accuracy meter of a model fills its dots in the accent.
+            || node.is("Meter")
             || node.is("Status")
             || (node.is("Switch") && node.checked == Some(true))
             || node.focused
