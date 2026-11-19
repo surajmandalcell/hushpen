@@ -973,13 +973,12 @@ mod button_tests {
     }
 
     /// Checks each row of `rows`, given as the part name of its last button and how many buttons
-    /// it has, against a group of `widest` buttons: the last button ends at the row padding, the
-    /// others follow Details with no hole, and the size column ends where the group begins.
+    /// it has: the last button ends at the row padding, the others follow Details with no hole,
+    /// and the size ends right before Details.
     fn assert_packed_right(
         cx: &mut TestAppContext,
         handle: AnyWindowHandle,
         rows: &[(&str, usize)],
-        widest: usize,
     ) {
         let gap = px(crate::theme::size::MODEL_ICON_GAP);
         let side = px(crate::theme::size::BUTTON_HEIGHT);
@@ -1013,11 +1012,8 @@ mod button_tests {
             }
             let size = bounds(cx, handle, &format!("models.size.{index}"));
             assert!(
-                near(
-                    size.right() + px(crate::theme::space::SM),
-                    last.right() - group(widest)
-                ),
-                "row {index}: the size column ends where the widest group begins"
+                near(size.right() + px(crate::theme::space::SM), info.left()),
+                "row {index}: the size sits right before Details, with no hole"
             );
         }
     }
@@ -1035,12 +1031,7 @@ mod button_tests {
         let handle = window(cx, &rig);
         let gap = px(crate::theme::size::MODEL_ICON_GAP);
 
-        assert_packed_right(
-            cx,
-            handle,
-            &[("delete", 2), ("delete", 3), ("download", 2)],
-            3,
-        );
+        assert_packed_right(cx, handle, &[("delete", 2), ("delete", 3), ("download", 2)]);
         let info = bounds(cx, handle, "models.info.1");
         let select = bounds(cx, handle, "models.select.1");
         assert!(near(select.left(), info.right() + gap));
@@ -1051,7 +1042,7 @@ mod button_tests {
     }
 
     #[gpui_kit::test]
-    fn the_button_group_is_as_wide_as_the_most_buttons_a_row_has_now(cx: &mut TestAppContext) {
+    fn rows_of_two_buttons_pack_right_with_the_size_beside_them(cx: &mut TestAppContext) {
         // alpha is the default and no row has a star, so no row has more than two buttons.
         let rig = super::rig(cx, &[("alpha", ALPHA)], Some("alpha"), instant());
         settle(cx, &rig);
@@ -1061,7 +1052,6 @@ mod button_tests {
             cx,
             handle,
             &[("delete", 2), ("download", 2), ("download", 2)],
-            2,
         );
     }
 }
