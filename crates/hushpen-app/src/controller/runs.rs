@@ -17,6 +17,10 @@ pub(super) struct Run {
     /// on its worker thread before it reads the file.
     pub stopping: Option<Detached>,
     pub live: Option<Live>,
+    pub draft: Option<super::live::Draft>,
+    pub writer: Option<super::live::Writer>,
+    /// Only this suffix may reach the clipboard if the fallback paste lacks permission.
+    pub remainder: Option<String>,
     pub partial: Option<String>,
     pub cancel: Option<Arc<CancelToken>>,
     pub ai_cancel: Option<Arc<CancelToken>>,
@@ -43,6 +47,19 @@ pub(super) struct Live {
 }
 
 impl Run {
+    pub(super) fn stop_writer(&mut self) {
+        if let Some(writer) = self.writer.take() {
+            self.draft = writer.stop();
+        }
+    }
+
+    pub(super) fn cancel_draft(&mut self) {
+        self.stop_writer();
+        if let Some(draft) = &mut self.draft {
+            draft.cancel();
+        }
+    }
+
     pub(super) fn cancel_live(&mut self) {
         if self.live.take().is_some()
             && let Some(token) = self.cancel.take()
