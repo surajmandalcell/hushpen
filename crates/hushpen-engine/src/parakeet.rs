@@ -254,6 +254,14 @@ impl AsrEngine for ParakeetEngine {
         if options.translate {
             return Err(EngineError::TranslateUnsupported);
         }
+        // Set to print the native time split (mel, encoder, joint, predictor) of each job to stderr.
+        let timings = std::env::var_os("HUSHPEN_PARAKEET_TIMINGS").is_some();
+        if timings {
+            // SAFETY: `self` owns the context and the state.
+            unsafe {
+                ffi::parakeet_reset_timings_with_state(self.context.as_ptr(), self.state.as_ptr());
+            }
+        }
         let mut input = Windows::new(source);
         let mut segments = Vec::new();
         while let Some((window, pcm)) = input.next(cancel)? {
@@ -261,6 +269,14 @@ impl AsrEngine for ParakeetEngine {
             segments.extend(windows::own_segments(&window, words));
             let last = window.keep_to == usize::MAX;
             progress(if last { 1.0 } else { input.fraction_read() });
+        }
+        if timings {
+            // SAFETY: as above. The default logger prints the info lines the quiet one drops.
+            unsafe {
+                ffi::parakeet_log_set(None, std::ptr::null_mut());
+                ffi::parakeet_print_timings_with_state(self.context.as_ptr(), self.state.as_ptr());
+            }
+            crate::whisper::quiet_native_logs();
         }
         let segments = windows::clip_to_audio(segments, input.audio_len());
         let text = segments
