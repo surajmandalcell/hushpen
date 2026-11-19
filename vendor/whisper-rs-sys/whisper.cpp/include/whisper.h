@@ -388,6 +388,12 @@ extern "C" {
                                int   n_threads,
                              float * lang_probs);
 
+    // Set a one-shot selector from the encoder-begin callback before full auto-detection.
+    // The selector returns a language id or a negative number to keep the detected id.
+    typedef int (*whisper_language_selector)(int detected, const float * probs, int count, void * user_data);
+    WHISPER_API void whisper_set_language_selector(
+            struct whisper_state * state, whisper_language_selector selector, void * user_data);
+
     WHISPER_API int whisper_n_len           (struct whisper_context * ctx); // mel length
     WHISPER_API int whisper_n_len_from_state(struct whisper_state * state); // mel length
     WHISPER_API int whisper_n_vocab         (struct whisper_context * ctx);

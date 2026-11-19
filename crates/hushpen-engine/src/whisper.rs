@@ -8,10 +8,12 @@ use std::ffi::c_void;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use hushpen_core::language;
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
     get_lang_id, get_lang_str,
 };
+use whisper_rs_sys::{whisper_context, whisper_set_language_selector, whisper_state};
 
 use crate::asr::{
     AsrEngine, CancelFlag, EngineError, LoadOptions, PcmSource, Segment, TranscribeOptions,
@@ -22,6 +24,53 @@ use crate::windows::{self, Windows};
 extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
     // SAFETY: `user_data` is the `AtomicBool` of a `CancelFlag` that outlives the `full()` call.
     unsafe { (*(user_data as *const AtomicBool)).load(Ordering::Relaxed) }
+}
+
+// On Whisper Base, English scored at least 6.1% for the accent errors and under 2% for Hindi.
+const MIN_PREFERRED_LANGUAGE_PROBABILITY: f32 = 0.05;
+
+fn choose_auto_language(detected: i32, probs: &[f32], preferred: &[i32]) -> i32 {
+    if preferred.contains(&detected) {
+        return detected;
+    }
+    preferred
+        .iter()
+        .rev()
+        .filter_map(|&id| probs.get(id as usize).map(|&score| (id, score)))
+        .filter(|&(_, score)| score > MIN_PREFERRED_LANGUAGE_PROBABILITY)
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map_or(detected, |(id, _)| id)
+}
+
+struct LanguageSelection<'a> {
+    preferred: &'a [i32],
+    installed: bool,
+}
+
+extern "C" fn install_language_selector(
+    _context: *mut whisper_context,
+    state: *mut whisper_state,
+    data: *mut c_void,
+) -> bool {
+    // SAFETY: this callback only runs inside the full() call that borrows this selection.
+    let selection = unsafe { &mut *data.cast::<LanguageSelection<'_>>() };
+    if !std::mem::replace(&mut selection.installed, true) {
+        // SAFETY: Whisper clears the selector before running detection in this call.
+        unsafe { whisper_set_language_selector(state, Some(select_language), data) };
+    }
+    true
+}
+
+extern "C" fn select_language(
+    detected: i32,
+    probs: *const f32,
+    len: i32,
+    data: *mut c_void,
+) -> i32 {
+    // SAFETY: Whisper passes its live probability array and the selection installed above.
+    let probs = unsafe { std::slice::from_raw_parts(probs, len as usize) };
+    let selection = unsafe { &*data.cast::<LanguageSelection<'_>>() };
+    choose_auto_language(detected, probs, selection.preferred)
 }
 
 extern "C" fn native_log(
@@ -155,7 +204,9 @@ impl AsrEngine for WhisperEngine {
         if cancel.is_cancelled() {
             return Err(EngineError::Cancelled);
         }
-        let language = options.language.as_deref().filter(|code| *code != "auto");
+        let language = options.language.as_deref();
+        let preferences = language.and_then(language::auto_preferences);
+        let language = language.filter(|&code| code != language::AUTO && preferences.is_none());
         if let Some(code) = language
             && get_lang_id(code).is_none()
         {
@@ -171,6 +222,12 @@ impl AsrEngine for WhisperEngine {
         } else {
             Some("en")
         };
+        let preferred: Vec<_> = preferences
+            .into_iter()
+            .flat_map(|codes| codes.split(','))
+            .filter(|code| language::name(code).is_some())
+            .filter_map(get_lang_id)
+            .collect();
 
         let mut segments = Vec::new();
         let mut detected = language.map(str::to_owned);
@@ -190,7 +247,7 @@ impl AsrEngine for WhisperEngine {
                 );
             }
             let (found, language_used) =
-                self.run_window(pcm, detected.as_deref(), options, cancel)?;
+                self.run_window(pcm, detected.as_deref(), &preferred, options, cancel)?;
             // Later windows reuse the language of the first one instead of detecting again.
             if !found.is_empty() {
                 detected.get_or_insert(language_used);
@@ -220,6 +277,7 @@ impl WhisperEngine {
         &mut self,
         pcm: &[f32],
         language: Option<&str>,
+        preferred: &[i32],
         options: &TranscribeOptions,
         cancel: &CancelFlag,
     ) -> Result<(Vec<Segment>, String), EngineError> {
@@ -239,6 +297,19 @@ impl WhisperEngine {
         params.set_print_timestamps(false);
         if let Some(prompt) = options.prompt.as_deref().filter(|p| !p.is_empty()) {
             params.set_initial_prompt(prompt);
+        }
+        let mut selection = LanguageSelection {
+            preferred,
+            installed: false,
+        };
+        if language.is_none() && !selection.preferred.is_empty() {
+            // SAFETY: the synchronous full() call below returns before selection goes out of scope.
+            unsafe {
+                params.set_start_encoder_callback(Some(install_language_selector));
+                params.set_start_encoder_callback_user_data(
+                    std::ptr::from_mut(&mut selection).cast(),
+                );
+            }
         }
         // SAFETY: the pointer is the flag inside `cancel`, which this call borrows until
         // `full()` returns; whisper reads it only during `full()`.
@@ -286,6 +357,19 @@ fn centiseconds_to_ms(value: i64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_prefers_system_languages_when_the_audio_supports_one() {
+        let preferred = [0, 1];
+        assert_eq!(choose_auto_language(2, &[0.1, 0.2, 0.7], &preferred), 1);
+        assert_eq!(choose_auto_language(0, &[0.5, 0.3, 0.2], &preferred), 0);
+        assert_eq!(choose_auto_language(2, &[0.03, 0.02, 0.95], &preferred), 2);
+        assert_eq!(
+            choose_auto_language(2, &[0.005, 0.006, 0.75, 0.239], &preferred),
+            2
+        );
+        assert_eq!(choose_auto_language(2, &[0.1, 0.2, 0.7], &[]), 2);
+    }
 
     #[test]
     fn the_language_picker_list_is_the_list_of_the_linked_whisper() {

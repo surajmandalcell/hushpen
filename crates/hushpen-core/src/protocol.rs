@@ -8,6 +8,7 @@
 //! [`crate::error`] and a `params` object; the UI never matches English text.
 
 use crate::idle::IdleAction;
+use crate::language;
 use serde_json::{Map, Value, json};
 use std::fmt;
 use std::io::{self, Read, Write};
@@ -187,7 +188,7 @@ pub enum Request {
     Transcribe {
         job: u64,
         wav_path: String,
-        /// `None` or `auto` detects the language.
+        /// A fixed language or Auto with optional preferences.
         language: Option<String>,
         prompt: Option<String>,
     },
@@ -238,10 +239,15 @@ impl Request {
                 wav_path,
                 language,
                 prompt,
-            } => json!({
-                "type": "transcribe", "job": job, "wav_path": wav_path,
-                "language": language, "prompt": prompt,
-            }),
+            } => {
+                let preferred = language.as_deref().and_then(language::auto_preferences);
+                // Older workers read a null language as Auto and ignore the preferences.
+                let fixed = language.as_deref().filter(|_| preferred.is_none());
+                json!({
+                    "type": "transcribe", "job": job, "wav_path": wav_path,
+                    "language": fixed, "prompt": prompt, "preferred_languages": preferred,
+                })
+            }
             Self::StartLive {
                 job,
                 wav_path,
@@ -283,7 +289,10 @@ impl Request {
             "transcribe" => Ok(Self::Transcribe {
                 job: fields.u64("job")?,
                 wav_path: fields.string("wav_path")?,
-                language: fields.optional_string("language")?,
+                language: fields.optional_string("language")?.or(fields
+                    .optional_string("preferred_languages")?
+                    .as_deref()
+                    .map(language::auto_with_preferences)),
                 prompt: fields.optional_string("prompt")?,
             }),
             "start_live" => Ok(Self::StartLive {
@@ -721,6 +730,13 @@ mod tests {
 
     #[test]
     fn requests_round_trip_through_json() {
+        let auto = Request::Transcribe {
+            job: 10,
+            wav_path: "/a.wav".into(),
+            language: Some(language::auto_with_preferences("en,ja")),
+            prompt: None,
+        };
+        assert_eq!(auto.to_json()["language"], Value::Null);
         let requests = [
             Request::Hello { protocol: 1 },
             Request::LoadModel {
@@ -743,6 +759,7 @@ mod tests {
                 language: Some("en".into()),
                 prompt: None,
             },
+            auto,
             Request::ImportFile {
                 job: 8,
                 path: "/talks/a.mp3".into(),
