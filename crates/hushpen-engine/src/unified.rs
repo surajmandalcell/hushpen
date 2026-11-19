@@ -42,6 +42,15 @@ impl Drop for Unified {
     }
 }
 
+struct Stream(NonNull<ffi::hushpen_unified_stream>);
+
+impl Drop for Stream {
+    fn drop(&mut self) {
+        // SAFETY: the stream belongs to the live call, whose model still exists.
+        unsafe { ffi::hushpen_unified_stream_free(self.0.as_ptr()) }
+    }
+}
+
 fn last_error() -> String {
     // SAFETY: the runtime owns this thread's nul-terminated error until the next native call.
     let ptr = unsafe { ffi::hushpen_unified_error() };
@@ -106,6 +115,56 @@ fn transcript(json: &str, options: &TranscribeOptions) -> Result<Transcript, Eng
 }
 
 impl AsrEngine for Unified {
+    fn transcribe_live(
+        &mut self,
+        source: &mut dyn PcmSource,
+        options: &TranscribeOptions,
+        cancel: &CancelFlag,
+        partial: &mut dyn FnMut(&str),
+    ) -> Result<Transcript, EngineError> {
+        let lang = language(options)?;
+        // SAFETY: the exclusive model outlives the stream and the native call copies its language.
+        let stream = unsafe { ffi::hushpen_unified_begin(self.model.as_ptr(), lang.as_ptr()) };
+        let stream = Stream(NonNull::new(stream).ok_or_else(|| EngineError::Failed(last_error()))?);
+        let mut pcm = Vec::new();
+        let mut text = String::new();
+        let mut heard_audio = false;
+        loop {
+            if cancel.is_cancelled() {
+                return Err(EngineError::Cancelled);
+            }
+            pcm.clear();
+            let more = source.read(&mut pcm)?;
+            for chunk in pcm.chunks(4096) {
+                if cancel.is_cancelled() {
+                    return Err(EngineError::Cancelled);
+                }
+                heard_audio = true;
+                // SAFETY: the stream and bounded sample slice live through the call.
+                let delta = unsafe {
+                    native_text(ffi::hushpen_unified_feed(
+                        stream.0.as_ptr(),
+                        chunk.as_ptr(),
+                        chunk.len() as i32,
+                    ))?
+                };
+                if !delta.is_empty() {
+                    text.push_str(&delta);
+                    partial(&text);
+                }
+            }
+            if !more {
+                break;
+            }
+        }
+        if !heard_audio {
+            return Err(EngineError::NoAudio);
+        }
+        // SAFETY: the stream is live and this is its only final flush.
+        let json = unsafe { native_text(ffi::hushpen_unified_finish(stream.0.as_ptr()))? };
+        transcript(&json, options)
+    }
+
     fn gpu_in_use(&self) -> bool {
         // SAFETY: the handle is live for the duration of this call.
         unsafe { ffi::hushpen_unified_gpu(self.model.as_ptr()) }

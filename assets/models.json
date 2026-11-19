@@ -35,8 +35,8 @@
       "speed": 3,
       "accuracy": 4,
       "quantization": "Q8_0",
-      "ram_idle_bytes": 1000000000,
-      "ram_peak_bytes": 1500000000,
+      "ram_idle_bytes": 1030000000,
+      "ram_peak_bytes": 1130000000,
       "recommended_for": "Live dictation",
       "source_page": "https://huggingface.co/mudler/parakeet-cpp-gguf"
     },

@@ -23,6 +23,7 @@ use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -52,6 +53,7 @@ type Output = Arc<Mutex<Box<dyn Write + Send>>>;
 struct JobEntry {
     cancel: CancelFlag,
     started: bool,
+    capture_closed: Option<Arc<AtomicBool>>,
 }
 
 type Jobs = Arc<Mutex<HashMap<u64, JobEntry>>>;
@@ -74,6 +76,7 @@ enum Work {
         job: u64,
         wav_path: PathBuf,
         options: TranscribeOptions,
+        capture_closed: Option<Arc<AtomicBool>>,
     },
     Import {
         job: u64,
@@ -191,9 +194,10 @@ fn read_requests(
                 language,
                 prompt,
             } => {
-                if register(jobs, job, output) {
+                if register(jobs, job, output, None) {
                     let _ = work.send(Work::Transcribe {
                         job,
+                        capture_closed: None,
                         wav_path: PathBuf::from(wav_path),
                         options: TranscribeOptions {
                             language,
@@ -203,6 +207,32 @@ fn read_requests(
                     });
                 }
             }
+            Request::StartLive {
+                job,
+                wav_path,
+                language,
+            } => {
+                let closed = Arc::new(AtomicBool::new(false));
+                if register(jobs, job, output, Some(Arc::clone(&closed))) {
+                    let _ = work.send(Work::Transcribe {
+                        job,
+                        wav_path: PathBuf::from(wav_path),
+                        options: TranscribeOptions {
+                            language,
+                            ..Default::default()
+                        },
+                        capture_closed: Some(closed),
+                    });
+                }
+            }
+            Request::FinishLive { job } => {
+                if let Some(closed) = lock(jobs)
+                    .get(&job)
+                    .and_then(|entry| entry.capture_closed.as_ref())
+                {
+                    closed.store(true, Ordering::Release);
+                }
+            }
             Request::ImportFile {
                 job,
                 path,
@@ -210,7 +240,7 @@ fn read_requests(
                 prompt,
                 translate,
             } => {
-                if register(jobs, job, output) {
+                if register(jobs, job, output, None) {
                     let _ = work.send(Work::Import {
                         job,
                         path: PathBuf::from(path),
@@ -233,11 +263,17 @@ fn read_requests(
 }
 
 /// Records a new job. A job id that is already in use is answered with an error and `false`.
-fn register(jobs: &Jobs, job: u64, output: &Output) -> bool {
+fn register(
+    jobs: &Jobs,
+    job: u64,
+    output: &Output,
+    capture_closed: Option<Arc<AtomicBool>>,
+) -> bool {
     let fresh = match lock(jobs).entry(job) {
         Entry::Occupied(_) => false,
         Entry::Vacant(slot) => {
             slot.insert(JobEntry {
+                capture_closed,
                 cancel: CancelFlag::new(),
                 started: false,
             });
@@ -332,9 +368,16 @@ impl Worker {
                     job,
                     wav_path,
                     options,
+                    capture_closed,
                 } => {
                     self.reload_for(&mut held, job);
-                    self.transcribe(held.engine.as_deref_mut(), job, &wav_path, &options);
+                    self.transcribe(
+                        held.engine.as_deref_mut(),
+                        job,
+                        &wav_path,
+                        &options,
+                        capture_closed.as_deref(),
+                    );
                 }
                 Work::Import { job, path, options } => {
                     self.reload_for(&mut held, job);
@@ -487,11 +530,12 @@ impl Worker {
         job: u64,
         wav_path: &Path,
         options: &TranscribeOptions,
+        capture_closed: Option<&AtomicBool>,
     ) {
         let Some(cancel) = self.start(job) else {
             return;
         };
-        let event = self.run_job(engine, job, wav_path, options, &cancel);
+        let event = self.run_job(engine, job, wav_path, options, &cancel, capture_closed);
         lock(&self.jobs).remove(&job);
         send(&self.output, &event);
     }
@@ -511,17 +555,50 @@ impl Worker {
         wav_path: &Path,
         options: &TranscribeOptions,
         cancel: &CancelFlag,
+        capture_closed: Option<&AtomicBool>,
     ) -> Event {
         let Some(engine) = engine else {
             return Event::error(Some(job), error::ENGINE_NO_MODEL, "no model is loaded");
         };
-        let pcm = match wav::read_mono_16k(wav_path) {
-            Ok(pcm) => pcm,
-            Err(detail) => return Event::error(Some(job), error::ENGINE_BAD_AUDIO, detail),
+        let (outcome, samples, decode_ms) = if let Some(closed) = capture_closed {
+            let reader = match hushpen_audio::session::SessionReader::open(wav_path) {
+                Ok(reader) => reader,
+                Err(e) => return Event::error(Some(job), error::ENGINE_BAD_AUDIO, e.to_string()),
+            };
+            let mut source = Recording {
+                reader,
+                closed,
+                cancel,
+                samples: 0,
+                waiting: Duration::ZERO,
+                chunk: Vec::new(),
+            };
+            let started = Instant::now();
+            let result = engine.transcribe_live(&mut source, options, cancel, &mut |text| {
+                send(
+                    &self.output,
+                    &Event::Partial {
+                        job,
+                        text: text.to_owned(),
+                    },
+                );
+            });
+            let decode = started.elapsed().saturating_sub(source.waiting);
+            (result, source.samples, decode.as_millis() as u64)
+        } else {
+            let pcm = match wav::read_mono_16k(wav_path) {
+                Ok(pcm) => pcm,
+                Err(detail) => return Event::error(Some(job), error::ENGINE_BAD_AUDIO, detail),
+            };
+            let started = Instant::now();
+            (
+                engine.transcribe(&pcm, options, cancel),
+                pcm.len() as u64,
+                elapsed_ms(started),
+            )
         };
-        let audio_ms = pcm.len() as u64 * 1000 / u64::from(wav::SAMPLE_RATE);
-        let started = Instant::now();
-        match engine.transcribe(&pcm, options, cancel) {
+        let audio_ms = samples * 1000 / u64::from(wav::SAMPLE_RATE);
+        match outcome {
             Ok(transcript) => {
                 for segment in &transcript.segments {
                     send(
@@ -538,7 +615,7 @@ impl Worker {
                     language: transcript.language,
                     segments: transcript.segments,
                     audio_ms,
-                    ms: elapsed_ms(started),
+                    ms: decode_ms,
                 }
             }
             Err(EngineError::Cancelled) => Event::Cancelled { job },
@@ -548,6 +625,50 @@ impl Worker {
                 failure.to_string(),
             ),
         }
+    }
+}
+
+/// Reaching the current end of a recording means wait until the writer closes it.
+struct Recording<'a> {
+    reader: hushpen_audio::session::SessionReader,
+    closed: &'a AtomicBool,
+    cancel: &'a CancelFlag,
+    samples: u64,
+    waiting: Duration,
+    chunk: Vec<f32>,
+}
+
+impl crate::asr::PcmSource for Recording<'_> {
+    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, EngineError> {
+        loop {
+            if self.cancel.is_cancelled() {
+                return Err(EngineError::Cancelled);
+            }
+            // Read after observing close so the final buffer is always drained.
+            let closed = self.closed.load(Ordering::Acquire);
+            let count =
+                self.reader
+                    .read_chunk(&mut self.chunk)
+                    .map_err(|e| EngineError::Decode {
+                        code: error::ENGINE_BAD_AUDIO,
+                        text: e.to_string(),
+                    })?;
+            if count != 0 {
+                self.samples += count as u64;
+                out.extend_from_slice(&self.chunk);
+                return Ok(true);
+            }
+            if closed {
+                return Ok(false);
+            }
+            let before = Instant::now();
+            thread::sleep(Duration::from_millis(10));
+            self.waiting += before.elapsed();
+        }
+    }
+
+    fn fraction_read(&self) -> f32 {
+        0.0
     }
 }
 
@@ -621,6 +742,24 @@ mod tests {
     impl AsrEngine for Fake {
         fn gpu_in_use(&self) -> bool {
             false
+        }
+
+        fn transcribe_live(
+            &mut self,
+            source: &mut dyn PcmSource,
+            _: &TranscribeOptions,
+            _: &CancelFlag,
+            partial: &mut dyn FnMut(&str),
+        ) -> Result<Transcript, EngineError> {
+            let mut pcm = Vec::new();
+            while source.read(&mut pcm)? {
+                partial(&format!("{} samples", pcm.len()));
+            }
+            Ok(Transcript {
+                text: format!("{} samples", pcm.len()),
+                language: "und".into(),
+                segments: vec![],
+            })
         }
 
         fn page_out(&mut self) -> std::io::Result<u64> {
@@ -815,6 +954,41 @@ mod tests {
                 gpu: false
             }
         );
+        assert_eq!(session.finish(), 0);
+    }
+
+    #[test]
+    fn live_dictation_reports_before_stop_and_drains_the_final_write() {
+        let mut session = Session::start(0);
+        assert!(matches!(session.load("unified"), Event::Loaded { .. }));
+        let path = session.dir.path().join("live.wav");
+        let mut writer = hushpen_audio::session::SessionWriter::create(&path).unwrap();
+        session.send(&Request::StartLive {
+            job: 1,
+            wav_path: path.to_string_lossy().into_owned(),
+            language: None,
+        });
+        writer.write(&[0.25; 16000]).unwrap();
+        let first = session.next();
+        assert!(matches!(first, Event::Partial { job: 1, .. }), "{first:?}");
+        writer.write(&[0.25; 160]).unwrap();
+        writer.finalize().unwrap();
+        session.send(&Request::FinishLive { job: 1 });
+        loop {
+            match session.next() {
+                Event::Partial { job: 1, .. } => {}
+                Event::Result {
+                    job: 1,
+                    text,
+                    audio_ms: 1010,
+                    ..
+                } => {
+                    assert_eq!(text, "16160 samples");
+                    break;
+                }
+                event => panic!("unexpected live event {event:?}"),
+            }
+        }
         assert_eq!(session.finish(), 0);
     }
 

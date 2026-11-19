@@ -176,6 +176,19 @@ pub trait AsrEngine {
     /// True when the model runs on the GPU.
     fn gpu_in_use(&self) -> bool;
 
+    /// Decode a growing microphone recording and report its current text after each change.
+    fn transcribe_live(
+        &mut self,
+        _source: &mut dyn PcmSource,
+        _options: &TranscribeOptions,
+        _cancel: &CancelFlag,
+        _partial: &mut dyn FnMut(&str),
+    ) -> Result<Transcript, EngineError> {
+        Err(EngineError::Failed(
+            "This model does not support live dictation.".into(),
+        ))
+    }
+
     /// Transcribe 16 kHz mono `f32` samples as `source` gives them. Setting `cancel` makes this
     /// return [`EngineError::Cancelled`] within milliseconds. `progress` hears how far the job
     /// is, from 0 to 1, each time a window of the input is done.

@@ -42,6 +42,19 @@ impl Manager {
                     });
                 }
             }
+            Cmd::FinishLive { job } => {
+                if let Some(pending) = self.pending.iter_mut().find(|pending| pending.job == job) {
+                    if let Work::Live { finished, .. } = &mut pending.work {
+                        *finished = true;
+                    }
+                } else if self
+                    .inflight
+                    .get(&job)
+                    .is_some_and(|job| job.partial.is_some())
+                {
+                    self.write(&Request::FinishLive { job });
+                }
+            }
             Cmd::Cancel { job } => self.cancel(job),
             Cmd::Unload => {
                 self.write(&Request::Unload);
@@ -124,6 +137,10 @@ impl Manager {
             job,
             Inflight {
                 reply,
+                partial: match work {
+                    Work::Live { partial, .. } => Some(partial.clone()),
+                    _ => None,
+                },
                 progress,
                 sent: Instant::now(),
                 cancel_deadline: None,
@@ -138,6 +155,11 @@ impl Manager {
                 language: spec.language.clone(),
                 prompt: spec.prompt.clone(),
             },
+            Work::Live { spec, .. } => Request::StartLive {
+                job,
+                wav_path: spec.wav_path.to_string_lossy().into_owned(),
+                language: spec.language.clone(),
+            },
             Work::Import(spec) => Request::ImportFile {
                 job,
                 path: spec.path.to_string_lossy().into_owned(),
@@ -147,5 +169,8 @@ impl Manager {
             },
         };
         self.write(&request);
+        if matches!(work, Work::Live { finished: true, .. }) {
+            self.write(&Request::FinishLive { job });
+        }
     }
 }

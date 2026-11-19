@@ -373,6 +373,15 @@ fn speech(
             });
             Ok(())
         }
+        Request::StartLive { job, .. } | Request::FinishLive { job } => send(
+            output,
+            &Event::error(
+                Some(job),
+                error::ENGINE_PROTOCOL,
+                "Live capture needs a local session WAV.",
+            )
+            .to_json(),
+        ),
         Request::Shutdown => Ok(()),
     }
 }

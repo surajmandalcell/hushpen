@@ -183,6 +183,15 @@ pub enum Request {
         language: Option<String>,
         prompt: Option<String>,
     },
+    /// Follow a local session WAV until capture has closed it.
+    StartLive {
+        job: u64,
+        wav_path: String,
+        language: Option<String>,
+    },
+    FinishLive {
+        job: u64,
+    },
     /// Decode a media file in the engine child and transcribe it. The child decodes untrusted
     /// files, so a decoder fault costs this job and not the app.
     ImportFile {
@@ -225,6 +234,14 @@ impl Request {
                 "type": "transcribe", "job": job, "wav_path": wav_path,
                 "language": language, "prompt": prompt,
             }),
+            Self::StartLive {
+                job,
+                wav_path,
+                language,
+            } => json!({
+                "type": "start_live", "job": job, "wav_path": wav_path, "language": language,
+            }),
+            Self::FinishLive { job } => json!({"type": "finish_live", "job": job}),
             Self::ImportFile {
                 job,
                 path,
@@ -260,6 +277,14 @@ impl Request {
                 wav_path: fields.string("wav_path")?,
                 language: fields.optional_string("language")?,
                 prompt: fields.optional_string("prompt")?,
+            }),
+            "start_live" => Ok(Self::StartLive {
+                job: fields.u64("job")?,
+                wav_path: fields.string("wav_path")?,
+                language: fields.optional_string("language")?,
+            }),
+            "finish_live" => Ok(Self::FinishLive {
+                job: fields.u64("job")?,
             }),
             "import_file" => Ok(Self::ImportFile {
                 job: fields.u64("job")?,
@@ -308,6 +333,11 @@ pub enum Event {
         fraction: f64,
         /// The length of the file as its headers state it, on the first report of an import.
         audio_ms: Option<u64>,
+    },
+    /// The current text of a recording. Only Result completes the job.
+    Partial {
+        job: u64,
+        text: String,
     },
     Segment {
         job: u64,
@@ -393,6 +423,7 @@ impl Event {
                 }
                 value
             }
+            Self::Partial { job, text } => json!({"type": "partial", "job": job, "text": text}),
             Self::Segment { job, segment } => {
                 let mut value = segment.to_json();
                 value["type"] = json!("segment");
@@ -439,6 +470,10 @@ impl Event {
                 job: fields.u64("job")?,
                 fraction: fields.f64("fraction")?,
                 audio_ms: fields.optional_u64("audio_ms")?,
+            }),
+            "partial" => Ok(Self::Partial {
+                job: fields.u64("job")?,
+                text: fields.string("text")?,
             }),
             "segment" => Ok(Self::Segment {
                 job: fields.u64("job")?,
@@ -696,6 +731,12 @@ mod tests {
                 prompt: Some("Hushpen".into()),
                 translate: true,
             },
+            Request::StartLive {
+                job: 9,
+                wav_path: "/session.wav".into(),
+                language: None,
+            },
+            Request::FinishLive { job: 9 },
             Request::Cancel { job: 7 },
             Request::Ping,
             Request::Unload,
@@ -763,6 +804,10 @@ mod tests {
                 job: 3,
                 fraction: 0.0,
                 audio_ms: Some(2_000),
+            },
+            Event::Partial {
+                job: 3,
+                text: "hello".into(),
             },
             Event::Cancelled { job: 3 },
             Event::error(Some(3), "ENGINE_BAD_LANGUAGE", "xx"),

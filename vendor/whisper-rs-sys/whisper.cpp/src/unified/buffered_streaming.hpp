@@ -39,8 +39,10 @@ public:
     // left, chunk, right: frames (80 ms = 1280 samples).
     BufferedSchedule(int left, int chunk, int right);
 
-    // Appends every step whose edge is strictly inside the `received` samples.
-    void advance(int64_t received, std::vector<BufferedStepPlan>& out);
+    bool next(int64_t received, BufferedStepPlan& out);
+    void record_step(double compute_seconds);
+    int left_frames() const;
+    int chunk_frames() const;
 
     // Once the total length is known (end of stream): the last step, if audio
     // remains after the previous step. Returns false when no step is left.
@@ -57,6 +59,7 @@ private:
     int64_t left_edge_ = 0;                      // previous step's right edge
     int64_t next_edge_ = 0;                      // edge of the next step, if it is not the last
     bool done_ = false;
+    bool previous_slow_ = false;
 };
 
 // Failure latch of a stream. run() calls its function; if the function throws, the
@@ -171,8 +174,8 @@ public:
     void set_trace(bool on) { trace_on_ = on; }
     const std::vector<Step>& trace() const { return trace_; }
 
-    int left_frames() const { return left_; }
-    int chunk_frames() const { return chunk_; }
+    int left_frames() const { return schedule_.left_frames(); }
+    int chunk_frames() const { return schedule_.chunk_frames(); }
     int right_frames() const { return right_; }
     int64_t total_received() const { return received_; }
     bool finalized() const { return finalized_; }

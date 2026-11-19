@@ -2,6 +2,7 @@
 #include "tokenizer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <iomanip>
 #include <locale>
 #include <sstream>
@@ -62,15 +63,31 @@ BufferedStepPlan BufferedSchedule::make(int64_t edge, bool is_last) {
     return p;
 }
 
-void BufferedSchedule::advance(int64_t received, std::vector<BufferedStepPlan>& out) {
-    while (!done_ && next_edge_ < received) {
-        out.push_back(make(next_edge_, /*is_last=*/false));
+bool BufferedSchedule::next(int64_t received, BufferedStepPlan& out) {
+    if (done_ || next_edge_ >= received) return false;
+    out = make(next_edge_, false);
+    return true;
+}
+
+int BufferedSchedule::left_frames() const { return static_cast<int>(exp_left_ / kFrameSamples); }
+int BufferedSchedule::chunk_frames() const { return static_cast<int>(exp_chunk_ / kFrameSamples); }
+
+void BufferedSchedule::record_step(double compute_seconds) {
+    const bool slow = compute_seconds > static_cast<double>(exp_chunk_) / 16000;
+    if (slow && previous_slow_ && chunk_frames() < 50) {
+        // NVIDIA recommends 2–3 s of history on slower devices; 28 frames are 2.24 s.
+        // Keep the pending lookahead and change only the next uncommitted chunk.
+        exp_left_ = std::min(exp_left_, 28 * kFrameSamples);
+        exp_chunk_ = std::min(2 * exp_chunk_, 50 * kFrameSamples);
+        next_edge_ = left_edge_ + exp_chunk_;
+        previous_slow_ = false;
+    } else {
+        previous_slow_ = slow;
     }
 }
 
 bool BufferedSchedule::finish(int64_t total, BufferedStepPlan& out) {
-    // Precondition: advance(total) has already been called, so every step before
-    // the end of the audio has been emitted.
+    // next(total, ...) has already consumed every full step before the end.
     if (done_ || total <= left_edge_) return false;
     out = make(total, /*is_last=*/true);
     return true;
@@ -145,9 +162,13 @@ void BufferedStreamingSession::feed(const float* pcm, int n) {
             pcm_.insert(pcm_.end(), pcm, pcm + n);
             received_ += n;
         }
-        std::vector<BufferedStepPlan> plans;
-        schedule_.advance(received_, plans);
-        for (const BufferedStepPlan& p : plans) run_step(p);
+        BufferedStepPlan p;
+        while (schedule_.next(received_, p)) {
+            const auto start = std::chrono::steady_clock::now();
+            run_step(p);
+            const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
+            schedule_.record_step(elapsed.count());
+        }
     });
 }
 
@@ -175,7 +196,7 @@ void BufferedStreamingSession::run_step(const BufferedStepPlan& plan) {
     mel_.compute(window, feats, n_mels, T);   // valid_length gate: floor(samples / hop) frames
 
     // 2. Encoder over the window, full attention under the window-relative RC mask.
-    const RcMask rc{left_, chunk_, right_};
+    const RcMask rc{left_frames(), chunk_frames(), right_};
     std::vector<float> enc_cf;               // channels-first [d_model, Tout]
     int d_model = d_model_, Tout = 0;
     enc_.forward_rc(feats, n_mels, T, rc, enc_cf, d_model, Tout);

@@ -22,6 +22,14 @@ impl Manager {
                 }
             }
             Event::Loading { .. } | Event::Segment { .. } => {}
+            Event::Partial { job, text } => {
+                if let Some(inflight) = self.inflight.get(&job)
+                    && inflight.cancel_deadline.is_none()
+                    && let Some(partial) = &inflight.partial
+                {
+                    partial(text);
+                }
+            }
             Event::Progress {
                 job,
                 fraction,

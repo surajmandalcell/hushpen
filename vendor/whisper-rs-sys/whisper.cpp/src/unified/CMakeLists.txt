@@ -25,3 +25,7 @@ target_sources(parakeet PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/transcription.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/transcription_json.cpp)
 target_compile_features(parakeet PRIVATE cxx_std_17)
+
+add_executable(hushpen-unified-pacing-check EXCLUDE_FROM_ALL tests/pacing.cpp)
+target_compile_features(hushpen-unified-pacing-check PRIVATE cxx_std_17)
+target_link_libraries(hushpen-unified-pacing-check PRIVATE parakeet)
