@@ -132,7 +132,7 @@ install silently, and relaunch. Portable copies show the release link.
 The repository also provides a PowerShell installer for the latest release:
 
 ```powershell
-irm https://samhq.app/install.ps1 | iex
+irm https://hushpen.samhq.app/install.ps1 | iex
 ```
 
 It checks SHA256SUMS before silent setup. `HUSHPEN_NO_OPEN=1` skips relaunch.

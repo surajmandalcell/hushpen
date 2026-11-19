@@ -2,10 +2,10 @@
 //! app's `net/update.rs`.
 
 /// The project website.
-pub const SITE_URL: &str = "https://samhq.app/";
+pub const SITE_URL: &str = "https://hushpen.samhq.app/";
 
 /// The benchmark numbers behind the Models dots, and how they were measured.
-pub const BENCHMARKS_URL: &str = "https://samhq.app/benchmarks";
+pub const BENCHMARKS_URL: &str = "https://hushpen.samhq.app/benchmarks";
 
 /// The repository.
 pub const REPO_URL: &str = "https://github.com/surajmandalcell/hushpen";
@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn the_project_urls_are_these_constants() {
-        assert_eq!(SITE_URL, "https://samhq.app/");
+        assert_eq!(SITE_URL, "https://hushpen.samhq.app/");
         assert_eq!(REPO_URL, "https://github.com/surajmandalcell/hushpen");
         assert_eq!(ISSUES_URL, format!("{REPO_URL}/issues"));
         assert_eq!(BENCHMARKS_URL, format!("{SITE_URL}benchmarks"));
