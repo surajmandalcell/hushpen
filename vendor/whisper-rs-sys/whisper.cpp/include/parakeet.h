@@ -217,6 +217,9 @@ extern "C" {
     PARAKEET_API struct parakeet_timings * parakeet_get_timings(struct parakeet_context * ctx);
     PARAKEET_API void parakeet_print_timings(struct parakeet_context * ctx);
     PARAKEET_API void parakeet_reset_timings(struct parakeet_context * ctx);
+    // The same for a state made with parakeet_init_state.
+    PARAKEET_API void parakeet_print_timings_with_state(struct parakeet_context * ctx, struct parakeet_state * state);
+    PARAKEET_API void parakeet_reset_timings_with_state(struct parakeet_context * ctx, struct parakeet_state * state);
 
     // Print system information
     PARAKEET_API const char * parakeet_print_system_info(void);
