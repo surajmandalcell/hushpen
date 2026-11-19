@@ -2,8 +2,8 @@ use super::*;
 use serde_json::json;
 
 const IDS: [&str; 5] = [
-    SPEECH_DEFAULT,
     SPEECH_UNIFIED,
+    SPEECH_DEFAULT,
     "large-v3-turbo-q5_0",
     "small-q5_1",
     "base-q5_1",
@@ -279,7 +279,7 @@ fn exactly_one_model_is_the_default() {
     let defaults: Vec<_> = embedded().whisper.iter().filter(|e| e.default).collect();
     assert_eq!(defaults.len(), 1);
     assert_eq!(embedded().default_whisper(), Some(defaults[0]));
-    assert_eq!(defaults[0].id, SPEECH_DEFAULT);
+    assert_eq!(defaults[0].id, SPEECH_UNIFIED);
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn retired_speech_choices_fall_back_without_changing_supported_choices() {
         assert!(catalog.whisper(id).is_none(), "{id}");
         assert_eq!(
             catalog.chosen_speech(id).unwrap().id,
-            SPEECH_DEFAULT,
+            SPEECH_UNIFIED,
             "{id}"
         );
     }

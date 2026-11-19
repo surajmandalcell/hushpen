@@ -27,7 +27,10 @@ pub const PARAKEET_LANGUAGES: [&str; 25] = [
     "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
 ];
 
+/// Parakeet v3: the phone default, and the desktop choice kept for installs from before
+/// Nemotron Unified became the desktop default (settings schema 6).
 pub const SPEECH_DEFAULT: &str = "parakeet-v3-q4_k";
+/// Nemotron Unified: the desktop default for new installs (`"default": true` in the catalog).
 pub const SPEECH_UNIFIED: &str = "nemotron-labs-unified-asr-0.6b-q8_0";
 pub const SPEECH_TURBO: &str = "large-v3-turbo-q5_0";
 pub const VAD_FILE: &str = "ggml-silero-v5.1.2.bin";

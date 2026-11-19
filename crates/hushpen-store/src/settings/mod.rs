@@ -26,7 +26,10 @@ use std::time::Duration;
 /// 3: the Sound volume default went from 25% to 12.5%.
 /// 4: the hands-free default on macOS went from the built-in gestures to Option+Tab.
 /// 5: paired devices and model routes, disabled until the user turns them on.
-const SCHEMA_VERSION: i64 = 5;
+/// 6: new installs default to Nemotron Unified. An older file with no speech choice is pinned to
+/// Parakeet v3, so an existing user keeps the model they have instead of a 939 MB download.
+const SCHEMA_VERSION: i64 = 6;
+const SPEECH_KEY: &str = "dictation.modelId";
 const UNKNOWN_KEY: &str = "_unknown";
 
 /// A stored value, as it was written when it was the default.
@@ -254,6 +257,19 @@ fn parse(bytes: &[u8], os: Os) -> Option<(State, bool)> {
             }
         }
     }
+    if schema_version < 6
+        && state
+            .values
+            .get(SPEECH_KEY)
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.trim().is_empty())
+    {
+        state.values.insert(
+            SPEECH_KEY.into(),
+            json!(hushpen_core::catalog::SPEECH_DEFAULT),
+        );
+        changed = true;
+    }
     changed |= REGISTRY
         .iter()
         .any(|Spec { key, .. }| !stored.contains_key(*key));
@@ -303,6 +319,24 @@ mod tests {
         assert_eq!(settings.get("audio.muteWhileDictating"), Some(json!(false)));
         assert_eq!(settings.get("engine.idlePolicy"), Some(json!("pageout")));
         assert_eq!(settings.get("engine.idleMinutes"), Some(json!(30)));
+    }
+
+    #[test]
+    fn an_existing_install_keeps_parakeet_and_a_new_one_gets_the_catalog_default() {
+        use hushpen_core::catalog::SPEECH_DEFAULT;
+        let stored = |values: Value| {
+            let bytes = json!({"schemaVersion": 5, "values": values}).to_string();
+            parse(bytes.as_bytes(), Os::Mac).unwrap().0.values[SPEECH_KEY].clone()
+        };
+        assert_eq!(stored(json!({SPEECH_KEY: ""})), json!(SPEECH_DEFAULT));
+        assert_eq!(stored(json!({})), json!(SPEECH_DEFAULT));
+        assert_eq!(stored(json!({SPEECH_KEY: "small-q5_1"})), json!("small-q5_1"));
+        // A fresh install stores no choice, so the catalog default (Nemotron Unified) applies.
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(SettingsStore::open(root.path()).unwrap().get(SPEECH_KEY), Some(json!("")));
+        // Once migrated, an empty choice stays empty.
+        let bytes = json!({"schemaVersion": 6, "values": {SPEECH_KEY: ""}}).to_string();
+        assert_eq!(parse(bytes.as_bytes(), Os::Mac).unwrap().0.values[SPEECH_KEY], json!(""));
     }
 
     fn stored_hands_free(version: i64, values: Value, os: Os) -> Value {

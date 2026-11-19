@@ -35,7 +35,7 @@ fn migration_adds_disabled_routes_without_changing_existing_settings_or_unknown_
     assert_eq!(settings.unknown().get("future.setting"), Some(&json!(7)));
     assert_eq!(settings.unknown().get("older"), Some(&json!(true)));
     let document: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-    assert_eq!(document["schemaVersion"], 5);
+    assert_eq!(document["schemaVersion"], 6);
 }
 
 #[test]

@@ -16,8 +16,8 @@ ENGINE_LOG=/data/logs/engine.log
 SMALL_Q5_SHA=ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
 SMALL_Q5_BYTES=190085487
 TURBO_Q5_SHA=394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
-# The catalog lists four speech models, in this order.
-SPEECH_ORDER=parakeet-v3-q4_k,large-v3-turbo-q5_0,small-q5_1,base-q5_1
+# The catalog lists five speech models, in this order.
+SPEECH_ORDER=nemotron-labs-unified-asr-0.6b-q8_0,parakeet-v3-q4_k,large-v3-turbo-q5_0,small-q5_1,base-q5_1
 
 hook_action() { $HC action "$@"; }
 # m <id> <jq expression on that model's state>
@@ -78,16 +78,16 @@ buttons=$(jq '[.[] | select(.id | test("^models\\.download\\.[0-9]+$"))] | lengt
 listed=$(jq -r '[.models[].id] | join(",")' "$RUN_OUT/002-state.json")
 # Speech rows come first; the cleanup rows this machine is offered and the voice rows follow.
 others=$(jq '(.llm_models | length) + (.voice_models | length)' "$RUN_OUT/002-state.json")
-[ "$rows" = $((4 + others)) ] || failures+="$rows rows in the tree, want $((4 + others)); "
+[ "$rows" = $((5 + others)) ] || failures+="$rows rows in the tree, want $((5 + others)); "
 [ "$listed" = "$SPEECH_ORDER" ] || failures+="catalog order is $listed; "
-[ "$buttons" = $((3 + others)) ] || failures+="$buttons Download buttons, want $((3 + others)); "
+[ "$buttons" = $((4 + others)) ] || failures+="$buttons Download buttons, want $((4 + others)); "
 [ "$(jq -r '.models[] | select(.id == "base-q5_1") | "\(.state) \(.active)"' "$RUN_OUT/002-state.json")" = "ready true" ] || failures+="base-q5_1 is not ready and active; "
-[ "$(jq '[.models[] | select(.state == "not_downloaded")] | length' "$RUN_OUT/002-state.json")" = 3 ] || failures+="not 3 speech models are not_downloaded; "
-[ "$(jq '[.models[] | select(.bytes > 0)] | length' "$RUN_OUT/002-state.json")" = 4 ] || failures+="a model has no size; "
-[ "$(jq -c '[.models[] | select(.default) | .id]' "$RUN_OUT/002-state.json")" = '["parakeet-v3-q4_k"]' ] || failures+="the default speech model is not parakeet-v3-q4_k; "
+[ "$(jq '[.models[] | select(.state == "not_downloaded")] | length' "$RUN_OUT/002-state.json")" = 4 ] || failures+="not 4 speech models are not_downloaded; "
+[ "$(jq '[.models[] | select(.bytes > 0)] | length' "$RUN_OUT/002-state.json")" = 5 ] || failures+="a model has no size; "
+[ "$(jq -c '[.models[] | select(.default) | .id]' "$RUN_OUT/002-state.json")" = '["nemotron-labs-unified-asr-0.6b-q8_0"]' ] || failures+="the default speech model is not Nemotron Unified; "
 base_row=$(jq -r '.models | map(.id) | index("base-q5_1")' "$RUN_OUT/002-state.json")
 [ "$(jq --arg id "models.download.$base_row" '[.[] | select(.id == $id)] | length' "$RUN_OUT/002-tree.json")" = 0 ] || failures+="base-q5_1 has a Download button; "
-check_failures "VAL-MOD-002 catalog view" "4 speech rows in catalog order (Parakeet the default) plus $others cleanup and voice rows, base-q5_1 ready and active, the rest not downloaded with a Download button" "$failures"
+check_failures "VAL-MOD-002 catalog view" "5 speech rows in catalog order (Nemotron Unified the default) plus $others cleanup and voice rows, base-q5_1 ready and active, the rest not downloaded with a Download button" "$failures"
 
 echo "== VAL-MOD-003 download with progress, verified stamp, responsive UI"
 fresh base-q5_1
