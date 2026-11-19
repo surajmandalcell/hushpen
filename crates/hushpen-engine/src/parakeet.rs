@@ -84,7 +84,8 @@ impl ParakeetEngine {
             CString::new(path).map_err(|error| EngineError::LoadFailed(error.to_string()))?;
         let threads = i32::try_from(options.threads.max(1)).unwrap_or(i32::MAX);
         let mut vad_params = WhisperVadContextParams::default();
-        vad_params.set_n_threads(threads);
+        // The detector runs a tiny graph per 32 ms chunk; extra threads only add sync cost (3x slower at 8).
+        vad_params.set_n_threads(1);
         let detector = match detector {
             Some(detector) => crate::vad::explicit_model_path(detector)?,
             None => crate::vad::model_path()?,
