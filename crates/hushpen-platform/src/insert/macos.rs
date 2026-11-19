@@ -392,6 +392,12 @@ pub(super) fn running(bundle: &str) -> Option<Target> {
         .map(|app| app_target(&app))
 }
 
+/// The text of the focused field of the app `pid`, read without activating it.
+#[cfg(feature = "test-automation")]
+pub(super) fn field_text(pid: i32) -> Option<String> {
+    background::value(pid)
+}
+
 /// The process that gets the copy, paste, and undo keys for `target`, or `None` for the whole
 /// session.
 #[cfg(feature = "test-automation")]

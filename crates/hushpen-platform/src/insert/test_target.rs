@@ -53,6 +53,19 @@ pub fn running_pid(bundle: &str) -> Option<u32> {
     }
 }
 
+/// The text of the focused field of the running app with this bundle id (macOS test builds).
+pub fn field_text(bundle: &str) -> Option<String> {
+    #[cfg(all(target_os = "macos", feature = "test-automation"))]
+    {
+        super::macos::field_text(i32::try_from(running_pid(bundle)?).ok()?)
+    }
+    #[cfg(not(all(target_os = "macos", feature = "test-automation")))]
+    {
+        let _ = bundle;
+        None
+    }
+}
+
 #[cfg(any(target_os = "macos", test))]
 fn warn_once(bundle: &str) {
     let mut slot = lock();
