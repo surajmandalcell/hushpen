@@ -99,6 +99,10 @@ With trust granted, start the bundle in the background. Use the existing harness
 app with `hookctl action insert-target`, send `hold-down` with `hookctl action pipeline-event`,
 and send the clip with `hookctl feed-wav <path>`. Send `hold-up` after the clip ends. The hook
 drives dictation without a global key listener and feeds the capture session without a microphone.
+`hookctl state` shows the text of TextEdit's focused field as `insert_target.text`, read through
+Accessibility without activating TextEdit. The test data folder is on the USB data drive, so the
+first launch of a new test bundle shows the macOS removable-volume access alert; the owner allows it
+once, and the grant survives rebuilds with the same signer and bundle id.
 
 ## Release candidate checks
 

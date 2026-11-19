@@ -14,7 +14,8 @@ use serde_json::{Value, json};
 fn insert_target_json() -> Value {
     let bundle = test_target::bundle();
     let pid = bundle.as_deref().and_then(test_target::running_pid);
-    json!({"bundle": bundle, "pid": pid})
+    let text = bundle.as_deref().and_then(test_target::field_text);
+    json!({"bundle": bundle, "pid": pid, "text": text})
 }
 
 /// The pipeline events a test can send. The hold key itself is driven with `xdotool`; these

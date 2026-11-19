@@ -221,6 +221,14 @@ pub(super) fn selected_text(pid: i32) -> Result<Option<String>, Miss> {
     Ok(text.filter(|text| !text.trim().is_empty()))
 }
 
+/// The whole text of the focused element of `pid`, for tests that check what landed.
+#[cfg(feature = "test-automation")]
+pub(super) fn value(pid: i32) -> Option<String> {
+    attribute(&focused(pid).ok()?, "AXValue")
+        .and_then(|value| value.downcast_into::<CFString>())
+        .map(|text| text.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
