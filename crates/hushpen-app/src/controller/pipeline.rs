@@ -18,7 +18,7 @@ use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::onboarding::KeyGate;
 use hushpen_core::remote::{ModelKind, THIS_COMPUTER};
 use hushpen_core::{cleanup, dictionary};
-use hushpen_engine::{JobOutcome, TranscribeSpec, dictation_language};
+use hushpen_engine::{JobOutcome, TranscribeSpec, dictation_language, live_language};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -362,7 +362,7 @@ impl Controller {
         let language = self.language();
         let spec = TranscribeSpec {
             wav_path: wav.to_owned(),
-            language: dictation_language(SPEECH_UNIFIED, &language),
+            language: live_language(&language),
             prompt: None,
         };
         let partial: hushpen_engine::PartialSink = Arc::new(move |text| {
