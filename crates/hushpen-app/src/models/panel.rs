@@ -321,9 +321,9 @@ fn widest_buttons(views: &[RowView]) -> usize {
 }
 
 /// The name, Recommended, and the state word over the description; then, lightest to heaviest,
-/// the meters, the size, and the icon buttons. Every column has a fixed width, and the buttons
-/// pack to the right end of a group `slots` buttons wide, so the last button ends at the row's
-/// padding and the size column lines up from row to row.
+/// the meters, the size, and the icon buttons. The size and the buttons pack to the right end of
+/// a box as wide as the size and `slots` buttons, so the last button ends at the row's padding,
+/// a row with fewer buttons moves its size right, and the meters line up from row to row.
 fn model_row(
     palette: Palette,
     models: &Entity<Models>,
@@ -401,14 +401,25 @@ fn model_row(
                 .map(|(accuracy, speed)| meters(palette, place, index, accuracy, speed)),
         )
         .child(
-            ui::value(palette)
-                .id(place.id("size", index))
-                .test_support()
-                .w(px(size::MODEL_SIZE_WIDTH))
-                .text_right()
-                .child(format_size(view.bytes)),
-        )
-        .child(icon_buttons(palette, models, place, &view, slots));
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(px(space::SM))
+                .w(px(size::MODEL_SIZE_WIDTH
+                    + space::SM
+                    + ui::icon_group_width(slots, size::MODEL_ICON_GAP)))
+                .child(
+                    ui::value(palette)
+                        .id(place.id("size", index))
+                        .test_support()
+                        .w(px(size::MODEL_SIZE_WIDTH))
+                        .text_right()
+                        .child(format_size(view.bytes)),
+                )
+                .child(icon_buttons(palette, models, place, &view)),
+        );
 
     ui::row(palette)
         .id(place.id("row", index))
@@ -501,14 +512,12 @@ fn meter(
 }
 
 /// Details, then Download or Cancel, Set as default, and Delete, as many as the row's state
-/// offers. They sit together at the right end of one group, so a missing button leaves no hole
-/// between buttons and no room after the last one; the room is at the left of the group.
+/// offers, in a group exactly as wide as its buttons, so a missing button leaves no hole.
 fn icon_buttons(
     palette: Palette,
     models: &Entity<Models>,
     place: Place,
     view: &RowView,
-    slots: usize,
 ) -> AnyElement {
     let index = view.index;
     let details = {
@@ -526,8 +535,7 @@ fn icon_buttons(
         )
         .into_any_element()
     };
-    ui::icon_group(slots, size::MODEL_ICON_GAP)
-        .justify_end()
+    ui::icon_group(button_count(view), size::MODEL_ICON_GAP)
         .child(details)
         .children(
             actions(view)

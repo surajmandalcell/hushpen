@@ -52,13 +52,18 @@ pub fn glyph(palette: Palette, name: IconName) -> impl IntoElement {
 /// row with fewer buttons leaves no hole between them. They start at the left; chain
 /// `justify_end` to pack them against the right end instead.
 pub fn icon_group(slots: usize, gap: f32) -> Div {
-    let slots = slots as f32;
     div()
         .flex_none()
         .flex()
         .items_center()
         .gap(px(gap))
-        .w(px(slots * size::BUTTON_HEIGHT + (slots - 1.0) * gap))
+        .w(px(icon_group_width(slots, gap)))
+}
+
+/// The width of `slots` icon buttons with `gap` between them.
+pub fn icon_group_width(slots: usize, gap: f32) -> f32 {
+    let slots = slots as f32;
+    slots * size::BUTTON_HEIGHT + (slots - 1.0) * gap
 }
 
 /// The text of a row, which takes the room the controls leave.
