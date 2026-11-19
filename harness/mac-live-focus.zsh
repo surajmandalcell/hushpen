@@ -4,6 +4,11 @@
 # A single action command has 30 seconds to return.
 zmodload zsh/datetime
 typeset -g focus_previous='' focus_previous_name='' focus_last_step=-3
+typeset -gA focus_seen
+# Apps already open before the test are the owner's; the test activates none of them.
+for focus_asn in ${(f)"$(lsappinfo visibleProcessList | grep -oE 'ASN:0x0-0x[0-9a-f]+')"}; do
+  focus_seen[$focus_asn:]=1
+done
 
 focus_transition() {
   local app=$1 bundle=$2 name=$3 observed_at=$4
@@ -15,7 +20,8 @@ focus_transition() {
           $bundle == com.apple.CoreServicesUIAgent || $bundle == com.apple.TCC* ||
           $name == SecurityAgent || $name == UserNotificationCenter ||
           $name == CoreServicesUIAgent || $name == tccd ]] ||
-       (( observed_at - focus_last_step <= 2 )); then
+       # An app that was already in front before is the owner's own switch, not a test activation.
+       ( (( observed_at - focus_last_step <= 2 )) && (( ! ${+focus_seen[$app]} )) ); then
       print -ru2 -- "Focus guard stopped: $focus_previous_name -> $name ($bundle)"
       return 1
     fi
@@ -23,6 +29,7 @@ focus_transition() {
   fi
   focus_previous=$app
   focus_previous_name=$name
+  focus_seen[$app]=1
 }
 
 focus_check() {
