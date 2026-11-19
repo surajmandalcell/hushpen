@@ -5,13 +5,14 @@
 
 use super::{DELETE, INFO, ModelState, Models, PRIMARY, Row, SET_DEFAULT, search};
 use crate::hook;
-use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, radius, size, space};
+use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Rgba,
-    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, Background, Entity, FocusHandle, InteractiveElement, IntoElement,
+    ParentElement, Rgba, Role, SharedString, StatefulInteractiveElement, Styled, Window, div,
+    linear_color_stop, linear_gradient, px,
 };
 use hushpen_core::catalog::{Languages, ModelKind};
 
@@ -45,7 +46,7 @@ struct RowView {
     updating: bool,
     /// The speech model a dictation uses.
     default: bool,
-    /// Accuracy and speed, 1 to 5, of a speech model with details.
+    /// Accuracy and speed in half dots, 1 to 10, of a speech or cleanup model with details.
     meters: Option<(u8, u8)>,
     focus: [FocusHandle; 4],
 }
@@ -123,26 +124,58 @@ fn section_text(kind: ModelKind) -> (&'static str, &'static str) {
     }
 }
 
+/// A section of the Models view: Active, which holds the models a dictation uses, or a kind.
+#[derive(Clone, Copy)]
+enum Section {
+    Active,
+    Kind(ModelKind),
+}
+
+impl Section {
+    fn key(self) -> &'static str {
+        match self {
+            Section::Active => "active",
+            Section::Kind(kind) => kind.key(),
+        }
+    }
+
+    fn text(self) -> (&'static str, &'static str) {
+        match self {
+            Section::Active => ("Active", "The models Hushpen uses when you dictate."),
+            Section::Kind(kind) => section_text(kind),
+        }
+    }
+}
+
 pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
     let (sections, notice, query, clear_focus, any_rows) = {
         let models = models.read(cx);
         let default = models.effective();
-        let query = models.query().to_owned();
-        let sections: Vec<(ModelKind, Vec<RowView>)> = ModelKind::ALL
-            .into_iter()
-            .map(|kind| {
-                let (start, rows) = models.of_kind(kind);
-                let views = rows
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, row)| search::matches(row, &query))
-                    .map(|(offset, row)| row_view(start + offset, row, &default))
-                    .collect();
-                (kind, views)
-            })
-            .filter(|(_, views): &(_, Vec<RowView>)| !views.is_empty())
+        let in_use: Vec<String> = std::iter::once(default.clone())
+            .chain(models.active_cleanup())
             .collect();
+        let query = models.query().to_owned();
+        let shown = |active: bool| {
+            let (default, in_use, query) = (&default, &in_use, &query);
+            models
+                .all_rows()
+                .iter()
+                .enumerate()
+                .filter(move |(_, row)| in_use.contains(&row.entry.id) == active)
+                .filter(move |(_, row)| search::matches(row, query))
+                .map(move |(index, row)| (row.entry.kind, row_view(index, row, default)))
+        };
+        let mut sections: Vec<(Section, Vec<RowView>)> =
+            vec![(Section::Active, shown(true).map(|(_, view)| view).collect())];
+        for kind in ModelKind::ALL {
+            let views = shown(false)
+                .filter(|(of, _)| *of == kind)
+                .map(|(_, view)| view)
+                .collect();
+            sections.push((Section::Kind(kind), views));
+        }
+        sections.retain(|(_, views)| !views.is_empty());
         (
             sections,
             models.notice().map(|notice| notice.message.clone()),
@@ -169,8 +202,9 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
     if sections.is_empty() && any_rows && !query.is_empty() {
         page = page.child(no_match(palette, models, &query, clear_focus.as_ref()));
     }
-    for (kind, views) in sections {
-        let (title, help) = section_text(kind);
+    for (section, views) in sections {
+        let (title, help) = section.text();
+        let key = section.key();
         let slots = widest_buttons(&views);
         let rows = views
             .into_iter()
@@ -178,17 +212,10 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
             .collect();
         page = page.child(ui::titled_section(
             palette,
-            hook::id("models", &format!("heading.{}", kind.key())),
+            hook::id("models", &format!("heading.{key}")),
             title,
-            ui::group(
-                hook::id("models", &format!("list.{}", kind.key())),
-                palette,
-                rows,
-            ),
-            Some((
-                hook::id("models", &format!("help.{}", kind.key())),
-                help.to_owned(),
-            )),
+            ui::group(hook::id("models", &format!("list.{key}")), palette, rows),
+            Some((hook::id("models", &format!("help.{key}")), help.to_owned())),
         ));
     }
     page
@@ -246,19 +273,47 @@ fn no_match(
     .into_any_element()
 }
 
-/// The search field for the right end of the title row, or nothing before it is attached.
+/// The right end of the title row: the search field, then Benchmarks, which opens the page with
+/// the numbers behind the dots. Nothing before the field is attached.
 pub fn search_field(models: &Entity<Models>, cx: &App) -> Option<impl IntoElement + use<>> {
     let palette = theme::palette(cx);
-    let state = models.read(cx).search_field_state()?.clone();
+    let (state, focus) = {
+        let models = models.read(cx);
+        (
+            models.search_field_state()?.clone(),
+            models.search.benchmarks.clone(),
+        )
+    };
+    let open = {
+        let models = models.clone();
+        move |_: &mut Window, cx: &mut App| {
+            models.update(cx, |models, cx| models.open_benchmarks(cx));
+        }
+    };
     Some(
         div()
-            .w(px(size::SEARCH_FIELD_WIDTH))
-            .flex_none()
-            .child(ui::search_field(
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            .child(
+                div()
+                    .w(px(size::SEARCH_FIELD_WIDTH))
+                    .flex_none()
+                    .child(ui::search_field(
+                        palette,
+                        hook::id("models", "search"),
+                        "Search models",
+                        &state,
+                    )),
+            )
+            .child(ui::button(
                 palette,
-                hook::id("models", "search"),
-                "Search models",
-                &state,
+                hook::id("models", "benchmarks"),
+                "Benchmarks",
+                Kind::Plain,
+                focus.as_ref(),
+                true,
+                open,
             )),
     )
 }
@@ -270,6 +325,7 @@ fn row_view(index: usize, row: &Row, default: &str) -> RowView {
         (None, _) => languages_text(row.entry.languages).to_owned(),
     };
     let speech = row.entry.kind == ModelKind::Speech;
+    let rated = speech || row.entry.kind == ModelKind::Cleanup;
     RowView {
         index,
         kind: row.entry.kind,
@@ -284,7 +340,7 @@ fn row_view(index: usize, row: &Row, default: &str) -> RowView {
             .entry
             .info
             .as_ref()
-            .filter(|_| speech)
+            .filter(|_| rated)
             .map(|info| (info.accuracy, info.speed)),
         focus: row.focus.clone(),
     }
@@ -332,7 +388,9 @@ fn model_row(
     slots: usize,
 ) -> AnyElement {
     let index = view.index;
-    let word = state_word(palette, view.state, view.default, view.updating);
+    // In the Models view the default sits under Active, which already says it is in use.
+    let default = view.default && place == Place::Onboarding;
+    let word = state_word(palette, view.state, default, view.updating);
     let name_line = div()
         .flex()
         .items_baseline()
@@ -445,48 +503,55 @@ fn meters(palette: Palette, place: Place, index: usize, accuracy: u8, speed: u8)
         .child(meter(
             palette,
             place.id("accuracy", index),
-            "Accuracy",
+            ("Accuracy", ACCURACY),
             accuracy,
-            ACCURACY,
+            palette.accent,
             line_height(BODY),
         ))
         .child(meter(
             palette,
             place.id("speed", index),
-            "Speed",
+            ("Speed", SPEED),
             speed,
-            SPEED,
+            palette.label_secondary,
             line_height(SECONDARY),
         ))
         .into_any_element()
 }
 
-/// One meter: its label, then `value` of five dots filled. Its name and tooltip say it in
-/// words, such as `Accuracy: High (4 of 5)`.
+/// One meter: its label, then five dots with `halves` half dots filled in `fill`. Its name and
+/// tooltip say it in words, such as `Accuracy: High (4.5 of 5)`.
 fn meter(
     palette: Palette,
     id: SharedString,
-    label: &'static str,
-    value: u8,
-    words: [&str; 5],
+    (label, words): (&'static str, [&'static str; 5]),
+    halves: u8,
+    fill: Rgba,
     height: f32,
 ) -> impl IntoElement {
-    let text = format!("{label}: {}", scale(value, words));
-    let dots = (1..=5).map(|dot| {
+    let text = format!("{label}: {}", scale(halves, words));
+    let empty = palette.label_tertiary;
+    let dots = (0..5u8).map(|dot| {
+        let background: Background = match halves.saturating_sub(dot * 2) {
+            0 => empty.into(),
+            // Half a dot: a hard stop in the middle, filled on the left.
+            1 => linear_gradient(
+                90.0,
+                linear_color_stop(fill, 0.5),
+                linear_color_stop(empty, 0.501),
+            ),
+            _ => fill.into(),
+        };
         div()
             .flex_none()
             .size(px(size::MODEL_DOT))
-            .rounded(px(radius::FULL))
-            .bg(if dot <= value {
-                palette.label_secondary
-            } else {
-                palette.label_tertiary
-            })
+            .rounded_full()
+            .bg(background)
     });
     let line = div()
         .id(id)
         .test_support()
-        .role(Role::Image)
+        .role(Role::Meter)
         .aria_label(text.clone())
         .flex()
         .items_center()
@@ -603,13 +668,18 @@ pub(super) fn languages_text(languages: Languages) -> &'static str {
 pub(super) const SPEED: [&str; 5] = ["Slowest", "Slow", "Moderate", "Fast", "Fastest"];
 pub(super) const ACCURACY: [&str; 5] = ["Basic", "Fair", "Good", "High", "Highest"];
 
-/// `Fast (4 of 5)`.
-pub(super) fn scale(value: u8, words: [&str; 5]) -> String {
+/// `Fast (4 of 5)` or `High (4.5 of 5)` for a value in half dots. A half takes the word below.
+pub(super) fn scale(halves: u8, words: [&str; 5]) -> String {
     let word = words
-        .get(usize::from(value.saturating_sub(1)))
+        .get(usize::from((halves / 2).saturating_sub(1)))
         .copied()
         .unwrap_or_default();
-    format!("{word} ({value} of 5)")
+    let dots = if halves % 2 == 0 {
+        (halves / 2).to_string()
+    } else {
+        format!("{}.5", halves / 2)
+    };
+    format!("{word} ({dots} of 5)")
 }
 
 fn button(
@@ -687,8 +757,10 @@ mod tests {
 
     #[test]
     fn a_scale_names_the_word_and_the_value_of_five() {
-        assert_eq!(scale(4, ACCURACY), "High (4 of 5)");
-        assert_eq!(scale(1, SPEED), "Slowest (1 of 5)");
-        assert_eq!(scale(5, SPEED), "Fastest (5 of 5)");
+        assert_eq!(scale(8, ACCURACY), "High (4 of 5)");
+        assert_eq!(scale(9, ACCURACY), "High (4.5 of 5)");
+        assert_eq!(scale(1, SPEED), "Slowest (0.5 of 5)");
+        assert_eq!(scale(2, SPEED), "Slowest (1 of 5)");
+        assert_eq!(scale(10, SPEED), "Fastest (5 of 5)");
     }
 }

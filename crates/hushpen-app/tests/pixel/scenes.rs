@@ -960,6 +960,13 @@ fn seed_models(storage: &Storage) {
         .find(|entry| entry.id == "base-q5_1")
         .expect("Whisper Base in the catalog");
     seed_speech(storage, base);
+    // AI cleanup on puts S1-mini under Active with the default speech model.
+    for (key, value) in [
+        ("cleanup.llm.enabled", json!(true)),
+        ("cleanup.llm.modelId", json!("s1-mini")),
+    ] {
+        storage.settings.set(key, value).expect("store AI cleanup");
+    }
 }
 
 fn seed_speech(storage: &Storage, entry: &hushpen_core::catalog::ModelEntry) {

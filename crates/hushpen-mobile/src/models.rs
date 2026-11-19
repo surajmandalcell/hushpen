@@ -100,8 +100,9 @@ impl ModelRepository {
         let info = self.model(&id).ok()?.info.as_ref()?;
         Some(ModelDetails {
             description: info.description.clone(),
-            speed: info.speed,
-            accuracy: info.accuracy,
+            // The catalog counts half dots; the phone shows whole dots, a half rounded up.
+            speed: info.speed.div_ceil(2),
+            accuracy: info.accuracy.div_ceil(2),
         })
     }
 

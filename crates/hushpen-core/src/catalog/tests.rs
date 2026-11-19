@@ -119,8 +119,8 @@ fn every_embedded_model_has_its_kind_and_its_details() {
             let info = entry.info.as_ref().unwrap();
             assert!(!info.description.is_empty(), "{}", entry.id);
             assert!(!info.recommended_for.is_empty(), "{}", entry.id);
-            assert!((1..=5).contains(&info.speed), "{}", entry.id);
-            assert!((1..=5).contains(&info.accuracy), "{}", entry.id);
+            assert!((1..=10).contains(&info.speed), "{}", entry.id);
+            assert!((1..=10).contains(&info.accuracy), "{}", entry.id);
             assert!(info.ram_idle_bytes > 100_000_000, "{}", entry.id);
             assert!(info.ram_peak_bytes >= info.ram_idle_bytes, "{}", entry.id);
             assert!(
@@ -386,7 +386,7 @@ fn a_schema_1_catalog_parses_without_kinds_or_details() {
 fn schema_2_reads_the_details_and_requires_them() {
     let catalog = parse(json!({"schema": 2, "whisper": [new_entry("x", "f")]})).unwrap();
     let info = catalog.whisper[0].info.clone().unwrap();
-    assert_eq!((info.speed, info.accuracy), (3, 4));
+    assert_eq!((info.speed, info.accuracy), (6, 8), "in half dots");
     assert_eq!(info.quantization, "F16");
     assert_eq!((info.ram_idle_bytes, info.ram_peak_bytes), (1000, 2000));
     assert_eq!(info.recommended_for, "R");
@@ -416,6 +416,9 @@ fn schema_2_reads_the_details_and_requires_them() {
     };
     assert!(with("speed", json!(0)).is_err());
     assert!(with("accuracy", json!(6)).is_err());
+    assert!(with("accuracy", json!(4.3)).is_err(), "only half steps");
+    let half = with("speed", json!(0.5)).unwrap();
+    assert_eq!(half.whisper[0].info.as_ref().unwrap().speed, 1);
     assert!(
         with("ram_peak_bytes", json!(999)).is_err(),
         "the peak is never under the idle memory"

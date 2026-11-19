@@ -308,6 +308,32 @@ impl Models {
         policy::effective(&chosen, default).to_owned()
     }
 
+    /// The id of the cleanup model a dictation uses: `None` while AI cleanup is off or goes to an
+    /// endpoint. Like Settings, an unknown or retired choice falls back to the first offered.
+    pub fn active_cleanup(&self) -> Option<String> {
+        let settings = &self.storage.settings;
+        let on = settings
+            .get("cleanup.llm.enabled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let endpoint = settings
+            .get("cleanup.llm.provider")
+            .is_some_and(|provider| provider.as_str() == Some("endpoint"));
+        if !on || endpoint {
+            return None;
+        }
+        let chosen = settings
+            .get("cleanup.llm.modelId")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        let offered = self.llm_rows();
+        offered
+            .iter()
+            .find(|row| row.entry.id == chosen.trim())
+            .or_else(|| offered.first())
+            .map(|row| row.entry.id.clone())
+    }
+
     /// The effective model, once its file is verified. Home records only with this.
     pub fn usable(&self) -> Option<&Row> {
         let id = self.effective();

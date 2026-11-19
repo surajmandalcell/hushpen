@@ -4,6 +4,9 @@
 /// The project website.
 pub const SITE_URL: &str = "https://hushpen.mandalsuraj.com/";
 
+/// The benchmark numbers behind the Models dots, and how they were measured.
+pub const BENCHMARKS_URL: &str = "https://hushpen.mandalsuraj.com/benchmarks";
+
 /// The repository.
 pub const REPO_URL: &str = "https://github.com/surajmandalcell/hushpen";
 
@@ -19,5 +22,6 @@ mod tests {
         assert_eq!(SITE_URL, "https://hushpen.mandalsuraj.com/");
         assert_eq!(REPO_URL, "https://github.com/surajmandalcell/hushpen");
         assert_eq!(ISSUES_URL, format!("{REPO_URL}/issues"));
+        assert_eq!(BENCHMARKS_URL, format!("{SITE_URL}benchmarks"));
     }
 }

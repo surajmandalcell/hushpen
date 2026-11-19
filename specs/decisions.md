@@ -400,7 +400,7 @@ new decision, add it here in the same change (D-21).
   Text, Text cleanup, and Text to Speech; the search also matches the old
   names Speech recognition and Voices. A speech row shows the catalog's
   accuracy and speed as two lines of five 6px dots. There is no status
-  column: one quiet word after the name says Default, the download percent,
+  column: one quiet word after the name says the download percent,
   Updating N%, Checking, or Failed verification, the only one in a status
   color. Every action is a 22px icon button in a fixed slot: Details,
   Download or Cancel, Set as default (a star, speech only, which replaced

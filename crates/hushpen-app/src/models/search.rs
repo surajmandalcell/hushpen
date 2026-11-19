@@ -15,6 +15,8 @@ pub(super) struct Search {
     pub scroll: Option<ScrollHandle>,
     /// The Clear button of the "No models match" row.
     pub clear: Option<FocusHandle>,
+    /// The Benchmarks button after the field.
+    pub benchmarks: Option<FocusHandle>,
 }
 
 /// Whether `row` matches every word of `query`, in its name, description, languages, size, or
@@ -64,6 +66,7 @@ impl Models {
         .detach();
         self.search.field = Some(field);
         self.search.clear = Some(cx.focus_handle().tab_stop(true));
+        self.search.benchmarks = Some(cx.focus_handle().tab_stop(true));
     }
 
     /// Shares the scroll position of the content pane, so a new query starts at the top.

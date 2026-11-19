@@ -848,19 +848,25 @@ mod search_tests {
         let rig = rig(cx);
         let handle = window(cx, &rig);
         let id = SharedString::from("models.search");
-        let (field, title) = cx
+        let (field, title, benchmarks) = cx
             .update_window(handle, |_, window, _| {
-                (window.find(id).bounds(), window.find("view.title").bounds())
+                (
+                    window.find(id).bounds(),
+                    window.find("view.title").bounds(),
+                    window.find("models.benchmarks").bounds(),
+                )
             })
             .unwrap();
         assert_eq!(field.size.width, px(crate::theme::size::SEARCH_FIELD_WIDTH));
         assert_eq!(field.size.height, px(crate::theme::size::BUTTON_HEIGHT));
         assert_eq!(
-            field.right(),
+            benchmarks.right(),
             px(space::WINDOW_WIDTH - space::XXL),
-            "24px from the edge"
+            "Benchmarks ends 24px from the edge"
         );
+        assert_eq!(benchmarks.left() - field.right(), px(space::SM));
         assert_eq!(field.center().y, title.center().y, "on the chrome line");
+        assert_eq!(benchmarks.center().y, field.center().y);
         assert!(title.right() < field.left());
     }
 

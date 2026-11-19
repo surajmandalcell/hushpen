@@ -370,7 +370,11 @@ fn the_view_groups_models_and_offers_set_as_default_only_for_other_speech_rows(
     }
     settle(cx, &rig);
     let handle = window(cx, &rig);
-    for kind in ["speech", "cleanup", "voice"] {
+    assert!(
+        !present(cx, handle, "models.heading.speech"),
+        "the one speech model is under Active"
+    );
+    for kind in ["active", "cleanup", "voice"] {
         assert!(
             present(cx, handle, &format!("models.heading.{kind}")),
             "{kind}"
@@ -393,17 +397,20 @@ fn the_view_groups_models_and_offers_set_as_default_only_for_other_speech_rows(
         !present(cx, handle, "models.select.0"),
         "the speech model is already the default"
     );
-    assert_eq!(label(cx, handle, "models.state.0"), "Default");
-    for index in 1..3 {
+    for index in 0..3 {
         assert!(
             !present(cx, handle, &format!("models.state.{index}")),
-            "no word for a downloaded model"
-        );
-        assert!(
-            !present(cx, handle, &format!("models.accuracy.{index}")),
-            "only speech rows have meters"
+            "no word for a downloaded model; Active says which is in use"
         );
     }
+    assert!(
+        present(cx, handle, "models.accuracy.1"),
+        "cleanup rows have meters"
+    );
+    assert!(
+        !present(cx, handle, "models.accuracy.2"),
+        "voice rows have none"
+    );
     assert_eq!(
         label(cx, handle, "models.accuracy.0"),
         "Accuracy: Good (3 of 5)"
