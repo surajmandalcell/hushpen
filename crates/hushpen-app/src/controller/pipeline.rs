@@ -15,8 +15,8 @@ use hushpen_core::dictation::{AppEvent, Cue, Mode, RowStatus, State};
 use hushpen_core::error::{CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, LLM_UNAVAILABLE};
 use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::onboarding::KeyGate;
-use hushpen_core::{cleanup, dictionary, language};
-use hushpen_engine::{JobOutcome, TranscribeSpec};
+use hushpen_core::{cleanup, dictionary};
+use hushpen_engine::{JobOutcome, TranscribeSpec, dictation_language};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -450,7 +450,7 @@ impl Controller {
         self.last_prompt = prompt.clone();
         let spec = TranscribeSpec {
             wav_path: wav,
-            language: (language != language::AUTO).then_some(language),
+            language: dictation_language(model, &language),
             prompt,
         };
         let engine = Arc::clone(&self.engine.run);

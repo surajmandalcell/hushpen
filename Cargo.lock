@@ -3718,6 +3718,7 @@ dependencies = [
  "hushpen-remote",
  "hushpen-store",
  "serde_json",
+ "sys-locale",
  "tempfile",
  "whisper-rs",
  "whisper-rs-sys",

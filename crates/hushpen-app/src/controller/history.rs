@@ -10,7 +10,7 @@ use hushpen_core::dictation::RowStatus;
 use hushpen_core::dictionary;
 use hushpen_core::error::{ENGINE_NO_SPEECH, HISTORY_WRITE_FAILED};
 use hushpen_core::transcript::strip_blank_markers;
-use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription};
+use hushpen_engine::{JobOutcome, TranscribeSpec, Transcription, dictation_language};
 use hushpen_store::history::{self, Reprocessed, Row, Segment};
 use hushpen_store::retention::{self, Retention};
 use hushpen_store::settings::SettingsStore;
@@ -215,11 +215,10 @@ impl Controller {
             return Err(blocker.message);
         }
         let model = self.models.read(cx).effective();
-        let language = self.language();
         let prompt = dictionary::prompt_for_model(&model, &self.dictionary());
         let spec = TranscribeSpec {
             wav_path: wav,
-            language: (language != hushpen_core::language::AUTO).then_some(language),
+            language: dictation_language(&model, &self.language()),
             prompt: prompt.clone(),
         };
         let token = Arc::new(super::CancelToken::default());
