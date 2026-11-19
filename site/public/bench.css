@@ -1,4 +1,59 @@
-/* Benchmarks page: number tables with small bars. Builds on compare.css. */
+/* Benchmarks and method pages: number tables with small bars. Builds on compare.css. */
+.wrap { max-width: 1240px; }
+.bn-top h1 { font-size: clamp(38px, 5vw, 56px); }
+
+/* Best pick rows: the need, the Hushpen setup, the best other app */
+.bn-picks { overflow: hidden; border-radius: 22px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
+.bn-picks li { display: grid; grid-template-columns: 180px minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 22px 26px; }
+.bn-picks li + li { border-top: 1px solid var(--line); }
+.bn-need { font-size: 13px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink2); }
+.bn-us b { display: block; font-size: 19px; font-weight: 700; letter-spacing: -.025em; }
+.bn-us span { display: block; margin-top: 4px; font-size: 15px; line-height: 1.45; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.bn-them { font-size: 14.5px; line-height: 1.45; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.bn-them u { text-decoration-color: rgba(0, 0, 0, .25); text-underline-offset: 3px; }
+.bn-h3 { margin-top: 44px; font-size: 19px; font-weight: 650; letter-spacing: -.02em; }
+.bn-h3 + .cp-body { margin-top: 16px; }
+
+/* Shaded accent grid: --a runs 0 to 1, darker blue means more words right */
+.cp-tbl.shade td { background: rgba(0, 122, 255, calc(var(--a, 0) * .5)); text-align: center; box-shadow: inset 0 0 0 1px #fff; }
+.cp-tbl.num.shade td.top { color: var(--ink); font-weight: 700; }
+
+/* Method page, laid out like a short paper */
+.paper { max-width: 760px; margin: 0 auto; }
+.paper-top { margin-top: 32px; padding-bottom: 28px; border-bottom: 1px solid var(--line2); }
+.paper-kick { font-size: 13px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink2); }
+.paper-top h1 { margin-top: 10px; font: 700 clamp(32px, 4.4vw, 46px)/1.08 var(--sans); letter-spacing: -.04em; text-wrap: balance; }
+.paper-by { margin-top: 14px; font-size: 14px; color: var(--ink2); }
+.paper a { color: var(--acc); }
+.paper a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.paper section { margin-top: 44px; }
+.paper h2 { display: flex; align-items: baseline; gap: 12px; font: 700 24px/1.2 var(--sans); letter-spacing: -.03em; }
+.paper h2 span { min-width: 22px; color: var(--ink3); font-variant-numeric: tabular-nums; }
+.paper section > p { margin-top: 12px; font-size: 17px; line-height: 1.6; color: #333; }
+.paper .paper-abs { padding: 22px 26px; border-radius: 18px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
+.paper .paper-abs h2 { font-size: 15px; letter-spacing: .02em; text-transform: uppercase; color: var(--ink2); }
+.paper .paper-abs p { margin-top: 10px; font-size: 17px; line-height: 1.6; color: var(--ink); }
+.paper .cp-tbl { margin-top: 18px; }
+.paper-list { margin-top: 14px; }
+.paper-list li { padding: 12px 0; font-size: 16.5px; line-height: 1.55; color: #333; }
+.paper-list li + li { border-top: 1px solid var(--line); }
+.paper-list b { color: var(--ink); font-weight: 650; }
+.paper ol.paper-list { counter-reset: p; }
+.paper ol.paper-list li { counter-increment: p; position: relative; padding-left: 34px; }
+.paper ol.paper-list li::before { content: counter(p); position: absolute; left: 0; top: 13px; width: 22px; color: var(--ink3); font-weight: 600; font-variant-numeric: tabular-nums; }
+.paper-steps { margin-top: 16px; counter-reset: s; }
+.paper-steps li { counter-increment: s; position: relative; padding: 12px 0 12px 34px; font-size: 16.5px; line-height: 1.5; }
+.paper-steps li + li { border-top: 1px solid var(--line); }
+.paper-steps li::before { content: counter(s); position: absolute; left: 0; top: 12px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #000; color: #fff; font: 600 12px/1 var(--sans); }
+.paper-steps b { display: block; font-weight: 600; }
+.paper-steps span { display: block; margin-top: 4px; color: #333; }
+.paper-steps code, .paper-code { display: block; margin-top: 8px; padding: 10px 14px; border-radius: 10px; background: #fff; box-shadow: 0 0 0 .5px var(--line); font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace; color: #222; white-space: pre-wrap; overflow-wrap: anywhere; }
+.paper-code { margin-top: 16px; padding: 16px 18px; }
+@media (max-width: 720px) {
+  .bn-picks li { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 18px 20px; }
+  .bn-them { margin-top: 6px; }
+  .paper .paper-abs { padding: 18px 18px; }
+}
 .cp-tbl.num th, .cp-tbl.num td { padding: 12px 14px; font-size: 14px; font-variant-numeric: tabular-nums; }
 .cp-tbl.num thead th { font-size: 12.5px; }
 .cp-tbl.num tbody th { width: 20%; }

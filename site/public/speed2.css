@@ -3,6 +3,9 @@
    statement and badges, the stack inside, memory bars, and a dark build-up. */
 .spd { --sp-e: cubic-bezier(.22, 1, .36, 1); border-radius: 26px; outline-offset: 10px; }
 .spd > .vtag { left: 0; top: -30px; }
+.spd-more { margin-top: 18px; font-size: 15px; }
+.spd-more a { color: var(--ink2); text-decoration: underline dotted rgba(0, 0, 0, .35); text-decoration-thickness: 1.5px; text-underline-offset: 4px; transition: color .2s; }
+.spd-more a:hover { color: var(--ink); }
 .sp-o { display: block; }
 
 .sp-card { position: relative; min-width: 0; overflow: hidden; padding: 56px; border-radius: 26px; background: var(--tile); box-shadow: 0 0 0 .5px var(--line); }

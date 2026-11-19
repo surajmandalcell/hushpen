@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How We Benchmark Speech to Text Apps: Method | Hushpen</title>
+<meta name="description" content="The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.">
+<link rel="canonical" href="https://hushpen.mandalsuraj.com/benchmarks-method">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#F2F2F4">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hushpen">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://hushpen.mandalsuraj.com/benchmarks-method">
+<meta property="og:title" content="How We Benchmark Speech to Text Apps: Method | Hushpen">
+<meta property="og:description" content="The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.">
+<meta property="og:image" content="https://hushpen.mandalsuraj.com/assets/og-card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Hushpen: free and open source dictation for Mac, Windows and Linux">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How We Benchmark Speech to Text Apps: Method | Hushpen">
+<meta name="twitter:description" content="The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.">
+<meta name="twitter:image" content="https://hushpen.mandalsuraj.com/assets/og-card.jpg">
+<link rel="icon" href="/assets/favicon.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="stylesheet" href="/kit.css">
+<link rel="stylesheet" href="/compare.css">
+<link rel="stylesheet" href="/bench.css">
+<script src="/releases.js" defer></script>
+<script src="/os.js" defer></script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "@id": "https://hushpen.mandalsuraj.com/benchmarks-method#page", "url": "https://hushpen.mandalsuraj.com/benchmarks-method", "name": "How We Benchmark Speech to Text Apps: Method | Hushpen", "description": "The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.", "inLanguage": "en", "isPartOf": {"@id": "https://hushpen.mandalsuraj.com/#website"}, "dateModified": "2026-11-19", "breadcrumb": {"@id": "https://hushpen.mandalsuraj.com/benchmarks-method#crumbs"}}, {"@type": "BreadcrumbList", "@id": "https://hushpen.mandalsuraj.com/benchmarks-method#crumbs", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Hushpen", "item": "https://hushpen.mandalsuraj.com/"}, {"@type": "ListItem", "position": 2, "name": "Benchmarks", "item": "https://hushpen.mandalsuraj.com/benchmarks"}, {"@type": "ListItem", "position": 3, "name": "Method", "item": "https://hushpen.mandalsuraj.com/benchmarks-method"}]}]}
+</script>
+</head>
+<body>
+<header class="nav"><div class="wrap"><a class="brand" href="/"><img src="/assets/icon-256.webp" alt="" width="30" height="30"><span>Hushpen</span></a><nav aria-label="Main"><a href="/#speed">Speed</a><a href="/#features">Features</a><a href="/#why">Why</a><a href="/#platforms">Platforms</a><a href="/benchmarks" aria-current="page">Benchmarks</a><a href="/#faq">FAQ</a></nav><a class="dl" data-dl href="https://github.com/surajmandalcell/hushpen/releases/latest">Download</a></div></header>
+
+<main class="wrap">
+  <article class="paper">
+  <ol class="crumbs" aria-label="Breadcrumb"><li><a href="/">Hushpen</a></li><li><a href="/benchmarks">Benchmarks</a></li><li aria-current="page">Method</li></ol>
+    <header class="paper-top"><p class="paper-kick">Hushpen benchmarks</p><h1>How we test speech to text apps and models</h1><p class="paper-by">Suraj Mandal · 19 November 2026 · <a href="/benchmarks">See the results</a></p></header>
+    <section class="paper-abs" aria-labelledby="abs">
+      <h2 id="abs">Abstract</h2>
+      <p>We ran 7 speech to text setups on one Mac: Hushpen with 5 speech models, Handy 0.10.1 and FluidVoice 1.6.13. Each one wrote out the same 36 clips from TED talks in 19 English accents. We scored every transcript word by word against the talk's human-made captions. Hushpen + Whisper Turbo got the most words right, 95.0 out of 100. FluidVoice was the fastest, 0.37 s for one minute of audio. Hushpen + Parakeet v3 took 0.73 s with 93.6 words right. This page gives the full method, the rules that kept the runs fair, the limits, and the steps to repeat the test.</p>
+    </section>
+    <section aria-labelledby="m1">
+      <h2 id="m1"><span>1</span>Setup</h2>
+    <div class="cp-tbl">
+      <table>
+        <caption class="sr">Method</caption>
+        <colgroup><col style="width:24%"><col></colgroup>
+        <tbody>
+          <tr><th scope="row">Clips</th><td>36 scored clips from TED talks, 25 to 30 s each, about 1 minute into each talk, with no laughter or applause inside. The full list with links is below. No audio is published.</td></tr>
+          <tr><th scope="row">Accents</th><td>19 English accents, 2 speakers each. Filipino has one speaker. Russian has one scored speaker: on Evgeny Morozov's talk the captions run about 5 s ahead of the sound, so that clip was transcribed but not scored.</td></tr>
+          <tr><th scope="row">Truth text</th><td>The talks' human-made English captions. Auto captions were never used. Each clip starts and ends on caption edges. The captions leave out some "uh"s and repeated words, so every model loses a few points for words the speaker really said.</td></tr>
+          <tr><th scope="row">Score</th><td>Both sides go through the Whisper English text normalizer (lowercase, no punctuation, numbers and spellings made the same, fillers such as "um" removed). Then word error rate with jiwer over all words. Words right is 100 minus the word error rate.</td></tr>
+          <tr><th scope="row">Speed</th><td>Median of 3 runs for each length, with the model loaded. Model load is timed apart.</td></tr>
+          <tr><th scope="row">This Mac</th><td>Apple M4 Pro, 14 cores, 24 GB, macOS. Metal GPU on for every app.</td></tr>
+          <tr><th scope="row">Linux machines</th><td>Hushpen only, CPU only, 3 threads: two Arm Neoverse-N1 servers with 4 cores, and an AMD Ryzen 3 2200G desktop with 4 cores. Accuracy there came out within 1 point of the Mac.</td></tr>
+          <tr><th scope="row">Hushpen</th><td>Built from master on 19 November 2026. A small bench program calls Hushpen's own speech loader and transcribe call with the app's defaults: Silero speech detection, Auto threads, language Detect. Nemotron Unified ran through the live text engine with the recording fed in as fast as possible.</td></tr>
+          <tr><th scope="row">FluidVoice 1.6.13</th><td>The installed app's local API: a WAV file sent to POST /v1/transcribe on loopback. Default model, Parakeet TDT v3 (Multilingual).</td></tr>
+          <tr><th scope="row">Handy 0.10.1</th><td>The official Apple silicon release, command line --transcribe-file, built-in transcribe-cpp on Metal. Model Parakeet Unified English 0.6B Q8_0, the first choice in its English catalog.</td></tr>
+          <tr><th scope="row">VoiceInk 2.27</th><td>Not measured. Its file queue needs Start pressed in the app window, and opening a file brings the app to the front, so it cannot run unattended.</td></tr>
+          <tr><th scope="row">MacWhisper 15.11</th><td>Not measured. The free install had no model, its command line tool answered "No model selected", and a model is installed from the app window.</td></tr>
+          <tr><th scope="row">Other apps</th><td>Superwhisper, Wispr Flow, Aqua Voice, Willow Voice and Spokenly were not tested in this round. Their own claims are on the results page.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    </section>
+    <section aria-labelledby="m2">
+      <h2 id="m2"><span>2</span>Keeping the runs fair</h2>
+      <ol class="paper-list">
+        <li><b>Same clips for every app.</b> Every setup got the same 37 WAV files, 16 kHz mono, cut once by a script. No app saw a different copy.</li>
+        <li><b>Default settings.</b> No custom words, no prompt and no language hint beyond each app's default.</li>
+        <li><b>Nothing tuned on the test clips.</b> The clips were picked by fixed rules (about 1 minute into each talk, whole caption lines, no laughter or applause) before any app ran. No setting was changed after we saw a score.</li>
+        <li><b>No best-of picks.</b> Accuracy is one run per clip, scored as it came out.</li>
+        <li><b>Warm model, load time left out.</b> The model is loaded before the clock starts. Load time is measured on its own and not added to the speed numbers.</li>
+        <li><b>Median of 3 runs.</b> Each speed number is the middle of 3 runs on the same file, so one slow run does not change the result.</li>
+        <li><b>One scoring path.</b> Every transcript and every caption goes through the same text normalizer and the same word error rate code.</li>
+      </ol>
+    </section>
+    <section aria-labelledby="m3">
+      <h2 id="m3"><span>3</span>Scoring</h2>
+      <p>The score answers one question: of the words the speaker said, how many did the app get right?</p>
+      <ol class="paper-list">
+        <li><b>Normalize both sides.</b> The Whisper English text normalizer makes text lowercase, removes punctuation, writes numbers and spellings the same way, and removes fillers such as "um".</li>
+        <li><b>Word error rate.</b> jiwer counts the words that were swapped, dropped or added, over all clips together, and divides by the number of caption words.</li>
+        <li><b>Words right.</b> 100 minus the word error rate. 95 words right means about 5 mistakes in every 100 words.</li>
+        <li><b>Speed.</b> Seconds to write out one minute of audio, from a 1 minute file. The speed files are the clips joined into one recording, then cut to 5 s, 15 s, 30 s, 1 min, 2 min and 5 min.</li>
+      </ol>
+    </section>
+    <section aria-labelledby="m4">
+      <h2 id="m4"><span>4</span>Results</h2>
+      <p>The full tables, with each accent and with long recordings, are on the <a href="/benchmarks">results page</a>.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Words right and speed for each setup</caption>
+        <thead><tr><th scope="col">Setup</th><th scope="col">Words right out of 100</th><th scope="col">Seconds per minute of audio</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Hushpen<small>Whisper Large v3 Turbo Q5</small></th><td data-l="Words right out of 100">95.0</td><td data-l="Seconds per minute of audio">2.76 s</td></tr>
+          <tr><th scope="row">Handy 0.10.1<small>Parakeet Unified English 0.6B Q8</small></th><td data-l="Words right out of 100">94.7</td><td data-l="Seconds per minute of audio">0.50 s</td></tr>
+          <tr><th scope="row">Hushpen<small>Nemotron Unified ASR 0.6B Q8</small></th><td data-l="Words right out of 100">94.2</td><td data-l="Seconds per minute of audio">7.00 s</td></tr>
+          <tr><th scope="row">Hushpen<small>Parakeet v3 Q4</small></th><td data-l="Words right out of 100">93.6</td><td data-l="Seconds per minute of audio">0.73 s</td></tr>
+          <tr><th scope="row">FluidVoice 1.6.13<small>Parakeet TDT v3</small></th><td data-l="Words right out of 100">93.5</td><td data-l="Seconds per minute of audio">0.37 s</td></tr>
+          <tr><th scope="row">Hushpen<small>Whisper Small Q5</small></th><td data-l="Words right out of 100">75.4</td><td data-l="Seconds per minute of audio">1.51 s</td></tr>
+          <tr><th scope="row">Hushpen<small>Whisper Base Q5</small></th><td data-l="Words right out of 100">71.5</td><td data-l="Seconds per minute of audio">0.66 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    </section>
+    <section aria-labelledby="m5">
+      <h2 id="m5"><span>5</span>Limits</h2>
+      <ul class="paper-list">
+        <li><b>Paid apps were not tested.</b> Superwhisper, Wispr Flow, Aqua Voice, Willow Voice, Spokenly, VoiceInk and MacWhisper have no numbers here.</li>
+        <li><b>The captions skip some words.</b> TED captions leave out some "uh"s and repeated words, so every setup loses a few points for words the speaker really said.</li>
+        <li><b>One clip was not scored.</b> On Evgeny Morozov's talk the captions run about 5 s ahead of the sound. That clip was written out but not scored.</li>
+        <li><b>Each app is timed at its own edge.</b> Hushpen time is its transcribe call. FluidVoice time runs from sending the file to its local API to getting the text back. Handy time is the inference time its command line tool reports.</li>
+        <li><b>One machine.</b> All Mac numbers come from one Apple M4 Pro with 24 GB. Other Macs will be faster or slower.</li>
+        <li><b>Nemotron Unified is timed through live text.</b> Hushpen runs it in its live text engine, which writes the text while you speak, so its speed is not a file speed.</li>
+      </ul>
+    </section>
+    <section aria-labelledby="m6">
+      <h2 id="m6"><span>6</span>Repeat the test</h2>
+      <p>You need a Mac or PC, Python 3, ffmpeg and yt-dlp. The clip list is in the appendix below. The audio is not published, so you cut it yourself from the talks.</p>
+      <ol class="paper-steps">
+        <li><b>Install the tools.</b><code>pip install jiwer whisper-normalizer yt-dlp</code></li>
+        <li><b>Download a talk and its human captions.</b><code>yt-dlp -x --audio-format wav --write-subs --sub-langs en --sub-format vtt -o talk &quot;&lt;YouTube link&gt;&quot;</code></li>
+        <li><b>Cut the clip at the times in the appendix, as 16 kHz mono.</b><code>ffmpeg -ss &lt;start&gt; -to &lt;end&gt; -i talk.wav -ac 1 -ar 16000 -c:a pcm_s16le clip.wav</code></li>
+        <li><b>Save the caption lines between the same times as the truth text.</b><span>Name it after the clip, such as clip.truth.txt.</span></li>
+        <li><b>Write out each clip with the app's default settings.</b><span>In Hushpen, open Manual, drop the WAV files in, and export TXT next to each clip, such as clip.txt.</span></li>
+        <li><b>Score all clips together with the script below.</b><code>python3 score.py</code></li>
+      </ol>
+      <pre class="paper-code"><code># score.py: words right out of 100 over every clip in this folder
+from pathlib import Path
+import jiwer
+from whisper_normalizer.english import EnglishTextNormalizer
+
+n = EnglishTextNormalizer()
+clips = sorted(p.stem for p in Path(&quot;.&quot;).glob(&quot;*.wav&quot;))
+truth = [n(Path(c + &quot;.truth.txt&quot;).read_text()) for c in clips]
+heard = [n(Path(c + &quot;.txt&quot;).read_text()) for c in clips]
+print(round(100 - 100 * jiwer.wer(truth, heard), 1))</code></pre>
+      <p>For speed, open the app and load the model first. Then time one file 3 times and keep the middle time.</p>
+    </section>
+    <section aria-labelledby="ma">
+      <h2 id="ma"><span>A</span>The clips</h2>
+      <p>Each link opens the talk on YouTube at the clip start.</p>
+    <div class="cp-tbl clips">
+      <table>
+        <caption class="sr">Clips used in the benchmark</caption>
+        <thead><tr><th scope="col">Accent</th><th scope="col">Speaker</th><th scope="col">Clip</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">American</th><td data-l="Speaker">Brené Brown</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=iCvmsMzlF7o&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:29</a></td></tr>
+          <tr><th scope="row">American</th><td data-l="Speaker">Simon Sinek</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=qp0HIF3SfI4&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:31</a></td></tr>
+          <tr><th scope="row">Arabic</th><td data-l="Speaker">Rana el Kaliouby</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=o3VwYIazybI&amp;t=65s" target="_blank" rel="noopener">1:05 to 1:31</a></td></tr>
+          <tr><th scope="row">Arabic</th><td data-l="Speaker">Wael Ghonim</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=HiwJ0hNl1Fw&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:30</a></td></tr>
+          <tr><th scope="row">Australian</th><td data-l="Speaker">Peter Singer</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=Diuv3XZQXyc&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:28</a></td></tr>
+          <tr><th scope="row">Australian</th><td data-l="Speaker">Rachel Botsman</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=GqGksNRYu8s&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:29</a></td></tr>
+          <tr><th scope="row">Brazilian</th><td data-l="Speaker">Eduardo Paes</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=B8Z2G7d2kzs&amp;t=70s" target="_blank" rel="noopener">1:10 to 1:35</a></td></tr>
+          <tr><th scope="row">Brazilian</th><td data-l="Speaker">Miguel Nicolelis</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=HQzXqjT0w3k&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:29</a></td></tr>
+          <tr><th scope="row">British</th><td data-l="Speaker">Jamie Oliver</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=go_QOzc79Uc&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:26</a></td></tr>
+          <tr><th scope="row">British</th><td data-l="Speaker">Ken Robinson</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=iG9CE55wbtY&amp;t=115s" target="_blank" rel="noopener">1:55 to 2:24</a></td></tr>
+          <tr><th scope="row">Chinese</th><td data-l="Speaker">Eric X. Li</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=s0YjL9rZyR0&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:28</a></td></tr>
+          <tr><th scope="row">Chinese</th><td data-l="Speaker">Yang Lan</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=c-sxBTNF2U8&amp;t=90s" target="_blank" rel="noopener">1:30 to 1:55</a></td></tr>
+          <tr><th scope="row">Filipino</th><td data-l="Speaker">Maria Ressa</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=st74hInuvXY&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:31</a></td></tr>
+          <tr><th scope="row">French</th><td data-l="Speaker">Esther Duflo</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=0zvrGiPkVcs&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">French</th><td data-l="Speaker">Matthieu Ricard</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=vbLEf4HR74E&amp;t=159s" target="_blank" rel="noopener">2:39 to 3:07</a></td></tr>
+          <tr><th scope="row">German</th><td data-l="Speaker">Ralph Langner</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=CS01Hmjv1pQ&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:27</a></td></tr>
+          <tr><th scope="row">German</th><td data-l="Speaker">Stefan Sagmeister</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=MNuOmTQdFjA&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:27</a></td></tr>
+          <tr><th scope="row">Indian</th><td data-l="Speaker">Arunachalam Muruganantham</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=zkQL7UJYDIY&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:27</a></td></tr>
+          <tr><th scope="row">Indian</th><td data-l="Speaker">Sugata Mitra</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=y3jYVe1RGaU&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">Irish</th><td data-l="Speaker">Bono</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=BdDkF0Lw-ag&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:30</a></td></tr>
+          <tr><th scope="row">Irish</th><td data-l="Speaker">Mary Robinson</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=7JVTirBEfho&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:28</a></td></tr>
+          <tr><th scope="row">Japanese</th><td data-l="Speaker">Shigeru Ban</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=q43uXdOKPD8&amp;t=75s" target="_blank" rel="noopener">1:15 to 1:42</a></td></tr>
+          <tr><th scope="row">Japanese</th><td data-l="Speaker">Takaharu Tezuka</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=J5jwEyDaR-0&amp;t=70s" target="_blank" rel="noopener">1:10 to 1:36</a></td></tr>
+          <tr><th scope="row">Korean</th><td data-l="Speaker">Hyeonseo Lee</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=PdxPCeWw75k&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:30</a></td></tr>
+          <tr><th scope="row">Korean</th><td data-l="Speaker">Joseph Kim</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=nLeeTVmVrtA&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:29</a></td></tr>
+          <tr><th scope="row">Nigerian</th><td data-l="Speaker">Chimamanda Ngozi Adichie</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=D9Ihs241zeg&amp;t=97s" target="_blank" rel="noopener">1:37 to 2:02</a></td></tr>
+          <tr><th scope="row">Nigerian</th><td data-l="Speaker">Ngozi Okonjo-Iweala</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=CPVjktgYKo4&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:26</a></td></tr>
+          <tr><th scope="row">Pakistani</th><td data-l="Speaker">Khalida Brohi</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=RAR4cz9wkUk&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">Pakistani</th><td data-l="Speaker">Ziauddin Yousafzai</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=h4mmeN8gv9o&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:29</a></td></tr>
+          <tr><th scope="row">Russian</th><td data-l="Speaker">Evgeny Morozov (not scored: captions out of sync)</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=-hFk6FDrZBc&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:28</a></td></tr>
+          <tr><th scope="row">Russian</th><td data-l="Speaker">Garry Kasparov</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=NP8xt8o4_5Q&amp;t=75s" target="_blank" rel="noopener">1:15 to 1:43</a></td></tr>
+          <tr><th scope="row">Scottish</th><td data-l="Speaker">Evelyn Glennie</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=IU3V6zNER4g&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:26</a></td></tr>
+          <tr><th scope="row">Scottish</th><td data-l="Speaker">Gordon Brown</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=mclzytQQMGI&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:28</a></td></tr>
+          <tr><th scope="row">South African</th><td data-l="Speaker">Neil Turok</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=UNbP7O6jasw&amp;t=64s" target="_blank" rel="noopener">1:04 to 1:34</a></td></tr>
+          <tr><th scope="row">South African</th><td data-l="Speaker">Toby Shapshak</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=aT6vIq6_1OE&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">Spanish or Latin American</th><td data-l="Speaker">Luis von Ahn</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=-Ht4qiDRZE8&amp;t=90s" target="_blank" rel="noopener">1:30 to 1:56</a></td></tr>
+          <tr><th scope="row">Spanish or Latin American</th><td data-l="Speaker">Pia Mancini</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=NXfYNdapq3Q&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:30</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    </section>
+  </article>
+</main>
+
+<footer class="foot"><div class="wrap">
+  <div class="foot-top">
+    <div class="fbrand"><img src="/assets/icon-256.webp" alt="" width="44" height="44" loading="lazy"><div><b>Hushpen</b><span>Free and open source dictation that stays on your computer.</span></div></div>
+    <div class="fcols">
+      <div><h4>Product</h4><a href="https://github.com/surajmandalcell/hushpen/releases/latest" data-dl>Download</a><a href="/speech-to-text">Speech to text</a><a href="/#platforms">Platforms</a><a href="https://github.com/surajmandalcell/hushpen/releases" target="_blank" rel="noopener">All releases</a></div>
+      <div><h4>Compare</h4><a href="/dictation-apps">Dictation apps compared</a><a href="/benchmarks">Benchmarks</a><a href="/wispr-flow-alternative">Wispr Flow alternative</a><a href="/superwhisper-alternative">Superwhisper alternative</a><a href="/macwhisper-alternative">MacWhisper alternative</a><a href="/aqua-voice-alternative">Aqua Voice alternative</a><a href="/willow-voice-alternative">Willow alternative</a></div>
+      <div><h4>Project</h4><a href="/about">About</a><a href="/support">Support</a><a href="/press/">Press</a><a href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/surajmandalcell/hushpen/issues" target="_blank" rel="noopener">Report an issue</a></div>
+      <div><h4>Legal</h4><a href="/privacy">Privacy</a><a href="https://github.com/surajmandalcell/hushpen/blob/master/LICENSE" target="_blank" rel="noopener">AGPL-3.0 license</a><a href="https://github.com/surajmandalcell/hushpen/blob/master/assets/THIRD-PARTY-NOTICES.html" target="_blank" rel="noopener">Third-party notices</a></div>
+    </div>
+  </div>
+  <div class="fbar"><span>© 2026 Suraj Mandal</span><span>AGPL-3.0-or-later</span></div>
+</div></footer>
+</body>
+</html>

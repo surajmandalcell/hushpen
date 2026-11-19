@@ -34,7 +34,7 @@
 
   // Nav: a hairline once scrolled, and a pill under the section in view
   const nav = document.getElementById('nav'), links = [...nav.querySelectorAll('nav a')], ind = nav.querySelector('.ind');
-  const secs = links.map(a => document.querySelector(a.getAttribute('href')));
+  const secs = links.map(a => { const h = a.getAttribute('href'); return h[0] === '#' ? document.querySelector(h) : null; }); // page links (Benchmarks) have no section
   nav.querySelector('.brand').addEventListener('click', e => { e.preventDefault(); scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' }); });
   let queued = false;
   const navTick = () => {
