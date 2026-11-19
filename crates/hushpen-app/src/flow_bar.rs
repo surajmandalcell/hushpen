@@ -270,6 +270,13 @@ impl FlowBar {
             shown.message = notice;
         }
         let state = shown.state;
+        if state == BarState::Listening
+            && let Some(text) = self.controller.read(cx).partial_text()
+        {
+            // Only the newest words fit. Bound the text shaped on every animation frame.
+            shown.message =
+                text[text.ceil_char_boundary(text.len().saturating_sub(256))..].to_owned();
+        }
         if state == BarState::Transcribing {
             match self.work {
                 Some(work) if work.stage == stage => {}

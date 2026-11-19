@@ -160,6 +160,7 @@ impl Props {
     /// pill keeps its size when the pointer changes the line.
     pub fn lines(&self) -> Vec<&str> {
         match self.state {
+            BarState::Listening if !self.message.is_empty() => vec![&self.message],
             BarState::Idle | BarState::Listening => Vec::new(),
             BarState::Transcribing if self.preparing() => vec![self.working_text()],
             BarState::Transcribing => Vec::new(),
@@ -215,7 +216,7 @@ pub fn size_of(props: &Props) -> (f32, f32) {
     let line = props.text_width;
     let width = match props.state {
         BarState::Idle => return IDLE_SIZE,
-        BarState::Listening => LISTENING_SIZE.0,
+        BarState::Listening => LISTENING_SIZE.0.max(2.0 * ROUND_END + line),
         BarState::Transcribing if props.preparing() => {
             2.0 * size::INSET + working::width() + space::SM + line
         }
@@ -231,7 +232,7 @@ pub fn size_of(props: &Props) -> (f32, f32) {
 fn line_room(props: &Props) -> f32 {
     let (width, _) = size_of(props);
     let ends = match props.state {
-        BarState::Undo | BarState::Cancelled => 2.0 * ROUND_END,
+        BarState::Listening | BarState::Undo | BarState::Cancelled => 2.0 * ROUND_END,
         BarState::Error | BarState::Blocked if props.open_history => 2.0 * ROUND_END,
         BarState::Transcribing => 2.0 * size::INSET + working::width() + space::SM,
         _ => 2.0 * size::INSET,
@@ -438,7 +439,13 @@ fn pill_row(props: &Props, bar: Option<&Entity<FlowBar>>, ghost: Option<&Props>)
             .px(px(size::BUTTON_INSET))
             .justify_between()
             .child(round_button(Round::Cancel, bar, appear))
-            .child(wave(props))
+            .child(if props.message.is_empty() {
+                wave(props).into_any_element()
+            } else {
+                status_text(&props.message, color::TEXT_PRIMARY, room)
+                    .text_ellipsis_start()
+                    .into_any_element()
+            })
             .child(round_button(Round::Finish, bar, appear)),
         BarState::Transcribing if props.preparing() => centered()
             .gap(px(space::SM))
@@ -609,7 +616,7 @@ fn exclamation(tone: u32) -> AnyElement {
 }
 
 /// The line, never wider than `room`: a longer one truncates.
-fn status_text(text: &str, tone: u32, room: f32) -> impl IntoElement {
+fn status_text(text: &str, tone: u32, room: f32) -> impl IntoElement + Styled {
     div()
         .id(hook::id("flowbar", "status"))
         .test_support()

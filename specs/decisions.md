@@ -215,39 +215,24 @@ new decision, add it here in the same change (D-21).
   switches transparency at run time. `window_chrome::follow_compositor`
   reads the selection owner at start and once a second, and switches live.
 
-- **D-30 Model catalog and details.** The catalog is schema 2: every model
-  has a kind (`speech`, `cleanup`, `voice`), a description, speed and
-  accuracy from 1 to 5, an approximate RAM need, what it is good for, and a
-  `https://huggingface.co/` source page. A schema 1 catalog (no kind, no
-  details) still parses, and its models take the kind of their list.
-  Only models whose exact size and SHA-256 are verified against their pinned
-  Hugging Face files are listed. The speech list is fixed by D-40. The Models
-  page groups the models by kind and opens a details sheet from each row.
-  Before a download the app reads the free space of the downloads folder
-  (statvfs) and refuses
-  when it is less than the bytes still to fetch plus 10%. At start it deletes
-  partial downloads older than 7 days. A file entry may carry
-  `replaces: [{bytes, sha256}]`, earlier pins of the same file; files that
-  match one are updated in the background instead of failing verification.
-- **D-31 Manual view.** Manual, third in the sidebar after History, is one
-  place for audio files and text that the user starts by hand, with a
-  segmented control for Transcribe (the import queue) and Read aloud. "Files"
-  stays its code name (the `files` module, the `files.*` settings, the
-  `sidebar.files` hook id), and "Import" the code name of one transcribed
-  file (the history kind, the `import.*` hook ids); its History line says
-  "File" where a dictation names the app. A drop anywhere on the
-  main window opens Manual: when every dropped file is `.txt` or `.md` the
-  first opens in Read aloud, else all go to the queue, which refuses what is
-  not a regular file without opening it. The engine child reads the length
-  from the headers and sends it as `audio_ms` on the first `progress` event
-  of the import, so the UI process never parses an outside file (D-23) and
-  adding a 12 hour file never blocks it; the time left is the pace so far,
-  shown from 5% on. The import language (`files.language`) is separate from
-  the dictation language. Translate is refused for Parakeet, English-only
-  Whisper models, and Turbo models, which have no translation task. Read
-  aloud streams: each chunk is appended to the player as it arrives and the
-  first plays while the rest is spoken. Export Audio writes the samples the
-  player holds as a 16-bit WAV, the only format for now. The settings keys
+- **D-30 Model catalog and details.** Schema 2 records kind (`speech`, `cleanup`, `voice`),
+  description, speed and accuracy (1–5), approximate RAM, use case and Hugging Face source.
+  Schema 1 infers kind from the list. Each download pins a verified revision, size and SHA-256.
+  Models groups rows by kind and opens their details. Downloads require free space
+  (statvfs) for remaining bytes plus 10%. Startup removes partials older than seven days.
+  Pins in `replaces: [{bytes, sha256}]` qualify matching older files for background updates.
+- **D-31 Manual view.** Manual is third in the sidebar, after History.
+  Its segmented control selects Transcribe (import queue) or Read aloud.
+  The code keeps `files`, `files.*`, `sidebar.files`, the import History kind
+  and `import.*` hooks. History labels imports "File" and dictations with the app name.
+  Dropping files anywhere on the main window opens Manual. For an all-`.txt`/`.md` drop,
+  Read aloud opens the first file. Otherwise the queue takes all regular files and
+  refuses other paths before opening them. Only the engine parses imported audio (D-23).
+  It reports header duration as `audio_ms` on first progress without blocking the UI.
+  From 5%, elapsed pace estimates time left. `files.language` is independent of dictation.
+  English-only Whisper, Turbo and both NVIDIA models refuse translation. Read aloud
+  plays chunks as they arrive. Export Audio writes the player samples as 16-bit WAV.
+  The settings keys
   are `files.mode`, `files.language`, `files.translate`, `readAloud.engine`,
   `readAloud.voice.system`, `readAloud.voice.kokoro`,
   `readAloud.voice.chatterbox` (both Chatterbox models),
@@ -372,32 +357,21 @@ new decision, add it here in the same change (D-21).
   `voices.bin` is only read. A mix travels as the voice id
   `<base>:<100-p>+<with>:<p>`.
 
-- **D-40 Speech models.** Offer only Parakeet v3 Q4_K, Whisper Large v3
-  Turbo Q5_0, Whisper Small Q5_1, and Whisper Base Q5_1, in that order.
-  Parakeet is the default and the sole Recommended speech model. Turbo is for languages outside
-  Parakeet's 25 European languages, Small for translation to English, and
-  Base for older or slower computers. Downloads use pinned Hugging Face
-  revisions, exact sizes, and SHA-256 checks. A retired selection moves to
-  Parakeet at startup. Only known retired speech files and their verification
-  stamps are deleted; History and other files stay.
-- **D-41 Parakeet engine.** The speech child selects Parakeet or Whisper
-  behind the existing AsrEngine interface. Both come from the vendored
-  whisper.cpp 1.9.4 tree, with Metal on macOS and CPU on Linux. Parakeet
-  always detects among its 25 supported languages. It takes no initial
-  prompt and cannot translate, so dictionary bias goes to Whisper only.
-  Parakeet and Turbo refuse translation in the engine and show a disabled
-  Translate to English switch with a tooltip in Manual. Home and Manual
-  suggest Whisper Large v3 Turbo Q5 when the selected language is outside
-  Parakeet's set. Speech filenames come from the catalog, not from the model
-  ID. Speech is decoded in spans of at most 20 seconds, cut near pauses with
-  one second of context on each side. The cancel flag is checked between
-  spans and during native decoding. The Parakeet C API gives timed subword
-  tokens and word starts, but no detected-language code. Hushpen groups those
-  tokens into word segments for History, SRT, and VTT, on the original audio
-  clock. It reports `und` for the unavailable language code, without
-  inventing a detected-language label. NVIDIA's model uses CC-BY-4.0; the
-  packaged notices identify NVIDIA, the original model, the quantized
-  conversion, and the license.
+- **D-40 Speech models.** Desktop catalog order: Parakeet v3 Q4_K (default and sole
+  Recommended), Nemotron Labs Unified ASR 0.6B Q8_0 (live dictation), Whisper Large v3
+  Turbo Q5_0 (languages outside Parakeet's 25), Small Q5_1 (translate to English) and
+  Base Q5_1 (older computers). Startup resets retired selections to Parakeet and removes
+  only known retired speech files and their verification stamps.
+- **D-41 Speech engine.** The speech child uses catalog filenames and `AsrEngine`.
+  Whisper and Parakeet v3 use vendored whisper.cpp 1.9.4. Unified uses parakeet.cpp with
+  the same ggml library (Mac Metal, Linux CPU). Only Whisper takes a dictionary prompt.
+  Home and Manual suggest Turbo for languages outside the two NVIDIA models' 25.
+  Both NVIDIA models and Turbo refuse translation. Manual disables Translate with a tooltip.
+  Parakeet v3 detects language automatically. It decodes at most 20 seconds per span,
+  cutting near pauses with one second of context on each side, and checks cancel between
+  spans and during decoding. Timed subwords form words on the recording clock for History,
+  SRT and VTT. An unknown detected language is `und`. Packaged notices name NVIDIA,
+  the models, converters and licenses (v3 CC-BY-4.0, Unified OpenMDW-1.1).
 
 - **D-42 Word packs.** The Dictionary offers hand-written word packs
   (Indian names, Indian places, Hinglish words, Tech terms) under
@@ -407,8 +381,9 @@ new decision, add it here in the same change (D-21).
   text join the cleanup keep-list, and heard-as replacements run after
   cleanup.
 
-- **D-43 Whole-clip dictation.** Dictation transcribes the whole recording
-  after stop.
+- **D-43 Fast mode.** Selecting Unified enables live text in the desktop flow bar
+  during local dictation. Stop flushes the remaining audio. Only the final transcript
+  goes to cleanup, History and paste. Other speech models and file imports use batch decoding.
 
 - **D-44 Flow bar balance and Recover.** `DESIGN.md` owns the balanced
   geometry and motion rules. Size uses a critically damped spring. The macOS
