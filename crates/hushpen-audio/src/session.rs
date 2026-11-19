@@ -76,6 +76,39 @@ impl SessionWriter {
     }
 }
 
+/// Reads the PCM already written to a recording, including audio past its last header patch.
+pub struct SessionReader(File);
+
+impl SessionReader {
+    pub fn open(path: &Path) -> io::Result<Self> {
+        let mut file = File::open(path)?;
+        let layout = read_layout(&mut file)?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "expected a 16 kHz mono PCM session WAV",
+            )
+        })?;
+        file.seek(SeekFrom::Start(layout.data_start))?;
+        Ok(Self(file))
+    }
+
+    /// Returns zero when caught up. Once capture finishes, drain again to include its tail.
+    pub fn read_chunk(&mut self, samples: &mut Vec<f32>) -> io::Result<usize> {
+        let mut bytes = [0; 8192];
+        let count = self.0.read(&mut bytes)?;
+        if count % 2 != 0 {
+            self.0.seek(SeekFrom::Current(-1))?;
+        }
+        samples.clear();
+        samples.extend(
+            bytes[..count]
+                .chunks_exact(2)
+                .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32768.0),
+        );
+        Ok(samples.len())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveredSession {
     pub path: PathBuf,
@@ -263,6 +296,31 @@ mod tests {
         // Read while the writer is still open, as after a kill.
         assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 16_000);
         drop(writer);
+    }
+
+    #[test]
+    fn live_reader_continues_after_temporary_eof_and_drains_the_last_samples_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live.wav");
+        let mut writer = SessionWriter::create(&path).unwrap();
+        let mut reader = SessionReader::open(&path).unwrap();
+        let mut chunk = Vec::new();
+        assert_eq!(reader.read_chunk(&mut chunk).unwrap(), 0);
+        writer.write(&vec![0.5; 8_000]).unwrap();
+        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 0);
+        let mut samples = Vec::new();
+        while reader.read_chunk(&mut chunk).unwrap() > 0 {
+            samples.extend_from_slice(&chunk);
+        }
+        assert!(!samples.is_empty());
+        writer.write(&[-0.5, 0.25]).unwrap();
+        writer.finalize().unwrap();
+        while reader.read_chunk(&mut chunk).unwrap() > 0 {
+            samples.extend_from_slice(&chunk);
+        }
+        assert_eq!(samples.len(), 8_002);
+        assert!(samples[..8_000].iter().all(|&value| value == 0.5));
+        assert_eq!(samples[8_000..], [-0.5, 0.25]);
     }
 
     #[test]

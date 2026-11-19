@@ -110,11 +110,16 @@ pub struct ImportProgress {
 /// Receives the progress of an import. It runs on the supervisor thread, so it must return at
 /// once.
 pub type ProgressSink = Arc<dyn Fn(ImportProgress) + Send + Sync>;
+pub type PartialSink = Arc<dyn Fn(String) + Send + Sync>;
 
 /// What a job asks the child to read.
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Work {
     Wav(TranscribeSpec),
+    Live {
+        spec: TranscribeSpec,
+        partial: PartialSink,
+        finished: bool,
+    },
     Import(ImportSpec),
 }
 
@@ -204,6 +209,9 @@ pub struct Loaded {
 }
 
 pub(crate) enum Cmd {
+    FinishLive {
+        job: u64,
+    },
     Load {
         spec: LoadSpec,
         reply: Sender<Result<Loaded, Failure>>,
@@ -351,6 +359,26 @@ impl EngineClient {
         self.submit(Work::Wav(spec), None)
     }
 
+    /// Follows a recording as it grows. The partial callback runs on the supervisor thread.
+    pub fn transcribe_live(&self, spec: TranscribeSpec, partial: PartialSink) -> JobHandle {
+        self.submit(
+            Work::Live {
+                spec,
+                partial,
+                finished: false,
+            },
+            None,
+        )
+    }
+
+    /// The writer has closed the WAV. Decode any remaining samples and return one final result.
+    pub fn finish_live(&self, job: u64) {
+        let _ = self
+            .inner
+            .commands
+            .send(manager::Msg::Cmd(Cmd::FinishLive { job }));
+    }
+
     /// Starts an import: the child decodes the file, then transcribes it in windows. `progress`
     /// hears how far it is. The file is only read.
     pub fn import(&self, spec: ImportSpec, progress: Option<ProgressSink>) -> JobHandle {
@@ -450,6 +478,10 @@ pub struct JobHandle {
 }
 
 impl JobHandle {
+    pub fn finish_live(&self) {
+        self.client.finish_live(self.job);
+    }
+
     pub fn id(&self) -> u64 {
         self.job
     }

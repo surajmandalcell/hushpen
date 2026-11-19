@@ -82,6 +82,7 @@ struct Pending {
 }
 
 struct Inflight {
+    partial: Option<crate::client::PartialSink>,
     reply: Sender<JobOutcome>,
     progress: Option<ProgressSink>,
     sent: Instant,
