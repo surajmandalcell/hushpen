@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the latest Hushpen release on macOS (Apple silicon) or Linux (x64, arm64):
-#   curl -fsSL https://hushpen.mandalsuraj.com/install.sh | sh
+#   curl -fsSL https://samhq.app/install.sh | sh
 # HUSHPEN_INSTALL_DIR sets where the app goes. HUSHPEN_NO_OPEN=1 skips opening it.
 set -eu
 

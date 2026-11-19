@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/surajmandalcell/hushpen/releases/latest"><b>Download</b></a> &nbsp;·&nbsp;
-  <a href="https://hushpen.mandalsuraj.com/">Website</a> &nbsp;·&nbsp;
+  <a href="https://samhq.app/">Website</a> &nbsp;·&nbsp;
   <a href="https://github.com/surajmandalcell/hushpen/issues">Report a problem</a>
 </p>
 
@@ -83,7 +83,7 @@ Sources: [Wispr Flow](https://wisprflow.ai/pricing), [Aqua Voice](https://aquavo
 Run this in Terminal:
 
 ```sh
-curl -fsSL https://hushpen.mandalsuraj.com/install.sh | sh
+curl -fsSL https://samhq.app/install.sh | sh
 ```
 
 Or [download the `.dmg`](https://github.com/surajmandalcell/hushpen/releases/latest), open it, and drag **Hushpen** to **Applications**.
@@ -106,7 +106,7 @@ You can also hold **Right Option** while you talk, and let go to stop.
 Run this in a terminal:
 
 ```sh
-curl -fsSL https://hushpen.mandalsuraj.com/install.sh | sh
+curl -fsSL https://samhq.app/install.sh | sh
 ```
 
 Or download a file from the [latest release](https://github.com/surajmandalcell/hushpen/releases/latest). Use `arm64` instead of `x64` on an Arm machine.
