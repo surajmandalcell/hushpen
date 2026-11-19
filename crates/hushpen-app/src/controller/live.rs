@@ -145,10 +145,10 @@ impl Draft {
     pub(super) fn finish<'a>(&mut self, raw: &'a str, cleaned: &'a str) -> Option<&'a str> {
         if self.typed == cleaned {
             self.check();
-        } else if let Some(tail) = cleaned.strip_prefix(&self.typed) {
-            self.write(self.typed.len(), tail);
         } else {
-            self.write(0, cleaned);
+            // Keep the words that already match, so a late fix does not retype the whole draft.
+            let (keep, add) = suffix_edit(&self.typed, cleaned);
+            self.write(keep, add);
         }
         match self.span {
             Ok(_) => Some(""),

@@ -169,14 +169,28 @@ impl Span {
     }
 }
 
+/// A busy target can miss one AX read (0.25 s timeout). Read once more before calling it an edit.
+fn twice(check: impl Fn() -> bool) -> bool {
+    if check() {
+        return true;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    let again = check();
+    #[cfg(feature = "test-automation")]
+    log::info!("TEST_INSERT live-recheck held={again}");
+    again
+}
+
 impl LiveSpan for Span {
     fn unchanged(&self) -> bool {
-        self.matches(&self.expected, self.caret)
+        twice(|| self.matches(&self.expected, self.caret))
     }
 
     fn at_caret(&self) -> bool {
-        focused(&self.target).as_ref() == Some(&self.field)
-            && selection(&self.field) == Some(self.caret)
+        twice(|| {
+            focused(&self.target).as_ref() == Some(&self.field)
+                && selection(&self.field) == Some(self.caret)
+        })
     }
 
     fn replace(&mut self, keep_bytes: usize, replacement: &str) -> Result<(), LiveError> {
@@ -200,10 +214,20 @@ impl LiveSpan for Span {
         }
         if units != 0 && (!select(&self.field, range) || !self.matches(&self.expected, range)) {
             // A selection change may have landed even when the target timed out.
+            #[cfg(feature = "test-automation")]
+            log::warn!("TEST_INSERT live-miss select units={units}");
             return Err(LiveError::Uncertain);
         }
         let status = set(&self.field, SELECTED_TEXT, value.as_CFTypeRef());
         if !self.matches(&expected, caret) {
+            #[cfg(feature = "test-automation")]
+            log::warn!(
+                "TEST_INSERT live-miss status={status} focus={} value={:?} selection={:?} want={:?}",
+                editable_focus(&self.target).as_ref() == Some(&self.field),
+                text(&self.field, "AXValue").map(|value| value == expected),
+                selection(&self.field).map(|range| (range.location, range.length)),
+                (caret.location, caret.length),
+            );
             // Some fields acknowledge a write but keep the original text. Restore only our selection.
             if status != CANNOT_COMPLETE
                 && self.matches(&self.expected, range)
