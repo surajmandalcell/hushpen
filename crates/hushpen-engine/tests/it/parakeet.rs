@@ -176,16 +176,37 @@ fn parakeet_refuses_what_it_cannot_do_and_finds_no_words_in_silence() {
 /// The encoder cannot be stopped inside a native call, so this bounds one decoded span.
 #[test]
 fn parakeet_stops_a_long_cpu_job_within_one_second() {
-    let mut engine = load(false);
+    stops_within_one_second(false);
+}
+
+/// With a GPU, two spans decode at once; a cancel still waits for at most one span each.
+#[test]
+fn parakeet_stops_a_long_gpu_job_within_one_second() {
+    stops_within_one_second(true);
+}
+
+fn stops_within_one_second(gpu: bool) {
+    let mut engine = load(gpu);
     let clip = speech();
-    let pcm: Vec<f32> = clip.iter().copied().cycle().take(120 * 16_000).collect();
+    // An M4 Pro GPU decodes 120 s in about 1.3 s, so its job is longer and its cancel earlier.
+    let (seconds, delays) = if gpu {
+        (600, [200_u64, 1_000])
+    } else {
+        (120, [200, 3_000])
+    };
+    let pcm: Vec<f32> = clip
+        .iter()
+        .copied()
+        .cycle()
+        .take(seconds * 16_000)
+        .collect();
     // The x64 CI runner measured 1.13 s for one decoded span that cannot be stopped.
     let limit = if std::env::var_os("CI").is_some() {
         Duration::from_secs(3)
     } else {
         Duration::from_secs(1)
     };
-    for delay_ms in [200_u64, 3_000] {
+    for delay_ms in delays {
         let cancel = CancelFlag::new();
         let trigger = cancel.clone();
         let (tx, rx) = std::sync::mpsc::channel();

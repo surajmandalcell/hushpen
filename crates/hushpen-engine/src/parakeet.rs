@@ -13,7 +13,7 @@ use std::ffi::{CStr, CString, c_void};
 use std::ops::Range;
 use std::path::Path;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use whisper_rs::{WhisperVadContext, WhisperVadContextParams};
 use whisper_rs_sys as ffi;
@@ -45,11 +45,25 @@ extern "C" fn abort_requested(user_data: *mut c_void) -> bool {
     unsafe { (*user_data.cast::<AtomicBool>()).load(Ordering::Relaxed) }
 }
 
-/// One Parakeet model held in memory, with the speech detector that picks what it decodes.
-pub struct ParakeetEngine {
+/// Spans decoded at once with a GPU. Each decoder step is a short GPU round trip, so a second
+/// state keeps the GPU busy while the first waits. Each state adds its own compute buffers.
+const GPU_DECODERS: usize = 2;
+
+/// One native decoder state over the shared model.
+struct Decoder {
     context: NonNull<ffi::parakeet_context>,
     state: NonNull<ffi::parakeet_state>,
     threads: i32,
+}
+
+// SAFETY: a decoder owns its state and is used by one thread at a time. The context it shares
+// with the other decoders is only read during a run, and each state has its own backends.
+unsafe impl Send for Decoder {}
+
+/// One Parakeet model held in memory, with the speech detector that picks what it decodes.
+pub struct ParakeetEngine {
+    context: NonNull<ffi::parakeet_context>,
+    decoders: Vec<Decoder>,
     gpu: bool,
     vad: WhisperVadContext,
     /// The mappings that hold the weights, for a page-out. Empty where none is possible.
@@ -103,23 +117,30 @@ impl ParakeetEngine {
         });
         let context = NonNull::new(context)
             .ok_or_else(|| EngineError::LoadFailed("could not load the Parakeet model".into()))?;
-        // SAFETY: `context` is a loaded model; the state returned has one owner.
-        let state = unsafe { ffi::parakeet_init_state(context.as_ptr()) };
-        let Some(state) = NonNull::new(state) else {
-            // SAFETY: the context has no state and no other owner.
-            unsafe { ffi::parakeet_free(context.as_ptr()) };
-            return Err(EngineError::LoadFailed(
-                "could not set up the Parakeet model".into(),
-            ));
-        };
-        Ok(Self {
+        let gpu = options.gpu && crate::whisper::gpu_backend_present();
+        // On the CPU, a second state would only compete for the same cores.
+        let count = if gpu { GPU_DECODERS } else { 1 };
+        let mut engine = Self {
             context,
-            state,
-            threads,
-            gpu: options.gpu && crate::whisper::gpu_backend_present(),
+            decoders: Vec::with_capacity(count),
+            gpu,
             vad,
             weights,
-        })
+        };
+        for _ in 0..count {
+            // SAFETY: `context` is a loaded model; the state returned has one owner.
+            let state = unsafe { ffi::parakeet_init_state(context.as_ptr()) };
+            // A failure drops `engine`, which frees the context and the states made so far.
+            let state = NonNull::new(state).ok_or_else(|| {
+                EngineError::LoadFailed("could not set up the Parakeet model".into())
+            })?;
+            engine.decoders.push(Decoder {
+                context,
+                state,
+                threads,
+            });
+        }
+        Ok(engine)
     }
 
     /// The words of one window, in window time. A window without speech is not decoded.
@@ -142,13 +163,48 @@ impl ParakeetEngine {
             })
             .collect();
         let spans = spans(&found, self.vad.probabilities(), pcm.len(), MAX_SPAN);
+        // Each decoder takes the next span not yet taken, so a cancel waits for at most one span
+        // per decoder.
+        let next = AtomicUsize::new(0);
+        let mut decoded: Vec<_> = std::thread::scope(|scope| {
+            let workers: Vec<_> = self
+                .decoders
+                .iter_mut()
+                .take(spans.len())
+                .map(|decoder| {
+                    let (next, spans) = (&next, &spans);
+                    scope.spawn(move || {
+                        let mut done = Vec::new();
+                        while let Some(span) = spans.get(next.fetch_add(1, Ordering::Relaxed)) {
+                            let result = if cancel.is_cancelled() {
+                                Err(EngineError::Cancelled)
+                            } else {
+                                decoder.decode(&pcm[span.decode.clone()], cancel)
+                            };
+                            let failed = result.is_err();
+                            done.push((span, result));
+                            if failed {
+                                break;
+                            }
+                        }
+                        done
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .flat_map(|worker| {
+                    worker
+                        .join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+                })
+                .collect()
+        });
+        decoded.sort_by_key(|(span, _)| span.decode.start);
         let mut words = Vec::new();
-        for span in spans {
-            if cancel.is_cancelled() {
-                return Err(EngineError::Cancelled);
-            }
+        for (span, found) in decoded {
             let offset_ms = (span.decode.start * 1000 / SAMPLE_RATE) as u64;
-            let found = self.decode(&pcm[span.decode.clone()], cancel)?;
+            let found = found?;
             words.extend(
                 found
                     .into_iter()
@@ -165,7 +221,9 @@ impl ParakeetEngine {
         }
         Ok(words)
     }
+}
 
+impl Decoder {
     /// One native call over `pcm`. Returns its words in `pcm` time.
     fn decode(&mut self, pcm: &[f32], cancel: &CancelFlag) -> Result<Vec<Segment>, EngineError> {
         let context = self.context.as_ptr();
@@ -183,8 +241,8 @@ impl ParakeetEngine {
             std::sync::Arc::as_ptr(cancel.as_atomic()).cast_mut().cast();
         let samples = i32::try_from(pcm.len())
             .map_err(|_| EngineError::Failed("audio span is too long".into()))?;
-        // SAFETY: `self` holds the context and the state exclusively; `pcm` and `cancel` outlive
-        // the call.
+        // SAFETY: `self` holds the state exclusively and the context is only read; `pcm` and
+        // `cancel` outlive the call.
         let code =
             unsafe { ffi::parakeet_full_with_state(context, state, params, pcm.as_ptr(), samples) };
         // An abort returns -6 after the encoder or -7 in the decoder. The flag decides.
@@ -217,10 +275,12 @@ impl ParakeetEngine {
 
 impl Drop for ParakeetEngine {
     fn drop(&mut self) {
-        // SAFETY: this value owns the state and the context, and no native call can still use
+        // SAFETY: this value owns the states and the context, and no native call can still use
         // them. The context has no state of its own to free.
         unsafe {
-            ffi::parakeet_free_state(self.state.as_ptr());
+            for decoder in &self.decoders {
+                ffi::parakeet_free_state(decoder.state.as_ptr());
+            }
             ffi::parakeet_free(self.context.as_ptr());
         }
     }
@@ -257,9 +317,14 @@ impl AsrEngine for ParakeetEngine {
         // Set to print the native time split (mel, encoder, joint, predictor) of each job to stderr.
         let timings = std::env::var_os("HUSHPEN_PARAKEET_TIMINGS").is_some();
         if timings {
-            // SAFETY: `self` owns the context and the state.
-            unsafe {
-                ffi::parakeet_reset_timings_with_state(self.context.as_ptr(), self.state.as_ptr());
+            for decoder in &self.decoders {
+                // SAFETY: `self` owns the context and the states.
+                unsafe {
+                    ffi::parakeet_reset_timings_with_state(
+                        self.context.as_ptr(),
+                        decoder.state.as_ptr(),
+                    );
+                }
             }
         }
         let mut input = Windows::new(source);
@@ -274,7 +339,12 @@ impl AsrEngine for ParakeetEngine {
             // SAFETY: as above. The default logger prints the info lines the quiet one drops.
             unsafe {
                 ffi::parakeet_log_set(None, std::ptr::null_mut());
-                ffi::parakeet_print_timings_with_state(self.context.as_ptr(), self.state.as_ptr());
+                for decoder in &self.decoders {
+                    ffi::parakeet_print_timings_with_state(
+                        self.context.as_ptr(),
+                        decoder.state.as_ptr(),
+                    );
+                }
             }
             crate::whisper::quiet_native_logs();
         }
