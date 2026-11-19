@@ -72,7 +72,7 @@
   <section class="cp-s" aria-labelledby="accents">
     <h2 id="accents">Accuracy <span>by accent.</span></h2>
     <p>Words right out of 100 for each accent. Hushpen Whisper Turbo ranges from 89 on Indian English to 99 on Filipino English. The best score in each row is blue.</p>
-    <div class="cp-body cp-tbl num ">
+    <div class="cp-body cp-tbl num grid rot">
       <table>
         <caption class="sr">Words right out of 100 for each accent</caption>
         <thead><tr><th scope="col">Accent</th><th scope="col">Hushpen Whisper Turbo</th><th scope="col">Handy Parakeet Unified English</th><th scope="col">Hushpen Nemotron Unified</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">FluidVoice Parakeet v3</th><th scope="col">Hushpen Whisper Small</th><th scope="col">Hushpen Whisper Base</th></tr></thead>
@@ -104,49 +104,42 @@
   <section class="cp-s" aria-labelledby="speed">
     <h2 id="speed">Speed <span>on this Mac.</span></h2>
     <p>Seconds to write out 1 minute of audio, for recordings from 5 seconds to 5 minutes. Median of 3 runs. Short recordings cost more per minute because each one pays a fixed start cost. Model load is timed apart.</p>
-    <div class="cp-body cp-tbl num ">
+    <div class="cp-body cp-tbl num grid">
       <table>
         <caption class="sr">Seconds per minute of audio for each recording length on this Mac</caption>
-        <thead><tr><th scope="col">Recording</th><th scope="col">FluidVoice Parakeet v3</th><th scope="col">Handy Parakeet Unified English</th><th scope="col">Hushpen Whisper Base</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Small</th><th scope="col">Hushpen Whisper Turbo</th><th scope="col">Hushpen Nemotron Unified</th></tr></thead>
+        <thead><tr><th scope="col">Seconds per minute</th><th scope="col">5 s</th><th scope="col">15 s</th><th scope="col">30 s</th><th scope="col">1 min</th><th scope="col">2 min</th><th scope="col">5 min</th><th scope="col">Model load</th></tr></thead>
         <tbody>
-          <tr><th scope="row">5 s</th><td data-l="FluidVoice Parakeet v3">1.10 s</td><td data-l="Handy Parakeet Unified English">0.71 s</td><td data-l="Hushpen Whisper Base">1.98 s</td><td data-l="Hushpen Parakeet v3">1.14 s</td><td data-l="Hushpen Whisper Small">4.24 s</td><td data-l="Hushpen Whisper Turbo">13.69 s</td><td data-l="Hushpen Nemotron Unified">5.33 s</td></tr>
-          <tr><th scope="row">15 s</th><td data-l="FluidVoice Parakeet v3">0.48 s</td><td data-l="Handy Parakeet Unified English">0.48 s</td><td data-l="Hushpen Whisper Base">3.75 s</td><td data-l="Hushpen Parakeet v3">0.93 s</td><td data-l="Hushpen Whisper Small">2.27 s</td><td data-l="Hushpen Whisper Turbo">5.21 s</td><td data-l="Hushpen Nemotron Unified">6.54 s</td></tr>
-          <tr><th scope="row">30 s</th><td data-l="FluidVoice Parakeet v3">0.42 s</td><td data-l="Handy Parakeet Unified English">0.47 s</td><td data-l="Hushpen Whisper Base">0.93 s</td><td data-l="Hushpen Parakeet v3">0.99 s</td><td data-l="Hushpen Whisper Small">1.98 s</td><td data-l="Hushpen Whisper Turbo">4.01 s</td><td data-l="Hushpen Nemotron Unified">6.85 s</td></tr>
-          <tr><th scope="row">1 min</th><td data-l="FluidVoice Parakeet v3">0.37 s</td><td data-l="Handy Parakeet Unified English">0.50 s</td><td data-l="Hushpen Whisper Base">0.81 s</td><td data-l="Hushpen Parakeet v3">0.87 s</td><td data-l="Hushpen Whisper Small">1.73 s</td><td data-l="Hushpen Whisper Turbo">2.90 s</td><td data-l="Hushpen Nemotron Unified">7.00 s</td></tr>
-          <tr><th scope="row">2 min</th><td data-l="FluidVoice Parakeet v3">0.33 s</td><td data-l="Handy Parakeet Unified English">0.57 s</td><td data-l="Hushpen Whisper Base">1.08 s</td><td data-l="Hushpen Parakeet v3">0.86 s</td><td data-l="Hushpen Whisper Small">1.69 s</td><td data-l="Hushpen Whisper Turbo">3.06 s</td><td data-l="Hushpen Nemotron Unified">7.05 s</td></tr>
-          <tr><th scope="row">5 min</th><td data-l="FluidVoice Parakeet v3">0.31 s</td><td data-l="Handy Parakeet Unified English">0.86 s</td><td data-l="Hushpen Whisper Base">0.82 s</td><td data-l="Hushpen Parakeet v3">0.85 s</td><td data-l="Hushpen Whisper Small">1.53 s</td><td data-l="Hushpen Whisper Turbo">2.38 s</td><td data-l="Hushpen Nemotron Unified">7.13 s</td></tr>
-          <tr><th scope="row">Model load</th><td data-l="FluidVoice Parakeet v3">0.10 s</td><td data-l="Handy Parakeet Unified English">0.06 s</td><td data-l="Hushpen Whisper Base">0.05 s</td><td data-l="Hushpen Parakeet v3">0.15 s</td><td data-l="Hushpen Whisper Small">0.08 s</td><td data-l="Hushpen Whisper Turbo">0.24 s</td><td data-l="Hushpen Nemotron Unified">0.44 s</td></tr>
+          <tr><th scope="row">FluidVoice Parakeet v3</th><td data-l="5 s">1.10</td><td data-l="15 s">0.48</td><td data-l="30 s">0.42</td><td data-l="1 min">0.37</td><td data-l="2 min">0.33</td><td data-l="5 min">0.31</td><td data-l="Model load">0.10</td></tr>
+          <tr><th scope="row">Handy Parakeet Unified English</th><td data-l="5 s">0.71</td><td data-l="15 s">0.48</td><td data-l="30 s">0.47</td><td data-l="1 min">0.50</td><td data-l="2 min">0.57</td><td data-l="5 min">0.86</td><td data-l="Model load">0.06</td></tr>
+          <tr><th scope="row">Hushpen Whisper Base</th><td data-l="5 s">1.98</td><td data-l="15 s">3.75</td><td data-l="30 s">0.93</td><td data-l="1 min">0.81</td><td data-l="2 min">1.08</td><td data-l="5 min">0.82</td><td data-l="Model load">0.05</td></tr>
+          <tr><th scope="row">Hushpen Parakeet v3</th><td data-l="5 s">1.14</td><td data-l="15 s">0.93</td><td data-l="30 s">0.99</td><td data-l="1 min">0.87</td><td data-l="2 min">0.86</td><td data-l="5 min">0.85</td><td data-l="Model load">0.15</td></tr>
+          <tr><th scope="row">Hushpen Whisper Small</th><td data-l="5 s">4.24</td><td data-l="15 s">2.27</td><td data-l="30 s">1.98</td><td data-l="1 min">1.73</td><td data-l="2 min">1.69</td><td data-l="5 min">1.53</td><td data-l="Model load">0.08</td></tr>
+          <tr><th scope="row">Hushpen Whisper Turbo</th><td data-l="5 s">13.69</td><td data-l="15 s">5.21</td><td data-l="30 s">4.01</td><td data-l="1 min">2.90</td><td data-l="2 min">3.06</td><td data-l="5 min">2.38</td><td data-l="Model load">0.24</td></tr>
+          <tr><th scope="row">Hushpen Nemotron Unified</th><td data-l="5 s">5.33</td><td data-l="15 s">6.54</td><td data-l="30 s">6.85</td><td data-l="1 min">7.00</td><td data-l="2 min">7.05</td><td data-l="5 min">7.13</td><td data-l="Model load">0.44</td></tr>
         </tbody>
       </table>
     </div>
     <p class="cp-note">FluidVoice time runs from sending the audio to its local API to getting the full text back. Handy time is the inference time its command line tool reports. Hushpen time is the transcribe call. Model load is the load with the model already on disk.</p>
     <p class="cp-note"><b>Linux server, Arm Neoverse-N1 (Ampere Altra), 4 cores, CPU only</b> (Hushpen only):</p>
-    <div class="cp-body cp-tbl num ">
+    <div class="cp-body cp-tbl num grid">
       <table>
         <caption class="sr">Seconds per minute of audio on Arm Neoverse-N1 (Ampere Altra)</caption>
-        <thead><tr><th scope="col">Recording</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Small</th><th scope="col">Hushpen Whisper Base</th></tr></thead>
+        <thead><tr><th scope="col">Seconds per minute</th><th scope="col">5 s</th><th scope="col">15 s</th><th scope="col">30 s</th><th scope="col">1 min</th><th scope="col">2 min</th><th scope="col">5 min</th></tr></thead>
         <tbody>
-          <tr><th scope="row">5 s</th><td data-l="Hushpen Parakeet v3">11.7 s</td><td data-l="Hushpen Whisper Small">236.6 s</td><td data-l="Hushpen Whisper Base">64.4 s</td></tr>
-          <tr><th scope="row">15 s</th><td data-l="Hushpen Parakeet v3">11.3 s</td><td data-l="Hushpen Whisper Small">82.8 s</td><td data-l="Hushpen Whisper Base">33.8 s</td></tr>
-          <tr><th scope="row">30 s</th><td data-l="Hushpen Parakeet v3">12.3 s</td><td data-l="Hushpen Whisper Small">63.3 s</td><td data-l="Hushpen Whisper Base">17.7 s</td></tr>
-          <tr><th scope="row">1 min</th><td data-l="Hushpen Parakeet v3">11.3 s</td><td data-l="Hushpen Whisper Small">44.9 s</td><td data-l="Hushpen Whisper Base">12.8 s</td></tr>
-          <tr><th scope="row">2 min</th><td data-l="Hushpen Parakeet v3">11.6 s</td><td data-l="Hushpen Whisper Small">41.5 s</td><td data-l="Hushpen Whisper Base">12.1 s</td></tr>
-          <tr><th scope="row">5 min</th><td data-l="Hushpen Parakeet v3">11.3 s</td><td data-l="Hushpen Whisper Small">34.1 s</td><td data-l="Hushpen Whisper Base">13.8 s</td></tr>
+          <tr><th scope="row">Hushpen Parakeet v3</th><td data-l="5 s">11.7</td><td data-l="15 s">11.3</td><td data-l="30 s">12.3</td><td data-l="1 min">11.3</td><td data-l="2 min">11.6</td><td data-l="5 min">11.3</td></tr>
+          <tr><th scope="row">Hushpen Whisper Small</th><td data-l="5 s">236.6</td><td data-l="15 s">82.8</td><td data-l="30 s">63.3</td><td data-l="1 min">44.9</td><td data-l="2 min">41.5</td><td data-l="5 min">34.1</td></tr>
+          <tr><th scope="row">Hushpen Whisper Base</th><td data-l="5 s">64.4</td><td data-l="15 s">33.8</td><td data-l="30 s">17.7</td><td data-l="1 min">12.8</td><td data-l="2 min">12.1</td><td data-l="5 min">13.8</td></tr>
         </tbody>
       </table>
     </div>
     <p class="cp-note"><b>Linux desktop, AMD Ryzen 3 2200G, 4 cores, CPU only</b> (Hushpen only):</p>
-    <div class="cp-body cp-tbl num ">
+    <div class="cp-body cp-tbl num grid">
       <table>
         <caption class="sr">Seconds per minute of audio on AMD Ryzen 3 2200G</caption>
-        <thead><tr><th scope="col">Recording</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Base</th></tr></thead>
+        <thead><tr><th scope="col">Seconds per minute</th><th scope="col">5 s</th><th scope="col">15 s</th><th scope="col">30 s</th><th scope="col">1 min</th><th scope="col">2 min</th><th scope="col">5 min</th></tr></thead>
         <tbody>
-          <tr><th scope="row">5 s</th><td data-l="Hushpen Parakeet v3">14.2 s</td><td data-l="Hushpen Whisper Base">71.5 s</td></tr>
-          <tr><th scope="row">15 s</th><td data-l="Hushpen Parakeet v3">12.0 s</td><td data-l="Hushpen Whisper Base">47.6 s</td></tr>
-          <tr><th scope="row">30 s</th><td data-l="Hushpen Parakeet v3">13.4 s</td><td data-l="Hushpen Whisper Base">19.9 s</td></tr>
-          <tr><th scope="row">1 min</th><td data-l="Hushpen Parakeet v3">12.2 s</td><td data-l="Hushpen Whisper Base">14.3 s</td></tr>
-          <tr><th scope="row">2 min</th><td data-l="Hushpen Parakeet v3">12.6 s</td><td data-l="Hushpen Whisper Base">13.2 s</td></tr>
-          <tr><th scope="row">5 min</th><td data-l="Hushpen Parakeet v3">12.3 s</td><td data-l="Hushpen Whisper Base">11.2 s</td></tr>
+          <tr><th scope="row">Hushpen Parakeet v3</th><td data-l="5 s">14.2</td><td data-l="15 s">12.0</td><td data-l="30 s">13.4</td><td data-l="1 min">12.2</td><td data-l="2 min">12.6</td><td data-l="5 min">12.3</td></tr>
+          <tr><th scope="row">Hushpen Whisper Base</th><td data-l="5 s">71.5</td><td data-l="15 s">47.6</td><td data-l="30 s">19.9</td><td data-l="1 min">14.3</td><td data-l="2 min">13.2</td><td data-l="5 min">11.2</td></tr>
         </tbody>
       </table>
     </div>

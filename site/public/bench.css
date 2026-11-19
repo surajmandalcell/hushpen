@@ -16,4 +16,19 @@
   .cp-tbl.num td { padding-left: 132px; }
   .cp-tbl.num td::before { width: 120px; }
   .cp-tbl.num tbody th { width: auto; }
+  /* number grids stay a table on a phone instead of stacking into cards */
+  .cp-tbl.grid table { display: table; width: 100%; table-layout: fixed; }
+  .cp-tbl.grid thead { position: static; width: auto; height: auto; overflow: visible; clip: auto; display: table-header-group; }
+  .cp-tbl.grid tbody { display: table-row-group; }
+  .cp-tbl.grid tr { display: table-row; padding: 0; }
+  .cp-tbl.grid th, .cp-tbl.grid td, .cp-tbl.num.grid td { display: table-cell; padding: 8px 2px 8px 6px; font-size: 11.5px; text-align: right; vertical-align: top; }
+  .cp-tbl.grid th:first-child { width: 25%; padding-left: 12px; text-align: left; font-size: 12px; line-height: 1.3; }
+  .cp-tbl.grid tbody th { padding-bottom: 8px; }
+  .cp-tbl.grid tr > :last-child { padding-right: 12px; }
+  .cp-tbl.grid thead th { font-size: 10.5px; line-height: 1.25; }
+  .cp-tbl.grid td::before { content: none; }
+  /* long app names: turn the column heads sideways so seven columns fit */
+  .cp-tbl.rot thead th:not(:first-child) { writing-mode: vertical-rl; transform: rotate(180deg); text-align: left; vertical-align: bottom; height: 118px; padding: 10px 0; }
+  .cp-tbl.rot thead th:first-child { vertical-align: bottom; }
+  .cp-tbl.rot td, .cp-tbl.num.rot td { text-align: center; }
 }
