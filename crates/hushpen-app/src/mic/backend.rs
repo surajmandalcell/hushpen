@@ -29,15 +29,21 @@ pub trait MicSession: Send {
     fn set_enhance(&self, _enhance: Enhance) {}
 }
 
-/// The real microphones, through cpal.
+/// Physical microphones through cpal, or the WAV feeder in the Mac live typing test.
 pub struct CpalBackend;
 
 impl MicBackend for CpalBackend {
     fn list(&self) -> Result<Vec<InputDevice>, CaptureError> {
+        if hushpen_platform::permissions::live_test_mode() {
+            return Ok(Vec::new());
+        }
         hushpen_audio::list_inputs()
     }
 
     fn warm(&self, device: &str) {
+        if hushpen_platform::permissions::live_test_mode() {
+            return;
+        }
         // Opening a stream is what makes macOS ask for the microphone, and that question
         // belongs to onboarding, never to start-up.
         let allowed = hushpen_platform::permissions::system().microphone();
@@ -52,7 +58,12 @@ impl MicBackend for CpalBackend {
         path: PathBuf,
         sink: EventSink,
     ) -> Result<Box<dyn MicSession>, CaptureError> {
-        Ok(Box::new(CpalSession(Capture::start(device, path, sink)?)))
+        let capture = if hushpen_platform::permissions::live_test_mode() {
+            Capture::start_without_mic(path, sink)?
+        } else {
+            Capture::start(device, path, sink)?
+        };
+        Ok(Box::new(CpalSession(capture)))
     }
 }
 

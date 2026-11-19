@@ -38,7 +38,6 @@ unsafe extern "C" {}
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
-    safe fn AXIsProcessTrusted() -> u8;
     fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> u8;
     static kAXTrustedCheckOptionPrompt: CFStringRef;
 }
@@ -82,16 +81,7 @@ impl Api for Live {
     }
 
     fn prompt_accessibility(&self) {
-        // SAFETY: the key is a constant CFString that the framework owns; the get rule keeps
-        // it alive without taking ownership.
-        let key = unsafe { CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt) };
-        let options = CFDictionary::from_CFType_pairs(&[(
-            key.as_CFType(),
-            CFBoolean::true_value().as_CFType(),
-        )]);
-        // SAFETY: `options` is a valid CFDictionary for the whole call. The answer is read
-        // later by the live preflight.
-        let _ = unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef()) };
+        let _ = accessibility_with_prompt(CFBoolean::true_value());
     }
 
     fn request_listen_event(&self) {
@@ -141,9 +131,23 @@ fn own_bundle_id() -> Option<String> {
     (!id.trim().is_empty()).then_some(id)
 }
 
-/// `AXIsProcessTrusted`: read live, not cached per process.
+fn accessibility_with_prompt(prompt: CFBoolean) -> bool {
+    // SAFETY: the framework owns this constant CFString. The dictionary retains its entries.
+    let key = unsafe { CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt) };
+    let options = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), prompt.as_CFType())]);
+    // SAFETY: `options` is a valid CFDictionary for the whole call.
+    (unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef()) }) != 0
+}
+
 pub(super) fn accessibility_trusted() -> bool {
-    AXIsProcessTrusted() != 0
+    accessibility_with_prompt(CFBoolean::false_value())
+}
+
+#[cfg(feature = "test-automation")]
+pub(super) fn live_test_mode() -> bool {
+    static LIVE_TEST: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| own_bundle_id().as_deref() == Some("app.hushpen.livetest"));
+    *LIVE_TEST
 }
 
 /// `IOHIDCheckAccess` for listen events, or on macOS 27 and later `AXIsProcessTrusted` too: read
@@ -157,7 +161,9 @@ pub(super) fn register() {
 }
 
 pub(super) fn request(permission: Permission, repair: bool) {
-    preflight().request(permission, repair);
+    if !super::live_test_mode() {
+        preflight().request(permission, repair);
+    }
 }
 
 pub(super) fn open_url(url: &str) -> std::io::Result<()> {

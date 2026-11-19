@@ -12,6 +12,8 @@ pub enum Command {
         show_window: bool,
     },
     Version,
+    #[cfg(all(target_os = "macos", feature = "test-automation"))]
+    LiveTestCheckAccessibility,
     /// The speech engine, with the arguments after `engine`. The app starts `hushpen-asr`
     /// instead; this runs the same code for scripts and tests.
     Engine(Vec<String>),
@@ -38,6 +40,8 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Command {
             Some("--hidden") => hidden = true,
             Some("--show-window") => show_window = true,
             Some("--version" | "-V") => return Command::Version,
+            #[cfg(all(target_os = "macos", feature = "test-automation"))]
+            Some("--live-test-check-accessibility") => return Command::LiveTestCheckAccessibility,
             Some("engine") => return Command::Engine(args.collect()),
             Some("update-apply") => return Command::UpdateApply(args.collect()),
             Some(hushpen_platform::restart::HELPER_ARG) => return Command::Restart(args.collect()),

@@ -1,6 +1,6 @@
 //! The permissions of this system, read live and without ever asking.
 //!
-//! On macOS the three answers come from `AXIsProcessTrusted`, `IOHIDCheckAccess`, and the
+//! On macOS the three answers come from `AXIsProcessTrustedWithOptions`, `IOHIDCheckAccess`, and the
 //! `AVCaptureDevice` status. The cached `CGPreflight*EventAccess` calls are not used, because
 //! they would not show a grant made while Hushpen runs. Request calls and System Settings links
 //! belong to onboarding and run only after a click.
@@ -92,10 +92,18 @@ pub fn is_elevated() -> bool {
     }
 }
 
-/// The live Accessibility grant, for the paste calls. Read it each time.
+/// The live Accessibility grant, read without a prompt.
 #[cfg(target_os = "macos")]
-pub(crate) fn accessibility_trusted() -> bool {
+pub fn accessibility_trusted() -> bool {
     macos::accessibility_trusted()
+}
+
+/// The dedicated Mac harness bundle uses WAV input and can only read permissions.
+pub fn live_test_mode() -> bool {
+    #[cfg(all(target_os = "macos", feature = "test-automation"))]
+    return macos::live_test_mode();
+    #[cfg(not(all(target_os = "macos", feature = "test-automation")))]
+    false
 }
 
 /// Whether the key listener may start: Input Monitoring is granted, or on macOS 27 and later

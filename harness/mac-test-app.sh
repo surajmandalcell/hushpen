@@ -1,20 +1,38 @@
 #!/bin/sh
-# usage: harness/mac-test-app.sh
+# usage: harness/mac-test-app.sh [--live]
 # Rebuilds the Mac test app ($HUSHPEN_ROOT/mac-check/Hushpen.app: debug, test-automation hook) from
 # this checkout and signs it with the owner's Apple Development identity. macOS keys its privacy
 # grants (Accessibility, Input Monitoring, Microphone) to the signature's designated requirement: an
 # ad-hoc signature pins them to one build hash, a certificate keeps them across rebuilds.
 # Quit the app before the copy step. HUSHPEN_SIGN_IDENTITY overrides the identity name.
+# --live uses Hushpen's file-backed Developer ID signer and a fixed, WAV-only test bundle.
 set -eu
 ROOT=${HUSHPEN_ROOT:-/Volumes/External1TB/data/_custom/droid/hushpen}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-APP=$ROOT/mac-check/Hushpen.app
-# A keychain with more than one Apple Development certificate makes the bare name ambiguous, so
-# the default is the SHA-1 of the first one.
-IDENTITY=${HUSHPEN_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2; exit}')}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/macos-arm64}
 die() { echo "mac-test-app: $*" >&2; exit 1; }
-[ -n "$IDENTITY" ] || die "no Apple Development identity in the keychain"
+case "${1:-}" in
+  --live)
+    LIVE=/Volumes/External1TB/data/_custom/orca/workspaces/hushpen/livetest
+    NAME='Hushpen Live Test'
+    BUNDLE=app.hushpen.livetest
+    APP=$LIVE/$NAME.app
+    PRIVACY_PLIST="<key>LSEnvironment</key><dict><key>HUSHPEN_DATA_DIR</key><string>$LIVE/data</string></dict>"
+    SIGNING=$ROOT/signing
+    RCODESIGN=$SIGNING/apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign
+    [ -x "$RCODESIGN" ] && [ -r "$SIGNING/devid.key" ] && [ -r "$SIGNING/devid.pem" ] ||
+      die "Developer ID signing files are missing under $SIGNING"
+    ;;
+  '')
+    NAME=Hushpen
+    BUNDLE=app.hushpen.test
+    APP=$ROOT/mac-check/Hushpen.app
+    PRIVACY_PLIST='<key>NSMicrophoneUsageDescription</key><string>Hushpen listens to the microphone while you dictate.</string>'
+    IDENTITY=${HUSHPEN_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2; exit}')}
+    [ -n "$IDENTITY" ] || die "no Apple Development identity in the keychain"
+    ;;
+  *) die 'usage: harness/mac-test-app.sh [--live]' ;;
+esac
 
 cd "$REPO"
 cargo build --locked -j "${JOBS:-4}" -p hushpen-app --features test-automation -p hushpen-testhook -p hushpen-engine -p hushpen-llm -p hushpen-tts
@@ -32,27 +50,30 @@ cat >"$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleDisplayName</key><string>Hushpen</string>
+  <key>CFBundleDisplayName</key><string>$NAME</string>
   <key>CFBundleExecutable</key><string>hushpen</string>
   <key>CFBundleIconFile</key><string>Hushpen</string>
   <key>CFBundleIconName</key><string>Hushpen</string>
-  <key>CFBundleIdentifier</key><string>app.hushpen.test</string>
-  <key>CFBundleName</key><string>Hushpen</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE</string>
+  <key>CFBundleName</key><string>$NAME</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>2.5.0</string>
   <key>CFBundleVersion</key><string>$(git rev-parse --short HEAD)</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>Hushpen listens to the microphone while you dictate.</string>
+  $PRIVACY_PLIST
 </dict>
 </plist>
 PLIST
-# The helpers first: a bundle signature covers its nested code but does not sign it.
-for lib in "$APP"/Contents/Frameworks/*.dylib; do codesign --force --timestamp=none --sign "$IDENTITY" "$lib"; done
-codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-asr"
-codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-llm"
-codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/hushpen-tts"
-codesign --force --timestamp=none --sign "$IDENTITY" "$APP"
+if [ "$BUNDLE" = app.hushpen.livetest ]; then
+  "$RCODESIGN" sign --timestamp-url none --pem-file "$SIGNING/devid.key" --pem-file "$SIGNING/devid.pem" "$APP"
+else
+  for lib in "$APP"/Contents/Frameworks/*.dylib; do codesign --force --timestamp=none --sign "$IDENTITY" "$lib"; done
+  for worker in hushpen-asr hushpen-llm hushpen-tts; do
+    codesign --force --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/$worker"
+  done
+  codesign --force --timestamp=none --sign "$IDENTITY" "$APP"
+fi
 codesign --verify --deep --strict "$APP"
 codesign -d -r- "$APP" 2>&1 | grep designated
 echo "built $APP at $(git rev-parse --short HEAD)"
