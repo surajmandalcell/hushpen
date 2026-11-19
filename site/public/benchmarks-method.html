@@ -5,23 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How We Benchmark Speech to Text Apps: Method | Hushpen</title>
 <meta name="description" content="The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.">
-<link rel="canonical" href="https://hushpen.mandalsuraj.com/benchmarks-method">
+<link rel="canonical" href="https://samhq.app/benchmarks-method">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="theme-color" content="#F2F2F4">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Hushpen">
 <meta property="og:locale" content="en_US">
-<meta property="og:url" content="https://hushpen.mandalsuraj.com/benchmarks-method">
+<meta property="og:url" content="https://samhq.app/benchmarks-method">
 <meta property="og:title" content="How We Benchmark Speech to Text Apps: Method | Hushpen">
 <meta property="og:description" content="The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.">
-<meta property="og:image" content="https://hushpen.mandalsuraj.com/assets/og-card.jpg">
+<meta property="og:image" content="https://samhq.app/assets/og-card.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Hushpen: free and open source dictation for Mac, Windows and Linux">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="How We Benchmark Speech to Text Apps: Method | Hushpen">
 <meta name="twitter:description" content="The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.">
-<meta name="twitter:image" content="https://hushpen.mandalsuraj.com/assets/og-card.jpg">
+<meta name="twitter:image" content="https://samhq.app/assets/og-card.jpg">
 <link rel="icon" href="/assets/favicon.png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="stylesheet" href="/kit.css">
@@ -30,7 +30,7 @@
 <script src="/releases.js" defer></script>
 <script src="/os.js" defer></script>
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "@id": "https://hushpen.mandalsuraj.com/benchmarks-method#page", "url": "https://hushpen.mandalsuraj.com/benchmarks-method", "name": "How We Benchmark Speech to Text Apps: Method | Hushpen", "description": "The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.", "inLanguage": "en", "isPartOf": {"@id": "https://hushpen.mandalsuraj.com/#website"}, "dateModified": "2026-11-19", "breadcrumb": {"@id": "https://hushpen.mandalsuraj.com/benchmarks-method#crumbs"}}, {"@type": "BreadcrumbList", "@id": "https://hushpen.mandalsuraj.com/benchmarks-method#crumbs", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Hushpen", "item": "https://hushpen.mandalsuraj.com/"}, {"@type": "ListItem", "position": 2, "name": "Benchmarks", "item": "https://hushpen.mandalsuraj.com/benchmarks"}, {"@type": "ListItem", "position": 3, "name": "Method", "item": "https://hushpen.mandalsuraj.com/benchmarks-method"}]}]}
+{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "@id": "https://samhq.app/benchmarks-method#page", "url": "https://samhq.app/benchmarks-method", "name": "How We Benchmark Speech to Text Apps: Method | Hushpen", "description": "The method behind the Hushpen benchmarks: setup, fairness rules, scoring, limits, and the steps to repeat the test on your own computer. 19 November 2026.", "inLanguage": "en", "isPartOf": {"@id": "https://samhq.app/#website"}, "dateModified": "2026-11-19", "breadcrumb": {"@id": "https://samhq.app/benchmarks-method#crumbs"}}, {"@type": "BreadcrumbList", "@id": "https://samhq.app/benchmarks-method#crumbs", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Hushpen", "item": "https://samhq.app/"}, {"@type": "ListItem", "position": 2, "name": "Benchmarks", "item": "https://samhq.app/benchmarks"}, {"@type": "ListItem", "position": 3, "name": "Method", "item": "https://samhq.app/benchmarks-method"}]}]}
 </script>
 </head>
 <body>
@@ -38,11 +38,10 @@
 
 <main class="wrap">
   <article class="paper">
-  <ol class="crumbs" aria-label="Breadcrumb"><li><a href="/">Hushpen</a></li><li><a href="/benchmarks">Benchmarks</a></li><li aria-current="page">Method</li></ol>
     <header class="paper-top"><p class="paper-kick">Hushpen benchmarks</p><h1>How we test speech to text apps and models</h1><p class="paper-by">Suraj Mandal · 19 November 2026 · <a href="/benchmarks">See the results</a></p></header>
     <section class="paper-abs" aria-labelledby="abs">
       <h2 id="abs">Abstract</h2>
-      <p>We ran 7 speech to text setups on one Mac: Hushpen with 5 speech models, Handy 0.10.1 and FluidVoice 1.6.13. Each one wrote out the same 36 clips from TED talks in 19 English accents. We scored every transcript word by word against the talk's human-made captions. Hushpen + Whisper Turbo got the most words right, 95.0 out of 100. FluidVoice was the fastest, 0.37 s for one minute of audio. Hushpen + Parakeet v3 took 0.73 s with 93.6 words right. This page gives the full method, the rules that kept the runs fair, the limits, and the steps to repeat the test.</p>
+      <p>We ran 10 speech to text setups on one Mac: Hushpen with 5 speech models, Handy 0.10.1, FluidVoice 1.6.13, MacWhisper 15.11, VoiceInk 2.27 and Buzz 1.4.5. Each one wrote out the same 36 clips from TED talks in 19 English accents. We scored every transcript word by word against the talk's human-made captions. Buzz got the most words right, 95.1 out of 100, and Hushpen + Whisper Turbo got 95.0. FluidVoice was the fastest, 0.37 s for one minute of audio. Hushpen + Parakeet v3 took 0.57 s with 93.6 words right. In the full Hushpen app, its text appeared 0.48 s after the speaker stopped (0.46-0.51 s, 3 runs). This page gives the full method, the rules that kept the runs fair, the limits, and the steps to repeat the test.</p>
     </section>
     <section aria-labelledby="m1">
       <h2 id="m1"><span>1</span>Setup</h2>
@@ -55,14 +54,16 @@
           <tr><th scope="row">Accents</th><td>19 English accents, 2 speakers each. Filipino has one speaker. Russian has one scored speaker: on Evgeny Morozov's talk the captions run about 5 s ahead of the sound, so that clip was transcribed but not scored.</td></tr>
           <tr><th scope="row">Truth text</th><td>The talks' human-made English captions. Auto captions were never used. Each clip starts and ends on caption edges. The captions leave out some "uh"s and repeated words, so every model loses a few points for words the speaker really said.</td></tr>
           <tr><th scope="row">Score</th><td>Both sides go through the Whisper English text normalizer (lowercase, no punctuation, numbers and spellings made the same, fillers such as "um" removed). Then word error rate with jiwer over all words. Words right is 100 minus the word error rate.</td></tr>
-          <tr><th scope="row">Speed</th><td>Median of 3 runs for each length, with the model loaded. Model load is timed apart.</td></tr>
+          <tr><th scope="row">Speed</th><td>Median of 3 runs for each length. Every app ran with its model already loaded, except Buzz: its command line starts the app and loads the model for every file, about 13 s, and its times include that. Each app's row below says what its time includes.</td></tr>
+          <tr><th scope="row">Wait after you stop talking</th><td>Hushpen only. The full app on this Mac, default settings, cue sounds off. A 26.6 s TED clip with 1 s of silence in front was played into the app at real speed while the dictation key was held. The clock ran from the end of speech (taken from the clip, not from the app) until the last text was in a TextEdit document in the background. The text in TextEdit matched the app's history exactly. Median of 3 runs with the model loaded; load time measured on its own. Other apps were not timed this way, so their rows show a dash.</td></tr>
           <tr><th scope="row">This Mac</th><td>Apple M4 Pro, 14 cores, 24 GB, macOS. Metal GPU on for every app.</td></tr>
           <tr><th scope="row">Linux machines</th><td>Hushpen only, CPU only, 3 threads: two Arm Neoverse-N1 servers with 4 cores, and an AMD Ryzen 3 2200G desktop with 4 cores. Accuracy there came out within 1 point of the Mac.</td></tr>
           <tr><th scope="row">Hushpen</th><td>Built from master on 19 November 2026. A small bench program calls Hushpen's own speech loader and transcribe call with the app's defaults: Silero speech detection, Auto threads, language Detect. Nemotron Unified ran through the live text engine with the recording fed in as fast as possible.</td></tr>
           <tr><th scope="row">FluidVoice 1.6.13</th><td>The installed app's local API: a WAV file sent to POST /v1/transcribe on loopback. Default model, Parakeet TDT v3 (Multilingual).</td></tr>
           <tr><th scope="row">Handy 0.10.1</th><td>The official Apple silicon release, command line --transcribe-file, built-in transcribe-cpp on Metal. Model Parakeet Unified English 0.6B Q8_0, the first choice in its English catalog.</td></tr>
-          <tr><th scope="row">VoiceInk 2.27</th><td>Not measured. Its file queue needs Start pressed in the app window, and opening a file brings the app to the front, so it cannot run unattended.</td></tr>
-          <tr><th scope="row">MacWhisper 15.11</th><td>Not measured. The free install had no model, its command line tool answered "No model selected", and a model is installed from the app window.</td></tr>
+          <tr><th scope="row">MacWhisper 15.11</th><td>The free version, through its bundled mw command line tool, with the app hidden. Model Whisper Large v3 Turbo (WhisperKit, Core ML), the model the app recommended for this Mac. Its Parakeet v3 model needs a Pro license. Time is the wall clock of one mw call, model already loaded.</td></tr>
+          <tr><th scope="row">VoiceInk 2.27</th><td>Files added to the app's Transcribe queue in the background, then Start pressed once. Model Whisper Large v3 Turbo from its model list, whisper.cpp engine. Time runs from Start to the saved result, then from one saved result to the next. The model stays loaded, so model load is not in the time. Language left at the app default, Auto.</td></tr>
+          <tr><th scope="row">Buzz 1.4.5</th><td>Its command line with the window hidden: Buzz add --hide-gui, whisper.cpp engine, Whisper Large v3 Turbo with the Core ML encoder. Buzz cannot keep a model loaded this way, so every time includes the app start and model load, about 13 s.</td></tr>
           <tr><th scope="row">Other apps</th><td>Superwhisper, Wispr Flow, Aqua Voice, Willow Voice and Spokenly were not tested in this round. Their own claims are on the results page.</td></tr>
         </tbody>
       </table>
@@ -87,7 +88,7 @@
         <li><b>Normalize both sides.</b> The Whisper English text normalizer makes text lowercase, removes punctuation, writes numbers and spellings the same way, and removes fillers such as "um".</li>
         <li><b>Word error rate.</b> jiwer counts the words that were swapped, dropped or added, over all clips together, and divides by the number of caption words.</li>
         <li><b>Words right.</b> 100 minus the word error rate. 95 words right means about 5 mistakes in every 100 words.</li>
-        <li><b>Speed.</b> Seconds to write out one minute of audio, from a 1 minute file. The speed files are the clips joined into one recording, then cut to 5 s, 15 s, 30 s, 1 min, 2 min and 5 min.</li>
+        <li><b>Speed.</b> Seconds to write out one minute of audio, from a 1 minute file. The speed files are the clips joined into one recording, then cut to 5 s, 15 s, 30 s, 1 min, 2 min and 5 min, and looped to 10 and 30 min.</li>
       </ol>
     </section>
     <section aria-labelledby="m4">
@@ -96,15 +97,18 @@
     <div class="cp-body cp-tbl num ">
       <table>
         <caption class="sr">Words right and speed for each setup</caption>
-        <thead><tr><th scope="col">Setup</th><th scope="col">Words right out of 100</th><th scope="col">Seconds per minute of audio</th></tr></thead>
+        <thead><tr><th scope="col">Setup</th><th scope="col">Words right out of 100<small>Higher is better</small></th><th scope="col">Text appears after you stop talking<small>Lower is better</small></th><th scope="col">Write out a 1 minute recording<small>Lower is better</small></th></tr></thead>
         <tbody>
-          <tr><th scope="row">Hushpen<small>Whisper Large v3 Turbo Q5</small></th><td data-l="Words right out of 100">95.0</td><td data-l="Seconds per minute of audio">2.76 s</td></tr>
-          <tr><th scope="row">Handy 0.10.1<small>Parakeet Unified English 0.6B Q8</small></th><td data-l="Words right out of 100">94.7</td><td data-l="Seconds per minute of audio">0.50 s</td></tr>
-          <tr><th scope="row">Hushpen<small>Nemotron Unified ASR 0.6B Q8</small></th><td data-l="Words right out of 100">94.2</td><td data-l="Seconds per minute of audio">7.00 s</td></tr>
-          <tr><th scope="row">Hushpen<small>Parakeet v3 Q4</small></th><td data-l="Words right out of 100">93.6</td><td data-l="Seconds per minute of audio">0.73 s</td></tr>
-          <tr><th scope="row">FluidVoice 1.6.13<small>Parakeet TDT v3</small></th><td data-l="Words right out of 100">93.5</td><td data-l="Seconds per minute of audio">0.37 s</td></tr>
-          <tr><th scope="row">Hushpen<small>Whisper Small Q5</small></th><td data-l="Words right out of 100">75.4</td><td data-l="Seconds per minute of audio">1.51 s</td></tr>
-          <tr><th scope="row">Hushpen<small>Whisper Base Q5</small></th><td data-l="Words right out of 100">71.5</td><td data-l="Seconds per minute of audio">0.66 s</td></tr>
+          <tr><th scope="row"><span class="">Buzz 1.4.5</span><small>Whisper Large v3 Turbo</small></th><td data-l="Words right out of 100">95.1</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">15.36 s</td></tr>
+          <tr><th scope="row"><span class="us">Hushpen</span><small>Whisper Large v3 Turbo Q5</small></th><td data-l="Words right out of 100">95.0</td><td data-l="Text appears after you stop talking">1.69 s<small>1.68-1.69 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">2.76 s</td></tr>
+          <tr><th scope="row"><span class="">MacWhisper 15.11</span><small>Whisper Large v3 Turbo</small></th><td data-l="Words right out of 100">95.0</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">4.95 s</td></tr>
+          <tr><th scope="row"><span class="">Handy 0.10.1</span><small>Parakeet Unified English 0.6B Q8</small></th><td data-l="Words right out of 100">94.7</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">0.50 s</td></tr>
+          <tr><th scope="row"><span class="us">Hushpen</span><small>Nemotron Unified ASR 0.6B Q8</small></th><td data-l="Words right out of 100">94.2</td><td data-l="Text appears after you stop talking">0.30 s<small>0.29-0.33 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">7.00 s</td></tr>
+          <tr><th scope="row"><span class="us">Hushpen</span><small>Parakeet v3 Q4</small></th><td data-l="Words right out of 100">93.6</td><td data-l="Text appears after you stop talking">0.48 s<small>0.46-0.51 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">0.57 s</td></tr>
+          <tr><th scope="row"><span class="">FluidVoice 1.6.13</span><small>Parakeet TDT v3</small></th><td data-l="Words right out of 100">93.5</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">0.37 s</td></tr>
+          <tr><th scope="row"><span class="">VoiceInk 2.27</span><small>Whisper Large v3 Turbo</small></th><td data-l="Words right out of 100">92.1</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">4.34 s</td></tr>
+          <tr><th scope="row"><span class="us">Hushpen</span><small>Whisper Small Q5</small></th><td data-l="Words right out of 100">75.4</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">1.51 s</td></tr>
+          <tr><th scope="row"><span class="us">Hushpen</span><small>Whisper Base Q5</small></th><td data-l="Words right out of 100">71.5</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">0.66 s</td></tr>
         </tbody>
       </table>
     </div>
@@ -112,10 +116,11 @@
     <section aria-labelledby="m5">
       <h2 id="m5"><span>5</span>Limits</h2>
       <ul class="paper-list">
-        <li><b>Paid apps were not tested.</b> Superwhisper, Wispr Flow, Aqua Voice, Willow Voice, Spokenly, VoiceInk and MacWhisper have no numbers here.</li>
+        <li><b>Paid apps were not tested.</b> Superwhisper, Wispr Flow, Aqua Voice, Willow Voice and Spokenly have no numbers here.</li>
         <li><b>The captions skip some words.</b> TED captions leave out some "uh"s and repeated words, so every setup loses a few points for words the speaker really said.</li>
         <li><b>One clip was not scored.</b> On Evgeny Morozov's talk the captions run about 5 s ahead of the sound. That clip was written out but not scored.</li>
         <li><b>Each app is timed at its own edge.</b> Hushpen time is its transcribe call. FluidVoice time runs from sending the file to its local API to getting the text back. Handy time is the inference time its command line tool reports.</li>
+        <li><b>Only Hushpen was timed from when you stop talking.</b> The other apps have no end to end time here. Their speed is the time to write out a file.</li>
         <li><b>One machine.</b> All Mac numbers come from one Apple M4 Pro with 24 GB. Other Macs will be faster or slower.</li>
         <li><b>Nemotron Unified is timed through live text.</b> Hushpen runs it in its live text engine, which writes the text while you speak, so its speed is not a file speed.</li>
       </ul>
