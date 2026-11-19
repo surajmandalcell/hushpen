@@ -249,6 +249,50 @@ impl LiveSpan for Span {
         self.caret = caret;
         Ok(())
     }
+
+    fn splice(&mut self, start: usize, end: usize, replacement: &str) -> Result<(), LiveError> {
+        let draft = &self.expected[self.draft.clone()];
+        if end == draft.len() {
+            return self.replace(start, replacement);
+        }
+        let removed = draft.get(start..end).ok_or(LiveError::Changed)?;
+        let after = draft.get(end..).ok_or(LiveError::Changed)?;
+        let units = removed.encode_utf16().count() as isize;
+        let added = replacement.encode_utf16().count() as isize;
+        let range = CFRange::init(
+            self.caret.location - after.encode_utf16().count() as isize - units,
+            units,
+        );
+        let caret = CFRange::init(self.caret.location - units + added, 0);
+        let mut expected = self.expected.clone();
+        expected.replace_range(self.draft.start + start..self.draft.start + end, replacement);
+        let value = CFString::new(replacement);
+        if !self.unchanged() {
+            return Err(LiveError::Changed);
+        }
+        if !select(&self.field, range) || !self.matches(&self.expected, range) {
+            #[cfg(feature = "test-automation")]
+            log::warn!("TEST_INSERT live-miss splice-select units={units}");
+            return Err(LiveError::Uncertain);
+        }
+        set(&self.field, SELECTED_TEXT, value.as_CFTypeRef());
+        // The write leaves the caret after the fixed word. Put it back at the end of the draft.
+        if !select(&self.field, caret) || !self.matches(&expected, caret) {
+            #[cfg(feature = "test-automation")]
+            log::warn!("TEST_INSERT live-miss splice-write units={units}");
+            return Err(LiveError::Uncertain);
+        }
+        #[cfg(feature = "test-automation")]
+        log::info!(
+            "TEST_INSERT live-edit removed={} inserted={} splice",
+            removed.chars().count(),
+            replacement.chars().count()
+        );
+        self.draft.end = self.draft.end + replacement.len() - removed.len();
+        self.caret = caret;
+        self.expected = expected;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
