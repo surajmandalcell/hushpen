@@ -70,7 +70,7 @@ Hushpen is also a free dictation app for Mac, Windows, and Linux. Turn on Server
 ABOUT FULL ACCESS
 The keyboard asks for Full Access for one reason: to receive the text Hushpen makes and put it in the app you are typing in. The keyboard has no network code. Full Access never sends what you type anywhere.
 
-Hushpen needs iOS 26 or later and 60 to 574 MB of storage for a speech model. Questions, bugs, and ideas: hushpen.mandalsuraj.com/support
+Hushpen needs iOS 26 or later and 60 to 574 MB of storage for a speech model. Questions, bugs, and ideas: samhq.app/support
 Source code: github.com/surajmandalcell/hushpen
 ```
 
@@ -92,9 +92,9 @@ Copyright: `2026 Suraj Mandal`
 
 ## URLs
 
-- Support URL: `https://hushpen.mandalsuraj.com/support`
-- Marketing URL: `https://hushpen.mandalsuraj.com/`
-- Privacy Policy URL: `https://hushpen.mandalsuraj.com/privacy`
+- Support URL: `https://samhq.app/support`
+- Marketing URL: `https://samhq.app/`
+- Privacy Policy URL: `https://samhq.app/privacy`
 
 ## Categories and price
 
@@ -181,6 +181,6 @@ captures are in `appstore/raw/`. Icon: `appstore/icon/hushpen-icon-1024.png`
 
 Beta app description: `Private dictation for iPhone and iPad. Add the Hushpen keyboard, tap the microphone, talk, and insert clean text in any app. Speech recognition runs on the device.`
 
-What to test: `Download a speech model, enable the keyboard with Full Access, dictate into Notes and Messages, and try Server Mode with a paired computer. Report problems at hushpen.mandalsuraj.com/support.`
+What to test: `Download a speech model, enable the keyboard with Full Access, dictate into Notes and Messages, and try Server Mode with a paired computer. Report problems at samhq.app/support.`
 
 Feedback email: `surajmandalcell@gmail.com`

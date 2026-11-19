@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://hushpen.mandalsuraj.com/sitemap.xml
+Sitemap: https://samhq.app/sitemap.xml

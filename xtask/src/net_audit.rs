@@ -87,6 +87,8 @@ pub fn host_allowed(host: &str) -> bool {
             | "github.com"
             | "githubusercontent.com"
             // The website About opens in the browser; the app never fetches it.
+            | "samhq.app"
+            // Old installs still call the previous website domain.
             | "hushpen.mandalsuraj.com"
             | "localhost"
             | "127.0.0.1"
@@ -553,7 +555,7 @@ mod tests {
         );
         assert!(violations(path, r#"u("https://us.aws.cdn.hf.co/f")"#).is_empty());
         assert!(violations(path, r#"u("https://objects.githubusercontent.com/f")"#).is_empty());
-        assert!(violations(path, r#"open("https://hushpen.mandalsuraj.com/")"#).is_empty());
+        assert!(violations(path, r#"open("https://samhq.app/")"#).is_empty());
         assert_eq!(violations(path, r#"u("https://example.com/f")"#).len(), 1);
         assert_eq!(violations(path, r#"u("https://evilhf.co/f")"#).len(), 1);
     }
