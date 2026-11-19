@@ -202,10 +202,15 @@ pub fn render(models: &Entity<Models>, cx: &mut App) -> impl IntoElement + use<>
     if sections.is_empty() && any_rows && !query.is_empty() {
         page = page.child(no_match(palette, models, &query, clear_focus.as_ref()));
     }
+    // One button area for the whole screen, so the meters line up across sections.
+    let slots = sections
+        .iter()
+        .map(|(_, views)| widest_buttons(views))
+        .max()
+        .unwrap_or(1);
     for (section, views) in sections {
         let (title, help) = section.text();
         let key = section.key();
-        let slots = widest_buttons(&views);
         let rows = views
             .into_iter()
             .map(|view| model_row(palette, models, view, Place::Models, slots))
@@ -530,7 +535,8 @@ fn meter(
     height: f32,
 ) -> impl IntoElement {
     let text = format!("{label}: {}", scale(halves, words));
-    let empty = palette.label_tertiary;
+    // Much dimmer than a filled gray Speed dot, so 3 of 5 never reads as 5 in Dark.
+    let empty = palette.separator;
     let dots = (0..5u8).map(|dot| {
         let background: Background = match halves.saturating_sub(dot * 2) {
             0 => empty.into(),
