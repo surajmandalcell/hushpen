@@ -51,9 +51,37 @@ pub enum UndoError {
     Unavailable,
 }
 
+/// Whether a caller can safely fall back to pasting the unconfirmed suffix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveError {
+    /// No text was written. The previous receipt still describes what Hushpen inserted.
+    Changed,
+    /// The target may have applied the edit. Automatically pasting again could duplicate text.
+    Uncertain,
+}
+
+pub trait LiveSpan: Send {
+    /// The same field still contains the confirmed text and has the expected caret.
+    fn unchanged(&self) -> bool;
+
+    /// Check for focus or caret movement between speech updates without reading document text.
+    fn at_caret(&self) -> bool {
+        self.unchanged()
+    }
+
+    /// Keep this many UTF-8 bytes of the last confirmed draft and replace the rest.
+    /// A successful edit advances the receipt. Keeping zero bytes also permits a guarded undo.
+    fn replace(&mut self, keep_bytes: usize, replacement: &str) -> Result<(), LiveError>;
+}
+
 pub trait Inserter: Send + Sync {
     /// Reads the focus. Cheap, and called on the app's main thread.
     fn target(&self) -> Target;
+
+    /// Capture the caret at dictation start. Unsupported fields keep the regular final paste.
+    fn begin_live(&self, _target: &Target, _overrides: &Overrides) -> Option<Box<dyn LiveSpan>> {
+        None
+    }
 
     /// Puts `text` into `target`: saves the clipboard, writes the text, presses the paste chord,
     /// and puts the clipboard back. Blocks until the restore is over; `observe` hears the steps

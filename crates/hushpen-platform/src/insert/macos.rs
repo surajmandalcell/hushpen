@@ -10,8 +10,9 @@
 #[cfg(feature = "test-automation")]
 mod background;
 mod guard;
+mod live;
 
-use super::{Inserter, SystemClock, Target, UndoError, mono_ms, plan, undo_guard};
+use super::{Inserter, LiveSpan, SystemClock, Target, UndoError, mono_ms, plan, undo_guard};
 use crate::keyboard_layout::{self, LayoutCache};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
@@ -465,6 +466,14 @@ impl Inserter for MacInserter {
     fn target(&self) -> Target {
         self.layout.refresh_from_system();
         self.focus()
+    }
+
+    fn begin_live(&self, target: &Target, overrides: &Overrides) -> Option<Box<dyn LiveSpan>> {
+        let (_, copy_only) = plan(target, |target| choose_mac(&target.label, overrides));
+        if copy_only.is_some() || undo_guard(target, &self.focus()).is_err() {
+            return None;
+        }
+        live::begin(target)
     }
 
     fn insert(

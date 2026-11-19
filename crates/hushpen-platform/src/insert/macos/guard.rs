@@ -13,7 +13,7 @@ const SUBROLE: &str = "AXSubrole";
 const SECURE_TEXT_FIELD: &str = "AXSecureTextField";
 const SELECTED_TEXT: &str = "AXSelectedText";
 /// A hung app must not hold the paste: the default wait is 6 s.
-const AX_TIMEOUT_SECONDS: f32 = 0.25;
+pub(super) const AX_TIMEOUT_SECONDS: f32 = 0.25;
 
 #[link(name = "Carbon", kind = "framework")]
 unsafe extern "C" {
@@ -51,6 +51,10 @@ impl Probe for MacProbe {
 /// The value of one accessibility attribute, or `None` when it has none, or the process may not
 /// use the accessibility API (the call then fails with `kAXErrorAPIDisabled`).
 pub(super) fn attribute(element: &CFType, name: &str) -> Option<CFType> {
+    read_attribute(element, name).ok()
+}
+
+pub(super) fn read_attribute(element: &CFType, name: &str) -> Result<CFType, i32> {
     let name = CFString::new(name);
     let mut value: CFTypeRef = std::ptr::null();
     // SAFETY: `element` and `name` are live CF objects; `value` is a valid out pointer.
@@ -62,13 +66,13 @@ pub(super) fn attribute(element: &CFType, name: &str) -> Option<CFType> {
         )
     };
     if status != 0 || value.is_null() {
-        return None;
+        return Err(status);
     }
     // SAFETY: "Copy" returns a +1 reference that this wrapper now owns.
-    Some(unsafe { CFType::wrap_under_create_rule(value) })
+    Ok(unsafe { CFType::wrap_under_create_rule(value) })
 }
 
-fn focused_element() -> Option<CFType> {
+pub(super) fn focused_element() -> Option<CFType> {
     // SAFETY: "Create" returns a +1 reference that this wrapper now owns.
     let system = unsafe {
         let raw = AXUIElementCreateSystemWide();
@@ -78,7 +82,9 @@ fn focused_element() -> Option<CFType> {
         CFType::wrap_under_create_rule(raw)
     };
     with_timeout(&system, AX_TIMEOUT_SECONDS);
-    attribute(&system, FOCUSED_ELEMENT)
+    let field = attribute(&system, FOCUSED_ELEMENT)?;
+    with_timeout(&field, AX_TIMEOUT_SECONDS);
+    Some(field)
 }
 
 /// Sets how long calls on `element` wait for its app to answer.
