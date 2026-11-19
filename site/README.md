@@ -1,6 +1,6 @@
 # Hushpen website
 The public folder is the site source; no build or dependencies are needed.
-Static preview: `python3 -m http.server 4821 --bind 127.0.0.1 --directory site/public`
+Static preview: `python3 site/preview.py 4821` (serves `/benchmarks` from `benchmarks.html`, like the live site)
 Open `http://127.0.0.1:4821/`; downloads fall back to GitHub without the API.
 Full preview: `cd site/worker && npx wrangler dev --port 4822`
 Open `http://127.0.0.1:4822/` for live release data and static assets.
