@@ -15,7 +15,16 @@ impl Manager {
             Event::Ready { protocol, .. } if protocol != PROTOCOL_VERSION => {
                 self.down("protocol mismatch", Restart::Backoff);
             }
-            Event::Ready { version, gpu, .. } => self.on_ready(&version, gpu),
+            Event::Ready {
+                version,
+                gpu,
+                remote_live,
+                ..
+            } => {
+                self.shared
+                    .update(|status| status.remote_live = remote_live);
+                self.on_ready(&version, gpu);
+            }
             Event::Pong => {
                 if let Some(running) = self.running.as_mut() {
                     running.last_pong = Instant::now();
@@ -162,6 +171,13 @@ impl Manager {
 
     /// Answers a job and writes its line to `engine.log`.
     pub(super) fn finish(&mut self, job: u64, outcome: JobOutcome, timings: Option<(u64, u64)>) {
+        if self
+            .remote_upload
+            .as_ref()
+            .is_some_and(|upload| upload.job == job)
+        {
+            self.remote_upload = None;
+        }
         let Some(inflight) = self.inflight.remove(&job) else {
             return;
         };

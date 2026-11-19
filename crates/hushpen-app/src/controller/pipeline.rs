@@ -16,7 +16,7 @@ use hushpen_core::dictation::{AppEvent, Cue, Mode, RowStatus, State};
 use hushpen_core::error::{CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, LLM_UNAVAILABLE};
 use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::onboarding::KeyGate;
-use hushpen_core::remote::{self, Choice, ModelKind, THIS_COMPUTER};
+use hushpen_core::remote::{ModelKind, THIS_COMPUTER};
 use hushpen_core::{cleanup, dictionary};
 use hushpen_engine::{JobOutcome, TranscribeSpec, dictation_language};
 use serde_json::{Value, json};
@@ -333,29 +333,17 @@ impl Controller {
     }
 
     fn start_live(&mut self, session: u64, wav: &Path, cx: &Context<Self>) {
-        let Some(client) = &self.engine.live_client else {
-            return;
-        };
-        if self
-            .models
-            .read(cx)
-            .usable()
-            .is_none_or(|row| row.entry.id != SPEECH_UNIFIED)
-        {
+        let models = self.models.read(cx);
+        if models.effective() != SPEECH_UNIFIED {
             return;
         }
-        // A paired worker receives the finished recording; respect its place in the speech route.
-        let remote = self.storage.settings.remote();
-        if remote.enabled {
-            let route = remote.route(ModelKind::Speech);
-            let health = self.storage.remote.snapshot();
-            let now = super::monotonic_ms();
-            if remote::next_probe(&route, &health, now).is_some()
-                || !matches!(remote::pick(&route, &health, now), Choice::Device(id) if id == THIS_COMPUTER)
-            {
-                return;
-            }
-        }
+        let local = self
+            .engine
+            .live_client
+            .as_ref()
+            .filter(|_| models.usable().is_some())
+            .cloned();
+        let route = self.storage.settings.remote().route(ModelKind::Speech);
         let events = self.events.clone();
         let language = self.language();
         let spec = TranscribeSpec {
@@ -363,16 +351,46 @@ impl Controller {
             language: dictation_language(SPEECH_UNIFIED, &language),
             prompt: None,
         };
-        let live = client.transcribe_live(
-            spec,
-            Arc::new(move |text| {
-                let _ = events.unbounded_send((AppEvent::PartialText { session, text }, None));
-            }),
-        );
-        let id = live.id();
-        let client = client.clone();
+        let partial: hushpen_engine::PartialSink = Arc::new(move |text| {
+            let _ = events.unbounded_send((AppEvent::PartialText { session, text }, None));
+        });
         let token = Arc::new(CancelToken::default());
-        token.on_cancel(move || client.cancel(id));
+        let live = if route.ids().iter().any(|id| id != THIS_COMPUTER) {
+            let Some(load) = crate::engine_host::wanted_load(
+                &self.storage.settings.values(),
+                &self.storage.data.whisper_models_dir(),
+                SPEECH_UNIFIED,
+                std::thread::available_parallelism().map_or(2, usize::from),
+            ) else {
+                return;
+            };
+            let route = crate::remote_jobs::Routing::from_storage(&self.storage);
+            let found = Arc::clone(&self.run_of(session).found);
+            match crate::remote_jobs::Capture::new(partial).start(
+                route,
+                load,
+                spec,
+                local,
+                Arc::clone(&token),
+                move |notice| lock(&found).remote_notice = Some(notice),
+                &self.spawn,
+            ) {
+                Ok(job) => job,
+                Err(error) => {
+                    log::warn!("could not start paired live speech: {error}");
+                    return;
+                }
+            }
+        } else {
+            let Some(client) = local.filter(|_| route.ids().iter().any(|id| id == THIS_COMPUTER))
+            else {
+                return;
+            };
+            let live = client.transcribe_live(spec, partial);
+            let id = live.id();
+            token.on_cancel(move || client.cancel(id));
+            crate::remote_jobs::LiveJob::Local(live)
+        };
         let run = self.run_of(session);
         run.cancel = Some(token);
         run.live = Some(super::runs::Live {
@@ -538,11 +556,10 @@ impl Controller {
                 return;
             }
             let outcome = if let Some(job) = live {
-                job.finish_live();
-                job.wait()
+                job.finish(&token)
             } else if routing.settings.enabled {
                 match load {
-                    Some(load) => routing.speech(load, spec, token, engine, |notice| {
+                    Some(load) => routing.speech(load, spec, token, engine, None, |notice| {
                         lock(&found).remote_notice = Some(notice)
                     }),
                     None => JobOutcome::Failed(hushpen_engine::Failure::new(

@@ -84,6 +84,14 @@ pub fn write_json<W: Write>(writer: &mut W, message: &Value) -> Result<(), Frame
 
 /// Reads one frame. `Ok(None)` means the stream ended cleanly between frames.
 pub fn read_frame<R: Read>(reader: &mut R) -> Result<Option<Frame>, FrameError> {
+    read_frame_limited(reader, MAX_FRAME)
+}
+
+/// Applies a smaller transfer limit before allocating the frame payload.
+pub fn read_frame_limited<R: Read>(
+    reader: &mut R,
+    max: usize,
+) -> Result<Option<Frame>, FrameError> {
     let mut header = [0_u8; 5];
     let mut filled = 0;
     while filled < header.len() {
@@ -98,7 +106,7 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<Option<Frame>, FrameError> 
     let length = u64::from(u32::from_le_bytes([
         header[0], header[1], header[2], header[3],
     ]));
-    if length > MAX_FRAME as u64 {
+    if length > max.min(MAX_FRAME) as u64 {
         return Err(FrameError::TooLarge(length));
     }
     let kind = match header[4] {
@@ -316,6 +324,8 @@ pub enum Event {
         protocol: u32,
         /// True when this engine can use the GPU (a GPU backend is built in and not disabled).
         gpu: bool,
+        /// A paired host can receive PCM frames while capture is open.
+        remote_live: bool,
     },
     /// A model load started.
     Loading {
@@ -407,7 +417,15 @@ impl Event {
                 version,
                 protocol,
                 gpu,
-            } => json!({"type": "ready", "version": version, "protocol": protocol, "gpu": gpu}),
+                remote_live,
+            } => {
+                let mut ready =
+                    json!({"type": "ready", "version": version, "protocol": protocol, "gpu": gpu});
+                if *remote_live {
+                    ready["remote_live"] = Value::Bool(true);
+                }
+                ready
+            }
             Self::Loading { model } => json!({"type": "loading", "model": model}),
             Self::Loaded { model, ms, gpu } => {
                 json!({"type": "loaded", "model": model, "ms": ms, "gpu": gpu})
@@ -457,6 +475,7 @@ impl Event {
                 version: fields.string("version")?,
                 protocol: fields.u32("protocol")?,
                 gpu: fields.bool("gpu")?,
+                remote_live: fields.optional_bool("remote_live")?.unwrap_or(false),
             }),
             "loading" => Ok(Self::Loading {
                 model: fields.string("model")?,
@@ -774,6 +793,7 @@ mod tests {
                 version: "2.0.0".into(),
                 protocol: 1,
                 gpu: false,
+                remote_live: false,
             },
             Event::Loading {
                 model: "tiny.en".into(),

@@ -95,10 +95,7 @@ impl SessionReader {
     /// Returns zero when caught up. Once capture finishes, drain again to include its tail.
     pub fn read_chunk(&mut self, samples: &mut Vec<f32>) -> io::Result<usize> {
         let mut bytes = [0; 8192];
-        let count = self.0.read(&mut bytes)?;
-        if count % 2 != 0 {
-            self.0.seek(SeekFrom::Current(-1))?;
-        }
+        let count = self.read_pcm(&mut bytes)?;
         samples.clear();
         samples.extend(
             bytes[..count]
@@ -106,6 +103,16 @@ impl SessionReader {
                 .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32768.0),
         );
         Ok(samples.len())
+    }
+
+    /// Reads complete little-endian i16 samples for a paired speech worker.
+    pub fn read_pcm(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        let count = self.0.read(bytes)?;
+        let trailing = count % 2;
+        if trailing != 0 {
+            self.0.seek(SeekFrom::Current(-1))?;
+        }
+        Ok(count - trailing)
     }
 }
 

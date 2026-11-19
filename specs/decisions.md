@@ -381,9 +381,11 @@ new decision, add it here in the same change (D-21).
   text join the cleanup keep-list, and heard-as replacements run after
   cleanup.
 
-- **D-43 Fast mode.** Selecting Unified enables live text in the desktop flow bar
-  during local dictation. Stop flushes the remaining audio. Only the final transcript
-  goes to cleanup, History and paste. Other speech models and file imports use batch decoding.
+- **D-43 Fast mode.** Selecting Unified shows live text in the desktop flow bar during
+  dictation on this computer or a paired speech host. The selected route still applies.
+  A host that lacks live audio receives the recording at Stop. Stop drains the remaining
+  audio. Only the final transcript goes to cleanup, History and paste. Other speech
+  models and file imports use batch decoding.
 
 - **D-44 Flow bar balance and Recover.** `DESIGN.md` owns the balanced
   geometry and motion rules. Size uses a critically damped spring. The macOS

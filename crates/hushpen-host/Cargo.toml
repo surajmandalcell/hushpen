@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+hound.workspace = true
 hushpen-core.workspace = true
 hushpen-engine.workspace = true
 hushpen-remote.workspace = true

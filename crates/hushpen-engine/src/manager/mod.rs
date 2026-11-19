@@ -92,6 +92,7 @@ struct Inflight {
 }
 
 struct Manager {
+    remote_upload: Option<crate::link::LiveUpload>,
     spec: crate::Link,
     timing: Timing,
     log: Arc<EngineLog>,
@@ -123,6 +124,7 @@ impl Manager {
     fn new(setup: Setup) -> Self {
         let backoff = Backoff::new(setup.timing.backoff.clone(), setup.timing.healthy_after);
         Self {
+            remote_upload: None,
             spec: setup.spec,
             timing: setup.timing,
             log: setup.log,

@@ -43,7 +43,15 @@ impl Manager {
                 }
             }
             Cmd::FinishLive { job } => {
-                if let Some(pending) = self.pending.iter_mut().find(|pending| pending.job == job) {
+                if let Some(upload) = self
+                    .remote_upload
+                    .as_mut()
+                    .filter(|upload| upload.job == job)
+                {
+                    upload.closed = true;
+                } else if let Some(pending) =
+                    self.pending.iter_mut().find(|pending| pending.job == job)
+                {
                     if let Work::Live { finished, .. } = &mut pending.work {
                         *finished = true;
                     }
@@ -124,6 +132,27 @@ impl Manager {
         progress: Option<ProgressSink>,
         reply: Sender<JobOutcome>,
     ) {
+        if self.spec.is_remote()
+            && let Work::Live { spec, finished, .. } = work
+        {
+            let upload = if self.remote_upload.is_some() || !self.shared.lock().remote_live {
+                Err(std::io::Error::other(
+                    "paired worker is busy or does not support live audio",
+                ))
+            } else {
+                crate::link::LiveUpload::open(job, &spec.wav_path, *finished)
+            };
+            match upload {
+                Ok(upload) => self.remote_upload = Some(upload),
+                Err(error) => {
+                    let _ = reply.send(JobOutcome::Failed(Failure::new(
+                        hushpen_core::error::ENGINE_UNAVAILABLE,
+                        error.to_string(),
+                    )));
+                    return;
+                }
+            }
+        }
         let (model, threads) = self
             .sent_loads
             .back()
@@ -169,7 +198,7 @@ impl Manager {
             },
         };
         self.write(&request);
-        if matches!(work, Work::Live { finished: true, .. }) {
+        if !self.spec.is_remote() && matches!(work, Work::Live { finished: true, .. }) {
             self.write(&Request::FinishLive { job });
         }
     }

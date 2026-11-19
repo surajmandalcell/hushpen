@@ -44,6 +44,7 @@ fn deaf_ready_child(dir: &Path) -> ChildSpec {
             version: "test".into(),
             protocol: PROTOCOL_VERSION,
             gpu: false,
+            remote_live: false,
         }
         .to_json(),
     )
@@ -81,6 +82,7 @@ fn unload_cancels_a_startup_load_before_ready_and_restart() {
             version: "test".into(),
             protocol: PROTOCOL_VERSION,
             gpu: false,
+            remote_live: false,
         }
         .to_json(),
     )
@@ -130,6 +132,7 @@ fn unload_discards_a_late_loaded_reply_and_does_not_reload_after_restart() {
             version: "test".into(),
             protocol: PROTOCOL_VERSION,
             gpu: false,
+            remote_live: false,
         }
         .to_json(),
     )
@@ -397,6 +400,7 @@ fn an_import_sends_its_request_and_hears_progress_until_the_result() {
             version: "test".into(),
             protocol: PROTOCOL_VERSION,
             gpu: false,
+            remote_live: false,
         }]),
     )
     .unwrap();

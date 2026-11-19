@@ -38,15 +38,16 @@ pub(super) struct Run {
 }
 
 pub(super) struct Live {
-    pub job: hushpen_engine::JobHandle,
+    pub job: crate::remote_jobs::LiveJob,
     pub language: String,
 }
 
 impl Run {
     pub(super) fn cancel_live(&mut self) {
-        if let Some(live) = self.live.take() {
-            live.job.cancel();
-            self.cancel = None;
+        if self.live.take().is_some()
+            && let Some(token) = self.cancel.take()
+        {
+            token.cancel();
         }
         self.partial = None;
     }

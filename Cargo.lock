@@ -3728,6 +3728,7 @@ dependencies = [
 name = "hushpen-host"
 version = "2.5.0"
 dependencies = [
+ "hound",
  "hushpen-core",
  "hushpen-engine",
  "hushpen-remote",
