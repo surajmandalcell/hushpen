@@ -2,7 +2,7 @@
 
 use super::{Controller, InsertSupport};
 use hushpen_core::dictation::Mode;
-use hushpen_core::insert::live::{StablePrefix, suffix_edit, untyped_suffix};
+use hushpen_core::insert::live::{StablePrefix, WordEdit, suffix_edit, untyped_suffix, word_edits};
 use hushpen_core::onboarding::KeyGate;
 use hushpen_engine::PartialSink;
 use hushpen_platform::insert::{LiveError, LiveSpan, Target};
@@ -106,6 +106,19 @@ impl Draft {
         }
     }
 
+    /// Applies word fixes last to first. After one lands, a failure leaves a mixed draft, so
+    /// History becomes the only safe copy.
+    fn splice(&mut self, edits: &[WordEdit]) {
+        let Ok(span) = &mut self.span else { return };
+        for (done, edit) in edits.iter().rev().enumerate() {
+            if let Err(error) = span.splice(edit.range.start, edit.range.end, edit.with) {
+                self.span = Err(if done == 0 { error } else { LiveError::Uncertain });
+                return;
+            }
+            self.typed.replace_range(edit.range.clone(), edit.with);
+        }
+    }
+
     fn check(&mut self) {
         if self.span.as_ref().is_ok_and(|span| !span.unchanged()) {
             self.span = Err(LiveError::Changed);
@@ -146,9 +159,18 @@ impl Draft {
         if self.typed == cleaned {
             self.check();
         } else {
-            // Keep the words that already match, so a late fix does not retype the whole draft.
+            // Fix only the words that changed, so a late fix does not retype the whole draft.
             let (keep, add) = suffix_edit(&self.typed, cleaned);
-            self.write(keep, add);
+            let tail = self.typed.len() - keep;
+            match word_edits(&self.typed, cleaned) {
+                Some(edits)
+                    if edits.len() <= 64
+                        && edits.iter().map(|edit| edit.range.len()).sum::<usize>() < tail =>
+                {
+                    self.splice(&edits);
+                }
+                _ => self.write(keep, add),
+            }
         }
         match self.span {
             Ok(_) => Some(""),

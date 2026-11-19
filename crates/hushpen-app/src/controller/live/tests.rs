@@ -50,6 +50,17 @@ impl LiveSpan for Span {
         self.expected.clone_from(&field.text);
         Ok(())
     }
+
+    fn splice(&mut self, start: usize, end: usize, with: &str) -> Result<(), LiveError> {
+        let mut field = self.field.lock().unwrap();
+        if field.moved_caret.is_some() || field.text != self.expected {
+            return Err(LiveError::Changed);
+        }
+        field.text.replace_range(BEFORE.len() + start..BEFORE.len() + end, with);
+        field.edits.push((start, with.into()));
+        self.expected.clone_from(&field.text);
+        Ok(())
+    }
 }
 
 fn draft() -> (Draft, Arc<Mutex<Field>>) {
@@ -91,8 +102,27 @@ fn stable_partial_then_minimal_final_edit_then_one_cleanup_replacement() {
             (0, "rain".into()),
             (4, " cats".into()),
             (7, "rs now".into()),
-            (0, "Rain cars now.".into()),
+            (10, "now.".into()),
+            (0, "Rain ".into()),
         ]
+    );
+}
+
+#[test]
+fn cleanup_fixes_only_the_changed_words_in_a_long_draft() {
+    let (mut draft, field) = draft();
+    let raw = "we read the plan and uh we liked it, you know, a lot and then we left";
+    draft.partial(raw);
+    draft.partial(raw);
+    draft.finish_raw(raw);
+    let cleaned = "We read the plan and we liked it a lot and then we left.";
+    assert_eq!(draft.finish(raw, cleaned), Some(""));
+    let field = field.lock().unwrap();
+    assert_eq!(field.text, format!("{BEFORE}{cleaned}"));
+    assert!(
+        field.edits.iter().all(|(_, with)| with != cleaned),
+        "{:?}",
+        field.edits
     );
 }
 

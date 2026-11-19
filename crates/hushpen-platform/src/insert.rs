@@ -72,6 +72,9 @@ pub trait LiveSpan: Send {
     /// Keep this many UTF-8 bytes of the last confirmed draft and replace the rest.
     /// A successful edit advances the receipt. Keeping zero bytes also permits a guarded undo.
     fn replace(&mut self, keep_bytes: usize, replacement: &str) -> Result<(), LiveError>;
+
+    /// Replace the bytes `start..end` inside the draft and put the caret back at its end.
+    fn splice(&mut self, start: usize, end: usize, replacement: &str) -> Result<(), LiveError>;
 }
 
 pub trait Inserter: Send + Sync {

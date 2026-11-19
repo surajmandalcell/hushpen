@@ -38,6 +38,78 @@ pub fn suffix_edit<'a>(typed: &str, desired: &'a str) -> (usize, &'a str) {
     (keep, &desired[keep..])
 }
 
+/// Words with their trailing spaces. Leading spaces form their own token.
+fn tokens(text: &str) -> Vec<(usize, &str)> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut in_space = text.starts_with(char::is_whitespace);
+    for (at, ch) in text.char_indices() {
+        if !ch.is_whitespace() && in_space && at > start {
+            out.push((start, &text[start..at]));
+            start = at;
+        }
+        in_space = ch.is_whitespace();
+    }
+    if start < text.len() {
+        out.push((start, &text[start..]));
+    }
+    out
+}
+
+/// One word-level fix: replace `typed[range]` with `with`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct WordEdit<'a> {
+    pub range: std::ops::Range<usize>,
+    pub with: &'a str,
+}
+
+/// The smallest word-level fixes that turn `typed` into `desired`, first to last, or `None` when
+/// the texts are too long to compare. Apply them last to first so earlier offsets stay valid.
+pub fn word_edits<'a>(typed: &str, desired: &'a str) -> Option<Vec<WordEdit<'a>>> {
+    let a = tokens(typed);
+    let b = tokens(desired);
+    let (n, m) = (a.len(), b.len());
+    if n.saturating_mul(m) > 4_000_000 {
+        return None;
+    }
+    // lcs[i][j] = the longest common token subsequence of a[i..] and b[j..].
+    let mut lcs = vec![0u32; (n + 1) * (m + 1)];
+    let at = |i: usize, j: usize| i * (m + 1) + j;
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            lcs[at(i, j)] = if a[i].1 == b[j].1 {
+                lcs[at(i + 1, j + 1)] + 1
+            } else {
+                lcs[at(i + 1, j)].max(lcs[at(i, j + 1)])
+            };
+        }
+    }
+    let same = |i: usize, j: usize| i < n && j < m && a[i].1 == b[j].1;
+    let a_byte = |i: usize| a.get(i).map_or(typed.len(), |t| t.0);
+    let b_byte = |j: usize| b.get(j).map_or(desired.len(), |t| t.0);
+    let (mut i, mut j, mut edits) = (0, 0, Vec::new());
+    while i < n || j < m {
+        if same(i, j) {
+            i += 1;
+            j += 1;
+            continue;
+        }
+        let (i0, j0) = (i, j);
+        while (i < n || j < m) && !same(i, j) {
+            if j == m || (i < n && lcs[at(i + 1, j)] >= lcs[at(i, j + 1)]) {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        edits.push(WordEdit {
+            range: a_byte(i0)..a_byte(i),
+            with: &desired[b_byte(j0)..b_byte(j)],
+        });
+    }
+    Some(edits)
+}
+
 struct Word<'a> {
     raw: &'a str,
     key: String,
@@ -132,6 +204,22 @@ fn aligned_end(typed: &[Word<'_>], incoming: &[Word<'_>]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn word_edits_touch_only_the_changed_words() {
+        let typed = "So it began. Uh we thought, you know, about that";
+        let desired = "So it began. We thought about that.";
+        let edits = word_edits(typed, desired).unwrap();
+        let mut fixed = typed.to_owned();
+        for edit in edits.iter().rev() {
+            fixed.replace_range(edit.range.clone(), edit.with);
+        }
+        assert_eq!(fixed, desired);
+        assert!(edits.iter().all(|edit| edit.range.start >= "So it began. ".len()));
+        assert_eq!(word_edits("same text", "same text").unwrap(), vec![]);
+        let edits = word_edits("", "new words").unwrap();
+        assert_eq!(edits, vec![WordEdit { range: 0..0, with: "new words" }]);
+    }
 
     #[test]
     fn waits_for_complete_words_and_keeps_spacing() {
