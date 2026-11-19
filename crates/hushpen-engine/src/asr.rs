@@ -26,7 +26,34 @@ fn select_dictation_language<I: Iterator<Item = String>>(
     {
         return None;
     }
-    let preferred = locales()
+    let preferred = preferred_codes(locales()).join(",");
+    (!preferred.is_empty()).then(|| language::auto_with_preferences(&preferred))
+}
+
+/// Nemotron live typing: Auto streams with the one preferred language when there is exactly one.
+/// Streaming Auto can drop a whole opening sentence; a fixed language keeps it.
+pub fn live_language(setting: &str) -> Option<String> {
+    select_live_language(setting, sys_locale::get_locales)
+}
+
+fn select_live_language<I: Iterator<Item = String>>(
+    setting: &str,
+    locales: impl FnOnce() -> I,
+) -> Option<String> {
+    if setting != language::AUTO {
+        return Some(setting.to_owned());
+    }
+    let mut codes = preferred_codes(locales());
+    codes.sort();
+    codes.dedup();
+    match codes.as_slice() {
+        [one] if catalog::PARAKEET_LANGUAGES.contains(&one.as_str()) => Some(one.clone()),
+        _ => None,
+    }
+}
+
+fn preferred_codes(locales: impl Iterator<Item = String>) -> Vec<String> {
+    locales
         .filter_map(|locale| {
             let code = locale.split('-').next()?.to_ascii_lowercase();
             let code = match code.as_str() {
@@ -37,9 +64,7 @@ fn select_dictation_language<I: Iterator<Item = String>>(
             };
             language::name(code).map(|_| code.to_owned())
         })
-        .collect::<Vec<_>>()
-        .join(",");
-    (!preferred.is_empty()).then(|| language::auto_with_preferences(&preferred))
+        .collect()
 }
 
 /// The full result of one job.
@@ -241,6 +266,18 @@ mod tests {
         assert_eq!(choose(whisper, "ja", &["en-IN"]).as_deref(), Some("ja"));
         assert_eq!(choose(whisper, "auto", &["xx-XX"]), None);
         assert_eq!(choose(catalog::SPEECH_DEFAULT, "auto", &["en-IN"]), None);
+    }
+
+    #[test]
+    fn live_auto_fixes_the_language_only_for_one_supported_preference() {
+        let choose = |setting, locales: &[&str]| {
+            select_live_language(setting, || locales.iter().map(|s| s.to_string()))
+        };
+        assert_eq!(choose("auto", &["en-IN", "en-US", "xx-XX"]).as_deref(), Some("en"));
+        assert_eq!(choose("auto", &["en-IN", "de-DE"]), None);
+        assert_eq!(choose("auto", &["ja-JP"]), None);
+        assert_eq!(choose("auto", &[]), None);
+        assert_eq!(choose("fr", &["en-IN"]).as_deref(), Some("fr"));
     }
 
     #[test]
