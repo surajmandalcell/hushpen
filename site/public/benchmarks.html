@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speech to Text Benchmark: Dictation Apps and Models | Hushpen</title>
+<meta name="description" content="Accuracy and speed of Hushpen, FluidVoice and Handy on 36 TED clips in 19 English accents, scored against human captions. Measured 19 November 2026.">
+<link rel="canonical" href="https://hushpen.mandalsuraj.com/benchmarks">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#F2F2F4">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hushpen">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://hushpen.mandalsuraj.com/benchmarks">
+<meta property="og:title" content="Speech to Text Benchmark: Dictation Apps and Models | Hushpen">
+<meta property="og:description" content="Accuracy and speed of Hushpen, FluidVoice and Handy on 36 TED clips in 19 English accents, scored against human captions. Measured 19 November 2026.">
+<meta property="og:image" content="https://hushpen.mandalsuraj.com/assets/og-card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Hushpen: free and open source dictation for Mac, Windows and Linux">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Speech to Text Benchmark: Dictation Apps and Models | Hushpen">
+<meta name="twitter:description" content="Accuracy and speed of Hushpen, FluidVoice and Handy on 36 TED clips in 19 English accents, scored against human captions. Measured 19 November 2026.">
+<meta name="twitter:image" content="https://hushpen.mandalsuraj.com/assets/og-card.jpg">
+<link rel="icon" href="/assets/favicon.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="stylesheet" href="/kit.css">
+<link rel="stylesheet" href="/compare.css">
+<link rel="stylesheet" href="/bench.css">
+<script src="/releases.js" defer></script>
+<script src="/os.js" defer></script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [{"@type": "WebPage", "@id": "https://hushpen.mandalsuraj.com/benchmarks#page", "url": "https://hushpen.mandalsuraj.com/benchmarks", "name": "Speech to Text Benchmark: Dictation Apps and Models | Hushpen", "description": "Accuracy and speed of Hushpen, FluidVoice and Handy on 36 TED clips in 19 English accents, scored against human captions. Measured 19 November 2026.", "inLanguage": "en", "isPartOf": {"@id": "https://hushpen.mandalsuraj.com/#website"}, "dateModified": "2026-11-19", "breadcrumb": {"@id": "https://hushpen.mandalsuraj.com/benchmarks#crumbs"}}, {"@type": "BreadcrumbList", "@id": "https://hushpen.mandalsuraj.com/benchmarks#crumbs", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Hushpen", "item": "https://hushpen.mandalsuraj.com/"}, {"@type": "ListItem", "position": 2, "name": "Dictation apps compared", "item": "https://hushpen.mandalsuraj.com/dictation-apps"}, {"@type": "ListItem", "position": 3, "name": "Benchmarks", "item": "https://hushpen.mandalsuraj.com/benchmarks"}]}]}
+</script>
+</head>
+<body>
+<header class="nav"><div class="wrap"><a class="brand" href="/"><img src="/assets/icon-256.webp" alt="" width="30" height="30"><span>Hushpen</span></a><nav aria-label="Main"><a href="/dictation-apps">Compare</a><a href="/speech-to-text">Speech to text</a><a href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noopener">GitHub</a></nav><a class="dl" data-dl href="https://github.com/surajmandalcell/hushpen/releases/latest">Download</a></div></header>
+
+<main class="wrap">
+  <ol class="crumbs" aria-label="Breadcrumb"><li><a href="/">Hushpen</a></li><li><a href="/dictation-apps">Dictation apps compared</a></li><li aria-current="page">Benchmarks</li></ol>
+  <section class="cp-hero">
+    <p class="cp-free"><b>Measured</b>19 November 2026, on real recordings with human captions.</p>
+    <h1><em>Speech to text benchmark</em> <span>across dictation apps and models.</span></h1>
+    <p class="cp-lede">36 TED talk clips, 19 English accents, scored word by word against the talks' human-made captions. Every app and model ran with its default settings on the same Mac. Hushpen Whisper Turbo got the most words right. FluidVoice Parakeet v3 was the fastest.</p>
+    <p class="bn-date">Last run 19 November 2026. Apple M4 Pro, 24 GB, macOS. Nothing was tuned on these clips.</p>
+  </section>
+  <ul class="cp-facts">
+    <li><b>95.0</b><span>words right out of 100 for Hushpen Whisper Turbo, the most accurate.</span></li>
+    <li><b>0.37 s</b><span>for 1 minute of audio with FluidVoice Parakeet v3, the fastest on this Mac.</span></li>
+    <li><b>2.4x</b><span>FluidVoice runs Parakeet v3 this much faster than Hushpen with the same model, at the same accuracy.</span></li>
+  </ul>
+  <section class="cp-s" aria-labelledby="results">
+    <h2 id="results">Results, <span>apps and models.</span></h2>
+    <p>Words right is 100 minus the word error rate. Seconds per minute is how long it takes to write out one minute of audio, from a 1 minute recording. Lower is faster.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Accuracy and speed for each app and model</caption>
+        <thead><tr><th scope="col">App and model</th><th scope="col">Words right out of 100</th><th scope="col">Seconds per minute of audio</th><th scope="col">1 hour recording</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Hushpen<small>Whisper Large v3 Turbo Q5</small></th><td data-l="Words right out of 100" class="top">95.0</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:41%"></i><b>2.90 s</b></span></td><td data-l="1 hour recording">184.9 s</td></tr>
+          <tr><th scope="row">Handy 0.10.1<small>Parakeet Unified English 0.6B Q8</small></th><td data-l="Words right out of 100">94.7</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:7%"></i><b>0.50 s</b></span></td><td data-l="1 hour recording">Not measured</td></tr>
+          <tr><th scope="row">Hushpen<small>Nemotron Unified ASR 0.6B Q8</small></th><td data-l="Words right out of 100">94.2</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:100%"></i><b>7.00 s</b></span></td><td data-l="1 hour recording">Not measured</td></tr>
+          <tr><th scope="row">Hushpen<small>Parakeet v3 Q4</small></th><td data-l="Words right out of 100">93.6</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:12%"></i><b>0.87 s</b></span></td><td data-l="1 hour recording">55.0 s</td></tr>
+          <tr><th scope="row">FluidVoice 1.6.13<small>Parakeet TDT v3</small></th><td data-l="Words right out of 100">93.5</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:5%"></i><b>0.37 s</b></span></td><td data-l="1 hour recording">16.7 s</td></tr>
+          <tr><th scope="row">Hushpen<small>Whisper Small Q5</small></th><td data-l="Words right out of 100">75.4</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:25%"></i><b>1.73 s</b></span></td><td data-l="1 hour recording">Not measured</td></tr>
+          <tr><th scope="row">Hushpen<small>Whisper Base Q5</small></th><td data-l="Words right out of 100">71.5</td><td data-l="Seconds per minute of audio"><span class="bx"><i style="--p:12%"></i><b>0.81 s</b></span></td><td data-l="1 hour recording">Not measured</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note">Hushpen's default model is Parakeet v3. Nemotron Unified is timed through Hushpen's live text engine, which writes the text while you speak; see "Live text" below.</p>
+  </section>
+  <section class="cp-s" aria-labelledby="accents">
+    <h2 id="accents">Accuracy <span>by accent.</span></h2>
+    <p>Words right out of 100 for each accent. Hushpen Whisper Turbo ranges from 89 on Indian English to 99 on Filipino English. The best score in each row is blue.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Words right out of 100 for each accent</caption>
+        <thead><tr><th scope="col">Accent</th><th scope="col">Hushpen Whisper Turbo</th><th scope="col">Handy Parakeet Unified English</th><th scope="col">Hushpen Nemotron Unified</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">FluidVoice Parakeet v3</th><th scope="col">Hushpen Whisper Small</th><th scope="col">Hushpen Whisper Base</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Indian<small>Arunachalam Muruganantham, Sugata Mitra</small></th><td data-l="Hushpen Whisper Turbo">89</td><td data-l="Handy Parakeet Unified English" class="top">90</td><td data-l="Hushpen Nemotron Unified">88</td><td data-l="Hushpen Parakeet v3">85</td><td data-l="FluidVoice Parakeet v3">85</td><td data-l="Hushpen Whisper Small">88</td><td data-l="Hushpen Whisper Base">86</td></tr>
+          <tr><th scope="row">Spanish or Latin American<small>Luis von Ahn, Pia Mancini</small></th><td data-l="Hushpen Whisper Turbo" class="top">90</td><td data-l="Handy Parakeet Unified English" class="top">90</td><td data-l="Hushpen Nemotron Unified">87</td><td data-l="Hushpen Parakeet v3">89</td><td data-l="FluidVoice Parakeet v3">89</td><td data-l="Hushpen Whisper Small">88</td><td data-l="Hushpen Whisper Base" class="top">90</td></tr>
+          <tr><th scope="row">Chinese<small>Eric X. Li, Yang Lan</small></th><td data-l="Hushpen Whisper Turbo">92</td><td data-l="Handy Parakeet Unified English" class="top">94</td><td data-l="Hushpen Nemotron Unified">93</td><td data-l="Hushpen Parakeet v3">92</td><td data-l="FluidVoice Parakeet v3">93</td><td data-l="Hushpen Whisper Small">92</td><td data-l="Hushpen Whisper Base">91</td></tr>
+          <tr><th scope="row">American<small>Brené Brown, Simon Sinek</small></th><td data-l="Hushpen Whisper Turbo">92</td><td data-l="Handy Parakeet Unified English" class="top">94</td><td data-l="Hushpen Nemotron Unified">94</td><td data-l="Hushpen Parakeet v3">92</td><td data-l="FluidVoice Parakeet v3">92</td><td data-l="Hushpen Whisper Small">93</td><td data-l="Hushpen Whisper Base">93</td></tr>
+          <tr><th scope="row">Russian<small>Garry Kasparov</small></th><td data-l="Hushpen Whisper Turbo">93</td><td data-l="Handy Parakeet Unified English">90</td><td data-l="Hushpen Nemotron Unified">93</td><td data-l="Hushpen Parakeet v3" class="top">97</td><td data-l="FluidVoice Parakeet v3">93</td><td data-l="Hushpen Whisper Small">92</td><td data-l="Hushpen Whisper Base">90</td></tr>
+          <tr><th scope="row">Japanese<small>Shigeru Ban, Takaharu Tezuka</small></th><td data-l="Hushpen Whisper Turbo" class="top">94</td><td data-l="Handy Parakeet Unified English">88</td><td data-l="Hushpen Nemotron Unified">87</td><td data-l="Hushpen Parakeet v3">86</td><td data-l="FluidVoice Parakeet v3">85</td><td data-l="Hushpen Whisper Small">89</td><td data-l="Hushpen Whisper Base">85</td></tr>
+          <tr><th scope="row">Irish<small>Bono, Mary Robinson</small></th><td data-l="Hushpen Whisper Turbo" class="top">94</td><td data-l="Handy Parakeet Unified English">93</td><td data-l="Hushpen Nemotron Unified" class="top">94</td><td data-l="Hushpen Parakeet v3">93</td><td data-l="FluidVoice Parakeet v3">93</td><td data-l="Hushpen Whisper Small" class="top">94</td><td data-l="Hushpen Whisper Base">91</td></tr>
+          <tr><th scope="row">South African<small>Neil Turok, Toby Shapshak</small></th><td data-l="Hushpen Whisper Turbo" class="top">95</td><td data-l="Handy Parakeet Unified English">93</td><td data-l="Hushpen Nemotron Unified">90</td><td data-l="Hushpen Parakeet v3">92</td><td data-l="FluidVoice Parakeet v3">91</td><td data-l="Hushpen Whisper Small">89</td><td data-l="Hushpen Whisper Base">84</td></tr>
+          <tr><th scope="row">German<small>Ralph Langner, Stefan Sagmeister</small></th><td data-l="Hushpen Whisper Turbo" class="top">95</td><td data-l="Handy Parakeet Unified English">94</td><td data-l="Hushpen Nemotron Unified" class="top">95</td><td data-l="Hushpen Parakeet v3">94</td><td data-l="FluidVoice Parakeet v3" class="top">95</td><td data-l="Hushpen Whisper Small">91</td><td data-l="Hushpen Whisper Base">89</td></tr>
+          <tr><th scope="row">Brazilian<small>Eduardo Paes, Miguel Nicolelis</small></th><td data-l="Hushpen Whisper Turbo" class="top">96</td><td data-l="Handy Parakeet Unified English">94</td><td data-l="Hushpen Nemotron Unified">95</td><td data-l="Hushpen Parakeet v3">93</td><td data-l="FluidVoice Parakeet v3">92</td><td data-l="Hushpen Whisper Small">92</td><td data-l="Hushpen Whisper Base">90</td></tr>
+          <tr><th scope="row">Scottish<small>Evelyn Glennie, Gordon Brown</small></th><td data-l="Hushpen Whisper Turbo">96</td><td data-l="Handy Parakeet Unified English" class="top">98</td><td data-l="Hushpen Nemotron Unified">96</td><td data-l="Hushpen Parakeet v3">93</td><td data-l="FluidVoice Parakeet v3">95</td><td data-l="Hushpen Whisper Small">0</td><td data-l="Hushpen Whisper Base">3</td></tr>
+          <tr><th scope="row">Korean<small>Hyeonseo Lee, Joseph Kim</small></th><td data-l="Hushpen Whisper Turbo">96</td><td data-l="Handy Parakeet Unified English">96</td><td data-l="Hushpen Nemotron Unified">95</td><td data-l="Hushpen Parakeet v3" class="top">97</td><td data-l="FluidVoice Parakeet v3">95</td><td data-l="Hushpen Whisper Small">46</td><td data-l="Hushpen Whisper Base">37</td></tr>
+          <tr><th scope="row">French<small>Esther Duflo, Matthieu Ricard</small></th><td data-l="Hushpen Whisper Turbo" class="top">97</td><td data-l="Handy Parakeet Unified English" class="top">97</td><td data-l="Hushpen Nemotron Unified" class="top">97</td><td data-l="Hushpen Parakeet v3">96</td><td data-l="FluidVoice Parakeet v3">96</td><td data-l="Hushpen Whisper Small">90</td><td data-l="Hushpen Whisper Base">94</td></tr>
+          <tr><th scope="row">Nigerian<small>Chimamanda Ngozi Adichie, Ngozi Okonjo-Iweala</small></th><td data-l="Hushpen Whisper Turbo" class="top">97</td><td data-l="Handy Parakeet Unified English">95</td><td data-l="Hushpen Nemotron Unified">95</td><td data-l="Hushpen Parakeet v3">95</td><td data-l="FluidVoice Parakeet v3">95</td><td data-l="Hushpen Whisper Small">96</td><td data-l="Hushpen Whisper Base">30</td></tr>
+          <tr><th scope="row">British<small>Jamie Oliver, Ken Robinson</small></th><td data-l="Hushpen Whisper Turbo">97</td><td data-l="Handy Parakeet Unified English" class="top">99</td><td data-l="Hushpen Nemotron Unified" class="top">99</td><td data-l="Hushpen Parakeet v3">99</td><td data-l="FluidVoice Parakeet v3">99</td><td data-l="Hushpen Whisper Small">0</td><td data-l="Hushpen Whisper Base">0</td></tr>
+          <tr><th scope="row">Australian<small>Peter Singer, Rachel Botsman</small></th><td data-l="Hushpen Whisper Turbo">98</td><td data-l="Handy Parakeet Unified English" class="top">98</td><td data-l="Hushpen Nemotron Unified">98</td><td data-l="Hushpen Parakeet v3">97</td><td data-l="FluidVoice Parakeet v3">98</td><td data-l="Hushpen Whisper Small">53</td><td data-l="Hushpen Whisper Base">47</td></tr>
+          <tr><th scope="row">Pakistani<small>Khalida Brohi, Ziauddin Yousafzai</small></th><td data-l="Hushpen Whisper Turbo" class="top">98</td><td data-l="Handy Parakeet Unified English">97</td><td data-l="Hushpen Nemotron Unified">97</td><td data-l="Hushpen Parakeet v3" class="top">98</td><td data-l="FluidVoice Parakeet v3" class="top">98</td><td data-l="Hushpen Whisper Small">96</td><td data-l="Hushpen Whisper Base">96</td></tr>
+          <tr><th scope="row">Arabic<small>Rana el Kaliouby, Wael Ghonim</small></th><td data-l="Hushpen Whisper Turbo">98</td><td data-l="Handy Parakeet Unified English">98</td><td data-l="Hushpen Nemotron Unified">98</td><td data-l="Hushpen Parakeet v3">96</td><td data-l="FluidVoice Parakeet v3">96</td><td data-l="Hushpen Whisper Small">97</td><td data-l="Hushpen Whisper Base" class="top">100</td></tr>
+          <tr><th scope="row">Filipino<small>Maria Ressa</small></th><td data-l="Hushpen Whisper Turbo" class="top">99</td><td data-l="Handy Parakeet Unified English" class="top">99</td><td data-l="Hushpen Nemotron Unified" class="top">99</td><td data-l="Hushpen Parakeet v3" class="top">99</td><td data-l="FluidVoice Parakeet v3">97</td><td data-l="Hushpen Whisper Small" class="top">99</td><td data-l="Hushpen Whisper Base" class="top">99</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note">Hushpen Whisper Small wrote another language (Welsh or Korean) instead of English on 6 of 36 clips. Hushpen Whisper Base wrote another language (Welsh or Korean) instead of English on 8 of 36 clips. Hushpen's language setting is Detect by default, and the test kept the default.</p>
+  </section>
+  <section class="cp-s" aria-labelledby="speed">
+    <h2 id="speed">Speed <span>on this Mac.</span></h2>
+    <p>Seconds to write out 1 minute of audio, for recordings from 5 seconds to 5 minutes. Median of 3 runs. Short recordings cost more per minute because each one pays a fixed start cost. Model load is timed apart.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Seconds per minute of audio for each recording length on this Mac</caption>
+        <thead><tr><th scope="col">Recording</th><th scope="col">FluidVoice Parakeet v3</th><th scope="col">Handy Parakeet Unified English</th><th scope="col">Hushpen Whisper Base</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Small</th><th scope="col">Hushpen Whisper Turbo</th><th scope="col">Hushpen Nemotron Unified</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">5 s</th><td data-l="FluidVoice Parakeet v3">1.10 s</td><td data-l="Handy Parakeet Unified English">0.71 s</td><td data-l="Hushpen Whisper Base">1.98 s</td><td data-l="Hushpen Parakeet v3">1.14 s</td><td data-l="Hushpen Whisper Small">4.24 s</td><td data-l="Hushpen Whisper Turbo">13.69 s</td><td data-l="Hushpen Nemotron Unified">5.33 s</td></tr>
+          <tr><th scope="row">15 s</th><td data-l="FluidVoice Parakeet v3">0.48 s</td><td data-l="Handy Parakeet Unified English">0.48 s</td><td data-l="Hushpen Whisper Base">3.75 s</td><td data-l="Hushpen Parakeet v3">0.93 s</td><td data-l="Hushpen Whisper Small">2.27 s</td><td data-l="Hushpen Whisper Turbo">5.21 s</td><td data-l="Hushpen Nemotron Unified">6.54 s</td></tr>
+          <tr><th scope="row">30 s</th><td data-l="FluidVoice Parakeet v3">0.42 s</td><td data-l="Handy Parakeet Unified English">0.47 s</td><td data-l="Hushpen Whisper Base">0.93 s</td><td data-l="Hushpen Parakeet v3">0.99 s</td><td data-l="Hushpen Whisper Small">1.98 s</td><td data-l="Hushpen Whisper Turbo">4.01 s</td><td data-l="Hushpen Nemotron Unified">6.85 s</td></tr>
+          <tr><th scope="row">1 min</th><td data-l="FluidVoice Parakeet v3">0.37 s</td><td data-l="Handy Parakeet Unified English">0.50 s</td><td data-l="Hushpen Whisper Base">0.81 s</td><td data-l="Hushpen Parakeet v3">0.87 s</td><td data-l="Hushpen Whisper Small">1.73 s</td><td data-l="Hushpen Whisper Turbo">2.90 s</td><td data-l="Hushpen Nemotron Unified">7.00 s</td></tr>
+          <tr><th scope="row">2 min</th><td data-l="FluidVoice Parakeet v3">0.33 s</td><td data-l="Handy Parakeet Unified English">0.57 s</td><td data-l="Hushpen Whisper Base">1.08 s</td><td data-l="Hushpen Parakeet v3">0.86 s</td><td data-l="Hushpen Whisper Small">1.69 s</td><td data-l="Hushpen Whisper Turbo">3.06 s</td><td data-l="Hushpen Nemotron Unified">7.05 s</td></tr>
+          <tr><th scope="row">5 min</th><td data-l="FluidVoice Parakeet v3">0.31 s</td><td data-l="Handy Parakeet Unified English">0.86 s</td><td data-l="Hushpen Whisper Base">0.82 s</td><td data-l="Hushpen Parakeet v3">0.85 s</td><td data-l="Hushpen Whisper Small">1.53 s</td><td data-l="Hushpen Whisper Turbo">2.38 s</td><td data-l="Hushpen Nemotron Unified">7.13 s</td></tr>
+          <tr><th scope="row">Model load</th><td data-l="FluidVoice Parakeet v3">0.10 s</td><td data-l="Handy Parakeet Unified English">0.06 s</td><td data-l="Hushpen Whisper Base">0.05 s</td><td data-l="Hushpen Parakeet v3">0.15 s</td><td data-l="Hushpen Whisper Small">0.08 s</td><td data-l="Hushpen Whisper Turbo">0.24 s</td><td data-l="Hushpen Nemotron Unified">0.44 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note">FluidVoice time runs from sending the audio to its local API to getting the full text back. Handy time is the inference time its command line tool reports. Hushpen time is the transcribe call. Model load is the load with the model already on disk.</p>
+    <p class="cp-note"><b>Linux server, Arm Neoverse-N1 (Ampere Altra), 4 cores, CPU only</b> (Hushpen only):</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Seconds per minute of audio on Arm Neoverse-N1 (Ampere Altra)</caption>
+        <thead><tr><th scope="col">Recording</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Small</th><th scope="col">Hushpen Whisper Base</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">5 s</th><td data-l="Hushpen Parakeet v3">11.7 s</td><td data-l="Hushpen Whisper Small">236.6 s</td><td data-l="Hushpen Whisper Base">64.4 s</td></tr>
+          <tr><th scope="row">15 s</th><td data-l="Hushpen Parakeet v3">11.3 s</td><td data-l="Hushpen Whisper Small">82.8 s</td><td data-l="Hushpen Whisper Base">33.8 s</td></tr>
+          <tr><th scope="row">30 s</th><td data-l="Hushpen Parakeet v3">12.3 s</td><td data-l="Hushpen Whisper Small">63.3 s</td><td data-l="Hushpen Whisper Base">17.7 s</td></tr>
+          <tr><th scope="row">1 min</th><td data-l="Hushpen Parakeet v3">11.3 s</td><td data-l="Hushpen Whisper Small">44.9 s</td><td data-l="Hushpen Whisper Base">12.8 s</td></tr>
+          <tr><th scope="row">2 min</th><td data-l="Hushpen Parakeet v3">11.6 s</td><td data-l="Hushpen Whisper Small">41.5 s</td><td data-l="Hushpen Whisper Base">12.1 s</td></tr>
+          <tr><th scope="row">5 min</th><td data-l="Hushpen Parakeet v3">11.3 s</td><td data-l="Hushpen Whisper Small">34.1 s</td><td data-l="Hushpen Whisper Base">13.8 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note"><b>Linux desktop, AMD Ryzen 3 2200G, 4 cores, CPU only</b> (Hushpen only):</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Seconds per minute of audio on AMD Ryzen 3 2200G</caption>
+        <thead><tr><th scope="col">Recording</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Base</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">5 s</th><td data-l="Hushpen Parakeet v3">14.2 s</td><td data-l="Hushpen Whisper Base">71.5 s</td></tr>
+          <tr><th scope="row">15 s</th><td data-l="Hushpen Parakeet v3">12.0 s</td><td data-l="Hushpen Whisper Base">47.6 s</td></tr>
+          <tr><th scope="row">30 s</th><td data-l="Hushpen Parakeet v3">13.4 s</td><td data-l="Hushpen Whisper Base">19.9 s</td></tr>
+          <tr><th scope="row">1 min</th><td data-l="Hushpen Parakeet v3">12.2 s</td><td data-l="Hushpen Whisper Base">14.3 s</td></tr>
+          <tr><th scope="row">2 min</th><td data-l="Hushpen Parakeet v3">12.6 s</td><td data-l="Hushpen Whisper Base">13.2 s</td></tr>
+          <tr><th scope="row">5 min</th><td data-l="Hushpen Parakeet v3">12.3 s</td><td data-l="Hushpen Whisper Base">11.2 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="cp-s" aria-labelledby="long">
+    <h2 id="long">Long <span>recordings.</span></h2>
+    <p>One hour of audio took 16.7 s in FluidVoice, 55.0 s in Hushpen with Parakeet v3, and 184.9 s in Hushpen with Whisper Turbo. The clips were looped into one file of each length.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Seconds to write out long recordings</caption>
+        <thead><tr><th scope="col">Recording</th><th scope="col">Hushpen Parakeet v3</th><th scope="col">Hushpen Whisper Turbo</th><th scope="col">FluidVoice Parakeet v3</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">5 min</th><td data-l="Hushpen Parakeet v3"><span class="bx"><i style="--p:37%"></i><b>4.6 s</b></span></td><td data-l="Hushpen Whisper Turbo"><span class="bx"><i style="--p:100%"></i><b>12.6 s</b></span></td><td data-l="FluidVoice Parakeet v3"><span class="bx"><i style="--p:12%"></i><b>1.5 s</b></span></td></tr>
+          <tr><th scope="row">10 min</th><td data-l="Hushpen Parakeet v3"><span class="bx"><i style="--p:34%"></i><b>8.9 s</b></span></td><td data-l="Hushpen Whisper Turbo"><span class="bx"><i style="--p:100%"></i><b>26.2 s</b></span></td><td data-l="FluidVoice Parakeet v3"><span class="bx"><i style="--p:11%"></i><b>2.8 s</b></span></td></tr>
+          <tr><th scope="row">30 min</th><td data-l="Hushpen Parakeet v3"><span class="bx"><i style="--p:33%"></i><b>26.7 s</b></span></td><td data-l="Hushpen Whisper Turbo"><span class="bx"><i style="--p:100%"></i><b>80.2 s</b></span></td><td data-l="FluidVoice Parakeet v3"><span class="bx"><i style="--p:11%"></i><b>8.5 s</b></span></td></tr>
+          <tr><th scope="row">60 min</th><td data-l="Hushpen Parakeet v3"><span class="bx"><i style="--p:30%"></i><b>55.0 s</b></span></td><td data-l="Hushpen Whisper Turbo"><span class="bx"><i style="--p:100%"></i><b>184.9 s</b></span></td><td data-l="FluidVoice Parakeet v3"><span class="bx"><i style="--p:9%"></i><b>16.7 s</b></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note">Median of 3 runs for 5 and 10 minutes, one run for 30 and 60 minutes. Model load is not counted.</p>
+  </section>
+  <section class="cp-s" aria-labelledby="cleanup">
+    <h2 id="cleanup">Text cleanup <span>with S1-mini.</span></h2>
+    <p>Hushpen can clean up the text with a small local model, S1-mini. It lifted Parakeet v3 from 93.6 to 94.5 words right, and Nemotron Unified from 94.2 to 94.5, and added about 0.31 s to each 25 s clip on this Mac.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Words right with and without cleanup</caption>
+        <thead><tr><th scope="col">Model</th><th scope="col">No cleanup</th><th scope="col">Built-in rules only</th><th scope="col">Rules and S1-mini</th><th scope="col">Time added per clip</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Hushpen Parakeet v3</th><td data-l="No cleanup">93.6</td><td data-l="Built-in rules only">94.2</td><td data-l="Rules and S1-mini">94.5</td><td data-l="Time added per clip">0.31 s</td></tr>
+          <tr><th scope="row">Hushpen Nemotron Unified</th><td data-l="No cleanup">94.2</td><td data-l="Built-in rules only">94.3</td><td data-l="Rules and S1-mini">94.5</td><td data-l="Time added per clip">0.31 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note">Default General profile, empty dictionary. On a 4-core Arm server without a GPU, S1-mini hit its 8 s time limit on 25 of 37 clips and gave back the text as it was.</p>
+  </section>
+  <section class="cp-s" aria-labelledby="live">
+    <h2 id="live">Live text <span>with Nemotron Unified.</span></h2>
+    <p>With Nemotron Unified, Hushpen shows words while you speak. The first words showed 1.88 s after speech started, and the final text was ready 0.18 s after speech ended.</p>
+    <ul class="cp-body cp-facts">
+      <li><b>1.88 s</b><span>from the start of speech to the first words on screen.</span></li>
+      <li><b>0.18 s</b><span>from the end of speech to the final text.</span></li>
+      <li><b>40</b><span>text updates during a 25 s clip.</span></li>
+    </ul>
+    <p class="cp-note">Three clips, three runs each, played in at microphone pace in 20 ms pieces. Times leave out model load, cleanup and pasting. Median of the three clip medians.</p>
+  </section>
+  <section class="cp-s" aria-labelledby="claims">
+    <h2 id="claims">What each app says, <span>and what we measured.</span></h2>
+    <p>Claims are quoted as each app states them, with a link to the source. Each app measures in its own way, so a claim and our number are not the same test.</p>
+    <div class="cp-body cp-tbl num ">
+      <table>
+        <caption class="sr">Vendor claims and our measurements</caption>
+        <thead><tr><th scope="col">App</th><th scope="col">What the app says</th><th scope="col">What we measured</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">FluidVoice 1.6.13</th><td data-l="What the app says"><a href="https://fluidvoice.com/" target="_blank" rel="noopener">"Faster than any server can answer."</a><small>speed</small><br><a href="https://fluidvoice.com/" target="_blank" rel="noopener">"Our own purpose-built speech models deliver fast, accurate dictation."</a><small>accuracy and speed</small><br><a href="https://github.com/altic-dev/FluidVoice/blob/v1.6.13/README.md" target="_blank" rel="noopener">"Insanely fast Parakeet"</a><small>speed</small></td><td data-l="What we measured">93.5 words right out of 100. 0.37 s per minute of audio. 1 hour in 16.7 s.</td></tr>
+          <tr><th scope="row">VoiceInk 2.27</th><td data-l="What the app says"><a href="https://github.com/Beingpax/VoiceInk" target="_blank" rel="noopener">"Local AI models that transcribe your voice to text with 99% accuracy, almost instantly"</a><small>accuracy and speed</small></td><td data-l="What we measured">Not measured. See below.</td></tr>
+          <tr><th scope="row">Superwhisper</th><td data-l="What the app says"><a href="https://superwhisper.com/benchmarks" target="_blank" rel="noopener">"6.6%"</a><small>word error rate</small><br><a href="https://superwhisper.com/benchmarks" target="_blank" rel="noopener">"26×"</a><small>throughput</small></td><td data-l="What we measured">Not tested in this round.</td></tr>
+          <tr><th scope="row">MacWhisper 15.11</th><td data-l="What the app says"><a href="https://goodsnooze.gumroad.com/l/macwhisper/" target="_blank" rel="noopener">"Get accurate text transcriptions in seconds (up to ~30x realtime)"</a><small>accuracy and throughput</small><br><a href="https://www.reddit.com/r/MacWhisper/comments/1lm0gsn/" target="_blank" rel="noopener">"MacWhisper now supports Parakeet models (up to 300x realtime speeds)"</a><small>throughput</small></td><td data-l="What we measured">Not measured. See below.</td></tr>
+          <tr><th scope="row">Wispr Flow</th><td data-l="What the app says"><a href="https://wisprflow.ai/" target="_blank" rel="noopener">"4x faster than typing"</a><small>writing speed</small><br><a href="https://wisprflow.ai/dictation-blogs/speech-to-text-how-it-works" target="_blank" rel="noopener">"3.4% word error rate on real-world dictation"</a><small>word error rate</small><br><a href="https://wisprflow.ai/canto-1-results" target="_blank" rel="noopener">"Desktop users now fix 13% fewer dictations."</a><small>edit frequency</small><br><a href="https://wisprflow.ai/canto-1-results" target="_blank" rel="noopener">"Slow dictations, the ones that take more than a second to appear, are down 54%."</a><small>latency</small></td><td data-l="What we measured">Not tested in this round.</td></tr>
+          <tr><th scope="row">Handy 0.10.1</th><td data-l="What the app says"><a href="https://github.com/cjpais/Handy/blob/v0.10.1/src-tauri/src/catalog/catalog.json" target="_blank" rel="noopener">"Fast and accurate, great overall multilingual pick"</a><small>speed and accuracy</small><br><a href="https://github.com/cjpais/Handy/blob/v0.10.1/src-tauri/src/catalog/catalog.json" target="_blank" rel="noopener">"Best all-around choice for English dictation"</a><small>English recommendation</small><br><a href="https://models.handy.computer/languages/en/" target="_blank" rel="noopener">"3.99"</a><small>word error rate</small><br><a href="https://models.handy.computer/languages/en/" target="_blank" rel="noopener">"25.3×"</a><small>throughput</small></td><td data-l="What we measured">94.7 words right out of 100. 0.50 s per minute of audio.</td></tr>
+          <tr><th scope="row">Aqua Voice</th><td data-l="What the app says"><a href="https://aquavoice.com/info/faq" target="_blank" rel="noopener">"In our test on a Mac on November 12, 2026, final text landed a median of 365ms after the key was released."</a><small>latency</small><br><a href="https://aquavoice.com/" target="_blank" rel="noopener">"80.5%"</a><small>zero-edit rate</small></td><td data-l="What we measured">Not tested in this round.</td></tr>
+          <tr><th scope="row">Willow Voice</th><td data-l="What the app says"><a href="https://willowvoice.com/blog/dictation-accuracy-zero-edit-rate-benchmark" target="_blank" rel="noopener">"transcription latency was 190ms for Willow Voice"</a><small>latency</small><br><a href="https://willowvoice.com/blog/dictation-accuracy-zero-edit-rate-benchmark" target="_blank" rel="noopener">"95%"</a><small>zero-edit rate</small></td><td data-l="What we measured">Not tested in this round.</td></tr>
+          <tr><th scope="row">Spokenly</th><td data-l="What the app says"><a href="https://spokenly.app/docs/model-comparison" target="_blank" rel="noopener">"5.0"</a><small>accuracy rating</small><br><a href="https://spokenly.app/docs/model-comparison" target="_blank" rel="noopener">"4.0"</a><small>speed rating</small></td><td data-l="What we measured">Not tested in this round.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cp-note">Claims seen on 19 November 2026.</p>
+  </section>
+  <section class="cp-s" aria-labelledby="method">
+    <h2 id="method">How the test <span>was run.</span></h2>
+    <p>Nothing was tuned on these clips. Every app and model ran once per clip with its default settings: no custom words, no prompt, and no best-of picks.</p>
+    <div class="cp-body cp-tbl">
+      <table>
+        <caption class="sr">Method</caption>
+        <colgroup><col style="width:24%"><col></colgroup>
+        <tbody>
+          <tr><th scope="row">Clips</th><td>36 scored clips from TED talks, 25 to 30 s each, about 1 minute into each talk, with no laughter or applause inside. The full list with links is below. No audio is published.</td></tr>
+          <tr><th scope="row">Accents</th><td>19 English accents, 2 speakers each. Filipino has one speaker. Russian has one scored speaker: on Evgeny Morozov's talk the captions run about 5 s ahead of the sound, so that clip was transcribed but not scored.</td></tr>
+          <tr><th scope="row">Truth text</th><td>The talks' human-made English captions. Auto captions were never used. Each clip starts and ends on caption edges. The captions leave out some "uh"s and repeated words, so every model loses a few points for words the speaker really said.</td></tr>
+          <tr><th scope="row">Score</th><td>Both sides go through the Whisper English text normalizer (lowercase, no punctuation, numbers and spellings made the same, fillers such as "um" removed). Then word error rate with jiwer over all words. Words right is 100 minus the word error rate.</td></tr>
+          <tr><th scope="row">Speed</th><td>Median of 3 runs for each length, with the model loaded. Model load is timed apart.</td></tr>
+          <tr><th scope="row">This Mac</th><td>Apple M4 Pro, 14 cores, 24 GB, macOS. Metal GPU on for every app.</td></tr>
+          <tr><th scope="row">Linux machines</th><td>Hushpen only, CPU only, 3 threads: two Arm Neoverse-N1 servers with 4 cores, and an AMD Ryzen 3 2200G desktop with 4 cores. Accuracy there came out within 1 point of the Mac.</td></tr>
+          <tr><th scope="row">Hushpen</th><td>Built from master on 19 November 2026. A small bench program calls Hushpen's own speech loader and transcribe call with the app's defaults: Silero speech detection, Auto threads, language Detect. Nemotron Unified ran through the live text engine with the recording fed in as fast as possible.</td></tr>
+          <tr><th scope="row">FluidVoice 1.6.13</th><td>The installed app's local API: a WAV file sent to POST /v1/transcribe on loopback. Default model, Parakeet TDT v3 (Multilingual).</td></tr>
+          <tr><th scope="row">Handy 0.10.1</th><td>The official Apple silicon release, command line --transcribe-file, built-in transcribe-cpp on Metal. Model Parakeet Unified English 0.6B Q8_0, the first choice in its English catalog.</td></tr>
+          <tr><th scope="row">VoiceInk 2.27</th><td>Not measured. Its file queue needs Start pressed in the app window, and opening a file brings the app to the front, so it cannot run unattended.</td></tr>
+          <tr><th scope="row">MacWhisper 15.11</th><td>Not measured. The free install had no model, its command line tool answered "No model selected", and a model is installed from the app window.</td></tr>
+          <tr><th scope="row">Other apps</th><td>Superwhisper, Wispr Flow, Aqua Voice, Willow Voice and Spokenly were not tested in this round. Their claims are listed above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3 class="sr">Clips</h3>
+    <p class="cp-note"><b>The clips.</b> Each link opens the talk on YouTube at the clip start.</p>
+    <div class="cp-body cp-tbl clips">
+      <table>
+        <caption class="sr">Clips used in the benchmark</caption>
+        <thead><tr><th scope="col">Accent</th><th scope="col">Speaker</th><th scope="col">Clip</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">American</th><td data-l="Speaker">Brené Brown</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=iCvmsMzlF7o&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:29</a></td></tr>
+          <tr><th scope="row">American</th><td data-l="Speaker">Simon Sinek</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=qp0HIF3SfI4&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:31</a></td></tr>
+          <tr><th scope="row">Arabic</th><td data-l="Speaker">Rana el Kaliouby</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=o3VwYIazybI&amp;t=65s" target="_blank" rel="noopener">1:05 to 1:31</a></td></tr>
+          <tr><th scope="row">Arabic</th><td data-l="Speaker">Wael Ghonim</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=HiwJ0hNl1Fw&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:30</a></td></tr>
+          <tr><th scope="row">Australian</th><td data-l="Speaker">Peter Singer</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=Diuv3XZQXyc&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:28</a></td></tr>
+          <tr><th scope="row">Australian</th><td data-l="Speaker">Rachel Botsman</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=GqGksNRYu8s&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:29</a></td></tr>
+          <tr><th scope="row">Brazilian</th><td data-l="Speaker">Eduardo Paes</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=B8Z2G7d2kzs&amp;t=70s" target="_blank" rel="noopener">1:10 to 1:35</a></td></tr>
+          <tr><th scope="row">Brazilian</th><td data-l="Speaker">Miguel Nicolelis</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=HQzXqjT0w3k&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:29</a></td></tr>
+          <tr><th scope="row">British</th><td data-l="Speaker">Jamie Oliver</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=go_QOzc79Uc&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:26</a></td></tr>
+          <tr><th scope="row">British</th><td data-l="Speaker">Ken Robinson</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=iG9CE55wbtY&amp;t=115s" target="_blank" rel="noopener">1:55 to 2:24</a></td></tr>
+          <tr><th scope="row">Chinese</th><td data-l="Speaker">Eric X. Li</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=s0YjL9rZyR0&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:28</a></td></tr>
+          <tr><th scope="row">Chinese</th><td data-l="Speaker">Yang Lan</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=c-sxBTNF2U8&amp;t=90s" target="_blank" rel="noopener">1:30 to 1:55</a></td></tr>
+          <tr><th scope="row">Filipino</th><td data-l="Speaker">Maria Ressa</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=st74hInuvXY&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:31</a></td></tr>
+          <tr><th scope="row">French</th><td data-l="Speaker">Esther Duflo</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=0zvrGiPkVcs&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">French</th><td data-l="Speaker">Matthieu Ricard</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=vbLEf4HR74E&amp;t=159s" target="_blank" rel="noopener">2:39 to 3:07</a></td></tr>
+          <tr><th scope="row">German</th><td data-l="Speaker">Ralph Langner</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=CS01Hmjv1pQ&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:27</a></td></tr>
+          <tr><th scope="row">German</th><td data-l="Speaker">Stefan Sagmeister</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=MNuOmTQdFjA&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:27</a></td></tr>
+          <tr><th scope="row">Indian</th><td data-l="Speaker">Arunachalam Muruganantham</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=zkQL7UJYDIY&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:27</a></td></tr>
+          <tr><th scope="row">Indian</th><td data-l="Speaker">Sugata Mitra</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=y3jYVe1RGaU&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">Irish</th><td data-l="Speaker">Bono</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=BdDkF0Lw-ag&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:30</a></td></tr>
+          <tr><th scope="row">Irish</th><td data-l="Speaker">Mary Robinson</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=7JVTirBEfho&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:28</a></td></tr>
+          <tr><th scope="row">Japanese</th><td data-l="Speaker">Shigeru Ban</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=q43uXdOKPD8&amp;t=75s" target="_blank" rel="noopener">1:15 to 1:42</a></td></tr>
+          <tr><th scope="row">Japanese</th><td data-l="Speaker">Takaharu Tezuka</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=J5jwEyDaR-0&amp;t=70s" target="_blank" rel="noopener">1:10 to 1:36</a></td></tr>
+          <tr><th scope="row">Korean</th><td data-l="Speaker">Hyeonseo Lee</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=PdxPCeWw75k&amp;t=63s" target="_blank" rel="noopener">1:03 to 1:30</a></td></tr>
+          <tr><th scope="row">Korean</th><td data-l="Speaker">Joseph Kim</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=nLeeTVmVrtA&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:29</a></td></tr>
+          <tr><th scope="row">Nigerian</th><td data-l="Speaker">Chimamanda Ngozi Adichie</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=D9Ihs241zeg&amp;t=97s" target="_blank" rel="noopener">1:37 to 2:02</a></td></tr>
+          <tr><th scope="row">Nigerian</th><td data-l="Speaker">Ngozi Okonjo-Iweala</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=CPVjktgYKo4&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:26</a></td></tr>
+          <tr><th scope="row">Pakistani</th><td data-l="Speaker">Khalida Brohi</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=RAR4cz9wkUk&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">Pakistani</th><td data-l="Speaker">Ziauddin Yousafzai</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=h4mmeN8gv9o&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:29</a></td></tr>
+          <tr><th scope="row">Russian</th><td data-l="Speaker">Evgeny Morozov (not scored: captions out of sync)</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=-hFk6FDrZBc&amp;t=61s" target="_blank" rel="noopener">1:01 to 1:28</a></td></tr>
+          <tr><th scope="row">Russian</th><td data-l="Speaker">Garry Kasparov</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=NP8xt8o4_5Q&amp;t=75s" target="_blank" rel="noopener">1:15 to 1:43</a></td></tr>
+          <tr><th scope="row">Scottish</th><td data-l="Speaker">Evelyn Glennie</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=IU3V6zNER4g&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:26</a></td></tr>
+          <tr><th scope="row">Scottish</th><td data-l="Speaker">Gordon Brown</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=mclzytQQMGI&amp;t=60s" target="_blank" rel="noopener">1:00 to 1:28</a></td></tr>
+          <tr><th scope="row">South African</th><td data-l="Speaker">Neil Turok</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=UNbP7O6jasw&amp;t=64s" target="_blank" rel="noopener">1:04 to 1:34</a></td></tr>
+          <tr><th scope="row">South African</th><td data-l="Speaker">Toby Shapshak</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=aT6vIq6_1OE&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:27</a></td></tr>
+          <tr><th scope="row">Spanish or Latin American</th><td data-l="Speaker">Luis von Ahn</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=-Ht4qiDRZE8&amp;t=90s" target="_blank" rel="noopener">1:30 to 1:56</a></td></tr>
+          <tr><th scope="row">Spanish or Latin American</th><td data-l="Speaker">Pia Mancini</td><td data-l="Clip"><a href="https://www.youtube.com/watch?v=NXfYNdapq3Q&amp;t=62s" target="_blank" rel="noopener">1:02 to 1:30</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="bn-date">Measured on 19 November 2026. Apps, models and claims change, so results may differ on other versions.</p>
+  </section>
+</main>
+
+<footer class="foot"><div class="wrap">
+  <div class="foot-top">
+    <div class="fbrand"><img src="/assets/icon-256.webp" alt="" width="44" height="44" loading="lazy"><div><b>Hushpen</b><span>Free and open source dictation that stays on your computer.</span></div></div>
+    <div class="fcols">
+      <div><h4>Product</h4><a href="https://github.com/surajmandalcell/hushpen/releases/latest" data-dl>Download</a><a href="/speech-to-text">Speech to text</a><a href="/#platforms">Platforms</a><a href="https://github.com/surajmandalcell/hushpen/releases" target="_blank" rel="noopener">All releases</a></div>
+      <div><h4>Compare</h4><a href="/dictation-apps">Dictation apps compared</a><a href="/benchmarks">Benchmarks</a><a href="/wispr-flow-alternative">Wispr Flow alternative</a><a href="/superwhisper-alternative">Superwhisper alternative</a><a href="/macwhisper-alternative">MacWhisper alternative</a><a href="/aqua-voice-alternative">Aqua Voice alternative</a><a href="/willow-voice-alternative">Willow alternative</a></div>
+      <div><h4>Project</h4><a href="/about">About</a><a href="/support">Support</a><a href="/press/">Press</a><a href="https://github.com/surajmandalcell/hushpen" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/surajmandalcell/hushpen/issues" target="_blank" rel="noopener">Report an issue</a></div>
+      <div><h4>Legal</h4><a href="/privacy">Privacy</a><a href="https://github.com/surajmandalcell/hushpen/blob/master/LICENSE" target="_blank" rel="noopener">AGPL-3.0 license</a><a href="https://github.com/surajmandalcell/hushpen/blob/master/assets/THIRD-PARTY-NOTICES.html" target="_blank" rel="noopener">Third-party notices</a></div>
+    </div>
+  </div>
+  <div class="fbar"><span>© 2026 Suraj Mandal</span><span>AGPL-3.0-or-later</span></div>
+</div></footer>
+</body>
+</html>
