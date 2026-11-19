@@ -6788,7 +6788,8 @@ static bool whisper_vad(
 
     if (state->vad_context == nullptr) {
         struct whisper_vad_context_params vad_ctx_params = whisper_vad_default_context_params();
-        vad_ctx_params.n_threads = params.n_threads;
+        // hushpen: one thread; the per-chunk VAD graph is 3x slower with 8 threads on an M4 Pro.
+        vad_ctx_params.n_threads = 1;
         struct whisper_vad_context * vctx = whisper_vad_init_from_file_with_params(params.vad_model_path, vad_ctx_params);
         if (vctx == nullptr) {
             WHISPER_LOG_ERROR("%s: failed to initialize VAD context\n", __func__);
