@@ -9,6 +9,8 @@ fn main() -> ExitCode {
             println!("{}", cli::version_line());
             ExitCode::SUCCESS
         }
+        #[cfg(all(target_os = "macos", feature = "test-automation"))]
+        Command::LiveTestCheckAccessibility => check_live_test_accessibility(),
         Command::Engine(args) => hushpen_engine::engine_main(&args),
         Command::UpdateApply(args) => hushpen_app::update_apply::main(&args),
         Command::Restart(args) => restart(&args),
@@ -20,8 +22,43 @@ fn main() -> ExitCode {
         Command::Run {
             hidden,
             show_window,
-        } => hushpen_app::app::run(hidden, show_window),
+        } => {
+            #[cfg(all(target_os = "macos", feature = "test-automation"))]
+            if hushpen_platform::permissions::live_test_mode()
+                && check_live_test_accessibility() != ExitCode::SUCCESS
+            {
+                return ExitCode::FAILURE;
+            }
+            hushpen_app::app::run(hidden, show_window)
+        }
     }
+}
+
+#[cfg(all(target_os = "macos", feature = "test-automation"))]
+fn check_live_test_accessibility() -> ExitCode {
+    use hushpen_platform::permissions::{accessibility_trusted, live_test_mode};
+
+    if !live_test_mode() {
+        eprintln!("HUSHPEN_LIVE_TEST Run the check from the app.hushpen.livetest bundle.");
+        return ExitCode::from(2);
+    }
+    let (message, code) = if accessibility_trusted() {
+        (
+            "HUSHPEN_LIVE_TEST Accessibility granted for app.hushpen.livetest.",
+            ExitCode::SUCCESS,
+        )
+    } else {
+        (
+            "HUSHPEN_LIVE_TEST Accessibility missing for app.hushpen.livetest. Exiting.",
+            ExitCode::FAILURE,
+        )
+    };
+    eprintln!("{message}");
+    // A Launch Services run has no terminal and cannot redirect to the external drive.
+    let _ = std::process::Command::new("/usr/bin/logger")
+        .args(["-t", "hushpen-livetest", message])
+        .status();
+    code
 }
 
 fn restart(args: &[String]) -> ExitCode {

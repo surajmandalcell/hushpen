@@ -71,7 +71,36 @@ the scripts that run inside a slot. `mac-test-app.sh` runs on the Mac: it rebuil
 (`mac-check/Hushpen.app`) from this checkout and signs it with the owner's Apple Development
 identity, so its privacy grants survive rebuilds.
 
-Release candidate checks:
+## Mac live typing
+
+Run `zsh harness/mac-test-app.sh --live` to rebuild `Hushpen Live Test.app` in
+`/Volumes/External1TB/data/_custom/orca/workspaces/hushpen/livetest`. The bundle keeps the
+`app.hushpen.livetest` ID and uses Hushpen's file-backed Developer ID signing identity. It puts
+its settings, models, and hook socket in `livetest/data`.
+
+Hold `gui-app.hushpen.livetest` while checking or running this app. Read Accessibility trust
+from the signed bundle with the focus guard:
+
+```sh
+zsh harness/mac-live-focus.zsh app.hushpen.livetest \
+  open -gj -n -W -a '/Volumes/External1TB/data/_custom/orca/workspaces/hushpen/livetest/Hushpen Live Test.app' \
+  --args --live-test-check-accessibility
+/usr/bin/log show --last 1m --style compact --predicate 'eventMessage BEGINSWITH "HUSHPEN_LIVE_TEST "'
+```
+
+Read the latest `HUSHPEN_LIVE_TEST` line in the macOS log. If it says Accessibility is missing,
+stop. The owner adds the bundle in System Settings > Privacy & Security > Accessibility and turns
+it on. Launch the bundle with `open` so macOS checks its grant. Running the executable from a
+shell can use the terminal's grant. The check exits before opening a window and never asks macOS
+for access.
+
+With trust granted, start the bundle in the background. Use the existing harness settings seed
+(`onboarding.completed: true`) and a local speech model in the test data folder. Set the scratch
+app with `hookctl action insert-target`, send `hold-down` with `hookctl action pipeline-event`,
+and send the clip with `hookctl feed-wav <path>`. Send `hold-up` after the clip ends. The hook
+drives dictation without a global key listener and feeds the capture session without a microphone.
+
+## Release candidate checks
 
 - `HUSHPEN_APPIMAGE=<file> harness/run-suite.sh full --slots N` writes that AppImage's name and
   sha256 into every `result.json`. The slots still drive the debug hook build of the same commit,

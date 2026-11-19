@@ -520,6 +520,12 @@ impl MacKeys {
         sink: Sink,
         record: RecordSink,
     ) -> Result<Self, Unavailable> {
+        if crate::permissions::live_test_mode() {
+            return Err(Unavailable::new(
+                Reason::Unsupported,
+                "The live typing test starts dictation through the test hook.",
+            ));
+        }
         // Creating a tap with neither Input Monitoring nor Accessibility can make macOS ask. The
         // ask belongs to onboarding, after a click, so here the grants are only read.
         if !crate::permissions::input_monitoring_granted() {
