@@ -357,8 +357,9 @@ new decision, add it here in the same change (D-21).
   `voices.bin` is only read. A mix travels as the voice id
   `<base>:<100-p>+<with>:<p>`.
 
-- **D-40 Speech models.** Desktop catalog order: Parakeet v3 Q4_K (default and sole
-  Recommended), Nemotron Labs Unified ASR 0.6B Q8_0 (live dictation), Whisper Large v3
+- **D-40 Speech models.** Desktop catalog order: Nemotron Labs Unified ASR 0.6B Q8_0
+  (default for new installs: 94.50 vs 93.55 words right, 0.30 vs 0.48 s wait), Parakeet
+  v3 Q4_K (kept by existing installs, phone default), Whisper Large v3
   Turbo Q5_0 (languages outside Parakeet's 25), Small Q5_1 (translate to English) and
   Base Q5_1 (older computers). Startup resets retired selections to Parakeet and removes
   only known retired speech files and their verification stamps.
