@@ -120,7 +120,10 @@ pub fn build_prompt(entries: &[Entry]) -> String {
 /// say or the model takes no prompt. Parakeet has no prompt input, so only Whisper is biased
 /// by the dictionary; the replacements still run on the text of every model.
 pub fn prompt_for_model(model_id: &str, entries: &[Entry]) -> Option<String> {
-    if model_id == crate::catalog::SPEECH_DEFAULT {
+    if matches!(
+        model_id,
+        crate::catalog::SPEECH_DEFAULT | crate::catalog::SPEECH_UNIFIED
+    ) {
         return None;
     }
     Some(build_prompt(entries)).filter(|prompt| !prompt.is_empty())

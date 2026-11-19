@@ -28,6 +28,7 @@ pub const PARAKEET_LANGUAGES: [&str; 25] = [
 ];
 
 pub const SPEECH_DEFAULT: &str = "parakeet-v3-q4_k";
+pub const SPEECH_UNIFIED: &str = "nemotron-labs-unified-asr-0.6b-q8_0";
 pub const SPEECH_TURBO: &str = "large-v3-turbo-q5_0";
 pub const VAD_FILE: &str = "ggml-silero-v5.1.2.bin";
 pub const VAD_BYTES: u64 = 885_098;
@@ -175,6 +176,11 @@ impl ModelEntry {
     }
 
     pub fn language_notice(&self, code: &str) -> Option<&'static str> {
+        if self.id == SPEECH_UNIFIED && !self.supports_language(code) {
+            return Some(
+                "Nemotron Unified does not support this language. Choose Whisper Large v3 Turbo Q5 in Models.",
+            );
+        }
         (self.languages == Languages::European && !self.supports_language(code)).then_some(
             "Parakeet does not support this language. Choose Whisper Large v3 Turbo Q5 in Models.",
         )

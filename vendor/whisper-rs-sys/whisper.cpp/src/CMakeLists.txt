@@ -197,6 +197,7 @@ add_library(parakeet
             parakeet.cpp
             )
 
+add_subdirectory(unified)
 target_include_directories(parakeet PUBLIC . ../include)
 target_compile_features   (parakeet PUBLIC cxx_std_11)
 target_link_libraries(parakeet PUBLIC ggml Threads::Threads)

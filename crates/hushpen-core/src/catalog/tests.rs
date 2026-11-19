@@ -1,8 +1,9 @@
 use super::*;
 use serde_json::json;
 
-const IDS: [&str; 4] = [
+const IDS: [&str; 5] = [
     SPEECH_DEFAULT,
+    SPEECH_UNIFIED,
     "large-v3-turbo-q5_0",
     "small-q5_1",
     "base-q5_1",
@@ -59,7 +60,7 @@ fn phone_cleanup_requires_peak_memory_and_process_headroom() {
 }
 
 #[test]
-fn the_embedded_catalog_lists_the_four_speech_models_in_order() {
+fn the_embedded_catalog_lists_the_speech_models_in_order() {
     let ids: Vec<_> = embedded().whisper.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, IDS);
 }
@@ -76,6 +77,10 @@ fn every_entry_has_a_hash_a_size_a_language_field_and_a_huggingface_url() {
             assert_eq!(file.file, "ggml-parakeet-tdt-0.6b-v3-q4_k.bin");
             assert_eq!(entry.languages, Languages::European);
             assert_eq!(entry.license, "CC-BY-4.0");
+        } else if entry.id == SPEECH_UNIFIED {
+            assert_eq!(file.file, format!("{SPEECH_UNIFIED}.gguf"));
+            assert_eq!(entry.languages, Languages::European);
+            assert_eq!(entry.license, "OpenMDW-1.1");
         } else {
             assert_eq!(file.file, format!("ggml-{}.bin", entry.id));
             assert_eq!(entry.languages, Languages::Multilingual);
@@ -119,8 +124,10 @@ fn every_embedded_model_has_its_kind_and_its_details() {
             assert!(info.ram_idle_bytes > 100_000_000, "{}", entry.id);
             assert!(info.ram_peak_bytes >= info.ram_idle_bytes, "{}", entry.id);
             assert!(
-                ["F16", "Q5_0", "Q5_1", "Q4_K", "Q4_K_M", "INT8", "Q4"]
-                    .contains(&info.quantization.as_str()),
+                [
+                    "F16", "Q5_0", "Q5_1", "Q4_K", "Q4_K_M", "Q8_0", "INT8", "Q4"
+                ]
+                .contains(&info.quantization.as_str()),
                 "{} has an unknown quantization",
                 entry.id
             );

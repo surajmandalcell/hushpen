@@ -22,6 +22,25 @@
       "source_page": "https://huggingface.co/ggml-org/parakeet-GGUF"
     },
     {
+      "id": "nemotron-labs-unified-asr-0.6b-q8_0",
+      "kind": "speech",
+      "name": "Nemotron Labs Unified ASR 0.6B Q8",
+      "file": "nemotron-labs-unified-asr-0.6b-q8_0.gguf",
+      "bytes": 939228800,
+      "sha256": "655b4cd140d82f78d5aede71a0342cb92207a80c543ab8dc646c2d3edaaf0c09",
+      "url": "https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/07a08a3a405d20c5434b9a1442f6e6cf571f57ad/nemotron-labs-unified-asr-0.6b-q8_0.gguf",
+      "license": "OpenMDW-1.1",
+      "languages": "european",
+      "description": "Fast mode shows text as you speak on this device. Supports 25 European languages.",
+      "speed": 3,
+      "accuracy": 4,
+      "quantization": "Q8_0",
+      "ram_idle_bytes": 1000000000,
+      "ram_peak_bytes": 1500000000,
+      "recommended_for": "Live dictation",
+      "source_page": "https://huggingface.co/mudler/parakeet-cpp-gguf"
+    },
+    {
       "id": "large-v3-turbo-q5_0",
       "kind": "speech",
       "name": "Whisper Large v3 Turbo Q5",
