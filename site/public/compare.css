@@ -8,7 +8,7 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-
 
 /* Nav */
 .nav { position: sticky; top: 0; z-index: 40; background: rgba(242, 242, 244, .82); -webkit-backdrop-filter: saturate(1.8) blur(18px); backdrop-filter: saturate(1.8) blur(18px); box-shadow: 0 .5px 0 var(--line2); }
-.nav .wrap { display: flex; align-items: center; height: 64px; gap: 10px; }
+.nav .wrap { display: flex; align-items: center; max-width: 1240px; height: 64px; gap: 10px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 17px; letter-spacing: -.02em; }
 .brand img { width: 30px; height: 30px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .16)) drop-shadow(0 4px 8px rgba(0, 0, 0, .14)); }
 .nav nav { display: flex; gap: 2px; margin-left: auto; margin-right: 18px; font-size: 14px; font-weight: 500; }

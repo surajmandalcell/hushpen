@@ -19,6 +19,7 @@
 .why-t { grid-area: t; min-width: 0; }
 .why-t small { display: block; margin-bottom: 16px; font-size: 17px; font-weight: 600; line-height: 1.2; letter-spacing: -.012em; color: var(--ink2); }
 .why-t h3 { font: 700 clamp(42px, 4.6vw, 64px)/1.02 var(--sans); letter-spacing: -.05em; text-wrap: balance; }
+.why-t h3 span { color: var(--ink3); }
 .why-t p { max-width: 24em; margin-top: 22px; font-size: 20px; line-height: 1.42; letter-spacing: -.018em; color: var(--ink2); text-wrap: pretty; }
 .why-v { grid-area: v; position: relative; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 28px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
 .why-st { position: absolute; left: 0; top: 0; width: 520px; height: 390px; overflow: hidden; zoom: var(--z, 1); }
@@ -42,4 +43,26 @@
 @media (max-width: 560px) {
   .why-s, .why-s:nth-child(even of .why-s) { gap: 24px; padding: 32px 0; }
   .why-t h3 { font-size: clamp(34px, 9.6vw, 44px); }
+}
+
+/* Compare chart: seconds to write out a recording against its length, full width */
+.why-cmp { padding: 44px 0; }
+.why-cmp .why-t p { max-width: 36em; }
+.cmp-card { margin: 36px 0 0; padding: 30px 30px 24px; border-radius: 28px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
+.cmp-svg svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--app); }
+.cmp-svg .g { stroke: rgba(0, 0, 0, .07); }
+.cmp-svg .t { fill: var(--ink3); }
+.cmp-svg .n { fill: var(--ink2); font-weight: 500; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.cmp-svg .n.us { fill: var(--ink); font-weight: 700; }
+.cmp-svg .v { fill: var(--ink3); font-weight: 500; }
+.cmp-narrow { display: none; }
+.cmp-foot { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink2); }
+.cmp-foot a { color: var(--ink2); text-decoration: underline dotted; text-underline-offset: 4px; white-space: nowrap; }
+.cmp-foot a:hover { color: var(--ink); }
+@media (max-width: 720px) {
+  .why-cmp { padding: 36px 0; }
+  .cmp-card { margin-top: 24px; padding: 18px 12px 16px; border-radius: 22px; }
+  .cmp-wide { display: none; }
+  .cmp-narrow { display: block; }
+  .cmp-foot { font-size: 13px; }
 }
