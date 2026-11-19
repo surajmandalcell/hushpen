@@ -685,7 +685,10 @@ fn sweep_retired_speech(storage: &Storage, catalog: &Catalog) {
     if selected
         .as_deref()
         .is_some_and(|id| RETIRED_SPEECH.contains(&id) && catalog.whisper(id).is_none())
-        && let Some(default) = catalog.default_whisper()
+        // A retired choice means an existing install, which keeps Parakeet v3 (settings schema 6).
+        && let Some(default) = catalog
+            .whisper(hushpen_core::catalog::SPEECH_DEFAULT)
+            .or_else(|| catalog.default_whisper())
         && let Err(error) = storage.settings.set(SETTING, json!(default.id))
     {
         log::warn!("MODELS_RETIRED could not replace speech selection: {error}");

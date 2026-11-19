@@ -21,10 +21,10 @@ DB=/data/history/history.db
 DOWNLOADS=/data/cache/downloads
 HOLD=108
 # The catalog default, pinned in assets/models.json
-DEFAULT_MODEL=parakeet-v3-q4_k
+DEFAULT_MODEL=nemotron-labs-unified-asr-0.6b-q8_0
 DEFAULT_FILE=$(model_file "$DEFAULT_MODEL")
-DEFAULT_SHA=8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e
-DEFAULT_BYTES=415611879
+DEFAULT_SHA=655b4cd140d82f78d5aede71a0342cb92207a80c543ab8dc646c2d3edaaf0c09
+DEFAULT_BYTES=939228800
 # The speech rows of the model step follow the catalog, with the default first.
 DEFAULT_ROW=0
 

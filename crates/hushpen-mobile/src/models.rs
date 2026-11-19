@@ -120,7 +120,8 @@ impl ModelRepository {
                         ModelKind::Speech
                     },
                     bytes: entry.bytes(),
-                    recommended: entry.default,
+                    // Phones keep Parakeet v3; Nemotron Unified is the desktop default only.
+                    recommended: entry.id == catalog::SPEECH_DEFAULT,
                     status: match model_files::check(&self.path(entry), pin.bytes, &pin.sha256) {
                         Check::Missing => ModelStatus::Missing,
                         Check::Ready => ModelStatus::Ready,
