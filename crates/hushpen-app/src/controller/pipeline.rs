@@ -91,6 +91,9 @@ impl Controller {
         let rule = self.rule_cleanup(&raw);
         let found = {
             let run = self.run_of(session);
+            if let Some(draft) = &mut run.draft {
+                draft.finish_raw(&raw);
+            }
             run.pending.raw = raw;
             run.pending.rule = rule.clone();
             Arc::clone(&run.found)
@@ -309,12 +312,17 @@ impl Controller {
         self.notice = None;
         self.result = None;
         self.warned = false;
+        let draft = if self.models.read(cx).effective() == SPEECH_UNIFIED {
+            self.begin_draft()
+        } else {
+            None
+        };
         self.runs.insert(session, super::runs::Run::default());
         match self.mic.update(cx, |mic, cx| {
             mic.start(crate::mic::CaptureUse::Dictation, cx)
         }) {
             Ok(path) => {
-                self.start_live(session, &path, cx);
+                self.start_live(session, &path, draft, cx);
                 self.run_of(session).wav = Some(path);
                 Ok(())
             }
@@ -332,7 +340,13 @@ impl Controller {
         }
     }
 
-    fn start_live(&mut self, session: u64, wav: &Path, cx: &Context<Self>) {
+    fn start_live(
+        &mut self,
+        session: u64,
+        wav: &Path,
+        draft: Option<super::live::Draft>,
+        cx: &Context<Self>,
+    ) {
         let models = self.models.read(cx);
         if models.effective() != SPEECH_UNIFIED {
             return;
@@ -354,6 +368,7 @@ impl Controller {
         let partial: hushpen_engine::PartialSink = Arc::new(move |text| {
             let _ = events.unbounded_send((AppEvent::PartialText { session, text }, None));
         });
+        let (writer, partial) = super::live::Writer::for_draft(draft, partial);
         let token = Arc::new(CancelToken::default());
         let live = if route.ids().iter().any(|id| id != THIS_COMPUTER) {
             let Some(load) = crate::engine_host::wanted_load(
@@ -392,6 +407,7 @@ impl Controller {
             crate::remote_jobs::LiveJob::Local(live)
         };
         let run = self.run_of(session);
+        run.writer = writer;
         run.cancel = Some(token);
         run.live = Some(super::runs::Live {
             job: live,
@@ -416,8 +432,11 @@ impl Controller {
         let command = self.machine.session() == session && self.machine.mode() == Mode::Command;
         let selection = self.selection.take();
         let run = self.run_of(session);
+        run.stop_writer();
         if !keep {
             run.cancel_live();
+            run.cancel_draft();
+            run.draft = None;
             run.wav = None;
             run.ended = true;
             if let Some(detached) = detached {
@@ -631,6 +650,9 @@ impl Controller {
         let run = self.run_of(session);
         run.ended = true;
         run.cancel_live();
+        if status == RowStatus::Cancelled || code == Some(ENGINE_NO_SPEECH) {
+            run.cancel_draft();
+        }
         // Only a session that failed while it listened can still hold its recording here.
         if let Some(stopping) = run.stopping.take() {
             let _ = finish_recording(stopping, &run.found);
@@ -656,6 +678,8 @@ impl Controller {
                 self.offer_undo(session, row_id, ai_text.as_deref());
             }
         }
+        // An undo offer now owns its receipt. History keeps no copy of the original field.
+        self.run_of(session).draft = None;
         match status {
             RowStatus::Done => {
                 self.transcript = text.unwrap_or_default();

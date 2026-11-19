@@ -22,6 +22,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const INSERT_COPIED: &str = "INSERT_COPIED";
 
 impl Controller {
+    pub(super) fn paste_overrides(&self) -> Overrides {
+        Overrides::from_value(
+            &self
+                .storage
+                .settings
+                .get("insert.appChords")
+                .unwrap_or(Value::Null),
+        )
+    }
+
     /// Puts the finished text into the focused app, or copies it when it cannot. The text is
     /// kept for "Paste last transcript" before anything can fail.
     pub(super) fn insert(
@@ -40,6 +50,49 @@ impl Controller {
         }
         self.last_text = Some(text.clone());
         let ready_unix_ms = unix_ms();
+        let run = self.run_of(session);
+        let text = if let Some(draft) = &mut run.draft {
+            let mut report = Report::new(&draft.target.label);
+            report.restore = hushpen_core::insert::Restore::NotNeeded;
+            match draft.finish(&run.pending.raw, &text) {
+                Some("") => {
+                    report.outcome = Outcome::Pasted;
+                    if draft.span.is_ok() {
+                        let elapsed = unix_ms().saturating_sub(ready_unix_ms);
+                        report.first_receipt_ms = Some(elapsed);
+                        report.last_receipt_ms = Some(elapsed);
+                    } else if text != run.pending.raw {
+                        self.notice = Some(Notice {
+                            code: INSERT_NO_RECEIPT,
+                            message: "The field changed. Hushpen left the typed words in place."
+                                .into(),
+                        });
+                    }
+                    store_report(&self.last_insert, session, ready_unix_ms, &report);
+                    queue.push_back(AppEvent::Inserted { session });
+                    return;
+                }
+                Some(rest) => {
+                    run.remainder = Some(rest.to_owned());
+                    rest.to_owned()
+                }
+                None => {
+                    report.code = Some(INSERT_NO_RECEIPT);
+                    run.detail = Some(
+                        "The field changed during dictation. The full transcript is in History."
+                            .into(),
+                    );
+                    store_report(&self.last_insert, session, ready_unix_ms, &report);
+                    queue.push_back(AppEvent::InsertFailed {
+                        session,
+                        code: INSERT_NO_RECEIPT,
+                    });
+                    return;
+                }
+            }
+        } else {
+            text
+        };
         if delivery == Delivery::Paste
             && let InsertSupport::Ready(inserter) = &self.insert
         {
@@ -184,13 +237,7 @@ impl Controller {
     ) -> bool {
         let target = inserter.target();
         self.paste_target = Some(target.clone());
-        let overrides = Overrides::from_value(
-            &self
-                .storage
-                .settings
-                .get("insert.appChords")
-                .unwrap_or(Value::Null),
-        );
+        let overrides = self.paste_overrides();
         let text = text.to_owned();
         let events = self.events.clone();
         let last = Arc::clone(&self.last_insert);

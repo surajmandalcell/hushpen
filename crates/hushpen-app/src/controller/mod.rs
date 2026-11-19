@@ -57,6 +57,7 @@ mod insert;
 mod keys;
 #[cfg(test)]
 mod keys_tests;
+mod live;
 #[cfg(test)]
 mod overlap_tests;
 pub use keys::{KeysRestart, RETRIES as KEYS_RETRIES};
@@ -654,7 +655,7 @@ impl Controller {
         &self.transcript
     }
 
-    /// The current words to show while recording. History and paste only use the final text.
+    /// Words the focused field has not yet received.
     pub fn partial_text(&self) -> Option<&str> {
         if self.machine.state() != State::Listening {
             return None;
@@ -822,6 +823,9 @@ impl Controller {
             }
             let mut before = self.machine.state();
             let effects = self.machine.handle(event, now);
+            if self.machine.state() == State::Cancelled && before != State::Cancelled {
+                self.run_of(self.machine.session()).cancel_draft();
+            }
             changed |= before != self.machine.state() || !effects.is_empty();
             // Opening the microphone can block for a second, and the key is already held.
             if effects
@@ -909,7 +913,11 @@ impl Controller {
             Effect::Notify { session, code } => {
                 self.notify(session, code);
                 if code == INSERT_NO_PERMISSION
-                    && let Some(text) = self.last_text.clone()
+                    && let Some(text) = self
+                        .run_of(session)
+                        .remainder
+                        .take()
+                        .or_else(|| self.last_text.clone())
                 {
                     // The guard writes nothing; the copy is for the user's own paste.
                     cx.write_to_clipboard(ClipboardItem::new_string(text));

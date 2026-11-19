@@ -1,6 +1,5 @@
-//! "Undo paste": for four seconds after an AI-cleaned text went into an app, the user can
-//! take the cleanup back. The app's own undo key removes the pasted text, then the rule text
-//! goes in through the same paste path, and the history row follows.
+//! "Undo paste" removes a verified live dictation in one edit. For a regular AI-cleaned
+//! paste it takes the cleanup back by replacing the pasted text with the rule text.
 //!
 //! The offer is made only when the target read the text and is no terminal, and it ends the
 //! moment another window has the focus, because the undo key goes to whatever has it.
@@ -10,7 +9,7 @@ use crate::hook;
 use gpui_kit::Context;
 use hushpen_core::insert::Report;
 use hushpen_core::insert::undo::{Candidate, Declined, Offer, Standing, decide};
-use hushpen_platform::insert::{Inserter, Target, UndoError};
+use hushpen_platform::insert::{Inserter, LiveSpan, Target, UndoError};
 use hushpen_store::history;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -25,6 +24,7 @@ const EXPIRED: &str = "The cleanup can no longer be undone.";
 pub(super) struct Standby {
     offer: Offer,
     target: Target,
+    live: Option<Box<dyn LiveSpan>>,
 }
 
 /// An undo whose paste is under way: the row changes once the app took the rule text.
@@ -62,6 +62,16 @@ impl Controller {
     /// Makes the offer for the session that just saved its row, when the insertion earned one.
     pub(super) fn offer_undo(&mut self, session: u64, row_id: String, ai_text: Option<&str>) {
         self.undo = None;
+        if let Some(draft) = self.run_of(session).draft.take() {
+            if let (Ok(span), Some(window)) = (draft.span, draft.target.window) {
+                self.undo = Some(Standby {
+                    offer: Offer::new(row_id, String::new(), window, (self.clock)()),
+                    target: draft.target,
+                    live: Some(span),
+                });
+            }
+            return;
+        }
         let Some(ai_text) = ai_text else { return };
         let report: Option<Report> = {
             let slot = self.last_insert.lock().unwrap_or_else(|p| p.into_inner());
@@ -90,7 +100,11 @@ impl Controller {
             Ok(window) => {
                 let offer = Offer::new(row_id, rule_text, window, (self.clock)());
                 hook::record_event("undo", "offered");
-                self.undo = Some(Standby { offer, target });
+                self.undo = Some(Standby {
+                    offer,
+                    target,
+                    live: None,
+                });
             }
             Err(Declined::Terminal) => hook::record_event("undo", "declined terminal"),
             Err(why) => hook::record_event("undo", &format!("declined {why:?}")),
@@ -102,13 +116,19 @@ impl Controller {
         let Some(standing) = self.undo_standing() else {
             return;
         };
-        if standing != Standing::Open || self.dictating() {
+        let moved = self
+            .undo
+            .as_ref()
+            .and_then(|standby| standby.live.as_ref())
+            .is_some_and(|span| !span.at_caret());
+        if standing != Standing::Open || self.dictating() || moved {
             self.undo = None;
             hook::record_event(
                 "undo",
                 match standing {
                     Standing::Expired => "closed expired",
                     Standing::FocusChanged => "closed focus",
+                    Standing::Open if moved => "closed edited field",
                     Standing::Open => "closed new dictation",
                 },
             );
@@ -128,9 +148,18 @@ impl Controller {
             cx.notify();
             return Err(EXPIRED.to_owned());
         }
-        let Standby { offer, target } = standby;
+        let Standby {
+            offer,
+            target,
+            live,
+        } = standby;
         hook::record_event("undo", "started");
         self.notice = None;
+        if let Some(mut span) = live {
+            let removed = span.replace(0, "");
+            cx.notify();
+            return removed.map_err(|_| "The dictation can no longer be undone.".to_owned());
+        }
         self.paste_text(
             offer.rule_text,
             Some(Undoing {
