@@ -11,14 +11,17 @@ use crate::ai_cleanup;
 use crate::hook;
 use crate::mic::{self, CaptureState};
 use gpui_kit::Context;
+use hushpen_core::catalog::SPEECH_UNIFIED;
 use hushpen_core::dictation::{AppEvent, Cue, Mode, RowStatus, State};
 use hushpen_core::error::{CAPTURE_FAILED, ENGINE_CRASHED, ENGINE_NO_SPEECH, LLM_UNAVAILABLE};
 use hushpen_core::llm_prompt::PromptFamily;
 use hushpen_core::onboarding::KeyGate;
+use hushpen_core::remote::{self, Choice, ModelKind, THIS_COMPUTER};
 use hushpen_core::{cleanup, dictionary};
 use hushpen_engine::{JobOutcome, TranscribeSpec, dictation_language};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -311,6 +314,7 @@ impl Controller {
             mic.start(crate::mic::CaptureUse::Dictation, cx)
         }) {
             Ok(path) => {
+                self.start_live(session, &path, cx);
                 self.run_of(session).wav = Some(path);
                 Ok(())
             }
@@ -326,6 +330,55 @@ impl Controller {
                 Err(error.to_string())
             }
         }
+    }
+
+    fn start_live(&mut self, session: u64, wav: &Path, cx: &Context<Self>) {
+        let Some(client) = &self.engine.live_client else {
+            return;
+        };
+        if self
+            .models
+            .read(cx)
+            .usable()
+            .is_none_or(|row| row.entry.id != SPEECH_UNIFIED)
+        {
+            return;
+        }
+        // A paired worker receives the finished recording; respect its place in the speech route.
+        let remote = self.storage.settings.remote();
+        if remote.enabled {
+            let route = remote.route(ModelKind::Speech);
+            let health = self.storage.remote.snapshot();
+            let now = super::monotonic_ms();
+            if remote::next_probe(&route, &health, now).is_some()
+                || !matches!(remote::pick(&route, &health, now), Choice::Device(id) if id == THIS_COMPUTER)
+            {
+                return;
+            }
+        }
+        let events = self.events.clone();
+        let language = self.language();
+        let spec = TranscribeSpec {
+            wav_path: wav.to_owned(),
+            language: dictation_language(SPEECH_UNIFIED, &language),
+            prompt: None,
+        };
+        let live = client.transcribe_live(
+            spec,
+            Arc::new(move |text| {
+                let _ = events.unbounded_send((AppEvent::PartialText { session, text }, None));
+            }),
+        );
+        let id = live.id();
+        let client = client.clone();
+        let token = Arc::new(CancelToken::default());
+        token.on_cancel(move || client.cancel(id));
+        let run = self.run_of(session);
+        run.cancel = Some(token);
+        run.live = Some(super::runs::Live {
+            job: live,
+            language,
+        });
     }
 
     /// Ends the recording of `session`. The microphone is free at once for the next start; the
@@ -346,6 +399,7 @@ impl Controller {
         let selection = self.selection.take();
         let run = self.run_of(session);
         if !keep {
+            run.cancel_live();
             run.wav = None;
             run.ended = true;
             if let Some(detached) = detached {
@@ -363,6 +417,7 @@ impl Controller {
         match detached {
             Some(detached) => run.stopping = Some(detached),
             None => {
+                run.cancel_live();
                 run.detail = Some("The recording ended before it could be transcribed.".into());
                 queue.push_back(AppEvent::TranscribeFailed {
                     session,
@@ -381,6 +436,7 @@ impl Controller {
         let detached = self.mic.update(cx, |mic, cx| mic.detach(true, cx));
         self.selection = None;
         let run = self.run_of(session);
+        run.cancel_live();
         match detached {
             Some(detached) => run.stopping = Some(detached),
             None => run.wav = None,
@@ -431,16 +487,19 @@ impl Controller {
     }
 
     pub(super) fn transcribe(&mut self, session: u64, model: &str, queue: &mut VecDeque<AppEvent>) {
-        let language = self.language();
+        let (live, model, language) = match self.run_of(session).live.take() {
+            Some(live) => (Some(live.job), SPEECH_UNIFIED, live.language),
+            None => (None, model, self.language()),
+        };
         let prompt = dictionary::prompt_for_model(model, &self.dictionary());
-        let token = Arc::new(CancelToken::default());
         let run = self.run_of(session);
         let Some(wav) = run.wav.clone() else {
             return;
         };
+        run.pending.model_id = Some(model.to_owned());
         run.pending.language_requested = Some(language.clone());
         run.prompt = prompt.clone();
-        run.cancel = Some(Arc::clone(&token));
+        let token = Arc::clone(run.cancel.get_or_insert_with(Default::default));
         let stopping = run.stopping.take();
         let found = Arc::clone(&run.found);
         hook::record_event(
@@ -468,6 +527,7 @@ impl Controller {
             if let Some(stopping) = stopping
                 && let Err(error) = finish_recording(stopping, &found)
             {
+                token.cancel();
                 let _ = events.unbounded_send((
                     AppEvent::TranscribeFailed {
                         session,
@@ -477,7 +537,10 @@ impl Controller {
                 ));
                 return;
             }
-            let outcome = if routing.settings.enabled {
+            let outcome = if let Some(job) = live {
+                job.finish_live();
+                job.wait()
+            } else if routing.settings.enabled {
                 match load {
                     Some(load) => routing.speech(load, spec, token, engine, |notice| {
                         lock(&found).remote_notice = Some(notice)
@@ -529,6 +592,9 @@ impl Controller {
         }));
         if let Err(error) = spawned {
             log::warn!("{ENGINE_CRASHED} could not start the transcription: {error}");
+            if let Some(token) = self.run_of(session).cancel.take() {
+                token.cancel();
+            }
             self.run_of(session).detail =
                 Some("Transcription could not start. The recording was kept.".into());
             queue.push_back(AppEvent::TranscribeFailed {
@@ -547,6 +613,7 @@ impl Controller {
     ) {
         let run = self.run_of(session);
         run.ended = true;
+        run.cancel_live();
         // Only a session that failed while it listened can still hold its recording here.
         if let Some(stopping) = run.stopping.take() {
             let _ = finish_recording(stopping, &run.found);

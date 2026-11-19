@@ -138,6 +138,11 @@ pub enum AppEvent {
     CaptureError {
         code: &'static str,
     },
+    /// Latest preview for the listening session. Only a final transcript can start cleanup.
+    PartialText {
+        session: u64,
+        text: String,
+    },
     Transcribed {
         session: u64,
         text: String,

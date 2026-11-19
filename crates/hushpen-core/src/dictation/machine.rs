@@ -236,7 +236,7 @@ impl DictationMachine {
                 }
                 _ => Vec::new(),
             },
-            AppEvent::ReadAloud => Vec::new(),
+            AppEvent::ReadAloud | AppEvent::PartialText { .. } => Vec::new(),
             AppEvent::Tick => self.tick(now),
             AppEvent::CaptureError { code } => {
                 if self.run.state != State::Listening {

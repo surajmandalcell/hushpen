@@ -165,18 +165,24 @@ pub type Runner = Arc<dyn Fn(TranscribeSpec, Arc<CancelToken>) -> JobOutcome + S
 /// The speech engine as the pipeline sees it.
 pub struct Engine {
     run: Runner,
+    live_client: Option<hushpen_engine::EngineClient>,
     problem: Rc<dyn Fn() -> Option<LoadProblem>>,
 }
 
 impl Engine {
     pub fn new(run: Runner, problem: Rc<dyn Fn() -> Option<LoadProblem>>) -> Self {
-        Self { run, problem }
+        Self {
+            run,
+            problem,
+            live_client: None,
+        }
     }
 
     pub fn host(host: &Rc<EngineHost>) -> Self {
         let client = host.client().clone();
         let for_problem = Rc::clone(host);
         Self {
+            live_client: Some(client.clone()),
             run: Arc::new(move |spec, token| {
                 let job = client.transcribe(spec);
                 let id = job.id();
@@ -646,6 +652,14 @@ impl Controller {
         &self.transcript
     }
 
+    /// The current words to show while recording. History and paste only use the final text.
+    pub fn partial_text(&self) -> Option<&str> {
+        if self.machine.state() != State::Listening {
+            return None;
+        }
+        self.runs.get(&self.machine.session())?.partial.as_deref()
+    }
+
     /// The language the engine detected for the shown words, as a whisper code.
     pub fn detected(&self) -> Option<&str> {
         self.language.as_deref()
@@ -754,6 +768,13 @@ impl Controller {
         at: Option<u64>,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if let AppEvent::PartialText { session, text } = event {
+            if self.state() == State::Listening && self.machine.session() == session {
+                self.run_of(session).partial = Some(text);
+                cx.notify();
+            }
+            return Ok(());
+        }
         let now = at.unwrap_or_else(|| (self.clock)());
         if self.while_selecting(&event, now, cx) {
             return Ok(());
@@ -846,7 +867,6 @@ impl Controller {
             Effect::PasteLast => self.paste_last(cx),
             Effect::Transcribe { session } => {
                 let model = self.models.read(cx).effective();
-                self.run_of(session).pending.model_id = Some(model.clone());
                 self.transcribe(session, &model, queue);
             }
             Effect::CancelTranscribe { session } => {

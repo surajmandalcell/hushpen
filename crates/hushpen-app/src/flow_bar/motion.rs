@@ -10,6 +10,7 @@
 
 use super::view::{self, Props, WaveBar};
 use gpui_kit::{SpringConfig, SpringState};
+use hushpen_core::flow_bar::BarState;
 
 /// How much of the motion plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +127,9 @@ fn ease_in_out(done: f32) -> f32 {
 
 /// Whether two props show the same thing, apart from the hover and the moment of the wave.
 fn same_look(a: &Props, b: &Props) -> bool {
+    if a.state == BarState::Listening && b.state == BarState::Listening {
+        return true;
+    }
     a.state == b.state
         && a.preparing() == b.preparing()
         && a.message == b.message

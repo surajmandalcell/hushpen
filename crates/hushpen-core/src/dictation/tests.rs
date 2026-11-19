@@ -108,6 +108,10 @@ fn every_event() -> Vec<AppEvent> {
         },
         AppEvent::ReadAloud,
         AppEvent::Recover,
+        AppEvent::PartialText {
+            session: 1,
+            text: RAW.into(),
+        },
     ]
 }
 
@@ -134,10 +138,11 @@ fn variant_index(event: &AppEvent) -> usize {
         AppEvent::HoldArm => 17,
         AppEvent::ReadAloud => 18,
         AppEvent::Recover => 19,
+        AppEvent::PartialText { .. } => 20,
     }
 }
 
-const VARIANTS: usize = 20;
+const VARIANTS: usize = 21;
 
 fn start_effects(session: u64) -> Vec<Effect> {
     vec![Effect::StartCapture { session }, Effect::Cue(Cue::Start)]
@@ -358,7 +363,7 @@ fn every_state_and_event_pair_has_an_asserted_outcome() {
         }
     }
     assert_eq!(pairs, State::ALL.len() * VARIANTS);
-    assert_eq!(pairs, 160);
+    assert_eq!(pairs, 168);
 }
 
 #[test]

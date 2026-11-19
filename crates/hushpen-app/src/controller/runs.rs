@@ -16,6 +16,8 @@ pub(super) struct Run {
     /// The microphone session that still has to finish the WAV. The transcription does that
     /// on its worker thread before it reads the file.
     pub stopping: Option<Detached>,
+    pub live: Option<Live>,
+    pub partial: Option<String>,
     pub cancel: Option<Arc<CancelToken>>,
     pub ai_cancel: Option<Arc<CancelToken>>,
     /// What the history row needs from the steps before the save.
@@ -33,6 +35,21 @@ pub(super) struct Run {
     /// The row is saved, or the session left none. The entry goes once no newer session needs
     /// it on screen.
     pub ended: bool,
+}
+
+pub(super) struct Live {
+    pub job: hushpen_engine::JobHandle,
+    pub language: String,
+}
+
+impl Run {
+    pub(super) fn cancel_live(&mut self) {
+        if let Some(live) = self.live.take() {
+            live.job.cancel();
+            self.cancel = None;
+        }
+        self.partial = None;
+    }
 }
 
 /// Written by the worker threads of one session.

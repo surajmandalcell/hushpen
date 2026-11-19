@@ -22,6 +22,37 @@ fn notice_code(cx: &mut TestAppContext, rig: &Rig) -> Option<&'static str> {
         .read_with(cx, |controller, _| controller.notice().map(|n| n.code))
 }
 
+#[gpui_kit::test]
+fn partial_words_only_preview_the_listening_session(cx: &mut TestAppContext) {
+    let rig = rig(cx, &["base"], "base");
+    let partial = |session, text: &str| AppEvent::PartialText {
+        session,
+        text: text.into(),
+    };
+    let shown = |cx: &mut TestAppContext| {
+        rig.controller
+            .read_with(cx, |c, _| c.partial_text().map(str::to_owned))
+    };
+    send_at(cx, &rig, 1_000, AppEvent::HomeToggle).unwrap();
+    send_at(cx, &rig, 1_200, partial(1, "good")).unwrap();
+    send_at(cx, &rig, 1_400, partial(1, "good morning")).unwrap();
+    assert_eq!(shown(cx).as_deref(), Some("good morning"));
+    assert!(transcript(cx, &rig).is_empty());
+    send_at(cx, &rig, 1_800, AppEvent::Esc).unwrap();
+    send_at(cx, &rig, 2_000, AppEvent::HomeToggle).unwrap();
+    send_at(cx, &rig, 2_100, partial(1, "late words")).unwrap();
+    assert_eq!(shown(cx), None);
+    send_at(cx, &rig, 2_200, partial(2, "new words")).unwrap();
+    send_at(cx, &rig, 3_000, AppEvent::HomeToggle).unwrap();
+    send_at(cx, &rig, 3_100, partial(2, "too late")).unwrap();
+    assert_eq!(shown(cx), None);
+    say(&rig, outcome_text("final words", "en"));
+    settle(cx, &rig);
+    assert_eq!(transcript(cx, &rig), "final words");
+    assert_eq!(clipboard(cx).as_deref(), Some("final words"));
+    assert_eq!(rig.specs.lock().unwrap().len(), 1);
+}
+
 /// One push-to-talk run: down, a 2 s hold, up, and the engine answers.
 pub(super) fn hold_run(cx: &mut TestAppContext, rig: &Rig, from: u64) {
     send_at(cx, rig, from, AppEvent::HoldDown).unwrap();
