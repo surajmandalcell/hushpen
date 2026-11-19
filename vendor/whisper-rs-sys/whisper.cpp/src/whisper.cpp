@@ -896,6 +896,8 @@ struct whisper_state {
     std::vector<whisper_token>   prompt_past1; // dynamic context from decoded output
 
     int lang_id = 0; // english by default
+    whisper_language_selector language_selector = nullptr;
+    void * language_selector_data = nullptr;
 
     std::string path_model; // populated by whisper_init_from_file_with_params()
 
@@ -4205,6 +4207,11 @@ int whisper_lang_auto_detect(
     return whisper_lang_auto_detect_with_state(ctx, ctx->state, offset_ms, n_threads, lang_probs);
 }
 
+void whisper_set_language_selector(struct whisper_state * state, whisper_language_selector selector, void * user_data) {
+    state->language_selector = selector;
+    state->language_selector_data = user_data;
+}
+
 int whisper_model_n_vocab(struct whisper_context * ctx) {
     return ctx->model.hparams.n_vocab;
 }
@@ -6956,22 +6963,30 @@ static int whisper_full_with_state_impl(
     if (params.language == nullptr || strlen(params.language) == 0 || strcmp(params.language, "auto") == 0 || params.detect_language) {
         std::vector<float> probs(whisper_lang_max_id() + 1, 0.0f);
 
-        if (params.encoder_begin_callback) {
-            if (params.encoder_begin_callback(ctx, state, params.encoder_begin_callback_user_data) == false) {
-                WHISPER_LOG_ERROR("%s: encoder_begin_callback returned false - aborting\n", __func__);
-                return -3;
-            }
+        const bool encode = !params.encoder_begin_callback ||
+                params.encoder_begin_callback(ctx, state, params.encoder_begin_callback_user_data);
+        const auto selector = state->language_selector;
+        auto * selector_data = state->language_selector_data;
+        whisper_set_language_selector(state, nullptr, nullptr);
+        if (!encode) {
+            WHISPER_LOG_ERROR("%s: encoder_begin_callback returned false - aborting\n", __func__);
+            return -3;
         }
 
-        const auto lang_id = whisper_lang_auto_detect_with_state(ctx, state, 0, params.n_threads, probs.data());
+        auto lang_id = whisper_lang_auto_detect_with_state(ctx, state, 0, params.n_threads, probs.data());
         if (lang_id < 0) {
             WHISPER_LOG_ERROR("%s: failed to auto-detect language\n", __func__);
             return -3;
         }
+        WHISPER_LOG_INFO("%s: auto-detected language: %s (p = %f)\n", __func__, whisper_lang_str(lang_id), probs[lang_id]);
+        if (selector) {
+            const int selected = selector(lang_id, probs.data(), probs.size(), selector_data);
+            if (selected >= 0 && selected < (int) probs.size()) {
+                lang_id = selected;
+            }
+        }
         state->lang_id = lang_id;
         params.language = whisper_lang_str(lang_id);
-
-        WHISPER_LOG_INFO("%s: auto-detected language: %s (p = %f)\n", __func__, params.language, probs[whisper_lang_id(params.language)]);
         if (params.detect_language) {
             return 0;
         }

@@ -7,15 +7,15 @@ pub use hushpen_core::cancel::CancelFlag;
 use hushpen_core::error;
 pub use hushpen_core::protocol::Segment;
 
-/// Resolve dictation Auto on the device that owns the user's language preferences.
+/// Attach the recording device's preferred languages to Auto for multilingual Whisper.
 pub fn dictation_language(model: &str, setting: &str) -> Option<String> {
-    select_dictation_language(model, setting, sys_locale::get_locale)
+    select_dictation_language(model, setting, sys_locale::get_locales)
 }
 
-fn select_dictation_language(
+fn select_dictation_language<I: Iterator<Item = String>>(
     model: &str,
     setting: &str,
-    locale: impl FnOnce() -> Option<String>,
+    locales: impl FnOnce() -> I,
 ) -> Option<String> {
     if setting != language::AUTO {
         return Some(setting.to_owned());
@@ -26,15 +26,20 @@ fn select_dictation_language(
     {
         return None;
     }
-    let locale = locale()?;
-    let code = locale.split('-').next()?.to_ascii_lowercase();
-    let code = match code.as_str() {
-        "nb" => "no",
-        "fil" => "tl",
-        "jv" => "jw",
-        code => code,
-    };
-    language::name(code).map(|_| code.to_owned())
+    let preferred = locales()
+        .filter_map(|locale| {
+            let code = locale.split('-').next()?.to_ascii_lowercase();
+            let code = match code.as_str() {
+                "nb" => "no",
+                "fil" => "tl",
+                "jv" => "jw",
+                code => code,
+            };
+            language::name(code).map(|_| code.to_owned())
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    (!preferred.is_empty()).then(|| language::auto_with_preferences(&preferred))
 }
 
 /// The full result of one job.
@@ -59,7 +64,8 @@ pub struct LoadOptions {
 /// Per-job options.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TranscribeOptions {
-    /// A language code such as `en`; `None` detects the language (needs a multilingual model).
+    /// A language code such as `en`, or Auto with optional preferences.
+    /// `None` detects the language without preferences.
     /// Parakeet always detects; it only refuses a code outside its 25 languages.
     pub language: Option<String>,
     /// Text that biases the decoder toward the user's words. Only Whisper reads it.
@@ -223,17 +229,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn whisper_dictation_auto_uses_the_locale_when_whisper_supports_it() {
-        let choose = |model, setting, locale| {
-            select_dictation_language(model, setting, || Some(String::from(locale)))
+    fn whisper_dictation_auto_sends_all_supported_preferred_languages() {
+        let choose = |model, setting, locales: &[&str]| {
+            select_dictation_language(model, setting, || locales.iter().map(|s| s.to_string()))
         };
         let whisper = "base-q5_1";
-        assert_eq!(choose(whisper, "auto", "en-IN").as_deref(), Some("en"));
-        assert_eq!(choose(whisper, "auto", "pt-BR").as_deref(), Some("pt"));
-        assert_eq!(choose(whisper, "auto", "nb-NO").as_deref(), Some("no"));
-        assert_eq!(choose(whisper, "ja", "en-IN").as_deref(), Some("ja"));
-        assert_eq!(choose(whisper, "auto", "xx-XX"), None);
-        assert_eq!(choose(catalog::SPEECH_DEFAULT, "auto", "en-IN"), None);
+        assert_eq!(
+            choose(whisper, "auto", &["en-IN", "xx-XX", "pt-BR", "nb-NO"]).as_deref(),
+            Some("auto:en,pt,no")
+        );
+        assert_eq!(choose(whisper, "ja", &["en-IN"]).as_deref(), Some("ja"));
+        assert_eq!(choose(whisper, "auto", &["xx-XX"]), None);
+        assert_eq!(choose(catalog::SPEECH_DEFAULT, "auto", &["en-IN"]), None);
     }
 
     #[test]

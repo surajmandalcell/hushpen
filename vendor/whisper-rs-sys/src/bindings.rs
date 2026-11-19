@@ -5826,6 +5826,21 @@ unsafe extern "C" {
         lang_probs: *mut f32,
     ) -> ::std::os::raw::c_int;
 }
+pub type whisper_language_selector = ::std::option::Option<
+    unsafe extern "C" fn(
+        detected: ::std::os::raw::c_int,
+        probs: *const f32,
+        count: ::std::os::raw::c_int,
+        user_data: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
+>;
+unsafe extern "C" {
+    pub fn whisper_set_language_selector(
+        state: *mut whisper_state,
+        selector: whisper_language_selector,
+        user_data: *mut ::std::os::raw::c_void,
+    );
+}
 unsafe extern "C" {
     pub fn whisper_n_len(ctx: *mut whisper_context) -> ::std::os::raw::c_int;
 }

@@ -3,6 +3,18 @@
 /// The setting value that asks the engine to detect the language.
 pub const AUTO: &str = "auto";
 
+const AUTO_WITH_PREFERENCES: &str = "auto:";
+
+/// Packs comma-separated preferred codes into the internal dictation language value.
+pub fn auto_with_preferences(codes: &str) -> String {
+    format!("{AUTO_WITH_PREFERENCES}{codes}")
+}
+
+/// Returns the preferred codes for an Auto request that carries them.
+pub fn auto_preferences(value: &str) -> Option<&str> {
+    value.strip_prefix(AUTO_WITH_PREFERENCES)
+}
+
 /// Every language whisper knows: code and English name, in whisper's own order. The engine
 /// crate checks this list against the linked whisper build.
 pub const LANGUAGES: [(&str, &str); 100] = [
