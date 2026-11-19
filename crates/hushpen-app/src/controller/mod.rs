@@ -575,7 +575,9 @@ impl Controller {
             cpus,
         );
         Arc::new(move |spec, token| match &load {
-            Some(load) => routing.speech(load.clone(), spec, token, Arc::clone(&local), |_| {}),
+            Some(load) => {
+                routing.speech(load.clone(), spec, token, Arc::clone(&local), None, |_| {})
+            }
             None => JobOutcome::Failed(hushpen_engine::Failure::new(
                 ENGINE_NO_MODEL,
                 "No speech model is selected.",

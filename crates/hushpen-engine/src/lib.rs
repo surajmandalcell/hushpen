@@ -38,8 +38,8 @@ pub use asr::{
 };
 pub use client::{
     ChildSpec, EngineClient, EngineState, Failure, ImportProgress, ImportSpec, JobHandle,
-    JobOutcome, LoadHandle, LoadSpec, Loaded, ProgressSink, Status, Timing, TranscribeSpec,
-    Transcription,
+    JobOutcome, LoadHandle, LoadSpec, Loaded, PartialSink, ProgressSink, Status, Timing,
+    TranscribeSpec, Transcription,
 };
 pub use cpu::missing_cpu_feature;
 pub use engine_log::{EngineLog, Level};

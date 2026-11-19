@@ -7,7 +7,56 @@ use hushpen_remote::{
     RemoteControl, RemoteStream, RemoteWriter, WorkerKind, select_worker_with_rule,
 };
 use std::io::{self, Read, Write};
+use std::path::Path;
 use std::process::{Child, ChildStderr, Command, Stdio};
+use std::time::{Duration, Instant};
+
+// One authenticated speech connection serves one recording.
+pub(crate) struct LiveUpload {
+    pub job: u64,
+    pub closed: bool,
+    reader: hushpen_audio::session::SessionReader,
+    sent: u64,
+    deadline: Instant,
+}
+
+impl LiveUpload {
+    pub fn open(job: u64, path: &Path, closed: bool) -> io::Result<Self> {
+        Ok(Self {
+            job,
+            closed,
+            reader: hushpen_audio::session::SessionReader::open(path)?,
+            sent: 0,
+            deadline: Instant::now() + Duration::from_secs(61 * 60),
+        })
+    }
+
+    /// Sends at most 64 KiB per turn, leaving room for pings, results and cancellation.
+    pub fn pump(&mut self, output: &mut impl Write) -> io::Result<bool> {
+        if Instant::now() >= self.deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "live upload timed out",
+            ));
+        }
+        let mut bytes = [0; 8192];
+        for _ in 0..8 {
+            let count = self.reader.read_pcm(&mut bytes)?;
+            if count == 0 {
+                return Ok(self.closed);
+            }
+            self.sent += count as u64;
+            if self.sent > 256 * 1024 * 1024 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "remote audio exceeds 256 MiB",
+                ));
+            }
+            write_frame(output, FrameKind::Binary, &bytes[..count]).map_err(io::Error::other)?;
+        }
+        Ok(false)
+    }
+}
 
 pub enum Link {
     Child(ChildSpec),
@@ -125,6 +174,15 @@ impl Link {
 
 /// Sends the WAV in bounded binary frames before the normal transcription request.
 pub(crate) fn write_speech(writer: &mut impl Write, request: &Request) -> io::Result<()> {
+    if let Request::StartLive { job, language, .. } = request {
+        return write_json(
+            writer,
+            &serde_json::json!({
+                "type": "remote_live_start", "job": job, "language": language,
+            }),
+        )
+        .map_err(io::Error::other);
+    }
     let path = match request {
         Request::Transcribe { wav_path, .. } => Some(wav_path),
         Request::ImportFile { path, .. } => Some(path),
@@ -203,6 +261,23 @@ mod tests {
         let frame = read_frame(&mut input).unwrap().unwrap();
         assert_eq!(Request::from_frame(&frame).unwrap(), request);
         assert!(read_frame(&mut input).unwrap().is_none());
+    }
+
+    #[test]
+    fn live_start_only_sends_the_job_and_language_to_the_host() {
+        let request = Request::StartLive {
+            job: 7,
+            wav_path: "/private/capture.wav".into(),
+            language: Some("en".into()),
+        };
+        let mut bytes = Vec::new();
+        write_speech(&mut bytes, &request).unwrap();
+        let frame = read_frame(&mut &bytes[..]).unwrap().unwrap();
+        let sent: serde_json::Value = serde_json::from_slice(&frame.payload).unwrap();
+        assert_eq!(
+            sent,
+            serde_json::json!({"type": "remote_live_start", "job": 7, "language": "en"})
+        );
     }
 
     #[test]

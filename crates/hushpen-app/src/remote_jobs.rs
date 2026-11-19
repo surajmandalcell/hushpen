@@ -16,6 +16,9 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+mod live;
+pub(crate) use live::{Capture, LiveJob};
+
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const JOB_TIMEOUT: Duration = Duration::from_secs(180);
@@ -279,12 +282,13 @@ impl Routing {
         }
     }
 
-    pub fn speech(
+    pub(crate) fn speech(
         &self,
         load: LoadSpec,
         spec: TranscribeSpec,
         token: Arc<CancelToken>,
         local: Runner,
+        live: Option<&Capture>,
         notice: impl FnMut(String),
     ) -> JobOutcome {
         let outcome = self.run(
@@ -302,11 +306,13 @@ impl Routing {
                 let loading = client.load_model(load.clone());
                 let loaded = wait_load(&token, |wait| loading.wait_timeout(wait));
                 let outcome = if matches!(loaded, Some(Ok(_))) && !token.is_cancelled() {
-                    let job = client.transcribe(spec.clone());
-                    let id = job.id();
-                    let cancel = client.clone();
-                    token.on_cancel(move || cancel.cancel(id));
-                    match job.wait_timeout(JOB_TIMEOUT) {
+                    let result = match live {
+                        Some(capture) => {
+                            capture.decode(&client, &spec, &token, client.status().remote_live)
+                        }
+                        None => live::batch(&client, &spec, &token),
+                    };
+                    match result {
                         Some(JobOutcome::Failed(failure))
                             if failure.code == hushpen_core::error::ENGINE_NO_SPEECH =>
                         {

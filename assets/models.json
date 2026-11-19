@@ -31,7 +31,7 @@
       "url": "https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/07a08a3a405d20c5434b9a1442f6e6cf571f57ad/nemotron-labs-unified-asr-0.6b-q8_0.gguf",
       "license": "OpenMDW-1.1",
       "languages": "european",
-      "description": "Fast mode shows text as you speak on this device. Supports 25 European languages.",
+      "description": "Fast mode shows text as you speak. Supports 25 European languages.",
       "speed": 3,
       "accuracy": 4,
       "quantization": "Q8_0",

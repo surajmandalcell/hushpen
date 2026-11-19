@@ -19,6 +19,17 @@ impl Manager {
             self.start_child();
         }
         self.watch_child(now);
+        if let (Some(upload), Some(running)) = (&mut self.remote_upload, &mut self.running) {
+            match upload.pump(&mut running.stdin) {
+                Ok(true) => {
+                    let job = upload.job;
+                    self.remote_upload = None;
+                    self.write(&Request::FinishLive { job });
+                }
+                Ok(false) => {}
+                Err(error) => self.broken = Some(format!("live audio upload failed: {error}")),
+            }
+        }
         self.expire_pending(now);
     }
 
@@ -86,6 +97,9 @@ impl Manager {
     pub(super) fn next_wakeup(&self) -> Option<Instant> {
         let mut next: Option<Instant> = None;
         let mut consider = |at: Instant| next = Some(next.map_or(at, |next| next.min(at)));
+        if self.remote_upload.is_some() {
+            consider(Instant::now() + std::time::Duration::from_millis(25));
+        }
         match &self.running {
             None => {
                 if let Some(at) = self.next_start {

@@ -154,6 +154,7 @@ fn read_requests(
                     version: config.version.clone(),
                     protocol: PROTOCOL_VERSION,
                     gpu: config.gpu_available,
+                    remote_live: false,
                 },
             ),
             Request::Hello { protocol } => {
@@ -951,7 +952,8 @@ mod tests {
             Event::Ready {
                 version: "test".into(),
                 protocol: PROTOCOL_VERSION,
-                gpu: false
+                gpu: false,
+                remote_live: false,
             }
         );
         assert_eq!(session.finish(), 0);

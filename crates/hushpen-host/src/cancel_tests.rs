@@ -33,6 +33,7 @@ fn cancellation_interrupts_a_backpressured_audio_upload() {
                 version: "test".into(),
                 protocol: PROTOCOL_VERSION,
                 gpu: false,
+                remote_live: false,
             }
             .to_json(),
         )

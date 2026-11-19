@@ -18,6 +18,9 @@ use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 
 type Output = Arc<Mutex<RemoteWriter>>;
+mod live;
+#[cfg(test)]
+mod live_tests;
 
 /// Serves one authenticated connection. Model files stay under the host's data root.
 pub fn serve_session(
@@ -53,16 +56,41 @@ pub fn serve_session(
     let cache = data.join("cache/remote");
     std::fs::create_dir_all(&cache)?;
     let mut audio = None;
+    let mut live: Option<live::Input> = None;
     let result = (|| {
-        while let Some(frame) = read_frame(&mut input).map_err(io::Error::other)? {
+        loop {
+            let frame = if live.is_some() {
+                hushpen_core::protocol::read_frame_limited(&mut input, 64 * 1024)
+            } else {
+                read_frame(&mut input)
+            };
+            let Some(frame) = frame.map_err(io::Error::other)? else {
+                break;
+            };
+            if frame.kind == FrameKind::Binary
+                && let Some(active) = &mut live
+            {
+                active.append(&frame.payload)?;
+                input.set_read_deadline(Some(active.deadline()));
+                continue;
+            }
             if frame.kind != FrameKind::Json {
                 return Err(invalid("expected a worker control frame"));
             }
             if kind == WorkerKind::Speech {
                 let value: Value =
                     serde_json::from_slice(&frame.payload).map_err(io::Error::other)?;
+                if value["type"] == "remote_live_start" {
+                    if audio.is_some() || live.is_some() || !lock(&jobs).is_empty() {
+                        return Err(invalid("audio is already pending"));
+                    }
+                    let active = live::Input::start(&value, &cache, &workers, &output, &jobs)?;
+                    input.set_read_deadline(Some(active.deadline()));
+                    live = Some(active);
+                    continue;
+                }
                 if value.get("type").and_then(Value::as_str) == Some("remote_audio") {
-                    if audio.is_some() || !lock(&jobs).is_empty() {
+                    if audio.is_some() || live.is_some() || !lock(&jobs).is_empty() {
                         return Err(invalid("audio is already pending"));
                     }
                     audio = Some(receive_audio(&mut input, &cache, &value)?);
@@ -71,6 +99,23 @@ pub fn serve_session(
                 let request = Request::from_frame(&frame).map_err(io::Error::other)?;
                 if matches!(request, Request::Shutdown) {
                     break;
+                }
+                if let Some(active) = &live {
+                    match request {
+                        Request::FinishLive { job } if job == active.job => {
+                            if let Some(active) = live.take() {
+                                active.finish(&workers)?;
+                            }
+                            input.set_read_deadline(None);
+                            continue;
+                        }
+                        Request::Cancel { job } if job == active.job => {
+                            live = None;
+                            input.set_read_deadline(None);
+                        }
+                        Request::Ping => {}
+                        _ => return Err(invalid("unexpected control during live audio")),
+                    }
                 }
                 speech(request, &workers, &output, &jobs, data, rule, &mut audio)?;
             } else {
@@ -216,6 +261,7 @@ fn speech(
                     version: env!("CARGO_PKG_VERSION").into(),
                     protocol: PROTOCOL_VERSION,
                     gpu: false,
+                    remote_live: true,
                 }
                 .to_json(),
             )
@@ -378,7 +424,7 @@ fn speech(
             &Event::error(
                 Some(job),
                 error::ENGINE_PROTOCOL,
-                "Live capture needs a local session WAV.",
+                "This connection has no matching live audio upload.",
             )
             .to_json(),
         ),

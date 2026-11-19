@@ -150,6 +150,8 @@ impl EngineState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
+    /// The paired speech worker accepts incremental PCM uploads.
+    pub remote_live: bool,
     pub pid: Option<u32>,
     pub state: EngineState,
     /// The model the running child holds, for example `tiny.en`.
@@ -238,6 +240,7 @@ impl Shared {
     fn new() -> Self {
         Self {
             status: Mutex::new(Status {
+                remote_live: false,
                 pid: None,
                 state: EngineState::Starting,
                 model: None,
@@ -248,7 +251,7 @@ impl Shared {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, Status> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Status> {
         self.status
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
