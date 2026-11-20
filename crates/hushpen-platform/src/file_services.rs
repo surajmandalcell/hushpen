@@ -8,11 +8,19 @@ use std::path::PathBuf;
 /// Whether the app is the active (front) app. `open -g` delivers files without making it so.
 pub fn app_is_active() -> bool {
     #[cfg(target_os = "macos")]
-    return objc2::MainThreadMarker::new().is_some_and(|mtm| {
-        objc2_app_kit::NSApplication::sharedApplication(mtm).isActive()
-    });
+    return objc2::MainThreadMarker::new()
+        .is_some_and(|mtm| objc2_app_kit::NSApplication::sharedApplication(mtm).isActive());
     #[cfg(not(target_os = "macos"))]
     true
+}
+
+/// Takes the reopen and open-documents Apple events from AppKit before launch ends. AppKit
+/// activates the app for each one, and an Accessibility-trusted app such as Hushpen wins that
+/// activation even for `open -g`. A Dock click, Finder, or a plain `open` is activated by
+/// LaunchServices before the event arrives, so the events need no activation of their own.
+pub fn quiet_open_events() {
+    #[cfg(target_os = "macos")]
+    mac::quiet_open_events();
 }
 
 /// Makes the app the Services provider; `opened` gets the paths of each Services request.
@@ -35,9 +43,9 @@ pub fn quick_look(path: PathBuf) {
 #[cfg(target_os = "macos")]
 mod mac {
     use objc2::rc::Retained;
-    use objc2::runtime::{AnyClass, AnyObject, NSObject, NSObjectProtocol};
+    use objc2::runtime::{AnyClass, AnyObject, Bool, NSObject, NSObjectProtocol};
     use objc2::{
-        ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
+        ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel,
     };
     use objc2_app_kit::{NSApplication, NSPasteboard, NSUpdateDynamicServices};
     use objc2_foundation::{NSArray, NSInteger, NSString, NSURL};
@@ -97,10 +105,107 @@ mod mac {
         }
     );
 
+    // Four-character codes of the Apple events Hushpen answers itself.
+    const CORE_EVENTS: u32 = u32::from_be_bytes(*b"aevt");
+    const OPEN_DOCUMENTS: u32 = u32::from_be_bytes(*b"odoc");
+    const REOPEN: u32 = u32::from_be_bytes(*b"rapp");
+    const DIRECT_OBJECT: u32 = u32::from_be_bytes(*b"----");
+
+    define_class!(
+        /// Hands the reopen and open-documents events to the app delegate (GPUI) without the
+        /// activation AppKit adds.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "HushpenOpenEvents"]
+        struct OpenEvents;
+
+        impl OpenEvents {
+            #[unsafe(method(willFinishLaunching:))]
+            fn will_finish_launching(&self, _note: &AnyObject) {
+                // AppKit puts its own handlers in before this notification, so these replace them.
+                let Some(manager) = AnyClass::get(c"NSAppleEventManager") else {
+                    return;
+                };
+                unsafe {
+                    let manager: *mut AnyObject = msg_send![manager, sharedAppleEventManager];
+                    let _: () = msg_send![manager, setEventHandler: self, andSelector: sel!(handleOpen:reply:), forEventClass: CORE_EVENTS, andEventID: OPEN_DOCUMENTS];
+                    let _: () = msg_send![manager, setEventHandler: self, andSelector: sel!(handleReopen:reply:), forEventClass: CORE_EVENTS, andEventID: REOPEN];
+                }
+            }
+
+            #[unsafe(method(handleOpen:reply:))]
+            fn handle_open(&self, event: &AnyObject, _reply: &AnyObject) {
+                let urls = event_urls(event);
+                let mtm = self.mtm();
+                let app = NSApplication::sharedApplication(mtm);
+                if let Some(delegate) = app.delegate() {
+                    let urls = NSArray::from_retained_slice(&urls);
+                    let _: () = unsafe { msg_send![&*delegate, application: &*app, openURLs: &*urls] };
+                }
+            }
+
+            #[unsafe(method(handleReopen:reply:))]
+            fn handle_reopen(&self, _event: &AnyObject, _reply: &AnyObject) {
+                let app = NSApplication::sharedApplication(self.mtm());
+                let visible = app.windows().iter().any(|window| window.isVisible());
+                if let Some(delegate) = app.delegate() {
+                    let _: Bool = unsafe {
+                        msg_send![&*delegate, applicationShouldHandleReopen: &*app, hasVisibleWindows: Bool::new(visible)]
+                    };
+                }
+            }
+        }
+    );
+
+    /// The file URLs of an open-documents event: a list, or one item.
+    fn event_urls(event: &AnyObject) -> Vec<Retained<NSURL>> {
+        let url = |item: &AnyObject| -> Option<Retained<NSURL>> {
+            unsafe { msg_send![item, fileURLValue] }
+        };
+        let direct: Option<Retained<AnyObject>> =
+            unsafe { msg_send![event, paramDescriptorForKeyword: DIRECT_OBJECT] };
+        let Some(direct) = direct else {
+            return Vec::new();
+        };
+        let count: NSInteger = unsafe { msg_send![&*direct, numberOfItems] };
+        if count == 0 {
+            return url(&direct).into_iter().collect();
+        }
+        (1..=count)
+            .filter_map(|index| {
+                let item: Option<Retained<AnyObject>> =
+                    unsafe { msg_send![&*direct, descriptorAtIndex: index] };
+                item.and_then(|item| url(&item))
+            })
+            .collect()
+    }
+
+    pub fn quiet_open_events() {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let events: Retained<OpenEvents> = {
+            let this = OpenEvents::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
+        };
+        let Some(center) = AnyClass::get(c"NSNotificationCenter") else {
+            return;
+        };
+        let name = NSString::from_str("NSApplicationWillFinishLaunchingNotification");
+        unsafe {
+            let center: *mut AnyObject = msg_send![center, defaultCenter];
+            let _: () = msg_send![center, addObserver: &*events, selector: sel!(willFinishLaunching:), name: &*name, object: None::<&AnyObject>];
+        }
+        OPEN_EVENTS.with(|cell| {
+            let _ = cell.set(events);
+        });
+    }
+
     thread_local! {
-        // AppKit keeps both as weak references, so they live here for the app's lifetime.
+        // AppKit keeps these as weak references, so they live here for the app's lifetime.
         static SERVICES: OnceCell<Retained<Services>> = const { OnceCell::new() };
         static SOURCE: OnceCell<Retained<PreviewSource>> = const { OnceCell::new() };
+        static OPEN_EVENTS: OnceCell<Retained<OpenEvents>> = const { OnceCell::new() };
     }
 
     pub fn serve(opened: Box<dyn Fn(Vec<PathBuf>)>) {

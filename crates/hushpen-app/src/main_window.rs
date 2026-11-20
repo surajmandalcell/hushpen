@@ -297,9 +297,14 @@ pub fn show_unfocused(cx: &mut App) {
 }
 
 /// A click on the Dock icon while the app runs. The platform calls this with the App borrowed,
-/// so the native calls stay deferred, as in [`show`].
+/// so the native calls stay deferred, as in [`show`]. The Dock has made the app active by then;
+/// a background `open -g` has not, and then the window comes back without taking the front.
 pub fn reopened(cx: &mut App) {
-    show(cx);
+    if hushpen_platform::file_services::app_is_active() {
+        show(cx);
+    } else {
+        show_unfocused(cx);
+    }
 }
 
 /// Hides every window of the app, from the app menu. Does nothing when no main window is

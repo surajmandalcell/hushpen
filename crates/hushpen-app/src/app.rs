@@ -142,6 +142,8 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
 
     let application = gpui_kit::application().with_assets(AppAssets);
     application.on_reopen(main_window::reopened);
+    // `open -g` must leave the front app alone; see quiet_open_events.
+    hushpen_platform::file_services::quiet_open_events();
     // Files from the Dock icon and Open With; registered first so the file that launched us counts.
     let (opened, opened_paths) = mpsc::unbounded::<(Vec<std::path::PathBuf>, bool)>();
     {
