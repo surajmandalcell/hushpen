@@ -4,16 +4,22 @@
 use super::item::BUTTONS;
 use super::{Import, Item, Menu, SUPPORTED, State};
 use crate::files::DROP_GROUP;
+use crate::files::extras::{self, QuickLook};
 use crate::history::playback::clock;
 use crate::hook;
 use crate::models::panel::format_size;
-use crate::theme::{self, HEADING, Palette, StyledType, radius, size, space};
+use crate::theme::{self, BODY, HEADING, Palette, StyledType, radius, size, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
+use gpui_kit::component::progress::ProgressCircle;
+use gpui_kit::component::{Sizable as _, Size};
+use gpui_kit::gpui::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, Entity, ExternalPaths, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled, Window, div, px, svg,
+    AnyElement, App, AppContext as _, Context, Entity, ExternalDragPayload, ExternalPaths,
+    FileDragPaths, FocusHandle, InteractiveElement, IntoElement,
+    ParentElement, Render, StatefulInteractiveElement, Styled, Transformation, Window, div, px,
+    radians, svg,
 };
 use hushpen_core::export::Format;
 use hushpen_core::language;
@@ -53,6 +59,9 @@ struct Snapshot {
     language_focus: FocusHandle,
     translate_focus: FocusHandle,
     option_focus: Vec<FocusHandle>,
+    dragging: usize,
+    selected: Option<u64>,
+    queue_focus: FocusHandle,
 }
 
 fn snapshot(import: &Entity<Import>, cx: &App) -> Snapshot {
@@ -102,6 +111,9 @@ fn snapshot(import: &Entity<Import>, cx: &App) -> Snapshot {
         language_focus: view.language_focus.clone(),
         translate_focus: view.translate_focus.clone(),
         option_focus: view.option_focus.clone(),
+        dragging: view.dragging(),
+        selected: view.selected(),
+        queue_focus: view.queue_focus.clone(),
     }
 }
 
@@ -112,7 +124,7 @@ pub fn render(import: &Entity<Import>, cx: &mut App) -> impl IntoElement + use<>
         .flex()
         .flex_col()
         .gap(px(space::XL))
-        .child(drop_zone(palette, import, &view));
+        .child(drop_zone(palette, import, &view, cx));
     if !view.notices.is_empty() {
         let rows = view
             .notices
@@ -149,9 +161,15 @@ pub fn render(import: &Entity<Import>, cx: &mut App) -> impl IntoElement + use<>
     page
 }
 
-/// The big target at the top: an icon, what to do, the formats, and the picker button. It
-/// lights up while files are dragged anywhere over the window.
-fn drop_zone(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> impl IntoElement {
+/// The big card at the top. At rest: an icon, what to do, the formats, and the picker button.
+/// While files are dragged over the window: a fan of file icons, the count, and "Release to
+/// transcribe", in an accent frame.
+fn drop_zone(
+    palette: Palette,
+    import: &Entity<Import>,
+    view: &Snapshot,
+    cx: &App,
+) -> impl IntoElement {
     let choose = {
         let import = import.clone();
         move |_: &mut Window, cx: &mut App| {
@@ -159,8 +177,16 @@ fn drop_zone(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> impl
             let _ = import.update(cx, |import, cx| import.choose(cx));
         }
     };
+    let counted = import.clone();
+    // The count is kept from the last move; it shows only while a drag is still on.
+    let dragging = (cx.has_active_drag() && view.dragging > 0).then_some(view.dragging);
+    let height = if view.lines.is_empty() {
+        size::DROP_ZONE_EMPTY_HEIGHT
+    } else {
+        size::DROP_ZONE_HEIGHT
+    };
     let (accent, selection) = (palette.accent, palette.selection);
-    div()
+    let card = div()
         .id(hook::id("import", "drop"))
         .test_support()
         .flex()
@@ -169,47 +195,96 @@ fn drop_zone(palette: Palette, import: &Entity<Import>, view: &Snapshot) -> impl
         .justify_center()
         .gap(px(space::SM))
         .w_full()
-        .h(px(size::DROP_ZONE_HEIGHT))
+        .h(px(height))
         .rounded(px(radius::GROUP))
-        .border_1()
-        .border_dashed()
-        .border_color(palette.label_tertiary)
         .bg(palette.group)
-        // A cursor gives the zone a hitbox; GPUI applies a drag style only to an element with one.
+        // A cursor gives the card a hitbox; GPUI applies a drag style only to an element with one.
         .cursor_default()
+        .on_drag_move::<ExternalPaths>(move |event, _, cx| {
+            let count = event.drag(cx).paths().len();
+            counted.update(cx, |import, cx| import.drag_moved(count, cx));
+        })
         .group_drag_over::<ExternalPaths>(DROP_GROUP, move |style| {
             style.bg(selection).border_color(accent)
-        })
-        .child(
-            svg()
-                .path(IconName::AudioLines.path())
-                .size(px(size::DROP_ICON))
-                .text_color(palette.label_secondary),
-        )
+        });
+    let Some(count) = dragging else {
+        return card
+            .border_1()
+            .border_dashed()
+            .border_color(palette.label_tertiary)
+            .child(
+                svg()
+                    .path(IconName::AudioLines.path())
+                    .size(px(size::DROP_ICON))
+                    .text_color(palette.label_secondary),
+            )
+            .child(
+                div()
+                    .id(hook::id("import", "drop.title"))
+                    .test_support()
+                    .aria_label("Drop audio files here")
+                    .text_token(HEADING)
+                    .text_color(palette.label)
+                    .child("Drop audio files here"),
+            )
+            .child(
+                ui::secondary(palette)
+                    .id(hook::id("import", "drop.formats"))
+                    .test_support()
+                    .child(format!("{SUPPORTED}, up to 12 hours each")),
+            )
+            .child(div().mt(px(space::XS)).child(ui::button(
+                palette,
+                hook::id("import", "choose"),
+                "Choose Files\u{2026}",
+                Kind::Default,
+                Some(&view.choose_focus),
+                !view.blocked && !view.choosing,
+                choose,
+            )));
+    };
+    let label = match count {
+        1 => "1 file".to_owned(),
+        n => format!("{n} files"),
+    };
+    card.border_2()
+        .border_color(accent)
+        .bg(selection)
+        .child(stack(palette, count))
         .child(
             div()
-                .id(hook::id("import", "drop.title"))
+                .id(hook::id("import", "drop.count"))
                 .test_support()
-                .aria_label("Drop audio files here")
+                .aria_label(label.clone())
                 .text_token(HEADING)
                 .text_color(palette.label)
-                .child("Drop audio files here"),
+                .child(label),
         )
-        .child(
-            ui::secondary(palette)
-                .id(hook::id("import", "drop.formats"))
-                .test_support()
-                .child(format!("{SUPPORTED}, up to 12 hours each")),
-        )
-        .child(div().mt(px(space::XS)).child(ui::button(
-            palette,
-            hook::id("import", "choose"),
-            "Choose Files\u{2026}",
-            Kind::Default,
-            Some(&view.choose_focus),
-            !view.blocked && !view.choosing,
-            choose,
-        )))
+        .child(ui::secondary(palette).child("Release to transcribe"))
+}
+
+/// Up to three file icons, fanned out like cards in a hand.
+fn stack(palette: Palette, count: usize) -> impl IntoElement {
+    let angles: &[f32] = match count {
+        1 => &[0.0],
+        2 => &[-0.5, 0.5],
+        _ => &[-1.0, 0.0, 1.0],
+    };
+    div()
+        .flex()
+        .items_end()
+        .children(angles.iter().enumerate().map(|(index, side)| {
+            let turn = radians((side * size::DROP_STACK_DEGREES).to_radians());
+            let icon = svg()
+                .path(IconName::File.path())
+                .size(px(size::DROP_STACK_ICON))
+                .text_color(palette.accent)
+                .with_transformation(Transformation::rotate(turn));
+            match index {
+                0 => icon,
+                _ => icon.ml(px(-size::DROP_STACK_OVERLAP)),
+            }
+        }))
 }
 
 /// Model, Language, and Translate to English, for the files that start next.
@@ -311,7 +386,8 @@ fn language_menu(import: &Entity<Import>, view: &Snapshot) -> ui::Menu {
         })
 }
 
-/// The heading with Clear Finished at its end, and the group of files.
+/// The heading with Copy All and Clear Finished at its end, and the group of files. A click
+/// selects a row; Space then shows it in Quick Look.
 fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl IntoElement {
     let clear = {
         let import = import.clone();
@@ -319,6 +395,13 @@ fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl Into
             import.update(cx, |import, cx| import.clear_finished(cx));
         }
     };
+    let copy_all = {
+        let import = import.clone();
+        move |_: &mut Window, cx: &mut App| {
+            import.update(cx, |import, cx| import.copy_all(cx));
+        }
+    };
+    let has_done = view.lines.iter().any(|line| line.state == State::Done);
     let header = div()
         .flex()
         .items_center()
@@ -329,27 +412,98 @@ fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl Into
             hook::id("import", "queue.heading"),
             "Queue",
         ))
-        .child(ui::button(
-            palette,
-            hook::id("import", "clear"),
-            "Clear Finished",
-            Kind::Plain,
-            Some(&view.clear_focus),
-            view.has_finished,
-            clear,
-        ));
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::XS))
+                .child(ui::button(
+                    palette,
+                    hook::id("import", "copy-all"),
+                    "Copy All",
+                    Kind::Plain,
+                    None,
+                    has_done,
+                    copy_all,
+                ))
+                .child(ui::button(
+                    palette,
+                    hook::id("import", "clear"),
+                    "Clear Finished",
+                    Kind::Plain,
+                    Some(&view.clear_focus),
+                    view.has_finished,
+                    clear,
+                )),
+        );
     let mut rows = Vec::new();
     for (index, line) in view.lines.into_iter().enumerate() {
         let menu = (view.menu == Some(Menu::Export(line.id)))
             .then(|| format_menu(import, line.id, &view.option_focus));
-        rows.push(item_row(palette, import, index, line, menu));
+        let selected = view.selected == Some(line.id);
+        rows.push(item_row(
+            palette,
+            import,
+            index,
+            line,
+            menu,
+            selected,
+            &view.queue_focus,
+        ));
     }
+    let look = import.clone();
     div()
         .flex()
         .flex_col()
         .gap(px(space::XS + space::XXS))
         .child(header)
-        .child(ui::group(hook::id("import", "queue"), palette, rows))
+        .child(
+            div()
+                .id(hook::id("import", "queue.keys"))
+                .key_context(extras::QUEUE_CONTEXT)
+                .track_focus(&view.queue_focus)
+                .on_action(move |_: &QuickLook, _, cx| {
+                    let Some(path) = look.read(cx).preview_path() else {
+                        return;
+                    };
+                    // The panel takes key, and AppKit tells the window at once: not in this update.
+                    cx.spawn(async move |_| extras::quick_look(path)).detach();
+                })
+                .child(ui::group(hook::id("import", "queue"), palette, rows)),
+        )
+}
+
+/// A finished row while it is dragged: its name in a small chip. Out of the window, the drag
+/// becomes the transcript as a `.txt` file.
+#[derive(Clone)]
+struct DragOut {
+    id: u64,
+    name: String,
+    palette: Palette,
+}
+
+impl Render for DragOut {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(space::XS))
+            .px(px(space::SM))
+            .py(px(space::XS))
+            .rounded(px(radius::GROUP))
+            .bg(self.palette.group)
+            .border_1()
+            .border_color(self.palette.separator)
+            .text_token(BODY)
+            .text_color(self.palette.label)
+            .child(
+                svg()
+                    .path(IconName::File.path())
+                    .size(px(size::DROP_ICON / 2.0))
+                    .text_color(self.palette.label_secondary),
+            )
+            .child(self.name.clone())
+    }
 }
 
 /// The second line of a file: its size and length, then why it failed (the code stays in the
@@ -418,28 +572,66 @@ fn item_row(
     index: usize,
     line: Line,
     menu: Option<ui::Menu>,
+    selected: bool,
+    queue_focus: &FocusHandle,
 ) -> AnyElement {
     let (status, color) = status_of(palette, &line);
     let running = matches!(line.state, State::Running | State::Cancelling);
     let buttons = buttons(palette, import, index, &line, menu);
-    ui::row(palette)
+    let (id, done) = (line.id, line.state == State::Done);
+    let select = {
+        let (import, focus) = (import.clone(), queue_focus.clone());
+        move |_: &gpui_kit::ClickEvent, window: &mut Window, cx: &mut App| {
+            import.update(cx, |import, cx| import.select(id, cx));
+            window.focus(&focus, cx);
+        }
+    };
+    let row = ui::row(palette)
         .id(hook::indexed("import", "row", index))
         .test_support()
-        .child(ui::named_lines(
-            palette,
-            hook::indexed("import", "name", index),
-            line.name,
-            Some((hook::indexed("import", "detail", index), line.detail)),
-        ))
+        .when(selected, |row| row.bg(palette.selection))
+        .on_click(select)
         .children(running.then(|| {
             div()
                 .id(hook::indexed("import", "progress", index))
                 .test_support()
                 .flex_none()
-                .w(px(size::QUEUE_PROGRESS_WIDTH))
-                .child(ui::track(palette, line.fraction))
+                .child(
+                    ProgressCircle::new(hook::indexed("import", "ring", index))
+                        .value(line.fraction * 100.0)
+                        .color(palette.accent)
+                        .with_size(Size::Size(px(size::QUEUE_RING))),
+                )
         }))
-        .child(
+        .child(ui::named_lines(
+            palette,
+            hook::indexed("import", "name", index),
+            line.name.clone(),
+            Some((hook::indexed("import", "detail", index), line.detail)),
+        ));
+    let row = if done {
+        let chip = DragOut {
+            id,
+            name: line.name,
+            palette,
+        };
+        let import = import.clone();
+        row.on_drag(chip, |chip, _, _, cx| cx.new(|_| chip.clone()))
+            .external_drag_payload(move |chip: &DragOut, _, cx| {
+                match import.read(cx).result_file(chip.id) {
+                    Ok(path) => Some(ExternalDragPayload::Files(FileDragPaths::new([(
+                        path, false,
+                    )]))),
+                    Err(error) => {
+                        log::warn!("the transcript was not written for a drag: {error}");
+                        None
+                    }
+                }
+            })
+    } else {
+        row
+    };
+    row.child(
             ui::value(palette)
                 .id(hook::indexed("import", "status", index))
                 .test_support()

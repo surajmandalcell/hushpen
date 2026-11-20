@@ -73,7 +73,8 @@ icon_assets!(
         ChevronUp,
         GripVertical,
         Circle,
-        LoaderCircle
+        LoaderCircle,
+        File
     ]
 );
 

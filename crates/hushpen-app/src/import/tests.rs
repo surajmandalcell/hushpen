@@ -463,8 +463,7 @@ fn an_engine_that_dies_fails_the_item_and_the_next_one_runs(cx: &mut TestAppCont
 #[gpui_kit::test]
 fn non_regular_files_are_refused_without_a_job(cx: &mut TestAppContext) {
     let fixture = open(cx);
-    let folder = fixture.folder.path().to_path_buf();
-    let refused = vec![folder, fixture.folder.path().join("missing.wav")];
+    let refused = vec![fixture.folder.path().join("missing.wav")];
     #[cfg(unix)]
     let refused = {
         let fifo = fixture.folder.path().join("in.wav");
@@ -1116,4 +1115,26 @@ mod view {
         click(cx, window, "import.choose");
         assert!(!fixture.import.read_with(cx, |import, _| import.choosing()));
     }
+}
+
+#[gpui_kit::test]
+fn a_folder_queues_its_media_files_in_name_order(cx: &mut TestAppContext) {
+    let fixture = open(cx);
+    let folder = fixture.folder.path().join("talks");
+    std::fs::create_dir_all(folder.join("day 2")).unwrap();
+    for name in ["b.wav", "a.MP3", "notes.txt", "day 2/c.m4a", "day 2/clip.mov"] {
+        std::fs::write(folder.join(name), b"audio").unwrap();
+    }
+    assert_eq!(add(cx, &fixture, vec![folder]), 4);
+    let names: Vec<String> = items(cx, &fixture)
+        .iter()
+        .map(|item| item["name"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(names, ["a.MP3", "b.wav", "c.m4a", "clip.mov"]);
+
+    let empty = fixture.folder.path().join("empty");
+    std::fs::create_dir(&empty).unwrap();
+    assert_eq!(add(cx, &fixture, vec![empty]), 0);
+    let said = notice(cx, &fixture).expect("a notice");
+    assert!(said.contains("no audio or video"), "{said}");
 }

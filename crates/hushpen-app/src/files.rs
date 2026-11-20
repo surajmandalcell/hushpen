@@ -2,6 +2,7 @@
 //! control in the title bar picks Transcribe (the import queue) or Read aloud, and the choice is kept
 //! in settings. Files dropped anywhere on the window land here.
 
+pub mod extras;
 pub mod panel;
 
 use crate::import::Import;
@@ -135,12 +136,23 @@ impl Files {
     /// Puts a text in Read aloud and plays it, for Read aloud again in History. A refusal
     /// shows in Read aloud.
     pub fn read_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.put_text(text, true, cx);
+    }
+
+    /// Puts pasted text in Read aloud, ready to play.
+    pub fn paste_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.put_text(text, false, cx);
+    }
+
+    fn put_text(&mut self, text: &str, play: bool, cx: &mut Context<Self>) {
         let Some(read) = self.read_aloud.clone() else {
             return;
         };
         read.update(cx, |read, cx| {
             read.set_text(text, TextFormat::Plain, cx);
-            let _ = read.play(cx);
+            if play {
+                let _ = read.play(cx);
+            }
         });
         if let Err(error) = self.set_mode(Mode::ReadAloud, cx) {
             log::warn!("the Manual mode was not saved: {error}");

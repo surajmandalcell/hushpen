@@ -41,7 +41,12 @@ use std::sync::Arc;
 
 /// What the picker offers. The engine reads these; a file that is none of them still gets a
 /// try, because the decoder looks at the bytes and not at the name.
-pub const SUPPORTED: &str = "WAV, MP3, FLAC, Ogg Vorbis, M4A, and AIFF";
+pub const SUPPORTED: &str = "WAV, MP3, FLAC, M4A, AIFF, MP4, and MOV";
+
+/// What a dropped folder gives the queue: the files in it with these endings, at any depth.
+const MEDIA: [&str; 12] = [
+    "wav", "mp3", "flac", "ogg", "oga", "m4a", "aac", "aif", "aiff", "caf", "mp4", "mov",
+];
 
 /// The settings the transcribe options keep.
 pub const LANGUAGE_SETTING: &str = "files.language";
@@ -109,6 +114,11 @@ pub struct Import {
     menu: Option<Menu>,
     choosing: bool,
     exporting: bool,
+    /// The row that Space opens in Quick Look.
+    selected: Option<u64>,
+    /// How many files the drag over the window holds, for the file stack in the drop card.
+    dragging: usize,
+    pub(crate) queue_focus: FocusHandle,
     pub(crate) choose_focus: FocusHandle,
     pub(crate) clear_focus: FocusHandle,
     pub(crate) language_focus: FocusHandle,
@@ -149,6 +159,9 @@ impl Import {
             menu: None,
             choosing: false,
             exporting: false,
+            selected: None,
+            dragging: 0,
+            queue_focus: cx.focus_handle(),
             choose_focus: cx.focus_handle().tab_stop(true),
             clear_focus: cx.focus_handle().tab_stop(true),
             language_focus: cx.focus_handle().tab_stop(true),
@@ -327,7 +340,14 @@ impl Import {
     /// a name that is gone) is refused here, before anything opens it, and the rest still go in.
     /// Returns how many were queued.
     pub fn add_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) -> usize {
+        self.dragging = 0;
+        let asked = !paths.is_empty();
+        let paths = expand_folders(paths);
         if paths.is_empty() {
+            if asked {
+                self.notice = Some("That folder has no audio or video files.".to_owned());
+                cx.notify();
+            }
             return 0;
         }
         if let Some(why) = self.blocker(cx) {
@@ -375,7 +395,7 @@ impl Import {
         self.choosing = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let paths = pick_files(cx).await;
+            let paths = pick(cx, true).await;
             let _ = this.update(cx, |import, cx| {
                 import.choosing = false;
                 if let Some(paths) = paths {
@@ -503,6 +523,68 @@ impl Import {
         })
         .detach();
         Ok(())
+    }
+
+    /// Copies the transcripts of every finished file, one after the other, each under its name.
+    pub fn copy_all(&mut self, cx: &mut Context<Self>) {
+        let texts: Vec<String> = self
+            .items
+            .iter()
+            .filter_map(|item| Some(format!("{}\n{}", item.name, item.text.as_ref()?)))
+            .collect();
+        if texts.is_empty() {
+            return;
+        }
+        self.info = Some(match texts.len() {
+            1 => "Copied 1 transcript.".to_owned(),
+            n => format!("Copied {n} transcripts."),
+        });
+        cx.write_to_clipboard(ClipboardItem::new_string(texts.join("\n\n")));
+        hook::record_event("import", "copied-all");
+        cx.notify();
+    }
+
+    pub fn selected(&self) -> Option<u64> {
+        self.selected
+    }
+
+    pub fn select(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.selected != Some(id) {
+            self.selected = Some(id);
+            cx.notify();
+        }
+    }
+
+    pub fn dragging(&self) -> usize {
+        self.dragging
+    }
+
+    /// Counts the files of a drag over the window; the drop card shows the count.
+    pub fn drag_moved(&mut self, count: usize, cx: &mut Context<Self>) {
+        if self.dragging != count {
+            self.dragging = count;
+            cx.notify();
+        }
+    }
+
+    /// The transcript of a finished item as a `.txt` file in the temporary folder, for a drag
+    /// out to Finder or another app and for Quick Look.
+    pub fn result_file(&self, id: u64) -> Result<PathBuf, String> {
+        let item = self.item(id)?;
+        let text = item
+            .text
+            .as_deref()
+            .ok_or("Only a finished file has a transcript.")?;
+        write_result(&results_dir(), &item.name, text)
+    }
+
+    /// What Quick Look shows for the selected row: the transcript once it is done, else the file.
+    pub fn preview_path(&self) -> Option<PathBuf> {
+        let item = self.item(self.selected?).ok()?;
+        match item.state {
+            State::Done => self.result_file(item.id).ok(),
+            _ => Some(item.path.clone()),
+        }
     }
 
     /// Asks the window to open History on the row of a finished item.
@@ -636,13 +718,36 @@ impl Import {
                 }
             }
             ImportEvent::Finished { item, outcome } => {
+                let mut cancelled = true;
                 if let Some(index) = self.items.iter().position(|found| found.id == item) {
                     self.finish(index, outcome, cx);
+                    cancelled = self.items[index].state == State::Cancelled;
                 }
                 self.start_next(cx);
+                // A cancel is the user at work in the window; it needs no notification.
+                if !cancelled && !self.busy() {
+                    self.queue_done(cx);
+                }
                 cx.notify();
             }
         }
+    }
+
+    /// The whole queue is through: one notification says so, when no Hushpen window is in front.
+    fn queue_done(&self, cx: &mut Context<Self>) {
+        if cx.active_window().is_some() {
+            return;
+        }
+        let count = |state| self.items.iter().filter(|item| item.state == state).count();
+        let (done, failed) = (count(State::Done), count(State::Failed));
+        let body = match (done, failed) {
+            (0, 0) => return,
+            (1, 0) => "1 file is transcribed.".to_owned(),
+            (n, 0) => format!("{n} files are transcribed."),
+            (n, f) => format!("{n} transcribed, {f} failed."),
+        };
+        hook::record_event("import", "queue-done notified");
+        cx.show_system_notification(crate::files::extras::queue_done_notification(body));
     }
 
     fn finish(&mut self, index: usize, outcome: JobOutcome, cx: &mut Context<Self>) {
@@ -777,6 +882,74 @@ fn file_name(path: &Path) -> String {
     )
 }
 
+/// Folders become the media files inside them, at any depth, in name order. Other paths stay,
+/// so a file that is not audio is still refused by name.
+fn expand_folders(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+        paths.sort();
+        for path in paths {
+            // `symlink_metadata`: a link to a folder is not followed, so a loop cannot hang.
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|ext| {
+                MEDIA.iter().any(|media| ext.eq_ignore_ascii_case(media))
+            }) {
+                out.push(path);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            walk(&path, &mut out);
+        } else {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Where dragged-out and Quick Look transcripts go. macOS clears the temporary folder by itself.
+fn results_dir() -> PathBuf {
+    std::env::temp_dir().join("Hushpen Transcripts")
+}
+
+/// Files older than this leave the results folder on the next write.
+const RESULT_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Writes `<name without its ending>.txt` with `text` into `dir`, and deletes results there that
+/// are older than a day.
+fn write_result(dir: &Path, name: &str, text: &str) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|error| format!("The transcript file could not be made: {error}"))?;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let old = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|time| time.elapsed().ok())
+                .is_some_and(|age| age > RESULT_MAX_AGE);
+            if old {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    let stem = Path::new(name)
+        .file_stem()
+        .map_or_else(|| name.to_owned(), |stem| stem.to_string_lossy().into_owned());
+    let path = dir.join(format!("{stem}.txt"));
+    std::fs::write(&path, format!("{text}\n"))
+        .map_err(|error| format!("The transcript file could not be written: {error}"))?;
+    Ok(path)
+}
+
 /// The size of a regular file, from a `stat` and nothing else: a pipe is never opened, so
 /// nothing can block on it. `None` for anything that is not a regular file.
 fn regular_file_size(path: &Path) -> Option<u64> {
@@ -810,6 +983,11 @@ pub fn failure_message(code: &str, detail: &str) -> String {
 
 /// The files the user picks: the path the test hook queued, or the system's picker.
 pub(crate) async fn pick_files(cx: &mut gpui_kit::AsyncApp) -> Option<Vec<PathBuf>> {
+    pick(cx, false).await
+}
+
+/// The picker; `directories` lets the user pick folders too.
+async fn pick(cx: &mut gpui_kit::AsyncApp, directories: bool) -> Option<Vec<PathBuf>> {
     #[cfg(feature = "test-automation")]
     if let Some(paths) = hushpen_testhook::dialogs::take_answer() {
         return Some(paths);
@@ -817,7 +995,7 @@ pub(crate) async fn pick_files(cx: &mut gpui_kit::AsyncApp) -> Option<Vec<PathBu
     let asked = cx.update(|cx| {
         cx.prompt_for_paths(gpui_kit::PathPromptOptions {
             files: true,
-            directories: false,
+            directories,
             multiple: true,
             prompt: None,
         })
