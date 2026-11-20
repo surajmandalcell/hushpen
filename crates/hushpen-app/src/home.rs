@@ -143,8 +143,6 @@ impl Home {
 struct Stats {
     words: i64,
     words_week: i64,
-    dictations: i64,
-    dictations_today: i64,
     speech_ms: i64,
     streak: i64,
     best: i64,
@@ -156,13 +154,9 @@ fn stats(days: &[DayTotal], today: i64) -> Stats {
     let mut last = None;
     for day in days {
         stats.words += day.words;
-        stats.dictations += day.dictations;
         stats.speech_ms += day.speech_ms;
         if day.day > today - 7 {
             stats.words_week += day.words;
-        }
-        if day.day == today {
-            stats.dictations_today = day.dictations;
         }
         run = if last == Some(day.day - 1) {
             run + 1
@@ -209,11 +203,12 @@ fn plural(n: i64, one: &str, many: &str) -> String {
     format!("{} {}", grouped(n), if n == 1 { one } else { many })
 }
 
-fn saved(minutes: f64) -> String {
+/// The time saved as a number and its unit, such as ("18.6", "h").
+fn saved(minutes: f64) -> (String, String) {
     if minutes < 60.0 {
-        format!("{} min", minutes.round() as i64)
+        ((minutes.round() as i64).to_string(), "min".to_owned())
     } else {
-        format!("{:.1} h", minutes / 60.0)
+        (format!("{:.1}", minutes / 60.0), "h".to_owned())
     }
 }
 
@@ -313,40 +308,40 @@ impl Home {
     fn tiles(&self, palette: Palette, stats: &Stats, count: f32) -> impl IntoElement {
         let up = |n: i64| (n as f32 * count).round() as i64;
         let wpm = stats.wpm();
+        let streak = up(stats.streak);
+        let (saved_number, saved_unit) = saved(stats.saved_minutes() * f64::from(count));
+        // (hook key, icon, label, number, unit, secondary line), as in the owner pick B1.
         let tiles = [
             (
                 "words",
                 IconName::TextAlignStart,
                 "Words",
                 grouped(up(stats.words)),
+                String::new(),
                 format!("{} this week", grouped(stats.words_week)),
-            ),
-            (
-                "dictations",
-                IconName::Mic,
-                "Dictations",
-                grouped(up(stats.dictations)),
-                format!("{} today", grouped(stats.dictations_today)),
             ),
             (
                 "speed",
                 IconName::Gauge,
-                "Speaking speed",
-                format!("{} wpm", (wpm * f64::from(count)).round() as i64),
+                "Speed",
+                ((wpm * f64::from(count)).round() as i64).to_string(),
+                "wpm".to_owned(),
                 format!("{:.1}x your typing", wpm / TYPING_WPM),
             ),
             (
                 "streak",
                 IconName::Flame,
                 "Streak",
-                plural(up(stats.streak), "day", "days"),
+                grouped(streak),
+                if streak == 1 { "day" } else { "days" }.to_owned(),
                 format!("Best: {}", plural(stats.best, "day", "days")),
             ),
             (
                 "saved",
                 IconName::Hourglass,
                 "Time saved",
-                saved(stats.saved_minutes() * f64::from(count)),
+                saved_number,
+                saved_unit,
                 format!("vs typing at {TYPING_WPM} wpm"),
             ),
         ];
@@ -354,12 +349,12 @@ impl Home {
             .flex()
             .gap(px(space::MD))
             .w_full()
-            .children(tiles.into_iter().map(|(key, icon, label, number, sub)| {
+            .children(tiles.into_iter().map(|(key, icon, label, number, unit, sub)| {
                 div()
                     .id(hook::id("home", key))
                     .test_support()
                     .role(Role::Group)
-                    .aria_label(format!("{label}: {number}"))
+                    .aria_label(format!("{label}: {number} {unit}"))
                     .flex_1()
                     .min_w_0()
                     .flex()
@@ -390,11 +385,22 @@ impl Home {
                     )
                     .child(
                         div()
-                            .text_token(TITLE)
-                            .font_features(tabular())
-                            .text_color(palette.label)
-                            .truncate()
-                            .child(number),
+                            .flex()
+                            .items_baseline()
+                            .gap(px(4.0))
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_token(TITLE)
+                                    .font_features(tabular())
+                                    .text_color(palette.label)
+                                    .truncate()
+                                    .child(number),
+                            )
+                            .children(
+                                (!unit.is_empty())
+                                    .then(|| ui::secondary(palette).flex_none().child(unit)),
+                            ),
                     )
                     .child(ui::secondary(palette).child(sub))
             }))
@@ -693,10 +699,9 @@ mod tests {
         assert_eq!((today.streak, today.best), (2, 3));
         assert_eq!(stats(&days, 11).streak, 2, "no dictation yet today");
         assert_eq!(stats(&days, 12).streak, 0);
-        assert_eq!(
-            (today.words, today.words_week, today.dictations_today),
-            (40, 10, 1)
-        );
+        assert_eq!((today.words, today.words_week), (40, 10));
+        assert_eq!(saved(45.0), ("45".to_owned(), "min".to_owned()));
+        assert_eq!(saved(90.0), ("1.5".to_owned(), "h".to_owned()));
         assert_eq!(grouped(12_480), "12,480");
         assert_eq!(grouped(999), "999");
     }
