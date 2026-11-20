@@ -98,7 +98,7 @@ pub fn meta(row: &Row) -> String {
         parts.extend(row.model_id.as_deref().map(engine_name));
         parts.extend(row.source_name.clone());
     } else if let Some(app) = &row.target_app {
-        parts.push(app.clone());
+        parts.push(hushpen_platform::app_name::display_name(app));
     }
     if row.duration_ms > 0 {
         parts.push(seconds(row.duration_ms));

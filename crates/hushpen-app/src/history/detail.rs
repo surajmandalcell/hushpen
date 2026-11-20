@@ -334,7 +334,13 @@ pub(super) fn detail_view(
             ("rule", "After the rules", row.rule_text.clone()),
             ("llm", "After AI cleanup", row.llm_text.clone()),
             ("final", "Final text", row.final_text.clone()),
-            ("app", "App", row.target_app.clone()),
+            (
+                "app",
+                "App",
+                row.target_app
+                    .as_deref()
+                    .map(hushpen_platform::app_name::display_name),
+            ),
             ("duration", "Duration", Some(seconds(row.duration_ms))),
             ("model", "Model", row.model_id.as_deref().map(model_name)),
             ("language", "Language", language),
