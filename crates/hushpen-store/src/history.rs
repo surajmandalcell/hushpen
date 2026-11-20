@@ -151,13 +151,79 @@ pub(crate) fn ensure_writable(db: &Database) -> Result<()> {
     Ok(())
 }
 
-/// Saves one row and its segments in one step.
+/// Saves one row and its segments in one step, and adds a completed dictation to the total of
+/// its day. The row is the record: a total that cannot be written is logged, never a lost row.
 pub fn save(db: &Database, row: &Row, segments: &[Segment]) -> Result<()> {
+    insert_row(db, row, segments)?;
+    if let Err(error) = add_to_day(db, row) {
+        log::warn!("the daily total was not updated: {error}");
+    }
+    Ok(())
+}
+
+fn insert_row(db: &Database, row: &Row, segments: &[Segment]) -> Result<()> {
     ensure_writable(db)?;
     in_savepoint(db, |conn| {
         insert(conn, row)?;
         insert_segments(conn, &row.id, segments)
     })
+}
+
+/// Words in a text: the runs between white space. The daily totals count with it.
+pub fn word_count(text: Option<&str>) -> i64 {
+    text.map_or(0, |text| text.split_whitespace().count() as i64)
+}
+
+// shortcut: a reprocess does not move the total of its day, upgrade if stats must follow edits.
+fn add_to_day(db: &Database, row: &Row) -> Result<()> {
+    let words = word_count(row.final_text.as_deref());
+    if row.kind != "dictation" || row.status != "completed" || words == 0 {
+        return Ok(());
+    }
+    db.connection().execute(
+        "INSERT INTO daily_total (day, words, dictations, speech_ms) \
+         VALUES (CAST(julianday(?1 / 1000, 'unixepoch', 'localtime') - 2440587.5 AS INTEGER), ?2, 1, ?3) \
+         ON CONFLICT(day) DO UPDATE SET words = words + excluded.words, \
+         dictations = dictations + 1, speech_ms = speech_ms + excluded.speech_ms",
+        params![row.created_at, words, row.duration_ms],
+    )?;
+    Ok(())
+}
+
+/// The totals of one local day. `day` counts days since 1970-01-01 in the system time zone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DayTotal {
+    pub day: i64,
+    pub words: i64,
+    pub dictations: i64,
+    pub speech_ms: i64,
+}
+
+/// Every day with a dictation, oldest first. Deletes and Clear all leave these alone.
+pub fn daily_totals(db: &Database) -> Result<Vec<DayTotal>> {
+    let mut statement = db.connection().prepare_cached(
+        "SELECT day, words, dictations, speech_ms FROM daily_total ORDER BY day",
+    )?;
+    let days = statement
+        .query_map([], |row| {
+            Ok(DayTotal {
+                day: row.get(0)?,
+                words: row.get(1)?,
+                dictations: row.get(2)?,
+                speech_ms: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(days)
+}
+
+/// Today as a [`DayTotal::day`].
+pub fn today(db: &Database) -> Result<i64> {
+    Ok(db.connection().query_row(
+        "SELECT CAST(julianday('now', 'localtime') - 2440587.5 AS INTEGER)",
+        [],
+        |row| row.get(0),
+    )?)
 }
 
 fn in_savepoint<T>(
@@ -388,9 +454,9 @@ pub fn delete(db: &Database, id: &str) -> Result<Option<Stored>> {
     Ok(Some(Stored { row, segments }))
 }
 
-/// Puts a deleted row back with its id, time, and segments.
+/// Puts a deleted row back with its id, time, and segments. Its day already counts it.
 pub fn restore(db: &Database, stored: &Stored) -> Result<()> {
-    save(db, &stored.row, &stored.segments)
+    insert_row(db, &stored.row, &stored.segments)
 }
 
 /// Removes every row and returns the audio paths they had.
