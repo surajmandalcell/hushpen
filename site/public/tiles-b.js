@@ -115,7 +115,7 @@
       { cap: 'Drop', cam: [62, 48, 1.12], ms: 1500, focus: [50, 52], html: shot(360, 210, manualBar(0) + pane(
         `<div class="tb-dz">${ico('lines', 'tb-dzi')}<b>Drop audio files here</b><small>WAV, MP3, FLAC, M4A, and more</small>${btn('Choose Files…', 'dft')}` +
         `<span class="tb-fi"><i class="tb-doc">${ico('lines')}</i><em>Interview.wav</em>${cursor(0, 0)}</span></div>` +
-        head('Options') + grp(row(`${tt('Model', 'Change it in Models')}<span class="tb-v">Parakeet v3 Q4</span>`))
+        head('Options') + grp(row(`${tt('Model', 'Change it in Models')}<span class="tb-v">Nemotron Labs Unified ASR 0.6B Q8</span>`))
       ), 560) },
       { cap: 'Queue', cam: [54, 52, 1.1], ms: 1600, focus: [50, 62], html: shot(360, 210, manualBar(0) + pane(zoneSmall + queue(
         row(`${tt('Interview.wav', '212 MB · 47:12 · About a minute left')}<i class="tb-pg" style="--t:120ms;--p:.64"><b></b></i><span class="tb-pc" style="--t:120ms;--tbn:64"></span>${btn('Cancel', 'tb-opt2')}`) +
