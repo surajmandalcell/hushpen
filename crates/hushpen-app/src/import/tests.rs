@@ -1122,7 +1122,13 @@ fn a_folder_queues_its_media_files_in_name_order(cx: &mut TestAppContext) {
     let fixture = open(cx);
     let folder = fixture.folder.path().join("talks");
     std::fs::create_dir_all(folder.join("day 2")).unwrap();
-    for name in ["b.wav", "a.MP3", "notes.txt", "day 2/c.m4a", "day 2/clip.mov"] {
+    for name in [
+        "b.wav",
+        "a.MP3",
+        "notes.txt",
+        "day 2/c.m4a",
+        "day 2/clip.mov",
+    ] {
         std::fs::write(folder.join(name), b"audio").unwrap();
     }
     assert_eq!(add(cx, &fixture, vec![folder]), 4);

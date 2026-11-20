@@ -17,9 +17,8 @@ use gpui_kit::component::{Sizable as _, Size};
 use gpui_kit::gpui::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, ExternalDragPayload, ExternalPaths,
-    FileDragPaths, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Render, StatefulInteractiveElement, Styled, Transformation, Window, div, px,
-    radians, svg,
+    FileDragPaths, FocusHandle, InteractiveElement, IntoElement, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Transformation, Window, div, px, radians, svg,
 };
 use hushpen_core::export::Format;
 use hushpen_core::language;
@@ -632,17 +631,17 @@ fn item_row(
         row
     };
     row.child(
-            ui::value(palette)
-                .id(hook::indexed("import", "status", index))
-                .test_support()
-                .aria_label(status.clone())
-                .w(px(size::QUEUE_STATUS_WIDTH))
-                .text_right()
-                .text_color(color)
-                .child(status),
-        )
-        .children(buttons)
-        .into_any_element()
+        ui::value(palette)
+            .id(hook::indexed("import", "status", index))
+            .test_support()
+            .aria_label(status.clone())
+            .w(px(size::QUEUE_STATUS_WIDTH))
+            .text_right()
+            .text_color(color)
+            .child(status),
+    )
+    .children(buttons)
+    .into_any_element()
 }
 
 /// Cancel while a file waits or runs; Copy, Export, Show in History, and Remove once it is

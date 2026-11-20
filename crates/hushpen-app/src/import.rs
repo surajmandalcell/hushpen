@@ -903,9 +903,10 @@ fn expand_folders(paths: Vec<PathBuf>) -> Vec<PathBuf> {
             };
             if meta.is_dir() {
                 walk(&path, out);
-            } else if path.extension().is_some_and(|ext| {
-                MEDIA.iter().any(|media| ext.eq_ignore_ascii_case(media))
-            }) {
+            } else if path
+                .extension()
+                .is_some_and(|ext| MEDIA.iter().any(|media| ext.eq_ignore_ascii_case(media)))
+            {
                 out.push(path);
             }
         }
@@ -952,9 +953,10 @@ fn write_result(dir: &Path, name: &str, text: &str) -> Result<PathBuf, String> {
             }
         }
     }
-    let stem = Path::new(name)
-        .file_stem()
-        .map_or_else(|| name.to_owned(), |stem| stem.to_string_lossy().into_owned());
+    let stem = Path::new(name).file_stem().map_or_else(
+        || name.to_owned(),
+        |stem| stem.to_string_lossy().into_owned(),
+    );
     let path = dir.join(format!("{stem}.txt"));
     // Removes a link itself, not its target; create_new (O_EXCL) then refuses any link put back.
     match std::fs::remove_file(&path) {
