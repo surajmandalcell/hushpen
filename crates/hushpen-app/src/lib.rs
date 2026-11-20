@@ -25,6 +25,7 @@ pub mod flow_bar;
 #[cfg(test)]
 mod focus_roles;
 pub mod history;
+pub mod home;
 pub mod hook;
 pub mod import;
 pub mod instance;

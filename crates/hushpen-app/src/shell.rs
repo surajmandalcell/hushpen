@@ -7,6 +7,7 @@ use crate::dictionary::{self, Dictionary};
 use crate::files::{self, DROP_GROUP, Files};
 use crate::flow_bar::FlowBar;
 use crate::history::{self, History, HistoryRequest};
+use crate::home::{self, Home, HomeRequest};
 use crate::hook;
 use crate::import::ImportRequest;
 use crate::mic::{self, Mic};
@@ -23,9 +24,10 @@ use crate::updater::{self, Updater};
 use crate::views::View;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, Point, Render, Role,
-    ScrollHandle, StatefulInteractiveElement, Styled, Window, div, px, svg, transparent_black,
+    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, ExternalPaths, FocusHandle,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement,
+    Point, Render, Role, ScrollHandle, StatefulInteractiveElement, Styled, Window, div, px, svg,
+    transparent_black,
 };
 use serde_json::json;
 use std::rc::Rc;
@@ -39,6 +41,9 @@ pub struct Shell {
     /// focused element, so without it the first Tab would reach no handler.
     shell_focus: FocusHandle,
     nav_focus: Vec<FocusHandle>,
+    /// The Home | Transcribe | Read aloud tabs of the title bar.
+    tab_focus: FocusHandle,
+    home: Option<Entity<Home>>,
     mic: Option<Entity<Mic>>,
     models: Option<Entity<Models>>,
     pub(crate) devices: Option<Entity<Devices>>,
@@ -75,6 +80,8 @@ impl Shell {
                 .iter()
                 .map(|_| cx.focus_handle().tab_stop(true))
                 .collect(),
+            tab_focus: cx.focus_handle().tab_stop(true),
+            home: None,
             mic: None,
             models: None,
             devices: None,
@@ -188,8 +195,27 @@ impl Shell {
         .detach();
         let scroll = self.content_scroll.clone();
         history.update(cx, |history, _| history.use_scroll(scroll));
+        let home = cx.new(|cx| Home::new(history.clone(), cx));
+        cx.subscribe(&home, |shell, _, request: &HomeRequest, cx| match request {
+            HomeRequest::ShowHistory => shell.select(View::History, cx),
+            HomeRequest::Open(id) => shell.show_in_history(id, cx),
+        })
+        .detach();
+        self.home = Some(home);
         self.history = Some(history);
         cx.notify();
+    }
+
+    /// A tab of the title bar on Home: `home`, or a mode of the Manual view.
+    pub fn open_tab(&mut self, key: &str, cx: &mut Context<Self>) {
+        match (files::Mode::from_key(key), self.files.clone()) {
+            (Some(mode), Some(files)) => {
+                // A refusal is a settings file that cannot be written; the tab still opens.
+                let _ = files.update(cx, |files, cx| files.set_mode(mode, cx));
+                self.select(View::Manual, cx);
+            }
+            _ => self.select(View::Home, cx),
+        }
     }
 
     /// Shows the Manual view and repaints when it changes. Show in History opens History on its
@@ -368,9 +394,10 @@ impl Shell {
         }
     }
 
-    fn focus_nav(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(handle) = self.nav_focus.get(index) {
-            window.focus(handle, cx);
+    /// Focuses the sidebar row at `at`, counted in [`View::SIDEBAR`].
+    fn focus_nav(&self, at: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(view) = View::SIDEBAR.get(at) {
+            window.focus(&self.nav_focus[view.index()], cx);
         }
     }
 
@@ -381,8 +408,8 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let index = view.index();
-        let last = View::ALL.len() - 1;
+        let index = View::SIDEBAR.iter().position(|v| *v == view).unwrap_or(0);
+        let last = View::SIDEBAR.len() - 1;
         match event.keystroke.key.as_str() {
             "enter" | "space" => self.select(view, cx),
             "down" => self.focus_nav((index + 1).min(last), window, cx),
@@ -456,7 +483,8 @@ impl Shell {
         palette: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let active = view == self.active;
+        // The Transcribe and Read aloud tabs are part of Home.
+        let active = view == self.active || (view == View::Home && self.active == View::Manual);
         // The 2 px border is always there so the focus ring never shifts the row.
         let item = div()
             .id(hook::id("sidebar", view.key()))
@@ -502,7 +530,7 @@ impl Shell {
     }
 
     fn sidebar(&self, palette: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let items: Vec<_> = View::ALL
+        let items: Vec<_> = View::SIDEBAR
             .into_iter()
             .map(|view| self.nav_item(view, palette, cx))
             .collect();
@@ -534,7 +562,7 @@ impl Shell {
 
     /// The title sits in the title bar area, on the chrome center line with the window controls,
     /// and has no line under it. Settings puts its search field at the right end, on the same
-    /// line. Manual puts its mode control in the middle of the pane width.
+    /// line. Home and Manual put the Home | Transcribe | Read aloud tabs there.
     fn toolbar(&self, shell: &Entity<Shell>, palette: Palette, cx: &App) -> impl IntoElement {
         let search = self.search_field(cx).map(|field| {
             let shell = shell.clone();
@@ -547,27 +575,22 @@ impl Shell {
                 })
                 .child(field)
         });
-        // Centered on the pane width, not on the space the title leaves. The wrapper has no
-        // handler, so a drag on the empty band still moves the window.
-        let mode = self
-            .files
-            .as_ref()
-            .filter(|_| self.active == View::Manual)
-            .map(|files| {
+        let on_home = matches!(self.active, View::Home | View::Manual);
+        let tabs = on_home
+            .then(|| home::tabs(shell, self.files.as_ref(), self.active, &self.tab_focus, cx))
+            .flatten()
+            .map(|tabs| {
                 div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w_full()
-                    .flex()
-                    .justify_center()
-                    .child(
-                        div()
-                            .mt(px(theme::chrome_top(size::BUTTON_HEIGHT)))
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .child(files::panel::mode_switch(files, cx)),
-                    )
+                    .mt(px(theme::chrome_top(size::BUTTON_HEIGHT)))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(tabs)
             });
+        // The Transcribe and Read aloud tabs keep the Home title.
+        let title = if on_home {
+            View::Home.title()
+        } else {
+            self.active.title()
+        };
         div()
             .id(hook::id("toolbar", "drag"))
             .test_support()
@@ -585,15 +608,15 @@ impl Shell {
                 div()
                     .id(hook::id("view", "title"))
                     .test_support()
-                    .aria_label(self.active.title())
+                    .aria_label(title)
                     .min_w_0()
                     .truncate()
                     .mt(px(theme::chrome_top(TOOLBAR_TITLE.size)))
                     .text_token(TOOLBAR_TITLE)
                     .text_color(palette.label)
-                    .child(self.active.title()),
+                    .child(title),
             )
-            .children(mode)
+            .children(tabs)
             .children(search)
     }
 
@@ -680,7 +703,11 @@ impl Shell {
             view,
         ) {
             (Some(mic), _, _, _, View::Home) => {
-                let mut home = div().flex().flex_col().gap(px(space::XXL));
+                let mut home = div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::XXL))
+                    .children(self.home.clone());
                 if let Some(dictation) = &self.dictation {
                     home = home.child(dictation::panel::render(dictation, shell, cx));
                 }
@@ -1107,7 +1134,7 @@ mod tests {
             View::Home,
             "a first start opens Home"
         );
-        click(cx, handle, "sidebar.files");
+        shell.update(cx, |shell, cx| shell.select(View::Manual, cx));
         assert_eq!(storage.settings.get(LAST_VIEW), Some(json!("files")));
         click(cx, handle, "sidebar.models");
         assert_eq!(storage.settings.get(LAST_VIEW), Some(json!("models")));
@@ -1138,10 +1165,13 @@ mod tests {
     #[gpui_kit::test]
     fn clicking_each_sidebar_item_opens_its_view(cx: &mut TestAppContext) {
         let (handle, shell) = open(cx);
-        for (view, id) in View::ALL.into_iter().zip([
+        assert!(
+            !present(cx, handle, "sidebar.files"),
+            "Manual is a Home tab"
+        );
+        for (view, id) in View::SIDEBAR.into_iter().zip([
             "sidebar.home",
             "sidebar.history",
-            "sidebar.files",
             "sidebar.dictionary",
             "sidebar.models",
             "sidebar.devices",
@@ -1179,11 +1209,11 @@ mod tests {
         assert_eq!(active(cx), View::History);
         press(cx, handle, "tab");
         assert!(
-            focused(cx, handle, "sidebar.files"),
+            focused(cx, handle, "sidebar.dictionary"),
             "Tab also moves between items"
         );
         press(cx, handle, "space");
-        assert_eq!(active(cx), View::Manual);
+        assert_eq!(active(cx), View::Dictionary);
         press(cx, handle, "end");
         assert!(focused(cx, handle, "sidebar.about"));
         press(cx, handle, "down");
@@ -1309,7 +1339,7 @@ mod tests {
     ) {
         let (handle, _) = open(cx);
         let mut last_bottom = None;
-        for view in View::ALL {
+        for view in View::SIDEBAR {
             let id: &'static str = Box::leak(format!("sidebar.{}", view.key()).into_boxed_str());
             let (x, y, width, height) = rect(cx, handle, id);
             assert_eq!(height, size::NAV_ITEM_HEIGHT, "{id}");

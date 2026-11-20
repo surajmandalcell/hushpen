@@ -74,6 +74,10 @@ icon_assets!(
         GripVertical,
         Circle,
         LoaderCircle,
+        TextAlignStart,
+        Gauge,
+        Flame,
+        Hourglass,
         File
     ]
 );
