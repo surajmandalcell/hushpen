@@ -27,6 +27,18 @@ impl View {
         View::About,
     ];
 
+    /// The sidebar rows. Manual has none: it opens from the Transcribe and Read aloud tabs on
+    /// Home, and its title stays Home.
+    pub const SIDEBAR: [View; 7] = [
+        View::Home,
+        View::History,
+        View::Dictionary,
+        View::Models,
+        View::Devices,
+        View::Settings,
+        View::About,
+    ];
+
     /// Name shown in the sidebar and as the view title.
     pub fn title(self) -> &'static str {
         match self {

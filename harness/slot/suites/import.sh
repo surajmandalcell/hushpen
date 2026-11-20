@@ -54,7 +54,8 @@ import_one() { # <path>: adds one file and waits for its end
 text_of() { item "$1" .text; }
 open_view() {
   focus "$(app_window)"
-  $HC click sidebar.files >/dev/null
+  $HC click sidebar.home >/dev/null
+  $HC click files.mode.transcribe >/dev/null
   wait_until 5 rendered files.view
   $HC action files-mode '{"mode":"transcribe"}' >/dev/null
   sleep 0.3

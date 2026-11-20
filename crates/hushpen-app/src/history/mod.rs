@@ -237,6 +237,10 @@ impl History {
         &self.search
     }
 
+    pub fn storage(&self) -> &Rc<Storage> {
+        &self.storage
+    }
+
     pub fn controller(&self) -> &Entity<Controller> {
         &self.controller
     }

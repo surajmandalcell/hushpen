@@ -208,7 +208,7 @@ fn read_aloud_shell(
 }
 
 #[gpui_kit::test]
-fn the_mode_control_sits_in_the_title_bar_centered_on_the_pane(cx: &mut TestAppContext) {
+fn the_home_tabs_sit_at_the_right_end_of_the_title_bar(cx: &mut TestAppContext) {
     let (_fixture, handle) = read_aloud_window(cx);
     let (control, pane, title, page) = cx
         .update_window(handle, |_, window, _| {
@@ -220,9 +220,11 @@ fn the_mode_control_sits_in_the_title_bar_centered_on_the_pane(cx: &mut TestAppC
             )
         })
         .unwrap();
-    let center_x = f32::from(control.origin.x) + f32::from(control.size.width) / 2.0;
-    let pane_x = f32::from(pane.origin.x) + f32::from(pane.size.width) / 2.0;
-    assert!((center_x - pane_x).abs() < 0.5, "{center_x} vs {pane_x}");
+    let gap = f32::from(pane.right()) - f32::from(control.right());
+    assert!(
+        (gap - crate::theme::space::XXL).abs() < 0.5,
+        "the pane margin at the right: {gap}"
+    );
     let center_y = f32::from(control.origin.y) + f32::from(control.size.height) / 2.0;
     assert!(
         (center_y - crate::theme::size::CHROME_CENTER).abs() < 0.5,
@@ -238,8 +240,11 @@ fn the_mode_control_sits_in_the_title_bar_centered_on_the_pane(cx: &mut TestAppC
 #[gpui_kit::test]
 fn left_and_right_in_the_title_bar_control_switch_the_mode(cx: &mut TestAppContext) {
     let (fixture, handle) = read_aloud_window(cx);
-    cx.update_window(handle, |_, window, cx| window.click("files.mode", cx))
-        .unwrap();
+    // The chosen Read aloud tab: a click in the middle would pick Transcribe.
+    cx.update_window(handle, |_, window, cx| {
+        window.click("files.mode.readAloud", cx)
+    })
+    .unwrap();
     for (key, expected) in [("left", Mode::Transcribe), ("right", Mode::ReadAloud)] {
         cx.update_window(handle, |_, window, cx| window.press(key, cx))
             .unwrap();
