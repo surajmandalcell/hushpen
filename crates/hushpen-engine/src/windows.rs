@@ -28,7 +28,7 @@ pub struct Window {
 }
 
 /// Cuts a [`PcmSource`] into windows while it is read, with [`TAIL_PAD`] of silence after its
-/// end. Neighbors overlap by [`OVERLAP`] and hand over at the middle of the overlap, so every
+/// end. Neighbors overlap ([`OVERLAP`] by default) and hand over at the middle of the overlap, so every
 /// instant belongs to exactly one window. Only the current window and one read are held.
 pub struct Windows<'a> {
     source: &'a mut dyn PcmSource,
@@ -39,17 +39,26 @@ pub struct Windows<'a> {
     next_start: Option<usize>,
     audio_len: usize,
     ended: bool,
+    window: usize,
+    overlap: usize,
 }
 
 impl<'a> Windows<'a> {
     pub fn new(source: &'a mut dyn PcmSource) -> Self {
+        Self::sized(source, WINDOW, OVERLAP)
+    }
+
+    /// Windows of `window` samples that overlap by `overlap`.
+    pub fn sized(source: &'a mut dyn PcmSource, window: usize, overlap: usize) -> Self {
         Self {
             source,
-            buffer: Vec::with_capacity(WINDOW + OVERLAP),
+            buffer: Vec::with_capacity(window + overlap),
             start: 0,
             next_start: Some(0),
             audio_len: 0,
             ended: false,
+            window,
+            overlap,
         }
     }
 
@@ -62,7 +71,7 @@ impl<'a> Windows<'a> {
         self.buffer.drain(..start - self.start);
         self.start = start;
         // One sample past the window tells a full window from the last one.
-        while !self.ended && self.buffer.len() <= WINDOW {
+        while !self.ended && self.buffer.len() <= self.window {
             if cancel.is_cancelled() {
                 return Err(EngineError::Cancelled);
             }
@@ -76,17 +85,17 @@ impl<'a> Windows<'a> {
                 self.buffer.resize(self.buffer.len() + TAIL_PAD, 0.0);
             }
         }
-        let len = self.buffer.len().min(WINDOW);
+        let len = self.buffer.len().min(self.window);
         let end = start + len;
-        let last = self.ended && self.buffer.len() <= WINDOW;
+        let last = self.ended && self.buffer.len() <= self.window;
         if !last {
-            self.next_start = Some(end - OVERLAP);
+            self.next_start = Some(end - self.overlap);
         }
         let window = Window {
             start,
             end,
-            keep_from: if start == 0 { 0 } else { start + OVERLAP / 2 },
-            keep_to: if last { usize::MAX } else { end - OVERLAP / 2 },
+            keep_from: if start == 0 { 0 } else { start + self.overlap / 2 },
+            keep_to: if last { usize::MAX } else { end - self.overlap / 2 },
         };
         Ok(Some((window, &self.buffer[..len])))
     }

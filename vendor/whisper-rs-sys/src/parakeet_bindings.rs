@@ -142,6 +142,8 @@ unsafe extern "C" {
         pcm: *const f32,
         n: ::std::os::raw::c_int,
         lang: *const ::std::os::raw::c_char,
+        resume: bool,
+        save_at: ::std::os::raw::c_int,
     ) -> *const ::std::os::raw::c_char;
     pub fn hushpen_unified_begin(
         model: *mut hushpen_unified_model,

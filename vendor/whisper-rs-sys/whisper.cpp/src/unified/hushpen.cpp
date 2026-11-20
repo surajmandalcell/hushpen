@@ -51,6 +51,8 @@ struct hushpen_unified_model {
     pk::Backend backend;
     pk::ModelLoader loader;
     std::string result;
+    // Decoder state handed from one batch window to the next (see hushpen_unified_batch).
+    pk::RnntDecodeState carry;
     hushpen_unified_model(bool gpu, int threads) : backend(threads, !gpu) {}
 };
 
@@ -83,14 +85,20 @@ hushpen_unified_model* hushpen_unified_load(const char* path, bool use_gpu, int 
     });
 }
 
-const char* hushpen_unified_batch(hushpen_unified_model* model, const float* pcm, int n, const char* lang) {
+const char* hushpen_unified_batch(hushpen_unified_model* model, const float* pcm, int n, const char* lang,
+                                  bool resume, int save_at) {
     return guarded([&] {
         if (!model || n < 0 || (n && !pcm)) throw std::invalid_argument("Invalid Unified audio buffer");
         BackendScope scope(model->backend);
         const auto& ml = model->loader;
         const auto& cfg = ml.config();
         const int language = cfg.prompt.resolve_index_or_throw(lang ? lang : "");
+        const pk::PredictionNet pred(ml);
+        // Copy first: the state saved below replaces model->carry.
+        pk::RnntDecodeState st = resume ? model->carry : pk::rnnt_decode_init(pred);
+        st.hyp.clear();
         if (n < static_cast<int>(cfg.hop_length)) {
+            if (save_at >= 0) model->carry = st;
             model->result = pk::transcription_to_json("", {});
             return model->result.c_str();
         }
@@ -115,9 +123,24 @@ const char* hushpen_unified_batch(hushpen_unified_model* model, const float* pcm
             for (int c = 0; c < channels; ++c)
                 rows[(size_t)t * channels + c] = projected[(size_t)c * frames + t];
 
-        std::vector<pk::TokenInfo> tokens;
-        auto ids = pk::rnnt_greedy(pk::PredictionNet(ml), pk::Joint(ml), rows, frames, channels,
-                                   cfg.blank_id, cfg.max_symbols, &tokens);
+        // A fresh decoder that starts mid-sentence can emit only blanks for a whole window, so
+        // each window resumes from the state its neighbor had at this window's first frame.
+        const int frame_samples = (int)(cfg.hop_length * cfg.subsampling_factor);
+        const int split = save_at < 0 ? frames : std::min(frames, save_at / frame_samples);
+        const pk::Joint joint(ml);
+        std::vector<pk::TokenInfo> tokens, later;
+        auto decode = [&](int from, int to, std::vector<pk::TokenInfo>* out) {
+            if (to <= from) return;
+            std::vector<float> part(rows.begin() + (size_t)from * channels, rows.begin() + (size_t)to * channels);
+            pk::rnnt_decode_frames(pred, joint, part, to - from, channels, st, cfg.blank_id, cfg.max_symbols,
+                                   nullptr, out);
+            for (auto& token : *out) token.frame += from;
+        };
+        decode(0, split, &tokens);
+        if (save_at >= 0) model->carry = st;
+        decode(split, frames, &later);
+        tokens.insert(tokens.end(), later.begin(), later.end());
+        const auto& ids = st.hyp;
         if (timings)
             std::fprintf(stderr, "unified_timings: audio %.1f s  mel %.1f ms  encoder %.1f ms  decoder %.1f ms  frames %d  tokens %zu\n",
                          n / 16000.0, ms(t0, t1), ms(t1, t2), ms(t2, clock::now()), frames, ids.size());
