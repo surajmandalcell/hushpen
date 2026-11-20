@@ -61,12 +61,6 @@
 
   document.querySelectorAll('[data-reveal]').forEach(el => { const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { el.classList.add('in'); io.disconnect(); } }, { threshold: 0.12 }); io.observe(el); });
 
-  const COPY_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="2"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg><svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>';
-  document.querySelectorAll('[data-copy]').forEach(b => {
-    b.innerHTML = COPY_SVG;
-    b.addEventListener('click', () => { navigator.clipboard?.writeText(b.dataset.copy).catch(() => {}); b.classList.add('done'); setTimeout(() => b.classList.remove('done'), 1500); });
-  });
-
   // Strips. Each marquee row is doubled so the loop closes.
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const CHIPS = [['Mail', 'Thanks, I will send it today.'], ['Slack', 'On my way, five minutes.'], ['Notes', 'Buy milk. Call the bank.'], ['VS Code', '// retry the sync twice'], ['Terminal', 'git commit -m "fix the sync"'], ['Messages', 'Running late, start without me.'], ['Chrome', 'best pizza near me'], ['Pages', 'Chapter two begins at dawn.']];

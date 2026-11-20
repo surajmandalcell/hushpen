@@ -45,22 +45,14 @@
   .why-t h3 { font-size: clamp(34px, 9.6vw, 44px); }
 }
 
-/* Compare chart: seconds to write out a recording against its length, full width */
-.why-cmp { padding: 44px 0; }
-.why-cmp .why-t p { max-width: 36em; }
+/* Compare chart (home performance section): seconds to write out a recording against its length, full width */
 .cmp-card { margin: 36px 0 0; padding: 30px 30px 24px; border-radius: 28px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
 .cmp-svg svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--app); }
 .cmp-svg .g { stroke: rgba(0, 0, 0, .07); }
 .cmp-svg .t { fill: var(--ink3); }
-.cmp-svg .n { fill: var(--ink2); font-weight: 500; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
-.cmp-svg .n.us { fill: var(--ink); font-weight: 700; }
-.cmp-svg .v { fill: var(--ink3); font-weight: 500; }
 .cmp-narrow { display: none; }
 .cmp-foot { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink2); }
-.cmp-foot a { color: var(--ink2); text-decoration: underline dotted; text-underline-offset: 4px; white-space: nowrap; }
-.cmp-foot a:hover { color: var(--ink); }
 @media (max-width: 720px) {
-  .why-cmp { padding: 36px 0; }
   .cmp-card { margin-top: 24px; padding: 18px 12px 16px; border-radius: 22px; }
   .cmp-wide { display: none; }
   .cmp-narrow { display: block; }

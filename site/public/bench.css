@@ -1,8 +1,10 @@
 /* Benchmarks and method pages. Builds on kit.css and compare.css.
    Results page: direction B "Leaderboard" (specs/site-benchmarks.md). Spacing scale: 8 / 16 / 24 / 32 / 48 / 72. */
-:root { --tint: rgba(0, 122, 255, .05); --tint2: rgba(0, 122, 255, .14); --g1bg: #4CC46F; --r2bg: #F9DEDB; --r2: #A1281C;
-  --hush: #111; --other: #C7C7CC; }
-.wrap { max-width: 1240px; }
+:root { --tint: rgba(0, 110, 240, .065); --tint2: rgba(0, 110, 240, .17); --g1bg: #4CC46F; --r2bg: #F9DEDB; --r2: #A1281C;
+  --abg: #FBEBC8; --a2: #8A5300; --hush: #111; --other: #C7C7CC;
+  /* a very faint white sheen over the tint, so Hushpen rows and columns catch the eye */
+  --shine-row: linear-gradient(180deg, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0) 70%);
+  --shine-col: linear-gradient(90deg, rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, .55) 50%, rgba(255, 255, 255, 0) 85%); }
 main.bx { padding-bottom: 96px; }
 .bx-sh { display: none; }
 .bx-num { font-variant-numeric: tabular-nums; }
@@ -73,7 +75,8 @@ th[aria-sort="ascending"] button > span:first-child::after { opacity: 1; border-
 .bx-full thead th, .bx-wait thead th, .bx-ct thead th, .bx-grid thead th { padding-top: 16px; padding-bottom: 12px; vertical-align: bottom; }
 .bx-full tbody tr, .bx-wait tbody tr, .bx-ct tbody tr, .bx-grid tbody tr { box-shadow: inset 0 .5px 0 var(--line); }
 /* Hushpen rows and columns: the soft blue tint, the same in every table and grid */
-.bx tr.us, .bx-grid .us, .paper .cp-tbl tbody tr:has(.us) > * { background: var(--tint); }
+.bx tr.us > *, .paper .cp-tbl tbody tr:has(.us) > * { background: var(--shine-row), var(--tint); }
+.bx-grid .us { background: var(--shine-col), var(--tint); }
 .bx-full td small, .bx-wait td small { display: block; margin-top: 2px; font-size: 12px; color: var(--ink3); }
 .bx-wait td b { font-weight: 600; }
 .bx-full td:nth-child(n+2) { width: 24%; }
@@ -86,6 +89,9 @@ th[aria-sort="ascending"] button > span:first-child::after { opacity: 1; border-
 .bx-full table[data-focus="1"] td:nth-child(2) .bx-bar b, .bx-full table[data-focus="2"] td:nth-child(3) .bx-bar b,
 .bx-full table[data-focus="3"] td:nth-child(4) .bx-bar b { text-align: right; font-weight: 600; }
 .bx-gap { color: var(--ink3); }
+/* Real time row: the dash fills the seconds slot only while that column draws its bars */
+.bx-full .bx-rtc b { display: none; }
+.bx-full table[data-focus="2"] td:nth-child(3) .bx-rtc b { display: block; color: var(--ink3); font-weight: 400; }
 sup.bx-fn { font-size: 10px; color: var(--ink2); margin-left: 1px; }
 .bx-bar sup.bx-fn { display: inline-block; width: 0; margin: 0; } /* zero width: the number keeps its place */
 .bx-fns { margin-top: 16px; max-width: 75ch; padding-left: 18px; list-style: decimal; font-size: 13px; line-height: 1.55; color: var(--ink2); }
@@ -115,9 +121,10 @@ sup.bx-fn { font-size: 10px; color: var(--ink2); margin-left: 1px; }
 .bx-grid tbody th small { display: block; font-size: 12px; font-weight: 400; color: var(--ink3); }
 .bx-grid thead th { vertical-align: bottom; text-align: center; font-weight: 600; }
 .bx-grid thead th .bx-who { white-space: normal; display: inline-flex; flex-direction: column; align-items: center; }
-.bx-grid thead th .bx-who i { margin: 0; font-size: 12px; }
+.bx-grid thead th .bx-who i { margin: 0; font-size: 12px; white-space: nowrap; }
 .bx-grid td.r1 { background: var(--g1bg); color: #04230F; font-weight: 700; }
-.bx-grid td.r5 { background: var(--r2bg); color: var(--r2); }
+.bx-grid td.ra { background: var(--abg); color: var(--a2); }
+.bx-grid td.rr { background: var(--r2bg); color: var(--r2); font-weight: 600; }
 .bx-key { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font-size: 13px; color: var(--ink2); }
 .bx-key span::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 3px; vertical-align: -2px; background: var(--c); }
 
@@ -154,7 +161,8 @@ sup.bx-fn { font-size: 10px; color: var(--ink2); margin-left: 1px; }
   .bx-full .bx-who i, .bx-wait .bx-who i { display: block; margin: 0; }
   .bx-full table[data-focus] td .bx-bar { grid-template-columns: 1fr !important; }
   .bx-full table[data-focus] td .bx-bar i { display: none !important; }
-  .bx-full table[data-focus] td .bx-bar b { text-align: left !important; }
+  .bx-full table[data-focus] td .bx-bar b { text-align: left !important; white-space: nowrap; }
+  .bx-full .bx-rtc b { display: none !important; }
   .bx-lg { display: none; } .bx-sh { display: inline; }
   .bx-full th, .bx-full td { padding: 10px 8px; font-size: 13px; }
   .bx-full th:first-child { padding-left: 14px; }
