@@ -1,5 +1,5 @@
 // Models scene: one story in four beats in the Hushpen window, drawn as the app draws it (DESIGN.md,
-// Light) at 940 by 600 points on a 1184 by 720 desktop. Parakeet downloads (416 MB) and passes its
+// Light) at 940 by 600 points on a 1184 by 720 desktop. Nemotron Unified downloads (939 MB) and passes its
 // check, dictation works, AI cleanup with S1-mini is turned on in Settings, and the same spoken words
 // come out cleaner. The desktop zooms to fit the column; below a zoom of CAM it keeps that zoom, so the
 // text stays readable, and pans to follow the pointer. The beats loop only while the scene is on
@@ -18,7 +18,7 @@
   const RULES = ['So', 'basically', 'the', 'report', 'is', 'late,', 'sorry.'];
   const CLEAN = 'The report is late. Sorry about that.';
   const STEPS = [
-    ['Download Parakeet', '416 MB, checked when it lands'],
+    ['Download Nemotron', '939 MB, checked when it lands'],
     ['Dictate', 'Press Option + Tab and talk'],
     ['Turn on S1-mini', 'AI cleanup on your Mac'],
     ['Cleaner text', 'Same words, tidied up'],
@@ -80,17 +80,18 @@
   const sec = (h, rows, ft) => `<h5>${h}</h5><div class="msa-g">${rows}</div>${ft ? `<p class="msa-ft">${ft}</p>` : ''}`;
   const NAV = [['house', 'Home'], ['clock', 'History'], ['files', 'Manual'], ['bookA', 'Dictionary'], ['cpu', 'Models'], ['settings', 'Settings'], ['info', 'About']];
 
-  region.innerHTML = `<div class="msa" role="img" aria-label="The Hushpen window. Parakeet downloads and passes its check, dictation types the words, AI cleanup with S1-mini is turned on in Settings, and the same words come out cleaner."><div class="msa-desk">${mbar('Hushpen', ['File', 'Edit', 'View', 'Window', 'Help'])}
+  region.innerHTML = `<div class="msa" role="img" aria-label="The Hushpen window. Nemotron Unified downloads and passes its check, dictation types the words, AI cleanup with S1-mini is turned on in Settings, and the same words come out cleaner."><div class="msa-desk">${mbar('Hushpen', ['File', 'Edit', 'View', 'Window', 'Help'])}
     <div class="msa-win"><i class="msa-tl"><b></b><b></b></i>
       <div class="msa-sb"><b class="msa-name">Hushpen</b><div class="msa-nav">${NAV.map(([k, n]) => `<span data-n="${n.toLowerCase()}">${ic(k)}${n}</span>`).join('')}</div></div>
       <div class="msa-pane">
         <div class="msa-tb"><b class="msa-ti">Models</b><span class="msa-q">${ic('search')}Search</span></div>
         <div class="msa-v" data-v="models">${sec('Speech recognition',
-          model('msa-pk', 'Parakeet v3 Q4', 1, 'Accurate dictation in English and 24 other European languages. No translation.', '416 MB') +
+          model('msa-pk', 'Nemotron Labs Unified ASR 0.6B Q8', 1, 'Fast mode shows text as you speak. Supports 25 European languages.', '939 MB') +
+          model('', 'Parakeet v3 Q4', 0, 'Accurate dictation in English and 24 other European languages. No translation.', '416 MB') +
           model('', 'Whisper Large v3 Turbo Q5', 0, 'For Hindi and other languages outside Parakeet&rsquo;s 25. No translation.', '574 MB') +
           model('', 'Whisper Small Q5', 0, 'Transcribes many languages and translates speech to English.', '190 MB') +
           model('', 'Whisper Base Q5', 0, 'Fast and small, for older or slower computers.', '60 MB'),
-          'Parakeet is recommended. Use Whisper for other languages or translation.')}${sec('Text cleanup',
+          'Nemotron Unified is recommended. Use Whisper for other languages or translation.')}${sec('Text cleanup',
           model('', 'S1-mini by Superwhisper', 1, 'Fast cleanup of English dictation. It cannot do Command Mode.', '484 MB') +
           model('', 'Qwen3.5 2B', 0, 'Cleanup in many languages, and edits for Command Mode.', '1.3 GB'),
           'Fixes grammar and punctuation when AI cleanup is on. Choose the model in Settings.')}${sec('Voices',
