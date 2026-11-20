@@ -55,6 +55,18 @@ fn apply(window: &NSWindow, limits: SizeLimits) {
         zoom.setHidden(true);
     }
     window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenNone);
+    // Test launches only: GPUI stops drawing a covered window, so a background screenshot
+    // lifts it above normal windows (without activating the app) to keep it drawing.
+    if std::env::var_os("HUSHPEN_FORCE_DRAW").is_some() {
+        window.setLevel(objc2_app_kit::NSFloatingWindowLevel);
+    }
+    // Test launches only: a Light screenshot while the system is Dark.
+    if std::env::var_os("HUSHPEN_TEST_APPEARANCE").is_some_and(|value| value == "light") {
+        use objc2_app_kit::{NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua};
+        // SAFETY: AppKit defines this name constant for the life of the process.
+        let aqua = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameAqua });
+        window.setAppearance(aqua.as_deref());
+    }
 }
 
 #[cfg(test)]
