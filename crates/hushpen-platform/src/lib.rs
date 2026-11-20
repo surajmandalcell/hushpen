@@ -1,5 +1,6 @@
 //! Platform layer, with macOS and Linux modules behind shared traits.
 
+pub mod app_name;
 pub mod appearance;
 pub mod file_services;
 pub mod insert;

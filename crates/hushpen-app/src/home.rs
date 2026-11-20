@@ -231,7 +231,7 @@ fn recent_meta(row: &Row, today: i64) -> String {
     if row.kind == "import" {
         parts.push(panel::FILE_SOURCE.to_owned());
     } else if let Some(app) = &row.target_app {
-        parts.push(app.clone());
+        parts.push(hushpen_platform::app_name::display_name(app));
     }
     if row.duration_ms > 0 {
         parts.push(panel::seconds(row.duration_ms));
@@ -349,61 +349,66 @@ impl Home {
             .flex()
             .gap(px(space::MD))
             .w_full()
-            .children(tiles.into_iter().map(|(key, icon, label, number, unit, sub)| {
-                div()
-                    .id(hook::id("home", key))
-                    .test_support()
-                    .role(Role::Group)
-                    .aria_label(format!("{label}: {number} {unit}"))
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(space::XS))
-                    .p(px(space::MD))
-                    .bg(palette.group)
-                    .rounded(px(radius::GROUP))
-                    .border(theme::hairline())
-                    .border_color(palette.separator)
-                    .child(
+            .children(
+                tiles
+                    .into_iter()
+                    .map(|(key, icon, label, number, unit, sub)| {
                         div()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.0))
+                            .id(hook::id("home", key))
+                            .test_support()
+                            .role(Role::Group)
+                            .aria_label(format!("{label}: {number} {unit}"))
+                            .flex_1()
                             .min_w_0()
-                            .text_token(SECONDARY)
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(palette.label_secondary)
-                            .child(
-                                svg()
-                                    .path(icon.path())
-                                    .size(px(13.0))
-                                    .flex_none()
-                                    .text_color(palette.label_secondary),
-                            )
-                            .child(div().min_w_0().truncate().child(label)),
-                    )
-                    .child(
-                        div()
                             .flex()
-                            .items_baseline()
-                            .gap(px(4.0))
-                            .min_w_0()
+                            .flex_col()
+                            .gap(px(space::XS))
+                            .p(px(space::MD))
+                            .bg(palette.group)
+                            .rounded(px(radius::GROUP))
+                            .border(theme::hairline())
+                            .border_color(palette.separator)
                             .child(
                                 div()
-                                    .text_token(TITLE)
-                                    .font_features(tabular())
-                                    .text_color(palette.label)
-                                    .truncate()
-                                    .child(number),
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(5.0))
+                                    .min_w_0()
+                                    .text_token(SECONDARY)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(palette.label_secondary)
+                                    .child(
+                                        svg()
+                                            .path(icon.path())
+                                            .size(px(13.0))
+                                            .flex_none()
+                                            .text_color(palette.label_secondary),
+                                    )
+                                    .child(div().min_w_0().truncate().child(label)),
                             )
-                            .children(
-                                (!unit.is_empty())
-                                    .then(|| ui::secondary(palette).flex_none().child(unit)),
-                            ),
-                    )
-                    .child(ui::secondary(palette).child(sub))
-            }))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_baseline()
+                                    .gap(px(4.0))
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .text_token(TITLE)
+                                            .font_features(tabular())
+                                            .text_color(palette.label)
+                                            .truncate()
+                                            .child(number),
+                                    )
+                                    .children(
+                                        (!unit.is_empty()).then(|| {
+                                            ui::secondary(palette).flex_none().child(unit)
+                                        }),
+                                    ),
+                            )
+                            .child(ui::secondary(palette).child(sub))
+                    }),
+            )
     }
 
     /// One column a week, Monday on top, this week last. `elapsed` is how far the draw-in has
