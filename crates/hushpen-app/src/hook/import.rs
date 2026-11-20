@@ -4,7 +4,7 @@
 
 use super::{register_action, set_state_section};
 use crate::files::{Files, Mode};
-use crate::import::Import;
+use crate::import::{Import, panel};
 use gpui_kit::{App, Context, Entity};
 use hushpen_core::export::Format;
 use serde_json::{Value, json};
@@ -184,6 +184,45 @@ pub fn attach(cx: &mut App, files: Entity<Files>, import: Entity<Import>) {
             Ok(json!({"id": id}))
         });
     }
+    let _ = register_action(
+        cx,
+        "files-paste",
+        "Run Command V outside a text field: copied files go in the queue, copied text in Read \
+         aloud. Fill the clipboard first.",
+        |cx, _| {
+            cx.defer(|cx| cx.dispatch_action(&gpui_kit::component::input::Paste));
+            Ok(Value::Null)
+        },
+    );
+    let _ = register_action(
+        cx,
+        "import-quick-look",
+        "Select a row and press Space on the queue. Args: {\"id\": 1}. Returns the file Quick \
+         Look shows: the transcript once done, else the file.",
+        {
+            let import = import.clone();
+            move |cx, args| {
+                let id = id_of(&args)?;
+                import.update(cx, |import, cx| import.select(id, cx));
+                let path = panel::look_at_selected(&import, cx).ok_or("nothing to show")?;
+                Ok(json!({"path": path}))
+            }
+        },
+    );
+    let _ = register_action(
+        cx,
+        "import-drag-out",
+        "Build the file a drag out of a finished row hands to Finder. Args: {\"id\": 1}. Returns \
+         its path.",
+        {
+            let import = import.clone();
+            move |cx, args| {
+                let id = id_of(&args)?;
+                let path = panel::drag_out_file(&import, id, cx).ok_or("no transcript yet")?;
+                Ok(json!({"path": path}))
+            }
+        },
+    );
     let _ = register_action(cx, "import-clear", "Press Clear Finished.", move |cx, _| {
         import.update(cx, |import, cx| import.clear_finished(cx));
         Ok(Value::Null)

@@ -22,7 +22,7 @@ use gpui_kit::{
 };
 use hushpen_core::export::Format;
 use hushpen_core::language;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const SNIPPET_CHARS: usize = 120;
 
@@ -462,14 +462,28 @@ fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl Into
                 .key_context(extras::QUEUE_CONTEXT)
                 .track_focus(&view.queue_focus)
                 .on_action(move |_: &QuickLook, _, cx| {
-                    let Some(path) = look.read(cx).preview_path() else {
-                        return;
-                    };
-                    // The panel takes key, and AppKit tells the window at once: not in this update.
-                    cx.spawn(async move |_| extras::quick_look(path)).detach();
+                    look_at_selected(&look, cx);
                 })
                 .child(ui::group(hook::id("import", "queue"), palette, rows)),
         )
+}
+
+/// Space on the queue: Quick Look on the selected row. Returns the file it shows.
+pub fn look_at_selected(import: &Entity<Import>, cx: &mut App) -> Option<PathBuf> {
+    let path = import.read(cx).preview_path()?;
+    let shown = path.clone();
+    // The panel takes key, and AppKit tells the window at once: not in this update.
+    cx.spawn(async move |_| extras::quick_look(shown)).detach();
+    Some(path)
+}
+
+/// The `.txt` file a drag out of a finished row hands to Finder or another app.
+pub fn drag_out_file(import: &Entity<Import>, id: u64, cx: &App) -> Option<PathBuf> {
+    import
+        .read(cx)
+        .result_file(id)
+        .inspect_err(|error| log::warn!("the transcript was not written for a drag: {error}"))
+        .ok()
 }
 
 /// A finished row while it is dragged: its name in a small chip. Out of the window, the drag
@@ -617,15 +631,8 @@ fn item_row(
         let import = import.clone();
         row.on_drag(chip, |chip, _, _, cx| cx.new(|_| chip.clone()))
             .external_drag_payload(move |chip: &DragOut, _, cx| {
-                match import.read(cx).result_file(chip.id) {
-                    Ok(path) => Some(ExternalDragPayload::Files(FileDragPaths::new([(
-                        path, false,
-                    )]))),
-                    Err(error) => {
-                        log::warn!("the transcript was not written for a drag: {error}");
-                        None
-                    }
-                }
+                drag_out_file(&import, chip.id, cx)
+                    .map(|path| ExternalDragPayload::Files(FileDragPaths::new([(path, false)])))
             })
     } else {
         row
