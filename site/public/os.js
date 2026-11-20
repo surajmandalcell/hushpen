@@ -51,3 +51,21 @@
     }).catch(() => {});
   }
 })();
+
+// Copy buttons (install commands): every page with a download button loads this file
+(() => {
+  const SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="2"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg><svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>';
+  const live = Object.assign(document.createElement('span'), { role: 'status' });
+  live.setAttribute('aria-live', 'polite');
+  live.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
+  document.body.append(live);
+  document.querySelectorAll('[data-copy]').forEach(b => {
+    const ic = b.querySelector('.k-copy') || b; // the Homebrew line copies on a click anywhere, its icon sits inside
+    ic.innerHTML = SVG;
+    b.addEventListener('click', () => {
+      navigator.clipboard?.writeText(b.dataset.copy).catch(() => {});
+      ic.classList.add('done'); live.textContent = 'Copied';
+      setTimeout(() => { ic.classList.remove('done'); live.textContent = ''; }, 1500);
+    });
+  });
+})();

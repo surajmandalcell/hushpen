@@ -27,6 +27,7 @@
 <link rel="stylesheet" href="/kit.css">
 <link rel="stylesheet" href="/compare.css">
 <link rel="stylesheet" href="/bench.css">
+<link rel="stylesheet" href="/quotes.css">
 <script src="/releases.js" defer></script>
 <script src="/os.js" defer></script>
 <script type="application/ld+json">
@@ -34,14 +35,14 @@
 </script>
 </head>
 <body>
-<header class="nav"><div class="wrap"><a class="brand" href="/"><img src="/assets/icon-256.webp" alt="" width="30" height="30"><span>Hushpen</span></a><nav aria-label="Main"><a href="/#speed">Speed</a><a href="/#features">Features</a><a href="/#why">Why</a><a href="/#platforms">Platforms</a><a href="/benchmarks" aria-current="page">Benchmarks</a><a href="/#faq">FAQ</a></nav><a class="dl" data-dl href="https://github.com/surajmandalcell/hushpen/releases/latest">Download</a></div></header>
+<header class="nav"><div class="wrap"><a class="brand" href="/"><img src="/assets/icon-256.webp" alt="" width="30" height="30"><span>Hushpen</span></a><nav aria-label="Main"><a href="/#speed">Speed</a><a href="/#features">Features</a><a href="/#why">Why</a><a href="/#platforms">Platforms</a><a href="/benchmarks" aria-current="page">Benchmarks</a><a href="/#faq">FAQ</a></nav><a class="dl" data-dl href="https://github.com/surajmandalcell/hushpen/releases/latest" aria-label="Download Hushpen"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.25 8 10.75l3.5-3.5M3 13.5h10"/></svg>Download</a></div></header>
 
 <main class="wrap">
   <article class="paper">
-    <header class="paper-top"><p class="paper-kick">Hushpen benchmarks</p><h1>How we test speech to text apps and models</h1><p class="paper-by">Suraj Mandal · 20 November 2026 · <a href="/benchmarks">See the results</a></p></header>
+    <header class="paper-top"><p class="paper-kick">Hushpen benchmarks</p><h1>How we test dictation apps, so you can check us</h1><p class="paper-by">Suraj Mandal · 20 November 2026 · <a href="/benchmarks">See the results</a></p></header>
     <section class="paper-abs" aria-labelledby="abs">
-      <h2 id="abs">Abstract</h2>
-      <p>We ran 10 speech to text setups on one Mac: Hushpen with 5 speech models, Handy 0.10.1, FluidVoice 1.6.13, MacWhisper 15.11, VoiceInk 2.27 and Buzz 1.4.5. Each one wrote out the same 36 clips from TED talks in 19 English accents. We scored every transcript word by word against the talk's human-made captions. Buzz got the most words right, 95.1 out of 100, and Hushpen + Whisper Turbo got 95.0. FluidVoice was the fastest, 0.37 s for one minute of audio. Hushpen + Nemotron Unified, the default model, got 94.5 words right and took 0.80 s. In the full Hushpen app, it types as you speak, and its text was done 0.30 s after the speaker stopped (0.29-0.33 s, 3 runs). Hushpen + Parakeet v3 got 93.6 and is the faster pick for long recordings: 30 minutes in 17.0 s, against 23.1 s for Nemotron Unified. This page gives the full method, the rules that kept the runs fair, the limits, and the steps to repeat the test.</p>
+      <h2 id="abs">The short version</h2>
+      <p>We put 10 speech to text setups through the same test on one Mac: Hushpen with 5 speech models, Handy 0.10.1, FluidVoice 1.6.13, MacWhisper 15.11, VoiceInk 2.27 and Buzz 1.4.5. Each one wrote out the same 36 clips from TED talks, spoken in 19 English accents. Then we checked every transcript word by word against the talk's human-made captions. Buzz got the most words right, 95.1 out of 100, and Hushpen with Whisper Turbo got 95.0. FluidVoice wrote out one minute of audio in 0.37 s, quicker than anyone else. Hushpen's default model, Nemotron Unified, got 94.5 words right and took 0.80 s. In the real Hushpen app it types while you talk, so the text was done 0.30 s after the speaker stopped (0.29-0.33 s, 3 runs). Hushpen with Parakeet v3 got 93.6, and it's the one to pick for long recordings: 30 minutes in 17.0 s, against 23.1 s for Nemotron Unified. Below you'll find the full method, how we kept it fair, what the test can't tell you, and how to run it yourself.</p>
     </section>
     <section aria-labelledby="m1">
       <h2 id="m1"><span>1</span>Setup</h2>
@@ -70,7 +71,7 @@
     </div>
     </section>
     <section aria-labelledby="m2">
-      <h2 id="m2"><span>2</span>Keeping the runs fair</h2>
+      <h2 id="m2"><span>2</span>How we kept it fair</h2>
       <ol class="paper-list">
         <li><b>Same clips for every app.</b> Every setup got the same 37 WAV files, 16 kHz mono, cut once by a script. No app saw a different copy.</li>
         <li><b>Default settings.</b> No custom words, no prompt and no language hint beyond each app's default.</li>
@@ -82,8 +83,8 @@
       </ol>
     </section>
     <section aria-labelledby="m3">
-      <h2 id="m3"><span>3</span>Scoring</h2>
-      <p>The score answers one question: of the words the speaker said, how many did the app get right?</p>
+      <h2 id="m3"><span>3</span>How we score</h2>
+      <p>It all comes down to one question: of the words the speaker said, how many did the app get right?</p>
       <ol class="paper-list">
         <li><b>Normalize both sides.</b> The Whisper English text normalizer makes text lowercase, removes punctuation, writes numbers and spellings the same way, and removes fillers such as "um".</li>
         <li><b>Word error rate.</b> jiwer counts the words that were swapped, dropped or added, over all clips together, and divides by the number of caption words.</li>
@@ -92,7 +93,7 @@
       </ol>
     </section>
     <section aria-labelledby="m4">
-      <h2 id="m4"><span>4</span>Results</h2>
+      <h2 id="m4"><span>4</span>What we found</h2>
       <p>The full tables, with each accent and with long recordings, are on the <a href="/benchmarks">results page</a>.</p>
     <div class="cp-body cp-tbl num ">
       <table>
@@ -103,7 +104,7 @@
           <tr><th scope="row"><span class="us">Hushpen</span><small>Whisper Large v3 Turbo Q5</small></th><td data-l="Words right out of 100">95.0</td><td data-l="Text appears after you stop talking">1.69 s<small>1.68-1.69 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">2.76 s</td></tr>
           <tr><th scope="row"><span class="">MacWhisper 15.11</span><small>Whisper Large v3 Turbo</small></th><td data-l="Words right out of 100">95.0</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">4.95 s</td></tr>
           <tr><th scope="row"><span class="">Handy 0.10.1</span><small>Parakeet Unified English 0.6B Q8</small></th><td data-l="Words right out of 100">94.7</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">0.50 s</td></tr>
-          <tr><th scope="row"><span class="us">Hushpen</span><small>Nemotron Unified ASR 0.6B Q8, the default</small></th><td data-l="Words right out of 100">94.5</td><td data-l="Text appears after you stop talking">0.30 s<small>0.29-0.33 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">0.80 s</td></tr>
+          <tr><th scope="row"><span class="us">Hushpen</span><small>Nemotron Unified ASR 0.6B Q8</small></th><td data-l="Words right out of 100">94.5</td><td data-l="Text appears after you stop talking">0.30 s<small>0.29-0.33 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">0.80 s</td></tr>
           <tr><th scope="row"><span class="us">Hushpen</span><small>Parakeet v3 Q4</small></th><td data-l="Words right out of 100">93.6</td><td data-l="Text appears after you stop talking">0.48 s<small>0.46-0.51 s, 3 runs</small></td><td data-l="Write out a 1 minute recording">0.57 s</td></tr>
           <tr><th scope="row"><span class="">FluidVoice 1.6.13</span><small>Parakeet TDT v3</small></th><td data-l="Words right out of 100">93.5</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">0.37 s</td></tr>
           <tr><th scope="row"><span class="">VoiceInk 2.27</span><small>Whisper Large v3 Turbo</small></th><td data-l="Words right out of 100">92.1</td><td data-l="Text appears after you stop talking"><span class="bx-gap">—</span></td><td data-l="Write out a 1 minute recording">4.34 s</td></tr>
@@ -114,7 +115,7 @@
     </div>
     </section>
     <section aria-labelledby="m5">
-      <h2 id="m5"><span>5</span>Limits</h2>
+      <h2 id="m5"><span>5</span>What this test can't tell you</h2>
       <ul class="paper-list">
         <li><b>Paid apps were not tested.</b> Superwhisper, Wispr Flow, Aqua Voice, Willow Voice and Spokenly have no numbers here.</li>
         <li><b>The captions skip some words.</b> TED captions leave out some "uh"s and repeated words, so every setup loses a few points for words the speaker really said.</li>
@@ -126,7 +127,7 @@
       </ul>
     </section>
     <section aria-labelledby="m6">
-      <h2 id="m6"><span>6</span>Repeat the test</h2>
+      <h2 id="m6"><span>6</span>Run it yourself</h2>
       <p>You need a Mac or PC, Python 3, ffmpeg and yt-dlp. The clip list is in the appendix below. The audio is not published, so you cut it yourself from the talks.</p>
       <ol class="paper-steps">
         <li><b>Install the tools.</b><code>pip install jiwer whisper-normalizer yt-dlp</code></li>

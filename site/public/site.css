@@ -391,7 +391,7 @@ h2 span { color: var(--ink3); }
 /* Final call to action */
 .cta-wrap { margin-top: 140px; }
 .bigicon { text-align: center; padding: 40px 0 20px; }
-.bigicon button { display: block; margin: 0 auto 30px; }
+.bigicon > button:not(.brew) { display: block; margin: 0 auto 30px; }
 .bigicon img { width: 190px; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, .2)); transition: transform .5s var(--spring), filter .3s; }
 .bigicon button:hover img { transform: translateY(-6px) rotate(-4deg); filter: drop-shadow(0 40px 50px rgba(0, 0, 0, .24)); }
 .bigicon button:active img { transform: scale(.93) translateY(4px); transition-duration: .12s; }
