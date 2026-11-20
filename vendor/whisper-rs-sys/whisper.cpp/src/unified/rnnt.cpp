@@ -1,5 +1,6 @@
 #include "rnnt.hpp"
 #include "decode_common.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -54,32 +55,45 @@ std::vector<int32_t> rnnt_decode_frames(const PredictionNet& pred, const Joint& 
     // collapses the LSTM from ~T+U forwards to ~U (the dominant decode cost).
     bool g_valid = false;
 
+    // Hushpen: while g is unchanged, the joint of each later frame depends only on
+    // its own enc_proj row, so one graph scores up to kFrames frames at once. The
+    // first non-blank frame among them emits; the columns after it are dropped.
+    // Each GPU call is a short round trip. 4 beat 1, 8 and 16 on 1 and 30 min files.
+    constexpr int kFrames = 4;
+    std::vector<float> g_rep;
     int t = 0;
+    int emitted = 0;   // tokens emitted at frame t so far
     while (t < Tnew) {
-        int emitted = 0;
-        while (emitted < max_symbols) {
-            // Prediction net step from the committed state — only when the cache
-            // is stale (first step, or the previous iteration emitted). On a
-            // blank frame the committed state is unchanged, so `g`/`out_state`
-            // from the prior step are reused verbatim.
-            if (!g_valid) {
-                // First step (no token committed yet, EVER across the whole
-                // stream) uses SOS; otherwise feed the last EMITTED token. The
-                // committed state / last_token / have_token are carried in `st`.
-                const bool is_sos = !st.have_token;
-                const int32_t last_label = st.have_token ? st.last_token : blank_id;
-                pred.step(last_label, is_sos, st.state, g, out_state);
-                g_valid = true;
-            }
+        // Prediction net step from the committed state — only when the cache
+        // is stale (first step, or the previous iteration emitted). On a
+        // blank frame the committed state is unchanged, so `g`/`out_state`
+        // from the prior step are reused verbatim.
+        if (!g_valid) {
+            // First step (no token committed yet, EVER across the whole
+            // stream) uses SOS; otherwise feed the last EMITTED token. The
+            // committed state / last_token / have_token are carried in `st`.
+            const bool is_sos = !st.have_token;
+            const int32_t last_label = st.have_token ? st.last_token : blank_id;
+            pred.step(last_label, is_sos, st.state, g, out_state);
+            g_valid = true;
+        }
 
-            // Joint for (t,u): precomputed enc_proj[t] x g -> raw logits [V_plus].
-            joint.step_logits(enc_proj.data() + (size_t)t * H,
-                              g.data(), (int)g.size(), logits);
+        // Joint for frames t..t+n-1 with the same g -> raw logits [n, V_plus].
+        const int n = std::min(kFrames, Tnew - t);
+        if (n == 1) {
+            joint.step_logits(enc_proj.data() + (size_t)t * H, g.data(), (int)g.size(), logits);
+        } else {
+            g_rep.resize(g.size() * n);
+            for (int j = 0; j < n; ++j) std::copy(g.begin(), g.end(), g_rep.begin() + (size_t)j * g.size());
+            joint.step_logits_batch(enc_proj.data() + (size_t)t * H, g_rep.data(), (int)g.size(), n, logits);
+        }
 
-            const int k = decode_argmax(logits.data(), token_count);
+        for (int j = 0; j < n; ++j) {
+            const float* lj = logits.data() + (size_t)j * V_plus;
+            const int k = decode_argmax(lj, token_count);
 
             // Blank -> stop emitting at this frame and advance time.
-            if (k == blank_id) break;
+            if (k == blank_id) { t += 1; emitted = 0; continue; }
 
             // Non-blank -> emit, commit state + last token, STAY at this frame.
             st.hyp.push_back((int32_t)k);
@@ -90,18 +104,17 @@ std::vector<int32_t> rnnt_decode_frames(const PredictionNet& pred, const Joint& 
                 // max_prob confidence): frame = the (local) encoder frame t at
                 // emission, conf = max_prob over the full joint output vector
                 // (N = V_plus = vocab+1), span = 1 (RNN-T advances one frame).
-                const float conf = decode_max_prob_conf(logits.data(), token_count, k);
+                const float conf = decode_max_prob_conf(lj, token_count, k);
                 tokens->push_back(TokenInfo{ (int32_t)k, (int32_t)t, conf, 1 });
             }
             st.last_token = (int32_t)k;
             st.state = out_state;
             st.have_token = true;
             g_valid = false;   // committed state advanced -> recompute g next step
-            emitted += 1;
+            // Advance exactly one frame once max_symbols are exhausted.
+            if (++emitted >= max_symbols) { t += 1; emitted = 0; }
+            break;
         }
-
-        // Advance exactly one frame (blank, or max_symbols exhausted).
-        t += 1;
     }
 
     return emitted_this_call;
