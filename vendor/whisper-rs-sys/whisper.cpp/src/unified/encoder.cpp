@@ -28,9 +28,10 @@ static int local_attn_window(int Tp) {
         if (w <= 0) return -1;                 // 0 / negative -> force full attention
         return w > kMaxLocalWindow ? kMaxLocalWindow : w;
     }
-    // Auto: long audio (~>11 min at 8x subsampling) switches to local attention
-    // so full O(T^2) attention can't OOM the device.
-    constexpr int kLocalThreshold = 8192;
+    // Hushpen: past about 40 s of input (512 frames at 80 ms), full attention
+    // makes the Unified model emit only blanks for whole 1-2 min windows, while
+    // [128,128] local attention keeps every word. Clips up to 40 s stay exact.
+    constexpr int kLocalThreshold = 512;
     return Tp > kLocalThreshold ? kMaxLocalWindow : -1;
 }
 

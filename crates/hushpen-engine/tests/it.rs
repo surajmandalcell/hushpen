@@ -24,6 +24,8 @@ mod memory;
 mod parakeet;
 #[path = "it/silence.rs"]
 mod silence;
+#[path = "it/unified.rs"]
+mod unified;
 
 fn assets_dir() -> Option<PathBuf> {
     std::env::var_os("HUSHPEN_TEST_ASSETS").map(PathBuf::from)
